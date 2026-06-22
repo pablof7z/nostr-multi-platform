@@ -57,6 +57,13 @@ use std::ffi::{c_char, CString};
 use super::{app_ref, c_string_argument, NmpApp};
 use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
 
+// ADR-0064 / S4 (#1752) — the native byte doorway lives in this sibling so
+// `action.rs` stays under its hand-authored LOC ceiling (AGENTS.md / V-12). It
+// is a size-management seam, not an API boundary: `nmp_app_dispatch_action_bytes`
+// is an ordinary `#[no_mangle]` C symbol and reaches the shared post-mint
+// helpers (`finish_dispatch` / `error_json` / `rejection_message`) below.
+mod bytes;
+
 /// Dispatch a named action through the action registry.
 ///
 /// Returns a freshly heap-allocated, NUL-terminated JSON C string the caller
@@ -239,85 +246,62 @@ pub(super) fn dispatch_action_json(
         .start(&mut ctx, dispatch_now_ms, namespace, action_json)
     {
         Ok(correlation_id) => {
-            // `start()` is a pure validator and the correlation id is the
-            // handle the caller acts on.
-            //
-            // Execution: `start()` only validated the action. Now drive it
-            // through the actor. `execute_action` is namespace-aware; an
-            // execution failure is surfaced as `{"error":...}` (D6) and the
-            // already-minted correlation id is discarded — a rejected
-            // dispatch must not look like an accepted one.
-            //
-            // The minted `correlation_id` is passed into `execute_action` so
-            // an executor whose `ActorCommand` settles asynchronously (the
-            // `nmp.publish` `PublishRaw` path — the actor signs the event)
-            // can thread it onto the command. The publish engine then reports
-            // this id in `action_results`, matching the host's spinner key.
-            // The pre-signed `Publish` path is identical: the minted
-            // correlation_id — never the event id — is the operation's
-            // identity end-to-end (#1748).
-            match execute_action(app, namespace, action_json, &correlation_id) {
-                Ok(()) => {
-                    // Push the "action accepted and enqueued" signal to the
-                    // host's result observer, if one is registered. Built-in
-                    // executors are fire-and-forget, so `result_json` is
-                    // `null`; a host executor that needs to return a value
-                    // writes it to a snapshot projection (the pull model).
-                    // A no-op when no observer is registered.
-                    app.action_registry.deliver_result(ActionResult {
-                        correlation_id: correlation_id.clone(),
-                        result_json: serde_json::Value::Null,
-                    });
-                    format!(r#"{{"correlation_id":{}}}"#, json_string(&correlation_id))
-                }
-                Err(failure) if failure.enqueued => {
-                    // #1676 BUG-A — the executor already enqueued an
-                    // `ActorCommand` and then failed (an async-completing
-                    // module that panicked / errored *after* sending). That
-                    // enqueued command OWNS this action's terminal verdict: it
-                    // will settle through the publish engine (or an off-band
-                    // worker) and produce exactly one `action_results` row.
-                    //
-                    // Fanning a `RecordActionFailure` in here would record a
-                    // SECOND terminal under the same correlation_id — the
-                    // double-terminal bug. Suppress the fan-in. The action was,
-                    // in fact, accepted-and-enqueued, so report it as accepted
-                    // and deliver the "accepted" observer signal exactly as the
-                    // clean `Ok(())` path does. (A post-enqueue panic is still
-                    // a module bug; the default panic hook keeps it visible.)
-                    app.action_registry.deliver_result(ActionResult {
-                        correlation_id: correlation_id.clone(),
-                        result_json: serde_json::Value::Null,
-                    });
-                    format!(r#"{{"correlation_id":{}}}"#, json_string(&correlation_id))
-                }
-                Err(failure) => {
-                    // Nothing was enqueued (the #1676 BUG-B invariant holds:
-                    // a no-executor / sync-`Err` / pre-enqueue panic enqueued
-                    // no command). The fan-in is therefore the SOLE terminal
-                    // for this correlation_id — recording it is required, not a
-                    // duplicate.
-                    //
-                    // The registry minted a correlation_id; without this the
-                    // host's spinner keyed on it would hang. Fan the failure
-                    // into the actor so the kernel records a terminal `Failed {
-                    // reason }` stage + `action_results` row under the same id.
-                    // Fire-and-forget: the send is non-blocking (D8) and a
-                    // disconnected actor channel is a benign no-op (D6).
-                    app.send_cmd(nmp_core::ActorCommand::RecordActionFailure {
-                        correlation_id: correlation_id.clone(),
-                        reason: failure.message.clone(),
-                    });
-                    // Return BOTH the correlation_id and the error message: the
-                    // host needs the id to drive its ACK path, the message to
-                    // render a toast. The Swift `DispatchResult.parse` surfaces
-                    // the error (#1676 BUG-C) rather than silently treating the
-                    // presence of a correlation_id as acceptance.
-                    error_json_with_correlation_id(&correlation_id, &failure.message)
-                }
-            }
+            // `start()` validated the action and minted the correlation id.
+            // Drive execution and turn the outcome into the JSON result. The
+            // execute closure is the JSON-twin (`execute_action`); the
+            // post-mint outcome handling is shared with the byte doorway via
+            // `finish_dispatch` so both paths report acceptance / failure
+            // identically (#1676 BUG-A/B/C).
+            finish_dispatch(app, &correlation_id, execute_action(app, namespace, action_json, &correlation_id))
         }
         Err(rejection) => error_json(&rejection_message(rejection)),
+    }
+}
+
+/// Shared post-mint outcome handling for BOTH the JSON ([`dispatch_action_json`])
+/// and byte ([`dispatch_action_bytes`]) doorways.
+///
+/// `start()`/`start_bytes()` already minted `correlation_id`; this turns the
+/// execute outcome into the JSON result and preserves the one-terminal-per-
+/// dispatch invariant (#1676 BUG-A/B/C):
+///
+/// * `Ok(())` — accepted + enqueued; deliver the "accepted" observer signal,
+///   return `{"correlation_id":…}`.
+/// * `Err(failure)` with `enqueued` — the executor already enqueued an
+///   `ActorCommand` and then failed; that command OWNS the terminal verdict, so
+///   do NOT fan a second `RecordActionFailure` (double-terminal). Report as
+///   accepted.
+/// * `Err(failure)` without `enqueued` — nothing was enqueued; this fan-in is
+///   the SOLE terminal. Record a `Failed { reason }` so the host spinner keyed
+///   on the id resolves, and return BOTH id and error so the host can ACK +
+///   toast.
+fn finish_dispatch(
+    app: &NmpApp,
+    correlation_id: &str,
+    outcome: Result<(), nmp_core::__ffi_internal::ActionExecuteFailure>,
+) -> String {
+    match outcome {
+        Ok(()) => {
+            app.action_registry.deliver_result(ActionResult {
+                correlation_id: correlation_id.to_string(),
+                result_json: serde_json::Value::Null,
+            });
+            format!(r#"{{"correlation_id":{}}}"#, json_string(correlation_id))
+        }
+        Err(failure) if failure.enqueued => {
+            app.action_registry.deliver_result(ActionResult {
+                correlation_id: correlation_id.to_string(),
+                result_json: serde_json::Value::Null,
+            });
+            format!(r#"{{"correlation_id":{}}}"#, json_string(correlation_id))
+        }
+        Err(failure) => {
+            app.send_cmd(nmp_core::ActorCommand::RecordActionFailure {
+                correlation_id: correlation_id.to_string(),
+                reason: failure.message.clone(),
+            });
+            error_json_with_correlation_id(correlation_id, &failure.message)
+        }
     }
 }
 
