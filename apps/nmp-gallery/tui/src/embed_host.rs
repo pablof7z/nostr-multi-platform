@@ -60,7 +60,7 @@ impl EmbedHostState {
     /// falls back to a loading placeholder until a well-formed snapshot lands).
     ///
     /// Returns the pubkeys of claimed-event authors so the caller can issue
-    /// `claim_profile`; `claimed_events` itself carries raw event data only.
+    /// `resolve_profile`; `claimed_events` itself carries raw event data only.
     pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) -> Vec<String> {
         // An absent (empty) claimed_events model is a no-op — do not wipe
         // existing envelopes when no events are claimed yet (mirrors the

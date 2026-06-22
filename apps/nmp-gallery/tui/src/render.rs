@@ -337,7 +337,7 @@ impl GalleryProfileHost<'_> {
                 .insert((pubkey.to_string(), consumer_id.to_string()));
         }
         if let Some(sink) = self.sink {
-            sink.claim_profile(pubkey, consumer_id);
+            sink.resolve_profile(pubkey, consumer_id);
         }
     }
 }

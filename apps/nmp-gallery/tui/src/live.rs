@@ -48,7 +48,7 @@ const REF_LIVENESS_CACHE_OK: c_int = 0;
 /// Hex pubkey of the gallery's primary showcase author — pablof7z, the
 /// NmpGallery showcase identity. The user-*
 /// components resolve this identity to a `ProfileWire` reactively through
-/// `LiveProfileMap`; `tui/user-avatar` fires `claim_profile` when rendered so
+/// `LiveProfileMap`; `tui/user-avatar` fires `resolve_profile` when rendered so
 /// the kernel fetches the kind:0 and a later snapshot carries real metadata.
 pub fn primary_pubkey() -> &'static str {
     showcase_pubkey()
@@ -191,7 +191,7 @@ impl LiveKernelSink {
     /// every visible author resolves at the feed-avatar shape `profile.ref` and
     /// `CacheOk` liveness (no per-row tailing sub) — the gallery renders only
     /// inline avatars/names, never an open-profile pane.
-    pub fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+    pub fn resolve_profile(&self, pubkey: &str, consumer_id: &str) {
         let Ok(pk) = CString::new(pubkey) else { return };
         let Ok(cid) = CString::new(consumer_id) else {
             return;
@@ -206,7 +206,7 @@ impl LiveKernelSink {
         );
     }
 
-    /// Release a profile reference previously claimed via [`Self::claim_profile`].
+    /// Release a profile reference previously resolved via [`Self::resolve_profile`].
     /// Pass the SAME `(pubkey, consumer_id)` so the kernel reclaims the slot.
     pub fn release_profile(&self, pubkey: &str, consumer_id: &str) {
         let Ok(pk) = CString::new(pubkey) else { return };
@@ -219,7 +219,7 @@ impl LiveKernelSink {
     // V-112 (ADR-0042): `open_author` deleted — it wrapped the retired
     // `nmp_app_open_author` C-ABI symbol and had zero callers. Author feeds
     // go through the generic `nmp_app_open_interest` seam; user-avatar
-    // hydration uses component-owned `claim_profile` above.
+    // hydration uses component-owned `resolve_profile` above.
 }
 
 impl EventClaimSink for LiveKernelSink {

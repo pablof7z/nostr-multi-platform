@@ -19,10 +19,11 @@ use nmp_core::{
 };
 
 /// The JSON projection key the native shells read for resolved profiles.
-/// ADR-0063 (#1671): the map is now SOURCED from the `refs.profile` row-delta
-/// projection (merged into a stateful [`RefProfileStore`]); the retired
-/// `resolved_profiles` whole-map projection is no longer decoded.
-const PROFILES_JSON_KEY: &str = "resolved_profiles";
+/// ADR-0063 (#1671): the map is SOURCED from the `refs.profile` row-delta
+/// projection (merged into a stateful [`RefProfileStore`]) and emitted under
+/// that same key — the retired `resolved_profiles` whole-map projection is
+/// gone end-to-end (Rust emitter + Swift/Kotlin readers).
+const PROFILES_JSON_KEY: &str = REFS_PROFILE_KEY;
 
 pub(crate) fn snapshot_json_from_update_frame(
     bytes: &[u8],
@@ -92,8 +93,8 @@ fn find_projection<'a>(
 
 /// Render the materialised `refs.profile` set (ADR-0063 #1671 — the resolve_ref
 /// output, merged in the caller's [`RefProfileStore`]) as the native shells'
-/// resolved-profiles JSON map. Replaces the retired `resolved_profiles`
-/// whole-map projection decode.
+/// `refs.profile` JSON map. Replaces the retired `resolved_profiles` whole-map
+/// projection decode.
 fn refs_profiles_json(profiles: &BTreeMap<String, ProfileCardModel>) -> Value {
     let mut out = Map::with_capacity(profiles.len());
     for (key, card) in profiles {
@@ -288,7 +289,7 @@ mod tests {
 
         assert_eq!(value["schema_version"], 1);
         assert_eq!(value["running"], true);
-        assert_eq!(value["projections"]["resolved_profiles"], json!({}));
+        assert_eq!(value["projections"][REFS_PROFILE_KEY], json!({}));
         assert_eq!(value["projections"]["claimed_events"], json!({}));
         assert_eq!(value["projections"]["accounts"], json!([]));
         assert_eq!(value["projections"]["relay_role_options"], json!([]));
@@ -297,10 +298,10 @@ mod tests {
     }
 
     #[test]
-    fn refs_profile_row_delta_surfaces_in_resolved_profiles_json() {
+    fn refs_profile_row_delta_surfaces_in_refs_profile_json() {
         // ADR-0063 (#1671): a `refs.profile` baseline row carrying a fresh KPRF
         // card must merge into the store and surface under the
-        // `resolved_profiles` JSON key the native shells read.
+        // `refs.profile` JSON key the native shells read.
         let pubkey = "1111111111111111111111111111111111111111111111111111111111111111";
         let card_payload = encode_profile(&ProfileCardModel {
             pubkey: pubkey.to_string(),
@@ -336,18 +337,19 @@ mod tests {
         )
         .expect("json");
 
-        let entry = &value["projections"]["resolved_profiles"][pubkey];
+        let entry = &value["projections"][REFS_PROFILE_KEY][pubkey];
         assert_eq!(entry["display_name"], "Refs Name");
         assert_eq!(entry["picture_url"], "https://example.com/refs.png");
         assert_eq!(entry["pubkey"], pubkey);
     }
 
     #[test]
-    fn refs_profile_clear_drops_row_from_resolved_profiles_json() {
+    fn refs_profile_clear_drops_row_from_refs_profile_json() {
         // ADR-0063 (#1671): snapshot_json materialises the FULL current
         // RefProfileStore set each frame. A subsequent `refs.profile` CLEAR
-        // (release-on-scroll-off) must DROP the row from `resolved_profiles` —
-        // the materialised set is the sole source of truth (D4), no stale row.
+        // (release-on-scroll-off) must DROP the row from the `refs.profile`
+        // JSON map — the materialised set is the sole source of truth (D4),
+        // no stale row.
         let pubkey = "2222222222222222222222222222222222222222222222222222222222222222";
         let card_payload = encode_profile(&ProfileCardModel {
             pubkey: pubkey.to_string(),
@@ -383,7 +385,7 @@ mod tests {
         )
         .expect("json");
         assert_eq!(
-            added["projections"]["resolved_profiles"][pubkey]["display_name"],
+            added["projections"][REFS_PROFILE_KEY][pubkey]["display_name"],
             "Soon Gone",
             "row must be present after the baseline add"
         );
@@ -415,11 +417,11 @@ mod tests {
         )
         .expect("json");
         assert!(
-            cleared["projections"]["resolved_profiles"]
+            cleared["projections"][REFS_PROFILE_KEY]
                 .get(pubkey)
                 .is_none(),
-            "a refs.profile CLEAR must drop the row from resolved_profiles; got {:?}",
-            cleared["projections"]["resolved_profiles"]
+            "a refs.profile CLEAR must drop the row from the refs.profile map; got {:?}",
+            cleared["projections"][REFS_PROFILE_KEY]
         );
     }
 

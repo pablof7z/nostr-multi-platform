@@ -26,9 +26,10 @@ import org.nmp.gallery.registry.ProfileWire
  * [StateFlow] for Compose.
  *
  * D5/D8: the kernel is the single source of truth. Profile data arrives via
- * the push callback only. Registry components claim pubkeys while visible and
- * resolved profile cards arrive pre-merged in `projections.resolved_profiles`
- * (the kernel performs the claimed/author/mention merge — this host does not).
+ * the push callback only. Registry components resolve pubkeys while visible and
+ * resolved profile cards arrive under `projections["refs.profile"]` (ADR-0063
+ * #1671 — the resolve_ref output, materialised from the row-delta store in
+ * Rust; this host owns no precedence merge).
  *
  * The registry section list is sourced once from `bridge.registryJson()` at
  * startup; [REGISTRY_SECTIONS] is used as a fallback if the JSON is absent or
@@ -153,10 +154,10 @@ class GalleryModel : ViewModel() {
 
     /**
      * Decode one FlatBuffers snapshot frame. Profiles are read from
-     * `projections.resolved_profiles` — ADR-0063 (#1671) now SOURCED from the
-     * kernel's `refs.profile` row-delta projection (the resolve_ref output),
-     * merged host-side across frames in the native session store. This host no
-     * longer reimplements any precedence merge.
+     * `projections["refs.profile"]` — ADR-0063 (#1671): the kernel's
+     * `refs.profile` row-delta projection (the resolve_ref output), merged
+     * host-side across frames in the native session store and materialised
+     * under that key by Rust. This host owns no precedence merge.
      */
     private fun applyFrame(raw: ByteArray) {
         val v = try {
@@ -169,7 +170,7 @@ class GalleryModel : ViewModel() {
 
         val assembled = mutableMapOf<String, ProfileWire>()
 
-        // ADR-0063 (#1671): projections.resolved_profiles[pubkey] is a
+        // ADR-0063 (#1671): projections["refs.profile"][pubkey] is a
         // ProfileWire-shaped entry materialised from the FULL current
         // refs.profile store set (snapshot_json re-materialises the whole store
         // every frame). `npub_short` is derived from `npub` by the ProfileWire
@@ -179,7 +180,7 @@ class GalleryModel : ViewModel() {
         // source of truth (D4). The decoded set IS the live store, so a
         // refs.profile clear/release drops the row here too; unioning would
         // leak released keys.
-        (projections["resolved_profiles"] as? JsonObject)?.let { resolved ->
+        (projections["refs.profile"] as? JsonObject)?.let { resolved ->
             for ((pubkey, el) in resolved) {
                 val profile = runCatching {
                     json.decodeFromJsonElement<ProfileWire>(el)

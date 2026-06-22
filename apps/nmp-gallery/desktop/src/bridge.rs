@@ -72,8 +72,8 @@ impl GalleryBridge {
     /// `profile.ref` / `CacheOk`). Idempotent per `(pubkey, consumer_id)` pair.
     /// Call on every poll tick so the resolution sticks once a relay connects
     /// (the kernel silently drops requests issued before any relay is ready).
-    pub fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
-        self.sink.claim_profile(pubkey, consumer_id);
+    pub fn resolve_profile(&self, pubkey: &str, consumer_id: &str) {
+        self.sink.resolve_profile(pubkey, consumer_id);
     }
 
     /// Take the snapshot receiver for use in the iced subscription. Called

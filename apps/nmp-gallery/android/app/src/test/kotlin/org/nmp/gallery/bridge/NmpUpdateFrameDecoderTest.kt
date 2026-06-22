@@ -16,7 +16,7 @@ class NmpUpdateFrameDecoderTest {
               "schema_version": 1,
               "running": true,
               "projections": {
-                "resolved_profiles": {
+                "refs.profile": {
                   "abc": {
                     "pubkey": "abc",
                     "display_name": "Alice",
@@ -31,7 +31,7 @@ class NmpUpdateFrameDecoderTest {
 
         assertEquals(true, (decoded["running"] as JsonPrimitive).content.toBoolean())
         val projections = decoded["projections"] as JsonObject
-        val profiles = projections["resolved_profiles"] as JsonObject
+        val profiles = projections["refs.profile"] as JsonObject
         val profile = profiles["abc"] as JsonObject
         assertEquals("Alice", (profile["display_name"] as JsonPrimitive).content)
     }

@@ -505,7 +505,7 @@ fn drive(
             Ok(GalleryEvent::Snapshot(snapshot)) => {
                 let new_authors = host.update_from_typed(&snapshot);
                 live_profiles.update_from_typed(&snapshot);
-                claim_profiles_for(sink, &new_authors);
+                resolve_profiles_for(sink, &new_authors);
                 // Coalesce any additional snapshots that have already piled
                 // up so we don't redraw N times for N quick ticks. Latest
                 // wins (the host replaces its state from each tick).
@@ -514,7 +514,7 @@ fn drive(
                         GalleryEvent::Snapshot(next) => {
                             let more = host.update_from_typed(&next);
                             live_profiles.update_from_typed(&next);
-                            claim_profiles_for(sink, &more);
+                            resolve_profiles_for(sink, &more);
                         }
                         other => {
                             // A non-snapshot event landed during coalescing —
@@ -583,12 +583,12 @@ fn handle_input_after_snapshot(ev: Event, selected_index: &mut usize) {
     }
 }
 
-/// Fire `claim_profile` for each claimed-event author. `claimed_events` carries
-/// raw pubkeys only, so the profile components own kind:0 hydration through the
-/// normal per-(pubkey, consumer_id) refcounted claim path.
-fn claim_profiles_for(sink: &Arc<LiveKernelSink>, authors: &[String]) {
+/// Fire `resolve_profile` for each claimed-event author. `claimed_events`
+/// carries raw pubkeys only, so the profile components own kind:0 hydration
+/// through the normal per-(pubkey, consumer_id) refcounted resolve path.
+fn resolve_profiles_for(sink: &Arc<LiveKernelSink>, authors: &[String]) {
     for pubkey in authors {
-        sink.claim_profile(pubkey, "nmp-gallery-tui.embed.author");
+        sink.resolve_profile(pubkey, "nmp-gallery-tui.embed.author");
     }
 }
 

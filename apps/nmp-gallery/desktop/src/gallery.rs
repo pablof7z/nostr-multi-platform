@@ -183,10 +183,10 @@ pub fn update(app: &mut GalleryApp, message: Message) {
             app.profiles.update_from_typed(&snap);
             let _ = app.embed_host.update_from_typed(&snap);
 
-            // 2. Claim the primary pubkey so the kind:0 fetch proceeds. This
+            // 2. Resolve the primary pubkey so the kind:0 fetch proceeds. This
             //    is the app's own identity bootstrap for the user-* showcase
             //    components — a separate path from embed author bylines.
-            app.bridge.claim_profile(primary_pubkey(), CONSUMER_ID);
+            app.bridge.resolve_profile(primary_pubkey(), CONSUMER_ID);
 
             // 3. Claim embed event refs from the four showcase content trees.
             claim_tree_refs(&app.bridge, &app.data.embed_article.tree.nodes);
@@ -563,7 +563,7 @@ fn claim_and_resolve_author(app: &GalleryApp, author_pubkey: &str) -> String {
     if author_pubkey.is_empty() {
         return String::new();
     }
-    app.bridge.claim_profile(author_pubkey, CONSUMER_ID);
+    app.bridge.resolve_profile(author_pubkey, CONSUMER_ID);
     app.profiles.resolve(author_pubkey).display().to_string()
 }
 
