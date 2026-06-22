@@ -37,6 +37,12 @@
 //!   explicit status codes for ordering errors.
 
 pub mod action_specs;
+// ADR-0064 / Cut-B caller slice (#1756) — the typed byte-doorway dispatch seam
+// shared by all three in-repo Chirp Rust shells (this crate's `ChirpClient`,
+// chirp-tui, chirp-desktop). Owns the namespace→typed-payload encoder, the
+// host correlation-id mint, and the envelope + `nmp_app_dispatch_action_bytes`
+// call. The retired JSON `nmp_app_dispatch_action` doorway has no caller here.
+pub mod dispatch_bytes;
 pub mod ffi;
 pub mod snapshot_types;
 pub mod typed_api;
@@ -77,6 +83,9 @@ pub use nmp_nip01::{
 pub use snapshot_types::{
     ActionResult, ActionStageRow, InterestRow, ProfileCard, RelayRow, RelayWireSubRow,
     RuntimeMetrics,
+};
+pub use dispatch_bytes::{
+    dispatch_action_bytes_for, mint_correlation_id, parse_dispatch_envelope,
 };
 pub use typed_api::{
     follow_action, publish_note_action, publish_profile_action, react_action, repost_action,

@@ -66,6 +66,12 @@ use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
 // is an ordinary `#[no_mangle]` C symbol and reaches the shared post-mint
 // helpers (`finish_dispatch` / `error_json` / `rejection_message`) below.
 mod bytes;
+// ADR-0064 / Cut-B (#1756): surface the byte doorway on the Rust-side `action::`
+// path so in-repo native callers (the Chirp app crates) can reach it through the
+// rlib without an `extern "C"` block — the same facade pattern `lib.rs` uses for
+// the JSON `nmp_app_dispatch_action`. The `#[no_mangle] extern "C"` symbol name
+// is unaffected by this re-export (the C/Swift ABI is unchanged).
+pub use bytes::nmp_app_dispatch_action_bytes;
 
 /// Dispatch a named action through the action registry.
 ///

@@ -149,7 +149,8 @@ mod signer_ports_test_support;
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use action::{
-    nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_app_register_action_result_observer,
+    nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_app_dispatch_action_bytes,
+    nmp_app_register_action_result_observer,
 };
 #[cfg(feature = "native")]
 pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};

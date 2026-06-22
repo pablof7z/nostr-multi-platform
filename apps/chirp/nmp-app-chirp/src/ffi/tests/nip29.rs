@@ -19,9 +19,10 @@ use super::helpers::{dispatch, register_app, run_module_execute};
 /// THE NIP-CRATE SEAM PROOF: after `nmp_app_chirp_register`, the NIP-29
 /// `PostChatMessageAction` — an `ActionModule` impl living in the
 /// `nmp-nip29` protocol crate, NOT this app crate — is reachable through
-/// the generic `dispatch_action` path. A well-formed `PostChatMessageInput`
-/// yields a 32-hex `correlation_id` (both the typed module validator and
-/// the executor are wired); a malformed body is rejected with `error`.
+/// the typed byte doorway (ADR-0064 / Cut-B, #1756). A well-formed
+/// `PostChatMessageInput` yields an echoed host-supplied `correlation_id` (both
+/// the typed module validator and the executor are wired); a malformed body is
+/// rejected with `error`.
 ///
 /// This proves the ADR-0027 typed-registration seam (`register_action::<M>()`)
 /// works for NIP-crate modules, not just Chirp's app-local social verbs —
@@ -40,7 +41,11 @@ fn nip29_post_chat_message_dispatches_through_action_registry() {
         .get("correlation_id")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
-    assert_eq!(id.len(), 32, "correlation id should be 32 hex");
+    // ADR-0064 / Cut-B (#1756): the byte doorway echoes the host-supplied id.
+    assert!(
+        !id.is_empty(),
+        "byte doorway must echo a non-empty correlation id"
+    );
 
     // Malformed shape (missing the required `group`) is rejected by the
     // typed module validator surfaced through the host seam (D6).
@@ -112,10 +117,11 @@ fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
 }
 
 /// THE GROUP-CHAT CATALOG WIRING PROOF: each NIP-29 group-chat/create
-/// namespaces `register_nip29_actions` wires is reachable through the
-/// generic `dispatch_action` path. A well-formed body yields a 32-hex
-/// `correlation_id` (BOTH the typed module validator AND the executor are
-/// bound under that namespace); a malformed body is rejected with `error`.
+/// namespaces `register_nip29_actions` wires is reachable through the typed
+/// byte doorway (ADR-0064 / Cut-B, #1756). A well-formed body yields an echoed
+/// host-supplied `correlation_id` (BOTH the typed module validator AND the
+/// executor are bound under that namespace); a malformed body is rejected with
+/// `error`.
 ///
 /// Namespaces come from each `<Action>::NAMESPACE` constant — the single
 /// source of truth. Asserting via the constant keeps this test correct
@@ -149,7 +155,11 @@ fn nip29_all_namespaces_dispatch_through_action_registry() {
             .get("correlation_id")
             .and_then(|v| v.as_str())
             .unwrap_or_else(|| panic!("{namespace}: expected correlation_id, got {parsed}"));
-        assert_eq!(id.len(), 32, "{namespace}: correlation id should be 32 hex");
+        // ADR-0064 / Cut-B (#1756): the byte doorway echoes the host-supplied id.
+        assert!(
+            !id.is_empty(),
+            "{namespace}: byte doorway must echo a non-empty correlation id"
+        );
 
         // Malformed shape (no `group`) is rejected by the typed module
         // validator surfaced through the host seam (D6).
@@ -165,9 +175,9 @@ fn nip29_all_namespaces_dispatch_through_action_registry() {
 }
 
 /// THE DISCOVERY DISPATCH PROOF: `nmp.nip29.discover` is reachable through
-/// the generic `dispatch_action` path with a well-formed body — the
-/// validator + executor land a 32-hex `correlation_id`. The executor
-/// returns an [`ActorCommand::PushInterest`] (not a publish command),
+/// the typed byte doorway (ADR-0064 / Cut-B, #1756) with a well-formed body —
+/// the validator + executor land an echoed host-supplied `correlation_id`. The
+/// executor returns an [`ActorCommand::PushInterest`] (not a publish command),
 /// proving the seam supports subscribe-side actions, not just publish-side.
 #[test]
 fn nip29_discover_dispatches_through_action_registry_and_emits_push_interest() {
@@ -182,7 +192,11 @@ fn nip29_discover_dispatches_through_action_registry_and_emits_push_interest() {
         .get("correlation_id")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
-    assert_eq!(id.len(), 32, "discover correlation id should be 32 hex");
+    // ADR-0064 / Cut-B (#1756): the byte doorway echoes the host-supplied id.
+    assert!(
+        !id.is_empty(),
+        "discover: byte doorway must echo a non-empty correlation id"
+    );
 
     // Empty relay_url is rejected by the typed validator (D6).
     let parsed = dispatch(app, DiscoverGroupsAction::NAMESPACE, r#"{"relay_url":""}"#);
@@ -261,9 +275,10 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
     }
 }
 
-/// THE JOIN DISPATCH PROOF: `nmp.nip29.join` is reachable through the
-/// generic `dispatch_action` path with a well-formed body — the validator
-/// + executor land a 32-hex `correlation_id`. The executor returns a
+/// THE JOIN DISPATCH PROOF: `nmp.nip29.join` is reachable through the typed
+/// byte doorway (ADR-0064 / Cut-B, #1756) with a well-formed body — the
+/// validator + executor land an echoed host-supplied `correlation_id`. The
+/// executor returns a
 /// [`ActorCommand::PublishUnsignedEventToRelays`] host-pinned to the
 /// group's own relay (kind:9021), same Case-E lane as the chat actions.
 #[test]
@@ -278,7 +293,11 @@ fn nip29_join_dispatches_through_action_registry() {
         .get("correlation_id")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
-    assert_eq!(id.len(), 32, "join correlation id should be 32 hex");
+    // ADR-0064 / Cut-B (#1756): the byte doorway echoes the host-supplied id.
+    assert!(
+        !id.is_empty(),
+        "join: byte doorway must echo a non-empty correlation id"
+    );
 
     // Malformed shape (no `group`) is rejected by the typed validator.
     let parsed = dispatch(app, JoinGroupAction::NAMESPACE, r#"{"bad":"shape"}"#);

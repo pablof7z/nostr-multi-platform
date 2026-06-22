@@ -1,34 +1,37 @@
 //! Typed Rust client API for Chirp actions.
 //!
-//! Provides a high-level [`ChirpClient`] struct that wraps the low-level
-//! `nmp_app_dispatch_action` FFI function, constructing properly-typed JSON
-//! action envelopes for common Chirp operations. Shells (TUI, desktop, Android,
-//! iOS) call typed methods like `publish_note()` instead of manually building
-//! JSON and calling `dispatch_action` directly.
+//! Provides a high-level [`ChirpClient`] struct that dispatches Chirp write
+//! operations through the typed **byte** doorway
+//! ([`nmp_ffi::nmp_app_dispatch_action_bytes`], ADR-0064). Shells (TUI, desktop,
+//! Android, iOS) call typed methods like `publish_note()` instead of manually
+//! building action bodies. Each method builds the canonical action body via the
+//! `crate::action_specs` builders, then hands it to the shared
+//! [`crate::dispatch_bytes`] seam, which encodes the namespace's typed
+//! [`ActionPayload`](nmp_core::substrate::ActionPayload) and envelopes it for the
+//! byte doorway — the JSON body never crosses the FFI.
 //!
 //! All methods return a [`Result<String, String>`] where success yields the
-//! action's correlation ID (a stable opaque identifier for correlating with
-//! action_stages snapshot projections), and error yields an error message.
+//! action's correlation ID (the host-minted id echoed by the byte doorway, used
+//! to correlate with `action_stages` snapshot projections), and error yields an
+//! error message.
 //!
 //! Pure action envelope builders are also exported as free functions, allowing
 //! tests and code to construct action JSON without a live kernel instance.
-
-use std::ffi::{CStr, CString};
-
-use serde_json::Value;
 
 use crate::action_specs::{
     follow_spec, publish_note_spec, publish_profile_spec, publish_relay_list_spec, react_spec,
     repost_spec, send_dm_spec, unfollow_spec, zap_spec,
 };
-use nmp_ffi::{nmp_app_dispatch_action, nmp_free_string, NmpApp};
+use nmp_ffi::NmpApp;
 use nmp_nip01::NoteRecord;
 
 /// Typed Chirp action client.
 ///
-/// Wraps the raw `nmp_app_dispatch_action` FFI symbol and owns the task of
-/// constructing well-formed action JSON. Shells create one per app lifecycle
-/// and call typed methods instead of manually building JSON.
+/// Dispatches Chirp write operations through the typed byte doorway
+/// ([`nmp_ffi::nmp_app_dispatch_action_bytes`], via the shared
+/// [`crate::dispatch_bytes`] seam) and owns the task of constructing the
+/// canonical action body for each verb. Shells create one per app lifecycle and
+/// call typed methods instead of hand-assembling action payloads.
 ///
 /// # Thread safety
 ///
@@ -59,46 +62,20 @@ impl ChirpClient {
         Self { app }
     }
 
-    /// Dispatch a raw action JSON through the action registry.
+    /// Dispatch a Chirp action through the typed byte doorway.
     ///
-    /// This is the low-level method underlying all typed action methods.
-    /// Callers construct the JSON themselves; for common actions, prefer
-    /// the typed methods below (e.g., `publish_note`, `react`, etc.).
+    /// This is the low-level method underlying all typed action methods. The
+    /// `action_json` is the canonical action body a `crate::action_specs` builder
+    /// produced; the shared [`crate::dispatch_bytes`] seam converts it into the
+    /// `namespace`'s typed [`ActionPayload`](nmp_core::substrate::ActionPayload)
+    /// bytes, wraps them in a host-minted dispatch envelope, and calls
+    /// [`nmp_ffi::nmp_app_dispatch_action_bytes`]. The JSON never crosses the
+    /// FFI — only typed payload bytes do (ADR-0064 / Cut-B, #1756).
     ///
-    /// Returns the action's correlation ID (a stable opaque identifier for
-    /// the shell to correlate against `action_stages` projections), or an
-    /// error message if the action was rejected.
+    /// Returns the action's correlation ID (the host-minted id echoed by the
+    /// byte doorway), or an error message if the action was rejected.
     fn dispatch_action(&self, namespace: &str, action_json: &str) -> Result<String, String> {
-        if self.app.is_null() {
-            return Err("runtime app is not available".to_string());
-        }
-
-        let namespace = CString::new(namespace)
-            .map_err(|_| "action namespace contains NUL byte".to_string())?;
-        let action =
-            CString::new(action_json).map_err(|_| "action JSON contains NUL byte".to_string())?;
-
-        // SAFETY: `app` is a valid, non-null pointer. FFI always returns a
-        // valid (non-null) JSON string for a valid app (D6).
-        // nmp_app_dispatch_action and nmp_free_string are not marked as `unsafe`
-        // because FFI boilerplate automatically dereferences raw pointers internally.
-        let ptr = nmp_app_dispatch_action(self.app, namespace.as_ptr(), action.as_ptr());
-
-        if ptr.is_null() {
-            return Err("action dispatch returned null".to_string());
-        }
-
-        let text = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-
-        // FFI allocated this; we must free it.
-        nmp_free_string(ptr);
-
-        let value: Value = serde_json::from_str(&text)
-            .map_err(|e| format!("action dispatch returned invalid JSON: {e}"))?;
-
-        parse_dispatch_envelope(&value)
+        crate::dispatch_bytes::dispatch_action_bytes_for(self.app, namespace, action_json)
     }
 
     // ── Social actions ─────────────────────────────────────────────────
@@ -298,59 +275,7 @@ pub fn publish_profile_action(name: &str, about: &str, picture: &str) -> String 
     publish_profile_spec(name, about, picture).body_json
 }
 
-/// Parse a dispatch result envelope.
-///
-/// The FFI `nmp_app_dispatch_action` returns JSON in one of two forms:
-/// - `{"correlation_id":"<32-hex>"}` on success (the action was accepted)
-/// - `{"error":"<message>"}` on rejection (validation failed, namespace unknown, etc.)
-///
-/// This function returns the correlation ID or an error string.
-fn parse_dispatch_envelope(value: &Value) -> Result<String, String> {
-    if let Some(error) = value.get("error").and_then(Value::as_str) {
-        return Err(error.to_string());
-    }
-    value
-        .get("correlation_id")
-        .and_then(Value::as_str)
-        .filter(|id| !id.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| "action dispatch envelope missing correlation_id".to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_dispatch_envelope_success() {
-        let value = serde_json::json!({"correlation_id": "abc123"});
-        assert_eq!(parse_dispatch_envelope(&value), Ok("abc123".to_string()));
-    }
-
-    #[test]
-    fn parse_dispatch_envelope_error() {
-        let value = serde_json::json!({"error": "bad action"});
-        assert_eq!(
-            parse_dispatch_envelope(&value),
-            Err("bad action".to_string())
-        );
-    }
-
-    #[test]
-    fn parse_dispatch_envelope_missing_correlation_id() {
-        let value = serde_json::json!({"ok": true});
-        assert_eq!(
-            parse_dispatch_envelope(&value),
-            Err("action dispatch envelope missing correlation_id".to_string())
-        );
-    }
-
-    #[test]
-    fn parse_dispatch_envelope_empty_correlation_id() {
-        let value = serde_json::json!({"correlation_id": ""});
-        assert_eq!(
-            parse_dispatch_envelope(&value),
-            Err("action dispatch envelope missing correlation_id".to_string())
-        );
-    }
-}
+// The dispatch-result envelope parser (`parse_dispatch_envelope`) and its unit
+// tests moved to `crate::dispatch_bytes` alongside the byte-doorway call that
+// produces the envelope (ADR-0064 / Cut-B, #1756) — a single source of truth
+// for the `{"correlation_id"}` / `{"error"}` shape across all three shells.

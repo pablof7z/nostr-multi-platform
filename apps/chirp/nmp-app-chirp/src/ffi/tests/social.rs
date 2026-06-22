@@ -1,5 +1,6 @@
 //! Social-verb migration proof: react / unreact / follow / unfollow are reachable
-//! through the generic `dispatch_action` path after `nmp_app_chirp_register`.
+//! through the typed byte doorway after `nmp_app_chirp_register`
+//! (ADR-0064 / Cut-B, #1756).
 //!
 //! Plus the Wave A typed-`"nmp.follow_list"`-sidecar proof (ADR-0037): the
 //! typed projection closure produces a `TypedProjectionData` whose `payload`
@@ -14,11 +15,11 @@ use nmp_nip02::typed_projection_entry as follow_list_typed_projection;
 use super::helpers::{dispatch, register_app};
 
 /// THE MIGRATION PROOF: after `nmp_app_chirp_register`, the public social
-/// verbs are reachable through the generic `dispatch_action` path — each
-/// returns a 32-hex `correlation_id`, proving BOTH the host-registered
-/// module (consumed by `start()`) AND executor (consumed by `execute()`)
-/// are wired. This replaces the deleted per-verb `nmp_app_react` /
-/// `nmp_app_follow` / `nmp_app_unfollow` C symbols (D0).
+/// verbs are reachable through the typed byte doorway — each returns an echoed
+/// host-supplied `correlation_id`, proving BOTH the host-registered module
+/// (consumed by `start()`) AND executor (consumed by `execute()`) are wired.
+/// This replaces the deleted per-verb `nmp_app_react` / `nmp_app_follow` /
+/// `nmp_app_unfollow` C symbols (D0).
 #[test]
 fn social_verbs_dispatch_through_action_registry() {
     let app = nmp_app_new();
@@ -42,7 +43,14 @@ fn social_verbs_dispatch_through_action_registry() {
             .get("correlation_id")
             .and_then(|v| v.as_str())
             .unwrap_or_else(|| panic!("{namespace}: expected correlation_id, got {parsed}"));
-        assert_eq!(id.len(), 32, "{namespace}: correlation id should be 32 hex");
+        // ADR-0064 / Cut-B (#1756): the byte doorway echoes the HOST-supplied
+        // correlation id verbatim (not the JSON lane's kernel-minted 32-hex id),
+        // so the contract under test is "a non-empty id is echoed back", which is
+        // what the host spinner keys on.
+        assert!(
+            !id.is_empty(),
+            "{namespace}: byte doorway must echo a non-empty correlation id"
+        );
     }
 
     // `nmp.nip25.react` defaults `reaction` to `"+"` when absent.

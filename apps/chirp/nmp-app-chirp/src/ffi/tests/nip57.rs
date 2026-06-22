@@ -10,10 +10,10 @@ use super::super::register::zaps_typed_projection;
 use super::helpers::{dispatch, register_app};
 
 /// `nmp.nip57.zap` action — `ZapAction`, an `ActionModule` living in the
-/// `nmp-nip57` protocol crate — is reachable through the generic
-/// `dispatch_action` path. A well-formed `ZapInput` yields a 32-hex
-/// `correlation_id` (both the typed module validator AND the executor are
-/// wired); a malformed body is rejected with `error`.
+/// `nmp-nip57` protocol crate — is reachable through the typed byte doorway
+/// (ADR-0064 / Cut-B, #1756). A well-formed `ZapInput` yields an echoed
+/// host-supplied `correlation_id` (both the typed module validator AND the
+/// executor are wired); a malformed body is rejected with `error`.
 ///
 /// This is the migration proof that ADR-0024's minimum-viable LNURL path
 /// (no `HttpCapability` substrate) is live end-to-end: dispatch reaches
@@ -38,7 +38,11 @@ fn nip57_zap_dispatches_through_action_registry() {
         .get("correlation_id")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
-    assert_eq!(id.len(), 32, "correlation id should be 32 hex");
+    // ADR-0064 / Cut-B (#1756): the byte doorway echoes the host-supplied id.
+    assert!(
+        !id.is_empty(),
+        "byte doorway must echo a non-empty correlation id"
+    );
 
     // A zap to a profile (no target_event_id) is well-formed.
     let body_profile = format!(
