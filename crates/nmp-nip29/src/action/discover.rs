@@ -15,7 +15,9 @@
 //! [`crate::interest::relay_discovery_interest`], so a re-dispatch for the
 //! same relay is idempotent at the kernel level (same id replaces).
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -46,6 +48,13 @@ pub struct DiscoverGroupsAction;
 impl ActionModule for DiscoverGroupsAction {
     const NAMESPACE: &'static str = "nmp.nip29.discover";
     type Action = DiscoverGroupsInput;
+
+    /// ADR-0064 / Cut-B (#1756): opt into the typed FlatBuffers payload doorway;
+    /// the fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<DiscoverGroupsInput as ActionPayload>::decode(bytes))
+    }
+
     fn start(
         &self,
         _ctx: &mut ActionContext,

@@ -6,7 +6,8 @@
 
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, ViewDependencies,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection, ViewDependencies,
 };
 use nmp_core::ActorCommand;
 use nmp_planner::stable_hash::stable_hash64;
@@ -61,6 +62,12 @@ pub struct VisibleNoteRelationsModule;
 impl ActionModule for VisibleNoteRelationsModule {
     const NAMESPACE: &'static str = VISIBLE_NOTE_RELATIONS_NAMESPACE;
     type Action = VisibleNoteRelationsAction;
+
+    /// ADR-0064 / Cut-B (#1756): opt into the typed FlatBuffers payload doorway;
+    /// the fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<VisibleNoteRelationsAction as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         let (event_id, consumer_id) = action.parts();
