@@ -81,8 +81,8 @@ impl NmpWasmRuntime {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         console_error_panic_hook::set_once();
-        let runtime = WasmRuntime::new();
-        let setup = setup_chirp_web_feeds(&runtime);
+        let mut runtime = WasmRuntime::new();
+        let setup = setup_chirp_web_feeds(&mut runtime);
         Self { runtime, setup }
     }
 

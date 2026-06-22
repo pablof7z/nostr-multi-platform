@@ -473,11 +473,17 @@ pub use clock::MonotonicSecondClock;
 // `nmp_app_dispatch_action` entry point. V-01 Phase 1c: native FFI only.
 // `default_registry` / `ActionRegistry` are reached by `nmp-ffi` through
 // `nmp_core::__ffi_internal::*` (the FFI surface owns the
-// `nmp_app_dispatch_action` entry point).
+// `nmp_app_dispatch_action` entry point). They are ALSO the typed-dispatch
+// doorway the wasm runtime (`nmp-wasm`, no `native` feature) uses for the
+// ADR-0064 / S3 byte path (#1751 / #1008): `WasmRuntime` owns an
+// `ActionRegistry` seeded by `default_registry()` and routes its opaque payload
+// through `start_bytes`, exactly like the native FFI app. Both consumers exist,
+// so these two names are unconditional; the heavier `ActionExecuteFailure` /
+// `ActionFailureKind` surface stays native-only (the wasm path reads only the
+// `start_bytes` `ActionRejection`, never the execute taxonomy).
+pub use action_registry::{default_registry, ActionRegistry};
 #[cfg(feature = "native")]
-pub use action_registry::{
-    default_registry, ActionExecuteFailure, ActionFailureKind, ActionRegistry,
-};
+pub use action_registry::{ActionExecuteFailure, ActionFailureKind};
 pub use composition_ledger::{
     CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
 };

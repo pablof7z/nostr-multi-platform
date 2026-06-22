@@ -17,9 +17,58 @@ use crate::dispatch_routing::{
 };
 use crate::protocol::{ActionDispatch, CapabilityFailure, WorkerEvent};
 use nmp_core::dispatch_envelope::{decode_dispatch_envelope, DecodedDispatch};
+use nmp_core::substrate::ActionContext;
 use nmp_core::KernelUpdate;
 
+/// The kernel publish namespace. Publishing stays honestly-disabled on the web
+/// preview until the composition root wires a real `OutboxResolver` (#1007), so
+/// the byte doorway never runs `start_bytes` for it — the typed decode would
+/// validate, but the terminal write has nowhere to go. Routing it through the
+/// honest write-path reason keeps the host's "not available in this preview"
+/// banner accurate.
+const PUBLISH_NAMESPACE: &str = "nmp.publish";
+
 use super::{WasmRuntime, WasmRuntimeError};
+
+/// Render an [`ActionRejection`](nmp_core::substrate::ActionRejection) into the
+/// host-facing reason string carried by a fail-closed `CapabilityFailure`. The
+/// wasm twin of the native FFI `rejection_message` (`nmp-ffi/src/action.rs`):
+/// `ActionRejection` is data (no `Display`), so each variant is mapped to its
+/// raw prose explicitly. Used for typed-decode / `schema_version` / `start()`
+/// rejections surfaced by `start_bytes`.
+fn rejection_reason(rejection: nmp_core::substrate::ActionRejection) -> String {
+    use nmp_core::substrate::ActionRejection;
+    match rejection {
+        ActionRejection::Invalid(s) => s,
+        ActionRejection::InvalidCoded { message, .. } => message,
+        ActionRejection::Unauthorized(s) => format!("unauthorized: {s}"),
+        ActionRejection::Conflict(s) => format!("conflict: {s}"),
+    }
+}
+
+/// Wall-clock milliseconds for the action-id mint inside `start_bytes`.
+///
+/// The minted id is discarded on the byte lane (the operation identity is the
+/// host-supplied `correlation_id`, ADR-0064 §4), so the exact value is
+/// irrelevant — but the call must not panic on wasm32. `std::time::SystemTime`
+/// traps on wasm32, so the browser path reads `js_sys::Date::now()` (the same
+/// clock the relay-pool backoff uses); native reads `SystemTime`.
+#[cfg(target_arch = "wasm32")]
+fn wall_clock_ms() -> u64 {
+    js_sys::Date::now() as u64
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn wall_clock_ms() -> u64 {
+    // This fn is `#[cfg(not(target_arch = "wasm32"))]` — never compiled on
+    // wasm32 (the wasm32 twin above reads `js_sys::Date::now()`), so the D20
+    // panic-on-wasm hazard cannot arise here.
+    use std::time::{SystemTime, UNIX_EPOCH}; // doctrine-allow: D20 — native-only branch, cfg-gated off wasm32
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 impl WasmRuntime {
     /// ADR-0064 / S2 (#1750) — the **binary write doorway**.
@@ -55,29 +104,101 @@ impl WasmRuntime {
     }
 
     /// Route a gate-passed [`DecodedDispatch`] by `action_namespace` behind the
-    /// one doorway. The OPAQUE payload is carried verbatim; namespaces whose
-    /// typed payload decode is not yet wired (S3 / #1751) acknowledge through the
-    /// same honest write-path reason as the JSON `dispatch` arm rather than
-    /// interpreting the bytes.
+    /// one doorway.
+    ///
+    /// ADR-0064 / S3 (#1751) — the typed twin of the native FFI
+    /// `crates/nmp-ffi/src/action/bytes.rs::dispatch_action_bytes`: the OPAQUE
+    /// per-crate payload is routed into the registry's typed
+    /// [`ActionRegistry::start_bytes`](nmp_core::ActionRegistry::start_bytes),
+    /// which runs the per-crate `decode_payload` + the fail-closed
+    /// `schema_version` gate + the module's `start()` validation BEFORE anything
+    /// else. A registered non-publish namespace (NIP-02 follow/unfollow/
+    /// follow_many, NIP-25 react/unreact — whatever the composition root wired)
+    /// therefore DECODES its typed FlatBuffers payload and reaches `start()`,
+    /// instead of returning the generic envelope-level `CapabilityFailure`.
+    ///
+    /// Two honest boundaries remain, and both surface as data-shaped
+    /// `CapabilityFailure` (fail-closed, never a silent accept — D6 / zero-debt):
+    ///
+    /// * **No signer / unknown namespace / typed-decode or `start()` rejection.**
+    ///   No active account → the `signer_not_installed` reason (checked first,
+    ///   before the registry is touched). An unknown namespace, a payload that
+    ///   fails the `schema_version` gate, or a `start()` rejection → the RAW
+    ///   rejection text from `start_bytes` (the module never ran, or rejected).
+    /// * **Validated, but the terminal write needs #1007.** Even after the
+    ///   typed payload validates, the module's `execute()` enqueues an
+    ///   `ActorCommand` (e.g. `Follow`) that the native actor turns into a kind:3
+    ///   publish via an `OutboxResolver`. The wasm preview has no actor and no
+    ///   real `OutboxResolver` (the kernel default `NoopOutboxResolver` resolves
+    ///   zero targets → silent drop), so the terminal write stays
+    ///   honestly-disabled behind the same `publish_not_supported_in_web_preview`
+    ///   token publish uses. Wiring that resolver is #1007 — the separate
+    ///   prerequisite for the web write path actually reaching the wire. We do
+    ///   NOT call `execute_bytes` here: doing so with a dropping send-sink would
+    ///   ACK an action that never reaches the wire (a silent always-fail the
+    ///   zero-debt rule forbids).
+    ///
+    /// Publishing (`nmp.publish`) skips `start_bytes` entirely — its terminal
+    /// write has the same #1007 dependency and there is no extra typed-decode to
+    /// exercise here that the kernel `PublishModule` doesn't already gate, so it
+    /// short-circuits to the honest write-path reason.
     fn route_decoded_dispatch(&mut self, decoded: DecodedDispatch) -> Vec<WorkerEvent> {
         let DecodedDispatch {
             correlation_id,
             action_namespace,
-            payload: _opaque,
+            payload,
         } = decoded;
-        // The opaque payload is NOT interpreted here — S3 teaches the registry to
-        // decode the typed FlatBuffers root. For S2 the binary doorway routes by
-        // namespace and surfaces the same honest write-path reason the JSON arm
-        // does for app-level writes, proving the envelope crossed and decoded.
-        // Publishing itself stays honestly-disabled until the web composition
-        // root wires a real `OutboxResolver` (#1007); ADR-0064 §5 signing is the
-        // `BeginSign` capability round-trip, never an in-flow `Arc<dyn Signer>`.
-        let reason = write_path_unavailable_reason(self.has_active_account());
-        vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-            capability: action_namespace,
-            correlation_id,
-            reason,
-        })]
+
+        // Fail-closed, checked before the registry: no active account → the user
+        // has not signed in, so no write (typed or otherwise) can be attributed.
+        if !self.has_active_account() {
+            return vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: action_namespace,
+                correlation_id,
+                reason: write_path_unavailable_reason(false),
+            })];
+        }
+
+        // Publishing stays honestly-disabled pending the #1007 OutboxResolver.
+        if action_namespace == PUBLISH_NAMESPACE {
+            return vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: action_namespace,
+                correlation_id,
+                reason: write_path_unavailable_reason(true),
+            })];
+        }
+
+        // S3 — route the opaque payload into the typed registry doorway. This is
+        // the VALIDATION gate: `start_bytes` runs the per-crate `decode_payload`
+        // + the fail-closed `schema_version` gate + the module's `start()`. An
+        // unknown namespace, a not-typed-capable module, a decode/version trip,
+        // or a `start()` rejection all surface as a data-shaped
+        // `CapabilityFailure` carrying the RAW reason (the module never ran).
+        let now_ms = wall_clock_ms();
+        let mut ctx = ActionContext {};
+        match self
+            .action_registry
+            .start_bytes(&mut ctx, now_ms, &action_namespace, &payload)
+        {
+            Ok(_validated) => {
+                // The typed payload decoded and `start()` validated it — the S3
+                // doorway crossed. The terminal write (execute → ActorCommand →
+                // kind:N publish) still needs the #1007 OutboxResolver/actor the
+                // wasm preview does not wire, so the write stays honestly-disabled
+                // behind the same publish-not-supported token rather than being
+                // ACKed and silently dropped.
+                vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
+                    capability: action_namespace,
+                    correlation_id,
+                    reason: write_path_unavailable_reason(true),
+                })]
+            }
+            Err(rejection) => vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: action_namespace,
+                correlation_id,
+                reason: rejection_reason(rejection),
+            })],
+        }
     }
 
     /// Whether the kernel has an active account seeded (via `SetIdentity` /

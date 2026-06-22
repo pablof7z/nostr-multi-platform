@@ -204,7 +204,7 @@ pub use kernel::pull_wake::{decode_pull_wake_batch, PullWakeRow, PULL_WAKE_KEY};
 pub use kernel::{
     CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
 };
-
+pub use kernel::{default_registry, ActionRegistry}; // ADR-0064/S3 (#1751/#1008): crate-root registry for the no-`native` WASM path.
 // Injectable kernel wall-clock trait. Re-exported (always) so the `pub`
 // `slots::KernelClockSlot` alias (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) is
 // nameable across crates. Production installs nothing (the kernel keeps its

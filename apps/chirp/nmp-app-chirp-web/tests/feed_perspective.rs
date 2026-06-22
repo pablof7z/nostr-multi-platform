@@ -65,8 +65,8 @@ fn make_delete(id: &str, author: &str, target_id: &str) -> KernelEvent {
 
 #[test]
 fn wired_path_mute_replacement_resets_and_suppresses_feed() {
-    let runtime = WasmRuntime::new();
-    let setup = setup_chirp_web_feeds(&runtime);
+    let mut runtime = WasmRuntime::new();
+    let setup = setup_chirp_web_feeds(&mut runtime);
     let reducer = runtime.reducer_handle();
 
     reducer.borrow_mut().set_active_account(ALICE.to_string());
@@ -120,8 +120,8 @@ fn wired_path_mute_replacement_resets_and_suppresses_feed() {
 
 #[test]
 fn wired_path_kind5_delete_removes_only_author_owned_root() {
-    let runtime = WasmRuntime::new();
-    let setup = setup_chirp_web_feeds(&runtime);
+    let mut runtime = WasmRuntime::new();
+    let setup = setup_chirp_web_feeds(&mut runtime);
     let reducer = runtime.reducer_handle();
 
     reducer.borrow_mut().set_active_account(ALICE.to_string());
