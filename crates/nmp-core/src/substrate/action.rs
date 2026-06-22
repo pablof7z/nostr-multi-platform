@@ -183,46 +183,6 @@ pub trait ActionModule: Send + Sync + 'static {
         None
     }
 
-    /// OPT-IN to the opaque-passthrough byte route (#1756 / S9, the Cut-B
-    /// enabler), the second of the two byte-doorway opt-ins (the first being
-    /// [`Self::decode_payload`] for typed FlatBuffers modules).
-    ///
-    /// APP-OWNED host-op namespaces (e.g. `podcast.tasks`) carry an `Action`
-    /// the kernel does NOT model — typically `serde_json::Value` — so they
-    /// cannot implement [`crate::substrate::ActionPayload`] and leave
-    /// [`Self::decode_payload`] defaulted (`None`). Without an opt-in such a
-    /// module is unreachable through the byte doorway (`NotTypedCapable`),
-    /// which is what blocks deleting the JSON doorway at Cut B.
-    ///
-    /// A module that overrides this to `true` declares: *the
-    /// [`DispatchEnvelope`](crate::transport::dispatch_envelope)'s opaque
-    /// `payload` bytes ARE my action, in a format **I** own (JSON-bytes); the
-    /// kernel must pass them through UNDECODED by any kernel schema.* The
-    /// registry then `serde_json::from_slice`s those bytes into `Self::Action`
-    /// (the app's own deserialize) and runs `start()` / `execute()`. NMP imposes
-    /// no FlatBuffers `schema_version` gate on the payload — it is opaque to NMP
-    /// — but the ENVELOPE framing (file identifier, envelope `schema_version`
-    /// tripwire, oversize bound, namespace + correlation_id presence) is still
-    /// validated by the S2 decoder before this route is reached.
-    ///
-    /// # Fail-closed (#1756)
-    ///
-    /// This is a DELIBERATE per-module opt-in, NOT a blanket fallback. A module
-    /// that is neither typed ([`Self::decode_payload`] `Some`) nor opaque-opted
-    /// (this returns the default `false`) is REJECTED by the byte doorway — an
-    /// unknown namespace or a non-opted untyped module never reaches `start()`.
-    ///
-    /// A module MUST NOT return `true` here AND a `Some` from
-    /// [`Self::decode_payload`]: the two byte routes are mutually exclusive (one
-    /// payload format per namespace). The adapter resolves typed-first and the
-    /// opaque route is only taken when `decode_payload` is `None`, so a module
-    /// that sets both silently never exercises the opaque path; doctrine treats
-    /// the typed route as canonical for such a (mis)configured module.
-    #[must_use]
-    fn accepts_opaque_payload() -> bool {
-        false
-    }
-
     /// Declare that this module's actions settle ASYNCHRONOUSLY — the
     /// dispatch return value does not yet carry the terminal outcome; the
     /// actor signs / publishes / awaits an external ack, and the result
