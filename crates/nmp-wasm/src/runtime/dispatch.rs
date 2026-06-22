@@ -4,7 +4,7 @@
 //! doorway and the legacy JSON `dispatch` router plus `accepted_with_snapshot`
 //! are a cohesive unit: they translate a host write command into the
 //! `KernelReducer` mutation + the `[ActionAccepted, UpdateBytes?]` reply. The
-//! relay-driven snapshot push and the `Start`/`Stop`/`SetSigner` arms stay in
+//! relay-driven snapshot push and the `Start`/`Stop`/`SetIdentity` arms stay in
 //! `runtime.rs`; only the action-namespace routing lives here.
 //!
 //! The methods are defined on `impl super::WasmRuntime` so they remain ordinary
@@ -80,7 +80,7 @@ impl WasmRuntime {
         })]
     }
 
-    /// Whether the kernel has an active account seeded (via `SetSigner` /
+    /// Whether the kernel has an active account seeded (via `SetIdentity` /
     /// `set_active_account`). The two honest write-unavailability states key on
     /// this instead of a persistent signer slot (removed in #1743 Cut A,
     /// ADR-0064 §5): no account → `signer_not_installed`; account seeded but the

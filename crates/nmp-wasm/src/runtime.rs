@@ -195,7 +195,7 @@ impl WasmRuntime {
                     reason: browser_driver_missing_reason(),
                 })])
             }
-            WorkerRequest::SetSigner(request) => Ok(self.set_signer(request)),
+            WorkerRequest::SetIdentity(request) => Ok(self.set_identity(request)),
             // #1753 S6 — the wasm signing capability round-trip (pure message
             // re-entry). `begin_sign` parks an op + emits the broker request;
             // `deliver_signer_response` drives the parked op once from this

@@ -43,7 +43,7 @@ export type WorkerRequest =
    *  NOT install a persistent signer — signing is the begin_sign capability
    *  round-trip. */
   | {
-      type: "set_signer";
+      type: "set_identity";
       kind: string;
       pubkey_hex: string;
       correlation_id: string;

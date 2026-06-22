@@ -247,12 +247,12 @@ the host only supplies the timer".
     native session registry + perspective compiler to wasm.
   - `runtime.rs` — the claim/verb arm fans the returned outbound through
     `fan_out_outbound` and pushes a snapshot (existing pattern,
-    `runtime.rs:388-424`); `set_signer` success additionally calls
+    `runtime.rs:388-424`); `set_identity` success additionally calls
     `reducer.set_active_account(pubkey)` + fan-out + push.
 
 **Acceptance check** (native, `cargo test -p nmp-wasm` + `-p nmp-core`)
 
-- Protocol-conformance test: `SetSigner(nip07, pk)` → `Start` →
+- Protocol-conformance test: `SetIdentity(nip07, pk)` → `Start` →
   `handle_relay_connected` → declared active-follows feed with primary `[1]` →
   feed a kind:3 frame for `pk` with follows → assert the outbound (inline or
   next `tick()`) contains a REQ whose compiled acquisition filter carries `authors = follows, kinds = [1,6]`, while the app-owned declaration remains primary `[1]`.
@@ -499,7 +499,7 @@ contains logic, so none blocks the Rust ordering.
 When PR-1…PR-5 are merged and the shell renders them (spec §4.1, restated
 against this plan):
 
-A stranger with a NIP-07 extension can: **sign in** (M2; `SetSigner` +
+A stranger with a NIP-07 extension can: **sign in** (M2; `SetIdentity` +
 viewer-pubkey hand-off, PR-3) → **read their follows' live feed** with names
 and avatars (M3 = PR-2+3+4; M4 = PR-1 projections + PR-4 claims) → **post a
 note** (M5; already wired) and watch "accepted by N/M relays" (M7 = PR-1

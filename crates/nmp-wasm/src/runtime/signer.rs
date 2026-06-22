@@ -1,25 +1,25 @@
 //! Active-identity seeding + the #1753 S6 wasm signing capability round-trip
 //! arms for [`super::WasmRuntime`].
 
-use crate::protocol::{BeginSign, CapabilityFailure, DeliverSignerResponse, SetSigner, WorkerEvent};
+use crate::protocol::{BeginSign, CapabilityFailure, DeliverSignerResponse, SetIdentity, WorkerEvent};
 use crate::signer_slot;
 
 use super::WasmRuntime;
 
 impl WasmRuntime {
-    /// Seed the kernel's active account from a [`SetSigner`] identity request.
+    /// Seed the kernel's active account from a [`SetIdentity`] identity request.
     ///
     /// Pure: no I/O, no JS-event-loop interaction. Validation failure surfaces
     /// as `CapabilityFailure` with a stable code (e.g. `unsupported_signer_kind`,
     /// `invalid_signer_pubkey`); success surfaces as `ActionAccepted` with
-    /// `action_type = "nmp.set_signer"`.
+    /// `action_type = "nmp.set_identity"`.
     ///
     /// **No persistent signer is installed** (ADR-0064 §5): the request only
     /// validates + canonicalizes the pubkey and feeds it into the kernel via
     /// `set_active_account` so active-follows resolution and bootstrap interests
     /// know whose follows to load. Signing is the [`Self::begin_sign`] capability
     /// round-trip, never an `Arc<dyn Signer>` awaited inside a publish flow.
-    pub(super) fn set_signer(&mut self, request: SetSigner) -> Vec<WorkerEvent> {
+    pub(super) fn set_identity(&mut self, request: SetIdentity) -> Vec<WorkerEvent> {
         match signer_slot::canonical_pubkey_from_request(&request) {
             Ok(canonical_pubkey) => {
                 // Use the canonical lowercase hex from the parsed key, not the
@@ -30,10 +30,10 @@ impl WasmRuntime {
                     .borrow_mut()
                     .set_active_account(canonical_pubkey);
                 self.fan_outbound(outbound);
-                self.accepted_with_snapshot("nmp.set_signer".to_string(), request.correlation_id)
+                self.accepted_with_snapshot("nmp.set_identity".to_string(), request.correlation_id)
             }
             Err(error) => vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-                capability: "nmp.set_signer".to_string(),
+                capability: "nmp.set_identity".to_string(),
                 correlation_id: request.correlation_id,
                 reason: error.detail(),
             })],

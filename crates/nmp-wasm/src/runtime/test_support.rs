@@ -65,12 +65,12 @@ impl super::WasmRuntime {
 }
 
 #[cfg(test)]
-mod set_signer_tests {
-    //! B2 — canonicalization guard: `set_signer` with an uppercase pubkey hex
+mod set_identity_tests {
+    //! B2 — canonicalization guard: `set_identity` with an uppercase pubkey hex
     //! must store a canonical (lowercase) active account so active-follows REQs
     //! carry the correct key in their author filters.
     use super::super::WasmRuntime;
-    use crate::protocol::{SetSigner, WorkerRequest};
+    use crate::protocol::{SetIdentity, WorkerRequest};
 
     const LOWER_PK: &str =
         "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -78,19 +78,19 @@ mod set_signer_tests {
         "3BF0C63FCB93463407AF97A5E5EE64FA883D107EF9E558472C4EB9AAAEFA459D";
 
     #[test]
-    fn set_signer_uppercase_pubkey_stores_canonical_lowercase_active_account() {
+    fn set_identity_uppercase_pubkey_stores_canonical_lowercase_active_account() {
         // B2: raw uppercase pubkey on the wire must be normalised to lowercase
         // before being stored as active_account. Without the fix the kernel
         // holds an uppercase active_account key, and active-follows REQs carry
         // an uppercase `authors` filter — breaking NIP-01 relay compliance.
         let mut runtime = WasmRuntime::new();
         let result = runtime
-            .handle(WorkerRequest::SetSigner(SetSigner {
+            .handle(WorkerRequest::SetIdentity(SetIdentity {
                 kind: "nip07".to_string(),
                 pubkey_hex: UPPER_PK.to_string(),
-                correlation_id: "set-signer-b2".to_string(),
+                correlation_id: "set-identity-b2".to_string(),
             }))
-            .expect("set_signer must succeed");
+            .expect("set_identity must succeed");
 
         // The handle call must succeed (ActionAccepted + snapshot, not an error).
         assert!(
@@ -98,7 +98,7 @@ mod set_signer_tests {
                 e,
                 crate::protocol::WorkerEvent::ActionAccepted { .. }
             )),
-            "set_signer with valid uppercase pubkey must return ActionAccepted; got: {result:?}"
+            "set_identity with valid uppercase pubkey must return ActionAccepted; got: {result:?}"
         );
 
         // The kernel must store the lowercase canonical form.

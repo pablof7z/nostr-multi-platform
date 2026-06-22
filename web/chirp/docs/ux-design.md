@@ -256,14 +256,14 @@ Chirp Web is **read-first**: no login wall. The feed loads signed-out
 immediately; identity is attached when the user wants to write. The identity
 slot in the rail shows a hollow avatar ring when no signer is installed.
 
-Flow (host runs the async half, per the `SetSigner` contract):
+Flow (host runs the async half, per the `SetIdentity` contract):
 
 1. User clicks the identity slot or any write affordance while signed out →
    Connect sheet rises.
 2. Shell checks `window.nostr`. Present → primary button enabled. Absent →
    honest empty state (no fake button).
 3. Click → `await window.nostr.getPublicKey()` → send
-   `set_signer{kind:"nip07", pubkey_hex}` → on `action_accepted`, identity
+   `set_identity{kind:"nip07", pubkey_hex}` → on `action_accepted`, identity
    slot fills (avatar resolves from `profile` projection when kind:0
    arrives); on `capability_failure`, the reason renders verbatim.
 
@@ -736,7 +736,7 @@ in the wasm protocol**. Needs a `WorkerRequest` (or a snapshot projection)
 └───────────────────────────────────────────────────┘
 ```
 
-Sources: the shell's own `set_signer` round-trip + `capability_failure`
+Sources: the shell's own `set_identity` round-trip + `capability_failure`
 events (available today); the capability table is a static contract mirror of
 the runtime's wired action set, updated when the runtime's wiring changes;
 recent signatures from `action_results`/`signed_events` projections

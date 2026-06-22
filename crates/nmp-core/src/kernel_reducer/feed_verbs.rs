@@ -94,7 +94,7 @@ impl super::KernelReducer {
     /// Idempotence gate: a redundant call with the same pubkey is a no-op
     /// and returns `Vec::new()`. This mirrors native `switch_active`'s
     /// early-return (`identity.active.as_deref() == Some(identity_id)`)
-    /// and prevents a duplicate `SetSigner` from re-running the
+    /// and prevents a duplicate `SetIdentity` from re-running the
     /// follow-feed reconcile / cache-serve teardown on an unchanged account.
     ///
     /// D6 — total: an empty or malformed pubkey is stored as-is (the kernel

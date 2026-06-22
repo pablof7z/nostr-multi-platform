@@ -353,7 +353,7 @@ class WorkerNmpClient extends BaseClient {
   async setSigner(pubkeyHex: string): Promise<RuntimeSnapshot> {
     await this.helloReady;
     const correlation_id = makeCorrelationId("web-signer", this.nextCorrelationId++);
-    return this.request({ type: "set_signer", kind: "nip07", pubkey_hex: pubkeyHex, correlation_id });
+    return this.request({ type: "set_identity", kind: "nip07", pubkey_hex: pubkeyHex, correlation_id });
   }
 
   beginSign(accountPubkey: string, unsignedJson: string): void {
@@ -456,7 +456,7 @@ class InProcessNmpClient extends BaseClient {
 
   async setSigner(pubkeyHex: string): Promise<RuntimeSnapshot> {
     return this.send({
-      type: "set_signer",
+      type: "set_identity",
       kind: "nip07",
       pubkey_hex: pubkeyHex,
       correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),

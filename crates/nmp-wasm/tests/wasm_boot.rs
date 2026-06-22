@@ -45,13 +45,13 @@ use nmp_wasm::{
 };
 
 // Imports used only by the wasm32-only typed-write honest-disable test
-// (#1202 / #1007 guard). `DispatchBytes`/`SetSigner` are wasm32-gated here too
+// (#1202 / #1007 guard). `DispatchBytes`/`SetIdentity` are wasm32-gated here too
 // so native builds (where that test is `cfg`-compiled out) carry no unused
 // imports.
 #[cfg(target_arch = "wasm32")]
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 #[cfg(target_arch = "wasm32")]
-use nmp_wasm::{CapabilityFailure, DispatchBytes, SetSigner};
+use nmp_wasm::{CapabilityFailure, DispatchBytes, SetIdentity};
 
 /// Boot the runtime through Hello → Start and assert:
 /// - `HelloAccepted` is returned for a matching protocol version.
@@ -159,7 +159,7 @@ fn wasm_runtime_boots_without_panicking() {
 ///
 /// The native variant of this guard is the
 /// `publish_not_supported_in_web_preview_reason_has_stable_prefix` unit test in
-/// `publish_path.rs`, plus the `typed_write_after_set_signer_*` test in
+/// `publish_path.rs`, plus the `typed_write_after_set_identity_*` test in
 /// `protocol.rs`.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen_test]
@@ -169,13 +169,13 @@ fn typed_write_surfaces_honest_disable_not_action_accepted() {
     // `signer_not_installed` gate). ADR-0064 §5: no persistent signer.
     let mut runtime = WasmRuntime::new();
     runtime
-        .handle(WorkerRequest::SetSigner(SetSigner {
+        .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "nip07".to_string(),
             pubkey_hex: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
                 .to_string(),
             correlation_id: "set-1".to_string(),
         }))
-        .expect("SetSigner must succeed");
+        .expect("SetIdentity must succeed");
 
     // Drive a typed write through the one binary doorway — the path that would
     // hit NoopOutboxResolver → NoTargets → silent ActionAccepted (the #1202 bug)

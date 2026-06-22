@@ -1,6 +1,6 @@
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_wasm::{
-    ClientHello, DispatchBytes, RelayBootstrapEntry, RuntimeStatus, SetSigner, StartConfig,
+    ClientHello, DispatchBytes, RelayBootstrapEntry, RuntimeStatus, SetIdentity, StartConfig,
     WasmRuntime, WorkerEvent, WorkerRequest,
 };
 use serde_json::json;
@@ -228,14 +228,14 @@ fn typed_write_without_active_account_returns_signer_not_installed() {
 }
 
 #[test]
-fn typed_write_after_set_signer_returns_publish_disabled_token() {
+fn typed_write_after_set_identity_returns_publish_disabled_token() {
     let mut runtime = WasmRuntime::new();
 
     // Seed the active identity (NO persistent signer is installed — ADR-0064
-    // §5; `SetSigner` only validates/canonicalizes the pubkey and sets the
+    // §5; `SetIdentity` only validates/canonicalizes the pubkey and sets the
     // kernel active account).
     let set_events = runtime
-        .handle(WorkerRequest::SetSigner(SetSigner {
+        .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "nip07".to_string(),
             pubkey_hex: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
                 .to_string(),
@@ -247,7 +247,7 @@ fn typed_write_after_set_signer_returns_publish_disabled_token() {
             action_type,
             correlation_id,
         } => {
-            assert_eq!(action_type, "nmp.set_signer");
+            assert_eq!(action_type, "nmp.set_identity");
             assert_eq!(correlation_id, "set-1");
         }
         other => panic!("expected ActionAccepted, got {other:?}"),
@@ -281,10 +281,10 @@ fn typed_write_after_set_signer_returns_publish_disabled_token() {
 }
 
 #[test]
-fn set_signer_with_unknown_kind_returns_unsupported_signer_kind() {
+fn set_identity_with_unknown_kind_returns_unsupported_signer_kind() {
     let mut runtime = WasmRuntime::new();
     let events = runtime
-        .handle(WorkerRequest::SetSigner(SetSigner {
+        .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "magic".to_string(),
             pubkey_hex: String::new(),
             correlation_id: "set-1".to_string(),
@@ -292,7 +292,7 @@ fn set_signer_with_unknown_kind_returns_unsupported_signer_kind() {
         .unwrap();
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
-            assert_eq!(failure.capability, "nmp.set_signer");
+            assert_eq!(failure.capability, "nmp.set_identity");
             assert_eq!(failure.correlation_id, "set-1");
             assert!(
                 failure.reason.starts_with("unsupported_signer_kind"),
@@ -305,10 +305,10 @@ fn set_signer_with_unknown_kind_returns_unsupported_signer_kind() {
 }
 
 #[test]
-fn set_signer_with_garbage_hex_returns_invalid_signer_pubkey() {
+fn set_identity_with_garbage_hex_returns_invalid_signer_pubkey() {
     let mut runtime = WasmRuntime::new();
     let events = runtime
-        .handle(WorkerRequest::SetSigner(SetSigner {
+        .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "nip07".to_string(),
             pubkey_hex: "not-hex".to_string(),
             correlation_id: "set-1".to_string(),
@@ -316,7 +316,7 @@ fn set_signer_with_garbage_hex_returns_invalid_signer_pubkey() {
         .unwrap();
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
-            assert_eq!(failure.capability, "nmp.set_signer");
+            assert_eq!(failure.capability, "nmp.set_identity");
             assert!(
                 failure.reason.starts_with("invalid_signer_pubkey"),
                 "expected invalid_signer_pubkey prefix, got: {}",
@@ -328,12 +328,12 @@ fn set_signer_with_garbage_hex_returns_invalid_signer_pubkey() {
 }
 
 #[test]
-fn set_signer_serde_round_trip_through_json() {
+fn set_identity_serde_round_trip_through_json() {
     // The wasm-bindgen `handle_json` entry point deserialises every
-    // WorkerRequest from JSON, so the SetSigner variant must round-trip
+    // WorkerRequest from JSON, so the SetIdentity variant must round-trip
     // through serde with the snake-cased tag the JS host sends.
     let request: WorkerRequest = serde_json::from_value(json!({
-        "type": "set_signer",
+        "type": "set_identity",
         "kind": "nip07",
         "pubkey_hex": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
         "correlation_id": "set-1",
@@ -341,11 +341,11 @@ fn set_signer_serde_round_trip_through_json() {
     .unwrap();
 
     match request {
-        WorkerRequest::SetSigner(set) => {
+        WorkerRequest::SetIdentity(set) => {
             assert_eq!(set.kind, "nip07");
             assert_eq!(set.correlation_id, "set-1");
         }
-        other => panic!("expected SetSigner, got {other:?}"),
+        other => panic!("expected SetIdentity, got {other:?}"),
     }
 }
 
