@@ -24,6 +24,7 @@ path = "src/bin/build-android-gallery-bundle.rs"
 [dependencies]
 nmp-content = { path = "../nmp-content" }
 nmp-core = { path = "../nmp-core" }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-store for RawEvent / VerifiedEvent — the nmp_core::store
 # compat facade is deleted (#1608).
 nmp-store = { path = "../nmp-store" }

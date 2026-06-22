@@ -10,8 +10,9 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
-    ActionRejection, KernelEvent, UnsignedEvent,
+    ActionRejection, KernelEvent,
 };
+use nmp_signer_iface::UnsignedEvent;
 use nmp_core::{canonical_relay_url, ActorCommand, KernelEventObserver};
 use nmp_kinds::KIND_BOOKMARK_LIST;
 use serde::{Deserialize, Serialize};

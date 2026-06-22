@@ -9,8 +9,8 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::sync::Arc;
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
-use nmp_core::{ActorCommand, BunkerHookRequest, RemoteSignerHandle};
+use nmp_core::{ActorCommand, BunkerHookRequest};
+use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, UnsignedEvent};
 use nmp_signer_broker::{percent_encode_query_value, BrokerEvent, BunkerBroker};
 use nmp_signer_iface::SignerOp;
 use nmp_signers::Nip46Signer;

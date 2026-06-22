@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use nmp_core::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::imeta::ImageMeta;

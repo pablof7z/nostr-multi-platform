@@ -8,7 +8,7 @@
 //!
 //! The signer fills in `id` / `pubkey` / `sig`.
 
-use nmp_core::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 
 use super::error::Nip42Error;
 use super::frame::AuthChallenge;
@@ -47,7 +47,7 @@ pub fn build_auth_event(
 /// double-wrapping a `String` (D6).
 #[must_use]
 pub fn validate_signed_for(
-    signed: &nmp_core::substrate::SignedEvent,
+    signed: &nmp_signer_iface::SignedEvent,
     challenge: &AuthChallenge,
 ) -> Result<(), Nip42Error> {
     if signed.unsigned.kind != 22242 {
@@ -91,7 +91,7 @@ pub fn validate_signed_for(
 /// `["AUTH", <event_json>]`. The event_json shape is the standard NIP-01
 /// signed-event object (id, pubkey, created_at, kind, tags, content, sig).
 #[must_use] 
-pub fn wire_frame_for(signed: &nmp_core::substrate::SignedEvent) -> String {
+pub fn wire_frame_for(signed: &nmp_signer_iface::SignedEvent) -> String {
     serde_json::json!([
         "AUTH",
         {
@@ -110,7 +110,7 @@ pub fn wire_frame_for(signed: &nmp_core::substrate::SignedEvent) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+    use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
     fn fresh_challenge() -> AuthChallenge {
         AuthChallenge {

@@ -42,7 +42,8 @@
 //! from `kernel.now_secs()` before signing; this crate never reads the system
 //! clock.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection, UnsignedEvent};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
+use nmp_signer_iface::UnsignedEvent;
 use nmp_core::{canonical_relay_url, ActorCommand};
 use nmp_kinds::KIND_DM_RELAY_LIST;
 use serde::{Deserialize, Serialize};

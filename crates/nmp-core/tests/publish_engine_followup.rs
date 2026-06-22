@@ -24,6 +24,7 @@ use nmp_core::publish::{
     RetryPolicy, StaticOutbox, ENGINE_FAILURE_RELAY_URL,
 };
 use nmp_core::substrate::*;
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn signed(id: &str, author: &str, kind: u32, p_tags: &[&str]) -> SignedEvent {
     let tags = p_tags

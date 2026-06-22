@@ -22,7 +22,7 @@
 //! available; the choice is the caller's because the two have different
 //! lifetimes and SignerOp return shapes.
 
-use nmp_core::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 use super::builder::{build_auth_event, validate_signed_for, wire_frame_for};
 use super::error::Nip42Error;
@@ -264,7 +264,7 @@ pub fn run_handshake<F>(
     mut signer: F,
 ) -> HandshakeOutcome
 where
-    F: FnMut(&nmp_core::substrate::UnsignedEvent) -> Result<SignedEvent, Nip42Error>,
+    F: FnMut(&nmp_signer_iface::UnsignedEvent) -> Result<SignedEvent, Nip42Error>,
 {
     let mut outcome = driver.on_auth_frame(challenge.clone());
     let unsigned = build_auth_event(&challenge, pubkey, created_at);

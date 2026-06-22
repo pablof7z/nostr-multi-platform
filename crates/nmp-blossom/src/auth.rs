@@ -16,7 +16,7 @@
 //! empty: the signer fills it from the resolved account.
 
 use base64::Engine as _;
-use nmp_core::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 
 use crate::kinds::KIND_BLOSSOM_AUTH;
 

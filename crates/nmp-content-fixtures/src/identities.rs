@@ -9,7 +9,7 @@
 //! fixture material only.
 
 use nmp_core::nip21::{format_nostr_uri, NostrUri};
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::event::builder::EventBuilder;
 use nostr::key::Keys;
 use nostr::secp256k1::{Message, Secp256k1};

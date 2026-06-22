@@ -26,8 +26,9 @@ use super::*;
 use nmp_core::substrate::{
     ActionStageTracker, EmptyDmInboxRelayLookup, KernelClock, LocalSignerAccess, NoopErrorSurface,
     NoopHostOpHandlerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopZapProfileLookup,
-    ProtocolCommandContextParts, RecipientRelayLookup, SignedEvent,
+    ProtocolCommandContextParts, RecipientRelayLookup,
 };
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 mod bolt11_validation;
 mod port_run;

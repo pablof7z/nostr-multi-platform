@@ -184,7 +184,7 @@ fn spawn_put_worker(
     size: u64,
     body: Vec<u8>,
     correlation_id: String,
-    signed: nmp_core::substrate::SignedEvent,
+    signed: nmp_signer_iface::SignedEvent,
 ) {
     std::thread::spawn(move || {
         let signed_json = signed.to_nip01_json();

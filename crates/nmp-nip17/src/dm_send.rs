@@ -61,9 +61,8 @@
 //! * **D13** — no raw `Keys` cross this crate; the seal is signed through the
 //!   port and only a `SignedEvent` / ciphertext is ever observed.
 
-use nmp_core::substrate::{
-    ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
-};
+use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
+use nmp_signer_iface::UnsignedEvent;
 use nostr::{EventBuilder, JsonUtil, Kind, PublicKey, Tag, Timestamp};
 
 /// NIP-17 § 2 gift-wrap publish — the [`ProtocolCommand`] equivalent of the

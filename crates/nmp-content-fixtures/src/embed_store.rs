@@ -15,7 +15,7 @@ use std::collections::BTreeMap;
 
 use nmp_content::{tokenize_with_kind, RenderMode};
 use nmp_core::kinds::is_parameterized_replaceable;
-use nmp_core::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 use crate::dto::{ArticleHeaderDto, ContentTreeDto, EmbedEntry, ListDto, SignedEventJson};
 use crate::project::project_tree;

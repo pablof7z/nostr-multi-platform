@@ -14,8 +14,9 @@ use crate::dm_relay_cache::DmRelayCache;
 use nmp_core::substrate::{
     DmInboxRelayLookup, EmptyDmInboxRelayLookup, ErrorSurface, KernelClock, LocalSignerAccess,
     NoopActionStageTracker, NoopRecipientRelayLookup, ProtocolCommand, ProtocolCommandContext,
-    ProtocolCommandContextParts, SignedEvent, UnsignedEvent as SubstrateUnsignedEvent,
+    ProtocolCommandContextParts,
 };
+use nmp_signer_iface::{SignedEvent, UnsignedEvent as SubstrateUnsignedEvent};
 use nmp_core::publish::PublishTarget;
 use nmp_core::{ActorCommand, ActorMail, CommandSender};
 use nostr::nips::nip44::{self, Version as Nip44Version};

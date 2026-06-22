@@ -67,7 +67,7 @@ fn external_consumer_decodes_publish_queue_and_action_results_via_public_api() {
             .public_key()
             .to_hex()
     };
-    let unsigned = nmp_core::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: author_pubkey,
         kind: 1,
         tags: Vec::new(),

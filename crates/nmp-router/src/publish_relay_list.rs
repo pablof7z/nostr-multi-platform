@@ -66,9 +66,8 @@
 //! across the move from `nmp-nip65` so callers do not need to change.
 
 use nmp_core::kinds::KIND_RELAY_LIST;
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, UnsignedEvent,
-};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRegistrar, ActionRejection};
+use nmp_signer_iface::UnsignedEvent;
 use nmp_core::{canonical_relay_url, ActorCommand};
 use serde::{de, Deserialize, Deserializer, Serialize};
 

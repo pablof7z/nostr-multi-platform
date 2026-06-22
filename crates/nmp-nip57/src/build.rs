@@ -12,7 +12,7 @@
 //! - `a` tag (optional): zapped addressable coord.
 //! - `content`: free-form comment (optional).
 
-use nmp_core::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 use nmp_core::tags::{e_tag, p_tag};
 use serde::{Deserialize, Serialize};
 

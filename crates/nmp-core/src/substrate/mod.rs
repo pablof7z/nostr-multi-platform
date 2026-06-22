@@ -50,6 +50,10 @@ mod empty_routing;
 mod host_op;
 mod host_op_handler;
 mod identity;
+// pub(crate) re-export so nmp-core internals can still use
+// `crate::substrate::{SignedEvent, UnsignedEvent}` without churn.
+// External callers must use `nmp_signer_iface` directly (issue #1772).
+pub(crate) use identity::{SignedEvent, UnsignedEvent};
 mod ingest;
 mod keyring;
 mod payment;
@@ -101,26 +105,6 @@ pub use contacts_lookup::{
 pub use contacts_lookup::{TestContactsCache, TestKind3Parser};
 
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
-// Issue #1720: the NIP-01 event value types `SignedEvent` / `UnsignedEvent` /
-// `SigningError` are dependency-light vocabulary and now live in the tier-0
-// `nmp-signer-iface` crate (see `substrate/identity.rs`), so `nmp-signers` and
-// other signer-facing crates can name them without depending on `nmp-core`.
-// This re-export is a STAGED migration aid, NOT a durable seam: it keeps the
-// ~94 existing `nmp_core::substrate::{...}` importers compiling while #1720
-// lands the `nmp-signers` decoupling slice. Deletion gate: issue #1772 migrates
-// every remaining importer onto direct `nmp_signer_iface::{...}` imports and
-// removes this re-export. The type owner is `nmp-signer-iface`.
-pub use identity::{SignedEvent, SigningError, UnsignedEvent};
-/// V-78 — NIP crates need to name `SignerOp` to `op.wait()` a parked
-/// remote (NIP-46 bunker) sign on an off-actor worker thread (the
-/// `nmp-nip57` zap path). Re-exported through the substrate so NIP crates
-/// reach it via `nmp_core::substrate::SignerOp` rather than adding a direct
-/// `nmp-signer-iface` dependency — every signer surface a NIP crate touches
-/// stays funnelled through `nmp_core::substrate`.
-/// [`SignerError`] rides along because `SignerOp::Pending` carries a
-/// `Receiver<Result<T, SignerError>>`, so any crate constructing or matching
-/// on a pending op needs the error name too.
-pub use nmp_signer_iface::{SignerError, SignerOp};
 pub use ingest::{EventIngestDispatcher, IngestParser};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,

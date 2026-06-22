@@ -21,6 +21,7 @@ native = ["dep:ureq"]
 # `native` feature on nmp-core is opted-in by callers that need it via
 # feature unification — no explicit re-export required here.
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-planner for InterestId / InterestShape / LogicalInterest /
 # stable_hash64 — the nmp_core::planner compat facade is deleted (#1608).
 nmp-planner = { path = "../nmp-planner", default-features = false }

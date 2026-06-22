@@ -148,7 +148,7 @@ fn ack_action_stage_well_formed_enqueues_command() {
 }
 
 use nmp_core::publish::{PublishAction, PublishTarget};
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn fixture_signed_event() -> SignedEvent {
     SignedEvent {

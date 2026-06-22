@@ -50,9 +50,8 @@
 //! <https://github.com/nostr-protocol/nips/blob/master/17.md>
 
 use nmp_core::kinds::KIND_CHAT_MESSAGE;
-use nmp_core::substrate::{
-    ActionRegistrar, DmInboxRelayRegistrar, IngestParserRegistrar, UnsignedEvent,
-};
+use nmp_core::substrate::{ActionRegistrar, DmInboxRelayRegistrar, IngestParserRegistrar};
+use nmp_signer_iface::UnsignedEvent;
 
 pub mod action;
 pub mod dm_relay_cache;

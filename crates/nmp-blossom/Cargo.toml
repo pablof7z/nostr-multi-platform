@@ -13,6 +13,7 @@ description = "Blossom (BUD-02) blob uploads as an NMP protocol crate — kind:2
 # Substrate seams: ProtocolCommand / ProtocolCommandContext, ActorCommand,
 # UnsignedEvent / SignedEvent, the generic SignEventForAccount sign port.
 nmp-core = { path = "../nmp-core" }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Layer-0 canonical kind registry — re-exports KIND_BLOSSOM_AUTH (24242)
 # so this crate does not duplicate the value (V-57 / workspace-canonical-kinds).
 nmp-kinds = { path = "../nmp-kinds" }

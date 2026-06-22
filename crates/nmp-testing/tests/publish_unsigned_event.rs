@@ -90,7 +90,7 @@ fn unsigned_event_serde_round_trips_for_action_payload() {
         .build("pk", 1_700_000_300)
         .expect("note builder");
     let json = serde_json::to_string(&unsigned).expect("UnsignedEvent serialises");
-    let decoded: nmp_core::substrate::UnsignedEvent =
+    let decoded: nmp_signer_iface::UnsignedEvent =
         serde_json::from_str(&json).expect("UnsignedEvent round-trips");
     assert_eq!(decoded, unsigned);
 }

@@ -90,7 +90,7 @@ impl ActionModule for JoinGroupAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::substrate::UnsignedEvent;
+    use nmp_signer_iface::UnsignedEvent;
     use std::cell::RefCell;
 
     fn input() -> JoinGroupInput {

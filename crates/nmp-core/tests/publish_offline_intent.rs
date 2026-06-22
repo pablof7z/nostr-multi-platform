@@ -10,7 +10,7 @@ use nmp_core::publish::{
     InMemoryPublishStore, NoopSigner, PerRelayState, PublishAction, PublishEngine, PublishStore,
     PublishTarget, QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy, StaticOutbox,
 };
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn signed(id: &str, author: &str, kind: u32) -> SignedEvent {
     SignedEvent {
