@@ -16,10 +16,15 @@
 //!    SAME `Kernel::resolve_ref` resolver body — there is no divergent web-only
 //!    resolution path.
 //!
-//! 3. [`interest_dispatch_from_action`] / [`execute_interest_dispatch`] —
-//!    parse and execute feed-verb operations:
-//!    `nmp.kernel.open_interest`, `nmp.kernel.close_interest`,
-//!    `nmp.feed.declare_active_follows`, `nmp.feed.clear_active_follows`.
+//! 3. **RETIRED (#1740 step 8):** the raw feed-verb dispatch
+//!    (`interest_dispatch_from_action` / `execute_interest_dispatch` and the
+//!    `nmp.kernel.open_interest` / `close_interest` +
+//!    `nmp.feed.declare_active_follows` / `clear_active_follows` action strings)
+//!    is DELETED from this public router. The web app drives the kernel
+//!    reducer's feed methods directly through the `WasmRuntime` Rust facade
+//!    (internal composition glue); the only public way to open a feed is the
+//!    typed `open_feed` doorway (native today — a wasm `nmp.feed.open` awaits
+//!    porting the native session registry + perspective compiler to wasm).
 //!
 //! 4. Stable, host-pattern-matchable reason strings for the two
 //!    write-unavailability states the wasm runtime can honestly report
@@ -307,113 +312,15 @@ pub(crate) fn execute_ref_dispatch(
     }
 }
 
-// ─── PR-3 feed-verb dispatch ─────────────────────────────────────────────────
-//
-// Four new verb types that map to the `KernelReducer` feed-verb surface added
-// in PR-3. Same D6 parse discipline as `ClaimDispatch`: missing/non-string
-// payload fields return `None`; the caller treats `None` as "not this dispatch
-// type" and falls through.
-
-/// Decoded feed-subscription verb extracted from an `ActionDispatch` whose
-/// `action_type` is in the `nmp.kernel.open_interest` / `close_interest` or
-/// active-follows declared-feed namespace.
-#[derive(Debug, PartialEq, Eq)]
-pub(crate) enum InterestDispatch {
-    OpenInterest {
-        filter_json: String,
-        consumer_id: String,
-        scope: u32,
-    },
-    CloseInterest {
-        filter_json: String,
-        consumer_id: String,
-        scope: u32,
-    },
-    /// `nmp.feed.declare_active_follows {primary_kinds:[1]}` — compiles
-    /// app-declared primary kinds into the follow-feed acquisition kind set and
-    /// re-registers the active account's follow interests.
-    DeclareActiveFollowsFeed {
-        acquisition_kinds: std::collections::BTreeSet<u32>,
-    },
-    /// Clears the active-follows declaration (no relay CLOSE diff is emitted
-    /// until `drain_lifecycle_outbound` / `tick`).
-    ClearActiveFollowsFeed,
-}
-
-/// Parse an `ActionDispatch` as a feed-subscription verb. Returns `None` if
-/// the `action_type` is not a feed-verb namespace or a required payload field
-/// is absent / malformed (D6: malformed → `None`, never a panic).
-pub(crate) fn interest_dispatch_from_action(action: &ActionDispatch) -> Option<InterestDispatch> {
-    match action.action_type.as_str() {
-        "nmp.kernel.open_interest" => {
-            let filter_json = str_field(&action.payload, "filter_json")?;
-            let consumer_id = str_field(&action.payload, "consumer_id")?;
-            let scope = action
-                .payload
-                .get("scope")
-                .and_then(Value::as_u64)
-                .unwrap_or(0) as u32;
-            Some(InterestDispatch::OpenInterest {
-                filter_json,
-                consumer_id,
-                scope,
-            })
-        }
-        "nmp.kernel.close_interest" => {
-            let filter_json = str_field(&action.payload, "filter_json")?;
-            let consumer_id = str_field(&action.payload, "consumer_id")?;
-            let scope = action
-                .payload
-                .get("scope")
-                .and_then(Value::as_u64)
-                .unwrap_or(0) as u32;
-            Some(InterestDispatch::CloseInterest {
-                filter_json,
-                consumer_id,
-                scope,
-            })
-        }
-        "nmp.feed.declare_active_follows" => {
-            let primary_kinds = action
-                .payload
-                .get("primary_kinds")
-                .and_then(Value::as_array)?
-                .iter()
-                .map(|v| v.as_u64().and_then(|n| u32::try_from(n).ok()))
-                .collect::<Option<Vec<_>>>()?;
-            let acquisition_kinds =
-                nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds).ok()?;
-            Some(InterestDispatch::DeclareActiveFollowsFeed { acquisition_kinds })
-        }
-        "nmp.feed.clear_active_follows" => Some(InterestDispatch::ClearActiveFollowsFeed),
-        _ => None,
-    }
-}
-
-/// Execute a decoded `InterestDispatch` against the live kernel, returning any
-/// immediately-sendable `Vec<OutboundMessage>` (already
-/// `partition_auth_paused` inside the `KernelReducer` methods).
-pub(crate) fn execute_interest_dispatch(
-    reducer: &mut KernelReducer,
-    interest: InterestDispatch,
-) -> Vec<OutboundMessage> {
-    match interest {
-        InterestDispatch::OpenInterest {
-            filter_json,
-            consumer_id,
-            scope,
-        } => reducer.open_interest(&filter_json, &consumer_id, scope),
-        InterestDispatch::CloseInterest {
-            filter_json,
-            consumer_id,
-            scope,
-        } => reducer.close_interest(&filter_json, &consumer_id, scope),
-        InterestDispatch::DeclareActiveFollowsFeed { acquisition_kinds } => {
-            reducer.declare_active_follows_feed(acquisition_kinds)
-        }
-        InterestDispatch::ClearActiveFollowsFeed => reducer.clear_active_follows_feed(),
-    }
-}
+// #1740 step 8: the raw feed-verb dispatch (`InterestDispatch` /
+// `interest_dispatch_from_action` / `execute_interest_dispatch`) is DELETED. The
+// public action strings `nmp.kernel.open_interest` / `close_interest` and
+// `nmp.feed.declare_active_follows` / `clear_active_follows` are retired — no
+// host (JS) reached them, and the only public way to open a feed is the typed
+// `open_feed` doorway (native today; a wasm `nmp.feed.open` awaits porting the
+// native session registry + perspective compiler — see #1740). The wasm
+// reducer's `open_interest` / `declare_active_follows_feed` methods remain as
+// INTERNAL composition glue the web app's `WasmRuntime` facade drives directly.
 
 #[cfg(test)]
 #[path = "dispatch_routing_tests.rs"]

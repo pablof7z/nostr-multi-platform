@@ -229,12 +229,13 @@ pub use timeline::{
     // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline
     // deleted from identity.rs.
     // ADR-0063 Lane H: nmp_app_claim_profile, nmp_app_release_profile deleted.
+    // #1740 step 8: `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
+    // C-ABI shims DELETED. `declare_active_follows_feed` / `clear_active_follows_feed`
+    // stay as INTERNAL composition glue (home-feed wiring), not app-facing C ABI.
     clear_active_follows_feed,
     declare_active_follows_feed,
     nmp_app_claim_event,
-    nmp_app_close_contact_feed,
     nmp_app_close_interest,
-    nmp_app_open_contact_feed,
     nmp_app_open_interest,
     nmp_app_open_uri,
     nmp_app_release_event,

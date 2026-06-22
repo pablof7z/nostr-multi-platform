@@ -238,13 +238,13 @@ the host only supplies the timer".
     `actor/commands/identity.rs:904`) + inline drain. Without this the
     follow feed has no account and no kind:3 to expand.
 - `crates/nmp-wasm`:
-  - `dispatch_routing.rs` — four new verbs:
-    `nmp.kernel.open_interest` / `close_interest`
-    (payload: `filter_json`, `consumer_id`, `scope`) and
-    `nmp.feed.declare_active_follows`
-    (payload: `primary_kinds: [u32]`) / `nmp.feed.clear_active_follows`.
-    Same D6 parse discipline as the existing `ClaimDispatch` arm
-    (`dispatch_routing.rs:62-93`).
+  - `dispatch_routing.rs` — **RETIRED (#1740 step 8):** the four raw feed
+    verbs (`nmp.kernel.open_interest` / `close_interest`,
+    `nmp.feed.declare_active_follows` / `nmp.feed.clear_active_follows`) were
+    removed from the public router. The web app drives the kernel reducer's
+    feed methods directly through the `WasmRuntime` Rust facade (internal
+    composition glue); a public wasm `nmp.feed.open` doorway awaits porting the
+    native session registry + perspective compiler to wasm.
   - `runtime.rs` — the claim/verb arm fans the returned outbound through
     `fan_out_outbound` and pushes a snapshot (existing pattern,
     `runtime.rs:388-424`); `set_signer` success additionally calls

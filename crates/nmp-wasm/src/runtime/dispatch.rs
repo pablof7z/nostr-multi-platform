@@ -12,8 +12,8 @@
 //! seam, not an API boundary.
 
 use crate::dispatch_routing::{
-    execute_interest_dispatch, execute_ref_dispatch, interest_dispatch_from_action,
-    kernel_action_from_dispatch, ref_dispatch_from_action, write_path_unavailable_reason,
+    execute_ref_dispatch, kernel_action_from_dispatch, ref_dispatch_from_action,
+    write_path_unavailable_reason,
 };
 use crate::protocol::{ActionDispatch, AppAction, CapabilityFailure, WorkerEvent};
 use nmp_core::dispatch_envelope::{decode_dispatch_envelope, DecodedDispatch};
@@ -131,12 +131,15 @@ impl WasmRuntime {
                 correlation_id: action.correlation_id,
             }]);
         }
-        // Feed-verb arm: open/close generic interests + active-follows.
-        if let Some(interest) = interest_dispatch_from_action(&action) {
-            let outbound = execute_interest_dispatch(&mut self.reducer.borrow_mut(), interest);
-            self.fan_outbound(outbound);
-            return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));
-        }
+        // #1740 step 8: the raw feed-verb dispatch arm (`nmp.kernel.open_interest`
+        // / `close_interest` and `nmp.feed.declare_active_follows` /
+        // `clear_active_follows`) is DELETED — those public action strings are
+        // retired. The wasm reducer's `open_interest` / `declare_active_follows_feed`
+        // methods remain as INTERNAL composition glue (the web app's feed setup
+        // drives them directly through the `WasmRuntime` Rust facade, not through a
+        // host action string). There is no public wasm `open_feed` doorway yet (the
+        // session registry + perspective compiler are native-only — see #1740).
+        //
         // Kernel-namespace actions (`nmp.kernel.start`, `open_uri`, etc.) map
         // to `KernelAction` variants and run through `KernelReducer::reduce`.
         if let Some(kernel_action) = kernel_action_from_dispatch(&action) {

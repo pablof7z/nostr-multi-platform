@@ -108,6 +108,10 @@ FFI_FILE_ROOTS=(
     # M2 per-open flat author/thread feeds (ADR-0042 §5.1, V-112): the four
     # nmp_app_chirp_{open,close}_{author,thread}_feed symbols.
     "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs"
+    # #1740 step 7 — the ONE public app-facing feed doorway
+    # (nmp_app_open_feed / nmp_app_close_feed): typed FeedParams JSON in, an
+    # opaque handle JSON out. The single public way to open a feed session.
+    "${REPO_ROOT}/apps/chirp/nmp-app-chirp/src/ffi/feed.rs"
     # NIP-29 group-chat + group-discovery FFI entry points (split from
     # register.rs to keep each file under the 500-LOC cap):
     #   nmp_app_chirp_register_group_chat

@@ -64,6 +64,44 @@ pub fn connect_or_skip(
     Some(app)
 }
 
+/// Open the active-account follows feed through the ONE public feed doorway
+/// (#1740 step 8 — the raw `nmp_app_open_contact_feed` shim is retired). Returns
+/// the minted handle JSON (the close token), or `None` on a fail-closed open.
+///
+/// Declares Chirp's PRIMARY kind `[1]` over `FeedScope::ActiveUserFollows` with
+/// the canonical `nmp.feed.home` projection — wrapper acquisition is derived
+/// below the boundary by the compiler.
+pub fn open_active_follows_feed(app: *mut nmp_ffi::NmpApp) -> Option<String> {
+    let params_json = r#"{
+      "primary_kinds": [1],
+      "acquisition": "ActiveUserFollows",
+      "admission": "All",
+      "ranking": "ChronologicalDesc",
+      "window": { "initial_limit": 80 },
+      "projection": "nmp.feed.home"
+    }"#;
+    let params = std::ffi::CString::new(params_json).ok()?;
+    let raw = nmp_app_chirp::nmp_app_open_feed(app, params.as_ptr());
+    if raw.is_null() {
+        return None;
+    }
+    let json = unsafe { std::ffi::CStr::from_ptr(raw) }
+        .to_str()
+        .ok()
+        .map(str::to_owned);
+    nmp_ffi::nmp_free_string(raw);
+    // A `{"error":…}` envelope (e.g. no active account) is a fail-closed open.
+    json.filter(|j| !j.contains("\"error\""))
+}
+
+/// Close a feed opened by [`open_active_follows_feed`], addressed by its handle
+/// JSON envelope (never a re-derived filter — D4).
+pub fn close_feed_handle(app: *mut nmp_ffi::NmpApp, handle_json: &str) {
+    if let Ok(c) = std::ffi::CString::new(handle_json) {
+        nmp_app_chirp::nmp_app_close_feed(app, c.as_ptr());
+    }
+}
+
 /// Like [`connect_or_skip`] but does NOT require a relay — the firehose oracle
 /// drives the kernel ingest seam directly. Launches the full real composition
 /// (feed engine, projections, GC) and waits briefly for the first frame so the

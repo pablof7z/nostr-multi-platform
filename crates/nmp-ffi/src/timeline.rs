@@ -231,8 +231,13 @@ pub(crate) fn parse_primary_kinds_json(s: &str) -> Option<std::collections::BTre
 /// in u32, surfaces a diagnostic toast rather than a panic or silent
 /// registration (D6).
 ///
-/// This is a Rust helper for app crates. The C ABI keeps its existing legacy
-/// symbol names and delegates here; no new `nmp_app_*` symbol is introduced.
+/// #1740 step 8: this is INTERNAL composition glue, NOT a public app surface.
+/// The raw `nmp_app_open_contact_feed` C-ABI shim that used to delegate here is
+/// DELETED; the only public way to open the active-follows feed is the typed
+/// `nmp_app_open_feed(FeedScope::ActiveUserFollows)` doorway, whose compiler arm
+/// (`compile_active_user_follows`) drives the `NmpApp::declare_active_follows_feed`
+/// method. This helper survives only for the home-feed wiring path; no public
+/// `nmp_app_*` symbol delegates to it.
 pub fn declare_active_follows_feed(app: *mut NmpApp, primary_kinds_json: *const c_char) {
     let Some(app) = app_ref(app) else {
         return;
@@ -257,8 +262,9 @@ pub fn declare_active_follows_feed(app: *mut NmpApp, primary_kinds_json: *const 
 ///
 /// Withdraws all follow-feed M2 interests from the lifecycle registry;
 /// `drain_lifecycle_tick` emits CLOSE frames for any live REQs on the next
-/// idle tick. D6: a null `app` is a silent no-op. Rust helper only; the legacy
-/// C ABI close symbol delegates here.
+/// idle tick. D6: a null `app` is a silent no-op. #1740 step 8: INTERNAL
+/// composition glue only — the raw `nmp_app_close_contact_feed` C-ABI shim that
+/// delegated here is DELETED; feed close is handle-based via `nmp_app_close_feed`.
 pub fn clear_active_follows_feed(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
@@ -266,19 +272,13 @@ pub fn clear_active_follows_feed(app: *mut NmpApp) {
     app.clear_active_follows_feed();
 }
 
-/// Legacy C ABI compatibility shim. App code should use the declared
-/// active-follows vocabulary; this symbol stays only because removing exported
-/// C ABI requires a separate governance step.
-#[no_mangle]
-pub extern "C" fn nmp_app_open_contact_feed(app: *mut NmpApp, primary_kinds_json: *const c_char) {
-    declare_active_follows_feed(app, primary_kinds_json);
-}
-
-/// Legacy C ABI compatibility shim for [`clear_active_follows_feed`].
-#[no_mangle]
-pub extern "C" fn nmp_app_close_contact_feed(app: *mut NmpApp) {
-    clear_active_follows_feed(app);
-}
+// #1740 step 8: the raw `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
+// C-ABI shims are DELETED. The only public way to open the active-follows feed is
+// the typed `nmp_app_open_feed(FeedScope::ActiveUserFollows)` doorway in the
+// app-composition crate; close is HANDLE-based (`nmp_app_close_feed`). The
+// `declare_active_follows_feed` / `clear_active_follows_feed` Rust helpers below
+// stay as INTERNAL composition glue (the home-feed wiring + the perspective
+// compiler's `ActiveUserFollows` arm drive them), never as a public C symbol.
 
 #[cfg(test)]
 mod kinds_parse_tests {
