@@ -928,8 +928,8 @@ pub enum ActorCommand {
     LifecycleEvent(LifecyclePhase),
     /// Host acknowledgement of a `correlation_id` in the
     /// `action_stages` snapshot mirror. The actor folds the ack into the
-    /// kernel's `ActionStageTracker`, dropping the entry's stage history
-    /// so the next tick's snapshot no longer carries it. Idempotent: an
+    /// kernel's one `ActionLedger`, dropping the entry from the stage-history
+    /// facet so the next tick's snapshot no longer carries it. Idempotent: an
     /// unknown id is a silent no-op (D6).
     ///
     /// Originates from the FFI symbol `nmp_app_ack_action_stage`. The host
