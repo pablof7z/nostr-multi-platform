@@ -9,19 +9,41 @@ use crate::{app_ref, c_string_argument};
 
 /// Re-export the canonical typed feed-session declaration model (#1740).
 ///
-/// The model lives in `nmp-feed` (single source). This FFI module re-exports
-/// the param types and the decode/validation surface so native shells can
-/// decode a `FeedParams` JSON payload and run fail-closed primary-kind
-/// validation **before** `open_feed` exists. Step 1 is types + decode +
-/// validation only; the `open_feed` C-ABI dispatch lands in step 2.
-///
-/// `CustomPerspectiveId` and `validate_primary_kinds` are intentionally not
-/// re-exported here: they have no external consumer yet and will be hoisted
-/// through the facade when `open_feed` dispatch lands in step 2.
+/// The protocol-agnostic param model lives in `nmp-feed` (single source). This
+/// FFI module re-exports the param types and owns the primary-kind validation —
+/// which IS protocol knowledge (it names the derived-acquisition wrapper/delete
+/// kinds) and so lives in this composition layer, NOT in the generic
+/// `nmp-feed` engine (D0). The validation transform itself is the single
+/// canonical `nmp_nip18` transform; this layer only adds the empty-set guard.
 pub use nmp_feed::{
-    FeedAdmission, FeedHandle, FeedParams, FeedParamsError, FeedRanking, FeedScope, FeedSessionId,
-    FeedWindow, ProjectionKey, PubkeySetExpr,
+    FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedScope, FeedSessionId, FeedWindow,
+    ProjectionKey, PubkeySetExpr,
 };
+
+/// Typed error for a `FeedParams` declaration whose primary kinds are invalid
+/// (D6 — no panic).
+///
+/// This is the single canonical primary-kind validation error
+/// [`nmp_nip18::PrimaryKindError`], re-exported under a feed-facing alias.
+/// Deciding that wrapper kinds (6/16) and the delete kind (5) are derived
+/// acquisition rather than primary input is protocol knowledge, so the error and
+/// the validator both live in the protocol layer (`nmp_nip18`), NOT in the
+/// protocol-agnostic `nmp-feed` engine (D0). One owner, no duplication (D4).
+pub use nmp_nip18::PrimaryKindError as FeedParamsError;
+
+/// Validate a [`FeedParams`] declaration's primary kinds and return the compiled
+/// acquisition kind set (primary ∪ derived wrappers ∪ kind 5).
+///
+/// Thin wrapper over the single canonical validator
+/// [`nmp_nip18::validate_primary_kinds`] (wrapper/delete/empty rejection + the
+/// acquisition derivation). Fail-closed (D6 — typed [`FeedParamsError`], never
+/// panic). This is the ONE place the open-feed seam, the FFI/WASM boundary, and
+/// the perspective compiler validate primary kinds.
+pub fn validate_feed_params(
+    params: &FeedParams,
+) -> Result<std::collections::BTreeSet<u32>, FeedParamsError> {
+    nmp_nip18::validate_primary_kinds(params.primary_kinds.iter().copied())
+}
 
 /// Decode a `FeedParams` JSON payload and validate its primary kinds.
 ///
@@ -37,9 +59,8 @@ pub fn decode_and_validate_feed_params(
 ) -> Result<(FeedParams, std::collections::BTreeSet<u32>), FeedParamsDecodeError> {
     let params: FeedParams =
         serde_json::from_str(json).map_err(|_| FeedParamsDecodeError::MalformedJson)?;
-    let acquisition_kinds = params
-        .validate_primary_kinds()
-        .map_err(FeedParamsDecodeError::InvalidParams)?;
+    let acquisition_kinds =
+        validate_feed_params(&params).map_err(FeedParamsDecodeError::InvalidParams)?;
     Ok((params, acquisition_kinds))
 }
 
@@ -61,6 +82,58 @@ pub extern "C" fn nmp_app_load_older_feed(app: *mut crate::NmpApp, key: *const c
         return;
     };
     let _ = app.load_older_feed(&key);
+}
+
+#[cfg(test)]
+mod primary_kind_validation_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    const KIND_DELETE: u32 = 5;
+
+    #[test]
+    fn validate_feed_params_accepts_primary_and_derives_wrappers_and_delete() {
+        // Delegates to the canonical `nmp_nip18::validate_primary_kinds`: a valid
+        // primary declaration compiles to `primary ∪ derived wrappers ∪ kind 5`.
+        assert_eq!(
+            validate_feed_params(&sample_params(vec![1])),
+            Ok(BTreeSet::from([1, 6, KIND_DELETE]))
+        );
+        assert_eq!(
+            validate_feed_params(&sample_params(vec![20])),
+            Ok(BTreeSet::from([20, 16, KIND_DELETE]))
+        );
+    }
+
+    #[test]
+    fn validate_feed_params_fails_closed_on_wrapper_delete_empty() {
+        assert_eq!(
+            validate_feed_params(&sample_params(vec![1, 6])),
+            Err(FeedParamsError::RepostWrapper { kind: 6 }),
+            "kind 6 is derived acquisition, not primary"
+        );
+        assert_eq!(
+            validate_feed_params(&sample_params(vec![1, KIND_DELETE])),
+            Err(FeedParamsError::DeleteKind),
+            "kind 5 is derived suppression, not primary"
+        );
+        assert_eq!(
+            validate_feed_params(&sample_params(vec![])),
+            Err(FeedParamsError::EmptyPrimaryKinds),
+            "an open feed must declare at least one primary kind"
+        );
+    }
+
+    fn sample_params(primary_kinds: Vec<u32>) -> FeedParams {
+        FeedParams {
+            primary_kinds,
+            acquisition: FeedScope::ActiveUserFollows,
+            admission: FeedAdmission::All,
+            ranking: FeedRanking::ChronologicalDesc,
+            window: FeedWindow::default(),
+            projection: ProjectionKey("nmp.feed.home".into()),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -94,7 +167,7 @@ mod feed_params_decode_tests {
         assert_eq!(
             decode_and_validate_feed_params(&params_json("[1, 6]")),
             Err(FeedParamsDecodeError::InvalidParams(
-                FeedParamsError::RepostWrapperKind { kind: 6 }
+                FeedParamsError::RepostWrapper { kind: 6 }
             ))
         );
         assert_eq!(

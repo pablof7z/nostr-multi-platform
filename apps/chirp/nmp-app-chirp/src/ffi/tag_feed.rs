@@ -157,8 +157,10 @@ fn tag_feed_params(tag: &str) -> FeedParams {
 }
 
 /// The `open_feed` compiler adapter — the SAME `compile_feed_params` path the
-/// op-feed session tests drive. A `Tag` scope compiles to the `#t` acquisition
-/// interest + an event-aware `#t` render engine.
+/// op-feed session tests drive. `open_feed` validates the primary kinds and
+/// derives wrapper acquisition (`kinds`) below the app boundary before this runs.
+/// A `Tag` scope compiles to the `#t` acquisition interest + an event-aware `#t`
+/// render engine.
 fn compiler(
     app: &NmpApp,
     params: &FeedParams,
@@ -261,8 +263,9 @@ mod tests {
         );
         // The declared primaries pass fail-closed validation and compile to the
         // SAME acquisition kind set the raw path opened (1 ∪ derived wrappers ∪ 5).
-        let kinds = params
-            .validate_primary_kinds()
+        // Validation lives in the composition layer (`nmp_ffi`), not in the
+        // protocol-agnostic `nmp-feed` engine.
+        let kinds = nmp_ffi::validate_feed_params(&params)
             .expect("primary [1] is a valid declaration");
         assert!(kinds.contains(&1), "primary kind:1 acquired");
         assert!(kinds.contains(&6), "NIP-18 wrapper kind:6 derived by the compiler");

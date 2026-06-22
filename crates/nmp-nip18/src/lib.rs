@@ -35,6 +35,11 @@ pub enum PrimaryKindError {
     /// The NIP-09 deletion kind (5) is compiler-derived suppression acquisition,
     /// never a primary content kind an app declares.
     DeleteKind,
+    /// No primary kinds were declared. Surfaced by [`validate_primary_kinds`]
+    /// (the open-a-feed validator); the permissive
+    /// [`try_acquisition_kinds_for_primary`] treats an empty set as the
+    /// canonical clear-feed signal instead.
+    EmptyPrimaryKinds,
 }
 
 /// Compile app-declared primary feed kinds into acquisition kinds.
@@ -106,6 +111,27 @@ where
     }
 
     Ok(kinds)
+}
+
+/// Validate app-declared primary feed kinds for opening a feed, and compile them
+/// into the acquisition kind set.
+///
+/// The single canonical primary-kind validator for the FFI / WASM / compiler
+/// boundaries (issue #1740). It is the strict twin of
+/// [`try_acquisition_kinds_for_primary`]: identical wrapper/delete rejection and
+/// acquisition derivation, but it ALSO rejects an empty primary set
+/// ([`PrimaryKindError::EmptyPrimaryKinds`]) — an open feed must declare at least
+/// one primary content kind, whereas the permissive transform treats an empty
+/// set as the clear-feed signal.
+pub fn validate_primary_kinds<I>(primary_kinds: I) -> Result<BTreeSet<u32>, PrimaryKindError>
+where
+    I: IntoIterator<Item = u32>,
+{
+    let kinds: Vec<u32> = primary_kinds.into_iter().collect();
+    if kinds.is_empty() {
+        return Err(PrimaryKindError::EmptyPrimaryKinds);
+    }
+    try_acquisition_kinds_for_primary(kinds)
 }
 
 /// Decoded inner event embedded in a repost `content` field.
@@ -335,6 +361,39 @@ mod tests {
     #[should_panic(expected = "primary feed kinds must not include repost-wrapper or delete kinds")]
     fn infallible_acquisition_panics_on_wrapper_primary_kind() {
         let _ = acquisition_kinds_for_primary([1, KIND_REPOST]);
+    }
+
+    #[test]
+    fn validate_primary_kinds_matches_the_permissive_transform_for_valid_input() {
+        // The strict open-a-feed validator derives the SAME acquisition set as
+        // the permissive transform for any non-empty valid primary declaration.
+        assert_eq!(
+            validate_primary_kinds([1]),
+            Ok(BTreeSet::from([1, KIND_REPOST, KIND_DELETE]))
+        );
+        assert_eq!(
+            validate_primary_kinds([20]),
+            Ok(BTreeSet::from([20, KIND_GENERIC_REPOST, KIND_DELETE]))
+        );
+    }
+
+    #[test]
+    fn validate_primary_kinds_rejects_wrapper_delete_and_empty() {
+        assert_eq!(
+            validate_primary_kinds([1, KIND_REPOST]),
+            Err(PrimaryKindError::RepostWrapper { kind: KIND_REPOST })
+        );
+        assert_eq!(
+            validate_primary_kinds([1, KIND_DELETE]),
+            Err(PrimaryKindError::DeleteKind)
+        );
+        // The strict twin REJECTS empty (unlike the permissive transform, which
+        // treats it as the clear-feed signal): an open feed must declare at least
+        // one primary content kind.
+        assert_eq!(
+            validate_primary_kinds(std::iter::empty::<u32>()),
+            Err(PrimaryKindError::EmptyPrimaryKinds)
+        );
     }
 
     #[test]

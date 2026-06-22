@@ -63,7 +63,9 @@ mod tests;
 /// * `ListMembers` → live [`nmp_nip51::PeopleListProjection`] (kind:30000)
 ///   member predicate.
 /// * `Wot` → the #1698 [`nmp_wot::score::WotGraph`] ranked second-degree query.
-/// * `Tag` → `#t` acquisition with `Any` admission (the filter gates).
+/// * `Tag` → `#t` acquisition with EVENT-AWARE `AdmitExpr::Tag` admission (the
+///   filter gates at acquisition, but admission re-checks the tag so the scope
+///   composes faithfully inside set algebra — see `resolve::resolve_tag`).
 /// * `Union`/`Intersection`/`Difference` → set algebra over the compiled
 ///   children.
 /// * `RelaySet` and `CustomPerspectiveId` stay fail-closed (no resolver / step

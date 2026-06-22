@@ -11,11 +11,23 @@
 
 use super::WasmRuntime;
 
-// Import the typed feed-session model types that are used in this module.
-// The full public re-export surface (CustomPerspectiveId, FeedAdmission, FeedHandle, etc.)
-// will be hoisted through the wasm crate facade when the `open_feed` wasm dispatch
+// Import the protocol-agnostic typed feed-session model. The full public
+// re-export surface (CustomPerspectiveId, FeedAdmission, FeedHandle, etc.) will
+// be hoisted through the wasm crate facade when the `open_feed` wasm dispatch
 // lands in step 2. Only what this file actually references is imported here.
-use nmp_feed::{FeedParams, FeedParamsError};
+//
+// Primary-kind validation (which kinds are derived acquisition vs. primary
+// input) is protocol knowledge and is NOT in `nmp-feed`; it rides on the single
+// `nmp_nip18` transform, composed at this boundary (D0).
+use nmp_feed::FeedParams;
+
+/// Typed error for the wasm-boundary `FeedParams` decode + validation
+/// (D6 — no panic; the wasm worker reports the variant, never throws).
+///
+/// This is the single canonical primary-kind validation error
+/// [`nmp_nip18::PrimaryKindError`] — the SAME owner the native FFI boundary and
+/// the perspective compiler use (D4 — no duplicated validator/error).
+pub use nmp_nip18::PrimaryKindError as FeedParamsError;
 
 /// Typed error for the wasm-boundary `FeedParams` decode + validation
 /// (D6 — no panic; the wasm worker reports the variant, never throws).
@@ -25,6 +37,18 @@ pub enum FeedParamsDecodeError {
     MalformedJson,
     /// The decoded params failed validation (e.g. wrapper/delete primary kind).
     InvalidParams(FeedParamsError),
+}
+
+/// Validate a [`FeedParams`] declaration's primary kinds and return the compiled
+/// acquisition kind set (primary ∪ derived wrappers ∪ kind 5), or a typed error.
+///
+/// Thin wrapper over the single canonical validator
+/// [`nmp_nip18::validate_primary_kinds`] (wrapper/delete/empty rejection + the
+/// acquisition derivation) — the SAME owner native FFI uses.
+fn validate_feed_params(
+    params: &FeedParams,
+) -> Result<std::collections::BTreeSet<u32>, FeedParamsError> {
+    nmp_nip18::validate_primary_kinds(params.primary_kinds.iter().copied())
 }
 
 /// Decode a `FeedParams` JSON payload from the browser worker and validate its
@@ -39,9 +63,8 @@ pub fn decode_and_validate_feed_params(
 ) -> Result<(FeedParams, std::collections::BTreeSet<u32>), FeedParamsDecodeError> {
     let params: FeedParams =
         serde_json::from_str(json).map_err(|_| FeedParamsDecodeError::MalformedJson)?;
-    let acquisition_kinds = params
-        .validate_primary_kinds()
-        .map_err(FeedParamsDecodeError::InvalidParams)?;
+    let acquisition_kinds =
+        validate_feed_params(&params).map_err(FeedParamsDecodeError::InvalidParams)?;
     Ok((params, acquisition_kinds))
 }
 
@@ -112,7 +135,7 @@ mod feed_params_decode_tests {
         assert_eq!(
             decode_and_validate_feed_params(&params_json("[20, 16]")),
             Err(FeedParamsDecodeError::InvalidParams(
-                FeedParamsError::RepostWrapperKind { kind: 16 }
+                FeedParamsError::RepostWrapper { kind: 16 }
             ))
         );
         assert_eq!(

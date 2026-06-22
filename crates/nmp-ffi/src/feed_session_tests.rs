@@ -73,8 +73,10 @@ fn home_compiler(
     &std::collections::BTreeSet<u32>,
 ) -> Result<FeedCompileOutput, FeedOpenError> {
     move |app: &NmpApp, params: &FeedParams, _kinds: &std::collections::BTreeSet<u32>| {
-        // Only the active-follows home scope is wired by the compiler used in
-        // this FFI-level test; anything else fails closed (mirrors the real
+        // `open_feed` has already validated the primary kinds at the seam, so the
+        // compiler receives a pre-validated acquisition set. Only the
+        // active-follows home scope is wired by the compiler used in this
+        // FFI-level test; anything else fails closed (mirrors the real
         // `nmp-defaults` compiler's contract).
         if params.acquisition != FeedScope::ActiveUserFollows {
             return Err(FeedOpenError::ScopeNotSupportedYet {
@@ -241,6 +243,9 @@ fn invalid_primary_kinds_fail_closed_before_the_compiler_runs() {
     let app = nmp_app_new();
     {
         let app = crate::app_ref(app).expect("app");
+        // `open_feed` ENFORCES primary-kind validation at the seam, BEFORE any
+        // compiler runs — so an invalid declaration can never reach a compiler
+        // (the fail-closed guarantee does not depend on the compiler validating).
         let ran = Arc::new(AtomicUsize::new(0));
         let ran_c = Arc::clone(&ran);
         let compiler = move |_app: &NmpApp,

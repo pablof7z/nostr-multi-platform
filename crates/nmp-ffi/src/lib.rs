@@ -151,9 +151,9 @@ pub use feed::nmp_app_load_older_feed;
 // (no `open_feed` dispatch yet; that is step 2).
 #[cfg(feature = "native")]
 pub use feed::{
-    decode_and_validate_feed_params, FeedAdmission, FeedHandle, FeedParams, FeedParamsDecodeError,
-    FeedParamsError, FeedRanking, FeedScope, FeedSessionId, FeedWindow, ProjectionKey,
-    PubkeySetExpr,
+    decode_and_validate_feed_params, validate_feed_params, FeedAdmission, FeedHandle, FeedParams,
+    FeedParamsDecodeError, FeedParamsError, FeedRanking, FeedScope, FeedSessionId, FeedWindow,
+    ProjectionKey, PubkeySetExpr,
 };
 // #1740 step 2 — `open_feed`/`close_feed` session-registry seam (Rust-level).
 #[cfg(feature = "native")]

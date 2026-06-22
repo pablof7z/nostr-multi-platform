@@ -8,33 +8,20 @@
 //! [`FeedHandle`] returned when a session is opened.
 //!
 //! Doctrine map:
-//! - D0: the model names no app noun — variants are framework-neutral set
-//!   operations and opaque registered ids, never a `Perspective` trait.
-//! - D4: the primary-kind → acquisition derivation has one home
-//!   ([`validate_primary_kinds`], reusing `nmp_nip18`).
-//! - D6: every validation failure is a typed [`FeedParamsError`]; no panic.
+//! - D0: the model names no app noun and no protocol token — variants are
+//!   framework-neutral set operations and opaque registered ids, never a
+//!   `Perspective` trait and never a wire/protocol kind. Primary-kind validation
+//!   (which kinds are derived acquisition vs. primary input) is protocol
+//!   knowledge and lives in the composition/compiler layer, not here.
 //! - D8: window limits ride on the typed [`FeedWindow`].
 //!
-//! Step 1 is **definition + validation only**: `open_feed` does not yet consume
-//! these (step 2). No native closure crosses FFI — app-defined admission/ranking
-//! is referenced by an opaque [`CustomPerspectiveId`].
-
-use std::collections::BTreeSet;
+//! Step 1 is **definition only**: `open_feed` does not yet consume these
+//! (step 2). No native closure crosses FFI — app-defined admission/ranking is
+//! referenced by an opaque [`CustomPerspectiveId`].
 
 use serde::{Deserialize, Serialize};
 
 use crate::{DEFAULT_FEED_WINDOW_LIMIT, MAX_FEED_WINDOW_LIMIT};
-
-/// NIP-09 deletion event kind.
-///
-/// Like the NIP-18 repost wrappers, a kind-5 deletion is **compiler-derived
-/// acquisition** — the kernel acquires deletions to suppress superseded rows —
-/// never a primary content kind an app declares. Declaring it as primary is a
-/// fail-closed validation error.
-///
-/// Re-exported from `nmp_nip18`, the single canonical owner of the kind:5
-/// constant and its [`nmp_nip18::DeleteRecord`] decoder (issue #1740 step 5).
-pub use nmp_nip18::KIND_DELETE;
 
 // ---------------------------------------------------------------------------
 // Acquisition source — the closed `PubkeySetExpr` algebra.
@@ -196,9 +183,11 @@ pub struct ProjectionKey(pub String);
 pub struct FeedParams {
     /// The app's PRIMARY content kinds (e.g. `[1]`, `[20]`, `[30023]`).
     ///
-    /// Wrapper kinds (6/16) and the delete kind (5) are compiler-derived
-    /// acquisition and are rejected here as primary input. See
-    /// [`validate_primary_kinds`].
+    /// These are the content kinds the app intends to render. Derived
+    /// acquisition kinds (protocol wrapper kinds and the deletion kind) are NOT
+    /// declared here — they are compiled below the app boundary by the
+    /// composition/compiler layer, which validates that no derived-acquisition
+    /// kind was declared as primary input (fail-closed).
     pub primary_kinds: Vec<u32>,
     /// (a) ACQUISITION source.
     pub acquisition: FeedScope,
@@ -229,68 +218,6 @@ pub struct FeedHandle {
     pub projection_key: ProjectionKey,
     /// Opaque session id (kernel-minted).
     pub session_id: FeedSessionId,
-}
-
-// ---------------------------------------------------------------------------
-// Fail-closed primary-kind validation.
-// ---------------------------------------------------------------------------
-
-/// Typed error for an invalid [`FeedParams`] declaration (D6 — no panic).
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FeedParamsError {
-    /// A NIP-18 repost wrapper kind (6/16) was declared as a primary content
-    /// kind. Wrappers are compiler-derived acquisition, never primary input.
-    RepostWrapperKind { kind: u32 },
-    /// The NIP-09 delete kind (5) was declared as a primary content kind.
-    /// Deletions are compiler-derived suppression acquisition, never primary
-    /// input.
-    DeleteKind,
-    /// No primary kinds were declared.
-    EmptyPrimaryKinds,
-}
-
-impl From<nmp_nip18::PrimaryKindError> for FeedParamsError {
-    fn from(err: nmp_nip18::PrimaryKindError) -> Self {
-        match err {
-            nmp_nip18::PrimaryKindError::RepostWrapper { kind } => {
-                Self::RepostWrapperKind { kind }
-            }
-            nmp_nip18::PrimaryKindError::DeleteKind => Self::DeleteKind,
-        }
-    }
-}
-
-/// Validate app-declared primary kinds and compile them into the concrete
-/// acquisition kind set (primary + derived wrappers + derived deletes).
-///
-/// Fail-closed rejections (D6 — typed error, never panic):
-/// - kind 6 / 16 (NIP-18 repost wrappers) — derived acquisition, not primary;
-/// - kind 5 (NIP-09 deletion) — derived suppression acquisition, not primary;
-/// - an empty primary set.
-///
-/// On success the returned set is `primary ∪ derived-wrappers ∪ {kind 5}`. The
-/// wrapper/delete derivation and all primary-kind rejections (including kind 5)
-/// are owned by `nmp_nip18::try_acquisition_kinds_for_primary` (D4 — single
-/// source for that transform); this function only adds the empty-set guard.
-pub fn validate_primary_kinds<I>(primary_kinds: I) -> Result<BTreeSet<u32>, FeedParamsError>
-where
-    I: IntoIterator<Item = u32>,
-{
-    let kinds: Vec<u32> = primary_kinds.into_iter().collect();
-    if kinds.is_empty() {
-        return Err(FeedParamsError::EmptyPrimaryKinds);
-    }
-    Ok(nmp_nip18::try_acquisition_kinds_for_primary(kinds)?)
-}
-
-impl FeedParams {
-    /// Validate this declaration and return the compiled acquisition kind set.
-    ///
-    /// Step 1 surfaces only primary-kind validation; later steps extend this
-    /// with acquisition/admission/projection registration checks.
-    pub fn validate_primary_kinds(&self) -> Result<BTreeSet<u32>, FeedParamsError> {
-        validate_primary_kinds(self.primary_kinds.iter().copied())
-    }
 }
 
 #[cfg(test)]

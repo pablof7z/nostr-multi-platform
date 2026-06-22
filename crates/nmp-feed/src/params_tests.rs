@@ -1,97 +1,11 @@
 //! Tests for the typed feed-session declaration model (#1740 step 1).
+//!
+//! Primary-kind validation (which kinds are derived acquisition vs. primary
+//! input) is protocol knowledge and now lives in the composition/compiler layer
+//! — see `nmp-defaults` (`compile_feed_params`) and the FFI/WASM boundary
+//! decode tests. These tests cover only the protocol-agnostic param model.
 
 use super::*;
-use std::collections::BTreeSet;
-
-// ---------------------------------------------------------------------------
-// Fail-closed primary-kind validation: reject wrappers (6/16) + delete (5).
-// ---------------------------------------------------------------------------
-
-#[test]
-fn primary_kind_1_is_accepted_and_derives_kind_6_and_delete() {
-    let kinds = validate_primary_kinds([1]).expect("[1] is a valid primary set");
-    assert_eq!(kinds, BTreeSet::from([1, 6, KIND_DELETE]));
-}
-
-#[test]
-fn primary_kind_20_is_accepted_and_derives_kind_16_and_delete() {
-    let kinds = validate_primary_kinds([20]).expect("[20] is a valid primary set");
-    assert_eq!(kinds, BTreeSet::from([20, 16, KIND_DELETE]));
-}
-
-#[test]
-fn primary_kind_30023_is_accepted_and_derives_kind_16_and_delete() {
-    let kinds = validate_primary_kinds([30023]).expect("[30023] is a valid primary set");
-    assert_eq!(kinds, BTreeSet::from([30023, 16, KIND_DELETE]));
-}
-
-#[test]
-fn repost_wrapper_6_is_rejected_as_primary() {
-    assert_eq!(
-        validate_primary_kinds([1, 6]),
-        Err(FeedParamsError::RepostWrapperKind { kind: 6 }),
-        "[1,6] must be rejected: kind 6 is derived acquisition, not primary"
-    );
-}
-
-#[test]
-fn generic_repost_wrapper_16_is_rejected_as_primary() {
-    assert_eq!(
-        validate_primary_kinds([20, 16]),
-        Err(FeedParamsError::RepostWrapperKind { kind: 16 }),
-        "[20,16] must be rejected: kind 16 is derived acquisition, not primary"
-    );
-    assert_eq!(
-        validate_primary_kinds([30023, 16]),
-        Err(FeedParamsError::RepostWrapperKind { kind: 16 }),
-        "[30023,16] must be rejected: kind 16 is derived acquisition, not primary"
-    );
-}
-
-#[test]
-fn delete_kind_5_is_rejected_as_primary() {
-    // [*, 5] — the delete kind is compiler-derived suppression, never primary.
-    assert_eq!(
-        validate_primary_kinds([1, KIND_DELETE]),
-        Err(FeedParamsError::DeleteKind),
-        "[1,5] must be rejected: kind 5 is derived suppression, not primary"
-    );
-    assert_eq!(
-        validate_primary_kinds([20, KIND_DELETE]),
-        Err(FeedParamsError::DeleteKind)
-    );
-    assert_eq!(
-        validate_primary_kinds([30023, KIND_DELETE]),
-        Err(FeedParamsError::DeleteKind)
-    );
-    assert_eq!(
-        validate_primary_kinds([KIND_DELETE]),
-        Err(FeedParamsError::DeleteKind)
-    );
-}
-
-#[test]
-fn empty_primary_set_is_rejected() {
-    assert_eq!(
-        validate_primary_kinds(std::iter::empty::<u32>()),
-        Err(FeedParamsError::EmptyPrimaryKinds)
-    );
-}
-
-#[test]
-fn feed_params_validate_delegates_to_primary_kind_validation() {
-    let ok = sample_params(vec![1]);
-    assert_eq!(
-        ok.validate_primary_kinds(),
-        Ok(BTreeSet::from([1, 6, KIND_DELETE]))
-    );
-
-    let bad = sample_params(vec![1, 6]);
-    assert_eq!(
-        bad.validate_primary_kinds(),
-        Err(FeedParamsError::RepostWrapperKind { kind: 6 })
-    );
-}
 
 // ---------------------------------------------------------------------------
 // FeedScope / PubkeySetExpr construction + exhaustiveness.
