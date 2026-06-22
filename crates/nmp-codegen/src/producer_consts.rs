@@ -26,14 +26,18 @@
 //! differ from a fresh render, so the producer constants can never silently
 //! diverge from the contract.
 //!
-//! ## Scope (#1723 first slice)
+//! ## Scope (#1723 — completes the producer migration)
 //!
-//! Only the `nmp-core` kernel + actor `*_fb.rs` producers — every projection in
-//! this set has a matching `PROJECTION_CONTRACT` entry and lives in the crate the
-//! generator already writes into. The Tier-1 NIP-crate producers (`nmp-nip17` /
-//! `nmp-nip29` / `nmp-nip51`) do NOT depend on `nmp-codegen` and carry
-//! `version: 0` placeholders in the contract; migrating them is a separate slice
-//! tracked on #1723.
+//! The `nmp-core` kernel + actor `*_fb.rs` producers (the #1849 first slice) AND
+//! the Tier-1 NIP-crate producers (`nmp-nip17` / `nmp-nip29` / `nmp-nip51`). Every
+//! projection in this set has a matching `PROJECTION_CONTRACT` entry. The generator
+//! writes by repo-root-relative path, so it can emit into the NIP crates' source
+//! trees even though those crates do NOT depend on `nmp-codegen` — each NIP
+//! `*_fb.rs` simply `include!`s the committed generated file, exactly as the
+//! `nmp-core` codecs do (no build-dep cycle). This retires the interim
+//! [`crate::projection_version_gate`] for the migrated keys: their
+//! `*_SCHEMA_VERSION` is now GENERATED from the contract (covered by this
+//! generator's `--check` gate) instead of hand-declared.
 
 use std::path::Path;
 
@@ -189,6 +193,51 @@ pub const PRODUCER_CONST_TARGETS: &[ProducerConstTarget] = &[
         schema_version_vis: Vis::Crate,
         out_path: "crates/nmp-core/src/actor/typed_projections/signer_state_producer_consts.generated.rs",
     },
+    // ── Tier-1 NIP-crate producers (all consts `pub`) ────────────────────────────
+    // These crates do NOT depend on `nmp-codegen`; the generator writes by
+    // repo-relative path and each `*_fb.rs` `include!`s the committed file (no
+    // build-dep cycle). The contract `key` is the dotted projection key; the
+    // const PREFIX is the producer's `SCREAMING_SNAKE` name.
+    pub_target(
+        "nmp.nip17.dm_inbox",
+        "DM_INBOX",
+        "crates/nmp-nip17/src/wire/dm_inbox_producer_consts.generated.rs",
+    ),
+    pub_target(
+        "nmp.nip17.dm_relay_list",
+        "DM_RELAY_LIST",
+        "crates/nmp-nip17/src/wire/dm_relay_list_producer_consts.generated.rs",
+    ),
+    pub_target(
+        "nmp.nip29.group_chat",
+        "GROUP_CHAT",
+        "crates/nmp-nip29/src/wire/group_chat_producer_consts.generated.rs",
+    ),
+    pub_target(
+        "nmp.nip29.discovered_groups",
+        "DISCOVERED_GROUPS",
+        "crates/nmp-nip29/src/wire/discovered_groups_producer_consts.generated.rs",
+    ),
+    pub_target(
+        "nmp.nip29.group_defaults",
+        "GROUP_DEFAULTS",
+        "crates/nmp-nip29/src/wire/group_defaults_producer_consts.generated.rs",
+    ),
+    pub_target(
+        "nmp.nip29.joined_groups",
+        "JOINED_GROUPS",
+        "crates/nmp-nip29/src/wire/joined_groups_producer_consts.generated.rs",
+    ),
+    pub_target(
+        "nmp.nip29.group_events",
+        "GROUP_EVENTS",
+        "crates/nmp-nip29/src/wire/group_events_producer_consts.generated.rs",
+    ),
+    pub_target(
+        "nmp.nip51.mute_list",
+        "MUTE_LIST",
+        "crates/nmp-nip51/src/wire/mute_list_producer_consts.generated.rs",
+    ),
 ];
 
 /// Build an all-`pub` kernel target (the common case).
@@ -368,6 +417,20 @@ mod tests {
         assert!(r.contains("pub const SIGNER_STATE_SCHEMA_ID: &str = \"signer_state\";"));
         assert!(r.contains("pub(crate) const SIGNER_STATE_FILE_IDENTIFIER: &[u8; 4] = b\"KSST\";"));
         assert!(r.contains("pub(crate) const SIGNER_STATE_SCHEMA_VERSION: u32 = 1;"));
+    }
+
+    /// The migrated NIP-crate targets render their dotted-key SCHEMA_ID, NIP
+    /// file identifier, and the contract version (all `pub`).
+    #[test]
+    fn nip_targets_render_dotted_schema_id_and_contract_version() {
+        let target = PRODUCER_CONST_TARGETS
+            .iter()
+            .find(|t| t.key == "nmp.nip17.dm_inbox")
+            .expect("dm_inbox target present");
+        let r = render_producer_consts(target);
+        assert!(r.contains("pub const DM_INBOX_SCHEMA_ID: &str = \"nmp.nip17.dm_inbox\";"));
+        assert!(r.contains("pub const DM_INBOX_FILE_IDENTIFIER: &[u8; 4] = b\"NDMI\";"));
+        assert!(r.contains("pub const DM_INBOX_SCHEMA_VERSION: u32 = 2;"));
     }
 
     /// Render is deterministic.
