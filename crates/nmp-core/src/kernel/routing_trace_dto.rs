@@ -240,7 +240,6 @@ fn app_relay_mode_str(m: AppRelayMode) -> &'static str {
 
 fn event_class_to_json(c: &EventClass) -> Value {
     match c {
-        EventClass::Search => json!({ "kind": "Search" }),
         EventClass::Draft => json!({ "kind": "Draft" }),
         EventClass::Wiki => json!({ "kind": "Wiki" }),
         EventClass::Other(name) => json!({ "kind": "Other", "name": name }),
@@ -370,7 +369,7 @@ mod tests {
             ),
             (
                 Src::ClassRouted {
-                    class: EventClass::Search,
+                    class: EventClass::Draft,
                     via: ClassRoutingPath::Nip51,
                 },
                 "ClassRouted",
