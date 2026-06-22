@@ -28,7 +28,8 @@ pub use typed_wire::{
     OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION,
 };
 pub use wiring::{
-    op_feed_observer, register_op_feed, OpFeedEngine, OpFeedObserver, OP_FEED_SNAPSHOT_KEY,
+    op_feed_observer, register_op_feed, register_op_feed_with_admission, OpFeedEngine,
+    OpFeedObserver, OP_FEED_SNAPSHOT_KEY,
 };
 
 #[cfg(test)]

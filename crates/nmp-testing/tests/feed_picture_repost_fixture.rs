@@ -214,7 +214,8 @@ fn fixture_relay_kind20_feed_gets_kind16_reposts_for_free() {
         acquisition_kinds,
         [
             nmp_nip68::KIND_PICTURE_EVENT,
-            nmp_nip18::KIND_GENERIC_REPOST
+            nmp_nip18::KIND_GENERIC_REPOST,
+            nmp_nip18::KIND_DELETE,
         ]
         .into_iter()
         .collect()

@@ -260,8 +260,9 @@ fn mixed_primary_kinds_derive_kind6_and_kind16_without_secondary_hydration() {
             nmp_nip18::KIND_REPOST,
             nmp_nip18::KIND_GENERIC_REPOST,
             nmp_nip68::KIND_PICTURE_EVENT,
+            nmp_nip18::KIND_DELETE,
         ]),
-        "mixed primary feed declaration derives both repost wrapper kinds"
+        "mixed primary feed declaration derives both repost wrapper kinds and deletes"
     );
     assert!(
         nmp_nip18::try_acquisition_kinds_for_primary([1, nmp_nip18::KIND_REPOST]).is_err(),

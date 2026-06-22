@@ -138,8 +138,20 @@ impl Harness {
     }
 
     /// Construct a harness with a caller-supplied [`EventGate`], so a test can
-    /// assert that gated-out kinds never touch engine state.
+    /// assert that gated-out kinds never touch engine state. Roots admit-all
+    /// (the perspective gate is exercised by [`Self::with_root_admission`]).
     pub(super) fn with_gate(follows: &[&str], event_gate: EventGate) -> Self {
+        Self::with_root_admission(follows, event_gate, crate::admit_all_roots())
+    }
+
+    /// Construct a harness with a caller-supplied ROOT-admission predicate, so a
+    /// test can assert the compiled perspective gates which roots enter the feed
+    /// (#1740 step 3).
+    pub(super) fn with_root_admission(
+        follows: &[&str],
+        event_gate: EventGate,
+        root_admission: crate::RootAdmission,
+    ) -> Self {
         let follow_set: HashSet<String> = follows.iter().map(|s| (*s).to_string()).collect();
         let follow: FollowPredicate = Arc::new(move |pk: &str| follow_set.contains(pk));
 
@@ -174,6 +186,7 @@ impl Harness {
         let engine = Arc::new(RootIndexedFeed::new(
             TestResolver,
             follow,
+            root_admission,
             event_gate,
             event_lookup,
             card_builder,

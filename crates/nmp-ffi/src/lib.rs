@@ -53,6 +53,9 @@ mod sign_event_for_return_tests;
 // transient-feed teardown-seam tests.
 mod event_observer;
 mod feed;
+// #1740 step 2 — `NmpApp::open_feed` / `close_feed` session registry over the
+// existing feed mechanics. Rust-level seam only (the C/wasm surface is step 7).
+mod feed_session;
 mod identity;
 #[cfg(test)]
 #[path = "interest_feed_tests.rs"]
@@ -148,6 +151,19 @@ pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callbac
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "native")]
 pub use feed::nmp_app_load_older_feed;
+// #1740 step 1 — typed feed-session param types + boundary decode/validation
+// (no `open_feed` dispatch yet; that is step 2).
+#[cfg(feature = "native")]
+pub use feed::{
+    decode_and_validate_feed_params, validate_feed_params, FeedAdmission, FeedHandle, FeedParams,
+    FeedParamsDecodeError, FeedParamsError, FeedRanking, FeedScope, FeedSessionId, FeedWindow,
+    ProjectionKey, PubkeySetExpr,
+};
+// #1740 step 2 — `open_feed`/`close_feed` session-registry seam (Rust-level).
+#[cfg(feature = "native")]
+pub use feed_session::{
+    handle_projection_key, FeedCompileOutput, FeedCompiler, FeedOpenError, FeedTeardown,
+};
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
 #[cfg(feature = "native")]
@@ -684,6 +700,17 @@ pub struct NmpApp {
     /// surfaces here; shells report viewport intent through generic feed FFI
     /// instead of app-specific cursor/window APIs.
     feed_registry: nmp_feed::FeedRegistrySlot,
+    /// #1740 step 2 — the feed-SESSION registry: one record per live
+    /// [`Self::open_feed`] call owning that feed's full teardown recipe
+    /// (projection key, observer/interest ids, pull controller, typed sidecar).
+    /// [`Self::close_feed`] looks the session up by the returned handle's id and
+    /// runs its teardown idempotently. Engine-agnostic (it stores opaque
+    /// teardown closures the compiler supplied — D0/D4); not a second feed
+    /// engine, a session WRAPPER over the existing `register_feed*` mechanics.
+    feed_sessions: Arc<nmp_feed::FeedSessionRegistry>,
+    /// #1740 step 4 — app-registered custom-perspective definitions (closed
+    /// data, keyed by opaque id). See [`Self::register_custom_perspective`].
+    custom_perspectives: Arc<nmp_feed::PerspectiveRegistry>,
     /// Per-open feed → ingest-observer bookkeeping for *transient* feeds (a
     /// visited profile / open thread registered through
     /// [`Self::register_feed_with_observer`]). The home feed is NOT here — it
@@ -1036,6 +1063,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_external_event_sink_dispatcher_slot =
         Arc::clone(&external_event_sink_dispatcher_slot);
     let feed_registry = nmp_feed::new_feed_registry_slot();
+    let feed_sessions = Arc::new(nmp_feed::FeedSessionRegistry::default());
     // One-shot MLS-autopublish intent flag. Not shared with the actor thread,
     // so a bare `AtomicBool` — no `Arc`, no `Mutex` — is the right primitive.
     let pending_mls_autopublish = AtomicBool::new(false);
@@ -1338,6 +1366,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // `nmp_app_register_snapshot_projection` during init.
         snapshot_projections,
         feed_registry,
+        // #1740 step 2 — empty until the first `open_feed`.
+        feed_sessions,
+        // #1740 step 4 — empty until the first `register_custom_perspective`.
+        custom_perspectives: Arc::new(nmp_feed::PerspectiveRegistry::default()),
         // Per-open transient-feed observer bookkeeping; empty until the first
         // `register_feed_with_observer` (a visited profile / open thread).
         interest_feed_observers: Mutex::new(std::collections::HashMap::new()),
@@ -1465,7 +1497,7 @@ impl NmpApp {
             Err(_) => {
                 self.send_cmd(ActorCommand::ShowToast {
                     message:
-                        "declare_active_follows_feed: primary kinds must not include repost wrappers"
+                        "declare_active_follows_feed: primary kinds must not include repost wrappers or the delete kind"
                             .to_string(),
                 });
                 return false;
@@ -2068,6 +2100,48 @@ impl NmpApp {
     #[must_use]
     pub fn pull_cursor_registry_handle(&self) -> PullCursorRegistryHandleSlot {
         Arc::clone(&self.pull_cursor_registry)
+    }
+
+    /// #1740 step 2 — clone the feed-controller registry slot.
+    ///
+    /// A feed-session compiler captures this `Arc` into a `Send` teardown
+    /// closure so `close_feed` can `unregister` the session's controller
+    /// without holding `&NmpApp`. The slot is the SAME registry
+    /// [`Self::register_feed`] writes into (single source of truth — D4).
+    #[must_use]
+    pub fn feed_registry_handle(&self) -> nmp_feed::FeedRegistrySlot {
+        Arc::clone(&self.feed_registry)
+    }
+
+    /// #1740 step 2 — clone the snapshot-projection registry slot.
+    ///
+    /// Captured into a feed-session teardown closure to remove the session's
+    /// typed sidecar projection on `close_feed`. Same slot
+    /// [`Self::register_typed_snapshot_projection`] writes into.
+    #[must_use]
+    pub fn snapshot_projections_handle(&self) -> SnapshotProjectionSlot {
+        Arc::clone(&self.snapshot_projections)
+    }
+
+    /// #1740 step 2 — clone the kernel-event-observer registry slot.
+    ///
+    /// Captured into a feed-session teardown closure to revoke the session's
+    /// ingest observer by id on `close_feed`. Same slot
+    /// [`Self::register_event_observer`] writes into (D4).
+    #[must_use]
+    pub fn event_observers_handle(&self) -> KernelEventObserverSlot {
+        Arc::clone(&self.event_observers)
+    }
+
+    /// #1740 step 2 — clone the actor command sender.
+    ///
+    /// Captured into a feed-session teardown closure so it can post a
+    /// `MarkChangedSinceEmit` after removing the session's registrations, making
+    /// the next snapshot tick reflect the teardown. Cheap `Clone` over the same
+    /// inbox the actor blocks on.
+    #[must_use]
+    pub fn command_sender(&self) -> nmp_core::CommandSender {
+        self.tx.clone()
     }
 
     /// V-83 — synchronous event-by-id read against the kernel's event store.

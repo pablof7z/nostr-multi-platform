@@ -148,6 +148,10 @@ pub struct OpFeedDefaults {
     /// kind:3 updates and as an `NmpApp` identity observer for sign-in, switch,
     /// logout, and reset.
     pub follow_set: Arc<ActiveFollowSet>,
+    /// #1740 step 2 — the observer ids the wiring installed so a feed SESSION can
+    /// revoke them on `close_feed` (was app-lifetime). `[follow_set, engine]`; a
+    /// zero id (poisoned slot at install) revokes as a harmless no-op.
+    pub observer_ids: [nmp_core::KernelEventObserverId; 2],
 }
 
 /// Wire the OP-centric home feed into `app`.
@@ -228,7 +232,9 @@ fn register_op_feed_defaults_inner(
     // observer slot was poisoned — a soft-fail (the predicate degrades to the
     // self-seeded set), so we drop the id rather than abort the whole wiring.
     let follow_set_observer: Arc<dyn KernelEventObserver> = follow_set.clone();
-    let _follow_set_observer_id = app.register_event_observer(follow_set_observer);
+    // #1740 step 2: capture the id so a feed session can revoke this observer on
+    // close (was discarded — app-lifetime). Zero id ⇒ soft-fail, revoke no-ops.
+    let follow_set_observer_id = app.register_event_observer(follow_set_observer);
 
     // ── 2. Declare active-follows acquisition from app primary kinds ─────
     //
@@ -263,7 +269,8 @@ fn register_op_feed_defaults_inner(
     // ── 5. Register the engine (ingest + output) ─────────────────────────
     let observer = op_feed_observer(engine.clone(), event_lookup_for_observer, suppression);
     let observer_for_registry: Arc<dyn KernelEventObserver> = observer.clone();
-    let _engine_observer_id = app.register_event_observer(observer_for_registry);
+    // #1740 step 2: capture so a session can revoke the engine ingest observer.
+    let engine_observer_id = app.register_event_observer(observer_for_registry);
 
     // ── 5a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
     //
@@ -447,6 +454,7 @@ fn register_op_feed_defaults_inner(
         engine,
         controller,
         follow_set,
+        observer_ids: [follow_set_observer_id, engine_observer_id],
     }
 }
 
@@ -480,7 +488,7 @@ fn live_active_follows_shape(
 
 /// Read the active account's hex pubkey from the slot, or `None` when no
 /// account is signed in or the lock is poisoned (D6).
-fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
+pub(crate) fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
     match slot.lock() {
         Ok(guard) => guard.clone(),
         Err(_) => None,
@@ -491,6 +499,10 @@ fn visible_op_feed_payload(engine: &OpFeedEngine) -> Vec<u8> {
     let snapshot = engine.snapshot_current_window();
     nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
 }
+
+// #1740 step 2 — `FeedParams` → existing-registration compiler (sibling module).
+mod session_compile;
+pub use session_compile::compile_feed_params;
 
 #[cfg(test)]
 #[path = "op_feed_defaults/tests.rs"]

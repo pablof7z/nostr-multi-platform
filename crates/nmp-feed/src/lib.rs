@@ -13,31 +13,43 @@
 //!   targets, relation counts, or previews; components and sibling modules own
 //!   those dependencies.
 
+mod admit;
 mod flat;
 mod pager;
+mod params;
+mod perspective;
 mod pull_controller;
 mod registry;
 mod render_source;
 mod root_indexed;
+mod session;
 pub mod typed_wire;
 mod types;
 mod window;
 
+pub use admit::AdmitExpr;
 pub use flat::{FlatFeed, FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, FlatFeedPredicate};
 pub use pager::{
     raw_to_kernel_event, DrainOutcome, DrainStop, FeedInterestShape, FeedPullPager,
     DEFAULT_PULL_PAGE_SIZE, DEFAULT_PULL_SCAN_BUDGET, MAX_PULL_SCAN_BUDGET,
 };
+pub use params::{
+    CustomPerspectiveId, FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedScope,
+    FeedSessionId, FeedWindow, ListId, ProjectionKey, PubkeySetExpr, RelaySetId, TagTerm,
+    WotRulesId, WotSeed,
+};
+pub use perspective::{CustomPerspectiveDef, PerspectiveRegistry};
 pub use pull_controller::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedReplace, FeedReset, PullFeedController,
     PullFn,
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
 pub use render_source::FeedRenderSource;
+pub use session::{FeedSessionBuild, FeedSessionRegistry, TeardownAction};
 pub use root_indexed::{
-    AttributionAuthors, AttributionPayload, CardAuthors, CardBuilder, EventGate, EventLookup,
-    FeedAuthorRefs, FollowPredicate, RootCard, RootFeedSnapshot, RootIndexedFeed,
-    MAX_ATTRIBUTION_PER_ROOT,
+    admit_all_roots, AttributionAuthors, AttributionPayload, CardAuthors, CardBuilder, EventGate,
+    EventLookup, FeedAuthorRefs, FollowPredicate, RootAdmission, RootCard, RootFeedSnapshot,
+    RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
 };
 pub use typed_wire::{
     decode_feed_window, encode_feed_window, FeedWindowWire, FEED_WINDOW_FILE_IDENTIFIER,

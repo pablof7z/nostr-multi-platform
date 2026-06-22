@@ -205,11 +205,15 @@ pub(crate) fn parse_primary_kinds_json(s: &str) -> Option<std::collections::BTre
     let mut set = std::collections::BTreeSet::new();
     for element in &arr {
         match element.as_u64().and_then(|n| u32::try_from(n).ok()) {
-            Some(k) if !nmp_nip18::is_repost_kind(k) => {
+            // Repost wrappers (6/16) and the delete kind (5) are compiler-derived
+            // acquisition, never primary app input (issue #1740 step 5) — reject
+            // them here so the app-facing parser fails closed, not only the lower
+            // `NmpApp` call.
+            Some(k) if !nmp_nip18::is_repost_kind(k) && k != nmp_nip18::KIND_DELETE => {
                 set.insert(k);
             }
-            None => return None,    // first invalid element → bail
-            Some(_) => return None, // repost wrappers are derived, not primary
+            None => return None, // first invalid element → bail
+            Some(_) => return None, // repost wrappers / delete kind are derived, not primary
         }
     }
     Some(set)
@@ -219,8 +223,9 @@ pub(crate) fn parse_primary_kinds_json(s: &str) -> Option<std::collections::BTre
 ///
 /// `primary_kinds_json` is a JSON array of unsigned 32-bit integers identifying
 /// the primary content kinds the app wants to render, e.g. `"[1]"` for Chirp.
-/// Repost wrappers are derived here (`6` for primary kind `1`, `16` for every
-/// non-kind-1 primary target) before the compiled acquisition set is sent to
+/// Repost wrappers (`6` for primary kind `1`, `16` for every non-kind-1 primary
+/// target) and the delete kind (`5`) are derived acquisition, so declaring them
+/// as primary fails closed here before the compiled acquisition set is sent to
 /// `nmp-core`. An empty array `"[]"` is a legitimate clear. A malformed or
 /// non-array value, or any element that is not a non-negative integer fitting
 /// in u32, surfaces a diagnostic toast rather than a panic or silent
@@ -354,6 +359,14 @@ mod kinds_parse_tests {
     }
 
     #[test]
+    fn delete_kind_primary_is_rejected() {
+        // kind:5 is compiler-derived suppression acquisition, never primary
+        // app input — the app-facing parser must fail closed.
+        assert!(parse_primary_kinds_json("[5]").is_none());
+        assert!(parse_primary_kinds_json("[1, 5]").is_none());
+    }
+
+    #[test]
     fn non_array_top_level_is_rejected() {
         assert!(parse_primary_kinds_json(r#"{"kinds":[1,6]}"#).is_none());
         assert!(parse_primary_kinds_json("1").is_none());
@@ -361,20 +374,20 @@ mod kinds_parse_tests {
     }
 
     #[test]
-    fn primary_kind_1_expands_to_kind_6_acquisition() {
+    fn primary_kind_1_expands_to_kind_6_and_delete_acquisition() {
         let primary = parse_primary_kinds_json("[1]").unwrap();
         assert_eq!(
             nmp_nip18::acquisition_kinds_for_primary(primary),
-            BTreeSet::from([1u32, 6u32])
+            BTreeSet::from([1u32, 6u32, nmp_nip18::KIND_DELETE])
         );
     }
 
     #[test]
-    fn non_kind_1_primary_expands_to_kind_16_acquisition() {
+    fn non_kind_1_primary_expands_to_kind_16_and_delete_acquisition() {
         let primary = parse_primary_kinds_json("[20]").unwrap();
         assert_eq!(
             nmp_nip18::acquisition_kinds_for_primary(primary),
-            BTreeSet::from([16u32, 20u32])
+            BTreeSet::from([16u32, 20u32, nmp_nip18::KIND_DELETE])
         );
     }
 }

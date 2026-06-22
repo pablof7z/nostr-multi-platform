@@ -261,6 +261,37 @@ fn observer_applies_only_author_validated_kind5_deletes() {
 }
 
 #[test]
+fn observer_kind5_deletes_repost_row_by_wrapper_id() {
+    // A repost-sourced row is keyed by the wrapped TARGET id; deleting the
+    // kind:6 wrapper names the WRAPPER id. The delete must still drop the row
+    // (validated against the reposter), otherwise a deleted repost keeps
+    // surfacing an out-of-perspective target.
+    let h = SuppressionHarness::new(&[ALICE]);
+    // ALICE (followed) reposts BOB's note. Row surfaces keyed by OP_ID.
+    h.observe(&op_event(OP_ID, BOB, 9, "reposted target"));
+    h.observe(&repost_etag(REPOST_ID, ALICE, 20, OP_ID));
+    let snap = h.snapshot();
+    assert_eq!(snap.cards.len(), 1);
+    assert_eq!(snap.cards[0].card.id, OP_ID);
+
+    // A foreign kind:5 naming the wrapper id must not remove the repost row.
+    h.observe(&delete_event(REPLY_ID, CAROL, REPOST_ID));
+    assert_eq!(
+        h.snapshot().cards.len(),
+        1,
+        "foreign delete of the wrapper id must not remove the repost row"
+    );
+
+    // The reposter's own kind:5 naming the wrapper id removes the repost row.
+    let del = "0000000000000000000000000000000000000000000000000000000000000de5";
+    h.observe(&delete_event(del, ALICE, REPOST_ID));
+    assert!(
+        h.snapshot().cards.is_empty(),
+        "reposter's kind:5 of the wrapper id removes the repost-sourced row"
+    );
+}
+
+#[test]
 fn snapshot_shape_is_root_card_with_raw_attribution() {
     let h = Harness::new(&[ALICE, CAROL]);
     h.ingest(&op_event(OP_ID, BOB, 9, "root body"));
