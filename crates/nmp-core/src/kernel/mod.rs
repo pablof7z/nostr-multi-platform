@@ -39,6 +39,13 @@ pub(crate) mod action_stages;
 #[cfg(test)]
 mod action_stages_tests;
 #[cfg(test)]
+mod cancel_correlation_tests;
+#[cfg(test)]
+mod publish_completion_forget_tests; // D8 — forget handle↔correlation on completion (S7/#1754)
+pub(crate) mod handle_correlation; // handle ↔ dispatch-correlation_id (S7, #1754)
+mod relay_list_substrate;
+pub(crate) use relay_list_substrate::parse_relay_list_to_substrate;
+#[cfg(test)]
 mod signed_events_return_tests;
 // V-59 rung 1 — public typed accessor over the active account's
 // `timeline_authors` projection (raw pubkeys). The OP-centric feed's
@@ -413,7 +420,7 @@ pub use relay_frame::RelayFrame;
 /// doc for the return-type / scope rationale.
 pub mod public_typed_projections;
 
-use nostr::{parse_relay_list, ratio, short_hex, truncate, NostrEvent};
+use nostr::{ratio, short_hex, truncate, NostrEvent};
 // V-01 Phase 1c follow-up: `now_hms` is `#[cfg(feature = "native")]` in
 // `kernel/nostr.rs` (reads the OS wall clock via `chrono::Local`). Importing
 // it unconditionally breaks `--no-default-features` (wasm32) builds. The
@@ -1204,6 +1211,9 @@ pub struct Kernel {
     /// host ack required. Drives the host's spinner/toast UI without any
     /// reducer-side bookkeeping in the shell.
     action_lifecycle: action_lifecycle::ActionLifecycleTracker,
+    /// Durable handle→`correlation_id` index so cancel-by-id lands the
+    /// `Cancelled` terminal under the original id (S7/#1754, PD-036).
+    publish_handle_correlation: handle_correlation::HandleCorrelationIndex,
     /// Per-tick capture of the FIVE drain-on-emit / wall-clock-sensitive
     /// projection values, written ONCE at their JSON-insertion site in
     /// `snapshot_projections_with_publish_cluster` and read by the Tier-2
@@ -2078,6 +2088,7 @@ impl Kernel {
             configured_relays: Vec::new(),
             action_stages: action_stages::ActionStageTracker::new(),
             action_lifecycle: action_lifecycle::ActionLifecycleTracker::new(),
+            publish_handle_correlation: handle_correlation::HandleCorrelationIndex::new(),
             captured_action_results: None,
             captured_signed_events: None,
             captured_action_stages: None,
@@ -2780,20 +2791,5 @@ impl Kernel {
     #[allow(dead_code)] // Reserved for follow-on wiring of actual routing call sites.
     pub(crate) fn outbox_router(&self) -> &dyn OutboxRouter {
         &*self.outbox_router
-    }
-}
-
-/// Translate `parse_relay_list` output into the [`ParsedRelayList`] form
-/// the [`MailboxCache`] trait operates on.
-///
-/// Supersession is enforced by the store before this path is reached;
-/// there is no kernel-side belt-and-suspenders mirror (single source of
-/// truth per `AGENTS.md`).
-fn parse_relay_list_to_substrate(tags: &[Vec<String>]) -> ParsedRelayList {
-    let legacy = parse_relay_list(tags);
-    ParsedRelayList {
-        read: legacy.read_relays,
-        write: legacy.write_relays,
-        both: legacy.both_relays,
     }
 }

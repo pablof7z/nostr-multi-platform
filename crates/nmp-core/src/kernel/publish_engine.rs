@@ -195,6 +195,15 @@ impl Kernel {
             .start_publish(action, now_ms, correlation_id_override.clone())
         {
             Ok(()) => {
+                // S7 (#1754): this is the single engine-entry site that knows
+                // BOTH the publish handle (== event id) and the original
+                // dispatch correlation_id. Record the durable handle↔correlation
+                // index so a later cancel-by-correlation-id can reverse-resolve
+                // the handle AND land the `Cancelled` terminal under the
+                // ORIGINAL correlation_id (PD-036). `None` maps the handle to
+                // itself, preserving cancel-by-handle for internal publishes.
+                self.publish_handle_correlation
+                    .record(&event_id, correlation_id_override.as_deref());
                 // A `correlation_id`-bearing publish reached the engine's
                 // accept path — record `Publishing` so the host's stage
                 // mirror reflects the lifecycle transition. The detail

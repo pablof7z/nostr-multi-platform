@@ -70,6 +70,17 @@ class TypedActionLifecycleDecoderTest {
         assertEquals("relay rejected", out.recentTerminal[0].reason)
     }
 
+    @Test
+    fun cancelledTerminalDecodesDistinctFromFailed() {
+        // S7/#1754: the DISTINCT user-initiated `cancelled` terminal decodes as
+        // its own stage string — never `failed`. It carries no reason.
+        val out = requireNotNull(TypedActionLifecycleDecoder.decode(cancelledTerminalBuffer()))
+        assertEquals(1, out.recentTerminal.size)
+        assertEquals("op-corr-cancel", out.recentTerminal[0].correlationId)
+        assertEquals("cancelled", out.recentTerminal[0].stage)
+        assertNull(out.recentTerminal[0].reason)
+    }
+
     // ── builders ───────────────────────────────────────────────────────────────
 
     private fun entry(
@@ -111,6 +122,18 @@ class TypedActionLifecycleDecoderTest {
         val b = FlatBufferBuilder(256)
         val terminal = ActionLifecycleSnapshot.createRecentTerminalVector(
             b, intArrayOf(entry(b, "corr-2", "failed", "relay rejected")),
+        )
+        ActionLifecycleSnapshot.startActionLifecycleSnapshot(b)
+        ActionLifecycleSnapshot.addRecentTerminal(b, terminal)
+        val snap = ActionLifecycleSnapshot.endActionLifecycleSnapshot(b)
+        ActionLifecycleSnapshot.finishActionLifecycleSnapshotBuffer(b, snap)
+        return b.sizedByteArray()
+    }
+
+    private fun cancelledTerminalBuffer(): ByteArray {
+        val b = FlatBufferBuilder(256)
+        val terminal = ActionLifecycleSnapshot.createRecentTerminalVector(
+            b, intArrayOf(entry(b, "op-corr-cancel", "cancelled", null)),
         )
         ActionLifecycleSnapshot.startActionLifecycleSnapshot(b)
         ActionLifecycleSnapshot.addRecentTerminal(b, terminal)

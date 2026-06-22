@@ -84,7 +84,7 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
 
 #[test]
 fn parse_relay_list_splits_nip65_markers() {
-    let parsed = parse_relay_list(&[
+    let parsed = super::nostr::parse_relay_list(&[
         vec![
             "r".to_string(),
             "wss://read.example".to_string(),

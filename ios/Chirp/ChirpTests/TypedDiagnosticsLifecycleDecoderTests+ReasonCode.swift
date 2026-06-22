@@ -84,6 +84,29 @@ extension TypedDiagnosticsLifecycleDecoderTests {
         XCTAssertNotEqual(snap.recentTerminal[0].stage.localizedReason, "no active account")
     }
 
+    /// S7/#1754: a `"cancelled"` wire stage decodes to the DISTINCT
+    /// `.cancelled` terminal — never `.failed`, never `.unknown`. The host
+    /// renders a user-initiated cancellation without an error treatment.
+    func testTypedActionLifecycleCancelledStageDecodes() throws {
+        var fbb = FlatBufferBuilder(initialSize: 256)
+        let entries = lifecycleVec(&fbb, [("typed-cancelled", "cancelled", false, "")])
+        let root = nmp_kernel_ActionLifecycleSnapshot.createActionLifecycleSnapshot(
+            &fbb, recentTerminalVectorOffset: entries)
+        nmp_kernel_ActionLifecycleSnapshot.finish(&fbb, end: root)
+
+        let envelope = TypedProjectionEnvelope(
+            key: TypedActionLifecycleDecoder.key,
+            schemaId: TypedActionLifecycleDecoder.schemaId,
+            schemaVersion: 1,
+            fileIdentifier: TypedActionLifecycleDecoder.fileIdentifier,
+            payload: fbb.data)
+        let snap = try XCTUnwrap(TypedActionLifecycleDecoder.decode(from: [envelope]))
+        XCTAssertEqual(snap.recentTerminal.count, 1)
+        XCTAssertEqual(snap.recentTerminal[0].correlationId, "typed-cancelled")
+        XCTAssertEqual(snap.recentTerminal[0].stage, .cancelled)
+        XCTAssertTrue(snap.recentTerminal[0].stage.isTerminal)
+    }
+
     /// An unrecognised wire stage must collapse to `.unknown(raw:)` (D1
     /// forward-compat), mirroring the JSON `init(from:)` default branch.
     func testTypedActionLifecycleUnknownStageDegrades() throws {

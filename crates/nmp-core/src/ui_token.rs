@@ -213,6 +213,13 @@ pub mod codes {
     /// supply an explicit relay set.
     pub const LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET: &str =
         "lifecycle_publish_no_explicit_target";
+    /// A signing/capability round-trip was denied or timed out (NIP-46 bunker /
+    /// NIP-55 Android remote signer rejected the request, or the approval budget
+    /// elapsed). This is a `Failed` terminal with a CURATED code — distinct from
+    /// a user-initiated `Cancelled` terminal (S7, #1754): the user did not ask to
+    /// cancel; the capability fulfiller refused. The shell's localized copy
+    /// explains the signer declined.
+    pub const LIFECYCLE_SIGN_CAPABILITY_DENIED: &str = "lifecycle_sign_capability_denied";
 }
 
 #[cfg(test)]

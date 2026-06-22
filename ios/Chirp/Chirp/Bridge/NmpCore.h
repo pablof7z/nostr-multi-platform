@@ -194,10 +194,14 @@ char *nmp_nip21_decode_uri(const char *input);
 // Every user / app-authored publish now goes through the single
 // `nmp_app_dispatch_action` door under the `"nmp.publish"` namespace
 // (see the action seam below). What stays here is the *control plane* —
-// retry / cancel address an already-queued publish handle, never produce
-// events, and have no `dispatch_action` equivalent.
+// retry addresses an already-queued publish handle; cancel (S7/#1754,
+// replacing the deleted `nmp_app_cancel_publish` handle symbol) addresses the
+// operation `correlation_id` — the kernel reverse-resolves the publish handle
+// from a durable handle↔correlation index and records the user-initiated
+// `cancelled` terminal under the ORIGINAL correlation_id (PD-036). Neither
+// produces events nor has a `dispatch_action` equivalent.
 void nmp_app_retry_publish(void *app, const char *handle);
-void nmp_app_cancel_publish(void *app, const char *handle);
+void nmp_app_cancel_action(void *app, const char *correlation_id);
 
 // ── T146 — kernel event observer ─────────────────────────────────────────
 //

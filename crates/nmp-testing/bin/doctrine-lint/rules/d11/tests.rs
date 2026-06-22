@@ -94,9 +94,9 @@ fn whitelists_retry_publish_body() {
 }
 
 #[test]
-fn whitelists_cancel_publish_body() {
+fn whitelists_cancel_action_body() {
     let lines = [
-        "pub extern \"C\" fn nmp_app_cancel_publish(app: *mut NmpApp, handle: *const c_char) {",
+        "pub extern \"C\" fn nmp_app_cancel_action(app: *mut NmpApp, correlation_id: *const c_char) {",
         "    app.send_cmd(ActorCommand::PublishUnsignedEvent(_));",
         "}",
     ];
@@ -251,9 +251,9 @@ fn wrapped_signature_promotes_on_brace_line() {
 fn wrapped_whitelisted_signature_still_exempt() {
     // Whitelist must apply through the wrapped-signature path too.
     let lines = [
-        "pub extern \"C\" fn nmp_app_cancel_publish(",
+        "pub extern \"C\" fn nmp_app_cancel_action(",
         "    app: *mut NmpApp,",
-        "    handle: *const c_char,",
+        "    correlation_id: *const c_char,",
         ") {",
         "    let _ = ActorCommand::PublishUnsignedEvent(_);",
         "}",

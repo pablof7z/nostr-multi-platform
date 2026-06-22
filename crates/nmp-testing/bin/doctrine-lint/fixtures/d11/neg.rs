@@ -1,7 +1,7 @@
 //! Negative D11 fixture — must produce ZERO findings of any rule.
 //!
 //! Exercises every D11 exemption:
-//!   1. Whitelisted symbols (`nmp_app_retry_publish`, `nmp_app_cancel_publish`)
+//!   1. Whitelisted symbols (`nmp_app_retry_publish`, `nmp_app_cancel_action`)
 //!      construct banned variants — the whitelist must suppress them.
 //!   2. A non-FFI helper builds a banned variant — D11 only fires inside
 //!      `extern "C" fn nmp_app_*` bodies, so this is exempt.
@@ -23,9 +23,9 @@ pub extern "C" fn nmp_app_retry_publish(_app: *mut NmpApp, _handle: *const c_cha
 
 // (1) Wrapped whitelisted signature — exemption flows through the wrapped
 // opener path too.
-pub extern "C" fn nmp_app_cancel_publish(
+pub extern "C" fn nmp_app_cancel_action(
     _app: *mut NmpApp,
-    _handle: *const c_char,
+    _correlation_id: *const c_char,
 ) {
     let _ = ActorCommand::PublishUnsignedEvent(u);
 }

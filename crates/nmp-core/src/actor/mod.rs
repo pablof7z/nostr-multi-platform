@@ -763,9 +763,15 @@ pub enum ActorCommand {
     RetryPublish {
         handle: String,
     },
-    /// User intent from the outbox UI: cancel a still-pending publish.
+    /// User intent from the outbox UI: cancel a still-pending publish,
+    /// addressed by the operation's `correlation_id` (S7, #1754). The kernel's
+    /// cancel-by-id doorway reverse-resolves the publish handle from the durable
+    /// handle↔correlation index and records the user-initiated `Cancelled`
+    /// terminal under this ORIGINAL `correlation_id` (PD-036). A raw publish
+    /// handle is also accepted (the index self-maps it) so internal callers that
+    /// only know the handle still resolve.
     CancelPublish {
-        handle: String,
+        correlation_id: String,
     },
     /// T66a publish — append `pubkey` to the active account's kind:3 follow
     /// set and re-publish it.
@@ -2128,13 +2134,17 @@ pub fn run_actor_with_observers(
                     PublishObligation::Failed {
                         toast,
                         correlation_id_override,
+                        reason_code,
                     } => {
                         kernel.set_last_error_toast(Some(toast.clone()));
                         // Recorded BEFORE `emit_now` (below) so this tick's
                         // snapshot drains it; `None` (a `react` / `follow` park)
-                        // is a no-op — nothing is waiting on an id.
+                        // is a no-op — nothing is waiting on an id. A
+                        // capability/signer denial carries the curated
+                        // `reason_code` (S7, #1754) so the host localizes the
+                        // failure; an un-coded failure stays prose-only.
                         if let Some(id) = correlation_id_override {
-                            kernel.record_action_failure(id, toast);
+                            kernel.record_action_failure_coded(id, toast, reason_code, None);
                         }
                     }
                 }

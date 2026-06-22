@@ -102,13 +102,18 @@ pub enum LifecycleStage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason_subject: Option<String>,
     },
+    /// User-initiated cancellation — a DISTINCT terminal from `Failed` (S7,
+    /// #1754). The host renders it differently from a failure (no error toast):
+    /// the user asked to cancel, nothing went wrong. A signer/capability denial
+    /// is a `Failed { reason, reason_code }`, never a `Cancelled`.
+    Cancelled,
 }
 
 impl LifecycleStage {
-    /// `Accepted` / `Failed` count as terminal — they move from
+    /// `Accepted` / `Failed` / `Cancelled` count as terminal — they move from
     /// `in_flight` to `recent_terminal`.
     fn is_terminal(&self) -> bool {
-        matches!(self, Self::Accepted | Self::Failed { .. })
+        matches!(self, Self::Accepted | Self::Failed { .. } | Self::Cancelled)
     }
 
     fn retention_ttl_ms(&self) -> u64 {
@@ -135,6 +140,7 @@ impl LifecycleStage {
                 reason_code: None,
                 reason_subject: None,
             },
+            ActionStage::Cancelled => Self::Cancelled,
         }
     }
 

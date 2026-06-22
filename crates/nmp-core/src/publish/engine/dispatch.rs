@@ -4,12 +4,13 @@
 //! hand-authored ceiling (AGENTS.md / V-12). This cluster owns:
 //!   - the durable resume path (`resume_from_store`)
 //!   - the relay-availability gate (`mark_relay_unavailable` / `mark_relay_available`)
-//!   - the user-driven `retry_now` path
+//!   - the user-driven `retry_now` and `cancel_by_handle` paths
 //!   - the internal `dispatch_pending*` helpers + `persist` write-through
 //!
-//! `on_ack`, `start_publish`, `tick`, and `cancel_publish` stay in `engine.rs`
-//! because they own the state-machine progression itself; the methods here
-//! are the I/O seams around it.
+//! `on_ack`, `start_publish`, and `tick` stay in `engine.rs` because they own
+//! the state-machine progression itself; the methods here are the I/O seams
+//! around it. `cancel_by_handle` (S7/#1754) lives here as the cancel I/O seam,
+//! analogous to `retry_now`.
 
 use std::collections::BTreeMap;
 
@@ -17,10 +18,70 @@ use super::super::action::{PublishHandle, RelayUrl};
 use super::super::state::PerRelayState;
 use super::super::traits::{PublishRecord, PublishStoreError, RelaySelectionReason};
 use super::helpers;
-use super::types::InFlight;
+use super::types::{InFlight, LastTerminal};
 use super::{PublishEngine, PublishEngineError};
 
 impl PublishEngine {
+    /// Cancel an in-flight publish addressed by its `handle` (== signed event
+    /// id), recording the `Cancelled` terminal under `correlation_id`.
+    ///
+    /// S7 (#1754): this is invoked DIRECTLY by the kernel's cancel-by-id doorway
+    /// — there is no longer a `PublishAction::Cancel` routed through
+    /// `start_publish`. The caller resolves the original dispatch
+    /// `correlation_id` from the durable handle↔correlation index and passes it
+    /// here, so the terminal lands under the id the host's spinner is bound to
+    /// (PD-036), not the handle/event id. For an internal publish with no
+    /// distinct dispatch id the caller passes the handle as the
+    /// `correlation_id`, preserving the prior behaviour.
+    ///
+    /// INFALLIBLE (D6): the `Cancelled` terminal is recorded BEFORE the
+    /// best-effort durable delete, so a store-delete failure can never orphan the
+    /// host spinner — the in-memory cancel and the terminal always land.
+    pub(crate) fn cancel_by_handle(
+        &mut self,
+        handle: &PublishHandle,
+        correlation_id: &str,
+        now_ms: u64,
+    ) {
+        if let Some(mut row) = self.in_flight.remove(handle) {
+            self.needs_in_flight_rebuild = true;
+            for state in row.per_relay.values_mut() {
+                if !state.is_terminal() {
+                    *state = PerRelayState::FailedAfterRetries {
+                        reason: "cancelled".to_string(),
+                        last_at_ms: now_ms,
+                    };
+                }
+            }
+        }
+        // Record the cancelled terminal FIRST — BEFORE the best-effort durable
+        // delete — so the host spinner is ALWAYS resolved under the original
+        // correlation_id, even if the store delete fails (D6: a durable-cleanup
+        // failure is not a reason to orphan the user's cancel). Direction review
+        // #24: cancellation never flows through `recently_completed`, so it is
+        // recorded directly on `pending_terminals` (drained into `action_results`
+        // / `action_lifecycle` as the distinct `cancelled` stage), even for an
+        // unknown / already-settled handle — it is a terminal verdict the host
+        // asked for.
+        self.record_terminal(LastTerminal {
+            // S7 (#1754): the terminal correlation_id is the ORIGINAL dispatch
+            // id, never the handle — this is the PD-036 fix.
+            correlation_id: correlation_id.to_string(),
+            status: "cancelled",
+            error: None,
+            // Cancel concerns a signed event; surface its id (#1702).
+            event_id: Some(handle.clone()),
+            result_json: None,
+            reason_code: None,
+        });
+        // Best-effort durable cleanup. A delete failure (or a not-found row)
+        // is a silent no-op: the in-memory cancel and the terminal already
+        // landed; a stale durable row is harmless and gets pruned by the next
+        // resume sweep. D6 — the store error never propagates out of cancel.
+        let _ = self.store.delete(handle);
+        self.flush_view();
+    }
+
     /// Resume any pending records left by a prior process. Called once at
     /// kernel boot. M3 LMDB will return real rows; the in-memory shim returns
     /// what was previously upserted.

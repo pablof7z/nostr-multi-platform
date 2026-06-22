@@ -80,13 +80,17 @@ enum ActionStage: Equatable {
     /// `reason` is the human-readable failure message the host renders
     /// verbatim. Mirrors the `error` field on `LastActionResult`.
     case failed(reason: String)
+    /// User-initiated cancellation — a DISTINCT terminal from `.failed`
+    /// (S7/#1754). The host renders it without an error treatment: the user
+    /// asked to cancel, nothing went wrong.
+    case cancelled
     /// Catchall for future kernel stages — preserves the raw tag so a
     /// diagnostic view can still display something meaningful.
     case unknown(raw: String)
 
     var isTerminal: Bool {
         switch self {
-        case .accepted, .failed: return true
+        case .accepted, .failed, .cancelled: return true
         default: return false
         }
     }
@@ -122,6 +126,8 @@ struct ActionStageEntry: Decodable, Equatable {
         case "failed":
             let reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
             stage = .failed(reason: reason)
+        case "cancelled":
+            stage = .cancelled
         default:
             stage = .unknown(raw: raw)
         }
@@ -164,13 +170,16 @@ enum ActionLifecycleStage: Equatable {
     /// contextual value for interpolation. Read `localizedReason` to get the
     /// host-facing string (localized code, falling back to `reason`).
     case failed(reason: String, reasonCode: String?, reasonSubject: String?)
+    /// User-initiated cancellation — a DISTINCT terminal from `.failed`
+    /// (S7/#1754). The host renders it without an error/failure treatment.
+    case cancelled
     /// Catchall for future kernel stages — preserves the raw tag so a
     /// diagnostic view can still display something meaningful.
     case unknown(raw: String)
 
     var isTerminal: Bool {
         switch self {
-        case .accepted, .failed: return true
+        case .accepted, .failed, .cancelled: return true
         default: return false
         }
     }
@@ -222,6 +231,8 @@ struct ActionLifecycleEntry: Decodable, Equatable, Identifiable {
             let reasonCode = try container.decodeIfPresent(String.self, forKey: .reasonCode)
             let reasonSubject = try container.decodeIfPresent(String.self, forKey: .reasonSubject)
             stage = .failed(reason: reason, reasonCode: reasonCode, reasonSubject: reasonSubject)
+        case "cancelled":
+            stage = .cancelled
         default:
             stage = .unknown(raw: raw)
         }

@@ -9,7 +9,7 @@ use jni::sys::{jlong, jstring};
 use jni::JNIEnv;
 
 use nmp_ffi::{
-    nmp_app_ack_action_stage, nmp_app_cancel_publish, nmp_app_dispatch_action, nmp_app_retry_publish,
+    nmp_app_ack_action_stage, nmp_app_cancel_action, nmp_app_dispatch_action, nmp_app_retry_publish,
     nmp_free_string,
 };
 
@@ -107,10 +107,12 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeRetryPublish(
     s.with_app(|app| nmp_app_retry_publish(app, correlation_id.as_ptr()));
 }
 
-/// Cancel an in-flight publish identified by its correlation id (outbox UI).
-/// Control-plane only: Rust owns the publish ledger and aborts the in-flight
-/// send; Kotlin forwards the handle string verbatim. D6: a null handle /
-/// malformed JNI argument is a silent no-op.
+/// Cancel an in-flight publish identified by its operation `correlation_id`
+/// (outbox UI). Control-plane only: Rust owns the publish ledger, reverse-
+/// resolves the publish handle from the durable handle↔correlation index, and
+/// records the user-initiated `Cancelled` terminal under the ORIGINAL
+/// correlation_id (S7/#1754, PD-036). Kotlin forwards the correlation_id string
+/// verbatim. D6: a null / malformed JNI argument is a silent no-op.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCancelPublish(
     mut env: JNIEnv,
@@ -124,5 +126,5 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeCancelPublish(
     let Some(correlation_id) = jstring_to_cstring(&mut env, &correlation_id) else {
         return;
     };
-    s.with_app(|app| nmp_app_cancel_publish(app, correlation_id.as_ptr()));
+    s.with_app(|app| nmp_app_cancel_action(app, correlation_id.as_ptr()));
 }

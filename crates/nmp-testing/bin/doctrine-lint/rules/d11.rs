@@ -32,11 +32,13 @@
 //!
 //! ## Whitelist (explicit per PR-F task)
 //!
-//! Two `nmp_app_*` symbols are publish-lifecycle control-plane (they
-//! address an already-queued publish handle, never produce events):
+//! Two `nmp_app_*` symbols are publish-lifecycle control-plane (they address
+//! an already-queued operation, never produce events): `retry` by publish
+//! handle, `cancel` by operation `correlation_id` (S7/#1754):
 //!
-//! - `nmp_app_retry_publish`
-//! - `nmp_app_cancel_publish`
+//! - `nmp_app_retry_publish` (by publish handle)
+//! - `nmp_app_cancel_action` (by operation `correlation_id`; S7/#1754 replaced
+//!   the bespoke `nmp_app_cancel_publish` handle symbol)
 //!
 //! Their bodies send `ActorCommand::RetryPublish` / `CancelPublish`, not
 //! the banned variants — so today they would not fire D11 anyway. The
@@ -71,9 +73,10 @@ const BANNED_VARIANTS: &[&str] = &[
 ];
 
 /// Whitelisted `nmp_app_*` symbol names whose bodies are not scanned. Per
-/// the PR-F task: retry / cancel address a publish handle, never produce
-/// events, and have no `dispatch_action` equivalent.
-const WHITELISTED_SYMBOLS: &[&str] = &["nmp_app_retry_publish", "nmp_app_cancel_publish"];
+/// the PR-F task (+ S7/#1754): retry addresses a publish handle, cancel
+/// addresses an operation `correlation_id`; neither produces events nor has a
+/// `dispatch_action` equivalent.
+const WHITELISTED_SYMBOLS: &[&str] = &["nmp_app_retry_publish", "nmp_app_cancel_action"];
 
 /// Per-line check.
 ///

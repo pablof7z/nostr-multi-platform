@@ -188,6 +188,7 @@ enum TypedProjectionGlue {
                 reason: row.hasReason ? (row.reason ?? "") : "",
                 reasonCode: row.hasReasonCode ? row.reasonCode : nil,
                 reasonSubject: row.hasReasonSubject ? row.reasonSubject : nil)
+        case "cancelled": return .cancelled
         case let raw: return .unknown(raw: raw)
         }
     }
@@ -851,6 +852,7 @@ enum TypedProjectionGlue {
         case "publishing": stage = .publishing
         case "accepted": stage = .accepted
         case "failed": stage = .failed(reason: row.hasReason ? (row.reason ?? "") : "")
+        case "cancelled": stage = .cancelled
         case let raw: stage = .unknown(raw: raw)
         }
         return ActionStageEntry(stage: stage, atMs: row.atMs)

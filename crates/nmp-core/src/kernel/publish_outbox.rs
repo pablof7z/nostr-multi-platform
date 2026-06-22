@@ -5,7 +5,7 @@
 //! user-triggered retry/cancel commands back through the engine.
 
 use crate::publish::{
-    PerRelayState, PublishAction, PublishEngineError, PublishStoreError, RelaySelectionReason,
+    PerRelayState, PublishEngineError, PublishStoreError, RelaySelectionReason,
 };
 use crate::relay::{OutboundMessage, RelayRole};
 
@@ -141,35 +141,53 @@ impl Kernel {
             .collect()
     }
 
-    pub(crate) fn cancel_publish(&mut self, handle: &str) {
+    /// Cancel an in-flight publish addressed by `id` — the original dispatch
+    /// `correlation_id` (the host's spinner key) OR the raw publish handle
+    /// (== event id), the two forms the durable handle↔correlation index
+    /// resolves between (S7, #1754).
+    ///
+    /// This is the ONE cancel doorway. The bespoke `nmp_app_cancel_publish` C
+    /// symbol and `PublishAction::Cancel` lane are deleted; the FFI and the wasm
+    /// boundary route cancel here by `correlation_id`. The `Cancelled` terminal
+    /// is recorded under the ORIGINAL `correlation_id`, never the handle — the
+    /// PD-036 fix. An unknown `id` falls back to treating it as both the handle
+    /// and the correlation_id (the prior cancel-by-handle behaviour for an
+    /// already-settled or never-indexed publish), so a stale host cancel is
+    /// still a benign idempotent terminal verdict (D6).
+    pub(crate) fn cancel_publish(&mut self, id: &str) {
         let now_ms = now_epoch_ms();
-        let handle = handle.to_string();
+        // Reverse-resolve `id` → (handle, original correlation_id). Unknown id:
+        // fall back to id-as-both so an evicted/never-indexed publish still
+        // clears the host spinner under the id the host handed us. The resolved
+        // `correlation_id` is the ORIGINAL dispatch id; the engine records the
+        // `Cancelled` terminal under it (NOT the handle) — the single PD-036 fix.
+        let (handle, correlation_id) = self
+            .publish_handle_correlation
+            .resolve(id)
+            .unwrap_or_else(|| (id.to_string(), id.to_string()));
+        // Settled-row "clear" path: the publish already terminated (nothing in
+        // the engine's in-flight set) and the queue still carries a finished
+        // row. Cancelling here is a host-side CLEAR of that finished row, not an
+        // in-flight cancellation — drop the row and the index entry, no new
+        // terminal (the publish already settled with its real verdict).
         if self.publish_engine.per_relay(&handle).is_empty() && self.remove_publish_entry(&handle) {
             self.set_last_error_toast(None);
+            self.publish_handle_correlation.forget(&handle);
             return;
         }
-        let action = PublishAction::Cancel {
-            handle: handle.clone(),
-        };
-        // Cancel reports `handle` as the correlation_id directly (it is what
-        // the host received from dispatch), so no override is needed here.
         let engine_rev_before = self.publish_engine.snapshot().rev;
-        if let Err(err) = self.publish_engine.start_publish(action, now_ms, None) {
-            if matches!(&err, PublishEngineError::Store(PublishStoreError::NotFound))
-                && self.remove_publish_entry(&handle)
-            {
-                self.set_last_error_toast(None);
-                self.bump_publish_if_engine_view_changed(engine_rev_before);
-                return;
-            }
-            self.publish_engine
-                .record_engine_error(&err, &handle, "", now_ms);
-            let (toast, _, _) = describe_engine_error(&err);
-            self.set_last_error_toast(Some(toast));
-            self.bump_publish_if_engine_view_changed(engine_rev_before);
-            return;
-        }
+        // `cancel_by_handle` is the SINGLE cancel terminal source and is
+        // INFALLIBLE (D6): it removes any in-flight engine row AND ALWAYS records
+        // the `Cancelled` terminal under `correlation_id` BEFORE the best-effort
+        // durable delete — so a store-delete failure can never orphan the host
+        // spinner. The terminal drains through `take_pending_terminals` →
+        // `drain_action_results`, which mirrors it into `action_stages` /
+        // `action_lifecycle` as the distinct `cancelled` stage. No parallel
+        // `record_action_stage` here — one path only.
+        self.publish_engine
+            .cancel_by_handle(&handle, &correlation_id, now_ms);
         self.set_publish_entry_terminal(&handle, "cancelled", Vec::new());
+        self.publish_handle_correlation.forget(&handle);
         self.bump_publish_if_engine_view_changed(engine_rev_before);
         self.changed_since_emit = true;
     }

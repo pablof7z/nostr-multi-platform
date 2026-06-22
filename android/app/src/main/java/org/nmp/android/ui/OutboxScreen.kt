@@ -94,14 +94,17 @@ fun OutboxScreen(model: KernelModel, modifier: Modifier = Modifier) {
     }
 }
 
-/** Terminal stages mirror the desktop panel's set. */
+/** Terminal stages mirror the desktop panel's set. `cancelled` is the
+ *  user-initiated terminal (S7/#1754), distinct from `failed`/`error`. */
 private fun isTerminal(stage: String): Boolean =
-    stage == "published" || stage == "failed" || stage == "error"
+    stage == "published" || stage == "failed" || stage == "error" || stage == "cancelled"
 
 private fun stageColor(stage: String): Color = when (stage) {
     "publishing" -> Color(0xFFF97316)
     "published" -> Color(0xFF4ADE80)
     "failed", "error" -> Color(0xFFF87171)
+    // S7/#1754: a user-initiated cancel is neutral, not an error red.
+    "cancelled" -> Color(0xFF94A3B8)
     else -> Color(0xFF94A3B8)
 }
 

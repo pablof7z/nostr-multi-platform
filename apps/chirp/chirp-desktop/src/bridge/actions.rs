@@ -11,7 +11,7 @@ use std::ffi::CString;
 use nmp_nip01::NoteRecord;
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_remove_relay, nmp_app_retry_publish,
+    nmp_app_add_relay, nmp_app_cancel_action, nmp_app_remove_relay, nmp_app_retry_publish,
 };
 
 use super::AppRuntime;
@@ -149,12 +149,15 @@ impl AppRuntime {
         }
     }
 
-    pub fn cancel_publish(&self, handle: &str) {
+    /// Cancel an in-flight publish, addressed by the operation `correlation_id`
+    /// (S7, #1754). The outbox UI's publish handle is also accepted (the
+    /// kernel's handle↔correlation index self-maps it).
+    pub fn cancel_publish(&self, correlation_id: &str) {
         if self.app.is_null() {
             return;
         }
-        if let Ok(c) = CString::new(handle) {
-            unsafe { nmp_app_cancel_publish(self.app, c.as_ptr()) };
+        if let Ok(c) = CString::new(correlation_id) {
+            unsafe { nmp_app_cancel_action(self.app, c.as_ptr()) };
         }
     }
 

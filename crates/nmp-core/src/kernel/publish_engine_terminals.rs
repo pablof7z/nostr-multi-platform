@@ -74,6 +74,12 @@ impl Kernel {
         for terminal in &terminals {
             let stage = match terminal.status {
                 "ok" => super::super::action_stages::ActionStage::Accepted,
+                // S7 (#1754): a user-initiated cancel is the DISTINCT `Cancelled`
+                // terminal, never `Failed`. The engine records the cancel terminal
+                // with `status == "cancelled"` (see `PublishEngine::cancel_by_handle`)
+                // under the ORIGINAL correlation_id; this is the single path that
+                // mirrors it into `action_stages` / `action_lifecycle`.
+                "cancelled" => super::super::action_stages::ActionStage::Cancelled,
                 _ => super::super::action_stages::ActionStage::Failed {
                     reason: terminal
                         .error
@@ -157,6 +163,16 @@ impl Kernel {
         for outcome in completions {
             let (status, outcomes) = classify_terminal_outcome(&outcome);
             self.set_publish_entry_terminal(&outcome.event_id, status, outcomes);
+            // S7 (#1754) D8 — forget the handle↔correlation index entry now
+            // that this publish has reached a terminal outcome (ok or failed).
+            // Mirrors the cancel/clear paths in `publish_outbox.rs` (lines
+            // :175/:190). Every terminal path (success, failure, cancel) must
+            // forget exactly once; non-terminal stage updates (publishing /
+            // awaiting_capability) must NOT forget so the index tracks only
+            // the live in-flight set. Without this, a completed publish leaves
+            // a stale handle↔correlation entry bounded only by the cap, not
+            // by the actual in-flight set — a D8 violation.
+            self.publish_handle_correlation.forget(&outcome.event_id);
             // V-18: surface a user-visible toast when every relay returned
             // `FailedAfterRetries`. Without this, a post that no relay
             // accepted would silently sit in the Outbox with no feedback to

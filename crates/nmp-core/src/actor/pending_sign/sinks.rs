@@ -253,8 +253,15 @@ pub(crate) enum PublishObligation {
     /// The sign failed / timed out — surface `toast`, and if
     /// `correlation_id_override` is `Some`, record a terminal `"failed"` verdict
     /// so the host spinner clears (D6).
+    ///
+    /// `reason_code` is the CURATED machine code for the failure (S7, #1754):
+    /// a capability/signer denial carries
+    /// [`crate::ui_token::codes::LIFECYCLE_SIGN_CAPABILITY_DENIED`] so the shell
+    /// localizes it. This is a `Failed` terminal, NEVER a user-initiated
+    /// `Cancelled` — the signer refused, the user did not cancel.
     Failed {
         toast: String,
         correlation_id_override: Option<String>,
+        reason_code: Option<&'static str>,
     },
 }

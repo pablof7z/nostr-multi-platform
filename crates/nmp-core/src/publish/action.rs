@@ -158,16 +158,6 @@ pub enum PublishAction {
         #[serde(default)]
         signer_pubkey: Option<String>,
     },
-    /// Cancel an in-flight publish, addressed by its [`PublishHandle`].
-    ///
-    /// This variant is the publish *engine's* internal command shape — it is
-    /// constructed by `Kernel::cancel_publish` (the handler for
-    /// `ActorCommand::CancelPublish`, the FFI symbol `nmp_app_cancel_publish`)
-    /// and matched by `PublishEngine::start_publish`. It is deliberately NOT
-    /// dispatchable through `dispatch_action`: `PublishModule::start` rejects
-    /// it so the publish lifecycle's control plane (cancel / retry) stays on
-    /// the dedicated FFI symbols rather than the generic action seam.
-    Cancel { handle: PublishHandle },
 }
 
 /// Final outcome reported to the action ledger when the engine finishes.
@@ -274,19 +264,6 @@ impl ActionModule for PublishModule {
                     .map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
-            // Cancel is engine-internal — it is constructed by
-            // `Kernel::cancel_publish` for the `nmp_app_cancel_publish` FFI
-            // symbol, never dispatched through `dispatch_action`. Reject it
-            // here so the publish lifecycle's control plane stays on the
-            // dedicated FFI door and `dispatch_action` carries nothing for
-            // cancel. Previously this arm was an accepting no-op whose
-            // executor counterpart did `Ok(())` — a dead path that looked
-            // alive on the action seam.
-            PublishAction::Cancel { .. } => Err(ActionRejection::Invalid(
-                "publish cancel is not dispatchable via dispatch_action; \
-                 use the nmp_app_cancel_publish FFI symbol"
-                    .to_string(),
-            )),
         }
     }
 
@@ -329,10 +306,6 @@ impl ActionModule for PublishModule {
                 });
                 Ok(())
             }
-            // Cancel is rejected by `start` before `execute` is reached.
-            // This arm exists only for match exhaustiveness (D6 — no
-            // `unreachable!()` on a production path).
-            PublishAction::Cancel { .. } => Ok(()),
         }
     }
 }
