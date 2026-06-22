@@ -1,6 +1,7 @@
-use super::super::{truncate, AccountSummary, Kernel, ProfileCard, StoredEvent};
+use super::super::requests::external_id_from_key;
 #[cfg(test)]
 use super::super::TimelineItem;
+use super::super::{truncate, AccountSummary, Kernel, ProfileCard, StoredEvent};
 #[cfg(test)]
 use super::helpers::parse_repost_inner;
 use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored};
@@ -10,7 +11,9 @@ impl Kernel {
     /// Look up the `StoredEvent` that resolves a `claim_event`
     /// `primary_id`. Hex-64 keys (event id form) index `self.events`
     /// directly; coordinate keys (`kind:pubkey:d_tag`) scan
-    /// `self.events.values()` for the matching addressable triple.
+    /// `self.events.values()` for the matching addressable triple;
+    /// `i:<external-id>` NIP-73 external refs (#1654) scan for the matching
+    /// `["i", <external-id>]` tag.
     ///
     /// d-tags may legally contain `:` (rare but spec-allowed); the
     /// split is bounded to the first two colons so a d-tag like
@@ -36,6 +39,24 @@ impl Kernel {
                 .ok()
                 .flatten()
                 .map(nmp_store_to_kernel_stored);
+        }
+        // NIP-73 external ref `i:<external-id>` (#1654): the referencing event
+        // is identified by a `["i", <external-id>]` tag, not by id or
+        // coordinate. The EventStore has no `#i` secondary index, so resolve it
+        // by scanning the in-memory timeline cache (where the resolver's
+        // one-shot `#i` fetch deposits the referencing event on arrival) — the
+        // same scan-fallback shape the addressable arm uses. Newest-by-cache-
+        // order wins on the (rare) multi-match.
+        if let Some(external_id) = external_id_from_key(key) {
+            return self
+                .events
+                .values()
+                .find(|e| {
+                    e.tags
+                        .iter()
+                        .any(|t| t.len() >= 2 && t[0] == "i" && t[1] == external_id)
+                })
+                .cloned();
         }
         let mut parts = key.splitn(3, ':');
         let kind = parts.next().and_then(|s| s.parse::<u32>().ok())?;

@@ -6,6 +6,7 @@
 //! ceiling (AGENTS.md). All bodies are `impl Kernel`; no new state lives here.
 
 use super::super::{Kernel, OutboundMessage};
+use super::event_key::external_id_from_key;
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, RelayHint,
 };
@@ -162,6 +163,16 @@ impl Kernel {
     pub(in crate::kernel) fn event_already_known(&self, primary_id: &str) -> bool {
         if is_hex64(primary_id) {
             return self.events.contains_key(primary_id);
+        }
+        // NIP-73 external ref `i:<external-id>` (#1654): cached iff any event in
+        // the in-memory timeline carries a matching `["i", <external-id>]` tag.
+        // The store-side equivalent lives in `views.rs::lookup_for_primary_id`.
+        if let Some(external_id) = external_id_from_key(primary_id) {
+            return self.events.values().any(|e| {
+                e.tags
+                    .iter()
+                    .any(|t| t.len() >= 2 && t[0] == "i" && t[1] == external_id)
+            });
         }
         // d-tags can legally contain `:` (rare but spec-allowed); split
         // only on the first two colons so `kind:author:foo:bar` round-

@@ -46,12 +46,19 @@
 //!
 //! For the `Profile` namespace `key` must be a 64-hex-char lowercase pubkey (the
 //! same constraint the former per-kind profile claim enforced). For the `Event`
-//! namespace `key`
-//! is either a 64-char **lowercase** hex event id or a `"kind:pubkey:d"`
-//! coordinate (canonical decimal kind, lowercase-hex pubkey; the `naddr`
-//! primary-id encoding) — NOT a `nostr:`/NIP-21 URI. An invalid key (wrong case,
-//! wrong length, non-decimal kind, missing segment) is a silent no-op at the
-//! kernel's resolver body (D6).
+//! namespace `key` is one of three forms — NOT a `nostr:`/NIP-21 URI:
+//!
+//! * a 64-char **lowercase** hex event id, or
+//! * a `"kind:pubkey:d"` coordinate (canonical decimal kind, lowercase-hex
+//!   pubkey; the `naddr` primary-id encoding), or
+//! * an `"i:<external-id>"` NIP-73 external reference (#1654 — e.g.
+//!   `i:podcast:item:guid:<guid>`, `i:isbn:<n>`, `i:doi:<id>`). The `i:` prefix
+//!   disambiguates the external ref; `<external-id>` is the verbatim NIP-73
+//!   `i`-tag value. The resolver fetches the event tagging that external id and
+//!   surfaces it in `refs.event` keyed by the full `i:<external-id>` string.
+//!
+//! An invalid key (wrong case, wrong length, non-decimal kind, missing segment,
+//! empty external id) is a silent no-op at the kernel's resolver body (D6).
 
 use super::{app_ref, c_string_argument, NmpApp};
 use nmp_core::__ffi_internal::is_hex_pubkey;
@@ -102,8 +109,9 @@ fn decode_shape(shape: c_int) -> Option<RefShape> {
 /// `refs.event`) keyed by `key` in the next update frame.
 ///
 /// **`namespace`** — `0` = profile, `1` = event.
-/// **`key`** — 64-hex pubkey (profile); lowercase 64-hex event-id or
-///   `"kind:pubkey:d"` coordinate (event) — not a `nostr:` URI.
+/// **`key`** — 64-hex pubkey (profile); lowercase 64-hex event-id,
+///   `"kind:pubkey:d"` coordinate, or `"i:<external-id>"` NIP-73 external ref
+///   (event) — not a `nostr:` URI.
 /// **`consumer_id`** — opaque caller-chosen refcount owner key (e.g. SwiftUI view id).
 /// **`shape`** — `0`=profile.ref `1`=profile.card `2`=event.embed `3`=event.raw.
 /// **`liveness`** — `0`=CacheOk (background), non-zero=Live (open screen).
@@ -137,7 +145,8 @@ pub extern "C" fn nmp_app_resolve_ref(
 
     // D6: for the Profile namespace, validate the key is a hex pubkey before
     // sending to the actor. For the Event namespace the kernel's resolver body
-    // validates the key (it accepts both event-id hex and naddr coordinates).
+    // validates the key (it accepts event-id hex, naddr coordinates, and
+    // `i:<external-id>` NIP-73 external refs).
     if ns == RefNamespace::Profile && !is_hex_pubkey(&key) {
         return;
     }
