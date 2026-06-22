@@ -19,11 +19,13 @@ import {
   Resolving,
   Section,
   StatusBar,
+  articleProjectionOf,
+  bylineOf,
   collectMediaUrls,
   contentReady,
-  toEmbedded,
+  highlightProjectionOf,
 } from "./gallerySupport";
-import { createGalleryRuntime, type ClaimedEventWire, tagValue } from "./nmp/profileHost";
+import { createGalleryRuntime, type ClaimedEventWire } from "./nmp/profileHost";
 import {
   SHOWCASE_PUBKEY,
   SHOWCASE_RELAYS,
@@ -161,10 +163,10 @@ export default function App(): JSX.Element {
   // Card "ready" gates: the embed cards must show a resolved author byline, so
   // they wait for the author's profile to resolve. We read it from the SAME
   // `refs.profile` row cache the avatar/name/mention-chip use (host.profile)
-  // rather than the kernel's claimed_events author enrichment — the former is the
-  // reliable path; the latter can lag for some authors. Same no-unresolved-data
-  // discipline as the user-* sections.
-  const authorOf = (ev: ClaimedEventWire) => runtime.host.profile(ev.authorPubkey);
+  // rather than the kernel's claimed_events author enrichment — the former is
+  // reliable; the latter can lag. Same no-unresolved-data discipline as user-*.
+  const authorOf = (ev: ClaimedEventWire | undefined) =>
+    ev ? runtime.host.profile(ev.authorPubkey) : undefined;
   const authorResolved = (ev: ClaimedEventWire | undefined): ClaimedEventWire | undefined => {
     if (!ev) return undefined;
     const p = authorOf(ev);
@@ -175,6 +177,30 @@ export default function App(): JSX.Element {
   // gates only on the event resolving.
   const highlightCard = createMemo(() => highlightRaw());
   const noteCard = createMemo(() => authorResolved(noteRaw()));
+
+  // #1767 — the kernel-RESOLVED embed envelopes (projection already
+  // kind-dispatched in Rust via `claimed_event_embeds_json`). The
+  // content-kind-registry section renders from these instead of re-parsing
+  // tags. Each gates on its per-card memo so it appears in lockstep with the
+  // per-component demos above (article/note also wait for the author profile).
+  const articleEmbed = createMemo(() =>
+    articleCard() ? runtime.claimedEventEmbed(SHOWCASE_ARTICLE.primaryId) : undefined,
+  );
+  const highlightEmbed = createMemo(() =>
+    highlightCard() ? runtime.claimedEventEmbed(SHOWCASE_HIGHLIGHT.primaryId) : undefined,
+  );
+  const noteEmbed = createMemo(() =>
+    noteCard() ? runtime.claimedEventEmbed(SHOWCASE_NOTE.primaryId) : undefined,
+  );
+
+  // #1767 — the standalone embed-article / embed-highlight showcase sections
+  // render the SAME card components, but source their fields from the
+  // kernel-RESOLVED projection (variant `data`) instead of re-parsing
+  // NIP-23/NIP-84 tags. The byline still comes from host-resolved `authorOf(...)`
+  // (the projection's static author is null by design). Narrowing helpers are
+  // pure (gallerySupport); reactivity stays here in the memo.
+  const articleProjection = createMemo(() => articleProjectionOf(articleEmbed()));
+  const highlightProjection = createMemo(() => highlightProjectionOf(highlightEmbed()));
 
   const profile = () => runtime.host.profile(SHOWCASE_PUBKEY);
   // "Resolved" means real kind:0 data arrived — not just a placeholder entry.
@@ -359,16 +385,16 @@ export default function App(): JSX.Element {
           title="embed-article / content-kind-30023"
           desc="NIP-23 long-form article card — hero image, title, summary, author byline. Below: the real showcase kind:30023 article resolved via its naddr."
         >
-          <Show when={articleCard()} fallback={<Resolving />} keyed>
-            {(ev) => (
+          <Show when={articleProjection()} fallback={<Resolving />} keyed>
+            {(p) => (
               <div data-testid="embed-article" style={{ "max-width": "520px", width: "100%" }}>
                 <NostrArticleCard
                   article={{
-                    title: tagValue(ev, "title") ?? "(untitled)",
-                    image: tagValue(ev, "image"),
-                    summary: tagValue(ev, "summary"),
-                    authorName: authorOf(ev)?.displayName,
-                    authorPicture: authorOf(ev)?.pictureUrl,
+                    title: p.title ?? "(untitled)",
+                    image: p.heroImageUrl ?? undefined,
+                    summary: p.summary ?? undefined,
+                    authorName: authorOf(articleRaw())?.displayName,
+                    authorPicture: authorOf(articleRaw())?.pictureUrl,
                   }}
                 />
               </div>
@@ -381,16 +407,16 @@ export default function App(): JSX.Element {
           title="embed-highlight / content-kind-9802"
           desc="NIP-84 highlight card — pull-quote + optional context + source footer. Below: the real showcase kind:9802 highlight resolved via its nevent."
         >
-          <Show when={highlightCard()} fallback={<Resolving />} keyed>
-            {(ev) => (
+          <Show when={highlightProjection()} fallback={<Resolving />} keyed>
+            {(p) => (
               <div data-testid="embed-highlight" style={{ "max-width": "520px", width: "100%" }}>
                 <NostrHighlightCard
                   highlight={{
-                    text: ev.content,
-                    context: tagValue(ev, "context"),
-                    sourceUrl: tagValue(ev, "r"),
-                    sourceEventId: tagValue(ev, "e"),
-                    sourceEventAddr: tagValue(ev, "a"),
+                    text: p.highlightedText,
+                    context: p.context ?? undefined,
+                    sourceUrl: p.sourceUrl ?? undefined,
+                    sourceEventId: p.sourceEventId ?? undefined,
+                    sourceEventAddr: p.sourceEventAddr ?? undefined,
                   }}
                 />
               </div>
@@ -404,14 +430,26 @@ export default function App(): JSX.Element {
           desc="Kind-dispatch registry — routes a resolved event to its per-kind card (kind:30023 → article, kind:9802 → highlight, else → quote). Below: the same three real events dispatched through the registry."
         >
           <div class="content-demos" data-testid="content-kind-registry">
-            <Show when={articleCard()} fallback={<Resolving />} keyed>
-              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev, authorOf(ev))} nowSeconds={nowSeconds} />}
+            <Show when={articleEmbed()} fallback={<Resolving />} keyed>
+              {(embed) => (
+                <NostrEmbeddedEvent
+                  event={embed}
+                  nowSeconds={nowSeconds}
+                  author={bylineOf(authorOf(articleRaw()))}
+                />
+              )}
             </Show>
-            <Show when={highlightCard()} keyed>
-              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev, authorOf(ev))} nowSeconds={nowSeconds} />}
+            <Show when={highlightEmbed()} keyed>
+              {(embed) => <NostrEmbeddedEvent event={embed} nowSeconds={nowSeconds} />}
             </Show>
-            <Show when={noteCard()} keyed>
-              {(ev) => <NostrEmbeddedEvent event={toEmbedded(ev, authorOf(ev))} nowSeconds={nowSeconds} />}
+            <Show when={noteEmbed()} keyed>
+              {(embed) => (
+                <NostrEmbeddedEvent
+                  event={embed}
+                  nowSeconds={nowSeconds}
+                  author={bylineOf(authorOf(noteRaw()))}
+                />
+              )}
             </Show>
           </div>
         </Section>

@@ -17,6 +17,7 @@ import {
 import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import type { NostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
+import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 
 // ADR-0063 Lane D wire codes (mirror apps/chirp/chirp-tui runtime.rs FFI codes
 // and the wasm `resolve_dispatch_from_action` recognizer):
@@ -33,6 +34,15 @@ const NRRD_FILE_IDENTIFIER = "NRRD";
 const REFS_PROFILE_PROJECTION_KEY = "refs.profile";
 const KCEV_FILE_IDENTIFIER = "KCEV";
 const KCEV_PROJECTION_KEY = "claimed_events";
+// #1767 — the JSON embed-projection sidecar key. The payload is UTF-8
+// `serde_json` of `{ [primaryId]: EmbeddedEventEnvelope }`, the `nmp-content`
+// resolver output / `EmbeddedEventEnvelope` serde shape this web TS decodes.
+// (iOS decodes a DIFFERENT wire format — the native `claimed_event_embeds`
+// NEMB FlatBuffer — which shares the resolution logic but not this JSON.) The
+// kernel/composition root has already kind-dispatched each embed
+// (`projection.variant`), so the web renders from the resolved projection
+// instead of re-parsing NIP-23 / NIP-84 tags.
+const EMBED_PROJECTION_KEY = "claimed_event_embeds_json";
 
 export type RelayStatusRow = {
   url: string;
@@ -99,6 +109,11 @@ export type GalleryRuntime = {
   /** Reactive — a claimed event keyed by its `primary_id`, or undefined until
    *  the kernel resolves it. */
   claimedEvent: (primaryId: string) => ClaimedEventWire | undefined;
+  /** Reactive — the kernel-RESOLVED embed envelope for a claimed event, keyed
+   *  by `primary_id` (#1767). The `projection` is already kind-dispatched in
+   *  Rust; the registry renders from it without re-parsing tags. Undefined
+   *  until the embed sidecar surfaces the resolved entry. */
+  claimedEventEmbed: (primaryId: string) => EmbeddedEventModel | undefined;
   /** Request the Rust-encoded npub for a pubkey (idempotent; fires once per
    *  pubkey). The result lands reactively in `npub(pubkey)`. */
   requestNpub: (pubkey: string) => void;
@@ -195,6 +210,37 @@ function decodeClaimedEvents(snapshot: SnapshotFrame): Map<string, ClaimedEventW
   return undefined;
 }
 
+/** Decode the `claimed_event_embeds_json` typed projection (#1767) into a
+ *  primary_id→EmbeddedEventModel map. The payload is UTF-8 `serde_json` of the
+ *  resolved embed map (NOT a FlatBuffer — Option A / JSON parity with iOS), so
+ *  it is `JSON.parse`d directly; the kernel has already kind-dispatched each
+ *  `projection`. Returns `undefined` on a missing/corrupt projection so the
+ *  caller keeps the last good map (D6 — never blank-reset). */
+function decodeClaimedEventEmbeds(snapshot: SnapshotFrame): Map<string, EmbeddedEventModel> | undefined {
+  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
+    const proj = snapshot.typedProjections(i);
+    if (!proj || proj.key() !== EMBED_PROJECTION_KEY) continue;
+    const payload = proj.payload();
+    if (!payload) return undefined;
+    const payloadBytes = payload.payloadArray();
+    if (!payloadBytes || payloadBytes.length === 0) return undefined;
+    try {
+      const text = new TextDecoder().decode(payloadBytes);
+      const parsed = JSON.parse(text) as Record<string, EmbeddedEventModel>;
+      const out = new Map<string, EmbeddedEventModel>();
+      for (const [key, envelope] of Object.entries(parsed)) {
+        if (envelope && typeof envelope === "object" && envelope.projection) {
+          out.set(key, envelope);
+        }
+      }
+      return out;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 function decodeRelays(snapshot: SnapshotFrame): RelayStatusRow[] {
   const rows: RelayStatusRow[] = [];
   for (let i = 0; i < snapshot.relayStatusesLength(); i += 1) {
@@ -218,6 +264,11 @@ export function createGalleryRuntime(): GalleryRuntime {
   // store proxy would wrap that object and break its `this.bb`-based accessors,
   // so the map is kept as an opaque signal value (replaced wholesale per frame).
   const [claimedEvents, setClaimedEvents] = createSignal<Map<string, ClaimedEventWire>>(new Map());
+  // #1767 — kernel-resolved embed envelopes, keyed by primary_id. Plain JSON
+  // objects (decoded from the JSON sidecar), so a plain signal is fine.
+  const [claimedEventEmbeds, setClaimedEventEmbeds] = createSignal<Map<string, EmbeddedEventModel>>(
+    new Map(),
+  );
   const [status, setStatus] = createSignal<RuntimeStatus>("ready");
   const [relays, setRelays] = createSignal<RelayStatusRow[]>([]);
   const [resolvedCount, setResolvedCount] = createSignal(0);
@@ -274,6 +325,9 @@ export function createGalleryRuntime(): GalleryRuntime {
       }
       const events = decodeClaimedEvents(snap);
       if (events !== undefined) setClaimedEvents(events);
+      // #1767 — decode the resolved embed sidecar (kind-dispatched in Rust).
+      const embeds = decodeClaimedEventEmbeds(snap);
+      if (embeds !== undefined) setClaimedEventEmbeds(embeds);
     } catch {
       // Keep last-good state on a corrupt frame (D6 — never blank-reset).
     }
@@ -391,6 +445,7 @@ export function createGalleryRuntime(): GalleryRuntime {
       });
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
+    claimedEventEmbed: (primaryId: string) => claimedEventEmbeds().get(primaryId),
     requestNpub(pubkey: string) {
       if (requestedNpubs.has(pubkey)) return;
       requestedNpubs.add(pubkey);

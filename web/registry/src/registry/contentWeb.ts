@@ -68,13 +68,13 @@ export const webContentKindRegistry: PlatformImpl = {
   version: "0.1.0",
   dependencies: ["content-kind-30023", "content-kind-9802", "content-quote-card"],
   longDescription:
-    "`<NostrEmbeddedEvent event={...} />` is the web kind-dispatch table. The host hydrates an `EmbeddedEventModel` from a resolved `claimed_events` entry (kind + content + tags + kernel-enriched author) and the registry routes it: kind:30023 → `NostrArticleCard`, kind:9802 → `NostrHighlightCard`, everything else → `NostrQuoteCard`. It also projects the raw event tags into each card's typed model, so the cards stay pure. Verified live in the NMP web gallery dispatching a real article, highlight, and note. The web twin of the SwiftUI/TUI `NostrKindRegistry` + `EmbeddedEvent`.",
+    "`<NostrEmbeddedEvent event={...} />` is the web kind-dispatch table. The host passes a fully resolved `EmbeddedEventModel` (the Rust kernel/`nmp-content` already kind-dispatched it into a `projection` and surfaced it in the snapshot's `claimed_event_embeds_json`) and the registry routes on `projection.variant`: `article` → `NostrArticleCard`, `highlight` → `NostrHighlightCard`, everything else → `NostrQuoteCard`. It maps the pre-resolved projection fields into each card's model — it does NOT re-parse raw NIP-23/NIP-84 tags (that policy is kernel-owned; the wire is the `nmp-content` resolver output / `EmbedKindProjection` serde enum shape decoded by the web TS, not the NEMB FlatBuffer iOS decodes). Verified live in the NMP web gallery dispatching a real article, highlight, and note. The web twin of the SwiftUI/TUI `NostrKindRegistry` + `EmbeddedEvent`.",
   files: [
     { source: "web/content-kind-registry/NostrKindRegistry.tsx", target: "src/components/nostr-content/NostrKindRegistry.tsx", role: "source", content: webKindRegistryTsx },
   ],
   screenshots: ["content-kind-registry-web-preview.png"],
   customization: [
-    "Add a kind by extending the `Switch` and writing a `toX(model)` tag-projection — the cards themselves stay pure model renderers.",
+    "Add a kind by registering the variant in the Rust resolver (`nmp-content`) and extending the `Switch` to map the new `projection.data` fields into a card model — the cards themselves stay pure model renderers and the web never parses raw tags.",
     "The host owns the claim/resolve lifecycle and passes a fully resolved envelope; the registry only chooses the renderer.",
   ],
 };

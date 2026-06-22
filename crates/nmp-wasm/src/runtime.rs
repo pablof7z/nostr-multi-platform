@@ -123,6 +123,27 @@ impl WasmRuntime {
         *self.post_tick_drain.borrow_mut() = Some(drain);
     }
 
+    /// Install a post-encode frame observer (issue #1767).
+    ///
+    /// The closure is invoked from `build_snapshot_bytes` with the
+    /// just-encoded FlatBuffers frame bytes, on EVERY snapshot path (tick,
+    /// relay-push, synchronous `handle` return, publish fan-out) — because
+    /// that builder is the single chokepoint all of them funnel through. The
+    /// callback runs AFTER `make_update_frame` returns and receives only
+    /// `&[u8]`, so it never re-enters the reducer.
+    ///
+    /// This is the wasm twin of nmp-ffi's listener-thread
+    /// `update_embed_sidecar_from_frame` hook. A composition root that depends
+    /// on `nmp-content` (e.g. `nmp-app-chirp-web`) installs an observer that
+    /// decodes the `claimed_events` KCEV from the bytes, resolves each embed,
+    /// and stores the resolved map in its own slot — keeping `nmp-wasm` itself
+    /// policy-free (it owns the chokepoint, not the kind-dispatch).
+    ///
+    /// Subsequent calls replace the prior observer.
+    pub fn install_frame_observer(&self, observer: Rc<dyn Fn(&[u8])>) {
+        self.meta.borrow_mut().frame_observer = Some(observer);
+    }
+
     /// Return an `Rc` clone of the reducer for composition-root closures.
     #[must_use]
     pub fn reducer_handle(&self) -> Rc<RefCell<KernelReducer>> {
