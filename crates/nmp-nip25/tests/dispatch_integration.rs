@@ -432,16 +432,13 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
     use nmp_core::__ffi_internal::ActionRegistry;
     use nmp_core::dispatch_envelope::{decode_dispatch_envelope, encode_dispatch_envelope};
     use nmp_core::publish::PublishAction;
-    use nmp_core::substrate::{ActionContext, ActionPayload};
-
+    use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
     const PUBLISH_IDENTIFIER: &str = "NPUB";
     const BODY_PUBLISH_PROFILE: u8 = 2;
-
     // ordered (key, value) pairs — the emitter iterates a positional list;
     // PublishProfile decode rebuilds a map, so a single field keeps the
     // decoded-map comparison unambiguous.
     let fields = vec![("name".to_string(), "Alice".to_string())];
-
     // --- payload: mirror the generated `publishProfile` emitter. ---
     let payload = {
         let mut fbb = FlatBufferBuilder::new();
@@ -469,17 +466,14 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
         fbb.finished_data().to_vec()
     };
     let bytes = encode_dispatch_envelope("corr-pub-prof", "nmp.publish", 1, &payload);
-
     // The action the builder bytes MUST decode back to.
     let mut map = serde_json::Map::new();
     for (k, v) in &fields {
         map.insert(k.clone(), serde_json::Value::String(v.clone()));
     }
     let expected = PublishAction::PublishProfile { fields: map };
-
     let mut registry = ActionRegistry::new();
     registry.register(nmp_core::publish::PublishModule);
-
     let decoded = decode_dispatch_envelope(&bytes).expect("publish envelope must decode (S2)");
     assert_eq!(decoded.action_namespace, "nmp.publish");
     assert_eq!(
@@ -495,4 +489,11 @@ fn publish_profile_builder_bytes_dispatch_through_start_bytes() {
             &decoded.payload,
         )
         .expect("publishProfile builder bytes must dispatch + validate via start_bytes");
+    // LOAD-BEARING: same bytes under an unregistered namespace must be rejected,
+    // proving the positive above is not vacuous (a misrouted builder fails closed).
+    let err = registry.start_bytes(&mut ActionContext::default(), 1_700_000_000_000,
+        "nmp.nip25.react", &decoded.payload)
+        .expect_err("publishProfile payload routed as nmp.nip25.react must be rejected");
+    assert!(matches!(err, ActionRejection::Invalid(_)),
+        "wrong-namespace dispatch must fail closed as Invalid, got {err:?}");
 }
