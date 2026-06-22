@@ -1,0 +1,40 @@
+namespace nmp.router;
+
+// ADR-0064 (#1756) — typed FlatBuffers payload for the
+// `nmp.nip65.publish_relay_list` `ActionModule`. The OPAQUE
+// `DispatchEnvelope.payload` for that namespace; the registry adapter decodes
+// against THIS schema, gating `schema_version` BEFORE `start()` (fail-closed on
+// mismatch).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-router/src/wire/generated \
+//         crates/nmp-router/schema/publish_relay_list.fbs
+
+// NIP-65 read/write role marker. Mirrors `publish_relay_list::RelayMarker`.
+// `Both` is the default (no third tag element); `Indexer` is a host-side
+// input-only role the kind:10002 builder skips.
+enum RelayMarker : ubyte {
+  Both = 0,
+  Read = 1,
+  Write = 2,
+  Indexer = 3,
+}
+
+// One relay entry in the user's NIP-65 outbox/inbox advertisement.
+table RelayListEntry {
+  // Relay URL. Canonicalised + gated to `wss://` by the builder.
+  url:string (required);
+  // Read/write role marker. Defaults to `Both`.
+  marker:RelayMarker = Both;
+}
+
+table PublishRelayListPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The user's full NIP-65 relay set to advertise as a kind:10002 event.
+  relays:[RelayListEntry];
+}
+
+file_identifier "N65P";
+root_type PublishRelayListPayload;

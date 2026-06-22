@@ -59,7 +59,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, BlockedRelayLookup,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection, BlockedRelayLookup,
 };
 use nmp_signer_iface::UnsignedEvent;
 use nmp_core::ActorCommand;
@@ -177,6 +178,14 @@ impl ActionModule for BlockRelayAction {
     const NAMESPACE: &'static str = "nmp.nip51.block_relay";
     type Action = BlockRelayInput;
 
+    /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<BlockRelayInput as ActionPayload>::decode(bytes))
+    }
+
     /// Validate the URL scheme and guard against idempotent re-blocks.
     ///
     /// `start` rejects:
@@ -265,6 +274,14 @@ impl UnblockRelayAction {
 impl ActionModule for UnblockRelayAction {
     const NAMESPACE: &'static str = "nmp.nip51.unblock_relay";
     type Action = UnblockRelayInput;
+
+    /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<UnblockRelayInput as ActionPayload>::decode(bytes))
+    }
 
     /// Validate the URL scheme and guard against unblocking a non-blocked relay.
     ///

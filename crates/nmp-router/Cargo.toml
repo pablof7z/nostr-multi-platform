@@ -31,6 +31,10 @@ nmp-store = { path = "../nmp-store" }
 # so this crate no longer duplicates that value (V-57).
 nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
+# Typed FlatBuffers action payloads (ADR-0064 / #1756) for the three relay-list
+# action modules this crate owns (block/unblock relay + NIP-65 publish). Pinned
+# to the workspace version verified by ci/check-flatbuffers-version-pins.sh.
+flatbuffers = { workspace = true }
 tracing = "0.1"
 
 [features]
