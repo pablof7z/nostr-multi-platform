@@ -24,6 +24,7 @@
 //! actor never wedges).
 
 mod drain;
+mod queue;
 mod sinks;
 
 // The default parked-op deadline (`nmp_signer_iface::PENDING_SIGN_TIMEOUT`, 5s)
@@ -34,8 +35,25 @@ mod sinks;
 // duration from the handle it already holds. Consumers import it directly from
 // `nmp_signer_iface`; no re-export here.
 
+// `resolve_parked_op` is the per-op drain step. Production drives it only
+// through `ParkedSignerOps::drive` (queue.rs); the signer-port dispatch tests
+// call it directly against a single parked op, so the re-export is test-gated.
+#[cfg(test)]
 pub(crate) use drain::resolve_parked_op;
-pub(crate) use sinks::{AuthObligation, ParkedOp, PublishObligation};
+pub(crate) use queue::ParkedSignerOps;
+// `DrainBatch` is the obligation bundle `ParkedSignerOps::drive` returns. The
+// native actor loop destructures it (`publish` / `auth` / `changed`); the wasm
+// reducer ignores the obligations (it never parks a Publish/Auth sink — web
+// publish is disabled, #1007). So the named re-export is native-only.
+#[cfg(feature = "native")]
+pub(crate) use queue::DrainBatch;
+// `ParkedOp` is named by both the wasm signing seam (`kernel_reducer::
+// wasm_signing`) and the native dispatch arms, so it stays ungated. The
+// `Auth` / `Publish` obligations are only consumed by the native loop +
+// `auth_sign`, so their re-exports are native-only.
+pub(crate) use sinks::ParkedOp;
+#[cfg(feature = "native")]
+pub(crate) use sinks::{AuthObligation, PublishObligation};
 // `ParkedOpSink` is named only by tests (the dispatch arms / drain construct it
 // via `ParkedOp::*` constructors); gate the re-export so a non-test lib build
 // does not warn it unused.
@@ -52,10 +70,11 @@ mod tests {
     use crate::actor::{CipherContinuation, SignContinuation};
     use crate::publish::PublishTarget;
     use crate::substrate::{SignedEvent, UnsignedEvent};
+    use crate::time::Instant;
     use nmp_signer_iface::{SignerError, SignerOp, PENDING_SIGN_TIMEOUT};
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     /// A deadline `PENDING_SIGN_TIMEOUT` into the future — what a park site
     /// computes for a local/NIP-46 signer via `sign_deadline_for` /

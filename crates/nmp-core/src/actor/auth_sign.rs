@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use nmp_network::pool::Pool;
 
 use super::commands::{self, IdentityRuntime};
-use super::pending_sign::{AuthObligation, ParkedOp};
+use super::pending_sign::{AuthObligation, ParkedOp, ParkedSignerOps};
 use super::relay_mgmt::route_dispatch_outbound;
 use super::RelayControl;
 use crate::kernel::Kernel;
@@ -71,7 +71,7 @@ impl RouteCtx<'_> {
 pub(super) fn drain_pending_auth_signs(
     kernel: &mut Kernel,
     identity: &IdentityRuntime,
-    parked_ops: &mut Vec<ParkedOp>,
+    parked_ops: &mut ParkedSignerOps,
     route: &mut RouteCtx<'_>,
 ) {
     for req in kernel.take_pending_auth_signs() {

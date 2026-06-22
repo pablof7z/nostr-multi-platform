@@ -121,7 +121,7 @@ fn dispatch_capability_result(
 ) -> Option<String> {
     // Build a minimal ActorContext with the required fields. Relay pool,
     // relay_controls, etc. are not needed for CapabilityResultReady.
-    use crate::actor::pending_sign::ParkedOp;
+    use crate::actor::pending_sign::ParkedSignerOps;
     use crate::relay::CanonicalRelayUrl;
     use std::collections::{HashMap, HashSet};
     use std::time::Instant;
@@ -143,7 +143,7 @@ fn dispatch_capability_result(
     let mut running = true;
     let mut emit_hz = 4u32;
     let mut startup_sent = false;
-    let mut parked_ops: Vec<ParkedOp> = Vec::new();
+    let mut parked_ops = ParkedSignerOps::new();
     let coverage_hook = Arc::new(Mutex::new(None::<crate::subs::PlanCoverageHook>));
     let req_frame_interceptor = Arc::new(Mutex::new(None));
     let host_op_handler = Arc::new(Mutex::new(None));

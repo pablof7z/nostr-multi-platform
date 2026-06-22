@@ -58,6 +58,14 @@ pub struct KernelReducer {
     observer_slot: crate::actor::KernelEventObserverSlot,
     /// Typed snapshot-projection slot.
     snapshot_slot: SnapshotProjectionSlot,
+    /// #1753 S6 — wasm signing round-trip state: the shared `ParkedSignerOps`
+    /// queue + drain driver (the SAME component the native actor loop uses), the
+    /// per-correlation value-delivery senders, the account-pin map, and the
+    /// observable completion sink. Unused on every native path (the actor owns
+    /// its own queue); populated only when a wasm host drives the
+    /// `begin_sign_roundtrip` / `deliver_signed_response` seam. Definition +
+    /// methods live in `kernel_reducer/wasm_signing.rs`.
+    sign_roundtrip: wasm_signing::SignRoundTripState,
 }
 
 impl KernelReducer {
@@ -83,6 +91,7 @@ impl KernelReducer {
             kernel,
             observer_slot,
             snapshot_slot,
+            sign_roundtrip: wasm_signing::SignRoundTripState::default(),
         }
     }
 
@@ -400,49 +409,10 @@ impl KernelReducer {
         self.kernel.make_update(running)
     }
 
-    /// Populate the kernel's configured-relay lanes from a caller-supplied
-    /// list of `(url, role)` pairs.
-    ///
-    /// Each `role` string is canonicalised via the kernel's own
-    /// `canonical_relay_role` pass (same normalisation the native actor
-    /// applies on every relay-edit write). [`crate::kernel::AppRelay`] is
-    /// `pub(crate)`; external crates (e.g. `nmp-wasm`) pass raw string
-    /// pairs and let this method build the typed rows internally.
-    ///
-    /// Calling this before the first [`make_update_frame`] ensures the
-    /// `relay_statuses` Tier-3 rows and the `configured_relays` typed
-    /// projection both carry real URLs rather than empty defaults.
-    ///
-    /// [`make_update_frame`]: Self::make_update_frame
-    pub fn set_configured_relays(&mut self, rows: Vec<(String, String)>) {
-        use crate::kernel::AppRelay;
-        let relay_rows: Vec<AppRelay> = rows
-            .into_iter()
-            .map(|(url, role)| AppRelay::new(url, role))
-            .collect();
-        self.kernel.set_configured_relays(relay_rows);
-    }
-
-    /// Install the production outbox-routing substrate on the wrapped kernel.
-    ///
-    /// The wasm32 composition has no `AppHost` / actor `set_routing_substrate`
-    /// seam (that path is native-only), so the chirp-web composition root calls
-    /// this directly to swap the kernel's default no-op
-    /// [`crate::substrate::EmptyOutboxRouter`] for the production
-    /// `nmp_router::GenericOutboxRouter` + a `MailboxCache`. Without this every
-    /// outbox-direction REQ (kind:0 profile claims, kind:3 contacts, kind:10002
-    /// NIP-65) silently resolves to no relays. Must be called before `Start`.
-    pub fn set_routing(
-        &mut self,
-        router: std::sync::Arc<dyn crate::substrate::OutboxRouter>,
-        cache: std::sync::Arc<dyn crate::substrate::MailboxCache>,
-    ) {
-        self.kernel.set_routing(router, cache);
-    }
-
-    pub fn set_content_parser(&mut self, parser: std::sync::Arc<dyn crate::substrate::ContentParser>) {
-        self.kernel.set_content_parser(parser);
-    }
+    // `set_configured_relays`, `set_routing`, and `set_content_parser` — the
+    // composition-root wiring methods — live in the sibling
+    // `composition_seams.rs` module (LOC ceiling, #1753). They are still public
+    // methods on `KernelReducer` (`impl KernelReducer` in that file).
 }
 
 /// Test-support seam: fire the observer slot directly with a `KernelEvent`.
@@ -467,6 +437,11 @@ mod feed_verbs;
 mod follow;
 mod react;
 mod reply;
+// #1753 S6 — the wasm signing capability round-trip seam (pure message
+// re-entry). Adds `begin_sign_roundtrip` / `deliver_signed_response` to
+// `impl KernelReducer` and defines `SignRoundTripState` + its public DTOs.
+mod wasm_signing;
+pub use wasm_signing::{SignRoundTripCompletion, SignRoundTripOutcome, SignRoundTripRequest};
 
 impl Default for KernelReducer {
     fn default() -> Self {

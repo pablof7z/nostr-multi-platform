@@ -34,7 +34,12 @@
 use crate::publish::PublishTarget;
 use crate::substrate::SignedEvent;
 use nmp_signer_iface::SignerOp;
-use std::time::Instant;
+// D20 / #1753: the parked-op path is now wasm-reachable (the wasm `KernelReducer`
+// parks sign ops here). `std::time::Instant::now()` PANICS on wasm32, so the
+// deadline type + `timed_out()` route through the `crate::time` shim (verbatim
+// `std::time` on native, `web_time` on wasm32) — keeping the `deadline` field
+// type-consistent with the wasm caller's `Instant`.
+use crate::time::Instant;
 
 use crate::actor::{CipherContinuation, SignContinuation};
 
