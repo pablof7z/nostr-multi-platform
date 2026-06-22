@@ -41,7 +41,7 @@
 //! |------------------------------|------------------------------------|------------|---------------------------------------|
 //! | FFI command channel          | `command_tx` mpsc                  | unbounded  | unbounded (ADR-0029's bounded shed-load design was never built — see ADR-0029, marked Not implemented); depth is observable via `actor_queue_depth` |
 //! | view-command emit gate       | per-dispatch `emit_now`            | unconditional | `maybe_emit_after_dispatch` skips when `running=false` (this fix — load-bearing) |
-//! | `claim_profile`              | `profile_claims[pk]: BTreeSet`     | unbounded  | `MAX_CLAIMS_PER_PUBKEY=256` — drop-newest + `claim_drops_total` |
+//! | `resolve_ref`                | `profile_claims[pk]: BTreeSet`     | unbounded  | `MAX_CLAIMS_PER_PUBKEY=256` — drop-newest + `claim_drops_total` |
 //! | latency sketch (harness)     | `Vec<u64>` per-sample              | unbounded  | fixed 32-bucket log2 histogram (`s2_dispatch_flood.rs::LatencyHistogram`) — 256 B per thread |
 //! | (was: `open_author`)         | deleted — V-112 (ADR-0042)         | —          | —                                          |
 //! | (was: `close_author`)        | deleted — V-112 (ADR-0042)         | —          | —                                          |
@@ -152,7 +152,7 @@ fn claim_profile_set_bounded_at_per_pubkey_cap() {
 }
 
 /// T114b — D6 invariant: a dropped claim is a silent no-op, not an FFI error.
-/// `claim_profile` returns `Vec<OutboundMessage>` for the actor's outbound
+/// a profile `resolve_ref` returns `Vec<OutboundMessage>` for the actor's outbound
 /// path; a dropped claim must produce an empty Vec, never a panic or partial
 /// mutation that could later trip an assertion.
 #[test]

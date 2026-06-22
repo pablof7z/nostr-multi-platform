@@ -430,7 +430,7 @@ fn open_uri_serves_store_for_resolved_target() {
 /// `register_profile_claim_interest` routes through the unified front-door
 /// (`register_interest` with Replace policy). This test proves that a stored
 /// kind:0 metadata event populates the ProfileCache on a cold-cache kernel
-/// immediately after `claim_profile` — no relay delivery needed.
+/// immediately after `resolve_ref` — no relay delivery needed.
 ///
 /// Regression guard: before Phase C the profile-claim path called bare
 /// `set_sub` without a cache-serve enqueue, so a stored kind:0 was invisible
@@ -489,7 +489,7 @@ fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
     assert!(
         cold_cache.profile(&author).is_some(),
         "PROFILE-CLAIM STORE-FIRST FAIL: profile_lookup().profile(P) must be Some \
-         after claim_profile installs the kind:0 interest and the cache-serve \
+         after resolve_ref installs the kind:0 interest and the cache-serve \
          runs from the store; got None. This is the cold-cache kind:0 bug \
          (timeline shows only pubkeys after relaunch)."
     );

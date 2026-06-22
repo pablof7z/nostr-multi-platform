@@ -52,7 +52,7 @@ fun NostrRichText(
     // `DisposableEffect` isn't reachable from `appendInline`; instead the
     // tree is walked once here to collect the mention pubkey set and a
     // single tracker claims/releases the set as a batch. The kernel's
-    // `claim_profile` is idempotent on `(pubkey, consumer_id)` so duplicate
+    // `resolve_ref` is idempotent on `(pubkey, consumer_id)` so duplicate
     // entries within the same tree are coalesced kernel-side.
     val mentionPubkeys = remember(contentTree) { collectMentionPubkeys(contentTree) }
     ClaimMentionProfiles(mentionPubkeys)

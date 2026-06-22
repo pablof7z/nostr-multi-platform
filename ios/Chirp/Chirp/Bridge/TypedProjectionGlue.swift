@@ -303,7 +303,7 @@ enum TypedProjectionGlue {
     // MARK: profile cluster → ProfileCard
 
     /// Map the SHARED `nmp_kernel_ProfileCard` reader (`ProfileCard.generated.swift`,
-    /// `include`d by `profile` / `claimed_profiles` / `resolved_profiles`) to the
+    /// `include`d by `profile` / `refs.profile`) to the
     /// Chirp `ProfileCard` domain type — the SAME value the JSON `payload` path
     /// yields. The three `has_*` companion bools reproduce the JSON
     /// `null`-when-`None` semantics (ADR-0032): when `has_x == false` the

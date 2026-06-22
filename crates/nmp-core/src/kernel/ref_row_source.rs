@@ -56,8 +56,8 @@ fn namespace_from_wire(namespace: &str) -> Option<RefNamespace> {
 
 impl Kernel {
     /// Build the typed `refs.profile` row payload for `key` at the demanded
-    /// profile shape. Reads the SAME `profile_card_for` accessor the legacy
-    /// `claimed_profiles` projection reads, then narrows the encoded card to the
+    /// profile shape. Reads the SAME `profile_card_for` accessor the `refs.profile`
+    /// projection reads, then narrows the encoded card to the
     /// widest shape any live consumer demanded (D5). `None` once no consumer
     /// holds the key (it is not live) — the caller treats that as not-resolvable.
     fn ref_profile_row_payload(&self, key: &str) -> Option<Vec<u8>> {

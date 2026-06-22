@@ -1667,7 +1667,7 @@ pub fn run_actor_with_observers(
                     //
                     // Fix A (universal latent-bug fix): `relays_ready` is the
                     // SINGLE claim/open send-gate, computed here once per dispatch
-                    // and fed to every consumer (claim_event / claim_profile /
+                    // and fed to every consumer (claim_event / resolve_ref /
                     // open_author / open_thread / open_firehose /
                     // sign_in_nsec→retarget / session restore). `claim_send_gate`
                     // returns true as soon as ANY bootstrap lane is connected; the

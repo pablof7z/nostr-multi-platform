@@ -255,7 +255,7 @@ impl RefResolver for EventNs {
 impl Kernel {
     /// The unified, origin-blind reference-resolution seam (ADR-0063 D1).
     ///
-    /// Generalizes `claim_profile` / `claim_event`. A `(namespace, shape)`
+    /// Generalizes the former per-kind profile/event claims. A `(namespace, shape)`
     /// mismatch fails closed (D6: log + no-op, never an FFI error). `hints` are
     /// NIP-19 relay TLVs seeding the registered interest (empty for the bare
     /// key path).

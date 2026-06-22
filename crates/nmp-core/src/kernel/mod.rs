@@ -599,7 +599,7 @@ use types::{
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
 ///
-/// `profile_claims[pk]: BTreeSet<consumer_id>` grows once per `claim_profile` call;
+/// `profile_claims[pk]: BTreeSet<consumer_id>` grows once per `resolve_ref` call;
 /// without a cap a long-lived process accumulates `consumer_ids` in proportion to
 /// dispatch count rather than working-set size (a D8 violation — see PD-021
 /// line-11 and `docs/perf/m10.5/s2-drain-analysis.md`). The S2 flood mix issues
@@ -1246,7 +1246,7 @@ pub struct Kernel {
     /// to expose `RelayUsefulness.novelty_ratio`
     /// (`docs/design/outbox-explorer-diagnostics.md` §2 line 152).
     pub(in crate::kernel) event_provenance: provenance::EventProvenance,
-    /// T114b — count of `claim_profile` requests dropped because a single
+    /// T114b — count of `resolve_ref` requests dropped because a single
     /// pubkey's `consumer_id` set hit `MAX_CLAIMS_PER_PUBKEY`. Surfaced on the
     /// snapshot via [`Metrics::claim_drops_total`] for D8 visibility into
     /// per-dispatch retention pressure.

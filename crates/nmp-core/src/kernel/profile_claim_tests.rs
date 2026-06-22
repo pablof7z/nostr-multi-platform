@@ -1,6 +1,6 @@
 //! Tests for the M2 registry-backed profile-claim path.
 //!
-//! `claim_profile` registers a kind:0 `LogicalInterest` through the
+//! `resolve_ref` registers a kind:0 `LogicalInterest` through the
 //! `InterestRegistry`; the planner emits the wire REQ on the next
 //! `drain_lifecycle_outbound`. These tests assert the migrated behaviour:
 //!
@@ -16,7 +16,8 @@
 //! routing, retry-on-miss, the #1436 redundant-connect regression, batched
 //! coalescing, nprofile hints) live in the sibling `profile_claim_discovery_tests`
 //! module — split out for the 500 LOC file-size hard ceiling. The
-//! `claimed_profiles` projection invariants live in `profile_claim_projection_tests`.
+//! deleted `claimed_profiles` projection's invariants are now covered by the
+//! absence guards in `declared_projections_tests`.
 
 use super::profile_claim_test_support::{drain_reqs, hex64, kind0_req_relays_for};
 use super::*;

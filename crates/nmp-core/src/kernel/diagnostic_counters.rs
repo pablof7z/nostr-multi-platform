@@ -51,9 +51,9 @@ impl Kernel {
         depth.min(u64::from(u32::MAX)) as u32
     }
 
-    /// T114b — number of `claim_profile` requests dropped because a pubkey's
+    /// T114b — number of `resolve_ref` requests dropped because a pubkey's
     /// `consumer_id` set hit `MAX_CLAIMS_PER_PUBKEY`. Read-only accessor; the
-    /// counter is owned by the kernel and mutated only by `claim_profile`.
+    /// counter is owned by the kernel and mutated only by `resolve_ref`.
     pub(crate) fn claim_drops_total(&self) -> u64 {
         self.claim_drops_total
     }

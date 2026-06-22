@@ -191,7 +191,7 @@ impl Kernel {
         // so it must not advance any rev (the host already has the current row).
         if mutated {
             self.changed_since_emit = true;
-            // ADR-0055 Rung 1: bump profile_claims_ver. (claimed_profiles projection
+            // ADR-0055 Rung 1: bump profile_claims_ver. (the `refs.profile` projection
             // derives from `profile_claims`, untouched by the registry migration.)
             self.projection_rev_tracker.source_versions.bump_profile_claims();
             // ADR-0063 Lane B (D6a) — bump THIS pubkey's per-key rev (resolve site 1

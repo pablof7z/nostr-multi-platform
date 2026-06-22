@@ -2,7 +2,7 @@
 //! registry-backed profile-claim path.
 //!
 //! Split out of `profile_claim_tests.rs` (file-size gate, 500 LOC hard
-//! ceiling). These exercise the implicit-discovery half of `claim_profile`:
+//! ceiling). These exercise the implicit-discovery half of `resolve_ref`:
 //! a cold-start (uncached mailbox) claim must reach the indexer AND emit the D3
 //! kind:10002 probe; a genuine indexer reconnect (down → up) re-arms the probe
 //! set; a redundant/startup connect must NOT (the #1436 regression). The

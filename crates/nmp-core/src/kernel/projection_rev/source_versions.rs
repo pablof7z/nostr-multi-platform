@@ -57,7 +57,7 @@ pub(crate) struct SourceVersions {
     pub(crate) active_account_ver: u64,
 
     // ── profile/event claim cluster ───────────────────────────────────────────
-    /// Bumped at `claim_profile` / `release_profile` (the sole writers of
+    /// Bumped at `resolve_ref` / `release_ref` (the sole writers of
     /// `Kernel::profile_claims` — D4 via `requests/profile.rs`).
     pub(crate) profile_claims_ver: u64,
 
@@ -71,7 +71,7 @@ pub(crate) struct SourceVersions {
 
     /// Bumped when `open_views` changes. Currently always-empty (V-112/ADR-0042
     /// deleted author_view/thread_view). Still declared so a future view-open
-    /// populating `mention_profiles` triggers a rev bump.
+    /// driving the profile resolve path (`refs.profile`) triggers a rev bump.
     pub(crate) open_views_ver: u64,
 
     // ── relay/settings cluster ────────────────────────────────────────────────

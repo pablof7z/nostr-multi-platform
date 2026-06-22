@@ -105,7 +105,7 @@ impl Kernel {
             // lookup. Rust decides zapability.
             author_lnurl: profile.as_ref().and_then(|p| p.lnurl.clone()),
             // Author display name baked into the snapshot item so the renderer
-            // has it without depending on the `claimed_profiles` claim
+            // has it without depending on the `refs.profile` claim
             // lifecycle. Empty string → `None` at this projection boundary
             // (aim.md §2), mirroring `mention_profiles_from_items`.
             author_display_name: profile

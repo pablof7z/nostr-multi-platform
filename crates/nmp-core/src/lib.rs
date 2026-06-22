@@ -6,8 +6,8 @@ pub mod external_signer_hook;
 // SHARED FlatBuffers `ProfileCard` row type, mounted at the crate root so the
 // profile-cluster generated bindings can resolve it.
 //
-// `profile.fbs` / `claimed_profiles.fbs` / `resolved_profiles.fbs` all `include
-// "profile_card.fbs"` and reference its `ProfileCard` table. `flatc` (no
+// `profile.fbs` `include`s `profile_card.fbs` and references its `ProfileCard`
+// table. `flatc` (no
 // `--gen-all`) emits `ProfileCard` ONLY into `profile_card_generated.rs` and
 // drops a crate-root `use crate::profile_card_generated::*;` into each per-key
 // `*_generated.rs`. That glob only sees items at the *top* of

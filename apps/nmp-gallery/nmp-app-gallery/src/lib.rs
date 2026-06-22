@@ -160,7 +160,7 @@ pub unsafe extern "C" fn nmp_app_gallery_ref_profile_store_free(
 ///
 /// ADR-0063 (#1671): the frame's `refs.profile` row-delta batch is merged into
 /// `store` (the host's persistent profile mirror) before the snapshot JSON is
-/// built; the rendered `resolved_profiles` JSON map is sourced from that store.
+/// built; the rendered `refs.profile` JSON map is sourced from that store.
 /// `store` MUST persist across calls for one kernel session.
 ///
 /// Returns a heap-allocated UTF-8 JSON string on success; callers must release

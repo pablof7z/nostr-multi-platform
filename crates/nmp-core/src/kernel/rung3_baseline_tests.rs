@@ -119,8 +119,8 @@ fn first_frame_after_declare_incremental_apply_is_full_baseline() {
 
     // Every Tier-2 built-in that has a payload on a fresh kernel MUST appear.
     // Non-drain keys that always produce bytes: configured_relays, profile,
-    // accounts, active_account, claimed_profiles, resolved_profiles,
-    // claimed_events, mention_profiles, relay_role_options, settings_hub,
+    // accounts, active_account,
+    // claimed_events, relay_role_options, settings_hub,
     // publish_queue, publish_outbox, outbox_summary, relay_diagnostics.
     //
     // We check the set of present keys covers all built-in UNCONDITIONAL keys.
@@ -358,8 +358,8 @@ fn omission_biconditional_oracle_omitted_iff_unchanged() {
     // `relay_role_options` / `settings_hub` cluster — plus `relay_diagnostics`
     // (whose per-emit fingerprint folds in the configured-relay set). Every
     // OTHER Tier-2 key (`profile`, `accounts`, `active_account`,
-    // `claimed_profiles`, `resolved_profiles`, `claimed_events`,
-    // `mention_profiles`, the publish cluster) is untouched and MUST be omitted.
+    // `claimed_events`,
+    // the publish cluster) is untouched and MUST be omitted.
     use crate::kernel::AppRelay;
     kernel.set_configured_relays(vec![AppRelay::new(
         "wss://relay.example/".to_string(),

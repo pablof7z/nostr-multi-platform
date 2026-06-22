@@ -75,7 +75,7 @@ fn feed_tick_auto_resolves_each_visible_author() {
     kernel.reconcile_feed_author_refs();
 
     // Each visible author is now claimed under the feed consumer id — the SAME
-    // `profile_claims` refcount the explicit `resolve_ref`/`claim_profile` path
+    // `profile_claims` refcount the explicit `resolve_ref` path
     // uses (origin-blind: one path).
     for pk in [&a, &b, &c] {
         let consumers = kernel.profile_claims.get(pk).expect("author claimed");

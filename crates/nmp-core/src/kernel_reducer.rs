@@ -205,7 +205,7 @@ impl KernelReducer {
     /// (1 Hz is sufficient; retry deadlines are seconds-scale) so transient
     /// publish failures recover without waiting for the next inbound frame
     /// from any relay, `CompileTrigger::ViewOpened` events enqueued by
-    /// `claim_event` / `claim_profile` compile into REQ frames without
+    /// `claim_event` / `resolve_ref` compile into REQ frames without
     /// waiting for the next relay event, and Phase-1 claims advance to
     /// Phase 2 on every tick rather than stalling permanently on quiet
     /// sockets (closes the W6 gap tracked in issue #1143).
@@ -260,7 +260,7 @@ impl KernelReducer {
     //
     // Wasm consumers (chirp-web components) have no ActorCommand channel —
     // they drive the kernel through `KernelReducer` directly. These four
-    // methods expose the same `Kernel::claim_profile` / `release_profile` /
+    // methods expose the same `Kernel::resolve_ref` / `release_ref` /
     // `claim_event` / `release_event` surface the actor uses on native, so
     // web components can self-claim profiles and events on mount/unmount the
     // same way iOS (`chirp-avatar.<uuid>`) and Android (`note-author-<eventId>`)

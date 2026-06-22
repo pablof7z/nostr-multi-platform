@@ -9,7 +9,7 @@
 //! (`Content` AND `Indexer`) has a connected URL. If one bootstrap lane never
 //! establishes a socket (on the Android emulator `purplepag.es` / the Indexer
 //! lane never opens its WebSocket), `relays_ready` is permanently `false` and
-//! every `claim_event` / `claim_profile` / `open_*` parks forever — no REQ is
+//! every `claim_event` / `resolve_ref` / `open_*` parks forever — no REQ is
 //! ever emitted, not even to the nevent's own URI relay hint.
 //!
 //! # Why this is universal — there is NO iOS/TUI bypass

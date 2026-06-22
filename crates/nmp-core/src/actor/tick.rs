@@ -127,7 +127,7 @@ pub(super) fn maybe_emit_after_dispatch(
     if running {
         emit_now(kernel, running, update_tx, last_emit);
     }
-    // When !running, state changes (e.g. claim_profile updating
+    // When !running, state changes (e.g. resolve_ref updating
     // profile_claims) remain visible through `changed_since_emit`; the next
     // `Start` command's `emit_now` will deliver the up-to-date snapshot.
 }

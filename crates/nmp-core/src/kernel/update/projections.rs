@@ -213,13 +213,12 @@ impl Kernel {
     /// the current `event_claims` set and looks each key up against `self.events`
     /// via `lookup_for_primary_id`; missing entries are silently absent (D1
     /// best-effort). Entries carry raw event data only; author display state is
-    /// resolved by profile components through `claim_profile` and the
-    /// `claimed_profiles` / `resolved_profiles` projections. BTreeMap for
+    /// resolved by profile components through `resolve_ref` and the
+    /// `refs.profile` projection. BTreeMap for
     /// deterministic key ordering.
     ///
     /// Shared accessor for the generic JSON projection and its Tier-2 typed
-    /// sidecar — see [`Self::mention_profiles`] for the divergence-safety
-    /// rationale.
+    /// sidecar.
     pub(in crate::kernel) fn claimed_events(
         &self,
     ) -> std::collections::BTreeMap<String, ClaimedEventDto> {

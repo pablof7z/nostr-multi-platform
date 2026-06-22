@@ -1,7 +1,7 @@
 namespace nmp.kernel;
 
 // SHARED `ProfileCard` row type for the kernel-owned profile-cluster snapshot
-// projections (`profile`, `claimed_profiles`, `resolved_profiles`).
+// projections (e.g. `profile`, `refs.profile`).
 //
 // Before this file existed, each of those three schemas re-declared `ProfileCard`
 // verbatim. That duplication was harmless for `flatc --rust` (each `*_generated.rs`

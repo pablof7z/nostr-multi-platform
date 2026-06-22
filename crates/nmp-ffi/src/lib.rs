@@ -94,7 +94,7 @@ mod routing_trace;
 // the snapshot tick.
 mod composition_report;
 // ADR-0063 Lane D — unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI
-// symbols. Generalizes claim_profile + claim_event behind one origin-blind seam;
+// symbols. Generalizes the former per-kind profile claim + claim_event behind one origin-blind seam;
 // old claim/release symbols kept AS-IS until Lane H.
 mod resolve_ref;
 mod snapshot;

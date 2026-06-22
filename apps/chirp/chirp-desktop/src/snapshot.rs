@@ -42,7 +42,7 @@ pub struct Snapshot {
     pub accounts: Vec<AccountSummary>,
 
     /// Host-registered and built-in projections (`nmp.feed.*`,
-    /// configured_relays, action_lifecycle, mention_profiles, ...).
+    /// configured_relays, action_lifecycle, ...).
     #[serde(default)]
     pub projections: HashMap<String, serde_json::Value>,
 
@@ -186,7 +186,8 @@ pub struct AccountSummary {
 // projections "nmp.feed.author.<pubkey>" / "nmp.feed.thread.<event_id>"
 // (ModularTimelineSnapshot).
 
-/// `mention_profiles` projection payload.
+/// Payload for the former `mention_profiles` projection (retired in ADR-0063
+/// Lane H; profiles now flow through the `refs.profile` row-delta).
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct MentionProfilePayload {
     #[serde(default)]
