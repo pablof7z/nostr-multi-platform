@@ -1,12 +1,12 @@
-//! Profile (kind:0) claim/release — registry-backed (M2 migration).
+//! Profile (kind:0) resolve/release — registry-backed (M2 migration).
 //!
 //! # M2 migration (compiler.md §3.5) — DONE
 //!
-//! `claim_profile` / `release_profile` no longer build kind:0 REQ frames
-//! directly. Each claim registers a `LogicalInterest { kinds:[0],
+//! Profile `resolve_ref` / `release_ref` do not build kind:0 REQ frames
+//! directly. Each resolve registers a `LogicalInterest { kinds:[0],
 //! authors:[P], limit:None }` through the [`crate::subs::InterestRegistry`]
 //! (the same single-writer chokepoint the follow feed and `claim_event` use),
-//! so a claimed profile inherits, for free:
+//! so a resolved profile inherits, for free:
 //!
 //! * **D3 implicit kind:10002 discovery** — `recompile_and_diff` auto-emits a
 //!   batched `kinds:[10002]` probe for any author with no cached mailbox
