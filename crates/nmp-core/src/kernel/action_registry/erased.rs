@@ -93,6 +93,21 @@ pub(super) trait ErasedActionModule: Send + Sync {
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), TypedDispatchError>;
+
+    /// `true` iff the module has migrated to a typed FlatBuffers payload — i.e.
+    /// it overrides [`ActionModule::decode_payload`] to return `Some` (ADR-0064
+    /// / S3, #1756). This is the intrinsic typed-only invariant probe: the byte
+    /// doorway ([`Self::start_bytes`] / [`Self::execute_bytes`]) fails closed as
+    /// [`TypedDispatchError::NotTypedCapable`] on any module for which this is
+    /// `false`, so a registry of reachable modules that are all typed-capable
+    /// can never silently route a JSON / untyped payload through the doorway.
+    ///
+    /// Probed by handing `decode_payload` an empty buffer: a typed module
+    /// returns `Some(_)` (even if the empty buffer then fails its
+    /// `schema_version` / FlatBuffers decode — the `Some` vs `None` arm is what
+    /// distinguishes "typed-capable" from "never migrated"), an untyped module
+    /// returns `None`. No `start()` runs; this is a pure capability query.
+    fn is_typed_capable(&self) -> bool;
 }
 
 /// Outcome of a typed-bytes (`*_bytes`) dispatch through the adapter. Errors are
@@ -191,4 +206,29 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
             .execute(action, correlation_id, send)
             .map_err(TypedDispatchError::Execute)
     }
+
+    fn is_typed_capable(&self) -> bool {
+        // A typed module overrides `decode_payload` to return `Some`; an untyped
+        // (e.g. JSON-only) module leaves it defaulted (`None`). Probing with an
+        // empty buffer never runs `start()` — only the `Some`/`None` arm matters
+        // (a typed module's `Some(Err(_))` on the empty buffer still counts as
+        // typed-capable).
+        M::decode_payload(&[]).is_some()
+    }
+}
+
+/// Sorted namespaces of the registry's modules that are NOT typed-capable — the
+/// intrinsic typed-only byte-doorway gate's core (ADR-0064 / #1756). Lives here,
+/// beside [`ErasedActionModule::is_typed_capable`] (the per-module probe it
+/// folds over), to keep the registry orchestrator file under the 500-LOC ceiling
+/// (V-12); [`super::ActionRegistry::untyped_namespaces`] is the thin delegator.
+pub(super) fn untyped_namespaces(
+    modules: &std::collections::HashMap<String, Box<dyn ErasedActionModule>>,
+) -> Vec<String> {
+    let mut out: Vec<String> = modules
+        .iter()
+        .filter_map(|(ns, m)| (!m.is_typed_capable()).then(|| ns.clone()))
+        .collect();
+    out.sort();
+    out
 }
