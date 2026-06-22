@@ -16,8 +16,6 @@ fn mixed_registry() -> Vec<SnapshotProjectionEntry> {
             swift_type: "String",
             typed_sidecar: Some(TypedSidecar {
                 key: "active_account",
-                schema_id: "active_account",
-                file_identifier: "KACT",
                 swift_reader_type: Some("nmp_kernel_ActiveAccountSnapshot"),
             }),
         },
@@ -28,8 +26,6 @@ fn mixed_registry() -> Vec<SnapshotProjectionEntry> {
             swift_type: "[String: Int]",
             typed_sidecar: Some(TypedSidecar {
                 key: "settings_hub",
-                schema_id: "settings_hub",
-                file_identifier: "KSHB",
                 swift_reader_type: None,
             }),
         },
@@ -118,8 +114,6 @@ fn empty_when_no_reader_bindings() {
         swift_type: "[String: Int]",
         typed_sidecar: Some(TypedSidecar {
             key: "settings_hub",
-            schema_id: "settings_hub",
-            file_identifier: "KSHB",
             swift_reader_type: None,
         }),
     }];

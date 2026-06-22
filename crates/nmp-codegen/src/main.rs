@@ -2,6 +2,7 @@ use std::env;
 
 mod cli;
 mod cli_action_builders;
+mod cli_builtin;
 
 fn main() {
     match run() {
@@ -50,7 +51,16 @@ fn run() -> Result<(), String> {
         // Rust const for `nmp-core`. Writes
         // `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`
         // from the SAME projection registry as `typed-decoders`; no stdin.
-        "builtin-keys" => cli::run_gen_builtin_keys(args, &h),
+        "builtin-keys" => cli_builtin::run_gen_builtin_keys(args, &h),
+        // #1723 — generated `BUILTIN_PROJECTION_DEPENDENCIES` revision table for
+        // `nmp-core`. Writes
+        // `crates/nmp-core/src/kernel/projection_rev/builtin_projection_deps.generated.rs`
+        // from the SAME projection contract as `builtin-keys`; no stdin.
+        "builtin-deps" => cli_builtin::run_gen_builtin_deps(args, &h),
+        // #1723 — generated `DRAIN_PROJECTION_KEYS` + `CONDITIONAL_PRESENCE_KEYS`
+        // presence-classification sets for `nmp-core`'s projection_rev module,
+        // from the contract's `presence_policy` column. No stdin.
+        "presence-keys" => cli_builtin::run_gen_presence_keys(args, &h),
         // #1493 P9 — generate the native known-signer detection lists (Kotlin
         // `KNOWN_NOSTR_SIGNERS` + Swift `knownSigners`) from the Rust catalog
         // JSON on stdin (`dump_signer_catalog`). Mirrors `gen swift`: reads the
@@ -71,6 +81,8 @@ fn help() -> String {
      nmp gen keyed-ref-cache   --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen action-builders   --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
+     nmp gen builtin-deps      [--out <path>] [--check]\n  \
+     nmp gen presence-keys     [--out <path>] [--check]\n  \
      nmp gen signer-catalog    [--catalog - | <path>] [--check]"
         .to_string()
 }

@@ -28,8 +28,8 @@ use super::super::{ClaimedEventDto, Kernel};
 //
 // ## Codegen-derived (ADR-0053 / Workstream-E4) — not hand-maintained
 //
-// This const is generated from the `nmp-codegen` projection registry
-// (`swift_projections_registry::kernel_builtin_projection_keys`) by
+// This const is generated from the neutral `nmp-codegen` projection contract
+// (`projection_contract::kernel_builtin_projection_keys`, #1723) by
 // `nmp gen builtin-keys`, so the kernel built-in key set is the single source
 // of truth the codegen decoders also derive from — it cannot drift from what
 // the shells decode. Regenerate with `cargo run -p nmp-codegen -- gen

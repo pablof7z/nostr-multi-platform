@@ -80,9 +80,13 @@ pub struct KeyedProjectionEntry {
     /// The generated per-key accessor base name, e.g. `"profile"` →
     /// `profile(pubkey) -> ProfileCard?`. Always a valid lowerCamelCase ident.
     pub accessor: &'static str,
-    /// `TypedPayload.schema_id` the producer stamps on the keyed projection.
-    pub schema_id: &'static str,
     /// FlatBuffers `file_identifier` of the row-delta batch payload (`NRRD`).
+    ///
+    /// #1723: the former `schema_id` field was DELETED — it was dead, unread
+    /// metadata (`"nmp.refs.rowdelta"`) that never matched the producer (which
+    /// stamps `schema_id == projection_key`). The neutral `schema_id` now lives
+    /// on the `projection_contract::PROJECTION_CONTRACT` row for this key, faithful
+    /// to the wire producer.
     pub file_identifier: &'static str,
 
     /// ADR-0063 Lane C (#1671) — the TYPED ROW-PAYLOAD shape carried inside each
@@ -102,7 +106,6 @@ pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
         projection_key: "refs.profile",
         namespace: "profile",
         accessor: "profile",
-        schema_id: "nmp.refs.rowdelta",
         file_identifier: "NRRD",
         // Lane C: row payload is the EXISTING `KPRF` `ProfileSnapshot` buffer
         // (`Kernel::ref_profile_row_payload` → `encode_profile`); accessor returns
@@ -129,7 +132,6 @@ pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
         projection_key: "refs.event",
         namespace: "event",
         accessor: "event",
-        schema_id: "nmp.refs.rowdelta",
         file_identifier: "NRRD",
         // Lane C: row payload is the EXISTING `KCEV` `ClaimedEventsSnapshot` buffer
         // with EXACTLY ONE entry (`Kernel::ref_event_row_payload` →

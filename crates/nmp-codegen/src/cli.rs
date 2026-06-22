@@ -346,63 +346,6 @@ pub fn run_gen_keyed_ref_cache(args: Vec<String>, help: &str) -> Result<(), Stri
     }
 }
 
-/// `nmp gen builtin-keys [--out <path>] [--check]`.
-///
-/// Generates `KERNEL_BUILTIN_PROJECTION_KEYS` — the Tier-2 kernel-owned built-in
-/// projection key const `nmp-core` `include!`s. Driven entirely by the projection
-/// registry (`swift_projections_registry::kernel_builtin_projection_keys`); takes
-/// no schema stdin.
-///
-/// `--out` defaults to
-/// `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`.
-/// This default is intentional: the output belongs to the framework crate
-/// `nmp-core`, not to any app.
-///
-/// `--check` diffs against the file on disk and exits non-zero on drift. The CI
-/// gate at `.github/workflows/codegen-drift.yml` uses this mode.
-pub fn run_gen_builtin_keys(args: Vec<String>, help: &str) -> Result<(), String> {
-    let mut out =
-        PathBuf::from("crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs");
-    let mut check = false;
-    let mut index = 0;
-    while index < args.len() {
-        match args[index].as_str() {
-            "--out" => {
-                index += 1;
-                out = args
-                    .get(index)
-                    .map(PathBuf::from)
-                    .ok_or_else(|| "--out requires a path".to_string())?;
-            }
-            "--check" => check = true,
-            other => return Err(format!("unknown argument {other}\n{help}")),
-        }
-        index += 1;
-    }
-
-    if check {
-        let outcome = nmp_codegen::check_builtin_keys(&out).map_err(|e| e.to_string())?;
-        if outcome.up_to_date {
-            println!("nmp gen builtin-keys --check: ok ({})", out.display());
-            Ok(())
-        } else {
-            let where_diff = outcome
-                .first_diff_line
-                .map(|n| format!(" (first differing line {n})"))
-                .unwrap_or_else(|| " (file missing)".to_string());
-            Err(format!(
-                "builtin-keys codegen stale at {}{where_diff}.\n\
-                 Regenerate with:\n  \
-                 cargo run -p nmp-codegen -- gen builtin-keys",
-                out.display()
-            ))
-        }
-    } else {
-        nmp_codegen::generate_builtin_keys(&out).map_err(|e| e.to_string())?;
-        println!("wrote {}", out.display());
-        Ok(())
-    }
-}
 
 /// `nmp gen signer-catalog [--catalog - | <path>] [--check]`.
 ///
