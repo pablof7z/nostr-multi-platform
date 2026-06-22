@@ -3,10 +3,19 @@
 //! This crate owns generic repost wire interpretation. It does not render UI,
 //! choose relay policy, or depend on any app crate.
 
-use std::collections::BTreeSet;
-
 use nmp_core::substrate::KernelEvent;
 use serde::Deserialize;
+
+mod coordinate;
+mod delete;
+mod primary_kind;
+
+pub use coordinate::{is_addressable_kind, AddressCoordinate};
+pub use delete::{DeleteRecord, KIND_DELETE};
+pub use primary_kind::{
+    acquisition_kinds_for_primary, try_acquisition_kinds_for_primary, validate_primary_kinds,
+    PrimaryKindError,
+};
 
 /// NIP-18 repost event kind for kind:1 short-text notes.
 pub const KIND_REPOST: u32 = 6;
@@ -18,65 +27,6 @@ pub const KIND_GENERIC_REPOST: u32 = 16;
 #[must_use]
 pub const fn is_repost_kind(kind: u32) -> bool {
     kind == KIND_REPOST || kind == KIND_GENERIC_REPOST
-}
-
-/// Error returned when an app-declared primary feed kind is not actually primary.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PrimaryKindError {
-    /// Repost wrapper kinds are acquisition mechanics derived from primary
-    /// content kinds. Apps must not declare them as primary content.
-    RepostWrapper { kind: u32 },
-}
-
-/// Compile app-declared primary feed kinds into acquisition kinds.
-///
-/// Apps declare the content kinds they want to render. Repost wrapper kinds are
-/// protocol mechanics: kind `6` for primary kind `1`, and kind `16` for every
-/// non-kind-1 primary target.
-#[must_use]
-pub fn acquisition_kinds_for_primary<I>(primary_kinds: I) -> BTreeSet<u32>
-where
-    I: IntoIterator<Item = u32>,
-{
-    try_acquisition_kinds_for_primary(primary_kinds)
-        .expect("primary feed kinds must not include repost wrapper kinds")
-}
-
-/// Try to compile app-declared primary feed kinds into acquisition kinds.
-///
-/// This is the boundary-safe variant for FFI/WASM/user input. It rejects kind
-/// `6` and kind `16` as primary kinds so apps cannot keep saying "I render
-/// `[1, 6]`"; they must say "I render `[1]`" and let this crate derive the
-/// wrapper acquisition kinds.
-pub fn try_acquisition_kinds_for_primary<I>(
-    primary_kinds: I,
-) -> Result<BTreeSet<u32>, PrimaryKindError>
-where
-    I: IntoIterator<Item = u32>,
-{
-    let mut kinds = BTreeSet::new();
-    let mut needs_kind6 = false;
-    let mut needs_kind16 = false;
-
-    for kind in primary_kinds {
-        if is_repost_kind(kind) {
-            return Err(PrimaryKindError::RepostWrapper { kind });
-        }
-        kinds.insert(kind);
-        match kind {
-            1 => needs_kind6 = true,
-            _ => needs_kind16 = true,
-        }
-    }
-
-    if needs_kind6 {
-        kinds.insert(KIND_REPOST);
-    }
-    if needs_kind16 {
-        kinds.insert(KIND_GENERIC_REPOST);
-    }
-
-    Ok(kinds)
 }
 
 /// Decoded inner event embedded in a repost `content` field.
@@ -98,6 +48,12 @@ pub struct RepostRecord {
     pub created_at: u64,
     pub target_event_id: Option<String>,
     pub target_kind: Option<u32>,
+    /// Address coordinate of the target, when the wrapper carries an `a` tag (a
+    /// generic repost of a replaceable/addressable event) or embeds an
+    /// addressable event. This is the canonical row identity for addressable
+    /// targets — present means the coordinate is *proven*, never guessed from an
+    /// event id. See [`crate::AddressCoordinate`].
+    pub target_address: Option<AddressCoordinate>,
     pub embedded_event: Option<EmbeddedEvent>,
 }
 
@@ -117,6 +73,23 @@ pub fn try_from_kernel_event(event: &KernelEvent) -> Option<RepostRecord> {
         .or_else(|| embedded_event.as_ref().map(|inner| inner.id.clone()));
     let target_kind =
         first_kind_tag(&event.tags).or_else(|| embedded_event.as_ref().map(|inner| inner.kind));
+    // Prefer the explicit `a` tag (proven coordinate). Otherwise derive the
+    // coordinate from an embedded addressable event — its (kind, pubkey, d) is
+    // fully known. Never derive a coordinate from a bare `e`/`k` pair: an event
+    // id cannot prove a coordinate, so such a target stays address-unresolved.
+    let target_address = first_address_tag(&event.tags).or_else(|| {
+        embedded_event.as_ref().and_then(|inner| {
+            AddressCoordinate::from_event(&KernelEvent {
+                id: inner.id.clone(),
+                author: inner.author.clone(),
+                kind: inner.kind,
+                created_at: inner.created_at,
+                tags: inner.tags.clone(),
+                content: inner.content.clone(),
+                relay_provenance: Vec::new(),
+            })
+        })
+    });
 
     Some(RepostRecord {
         event_id: event.id.clone(),
@@ -124,6 +97,7 @@ pub fn try_from_kernel_event(event: &KernelEvent) -> Option<RepostRecord> {
         created_at: event.created_at,
         target_event_id,
         target_kind,
+        target_address,
         embedded_event,
     })
 }
@@ -175,8 +149,20 @@ fn first_kind_tag(tags: &[Vec<String>]) -> Option<u32> {
     })
 }
 
+fn first_address_tag(tags: &[Vec<String>]) -> Option<AddressCoordinate> {
+    tags.iter().find_map(|tag| {
+        if tag.first().is_some_and(|name| name == "a") {
+            tag.get(1).and_then(|raw| AddressCoordinate::parse(raw))
+        } else {
+            None
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
 
     fn event(kind: u32, content: &str, tags: Vec<Vec<&str>>) -> KernelEvent {
@@ -200,23 +186,33 @@ mod tests {
     }
 
     #[test]
-    fn primary_kind_1_acquires_kind_6_reposts() {
+    fn primary_kind_1_acquires_kind_6_reposts_and_deletes() {
         let kinds = acquisition_kinds_for_primary([1]);
-        assert_eq!(kinds, BTreeSet::from([1, KIND_REPOST]));
+        assert_eq!(kinds, BTreeSet::from([1, KIND_REPOST, KIND_DELETE]));
     }
 
     #[test]
-    fn non_kind_1_primary_acquires_kind_16_reposts() {
+    fn non_kind_1_primary_acquires_kind_16_reposts_and_deletes() {
         let kinds = acquisition_kinds_for_primary([20]);
-        assert_eq!(kinds, BTreeSet::from([20, KIND_GENERIC_REPOST]));
+        assert_eq!(kinds, BTreeSet::from([20, KIND_GENERIC_REPOST, KIND_DELETE]));
     }
 
     #[test]
-    fn mixed_primary_kinds_acquire_both_repost_wrappers() {
+    fn addressable_primary_acquires_kind_16_and_deletes() {
+        let kinds = acquisition_kinds_for_primary([30_023]);
+        assert_eq!(
+            kinds,
+            BTreeSet::from([30_023, KIND_GENERIC_REPOST, KIND_DELETE]),
+            "addressable feeds must subscribe to deletes that retract coordinates"
+        );
+    }
+
+    #[test]
+    fn mixed_primary_kinds_acquire_both_repost_wrappers_and_deletes() {
         let kinds = acquisition_kinds_for_primary([1, 20]);
         assert_eq!(
             kinds,
-            BTreeSet::from([1, 20, KIND_REPOST, KIND_GENERIC_REPOST])
+            BTreeSet::from([1, 20, KIND_REPOST, KIND_GENERIC_REPOST, KIND_DELETE])
         );
     }
 
@@ -235,9 +231,66 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "primary feed kinds must not include repost wrapper kinds")]
+    fn empty_primary_set_stays_empty_to_preserve_clear_feed_signal() {
+        // An empty primary set is the canonical "clear this feed" signal; the
+        // delete kind must NOT be injected, or a clear would become a
+        // deletes-only subscription (regression of the FFI/kernel clear path).
+        let kinds = acquisition_kinds_for_primary([]);
+        assert!(
+            kinds.is_empty(),
+            "an empty primary set must compile to an empty acquisition set"
+        );
+    }
+
+    #[test]
+    fn delete_kind_is_rejected_as_primary_feed_kind() {
+        assert_eq!(
+            try_acquisition_kinds_for_primary([1, KIND_DELETE]),
+            Err(PrimaryKindError::DeleteKind)
+        );
+        assert_eq!(
+            try_acquisition_kinds_for_primary([KIND_DELETE]),
+            Err(PrimaryKindError::DeleteKind)
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "primary feed kinds must not include repost-wrapper or delete kinds")]
     fn infallible_acquisition_panics_on_wrapper_primary_kind() {
         let _ = acquisition_kinds_for_primary([1, KIND_REPOST]);
+    }
+
+    #[test]
+    fn validate_primary_kinds_matches_the_permissive_transform_for_valid_input() {
+        // The strict open-a-feed validator derives the SAME acquisition set as
+        // the permissive transform for any non-empty valid primary declaration.
+        assert_eq!(
+            validate_primary_kinds([1]),
+            Ok(BTreeSet::from([1, KIND_REPOST, KIND_DELETE]))
+        );
+        assert_eq!(
+            validate_primary_kinds([20]),
+            Ok(BTreeSet::from([20, KIND_GENERIC_REPOST, KIND_DELETE]))
+        );
+    }
+
+    #[test]
+    fn validate_primary_kinds_rejects_wrapper_delete_and_empty() {
+        assert_eq!(
+            validate_primary_kinds([1, KIND_REPOST]),
+            Err(PrimaryKindError::RepostWrapper { kind: KIND_REPOST })
+        );
+        assert_eq!(
+            validate_primary_kinds([1, KIND_DELETE]),
+            Err(PrimaryKindError::DeleteKind)
+        );
+        // The strict twin REJECTS empty (unlike the permissive transform, which
+        // treats it as the clear-feed signal): an open feed must declare at least
+        // one primary content kind.
+        assert_eq!(
+            validate_primary_kinds(std::iter::empty::<u32>()),
+            Err(PrimaryKindError::EmptyPrimaryKinds)
+        );
     }
 
     #[test]
@@ -283,6 +336,55 @@ mod tests {
         assert_eq!(inner.kind, 1);
         assert_eq!(inner.tags, vec![vec!["p".to_string(), "alice".to_string()]]);
         assert_eq!(inner.content, "hello #nostr");
+    }
+
+    #[test]
+    fn generic_repost_a_tag_proves_target_coordinate() {
+        let record = try_from_kernel_event(&event(
+            KIND_GENERIC_REPOST,
+            "",
+            vec![vec!["a", "30023:bob:my-article"], vec!["k", "30023"]],
+        ))
+        .unwrap();
+        assert_eq!(
+            record.target_address,
+            Some(AddressCoordinate::new(30_023, "bob", "my-article"))
+        );
+    }
+
+    #[test]
+    fn embedded_addressable_event_yields_target_coordinate() {
+        let content = r#"{
+            "id":"inner",
+            "pubkey":"bob",
+            "kind":30023,
+            "created_at":123,
+            "tags":[["d","my-article"]],
+            "content":"body",
+            "sig":"ignored"
+        }"#;
+        let record = try_from_kernel_event(&event(KIND_GENERIC_REPOST, content, vec![])).unwrap();
+        assert_eq!(
+            record.target_address,
+            Some(AddressCoordinate::new(30_023, "bob", "my-article"))
+        );
+    }
+
+    #[test]
+    fn event_id_only_repost_has_no_target_coordinate() {
+        // A bare `e`/`k` repost names an event id, which CANNOT prove a
+        // coordinate. target_address must stay None — never guess.
+        let record = try_from_kernel_event(&event(
+            KIND_GENERIC_REPOST,
+            "",
+            vec![vec!["e", "target"], vec!["k", "30023"]],
+        ))
+        .unwrap();
+        assert_eq!(record.target_event_id.as_deref(), Some("target"));
+        assert_eq!(
+            record.target_address, None,
+            "an event id must never be fabricated into a coordinate"
+        );
     }
 
     #[test]

@@ -54,7 +54,9 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
-use nmp_feed::{CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed};
+use nmp_feed::{
+    admit_all_roots, CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed,
+};
 
 use super::attribution::Nip10ReplyAttribution;
 use crate::meta_timeline::{Nip10Resolver, Pubkey};
@@ -68,7 +70,6 @@ pub type OpFeedEngine = RootIndexedFeed<Nip10Resolver, Nip10ReplyAttribution, Ti
 /// Chirp's `ModularTimelineProjection` registers today; the swap to this engine
 /// is rung 7, so this rung leaves the key registered ONLY inside tests.
 pub const OP_FEED_SNAPSHOT_KEY: &str = "nmp.feed.home";
-const KIND_EVENT_DELETION: u32 = 5;
 
 /// Construct (but do not register) the NIP-10 OP-feed engine.
 ///
@@ -89,6 +90,27 @@ const KIND_EVENT_DELETION: u32 = 5;
 pub fn register_op_feed(
     viewer: Pubkey,
     follow_predicate: FollowPredicate,
+    event_lookup: EventLookup,
+) -> Arc<OpFeedEngine> {
+    // The home feed admits EVERY root the acquisition delivers (the followed
+    // authors' timeline is gated by the acquisition filter, not an engine-level
+    // admission predicate). The `follow_predicate` still gates reply
+    // attribution.
+    register_op_feed_with_admission(viewer, follow_predicate, admit_all_roots(), event_lookup)
+}
+
+/// Construct the OP-feed engine with an explicit ROOT-admission predicate.
+///
+/// Like [`register_op_feed`] but gates which roots ENTER the feed by the
+/// compiled perspective `root_admission` (#1740 step 3) instead of admitting all
+/// roots. Scoped feed sessions (`ContactList` / `ListMembers` / `Wot` /
+/// `Difference` / set algebra) build through here so a non-member author never
+/// renders as a root. The `follow_predicate` still gates only reply attribution.
+#[must_use]
+pub fn register_op_feed_with_admission(
+    viewer: Pubkey,
+    follow_predicate: FollowPredicate,
+    root_admission: nmp_feed::RootAdmission,
     event_lookup: EventLookup,
 ) -> Arc<OpFeedEngine> {
     // `viewer` is carried for parity with `ModularTimelineSpec.viewer` and
@@ -118,6 +140,7 @@ pub fn register_op_feed(
     Arc::new(RootIndexedFeed::new(
         Nip10Resolver,
         follow_predicate,
+        root_admission,
         event_gate,
         event_lookup,
         card_builder,
@@ -151,10 +174,24 @@ pub fn op_feed_observer(
 }
 
 impl OpFeedObserver {
-    fn apply_delete(&self, event: &KernelEvent) {
-        for target_id in event.tags.iter().filter_map(|tag| event_tag_id(tag)) {
+    fn apply_delete(&self, record: &nmp_nip18::DeleteRecord) {
+        // NIP-01 short-text notes are not addressable, so only `e`-tag
+        // (event-id) targets resolve to a row; an `a`-tag coordinate has no
+        // op-feed root and is a no-op. A delete only removes a row the same
+        // author published (NIP-09). An `e` id can name two distinct shapes:
+        for target_id in &record.event_targets {
+            // (a) the note/root itself — keyed by its own id, author = note author;
             self.engine
-                .remove_root_if(target_id, |card| card.author_pubkey == event.author);
+                .remove_root_if(target_id, |card| card.author_pubkey == record.author);
+            // (b) a kind:6 repost *wrapper* that surfaced a target — keyed by the
+            //     target id, so a delete naming the wrapper id must match on the
+            //     wrapper id and validate against the reposter (wrapper author).
+            //     Without this, deleting your repost leaves the reposted row.
+            self.engine.remove_root_by_wrapper_if(target_id, |card| {
+                card.reposted_by
+                    .as_ref()
+                    .is_some_and(|repost| repost.author_pubkey == record.author)
+            });
         }
     }
 
@@ -201,8 +238,8 @@ impl OpFeedObserver {
 
 impl KernelEventObserver for OpFeedObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind == KIND_EVENT_DELETION {
-            self.apply_delete(event);
+        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+            self.apply_delete(&record);
             return;
         }
         if event.kind == crate::kinds::KIND_SHORT_TEXT_NOTE {
@@ -220,13 +257,5 @@ impl KernelEventObserver for OpFeedObserver {
             }
             self.engine.on_kernel_event(event);
         }
-    }
-}
-
-fn event_tag_id(tag: &[String]) -> Option<&str> {
-    if tag.first().is_some_and(|name| name == "e") {
-        tag.get(1).map(String::as_str).filter(|id| !id.is_empty())
-    } else {
-        None
     }
 }

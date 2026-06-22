@@ -26,15 +26,17 @@
 //! existing resolver — it does NOT write a new NIP-23 tag parser, a new content
 //! renderer, or a new supersession rule.
 //!
-//! # Supersession is free (do NOT reimplement "is this newer?")
+//! # Supersession — latest-at-coordinate collapse
 //!
 //! kind:30023 is parameterized-replaceable (30000–39999): the kernel's
 //! `EventStore` resolves newest-per-`(author, kind, d-tag)` on insert and fires
-//! [`KernelEventObserver`] **only on `Inserted | Replaced`**. A late older
-//! arrival is rejected by the store → the observer never fires → our map keeps
-//! the winner. So a map keyed by the addressable coordinate with plain
-//! last-write-wins converges to exactly the store's winning event, with **no
-//! `created_at` comparison in this module**.
+//! [`KernelEventObserver`] **only on `Inserted | Replaced`**, so in normal kernel
+//! delivery a late older arrival never reaches us. But the collapse rule is the
+//! *coordinate identity*, not arrival order, and this observer is a public seam.
+//! The map keyed by the addressable coordinate therefore keeps the winner by a
+//! `created_at` comparison (mirroring `LongformFeed`'s merge): the newest event
+//! for a coordinate wins regardless of delivery order, and versions collapse to
+//! one row rather than the last writer clobbering a newer one.
 //!
 //! # D5-bounded — scoped to what's open/claimed
 //!
@@ -131,8 +133,14 @@ impl ArticleFeedItem {
 /// Addressable coordinate for a parameterized-replaceable event:
 /// `kind:author_hex:d_tag`. This is the supersession identity — newest event
 /// for a given coordinate wins.
+///
+/// Delegates to [`nmp_nip18::AddressCoordinate`], the single canonical place
+/// that computes address-coordinate identity (issue #1740 step 5). The `d_tag`
+/// passed here comes from the same resolved article projection the row renders,
+/// so the wire string stays consistent with the repost `a` tag and the kind:5
+/// tombstone key.
 fn article_address(event: &KernelEvent, d_tag: &str) -> String {
-    format!("{}:{}:{}", event.kind, event.author, d_tag)
+    nmp_nip18::AddressCoordinate::new(event.kind, event.author.clone(), d_tag).to_wire()
 }
 
 /// Long-form (kind:30023) typed snapshot projection.
@@ -195,6 +203,13 @@ impl LongformProjection {
 
 impl KernelEventObserver for LongformProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
+        // NIP-09: a kind:5 deletion retracts a stored coordinate (issue #1740
+        // step 5), so the typed projection cannot keep serving a deleted
+        // article after `LongformFeed` drops it.
+        if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
+            self.apply_delete(&record);
+            return;
+        }
         if event.kind != KIND_LONG_FORM_ARTICLE {
             return;
         }
@@ -208,11 +223,56 @@ impl KernelEventObserver for LongformProjection {
         };
         let address = article_address(event, &article.d_tag);
         if let Ok(mut state) = self.state.lock() {
-            // Last-write-wins. The kernel only fired us because the store
-            // accepted this event as Inserted | Replaced (the new winner for
-            // this coordinate), so plain overwrite == the store's winner. No
-            // `created_at` comparison here by design (see module docs).
-            state.insert(address, article);
+            // Latest-at-coordinate collapse. The kernel normally fires us only
+            // with the store's winner (Inserted | Replaced), so arrival order is
+            // already chronological — but the observer is a public seam and the
+            // collapse rule is the *coordinate identity*, not arrival order. A
+            // `created_at` guard makes the winner deterministic regardless of
+            // delivery order (mirroring `LongformFeed`'s merge), so a late older
+            // event can never clobber the newer version at this coordinate.
+            match state.entry(address) {
+                std::collections::btree_map::Entry::Occupied(mut slot) => {
+                    if article.created_at >= slot.get().created_at {
+                        slot.insert(article);
+                    }
+                }
+                std::collections::btree_map::Entry::Vacant(slot) => {
+                    slot.insert(article);
+                }
+            }
+        }
+    }
+}
+
+impl LongformProjection {
+    /// Apply a NIP-09 deletion to the stored documents.
+    ///
+    /// Mirrors [`LongformFeed`]'s row semantics: an `a`-tag coordinate is
+    /// retracted only when the delete author owns it and the stored version was
+    /// created at or before the deletion; an `e`-tag retracts the coordinate
+    /// whose winning event id matches and whose author owns it. Unresolvable and
+    /// foreign targets are no-ops — never guess a coordinate.
+    fn apply_delete(&self, record: &nmp_nip18::DeleteRecord) {
+        let Ok(mut state) = self.state.lock() else {
+            return;
+        };
+        for coord in &record.address_targets {
+            if coord.pubkey != record.author {
+                continue;
+            }
+            let key = coord.to_wire();
+            let retract = state
+                .get(&key)
+                .is_some_and(|article| article.created_at <= record.created_at);
+            if retract {
+                state.remove(&key);
+            }
+        }
+        if !record.event_targets.is_empty() {
+            state.retain(|_, article| {
+                !(record.event_targets.contains(&article.id)
+                    && article.author_pubkey == record.author)
+            });
         }
     }
 }

@@ -99,6 +99,8 @@ mod relays;
 #[cfg(all(test, feature = "native"))]
 mod active_follows_feed_prelogin_tests;
 #[cfg(all(test, feature = "native"))]
+mod feed_session_clear_followfeed_tests;
+#[cfg(all(test, feature = "native"))]
 mod registration_seed_follow_tests;
 #[cfg(all(test, feature = "native"))]
 mod remote_signer_tests;

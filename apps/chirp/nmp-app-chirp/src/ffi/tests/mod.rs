@@ -15,4 +15,5 @@ mod nip57;
 mod producer_completeness;
 mod register;
 mod social;
+mod tag_feed;
 mod typed_actions;

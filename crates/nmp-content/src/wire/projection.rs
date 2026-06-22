@@ -214,8 +214,12 @@ fn project_uri(uri: &NostrUri) -> Option<WireNostrUri> {
             // renderer's `envelope_for(uri)` lookup hits without an extra
             // alias map on the host side. (Previously `pubkey.clone()`,
             // which was ambiguous — the same author can have many
-            // addressable events under different d-tags.)
-            primary_id: format!("{kind}:{pubkey}:{identifier}"),
+            // addressable events under different d-tags.) Built through the
+            // single canonical address-coordinate primitive (issue #1740 step 5)
+            // so this naddr identity path cannot drift from the repost/feed/
+            // delete coordinate string.
+            primary_id: nmp_nip18::AddressCoordinate::new(*kind, pubkey.clone(), identifier.clone())
+                .to_wire(),
             relays: relays.clone(),
             author: Some(pubkey.clone()),
             event_kind: Some(*kind),

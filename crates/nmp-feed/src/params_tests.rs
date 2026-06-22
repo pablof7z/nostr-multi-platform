@@ -1,0 +1,132 @@
+//! Tests for the typed feed-session declaration model (#1740 step 1).
+//!
+//! Primary-kind validation (which kinds are derived acquisition vs. primary
+//! input) is protocol knowledge and now lives in the composition/compiler layer
+//! — see `nmp-defaults` (`compile_feed_params`) and the FFI/WASM boundary
+//! decode tests. These tests cover only the protocol-agnostic param model.
+
+use super::*;
+
+// ---------------------------------------------------------------------------
+// FeedScope / PubkeySetExpr construction + exhaustiveness.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pubkey_set_expr_variants_construct() {
+    let follows = FeedScope::ActiveUserFollows;
+    let contacts = FeedScope::ContactList {
+        owner: "deadbeef".into(),
+    };
+    let list = FeedScope::ListMembers {
+        list: ListId("mutuals".into()),
+    };
+    let wot = FeedScope::Wot {
+        seed: WotSeed("deadbeef".into()),
+        rules: WotRulesId("two-hop".into()),
+    };
+    let relays = FeedScope::RelaySet {
+        relays: RelaySetId("read-set".into()),
+    };
+    let tag = FeedScope::Tag {
+        term: TagTerm("nostr".into()),
+    };
+    let custom = FeedScope::CustomPerspectiveId(CustomPerspectiveId("trending".into()));
+
+    let union = FeedScope::Union(Box::new(follows.clone()), Box::new(list.clone()));
+    let inter = FeedScope::Intersection(Box::new(contacts.clone()), Box::new(wot.clone()));
+    let diff = FeedScope::Difference(Box::new(relays.clone()), Box::new(tag.clone()));
+
+    // Exhaustive match — adding a variant forces this to be revisited.
+    for expr in [follows, contacts, list, wot, relays, tag, custom, union, inter, diff] {
+        assert!(describe(&expr).len() > 0);
+    }
+}
+
+/// Exhaustive matcher proving [`PubkeySetExpr`] is a closed enum: a new variant
+/// would break compilation here.
+fn describe(expr: &PubkeySetExpr) -> &'static str {
+    match expr {
+        PubkeySetExpr::ActiveUserFollows => "active-user-follows",
+        PubkeySetExpr::ContactList { .. } => "contact-list",
+        PubkeySetExpr::ListMembers { .. } => "list-members",
+        PubkeySetExpr::Wot { .. } => "wot",
+        PubkeySetExpr::RelaySet { .. } => "relay-set",
+        PubkeySetExpr::Tag { .. } => "tag",
+        PubkeySetExpr::Union(..) => "union",
+        PubkeySetExpr::Intersection(..) => "intersection",
+        PubkeySetExpr::Difference(..) => "difference",
+        PubkeySetExpr::CustomPerspectiveId(..) => "custom-perspective",
+    }
+}
+
+#[test]
+fn custom_perspective_id_is_an_opaque_string_no_trait_no_closure() {
+    // The only way app policy enters is via an opaque id — there is no trait to
+    // implement and no closure to pass. This test documents that contract.
+    let admission = FeedAdmission::Custom(CustomPerspectiveId("nsfw-filter".into()));
+    let ranking = FeedRanking::Custom(CustomPerspectiveId("engagement".into()));
+    let scope = FeedScope::CustomPerspectiveId(CustomPerspectiveId("for-you".into()));
+    assert_eq!(
+        admission,
+        FeedAdmission::Custom(CustomPerspectiveId("nsfw-filter".into()))
+    );
+    assert_eq!(
+        ranking,
+        FeedRanking::Custom(CustomPerspectiveId("engagement".into()))
+    );
+    assert_eq!(
+        scope,
+        FeedScope::CustomPerspectiveId(CustomPerspectiveId("for-you".into()))
+    );
+}
+
+// ---------------------------------------------------------------------------
+// FeedParams / FeedHandle shape + serde round-trip.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn feed_window_clamps_into_bounds() {
+    assert_eq!(
+        FeedWindow { initial_limit: 0 }.bounded_limit(),
+        DEFAULT_FEED_WINDOW_LIMIT
+    );
+    assert_eq!(
+        FeedWindow {
+            initial_limit: MAX_FEED_WINDOW_LIMIT + 1000
+        }
+        .bounded_limit(),
+        MAX_FEED_WINDOW_LIMIT
+    );
+    assert_eq!(FeedWindow { initial_limit: 25 }.bounded_limit(), 25);
+}
+
+#[test]
+fn feed_params_round_trips_through_serde() {
+    let params = sample_params(vec![1]);
+    let json = serde_json::to_string(&params).expect("serialize");
+    let back: FeedParams = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(params, back);
+}
+
+#[test]
+fn feed_handle_pairs_projection_key_and_opaque_session_id() {
+    let handle = FeedHandle {
+        projection_key: ProjectionKey("nmp.feed.home".into()),
+        session_id: FeedSessionId(42),
+    };
+    let json = serde_json::to_string(&handle).expect("serialize");
+    let back: FeedHandle = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(handle, back);
+    assert_eq!(handle.session_id, FeedSessionId(42));
+}
+
+fn sample_params(primary_kinds: Vec<u32>) -> FeedParams {
+    FeedParams {
+        primary_kinds,
+        acquisition: FeedScope::ActiveUserFollows,
+        admission: FeedAdmission::All,
+        ranking: FeedRanking::ChronologicalDesc,
+        window: FeedWindow::default(),
+        projection: ProjectionKey("nmp.feed.home".into()),
+    }
+}

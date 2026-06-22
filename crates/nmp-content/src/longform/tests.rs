@@ -13,6 +13,14 @@ use crate::wire::longform_fb::{decode_longform_articles, LongformArticles};
 const AUTHOR_A: &str = "aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11aa11a";
 const AUTHOR_B: &str = "bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22bb22b";
 
+/// Build the address coordinate via the canonical identity primitive (not a
+/// hand-rolled `format!`), so these tests cannot pass by mirroring a buggy wire
+/// string — they assert against the same `AddressCoordinate` the projection key
+/// is built from.
+fn addr(author: &str, d_tag: &str) -> String {
+    nmp_nip18::AddressCoordinate::new(KIND_LONG_FORM_ARTICLE, author, d_tag).to_wire()
+}
+
 fn article_event(
     id: &str,
     author: &str,
@@ -59,20 +67,10 @@ fn decode_snapshot(p: &LongformProjection) -> LongformArticles {
 fn supersession_keeps_newest_typed_article_and_is_scoped() {
     let projection = LongformProjection::new();
 
-    // Older event for (AUTHOR_A, "rust-guide").
-    projection.on_kernel_event(&article_event(
-        &"1".repeat(64),
-        AUTHOR_A,
-        "rust-guide",
-        1_000,
-        "Old Title",
-        "Old summary",
-        "https://img.example/old.png",
-        "old body",
-    ));
-    // Newer event for the SAME coordinate — supersedes the older one. (The
-    // kernel only fires us with the winner; firing both here proves
-    // last-write-wins converges to the newest regardless of arrival order.)
+    // NEWER event for (AUTHOR_A, "rust-guide") arrives FIRST, then the older
+    // event arrives LATE. This is the falsifiable case: a plain last-write-wins
+    // map would clobber the newer with the older. The created_at-guarded collapse
+    // must keep the newer winner regardless of arrival order.
     projection.on_kernel_event(&article_event(
         &"2".repeat(64),
         AUTHOR_A,
@@ -82,6 +80,16 @@ fn supersession_keeps_newest_typed_article_and_is_scoped() {
         "New summary",
         "https://img.example/new.png",
         "new body",
+    ));
+    projection.on_kernel_event(&article_event(
+        &"1".repeat(64),
+        AUTHOR_A,
+        "rust-guide",
+        1_000,
+        "Old Title",
+        "Old summary",
+        "https://img.example/old.png",
+        "old body",
     ));
     // Unrelated article (different author + d_tag) — must coexist, proving the
     // map is keyed by the addressable coordinate, not flattened.
@@ -110,8 +118,8 @@ fn supersession_keeps_newest_typed_article_and_is_scoped() {
         "documents hold one entry per surviving coordinate"
     );
 
-    let addr_a = format!("{KIND_LONG_FORM_ARTICLE}:{AUTHOR_A}:rust-guide");
-    let addr_b = format!("{KIND_LONG_FORM_ARTICLE}:{AUTHOR_B}:nostr-intro");
+    let addr_a = addr(AUTHOR_A, "rust-guide");
+    let addr_b = addr(AUTHOR_B, "nostr-intro");
 
     // The winning (newest) article replaced the older one under the same key.
     let doc_a = snap.documents.get(&addr_a).expect("AUTHOR_A document");
@@ -204,9 +212,76 @@ fn missing_tags_become_placeholders_in_feed_and_none_in_document() {
 
     // Full document: raw `Option` preserved as `None` (the `has_*` presence flag
     // round-trips absent distinctly from a present empty string).
-    let addr = format!("{KIND_LONG_FORM_ARTICLE}:{AUTHOR_A}:bare");
+    let addr = addr(AUTHOR_A, "bare");
     let doc = snap.documents.get(&addr).expect("document present");
     assert_eq!(doc.title, None);
     assert_eq!(doc.summary, None);
     assert_eq!(doc.hero_image_url, None);
+}
+
+fn delete_event(author: &str, created_at: u64, tags: Vec<Vec<&str>>) -> KernelEvent {
+    KernelEvent {
+        id: "d".repeat(64),
+        author: author.to_string(),
+        kind: nmp_nip18::KIND_DELETE,
+        created_at,
+        tags: tags
+            .into_iter()
+            .map(|t| t.into_iter().map(str::to_string).collect())
+            .collect(),
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+#[test]
+fn kind5_coordinate_delete_by_owner_removes_stored_article() {
+    // The typed projection must not keep serving a coordinate the author
+    // retracted (issue #1740 step 5) — otherwise the sidecar contradicts the
+    // feed, which already dropped the row.
+    let projection = LongformProjection::new();
+    projection.on_kernel_event(&article_event(
+        &"1".repeat(64),
+        AUTHOR_A,
+        "rust-guide",
+        1_000,
+        "Title",
+        "Summary",
+        "https://img.example/x.png",
+        "body",
+    ));
+    assert_eq!(decode_snapshot(&projection).articles.len(), 1);
+
+    let addr = addr(AUTHOR_A, "rust-guide");
+    projection.on_kernel_event(&delete_event(AUTHOR_A, 2_000, vec![vec!["a", &addr]]));
+
+    assert!(
+        decode_snapshot(&projection).articles.is_empty(),
+        "owner a-tag delete retracts the stored coordinate"
+    );
+}
+
+#[test]
+fn kind5_coordinate_delete_by_foreign_author_is_noop() {
+    let projection = LongformProjection::new();
+    projection.on_kernel_event(&article_event(
+        &"1".repeat(64),
+        AUTHOR_A,
+        "rust-guide",
+        1_000,
+        "Title",
+        "Summary",
+        "https://img.example/x.png",
+        "body",
+    ));
+
+    let addr = addr(AUTHOR_A, "rust-guide");
+    // AUTHOR_B does not own AUTHOR_A's coordinate.
+    projection.on_kernel_event(&delete_event(AUTHOR_B, 2_000, vec![vec!["a", &addr]]));
+
+    assert_eq!(
+        decode_snapshot(&projection).articles.len(),
+        1,
+        "a foreign delete must not retract someone else's coordinate"
+    );
 }

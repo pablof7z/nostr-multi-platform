@@ -25,5 +25,9 @@ pub extern "C" fn nmp_app_chirp_unregister(handle: *mut ChirpHandle) {
     // SAFETY: caller guarantees `handle` came from `nmp_app_chirp_register`
     // and has not already been freed. Reclaim the box and drop it — releasing
     // this crate's `Arc` clones of the engine + follow set.
-    let _boxed = unsafe { Box::from_raw(handle) };
+    let boxed = unsafe { Box::from_raw(handle) };
+    // Purge any parked tag-feed handles owned by this app so a later app reusing
+    // the same pointer address can never collide with a stale session id (the
+    // app's session registry is dropped with it on `nmp_app_free`).
+    super::tag_feed::forget_app_tags(boxed.app);
 }
