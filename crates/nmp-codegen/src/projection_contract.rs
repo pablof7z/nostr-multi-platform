@@ -112,9 +112,11 @@ pub struct ProjectionContract {
     /// FlatBuffers `file_identifier` (the 4-byte `*_FILE_IDENTIFIER` constant,
     /// e.g. `"KACC"`, `"NWST"`, `"NRRD"`).
     pub file_identifier: &'static str,
-    /// `*_SCHEMA_VERSION` — the producer-stamped schema/source version. `0`
-    /// when the projection has no versioned typed sidecar of its own (the
-    /// keyed row-delta carriers reuse the row payload's version).
+    /// `*_SCHEMA_VERSION` — the producer-stamped schema/source version. Every
+    /// projection carries its owning crate's real `*_SCHEMA_VERSION` (the keyed
+    /// row-delta carriers reuse the row payload's `REFS_SCHEMA_VERSION`). The
+    /// fail-closed gate in [`crate::projection_version_gate`] asserts this equals
+    /// the producer const so the contract cannot drift from the producers.
     pub version: u32,
     /// How the projection enters the declaration surface.
     pub declaration_policy: DeclarationPolicy,

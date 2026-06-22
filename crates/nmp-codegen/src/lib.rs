@@ -67,6 +67,14 @@ pub mod rust_builtin_keys;
 // hand-declared blocks, so those wire-identity facts derive from the projection
 // contract instead of being re-stated per producer.
 pub mod producer_consts;
+// #1723 (epic #1719) — fail-closed producer-version drift gate for the Tier-1
+// NIP-crate (+ marmot / content) producers that hand-declare their own
+// `*_SCHEMA_VERSION` and do NOT depend on `nmp-codegen` (so `producer_consts`
+// can't generate their consts). Reads each producer source on disk and asserts
+// its schema-version literal equals the contract's `version`, so the contract
+// can't drift from those producers until the full producer-const migration
+// reaches the NIP crates (a separate slice — see the module doc).
+pub mod projection_version_gate;
 // #1493 P9 — generate the native known-signer detection lists (Kotlin
 // `KNOWN_NOSTR_SIGNERS` + Swift `knownSigners`) from the Rust catalog JSON
 // (`nmp_core::signer_catalog` via `dump_signer_catalog`). Parses the catalog
@@ -95,6 +103,10 @@ pub use rust_builtin_keys::{
 pub use producer_consts::{
     check_all_producer_consts, generate_all_producer_consts, render_producer_consts,
     ProducerConstTarget, ProducerConstsCheckOutcome, PRODUCER_CONST_TARGETS,
+};
+pub use projection_version_gate::{
+    check_all_producer_versions, parse_const_u32, repo_root as projection_repo_root,
+    ProducerVersionCheckOutcome, ProducerVersionSource, PRODUCER_VERSION_SOURCES,
 };
 pub use signer_catalog::{
     check_signer_catalog, generate_signer_catalog, parse_catalog, render_kotlin_known_signers,
