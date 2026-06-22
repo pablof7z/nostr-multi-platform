@@ -124,7 +124,7 @@ export type NmpClient = {
    *  signer synchronously; subsequent write actions use it. */
   setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
   /** S6 — NIP-07 sign round-trip: parks a sign op, emits sign_request for the
-   *  main-thread broker; resolves via sign_completed / sign_failed (#1007). */
+   *  main-thread broker; resolves via sign_completed / sign_failed (#1008). */
   beginSign(accountPubkey: string, unsignedJson: string): void;
 };
 

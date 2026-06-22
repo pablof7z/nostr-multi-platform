@@ -224,7 +224,7 @@ Source: `crates/nmp-wasm/src/dispatch_routing.rs`;
 | Prefix | Source function | Condition |
 |---|---|---|
 | `signer_not_installed` | `write_path_unavailable_reason(false)` | App-level write dispatched before `SetSigner` seeded an active account. Host should prompt sign-in. |
-| `publish_not_supported_in_web_preview` | `write_path_unavailable_reason(true)` → `publish_not_supported_in_web_preview_reason` | An active account is seeded but publishing is disabled in the web preview (no `OutboxResolver` wired, #1202/#1007). The single canonical "publishing disabled" prefix; hosts pattern-match it to surface an honest banner. |
+| `publish_not_supported_in_web_preview` | `write_path_unavailable_reason(true)` → `publish_not_supported_in_web_preview_reason` | An active account is seeded but publishing is disabled in the web preview (no `OutboxResolver` wired, #1202/#1008). The single canonical "publishing disabled" prefix; hosts pattern-match it to surface an honest banner. |
 | `dispatch_envelope_rejected` | `dispatch_bytes` decode | The `DispatchBytes` buffer is not a valid `DispatchEnvelope` (bad file identifier, schema_version mismatch, oversize, missing routing fields). Surfaced as `WorkerEvent::Error`, not `CapabilityFailure`. |
 | `browser_actor_driver_missing` | `browser_driver_missing_reason()` | `CapabilityResult` received; no native actor to route it. The wasm runtime drains the JS pending state and returns this reason. |
 | `unsupported_signer_kind` | `SignerInstallError::UnsupportedKind` | `SetSigner.kind` is not `"nip07"`. Only NIP-07 is wired. |
@@ -258,7 +258,7 @@ work across both surfaces.
   `publish_not_supported_in_web_preview` for every app-level write because the
   wasm composition root lacks a real `Nip65OutboxResolver`. Enabling writes
   means installing the real composition root and wiring the per-crate typed
-  payload decode + publish through the `ActionModule` registry (#1007).
+  payload decode + publish through the `ActionModule` registry (#1008).
 - **IndexedDB store.** The kernel runs in memory; state resets on page reload.
   An IndexedDB replay-log adapter feeding explicit events into the kernel is
   unimplemented.

@@ -103,7 +103,7 @@ export type WorkerEvent =
     }
   /** #1753 S6 — a sign round-trip completed via message re-entry. NOTE: behind
    *  the honest-disable gate the signed event is NOT published (web publish is
-   *  blocked on #1007); the host observes this to confirm the mechanism. */
+   *  blocked on #1008); the host observes this to confirm the mechanism. */
   | { type: "sign_completed"; correlation_id: string; signed_json: string }
   /** #1753 S6 — a sign round-trip failed (parse, account-pin mismatch, user
    *  rejection, or unknown/stale correlation id). */

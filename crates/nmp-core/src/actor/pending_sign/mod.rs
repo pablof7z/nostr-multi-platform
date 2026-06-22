@@ -44,7 +44,7 @@ pub(crate) use queue::ParkedSignerOps;
 // `DrainBatch` is the obligation bundle `ParkedSignerOps::drive` returns. The
 // native actor loop destructures it (`publish` / `auth` / `changed`); the wasm
 // reducer ignores the obligations (it never parks a Publish/Auth sink — web
-// publish is disabled, #1007). So the named re-export is native-only.
+// publish is disabled, #1008). So the named re-export is native-only.
 #[cfg(feature = "native")]
 pub(crate) use queue::DrainBatch;
 // `ParkedOp` is named by both the wasm signing seam (`kernel_reducer::

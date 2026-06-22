@@ -217,7 +217,7 @@ mod typed_decode {
         );
         // And the reason is NOT the generic "unknown namespace" envelope-level
         // failure — the namespace decoded + validated. The terminal write stays
-        // honestly-disabled pending the #1007 OutboxResolver (publish token).
+        // honestly-disabled pending the #1008 OutboxResolver (publish token).
         match &events[..] {
             [WorkerEvent::CapabilityFailure(CapabilityFailure {
                 capability,
@@ -228,7 +228,7 @@ mod typed_decode {
                 assert_eq!(correlation_id, "corr-typed");
                 assert!(
                     reason.starts_with("publish_not_supported_in_web_preview"),
-                    "validated typed write must surface the honest #1007 \
+                    "validated typed write must surface the honest #1008 \
                      write-path token, not a decode/unknown rejection; got: {reason}"
                 );
                 assert!(
@@ -300,7 +300,7 @@ mod typed_decode {
     }
 
     /// Publish stays honestly-disabled: `nmp.publish` short-circuits to the
-    /// #1007 write-path token WITHOUT touching the typed registry (its terminal
+    /// #1008 write-path token WITHOUT touching the typed registry (its terminal
     /// write needs the OutboxResolver, the separate prerequisite).
     #[test]
     fn publish_stays_honestly_disabled_pending_outbox_resolver() {
@@ -322,7 +322,7 @@ mod typed_decode {
                 assert_eq!(capability, "nmp.publish");
                 assert!(
                     reason.starts_with("publish_not_supported_in_web_preview"),
-                    "publish must surface the #1007 write-path token; got: {reason}"
+                    "publish must surface the #1008 write-path token; got: {reason}"
                 );
             }
             other => panic!("expected publish CapabilityFailure; got {other:?}"),

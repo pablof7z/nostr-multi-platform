@@ -1,6 +1,6 @@
 //! Honest write-path disable token for the wasm runtime.
 //!
-//! **Publishing is disabled in the web preview build** (see `#1202`/`#1007`):
+//! **Publishing is disabled in the web preview build** (see `#1202`/`#1008`):
 //! every app-level write surfaces a `publish_not_supported_in_web_preview`
 //! `CapabilityFailure` because the wasm composition root has no real
 //! `OutboxResolver` wired. Without that gate the wasm kernel's
@@ -17,7 +17,7 @@
 //! round-trip (`BeginSign` → `SignRequest` → `DeliverSignerResponse`), driven by
 //! pure message re-entry. The reducer never awaits the world (D7/D8). The full
 //! wasm publish composition root is deferred to the post-v1 web milestone
-//! (#1007); until then this single token is the only honest answer.
+//! (#1008); until then this single token is the only honest answer.
 
 /// Stable error-code prefix returned when any app-level write action is
 /// dispatched while the wasm composition root does not wire a real
@@ -31,14 +31,14 @@
 ///
 /// The host should pattern-match this prefix to surface a banner such as
 /// "Publishing is not available in this web preview" and disable compose
-/// controls until the real composition root ships in #1007.
+/// controls until the real composition root ships in #1008.
 pub(crate) fn publish_not_supported_in_web_preview_reason(action_type: &str) -> String {
     format!(
         "publish_not_supported_in_web_preview: action {action_type:?} cannot be published \
          from the web preview build. The wasm runtime has no outbox resolver wired \
          (NoopOutboxResolver resolves zero relay targets), so every publish would be \
          silently dropped. The full wasm composition root with a real OutboxResolver \
-         is deferred to the post-v1 web milestone (#1007). Disable compose controls \
+         is deferred to the post-v1 web milestone (#1008). Disable compose controls \
          and surface an honest 'not available in this preview' state to the user."
     )
 }

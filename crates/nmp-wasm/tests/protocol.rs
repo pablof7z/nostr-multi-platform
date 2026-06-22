@@ -120,7 +120,7 @@ fn deleted_app_action_envelope_does_not_deserialize() {
 /// `DispatchBytes` doorway — identical in shape to the native FFI seam. The
 /// envelope's `correlation_id` + `action_namespace` survive the decode, and the
 /// runtime routes by namespace (publishing itself stays honestly-disabled in the
-/// web preview, #1007 — but it crossed via the TYPED path, not `AppAction`).
+/// web preview, #1008 — but it crossed via the TYPED path, not `AppAction`).
 #[test]
 fn typed_write_routes_through_dispatch_envelope_not_app_action() {
     let mut runtime = WasmRuntime::new();
@@ -254,7 +254,7 @@ fn typed_write_after_set_identity_returns_publish_disabled_token() {
     }
 
     // Now the same typed write surfaces the *second* honest state: an account
-    // is active but publishing is disabled in the web preview (#1202/#1007).
+    // is active but publishing is disabled in the web preview (#1202/#1008).
     // Hosts distinguish "you need to sign in" (`signer_not_installed`) from
     // "publishing is disabled" by pattern-matching the one canonical prefix.
     let events = runtime

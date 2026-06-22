@@ -11,7 +11,7 @@ import type { WorkerRequest } from "@nmp/runtime-web";
  * failure mode (no extension, malformed event, user rejection) is posted back
  * with `error` set so the worker fails the round-trip closed (D6) rather than
  * leaving the op parked forever. The signature is NOT published here — web
- * publish stays disabled behind the honest-disable gate (#1007).
+ * publish stays disabled behind the honest-disable gate (#1008).
  */
 export async function fulfilSignRequestViaExtension(
   post: (request: WorkerRequest) => void,

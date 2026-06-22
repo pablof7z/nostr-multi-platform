@@ -21,7 +21,7 @@ use nmp_core::substrate::ActionContext;
 use nmp_core::KernelUpdate;
 
 /// The kernel publish namespace. Publishing stays honestly-disabled on the web
-/// preview until the composition root wires a real `OutboxResolver` (#1007), so
+/// preview until the composition root wires a real `OutboxResolver` (#1008), so
 /// the byte doorway never runs `start_bytes` for it — the typed decode would
 /// validate, but the terminal write has nowhere to go. Routing it through the
 /// honest write-path reason keeps the host's "not available in this preview"
@@ -125,21 +125,21 @@ impl WasmRuntime {
     ///   before the registry is touched). An unknown namespace, a payload that
     ///   fails the `schema_version` gate, or a `start()` rejection → the RAW
     ///   rejection text from `start_bytes` (the module never ran, or rejected).
-    /// * **Validated, but the terminal write needs #1007.** Even after the
+    /// * **Validated, but the terminal write needs #1008.** Even after the
     ///   typed payload validates, the module's `execute()` enqueues an
     ///   `ActorCommand` (e.g. `Follow`) that the native actor turns into a kind:3
     ///   publish via an `OutboxResolver`. The wasm preview has no actor and no
     ///   real `OutboxResolver` (the kernel default `NoopOutboxResolver` resolves
     ///   zero targets → silent drop), so the terminal write stays
     ///   honestly-disabled behind the same `publish_not_supported_in_web_preview`
-    ///   token publish uses. Wiring that resolver is #1007 — the separate
+    ///   token publish uses. Wiring that resolver is #1008 — the separate
     ///   prerequisite for the web write path actually reaching the wire. We do
     ///   NOT call `execute_bytes` here: doing so with a dropping send-sink would
     ///   ACK an action that never reaches the wire (a silent always-fail the
     ///   zero-debt rule forbids).
     ///
     /// Publishing (`nmp.publish`) skips `start_bytes` entirely — its terminal
-    /// write has the same #1007 dependency and there is no extra typed-decode to
+    /// write has the same #1008 dependency and there is no extra typed-decode to
     /// exercise here that the kernel `PublishModule` doesn't already gate, so it
     /// short-circuits to the honest write-path reason.
     fn route_decoded_dispatch(&mut self, decoded: DecodedDispatch) -> Vec<WorkerEvent> {
@@ -159,7 +159,7 @@ impl WasmRuntime {
             })];
         }
 
-        // Publishing stays honestly-disabled pending the #1007 OutboxResolver.
+        // Publishing stays honestly-disabled pending the #1008 OutboxResolver.
         if action_namespace == PUBLISH_NAMESPACE {
             return vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
                 capability: action_namespace,
@@ -183,7 +183,7 @@ impl WasmRuntime {
             Ok(_validated) => {
                 // The typed payload decoded and `start()` validated it — the S3
                 // doorway crossed. The terminal write (execute → ActorCommand →
-                // kind:N publish) still needs the #1007 OutboxResolver/actor the
+                // kind:N publish) still needs the #1008 OutboxResolver/actor the
                 // wasm preview does not wire, so the write stays honestly-disabled
                 // behind the same publish-not-supported token rather than being
                 // ACKed and silently dropped.
