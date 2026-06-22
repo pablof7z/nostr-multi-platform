@@ -4,7 +4,7 @@ name: test
 # build/test gate in CI — the other workflows (doctrine-lint, file-size-gate,
 # supply-chain) lint and audit but never compile or run the test suite.
 #
-# The test suite is split into FOUR parallel jobs to cut wall time from ~21m
+# The test suite is split into FIVE parallel jobs to cut wall time from ~21m
 # (single sequential job) to ~10m (parallel critical path). Each job restores
 # its own slice of the target cache via Swatinem/rust-cache, which does
 # fingerprinted incremental caching instead of the old all-or-nothing 9.8GB
@@ -19,6 +19,15 @@ name: test
 #   - nmp-gallery-desktop : uses iced, which pulls `winit` needing
 #     libxkbcommon/wayland/xcb apt packages absent on the bare runner. It is
 #     a thin GUI shell with no tests.
+#
+# Serial-test crates (run in the `serial-crates` job with --test-threads=1):
+#   - nmp-defaults, nmp-nip29, nmp-testing : integration tests that spin up
+#     real `NmpApp` instances via `nmp_app_new`. Each test binary has a
+#     `static SERIAL: Mutex<()>` guard, but nextest runs each test binary in
+#     its own process so the mutex does not cross binary boundaries. Running
+#     these crates with --test-threads=1 serializes test execution within the
+#     nextest invocation, preventing the global-actor-thread races that
+#     caused op_feed_* failures under parallel nextest on Linux CI.
 
 on:
   push:
@@ -75,7 +84,52 @@ jobs:
           cargo nextest run --workspace --no-fail-fast \
             --exclude nmp-chirp-android-ffi \
             --exclude nmp-app-chirp \
-            --exclude nmp-gallery-desktop
+            --exclude nmp-gallery-desktop \
+            --exclude nmp-defaults \
+            --exclude nmp-nip29 \
+            --exclude nmp-testing
+
+  # Serial-test crates — integration tests that spin up real `NmpApp` instances
+  # via `nmp_app_new`. Each test binary has a `static SERIAL: Mutex<()>` guard,
+  # but nextest runs each test binary in its own process so the mutex does not
+  # cross binary boundaries. Running these crates with `--test-threads=1`
+  # serializes test execution within the nextest invocation, preventing the
+  # global-actor-thread races that caused op_feed_* failures under parallel
+  # nextest on Linux CI.
+  serial-crates:
+    name: cargo nextest (serial NmpApp crates)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/local/lib/android /opt/hostedtoolcache/CodeQL \
+            /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo docker image prune --all --force || true
+          df -h /
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: serial-crates
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: cargo nextest (serial NmpApp crates)
+        run: |
+          cargo nextest run --no-fail-fast --test-threads=1 \
+            -p nmp-defaults \
+            -p nmp-nip29 \
+            -p nmp-testing
 
   lmdb:
     name: cargo nextest (lmdb-backend acceptance gates)
