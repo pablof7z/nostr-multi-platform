@@ -21,6 +21,46 @@ fn render_is_deterministic_kotlin() {
 }
 
 #[test]
+fn render_is_deterministic_ts() {
+    assert_eq!(render(Platform::Ts), render(Platform::Ts));
+}
+
+#[test]
+fn ts_emits_every_namespace_and_method() {
+    let s = render(Platform::Ts);
+    assert!(s.contains("export const GeneratedActionBuilders"));
+    // The web reuses the hand-written envelope wrapper rather than re-emitting
+    // one — assert the import is present (single web source of truth).
+    assert!(s.contains("import { encodeDispatchEnvelope } from \"./dispatchEnvelope\";"));
+    for b in ACTION_BUILDERS {
+        assert!(
+            s.contains(&format!("  {}(", b.method)),
+            "missing ts builder method `{}`",
+            b.method
+        );
+        assert!(
+            s.contains(&format!("encodeDispatchEnvelope(correlationId, {:?}", b.namespace)),
+            "missing ts namespace stamp `{}`",
+            b.namespace
+        );
+    }
+}
+
+#[test]
+fn ts_emits_the_publish_union_builders() {
+    let s = render(Platform::Ts);
+    for builder in registry::PUBLISH_BUILDERS {
+        assert!(
+            s.contains(&format!("  {}(", builder.method)),
+            "missing ts publish builder method `{}`",
+            builder.method
+        );
+    }
+    assert!(s.contains("encodeDispatchEnvelope(correlationId, \"nmp.publish\""));
+    assert!(s.contains("fbb.finish(payloadRoot, \"NPUB\")"));
+}
+
+#[test]
 fn swift_emits_every_namespace_and_method() {
     let s = render(Platform::Swift);
     assert!(s.contains("public enum GeneratedActionBuilders"));
@@ -106,6 +146,7 @@ fn schema_version_constant_is_mirrored_in_both() {
 fn platform_parse_roundtrips() {
     assert_eq!(Platform::parse("swift").unwrap(), Platform::Swift);
     assert_eq!(Platform::parse("kotlin").unwrap(), Platform::Kotlin);
+    assert_eq!(Platform::parse("ts").unwrap(), Platform::Ts);
     assert!(Platform::parse("rust").is_err());
 }
 
@@ -119,6 +160,9 @@ fn optional_field_is_guarded_in_both() {
     let kotlin = render(Platform::Kotlin);
     assert!(kotlin.contains("targetAuthorPubkey: String?"));
     assert!(kotlin.contains("if (targetAuthorPubkeyOffset != 0)"));
+    let ts = render(Platform::Ts);
+    assert!(ts.contains("targetAuthorPubkey: string | null"));
+    assert!(ts.contains("if (targetAuthorPubkeyOffset !== 0)"));
 }
 
 #[test]
@@ -135,7 +179,7 @@ fn check_reports_missing_file_as_stale() {
 
 #[test]
 fn generate_then_check_is_up_to_date() {
-    for platform in [Platform::Swift, Platform::Kotlin] {
+    for platform in [Platform::Swift, Platform::Kotlin, Platform::Ts] {
         let tmp = std::env::temp_dir().join(format!(
             "nmp-action-builders-roundtrip-{}-{:?}.gen",
             std::process::id(),

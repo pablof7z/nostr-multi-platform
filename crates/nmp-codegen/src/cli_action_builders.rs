@@ -9,7 +9,7 @@ use std::path::PathBuf;
 
 use nmp_codegen::ActionBuilderPlatform;
 
-/// `nmp gen action-builders --platform swift|kotlin --out <path> [--check]`.
+/// `nmp gen action-builders --platform swift|kotlin|ts --out <path> [--check]`.
 ///
 /// Generates the typed write builders (`GeneratedActionBuilders`) for the byte
 /// doorway from the `ACTION_BUILDERS` registry; takes no schema stdin.
@@ -19,6 +19,9 @@ use nmp_codegen::ActionBuilderPlatform;
 ///
 /// `--platform kotlin`: generates `ActionBuilders.kt`.
 /// For Chirp Android: `android/app/src/main/java/org/nmp/android/ActionBuilders.kt`.
+///
+/// `--platform ts`: generates `actionBuilders.generated.ts`.
+/// For Chirp Web: `web/packages/runtime-web/src/actionBuilders.generated.ts`.
 ///
 /// `--out` is required (no app identity baked into the generic tool — #1613).
 ///
@@ -36,7 +39,7 @@ pub fn run_gen_action_builders(args: Vec<String>, help: &str) -> Result<(), Stri
                 platform_arg = Some(
                     args.get(index)
                         .cloned()
-                        .ok_or_else(|| "--platform requires swift|kotlin".to_string())?,
+                        .ok_or_else(|| "--platform requires swift|kotlin|ts".to_string())?,
                 );
             }
             "--out" => {
@@ -54,7 +57,7 @@ pub fn run_gen_action_builders(args: Vec<String>, help: &str) -> Result<(), Stri
     }
 
     let platform_arg = platform_arg
-        .ok_or_else(|| format!("--platform is required (swift|kotlin)\n{help}"))?;
+        .ok_or_else(|| format!("--platform is required (swift|kotlin|ts)\n{help}"))?;
     let platform = ActionBuilderPlatform::parse(&platform_arg).map_err(|e| format!("{e}\n{help}"))?;
 
     let out = out.ok_or_else(|| {

@@ -79,7 +79,7 @@ fn help() -> String {
      nmp gen typed-decoders    --out <path> [--check]\n  \
      nmp gen projection-cache  --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen keyed-ref-cache   --platform swift|kotlin --out <path> [--check]\n  \
-     nmp gen action-builders   --platform swift|kotlin --out <path> [--check]\n  \
+     nmp gen action-builders   --platform swift|kotlin|ts --out <path> [--check]\n  \
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
      nmp gen builtin-deps      [--out <path>] [--check]\n  \
      nmp gen presence-keys     [--out <path>] [--check]\n  \
