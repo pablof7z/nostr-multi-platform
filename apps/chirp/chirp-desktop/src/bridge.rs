@@ -30,8 +30,8 @@ use nmp_app_chirp::{
 };
 use nmp_ffi::{
     nmp_app_dispatch_action, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref,
-    nmp_app_remove_account, nmp_app_resolve_ref, nmp_app_set_capability_callback, nmp_app_signin_nsec,
-    nmp_app_start, nmp_app_switch_active, nmp_free_string, NmpApp, NmpConfigStatus,
+    nmp_app_resolve_ref, nmp_app_set_capability_callback, nmp_app_signin_nsec,
+    nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
 };
 use serde_json::Value;
 use std::ffi::c_void;
@@ -328,7 +328,7 @@ impl AppRuntime {
             return;
         }
         if let Ok(c) = CString::new(secret) {
-            unsafe { nmp_app_signin_nsec(self.app, c.as_ptr(), 1) };
+            nmp_app_signin_nsec(self.app, c.as_ptr(), 1);
         }
     }
 

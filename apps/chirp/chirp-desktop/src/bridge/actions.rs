@@ -99,7 +99,7 @@ impl AppRuntime {
             return;
         }
         if let Ok(c) = CString::new(pubkey) {
-            unsafe { nmp_app_switch_active(self.app, c.as_ptr()) };
+            nmp_app_switch_active(self.app, c.as_ptr());
         }
     }
 
@@ -111,7 +111,7 @@ impl AppRuntime {
             return;
         }
         if let Ok(c) = CString::new(pubkey) {
-            unsafe { nmp_app_remove_account(self.app, c.as_ptr()) };
+            nmp_app_remove_account(self.app, c.as_ptr());
         }
     }
 
