@@ -10,6 +10,10 @@ const contentMinimalSwift = nativeSource("registry/swiftui/content-minimal/Nostr
 const contentMinimalPreviewSwift = nativeSource("registry/swiftui/content-minimal/Examples/NostrMinimalContentPreview.swift");
 const contentViewSwift = nativeSource("registry/swiftui/content-view/NostrContentView.swift");
 const contentGroupingSwift = nativeSource("registry/swiftui/content-view/NostrContentGrouping.swift");
+const contentHighlightsSwift = nativeSource("registry/swiftui/content-view/NostrContentHighlights.swift");
+const contentAttributedSwift = nativeSource("registry/swiftui/content-view/NostrContentAttributed.swift");
+const contentArticleViewSwift = nativeSource("registry/swiftui/content-view/NostrContentArticleView.swift");
+const contentSelectableTextSwift = nativeSource("registry/swiftui/content-view/NostrSelectableText.swift");
 const contentViewPreviewSwift = nativeSource("registry/swiftui/content-view/Examples/NostrContentViewPreview.swift");
 const mentionChipSwift = nativeSource("registry/swiftui/content-mention-chip/NostrMentionChip.swift");
 const mediaGridSwift = nativeSource("registry/swiftui/content-media-grid/NostrMediaGrid.swift");
@@ -142,16 +146,16 @@ export const contentComponents: Component[] = [
   {
     slug: "content-view",
     routeId: "content-view",
-    version: "0.2.0",
+    version: "0.3.0",
     description:
-      "Full ContentTreeWire renderer. Stitches text runs, mentions, kind-dispatched event-ref embeds, and media grids into one view.",
+      "Full ContentTreeWire renderer. Stitches text runs, mentions, kind-dispatched event-ref embeds, and media grids into one view. Article-reading surfaces opt into text selection → highlight-creation, NIP-84 range overlays, and footnote markers + scroll-to navigation.",
     platforms: {
       swiftui: {
         status: "stable",
         installId: "swiftui/content-view",
-        version: "0.2.0",
+        version: "0.3.0",
         dependencies: ["content-core", "content-media-grid", "content-kind-registry"],
-        files: [{ source: "swiftui/content-view/NostrContentView.swift", target: "Components/NostrContent/NostrContentView.swift", role: "source", content: contentViewSwift }, { source: "swiftui/content-view/NostrContentGrouping.swift", target: "Components/NostrContent/NostrContentGrouping.swift", role: "source", content: contentGroupingSwift }, { source: "swiftui/content-view/Examples/NostrContentViewPreview.swift", target: "Components/NostrContent/Examples/NostrContentViewPreview.swift", role: "example", content: contentViewPreviewSwift }],
+        files: [{ source: "swiftui/content-view/NostrContentView.swift", target: "Components/NostrContent/NostrContentView.swift", role: "source", content: contentViewSwift }, { source: "swiftui/content-view/NostrContentGrouping.swift", target: "Components/NostrContent/NostrContentGrouping.swift", role: "source", content: contentGroupingSwift }, { source: "swiftui/content-view/NostrContentHighlights.swift", target: "Components/NostrContent/NostrContentHighlights.swift", role: "source", content: contentHighlightsSwift }, { source: "swiftui/content-view/NostrContentAttributed.swift", target: "Components/NostrContent/NostrContentAttributed.swift", role: "source", content: contentAttributedSwift }, { source: "swiftui/content-view/NostrContentArticleView.swift", target: "Components/NostrContent/NostrContentArticleView.swift", role: "source", content: contentArticleViewSwift }, { source: "swiftui/content-view/NostrSelectableText.swift", target: "Components/NostrContent/NostrSelectableText.swift", role: "source", content: contentSelectableTextSwift }, { source: "swiftui/content-view/Examples/NostrContentViewPreview.swift", target: "Components/NostrContent/Examples/NostrContentViewPreview.swift", role: "example", content: contentViewPreviewSwift }],
         screenshots: ["content-view-ios-gallery-preview.png"],
         customization: [
           "`NostrContentView` walks a `ContentTreeWire` decoded from `nmp-content`. Each tree node maps to a sub-component you installed alongside it.",

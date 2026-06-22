@@ -53,6 +53,22 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../registry/swiftui/content-view/NostrContentGrouping.swift"),
     ),
     (
+        "swiftui/content-view/NostrContentHighlights.swift",
+        include_str!("../../registry/swiftui/content-view/NostrContentHighlights.swift"),
+    ),
+    (
+        "swiftui/content-view/NostrContentAttributed.swift",
+        include_str!("../../registry/swiftui/content-view/NostrContentAttributed.swift"),
+    ),
+    (
+        "swiftui/content-view/NostrContentArticleView.swift",
+        include_str!("../../registry/swiftui/content-view/NostrContentArticleView.swift"),
+    ),
+    (
+        "swiftui/content-view/NostrSelectableText.swift",
+        include_str!("../../registry/swiftui/content-view/NostrSelectableText.swift"),
+    ),
+    (
         "swiftui/content-view/Examples/NostrContentViewPreview.swift",
         include_str!("../../registry/swiftui/content-view/Examples/NostrContentViewPreview.swift"),
     ),

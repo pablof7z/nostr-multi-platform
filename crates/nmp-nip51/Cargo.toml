@@ -30,7 +30,12 @@ serde_json = { workspace = true }
 flatbuffers = { workspace = true }
 
 [dev-dependencies]
-nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# `native` pulls in the `__ffi_internal::ActionRegistry` seam the
+# dispatch_integration test drives through `start_bytes` (ADR-0064 / S9 #1747).
+nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 # Integration test: wire MuteListProjection into ModularTimelineProjection
 nmp-nip01 = { path = "../nmp-nip01" }
 nmp-threading = { path = "../nmp-threading" }
+# dispatch_integration seeds a kind:10003 KernelEvent (KIND_BOOKMARK_LIST) so the
+# remove_bookmark presence check has an existing bookmark to find.
+nmp-kinds = { path = "../nmp-kinds" }

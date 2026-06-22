@@ -1,34 +1,40 @@
 //! The five deterministic test identities.
 //!
-//! Each is a `nmp_signers::LocalKeySigner` built from a fixed 32-byte
-//! secret-key hex seed via `LocalKeySigner::from_secret_hex` — so every
-//! signed event id is stable across runs and screenshots stay diffable.
-//! Keys NEVER touch a relay; this is offline fixture material only.
+//! Each is built from a fixed 32-byte secret-key hex seed. Signing is fully
+//! deterministic — BIP340 schnorr with **no auxiliary randomness**
+//! (`sign_schnorr_no_aux_rand`) — so both the event id AND the signature are
+//! byte-stable across runs. This makes the generated gallery bundles
+//! reproducible (`cargo run …build-…-bundle && git diff --exit-code` is clean)
+//! and keeps screenshots diffable. Keys NEVER touch a relay; this is offline
+//! fixture material only.
 
 use nmp_core::nip21::{format_nostr_uri, NostrUri};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
-use nmp_signers::signers::SignerOp;
-use nmp_signers::{LocalKeySigner, Signer};
-use std::time::Duration;
+use nostr::event::builder::EventBuilder;
+use nostr::key::Keys;
+use nostr::secp256k1::{Message, Secp256k1};
+use nostr::types::Timestamp;
+use nostr::{Kind, Tag};
 
-/// A named fixture identity with its signer + derived bech32 forms.
+/// A named fixture identity with its signing keys + derived bech32 forms.
 pub struct Identity {
     /// Symbolic alias (`ALICE`, `BOB`, …).
     pub alias: &'static str,
     /// 32-byte pubkey hex.
     pub pubkey_hex: String,
-    signer: LocalKeySigner,
+    /// The deterministic signing keypair (from the fixed seed).
+    keys: Keys,
 }
 
 impl Identity {
     fn new(alias: &'static str, secret_hex: &str) -> Self {
-        let signer = LocalKeySigner::from_secret_hex(secret_hex)
-            .expect("deterministic 32-byte secret hex must construct a signer");
-        let pubkey_hex = signer.pubkey().to_hex();
+        let keys = Keys::parse(secret_hex)
+            .expect("deterministic 32-byte secret hex must construct keys");
+        let pubkey_hex = keys.public_key().to_hex();
         Self {
             alias,
             pubkey_hex,
-            signer,
+            keys,
         }
     }
 
@@ -51,8 +57,14 @@ impl Identity {
         .expect("nprofile format from valid pubkey hex")
     }
 
-    /// Sign an event with this identity. Synchronous: `LocalKeySigner`
-    /// returns `SignerOp::Ready`, so `wait` resolves immediately.
+    /// Sign an event with this identity, **deterministically**.
+    ///
+    /// Uses BIP340 schnorr with no auxiliary randomness
+    /// (`sign_schnorr_no_aux_rand`), so the signature is byte-identical across
+    /// runs for the same (kind, created_at, tags, content) inputs. The event id
+    /// is the canonical NIP-01 hash (already deterministic). Both are valid:
+    /// the bundle's `every_signed_event_verifies` test re-verifies the full
+    /// schnorr signature + id hash.
     pub fn sign(
         &self,
         kind: u32,
@@ -60,18 +72,43 @@ impl Identity {
         tags: Vec<Vec<String>>,
         content: impl Into<String>,
     ) -> SignedEvent {
-        let unsigned = UnsignedEvent {
-            pubkey: self.pubkey_hex.clone(),
-            kind,
-            tags,
-            content: content.into(),
-            created_at,
-        };
-        match self.signer.sign(unsigned) {
-            SignerOp::Ready(r) => r.expect("LocalKeySigner sign is infallible"),
-            op => op
-                .wait(Duration::from_secs(1))
-                .expect("LocalKeySigner sign resolves immediately"),
+        let content: String = content.into();
+        let kind_u16 = u16::try_from(kind).expect("fixture kinds fit in u16");
+        let parsed_tags: Vec<Tag> = tags
+            .iter()
+            .map(|t| Tag::parse(t.clone()))
+            .collect::<Result<_, _>>()
+            .expect("fixture tags are well-formed");
+
+        // Build the unsigned event (id computed from the canonical NIP-01
+        // serialization). `custom_created_at` pins the timestamp so the id is
+        // deterministic — never `Timestamp::now()`.
+        let mut unsigned = EventBuilder::new(Kind::from_u16(kind_u16), &content)
+            .tags(parsed_tags)
+            .custom_created_at(Timestamp::from(created_at))
+            .build(self.keys.public_key());
+        let id = unsigned.id();
+
+        // Sign the id digest with NO auxiliary randomness → deterministic sig.
+        let secp = Secp256k1::new();
+        let message = Message::from_digest(id.to_bytes());
+        let keypair = self.keys.key_pair(&secp);
+        let sig = secp.sign_schnorr_no_aux_rand(&message, keypair);
+
+        let event = unsigned
+            .add_signature(sig)
+            .expect("manually-attached deterministic schnorr signature must verify");
+
+        SignedEvent {
+            id: event.id.to_hex(),
+            sig: event.sig.to_string(),
+            unsigned: UnsignedEvent {
+                pubkey: event.pubkey.to_hex(),
+                kind: u32::from(event.kind.as_u16()),
+                tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+                content: event.content.clone(),
+                created_at: event.created_at.as_secs(),
+            },
         }
     }
 }

@@ -7,13 +7,29 @@ public struct NostrContentCallbacks: @unchecked Sendable {
     public var onLinkTap: (URL) -> Void
     public var onImageTap: (URL) -> Void
     public var onEventRefTap: (String) -> Void
+    /// Text-selection → highlight-creation seam (NIP-84 kind:9802).
+    ///
+    /// When the user selects a span of body text, the renderer emits the
+    /// selected `quote` together with the `context` (the surrounding
+    /// block-level text the selection sits inside). The app decides what to do
+    /// — typically opening a "create highlight" affordance. The renderer does
+    /// **not** publish anything; publishing the kind:9802 event is the app's
+    /// job (see issue #1649). Defaults to a no-op so non-article surfaces are
+    /// unaffected.
+    public var onTextSelected: (_ quote: String, _ context: String) -> Void
+    /// Tap on a rendered highlight overlay (see `NostrContentView.decorations`).
+    /// The renderer hands back the `DecorationId` of the tapped range so the
+    /// app can open the underlying highlight. Defaults to a no-op.
+    public var onDecorationTap: (NostrContentDecorationId) -> Void
 
     public init(
         onMentionTap: @escaping (String) -> Void = { _ in },
         onHashtagTap: @escaping (String) -> Void = { _ in },
         onLinkTap: @escaping (URL) -> Void = { _ in },
         onImageTap: ((URL) -> Void)? = nil,
-        onEventRefTap: @escaping (String) -> Void = { _ in }
+        onEventRefTap: @escaping (String) -> Void = { _ in },
+        onTextSelected: @escaping (_ quote: String, _ context: String) -> Void = { _, _ in },
+        onDecorationTap: @escaping (NostrContentDecorationId) -> Void = { _ in }
     ) {
         self.onMentionTap = onMentionTap
         self.onHashtagTap = onHashtagTap
@@ -22,6 +38,8 @@ public struct NostrContentCallbacks: @unchecked Sendable {
         // generic link handler still get image-tap routing for free.
         self.onImageTap = onImageTap ?? onLinkTap
         self.onEventRefTap = onEventRefTap
+        self.onTextSelected = onTextSelected
+        self.onDecorationTap = onDecorationTap
     }
 }
 

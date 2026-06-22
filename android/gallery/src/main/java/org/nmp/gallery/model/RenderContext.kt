@@ -7,7 +7,7 @@ package org.nmp.gallery.model
  * no FFI projection. The STAGE 2 bundle carries resolution facts only; the
  * depth budget + `visited`-set traversal state is a render-time concern that
  * travels with the renderer. The key passed to this type is the opaque
- * Rust-emitted `EmbedEntry.cycleKey`; Kotlin must not derive it from Nostr
+ * Rust-emitted cycle key; Kotlin must not derive it from Nostr
  * kind/tag/content.
  *
  *   depth >= max_depth (default 4)  OR  visited.contains(into)

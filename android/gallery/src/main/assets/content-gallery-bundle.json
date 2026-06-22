@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "scenarios": [
     {
       "id": "S-T01",
@@ -14,7 +14,7 @@
           "kind": 1,
           "tags": [],
           "content": "Just shipped the relay reconnect fix. Feels good.",
-          "sig": "5c8cfa78a4c8501f38d7b14dff0702450800e3010632d7d319e5501d5012861ced9ce2501c3c980d45a67715d7f0a6ca8a28f3c1c95562555727a55f85552da4"
+          "sig": "9adff3fa8c44039562c7be4971a979d15fd36889e17d16a1b25b4871d77ac25f81675dc4927e6e21ccc40816090425712b7e94ede0b2366dc192039b572c4633"
         }
       ],
       "rendered": {
@@ -57,7 +57,7 @@
             ]
           ],
           "content": "Debugging #Nostr relays again #NIP01 #zaps",
-          "sig": "b50e06d110dfaa07e774fd42aa84f6aa3263557b6b4c7c7c73abc62d634face917c59b62f04d35ed8932baa3c9867dbdfc346a0ae3d3e51f5bf76689fa4cb7ba"
+          "sig": "2dcba6d5e3362b83b298249db4e4538974a5c8ad22463c4cfba816fdcc9570faa4cdd462f28684a18ed01db3d577e84e4ab596e5ea203855dc96c654c0dce919"
         }
       ],
       "rendered": {
@@ -112,7 +112,7 @@
           "kind": 1,
           "tags": [],
           "content": "Spec lives at https://github.com/nostr-protocol/nips read it",
-          "sig": "1db04d073f26b231f9d45f830c6409940589ba059578be4f42bdba28c0da1ae600ad8bc4ac5b712600281ca9061f1c9216a3db12c527b56f2ef3fb59bc4fce89"
+          "sig": "16c69587670e8af6daa8adb630f13c34a83516a93189985dca106cde0f58a0cbe8b98e2b144953c6456d0cbafa3fb2cccbd498da59fe7009f51bb1e170acf129"
         }
       ],
       "rendered": {
@@ -152,7 +152,7 @@
           "kind": 1,
           "tags": [],
           "content": "Sunset from the office https://nmp.test/img/sunset.jpg",
-          "sig": "e37585a5ab955f041531ed92bb1844c059f5f7298f4509530ef05d53726ccb5bf12200499a44be55f212d2d71b9192318ee8328e585f5314101c8f75aab4f19f"
+          "sig": "43bb75503f7556b9c3cd43bfe28341aa71fdb33c0e3d2262fa01eeecd0f09fa83182502df31d3dffadca84c5b7fabbd70d77f9d4119c463cffac1b32a525b383"
         }
       ],
       "rendered": {
@@ -190,7 +190,7 @@
           "kind": 1,
           "tags": [],
           "content": "Recording of the postmortem https://nmp.test/v/postmortem.mp4",
-          "sig": "e271782885116ebb9d5347bc41e902afd519c762e72b32b397688c4f98038cbfa25b573bdb4938eeb28c592cd1a19ceb24a7541d56b278708be1eb113a64646d"
+          "sig": "06cc856eb877e19283224c321427bb71ce2ad2961d8747c58f7be4ea9cde47808a0aa2bdb6dab9115eadf4ca74fef02f039e472ab978fb16beb76bea9d0e74f5"
         }
       ],
       "rendered": {
@@ -228,7 +228,7 @@
           "kind": 1,
           "tags": [],
           "content": "Trip photos https://nmp.test/img/a.jpg https://nmp.test/img/b.png https://nmp.test/img/c.webp",
-          "sig": "258e9364887c21813cd1c6382242204089b3b21ccb819b151049561c98b0a160c0c9d4424b9d50cccb418c592234e2157db72a794523915f662e85884c617043"
+          "sig": "82158cc6c94aff376ff9106fdb2c5aad39ce46b356d2dcbac7603ca71028172f081bf6399203aba44d809c57a02333054c3b4a29fa14120c10b4646e4afc9ef7"
         }
       ],
       "rendered": {
@@ -268,7 +268,7 @@
           "kind": 1,
           "tags": [],
           "content": "https://nmp.test/img/x.png https://nmp.test/v/y.webm https://nmp.test/a/z.mp3",
-          "sig": "285b27c8d2eb6e411d43d42a98f9dce5a09a255ba5be017927acb5c737c44e776b199dad16c6c54b038e76a7d52552bb788346d83cd14c44816fb5ef4185247d"
+          "sig": "cebd5dcffca11ad89a4a1b5c4c865353a4b5b372b0f113887920817f7235fce7bada0a701e7b4df3f384991d719bf27b6fce6656cf56ee2eef9a8380be5a5705"
         }
       ],
       "rendered": {
@@ -338,7 +338,7 @@
             ]
           ],
           "content": "gm :nmp: ship it :rocket:",
-          "sig": "2690793f6f3bbe78b653212f69e204a58c22dedb1bc2bd13e8b92d6d667c77bdc869ea93bdea5f47211e99dde2315e4beee2dc82e297aebd267f5a943a3526d6"
+          "sig": "381f2665c79e93f1ddb709f9d7668764ddd4e21e056787650bffd072534e9cd907f6693b96a73f9b142bff97c804ddda38549f10ec5ee06e41a03de497918e65"
         }
       ],
       "rendered": {
@@ -385,7 +385,7 @@
           "kind": 1,
           "tags": [],
           "content": "missing :ghost: shortcode",
-          "sig": "6e7c53587e47f2f9e823e78e8c01ea075c08535031e742970d245de43a1e581d9757d6f48bb7aef731c9b22662cc23d394fed8cc4442ef690ba5e9fb356a88f3"
+          "sig": "93e824b5df5cbb39348a350272ed2a279217498909c6ca2aebe0840a51c3a1b2e576f2f7d868ce7a75a328830ecc566e902f3a8f92643d72701995a8435ca1ff"
         }
       ],
       "rendered": {
@@ -426,7 +426,7 @@
           "kind": 1,
           "tags": [],
           "content": "zap me lnbc10u1p3xqsrpp5demoinvoicebody or cashu cashuAeyJ0b2tlbnMiOnt9fQ==",
-          "sig": "4da94d0106940ce96f9897f142e04d0e9dcb74192b22095998f40817dce7eb9828b8989aa198a30ca71cd5277815f1d5740d33feba87c055a59ead8557e5a5d7"
+          "sig": "fb4cb48560457f9df1d3ca488d10507ccb48aad5b73416835566cb314762809b820bbc5950f813df5dba067588024dc626e6c679294b5dae13b7cab18e756aff"
         }
       ],
       "rendered": {
@@ -456,7 +456,7 @@
           "kind": 1,
           "tags": [],
           "content": "talked with nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd about reconnects",
-          "sig": "e6ab324501a6bab77924f243041a63dde1f11ec6b48f62016aad840b74905c3b0924982005144c2616e5770d114310cd5f19081427fffc3100806027c68104b0"
+          "sig": "98021b0aab9ecaf6c47c4aca86a33e07e94d30cd2f3a6c304dd0128e9a68568864cddbdeda4f3811677b6d7f015c92d0bbefb69fb2ca1fc4b49b814e85aeb44a"
         }
       ],
       "rendered": {
@@ -490,11 +490,19 @@
       },
       "embeds": {
         "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
-          "cycle_key": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
-          "resolved_kind": 0,
-          "profile_name": "bob",
-          "profile_picture": "https://nmp.test/img/bob.png",
-          "collapsed": false
+          "collapsed": false,
+          "projection": {
+            "variant": "profile",
+            "data": {
+              "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "displayName": "bob",
+              "pictureUrl": "https://nmp.test/img/bob.png",
+              "about": null,
+              "nip05": null,
+              "lud16": null,
+              "bannerUrl": null
+            }
+          }
         }
       }
     },
@@ -505,13 +513,13 @@
       "exercises": "Segment::Mention(Profile w/ relay hint); identicon fallback",
       "events": [
         {
-          "id": "74b5cac8a6cd65febb588fe3a19e2909a683a3f4c00627dfd539e689b11270cb",
+          "id": "7c156ee5b3cad06b0f0f0a26d9c1f9a0341542ea9f0d6140b2a5b88a1a8663e5",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700010001,
           "kind": 1,
           "tags": [],
-          "content": "shoutout nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
-          "sig": "16ce2e4dbef28f29c256d27bfbe04b0e86aa577e196682578c542acff67810eba1b66a8efa875a914bf7108204de43d7411d066f308c99ab5f6f072c62e7532d"
+          "content": "shoutout nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnws454djw",
+          "sig": "6c82980133a25694d2a01fb73988ed44011c7463c58e415f80c004f1753b0b0a9f5c092f81fd0837554f921228b4adf6febf89861a954f5228f2006c1891df50"
         }
       ],
       "rendered": {
@@ -523,7 +531,7 @@
           {
             "kind": "mention",
             "uri": {
-              "uri": "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
+              "uri": "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnws454djw",
               "kind": "profile",
               "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
               "relays": [
@@ -541,11 +549,20 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv": {
-          "cycle_key": "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnwsqg9phv",
-          "resolved_kind": 0,
-          "profile_name": "carol",
-          "collapsed": false
+        "nostr:nprofile1qqs0jvy2qxf93scsfy6ylp0cn4fzndf3epzcxmuekzrqrugnhnsrd7gpz3mhxue69uhhyetvv9ujumndwqh8getnws454djw": {
+          "collapsed": false,
+          "projection": {
+            "variant": "profile",
+            "data": {
+              "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "displayName": "carol",
+              "pictureUrl": null,
+              "about": null,
+              "nip05": null,
+              "lud16": null,
+              "bannerUrl": null
+            }
+          }
         }
       }
     },
@@ -562,7 +579,7 @@
           "kind": 1,
           "tags": [],
           "content": "ping nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
-          "sig": "ca8839b6274bb886f6e51b5a67979c9c37a904971669f6766cf5b5be4950f0e65fecef2fa9a8699d4cb13588543ee7f3ac5c9c0303ea5e1156392dabd61b9ebf"
+          "sig": "3f1c3ccd47f6d84232a32bc54c357969fef76e93423f7d587cbc575bd2ebbc9c3d012d701955e39687e9190aed7ac475036c10dd002321881587b2b730cb1981"
         }
       ],
       "rendered": {
@@ -591,8 +608,6 @@
       },
       "embeds": {
         "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k": {
-          "cycle_key": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
-          "resolved_kind": 0,
           "collapsed": true,
           "collapse_reason": "dangling"
         }
@@ -611,7 +626,7 @@
           "kind": 1,
           "tags": [],
           "content": "this nails it: nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8",
-          "sig": "1c12314d833dc5adbf8a8453d682c938724ebf7e857dd21d38a2aae55ee7388a0d5526e2ca334c4c755a42d4d09856068892d11b3871fc8f8f1f218db89bca36"
+          "sig": "5818ba0170187f6a798b6acd1135a2ab8b52c52330ceeed992ab528338d38607e763c465e77109b56c7a242692d7c37779f213a910ad26c1e0a9286b4e10b526"
         },
         {
           "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
@@ -620,7 +635,7 @@
           "kind": 1,
           "tags": [],
           "content": "Relays are a CDN you forgot you were running.",
-          "sig": "07bea0d8f0b944cb6fb76f97d28b8985a1e795b4b4627b177a346c2992a27f4524450dedbb92fbf2cb0f47c5a95e99b3b93e0d303c509cbfc0a70fe9ddf6db20"
+          "sig": "221f8fab2f43fe559bbd2a0458f998fde6ffe649b323fc31460e4184b4adf8fc4cb1f6e9af2bd159bb4524b644aac3862b09a3edfbe205ccadbd7eb73b8fd077"
         }
       ],
       "rendered": {
@@ -649,30 +664,30 @@
       },
       "embeds": {
         "nostr:note16rd0plzzcqhl6yk3jur0jt5pqs8xrghd94tufmnf906ms2ccdq5s60mrs8": {
-          "cycle_key": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
-          "resolved_kind": 1,
-          "event": {
-            "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
-            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-            "created_at": 1700020000,
-            "kind": 1,
-            "tags": [],
-            "content": "Relays are a CDN you forgot you were running.",
-            "sig": "07bea0d8f0b944cb6fb76f97d28b8985a1e795b4b4627b177a346c2992a27f4524450dedbb92fbf2cb0f47c5a95e99b3b93e0d303c509cbfc0a70fe9ddf6db20"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "Relays are a CDN you forgot you were running."
-              }
-            ],
-            "roots": [
-              0
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
+              "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020000,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "Relays are a CDN you forgot you were running."
+                  }
+                ],
+                "roots": [
+                  0
+                ],
+                "mode": "Plain"
+              },
+              "mediaUrls": []
+            }
+          }
         }
       }
     },
@@ -683,13 +698,13 @@
       "exercises": "Segment::EventRef(Nevent) resolves to same card as note1",
       "events": [
         {
-          "id": "594bc53d88ee70cd0d3c03841dea5fd2ca6d1064e232afabf0f0ed3140fa0358",
+          "id": "4094c96c1d485747456e7ed9b962037ff6f24f6dd8721532bebc876298237952",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700020002,
           "kind": 1,
           "tags": [],
-          "content": "context: nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82",
-          "sig": "f15f92879243c9c7b4b62935f253d11077d479f5f2efa8bd69fb0ac1d4864fac7ae75861d342eda9501bf4ef04e20d7fc00c148b1888e3b92f7c2c9b9dc74e81"
+          "content": "context: nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gzyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqqqqgpz3mhxue69uhhyetvv9ujumndwqh8getnwsrzg2cu",
+          "sig": "2e16041483e8f3a9cd84cbd5776220666346cc88688374cb8e91645d689be1ca902ef5f73574a3e250ef62bb0a6fc365330d1f521413ba22eb27963196e19cbe"
         },
         {
           "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
@@ -698,7 +713,7 @@
           "kind": 1,
           "tags": [],
           "content": "Relays are a CDN you forgot you were running.",
-          "sig": "07bea0d8f0b944cb6fb76f97d28b8985a1e795b4b4627b177a346c2992a27f4524450dedbb92fbf2cb0f47c5a95e99b3b93e0d303c509cbfc0a70fe9ddf6db20"
+          "sig": "221f8fab2f43fe559bbd2a0458f998fde6ffe649b323fc31460e4184b4adf8fc4cb1f6e9af2bd159bb4524b644aac3862b09a3edfbe205ccadbd7eb73b8fd077"
         }
       ],
       "rendered": {
@@ -710,7 +725,7 @@
           {
             "kind": "event_ref",
             "uri": {
-              "uri": "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82",
+              "uri": "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gzyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqqqqgpz3mhxue69uhhyetvv9ujumndwqh8getnwsrzg2cu",
               "kind": "event",
               "primary_id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
               "relays": [
@@ -728,31 +743,31 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqyt7lq82": {
-          "cycle_key": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
-          "resolved_kind": 1,
-          "event": {
-            "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
-            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-            "created_at": 1700020000,
-            "kind": 1,
-            "tags": [],
-            "content": "Relays are a CDN you forgot you were running.",
-            "sig": "07bea0d8f0b944cb6fb76f97d28b8985a1e795b4b4627b177a346c2992a27f4524450dedbb92fbf2cb0f47c5a95e99b3b93e0d303c509cbfc0a70fe9ddf6db20"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "Relays are a CDN you forgot you were running."
-              }
-            ],
-            "roots": [
-              0
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+        "nostr:nevent1qqsdpkhsl3pvqtlaztgewphe96qsgrnp5tkj647yae5jhadc9vvxs2gzyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqqqqgpz3mhxue69uhhyetvv9ujumndwqh8getnwsrzg2cu": {
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "d0daf0fc42c02ffd12d19706f92e81040e61a2ed2d57c4ee692bf5b82b186829",
+              "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020000,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "Relays are a CDN you forgot you were running."
+                  }
+                ],
+                "roots": [
+                  0
+                ],
+                "mode": "Plain"
+              },
+              "mediaUrls": []
+            }
+          }
         }
       }
     },
@@ -769,7 +784,7 @@
           "kind": 1,
           "tags": [],
           "content": "see nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7",
-          "sig": "7dfd5d59ae2db449a21b0478a667d7c9119675ccfe81705619e61b2d888e0250789c519569d559b15eb7673ec9040dec84a7b516abc1e57f987012331166f1d3"
+          "sig": "20356b081886c93a2c194796dc1e8f4383567096df78e83a87e50501056373660603cc85a77ef96eca44cdf676b07e3cce2474e9cb0e54bddd0375f11bb41e54"
         },
         {
           "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
@@ -778,7 +793,7 @@
           "kind": 1,
           "tags": [],
           "content": "agree with nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd here",
-          "sig": "177a12d53febd52c7380233d1445b5c1100c298525f895a466e157727c675ae65ddeadc763dad04ac4884aef644000586876b814b76640642909a9cb427097bd"
+          "sig": "fd5af7b264bf95adb4cca146d6cb1fa1f4d3866282b6c9df24521554a0947cd95af6d0513075d87ce63de6dd7ffa1fe139b97d17815cdac97afba63449236a47"
         }
       ],
       "rendered": {
@@ -807,54 +822,62 @@
       },
       "embeds": {
         "nostr:note1ed8x9jmszjyg0e0pzh8wv8wzq7z0zt3ewjql70ceunxwhe3zxnlswzerr7": {
-          "cycle_key": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
-          "resolved_kind": 1,
-          "event": {
-            "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
-            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-            "created_at": 1700020003,
-            "kind": 1,
-            "tags": [],
-            "content": "agree with nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd here",
-            "sig": "177a12d53febd52c7380233d1445b5c1100c298525f895a466e157727c675ae65ddeadc763dad04ac4884aef644000586876b814b76640642909a9cb427097bd"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "agree with "
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "cb4e62cb70148887e5e115cee61dc20784f12e397481ff3f19e4ccebe62234ff",
+              "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020003,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "agree with "
+                  },
+                  {
+                    "kind": "mention",
+                    "uri": {
+                      "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
+                      "kind": "profile",
+                      "primary_id": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  },
+                  {
+                    "kind": "text",
+                    "text": " here"
+                  }
+                ],
+                "roots": [
+                  0,
+                  1,
+                  2
+                ],
+                "mode": "Plain"
               },
-              {
-                "kind": "mention",
-                "uri": {
-                  "uri": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
-                  "kind": "profile",
-                  "primary_id": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-                  "relays": [],
-                  "author": null,
-                  "event_kind": null
-                }
-              },
-              {
-                "kind": "text",
-                "text": " here"
-              }
-            ],
-            "roots": [
-              0,
-              1,
-              2
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+              "mediaUrls": []
+            }
+          }
         },
         "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd": {
-          "cycle_key": "nostr:npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd",
-          "resolved_kind": 0,
-          "profile_name": "bob",
-          "profile_picture": "https://nmp.test/img/bob.png",
-          "collapsed": false
+          "collapsed": false,
+          "projection": {
+            "variant": "profile",
+            "data": {
+              "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "displayName": "bob",
+              "pictureUrl": "https://nmp.test/img/bob.png",
+              "about": null,
+              "nip05": null,
+              "lud16": null,
+              "bannerUrl": null
+            }
+          }
         }
       }
     },
@@ -871,7 +894,7 @@
           "kind": 1,
           "tags": [],
           "content": "thread of thought nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5",
-          "sig": "58e34f3d434faf810406e25344dc5b543c480a52a6ea317d2c72c5ec2921714637129c4560f13032f3b565ea4cb700402a69861322154576090968392225fe0e"
+          "sig": "1d3cc53ec6502be55f70f0c60e80d6225b4e58c58ddd79741d4ad1b4da654745d99f0e5c332d92ee8a11400753605356b1e7d9bbfe29f829b51b2d46cc18a9fb"
         },
         {
           "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
@@ -880,7 +903,7 @@
           "kind": 1,
           "tags": [],
           "content": "strongly agree nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
-          "sig": "b665670a3cde420f0e39df58d03d5fb6c910e61f9cd503030d96df8f72b7b940df4fe7e3d7f5fa1dfebfbe5881987ef78160f0cff2422fbb1bcb9032991d63b6"
+          "sig": "e78fb7e3611e27c8924cf59a2a71e84de10fc796931e8ea47b351f3388b1be320091a74c8891c5f8a1735e17c118117ade387133a55add803b5765f0747468f4"
         },
         {
           "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
@@ -889,7 +912,7 @@
           "kind": 1,
           "tags": [],
           "content": "+1 nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
-          "sig": "7d7b4a5ebb7496f82b0861a599b4adbfafe21a1430da3928479a03943315666e1655d62f0ae39970fc00cb53339ed16b218cdf7e12b6f16ee684789cc380eb71"
+          "sig": "1fb73ffd84e2a9dc0a7a23713ed02d0ff29394ec1a85eee352805a3080292fb4188afb6aa9940b9a4cae0796383156f39f34d23cee8da8616a6c6c2ea00d5001"
         },
         {
           "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
@@ -898,7 +921,7 @@
           "kind": 1,
           "tags": [],
           "content": "Root insight: backpressure is a feature.",
-          "sig": "024c0512c027705f23373f1a3fd0bfb2338793feaf920cdefa04856adf425540ab8fe55d5ad70e503f20a7d71456222850789005be5d5b0c01261ad86fdcb441"
+          "sig": "fba35a652a9477fc5e1e9d8c157856893a010d20291d63f7e77b6d039814d8b334910ca737bacf4cca7c2a9318513c1f728994d38ba381c4ac955b88f290c9ed"
         }
       ],
       "rendered": {
@@ -927,106 +950,106 @@
       },
       "embeds": {
         "nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl": {
-          "cycle_key": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
-          "resolved_kind": 1,
-          "event": {
-            "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
-            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-            "created_at": 1700020006,
-            "kind": 1,
-            "tags": [],
-            "content": "+1 nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
-            "sig": "7d7b4a5ebb7496f82b0861a599b4adbfafe21a1430da3928479a03943315666e1655d62f0ae39970fc00cb53339ed16b218cdf7e12b6f16ee684789cc380eb71"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "+1 "
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
+              "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020006,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "+1 "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
+                      "kind": "event",
+                      "primary_id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
               },
-              {
-                "kind": "event_ref",
-                "uri": {
-                  "uri": "nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu",
-                  "kind": "event",
-                  "primary_id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
-                  "relays": [],
-                  "author": null,
-                  "event_kind": null
-                }
-              }
-            ],
-            "roots": [
-              0,
-              1
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+              "mediaUrls": []
+            }
+          }
         },
         "nostr:note1g6y9tpx64qvmqp60vu4vnwcfycrxl6hdzm7jdw0e3xy60rfetkfq4thkfu": {
-          "cycle_key": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
-          "resolved_kind": 1,
-          "event": {
-            "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
-            "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-            "created_at": 1700020005,
-            "kind": 1,
-            "tags": [],
-            "content": "Root insight: backpressure is a feature.",
-            "sig": "024c0512c027705f23373f1a3fd0bfb2338793feaf920cdefa04856adf425540ab8fe55d5ad70e503f20a7d71456222850789005be5d5b0c01261ad86fdcb441"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "Root insight: backpressure is a feature."
-              }
-            ],
-            "roots": [
-              0
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "46885584daa819b0074f672ac9bb0926066feaed16fd26b9f98989a78d395d92",
+              "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020005,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "Root insight: backpressure is a feature."
+                  }
+                ],
+                "roots": [
+                  0
+                ],
+                "mode": "Plain"
+              },
+              "mediaUrls": []
+            }
+          }
         },
         "nostr:note1hxzt895dpfczwm5t3pzf9rs4arv88nywzvxef4en7auuu5qmxnfsumesm5": {
-          "cycle_key": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
-          "resolved_kind": 1,
-          "event": {
-            "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
-            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-            "created_at": 1700020007,
-            "kind": 1,
-            "tags": [],
-            "content": "strongly agree nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
-            "sig": "b665670a3cde420f0e39df58d03d5fb6c910e61f9cd503030d96df8f72b7b940df4fe7e3d7f5fa1dfebfbe5881987ef78160f0cff2422fbb1bcb9032991d63b6"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "strongly agree "
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "b984b3968d0a70276e8b8844928e15e8d873cc8e130d94d733f779ce501b34d3",
+              "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020007,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "strongly agree "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
+                      "kind": "event",
+                      "primary_id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
               },
-              {
-                "kind": "event_ref",
-                "uri": {
-                  "uri": "nostr:note17s3qpncp299dwpatac9hlpgfhln3445mw2qwewl0gn8r66frly8qzrvpkl",
-                  "kind": "event",
-                  "primary_id": "f42200cf01514ad707abee0b7f8509bfe71ad69b7280ecbbef44ce3d6923f90e",
-                  "relays": [],
-                  "author": null,
-                  "event_kind": null
-                }
-              }
-            ],
-            "roots": [
-              0,
-              1
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+              "mediaUrls": []
+            }
+          }
         }
       }
     },
@@ -1043,7 +1066,7 @@
           "kind": 1,
           "tags": [],
           "content": "L0 root nostr:note18vnprt6zpj646tctzwzuu8dd0gmfjaqtskjamyavtlfrpnyxjhrsl0la44",
-          "sig": "7eef8e884d123ba6eaec8e0bdf5c901fdcd5a149b229bbce3a7eb2a15ae068d384b01d208a226f06ce3bd6071a208f88854a86788208928ae899554370a40bf1"
+          "sig": "fd8985d41f634c69021bf4cf833d0a1052efd7148f3b83845afa31ccf33c3ada175833463a1e84746ef90399a6d8fae787cc35cdca62e18c58c2f6da8789b708"
         },
         {
           "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
@@ -1052,7 +1075,7 @@
           "kind": 1,
           "tags": [],
           "content": "L1 nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
-          "sig": "721702c3a422bc04a66600fca53a0fb480ffcaaa3866502fe4bd42a6e759fa3c9bedea3bb6758c432aa9e43a352c25b28d70a9b84c02ce9284b3c14b65233f58"
+          "sig": "ea859edbf306c268eea628f53976534cdbc958e693e705e47e8949d7959512bb810d676a88ea287c353d59b2b302ca3e83519b5236ddc8690857b3bd7f9d8409"
         },
         {
           "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
@@ -1061,7 +1084,7 @@
           "kind": 1,
           "tags": [],
           "content": "L2 nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
-          "sig": "684b6b46c8dba1557ed70c51d1b74fcf4258527af37a540788fce0dcac7669652ba8814c9368504085a8cdfad82d1fef96d5f5455a45aeeafc45d0cc14b69a87"
+          "sig": "88d0d9cec0f7aca5673a1516ffb997f344490fa7256c8fdbb419e81b247bfca99bd6d9eb2df2d30030f84fc88a741e35359dbff2b0fa17139f41506d298b2418"
         },
         {
           "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
@@ -1070,7 +1093,7 @@
           "kind": 1,
           "tags": [],
           "content": "L3 nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
-          "sig": "5e226d91830cdce462599be842bc1ed6eeac684d79117454b3551d2f91b9e137643ce71f60cd5b044fc17338f1a41d53f3d45fb7012db2c3a20c2028aa53c969"
+          "sig": "b09045d28b82d9f00db5eeb0234663ed77f242f04d9ee1c425dbf64d3e796397a2c867fc1f322990df938a3c0022db866c931607aad1d89385ee5ae5cba75cc7"
         },
         {
           "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
@@ -1079,7 +1102,7 @@
           "kind": 1,
           "tags": [],
           "content": "L4 nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
-          "sig": "6192cd3dd10dced6f1b6f881b59ecc2488425a647432b5f1ca9b001cc0881f54d9c44697a615d2731976c1e38f981e6472e21b41f450e96ca347d73bafa66b1c"
+          "sig": "207005bc2c6b3405497ec9cbefe4c0fbe720fd1a4c8b2510e1e4cea844a67e24189ca5ad824391c1baaeb23d08e5c1830a0167c2d4620484e7dc3618a991a041"
         },
         {
           "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
@@ -1088,7 +1111,7 @@
           "kind": 1,
           "tags": [],
           "content": "L5 deepest leaf",
-          "sig": "a75c3e4d284e47ef102a2d72107fd1a46a6d19a46b201771947230c5438f40df58022f7027e1ef63cf34ebf0723c646576f7cda1297e4860707831f105131289"
+          "sig": "4677cb79e4bd3b2351e9918c1ad9b11e719921eabbd071976cb78c3ca26b6041341235e7dbf62259324683c4e791b9b078df2521180bee46792043dffe26730d"
         }
       ],
       "rendered": {
@@ -1117,182 +1140,182 @@
       },
       "embeds": {
         "nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809": {
-          "cycle_key": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
-          "resolved_kind": 1,
-          "event": {
-            "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
-            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-            "created_at": 1700020011,
-            "kind": 1,
-            "tags": [],
-            "content": "L3 nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
-            "sig": "5e226d91830cdce462599be842bc1ed6eeac684d79117454b3551d2f91b9e137643ce71f60cd5b044fc17338f1a41d53f3d45fb7012db2c3a20c2028aa53c969"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "L3 "
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
+              "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020011,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L3 "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
+                      "kind": "event",
+                      "primary_id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
               },
-              {
-                "kind": "event_ref",
-                "uri": {
-                  "uri": "nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv",
-                  "kind": "event",
-                  "primary_id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
-                  "relays": [],
-                  "author": null,
-                  "event_kind": null
-                }
-              }
-            ],
-            "roots": [
-              0,
-              1
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+              "mediaUrls": []
+            }
+          }
         },
         "nostr:note18vnprt6zpj646tctzwzuu8dd0gmfjaqtskjamyavtlfrpnyxjhrsl0la44": {
-          "cycle_key": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
-          "resolved_kind": 1,
-          "event": {
-            "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
-            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-            "created_at": 1700020013,
-            "kind": 1,
-            "tags": [],
-            "content": "L1 nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
-            "sig": "721702c3a422bc04a66600fca53a0fb480ffcaaa3866502fe4bd42a6e759fa3c9bedea3bb6758c432aa9e43a352c25b28d70a9b84c02ce9284b3c14b65233f58"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "L1 "
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "3b2611af420cb55d2f0b1385ce1dad7a3699740b85a5dd93ac5fd230cc8695c7",
+              "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020013,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L1 "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
+                      "kind": "event",
+                      "primary_id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
               },
-              {
-                "kind": "event_ref",
-                "uri": {
-                  "uri": "nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx",
-                  "kind": "event",
-                  "primary_id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
-                  "relays": [],
-                  "author": null,
-                  "event_kind": null
-                }
-              }
-            ],
-            "roots": [
-              0,
-              1
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+              "mediaUrls": []
+            }
+          }
         },
         "nostr:note1k5susjqffcvmxpfh7jsmcaxeu59c3up7ervsr7c4snkveexjszlszhadmx": {
-          "cycle_key": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
-          "resolved_kind": 1,
-          "event": {
-            "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
-            "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
-            "created_at": 1700020012,
-            "kind": 1,
-            "tags": [],
-            "content": "L2 nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
-            "sig": "684b6b46c8dba1557ed70c51d1b74fcf4258527af37a540788fce0dcac7669652ba8814c9368504085a8cdfad82d1fef96d5f5455a45aeeafc45d0cc14b69a87"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "L2 "
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "b521c848094e19b30537f4a1bc74d9e50b88f03ec8d901fb1584eccce4d280bf",
+              "authorPubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020012,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L2 "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
+                      "kind": "event",
+                      "primary_id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
               },
-              {
-                "kind": "event_ref",
-                "uri": {
-                  "uri": "nostr:note15pqse447hpccdm97gemnhev59x0jfrkedchue39wxp7lv6qu84gqt6w809",
-                  "kind": "event",
-                  "primary_id": "a0410cd6beb87186ecbe46773be594299f248ed96e2fccc4ae307df6681c3d50",
-                  "relays": [],
-                  "author": null,
-                  "event_kind": null
-                }
-              }
-            ],
-            "roots": [
-              0,
-              1
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+              "mediaUrls": []
+            }
+          }
         },
         "nostr:note1kz6ll4ksxd4m584ancqjv0h69dv5w24rfk557twgt4m0fuk65ylqhv0tlv": {
-          "cycle_key": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
-          "resolved_kind": 1,
-          "event": {
-            "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
-            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-            "created_at": 1700020010,
-            "kind": 1,
-            "tags": [],
-            "content": "L4 nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
-            "sig": "6192cd3dd10dced6f1b6f881b59ecc2488425a647432b5f1ca9b001cc0881f54d9c44697a615d2731976c1e38f981e6472e21b41f450e96ca347d73bafa66b1c"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "L4 "
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "b0b5ffd6d0336bba1ebd9e01263efa2b59472aa34da94f2dc85d76f4f2daa13e",
+              "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020010,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L4 "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
+                      "kind": "event",
+                      "primary_id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
               },
-              {
-                "kind": "event_ref",
-                "uri": {
-                  "uri": "nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc",
-                  "kind": "event",
-                  "primary_id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
-                  "relays": [],
-                  "author": null,
-                  "event_kind": null
-                }
-              }
-            ],
-            "roots": [
-              0,
-              1
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+              "mediaUrls": []
+            }
+          }
         },
         "nostr:note1yfphcaq0j62a9xf9dzp066mvjmhpgreqxlw0f3thx9y7q4m6wdpqtn94hc": {
-          "cycle_key": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
-          "resolved_kind": 1,
-          "event": {
-            "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
-            "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-            "created_at": 1700020009,
-            "kind": 1,
-            "tags": [],
-            "content": "L5 deepest leaf",
-            "sig": "a75c3e4d284e47ef102a2d72107fd1a46a6d19a46b201771947230c5438f40df58022f7027e1ef63cf34ebf0723c646576f7cda1297e4860707831f105131289"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "L5 deepest leaf"
-              }
-            ],
-            "roots": [
-              0
-            ],
-            "mode": "Plain"
-          },
-          "collapsed": false
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "22437c740f9695d299256882fd6b6c96ee140f2037dcf4c5773149e0577a7342",
+              "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020009,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L5 deepest leaf"
+                  }
+                ],
+                "roots": [
+                  0
+                ],
+                "mode": "Plain"
+              },
+              "mediaUrls": []
+            }
+          }
         }
       }
     },
@@ -1303,16 +1326,16 @@
       "exercises": "RenderContext.visited cycle guard (naddr coords)",
       "events": [
         {
-          "id": "75d18bc2b9a1a96dc37138858a8297c206166c7273e9dc0b3a54fdc699a7fa81",
+          "id": "ff332abc1e91afaf1f0c1b25b38d24ba86c56b0bb7493248cc455e6e18c53df3",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700020017,
           "kind": 1,
           "tags": [],
-          "content": "recursive pair: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
-          "sig": "2378f82ee4a4a7cdd283bc4ad4d71e4c05caffb1583137428ca9857301590a2000de2360aae393c78df8a68d6318854d43abbaba1136dafaf0ec8991e8d97e8a"
+          "content": "recursive pair: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823ctwtvr0",
+          "sig": "b5cfc3e04ea832d6ff10d0b803f96f90676b4c334b443e534210d6d394ceec453e14bd1bb494279d86074e424e174683eeebff55fcf37e63beb301972d4a7e10"
         },
         {
-          "id": "8a711a07eac3bb621ec3e1e44a5a68a7f9e7adf53fada2bb206a56b0aae326a7",
+          "id": "f81ade7e833a0e2db55b1b602d2e53d6af392686a9ecbd0e0406ef80f948fe06",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700020015,
           "kind": 30023,
@@ -1326,11 +1349,11 @@
               "Cycle A"
             ]
           ],
-          "content": "# Cycle A\n\nSee the other side: nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch\n",
-          "sig": "362980f3999d0e9ec668da0355ea2e6c2295b05631fe1a1f4faf4f1af4cdcb92519f13ea9ccae4f61cbf2d37752c337d424da8d4ae76cee439516c9413f4c2bf"
+          "content": "# Cycle A\n\nSee the other side: nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823cztj6a4\n",
+          "sig": "ee99078265b77a8ff2e5e9aea63fa306b2e6d35bd426cfb5d5f5fc485d0e4072c565e83daec180526f9f5ad2c097e0a698a112d56c4a9a246a8d0ba1a7d2f8c0"
         },
         {
-          "id": "2d957edb4c4e15f04ab7032ff16e45378c5255e52482a7f8cfae64bfb06a748d",
+          "id": "b40907f04be0e7fa69289d7776b2098c8f0b64ece2f0fc4a3f8c62b34b291845",
           "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
           "created_at": 1700020016,
           "kind": 30023,
@@ -1344,8 +1367,8 @@
               "Cycle B"
             ]
           ],
-          "content": "# Cycle B\n\nBack to the start: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd\n",
-          "sig": "3117723a7142c7e7dad2b5fae24bf2098415279240bc1b0d0543e1e3c8f4d9d2b46a36eaee7323e0f348fc5d2ca93d96edaca48055ffb64d6314168bd4d6d581"
+          "content": "# Cycle B\n\nBack to the start: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823ctwtvr0\n",
+          "sig": "899678f064bfcfd47c8cad38c281b51c84bfdb33d3e7fd38646042d241a68a435f530ea18027f392a0583e7d562497a59250c2648d1a51b50bf456acee458e9f"
         }
       ],
       "rendered": {
@@ -1357,11 +1380,11 @@
           {
             "kind": "event_ref",
             "uri": {
-              "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
+              "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823ctwtvr0",
               "kind": "address",
-              "primary_id": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+              "primary_id": "30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:cycle-a",
               "relays": [],
-              "author": null,
+              "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
               "event_kind": 30023
             }
           }
@@ -1373,135 +1396,753 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd": {
-          "cycle_key": "30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:cycle-a",
-          "resolved_kind": 30023,
-          "event": {
-            "id": "8a711a07eac3bb621ec3e1e44a5a68a7f9e7adf53fada2bb206a56b0aae326a7",
-            "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-            "created_at": 1700020015,
-            "kind": 30023,
-            "tags": [
-              [
-                "d",
-                "cycle-a"
-              ],
-              [
-                "title",
-                "Cycle A"
-              ]
-            ],
-            "content": "# Cycle A\n\nSee the other side: nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch\n",
-            "sig": "362980f3999d0e9ec668da0355ea2e6c2295b05631fe1a1f4faf4f1af4cdcb92519f13ea9ccae4f61cbf2d37752c337d424da8d4ae76cee439516c9413f4c2bf"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "Cycle A"
-              },
-              {
-                "kind": "heading",
-                "level": 1,
-                "children": [
-                  0
-                ]
-              },
-              {
-                "kind": "text",
-                "text": "See the other side: "
-              },
-              {
-                "kind": "event_ref",
-                "uri": {
-                  "uri": "nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch",
-                  "kind": "address",
-                  "primary_id": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
-                  "relays": [],
-                  "author": null,
-                  "event_kind": 30023
-                }
-              },
-              {
-                "kind": "paragraph",
-                "children": [
-                  2,
-                  3
-                ]
+        "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823ctwtvr0": {
+          "collapsed": false,
+          "projection": {
+            "variant": "article",
+            "data": {
+              "id": "f81ade7e833a0e2db55b1b602d2e53d6af392686a9ecbd0e0406ef80f948fe06",
+              "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020015,
+              "title": "Cycle A",
+              "summary": null,
+              "heroImageUrl": null,
+              "dTag": "cycle-a",
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "Cycle A"
+                  },
+                  {
+                    "kind": "heading",
+                    "level": 1,
+                    "children": [
+                      0
+                    ]
+                  },
+                  {
+                    "kind": "text",
+                    "text": "See the other side: "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823cztj6a4",
+                      "kind": "address",
+                      "primary_id": "30023:2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4:cycle-b",
+                      "relays": [],
+                      "author": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+                      "event_kind": 30023
+                    }
+                  },
+                  {
+                    "kind": "paragraph",
+                    "children": [
+                      2,
+                      3
+                    ]
+                  }
+                ],
+                "roots": [
+                  1,
+                  4
+                ],
+                "mode": "Markdown"
               }
-            ],
-            "roots": [
-              1,
-              4
-            ],
-            "mode": "Markdown"
-          },
-          "collapsed": false
+            }
+          }
         },
-        "nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823chhzkch": {
-          "cycle_key": "30023:2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4:cycle-b",
-          "resolved_kind": 30023,
-          "event": {
-            "id": "2d957edb4c4e15f04ab7032ff16e45378c5255e52482a7f8cfae64bfb06a748d",
-            "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
-            "created_at": 1700020016,
-            "kind": 30023,
-            "tags": [
-              [
-                "d",
-                "cycle-b"
-              ],
-              [
-                "title",
-                "Cycle B"
-              ]
-            ],
-            "content": "# Cycle B\n\nBack to the start: nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd\n",
-            "sig": "3117723a7142c7e7dad2b5fae24bf2098415279240bc1b0d0543e1e3c8f4d9d2b46a36eaee7323e0f348fc5d2ca93d96edaca48055ffb64d6314168bd4d6d581"
-          },
-          "rendered": {
-            "nodes": [
-              {
-                "kind": "text",
-                "text": "Cycle B"
-              },
-              {
-                "kind": "heading",
-                "level": 1,
-                "children": [
-                  0
-                ]
-              },
-              {
-                "kind": "text",
-                "text": "Back to the start: "
-              },
-              {
-                "kind": "event_ref",
-                "uri": {
-                  "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823c7jmqxd",
-                  "kind": "address",
-                  "primary_id": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
-                  "relays": [],
-                  "author": null,
-                  "event_kind": 30023
-                }
-              },
-              {
-                "kind": "paragraph",
-                "children": [
-                  2,
-                  3
-                ]
+        "nostr:naddr1qqrkx7trd3jj6cszyqhchhjdrgrjpy64kjnj2zju2y5w3zuyhhwxrx4hew5d26djgrh7gqcyqqq823cztj6a4": {
+          "collapsed": false,
+          "projection": {
+            "variant": "article",
+            "data": {
+              "id": "b40907f04be0e7fa69289d7776b2098c8f0b64ece2f0fc4a3f8c62b34b291845",
+              "authorPubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700020016,
+              "title": "Cycle B",
+              "summary": null,
+              "heroImageUrl": null,
+              "dTag": "cycle-b",
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "Cycle B"
+                  },
+                  {
+                    "kind": "heading",
+                    "level": 1,
+                    "children": [
+                      0
+                    ]
+                  },
+                  {
+                    "kind": "text",
+                    "text": "Back to the start: "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:naddr1qqrkx7trd3jj6cgzypumuen7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesqcyqqq823ctwtvr0",
+                      "kind": "address",
+                      "primary_id": "30023:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:cycle-a",
+                      "relays": [],
+                      "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                      "event_kind": 30023
+                    }
+                  },
+                  {
+                    "kind": "paragraph",
+                    "children": [
+                      2,
+                      3
+                    ]
+                  }
+                ],
+                "roots": [
+                  1,
+                  4
+                ],
+                "mode": "Markdown"
               }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "S-M10",
+      "category": "highlights",
+      "title": "One-deep article quote (naddr)",
+      "exercises": "resolve_embed_projection dispatches to Article variant via naddr",
+      "events": [
+        {
+          "id": "95afc0d441d58550e49d66ff1d1609cd3d202bb4f743304445a2ad57eefe0e9f",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700030001,
+          "kind": 1,
+          "tags": [],
+          "content": "required reading: nostr:naddr1qqvkyctrddc8yetnwd6hyefdd9ej6cfdvejkzar4wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw4rsr0aj7n",
+          "sig": "a31c3006579c4a91796404d7188706b101e2c8ebc9eb568d3dff3e3a072ad4dc6ca8d4156219646c13f3da103d8efbbf9e7a60d67ad6bf4fcd6a554df68f39c2"
+        },
+        {
+          "id": "1ab9268f96b7553bf4ae12d5640bfeb3bfa43f10e512d2f3f0f9a74e2b1f62da",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700030000,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "backpressure-is-a-feature"
             ],
-            "roots": [
-              1,
-              4
+            [
+              "title",
+              "Backpressure Is A Feature"
             ],
-            "mode": "Markdown"
+            [
+              "summary",
+              "Why your relay should push back."
+            ]
+          ],
+          "content": "# Backpressure Is A Feature\n\nWhen demand exceeds supply, the honest answer is: slow down.\n",
+          "sig": "74a7364fd212eae7d8cf30a1802878fca035d1e52bf8bbe88be28be8fcb8d9b25807464cab54ef0c0e6c8c2fc6f1666809548a20fc87f441d05dc03105e863e8"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "required reading: "
           },
-          "collapsed": false
+          {
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:naddr1qqvkyctrddc8yetnwd6hyefdd9ej6cfdvejkzar4wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw4rsr0aj7n",
+              "kind": "address",
+              "primary_id": "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:backpressure-is-a-feature",
+              "relays": [],
+              "author": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "event_kind": 30023
+            }
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {
+        "nostr:naddr1qqvkyctrddc8yetnwd6hyefdd9ej6cfdvejkzar4wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw4rsr0aj7n": {
+          "collapsed": false,
+          "projection": {
+            "variant": "article",
+            "data": {
+              "id": "1ab9268f96b7553bf4ae12d5640bfeb3bfa43f10e512d2f3f0f9a74e2b1f62da",
+              "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700030000,
+              "title": "Backpressure Is A Feature",
+              "summary": "Why your relay should push back.",
+              "heroImageUrl": null,
+              "dTag": "backpressure-is-a-feature",
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "Backpressure Is A Feature"
+                  },
+                  {
+                    "kind": "heading",
+                    "level": 1,
+                    "children": [
+                      0
+                    ]
+                  },
+                  {
+                    "kind": "text",
+                    "text": "When demand exceeds supply, the honest answer is: slow down."
+                  },
+                  {
+                    "kind": "paragraph",
+                    "children": [
+                      2
+                    ]
+                  }
+                ],
+                "roots": [
+                  1,
+                  3
+                ],
+                "mode": "Markdown"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "S-M11",
+      "category": "highlights",
+      "title": "Highlight cycle A→B→A (visited-set collapse)",
+      "exercises": "EmbedStore::walk terminates on back-edge; renderer derives collapse",
+      "events": [
+        {
+          "id": "849e4a06dc21941528e4ca93dcdaecb575fb79f18623176df1722c1837c7e85a",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700030004,
+          "kind": 1,
+          "tags": [],
+          "content": "cyclic highlights: nostr:naddr1qq9xsmpdvdukxmr994ssygrehen8a7wuhwk9tgrzjh8gwzc8q2dlekedec5djk0js9d3d7qhnqpsgqqqye9q75dns6",
+          "sig": "6fc398d3b88b11f1ef7d926c27f931525e0682437efce77c56c8824e8684d8942d9ae049f88406117ae9562901dcb59b95964b08610179105082bb0e788de653"
+        },
+        {
+          "id": "f2ea2ef1483e07c85b85eeaf5e61ba7ec5bd36c127df6fa6c5675cc9f2b13ee9",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700030002,
+          "kind": 9802,
+          "tags": [
+            [
+              "d",
+              "hl-cycle-a"
+            ],
+            [
+              "context",
+              "See also: nostr:naddr1qq9xsmpdvdukxmr9943qygxxq3legs0d04knq32qd62uqlxct3mcujuvau7202avpxu4cuy7u5psgqqqye9qgzp3mn"
+            ]
+          ],
+          "content": "The first leg of the cycle.",
+          "sig": "49987efd6c3b0c439f06ca8451579ca52c780a1f3bd4bfbfa2105423f3033a2ac46ebd4bbcb499aec67d3b9626c83d71fd705226f5f13685a5dc3a61aee77a30"
+        },
+        {
+          "id": "9e4cac2253f623db92733a65540397745ac2d3fb695459d4ceb6a89cf51cfeee",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700030003,
+          "kind": 9802,
+          "tags": [
+            [
+              "d",
+              "hl-cycle-b"
+            ],
+            [
+              "context",
+              "Back to: nostr:naddr1qq9xsmpdvdukxmr994ssygrehen8a7wuhwk9tgrzjh8gwzc8q2dlekedec5djk0js9d3d7qhnqpsgqqqye9q75dns6"
+            ]
+          ],
+          "content": "The second leg of the cycle.",
+          "sig": "1a4a6f2ceba7e1aa4e40353d0e90a0a2dddf4060e4627c7bc01f22ec20e7cfeeeb5d0d77d9705e7aed1ad142d00c1533a8e41ede71dec0c8c378f78fd0b288cf"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "cyclic highlights: "
+          },
+          {
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:naddr1qq9xsmpdvdukxmr994ssygrehen8a7wuhwk9tgrzjh8gwzc8q2dlekedec5djk0js9d3d7qhnqpsgqqqye9q75dns6",
+              "kind": "address",
+              "primary_id": "9802:79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798:hl-cycle-a",
+              "relays": [],
+              "author": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+              "event_kind": 9802
+            }
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {
+        "nostr:naddr1qq9xsmpdvdukxmr994ssygrehen8a7wuhwk9tgrzjh8gwzc8q2dlekedec5djk0js9d3d7qhnqpsgqqqye9q75dns6": {
+          "collapsed": false,
+          "projection": {
+            "variant": "highlight",
+            "data": {
+              "id": "f2ea2ef1483e07c85b85eeaf5e61ba7ec5bd36c127df6fa6c5675cc9f2b13ee9",
+              "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+              "authorDisplayName": null,
+              "createdAt": 1700030002,
+              "highlightedText": "The first leg of the cycle.",
+              "sourceEventId": null,
+              "sourceEventAddr": null,
+              "sourceUrl": null,
+              "context": "See also: nostr:naddr1qq9xsmpdvdukxmr9943qygxxq3legs0d04knq32qd62uqlxct3mcujuvau7202avpxu4cuy7u5psgqqqye9qgzp3mn"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "S-M12",
+      "category": "highlights",
+      "title": "Depth-limit chain (5 levels, PD-015 collapses L5)",
+      "exercises": "RenderContext::should_collapse when depth >= max_depth=4",
+      "events": [
+        {
+          "id": "6ddd4fc857cc91b9b093d9cf15cbda65da4dedaac585c4ee236374eae8c52ac6",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700030010,
+          "kind": 1,
+          "tags": [],
+          "content": "L0 root nostr:note108f2aylx7yxp0ddw7vdxjuemh8hut0cw7qs5ptvh36wdgmlufx0q6r3ux7",
+          "sig": "e523f0547ef4324631545cfe761a7810455c8e743e7a787cfbe43950d7144957c243ebb7e260eb2251608290cab473cb4845a029575f82137703fb7d0380ebf1"
+        },
+        {
+          "id": "79d2ae93e6f10c17b5aef31a69733bb9efc5bf0ef02140ad978e9cd46ffc499e",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700030009,
+          "kind": 1,
+          "tags": [],
+          "content": "L1 nostr:note12jz7azvwp70hc246rmvmq8npcugyg2csdd9jcnn8c3zc7fr4z48qnxmw4p",
+          "sig": "7429025411a04486747190e183f4301f4df052a770ce5922f5e8faec6c5fff0654e4eaff5501d692938ad1be50d2c10bb304458cbb9571d6fb4a2bd4af3be9f5"
+        },
+        {
+          "id": "5485ee898e0f9f7c2aba1ed9b01e61c710442b106b4b2c4e67c4458f2475154e",
+          "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+          "created_at": 1700030008,
+          "kind": 1,
+          "tags": [],
+          "content": "L2 nostr:note12zm9gyv0r5pqg060t4xrgrpx5xqa4xp0xx249evmm3d62vruzndqfqhlnh",
+          "sig": "eb0c2cc5db5fef044c29550a79cc494403a053988146c81f08a6d0f3509d6bec7df8864e24ff45df419a7a9b8324eb5ac4b08ac5993d1b917125e6a1e483a7d2"
+        },
+        {
+          "id": "50b654118f1d02043f4f5d4c340c26a181da982f319552e59bdc5ba5307c14da",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700030007,
+          "kind": 1,
+          "tags": [],
+          "content": "L3 nostr:note1rufge3sgu80l0d32u9fk9tr0j3qdh572tgz0yer2vzmjdjr7xmvqw398cv",
+          "sig": "b9d56f8d6ec063621a85e20a3552c414c75105c1a49b5e2e16a331d2031f8411784aba93b50b541d40e1faa1416d7e23f72889396ebf4ddb7263d28bf9756564"
+        },
+        {
+          "id": "1f128cc608e1dff7b62ae15362ac6f9440dbd3ca5a04f2646a60b726c87e36d8",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700030006,
+          "kind": 1,
+          "tags": [],
+          "content": "L4 nostr:note1l90chahx4q6q8w8k6qzm3x9p958rzsj5trw6cpjqplsq6rs0fzhsgcza6d",
+          "sig": "9e69dad80ae376e3df604bc7b2dc063746d84caacce3e8507d8e333909be51b3f575e09364fea84a2cca2bc33df392e8eba47881e00fe291961006eb37271dea"
+        },
+        {
+          "id": "f95f8bf6e6a83403b8f6d005b898a12d0e31425458ddac06400fe00d0e0f48af",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700030005,
+          "kind": 1,
+          "tags": [],
+          "content": "L5 leaf note",
+          "sig": "d5b849dc1807131437d2475be82e3bcd6d5a0297f613d7687e2bcd5f037c5c23b54f5fc557b4d366a93b2ea611e344d8501923d3d740bd4b9c130528e534196a"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "L0 root "
+          },
+          {
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:note108f2aylx7yxp0ddw7vdxjuemh8hut0cw7qs5ptvh36wdgmlufx0q6r3ux7",
+              "kind": "event",
+              "primary_id": "79d2ae93e6f10c17b5aef31a69733bb9efc5bf0ef02140ad978e9cd46ffc499e",
+              "relays": [],
+              "author": null,
+              "event_kind": null
+            }
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {
+        "nostr:note108f2aylx7yxp0ddw7vdxjuemh8hut0cw7qs5ptvh36wdgmlufx0q6r3ux7": {
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "79d2ae93e6f10c17b5aef31a69733bb9efc5bf0ef02140ad978e9cd46ffc499e",
+              "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700030009,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L1 "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note12jz7azvwp70hc246rmvmq8npcugyg2csdd9jcnn8c3zc7fr4z48qnxmw4p",
+                      "kind": "event",
+                      "primary_id": "5485ee898e0f9f7c2aba1ed9b01e61c710442b106b4b2c4e67c4458f2475154e",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
+              },
+              "mediaUrls": []
+            }
+          }
+        },
+        "nostr:note12jz7azvwp70hc246rmvmq8npcugyg2csdd9jcnn8c3zc7fr4z48qnxmw4p": {
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "5485ee898e0f9f7c2aba1ed9b01e61c710442b106b4b2c4e67c4458f2475154e",
+              "authorPubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700030008,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L2 "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note12zm9gyv0r5pqg060t4xrgrpx5xqa4xp0xx249evmm3d62vruzndqfqhlnh",
+                      "kind": "event",
+                      "primary_id": "50b654118f1d02043f4f5d4c340c26a181da982f319552e59bdc5ba5307c14da",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
+              },
+              "mediaUrls": []
+            }
+          }
+        },
+        "nostr:note12zm9gyv0r5pqg060t4xrgrpx5xqa4xp0xx249evmm3d62vruzndqfqhlnh": {
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "50b654118f1d02043f4f5d4c340c26a181da982f319552e59bdc5ba5307c14da",
+              "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700030007,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L3 "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note1rufge3sgu80l0d32u9fk9tr0j3qdh572tgz0yer2vzmjdjr7xmvqw398cv",
+                      "kind": "event",
+                      "primary_id": "1f128cc608e1dff7b62ae15362ac6f9440dbd3ca5a04f2646a60b726c87e36d8",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
+              },
+              "mediaUrls": []
+            }
+          }
+        },
+        "nostr:note1l90chahx4q6q8w8k6qzm3x9p958rzsj5trw6cpjqplsq6rs0fzhsgcza6d": {
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "f95f8bf6e6a83403b8f6d005b898a12d0e31425458ddac06400fe00d0e0f48af",
+              "authorPubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700030005,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L5 leaf note"
+                  }
+                ],
+                "roots": [
+                  0
+                ],
+                "mode": "Plain"
+              },
+              "mediaUrls": []
+            }
+          }
+        },
+        "nostr:note1rufge3sgu80l0d32u9fk9tr0j3qdh572tgz0yer2vzmjdjr7xmvqw398cv": {
+          "collapsed": false,
+          "projection": {
+            "variant": "shortNote",
+            "data": {
+              "id": "1f128cc608e1dff7b62ae15362ac6f9440dbd3ca5a04f2646a60b726c87e36d8",
+              "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700030006,
+              "contentTree": {
+                "nodes": [
+                  {
+                    "kind": "text",
+                    "text": "L4 "
+                  },
+                  {
+                    "kind": "event_ref",
+                    "uri": {
+                      "uri": "nostr:note1l90chahx4q6q8w8k6qzm3x9p958rzsj5trw6cpjqplsq6rs0fzhsgcza6d",
+                      "kind": "event",
+                      "primary_id": "f95f8bf6e6a83403b8f6d005b898a12d0e31425458ddac06400fe00d0e0f48af",
+                      "relays": [],
+                      "author": null,
+                      "event_kind": null
+                    }
+                  }
+                ],
+                "roots": [
+                  0,
+                  1
+                ],
+                "mode": "Plain"
+              },
+              "mediaUrls": []
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "S-M13",
+      "category": "highlights",
+      "title": "Unknown kind:40 embed (S-E02 unsupported card)",
+      "exercises": "event_entry emits collapsed=true, collapse_reason=unsupported for unregistered kinds",
+      "events": [
+        {
+          "id": "129829fac1c35f4f6fdb46a9bf5aad067073d315bab5503a1090d77f2f6c9109",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700030012,
+          "kind": 1,
+          "tags": [],
+          "content": "old irc-style channel: nostr:nevent1qqs94xud8d5v3l6l8kc49cr2cjz9xq30qmrxasvsd0w6nap9kusp4zqzyrjf8kl3cyxcpu6creysfyctzszvcmqnjq8wqavywnaff2lgcnx3xqcyqqqqq2qpz3mhxue69uhhyetvv9ujumndwqh8getnws9amkx2",
+          "sig": "5f24aafc9ba8d1b3db95e10f2c12e146bb7bcc646979ff63de31065c48d484e52f589b18769774d7925e70f946df7bcad952009da16118c0bda64d4bbd44544a"
+        },
+        {
+          "id": "5a9b8d3b68c8ff5f3db152e06ac48453022f06c66ec1906bdda9f425b7201a88",
+          "pubkey": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+          "created_at": 1700030011,
+          "kind": 40,
+          "tags": [],
+          "content": "{\"name\":\"nmp-dev\",\"about\":\"NMP developers\",\"picture\":\"\"}",
+          "sig": "c14f616b704a10014c1fda588e229aa762c3e0d835dd042883e2a835a173229ca9b3e69346091121368a2157dff3244aba3d358bbc97eee0b0c0d78df3fc2ef8"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "old irc-style channel: "
+          },
+          {
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:nevent1qqs94xud8d5v3l6l8kc49cr2cjz9xq30qmrxasvsd0w6nap9kusp4zqzyrjf8kl3cyxcpu6creysfyctzszvcmqnjq8wqavywnaff2lgcnx3xqcyqqqqq2qpz3mhxue69uhhyetvv9ujumndwqh8getnws9amkx2",
+              "kind": "event",
+              "primary_id": "5a9b8d3b68c8ff5f3db152e06ac48453022f06c66ec1906bdda9f425b7201a88",
+              "relays": [
+                "wss://relay.nmp.test"
+              ],
+              "author": "e493dbf1c10d80f3581e4904930b1404cc6c13900ee0758474fa94abe8c4cd13",
+              "event_kind": 40
+            }
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {
+        "nostr:nevent1qqs94xud8d5v3l6l8kc49cr2cjz9xq30qmrxasvsd0w6nap9kusp4zqzyrjf8kl3cyxcpu6creysfyctzszvcmqnjq8wqavywnaff2lgcnx3xqcyqqqqq2qpz3mhxue69uhhyetvv9ujumndwqh8getnws9amkx2": {
+          "collapsed": true,
+          "collapse_reason": "unsupported"
+        }
+      }
+    },
+    {
+      "id": "S-M14",
+      "category": "highlights",
+      "title": "Highlight embed (kind:9802, NIP-84)",
+      "exercises": "EmbedStore resolves 9802 as known; emit rendered content tree, not collapsed",
+      "events": [
+        {
+          "id": "9caf3057dc3357da79c6a8ee92c8387a5da579f11a546163467791ad88bbf53a",
+          "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+          "created_at": 1700030015,
+          "kind": 1,
+          "tags": [],
+          "content": "highlighted passage: nostr:nevent1qqsfxmm6mq0tm4lcls23hkvcundapgkrscuzav593848gd5mu6leleczyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqzvjspz3mhxue69uhhyetvv9ujumndwqh8getnws5hamcd",
+          "sig": "e4c4d576ee99c2e538f1fec01fb1d556bdbf2ac691fda48bf3539fbd0da49c41e7ea906f436103a33eacc5eef99fd64ce4247a507601a2c7937ee9dee006b192"
+        },
+        {
+          "id": "936f7ad81ebdd7f8fc151bd998e4dbd0a2c386382eb28589ea74369be6bf9fe7",
+          "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+          "created_at": 1700030013,
+          "kind": 9802,
+          "tags": [
+            [
+              "a",
+              "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:backpressure-is-a-feature"
+            ],
+            [
+              "context",
+              "When demand exceeds supply, the honest answer is: slow down."
+            ]
+          ],
+          "content": "the honest answer is: slow down",
+          "sig": "8105ad9f12760254e79178b5e4fea7d313376e7efeee07b7c93c7d67d747fb7529524b5dc6bb974a1d739befa1e537216cb21d207443e76ec36139907acad21e"
+        },
+        {
+          "id": "ec20dd8470d47e2399a53300991127dcc4a5b6db861110fa24eca031e42ebe5e",
+          "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+          "created_at": 1700030014,
+          "kind": 30023,
+          "tags": [
+            [
+              "d",
+              "backpressure-is-a-feature"
+            ],
+            [
+              "title",
+              "Backpressure Is A Feature"
+            ]
+          ],
+          "content": "# Backpressure Is A Feature\n\nWhen demand exceeds supply, slow down.\n",
+          "sig": "ced7637ad9c64ff108cf8aa2780f971598e65e9490fc89c44c17c13ec429f4d0f5751dfd3986aa8e230ea7b61f4db549b13996f6807ba1f6058997c3391f97fb"
+        }
+      ],
+      "rendered": {
+        "nodes": [
+          {
+            "kind": "text",
+            "text": "highlighted passage: "
+          },
+          {
+            "kind": "event_ref",
+            "uri": {
+              "uri": "nostr:nevent1qqsfxmm6mq0tm4lcls23hkvcundapgkrscuzav593848gd5mu6leleczyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqzvjspz3mhxue69uhhyetvv9ujumndwqh8getnws5hamcd",
+              "kind": "event",
+              "primary_id": "936f7ad81ebdd7f8fc151bd998e4dbd0a2c386382eb28589ea74369be6bf9fe7",
+              "relays": [
+                "wss://relay.nmp.test"
+              ],
+              "author": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "event_kind": 9802
+            }
+          }
+        ],
+        "roots": [
+          0,
+          1
+        ],
+        "mode": "Plain"
+      },
+      "embeds": {
+        "nostr:nevent1qqsfxmm6mq0tm4lcls23hkvcundapgkrscuzav593848gd5mu6leleczyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqzvjspz3mhxue69uhhyetvv9ujumndwqh8getnws5hamcd": {
+          "collapsed": false,
+          "projection": {
+            "variant": "highlight",
+            "data": {
+              "id": "936f7ad81ebdd7f8fc151bd998e4dbd0a2c386382eb28589ea74369be6bf9fe7",
+              "authorPubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
+              "authorDisplayName": null,
+              "createdAt": 1700030013,
+              "highlightedText": "the honest answer is: slow down",
+              "sourceEventId": null,
+              "sourceEventAddr": "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:backpressure-is-a-feature",
+              "sourceUrl": null,
+              "context": "When demand exceeds supply, the honest answer is: slow down."
+            }
+          }
         }
       }
     },
@@ -1512,13 +2153,13 @@
       "exercises": "addressable list resolution -> inline titled list card",
       "events": [
         {
-          "id": "cbe24e826603d5956bb70f26044d01ef488b3bb1a359c1e86c6b04f54acb9256",
+          "id": "caf4c81b8c18fded852fe726591b451610a2198f4c91532a2e0b6b98565f5895",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700040001,
           "kind": 1,
           "tags": [],
-          "content": "curated devs: nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm",
-          "sig": "7761dfb68b539c044f9c93ad3d926fdf4b1444b0e91832ca82f89c1eb154bf1958a022aff23478ee8c5bd2ded72b2240f52a8662b2a223ca5ed94293d8862829"
+          "content": "curated devs: nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqs7dtwe",
+          "sig": "e71b867e0c81f2e085e355411acea6d8fa985389b210610598b73dd5c11262eb31b83fed2cf7d2243ac64c11b2ba15dbc106bc928423a06fb7ae4f85c36bcc21"
         },
         {
           "id": "36dc688a8b310db3e75aff1fc146057651e309be12e4eff9598431a48bcb928d",
@@ -1544,7 +2185,7 @@
             ]
           ],
           "content": "",
-          "sig": "14316fa677e42f44f7e5d97eb14b3624a60ea40af3dc49379f43add517126757e33672e0f7af2651894cc416c5941a92a02d8a59a6ccb7d396f44d5233c83f75"
+          "sig": "dcb9ed4e3209e2244c8fcd09fdf1a706a6c4604fa9ac8608c0c9c121be42341d53a44a7c45e04af8f9d6ca6c3fd114aa7fb52273d47231bf6800de4287d1f3be"
         }
       ],
       "rendered": {
@@ -1556,11 +2197,11 @@
           {
             "kind": "event_ref",
             "uri": {
-              "uri": "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm",
+              "uri": "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqs7dtwe",
               "kind": "address",
-              "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "primary_id": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:nostr-core",
               "relays": [],
-              "author": null,
+              "author": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
               "event_kind": 30000
             }
           }
@@ -1572,57 +2213,42 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cq9za8tm": {
-          "cycle_key": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:nostr-core",
-          "resolved_kind": 30000,
-          "event": {
-            "id": "36dc688a8b310db3e75aff1fc146057651e309be12e4eff9598431a48bcb928d",
-            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-            "created_at": 1700040000,
-            "kind": 30000,
-            "tags": [
-              [
-                "d",
-                "nostr-core"
-              ],
-              [
-                "title",
-                "Nostr Core Devs"
-              ],
-              [
-                "p",
-                "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
-              ],
-              [
-                "p",
-                "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4"
-              ]
-            ],
-            "content": "",
-            "sig": "14316fa677e42f44f7e5d97eb14b3624a60ea40af3dc49379f43add517126757e33672e0f7af2651894cc416c5941a92a02d8a59a6ccb7d396f44d5233c83f75"
-          },
-          "rendered": {
-            "nodes": [],
-            "roots": [],
-            "mode": "Plain"
-          },
+        "nostr:naddr1qq9xummnw3ez6cm0wfjsyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqs7dtwe": {
           "collapsed": false,
-          "list": {
-            "title": "Nostr Core Devs",
-            "rows": [
-              {
-                "type": "profile",
-                "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-                "name": null,
-                "picture": null
+          "projection": {
+            "variant": "unknown",
+            "data": {
+              "kind": 30000,
+              "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700040000,
+              "content": "",
+              "contentTree": {
+                "nodes": [],
+                "roots": [],
+                "mode": "Plain"
               },
-              {
-                "type": "profile",
-                "pubkey": "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4",
-                "name": null,
-                "picture": null
-              }
-            ]
+              "tags": [
+                [
+                  "d",
+                  "nostr-core"
+                ],
+                [
+                  "title",
+                  "Nostr Core Devs"
+                ],
+                [
+                  "p",
+                  "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5"
+                ],
+                [
+                  "p",
+                  "2f8bde4d1a07209355b4a7250a5c5128e88b84bddc619ab7cba8d569b240efe4"
+                ]
+              ],
+              "altText": null
+            }
           }
         }
       }
@@ -1634,13 +2260,13 @@
       "exercises": "generic addressable list with heterogeneous e/a/t rows",
       "events": [
         {
-          "id": "0cc561966b833e198cc71ff711af47d2e78fb556ad5a4267845877a9b9bfe230",
+          "id": "5850b3472079b12a61f2b204e57be125d9b9d2945fb9f5f26c4568ce069fcf85",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700040003,
           "kind": 1,
           "tags": [],
-          "content": "my reading list nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg",
-          "sig": "38a3119e277974d33324ecc3c0d7cb40c266b17b67f71527c9a49798211b17df01a5f4997c0c92acc7f595aa1c2bafc3ac887caede34db3f607c62a51c2065d8"
+          "content": "my reading list nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vc2klry2",
+          "sig": "9aa7f653ee800bbb7122a7f3c5485b8db1b7d30feef05c7ab0e4b47cea28040e7997af4306f9f52019e4fa8083c9fa449626f2069d662c897495341327d3d5ad"
         },
         {
           "id": "03909df1522498408282c1e4f3c86d2eb00db372a9255196de70c812e06fcb15",
@@ -1670,7 +2296,7 @@
             ]
           ],
           "content": "",
-          "sig": "21ed7bff961490f9cde720a7c81e401ba4bcaf8c9736440c603f206489146e180f2cb8903f6462d85cc6e027f351ba3ba15f8c7f5e8cc627a3c277e29b4bde88"
+          "sig": "7dd93dcbb29aaefbeede00a8ffeb1e0332201737dc20e63d315857a026b8dc65ffdf443533d64b6fb0ce4f214125e6552e3f924305e62338ab680752873bede9"
         }
       ],
       "rendered": {
@@ -1682,11 +2308,11 @@
           {
             "kind": "event_ref",
             "uri": {
-              "uri": "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg",
+              "uri": "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vc2klry2",
               "kind": "address",
-              "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "primary_id": "30003:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reading",
               "relays": [],
-              "author": null,
+              "author": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
               "event_kind": 30003
             }
           }
@@ -1698,61 +2324,46 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vcl200pg": {
-          "cycle_key": "30003:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reading",
-          "resolved_kind": 30003,
-          "event": {
-            "id": "03909df1522498408282c1e4f3c86d2eb00db372a9255196de70c812e06fcb15",
-            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-            "created_at": 1700040002,
-            "kind": 30003,
-            "tags": [
-              [
-                "d",
-                "reading"
-              ],
-              [
-                "title",
-                "Reading List"
-              ],
-              [
-                "e",
-                "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-              ],
-              [
-                "a",
-                "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reconnect-strategy"
-              ],
-              [
-                "t",
-                "nostr"
-              ]
-            ],
-            "content": "",
-            "sig": "21ed7bff961490f9cde720a7c81e401ba4bcaf8c9736440c603f206489146e180f2cb8903f6462d85cc6e027f351ba3ba15f8c7f5e8cc627a3c277e29b4bde88"
-          },
-          "rendered": {
-            "nodes": [],
-            "roots": [],
-            "mode": "Plain"
-          },
+        "nostr:naddr1qqrhyetpv35kueczyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqq82vc2klry2": {
           "collapsed": false,
-          "list": {
-            "title": "Reading List",
-            "rows": [
-              {
-                "type": "event",
-                "id": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          "projection": {
+            "variant": "unknown",
+            "data": {
+              "kind": 30003,
+              "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700040002,
+              "content": "",
+              "contentTree": {
+                "nodes": [],
+                "roots": [],
+                "mode": "Plain"
               },
-              {
-                "type": "address",
-                "coord": "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reconnect-strategy"
-              },
-              {
-                "type": "hashtag",
-                "tag": "nostr"
-              }
-            ]
+              "tags": [
+                [
+                  "d",
+                  "reading"
+                ],
+                [
+                  "title",
+                  "Reading List"
+                ],
+                [
+                  "e",
+                  "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+                ],
+                [
+                  "a",
+                  "30023:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:reconnect-strategy"
+                ],
+                [
+                  "t",
+                  "nostr"
+                ]
+              ],
+              "altText": null
+            }
           }
         }
       }
@@ -1764,13 +2375,13 @@
       "exercises": "replaceable list resolution -> titled relay list w/ markers",
       "events": [
         {
-          "id": "bd75e4132110ce420630685bd9cd7789bba7510180e5726b70a3d92e09b70f19",
+          "id": "ad03ba9aa54c99632d0861c7a8ff27102b846d156b38d483f83d1b1a5ef30c47",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700040005,
           "kind": 1,
           "tags": [],
-          "content": "caro's relays nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn",
-          "sig": "fa3c5207bcef0c3627cc49af78065808e58a2fbfdcb50455dfbb4c572b658ed6145efde6e1192ce39c85dddc5a6c12990d23c03260de49d2b6e8d2c257247dbb"
+          "content": "caro's relays nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqzyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnwsgqn2ln",
+          "sig": "4a3178af98f790d1ae99e1abf50ab0c7ea007e4b202a9a50b7c9189ed6278632d54243678e6f6ac82d5680edae8e06aa25740b92b0d374b2749733ce7d32afd2"
         },
         {
           "id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
@@ -1789,7 +2400,7 @@
             ]
           ],
           "content": "",
-          "sig": "b35686ed3fdba971d597c1d531a1482abd977f2552566c4ed5f5ff27745e9ddbd4b17c64c58fae56cebe63bafbde79b207688b9a9cc0c727ffa524234b1d32fe"
+          "sig": "0a98ef5a687184826f54fd1d27e3e353df2c4745ae9e9ec2d989d7693cb9b90e0ee35a27a95e4ca8010a9c9a792cc13d80fd601546fb6248ce9a9eee6180498e"
         }
       ],
       "rendered": {
@@ -1801,7 +2412,7 @@
           {
             "kind": "event_ref",
             "uri": {
-              "uri": "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn",
+              "uri": "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqzyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnwsgqn2ln",
               "kind": "event",
               "primary_id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
               "relays": [
@@ -1819,50 +2430,35 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp7fs3gqeykxrzpyngnu9lzw4y2d4x8yytqm0nxcgvq03zw7wqdheqvzqqqp8zglngexn": {
-          "cycle_key": "10002:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:",
-          "resolved_kind": 10002,
-          "event": {
-            "id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
-            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-            "created_at": 1700040004,
-            "kind": 10002,
-            "tags": [
-              [
-                "r",
-                "wss://relay.a.nmp.test"
-              ],
-              [
-                "r",
-                "wss://relay.b.nmp.test",
-                "read"
-              ]
-            ],
-            "content": "",
-            "sig": "b35686ed3fdba971d597c1d531a1482abd977f2552566c4ed5f5ff27745e9ddbd4b17c64c58fae56cebe63bafbde79b207688b9a9cc0c727ffa524234b1d32fe"
-          },
-          "rendered": {
-            "nodes": [],
-            "roots": [],
-            "mode": "Plain"
-          },
+        "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqzyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnwsgqn2ln": {
           "collapsed": false,
-          "list": {
-            "title": "Relay List",
-            "rows": [
-              {
-                "type": "relay",
-                "url": "wss://relay.a.nmp.test",
-                "read": true,
-                "write": true
+          "projection": {
+            "variant": "unknown",
+            "data": {
+              "kind": 10002,
+              "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700040004,
+              "content": "",
+              "contentTree": {
+                "nodes": [],
+                "roots": [],
+                "mode": "Plain"
               },
-              {
-                "type": "relay",
-                "url": "wss://relay.b.nmp.test",
-                "read": true,
-                "write": false
-              }
-            ]
+              "tags": [
+                [
+                  "r",
+                  "wss://relay.a.nmp.test"
+                ],
+                [
+                  "r",
+                  "wss://relay.b.nmp.test",
+                  "read"
+                ]
+              ],
+              "altText": null
+            }
           }
         }
       }
@@ -1880,7 +2476,7 @@
           "kind": 1,
           "tags": [],
           "content": "field notes from the install https://nmp.test/img/install.jpg",
-          "sig": "9b0764cecf4aec5567cecb044e4ac0952a39e86c4d0bf8165a6fd96520e8ef3ecc78acc6e30d2a164ea8753253e20c4ab8330a1567a1f4a33741817107e47d13"
+          "sig": "ff18ab5583f9d85c3b01a84bed2ecfd77826d45720e4ca380c999d27e731c5e33e236e358ead237fe451f0397e2ce5e460263fb31fb1dae5c5294d11e5f294fb"
         }
       ],
       "rendered": {
@@ -1918,7 +2514,7 @@
           "kind": 1,
           "tags": [],
           "content": "demo reel https://nmp.test/v/demo.mp4",
-          "sig": "b3bbd24ddc1d9054216fbab0b3833d1e6a986c3278734a6da7eaec910d2d59e1327ea509ce92f0e87bfbca383b3029b11482cf6445588d9538892885e56d0d15"
+          "sig": "f63cc851b73fb63fbbb3a0f4fc7173ab3579ecbd227ab700919b23eb38437b4d17a668cf17091db483fa41c926174efe3b6d206ddcdb964f102aa10882da1fa6"
         }
       ],
       "rendered": {
@@ -1956,7 +2552,7 @@
           "kind": 1,
           "tags": [],
           "content": "voice memo https://nmp.test/a/memo.mp3",
-          "sig": "0dfa5351292c4e74502805edee48b48929a0c559c534c60ec129b0c4bdbb2cf0ede13b93beb08c9381b92da94448de10dd874410662307295a7c1f213f5561eb"
+          "sig": "f74cc7dbcabf0b665a614cba16310080bb02edab526ffbb2cbceac1fbc91523b19a58c57c46f613b8a5abfb7a9d41edd24edf63dd2a02e6aa6f4b4472042331c"
         }
       ],
       "rendered": {
@@ -1994,7 +2590,7 @@
           "kind": 1,
           "tags": [],
           "content": "spec lives at https://github.com/nostr-protocol/nips",
-          "sig": "c1790a195fe86e26cc1994d1e4ad72c8ac6717ac0d9c0e3a3ead9466306b5374858995ad967adbb7e3440579e442a5d8e7b2535d842988204968d0d003a2b782"
+          "sig": "b99c27bbdeb9c7ff648978e4f184c93563bc2ffc2bdac90aa4f925a4870855f12d9bb6a9194e9b7f568c4545c67a905816930c24a5d75f6082e592df113b9801"
         }
       ],
       "rendered": {
@@ -2038,7 +2634,7 @@
             ]
           ],
           "content": "# On Links\n\nThe spec lives [on GitHub](https://github.com/nostr-protocol/nips).\n",
-          "sig": "bf9de8ff3f80fed1aa00b283ba3f05a523dbfd5ef336b5869511294786a33701c4f16cb0444247805b8e59c166de3f9ff97e7d14a48ab8eeac6d0ad4c444528e"
+          "sig": "db002ab13be86db7c8ac3eaea54c6b166faa8c2fa845dadbbd7cdae6df2d3579e3c3b03a62a14fbb4a48b226cd5931c596123d98cdd0bb28b836b9db0837ce16"
         }
       ],
       "rendered": {
@@ -2112,7 +2708,7 @@
             ]
           ],
           "content": "# Broken Link\n\nSee [this thing](not a url) for context.\n",
-          "sig": "d7d68fd022ef1cbc684ddb3ef7d160bdd57dc49926669fc9e91e888b66b0f556275b3bf50e12b184fe36c1b584665deb1712c8fe9a1903f140b759c4766385d1"
+          "sig": "dda41af9cead61f77fe52fe8d3d237330d0d68dd963aac51f9a00bb239749387a3e0ac265919017ded7174b539033d771eff80e92c8a7cccc882c2a05cd173d6"
         }
       ],
       "rendered": {
@@ -2185,7 +2781,7 @@
             ]
           ],
           "content": "shipped #Nostr",
-          "sig": "ed635f0cf559b3fa115f1709d70269615818987ec5e814db36ea704a6de7932bbac40a67ed5d21d1153e5f5f08360bf5ebee530d83960bf5bf5b41ac450e5dc0"
+          "sig": "b90411e1ea3cc6e758ca220584df1b294db839647ffb206274c96a4dff98a3bf439e9d7cc865a931210a0ae23e8688019200ac6fd40783d13801568aef1484da"
         }
       ],
       "rendered": {
@@ -2233,7 +2829,7 @@
             ]
           ],
           "content": "morning thoughts #Nostr while debugging #NIP01 from the #café",
-          "sig": "2e203762f9494040d4f8ac532060f0db1681524e9586e97aabbb08e4d5eb87184a41548dcff2c41d695c6ec430f4edee90971c70f7e941d73dbaf516a912aa43"
+          "sig": "181815434a59477de707c3878d7c0da4eb04085441215b244a645e8cf52f765a6f87f16ec7b5c51d95165b052079c019dc974fed8628366e778a161e935ca224"
         }
       ],
       "rendered": {
@@ -2301,7 +2897,7 @@
             ]
           ],
           "content": "# On Hashtags\n\nTags like #Nostr remain inline hashtags inside markdown bodies.\n",
-          "sig": "e613913c3251d3704a37955d7734afc48e7a0be1db9ce8db144f766f14a557f7e2e4a46c34ed0eedf37767f6513e6ee919e2a6d9af22cfa1e6803aa1b6a12f64"
+          "sig": "3028890400668dd2b1c026754fb9a2e0adc55707357c7dc62b578fb772169c4a0b16ab0c5c319e69ed2f1c12af138ff981a4e11b3ea2c3d3658968a1d858dcc2"
         }
       ],
       "rendered": {
@@ -2359,7 +2955,7 @@
           "kind": 1,
           "tags": [],
           "content": "broken nostr:npub1thisisnotvalidbech32 still readable",
-          "sig": "6d55c536a9cbdf30fd408c37abd0066c82dd894896fe6fc624559e1b80eb298e2dd11373bdc38cf38be3977fd3a58f20a8a57671bd198d794e741bfa4f894cee"
+          "sig": "6f2b67e7e464edefa48685a7157955c581b7cf28217613b442384c1acaeb1cf960339627f2cc8a67043d99b3e412b589df4dd1719e1535768f18866052f89cd1"
         }
       ],
       "rendered": {
@@ -2383,13 +2979,13 @@
       "exercises": "EventRef to kind:31337 -> graceful unsupported card",
       "events": [
         {
-          "id": "3ccd878c7b806a406e6aa882fc24d0b3a0f36907c35d3a2466c2a7b2c03659d4",
+          "id": "3dc0848bc3bfc06fc8f96aa5bc19731c7209c8f9b76bd377c2c6417b7d5bf86f",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700050002,
           "kind": 1,
           "tags": [],
-          "content": "listen: nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z",
-          "sig": "acf2589a0f429552747f6269c8d27914a0b29639cac0f174162c212fef993f35ff5a380851de475ab0da78ba52f3a4e8455895c1bf82ced98007832e99a5cfdc"
+          "content": "listen: nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqzyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqq856gpz3mhxue69uhhyetvv9ujumndwqh8getnws695ft5",
+          "sig": "a7065836cad9bbd7391a8ee0380238558d5e3240023e94b4f17763a37f1b88a9a1cc380df2fd7e63fa259052bbfc2833c1a7b0c65b063bacd4e082d23885c8db"
         },
         {
           "id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec",
@@ -2403,7 +2999,7 @@
             ]
           ],
           "content": "audio track event body",
-          "sig": "91feac24383fb1e69a26d0287bb163a0475a18bb3348f3d377cfdbc4fab877304e6c4d46863e05b0cd7a5c08f6a341c14dcbfa1ea5665c57663c1367bfe99777"
+          "sig": "e2c27b29b5f9f1b649f89f0917bcd38efe80187f25a413bfdbbb87006cb9579cd8651d395433d9f9913fc1181f0c5075654ed927e753ed270fed2c20ef5127dc"
         }
       ],
       "rendered": {
@@ -2415,7 +3011,7 @@
           {
             "kind": "event_ref",
             "uri": {
-              "uri": "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z",
+              "uri": "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqzyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqq856gpz3mhxue69uhhyetvv9ujumndwqh8getnws695ft5",
               "kind": "event",
               "primary_id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec",
               "relays": [
@@ -2433,23 +3029,7 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqpz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqr6dyy40v5z": {
-          "cycle_key": "31337:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:song",
-          "resolved_kind": 31337,
-          "event": {
-            "id": "80bf770572b8d3f450e8a8d8426454bb63bb1e23872d7f03288e026a46f62dec",
-            "pubkey": "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5",
-            "created_at": 1700050001,
-            "kind": 31337,
-            "tags": [
-              [
-                "d",
-                "song"
-              ]
-            ],
-            "content": "audio track event body",
-            "sig": "91feac24383fb1e69a26d0287bb163a0475a18bb3348f3d377cfdbc4fab877304e6c4d46863e05b0cd7a5c08f6a341c14dcbfa1ea5665c57663c1367bfe99777"
-          },
+        "nostr:nevent1qqsgp0mhq4et35l52r523kzzv32tkcamrc3cwttlqv5guqn2gmmzmmqzyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqq856gpz3mhxue69uhhyetvv9ujumndwqh8getnws695ft5": {
           "collapsed": true,
           "collapse_reason": "unsupported"
         }
@@ -2462,13 +3042,13 @@
       "exercises": "absent id -> D1 unresolved-embed stub, never a spinner",
       "events": [
         {
-          "id": "5d872bf8436bb87ab1f81bc9b0b5102a8030c3ed57d26118329771bff87195a1",
+          "id": "9f1b64e7b0da77b1402797e72ed7996ed6ecee2c68fa0ba208750cefe7741e4d",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700050003,
           "kind": 1,
           "tags": [],
-          "content": "ghost quote nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
-          "sig": "9283f6511a50944b54a44628ccae31a6d89b8b475fb47788be1f07b690adc8acf67917b06135ff5f7cc3fbff8aa2be8e3394cfa099ba35ee7e8ed6ef7a32d241"
+          "content": "ghost quote nostr:nevent1qqs242424242424242424242424242424242424242424242424242szyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqqqqgpz3mhxue69uhhyetvv9ujumndwqh8getnwse02nsg",
+          "sig": "3672ab96a98d01f21efc615cea621cea823c367ce96a197cdfe1b6955d852339e6fe5e7b0254559cc896856ddd84ae5a9cef5dd0c0fa2ea6f42a8f60caa8a770"
         }
       ],
       "rendered": {
@@ -2480,7 +3060,7 @@
           {
             "kind": "event_ref",
             "uri": {
-              "uri": "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
+              "uri": "nostr:nevent1qqs242424242424242424242424242424242424242424242424242szyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqqqqgpz3mhxue69uhhyetvv9ujumndwqh8getnwse02nsg",
               "kind": "event",
               "primary_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "relays": [
@@ -2498,9 +3078,7 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07": {
-          "cycle_key": "nostr:nevent1qqs242424242424242424242424242424242424242424242424242spz3mhxue69uhhyetvv9ujumndwqh8getnwspzp3sy072yrmtad5cy2srwjhq8ekzuw78yhr808jn6htqfh9w8p8h9qvzqqqqqqy3nae07",
-          "resolved_kind": 0,
+        "nostr:nevent1qqs242424242424242424242424242424242424242424242424242szyrrqglu5g8kh6mfsg4qxa9wq0nv9cauwfwxw70984wkqnw2uwz0w2qcyqqqqqqgpz3mhxue69uhhyetvv9ujumndwqh8getnwse02nsg": {
           "collapsed": true,
           "collapse_reason": "dangling"
         }
@@ -2519,7 +3097,7 @@
           "kind": 1,
           "tags": [],
           "content": "hello nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
-          "sig": "a6b8691de6ba919327e8288a2dc468ef37bde25cca03d028c7ba3db86b5236368934276d1cdc0c2846f7fe5dfaf4814876ea488e92454baac9e20f7bbc5d7dfb"
+          "sig": "c8d91b5640d075430e53943a6f395ccafaa4f1c3b9d0e7cee58cf3f2c7fe3e76b2adb9241f27e681db43956756acf36b224320b6f5a76b35138315068210701d"
         }
       ],
       "rendered": {
@@ -2548,8 +3126,6 @@
       },
       "embeds": {
         "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k": {
-          "cycle_key": "nostr:npub1ujfahuwppkq0xkq7fyzfxzc5qnxxcyuspms8tpr5l222h6xye5fsccv64k",
-          "resolved_kind": 0,
           "collapsed": true,
           "collapse_reason": "dangling"
         }
@@ -2568,7 +3144,7 @@
           "kind": 1,
           "tags": [],
           "content": "",
-          "sig": "f6c672804e9bbe09e277b294bdfea87c6efd6776f20e75edf2bf3d01d1fc01e517b46941251ebe5e07bdebe26d325ac7c1a7545dd8ac97f8428754f18d0d1d51"
+          "sig": "737a757e08f4a6c1e5b48e1773b6daa399a5b7e656e51906e77836fe0d1dd80ddb68d0cb8b9c58b5059b5c9871ddb495cbeb4eacc81e2cedd4126ea85e6a9307"
         }
       ],
       "rendered": {
@@ -2604,7 +3180,7 @@
             ]
           ],
           "content": "",
-          "sig": "dbcd55a8aa7a433604deed4b61041f40e065290efc0199fa69f69db4d82d8b9828c72b468d08f3edee4c3bde407c9d25c0501da5662abe8c477a84169d955845"
+          "sig": "19271728463c94441c1fe6ac49c7d7a63cad53e250960932428e528b5164cfca51396e5d7eb51d3984aa7355a45a19c9a10cc730a3487d42c38167389fb9d19a"
         }
       ],
       "rendered": {
@@ -2621,13 +3197,13 @@
       "exercises": "NIP-51 list view with no members -> titled-but-empty card",
       "events": [
         {
-          "id": "dd05359904f805ff4c0b3b65657ed4860da6132f974485f1fd0633a13f7e9106",
+          "id": "eed74a95a76a7368faa908a9b7e76897b608a722a86a777b5c97ce2f2e27ee16",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700050008,
           "kind": 1,
           "tags": [],
-          "content": "empty list nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4",
-          "sig": "29e89c0943c76b9d9f980578ade28a9d3c136c2e1ac93ae93e7cb2cdc09738937cb50aa5a33d1be11daa6d042f86b7fe7105340750760d25a1f972ac732ac2f2"
+          "content": "empty list nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqkywyyh",
+          "sig": "9f8a86ec8aca52cd4c9b1e6d2b477f0ca1d1437104d5ad564f072fb96f12d330a9932acd1cfad0037fbb792582d6aef12551d20ee9ea5ef908b344a3bf0b0e31"
         },
         {
           "id": "c6d0ba54a906d84547babeeb585ba973b48abfbfbcc5d76204e836798971e11c",
@@ -2645,7 +3221,7 @@
             ]
           ],
           "content": "",
-          "sig": "339b991cae7ef0e4ebafb3360eab6a3c712544ac9b8d70ea5c25f6acf0789252cb9861b5c0a86a7a5499ace36a78797af5f62e489f35924e8a70150dfd78f72b"
+          "sig": "dce30c0a29f0c9b0d8521eef842c5ad788266cf14ee0a5aae11b442a4dfa4c7db736b16a064bfdf3dc7cf0c2cf89de52656e53e5de68f6da238c141b8594fdcb"
         }
       ],
       "rendered": {
@@ -2657,11 +3233,11 @@
           {
             "kind": "event_ref",
             "uri": {
-              "uri": "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4",
+              "uri": "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqkywyyh",
               "kind": "address",
-              "primary_id": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "primary_id": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:empty",
               "relays": [],
-              "author": null,
+              "author": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
               "event_kind": 30000
             }
           }
@@ -2673,36 +3249,34 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqrc7gp4": {
-          "cycle_key": "30000:f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:empty",
-          "resolved_kind": 30000,
-          "event": {
-            "id": "c6d0ba54a906d84547babeeb585ba973b48abfbfbcc5d76204e836798971e11c",
-            "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
-            "created_at": 1700050007,
-            "kind": 30000,
-            "tags": [
-              [
-                "d",
-                "empty"
-              ],
-              [
-                "title",
-                "Empty Set"
-              ]
-            ],
-            "content": "",
-            "sig": "339b991cae7ef0e4ebafb3360eab6a3c712544ac9b8d70ea5c25f6acf0789252cb9861b5c0a86a7a5499ace36a78797af5f62e489f35924e8a70150dfd78f72b"
-          },
-          "rendered": {
-            "nodes": [],
-            "roots": [],
-            "mode": "Plain"
-          },
+        "nostr:naddr1qqzk2mtsw3usyg8exz9qryjccvgyjdz0shuf653fk5cus3vrd7vmppsp7yfmecpklypsgqqqw5cqkywyyh": {
           "collapsed": false,
-          "list": {
-            "title": "Empty Set",
-            "rows": []
+          "projection": {
+            "variant": "unknown",
+            "data": {
+              "kind": 30000,
+              "authorPubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+              "authorDisplayName": null,
+              "authorPictureUrl": null,
+              "createdAt": 1700050007,
+              "content": "",
+              "contentTree": {
+                "nodes": [],
+                "roots": [],
+                "mode": "Plain"
+              },
+              "tags": [
+                [
+                  "d",
+                  "empty"
+                ],
+                [
+                  "title",
+                  "Empty Set"
+                ]
+              ],
+              "altText": null
+            }
           }
         }
       }

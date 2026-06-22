@@ -21,7 +21,8 @@ data class Scenario(
     val exercises: String,
     val events: List<SignedEventJson>,
     val rendered: ContentTreeWire,
-    val embeds: Map<String, EmbedEntry>,
+    /** Kind-registry embed envelopes, keyed by `nostr:` URI. */
+    val embeds: Map<String, GalleryEmbedEnvelope> = emptyMap(),
 )
 
 @Serializable
