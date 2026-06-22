@@ -83,6 +83,7 @@ impl PublishEngine {
             // relay (#1702). The handle IS the event id for publish actions.
             event_id: Some(handle.clone()),
             result_json: None,
+            reason_code: None,
         });
         self.view.bump_rev();
     }
@@ -113,7 +114,12 @@ impl PublishEngine {
     /// surfaces a `set_last_error_toast`. This records *only* the
     /// `action_results` terminal so the dispatched action's promise is
     /// honoured.
-    pub(crate) fn record_action_terminal_failure(&mut self, correlation_id: String, error: String) {
+    pub(crate) fn record_action_terminal_failure(
+        &mut self,
+        correlation_id: String,
+        error: String,
+        reason_code: Option<&'static str>,
+    ) {
         self.record_terminal(LastTerminal {
             correlation_id,
             status: "failed",
@@ -122,6 +128,7 @@ impl PublishEngine {
             // there is no event id to surface (#1702).
             event_id: None,
             result_json: None,
+            reason_code,
         });
     }
 
@@ -170,6 +177,7 @@ impl PublishEngine {
             // published nostr event, so there is no event id to surface (#1702).
             event_id: None,
             result_json,
+            reason_code: None,
         });
     }
 

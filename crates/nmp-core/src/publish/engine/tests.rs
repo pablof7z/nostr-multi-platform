@@ -457,6 +457,7 @@ fn record_action_terminal_failure_pushes_failed_pending_terminal() {
     engine.record_action_terminal_failure(
         "corr-sign-failed".to_string(),
         "remote sign timed out".to_string(),
+        None,
     );
 
     let terminals = engine.take_pending_terminals();
@@ -486,9 +487,9 @@ fn record_action_terminal_failure_accumulates_until_drained() {
         Arc::new(ReplayDispatcher::new()),
     );
 
-    engine.record_action_terminal_failure("corr-a".to_string(), "no active account".to_string());
+    engine.record_action_terminal_failure("corr-a".to_string(), "no active account".to_string(), None);
     engine
-        .record_action_terminal_failure("corr-b".to_string(), "sign failed: rejected".to_string());
+        .record_action_terminal_failure("corr-b".to_string(), "sign failed: rejected".to_string(), None);
 
     let mut ids: Vec<String> = engine
         .take_pending_terminals()

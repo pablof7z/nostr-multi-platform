@@ -150,7 +150,7 @@ impl Kernel {
             reason_subject.as_deref(),
         );
         self.publish_engine
-            .record_action_terminal_failure(correlation_id, error);
+            .record_action_terminal_failure(correlation_id, error, reason_code);
         // A terminal verdict is always snapshot-worthy: the next emit drains
         // it into `action_results` via `take_action_results_projection`.
         self.changed_since_emit = true;

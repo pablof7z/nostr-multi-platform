@@ -298,7 +298,7 @@ impl PublishEngine {
             error: None,
             // Cancel concerns a signed event; surface its id (#1702).
             event_id: Some(handle),
-            result_json: None,
+            result_json: None, reason_code: None,
         });
         self.flush_view();
         Ok(())
