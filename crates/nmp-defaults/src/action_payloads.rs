@@ -26,8 +26,10 @@
 //! cannot dispatch it, so exposing its payload type would be dead surface.
 
 pub use nmp_core::publish::PublishAction;
-pub use nmp_nip02::PubkeyAction;
+pub use nmp_nip02::{FollowManyAction, PubkeyAction};
 pub use nmp_nip17::{PublishDmRelayListInput, SendDmInput};
+pub use nmp_nip22::PostCommentAction;
 pub use nmp_nip25::{ReactAction, UnreactAction};
+pub use nmp_nip51::BookmarkUpdateInput;
 pub use nmp_nip57::ZapInput;
 pub use nmp_router::{BlockRelayInput, PublishRelayListInput, UnblockRelayInput};

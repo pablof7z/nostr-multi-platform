@@ -78,12 +78,19 @@ pub fn mint_correlation_id() -> String {
 fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, String> {
     match namespace {
         "nmp.publish" => encode::<action_payloads::PublishAction>(namespace, json),
+        "nmp.nip22.post_comment" => {
+            encode::<action_payloads::PostCommentAction>(namespace, json)
+        }
         "nmp.nip25.react" => encode::<action_payloads::ReactAction>(namespace, json),
         "nmp.nip25.unreact" => encode::<action_payloads::UnreactAction>(namespace, json),
         "nmp.follow" | "nmp.unfollow" => encode::<action_payloads::PubkeyAction>(namespace, json),
+        "nmp.follow_many" => encode::<action_payloads::FollowManyAction>(namespace, json),
         "nmp.nip17.send" => encode::<action_payloads::SendDmInput>(namespace, json),
         "nmp.nip17.publish_relay_list" => {
             encode::<action_payloads::PublishDmRelayListInput>(namespace, json)
+        }
+        "nmp.nip51.add_bookmark" | "nmp.nip51.remove_bookmark" => {
+            encode::<action_payloads::BookmarkUpdateInput>(namespace, json)
         }
         "nmp.nip57.zap" => encode::<action_payloads::ZapInput>(namespace, json),
         "nmp.nip65.publish_relay_list" => {

@@ -3,10 +3,21 @@
 //! namespace→typed-payload encoder, the result-envelope parser) without a live
 //! kernel — the FFI round-trip is covered by the full-composition gate and the
 //! shell smoke tests.
+//!
+//! ## Load-bearing decode verification (Fix 2, #1843)
+//!
+//! Every per-namespace test encodes the canonical body through the seam AND
+//! decodes the resulting bytes back through the matching typed
+//! [`ActionPayload::decode`]. A test that only asserts `!bytes.is_empty()` would
+//! pass even if a namespace were accidentally mapped to the WRONG payload type
+//! (the encoder would succeed but produce bytes the correct decoder rejects).
+//! Decode-and-field-check catches that class of bug at unit-test time, before
+//! an FFI dispatch.
 
 use super::*;
 
 use nmp_core::dispatch_envelope::decode_dispatch_envelope;
+use nmp_core::substrate::ActionPayload;
 
 // ── correlation-id mint ────────────────────────────────────────────────────
 
@@ -20,64 +31,211 @@ fn mint_correlation_id_is_non_empty_and_unique() {
     assert!(a.starts_with("gallery-"));
 }
 
-// ── namespace → typed payload encoder ───────────────────────────────────────
+// ── helpers ────────────────────────────────────────────────────────────────
 
-/// Every namespace the gallery's default bundle can dispatch must round-trip
-/// its canonical body into typed payload bytes (no JSON fallback, no panic).
-/// Coverage matches exactly the action modules `nmp_defaults::register_defaults`
-/// installs.
-#[test]
-fn every_dispatched_namespace_encodes_to_typed_payload() {
-    let cases: &[(&str, &str)] = &[
-        (
-            "nmp.publish",
-            r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hi","target":"Auto"}}"#,
-        ),
-        (
-            "nmp.publish",
-            r#"{"PublishProfile":{"fields":{"name":"alice"}}}"#,
-        ),
-        (
-            "nmp.nip25.react",
-            r#"{"target_event_id":"abc","reaction":"+"}"#,
-        ),
-        ("nmp.follow", r#"{"pubkey":"deadbeef"}"#),
-        ("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#),
-        (
-            "nmp.nip17.send",
-            r#"{"recipient_pubkey":"deadbeef","content":"hello"}"#,
-        ),
-        (
-            "nmp.nip17.publish_relay_list",
-            r#"{"relays":["wss://relay.example"]}"#,
-        ),
-        (
-            "nmp.nip57.zap",
-            r#"{"recipient_pubkey":"deadbeef","amount_msats":1000}"#,
-        ),
-        (
-            "nmp.nip65.publish_relay_list",
-            r#"{"relays":[{"url":"wss://relay.example","role":"read,write"}]}"#,
-        ),
-        (
-            "nmp.nip51.block_relay",
-            r#"{"url":"wss://relay.example","account_pubkey":"deadbeef"}"#,
-        ),
-        (
-            "nmp.nip51.unblock_relay",
-            r#"{"url":"wss://relay.example","account_pubkey":"deadbeef"}"#,
-        ),
-    ];
-
-    for (namespace, body) in cases {
-        let bytes = super::encode_payload_for_namespace(namespace, body)
-            .unwrap_or_else(|e| panic!("namespace {namespace} failed to encode: {e}"));
-        assert!(
-            !bytes.is_empty(),
-            "namespace {namespace} produced empty payload bytes"
-        );
-    }
+/// Encode `json` through the seam for `namespace`, decode the resulting bytes
+/// as `P`, and return the decoded value. Panics with a descriptive message on
+/// any failure so per-namespace tests stay one-liner asserts.
+fn encode_then_decode<P>(namespace: &str, json: &str) -> P
+where
+    P: ActionPayload,
+{
+    let bytes = super::encode_payload_for_namespace(namespace, json)
+        .unwrap_or_else(|e| panic!("namespace '{namespace}' failed to encode: {e}"));
+    assert!(
+        !bytes.is_empty(),
+        "namespace '{namespace}' produced empty payload bytes"
+    );
+    P::decode(&bytes).unwrap_or_else(|e| {
+        panic!("namespace '{namespace}': decoded bytes do not match payload type {}: {e:?}", std::any::type_name::<P>())
+    })
 }
+
+// ── per-namespace decode-verified tests ────────────────────────────────────
+//
+// Each test proves:
+//   1. The seam accepts the canonical body without error.
+//   2. The produced bytes round-trip through the CORRECT typed decoder.
+//   3. The decoded value matches the expected key field(s).
+//
+// Property (3) is the load-bearing part: if a namespace were mapped to the
+// wrong payload type the bytes would either fail to decode entirely (different
+// FlatBuffers table shape → schema-id mismatch error) or decode to a value
+// that fails the field assertion.
+
+#[test]
+fn namespace_publish_raw_encodes_and_decodes() {
+    use action_payloads::PublishAction;
+    let decoded: PublishAction = encode_then_decode(
+        "nmp.publish",
+        r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hi","target":"Auto"}}"#,
+    );
+    // PublishRaw variant must survive the round-trip.
+    assert!(
+        matches!(decoded, PublishAction::PublishRaw { .. }),
+        "expected PublishAction::PublishRaw, got {decoded:?}"
+    );
+}
+
+#[test]
+fn namespace_publish_profile_encodes_and_decodes() {
+    use action_payloads::PublishAction;
+    let decoded: PublishAction = encode_then_decode(
+        "nmp.publish",
+        r#"{"PublishProfile":{"fields":{"name":"alice"}}}"#,
+    );
+    assert!(
+        matches!(decoded, PublishAction::PublishProfile { .. }),
+        "expected PublishAction::PublishProfile, got {decoded:?}"
+    );
+}
+
+#[test]
+fn namespace_react_encodes_and_decodes() {
+    use action_payloads::ReactAction;
+    let decoded: ReactAction = encode_then_decode(
+        "nmp.nip25.react",
+        r#"{"target_event_id":"abc","reaction":"+"}"#,
+    );
+    assert_eq!(decoded.target_event_id, "abc");
+    assert_eq!(decoded.reaction, "+");
+}
+
+#[test]
+fn namespace_unreact_encodes_and_decodes() {
+    use action_payloads::UnreactAction;
+    let decoded: UnreactAction = encode_then_decode(
+        "nmp.nip25.unreact",
+        r#"{"reaction_event_id":"deadbeef"}"#,
+    );
+    assert_eq!(decoded.reaction_event_id, "deadbeef");
+}
+
+#[test]
+fn namespace_follow_encodes_and_decodes() {
+    use action_payloads::PubkeyAction;
+    let decoded: PubkeyAction =
+        encode_then_decode("nmp.follow", r#"{"pubkey":"deadbeef"}"#);
+    assert_eq!(decoded.pubkey, "deadbeef");
+}
+
+#[test]
+fn namespace_unfollow_encodes_and_decodes() {
+    use action_payloads::PubkeyAction;
+    let decoded: PubkeyAction =
+        encode_then_decode("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#);
+    assert_eq!(decoded.pubkey, "deadbeef");
+}
+
+#[test]
+fn namespace_follow_many_encodes_and_decodes() {
+    use action_payloads::FollowManyAction;
+    let decoded: FollowManyAction = encode_then_decode(
+        "nmp.follow_many",
+        r#"{"pubkeys":["deadbeef","cafebabe"]}"#,
+    );
+    assert_eq!(decoded.pubkeys, vec!["deadbeef", "cafebabe"]);
+}
+
+#[test]
+fn namespace_nip17_send_encodes_and_decodes() {
+    use action_payloads::SendDmInput;
+    let decoded: SendDmInput = encode_then_decode(
+        "nmp.nip17.send",
+        r#"{"recipient_pubkey":"deadbeef","content":"hello"}"#,
+    );
+    assert_eq!(decoded.recipient_pubkey, "deadbeef");
+    assert_eq!(decoded.content, "hello");
+}
+
+#[test]
+fn namespace_nip17_publish_relay_list_encodes_and_decodes() {
+    use action_payloads::PublishDmRelayListInput;
+    let decoded: PublishDmRelayListInput = encode_then_decode(
+        "nmp.nip17.publish_relay_list",
+        r#"{"relays":["wss://relay.example"]}"#,
+    );
+    assert_eq!(decoded.relays, vec!["wss://relay.example"]);
+}
+
+#[test]
+fn namespace_nip51_add_bookmark_encodes_and_decodes() {
+    use action_payloads::BookmarkUpdateInput;
+    let decoded: BookmarkUpdateInput = encode_then_decode(
+        "nmp.nip51.add_bookmark",
+        r#"{"account_pubkey":"deadbeef","item":{"type":"url","url":"https://example.com"}}"#,
+    );
+    assert_eq!(decoded.account_pubkey, "deadbeef");
+}
+
+#[test]
+fn namespace_nip51_remove_bookmark_encodes_and_decodes() {
+    use action_payloads::BookmarkUpdateInput;
+    let decoded: BookmarkUpdateInput = encode_then_decode(
+        "nmp.nip51.remove_bookmark",
+        r#"{"account_pubkey":"deadbeef","item":{"type":"hashtag","hashtag":"nostr"}}"#,
+    );
+    assert_eq!(decoded.account_pubkey, "deadbeef");
+}
+
+#[test]
+fn namespace_nip22_post_comment_encodes_and_decodes() {
+    use action_payloads::PostCommentAction;
+    let decoded: PostCommentAction = encode_then_decode(
+        "nmp.nip22.post_comment",
+        r#"{"root_tag_name":"E","root_tag_value":"deadbeef","root_kind":1,"content":"great post"}"#,
+    );
+    assert_eq!(decoded.root_tag_name, "E");
+    assert_eq!(decoded.root_tag_value, "deadbeef");
+    assert_eq!(decoded.content, "great post");
+    assert_eq!(decoded.parent_event_id, None);
+}
+
+#[test]
+fn namespace_nip57_zap_encodes_and_decodes() {
+    use action_payloads::ZapInput;
+    let decoded: ZapInput = encode_then_decode(
+        "nmp.nip57.zap",
+        r#"{"recipient_pubkey":"deadbeef","amount_msats":1000}"#,
+    );
+    assert_eq!(decoded.recipient_pubkey, "deadbeef");
+    assert_eq!(decoded.amount_msats, 1000);
+}
+
+#[test]
+fn namespace_nip65_publish_relay_list_encodes_and_decodes() {
+    use action_payloads::PublishRelayListInput;
+    let decoded: PublishRelayListInput = encode_then_decode(
+        "nmp.nip65.publish_relay_list",
+        r#"{"relays":[{"url":"wss://relay.example","role":"read,write"}]}"#,
+    );
+    assert_eq!(decoded.relays.len(), 1);
+    assert_eq!(decoded.relays[0].url, "wss://relay.example");
+}
+
+#[test]
+fn namespace_nip51_block_relay_encodes_and_decodes() {
+    use action_payloads::BlockRelayInput;
+    let decoded: BlockRelayInput = encode_then_decode(
+        "nmp.nip51.block_relay",
+        r#"{"url":"wss://relay.example","account_pubkey":"deadbeef"}"#,
+    );
+    assert_eq!(decoded.url, "wss://relay.example");
+    assert_eq!(decoded.account_pubkey, "deadbeef");
+}
+
+#[test]
+fn namespace_nip51_unblock_relay_encodes_and_decodes() {
+    use action_payloads::UnblockRelayInput;
+    let decoded: UnblockRelayInput = encode_then_decode(
+        "nmp.nip51.unblock_relay",
+        r#"{"url":"wss://relay.example","account_pubkey":"deadbeef"}"#,
+    );
+    assert_eq!(decoded.url, "wss://relay.example");
+    assert_eq!(decoded.account_pubkey, "deadbeef");
+}
+
+// ── fail-closed / error-path tests ─────────────────────────────────────────
 
 #[test]
 fn unknown_namespace_is_rejected_fail_closed() {
