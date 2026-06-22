@@ -24,7 +24,7 @@
 use nmp_core::substrate::ViewDependencies;
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting};
 
-use nmp_kinds::{KIND_BOOKMARK_LIST, KIND_MUTE_LIST};
+use nmp_kinds::{KIND_BOOKMARK_LIST, KIND_MUTE_LIST, KIND_SEARCH_RELAYS};
 
 // ── Bookmark list (kind:10003) ────────────────────────────────────────────────
 
@@ -110,6 +110,53 @@ pub fn active_mute_list_interest(pubkey: &str) -> LogicalInterest {
     // yet AND no app_relays are configured, the planner's Case A routes the
     // interest to `bootstrap_indexer_relays` instead of marking the author
     // `unroutable`. Same flag that `SELF_KINDS_TAILING` set in startup.rs.
+    interest.is_indexer_discovery = true;
+    interest
+}
+
+// ── Search-relay list (kind:10007) ───────────────────────────────────────────
+
+/// Stable id for the active-account-owned search-relay-list interest.
+///
+/// The id is intentionally independent of the pubkey so an account switch
+/// replaces the prior `authors` filter instead of accumulating one long-lived
+/// subscription per account. Mirrors [`active_bookmark_list_interest_id`].
+#[must_use]
+pub fn active_search_relay_list_interest_id() -> InterestId {
+    InterestId(nmp_planner::stable_hash::stable_hash64(
+        "nmp.nip51.active_search_relay_list",
+    ))
+}
+
+/// Tailing [`LogicalInterest`] for kind:10007 `authors=[pubkey]` search-relay
+/// lists — the subscription a host pushes (via a runtime controller) so a
+/// [`SearchRelayListProjection`](crate::SearchRelayListProjection) receives
+/// the active account's search-relay events.
+///
+/// Shape:
+/// - `lifecycle = Tailing`
+/// - `scope = Global`
+/// - `kinds = [10007]`
+/// - `authors = [pubkey]`
+/// - `p_tag_routing = Nip65ReadRelays`
+/// - `is_indexer_discovery = true` — cold-start bootstrap fallback
+#[must_use]
+pub fn active_search_relay_list_interest(pubkey: &str) -> LogicalInterest {
+    let deps = ViewDependencies {
+        kinds: vec![KIND_SEARCH_RELAYS],
+        authors: vec![pubkey.to_string()],
+        ..Default::default()
+    };
+    let mut interest = deps.into_logical_interest(
+        active_search_relay_list_interest_id(),
+        InterestScope::Global,
+        InterestLifecycle::Tailing,
+    );
+    interest.shape.p_tag_routing = PTagRouting::Nip65ReadRelays;
+    // Bootstrap fallback: when the active account has no NIP-65 mailbox cached
+    // yet AND no app_relays are configured, the planner's Case A routes the
+    // interest to `bootstrap_indexer_relays` instead of marking the author
+    // `unroutable`. Same flag that `active_mute_list_interest` sets.
     interest.is_indexer_discovery = true;
     interest
 }
@@ -207,6 +254,55 @@ mod tests {
             interest.is_indexer_discovery,
             "is_indexer_discovery must be true to enable the Case A \
              bootstrap_indexer_relays fallback on cold start; got false"
+        );
+    }
+
+    // ── search-relay tests ────────────────────────────────────────────────
+
+    #[test]
+    fn search_relay_interest_id_is_pubkey_invariant() {
+        let id = active_search_relay_list_interest_id();
+        assert_eq!(id, active_search_relay_list_interest_id());
+        let _: fn() -> InterestId = active_search_relay_list_interest_id;
+    }
+
+    #[test]
+    fn search_relay_interest_shape_matches_case_a_routing_contract() {
+        let pk = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let interest = active_search_relay_list_interest(pk);
+
+        assert!(
+            matches!(interest.lifecycle, InterestLifecycle::Tailing),
+            "lifecycle must be Tailing; got {:?}",
+            interest.lifecycle
+        );
+        assert!(
+            matches!(interest.scope, InterestScope::Global),
+            "scope must be Global; got {:?}",
+            interest.scope
+        );
+        assert!(
+            matches!(interest.shape.p_tag_routing, PTagRouting::Nip65ReadRelays),
+            "p_tag_routing must be Nip65ReadRelays; got {:?}",
+            interest.shape.p_tag_routing
+        );
+        assert_eq!(
+            interest.shape.kinds,
+            std::collections::BTreeSet::from([KIND_SEARCH_RELAYS]),
+            "shape.kinds must be EXACTLY {{kind:10007}}; got {:?}",
+            interest.shape.kinds
+        );
+        assert_eq!(
+            interest.shape.authors,
+            std::collections::BTreeSet::from([pk.to_string()]),
+            "shape.authors must be EXACTLY {{active_pubkey}}; got {:?}",
+            interest.shape.authors
+        );
+        assert_eq!(interest.id, active_search_relay_list_interest_id());
+        assert!(
+            interest.is_indexer_discovery,
+            "is_indexer_discovery must be true for the Case A cold-start \
+             bootstrap_indexer_relays fallback; got false"
         );
     }
 }
