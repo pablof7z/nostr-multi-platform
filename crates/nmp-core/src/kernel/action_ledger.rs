@@ -39,16 +39,15 @@
 //! verdicts. Every terminal — an engine relay-settlement drained from
 //! `pending_terminals`, a sign-step failure, a cancel, an off-band NWC success —
 //! records into the ledger via [`ActionLedger::record_terminal`], which appends a
-//! per-tick [`ActionResultRecord`] onto a drain buffer alongside the stage write.
-//! `action_results` is serialised by draining that buffer
+//! per-tick [`result_records::ActionResultRecord`] onto a drain buffer alongside
+//! the stage write. `action_results` is serialised by draining that buffer
 //! ([`ActionLedger::take_terminal_results`]). The off-band engine-side terminal
-//! pushes (`record_action_terminal_failure` / `_success`) are deleted: those
-//! verdicts now go straight to the ledger, not through the engine `Vec`. The
-//! engine `pending_terminals` survives only as the inbound transport for terminals
-//! that ORIGINATE asynchronously inside the engine (relay ack/tick, NoTargets,
-//! cancel); the kernel drains that transport and records each into the ledger, so
-//! the ledger is the one source the projection reads — there is no parallel
-//! representation of a terminal verdict.
+//! pushes are deleted: those verdicts now go straight to the ledger, not through
+//! the engine `Vec`. The engine `pending_terminals` survives only as the inbound
+//! transport for terminals that ORIGINATE asynchronously inside the engine (relay
+//! ack/tick, NoTargets, cancel); the kernel drains that transport and records each
+//! into the ledger, so the ledger is the one source the projection reads — there
+//! is no parallel representation of a terminal verdict.
 //!
 //! The remaining surface (`publish_queue` per-`event_id` terminal status) is a
 //! SEPARATE path keyed on `event_id` (the engine's `recently_completed` →
@@ -71,6 +70,9 @@
 //! * **D9** — all wall-clock reads route through the caller-supplied `now_ms`
 //!   (the kernel clock), keeping `FixedClock` tests deterministic.
 
+pub(crate) mod result_records;
+
+use result_records::ActionResultRecord;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -100,73 +102,6 @@ pub(crate) const RECENT_TERMINAL_TTL_MS: u64 = TERMINAL_STAGE_RETENTION_MS;
 struct CodedReason {
     code: Option<String>,
     subject: Option<String>,
-}
-
-/// One drained `action_results` row — the per-tick terminal-verdict record the
-/// ledger is now the SINGLE source of.
-///
-/// Appended by [`ActionLedger::record_terminal`] on every terminal write and
-/// drained once per emit by [`ActionLedger::take_terminal_results`]. Carries the
-/// already-mapped WIRE `status` (`"published"` / `"failed"` / `"cancelled"` —
-/// the `ok → published` mapping is resolved at record time, not at serialise
-/// time) plus the fields the host reads off the row: the verbatim `error`, the
-/// opaque `result_json` (ADR-0043 Decision 4, forwarded into `result`), and the
-/// signed `event_id` (#1702). These are stored ALONGSIDE the stage history
-/// rather than re-derived from it because the row's `error` is the terminal's
-/// own verbatim string (a `failed` terminal can carry an `error` distinct from
-/// the stage's prose `reason`), and `result_json` / `event_id` never enter the
-/// substrate stage type.
-#[derive(Clone, Debug)]
-pub(crate) struct ActionResultRecord {
-    /// Correlation id of the dispatched action this terminal reports on.
-    correlation_id: String,
-    /// Already-mapped wire status: `"published"`, `"failed"`, or `"cancelled"`.
-    status: &'static str,
-    /// Verbatim failure string (`None` on success / cancel).
-    error: Option<String>,
-    /// Opaque structured result body, forwarded verbatim into the row's
-    /// `result` field. `None` unless the action attached one.
-    result_json: Option<String>,
-    /// The signed event's id, when one backs this terminal (#1702). `None` for
-    /// off-band terminals where no event was ever signed.
-    event_id: Option<String>,
-}
-
-impl ActionResultRecord {
-    /// Serialise this record into the exact `action_results` row JSON the prior
-    /// `pending_terminals`-sourced drain produced: `{correlation_id, status,
-    /// error}` always (the `error` key present, `null` when `None`), plus an
-    /// optional `result` (forwarded `result_json`, parsed to a JSON object when
-    /// it parses, else carried as a raw string) and an optional `event_id`.
-    fn to_row(&self) -> serde_json::Value {
-        let mut row = serde_json::json!({
-            "correlation_id": self.correlation_id,
-            "status": self.status,
-            "error": self.error,
-        });
-        // ADR-0043 Decision 4 — forward the opaque structured result body
-        // verbatim under `result`. Re-parse so the host reads a JSON object (not
-        // a JSON-encoded string); a non-JSON body forwards as a raw string. This
-        // is forwarding, NOT interpretation (D0).
-        if let Some(result_json) = &self.result_json {
-            let value = serde_json::from_str::<serde_json::Value>(result_json)
-                .unwrap_or_else(|_| serde_json::Value::String(result_json.clone()));
-            if let Some(obj) = row.as_object_mut() {
-                obj.insert("result".to_string(), value);
-            }
-        }
-        // #1702 — surface the published event's id under `event_id`, omitted
-        // entirely when absent (mirrors `result`).
-        if let Some(event_id) = &self.event_id {
-            if let Some(obj) = row.as_object_mut() {
-                obj.insert(
-                    "event_id".to_string(),
-                    serde_json::Value::String(event_id.clone()),
-                );
-            }
-        }
-        row
-    }
 }
 
 /// The latest lifecycle state of one `correlation_id` — the authoritative
