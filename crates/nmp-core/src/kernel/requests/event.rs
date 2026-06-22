@@ -72,11 +72,11 @@ impl Kernel {
             }
         };
         // Decode the URI into the canonical raw key (+ author/relay hints). The
-        // Profile arm is refused (kind:0 routes through `claim_profile`).
+        // Profile arm is refused (kind:0 routes through `resolve_ref`).
         let (key, author, relay_hints) = match parsed {
             NostrUri::Profile { .. } => {
                 self.log(format!(
-                    "claim_event: refusing Profile URI (use claim_profile) {}",
+                    "claim_event: refusing Profile URI (use resolve_ref) {}",
                     truncate(&uri, 80)
                 ));
                 return Vec::new();

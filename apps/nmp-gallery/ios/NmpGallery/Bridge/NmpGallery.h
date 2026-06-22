@@ -135,7 +135,7 @@ void nmp_app_gallery_ref_profile_store_free(struct GalleryRefProfileStore *store
 
 // Decode borrowed FlatBuffers `nmp.transport.UpdateFrame` bytes into the
 // Gallery snapshot JSON shape, merging the frame's `refs.profile` row-delta
-// batch into `store` first (the rendered `resolved_profiles` JSON map is sourced
+// batch into `store` first (the rendered `refs.profile` JSON map is sourced
 // from that store). `store` MUST persist across calls for one kernel session.
 // Returns a heap string that MUST be released via `nmp_free_string`; returns
 // NULL for a NULL store, malformed frames, or decode failures.

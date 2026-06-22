@@ -213,8 +213,8 @@ impl GalleryData {
     }
 
     /// Build trees that contain only real Nostr references. Relay-provided
-    /// fields arrive through `claimed_events`, `claimed_profiles`, and
-    /// `mention_profiles`; this initializer does not invent event bodies,
+    /// fields arrive through `claimed_events` and the `refs.profile` keyed
+    /// projection; this initializer does not invent event bodies,
     /// authors, media, profile names, or profile pictures.
     fn build(primary_pubkey: &str) -> Self {
         let mention_uri = format!("nostr:{}", showcase_npub());
@@ -292,7 +292,7 @@ mod live_profile_map_tests {
     /// the map with the resolved card — `resolve(pubkey)` returns those fields
     /// verbatim, no app-side merge.
     #[test]
-    fn reads_resolved_profiles_typed() {
+    fn reads_refs_profile_typed() {
         let pubkey = showcase_pubkey();
         let card = ProfileCardModel {
             pubkey: pubkey.to_string(),
@@ -356,11 +356,11 @@ mod live_profile_map_tests {
         assert_eq!(wire.pubkey, pubkey);
     }
 
-    /// Graceful degradation: a typed snapshot with an empty `resolved_profiles`
-    /// model is a no-op. `resolve(pubkey)` falls back to the identity-only wire
+    /// Graceful degradation: a typed snapshot with an empty `refs.profile`
+    /// set is a no-op. `resolve(pubkey)` falls back to the identity-only wire
     /// — the honest "no profile yet" state, never a fabricated name.
     #[test]
-    fn empty_resolved_profiles_is_a_noop() {
+    fn empty_refs_profile_is_a_noop() {
         let pubkey = showcase_pubkey();
         let snapshot = GalleryTypedSnapshot::default();
 

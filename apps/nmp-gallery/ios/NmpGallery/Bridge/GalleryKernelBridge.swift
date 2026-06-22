@@ -10,9 +10,9 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 /// Data-flow architecture (CRITICAL):
 ///   • Profile data arrives via the PUSH callback registered with
 ///     `nmp_app_set_update_callback`. The callback receives a FlatBuffers
-///     `UpdateFrame`; the gallery reads `projections.claimed_profiles[pubkey]`
-///     for component-owned profile claims, with `mention_profiles` as a
-///     secondary projection for other showcases.
+///     `UpdateFrame`; the gallery merges its `refs.profile` row-delta batch
+///     into the session `GalleryRefProfileStore` and reads the materialised
+///     `projections."refs.profile"[pubkey]` card (ADR-0063 #1671).
 ///   • There is no pull-side snapshot accessor; kernel liveness is observed
 ///     through `nmp_app_is_alive` and all state arrives via the push callback.
 ///
@@ -22,9 +22,9 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///   3. `start()`        — turns on the actor.
 ///   4. `addRelay`       — seed bootstrap relay set (cold-start kind:0 / kind:10002
 ///      routing target when no logged-in user is present).
-///   5. `claimProfile`   — component-owned profile interest. The kernel fetches
-///      kind:0 and surfaces the resolved ProfileCard under
-///      `projections.claimed_profiles[pubkey]`.
+///   5. `claimProfile`   — component-owned profile interest (routes through
+///      `nmp_app_resolve_ref`). The kernel fetches kind:0 and surfaces the
+///      resolved ProfileCard under `projections."refs.profile"[pubkey]`.
 ///   6. `dispatchAction` — generic action dispatch (phase 2).
 ///   7. `deinit`         — clears callback, frees app.
 final class GalleryKernelHandle {

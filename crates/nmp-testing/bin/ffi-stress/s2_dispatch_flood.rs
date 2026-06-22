@@ -4,10 +4,10 @@
 //! Gate: docs/design/ffi-hardening/gates.md §G-S2
 //!
 //! 10,000 dispatches/sec from N=4 caller threads × 60 s.
-//! Mix: 60% claim_profile, 40% release_profile.
+//! Mix: 60% resolve_ref, 40% release_ref (profile namespace).
 //! V-68 / V-112 (ADR-0042): open_author / close_author deleted.
 //! Former 30/30/20/20 open_author/close_author/claim/release mix is now
-//! 60/40 claim/release (open_author+claim combined → claim; close_author+release → release).
+//! 60/40 resolve/release (open_author+claim combined → resolve; close_author+release → release).
 //!
 //! D8 (reactivity contract, <=60 Hz/view): actor mpsc backlog never exceeds 10,000.
 //! Bible #3 (fire-and-forget): every send call returns within p99 <= 1 ms.
@@ -76,7 +76,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     let wall_start = Instant::now();
 
     // Configure-not-Start: nmp_app_configure sets emit_hz/visible_limit without spawning
-    // relay worker threads. S2 floods claim_profile/release_profile at 10k/sec; spawning
+    // relay worker threads. S2 floods resolve_ref/release_ref at 10k/sec; spawning
     // relay workers would send 3k+ REQ/CLOSE per second to real external relays, filling
     // the TCP write buffer and blocking relay threads indefinitely — causing a hang at teardown.
     let app: *mut NmpApp = nmp_app_new();

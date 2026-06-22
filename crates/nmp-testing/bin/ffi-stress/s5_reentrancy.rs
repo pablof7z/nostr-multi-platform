@@ -3,13 +3,13 @@
 //! Spec: docs/design/ffi-hardening/scenarios.md §S5
 //! Gate: docs/design/ffi-hardening/gates.md §G-S5
 //!
-//! Registers a callback that, on every emit, immediately dispatches
-//! `claim_profile` for a test pubkey from the listener thread.
+//! Registers a callback that, on every emit, immediately dispatches a profile
+//! `resolve_ref` for a test pubkey from the listener thread.
 //! Sustains for 30 s with configure() driving emits at ~4 Hz.
 //!
 //! Key invariants:
 //! - Zero deadlocks (external 5 s watchdog thread detects hangs).
-//! - Reentrant dispatch: nmp_app_claim_profile enqueues to actor's mpsc Sender
+//! - Reentrant dispatch: nmp_app_resolve_ref enqueues to actor's mpsc Sender
 //!   (Send+Sync); the send never blocks or re-locks kernel state (bible #3).
 //! - Rev monotonicity after each emit.
 //! - No dispatch loss.
@@ -17,7 +17,8 @@
 //! D4 (single writer): reentrant dispatch enqueues to actor; callback does
 //!    not mutate kernel state directly.
 //! Bible #3 (fire-and-forget): send inside callback returns immediately.
-//! V-68 / V-112 (ADR-0042): open_author deleted; claim_profile used instead.
+//! V-68 / V-112 (ADR-0042): open_author deleted. ADR-0063 Lane H: the profile
+//! resolve now goes through resolve_ref (the former claim_profile path is gone).
 
 use crate::common::{extract_rev, inject_signed_events, revs_strictly_increasing};
 use crate::ffi::{

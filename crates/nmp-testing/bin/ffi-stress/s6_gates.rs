@@ -101,12 +101,12 @@ pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S6Outcome) {
     // ── Gate 1: Row suppression ratio ≥ 0.50 ────────────────────────────────
     // With incremental apply ON, at least half the Tier-2 rows that full mode
     // would have emitted are now suppressed (Unchanged = omitted). In the
-    // claimed_profiles churn workload (~3 of ~15 Tier-2 built-ins change per
+    // single-projection churn workload (~3 of ~15 Tier-2 built-ins change per
     // cycle) we expect ~80% suppression; 0.50 is a conservative floor robust to
     // workload variation. Above 0.50 confirms the omit-Unchanged mechanism is live.
     report.gates.push(
         Gate::gte("row_suppression_ratio", row_suppression_ratio, 0.50).with_note(
-            "Tier-2 / claimed_profiles churn: at least 50% of rows must be suppressed by \
+            "Tier-2 single-projection churn: at least 50% of rows must be suppressed by \
              incremental-apply; ~80% expected. Tier-1 (feed) gating is a later rung.",
         ),
     );
@@ -154,7 +154,7 @@ pub(crate) fn apply(report: &mut ScenarioMetrics, outcome: &S6Outcome) {
 
     // ── Report notes ─────────────────────────────────────────────────────────
     report.notes.push(
-        "ADR-0055 Rung 3 S5 capstone: Tier-2 / claimed_profiles churn waste → ~0; \
+        "ADR-0055 Rung 3 S5 capstone: Tier-2 single-projection churn waste → ~0; \
          Tier-1 (feed) gating is a later rung. Gate: row suppression ≥ 50%, \
          frame bytes strictly smaller, no encode-time regression, byte-identity oracle PASS."
             .to_string(),
