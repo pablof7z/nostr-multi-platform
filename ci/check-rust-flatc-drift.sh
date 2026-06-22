@@ -54,6 +54,8 @@ NIP57_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip57/schema"
 NIP57_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip57/src/wire/generated"
 NIP22_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip22/schema"
 NIP22_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip22/src/wire/generated"
+NIP29_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip29/schema"
+NIP29_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip29/src/wire/generated"
 SCHEMA_PAIRS=(
     "${SCHEMA_DIR}/nmp_update.fbs::${GENERATED_DIR}/nmp_update_generated.rs"
     "${SCHEMA_DIR}/dispatch_envelope.fbs::${GENERATED_DIR}/dispatch_envelope_generated.rs"
@@ -67,6 +69,11 @@ SCHEMA_PAIRS=(
     "${NIP17_SCHEMA_DIR}/dm_relay_list_action.fbs::${NIP17_GENERATED_DIR}/dm_relay_list_action_generated.rs"
     "${NIP57_SCHEMA_DIR}/zap.fbs::${NIP57_GENERATED_DIR}/zap_generated.rs"
     "${NIP22_SCHEMA_DIR}/post_comment.fbs::${NIP22_GENERATED_DIR}/post_comment_generated.rs"
+    "${NIP29_SCHEMA_DIR}/discovered_groups.fbs::${NIP29_GENERATED_DIR}/discovered_groups_generated.rs"
+    "${NIP29_SCHEMA_DIR}/group_chat.fbs::${NIP29_GENERATED_DIR}/group_chat_generated.rs"
+    "${NIP29_SCHEMA_DIR}/group_defaults.fbs::${NIP29_GENERATED_DIR}/group_defaults_generated.rs"
+    "${NIP29_SCHEMA_DIR}/group_events.fbs::${NIP29_GENERATED_DIR}/group_events_generated.rs"
+    "${NIP29_SCHEMA_DIR}/joined_groups.fbs::${NIP29_GENERATED_DIR}/joined_groups_generated.rs"
 )
 
 if ! command -v flatc >/dev/null 2>&1; then
