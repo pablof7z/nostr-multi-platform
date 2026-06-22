@@ -34,7 +34,7 @@
 //! `RecordActionFailure`. One signing seam, both backends (D13 — only a
 //! `SignedEvent` ever crosses the port).
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -167,6 +167,14 @@ fn record_action_failure(send: &dyn Fn(ActorCommand), correlation_id: &str, reas
 impl ActionModule for ZapAction {
     const NAMESPACE: &'static str = "nmp.nip57.zap";
     type Action = ZapInput;
+
+    /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<ZapInput as ActionPayload>::decode(bytes))
+    }
 
     /// Validate a zap request. Rejects:
     /// - empty `recipient_pubkey`

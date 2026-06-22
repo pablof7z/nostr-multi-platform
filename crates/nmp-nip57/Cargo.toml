@@ -58,5 +58,7 @@ sha2 = "0.10"
 tracing = "0.1"
 
 [dev-dependencies]
-nmp-core = { path = "../nmp-core", features = ["test-support"] }
+# `native` enables `ActionRegistry` (via `__ffi_internal`) for registry-level
+# trip tests (ADR-0064 / S9 #1747). `test-support` enables store harness helpers.
+nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
 nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }

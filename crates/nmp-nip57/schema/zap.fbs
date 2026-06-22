@@ -1,0 +1,41 @@
+namespace nmp.nip57;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the `nmp.nip57.zap`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter (S9) decodes against THIS schema, gating `schema_version`
+// BEFORE `start()` (fail-closed on mismatch).
+//
+// Mirrors `nmp_nip57::ZapInput` field-for-field (raw protocol values only):
+//   * `recipient_pubkey` — lowercase hex string (required).
+//   * `amount_msats`     — amount in millisatoshis (uint64, > 0).
+//   * `lnurl`            — optional LNURL-pay endpoint; empty string = absent
+//                          (nip25 optional-string-as-empty convention).
+//   * `relays`           — zero or more relay URLs; may be empty.
+//   * `target_event_id`  — optional zapped event id (hex); empty = absent.
+//   * `comment`          — optional free-form zap comment; empty = absent.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   PATH=~/.cache/nmp-flatc/v25.12.19:$PATH \
+//   flatc --rust -o crates/nmp-nip57/src/wire/generated \
+//         crates/nmp-nip57/schema/zap.fbs
+
+table ZapPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // Recipient's Nostr public key, lowercase hex.
+  recipient_pubkey:string (required);
+  // Amount in millisatoshis.
+  amount_msats:uint64;
+  // LNURL-pay endpoint. Empty string means absent (optional).
+  lnurl:string;
+  // Relay URLs for the kind:9734 `relays` tag.
+  relays:[string];
+  // Optional zapped event id (hex). Empty string means absent.
+  target_event_id:string;
+  // Optional free-form comment. Empty string means absent.
+  comment:string;
+}
+
+file_identifier "N57Z";
+root_type ZapPayload;
