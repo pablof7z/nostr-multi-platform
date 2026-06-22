@@ -47,7 +47,7 @@ import XCTest
 /// ships as a JSON `SnapshotProjections` field (`nmp.nip29.group_chat`,
 /// `nmp.nip29.discovered_groups`, `nmp.nip29.group_defaults`,
 /// `nmp.nip17.dm_inbox`, `nmp.follow_list`, `nmp.nip57.zaps`,
-/// `nmp.nip17.dm_relay_list`, `claimed_profiles`, `nmp.marmot.snapshot`,
+/// `nmp.nip17.dm_relay_list`, `nmp.marmot.snapshot`,
 /// `nmp.marmot.messages`) has its decoder covered by this conformance test
 /// (V-107 / ADR-0039).
 ///

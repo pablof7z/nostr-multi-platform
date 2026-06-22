@@ -321,7 +321,7 @@ fn observer_trait_object_drives_grouper() {
 fn card_carries_raw_pubkey_and_no_denormalized_display() {
     // GH #920: the card no longer denormalizes any kind:0 display copy. The
     // raw hex pubkey is the only author identity it carries; the presentation
-    // layer joins against the snapshot's `resolved_profiles` map. A kind:0 for
+    // layer joins against the snapshot's `refs.profile` map. A kind:0 for
     // the author is inert for this projection (it produces no card and does
     // not mutate the existing one).
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";

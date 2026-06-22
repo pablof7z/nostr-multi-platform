@@ -135,8 +135,8 @@ final class ProfileNameFallbackTests: XCTestCase {
     func test_noteRow_authorDisplayLabel_eventCards_gap_filler() {
         let short = pk.shortHex
 
-        // claimed_profiles dropped this pubkey (profileDisplay == nil), but the
-        // event card still carries the author name → that name must show.
+        // the refs.profile resolve dropped this pubkey (profileDisplay == nil), but
+        // the event card still carries the author name → that name must show.
         XCTAssertEqual(
             NoteRowView.resolveAuthorLabel(
                 profileDisplay: nil,
