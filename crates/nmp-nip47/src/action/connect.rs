@@ -10,6 +10,7 @@ use nmp_core::ActorCommand;
 
 use crate::protocol::{WalletConnectCommand, WalletDisconnectCommand};
 use crate::runtime::WalletRuntimeHandle;
+use crate::ui_codes;
 
 // ── WalletConnect ────────────────────────────────────────────────────────────
 
@@ -59,14 +60,16 @@ impl ActionModule for WalletConnectModule {
         match action {
             WalletConnectAction::Connect { uri } => {
                 if uri.is_empty() {
-                    return Err(ActionRejection::Invalid(
-                        "wallet connect requires a non-empty NWC URI".to_string(),
-                    ));
+                    return Err(ActionRejection::InvalidCoded {
+                        code: ui_codes::NWC_URI_EMPTY,
+                        message: "wallet connect requires a non-empty NWC URI".to_string(),
+                    });
                 }
                 if !uri.to_ascii_lowercase().starts_with("nostr+walletconnect://") {
-                    return Err(ActionRejection::Invalid(
-                        "invalid NWC URI: must start with nostr+walletconnect://".to_string(),
-                    ));
+                    return Err(ActionRejection::InvalidCoded {
+                        code: ui_codes::NWC_URI_BAD_SCHEME,
+                        message: "invalid NWC URI: must start with nostr+walletconnect://".to_string(),
+                    });
                 }
                 Ok(())
             }
@@ -174,10 +177,18 @@ mod tests {
             .start(&mut ctx(), action)
             .expect_err("empty URI must be rejected");
         match err {
-            ActionRejection::Invalid(msg) => {
-                assert!(msg.contains("non-empty"), "rejection should explain the constraint: {msg}");
+            ActionRejection::InvalidCoded { code, message } => {
+                assert_eq!(
+                    code,
+                    crate::ui_codes::NWC_URI_EMPTY,
+                    "empty-URI rejection must carry the NWC_URI_EMPTY code"
+                );
+                assert!(
+                    message.contains("non-empty"),
+                    "English fallback should explain the constraint: {message}"
+                );
             }
-            other => panic!("expected Invalid rejection, got {other:?}"),
+            other => panic!("expected InvalidCoded rejection, got {other:?}"),
         }
     }
 
@@ -195,13 +206,18 @@ mod tests {
                 .start(&mut ctx(), action)
                 .expect_err(&format!("bad URI {bad:?} must be rejected"));
             match err {
-                ActionRejection::Invalid(msg) => {
+                ActionRejection::InvalidCoded { code, message } => {
+                    assert_eq!(
+                        code,
+                        crate::ui_codes::NWC_URI_BAD_SCHEME,
+                        "bad-scheme rejection for {bad:?} must carry the NWC_URI_BAD_SCHEME code"
+                    );
                     assert!(
-                        msg.contains("nostr+walletconnect://"),
-                        "rejection message must name the required scheme; got: {msg}"
+                        message.contains("nostr+walletconnect://"),
+                        "English fallback must name the required scheme for {bad:?}; got: {message}"
                     );
                 }
-                other => panic!("expected Invalid for {bad:?}, got {other:?}"),
+                other => panic!("expected InvalidCoded for {bad:?}, got {other:?}"),
             }
         }
     }

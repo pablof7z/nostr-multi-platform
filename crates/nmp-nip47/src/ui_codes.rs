@@ -42,3 +42,17 @@ pub const WALLET_NOT_CONNECTED: &str = "nip47_wallet_not_connected";
 /// (refusing to risk a double-pay on restart). `raw_detail` carries the
 /// storage error.
 pub const PAYMENT_ABORTED_NO_DURABLE_RECORD: &str = "nip47_payment_aborted_no_durable_record";
+
+// ── connect-action rejection codes (#1734) ───────────────────────────────────
+// Stable machine keys for the `nmp.wallet.connect` `start()` rejections.
+// These ride the inline action-result JSON (`{"error":"…","code":"…"}`) via
+// `ActionRejection::InvalidCoded`, NOT the toast/progress wire.  Shells map
+// each key to localized copy; an unknown key falls back to the English
+// `message` in the rejection.
+
+/// The NWC URI supplied to `nmp.wallet.connect` was empty.
+pub const NWC_URI_EMPTY: &str = "nip47_nwc_uri_empty";
+
+/// The NWC URI supplied to `nmp.wallet.connect` had the wrong scheme (must
+/// start with `nostr+walletconnect://`).
+pub const NWC_URI_BAD_SCHEME: &str = "nip47_nwc_uri_bad_scheme";
