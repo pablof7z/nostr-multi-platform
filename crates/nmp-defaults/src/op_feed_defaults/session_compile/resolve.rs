@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
-use nmp_feed::{AdmitExpr, RootAdmission};
+use nmp_feed::RootAdmission;
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
 use nmp_wot::score::WotGraph;
@@ -81,10 +81,11 @@ pub(super) fn resolve_scope(
 ) -> Result<ResolvedScope, FeedOpenError> {
     use nmp_feed::FeedScope as S;
     match scope {
+        S::Authors { authors } => super::resolve_static::resolve_authors(authors, kinds),
         S::ContactList { owner } => resolve_contact_list(app, owner, kinds),
         S::ListMembers { list } => resolve_list_members(app, &list.0, kinds),
         S::Wot { seed, .. } => resolve_wot(app, &seed.0, kinds),
-        S::Tag { term } => Ok(resolve_tag(&term.0, kinds)),
+        S::Tag { term } => Ok(super::resolve_static::resolve_tag(&term.0, kinds)),
         S::RelaySet { .. } => Err(not_supported("RelaySet")),
         S::Union(l, r) => super::set_algebra::resolve_set_op(app, SetOp::Union, l, r, kinds),
         S::Intersection(l, r) => {
@@ -108,7 +109,7 @@ pub(super) enum SetOp {
     Difference,
 }
 
-fn not_supported(scope: &'static str) -> FeedOpenError {
+pub(super) fn not_supported(scope: &'static str) -> FeedOpenError {
     FeedOpenError::ScopeNotSupportedYet { scope }
 }
 
@@ -160,8 +161,9 @@ fn resolve_contact_list(
     })
 }
 
-/// No extra acquisition beyond the fixed interests (Tag — fully static).
-fn empty_extra() -> ExtraAcquisition {
+/// No extra acquisition beyond the fixed interests (the static scopes —
+/// `Authors` / `Tag`).
+pub(super) fn empty_extra() -> ExtraAcquisition {
     Arc::new(Vec::new)
 }
 
@@ -314,30 +316,6 @@ fn resolve_wot(
     })
 }
 
-// ── Tag { term } — #t scope, admit any acquired row ───────────────────────
-
-fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ResolvedScope {
-    // The #t filter gates at acquisition, but admission must be EVENT-AWARE
-    // (`AdmitExpr::Tag`), not `Any` (#1740 step 3): so a `Tag` scope composes
-    // faithfully inside set algebra (e.g. `Intersection(Tag, ContactList)`
-    // checks BOTH the tag AND author membership instead of silently admitting
-    // any member's untagged note).
-    let admission: RootAdmission = AdmitExpr::Tag(term.to_string()).to_root_admission();
-    let interests = vec![(tag_filter(term, kinds), 1u32)]; // Global scope
-    let shape = tag_shape(term, kinds);
-    let live_shape: LiveShape = Arc::new(move || shape.clone());
-    ResolvedScope {
-        admission,
-        interests,
-        live_shape,
-        // The #t acquisition is fully static (the fixed Global interest above);
-        // nothing to re-sync.
-        extra_acquisition: empty_extra(),
-        reset_hooks: Vec::new(),
-        resolver_observer_ids: Vec::new(),
-    }
-}
-
 // ── Filter JSON / shape helpers (data-driven; OpenInterest re-parses) ─────
 
 fn viewer_list_filter(viewer: &str) -> String {
@@ -346,18 +324,6 @@ fn viewer_list_filter(viewer: &str) -> String {
 
 fn seed_contacts_filter(seed: &str) -> String {
     serde_json::json!({ "authors": [seed], "kinds": [KIND_CONTACT_LIST] }).to_string()
-}
-
-fn tag_filter(term: &str, kinds: &BTreeSet<u32>) -> String {
-    let kinds: Vec<&u32> = kinds.iter().collect();
-    serde_json::json!({ "kinds": kinds, "#t": [term] }).to_string()
-}
-
-fn tag_shape(term: &str, kinds: &BTreeSet<u32>) -> Option<InterestShape> {
-    if kinds.is_empty() {
-        return None;
-    }
-    InterestShape::from_filter_json(&tag_filter(term, kinds))
 }
 
 fn follow_set_live_shape(

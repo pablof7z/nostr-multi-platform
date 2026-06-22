@@ -125,6 +125,83 @@ fn contact_list_predicate_admits_follows_rejects_strangers() {
     assert!(!admit(STRANGER), "non-follow is NOT admitted (fail-closed)");
 }
 
+// ── Authors { authors } — static author-set timeline ─────────────────────
+
+fn note(author: &str) -> KernelEvent {
+    KernelEvent {
+        id: EventId::from("2".repeat(64)),
+        author: author.to_string(),
+        kind: 1,
+        created_at: 100,
+        tags: Vec::new(),
+        content: "a note".to_string(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+#[test]
+fn authors_scope_admits_only_the_target_authors_rejects_others() {
+    // The load-bearing proof: an author feed admits ONLY events authored BY the
+    // target set — NOT a stranger's, NOT (because this is the author's OWN
+    // timeline, not their follows) anyone else's.
+    let authors: std::collections::BTreeSet<String> =
+        [ALICE.to_string(), MEMBER.to_string()].into_iter().collect();
+    let kinds: std::collections::BTreeSet<u32> = [1u32].into_iter().collect();
+    let resolved = super::resolve_static::resolve_authors(&authors, &kinds)
+        .expect("non-empty author set resolves");
+
+    // Admission is EVENT-AWARE over the author set.
+    assert!(
+        (resolved.admission)(&note(ALICE)),
+        "a target author's note is admitted"
+    );
+    assert!(
+        (resolved.admission)(&note(MEMBER)),
+        "every target author's note is admitted"
+    );
+    assert!(
+        !(resolved.admission)(&note(STRANGER)),
+        "a NON-author's note is excluded (the proof — author scope is not 'admit any')"
+    );
+
+    // Acquisition: ONE fixed author+kind interest, Global scope. No reactive
+    // observers / reset hooks / extra acquisition (the set is static).
+    assert_eq!(resolved.interests.len(), 1, "one fixed acquisition interest");
+    let (filter_json, scope) = &resolved.interests[0];
+    assert_eq!(*scope, 1, "Global scope (account-agnostic author pin)");
+    let shape = nmp_planner::InterestShape::from_filter_json(filter_json)
+        .expect("the author filter parses");
+    assert_eq!(shape.authors, authors, "acquires exactly the target authors");
+    assert_eq!(shape.kinds, kinds, "acquires exactly the compiled kinds");
+    assert!(
+        resolved.resolver_observer_ids.is_empty() && resolved.reset_hooks.is_empty(),
+        "a static author set installs no reactive observers/reset hooks"
+    );
+
+    // The live (pull-pager) shape mirrors the fixed acquisition.
+    let live = (resolved.live_shape)().expect("static shape is always present");
+    assert_eq!(live.authors, authors);
+    assert_eq!(live.kinds, kinds);
+}
+
+#[test]
+fn authors_scope_fails_closed_on_empty_set_or_no_kinds() {
+    let kinds: std::collections::BTreeSet<u32> = [1u32].into_iter().collect();
+    // Empty author set → fail closed (never "admit everyone"): no interest opened.
+    let empty: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    assert!(
+        super::resolve_static::resolve_authors(&empty, &kinds).is_err(),
+        "an empty author set must fail closed, not resolve to admit-any"
+    );
+    // No acquisition kinds → fail closed (nothing to acquire).
+    let authors: std::collections::BTreeSet<String> = [ALICE.to_string()].into_iter().collect();
+    assert!(
+        super::resolve_static::resolve_authors(&authors, &std::collections::BTreeSet::new())
+            .is_err(),
+        "no acquisition kinds must fail closed"
+    );
+}
+
 #[test]
 fn wot_tracks_seed_direct_follows_for_acquisition() {
     // The session WoT graph must expose the seed's DIRECT follows so the session

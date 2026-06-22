@@ -14,6 +14,9 @@ use super::*;
 #[test]
 fn pubkey_set_expr_variants_construct() {
     let follows = FeedScope::ActiveUserFollows;
+    let authors = FeedScope::Authors {
+        authors: ["deadbeef".to_string()].into_iter().collect(),
+    };
     let contacts = FeedScope::ContactList {
         owner: "deadbeef".into(),
     };
@@ -37,7 +40,9 @@ fn pubkey_set_expr_variants_construct() {
     let diff = FeedScope::Difference(Box::new(relays.clone()), Box::new(tag.clone()));
 
     // Exhaustive match — adding a variant forces this to be revisited.
-    for expr in [follows, contacts, list, wot, relays, tag, custom, union, inter, diff] {
+    for expr in [
+        follows, authors, contacts, list, wot, relays, tag, custom, union, inter, diff,
+    ] {
         assert!(describe(&expr).len() > 0);
     }
 }
@@ -47,6 +52,7 @@ fn pubkey_set_expr_variants_construct() {
 fn describe(expr: &PubkeySetExpr) -> &'static str {
     match expr {
         PubkeySetExpr::ActiveUserFollows => "active-user-follows",
+        PubkeySetExpr::Authors { .. } => "authors",
         PubkeySetExpr::ContactList { .. } => "contact-list",
         PubkeySetExpr::ListMembers { .. } => "list-members",
         PubkeySetExpr::Wot { .. } => "wot",
@@ -83,6 +89,35 @@ fn custom_perspective_id_is_an_opaque_string_no_trait_no_closure() {
 // ---------------------------------------------------------------------------
 // FeedParams / FeedHandle shape + serde round-trip.
 // ---------------------------------------------------------------------------
+
+#[test]
+fn authors_scope_is_a_static_set_distinct_from_contact_list() {
+    // `Authors` names the authors THEMSELVES (a static, app-resolved set whose
+    // OWN timeline the feed renders). `ContactList` names an owner whose FOLLOWS
+    // seed the scope. They are distinct variants — never interchangeable.
+    let one = "aaaa000000000000000000000000000000000000000000000000000000000001";
+    let two = "bbbb000000000000000000000000000000000000000000000000000000000002";
+    let authors = FeedScope::Authors {
+        authors: [one.to_string(), two.to_string()].into_iter().collect(),
+    };
+    let contacts = FeedScope::ContactList { owner: one.into() };
+    assert_ne!(authors, contacts, "author-set ≠ an owner's follow-set");
+
+    // Round-trips through serde verbatim (the resolved set is carried as data).
+    let json = serde_json::to_string(&authors).expect("serialize");
+    let back: FeedScope = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(authors, back);
+
+    // An EMPTY author set is REPRESENTABLE in the model (the resolver fail-closes
+    // it — the model itself names no policy). It must not equal a populated set.
+    let empty = FeedScope::Authors {
+        authors: std::collections::BTreeSet::new(),
+    };
+    assert_ne!(empty, authors);
+    let back_empty: FeedScope =
+        serde_json::from_str(&serde_json::to_string(&empty).unwrap()).unwrap();
+    assert_eq!(empty, back_empty);
+}
 
 #[test]
 fn feed_window_clamps_into_bounds() {
