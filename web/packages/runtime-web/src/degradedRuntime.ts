@@ -59,6 +59,25 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
+      // #1753 S6 — the degraded runtime has no kernel to park a sign op in, so a
+      // sign round-trip fails closed (D6). `begin_sign` mints no correlation id;
+      // `deliver_signer_response` echoes the one it carried.
+      case "begin_sign":
+        return [
+          {
+            type: "sign_failed",
+            correlation_id: "",
+            reason: this.unavailableReason,
+          },
+        ];
+      case "deliver_signer_response":
+        return [
+          {
+            type: "sign_failed",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "stop":
         this.status = "stopped";
         return [

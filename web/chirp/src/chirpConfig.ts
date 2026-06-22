@@ -25,3 +25,30 @@ export const CHIRP_RELAY_BOOTSTRAP: ChirpRelayBootstrapEntry[] = [
 export function chirpDefaultRelayUrls(): string[] {
   return CHIRP_RELAY_BOOTSTRAP.map((entry) => entry.url);
 }
+
+/** Resolve the `relays` + `relay_bootstrap` the Chirp web host supplies in the
+ *  Start request. Relay policy is host policy (#1125): the nmp-wasm protocol
+ *  has no built-in defaults, so the host always sends an explicit list.
+ *
+ *  When `overrideRelays` is supplied (e.g. the Playwright smoke test via the
+ *  `?relay=` query parameter), those URLs replace the Chirp defaults. Each is
+ *  given role "both,indexer" (not just "both") so a single injected relay also
+ *  serves profile-claim discovery requests (BootstrapSeed::IndexerOnly) —
+ *  "both" alone excludes the indexer lane, so a relay supplied via ?relay=
+ *  would otherwise silently receive no kind:0 claim REQs. Otherwise the host
+ *  sends its own Chirp relay defaults (mirrors nmp-chirp-config). */
+export function chirpStartRelays(overrideRelays?: string[]): {
+  relays: string[];
+  relay_bootstrap: ChirpRelayBootstrapEntry[];
+} {
+  if (overrideRelays && overrideRelays.length > 0) {
+    return {
+      relays: overrideRelays,
+      relay_bootstrap: overrideRelays.map((url) => ({ url, role: "both,indexer" })),
+    };
+  }
+  return {
+    relays: chirpDefaultRelayUrls(),
+    relay_bootstrap: CHIRP_RELAY_BOOTSTRAP,
+  };
+}
