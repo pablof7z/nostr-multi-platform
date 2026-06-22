@@ -59,8 +59,9 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, BlockedRelayLookup, UnsignedEvent,
+    ActionContext, ActionModule, ActionRegistrar, ActionRejection, BlockedRelayLookup,
 };
+use nmp_signer_iface::UnsignedEvent;
 use nmp_core::ActorCommand;
 use nmp_kinds::KIND_BLOCKED_RELAYS;
 use serde::{Deserialize, Serialize};

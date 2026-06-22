@@ -89,3 +89,4 @@ zeroize = { workspace = true }
 # `nmp-core/test-support` exposes the helpers the in-crate ffi tests reach
 # for (e.g. `VerifiedEvent::from_raw_unchecked`, `ConformanceHarness`).
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-signer-iface = { path = "../nmp-signer-iface" }

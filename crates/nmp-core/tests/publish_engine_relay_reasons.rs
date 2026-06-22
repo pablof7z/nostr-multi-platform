@@ -26,7 +26,8 @@ use nmp_core::publish::{
     PublishTarget, RelayDispatcher, RelaySelectionReason, RelayUrl, ReplayDispatcher,
     ResolvedRelay, RetryPolicy,
 };
-use nmp_core::substrate::{BlockedRelaySet, SignedEvent, UnsignedEvent};
+use nmp_core::substrate::BlockedRelaySet;
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn signed(id: &str, author: &str, kind: u32) -> SignedEvent {
     SignedEvent {

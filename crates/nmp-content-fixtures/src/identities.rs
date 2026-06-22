@@ -6,7 +6,7 @@
 //! Keys NEVER touch a relay; this is offline fixture material only.
 
 use nmp_core::nip21::{format_nostr_uri, NostrUri};
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_signers::signers::SignerOp;
 use nmp_signers::{LocalKeySigner, Signer};
 use std::time::Duration;

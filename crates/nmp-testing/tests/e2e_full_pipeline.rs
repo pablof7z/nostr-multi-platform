@@ -293,7 +293,7 @@ fn publish_roundtrip_via_outbox() {
         InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishTarget,
         RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
     };
-    use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+    use nmp_signer_iface::{SignedEvent, UnsignedEvent};
     use std::sync::Arc;
 
     fn pubkey(seed: &str) -> String {

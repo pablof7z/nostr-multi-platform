@@ -2,7 +2,7 @@
 //! keep that file under the 500-LOC ceiling. Pure crypto / JSON shaping —
 //! no kernel state.
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 
 /// Sign a kind:23194 NWC request event with the NWC client secret key.

@@ -55,7 +55,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::{UnsignedEvent, WalletKernelAccess};
+use nmp_core::substrate::WalletKernelAccess;
+use nmp_signer_iface::UnsignedEvent;
 use nmp_core::{AuthSignerFn, OutboundMessage, RelayRole};
 use nostr::nips::nip19::ToBech32;
 use nostr::{Keys, PublicKey, SecretKey};

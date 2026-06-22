@@ -18,6 +18,7 @@ description = "Layer-2 routing: one generic OutboxRouter algorithm (NIP-65 mailb
 # own `native` passthrough feature (default-on, so existing builds are
 # unchanged); wasm consumers depend with `default-features = false`.
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # InterestShape / LogicalInterest / HintSource — the nmp_core::planner compat
 # facade is deleted (#1608). nmp-planner is a Layer-2 foundation crate; it is

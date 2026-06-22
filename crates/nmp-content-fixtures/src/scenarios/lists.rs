@@ -4,7 +4,7 @@
 //! (the relay-free truth) — follow set (kind:30000), bookmarks
 //! (kind:30003), and relay list (kind:10002).
 
-use nmp_core::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 use crate::dto::{ListDto, ListRowDto, ScenarioDto};
 use crate::embed_store::{EmbedStore, Target};

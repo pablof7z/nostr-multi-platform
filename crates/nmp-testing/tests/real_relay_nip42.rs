@@ -66,7 +66,7 @@ fn frame_array(text: &str) -> Option<Vec<Value>> {
 
 /// Render the wire frame the kernel pushes to the relay:
 /// `["AUTH", <event_json>]`. Delegates to `nmp_nip42::builder::wire_frame_for`.
-fn wire_frame_for(signed: &nmp_core::substrate::SignedEvent) -> String {
+fn wire_frame_for(signed: &nmp_signer_iface::SignedEvent) -> String {
     nmp_nip42::builder::wire_frame_for(signed)
 }
 

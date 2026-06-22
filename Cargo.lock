@@ -4447,6 +4447,7 @@ dependencies = [
  "nmp-core",
  "nmp-ffi",
  "nmp-kinds",
+ "nmp-signer-iface",
  "nostr",
  "serde",
  "serde_json",
@@ -4502,6 +4503,7 @@ version = "0.8.0"
 dependencies = [
  "nmp-content",
  "nmp-core",
+ "nmp-signer-iface",
  "nmp-signers",
  "nmp-store",
  "serde",
@@ -4699,6 +4701,7 @@ dependencies = [
  "nmp-feed",
  "nmp-nip18",
  "nmp-planner",
+ "nmp-signer-iface",
  "nmp-store",
  "nmp-threading",
  "serde",
@@ -4739,6 +4742,7 @@ dependencies = [
  "nmp-kinds",
  "nmp-nip59",
  "nmp-planner",
+ "nmp-signer-iface",
  "nmp-store",
  "nostr",
  "serde",
@@ -4762,6 +4766,7 @@ dependencies = [
  "flatbuffers",
  "nmp-core",
  "nmp-kinds",
+ "nmp-signer-iface",
  "serde",
  "serde_json",
 ]
@@ -4772,6 +4777,7 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-signer-iface",
  "serde",
  "serde_json",
 ]
@@ -4784,6 +4790,7 @@ dependencies = [
  "nmp-core",
  "nmp-ffi",
  "nmp-planner",
+ "nmp-signer-iface",
  "nmp-store",
  "serde",
  "serde_json",
@@ -4795,6 +4802,7 @@ version = "0.8.0"
 dependencies = [
  "nmp-core",
  "nmp-nip42-types",
+ "nmp-signer-iface",
  "serde",
  "serde_json",
 ]
@@ -4814,6 +4822,7 @@ dependencies = [
  "flatbuffers",
  "nmp-core",
  "nmp-nwc",
+ "nmp-signer-iface",
  "nostr",
  "serde",
  "serde_json",
@@ -4842,6 +4851,7 @@ dependencies = [
  "nmp-kinds",
  "nmp-nip01",
  "nmp-planner",
+ "nmp-signer-iface",
  "nmp-threading",
  "serde",
  "serde_json",
@@ -4857,6 +4867,7 @@ dependencies = [
  "nmp-ffi",
  "nmp-kinds",
  "nmp-planner",
+ "nmp-signer-iface",
  "nmp-store",
  "nostr",
  "serde",
@@ -4892,6 +4903,7 @@ dependencies = [
  "nmp-nip18",
  "nmp-nip92-types",
  "nmp-planner",
+ "nmp-signer-iface",
  "nmp-store",
  "serde",
  "serde_json",
@@ -4916,6 +4928,7 @@ version = "0.8.0"
 dependencies = [
  "nmp-core",
  "nmp-kinds",
+ "nmp-signer-iface",
  "serde",
 ]
 
@@ -4988,6 +5001,7 @@ dependencies = [
  "nmp-core",
  "nmp-kinds",
  "nmp-planner",
+ "nmp-signer-iface",
  "nmp-store",
  "serde",
  "serde_json",

@@ -14,7 +14,7 @@ pub mod quotes;
 pub mod text;
 
 use nmp_content::{tokenize_with_kind, RenderMode};
-use nmp_core::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 use crate::dto::{ScenarioDto, SignedEventJson};
 use crate::embed_store::EmbedStore;

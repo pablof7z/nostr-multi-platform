@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
-use nmp_core::{ActorCommand, CommandSender, RemoteSignerHandle};
+use nmp_core::{ActorCommand, CommandSender};
+use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, UnsignedEvent};
 use nmp_signer_broker::{BrokerEvent, BunkerBroker};
 use nmp_signer_iface::SignerOp;
 use nmp_signers::Nip46Signer;

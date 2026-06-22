@@ -50,7 +50,8 @@ use nmp_core::typed_projections::{
     decode_accounts, decode_active_account, decode_publish_queue, ACCOUNTS_SCHEMA_ID,
     ACTIVE_ACCOUNT_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_ID,
 };
-use nmp_core::{decode_snapshot_typed_projections, ActorCommand, ActorMail, CommandSender, RemoteSignerHandle};
+use nmp_core::{decode_snapshot_typed_projections, ActorCommand, ActorMail, CommandSender};
+use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::SignerError;
 use nostr::{Event, Keys};
 
@@ -137,7 +138,7 @@ fn bunker_sign_event_round_trip_on_the_wire() {
     );
 
     // ── Drive a sign through the wire ──────────────────────────────────
-    let unsigned = nmp_core::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: user_pubkey_hex.clone(),
         kind: 1,
         tags: Vec::new(),
@@ -232,7 +233,7 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     // Now drive a publish.  This walks `sign_active_nonblocking` →
     // handle.sign() → BrokerTransport → mock → dispatch_inbound →
     // deliver_response → mapper → signed event → publish_signed.
-    let unsigned = nmp_core::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: user_pubkey_hex.clone(),
         kind: 1,
         tags: Vec::new(),
@@ -424,7 +425,7 @@ fn wait_for_publish_queue_entry(
 /// Walk the signed event back through `nostr::Event` and call `verify()` —
 /// proves the bunker's signature is cryptographically valid for the recovered
 /// id, not just a string the mapper let through.
-fn re_verify_signed_event(signed: &nmp_core::substrate::SignedEvent) {
+fn re_verify_signed_event(signed: &nmp_signer_iface::SignedEvent) {
     use std::str::FromStr;
 
     use nostr::secp256k1::schnorr::Signature;

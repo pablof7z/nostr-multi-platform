@@ -5,7 +5,7 @@
 //! `Nip42Driver`, `RelayAuthState`, `AuthChallenge`, `AuthOk`,
 //! `Nip42Error`, `HandshakeOutcome`, `build_auth_event`, `run_handshake`.
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_nip42::{
     build_auth_event, run_handshake, AuthChallenge, AuthOk, HandshakeOutcome, Nip42Driver,
     Nip42Error, RelayAuthState,

@@ -8,9 +8,8 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, KernelEvent, UnsignedEvent,
-};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRegistrar, ActionRejection, KernelEvent};
+use nmp_signer_iface::UnsignedEvent;
 use nmp_core::{canonical_relay_url, ActorCommand, KernelEventObserver};
 use nmp_kinds::KIND_BOOKMARK_LIST;
 use serde::{Deserialize, Serialize};

@@ -1,7 +1,8 @@
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
-    ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
+    ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
 };
+use nmp_signer_iface::UnsignedEvent;
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 

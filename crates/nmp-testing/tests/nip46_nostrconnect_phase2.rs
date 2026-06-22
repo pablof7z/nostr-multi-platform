@@ -151,7 +151,7 @@ fn nostrconnect_wrong_secret_fails_handshake() {
 fn wait_for_add_remote_signer(
     actor_rx: &mpsc::Receiver<ActorMail>,
     timeout: Duration,
-) -> Option<Box<dyn nmp_core::RemoteSignerHandle>> {
+) -> Option<Box<dyn nmp_signer_iface::RemoteSignerHandle>> {
     let deadline = std::time::Instant::now() + timeout;
     loop {
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;

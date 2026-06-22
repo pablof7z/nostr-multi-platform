@@ -31,8 +31,9 @@ use std::ffi::c_char;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::{dispatch_capability, CapabilityCallbackSlot};
-use nmp_core::substrate::{CapabilityEnvelope, CapabilityRequest, SignedEvent, UnsignedEvent};
-use nmp_core::{ActorCommand, ExternalSignerHookRequest, RemoteSignerHandle};
+use nmp_core::substrate::{CapabilityEnvelope, CapabilityRequest};
+use nmp_core::{ActorCommand, ExternalSignerHookRequest};
+use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, UnsignedEvent};
 use nmp_signer_iface::{
     ExternalSignerRequest, ExternalSignerResponse, ExternalSignerTransport, SignerError, SignerOp,
     EXTERNAL_SIGNER_NAMESPACE,

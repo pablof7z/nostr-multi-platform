@@ -9,6 +9,7 @@ description = "NIP-01 short text notes (kind:1) relation surface as an NMP proto
 [dependencies]
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-planner for stable_hash64 / InterestShape — the
 # nmp_core::stable_hash/planner compat facades are deleted (#1608).
 nmp-planner = { path = "../nmp-planner", default-features = false }

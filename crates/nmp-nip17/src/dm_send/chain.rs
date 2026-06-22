@@ -6,9 +6,8 @@
 //! `dm_send.rs` to keep that file within its LOC ceiling.
 
 use nmp_core::publish::PublishTarget;
-use nmp_core::substrate::{
-    build_nip44_encrypt_for_account, build_sign_event_for_account, SignedEvent, UnsignedEvent,
-};
+use nmp_core::substrate::{build_nip44_encrypt_for_account, build_sign_event_for_account};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_core::{ActorCommand, CommandSender};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::{JsonUtil, PublicKey, Timestamp};

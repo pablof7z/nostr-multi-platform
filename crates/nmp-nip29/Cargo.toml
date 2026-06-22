@@ -8,6 +8,7 @@ description = "NIP-29 relay-based groups as an NMP protocol crate. Owns every h-
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
 # deleted (#1608). nmp-planner is a Layer-2 foundation crate; it is already

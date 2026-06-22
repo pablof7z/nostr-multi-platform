@@ -75,8 +75,8 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{
     PaymentIntent, PaymentPort, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
-    SignedEvent, UnsignedEvent,
 };
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_core::ActorCommand;
 use nmp_kinds::KIND_ZAP_RECEIPT;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};

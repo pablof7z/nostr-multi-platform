@@ -108,7 +108,7 @@ impl PublishPlan {
     ///
     /// Returns a string error if `pin_to` is `None` (no relay pin set).
     pub fn into_actor_command(self, correlation_id: Option<String>) -> Result<nmp_core::ActorCommand, String> {
-        use nmp_core::substrate::UnsignedEvent;
+        use nmp_signer_iface::UnsignedEvent;
         use nmp_core::ActorCommand;
         let relay = self
             .pin_to

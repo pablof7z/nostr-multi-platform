@@ -14,7 +14,7 @@ use nmp_core::publish::{
     PublishEngineError, PublishTarget, RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy,
     StaticOutbox,
 };
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 

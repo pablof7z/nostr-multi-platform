@@ -17,7 +17,7 @@
 
 use std::collections::BTreeSet;
 
-use nmp_core::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 
 use crate::dm_relay_list::build_dm_relay_list_event;
 
