@@ -33,7 +33,7 @@ Notes:
 ### 1.2 Presentation of combinations + counts
 
 - Reasons render as a vertically stacked `reasonsSection` on `RelayDetailView`, one card per reason, in a fixed priority order decided in Rust (App relay → Outbox → Relay hint → Interest), so the shell never sorts.
-- Each reason card carries a **pre-formatted headline label** (`role_label`/`role_tone`-style strings, consistent with the existing diagnostics projection contract — `relay_diagnostics.rs:69-84`) plus its structured payload.
+- Each reason card carries the raw `kind` token plus its structured payload; the shell derives the headline label and hue from `kind` (the projection emits no `*_label`/`*_tone` — tone/labels are shell-owned, #1802).
 - Pubkey lists are **capped at a small display N** (proposed: 8) with an exact `total` count so the UI can render "alice, bob, … +142 (150 total)". Capping happens in Rust; the cap and the total are both projection fields.
 - Kinds render from a Rust pre-formatted `kinds_label` (mirroring the existing `discovery_kinds_label` precedent — `relay_diagnostics.rs:118-121`) so the shell never switches on kind numbers (aim.md §4.5; ADR honored by the existing projection).
 
@@ -48,7 +48,7 @@ Notes:
 ### 1.4 Blocked-still-shown behavior
 
 - A blocked relay **remains a row** in both `DiagnosticsView`'s relay list and reachable via `RelayDetailView`.
-- Its connection status renders as `Blocked` (a new `connection_label`/`connection_tone` value — `"Blocked"` / `"muted"`), distinct from `Disconnected`.
+- Its raw `connection` token becomes `"blocked"` (distinct from `"disconnected"`); the shell renders the `Blocked` label and muted hue from it (no kernel `connection_label`/`connection_tone`, #1802).
 - It **still shows its reasons** (Outbox / Interest / Hint / App relay) — i.e., why it *would* be connected — because attribution is computed by the planner *before* the blocked-relay subtractive filter is applied (§3.3). We compute "why", then separately decide "but we don't connect".
 - A relay that is blocked **and** has no other reason (the user blocked something we never wanted anyway) still appears as long as it is in the kind:10006 list, so the user can find and unblock it (§3.3, "blocked-set seeding").
 
@@ -112,7 +112,7 @@ SubscriptionCompiler — capture per-lane attribution at the lane-tag sites   [N
                        └─ Chirp renders reasonsSection + Block button         [thin shell]
 ```
 
-No new projection key, no new FFI snapshot, no app logic. We extend the **existing** `relay_diagnostics` projection (`crates/nmp-core/src/kernel/relay_diagnostics.rs`) — which already pre-rolls every relay row, pre-formats labels/tones, and is decoded by Chirp at `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift:225-291`.
+No new projection key, no new FFI snapshot, no app logic. We extend the **existing** `relay_diagnostics` projection (`crates/nmp-core/src/kernel/relay_diagnostics.rs`) — which already pre-rolls every relay row as raw tokens (no labels or tones — shells derive those, #1802), and is decoded by Chirp at `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift:225-291`.
 
 ### 3.2 Planner: retain attribution (no recompute)
 

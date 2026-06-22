@@ -58,9 +58,9 @@ events_rx, denied}`, `wire_subscriptions[]{wire_id, relay_url, state}`,
 `last_error_toast`, `last_error_category`, `last_planner_error`.
 
 **Typed projection sidecar (kernel-side, decoders exist in `nmp-core`):**
-`relay_diagnostics` (pre-rolled rows with *labels and tones already chosen by
-Rust* — `connection_label`/`connection_tone`, `auth_label`/`auth_tone`,
-per-relay wire subs, logical interests with `cache_coverage`),
+`relay_diagnostics` (pre-rolled rows of *raw tokens* — `connection`/`auth`/`role`/`state`
+strings, per-relay wire subs, logical interests with `cache_coverage`; shells
+derive their own labels and color/tone from the raw tokens, #1802),
 `configured_relays`, `accounts`, `active_account`, `profile`,
 `resolved_profiles`, `claimed_profiles`, `claimed_events`, `publish_queue`,
 `publish_outbox`, `outbox_summary`, `action_results`, `action_stages`,

@@ -8,11 +8,13 @@ import Foundation
 // (role, connection, auth as lowercase strings; bytes as u64 counters;
 // discoveryKinds as [UInt64]). Display formatting is the shell's job.
 //
-// Thin-shell rule: these are pure DTOs. The shell renders fields directly —
-// it does NOT filter / sort / reduce wireSubscriptions, does NOT compute
-// `Date(timeIntervalSince1970:)` from `lastEventAtMs`, does NOT switch on
-// `state == "open"` to pick a color. All of that is in the Rust projection
-// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?" — line 241).
+// Thin-shell rule (aim.md §2): nmp-core emits ONLY raw tokens — no labels,
+// no colors, and no semantic tone (#1802). Presentation IS the shell's job:
+// the shell derives the status hue from the raw `state`/`connection`/`role`/
+// `auth` tokens (see `DiagnosticsTone`) and formats `lastEventAtMs` for
+// display. What the shell must NOT do is decide protocol policy — it does not
+// filter / sort / reduce wireSubscriptions or otherwise re-derive kernel state
+// (aim.md §6 anti-pattern #1 / §"Where do views live?" — line 241).
 //
 // Extracted from `KernelSnapshotTypes.swift` to satisfy the 500-LOC
 // file-size hard-cap gate (AGENTS.md).
