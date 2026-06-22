@@ -76,8 +76,7 @@ pub mod wire;
 
 pub use interests::{
     active_bookmark_list_interest, active_bookmark_list_interest_id, active_mute_list_interest,
-    active_mute_list_interest_id, active_search_relay_list_interest,
-    active_search_relay_list_interest_id,
+    active_mute_list_interest_id,
 };
 
 

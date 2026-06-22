@@ -855,7 +855,7 @@ pub struct NmpApp {
     blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>>,
     /// Per-app override for the active-account bootstrap Tailing
     /// self-kinds list. `None` (the default) makes the kernel use the
-    /// built-in `[0, 3, 10002, 10006]` list at
+    /// built-in `[0, 3, 10002, 10006, 10007]` list at
     /// `active_account_bootstrap_requests`. Written by the per-app crate
     /// via [`Self::set_bootstrap_self_kinds`] before `nmp_app_start`;
     /// actor startup snapshots the resolved value and binds it onto the kernel via

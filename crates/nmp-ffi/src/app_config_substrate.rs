@@ -309,8 +309,8 @@ impl NmpApp {
 
     /// Override the active-account bootstrap Tailing self-kinds list.
     /// Passing `None` clears the override (the kernel reverts to its
-    /// built-in `[0, 3, 10002, 10006]` default; kind:10000 is intentionally
-    /// absent — owned by `MuteRuntimeController`).
+    /// built-in `[0, 3, 10002, 10006, 10007]` default; kind:10000 is
+    /// intentionally absent — owned by `MuteRuntimeController`).
     ///
     /// MUST be called BEFORE `nmp_app_start` so the actor binds the
     /// override onto the kernel at construction time, before the first
