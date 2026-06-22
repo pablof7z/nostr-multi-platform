@@ -4502,8 +4502,8 @@ version = "0.8.0"
 dependencies = [
  "nmp-content",
  "nmp-core",
- "nmp-signers",
  "nmp-store",
+ "nostr",
  "serde",
  "serde_json",
  "url",

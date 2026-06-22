@@ -17,20 +17,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import org.nmp.gallery.model.EmbedEntry
+import org.nmp.gallery.model.GalleryEmbedEnvelope
+import org.nmp.gallery.model.GalleryEmbedKindProjection
 
 /**
  * Profile mention chip — Compose port of Swift `MentionChip`. Resolves
  * kind:0 from the relay-free embed store; falls back to a D1 deterministic
  * identicon + truncated npub when the profile is absent or has no picture.
+ *
+ * The display name is extracted from the kind-registry `Profile` projection so
+ * MentionChip stays in parity with the production mention rendering path.
  */
 @Composable
 fun MentionChip(
     pubkey: String,
-    entry: EmbedEntry?,
+    entry: GalleryEmbedEnvelope?,
     modifier: Modifier = Modifier,
 ) {
-    val name = entry?.profileName
+    val name = (entry?.projection as? GalleryEmbedKindProjection.Profile)
+        ?.data?.displayName
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),

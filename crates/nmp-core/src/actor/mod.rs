@@ -102,6 +102,8 @@ mod relay_event_guard;
 mod relay_idle;
 #[cfg(feature = "native")]
 mod relay_mgmt;
+#[cfg(feature = "native")]
+mod relay_reconnect;
 mod relay_roles;
 #[cfg(all(test, feature = "native"))]
 mod relay_url_canonical_tests;
@@ -821,6 +823,12 @@ pub enum ActorCommand {
     RemoveRelay {
         url: String,
     },
+    /// Kernel-side "reconnect all" (#1689): re-dial every disconnected/errored
+    /// relay worker in the pool. Host apps drive it after a network change /
+    /// app-foreground so the kernel stays the sole driver of transport. See
+    /// [`super::relay_reconnect::reconnect_relays`] for the idempotency and
+    /// fail-closed contract.
+    ReconnectRelays,
     /// Declare the active-account-follows feed for app primary content kinds.
     ///
     /// `acquisition_kinds` is the compiled acquisition kind set the follow-set

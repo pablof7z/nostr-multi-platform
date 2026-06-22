@@ -1,0 +1,61 @@
+namespace nmp.nip51;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark` `ActionModule`s. Both
+// namespaces carry the SAME `BookmarkUpdateInput { account_pubkey, item }`
+// shape, so they share this one schema.
+//
+// The OPAQUE `DispatchEnvelope.payload` for those namespaces; the registry
+// adapter (S3) decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch). Distinct from `mute_list.fbs`, which is a
+// READ-direction snapshot sidecar — this is the WRITE-direction action payload.
+//
+// BookmarkItem is the nested four-variant sum (Event / Address / Url / Hashtag,
+// from `bookmarks::BookmarkItem`). It is modelled as a tagged table — a
+// `BookmarkItemKind` discriminator plus optional payload fields on a single
+// `BookmarkItem` table — rather than a FlatBuffers union, following the same
+// cross-platform-stability reasoning the workspace already documents in
+// `content_tree.fbs` (unions are harder to keep stable across the Swift /
+// Kotlin / TS bindings). The discriminator selects exactly which optional
+// fields are populated:
+//   * Event   -> value = event_id (64-hex),     relay = optional relay hint
+//   * Address -> value = coordinate (k:pk:d),   relay = optional relay hint
+//   * Url     -> value = http(s) url,           relay = absent
+//   * Hashtag -> value = hashtag,               relay = absent
+// `relay` presence is preserved faithfully (Some("") never collapses to None on
+// this codec — normalization stays in the actor's command handler).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-nip51/src/wire/generated \
+//         crates/nmp-nip51/schema/bookmark_update.fbs
+
+enum BookmarkItemKind:ubyte {
+  Event = 0,
+  Address = 1,
+  Url = 2,
+  Hashtag = 3,
+}
+
+table BookmarkItem {
+  // Tagged-table discriminator: selects which BookmarkItem variant this is.
+  kind:BookmarkItemKind;
+  // The variant's primary value: Event=event_id, Address=coordinate, Url=url,
+  // Hashtag=hashtag. Required for every variant.
+  value:string (required);
+  // Optional relay hint — only ever populated for Event / Address variants.
+  relay:string;
+}
+
+table BookmarkUpdatePayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // Active account pubkey, lowercase hex (account-match validation stays in the
+  // module's start()/execute() — this is a pure shape decode).
+  account_pubkey:string (required);
+  // The single bookmark item this add/remove acts on.
+  item:BookmarkItem (required);
+}
+
+file_identifier "N51B";
+root_type BookmarkUpdatePayload;
