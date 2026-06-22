@@ -1,7 +1,6 @@
 package org.nmp.android
 
 import android.util.Log
-import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 
 private const val TAG = "SocialActions"
@@ -12,10 +11,11 @@ private const val TAG = "SocialActions"
  * surface. Extracted from [KernelModel] to keep both files under the repo's
  * 500-LOC hard ceiling (mirrors the [MarmotActions] extraction).
  *
- * Constructor takes two lambdas owned by [KernelModel]:
- *  - [buildActionSpec] = `bridge.buildActionSpec` — Rust builds the namespace +
- *    body JSON from typed user intent.
- *  - [dispatchAction] = `bridge.dispatchAction` — the generic action dispatch.
+ * Constructor takes one lambda owned by [KernelModel]:
+ *  - [dispatchIntent] = `bridge.dispatchIntentBytes` — Rust takes the typed
+ *    user-intent JSON and does intent → spec → typed-bytes → byte dispatch in
+ *    a single call (the byte doorway), replacing the former
+ *    buildActionSpec + dispatchAction two-step.
  *
  * Thin shell: ZERO protocol logic. Kotlin ferries typed user intent; Rust owns
  * action-namespace selection, body shape, tag construction, and validation.
@@ -26,8 +26,7 @@ private const val TAG = "SocialActions"
  * etc.) so the public surface is unchanged; the bodies live here.
  */
 class SocialActions(
-    private val buildActionSpec: (intentJson: String) -> String,
-    private val dispatchAction: (namespace: String, actionJson: String) -> DispatchResult,
+    private val dispatchIntent: (intentJson: String) -> DispatchResult,
 ) {
 
     /**
@@ -88,29 +87,14 @@ class SocialActions(
     )
 
     /**
-     * Build a Chirp action spec from typed user intent (Rust owns the namespace
-     * and body shape), then dispatch it. Returns null on parse error, Rust-side
-     * rejection, or missing dispatch fields (fail-closed, D1/D6).
+     * Encode the typed user intent and dispatch it through the Rust byte
+     * doorway, which builds the namespace + typed body and routes it in one
+     * call. Returns null on a Rust-side rejection (fail-closed, D1/D6).
      */
     private fun dispatchTypedIntent(intent: ChirpActionIntent): DispatchResult? {
         val intentJson = chirpActionJson.encodeToString(intent)
-        val specResponse = buildActionSpec(intentJson)
-        val spec = try {
-            chirpActionJson.decodeFromString<ChirpActionSpec>(specResponse)
-        } catch (e: Exception) {
-            Log.d(TAG, "buildActionSpec parse error: $specResponse", e)
-            return null
-        }
-        if (spec.error != null) {
-            Log.d(TAG, "buildActionSpec rejected ${intent.type}: ${spec.error}")
-            return null
-        }
-        if (spec.namespace.isBlank() || spec.bodyJson.isBlank()) {
-            Log.d(TAG, "buildActionSpec missing dispatch fields: $specResponse")
-            return null
-        }
-        val response = dispatchAction(spec.namespace, spec.bodyJson)
+        val response = dispatchIntent(intentJson)
         Log.d(TAG, "dispatchTypedIntent(${intent.type}) response: $response")
-        return response
+        return if (response is DispatchResult.Failure) null else response
     }
 }

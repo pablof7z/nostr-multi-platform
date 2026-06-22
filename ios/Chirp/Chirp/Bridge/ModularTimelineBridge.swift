@@ -92,6 +92,6 @@ extension KernelHandle {
             let data = try? JSONSerialization.data(withJSONObject: body),
             let json = String(data: data, encoding: .utf8)
         else { return }
-        _ = dispatchRawAction(namespace: "nmp.nip01.visible_note_relations", bodyJson: json)
+        _ = dispatchRawActionBytes(namespace: "nmp.nip01.visible_note_relations", bodyJson: json)
     }
 }

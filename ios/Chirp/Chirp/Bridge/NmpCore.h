@@ -566,6 +566,22 @@ void nmp_app_chirp_declare_consumed_projections(void *app);
 // Returns {"namespace":"...","body_json":"..."} or {"error":"..."}; free with
 // nmp_free_string.
 char *nmp_app_chirp_action_spec(const char *intent_json);
+// ADR-0064 / S4 (#1782) — Chirp's intent BYTE doorway. Takes the SAME
+// `ChirpActionIntent` JSON `nmp_app_chirp_action_spec` accepts, but does the
+// whole intent → Rust-authored spec → typed per-crate FlatBuffers payload →
+// `DispatchEnvelope` → byte doorway in ONE call. No protocol body or namespace
+// is authored in the host, and no JSON crosses to the kernel (only typed
+// bytes). Returns the same `{"correlation_id":"<id>"}` (accepted) or
+// `{"error":"…"}` JSON, freed via `nmp_free_string`. Fail-closed (D6): a null
+// `app` / null-or-malformed intent / unknown namespace returns `{"error":…}`.
+char *nmp_app_chirp_dispatch_intent_bytes(void *app, const char *intent_json);
+// ADR-0064 / S4 (#1782) — Chirp's direct (namespace, body_json) BYTE doorway,
+// for the sites that already hold a Rust-shaped body string (wallet, relay
+// lists, NIP-29 group ops). Rust converts the verbatim body to the namespace's
+// typed payload bytes and dispatches through the byte doorway; only typed bytes
+// cross to the kernel. Same `{"correlation_id"}` / `{"error"}` return + free
+// contract. Fail-closed (D6) on null/unknown namespace.
+char *nmp_app_chirp_dispatch_action_bytes(void *app, const char *namespace, const char *body_json);
 void nmp_app_chirp_unregister(void *handle);
 
 // ── M2 per-open flat author / thread feeds (ADR-0042 §5.1, V-112) ─────────

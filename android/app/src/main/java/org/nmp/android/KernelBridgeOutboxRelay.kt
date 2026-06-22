@@ -9,8 +9,8 @@ import org.nmp.android.model.RelayStatus
  * 500-LOC ceiling (AGENTS.md File Size).
  *
  * Thin-shell rule: no business logic here. The relay-list publishers forward
- * a kernel-owned action namespace + a verbatim body through the existing
- * generic [KernelBridge.dispatchAction] seam; the outbox control plane wraps
+ * a kernel-owned action namespace + a verbatim body through the typed
+ * [KernelBridge.dispatchActionBytes] byte doorway; the outbox control plane wraps
  * the `nmp_app_retry_publish` (by handle) / `nmp_app_cancel_action` (by
  * operation correlation_id; S7/#1754 replaced `nmp_app_cancel_publish`) C-ABI
  * symbols. Rust owns all policy (which relays receive the kind:10002, retry
@@ -42,7 +42,7 @@ fun KernelBridge.cancelPublish(correlationId: String) {
  * skips indexer-only rows when building the kind:10002 tags.
  */
 fun KernelBridge.publishRelayList(relays: List<RelayStatus>): DispatchResult =
-    dispatchAction(
+    dispatchActionBytes(
         "nmp.nip65.publish_relay_list",
         relayListBodyJson(relays),
     )
@@ -52,7 +52,7 @@ fun KernelBridge.publishRelayList(relays: List<RelayStatus>): DispatchResult =
  * `KernelHandle.publishDmRelayList(relays:)` — a flat `wss://` URL array.
  */
 fun KernelBridge.publishDmRelayList(relays: List<String>): DispatchResult =
-    dispatchAction(
+    dispatchActionBytes(
         "nmp.nip17.publish_relay_list",
         dmRelayListBodyJson(relays),
     )

@@ -109,10 +109,11 @@ extension KernelHandle {
     }
 
     /// Shared fire-and-forget marshal for the discover / join action
-    /// dispatches. Encodes `payload` to JSON and routes it through
-    /// `nmp_app_dispatch_action`; the returned correlation JSON is freed
-    /// and ignored (outcomes surface through the next snapshot tick). D6:
-    /// a JSON-encode failure degrades to a logged no-op.
+    /// dispatches. Encodes `payload` to JSON and routes it through the Chirp
+    /// byte doorway `nmp_app_chirp_dispatch_action_bytes`; the returned
+    /// correlation JSON is freed and ignored (outcomes surface through the
+    /// next snapshot tick). D6: a JSON-encode failure degrades to a logged
+    /// no-op.
     private func dispatchNip29Discovery(
         _ namespace: String, payload: [String: Any], label: String
     ) {
@@ -125,7 +126,7 @@ extension KernelHandle {
         }
         json.withCString { jsonPtr in
             namespace.withCString { nsPtr in
-                if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
+                if let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) {
                     nmp_free_string(ptr)
                 }
             }

@@ -30,8 +30,8 @@ import os.log
 // ── Write side ────────────────────────────────────────────────────────────
 //
 //   • `postChatMessage(groupId:content:)` dispatches the
-//     `nmp.nip29.post_chat_message` action through the generic
-//     `nmp_app_dispatch_action` path. Fire-and-forget — the outcome
+//     `nmp.nip29.post_chat_message` action through the Chirp byte doorway
+//     (`nmp_app_chirp_dispatch_action_bytes`). Fire-and-forget — the outcome
 //     surfaces through the next snapshot tick (matches `react` / `follow`).
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -85,8 +85,9 @@ extension KernelHandle {
     }
 
     /// Dispatch a `nmp.nip29.post_chat_message` action — publish a kind:9 group
-    /// chat message. Routes through the generic `nmp_app_dispatch_action`
-    /// path; the kind:9 event, its `["h", local_id]` tag, and signing are
+    /// chat message. Routes through the Chirp byte doorway
+    /// (`nmp_app_chirp_dispatch_action_bytes`); the kind:9 event, its
+    /// `["h", local_id]` tag, and signing are
     /// all owned by Rust (thin-shell rule). Fire-and-forget: the returned
     /// correlation JSON is freed and ignored — the published message
     /// surfaces through the next `nip29.group_chat` snapshot tick (matches
@@ -100,9 +101,9 @@ extension KernelHandle {
     }
 
     /// Dispatch a `nmp.nip29.react_in_group` action — publish a kind:7 in-group
-    /// reaction to `eventId`. Routes through the generic
-    /// `nmp_app_dispatch_action` path; the kind:7 event, its `["h", local_id]`
-    /// / `["e", target]` / `["p", author]` tags, and signing are all owned by
+    /// reaction to `eventId`. Routes through the Chirp byte doorway
+    /// (`nmp_app_chirp_dispatch_action_bytes`); the kind:7 event, its
+    /// `["h", local_id]` / `["e", target]` / `["p", author]` tags, and signing are all owned by
     /// the Rust `ReactInGroupAction` (thin-shell rule). Fire-and-forget — the
     /// reaction surfaces through the next snapshot tick.
     ///
@@ -127,9 +128,9 @@ extension KernelHandle {
     }
 
     /// Dispatch a `nmp.nip29.comment_in_group` action — publish a kind:1111 in-group
-    /// comment that replies to `replyToEventId`. Routes through the generic
-    /// `nmp_app_dispatch_action` path; the kind:1111 event, its `["h", local_id]`
-    /// / `["e", parent]` tags, and signing are all owned by the Rust
+    /// comment that replies to `replyToEventId`. Routes through the Chirp byte
+    /// doorway (`nmp_app_chirp_dispatch_action_bytes`); the kind:1111 event, its
+    /// `["h", local_id]` / `["e", parent]` tags, and signing are all owned by the Rust
     /// `CommentInGroupAction` (thin-shell rule). Fire-and-forget — the comment
     /// surfaces through the next snapshot tick.
     ///
@@ -146,10 +147,10 @@ extension KernelHandle {
     }
 
     /// Shared fire-and-forget marshal for a NIP-29 action dispatch. Encodes
-    /// `payload` to JSON and routes it through `nmp_app_dispatch_action`; the
-    /// returned correlation JSON is freed and ignored (the outcome surfaces
-    /// through the next snapshot tick). D6: a JSON-encode failure degrades to
-    /// a logged no-op.
+    /// `payload` to JSON and routes it through the Chirp byte doorway
+    /// `nmp_app_chirp_dispatch_action_bytes`; the returned correlation JSON is
+    /// freed and ignored (the outcome surfaces through the next snapshot tick).
+    /// D6: a JSON-encode failure degrades to a logged no-op.
     private func dispatchNip29(_ namespace: String, payload: [String: Any], label: String) {
         guard
             let data = try? JSONSerialization.data(withJSONObject: payload),
@@ -160,7 +161,7 @@ extension KernelHandle {
         }
         json.withCString { jsonPtr in
             namespace.withCString { nsPtr in
-                if let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) {
+                if let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) {
                     nmp_free_string(ptr)
                 }
             }

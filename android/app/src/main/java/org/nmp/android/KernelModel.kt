@@ -86,8 +86,7 @@ class KernelModel : ViewModel() {
     // `internal` so KernelModelActions.kt (same package) can delegate social write
     // ops without re-exposing the SocialActions object as public.
     internal val social = SocialActions(
-        buildActionSpec = { intentJson -> bridge.buildActionSpec(intentJson) },
-        dispatchAction = { ns, json -> bridge.dispatchAction(ns, json) },
+        dispatchIntent = { intentJson -> bridge.dispatchIntentBytes(intentJson) },
     )
 
     private val _state = MutableStateFlow(KernelUpdate())

@@ -462,9 +462,9 @@ final class KernelHandle {
     }
 
     /// Publish a kind:0 profile metadata event for the active account through
-    /// the kernel's `ActionModule` family. Routes via the single
-    /// namespace-keyed `nmp_app_dispatch_action` entry point. Swift supplies
-    /// profile fields only; Rust builds the action JSON, kind:0 event,
+    /// the kernel's `ActionModule` family. Routes via `dispatchChirpIntent`
+    /// through the Chirp byte doorway (`nmp_app_chirp_dispatch_intent_bytes`).
+    /// Swift supplies profile fields only; Rust builds the action JSON, kind:0 event,
     /// `created_at` stamp, and signature. PR-A: returns the synchronous
     /// dispatch result so the caller can drive a spinner keyed on the
     /// correlation_id (or surface the error envelope to the user).
@@ -514,8 +514,9 @@ final class KernelHandle {
         correlationID.withCString { nmp_app_cancel_action(raw, $0) }
     }
 
-    /// Dispatch an already-authored JSON action through the generic
-    /// `nmp_app_dispatch_action` path. Common Chirp social/write actions use
+    /// Dispatch an already-authored JSON action through the Chirp byte doorway
+    /// `nmp_app_chirp_dispatch_action_bytes` (Rust converts the body to typed
+    /// bytes and routes it). Common Chirp social/write actions use
     /// `dispatchChirpIntent` so Rust owns the protocol envelope; this helper
     /// remains for existing Rust-authored specs and action families that still
     /// accept a small host DTO.
@@ -536,7 +537,7 @@ final class KernelHandle {
         }
         let envelope: String? = jsonStr.withCString { jsonPtr in
             namespace.withCString { nsPtr in
-                guard let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) else {
+                guard let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) else {
                     return nil
                 }
                 defer { nmp_free_string(ptr) }
@@ -594,10 +595,13 @@ final class KernelHandle {
         ))
     }
 
-    /// Build and dispatch a Chirp action spec authored by Rust.
+    /// Build and dispatch a Chirp action from raw user intent in one FFI call.
     ///
-    /// Swift owns only raw user intent. Rust returns the exact namespace and
-    /// body JSON to feed through `nmp_app_dispatch_action`.
+    /// Swift owns only raw user intent: it encodes the `ChirpActionIntent` JSON
+    /// and hands it to the Rust byte doorway `nmp_app_chirp_dispatch_intent_bytes`,
+    /// which does intent → spec → typed-bytes → dispatch entirely in Rust. The
+    /// returned envelope is the same `{correlation_id}` / `{error}` shape
+    /// `DispatchResult.parse(envelope:)` already parses.
     @discardableResult
     func dispatchChirpIntent(_ intent: ChirpActionIntent) -> DispatchResult {
         let intentJson: String
@@ -610,46 +614,56 @@ final class KernelHandle {
         } catch {
             return .failure("failed to encode Chirp action intent: \(error.localizedDescription)")
         }
-        let specJson: String? = intentJson.withCString { intentPtr in
-            guard let ptr = nmp_app_chirp_action_spec(intentPtr) else {
+        let envelope: String? = intentJson.withCString { intentPtr in
+            guard let ptr = nmp_app_chirp_dispatch_intent_bytes(raw, intentPtr) else {
                 return nil
             }
             defer { nmp_free_string(ptr) }
             return String(cString: ptr)
         }
-        guard let specJson else {
-            return .failure("action spec builder returned a null envelope")
+        guard let envelope else {
+            return .failure("dispatch returned a null envelope")
         }
-        let spec: ChirpActionSpecEnvelope
-        do {
-            guard let data = specJson.data(using: .utf8) else {
-                return .failure("action spec envelope was not UTF-8")
-            }
-            spec = try JSONDecoder().decode(ChirpActionSpecEnvelope.self, from: data)
-        } catch {
-            return .failure("failed to decode action spec envelope: \(error.localizedDescription)")
-        }
-        if let error = spec.error {
-            return .failure(error)
-        }
-        guard let namespace = spec.namespace, let bodyJson = spec.bodyJson,
-              !namespace.isEmpty, !bodyJson.isEmpty else {
-            return .failure("action spec envelope missing dispatch fields")
-        }
-        return dispatchRawAction(namespace: namespace, bodyJson: bodyJson)
+        return DispatchResult.parse(envelope: envelope)
     }
 
-    /// Generic dispatch entry-point keyed on a kernel-supplied
-    /// `ProfileDispatchSpec`. The shell does NOT pick the namespace or build
-    /// the body — Rust authored both inside `profile_action_for` (aim.md
-    /// §2 #4: writes flow through registered ActionModules, the shell binds
-    /// blindly). `bodyJson` is the verbatim string the executor validates,
-    /// passed straight to `nmp_app_dispatch_action` without re-serialisation.
+    /// Dispatch a verbatim `(namespace, bodyJson)` pair through the JSON action
+    /// doorway `nmp_app_dispatch_action`. The shell does NOT pick the namespace
+    /// or build the body — Rust authored both (aim.md §2 #4: writes flow through
+    /// registered ActionModules, the shell binds blindly). `bodyJson` is passed
+    /// straight through without re-serialisation.
+    ///
+    /// This path is retained for the not-yet-typed `nmp.marmot` namespace, which
+    /// has no byte-doorway encoder (`MarmotBridge` is the sole caller; #1782
+    /// leaves it on JSON pending the Marmot typed-action work). Typed namespaces
+    /// route through `dispatchRawActionBytes` / the intent doorway instead.
     @discardableResult
     func dispatchRawAction(namespace: String, bodyJson: String) -> DispatchResult {
         let envelope: String? = bodyJson.withCString { jsonPtr in
             namespace.withCString { nsPtr in
                 guard let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) else {
+                    return nil
+                }
+                defer { nmp_free_string(ptr) }
+                return String(cString: ptr)
+            }
+        }
+        guard let envelope else {
+            return .failure("dispatch returned a null envelope")
+        }
+        return DispatchResult.parse(envelope: envelope)
+    }
+
+    /// Dispatch a verbatim `(namespace, bodyJson)` pair through the Chirp byte
+    /// doorway `nmp_app_chirp_dispatch_action_bytes`. Rust converts the verbatim
+    /// body to the namespace's typed payload bytes and routes it; only typed
+    /// bytes cross to the kernel (no JSON). For typed namespaces whose body the
+    /// shell already holds as a string. Sole caller: `walletDisconnect`.
+    @discardableResult
+    func dispatchRawActionBytes(namespace: String, bodyJson: String) -> DispatchResult {
+        let envelope: String? = bodyJson.withCString { jsonPtr in
+            namespace.withCString { nsPtr in
+                guard let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) else {
                     return nil
                 }
                 defer { nmp_free_string(ptr) }
@@ -729,8 +743,9 @@ final class KernelHandle {
     // ── NIP-47 Wallet Connect ─────────────────────────────────────────────
     //
     // #1607: the bespoke nmp_app_wallet_* FFI symbols were deleted (D11 —
-    // one action door). All three operations now route through
-    // nmp_app_dispatch_action. The bolt11 double-tap guard lives inside
+    // one action door). All three operations now route through the Chirp
+    // byte doorway (nmp_app_chirp_dispatch_action_bytes). The bolt11
+    // double-tap guard lives inside
     // WalletPayInvoiceModule (nmp-nip47); a duplicate tap returns a
     // Conflict rejection which is surfaced as a DispatchResult.failure below
     // rather than a silent no-op. The caller (WalletViewModel) may check
@@ -748,8 +763,8 @@ final class KernelHandle {
     /// Disconnect the current NIP-47 wallet (fire-and-forget).
     @discardableResult
     func walletDisconnect() -> DispatchResult {
-        dispatchRawAction(namespace: "nmp.wallet.disconnect",
-                          bodyJson: "\"Disconnect\"")
+        dispatchRawActionBytes(namespace: "nmp.wallet.disconnect",
+                               bodyJson: "\"Disconnect\"")
     }
 
     /// Pay a Lightning invoice. Returns a `DispatchResult` with the

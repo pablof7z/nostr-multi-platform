@@ -46,13 +46,13 @@ fun KernelModel.cancelPublish(correlationId: String) {
 
 /** Connect a NIP-47 wallet via NWC URI. [actionJson] = {"Connect":{"uri":"nostr+walletconnect://..."}} */
 fun KernelModel.dispatchWalletConnect(actionJson: String) {
-    val response = bridge.dispatchAction("nmp.wallet.connect", actionJson)
+    val response = bridge.dispatchActionBytes("nmp.wallet.connect", actionJson)
     Log.d(TAG, "wallet connect response: $response")
 }
 
 /** Disconnect the current NIP-47 wallet. */
 fun KernelModel.dispatchWalletDisconnect() {
-    val response = bridge.dispatchAction("nmp.wallet.disconnect", "\"Disconnect\"")
+    val response = bridge.dispatchActionBytes("nmp.wallet.disconnect", "\"Disconnect\"")
     Log.d(TAG, "wallet disconnect response: $response")
 }
 

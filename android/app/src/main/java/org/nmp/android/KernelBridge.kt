@@ -116,20 +116,33 @@ class KernelBridge {
     }
 
     /**
-     * Dispatch a named action through the action registry.
-     *
-     * Returns the parsed Rust dispatch envelope:
-     * * `Accepted(correlation_id)` — the action was accepted and assigned
-     *   a correlation id.
-     * * `Failure(message)` — the action was rejected, the handle is null, or
-     *   Rust returned a malformed envelope.
+     * Dispatch a named action through the action registry (JSON doorway).
+     * Returns `Accepted(correlation_id)` or `Failure(message)` on reject / null
+     * handle / malformed envelope. `nmp.marmot.*` (no byte encoder yet) uses this.
      */
     fun dispatchAction(namespace: String, actionJson: String): DispatchResult =
-        if (handle != 0L) {
-            DispatchResult.parse(nativeDispatchAction(handle, namespace, actionJson))
-        } else {
-            DispatchResult.Failure("dispatch returned a null handle")
-        }
+        if (handle != 0L) DispatchResult.parse(nativeDispatchAction(handle, namespace, actionJson))
+        else DispatchResult.Failure("dispatch returned a null handle")
+
+    /**
+     * Typed direct-path dispatch through the Rust byte doorway. Rust converts
+     * the verbatim body JSON to typed bytes; Kotlin passes the SAME strings as
+     * [dispatchAction], only the JNI method differs. Used by namespaces with a
+     * Rust byte encoder (wallet, NIP-65 / NIP-17 relay lists).
+     */
+    fun dispatchActionBytes(namespace: String, actionJson: String): DispatchResult =
+        if (handle != 0L) DispatchResult.parse(nativeDispatchActionBytes(handle, namespace, actionJson))
+        else DispatchResult.Failure("dispatch returned a null handle")
+
+    /**
+     * Typed Chirp action-intent dispatch through the Rust byte doorway. Takes
+     * the SAME `ChirpActionIntent` JSON the host built for the action spec; Rust
+     * does intent → typed-bytes → byte dispatch in ONE call (collapsing the
+     * former two-step round-trip). Same envelope shape as [dispatchAction].
+     */
+    fun dispatchIntentBytes(intentJson: String): DispatchResult =
+        if (handle != 0L) DispatchResult.parse(nativeDispatchIntentBytes(handle, intentJson))
+        else DispatchResult.Failure("dispatch returned a null handle")
 
     /**
      * Acknowledge a terminal `action_stages` entry after the host has reacted.
@@ -143,15 +156,6 @@ class KernelBridge {
     fun loadOlderFeed(feedKey: String) {
         if (handle != 0L) nativeLoadOlderFeed(handle, feedKey)
     }
-
-    /**
-     * Build a Chirp action dispatch spec from typed user intent.
-     *
-     * Returns `{"namespace":"...","body_json":"..."}` on success or
-     * `{"error":"..."}` on malformed intent. Kotlin passes user input only;
-     * Rust owns the action envelope and namespace.
-     */
-    fun buildActionSpec(intentJson: String): String = nativeBuildActionSpec(intentJson)
 
     /**
      * Open a thread by note ID. Rust registers `nmp.feed.thread.<noteId>` and
@@ -424,6 +428,8 @@ class KernelBridge {
     )
     internal external fun nativeReleaseRef(handle: Long, namespace: Int, key: String, consumerId: String)
     private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
+    private external fun nativeDispatchActionBytes(handle: Long, namespace: String, actionJson: String): String
+    private external fun nativeDispatchIntentBytes(handle: Long, intentJson: String): String
     private external fun nativeAckActionStage(handle: Long, correlationId: String)
     // Outbox control-plane (parity GAP 4). `internal` so the cohesive
     // [retryPublish]/[cancelPublish] wrappers can live in the sibling
