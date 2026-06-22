@@ -43,7 +43,9 @@ impl ActionPayload for ZapInput {
         let mut fbb = flatbuffers::FlatBufferBuilder::new();
 
         let recipient_pubkey = fbb.create_string(&self.recipient_pubkey);
-        // Optional fields: empty string = absent (nip25 optional-string-as-empty convention).
+        // Optional fields: write the string when present, omit the field when None.
+        // Presence is preserved on decode; `start()` is responsible for domain
+        // validation (e.g. rejecting an empty lnurl).
         let lnurl = self
             .lnurl
             .as_deref()
@@ -100,20 +102,18 @@ impl ActionPayload for ZapInput {
         // it is present; we still surface a Malformed rather than panic.
         let recipient_pubkey = root.recipient_pubkey().to_string();
 
-        // Optional string fields: None when the field is absent in the buffer.
-        let lnurl = root.lnurl().and_then(|s| {
-            if s.is_empty() { None } else { Some(s.to_string()) }
-        });
+        // Optional string fields: preserve FlatBuffers field presence verbatim.
+        // `None` when the field is absent (not written); `Some(s)` — including
+        // `Some("")` — when it IS present. Preserving presence lets `start()`
+        // apply the domain validation (e.g. rejecting an explicitly-empty `lnurl`)
+        // without the decode layer silently masking invalid inputs.
+        let lnurl = root.lnurl().map(str::to_string);
         let relays: Vec<String> = root
             .relays()
             .map(|v| v.iter().map(str::to_string).collect())
             .unwrap_or_default();
-        let target_event_id = root.target_event_id().and_then(|s| {
-            if s.is_empty() { None } else { Some(s.to_string()) }
-        });
-        let comment = root.comment().and_then(|s| {
-            if s.is_empty() { None } else { Some(s.to_string()) }
-        });
+        let target_event_id = root.target_event_id().map(str::to_string);
+        let comment = root.comment().map(str::to_string);
 
         Ok(ZapInput {
             recipient_pubkey,

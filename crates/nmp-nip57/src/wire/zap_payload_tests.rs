@@ -55,6 +55,29 @@ fn zap_round_trips_with_relays_no_target() {
     assert_eq!(decoded, action);
 }
 
+/// An explicitly-present but empty `lnurl` string must survive the encode→decode
+/// round-trip as `Some("")`, not collapse to `None`. Field presence preservation
+/// ensures `ZapAction::start` can reject the empty value rather than the decode
+/// layer silently bypassing validation.
+#[test]
+fn empty_lnurl_preserves_presence_through_round_trip() {
+    let action = ZapInput {
+        recipient_pubkey: "a".repeat(64),
+        amount_msats: 1_000,
+        lnurl: Some("".to_string()), // explicitly empty — start() must reject this
+        relays: vec![],
+        target_event_id: None,
+        comment: None,
+    };
+    let decoded = ZapInput::decode(&action.encode()).expect("round-trip decodes");
+    // Presence MUST be preserved: decode returns Some(""), not None.
+    assert_eq!(
+        decoded.lnurl.as_deref(),
+        Some(""),
+        "empty lnurl must survive as Some(\"\"), not collapse to None"
+    );
+}
+
 #[test]
 fn wrong_schema_version_is_rejected() {
     // Hand-build a ZapPayload with a bogus schema_version.
