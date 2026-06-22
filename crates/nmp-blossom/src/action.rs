@@ -9,7 +9,9 @@
 //! from `action_results[correlation_id].result`. No HTTP, base64, header
 //! construction, or sign-for-return in app code.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -50,6 +52,12 @@ pub struct UploadAction;
 impl ActionModule for UploadAction {
     const NAMESPACE: &'static str = "nmp.blossom.upload";
     type Action = UploadInput;
+
+    /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<UploadInput as ActionPayload>::decode(bytes))
+    }
 
     /// Validate the upload request. Rejects:
     /// - empty `file_path`
@@ -143,7 +151,8 @@ mod tests {
 
     fn run_execute(input: UploadInput) -> Vec<ActorCommand> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        UploadAction.execute(input, "cid-blossom", &|cmd| captured.borrow_mut().push(cmd))
+        UploadAction
+            .execute(input, "cid-blossom", &|cmd| captured.borrow_mut().push(cmd))
             .expect("execute succeeds");
         captured.into_inner()
     }
