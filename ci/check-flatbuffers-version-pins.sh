@@ -66,15 +66,34 @@ no_stale_kotlin_gradle_pin "apps/nmp-gallery/android/app/build.gradle.kts"
 require_line "web/chirp/package.json" "\"flatbuffers\": \"^${FLATC_PIN_TS}\""
 require_line "web/nmp-gallery/package.json" "\"flatbuffers\": \"^${FLATC_PIN_TS}\""
 require_line "web/packages/runtime-web/package.json" "\"flatbuffers\": \"^${FLATC_PIN_TS}\""
-# The lockfile is npm-derived from those manifests, but a hand-edit could leave a
-# stale flatbuffers version behind: assert NO flatbuffers reference (the `^…`
-# spec lines, the resolved `version`, or the registry tarball URL) names anything
-# other than the TS pin.
-lock_stale="$(grep -nE 'flatbuffers' web/package-lock.json \
+# The lockfile is npm-derived from those manifests. It MUST exist and be
+# readable (a missing lockfile is a drifted surface, not a pass), and it MUST
+# resolve the `node_modules/flatbuffers` package to the TS pin. Read it via
+# REPO_ROOT so an absolute-path invocation from any cwd checks the right file.
+LOCKFILE="web/package-lock.json"
+if [[ ! -r "${REPO_ROOT}/${LOCKFILE}" ]]; then
+    echo "flatbuffers-version-pins: ${LOCKFILE} is missing or unreadable" >&2
+    echo "  (the npm lockfile is a pinned surface — it must exist; run npm install)" >&2
+    exit 1
+fi
+# Positive assertion: the resolved flatbuffers package entry MUST pin the TS
+# version. Without this, an empty/stale lockfile would pass the no-stale scan
+# vacuously.
+if ! grep -Fq "\"version\": \"${FLATC_PIN_TS}\"" \
+        <(awk '/"node_modules\/flatbuffers": \{/{f=1} f{print} f&&/\}/{f=0}' "${REPO_ROOT}/${LOCKFILE}"); then
+    echo "flatbuffers-version-pins: ${LOCKFILE} does not resolve flatbuffers to the TS pin" >&2
+    echo "  (expected node_modules/flatbuffers \"version\": \"${FLATC_PIN_TS}\")" >&2
+    echo "  (re-run npm install after bumping ci/flatc-pins.sh + the package.json files)" >&2
+    exit 1
+fi
+# No-stale scan: assert NO flatbuffers reference (the `^…` spec lines, the
+# resolved `version`, or the registry tarball URL) names anything other than the
+# TS pin.
+lock_stale="$(grep -nE 'flatbuffers' "${REPO_ROOT}/${LOCKFILE}" \
     | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' \
     | grep -vF "${FLATC_PIN_TS}" || true)"
 if [[ -n "${lock_stale}" ]]; then
-    echo "flatbuffers-version-pins: web/package-lock.json has a flatbuffers version" >&2
+    echo "flatbuffers-version-pins: ${LOCKFILE} has a flatbuffers version" >&2
     echo "that is not the TS pin (${FLATC_PIN_TS}):" >&2
     echo "${lock_stale}" | sed 's/^/  /' >&2
     echo "  (re-run npm install after bumping ci/flatc-pins.sh + the package.json files)" >&2
