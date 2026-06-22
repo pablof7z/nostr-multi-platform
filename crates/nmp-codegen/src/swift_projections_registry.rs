@@ -775,9 +775,10 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             // `groups`/`pendingWelcomes` plus the `keyPackage` sub-table; every
             // `has_*` companion bool maps the optional `String?`/`UInt32?`/`UInt64?`
             // (nil when absent) so the typed value is byte-identical to the JSON
-            // path's `null`. The wire's `orphanedCommitCount`/`keyringUnavailable`
-            // diagnostics are NOT carried by the Chirp `MarmotSnapshot` domain type
-            // — the JSON `Decodable` drops them too (field-subset, not divergence).
+            // path's `null`. The wire's `orphanedCommitCount` diagnostic is NOT
+            // carried by the Chirp `MarmotSnapshot` domain type; #1651 the
+            // `initErrorKind`/`initErrorDetail` service-init diagnostic (which
+            // replaced the former `keyringUnavailable` bool) IS now carried.
             // Consumed by `MarmotStore.apply` via the `KernelModel.swift` fan-out
             // (`result.typedMarmotSnapshot ?? update.projections?.marmotSnapshot`).
             // See `TypedProjectionGlue.marmotSnapshot`.

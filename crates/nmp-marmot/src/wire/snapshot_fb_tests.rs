@@ -14,11 +14,10 @@
 //! the marmot-specific schema identity + encode/decode round-trip on populated,
 //! nested, Option-bearing data (the wallet/wot template pattern).
 
-use super::{
-    decode_marmot_snapshot, typed_projection, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION,
-};
+use super::{decode_marmot_snapshot, typed_projection, FILE_IDENTIFIER, SCHEMA_ID, SCHEMA_VERSION};
 use crate::projection::payload::{
-    KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotSnapshot, PendingOpRow, PendingWelcomeRow,
+    KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotInitError, MarmotSnapshot, PendingOpRow,
+    PendingWelcomeRow,
 };
 
 /// A fully-populated snapshot exercising every nested vector and `Option`
@@ -61,7 +60,7 @@ fn populated() -> MarmotSnapshot {
         cached_kp_pubkeys: vec!["2".repeat(64), "3".repeat(64)],
         is_registered: true,
         orphaned_commit_count: 3,
-        keyring_unavailable: false,
+        init_error: None,
         pending_ops: vec![PendingOpRow {
             correlation_id: "corr-test-1".to_string(),
             op_tag: "create_group".to_string(),
@@ -88,7 +87,10 @@ fn typed_projection_carries_schema_identity_and_round_trips_populated() {
     assert_eq!(entry.schema_id, "nmp.marmot.snapshot");
     assert_eq!(entry.schema_version, SCHEMA_VERSION);
     assert_eq!(entry.file_identifier, "NMMS");
-    assert_eq!(String::from_utf8_lossy(FILE_IDENTIFIER).into_owned(), "NMMS");
+    assert_eq!(
+        String::from_utf8_lossy(FILE_IDENTIFIER).into_owned(),
+        "NMMS"
+    );
     assert!(
         !entry.payload.is_empty(),
         "the typed sidecar payload must carry the encoded snapshot bytes"
@@ -188,15 +190,25 @@ fn pending_ops_round_trip_and_absent_last_op_error_is_none() {
 
     let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
         .expect("pending_ops snapshot must decode");
-    assert_eq!(decoded.pending_ops.len(), 2, "both pending ops must survive round-trip");
+    assert_eq!(
+        decoded.pending_ops.len(),
+        2,
+        "both pending ops must survive round-trip"
+    );
     assert_eq!(decoded.pending_ops[0].correlation_id, "cid-a");
     assert_eq!(decoded.pending_ops[0].op_tag, "create_group");
     assert_eq!(decoded.pending_ops[0].missing_count, 1);
-    assert_eq!(decoded.pending_ops[0].age_secs, 5, "age_secs must round-trip");
+    assert_eq!(
+        decoded.pending_ops[0].age_secs, 5,
+        "age_secs must round-trip"
+    );
     assert_eq!(decoded.pending_ops[1].correlation_id, "cid-b");
     assert_eq!(decoded.pending_ops[1].missing_count, 3);
     assert_eq!(decoded.pending_ops[1].age_secs, 45);
-    assert_eq!(decoded.last_op_error, None, "None last_op_error must remain None");
+    assert_eq!(
+        decoded.last_op_error, None,
+        "None last_op_error must remain None"
+    );
     assert_eq!(decoded, snapshot);
 }
 
@@ -213,7 +225,10 @@ fn empty_pending_ops_and_present_last_op_error_round_trip() {
 
     let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
         .expect("snapshot with last_op_error must decode");
-    assert!(decoded.pending_ops.is_empty(), "empty pending_ops must round-trip as empty");
+    assert!(
+        decoded.pending_ops.is_empty(),
+        "empty pending_ops must round-trip as empty"
+    );
     let err = decoded
         .last_op_error
         .clone()
@@ -230,10 +245,66 @@ fn absent_last_op_error_round_trips_as_none() {
     let mut snapshot = populated();
     snapshot.last_op_error = None;
 
-    let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
-        .expect("must decode");
+    let decoded =
+        decode_marmot_snapshot(&typed_projection(&snapshot).payload).expect("must decode");
     assert_eq!(
         decoded.last_op_error, None,
         "an absent LastOpError table must decode to None"
     );
+}
+
+// ─── #1651: init_error (keyring/MLS-DB) carried as raw-token wire pair ────────
+
+/// #1651: `init_error` round-trips for every variant through the
+/// `init_error_kind` / `init_error_detail` raw-token strings — None,
+/// KeyringUnavailable (kind only), and DbKeyLost (kind + detail).
+#[test]
+fn init_error_round_trips_none_keyring_and_db_key_lost() {
+    // None — the healthy registration. `init_error_kind == ""`.
+    let mut snapshot = populated();
+    snapshot.init_error = None;
+    let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
+        .expect("None init_error must decode");
+    assert_eq!(decoded.init_error, None, "empty kind must decode to None");
+    assert_eq!(decoded, snapshot);
+
+    // KeyringUnavailable — kind token only, no detail.
+    snapshot.init_error = Some(MarmotInitError::KeyringUnavailable);
+    let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
+        .expect("KeyringUnavailable must decode");
+    assert_eq!(
+        decoded.init_error,
+        Some(MarmotInitError::KeyringUnavailable)
+    );
+    assert_eq!(decoded, snapshot);
+
+    // DbKeyLost — kind token + raw detail string (#1651 the lost-MLS-DB-key case).
+    let detail = "Database exists at '/x.sqlite' but no encryption key found in keyring \
+                  (service='svc', key='marmot-mls-db-key')."
+        .to_string();
+    snapshot.init_error = Some(MarmotInitError::DbKeyLost {
+        detail: detail.clone(),
+    });
+    let decoded = decode_marmot_snapshot(&typed_projection(&snapshot).payload)
+        .expect("DbKeyLost must decode");
+    assert_eq!(
+        decoded.init_error,
+        Some(MarmotInitError::DbKeyLost { detail }),
+        "DbKeyLost detail must survive the raw-token round-trip"
+    );
+    assert_eq!(decoded, snapshot);
+
+    // Other — kind token + raw detail (any non-key-loss service-init failure).
+    let detail = "disk I/O error: No space left on device".to_string();
+    snapshot.init_error = Some(MarmotInitError::Other {
+        detail: detail.clone(),
+    });
+    let decoded =
+        decode_marmot_snapshot(&typed_projection(&snapshot).payload).expect("Other must decode");
+    assert_eq!(
+        decoded.init_error,
+        Some(MarmotInitError::Other { detail }),
+        "Other detail must survive the raw-token round-trip"
+    );
+    assert_eq!(decoded, snapshot);
 }

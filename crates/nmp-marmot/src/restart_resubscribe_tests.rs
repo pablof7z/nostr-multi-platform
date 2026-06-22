@@ -27,7 +27,7 @@
 //! require a live kernel — the cache is consulted by every outbound publish
 //! and by `subscribe_group_messages` itself.
 
-use mdk_core::prelude::{GroupId, NostrGroupConfigData};
+use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::{Keys, RelayUrl};
 
@@ -35,8 +35,7 @@ use crate::projection::state::MarmotProjection;
 use crate::service::MarmotService;
 
 fn file_backed_service(path: &str, keys: Keys) -> MarmotService {
-    let storage =
-        MdkSqliteStorage::new_unencrypted(path).expect("file-backed mls storage");
+    let storage = MdkSqliteStorage::new_unencrypted(path).expect("file-backed mls storage");
     MarmotService::from_storage(storage, keys, Default::default())
 }
 
@@ -88,9 +87,7 @@ fn group_relays_read_seam_round_trips_after_create() {
     let group_id = &group.mls_group_id;
 
     // The `MarmotService::group_relays` read seam must return the configured relay.
-    let relays = alice
-        .group_relays(group_id)
-        .expect("group_relays read");
+    let relays = alice.group_relays(group_id).expect("group_relays read");
     assert!(
         !relays.is_empty(),
         "group_relays must be non-empty after create_group with explicit relays"
@@ -152,9 +149,7 @@ fn resubscribe_all_groups_seeds_relay_cache_after_restart() {
         group_id_hex = hex_encode(group_id.as_slice());
 
         // Verify the relay persisted in session 1 before we drop it.
-        let relays = alice
-            .group_relays(group_id)
-            .expect("session1 group_relays");
+        let relays = alice.group_relays(group_id).expect("session1 group_relays");
         assert!(
             !relays.is_empty(),
             "session 1: group_relays must be non-empty before restart"
@@ -174,7 +169,7 @@ fn resubscribe_all_groups_seeds_relay_cache_after_restart() {
         // `null` app — no live kernel; `subscribe_group_messages` will no-op
         // on the `app()` guard (`None` for null pointer). We assert the cache
         // instead (the observable proxy that does not require a live kernel).
-        let proj2 = MarmotProjection::new(alice2, false);
+        let proj2 = MarmotProjection::new(alice2, None);
 
         // Before resubscribe: the in-memory group_relays cache must be EMPTY.
         // (This was the bug — the cache was never seeded on restart.)
@@ -210,12 +205,15 @@ fn resubscribe_all_groups_seeds_relay_cache_after_restart() {
 fn resubscribe_all_groups_is_noop_on_fresh_store() {
     let alice_keys = Keys::generate();
     let service = in_memory_service(alice_keys);
-    let proj = MarmotProjection::new(service, false);
+    let proj = MarmotProjection::new(service, None);
     // Must not panic and must complete without error.
     proj.resubscribe_all_groups();
     // Snapshot must still be empty and valid.
     let snap = proj.snapshot(0);
-    assert!(snap.groups.is_empty(), "fresh store: groups must be empty after resubscribe");
+    assert!(
+        snap.groups.is_empty(),
+        "fresh store: groups must be empty after resubscribe"
+    );
 }
 
 /// Verify idempotency: calling `resubscribe_all_groups` twice must produce the
@@ -245,14 +243,16 @@ fn resubscribe_all_groups_is_idempotent() {
             vec![group_relay()],
             vec![alice_keys.public_key()],
         );
-        let (group, pending) = alice.create_group(vec![bob_kp.event_30443], config).unwrap();
+        let (group, pending) = alice
+            .create_group(vec![bob_kp.event_30443], config)
+            .unwrap();
         pending.commit().unwrap();
         group_id_hex = hex_encode(group.mls_group_id.as_slice());
     }
 
     // Session 2: call resubscribe twice; relay set must be the same.
     let alice2 = file_backed_service(db_path_str, alice_keys);
-    let proj2 = MarmotProjection::new(alice2, false);
+    let proj2 = MarmotProjection::new(alice2, None);
 
     proj2.resubscribe_all_groups();
     let after_first = proj2

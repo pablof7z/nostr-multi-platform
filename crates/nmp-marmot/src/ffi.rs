@@ -101,30 +101,23 @@ const DEFAULT_MESSAGE_PAGE: usize = 200;
 /// The service-id (app-scoped namespace) is caller-supplied (D0 #1606).
 pub(crate) const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 
-/// Clearable slot for the two Marmot push-projection closures (ADR-0039).
-///
-/// The closures registered via `register_snapshot_projection` capture this slot
-/// and read from it on every tick. When `nmp_marmot_unregister` tears down the
-/// handle, it clears the slot to `None` so the closures emit empty objects for
-/// the snapshot frame while the next `register_with_keys` (account switch) has
-/// not yet replaced them. A new `register_with_keys` installs a fresh `Arc` into
-/// this slot AND replaces the closures by key — both legs handle the switch.
-///
-/// The slot is `Send + Sync` because it is an `Arc<Mutex<_>>`. The closure
-/// captures it by `Arc::clone`, runs on the actor thread, and reads under a lock.
-pub type MarmotProjectionSlot = Arc<Mutex<Option<Arc<MarmotProjection>>>>;
+mod slot;
+use slot::register_marmot_snapshot_projections;
+pub use slot::{MarmotProjectionSlot, MarmotSlotState};
 
 /// Opaque handle returned by the registration entry points. Boxed so the
 /// address is stable; Swift holds the raw pointer until
 /// [`nmp_marmot_unregister`].
 pub struct MarmotHandle {
     projection: Arc<MarmotProjection>,
-    /// Shared slot the push-projection closures read from (ADR-0039, V-107).
-    /// Cleared in `nmp_marmot_unregister` so the closures emit empty objects
-    /// until the next account registers. On account switch the new
-    /// `register_with_keys` both replaces the closures by key AND updates the
-    /// slot — the replace-by-key path alone already suffices for the re-register
-    /// case; the slot clear handles sign-out-without-re-register.
+    /// Shared slot the push-projection closures read from (ADR-0039, V-107,
+    /// #1651). Set to [`MarmotSlotState::Cleared`] in `nmp_marmot_unregister` so
+    /// the closures emit nothing until the next account registers. On account
+    /// switch the new `register_with_keys` both replaces the closures by key AND
+    /// installs a fresh `Ready` slot — the replace-by-key path alone already
+    /// suffices for the re-register case; the slot clear handles
+    /// sign-out-without-re-register. (`InitFailed` registrations have no handle,
+    /// so they do not own a `MarmotHandle::projection_slot`.)
     projection_slot: MarmotProjectionSlot,
     /// Lossy `KernelEvent` observer (key-package metadata tracker — see
     /// `MarmotProjection::on_kernel_event`). Torn down in `unregister`.
@@ -242,10 +235,12 @@ impl MarmotHandle {
         // for the typed `HostOpCommand` pipeline, which supplies an id.
         self.projection
             .with_inner(|h| crate::projection::ops::dispatch(h, action, now_secs(), None))
-            .unwrap_or_else(|| json!({
-                "ok": false,
-                "error": "projection mutex poisoned",
-            }))
+            .unwrap_or_else(|| {
+                json!({
+                    "ok": false,
+                    "error": "projection mutex poisoned",
+                })
+            })
     }
 }
 
@@ -275,14 +270,16 @@ fn now_secs() -> u64 {
 ///
 /// The corrected policy:
 /// - If `initialize()` chose the real Keychain (`use_mock = false`) and
-///   `MarmotService::new` fails, return null. The host observes the null
-///   handle and may surface a recovery prompt or retry.
+///   `MarmotService::new` fails, return a null handle. #1651: the failure is no
+///   longer stderr-only — the `nmp.marmot.snapshot` projection is registered
+///   with a degraded `MarmotInitError::DbKeyLost` slot so the host observes the
+///   error as kernel state and may surface a recovery prompt or retry.
 /// - If `initialize()` already chose the mock store (`use_mock = true`)
-///   the service init failing is also fatal (return null).
+///   the service init failing is also fatal (same `DbKeyLost` surfacing).
 /// - The mock store is ONLY legitimately installed when `initialize()` chose
 ///   it (non-Apple platform or Apple platform with no Keychain entitlement).
-///   In that case `keyring_unavailable = true` is set on the projection so
-///   the snapshot surfaces the diagnostic to the host.
+///   In that case the SUCCESS path sets `MarmotInitError::KeyringUnavailable`
+///   on the projection so the snapshot surfaces the diagnostic to the host.
 ///
 /// `keyring_service_id` — app-owned namespace for the MLS DB encryption key
 /// (D0 #1606: the reusable crate must not embed a Chirp-specific string).
@@ -295,29 +292,49 @@ pub(crate) fn register_with_keys(
     // Capability slot for the probe (rationale in `credential_store::initialize`).
     // SAFETY: both callers null-check `app` before delegating here.
     let capability_slot = unsafe { &*app }.capability_callback_slot();
-    let Some(use_mock) =
-        crate::credential_store::initialize(capability_slot, keyring_service_id)
+    let Some(use_mock) = crate::credential_store::initialize(capability_slot, keyring_service_id)
     else {
         return std::ptr::null_mut();
     };
 
     // V-62: `use_mock` is `true` only when `initialize()` chose the mock store
-    // (env hatch / probe failure); surfaced as `keyring_unavailable`.
-    let service = match MarmotService::new(db_path, keyring_service_id, KEYRING_DB_KEY_ID, keys.clone()) {
-        Ok(s) => s,
-        Err(e) => {
-            // Both the real-keyring path and the already-mock path are hard
-            // failures here. The old code silently installed the mock store
-            // when the real keyring failed (`!use_mock` branch) — that was
-            // the V-62 silent durability loss. We now return null on all
-            // service-init failures so the host observes the error.
-            eprintln!(
-                "nmp-marmot: keyring/service init failed (use_mock={use_mock}): {e}; \
-                 returning null handle — host must surface MarmotInitError::KeyringUnavailable"
-            );
-            return std::ptr::null_mut();
-        }
-    };
+    // (env hatch / probe failure); surfaced as `MarmotInitError::KeyringUnavailable`
+    // on the success path below.
+    let service =
+        match MarmotService::new(db_path, keyring_service_id, KEYRING_DB_KEY_ID, keys.clone()) {
+            Ok(s) => s,
+            Err(e) => {
+                // #1651: `MarmotService::new` failed — typically the encrypted MLS
+                // SQLite DB exists but its keyring encryption key was lost
+                // ("Database exists … but no encryption key found in keyring …"),
+                // so no usable service exists. Classify every service-init `Err` as
+                // `DbKeyLost{detail}` (the keyring-UNAVAILABLE case is a SUCCESS path
+                // with the mock store — `use_mock` below — never an `Err` here).
+                //
+                // Instead of returning a bare null handle (the failure was previously
+                // stderr-only), register the `nmp.marmot.snapshot` projection against
+                // the kernel with a degraded `InitFailed` slot so the failure surfaces
+                // as kernel-owned typed state the shells render. The handle is still
+                // null (no usable service), but the state is now visible AND a later
+                // `register_with_keys` (the user recovered the key) replaces it.
+                // Classify: the lost-encryption-key case (the recoverability /
+                // permanent-data-loss problem) is surfaced as `DbKeyLost`; every
+                // OTHER service-init failure (disk full, unwritable path, …) is
+                // `Other`, so the shell does NOT show the scary "data is
+                // unrecoverable" copy for a benign/transient error.
+                let init_error = slot::classify_service_init_error(&e.to_string());
+                eprintln!(
+                    "nmp-marmot: service init failed (use_mock={use_mock}): {e}; \
+                 surfacing {init_error:?} in nmp.marmot.snapshot, returning null handle"
+                );
+                // SAFETY: caller guarantees `app` is non-null and valid.
+                let app_ref = unsafe { &*app };
+                let slot: MarmotProjectionSlot =
+                    Arc::new(Mutex::new(MarmotSlotState::InitFailed(init_error)));
+                register_marmot_snapshot_projections(app_ref, &slot);
+                return std::ptr::null_mut();
+            }
+        };
 
     // Step 1: register the substrate-generic `MarmotActionModule` against
     // the kernel's action registry. This is the SOLE host entry point
@@ -338,11 +355,14 @@ pub(crate) fn register_with_keys(
 
     // SAFETY: caller guarantees `app` is non-null and valid.
     let app_ref = unsafe { &*app };
-    // V-62: pass `use_mock` as `keyring_unavailable` so the projection
-    // surfaces the diagnostic in every snapshot. The host reads
-    // `snapshot.keyring_unavailable` and may block group features or prompt
-    // the user to resolve the Keychain issue.
-    let projection = Arc::new(MarmotProjection::new(service, use_mock));
+    // V-62 / #1651: when `initialize()` chose the in-memory mock store
+    // (`use_mock == true`) the service works but its secrets are not durable,
+    // so the projection carries `MarmotInitError::KeyringUnavailable` in every
+    // snapshot. The host reads `snapshot.init_error` and may block group
+    // features or prompt the user to resolve the Keychain issue.
+    let init_error =
+        use_mock.then_some(crate::projection::payload::MarmotInitError::KeyringUnavailable);
+    let projection = Arc::new(MarmotProjection::new(service, init_error));
     projection.set_app(app);
 
     // V-107 / ADR-0039: register the two Marmot push projections onto the
@@ -353,65 +373,28 @@ pub(crate) fn register_with_keys(
     // surface in the next pushed frame edge-triggered.
     //
     // **Lifecycle / account-switch correctness (D1, no stale data):**
-    // Closures capture a `MarmotProjectionSlot` (`Arc<Mutex<Option<…>>>`)
+    // Closures capture a `MarmotProjectionSlot` (`Arc<Mutex<MarmotSlotState>>`)
     // rather than a bare `Arc<MarmotProjection>`. The slot mirrors the wallet
     // projection pattern (`wallet_runtime.rs:146`):
-    // - On sign-out (`nmp_marmot_unregister`): the slot is cleared to `None`,
-    //   so the closures emit empty objects until a new account registers.
+    // - On sign-out (`nmp_marmot_unregister`): the slot is set to
+    //   `MarmotSlotState::Cleared`, so the closures emit nothing until a new
+    //   account registers.
     // - On account switch (a new `register_with_keys` call): the closures are
     //   replaced by key (the registry is HashMap::insert / last-writer-wins)
-    //   AND the slot is updated to the new account's projection. Both legs
-    //   handle the switch independently.
+    //   AND a fresh `Ready` slot is installed for the new account. Both legs
+    //   handle the switch independently. #1651: the same path also replaces a
+    //   prior `InitFailed` registration when the user recovers the keyring key.
     //
-    // `register_snapshot_projection` is lock-and-push; calling it here
+    // `register_typed_snapshot_projection` is lock-and-push; calling it here
     // (post-construction, before or after `nmp_app_start`) is the documented
-    // safe pattern (the slot is `Arc<Mutex<_>>`).
+    // safe pattern (the slot is `Arc<Mutex<_>>`). The slot holds `Ready` for a
+    // live service; the SAME `register_marmot_snapshot_projections` helper that
+    // the `InitFailed` path above uses registers both push-projection keys, so
+    // there is one registration code path for every outcome (#1651).
     let projection_slot: MarmotProjectionSlot =
-        Arc::new(Mutex::new(Some(Arc::clone(&projection))));
+        Arc::new(Mutex::new(MarmotSlotState::Ready(Arc::clone(&projection))));
+    register_marmot_snapshot_projections(app_ref, &projection_slot);
 
-    // **`nmp.marmot.snapshot`** (V-107 / ADR-0039): group list / membership /
-    // key-package / pending welcomes. The former pull-symbol `nmp_marmot_snapshot`
-    // was deleted; Swift reads from this push projection on every SnapshotFrame.
-    // Cheap: one lock + MDK SQLite reads, no re-decrypt.
-    {
-        // Typed FlatBuffers sidecar (ADR-0037, Wave A): host with an `NMMS`
-        // decoder prefers this typed payload. The trait→sidecar surface is
-        // proven generically by
-        // `nmp-ffi::snapshot::typed_projection_registered_through_trait_surfaces_in_sidecar`;
-        // the marmot-specific encode/decode round-trip is proven in
-        // `crate::wire::snapshot_fb::tests`. `None` when the slot is absent
-        // (account signed out).
-        let typed_snap_slot = Arc::clone(&projection_slot);
-        app_ref.register_typed_snapshot_projection("nmp.marmot.snapshot", move || {
-            let guard = typed_snap_slot.lock().ok()?;
-            let proj = guard.as_ref()?;
-            Some(crate::wire::snapshot_fb::typed_projection(
-                &proj.snapshot(now_secs()),
-            ))
-        });
-    }
-
-    // **`nmp.marmot.messages`** (V-107 / ADR-0039): the former parameterized
-    // pull-symbol `nmp_marmot_group_messages(group_id_hex)` was deleted; Swift
-    // now reads from this push projection. Projects a JSON object keyed
-    // by `group_id_hex` → newest-N `MarmotMessageRow` array for every joined
-    // group. Logic lives in `MarmotProjection::messages_all_groups_json` (not
-    // inlined here) so it can be exercised by tests independently of the
-    // closure. Cheap: one lock + MDK SQLite reads, no re-decrypt per tick.
-    {
-        // Typed FlatBuffers sidecar (ADR-0037, Wave A) for the messages map.
-        // Drives the structured `messages_all_groups` projection. `None` when
-        // the slot is absent. Round-trip proven in
-        // `crate::wire::messages_fb::tests`.
-        let typed_msgs_slot = Arc::clone(&projection_slot);
-        app_ref.register_typed_snapshot_projection("nmp.marmot.messages", move || {
-            let guard = typed_msgs_slot.lock().ok()?;
-            let proj = guard.as_ref()?;
-            Some(crate::wire::messages_fb::typed_projection(
-                &proj.messages_all_groups(DEFAULT_MESSAGE_PAGE),
-            ))
-        });
-    }
     let observer_id = app_ref
         .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
     if observer_id.0 == 0 {
@@ -451,10 +434,8 @@ pub(crate) fn register_with_keys(
     // A second `register_with_keys` (account switch, re-register) installs
     // a fresh handler over the new projection; `set_host_op_handler`
     // replaces the prior slot entry atomically.
-    app_ref.set_host_op_handler(
-        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&projection)))
-            as Arc<dyn nmp_core::substrate::HostOpHandler>,
-    );
+    app_ref.set_host_op_handler(Arc::new(MarmotMlsOpHandler::new(Arc::clone(&projection)))
+        as Arc<dyn nmp_core::substrate::HostOpHandler>);
 
     // D7: the gift-wrap inbox subscription (kind:1059 `#p` filter, deterministic
     // id, account scope) is protocol policy — it lives in `nmp-marmot`, not in
@@ -576,11 +557,11 @@ pub extern "C" fn nmp_marmot_unregister(handle: *mut MarmotHandle) {
     let boxed = unsafe { Box::from_raw(handle) };
 
     // V-107 / ADR-0039: clear the projection slot so the push-projection
-    // closures (`nmp.marmot.snapshot` / `nmp.marmot.messages`) emit empty
-    // objects for subsequent snapshot frames rather than stale data from
-    // the signed-out account. A D6 no-op if the mutex is poisoned.
+    // closures (`nmp.marmot.snapshot` / `nmp.marmot.messages`) emit nothing
+    // for subsequent snapshot frames rather than stale data from the
+    // signed-out account. A D6 no-op if the mutex is poisoned.
     if let Ok(mut slot) = boxed.projection_slot.lock() {
-        *slot = None;
+        *slot = MarmotSlotState::Cleared;
     }
 
     if !boxed.app.is_null() {
@@ -632,3 +613,6 @@ mod deferred_kp_tests;
 
 #[cfg(test)]
 mod deferred_snapshot_tests;
+
+#[cfg(test)]
+mod init_error_tests;

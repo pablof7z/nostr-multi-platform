@@ -44,6 +44,24 @@ struct GroupsView: View {
 
     private var groupList: some View {
         List {
+            // #1651 service-init failure banner — Rust surfaces a raw machine
+            // token (`initErrorKind`); the shell maps it to copy (aim.md §2).
+            // A minimal diagnostic, not a recovery flow. "" = healthy (no banner).
+            if let initErrorMessage = marmotInitErrorMessage(store.snapshot.initErrorKind) {
+                Section {
+                    HStack(spacing: ChirpSpace.s) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(ChirpColor.danger)
+                        Text(initErrorMessage)
+                            .font(.caption)
+                            .foregroundStyle(ChirpColor.danger)
+                        Spacer()
+                    }
+                    .padding(.vertical, ChirpSpace.xs)
+                }
+                .accessibilityIdentifier("groups-init-error")
+            }
+
             // Last-op-error banner — Rust-owned (op, reason) machine codes mapped
             // to a banner by `bannerText` (aim.md §2 sanctioned mapping). Shown as
             // the first row so it is always visible regardless of scroll position.
@@ -162,6 +180,27 @@ struct GroupsView: View {
             .accessibilityLabel("Find public groups")
             .accessibilityIdentifier("groups-discover-button")
         }
+    }
+}
+
+/// #1651 — map the Rust `initErrorKind` raw token to shell-owned diagnostic
+/// copy (aim.md §2: presentation lives in the shell). `nil` for `""` (healthy)
+/// or any unknown token, so an older/unknown kind degrades to no banner rather
+/// than misleading copy.
+private func marmotInitErrorMessage(_ kind: String) -> String? {
+    switch kind {
+    case "keyring_unavailable":
+        return "Encrypted groups unavailable: the keychain is unavailable, "
+            + "so group secrets are kept in memory only and will be lost on next launch."
+    case "db_key_lost":
+        return "Encrypted groups unavailable: the encrypted message database key "
+            + "was lost; encrypted groups are unavailable."
+    case "init_failed":
+        return "Encrypted groups unavailable: the encrypted message database "
+            + "could not be opened. Free up space or check storage permissions, "
+            + "then relaunch."
+    default:
+        return nil
     }
 }
 

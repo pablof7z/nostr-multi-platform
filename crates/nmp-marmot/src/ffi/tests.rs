@@ -21,8 +21,8 @@ use crate::projection::{ops, state::MarmotProjection};
 use crate::service::MarmotService;
 use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;
-use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::IngestParser;
+use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{JsonUtil, Keys};
 use serde_json::json;
 use std::ffi::{CStr, CString};
@@ -35,7 +35,8 @@ use std::sync::Mutex;
 /// Panics if the JSON is malformed or the signature does not verify — acceptable in
 /// tests where the event was just constructed with real keys.
 fn gift_wrap_to_verified(json: &str) -> VerifiedEvent {
-    let raw: RawEvent = serde_json::from_str(json).expect("gift_wrap_json must deserialize to RawEvent");
+    let raw: RawEvent =
+        serde_json::from_str(json).expect("gift_wrap_json must deserialize to RawEvent");
     VerifiedEvent::try_from_raw(raw).expect("gift_wrap_json must pass Schnorr verification")
 }
 
@@ -95,7 +96,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
     };
 
     // Alice: the projection the FFI symbols drive.
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
 
     // 1. publish_key_package dispatch.
     let r = proj
@@ -104,7 +105,8 @@ fn round_trip_publish_create_snapshot_send_messages() {
                 h,
                 &json!({ "op": "publish_key_package",
                          "relays": ["wss://t.relay"] }),
-                1_000, None,
+                1_000,
+                None,
             )
         })
         .unwrap();
@@ -131,7 +133,8 @@ fn round_trip_publish_create_snapshot_send_messages() {
                     "invitee_npubs": [bob_keys.public_key().to_hex()],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                1_001, None,
+                1_001,
+                None,
             )
         })
         .unwrap();
@@ -159,7 +162,8 @@ fn round_trip_publish_create_snapshot_send_messages() {
                 &json!({ "op": "send",
                          "group_id_hex": group_id_hex,
                          "text": "hello marmot" }),
-                1_003, None,
+                1_003,
+                None,
             )
         })
         .unwrap();
@@ -181,7 +185,7 @@ fn round_trip_publish_create_snapshot_send_messages() {
 
 #[test]
 fn create_group_without_key_packages_reports_seam() {
-    let proj = MarmotProjection::new(in_memory(Keys::generate()), true);
+    let proj = MarmotProjection::new(in_memory(Keys::generate()), None);
     let r = proj
         .with_inner(|h| {
             ops::dispatch(
@@ -192,7 +196,8 @@ fn create_group_without_key_packages_reports_seam() {
                     "relays": ["wss://t.relay"],
                     "invitee_npubs": ["abc"],
                 }),
-                1, None,
+                1,
+                None,
             )
         })
         .unwrap();
@@ -217,7 +222,7 @@ fn create_group_partial_key_package_set_reports_only_missing_invitees() {
         .event_30443
         .as_json();
 
-    let proj = MarmotProjection::new(in_memory(Keys::generate()), true);
+    let proj = MarmotProjection::new(in_memory(Keys::generate()), None);
     let r = proj
         .with_inner(|h| {
             ops::dispatch(
@@ -232,7 +237,8 @@ fn create_group_partial_key_package_set_reports_only_missing_invitees() {
                     ],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                1, None,
+                1,
+                None,
             )
         })
         .unwrap();
@@ -255,7 +261,7 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
         .event_30443
         .as_json();
 
-    let proj = MarmotProjection::new(in_memory(alice_keys), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys), None);
     let group_id_hex = proj
         .with_inner(|h| {
             ops::dispatch(
@@ -265,7 +271,8 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
                     "name": "g",
                     "relays": ["wss://t.relay"],
                 }),
-                1, None,
+                1,
+                None,
             )
         })
         .unwrap()["group_id_hex"]
@@ -286,7 +293,8 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
                     ],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                2, None,
+                2,
+                None,
             )
         })
         .unwrap();
@@ -299,7 +307,7 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
 
 #[test]
 fn unknown_op_and_bad_json_degrade() {
-    let proj = MarmotProjection::new(in_memory(Keys::generate()), true);
+    let proj = MarmotProjection::new(in_memory(Keys::generate()), None);
     let r = proj
         .with_inner(|h| ops::dispatch(h, &json!({ "op": "frobnicate" }), 1, None))
         .unwrap();
@@ -357,7 +365,7 @@ fn ingest_parser_kind_1059_welcome_reaches_service_and_snapshot() {
     let gift_id_hex = gift.id.to_hex();
 
     // Bob's projection + the IngestParser the FFI register path would install.
-    let bob_proj = Arc::new(MarmotProjection::new(bob_service, true));
+    let bob_proj = Arc::new(MarmotProjection::new(bob_service, None));
     let parser = MarmotIngestParser::new(Arc::clone(&bob_proj));
 
     // Pre-condition: no pending welcomes yet.
@@ -394,7 +402,8 @@ fn ingest_parser_kind_1059_welcome_reaches_service_and_snapshot() {
             ops::dispatch(
                 h,
                 &json!({ "op": "ingest_signed_event", "event_json": gift_json }),
-                3, None,
+                3,
+                None,
             )
         })
         .unwrap();
@@ -413,7 +422,7 @@ fn ingest_parser_kind_1059_welcome_reaches_service_and_snapshot() {
 /// (admitted by filter, deliberately skipped by the core).
 #[test]
 fn ingest_parser_unsupported_kind_is_silent() {
-    let proj = Arc::new(MarmotProjection::new(in_memory(Keys::generate()), true));
+    let proj = Arc::new(MarmotProjection::new(in_memory(Keys::generate()), None));
     let parser = MarmotIngestParser::new(Arc::clone(&proj));
 
     // kind:444 is in TAP_KINDS (admitted by the per-kind registrations) but
@@ -456,8 +465,12 @@ fn ingest_parser_kind_1059_coexistence_both_parsers_fire() {
             *self.fired.lock().unwrap() = true;
         }
     }
-    let dm_parser = Arc::new(CapturingParser { fired: Mutex::new(false) });
-    let marmot_parser = Arc::new(CapturingParser { fired: Mutex::new(false) });
+    let dm_parser = Arc::new(CapturingParser {
+        fired: Mutex::new(false),
+    });
+    let marmot_parser = Arc::new(CapturingParser {
+        fired: Mutex::new(false),
+    });
 
     dispatcher.replace_kind_parser(1059, "nip17.dm_inbox", dm_parser.clone());
     dispatcher.replace_kind_parser(1059, MARMOT_INGEST_SLOT, marmot_parser.clone());
@@ -561,7 +574,7 @@ use crate::projection::handler::MarmotMlsOpHandler;
 #[test]
 fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     let alice_keys = Keys::generate();
-    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), true));
+    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), None));
 
     let app = nmp_ffi::nmp_app_new();
     // SAFETY: nmp_app_new never returns null; pointer is valid until nmp_app_free.
@@ -570,8 +583,8 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     // The two-line wiring `register_with_keys` performs for the
     // dispatch_action seam:
     app_mut.register_action(MarmotActionModule);
-    let handler =
-        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::HostOpHandler>;
+    let handler = Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj)))
+        as Arc<dyn nmp_core::substrate::HostOpHandler>;
     app_mut.set_host_op_handler(handler);
     nmp_ffi::nmp_app_start(app, 256, 4);
 
@@ -583,9 +596,11 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     let envelope_json = r#"{"op":"publish_key_package","relays":["wss://t.relay"]}"#;
     let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
     let envelope_c = CString::new(envelope_json).unwrap();
-    let out_ptr =
-        nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
-    assert!(!out_ptr.is_null(), "dispatch_action must return a non-null envelope (D6)");
+    let out_ptr = nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
+    assert!(
+        !out_ptr.is_null(),
+        "dispatch_action must return a non-null envelope (D6)"
+    );
     // SAFETY: the dispatcher returns a freshly-allocated NUL-terminated
     // string the caller must release via `nmp_free_string`.
     let out = unsafe { CStr::from_ptr(out_ptr) }
@@ -597,7 +612,11 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
         .get("correlation_id")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("dispatch envelope must carry a correlation_id; got: {out}"));
-    assert_eq!(id.len(), 32, "correlation_id must be 32 hex chars; got: {id}");
+    assert_eq!(
+        id.len(),
+        32,
+        "correlation_id must be 32 hex chars; got: {id}"
+    );
     nmp_ffi::nmp_free_string(out_ptr);
 
     // The handler ran on the actor thread; poll the projection's
@@ -644,14 +663,14 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
         .event_30443
         .as_json();
 
-    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), true));
+    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), None));
 
     let app = nmp_ffi::nmp_app_new();
     // SAFETY: nmp_app_new never returns null.
     let app_mut = unsafe { &mut *app };
     app_mut.register_action(MarmotActionModule);
-    let handler =
-        Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj))) as Arc<dyn nmp_core::substrate::HostOpHandler>;
+    let handler = Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj)))
+        as Arc<dyn nmp_core::substrate::HostOpHandler>;
     app_mut.set_host_op_handler(handler);
     nmp_ffi::nmp_app_start(app, 256, 4);
 
@@ -667,8 +686,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     .to_string();
     let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
     let envelope_c = CString::new(envelope).unwrap();
-    let out_ptr =
-        nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
+    let out_ptr = nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
     assert!(!out_ptr.is_null());
     // SAFETY: out_ptr came from nmp_app_dispatch_action (D6 contract).
     let out = unsafe { CStr::from_ptr(out_ptr) }
@@ -676,7 +694,11 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
         .into_owned();
     let returned_id = serde_json::from_str::<serde_json::Value>(&out)
         .ok()
-        .and_then(|v| v.get("correlation_id").and_then(|c| c.as_str()).map(str::to_owned))
+        .and_then(|v| {
+            v.get("correlation_id")
+                .and_then(|c| c.as_str())
+                .map(str::to_owned)
+        })
         .expect("dispatch must return correlation_id");
     nmp_ffi::nmp_free_string(out_ptr);
 
@@ -713,12 +735,14 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
                     "group_id_hex": &group_id_hex,
                     "text": "parity proof",
                 }),
-                1_001, None,
+                1_001,
+                None,
             )
         })
         .expect("projection mutex should not be poisoned");
     assert_eq!(
-        r["ok"], json!(true),
+        r["ok"],
+        json!(true),
         "the in-process Rust-native seam (ops::dispatch / \
          MarmotHandle::dispatch) must see the group created through the \
          generic dispatch_action seam: {r}"
@@ -763,7 +787,7 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
         .event_30443
         .as_json();
 
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
 
     // Publish key package and create a group.
     let kp_r = proj
@@ -771,7 +795,8 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
             ops::dispatch(
                 h,
                 &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
-                1_000, None,
+                1_000,
+                None,
             )
         })
         .unwrap();
@@ -788,7 +813,8 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
                     "invitee_npubs": [bob_keys.public_key().to_hex()],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                1_001, None,
+                1_001,
+                None,
             )
         })
         .unwrap();
@@ -817,7 +843,8 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
                     "group_id_hex": &group_id_hex,
                     "text": "all-groups map test",
                 }),
-                1_002, None,
+                1_002,
+                None,
             )
         })
         .unwrap();
@@ -826,7 +853,10 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
     // After send: messages_all_groups_json must include the row under the
     // correct group key. This is the exact code path the closure runs.
     let msgs = proj.messages_all_groups_json(200);
-    assert!(msgs.is_object(), "must be a JSON object after send; got: {msgs}");
+    assert!(
+        msgs.is_object(),
+        "must be a JSON object after send; got: {msgs}"
+    );
     let rows = msgs
         .get(&group_id_hex)
         .and_then(|v| v.as_array())
@@ -865,12 +895,15 @@ fn projection_slot_cleared_on_unregister_emits_empty() {
         .event_30443
         .as_json();
 
-    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), true));
-    proj.with_inner(|h| {
+    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), None));
+    // Test setup step — dispatch result is asserted via the subsequent
+    // `create_r`; discard the `#[must_use]` return here explicitly.
+    let _ = proj.with_inner(|h| {
         ops::dispatch(
             h,
             &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
-            1_000, None,
+            1_000,
+            None,
         )
     });
     let create_r = proj
@@ -884,41 +917,48 @@ fn projection_slot_cleared_on_unregister_emits_empty() {
                     "invitee_npubs": [bob_keys.public_key().to_hex()],
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
-                1_001, None,
+                1_001,
+                None,
             )
         })
         .unwrap();
     assert_eq!(create_r["ok"], json!(true));
 
-    // Build a slot as register_with_keys does.
-    let slot: MarmotProjectionSlot = Arc::new(Mutex::new(Some(Arc::clone(&proj))));
+    // Build a slot as register_with_keys does (#1651: `MarmotSlotState`).
+    use crate::ffi::MarmotSlotState;
+    let slot: MarmotProjectionSlot =
+        Arc::new(Mutex::new(MarmotSlotState::Ready(Arc::clone(&proj))));
 
-    // With slot populated: messages_all_groups_json via the slot returns data.
+    // With slot Ready: messages_all_groups_json via the slot returns data.
     let msgs_before = {
         let guard = slot.lock().unwrap();
-        guard.as_ref().map(|p| p.messages_all_groups_json(200))
+        match &*guard {
+            MarmotSlotState::Ready(p) => Some(p.messages_all_groups_json(200)),
+            _ => None,
+        }
     };
-    assert!(
-        msgs_before.is_some(),
-        "slot-populated read must return data"
-    );
+    assert!(msgs_before.is_some(), "Ready-slot read must return data");
 
     // Simulate nmp_marmot_unregister clearing the slot.
     if let Ok(mut s) = slot.lock() {
-        *s = None;
+        *s = MarmotSlotState::Cleared;
     }
 
-    // With slot cleared: the closure read path returns None → empty object.
+    // With slot Cleared: the closure read path emits nothing → empty object.
     let guard = slot.lock().unwrap();
-    let proj_opt = guard.as_ref();
-    assert!(proj_opt.is_none(), "slot must be None after clear");
-    // The closure emits `serde_json::Value::Object(Map::new())` for a None slot.
-    let empty_msgs = match proj_opt {
-        Some(p) => p.messages_all_groups_json(200),
-        None => serde_json::Value::Object(serde_json::Map::new()),
+    assert!(
+        matches!(&*guard, MarmotSlotState::Cleared),
+        "slot must be Cleared after unregister"
+    );
+    let empty_msgs = match &*guard {
+        MarmotSlotState::Ready(p) => p.messages_all_groups_json(200),
+        _ => serde_json::Value::Object(serde_json::Map::new()),
     };
     assert!(
-        empty_msgs.as_object().map(|m| m.is_empty()).unwrap_or(false),
+        empty_msgs
+            .as_object()
+            .map(|m| m.is_empty())
+            .unwrap_or(false),
         "cleared slot must produce empty object; got: {empty_msgs}"
     );
 }

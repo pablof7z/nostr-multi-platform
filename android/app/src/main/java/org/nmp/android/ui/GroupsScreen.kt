@@ -163,6 +163,28 @@ private fun GroupListScreen(
             }
             HorizontalDivider()
 
+            // #1651 service-init failure (replaces the V-62 keyringUnavailable
+            // bool). Raw machine token from Rust → shell-owned copy (aim.md §2):
+            // a minimal diagnostic, not a recovery flow. Rendered BEFORE the
+            // not-registered early-return: the InitFailed states (DbKeyLost /
+            // Other / KeyringUnavailable) are intentionally is_registered=false,
+            // so gating this behind isRegistered would suppress the very failure
+            // it surfaces (mirrors iOS MarmotGroupsView, which renders it first).
+            when (snapshot.initErrorKind) {
+                "keyring_unavailable" -> WarningBanner(
+                    "Keyring unavailable — group secrets are kept in memory only and " +
+                        "will be lost on next launch.",
+                )
+                "db_key_lost" -> WarningBanner(
+                    "Encrypted groups unavailable: the encrypted message database key " +
+                        "was lost; encrypted groups are unavailable.",
+                )
+                "init_failed" -> WarningBanner(
+                    "Encrypted groups unavailable: the encrypted message database could " +
+                        "not be opened. Free up space or check storage permissions, then relaunch.",
+                )
+            }
+
             if (!snapshot.isRegistered) {
                 // Shell owns this copy now (aim.md §2 — presentation in the shell).
                 // keyPackageSubtitle() returns the not-registered prose when the
@@ -177,13 +199,6 @@ private fun GroupListScreen(
             // (Rust clears it on the next successful op; no shell-side clear op).
             snapshot.lastOpError?.let { err ->
                 WarningBanner(marmotErrorBanner(err))
-            }
-
-            if (snapshot.keyringUnavailable) {
-                WarningBanner(
-                    "Keyring unavailable — group secrets are kept in memory only and " +
-                        "will be lost on next launch.",
-                )
             }
             if (snapshot.orphanedCommitCount > 0) {
                 WarningBanner(

@@ -1167,9 +1167,10 @@ pub mod nmp {
             pub const VT_CACHED_KP_PUBKEYS: ::flatbuffers::VOffsetT = 12;
             pub const VT_IS_REGISTERED: ::flatbuffers::VOffsetT = 14;
             pub const VT_ORPHANED_COMMIT_COUNT: ::flatbuffers::VOffsetT = 16;
-            pub const VT_KEYRING_UNAVAILABLE: ::flatbuffers::VOffsetT = 18;
-            pub const VT_PENDING_OPS: ::flatbuffers::VOffsetT = 20;
-            pub const VT_LAST_OP_ERROR: ::flatbuffers::VOffsetT = 22;
+            pub const VT_INIT_ERROR_KIND: ::flatbuffers::VOffsetT = 18;
+            pub const VT_INIT_ERROR_DETAIL: ::flatbuffers::VOffsetT = 20;
+            pub const VT_PENDING_OPS: ::flatbuffers::VOffsetT = 22;
+            pub const VT_LAST_OP_ERROR: ::flatbuffers::VOffsetT = 24;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1192,6 +1193,12 @@ pub mod nmp {
                 if let Some(x) = args.pending_ops {
                     builder.add_pending_ops(x);
                 }
+                if let Some(x) = args.init_error_detail {
+                    builder.add_init_error_detail(x);
+                }
+                if let Some(x) = args.init_error_kind {
+                    builder.add_init_error_kind(x);
+                }
                 builder.add_orphaned_commit_count(args.orphaned_commit_count);
                 if let Some(x) = args.cached_kp_pubkeys {
                     builder.add_cached_kp_pubkeys(x);
@@ -1206,7 +1213,6 @@ pub mod nmp {
                     builder.add_groups(x);
                 }
                 builder.add_schema_version(args.schema_version);
-                builder.add_keyring_unavailable(args.keyring_unavailable);
                 builder.add_is_registered(args.is_registered);
                 builder.finish()
             }
@@ -1304,14 +1310,27 @@ pub mod nmp {
                 }
             }
             #[inline]
-            pub fn keyring_unavailable(&self) -> bool {
+            pub fn init_error_kind(&self) -> Option<&'a str> {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
-                    self._tab
-                        .get::<bool>(MarmotSnapshot::VT_KEYRING_UNAVAILABLE, Some(false))
-                        .unwrap()
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        MarmotSnapshot::VT_INIT_ERROR_KIND,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn init_error_detail(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        MarmotSnapshot::VT_INIT_ERROR_DETAIL,
+                        None,
+                    )
                 }
             }
             #[inline]
@@ -1374,9 +1393,14 @@ pub mod nmp {
                         Self::VT_ORPHANED_COMMIT_COUNT,
                         false,
                     )?
-                    .visit_field::<bool>(
-                        "keyring_unavailable",
-                        Self::VT_KEYRING_UNAVAILABLE,
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "init_error_kind",
+                        Self::VT_INIT_ERROR_KIND,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "init_error_detail",
+                        Self::VT_INIT_ERROR_DETAIL,
                         false,
                     )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<
@@ -1414,7 +1438,8 @@ pub mod nmp {
             >,
             pub is_registered: bool,
             pub orphaned_commit_count: u32,
-            pub keyring_unavailable: bool,
+            pub init_error_kind: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub init_error_detail: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub pending_ops: Option<
                 ::flatbuffers::WIPOffset<
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PendingOpRow<'a>>>,
@@ -1433,7 +1458,8 @@ pub mod nmp {
                     cached_kp_pubkeys: None,
                     is_registered: false,
                     orphaned_commit_count: 0,
-                    keyring_unavailable: false,
+                    init_error_kind: None,
+                    init_error_detail: None,
                     pending_ops: None,
                     last_op_error: None,
                 }
@@ -1514,11 +1540,23 @@ pub mod nmp {
                 );
             }
             #[inline]
-            pub fn add_keyring_unavailable(&mut self, keyring_unavailable: bool) {
-                self.fbb_.push_slot::<bool>(
-                    MarmotSnapshot::VT_KEYRING_UNAVAILABLE,
-                    keyring_unavailable,
-                    false,
+            pub fn add_init_error_kind(
+                &mut self,
+                init_error_kind: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MarmotSnapshot::VT_INIT_ERROR_KIND,
+                    init_error_kind,
+                );
+            }
+            #[inline]
+            pub fn add_init_error_detail(
+                &mut self,
+                init_error_detail: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MarmotSnapshot::VT_INIT_ERROR_DETAIL,
+                    init_error_detail,
                 );
             }
             #[inline]
@@ -1571,7 +1609,8 @@ pub mod nmp {
                 ds.field("cached_kp_pubkeys", &self.cached_kp_pubkeys());
                 ds.field("is_registered", &self.is_registered());
                 ds.field("orphaned_commit_count", &self.orphaned_commit_count());
-                ds.field("keyring_unavailable", &self.keyring_unavailable());
+                ds.field("init_error_kind", &self.init_error_kind());
+                ds.field("init_error_detail", &self.init_error_detail());
                 ds.field("pending_ops", &self.pending_ops());
                 ds.field("last_op_error", &self.last_op_error());
                 ds.finish()

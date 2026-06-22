@@ -38,7 +38,8 @@ pub mod generated;
 use generated::nmp::marmot as fb;
 
 use crate::projection::payload::{
-    KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotSnapshot, PendingOpRow, PendingWelcomeRow,
+    KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotInitError, MarmotSnapshot, PendingOpRow,
+    PendingWelcomeRow,
 };
 use nmp_core::TypedProjectionData;
 
@@ -57,7 +58,45 @@ pub const FILE_IDENTIFIER: &[u8; 4] = b"NMMS";
 /// `display_name` from `PendingWelcomeRow`; `display_label` from `PendingOpRow`;
 /// `has_invites_chip_label` + `invites_chip_label` from `MarmotSnapshot`).
 /// Shells now own all fallback copy, initials computation, and pluralisation.
-pub const SCHEMA_VERSION: u32 = 4;
+/// v5 (#1651): replaced the degenerate `keyring_unavailable:bool` with the typed
+/// `init_error` reason carried as two raw-token strings (`init_error_kind` /
+/// `init_error_detail`) — surfaces keyring-unavailable AND MLS-DB-key-lost.
+pub const SCHEMA_VERSION: u32 = 5;
+
+/// Raw machine token for `init_error_kind` when the keyring was unavailable.
+const INIT_ERROR_KIND_KEYRING_UNAVAILABLE: &str = "keyring_unavailable";
+/// Raw machine token for `init_error_kind` when the MLS DB encryption key was lost.
+const INIT_ERROR_KIND_DB_KEY_LOST: &str = "db_key_lost";
+/// Raw machine token for `init_error_kind` for any other service-init failure
+/// (disk full, unwritable path, unencrypted-DB-with-encryption, …).
+const INIT_ERROR_KIND_OTHER: &str = "init_failed";
+
+/// Map `init_error` to the `(kind, detail)` raw-token wire pair:
+/// `None → ("", "")`, `KeyringUnavailable → ("keyring_unavailable", "")`,
+/// `DbKeyLost{detail} → ("db_key_lost", detail)`, `Other{detail} → ("init_failed", detail)`.
+fn init_error_tokens(init_error: Option<&MarmotInitError>) -> (&str, &str) {
+    match init_error {
+        None => ("", ""),
+        Some(MarmotInitError::KeyringUnavailable) => (INIT_ERROR_KIND_KEYRING_UNAVAILABLE, ""),
+        Some(MarmotInitError::DbKeyLost { detail }) => (INIT_ERROR_KIND_DB_KEY_LOST, detail),
+        Some(MarmotInitError::Other { detail }) => (INIT_ERROR_KIND_OTHER, detail),
+    }
+}
+
+/// Inverse of [`init_error_tokens`]: reconstruct `init_error` from the wire
+/// `(kind, detail)` pair. Unknown / empty `kind` → `None`.
+fn init_error_from_tokens(kind: &str, detail: &str) -> Option<MarmotInitError> {
+    match kind {
+        INIT_ERROR_KIND_KEYRING_UNAVAILABLE => Some(MarmotInitError::KeyringUnavailable),
+        INIT_ERROR_KIND_DB_KEY_LOST => Some(MarmotInitError::DbKeyLost {
+            detail: detail.to_string(),
+        }),
+        INIT_ERROR_KIND_OTHER => Some(MarmotInitError::Other {
+            detail: detail.to_string(),
+        }),
+        _ => None,
+    }
+}
 
 // --- typed-projection envelope -------------------------------------------
 
@@ -120,6 +159,10 @@ pub fn encode_marmot_snapshot(snapshot: &MarmotSnapshot) -> Vec<u8> {
         .as_ref()
         .map(|e| encode_last_op_error(&mut fbb, e));
 
+    let (init_error_kind, init_error_detail) = init_error_tokens(snapshot.init_error.as_ref());
+    let init_error_kind = fbb.create_string(init_error_kind);
+    let init_error_detail = fbb.create_string(init_error_detail);
+
     let root = fb::MarmotSnapshot::create(
         &mut fbb,
         &fb::MarmotSnapshotArgs {
@@ -130,7 +173,8 @@ pub fn encode_marmot_snapshot(snapshot: &MarmotSnapshot) -> Vec<u8> {
             cached_kp_pubkeys: Some(cached_kp_pubkeys),
             is_registered: snapshot.is_registered,
             orphaned_commit_count: snapshot.orphaned_commit_count,
-            keyring_unavailable: snapshot.keyring_unavailable,
+            init_error_kind: Some(init_error_kind),
+            init_error_detail: Some(init_error_detail),
             pending_ops: Some(pending_ops),
             last_op_error,
         },
@@ -268,11 +312,17 @@ pub fn decode_marmot_snapshot(bytes: &[u8]) -> Result<MarmotSnapshot, String> {
     Ok(MarmotSnapshot {
         groups,
         pending_welcomes,
-        key_package: root.key_package().map(decode_key_package).unwrap_or_default(),
+        key_package: root
+            .key_package()
+            .map(decode_key_package)
+            .unwrap_or_default(),
         cached_kp_pubkeys,
         is_registered: root.is_registered(),
         orphaned_commit_count: root.orphaned_commit_count(),
-        keyring_unavailable: root.keyring_unavailable(),
+        init_error: init_error_from_tokens(
+            root.init_error_kind().unwrap_or_default(),
+            root.init_error_detail().unwrap_or_default(),
+        ),
         pending_ops,
         last_op_error: root.last_op_error().map(decode_last_op_error),
     })

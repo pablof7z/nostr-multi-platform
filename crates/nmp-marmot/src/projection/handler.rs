@@ -176,7 +176,7 @@ mod tests {
         let storage =
             MdkSqliteStorage::new_in_memory().expect("in-memory MDK storage should construct");
         let service = MarmotService::from_storage(storage, Keys::generate(), MdkConfig::default());
-        let projection = Arc::new(MarmotProjection::new(service, true));
+        let projection = Arc::new(MarmotProjection::new(service, None));
         let handler = MarmotMlsOpHandler::new(projection);
 
         let result = handler.handle("not valid json{}", "corr-id");
