@@ -34,7 +34,8 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import org.nmp.gallery.model.ContentTreeWire
-import org.nmp.gallery.model.EmbedEntry
+import org.nmp.gallery.model.GalleryEmbedEnvelope
+import org.nmp.gallery.model.GalleryEmbedKindProjection
 import org.nmp.gallery.model.MediaKind
 import org.nmp.gallery.model.PlaceholderReason
 import org.nmp.gallery.model.RenderContext
@@ -44,7 +45,7 @@ import org.nmp.gallery.model.WireNode
 @Composable
 fun WireNodeView(
     tree: ContentTreeWire,
-    embeds: Map<String, EmbedEntry>,
+    embeds: Map<String, GalleryEmbedEnvelope>,
     ctx: RenderContext = RenderContext(),
     modifier: Modifier = Modifier,
 ) {
@@ -66,17 +67,14 @@ fun WireNodeView(
 private fun RenderGroup(
     group: NodeGroup,
     tree: ContentTreeWire,
-    embeds: Map<String, EmbedEntry>,
+    embeds: Map<String, GalleryEmbedEnvelope>,
     ctx: RenderContext,
 ) {
     when (group) {
         is NodeGroup.Inline -> InlineRun(group.level, group.children, tree, embeds)
         is NodeGroup.Media -> MediaBlock(group.kind, group.urls)
-        is NodeGroup.EventRef -> EmbeddedEvent(
-            uri = group.uri,
-            entry = embeds[group.uri.uri],
-            embeds = embeds,
-            ctx = ctx,
+        is NodeGroup.EventRef -> GalleryEmbeddedEvent(
+            envelope = embeds[group.uri.uri],
         )
         is NodeGroup.CodeBlock -> CodeBlock(group.info, group.body)
         is NodeGroup.BlockQuote -> BlockQuote(tree.withRoots(group.children), embeds, ctx)
@@ -211,7 +209,7 @@ private fun InlineRun(
     level: InlineLevel,
     children: List<UInt>,
     tree: ContentTreeWire,
-    embeds: Map<String, EmbedEntry>,
+    embeds: Map<String, GalleryEmbedEnvelope>,
 ) {
     val text = buildAnnotatedString {
         for (child in children) appendInline(child, tree, embeds)
@@ -231,7 +229,7 @@ private fun InlineRun(
 private fun AnnotatedString.Builder.appendInline(
     index: UInt,
     tree: ContentTreeWire,
-    embeds: Map<String, EmbedEntry>,
+    embeds: Map<String, GalleryEmbedEnvelope>,
 ) {
     if (index == NewlineSentinel) {
         append('\n')
@@ -241,7 +239,9 @@ private fun AnnotatedString.Builder.appendInline(
         is WireNode.Text -> append(node.text)
         is WireNode.Mention -> {
             val profile = embeds[node.uri.uri]
-            val label = profile?.profileName ?: "npub1${node.uri.primaryId.take(6)}..."
+            val displayName = (profile?.projection as? GalleryEmbedKindProjection.Profile)
+                ?.data?.displayName
+            val label = displayName ?: "npub1${node.uri.primaryId.take(6)}..."
             withStyle(SpanStyle(color = Indigo, fontWeight = FontWeight.Bold)) {
                 append("@$label")
             }
@@ -389,7 +389,7 @@ private fun CodeBlock(info: String?, body: String) {
 }
 
 @Composable
-private fun BlockQuote(tree: ContentTreeWire, embeds: Map<String, EmbedEntry>, ctx: RenderContext) {
+private fun BlockQuote(tree: ContentTreeWire, embeds: Map<String, GalleryEmbedEnvelope>, ctx: RenderContext) {
     Row(modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
         Box(
             modifier = Modifier
@@ -412,7 +412,7 @@ private fun ListBlock(
     orderedStart: ULong?,
     items: List<List<UInt>>,
     tree: ContentTreeWire,
-    embeds: Map<String, EmbedEntry>,
+    embeds: Map<String, GalleryEmbedEnvelope>,
     ctx: RenderContext,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -466,7 +466,7 @@ private fun PlaceholderChip(reason: PlaceholderReason) {
 @Composable
 fun ScenarioRenderer(
     rendered: ContentTreeWire,
-    embeds: Map<String, EmbedEntry>,
+    embeds: Map<String, GalleryEmbedEnvelope>,
     modifier: Modifier = Modifier,
 ) {
     WireNodeView(

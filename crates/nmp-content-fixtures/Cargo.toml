@@ -17,6 +17,10 @@ path = "src/bin/build-bundle.rs"
 name = "build-wire-fixtures"
 path = "src/bin/build-wire-fixtures.rs"
 
+[[bin]]
+name = "build-android-gallery-bundle"
+path = "src/bin/build-android-gallery-bundle.rs"
+
 [dependencies]
 nmp-content = { path = "../nmp-content" }
 nmp-core = { path = "../nmp-core" }

@@ -1,4 +1,8 @@
-//! Build the root Android content-gallery bundle in the canonical wire shape.
+//! Build the Android content-gallery bundle in the kind-registry wire shape.
+//!
+//! Each embed entry now carries an `EmbedKindProjection` envelope (the same
+//! typed shape the production NEMB sidecar delivers) so the Android `:gallery`
+//! module can dispatch through `GalleryKindRegistry` exactly like the app.
 //!
 //! Usage: `cargo run -p nmp-content-fixtures --bin build-android-gallery-bundle`
 //! from the workspace root.
@@ -8,15 +12,24 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use nmp_content::{tokenize_with_kind, ContentTreeWire, RenderMode};
+use nmp_content::{
+    resolve_embed_projection, tokenize_with_kind, ContentTreeWire, EmbedKindProjection,
+    RenderContext, RenderMode,
+};
 use nmp_content_fixtures::{
     build_bundle,
-    dto::{ArticleHeaderDto, EmbedEntry, ListDto, ScenarioDto, SignedEventJson},
+    dto::{EmbedEntry, ScenarioDto, SignedEventJson},
 };
+use nmp_core::substrate::KernelEvent;
 use serde::Serialize;
 
 const ANDROID_BUNDLE_PATH: &str = "android/gallery/src/main/assets/content-gallery-bundle.json";
-const ANDROID_BUNDLE_VERSION: u32 = 2;
+/// Bump to 3 to signal the new embed shape; decoders must upgrade.
+const ANDROID_BUNDLE_VERSION: u32 = 3;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wire shapes (gallery-only; NOT the production NEMB FlatBuffers shape).
+// ─────────────────────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
 struct WireBundle {
@@ -32,28 +45,22 @@ struct WireScenario {
     exercises: String,
     events: Vec<SignedEventJson>,
     rendered: ContentTreeWire,
-    embeds: BTreeMap<String, WireEmbedEntry>,
+    embeds: BTreeMap<String, WireEmbedEnvelope>,
 }
 
+/// Gallery-bundle embed envelope: collapsed flag + kind-registry projection.
+/// Mirrors the production `EmbeddedEventEnvelope` shape without the FlatBuffers
+/// overhead — the gallery decodes JSON, not a NEMB binary sidecar.
 #[derive(Serialize)]
-struct WireEmbedEntry {
-    cycle_key: String,
-    resolved_kind: u32,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    profile_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    profile_picture: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    event: Option<SignedEventJson>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rendered: Option<ContentTreeWire>,
+struct WireEmbedEnvelope {
+    /// Whether the embed is collapsed (dangling / depth / cycle / unsupported).
     collapsed: bool,
+    /// Machine-readable collapse reason, or `null` when not collapsed.
     #[serde(skip_serializing_if = "Option::is_none")]
     collapse_reason: Option<String>,
+    /// Kind-dispatched projection, present when `collapsed == false`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    article: Option<ArticleHeaderDto>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    list: Option<ListDto>,
+    projection: Option<EmbedKindProjection>,
 }
 
 fn main() -> ExitCode {
@@ -87,7 +94,7 @@ fn run() -> Result<usize, String> {
     let path = Path::new(ANDROID_BUNDLE_PATH);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
-            .map_err(|err| format!("create {} failed: {err}", parent.display()))?;
+            .map_err(|err| format!("create {} failed: {}", parent.display(), err))?;
     }
     fs::write(path, format!("{json}\n"))
         .map_err(|err| format!("write {ANDROID_BUNDLE_PATH} failed: {err}"))?;
@@ -104,10 +111,10 @@ fn convert_scenario(scenario: ScenarioDto) -> Result<WireScenario, String> {
         .embeds
         .into_iter()
         .map(|(uri, entry)| {
-            let converted = convert_embed(&uri, entry)?;
-            Ok((uri, converted))
+            let envelope = convert_embed(&uri, entry);
+            (uri, envelope)
         })
-        .collect::<Result<BTreeMap<_, _>, String>>()?;
+        .collect::<BTreeMap<_, _>>();
     Ok(WireScenario {
         id: scenario.id,
         category: scenario.category,
@@ -119,28 +126,77 @@ fn convert_scenario(scenario: ScenarioDto) -> Result<WireScenario, String> {
     })
 }
 
-fn convert_embed(uri: &str, entry: EmbedEntry) -> Result<WireEmbedEntry, String> {
-    let rendered = if entry.rendered.is_some() {
-        let event = entry
-            .event
-            .as_ref()
-            .ok_or_else(|| format!("embed {uri} has rendered content without an event"))?;
-        Some(wire_for_event(event))
+/// Convert a legacy `EmbedEntry` (from the fixture store) into the new
+/// kind-registry `WireEmbedEnvelope` shape.
+fn convert_embed(uri: &str, entry: EmbedEntry) -> WireEmbedEnvelope {
+    // Collapsed entries (dangling / unsupported): forward the reason, no projection.
+    if entry.collapsed {
+        return WireEmbedEnvelope {
+            collapsed: true,
+            collapse_reason: entry.collapse_reason,
+            projection: None,
+        };
+    }
+
+    // Produce a KernelEvent from the entry's underlying event, then resolve via
+    // the same embed_projection resolver the production kernel uses.
+    let projection = if let Some(ev) = &entry.event {
+        let kernel_event = to_kernel_event(ev);
+        let ctx = RenderContext::default();
+        Some(resolve_embed_projection(&kernel_event, &ctx))
+    } else if entry.profile_name.is_some() || entry.profile_picture.is_some() {
+        // Profile-only entries (kind:0 mentions without a full event body).
+        // Build a minimal Profile projection from the pre-resolved profile fields.
+        use nmp_content::ProfileProjection;
+        Some(EmbedKindProjection::Profile(ProfileProjection {
+            pubkey: uri_to_pubkey(uri),
+            display_name: entry.profile_name,
+            picture_url: entry.profile_picture,
+            about: None,
+            nip05: None,
+            lud16: None,
+            banner_url: None,
+        }))
     } else {
-        None
+        // No event and no profile data — treat as dangling.
+        return WireEmbedEnvelope {
+            collapsed: true,
+            collapse_reason: Some("dangling".to_string()),
+            projection: None,
+        };
     };
-    Ok(WireEmbedEntry {
-        cycle_key: entry.cycle_key,
-        resolved_kind: entry.resolved_kind,
-        profile_name: entry.profile_name,
-        profile_picture: entry.profile_picture,
-        event: entry.event,
-        rendered,
-        collapsed: entry.collapsed,
-        collapse_reason: entry.collapse_reason,
-        article: entry.article,
-        list: entry.list,
-    })
+
+    WireEmbedEnvelope {
+        collapsed: false,
+        collapse_reason: None,
+        projection,
+    }
+}
+
+/// Produce a minimal `KernelEvent` from the fixture's `SignedEventJson`.
+fn to_kernel_event(ev: &SignedEventJson) -> KernelEvent {
+    KernelEvent {
+        id: ev.id.clone(),
+        author: ev.pubkey.clone(),
+        kind: ev.kind,
+        created_at: ev.created_at,
+        tags: ev.tags.clone(),
+        content: ev.content.clone(),
+        relay_provenance: vec![],
+    }
+}
+
+/// Best-effort pubkey extraction from a `nostr:npub…` / `nostr:nprofile…` URI.
+/// The fixture URIs are well-formed; if extraction fails we use the URI itself
+/// as a sentinel so the profile tile degrades gracefully.
+fn uri_to_pubkey(uri: &str) -> String {
+    // The embed store keys profiles by their nostr: URI. Strip the prefix and
+    // decode the bech32 to get the raw hex pubkey. Rather than pulling in the
+    // full nostr / bech32 stack here we extract the hex via the fixture's
+    // `cycle_key` convention — but since we don't have it here, we use the URI
+    // as an opaque identifier. In the gallery context `pubkey` is only used for
+    // the Identicon avatar which accepts any deterministic byte source.
+    uri.trim_start_matches("nostr:").to_string()
 }
 
 fn wire_for_event(event: &SignedEventJson) -> ContentTreeWire {
