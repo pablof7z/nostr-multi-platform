@@ -10,7 +10,7 @@ use std::time::{Duration, SystemTime};
 use super::super::clock::FixedClock;
 use super::super::snapshot_registry::new_snapshot_projection_slot;
 use super::super::Kernel;
-use crate::kernel::action_lifecycle::RECENT_TERMINAL_TTL_MS;
+use crate::kernel::action_ledger::RECENT_TERMINAL_TTL_MS;
 use crate::kernel::action_stages::ActionStage;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::update_envelope::{

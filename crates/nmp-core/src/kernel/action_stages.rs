@@ -215,6 +215,10 @@ pub(crate) struct ActionStageTracker {
 }
 
 impl ActionStageTracker {
+    /// The [`super::action_ledger::ActionLedger`] owns the tracker via
+    /// `Default`; this explicit constructor is exercised by the
+    /// `action_stages` unit tests.
+    #[cfg_attr(not(test), allow(dead_code))]
     #[must_use]
     pub(crate) fn new() -> Self {
         Self::default()

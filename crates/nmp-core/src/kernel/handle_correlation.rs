@@ -15,7 +15,7 @@
 
 use std::collections::HashMap;
 
-use super::action_lifecycle::MAX_TRACKED_CORRELATIONS;
+use super::action_stages::MAX_TRACKED_CORRELATIONS;
 
 /// Cap on the durable handle↔correlation index. Mirrors
 /// [`MAX_TRACKED_CORRELATIONS`]: a host that dispatches publishes faster than

@@ -30,9 +30,7 @@ mod composition_seams;
 mod action_failure_tests;
 #[cfg(test)]
 mod action_terminal_correctness_tests;
-pub(crate) mod action_lifecycle;
-#[cfg(test)]
-mod action_lifecycle_tests;
+pub(crate) mod action_ledger;
 #[cfg(test)]
 mod action_lifecycle_kernel_tests;
 pub(crate) mod action_stages;
@@ -1198,19 +1196,14 @@ pub struct Kernel {
     /// `PublishAction::Publish`, drives the engine, and drains the queue
     /// dispatcher into outbound frames. Per-relay OKs are folded back via
     /// `Kernel::handle_publish_ok` (called from `ingest::handle_text`).
-    /// Actor-owned tracker for the snapshot-mirror `action_stages`
-    /// projection. Records lifecycle transitions per dispatched `correlation_id`
-    /// and retains terminal histories until TTL expiry or early host ack via
-    /// `nmp_app_ack_action_stage`. Caps and drop-oldest semantics live in
-    /// [`action_stages`].
-    action_stages: action_stages::ActionStageTracker,
-    /// Actor-owned tracker for the `action_lifecycle` display projection
-    /// (V5 thin-shell fix). Mirrors every transition the substrate-level
-    /// `action_stages` tracker records, but collapses to the latest stage
-    /// per correlation_id and drops terminals on a wall-clock TTL — no
-    /// host ack required. Drives the host's spinner/toast UI without any
-    /// reducer-side bookkeeping in the shell.
-    action_lifecycle: action_lifecycle::ActionLifecycleTracker,
+    /// The single per-`correlation_id` record of action state (S11, #1758).
+    /// Owns the substrate stage history plus the curated failure reason-code
+    /// sidecar (#1735); the `action_stages` history and the `action_lifecycle`
+    /// `{in_flight, recent_terminal}` display view are BOTH derived projections
+    /// of this one ledger — there is no second tracker (resolves #1684).
+    /// Signing-return, publish, and cancel all record into it. Caps, TTL, and
+    /// drop-oldest semantics live in [`action_stages`] (the ledger's storage).
+    action_ledger: action_ledger::ActionLedger,
     /// Durable handle→`correlation_id` index so cancel-by-id lands the
     /// `Cancelled` terminal under the original id (S7/#1754, PD-036).
     publish_handle_correlation: handle_correlation::HandleCorrelationIndex,
@@ -2086,8 +2079,7 @@ impl Kernel {
             last_error_toast: None,
             last_error_category: None,
             configured_relays: Vec::new(),
-            action_stages: action_stages::ActionStageTracker::new(),
-            action_lifecycle: action_lifecycle::ActionLifecycleTracker::new(),
+            action_ledger: action_ledger::ActionLedger::new(),
             publish_handle_correlation: handle_correlation::HandleCorrelationIndex::new(),
             captured_action_results: None,
             captured_signed_events: None,
