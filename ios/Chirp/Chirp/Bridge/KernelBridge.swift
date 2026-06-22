@@ -506,8 +506,12 @@ final class KernelHandle {
         handle.withCString { nmp_app_retry_publish(raw, $0) }
     }
 
-    func cancelPublish(handle: String) {
-        handle.withCString { nmp_app_cancel_publish(raw, $0) }
+    /// Cancel an in-flight publish, addressed by the operation `correlationId`
+    /// (S7/#1754). The outbox row's publish handle is also accepted (the kernel's
+    /// handle↔correlation index self-maps it); the kernel records the
+    /// user-initiated `cancelled` terminal under the ORIGINAL correlation_id.
+    func cancelPublish(correlationID: String) {
+        correlationID.withCString { nmp_app_cancel_action(raw, $0) }
     }
 
     /// Dispatch an already-authored JSON action through the generic

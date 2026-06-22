@@ -11,8 +11,10 @@ import org.nmp.android.model.RelayStatus
  * Thin-shell rule: no business logic here. The relay-list publishers forward
  * a kernel-owned action namespace + a verbatim body through the existing
  * generic [KernelBridge.dispatchAction] seam; the outbox control plane wraps
- * the `nmp_app_retry_publish` / `nmp_app_cancel_publish` C-ABI symbols. Rust
- * owns all policy (which relays receive the kind:10002, retry backoff, etc.).
+ * the `nmp_app_retry_publish` (by handle) / `nmp_app_cancel_action` (by
+ * operation correlation_id; S7/#1754 replaced `nmp_app_cancel_publish`) C-ABI
+ * symbols. Rust owns all policy (which relays receive the kind:10002, retry
+ * backoff, etc.).
  */
 
 /**

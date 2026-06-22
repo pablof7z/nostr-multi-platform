@@ -129,6 +129,17 @@ struct RelaySettingsView: View {
                     publishButton(label: "Try again", systemImage: "arrow.clockwise")
                 }
                 .padding(.vertical, ChirpSpace.s)
+            case .cancelled:
+                // S7/#1754: user-initiated cancellation — a DISTINCT terminal,
+                // NOT a failure. Re-enable the publish button with a neutral
+                // label (no error treatment).
+                VStack(alignment: .leading, spacing: ChirpSpace.xs) {
+                    Text("Publish cancelled")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(ChirpColor.textSecondary)
+                    publishButton(label: "Try again", systemImage: "arrow.clockwise")
+                }
+                .padding(.vertical, ChirpSpace.s)
             case .requested, .awaitingCapability, .publishing, .unknown(_):
                 // V5: `recentTerminal` only returns terminal entries, so this
                 // arm is theoretically unreachable. Render the in-flight

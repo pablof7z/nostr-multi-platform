@@ -18,7 +18,13 @@
 //!
 //! Symbols in this module:
 //!  * `nmp_app_retry_publish`  — control-plane: retry a failed publish handle.
-//!  * `nmp_app_cancel_publish` — control-plane: cancel an in-flight publish handle.
+//!  * `nmp_app_cancel_action`  — control-plane: cancel an in-flight operation by
+//!    its dispatch `correlation_id` (S7, #1754). Replaced the bespoke
+//!    `nmp_app_cancel_publish(handle)` symbol: cancel now addresses the
+//!    operation identity (the id the host's spinner is keyed on), and the kernel
+//!    reverse-resolves the publish handle from the durable handle↔correlation
+//!    index so the `Cancelled` terminal lands under the ORIGINAL correlation_id
+//!    (PD-036). One doorway, no parallel cancel lane.
 //!
 //! These reuse the parent module's validated-argument helpers
 //! (`app_ref`, `c_string_argument`) and the shared `NmpApp` handle.
@@ -55,18 +61,25 @@ pub extern "C" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char)
     app.send_cmd(ActorCommand::RetryPublish { handle });
 }
 
-/// Cancel an in-flight publish, addressed by its handle. This is the intentional
-/// control-plane door for the publish lifecycle — `dispatch_action` deliberately
-/// does NOT carry cancel (`PublishModule::start` rejects `PublishAction::Cancel`);
-/// the generic action seam is for *content* actions, while publish cancel/retry
-/// stay on these dedicated symbols.
+/// Cancel an in-flight operation, addressed by its dispatch `correlation_id`
+/// (S7, #1754). This is the ONE cancel doorway — the bespoke
+/// `nmp_app_cancel_publish(handle)` symbol is deleted. The kernel reverse-
+/// resolves the publish handle from the durable handle↔correlation index and
+/// records the user-initiated `Cancelled` terminal under the ORIGINAL
+/// `correlation_id` (the id the host's spinner is keyed on), fixing PD-036.
+///
+/// `dispatch_action` deliberately does NOT carry cancel; the generic action
+/// seam is for *content* actions, while the publish lifecycle's control plane
+/// (cancel / retry) stays on these dedicated symbols. A raw publish handle is
+/// also accepted (the index self-maps it) so a caller that only knows the handle
+/// still resolves.
 #[no_mangle]
-pub extern "C" fn nmp_app_cancel_publish(app: *mut NmpApp, handle: *const c_char) {
+pub extern "C" fn nmp_app_cancel_action(app: *mut NmpApp, correlation_id: *const c_char) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    let Some(handle) = c_string_argument(handle) else {
+    let Some(correlation_id) = c_string_argument(correlation_id) else {
         return;
     };
-    app.send_cmd(ActorCommand::CancelPublish { handle });
+    app.send_cmd(ActorCommand::CancelPublish { correlation_id });
 }

@@ -912,8 +912,8 @@ pub(super) fn dispatch_command(
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        ActorCommand::CancelPublish { handle } => {
-            ctx.kernel.cancel_publish(&handle);
+        ActorCommand::CancelPublish { correlation_id } => {
+            ctx.kernel.cancel_publish(&correlation_id);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }

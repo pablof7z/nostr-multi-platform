@@ -46,7 +46,7 @@ struct NotificationsView: View {
                             item: item,
                             copied: copiedHandle == item.handle,
                             retry: { model.retryPublish(handle: item.handle) },
-                            cancel: { model.cancelPublish(handle: item.handle) },
+                            cancel: { model.cancelPublish(correlationID: item.handle) },
                             copy: { copyEventID(item.eventId, handle: item.handle) }
                         )
                     }

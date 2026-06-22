@@ -13,7 +13,7 @@ use nmp_app_chirp::{
 };
 use nmp_chirp_config::CHIRP_MARMOT_KEYRING_SERVICE_ID;
 use nmp_ffi::{
-    nmp_app_cancel_publish, nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
+    nmp_app_cancel_action, nmp_app_remove_relay, nmp_app_retry_publish, nmp_app_signin_nsec,
     nmp_free_string,
 };
 use serde_json::{json, Value};
@@ -124,9 +124,12 @@ impl AppRuntime {
         })
     }
 
-    pub fn cancel_publish(&self, handle: &str) -> Result<()> {
-        self.with_cstr(handle, |c| {
-            nmp_app_cancel_publish(self.app_ptr(), c.as_ptr())
+    /// Cancel an in-flight publish. Addressed by the operation `correlation_id`
+    /// (S7, #1754) — the outbox UI's publish handle is also accepted (the
+    /// kernel's handle↔correlation index self-maps it).
+    pub fn cancel_publish(&self, correlation_id: &str) -> Result<()> {
+        self.with_cstr(correlation_id, |c| {
+            nmp_app_cancel_action(self.app_ptr(), c.as_ptr())
         })
     }
 

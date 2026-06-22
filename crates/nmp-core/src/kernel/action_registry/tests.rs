@@ -51,23 +51,21 @@ fn start_publish_raw_action_returns_correlation_id() {
 }
 
 #[test]
-fn start_cancel_action_is_rejected_via_dispatch() {
-    // Publish cancel is engine-internal — it is driven by the
-    // `nmp_app_cancel_publish` FFI symbol, never `dispatch_action`.
-    // `PublishModule::start` therefore rejects a `Cancel` action so the
-    // generic action seam carries nothing for cancel.
+fn start_cancel_action_is_not_a_dispatch_variant() {
+    // S7 (#1754): cancel is the kernel's cancel-by-`correlation_id` doorway
+    // (`nmp_app_cancel_action`), NEVER `dispatch_action`. The bespoke
+    // `PublishAction::Cancel` variant is DELETED, so a `Cancel` JSON cannot even
+    // deserialize — the action seam carries nothing for cancel, by construction.
     let registry = default_registry();
     let action_json = r#"{"Cancel":{"handle":"smoke-test"}}"#;
     let err = registry
         .start(&mut ctx(), 1_700_000_000_000, "nmp.publish", action_json)
         .expect_err("cancel must not be dispatchable via dispatch_action");
     match err {
-        ActionRejection::Invalid(msg) => {
-            assert!(
-                msg.contains("nmp_app_cancel_publish"),
-                "rejection should point at the FFI symbol: {msg}"
-            );
-        }
+        ActionRejection::Invalid(msg) => assert!(
+            msg.contains("unknown variant `Cancel`"),
+            "rejection should be an unknown-variant decode error (Cancel deleted): {msg}"
+        ),
         other => panic!("expected Invalid rejection, got {other:?}"),
     }
 }

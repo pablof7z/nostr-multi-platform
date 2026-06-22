@@ -205,13 +205,19 @@ pub(crate) fn resolve_parked_op(
                 // Preserve the prior inline drain's exact toast wording: a
                 // timeout surfaced "remote sign timed out"; a broker error
                 // surfaced "remote sign failed: {e}".
+                // A capability/signer denial or timeout is a CURATED `Failed`
+                // terminal (S7, #1754): it carries the structured
+                // `LIFECYCLE_SIGN_CAPABILITY_DENIED` code so the shell localizes
+                // it, and it is DISTINCT from a user-initiated `Cancelled`.
                 Resolved::TimedOut => PublishObligation::Failed {
                     toast: "remote sign timed out".to_string(),
                     correlation_id_override: correlation_id_override.clone(),
+                    reason_code: Some(crate::ui_token::codes::LIFECYCLE_SIGN_CAPABILITY_DENIED),
                 },
                 Resolved::BrokerErr(e) => PublishObligation::Failed {
                     toast: format!("remote sign failed: {e}"),
                     correlation_id_override: correlation_id_override.clone(),
+                    reason_code: Some(crate::ui_token::codes::LIFECYCLE_SIGN_CAPABILITY_DENIED),
                 },
             };
             DrainOutcome {

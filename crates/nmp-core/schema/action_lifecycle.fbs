@@ -48,8 +48,13 @@ namespace nmp.kernel;
 table LifecycleEntry {
   // The action's correlation id.
   correlation_id:string;
-  // Collapsed snake_case stage string (`"requested"` / `"awaiting_capability"`
-  // / `"publishing"` / `"accepted"` / `"failed"`).
+  // Collapsed snake_case stage string. The vocabulary is GENERIC (ADR-0064
+  // §lifecycle; sign/publish decoupled): `"requested"` /
+  // `"awaiting_capability"` (covers signing + any capability) / `"publishing"`
+  // (separate, optional) / `"accepted"` / `"failed"` / `"cancelled"`
+  // (S7/#1754 — a DISTINCT user-initiated terminal, NOT `"failed"`). Carried
+  // as an open string, so a new terminal needs no schema/vtable change — host
+  // decoders switch on the value.
   stage:string;
   // `Failed { reason }`'s reason, lifted as a sibling of `stage`; present only
   // when `stage == "failed"`.

@@ -190,12 +190,14 @@ pub use nip21_ffi::nmp_nip21_decode_uri;
 // capability rule deleted the bespoke event-producing siblings
 // (`nmp_app_publish_signed_event` / `nmp_app_publish_signed_event_to` /
 // `nmp_app_publish_unsigned_event`) — every event-producing publish now
-// goes through `nmp_app_dispatch_action` (`nmp.publish`). Retry/cancel
-// address a publish *handle* (not an event) and have no `dispatch_action`
-// equivalent, so they stay on these dedicated symbols (the D11 lint
-// whitelists them).
+// goes through `nmp_app_dispatch_action` (`nmp.publish`). Retry addresses a
+// publish *handle*; cancel (S7, #1754) addresses the operation
+// `correlation_id` (`nmp_app_cancel_action`, replacing the bespoke
+// `nmp_app_cancel_publish`). Neither has a `dispatch_action` equivalent, so
+// they stay on these dedicated control-plane symbols (the D11 lint whitelists
+// them).
 #[cfg(feature = "native")]
-pub use publish::{nmp_app_cancel_publish, nmp_app_retry_publish};
+pub use publish::{nmp_app_cancel_action, nmp_app_retry_publish};
 // V-51 phase 2 — routing-trace JSON accessor. Pull-only; the returned
 // pointer is heap-owned and must be freed via `nmp_free_string`.
 pub use composition_report::nmp_app_composition_report;

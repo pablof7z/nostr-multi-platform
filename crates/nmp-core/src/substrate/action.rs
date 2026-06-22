@@ -20,12 +20,12 @@
 //! - **System-authored / lifecycle / wallet capabilities stay bespoke.**
 //!   They are not "actions a user dispatches"; they are mechanisms the
 //!   kernel or a sibling crate uses to keep the system honest:
-//!     - publish-lifecycle control plane —
-//!       [`crate::ffi::publish::nmp_app_retry_publish`] /
-//!       [`crate::ffi::publish::nmp_app_cancel_publish`] address an
-//!       already-queued publish *handle*, never produce events, and have
-//!       no `dispatch_action` equivalent (and never should — the action
-//!       seam is for content actions).
+//!     - publish-lifecycle control plane — `nmp_app_retry_publish` (by
+//!       publish *handle*) and `nmp_app_cancel_action` (by operation
+//!       `correlation_id`; S7/#1754 replaced the bespoke
+//!       `nmp_app_cancel_publish` handle symbol). Neither produces events, and
+//!       neither has a `dispatch_action` equivalent (and never should — the
+//!       action seam is for content actions).
 //!     - MLS / gift-wrap publish — [`crate::NmpApp::publish_signed_explicit`]
 //!       carries events signed by an MLS group credential (kind:445) or an
 //!       ephemeral key (kind:1059 gift-wrap) that the kernel's signer

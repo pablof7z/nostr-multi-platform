@@ -74,6 +74,12 @@ impl Kernel {
         for terminal in &terminals {
             let stage = match terminal.status {
                 "ok" => super::super::action_stages::ActionStage::Accepted,
+                // S7 (#1754): a user-initiated cancel is the DISTINCT `Cancelled`
+                // terminal, never `Failed`. The engine records the cancel terminal
+                // with `status == "cancelled"` (see `PublishEngine::cancel_by_handle`)
+                // under the ORIGINAL correlation_id; this is the single path that
+                // mirrors it into `action_stages` / `action_lifecycle`.
+                "cancelled" => super::super::action_stages::ActionStage::Cancelled,
                 _ => super::super::action_stages::ActionStage::Failed {
                     reason: terminal
                         .error

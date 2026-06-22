@@ -601,7 +601,9 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     }
 
     func retryPublish(handle: String) { kernel.retryPublish(handle: handle) }
-    func cancelPublish(handle: String) { kernel.cancelPublish(handle: handle) }
+    // S7/#1754: cancel addresses the operation correlation_id. The outbox row's
+    // publish handle is accepted too (the kernel index self-maps it).
+    func cancelPublish(correlationID: String) { kernel.cancelPublish(correlationID: correlationID) }
 
     @discardableResult
     func react(targetEventID: String, reaction: String = "❤") -> DispatchResult {

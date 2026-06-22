@@ -165,20 +165,6 @@ fn encode_publish_payload(action: &PublishAction) -> Vec<u8> {
             let (raw, _) = build_publish_raw(&mut fbb, *kind, tags, content, target, signer_pubkey);
             (fb::PublishPayloadBody::PublishRaw, raw.as_union_value())
         }
-        // Engine-internal; not a real dispatch payload (see fn doc). Encode an
-        // empty raw placeholder; a decoded Cancel is impossible to construct and
-        // a decoded empty-raw is rejected by `start`'s reserved-kind/target gate.
-        PublishAction::Cancel { .. } => {
-            let (raw, _) = build_publish_raw(
-                &mut fbb,
-                0,
-                &[],
-                "",
-                &PublishTarget::Auto,
-                &None,
-            );
-            (fb::PublishPayloadBody::PublishRaw, raw.as_union_value())
-        }
     };
 
     let payload = fb::PublishPayload::create(

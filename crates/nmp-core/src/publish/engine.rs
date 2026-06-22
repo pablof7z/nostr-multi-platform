@@ -162,8 +162,9 @@ impl PublishEngine {
     /// received a registry-minted id, not the event id). `None` for every
     /// other caller: the terminal verdict then reports the handle, preserving
     /// the prior behaviour. Only the `Publish` variant carries the override
-    /// into an `InFlight` row; `Cancel` already reports `handle` as the
-    /// `correlation_id` (which is what the host got back from dispatch).
+    /// into an `InFlight` row. (Cancellation is no longer a `PublishAction`
+    /// variant — S7/#1754 routes it through the kernel's cancel-by-id doorway
+    /// directly into `cancel_by_handle`.)
     pub fn start_publish(
         &mut self,
         action: PublishAction,
@@ -176,7 +177,6 @@ impl PublishEngine {
                 event,
                 target,
             } => self.start_publish_inner(handle, event, target, correlation_id_override, now_ms),
-            PublishAction::Cancel { handle } => self.cancel_publish(handle, now_ms),
             // `PublishProfile` is signed-and-published by the actor's
             // `ActorCommand::PublishProfile` handler; the engine only services
             // pre-signed `Publish` (and `Cancel`). The `ActionRegistry`
@@ -267,39 +267,6 @@ impl PublishEngine {
         // + removed exactly once, never left pending" invariant uniform across
         // ALL dispatch paths.) Same finalization `tick` / resume / retry use.
         self.finalize_completed_rows(std::slice::from_ref(&handle), now_ms);
-        self.flush_view();
-        Ok(())
-    }
-
-    fn cancel_publish(
-        &mut self,
-        handle: PublishHandle,
-        now_ms: u64,
-    ) -> Result<(), PublishEngineError> {
-        if let Some(mut row) = self.in_flight.remove(&handle) {
-            self.needs_in_flight_rebuild = true;
-            for state in row.per_relay.values_mut() {
-                if !state.is_terminal() {
-                    *state = PerRelayState::FailedAfterRetries {
-                        reason: "cancelled".to_string(),
-                        last_at_ms: now_ms,
-                    };
-                }
-            }
-            self.store.delete(&handle)?;
-        }
-        // Direction review #24: cancellation is a terminal action result that
-        // never flows through `recently_completed`, so record it directly here
-        // so `action_results` clears the host spinner (even for an unknown /
-        // already-settled handle — it is a terminal verdict the host asked for).
-        self.record_terminal(LastTerminal {
-            correlation_id: handle.clone(),
-            status: "cancelled",
-            error: None,
-            // Cancel concerns a signed event; surface its id (#1702).
-            event_id: Some(handle),
-            result_json: None, reason_code: None,
-        });
         self.flush_view();
         Ok(())
     }

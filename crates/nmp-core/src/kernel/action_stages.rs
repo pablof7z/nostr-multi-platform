@@ -94,13 +94,26 @@ pub(crate) const PENDING_STAGE_RETENTION_MS: u64 = 120_000;
 
 /// One stage in an async action's lifecycle.
 ///
+/// The vocabulary is intentionally GENERIC (ADR-0064 §lifecycle): signing and
+/// publishing are decoupled, neither implies the other, and no stage names a
+/// specific capability backend.
+///
 /// `Requested` fires at dispatch entry (the host called
 /// `nmp_app_dispatch_action`; the action was validated and an executor
-/// queued). `AwaitingCapability` is reserved for actions that block on a
-/// host-side capability (NIP-46 remote sign, MLS, etc.) — emitted only by
-/// modules that actually wait. `Publishing` fires when the actor's publish
-/// engine accepts the event for relay dispatch. `Accepted` / `Failed` are
-/// the terminals.
+/// queued). `AwaitingCapability` covers *any* capability round-trip the action
+/// blocks on — signing (local key, NIP-07, NIP-46 bunker, NIP-55 Android), MLS,
+/// etc. There is deliberately NO signing-specific `WaitingForSignature` stage:
+/// signing is one capability among many, invisible to the stage vocabulary
+/// (V-78). `Publishing` is a SEPARATE, OPTIONAL stage that fires when the
+/// actor's publish engine accepts an event for relay dispatch — it is NOT
+/// coupled to signing (an action may sign without publishing, or publish a
+/// pre-signed event without an `AwaitingCapability` stage). `Accepted`,
+/// `Failed`, and `Cancelled` are the terminals.
+///
+/// `Cancelled` is a DISTINCT terminal from `Failed`: it marks a USER-initiated
+/// cancellation, never a capability/signer denial. A signer or capability
+/// rejection is a `Failed { reason }` (carrying a structured `reason_code` on
+/// the display projection, #1735), not a `Cancelled`.
 ///
 /// The vocabulary is closed — adding a stage is a schema decision that
 /// requires updating the host consumer in lockstep.
@@ -112,12 +125,15 @@ pub enum ActionStage {
     Publishing,
     Accepted,
     Failed { reason: String },
+    /// User-initiated cancellation — a distinct terminal from `Failed`. Routed
+    /// through the cancel-by-`correlation_id` doorway (S7, #1754).
+    Cancelled,
 }
 
 impl ActionStage {
-    /// True for `Accepted` / `Failed`. The host typically acks one tick
-    /// after observing a terminal stage; non-terminal stages stay in the
-    /// snapshot mirror until the eventual ack.
+    /// True for `Accepted` / `Failed` / `Cancelled`. The host typically acks
+    /// one tick after observing a terminal stage; non-terminal stages stay in
+    /// the snapshot mirror until the eventual ack.
     ///
     /// `allow(dead_code)`: used by callers outside the crate (the iOS
     /// shell's `KernelBridge` decodes the stage and reads this to gate the
@@ -125,7 +141,7 @@ impl ActionStage {
     /// per-crate dead-code lint cannot see the live usage.
     #[allow(dead_code)]
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Accepted | Self::Failed { .. })
+        matches!(self, Self::Accepted | Self::Failed { .. } | Self::Cancelled)
     }
 
     fn retention_ttl_ms(&self) -> u64 {

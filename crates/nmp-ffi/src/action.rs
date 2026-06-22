@@ -22,10 +22,13 @@
 //!   re-verifies the Schnorr signature + id hash (D4 — only the actor loop
 //!   signs/publishes; a forged event is rejected, never published) and
 //!   routes it through the typed `PublishTarget` carried by the action.
-//! * [`PublishAction::Cancel`] is engine-internal — `PublishModule::start`
-//!   rejects it, so it is NOT dispatchable through `dispatch_action`. The
-//!   publish lifecycle's control plane (cancel / retry) stays on the dedicated
-//!   FFI symbols `nmp_app_cancel_publish` / `nmp_app_retry_publish`.
+//! * Publish *cancel* is NOT a dispatch action and NOT a `PublishAction`
+//!   variant (the bespoke `PublishAction::Cancel` lane was deleted in S7,
+//!   #1754). The publish lifecycle's control plane stays on the dedicated FFI
+//!   symbols: `nmp_app_retry_publish` (by handle) and `nmp_app_cancel_action`
+//!   (by operation `correlation_id` — the kernel reverse-resolves the publish
+//!   handle so the `Cancelled` terminal lands under the original correlation_id,
+//!   PD-036).
 //!
 //! A returned `{"correlation_id":"…"}` for a `Publish` action means the
 //! event was *accepted and enqueued for publication* — the actor owns the
