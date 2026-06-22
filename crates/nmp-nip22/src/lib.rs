@@ -20,6 +20,9 @@
 mod action;
 mod decode;
 mod projection;
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload codec (`ActionPayload`
+// impl for `PostCommentAction`).
+mod wire;
 
 pub use action::{
     register_actions, PostCommentAction, PostCommentCommand, PostCommentModule, KIND_COMMENT,
