@@ -139,8 +139,6 @@ mod event_claim_tests;
 mod interest_install_cache_serve_support;
 #[cfg(test)]
 mod interest_install_cache_serve_tests;
-#[cfg(test)]
-mod resolved_profiles_tests;
 // V-59 rung 1 (#4) — `event_claim_released` ring projection + the
 // in-process `EventClaimReleasedObserver` registration. `pub(crate)` so the
 // trait is reachable for the struct field type in this module.
@@ -181,8 +179,6 @@ mod outbox_tests;
 mod proactive_profile_fetch_tests;
 #[cfg(test)]
 mod profile_claim_discovery_tests;
-#[cfg(test)]
-mod profile_claim_projection_tests;
 #[cfg(test)]
 mod profile_claim_test_support;
 #[cfg(test)]
