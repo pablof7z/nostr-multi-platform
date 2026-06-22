@@ -61,11 +61,12 @@ void nmp_app_remove_relay(void *app, const char *url);
 
 // Sync / sub control
 void nmp_app_trigger_sync(void *app, const char *filter_json, const char *relay_url);
-// ADR-0042 amendment 2026-06-12: nmp_app_open_timeline REMOVED.
-// Current Rust app/defaults code uses NmpApp::declare_active_follows_feed.
-// These old C symbols are compatibility shims only.
-void nmp_app_open_contact_feed(void *app, const char *primary_kinds_json);
-void nmp_app_close_contact_feed(void *app);
+// #1740 step 7/8: the ONE public app-facing feed doorway. nmp_app_open_timeline
+// and the nmp_app_open_contact_feed / nmp_app_close_contact_feed shims are
+// RETIRED. Apps open EVERY feed via nmp_app_open_feed (typed FeedParams JSON in,
+// opaque handle JSON out) and close by handle via nmp_app_close_feed.
+char *nmp_app_open_feed(void *app, const char *params_json);
+void nmp_app_close_feed(void *app, const char *handle_json);
 ```
 
 ### 1.2 AppState update extensions

@@ -81,19 +81,26 @@ void nmp_app_release_ref(void *app, int namespace, const char *key,
 // V-68 / V-112 (ADR-0042): nmp_app_close_author, nmp_app_close_thread deleted.
 // Use nmp_app_chirp_close_author_feed / nmp_app_chirp_close_thread_feed below.
 //
-// Legacy compatibility shim for the active-follows feed declaration.
-// Current Rust app/defaults code uses NmpApp::declare_active_follows_feed.
-// `kinds_json` is a JSON array of primary unsigned 32-bit event kinds, e.g.
-// `"[1]"`; protocol adapters derive wrapper acquisition (D0).
-// An empty array `"[]"` is a legitimate clear (same effect as close).
-// A malformed or non-array value surfaces a diagnostic toast (D6).
-// D8: fire-and-forget; the actor processes the command asynchronously.
-void nmp_app_open_contact_feed(void *app, const char *kinds_json);
-// Legacy compatibility shim for clearing the active-follows feed declaration.
-// Withdraws all follow-feed M2 interests from the lifecycle registry;
-// `drain_lifecycle_tick` emits CLOSE frames for any live REQs on the next idle
-// tick. D6: a null `app` is a silent no-op.
-void nmp_app_close_contact_feed(void *app);
+// #1740 step 7 — the ONE public app-facing feed doorway. (The raw
+// nmp_app_open_contact_feed / nmp_app_close_contact_feed active-follows shims
+// are RETIRED in step 8 — use nmp_app_open_feed(FeedScope::ActiveUserFollows)
+// for the home feed.)
+//
+// nmp_app_open_feed: open ONE feed session from a JSON-encoded FeedParams (the
+// app's PRIMARY content kinds + a typed FeedScope acquisition + admission /
+// ranking / window + projection key). Wrapper/delete acquisition is derived
+// below the boundary. Returns a heap-owned C string the caller MUST free via
+// nmp_free_string:
+//   success → {"projection_key":"<key>","session_id":<u64>}  (the close token)
+//   failure → {"error":"<token>"}  (null_app | bad_params | invalid_primary_kinds
+//             | scope_unsupported | registry_unavailable)
+// D6 — never NULL for a non-null app; never panics across the ABI.
+char *nmp_app_open_feed(void *app, const char *params_json);
+// nmp_app_close_feed: tear down a feed session opened by nmp_app_open_feed,
+// addressed by its HANDLE (the verbatim {"projection_key":…,"session_id":…}
+// envelope the open returned — never a re-derived filter). Idempotent; a null
+// app / malformed handle / already-closed session is a harmless no-op (D6).
+void nmp_app_close_feed(void *app, const char *handle_json);
 
 // Live "following count" read for the host profile header — the number of
 // distinct hex-valid `p` tags in the active account's latest kind:3, read

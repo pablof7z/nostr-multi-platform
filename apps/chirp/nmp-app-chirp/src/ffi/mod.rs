@@ -59,6 +59,7 @@
 mod actions;
 mod create_account;
 mod declared_projections;
+mod feed;
 mod group;
 mod handle;
 mod helpers;
@@ -76,6 +77,9 @@ mod tests;
 
 pub use create_account::nmp_app_chirp_create_new_account;
 pub use declared_projections::nmp_app_chirp_declare_consumed_projections;
+// #1740 step 7 — the ONE public app-facing feed doorway (typed params in,
+// opaque handle out). Replaces per-feed-type opens with a single generic entry.
+pub use feed::{nmp_app_close_feed, nmp_app_open_feed};
 pub use handle::ChirpHandle;
 #[cfg(feature = "marmot")]
 pub use identity::{

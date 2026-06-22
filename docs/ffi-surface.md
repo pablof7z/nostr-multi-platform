@@ -104,8 +104,15 @@ and publish symbols (`nmp_app_publish_note`, `nmp_app_publish_unsigned_event`,
 | `nmp_app_remove_account` | `(app, identity_id: *const c_char)` | Remove account from the identity store. | Chirp | invalid → early return | n/a |
 | `nmp_app_add_relay` | `(app, url: *const c_char, role: *const c_char)` | Add a relay. `role` NULL defaults to `"both"`. | Chirp | null/empty url → early return | n/a |
 | `nmp_app_remove_relay` | `(app, url: *const c_char)` | Remove a relay by URL. | Chirp | invalid → early return | n/a |
-| `nmp_app_open_contact_feed` | `(app, primary_kinds_json: *const c_char)` | Legacy compatibility shim. Delegates to `NmpApp::declare_active_follows_feed`; current Rust app/defaults code must use the active-follows declaration method or app wrapper instead. | legacy/native callers only | null app/kinds → early return; malformed → toast | n/a |
-| `nmp_app_close_contact_feed` | `(app)` | Legacy compatibility shim. Delegates to `NmpApp::clear_active_follows_feed`. | legacy/native callers only | null → silent no-op | n/a |
+| `nmp_app_open_feed` | `(app, params_json: *const c_char) -> *mut c_char` | **#1740 step 7 — the ONE public app-facing feed doorway.** Opens ONE feed session from a JSON-encoded `FeedParams` (PRIMARY content kinds + typed `FeedScope` acquisition + admission/ranking/window + projection key). Wrapper/delete acquisition is derived below the boundary by the perspective compiler. Returns a heap-owned C string (`{"projection_key":…,"session_id":…}` or `{"error":"<token>"}`) the caller MUST free via `nmp_free_string`. | Chirp (every app feed) | null app → `{"error":"null_app"}`; malformed → `bad_params`; wrapper/delete primary → `invalid_primary_kinds`; fail-closed compile → `scope_unsupported` | n/a |
+| `nmp_app_close_feed` | `(app, handle_json: *const c_char)` | **#1740 step 7.** Tear down a session opened by `nmp_app_open_feed`, addressed by its HANDLE envelope (never a re-derived filter — D4). Idempotent. | Chirp | null app / malformed handle / already-closed → silent no-op | n/a |
+
+> **#1740 step 8 — RETIRED:** the raw `nmp_app_open_contact_feed` /
+> `nmp_app_close_contact_feed` C-ABI active-follows shims are DELETED. The only
+> public way to open the active-follows home feed is
+> `nmp_app_open_feed(FeedScope::ActiveUserFollows)`. The
+> `NmpApp::declare_active_follows_feed` / `clear_active_follows_feed` Rust methods
+> remain as INTERNAL composition glue, never as a public C symbol.
 
 The active-follows feed declaration is not a raw kind-list escape hatch. The
 current Rust app API is `NmpApp::declare_active_follows_feed(primary_kinds)`.
@@ -286,9 +293,9 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_cancel_publish` | PASS | PASS | Publish lifecycle control |
 | `nmp_app_add_relay` | PASS | PASS | |
 | `nmp_app_remove_relay` | PASS | PASS | |
-| `nmp_app_open_contact_feed` | PASS | PASS | Legacy shim to `NmpApp::declare_active_follows_feed`; not the current app-facing primitive |
-| `nmp_app_close_contact_feed` | PASS | PASS | Legacy shim to `NmpApp::clear_active_follows_feed` |
-| `nmp_app_open_interest` | PASS | PASS | M2 (ADR-0042) — generic feed-subscription replacement for `open_firehose_tag` and the removed `open_author`/`open_thread` |
+| `nmp_app_open_feed` | PASS | PASS | #1740 step 7 — the ONE public app-facing feed doorway (typed `FeedParams` in, opaque handle out) |
+| `nmp_app_close_feed` | PASS | PASS | #1740 step 7 — handle-based session teardown |
+| `nmp_app_open_interest` | PASS | PASS | M2 (ADR-0042) — generic low-level interest seam (non-feed avatar/uri resolution); its feed-lane retirement is tracked in #1740 |
 | `nmp_app_close_interest` | PASS | PASS | M2 (ADR-0042) |
 | `nmp_app_open_uri` | PASS | PASS | |
 | `nmp_app_claim_profile` | PASS | PASS | |

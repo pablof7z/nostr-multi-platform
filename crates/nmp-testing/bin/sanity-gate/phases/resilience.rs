@@ -230,19 +230,24 @@ fn sub_leak(report: &mut SanityReport, phase: &str, args: &Args) {
     };
     let baseline_open = app.with_state(|s| s.latest_open_sub_count());
 
-    // Open the active-follows feed through the legacy C shim.
-    let kinds = std::ffi::CString::new("[1]").unwrap();
-    nmp_ffi::nmp_app_open_contact_feed(app.raw(), kinds.as_ptr());
-    let opened = app
-        .wait_until(Duration::from_secs(15), |s| {
-            s.latest_open_sub_count() > baseline_open
-        })
-        .is_some();
+    // Open the active-follows feed through the ONE public feed doorway
+    // (#1740 step 8: the raw `nmp_app_open_contact_feed` shim is retired). The
+    // returned handle is the close token — no re-derived filter.
+    let handle = super::open_active_follows_feed(app.raw());
+    let opened = handle.is_some()
+        && app
+            .wait_until(Duration::from_secs(15), |s| {
+                s.latest_open_sub_count() > baseline_open
+            })
+            .is_some();
     if !opened {
+        if let Some(handle) = &handle {
+            super::close_feed_handle(app.raw(), handle);
+        }
         report.push(GateRow::unmeasured(
             "resilience-sub-leak",
             phase,
-            "legacy active-follows open shim + decode_snapshot_envelope",
+            "public open_feed(ActiveUserFollows) + decode_snapshot_envelope",
             "SnapshotEnvelope.wire_subscriptions[state=open]",
             "no dangling open sub after close",
             Verdict::SkipRelayMiss,
@@ -253,9 +258,9 @@ fn sub_leak(report: &mut SanityReport, phase: &str, args: &Args) {
     }
     let peak_open = app.with_state(|s| s.latest_open_sub_count());
 
-    // Close the view; the lifecycle registry emits CLOSE frames on the next
-    // idle tick. After settling, NO open sub may remain above baseline.
-    nmp_ffi::nmp_app_close_contact_feed(app.raw());
+    // Close the view by HANDLE; the lifecycle registry emits CLOSE frames on the
+    // next idle tick. After settling, NO open sub may remain above baseline.
+    super::close_feed_handle(app.raw(), &handle.expect("opened ⇒ handle"));
     let drained = app
         .wait_until(Duration::from_secs(15), |s| {
             s.latest_open_sub_count() <= baseline_open

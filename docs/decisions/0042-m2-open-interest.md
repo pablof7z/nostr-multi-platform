@@ -202,8 +202,23 @@ admission / ranking / window / projection phases plus primary content kinds.
 Apps build a `FeedParams` value, validate it with
 `nmp_feed::validate_primary_kinds` (fail-closed: wrapper kinds 6/16 and delete
 kind 5 are rejected), and open a session via `open_feed` to receive a
-`FeedHandle`. **Step 1 (#1740) landed the typed model and validation;
-`open_feed` dispatch lands in step 2.**
+`FeedHandle`. **Steps 1–7 (#1740) landed the typed model + validation, the
+`NmpApp::open_feed` session registry, the perspective compiler, and the ONE
+public C-ABI doorway `nmp_app_open_feed(app, params_json) -> handle_json` /
+`nmp_app_close_feed(app, handle_json)` — in the app-composition crate (which can
+name the compiler; `nmp-ffi` stays D0-clean).**
+
+**Step 8 (#1740) — the raw interest lane is now INTERNAL/test-only as app feed
+surface.** The `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed` C-ABI
+active-follows shims are DELETED; the raw wasm feed-verb dispatch strings
+(`nmp.kernel.open_interest` / `close_interest`,
+`nmp.feed.declare_active_follows` / `clear_active_follows`) are removed from the
+router. The generic `nmp_app_open_interest` / `close_interest` C symbols (§2)
+remain ONLY as a low-level NON-feed interest seam (avatar / `nostr:` URI
+resolution); they are not an app feed-open surface — the ONLY public way to open
+a feed is `open_feed`. The `declare_active_follows_feed` /
+`clear_active_follows_feed` Rust methods stay as INTERNAL composition glue (the
+home-feed wiring + the perspective compiler's `ActiveUserFollows` arm).
 
 The active-user follow feed is **not** expressible through `open_interest` (§2):
 its author set is reactive perspective state derived from the active account's
