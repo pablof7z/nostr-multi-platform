@@ -1,0 +1,63 @@
+name: web-app-typecheck
+
+# Runs tsc --noEmit on all web app packages that carry TypeScript source.
+# This is the CI gate that catches app-TS type errors before they reach
+# the main branch (closes the false-green class surfaced by #1830).
+#
+# Jobs intentionally do NOT build the wasm artifact — they only need the
+# TypeScript compiler, which works on the stub types shipped in node_modules.
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/web-app-typecheck.yml"
+      - "web/**"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/web-app-typecheck.yml"
+      - "web/**"
+
+jobs:
+  typecheck-nmp-gallery:
+    name: typecheck nmp-gallery
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web/nmp-gallery
+
+      - name: Typecheck nmp-gallery
+        run: npm run typecheck
+        working-directory: web/nmp-gallery
+
+  typecheck-chirp:
+    name: typecheck chirp
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web/chirp
+
+      - name: Typecheck chirp
+        run: npm run typecheck
+        working-directory: web/chirp

@@ -17,7 +17,7 @@
 
 import * as flatbuffers from "flatbuffers";
 
-import type { ProfileWire } from "../components/user-avatar/ProfileWire";
+import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import { ProfileSnapshot } from "./generated/nmp/kernel/profile-snapshot";
 import { RefRowCache, type RefRowApplyOutcome } from "./refRowCache";
 
