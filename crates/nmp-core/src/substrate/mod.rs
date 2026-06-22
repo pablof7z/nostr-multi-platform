@@ -162,10 +162,10 @@ pub use empty_routing::{EmptyMailboxCache, EmptyOutboxRouter};
 pub use relay_score_store::LmdbRelayAuthorScoreStore;
 pub use relay_score_store::{NoopRelayAuthorScoreStore, RelayAuthorScoreStore, ScoreCell};
 pub use routing::{
-    AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass, MailboxCache,
-    OutboxRouter, ParsedRelayList, Pubkey as RoutingPubkey, RelayUrl as RoutingRelayUrl,
-    RoutedRelaySet, RoutingContext, RoutingError, RoutingSource, SessionKeySet,
-    UserConfiguredCategory,
+    canonicalize_relay_url, AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass,
+    MailboxCache, OutboxRouter, ParsedRelayList, Pubkey as RoutingPubkey,
+    RelayUrl as RoutingRelayUrl, RoutedRelaySet, RoutingContext, RoutingError, RoutingSource,
+    SessionKeySet, UserConfiguredCategory,
 };
 pub use routing_trace::{
     truncate_event_id, LaneOutcome, PublishTrace, RouteAttempt, RoutingLane,

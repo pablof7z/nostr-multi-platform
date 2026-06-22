@@ -39,7 +39,7 @@ implementation is injected at composition time.
 
 | Layer | Owns | Current crates |
 |---|---|---|
-| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59` |
+| 0 | Dependency-light vocabulary and interface types | `nmp-kinds`, `nmp-signer-iface`, `nmp-nip42-types`, `nmp-nip92-types`, `nmp-nip59`, `nmp-relay-url` |
 | 1 | Storage, network transport, concrete signer transport | `nmp-store`, `nmp-nostr-lmdb`, `nmp-network`, `nmp-signers`, `nmp-signer-broker` |
 | 2 | Routing and subscription planning algorithms | `nmp-router`, `nmp-planner` |
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
@@ -66,6 +66,18 @@ protocol-crate import paths keep resolving; that re-export is a staged
 migration aid, not a durable seam — issue #1772 tracks migrating every
 remaining importer onto direct `nmp_signer_iface` imports and deleting the
 re-exports. The type owner is `nmp-signer-iface`.
+
+`nmp-relay-url` (Layer 0) owns the dependency-free relay-URL canonicalization
+vocabulary: the single `canonicalize(&str) -> Option<String>` authority that
+normalizes a `ws`/`wss` relay URL (lowercase scheme+host, strip empty-path
+trailing slash, fail-closed on a non-ws/wss or hostless URL). A relay URL is the
+key the transport pool, the routing/mailbox caches, and the blocked-relay filter
+hand each other, so all of them — `nmp-network` (L1), `nmp-router` /
+`nmp-planner` (L2), `nmp-core` (L3, re-exported as
+`nmp_core::substrate::canonicalize_relay_url`), and protocol crates such as
+`nmp-nip17` (L4) — depend on this one crate rather than each re-implementing the
+rules. This retired five drifting copies (#967). The type/authority owner is
+`nmp-relay-url`.
 
 ---
 

@@ -105,7 +105,12 @@ fn parse_dm_relay_list(tags: &[Vec<String>]) -> Vec<String> {
         let Some(url) = tag.get(1).filter(|url| url.starts_with("wss://")) else {
             continue;
         };
-        let canonical = canonicalize_relay_url(url);
+        // Fail-closed: drop any URL the canonical authority rejects (a bare
+        // `wss://` / `wss:///path` with no host) rather than admitting a
+        // malformed key into the DM-inbox cache (#967).
+        let Some(canonical) = canonicalize_relay_url(url) else {
+            continue;
+        };
         if seen.insert(canonical.clone()) {
             relays.push(canonical);
         }
@@ -114,27 +119,14 @@ fn parse_dm_relay_list(tags: &[Vec<String>]) -> Vec<String> {
     relays
 }
 
-/// Canonicalise a `wss://` relay URL: lowercase scheme + host, strip the
-/// empty-path trailing slash (so `wss://Host/` and `wss://host` resolve
-/// to the same cache key). Inputs that do not parse as a URL fall through
-/// unchanged — the caller has already gated on the `wss://` prefix, so
-/// the fall-through case is essentially `wss://<host>[:port][/path]`.
-fn canonicalize_relay_url(url: &str) -> String {
-    // Split into (`scheme://`, rest). The caller guarantees the prefix
-    // `wss://` is present.
-    const PREFIX: &str = "wss://";
-    debug_assert!(url.starts_with(PREFIX));
-    let rest = &url[PREFIX.len()..];
-    // Split host[:port] from path.
-    let (host_port, path) = match rest.find('/') {
-        Some(idx) => (&rest[..idx], &rest[idx..]),
-        None => (rest, ""),
-    };
-    let canonical_host = host_port.to_lowercase();
-    // Strip a trailing single `/` (the empty-path slash) — but keep
-    // `/some/path` intact.
-    let canonical_path = if path == "/" { "" } else { path };
-    format!("{PREFIX}{canonical_host}{canonical_path}")
+/// Canonicalise a `wss://` relay URL through the single workspace authority
+/// [`nmp_core::substrate::canonicalize_relay_url`] (lowercase scheme + host,
+/// strip the empty-path trailing slash). Returns `None` (fail-closed) for an
+/// off-contract URL so a malformed `relay` tag is dropped, not stored. The
+/// rules are NOT re-implemented here — converged onto the one authority (#967).
+fn canonicalize_relay_url(url: &str) -> Option<String> {
+    debug_assert!(url.starts_with("wss://"));
+    nmp_core::substrate::canonicalize_relay_url(url)
 }
 
 #[cfg(test)]
@@ -307,15 +299,18 @@ mod tests {
 
     #[test]
     fn canonicalize_relay_url_preserves_explicit_paths() {
-        assert_eq!(canonicalize_relay_url("wss://Host.Example/"), "wss://host.example");
         assert_eq!(
-            canonicalize_relay_url("wss://Host.Example/some/path"),
-            "wss://host.example/some/path",
+            canonicalize_relay_url("wss://Host.Example/").as_deref(),
+            Some("wss://host.example"),
+        );
+        assert_eq!(
+            canonicalize_relay_url("wss://Host.Example/some/path").as_deref(),
+            Some("wss://host.example/some/path"),
             "explicit paths are preserved verbatim",
         );
         assert_eq!(
-            canonicalize_relay_url("wss://host.example:8443/"),
-            "wss://host.example:8443",
+            canonicalize_relay_url("wss://host.example:8443/").as_deref(),
+            Some("wss://host.example:8443"),
             "ports survive canonicalisation",
         );
     }

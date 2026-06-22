@@ -96,8 +96,14 @@ fn parse_relay_list(tags: &[Vec<String>]) -> ParsedRelayList {
         // a kind:10002 write entry `wss://Block.Example` would never match
         // a blocked entry stored as `wss://block.example`, silently
         // defeating the blocked-relay filter (a privacy regression).
+        // Fail-closed: a `wss://`-prefixed but hostless URL (`wss://`,
+        // `wss:///path`) is rejected by the canonical authority and dropped
+        // rather than poisoning the routing cache (#967).
         let url = match tag.get(1) {
-            Some(u) if u.starts_with("wss://") => canonicalize_relay_url(u),
+            Some(u) if u.starts_with("wss://") => match canonicalize_relay_url(u) {
+                Some(c) => c,
+                None => continue,
+            },
             _ => continue,
         };
         match tag.get(2).map(String::as_str) {

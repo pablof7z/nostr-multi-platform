@@ -102,11 +102,11 @@ impl Signer for NoopSigner {
 
 /// Resolve `PublishTarget::Auto` to a concrete relay set per NIP-65.
 ///
-/// The real implementation lives in `nmp-nip65` (folded into M2 per the
-/// 2026-05-18 scope adjustments): author kind:10002 write relays union'd
-/// with small `#p` recipient sets' read relays. Discovery kinds additionally
-/// fan out to configured indexers; non-discovery kinds fail closed when the
-/// author has no published or local write relay list.
+/// The real implementation lives in `nmp-router` (the single home for NIP-65
+/// mailbox routing — see `docs/architecture/crate-boundaries.md` §5): author
+/// kind:10002 write relays union'd with small `#p` recipient sets' read relays.
+/// Discovery kinds additionally fan out to configured indexers; non-discovery
+/// kinds fail closed when the author has no published or local write relay list.
 pub trait OutboxResolver: Send + Sync {
     /// Resolve the publish target to a list of relays, each annotated with the
     /// human-readable reason it was selected. The returned `Vec` may contain

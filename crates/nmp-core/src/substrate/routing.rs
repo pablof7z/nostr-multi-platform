@@ -7,23 +7,38 @@
 //! Step 2 creates `nmp-router` and ships the single generic `OutboxRouter`
 //! impl; step 3 cuts the kernel over to `Arc<dyn OutboxRouter>`.
 //!
-//! ## Naming collision with `nmp_planner::MailboxCache`
+//! ## Two `MailboxCache` traits — distinct by design, not a duplicate (#967)
 //!
-//! `nmp-planner` (step 9 extraction) defines a trait also named `MailboxCache`
-//! with a *different* shape (`get`, `dm_inbox_relays`, `snapshot_all`,
-//! `generation`, `request_probe`). That trait is the planner-internal
-//! compiler seam — it mixes NIP-65 kind:10002 lookups and NIP-17 kind:10050
-//! lookups, which is exactly the V-40 mixing the spec calls out. The
-//! substrate trait defined here is the **NIP-65-only** seam the router
-//! consults.
+//! `nmp-planner` (a **Layer-2** crate) defines a trait also named
+//! `MailboxCache` with a *different* shape (`get` → `MailboxSnapshot`,
+//! `dm_inbox_relays`, `snapshot_all`, `generation`, `request_probe`). The
+//! substrate trait defined here (**Layer 3**) is the **NIP-65-only** seam the
+//! router consults (`read_relays` / `write_relays` / `snapshot` / `upsert`).
 //!
-//! Step 9 left the divergence in place deliberately: a pure extraction is not
-//! the right moment to unify two traits that differ in their NIP coverage —
-//! they reach through fully-qualified module paths
-//! (`nmp_core::substrate::MailboxCache` vs `nmp_planner::MailboxCache` /
-//! `nmp_core::planner::MailboxCache` re-export) and never `use` each other.
-//! V-40 follow-up work is the planned moment to retire the planner-side
-//! mixed-purpose trait.
+//! The V-40 plan once framed collapsing these into one trait as a follow-up.
+//! That collapse is now **architecturally precluded**, and the divergence is
+//! the correct durable resolution rather than a pending TODO (#967):
+//!
+//! - **Layer boundary.** `nmp-planner` is Layer 2 and MUST NOT depend on
+//!   `nmp-core` (Layer 3) — see `docs/architecture/crate-boundaries.md` §1/§6.
+//!   Merging the planner trait onto this substrate trait, or vice versa, would
+//!   force the forbidden `nmp-planner -> nmp-core` dependency inversion. The
+//!   two traits legally live on opposite sides of that hard boundary.
+//! - **Distinct concerns, not a NIP-mixing bug.** The NIP-17 (kind:10050)
+//!   "mixing" the V-40 note called out has already been factored out into the
+//!   separate substrate seam [`crate::substrate::DmInboxRelayLookup`]. The
+//!   planner trait's `dm_inbox_relays` is now a thin planner-side facade over
+//!   that separate seam, not a second data store. `request_probe` (a
+//!   planner→actor probe side-effect) and `generation` (plan-id stability) are
+//!   planner-internal concerns that have no place on a substrate NIP-65 cache.
+//! - **One bridge, one crate.** `nmp-core` is the only crate that legally sees
+//!   both layers; its `kernel::mailboxes::KernelMailboxes` adapter presents the
+//!   substrate cache + `DmInboxRelayLookup` as the planner trait. That adapter,
+//!   not a trait merge, is the single point of translation.
+//!
+//! The naming overlap is harmless: the two traits reach through fully-qualified
+//! module paths (`nmp_core::substrate::MailboxCache` vs `nmp_planner::MailboxCache`
+//! / `nmp_core::planner::MailboxCache` re-export) and never `use` each other.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -32,6 +47,34 @@ use crate::substrate::UnsignedEvent;
 
 pub type Pubkey = String;
 pub type RelayUrl = String;
+
+// ─── Canonical relay-URL normalization (single authority) ────────────────────
+
+/// Canonicalize a relay URL into its single canonical form — re-exported from
+/// the **one** workspace authority [`nmp_relay_url::canonicalize`] (Layer 0).
+///
+/// `nmp-core` does NOT own the rules: a relay URL is normalized by `nmp-planner`
+/// (L2), `nmp-network` (L1), the kernel (L3), and protocol crates (L4), so the
+/// rules live in the dependency-free Layer-0 crate `nmp-relay-url` that all of
+/// them can legally depend on. This `substrate` re-export is the path the
+/// kernel and out-of-crate routing crates (`nmp-router`) consume, and
+/// `crate::relay::{CanonicalRelayUrl, canonical_relay_url}` delegate here too.
+///
+/// Before this was single-sourced there were five independent copies of the
+/// rules (`crate::relay::CanonicalRelayUrl::parse`, `nmp_router::canonical`,
+/// `nmp_planner::compiler::partition::hint_helper`, `nmp_nip17::kind10050_parser`,
+/// and a `dm_inbox_relays` test helper) that drifted in scheme coverage and
+/// fail-open vs fail-closed behavior — a relay the user blocked under one
+/// spelling could still receive traffic under another (#967). All now delegate
+/// to the one authority.
+///
+/// Returns `None` (fail-closed) when the URL cannot be canonicalized (bad
+/// scheme, missing authority, etc.). A caller MUST NOT dial / persist a relay
+/// in that case. See [`nmp_relay_url::canonicalize`] for the exact rules.
+#[must_use]
+pub fn canonicalize_relay_url(raw: &str) -> Option<String> {
+    nmp_relay_url::canonicalize(raw)
+}
 
 // ─── RoutingSource and sub-enums ─────────────────────────────────────────────
 

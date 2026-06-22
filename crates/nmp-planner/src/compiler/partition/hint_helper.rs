@@ -34,30 +34,12 @@ fn routing_source_for_hint(source: &HintSource) -> RoutingSource {
     }
 }
 
+/// Canonicalize a relay hint URL through the single workspace authority
+/// [`nmp_relay_url::canonicalize`] (fail-closed; the rules are NOT duplicated
+/// here — #967). A hint the authority rejects yields `None`, so
+/// [`route_for_hint`] drops it rather than routing to a malformed target.
 fn canonical_hint_relay_url(raw: &str) -> Option<RelayUrl> {
-    let s = raw.trim();
-    let sep = s.find("://")?;
-    let scheme = s[..sep].to_ascii_lowercase();
-    if scheme != "ws" && scheme != "wss" {
-        return None;
-    }
-    let rest = &s[sep + 3..];
-    if rest.is_empty() {
-        return None;
-    }
-    let (authority, path_etc) = if let Some(pos) = rest.find(['/', '?', '#']) {
-        (&rest[..pos], &rest[pos..])
-    } else {
-        (rest, "")
-    };
-    if authority.is_empty() {
-        return None;
-    }
-    let path_etc_norm = if path_etc == "/" { "" } else { path_etc };
-    Some(format!(
-        "{scheme}://{}{path_etc_norm}",
-        authority.to_ascii_lowercase()
-    ))
+    nmp_relay_url::canonicalize(raw)
 }
 
 #[cfg(test)]

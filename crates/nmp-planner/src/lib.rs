@@ -32,9 +32,16 @@
 //!   `nmp_router::GenericOutboxRouter` requires to resolve write-relays
 //!   for an author.
 //!
-//! Unifying them is out of scope for the extraction PR — they are reached
-//! through fully-qualified module paths (`nmp_core::substrate::MailboxCache`
-//! vs `nmp_planner::MailboxCache`) and never imported into the same scope.
+//! Unifying them into one trait is **architecturally precluded**, not merely
+//! deferred (#967): `nmp-planner` is a Layer-2 crate that MUST NOT depend on
+//! `nmp-core` (Layer 3), so neither trait can name the other. The two are
+//! bridged by `nmp-core`'s `KernelMailboxes` adapter — the only crate that
+//! legally sees both layers. The NIP-17 half is already factored into the
+//! separate `nmp_core::substrate::DmInboxRelayLookup` seam, so the planner
+//! trait's `dm_inbox_relays` is a thin facade, not a second data store. They
+//! are reached through fully-qualified module paths
+//! (`nmp_core::substrate::MailboxCache` vs `nmp_planner::MailboxCache`) and
+//! never imported into the same scope.
 //!
 //! ## Usage
 //!

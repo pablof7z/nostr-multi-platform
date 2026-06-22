@@ -23,23 +23,19 @@ use super::types::{
     RelayUrl,
 };
 
-/// Canonicalize a URL the same way the actor's `CanonicalRelayUrl`
-/// would: trim leading/trailing whitespace, lowercase the scheme and
-/// host. Kept dependency-free so `nmp-network` does not pull
-/// `nmp-core`.
-pub(super) fn canonicalize(raw: &str) -> RelayUrl {
-    let trimmed = raw.trim();
-    let lower_prefix_end = trimmed
-        .find(|c: char| !(c.is_ascii_alphanumeric() || c == ':' || c == '/' || c == '.' || c == '-'))
-        .unwrap_or(trimmed.len());
-    // Cheap canonicalization — full URL parser is the actor's job; the
-    // pool just lowers the obvious case differences so callers that
-    // hand us "WSS://Relay.Ex" and "wss://relay.ex" share a slot.
-    let (head, tail) = trimmed.split_at(lower_prefix_end);
-    let mut out = String::with_capacity(trimmed.len());
-    out.push_str(&head.to_ascii_lowercase());
-    out.push_str(tail);
-    out
+/// Canonicalize a relay URL for slot keying, through the single workspace
+/// authority [`nmp_relay_url::canonicalize`] (#967) — so the pool's slot key is
+/// byte-identical to the kernel/router routing key. There is no hand-rolled
+/// normalization here; the rules live solely in the Layer-0 authority.
+///
+/// Returns `None` (fail-closed) for an off-contract URL the authority rejects.
+/// [`PoolInner::ensure_open`] then refuses to dial — it returns the dead-handle
+/// sentinel rather than opening a slot under a malformed key. In production the
+/// actor only hands the pool already-canonical `wss://` URLs, so this is a
+/// defensive edge. (`nmp-relay-url` is Layer 0 and dependency-free, so depending
+/// on it does not pull `nmp-core`.)
+pub(super) fn canonicalize(raw: &str) -> Option<RelayUrl> {
+    nmp_relay_url::canonicalize(raw)
 }
 
 pub(super) struct SlotState {
@@ -111,7 +107,15 @@ impl PoolInner {
                 generation: 0,
             };
         }
-        let canonical = canonicalize(url);
+        // Fail-closed: a URL the canonical authority rejects gets the dead-handle
+        // sentinel (same as post-shutdown) rather than a slot under a malformed
+        // key — the pool never dials a non-canonicalizable relay (#967).
+        let Some(canonical) = canonicalize(url) else {
+            return RelayHandle {
+                slot: u32::MAX,
+                generation: 0,
+            };
+        };
         if let Some(&slot_id) = self.url_to_slot.get(&canonical) {
             if let Some(Some(state)) = self.slots.get(slot_id as usize) {
                 if state.command_tx.is_some() {

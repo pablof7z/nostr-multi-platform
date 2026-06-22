@@ -178,7 +178,10 @@ fn parse_blocked_relay_list(tags: &[Vec<String>]) -> Vec<String> {
         let Some(url) = tag.get(1).filter(|url| url.starts_with("wss://")) else {
             continue;
         };
-        let canonical = canonicalize_relay_url(url);
+        // Fail-closed: drop a hostless `wss://` URL the authority rejects (#967).
+        let Some(canonical) = canonicalize_relay_url(url) else {
+            continue;
+        };
         if seen.insert(canonical.clone()) {
             relays.push(canonical);
         }

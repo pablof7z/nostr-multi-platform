@@ -167,13 +167,13 @@ pub struct RelayListEntry {
 /// `.unwrap_or("both")` branch); the explicit `"read"` / `"write"` markers
 /// emit the marker verbatim.
 ///
-/// URLs are canonicalised via [`nmp_core::canonical_relay_url`] (lowercase
-/// scheme+host, trailing-`/` stripped on empty path) and deduplicated by
-/// canonical URL in first-seen order. URLs that do not parse as `ws://` or
-/// `wss://` are dropped — this matches the ingest parser's `wss://` gate so a
-/// build → ingest round-trip is stable. (`ws://` is accepted by the
-/// canonicaliser but will be SKIPPED by the kernel parser, which requires
-/// `wss://`; callers should configure `wss://`.)
+/// URLs are gated to `wss://` and canonicalised via the single authority
+/// [`nmp_core::canonical_relay_url`] (lowercase scheme+host, trailing-`/`
+/// stripped on empty path), then deduplicated by canonical URL in first-seen
+/// order. Non-`wss://` URLs (including `ws://`, which the shared authority
+/// would otherwise accept) are dropped here so the build side cannot emit a tag
+/// the kind:10002 ingest parser's `wss://` gate later drops — build → ingest is
+/// symmetric (#967).
 ///
 /// Dedup is by canonical URL only — two entries for the same host with
 /// different markers collapse to the *first* marker seen. Callers that
@@ -193,6 +193,13 @@ pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = Vec::with_capacity(entries.len());
     let mut seen = std::collections::HashSet::new();
     for entry in entries {
+        // Match the kind:10002 ingest gate (`wss://` only — see `ingest.rs`).
+        // The shared authority also accepts `ws://`, so without this gate the
+        // build side could emit a `ws://` `r` tag that its own ingest silently
+        // drops on round-trip (a publish that never takes effect) (#967).
+        if !entry.url.trim_start().to_ascii_lowercase().starts_with("wss://") {
+            continue;
+        }
         let Some(canonical) = canonical_relay_url(&entry.url) else {
             continue;
         };

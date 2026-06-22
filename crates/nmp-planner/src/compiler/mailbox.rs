@@ -1,8 +1,13 @@
-//! `MailboxCache` trait, `MailboxSnapshot`, and phase-1 implementations.
+//! `MailboxCache` trait, `MailboxSnapshot`, and the planner-side implementations.
 //!
-//! The trait is the seam between the compiler and the `nmp-nip65` crate.
-//! Phase 1: `EmptyMailboxCache` + `InMemoryMailboxCache` stubs.
-//! Phase 2: replaced by `nmp-nip65::InMemoryMailboxCache`.
+//! This is the **planner-side** (Layer-2) mailbox seam the subscription
+//! compiler consults. In production the kernel injects an adapter
+//! (`nmp_core::kernel::mailboxes::KernelMailboxes`) that bridges the substrate
+//! NIP-65 cache + the `DmInboxRelayLookup` (NIP-17) seam onto this trait; tests
+//! and the planner harness use [`EmptyMailboxCache`] / [`InMemoryMailboxCache`].
+//! It is intentionally NOT the same trait as the substrate-side
+//! `nmp_core::substrate::MailboxCache` and the two cannot be collapsed — see the
+//! durable-bridge rationale on the [`MailboxCache`] trait below (#967).
 //!
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.1
 //! Doctrine: D3 (outbox routing automatic).
@@ -12,12 +17,11 @@ use std::collections::HashMap;
 
 // ─── MailboxSnapshot ─────────────────────────────────────────────────────────
 
-/// Minimal mailbox snapshot used by the compiler.
+/// Minimal mailbox snapshot used by the compiler — the read/write/both relay
+/// sets for one author.
 ///
-/// Phase 1: only `write_relays` and `both_relays` are consumed (Outbox
-/// direction). Inbox direction (`read_relays`) is used for `#p` interests.
-///
-/// Full trait lives in `nmp-nip65::cache::MailboxCache` (later slice).
+/// `write_relays` + `both_relays` drive the Outbox direction; `read_relays` +
+/// `both_relays` drive the Inbox direction (`#p` interests — DMs, notifications).
 #[derive(Clone, Debug, Default)]
 pub struct MailboxSnapshot {
     pub write_relays: Vec<RelayUrl>,
@@ -50,8 +54,14 @@ impl MailboxSnapshot {
 // ─── MailboxCache trait ───────────────────────────────────────────────────────
 
 /// Minimum surface the compiler needs for mailbox lookups.
-/// Phase 1 implementation: `EmptyMailboxCache` always returns `None`.
-/// Phase 2 implementation: `nmp-nip65::InMemoryMailboxCache`.
+///
+/// This is the **planner-side** (Layer-2) trait. It is intentionally distinct
+/// from the substrate-side `nmp_core::substrate::MailboxCache` (Layer 3, NIP-65
+/// only): the two live on opposite sides of a hard layer boundary and are
+/// bridged by `nmp-core`'s `KernelMailboxes` adapter (#967). `dm_inbox_relays`
+/// here is a thin facade over the substrate `DmInboxRelayLookup` seam, not a
+/// second data store. In production the kernel injects the adapter; tests and
+/// the planner harness use [`EmptyMailboxCache`] / [`InMemoryMailboxCache`].
 pub trait MailboxCache: Send + Sync {
     fn get(&self, pubkey: &Pubkey) -> Option<MailboxSnapshot>;
     /// NIP-17 kind:10050 DM inbox relays for `pubkey`.
