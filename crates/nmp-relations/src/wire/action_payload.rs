@@ -210,14 +210,20 @@ mod tests {
 
     #[test]
     fn unknown_op_ordinal_is_rejected_as_malformed() {
-        // Encode a valid Claim, then patch the `op` byte (ordinal 2 = unknown).
-        // `op` is a ubyte at VT_OP = 6 (second field slot in vtable).
-        let mut bytes = VisibleNoteRelationsAction::Claim {
+        // Encode `Release` (ordinal 1 — the non-default op value).  Because
+        // FlatBuffers only omits a scalar field when its value equals the table
+        // default (Claim = 0), Release MUST be physically present in the vtable.
+        // We locate the op slot, assert it is present (nonzero offset), patch it
+        // to ordinal 99 (unknown), and assert the decoder returns Malformed.
+        // Failure mode check: if decode silently coerced unknown→Claim the
+        // assert_eq below would catch it; if it panicked the test would fail too.
+        let mut bytes = VisibleNoteRelationsAction::Release {
             event_id: EVENT.to_string(),
             consumer_id: "c".to_string(),
         }
         .encode();
-        // Locate op field offset from vtable (slot index 1, vtable offset +6).
+
+        // Locate op field offset via vtable (VT_OP = 6 → vtable_off + 6).
         let root_off = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
         let vtable_soff = i32::from_le_bytes([
             bytes[root_off],
@@ -228,15 +234,52 @@ mod tests {
         let vtable_off = (root_off as i64 - vtable_soff as i64) as usize;
         let op_field_off =
             u16::from_le_bytes([bytes[vtable_off + 6], bytes[vtable_off + 7]]) as usize;
-        if op_field_off != 0 {
-            // Only patch if the op field is physically present.
-            bytes[root_off + op_field_off] = 99u8; // unknown ordinal
-            assert!(matches!(
+
+        // Release is non-default so the op slot MUST be present.
+        assert_ne!(
+            op_field_off, 0,
+            "Release op field must be physically present in the vtable (non-default value)"
+        );
+
+        // Overwrite the op byte with an unknown ordinal.
+        bytes[root_off + op_field_off] = 99u8;
+
+        assert!(
+            matches!(
                 VisibleNoteRelationsAction::decode(&bytes),
                 Err(ActionPayloadDecodeError::Malformed { .. })
-            ));
+            ),
+            "unknown op ordinal 99 must be rejected as Malformed"
+        );
+    }
+
+    // --- wrong file identifier (fail-closed) ------------------------------------
+
+    #[test]
+    fn wrong_file_identifier_is_rejected_as_malformed() {
+        // Encode a valid Release buffer, then overwrite the 4-byte file identifier
+        // at bytes[4..8] with a different tag.  The decode must check the
+        // identifier and reject the buffer as Malformed rather than silently
+        // accepting it.
+        let mut bytes = VisibleNoteRelationsAction::Release {
+            event_id: EVENT.to_string(),
+            consumer_id: "c".to_string(),
         }
-        // If op_field_off == 0 the field defaulted to 0 (Claim) and is absent —
-        // in that case an "unknown" ordinal cannot be injected this way; skip.
+        .encode();
+
+        // FlatBuffers file identifier occupies bytes 4..8 of a finished buffer.
+        assert!(
+            bytes.len() >= 8,
+            "encoded buffer is too short to carry a file identifier"
+        );
+        bytes[4..8].copy_from_slice(b"XXXX");
+
+        assert!(
+            matches!(
+                VisibleNoteRelationsAction::decode(&bytes),
+                Err(ActionPayloadDecodeError::Malformed { .. })
+            ),
+            "buffer with wrong file identifier must be rejected as Malformed"
+        );
     }
 }
