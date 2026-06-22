@@ -118,9 +118,7 @@ use std::sync::{Arc, Mutex};
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{empty_suppression_lookup, KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
-use nmp_feed::{
-    ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController,
-};
+use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController};
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 use nmp_nip01::op_feed::{op_feed_observer, register_op_feed, FeedEmissionState, FrameIdentity};
@@ -338,41 +336,33 @@ fn register_op_feed_defaults_inner(
     // window materializations per 4 Hz tick). Not load-bearing for correctness;
     // a shared per-tick snapshot cache is a tracked follow-up.
     //
-    // R6-S1 emission state + frame-identity rebaseline (the freeze fix):
-    //
-    // The producer rebaselines on the EXACT signal the host's `ProjectionCache`
-    // resets on: the frame `(session_id, snapshot_epoch)` tuple. The kernel
-    // publishes this each tick (before any projection closure runs) into shared
-    // `Arc<AtomicU64>` handles; the closure reads them lock-free and forces a
-    // full baseline whenever either component changes. This covers account-switch
-    // AND `ActorCommand::Reset` AND any future epoch-class bump with ONE durable
-    // signal — there is no bespoke per-event epoch counter (the prior
-    // `emission_epoch` bumped from `follow_set.on_change` was blind to Reset and
-    // is deleted).
+    // R6-S1 emission state + frame-identity rebaseline (the freeze fix): the
+    // producer rebaselines on the EXACT signal the host's `ProjectionCache` resets
+    // on — the frame `(session_id, snapshot_epoch)` tuple, published each tick into
+    // shared `Arc<AtomicU64>` handles the closure reads lock-free. Forcing a full
+    // baseline whenever either component changes covers account-switch, Reset, and
+    // any future epoch-class bump with ONE durable signal (no bespoke per-event
+    // epoch counter — the Reset-blind `emission_epoch` is deleted).
     let engine_for_typed = Arc::clone(&engine);
     let incremental_apply = app.incremental_apply_handle();
     let (frame_session_id, frame_snapshot_epoch) = app.frame_identity_handles();
-    // `FeedEmissionState` is NOT `Send` (it holds `Vec<u8>` and is owned by the
-    // closure), but the closure itself must be `Send + Sync` as required by
-    // `register_feed_render_source`. We wrap the state in a `Mutex` to
-    // satisfy the `Sync` bound; the lock is uncontested in production (only the
-    // actor thread calls the closure under the registry's own mutex).
+    // The closure must be `Send + Sync` (`register_feed_render_source`), so the
+    // `FeedEmissionState` is wrapped in a `Mutex` to satisfy `Sync`; the lock is
+    // uncontested (only the actor thread calls the closure, under the registry's
+    // own mutex).
     let emission_state = Arc::new(Mutex::new(FeedEmissionState::new(incremental_apply)));
 
     // ── 5b. Structural typed-sidecar + feed-author provider (ADR-0063 D7,
-    //         #1671 Lane H, BLOCKING 1) ─────────────────────────────────────────
+    //         #1671 Lane H) ────────────────────────────────────────────────────
     //
     // ONE `FeedRenderSource` materializes the home feed's window ONCE per tick and
     // feeds BOTH the typed sidecar AND the feed-author auto-resolve provider via
     // `register_feed_render_source` — structural pairing (the sidecar cannot exist
-    // without the provider that resolves the authors it renders) shared with the
-    // dynamic author/thread feeds. Because both lanes read the SAME per-tick
-    // materialization, authors-resolved == window-emitted even if a concurrent
-    // `load_older` widens the window mid-tick (no 1-frame blank gap). ADR-0038: the
-    // materialized window reflects the CURRENT viewport (load_older grows it). The
-    // home feed is PERMANENT so the provider is never removed; refs release only as
-    // the window narrows. R6-S1 emission-state omit + frame-identity rebaseline (the
-    // freeze fix) live in the encoder closure below.
+    // without the provider that resolves the authors it renders). Both lanes read
+    // the SAME per-tick materialization, so authors-resolved == window-emitted even
+    // if a concurrent `load_older` widens the window mid-tick (no 1-frame blank gap;
+    // ADR-0038). The home feed is PERMANENT so the provider is never removed. R6-S1
+    // emission-state omit + frame-identity rebaseline live in the encoder closure.
     let source = nmp_feed::FeedRenderSource::new(move || engine_for_typed.snapshot_current_window());
     app.register_feed_render_source(
         nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY,
