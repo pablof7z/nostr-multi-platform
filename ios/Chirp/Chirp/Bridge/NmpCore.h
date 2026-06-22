@@ -47,23 +47,6 @@ void nmp_app_open_interest(void *app, const char *filter_json,
                            const char *consumer_id, uint32_t scope);
 void nmp_app_close_interest(void *app, const char *filter_json,
                             const char *consumer_id, uint32_t scope);
-// F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
-// gate for the cached kind:0 profile. Pass `1` when the user explicitly opened
-// this author's profile screen or pulled to refresh; pass `0` for background /
-// `.onAppear` list-row claims. Replaces the removed `nmp_app_refresh_replaceable`
-// symbol (force-refresh is now an argument; no new C-ABI symbol).
-//
-// `liveness` (treated as the discrete values 0 / 1) declares the consumer's
-// desired subscription shape:
-//   * 0 = CacheOk — serve from cache; a OneShot kind:0 fetch fills a miss;
-//     NO live subscription. Use for feed avatars / inline list contexts.
-//   * 1 = Live — register a Tailing kind:0 interest so reactive profile-edit
-//     updates flow in. Use for the profile screen.
-// Mixed claims on one pubkey resolve Tailing-wins in the kernel, deduped to a
-// single REQ; the shell only passes its intent.
-void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id,
-                           int force, int liveness);
-void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
 // Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted per
 // `consumer_id`; the kernel fetches the event over the OneshotApi (single-
 // writer interest registration — D4) when not yet in the store, and surfaces
@@ -79,8 +62,9 @@ void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer
 void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id, int force);
 void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 // ADR-0063 Lane D — unified, origin-blind reference-resolution entry points.
-// Generalize nmp_app_claim_profile + nmp_app_claim_event behind one seam.
-// The old claim_*/release_* symbols are kept until Lane H deletes them.
+// Generalize the former per-kind profile claim + nmp_app_claim_event behind one
+// seam. ADR-0063 Lane H deleted the old per-kind profile claim_/release_ symbols;
+// profiles now resolve exclusively through nmp_app_resolve_ref below.
 //
 // `namespace` — 0 = profile (kind:0), 1 = event.
 // `key` — lowercase 64-hex pubkey for profile; lowercase event-id hex or "kind:pubkey:d" for event.

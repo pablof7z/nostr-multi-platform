@@ -70,12 +70,9 @@ pub mod capability_socket;
 pub mod display;
 // Step 11 final — the C-ABI surface that used to live in `mod ffi;` now lives
 // in the standalone `nmp-ffi` crate (`docs/architecture/crate-boundaries.md`
-// §5 step 11-final). The substrate types the FFI marshals are re-exported
-// through the public surface below + the `__ffi_internal` module so the
-// extracted crate can name them through normal Rust paths.
-//
-// `mod ffi;` is gone — `pub use ffi::*` at the bottom of this file is gone
-// too — consumers reach the symbols through `nmp_ffi::*` directly.
+// §5 step 11-final). `mod ffi;` / `pub use ffi::*` are gone; consumers reach
+// the symbols through `nmp_ffi::*` directly. The substrate types the FFI
+// marshals are re-exported through the public surface below + `__ffi_internal`.
 // ffi_guard: pure catch_unwind wrapper. Not I/O-bound; kept always-on
 // because actor/commands/* use it on the native side (also actor is always
 // compiled until Phase 1c decoupling). Promoted from `mod ffi_guard` to
@@ -97,12 +94,11 @@ mod kernel_reducer;
 pub mod kinds;
 pub mod nip19;
 pub mod nip21;
-// Subscription compiler — internal path for nmp-core consumers.
-// External callers must depend on `nmp-planner` directly and use
-// `nmp_planner::*`; the `nmp_core::planner` re-export path is deleted
-// (#1608, D0/D3: facades leak planner internals into the app-facing surface).
-// Only items actively used by nmp-core internals are re-exported here; the
-// old catch-all list is trimmed so unused-import warnings become impossible.
+// Subscription compiler — internal path for nmp-core consumers. External
+// callers must depend on `nmp-planner` directly (`nmp_planner::*`); the
+// `nmp_core::planner` re-export path is deleted (#1608, D0/D3: facades leak
+// planner internals into the app-facing surface). Only items nmp-core
+// internals actively use are re-exported here.
 pub(crate) mod planner {
     pub use nmp_planner::compiler::{MailboxCache, MailboxSnapshot, SubscriptionCompiler};
     pub use nmp_planner::interest::{

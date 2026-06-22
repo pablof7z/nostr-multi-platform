@@ -26,28 +26,23 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
     kernel.relay_connected(RelayRole::Content);
     kernel.relay_connected(RelayRole::Indexer);
 
-    // M2 migration: claim_profile registers a kind:0 interest and returns empty
-    // (the planner emits the wire REQ on drain). Two consumers of one pubkey
-    // dedup to ONE interest while keeping the `profile_claims` refcount at 2.
-    let first = kernel.resolve_ref(
+    // M2 migration: a profile resolve_ref registers a kind:0 interest and
+    // returns empty (the planner emits the wire REQ on drain). Two consumers of
+    // one pubkey dedup to ONE interest, keeping `profile_claims` refcount at 2.
+    let mut resolve = |consumer: &str| {
+        kernel.resolve_ref(
             RefNamespace::Profile,
             FIATJAF_PUBKEY.to_string(),
-            "timeline-row:first".to_string(),
+            consumer.to_string(),
             RefShape::Profile(ProfileShape::Card),
             RefLiveness::CacheOk.into(),
             false,
             Vec::new(),
-        );
-    let second = kernel.resolve_ref(
-            RefNamespace::Profile,
-            FIATJAF_PUBKEY.to_string(),
-            "timeline-row:second".to_string(),
-            RefShape::Profile(ProfileShape::Card),
-            RefLiveness::CacheOk.into(),
-            false,
-            Vec::new(),
-        );
-    assert!(first.is_empty(), "claim_profile emits no outbound directly");
+        )
+    };
+    let first = resolve("timeline-row:first");
+    let second = resolve("timeline-row:second");
+    assert!(first.is_empty(), "profile resolve emits no outbound directly");
     assert!(second.is_empty());
 
     // The planner emits a kind:0 REQ for the claimed author (detailed routing /
