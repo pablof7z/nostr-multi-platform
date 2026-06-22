@@ -163,6 +163,16 @@ impl Kernel {
         for outcome in completions {
             let (status, outcomes) = classify_terminal_outcome(&outcome);
             self.set_publish_entry_terminal(&outcome.event_id, status, outcomes);
+            // S7 (#1754) D8 — forget the handle↔correlation index entry now
+            // that this publish has reached a terminal outcome (ok or failed).
+            // Mirrors the cancel/clear paths in `publish_outbox.rs` (lines
+            // :175/:190). Every terminal path (success, failure, cancel) must
+            // forget exactly once; non-terminal stage updates (publishing /
+            // awaiting_capability) must NOT forget so the index tracks only
+            // the live in-flight set. Without this, a completed publish leaves
+            // a stale handle↔correlation entry bounded only by the cap, not
+            // by the actual in-flight set — a D8 violation.
+            self.publish_handle_correlation.forget(&outcome.event_id);
             // V-18: surface a user-visible toast when every relay returned
             // `FailedAfterRetries`. Without this, a post that no relay
             // accepted would silently sit in the Outbox with no feedback to

@@ -40,6 +40,8 @@ pub(crate) mod action_stages;
 mod action_stages_tests;
 #[cfg(test)]
 mod cancel_correlation_tests;
+#[cfg(test)]
+mod publish_completion_forget_tests; // D8 — forget handle↔correlation on completion (S7/#1754)
 pub(crate) mod handle_correlation; // handle ↔ dispatch-correlation_id (S7, #1754)
 mod relay_list_substrate;
 pub(crate) use relay_list_substrate::parse_relay_list_to_substrate;
