@@ -16,7 +16,8 @@ use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
     EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
     KernelReaderRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SearchScopeRegistrar,
+    SnapshotProjectionRegistrar,
 };
 use nmp_ffi::NmpApp;
 
@@ -149,6 +150,16 @@ impl<S> IngestParserRegistrar for NmpAppBuilder<S> {
     fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
         let app: &NmpApp = unsafe { &*self.app };
         app.unregister_ingest_parser_range(slot_key);
+    }
+}
+
+impl<S> SearchScopeRegistrar for NmpAppBuilder<S> {
+    fn register_search_scope(
+        &self,
+        provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.register_search_scope(provider);
     }
 }
 

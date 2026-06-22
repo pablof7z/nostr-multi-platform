@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use nostr::prelude::*;
 
-use super::{gc, ingest_log, provenance, Inner};
+use super::{fts, gc, ingest_log, provenance, Inner};
 use crate::ingest_log::{DeleteReason, LogRetentionClaim};
 use crate::types::{DeleteFilter, EventId};
 use crate::StoreError;
@@ -90,6 +90,8 @@ fn by_ids(
             kind,
         )?;
         gc::lru_delete(inner, txn, &id)?;
+        // #1811: drop the deleted event's FTS rows (doc-key-driven).
+        fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
         // Issue #1519: decrement interaction-counter for deleted event.
         if let Some(ref tags) = event_tags {
@@ -156,6 +158,8 @@ fn by_author(
             kind,
         )?;
         gc::lru_delete(inner, txn, &id)?;
+        // #1811: drop the deleted event's FTS rows (doc-key-driven).
+        fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
         // Issue #1519: decrement interaction-counter for deleted event.
         if let Some(ref tags) = event_tags {
@@ -222,6 +226,8 @@ fn by_kind_range(
             kind,
         )?;
         gc::lru_delete(inner, txn, &id)?;
+        // #1811: drop the deleted event's FTS rows (doc-key-driven).
+        fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
         // Issue #1519: decrement interaction-counter for deleted event.
         if let Some(ref tags) = event_tags {
@@ -329,6 +335,8 @@ fn by_relay_only(
             kind,
         )?;
         gc::lru_delete(inner, txn, &id)?;
+        // #1811: drop the deleted event's FTS rows (doc-key-driven).
+        fts::fts_remove_by_id(inner, txn, &id)?;
         gc::expiry_index_delete_exact(inner, txn, expiry, &id)?;
         // Issue #1519: decrement interaction-counter for deleted event.
         if let Some(ref tags) = event_tags {

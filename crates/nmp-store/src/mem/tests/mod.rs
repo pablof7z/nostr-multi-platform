@@ -15,6 +15,8 @@ mod insert_tests;
 mod query_visit_tests;
 mod relay_index_tests;
 mod relay_kind_tests;
+// #1811 — in-memory full-text-search backend tests.
+mod fts_tests;
 
 mod ingest_log_tests;
 // Fix-verification tests (split for 500-LOC cap).

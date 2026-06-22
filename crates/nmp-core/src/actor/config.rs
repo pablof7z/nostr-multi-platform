@@ -15,6 +15,7 @@ use crate::substrate::{
     BlockedRelayLookup, ContactsLookup, DmInboxRelayLookup, EventIngestDispatcher, HostOpHandler,
     HostOpHandlerSlot, ProfileLookup, RelayConnectedHook, RelayConnectedHookSlot,
     RelayTextInterceptor, RelayTextInterceptorSlot, ReqFrameInterceptor, ReqFrameInterceptorSlot,
+    SearchScopeRegistry,
 };
 use crate::update_envelope::UpdateFrameBytes;
 
@@ -58,6 +59,11 @@ pub struct ActorConfigSources {
     pub relay_text_interceptor: RelayTextInterceptorSlot,
     pub relay_connected_hook: RelayConnectedHookSlot,
     pub ingest_dispatcher: Arc<RwLock<EventIngestDispatcher>>,
+    /// #1811 — crate-registered FTS scope registry. Compiled + installed into
+    /// the kernel store at `apply_to_kernel` (after the store exists). Mirrors
+    /// `ingest_dispatcher`: a shared `Arc` written by host registration,
+    /// consumed once at composition.
+    pub search_scope_registry: Arc<SearchScopeRegistry>,
     pub dm_inbox_relays: Arc<Mutex<Arc<dyn DmInboxRelayLookup>>>,
     pub profile_lookup: Arc<Mutex<Arc<dyn ProfileLookup>>>,
     pub contacts_lookup: Arc<Mutex<Arc<dyn ContactsLookup>>>,
@@ -111,6 +117,7 @@ impl ActorConfigSources {
                 .map(|guard| guard.clone())
                 .unwrap_or_default(),
             ingest_dispatcher: self.ingest_dispatcher,
+            search_scope_registry: self.search_scope_registry,
             dm_inbox_relays: self
                 .dm_inbox_relays
                 .lock()
@@ -169,6 +176,9 @@ pub struct ActorConfig {
     pub relay_text_interceptors: Vec<Arc<dyn RelayTextInterceptor>>,
     pub relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
     pub ingest_dispatcher: Arc<RwLock<EventIngestDispatcher>>,
+    /// #1811 — crate-registered FTS scope registry (compiled + installed into
+    /// the kernel store at `apply_to_kernel`).
+    pub search_scope_registry: Arc<SearchScopeRegistry>,
     pub dm_inbox_relays: Arc<dyn DmInboxRelayLookup>,
     pub profile_lookup: Arc<dyn ProfileLookup>,
     pub contacts_lookup: Arc<dyn ContactsLookup>,
@@ -217,6 +227,13 @@ impl ActorConfig {
             kernel.set_clock(Arc::clone(clock));
         }
         kernel.set_ingest_dispatcher_slot(Arc::clone(&self.ingest_dispatcher));
+        // #1811 — compile the crate-registered search scopes (noun-free
+        // CompiledIndexSpec) and install them into the kernel's store. The
+        // store now exists (kernel construction is complete); the registry runs
+        // its opaque extractors + the shared tokenizer at ingest. A `Reset`
+        // re-runs `apply_to_kernel`, so the fresh store is re-installed.
+        self.search_scope_registry
+            .install_into(&*kernel.event_store_handle());
         kernel.set_dm_inbox_relay_lookup(Arc::clone(&self.dm_inbox_relays));
         kernel.set_profile_lookup(Arc::clone(&self.profile_lookup));
         kernel.set_contacts_lookup(Arc::clone(&self.contacts_lookup));

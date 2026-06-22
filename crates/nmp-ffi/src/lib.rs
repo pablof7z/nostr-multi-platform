@@ -30,6 +30,7 @@ mod active_account_handle_tests;
 // ingest driven through the actor thread; publish-back slot survives Reset).
 mod action;
 mod app_config_hooks;
+mod app_config_search; // #1811: `register_search_scope` (impl NmpApp; LOC ceiling).
 mod app_config_substrate;
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpApp` extracted here (LOC ceiling).
 mod capability;
@@ -814,6 +815,13 @@ pub struct NmpApp {
     /// onto the kernel so the ingest path reads through the same
     /// dispatcher the registration path mutated.
     ingest_dispatcher_slot: Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>>,
+    /// #1811 — shared crate-registered FTS scope registry. Per-protocol crates
+    /// register a [`nmp_core::substrate::SearchScopeProvider`] through
+    /// [`Self::register_search_scope`]; actor kernel construction compiles the
+    /// registry into noun-free `CompiledIndexSpec`s and installs them into the
+    /// kernel store (`apply_to_kernel`), so the SAME registry the registration
+    /// path mutated drives the store's index.
+    search_scope_registry: Arc<nmp_core::substrate::SearchScopeRegistry>,
     /// V-40 — shared [`nmp_core::substrate::DmInboxRelayLookup`] slot. The
     /// per-app crate (today `nmp-nip17::register_actions`) writes a
     /// concrete `DmRelayCache` here via
@@ -1109,6 +1117,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             nmp_core::substrate::EventIngestDispatcher::new(),
         ));
     let actor_ingest_dispatcher = Arc::clone(&ingest_dispatcher_slot);
+    // #1811 — crate-registered FTS scope registry. Per-protocol crates register
+    // a `SearchScopeProvider` through `NmpApp::register_search_scope` which
+    // mutates THIS registry; the actor compiles + installs it into the kernel
+    // store at construction so registration and the store index share one
+    // registry.
+    let search_scope_registry: Arc<nmp_core::substrate::SearchScopeRegistry> =
+        Arc::new(nmp_core::substrate::SearchScopeRegistry::new());
+    let actor_search_scope_registry = Arc::clone(&search_scope_registry);
     // V-40 — substrate `DmInboxRelayLookup` slot. The per-app crate
     // (today: `nmp-nip17::register_actions`) installs the concrete
     // `DmRelayCache` here via [`NmpApp::set_dm_inbox_relay_lookup`];
@@ -1217,6 +1233,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             relay_text_interceptor: actor_relay_text_interceptor,
             relay_connected_hook: actor_relay_connected_hook,
             ingest_dispatcher: actor_ingest_dispatcher,
+            search_scope_registry: actor_search_scope_registry,
             dm_inbox_relays: actor_dm_inbox_relays,
             profile_lookup: actor_profile_lookup,
             contacts_lookup: actor_contacts_lookup,
@@ -1413,6 +1430,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // shared registry handle; lookup slots are snapped to their current
         // handles at actor start.
         ingest_dispatcher_slot,
+        // #1811 — crate-registered FTS scope registry (shared handle; compiled
+        // + installed into the kernel store at actor construction).
+        search_scope_registry,
         dm_inbox_relays_slot,
         // ADR-0057 PR 2 — the `NmpApp`'s clone of the substrate `ProfileLookup`
         // slot. Mirrors the dm_inbox_relays_slot wiring.

@@ -6,6 +6,9 @@
 use std::collections::{BTreeSet, HashSet};
 use std::ops::ControlFlow;
 
+use super::text_search::{
+    CompiledIndexSpec, SearchScopeId, TextSearchHit, TextSearchQuery, TextSearchStatus,
+};
 use super::types::{
     CoverageGuard, DeleteFilter, DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome,
     ProvenanceEntry, PubKey, RelayUrl, StoreQuery, StoredEvent, TombstoneRow, VerifiedEvent,
@@ -132,41 +135,9 @@ pub trait EventStore: Send + Sync {
         limit: usize,
         visitor: &mut dyn FnMut(&StoredEvent) -> ControlFlow<()>,
     ) -> Result<(), StoreError> {
-        let iter: Box<dyn EventIter + '_> = match query {
-            StoreQuery::AuthorKind {
-                author,
-                kinds,
-                since,
-                until,
-            } => self.scan_by_author_kind(author, kinds, *since, *until, limit)?,
-            StoreQuery::AuthorsKind {
-                authors,
-                kinds,
-                since,
-                until,
-            } => self.scan_by_authors_kind(authors, kinds, *since, *until, limit)?,
-            StoreQuery::KindTime {
-                kinds,
-                since,
-                until,
-            } => self.scan_by_kind_time(kinds, *since, *until, limit)?,
-            StoreQuery::KindDtag {
-                kind,
-                d_tag,
-                since,
-                until,
-            } => self.scan_by_kind_dtag(*kind, d_tag, *since, *until, limit)?,
-            StoreQuery::Etag { target, kinds } => self.scan_by_etag(target, kinds, limit)?,
-            StoreQuery::Ptag { target, kinds } => self.scan_by_ptag(target, kinds, limit)?,
-        };
-        for item in iter {
-            let ev = item?;
-            if let ControlFlow::Break(()) = (visitor)(&ev) {
-                // doctrine-allow: D15 — `visitor` is an `impl Fn` parameter (compile-time monomorphic), not a stored `Box<dyn Fn>` host closure; no FFI surface involved
-                break;
-            }
-        }
-        Ok(())
+        // Dispatch body lives in `events_query_dispatch` to keep this trait file
+        // under the file-size hard cap; behaviour is identical.
+        crate::events_query_dispatch::query_visit_default(self, query, limit, visitor)
     }
 
     /// Vec-returning query — a thin wrapper over [`query_visit`](Self::query_visit)
@@ -455,5 +426,70 @@ pub trait EventStore: Send + Sync {
     ) -> Result<crate::TargetInteractionCounts, StoreError> {
         let _ = target;
         Ok(crate::TargetInteractionCounts::default())
+    }
+
+    // ─── Full-text search (issue #1811) ──────────────────────────────────────
+
+    /// Install the compiled, protocol-noun-free search index specs.
+    ///
+    /// Called once at composition time by `nmp-core`, which compiles its
+    /// protocol-aware `SearchScopeProvider`s into [`CompiledIndexSpec`]s
+    /// (dropping local-only-private scopes and private/encrypted kinds) and
+    /// hands the set to the store. The store runs each spec's opaque `extract`
+    /// closure + the shared tokenizer at ingest; it never names a protocol
+    /// concept (D0).
+    ///
+    /// Default no-op so a non-FTS backend compiles unchanged. The
+    /// `MemEventStore` overrides this to build its in-memory inverted index;
+    /// the Phase-2 `LmdbEventStore` overrides it to register its FTS
+    /// sub-databases. `&self` (interior mutability) to match the trait's
+    /// `Arc<dyn EventStore>` convention.
+    fn install_search_index_specs(&self, _specs: Vec<CompiledIndexSpec>) {}
+
+    /// Read accessor: the installed cache-searchable scopes and the kinds each
+    /// one indexes (issue #1811).
+    ///
+    /// Returns one entry per scope that has a live cache index — exactly the set
+    /// [`Self::text_search_visit`] can serve. The caller (cache-serve) uses this
+    /// to decide, for a search-bearing interest, whether ANY registered scope
+    /// covers the interest's kinds: if so it routes the search to the local
+    /// index; if not it leaves the search to relays. The vocabulary is
+    /// protocol-noun-free — only opaque [`SearchScopeId`]s and kind integers — so
+    /// the kernel never learns which NIP a scope belongs to (D0).
+    ///
+    /// Default empty so a non-FTS backend reports "no cache scopes" and every
+    /// search shape stays relay-served. Both shipping backends (mem + LMDB)
+    /// override this to expose their installed cache-eligible scopes. `&self`
+    /// (interior mutability) to match the trait's `Arc<dyn EventStore>`
+    /// convention.
+    fn cache_search_scopes(&self) -> Vec<(SearchScopeId, BTreeSet<u32>)> {
+        Vec::new()
+    }
+
+    /// Streaming text search over one registered scope (issue #1811).
+    ///
+    /// Invokes `visitor` once per matching document, ordered per
+    /// `query.order`, up to `query.limit`. The visitor returns
+    /// [`ControlFlow::Break`] to stop early without materializing the remaining
+    /// results (mirrors [`Self::query_visit`]).
+    ///
+    /// Matching is **token + prefix** (the shared tokenizer): a multi-token
+    /// query is AND-combined; all but the trailing token match an indexed token
+    /// exactly, and the trailing token matches by prefix. The scan is bounded by
+    /// `query.budget` and never degrades to a hidden full-corpus scan.
+    ///
+    /// Returns an explicit [`TextSearchStatus`]: `Complete`, `Partial` (limit or
+    /// budget exhausted), `Unsupported` (default / unknown scope),
+    /// `IndexBuilding`, or `StoreError`.
+    ///
+    /// Default returns [`TextSearchStatus::Unsupported`] (and never calls the
+    /// visitor) so a non-FTS backend compiles unchanged — exactly the
+    /// "default returns Unsupported" trick the relay-coverage methods use.
+    fn text_search_visit(
+        &self,
+        _query: &TextSearchQuery,
+        _visitor: &mut dyn FnMut(TextSearchHit) -> ControlFlow<()>,
+    ) -> Result<TextSearchStatus, StoreError> {
+        Ok(TextSearchStatus::Unsupported)
     }
 }

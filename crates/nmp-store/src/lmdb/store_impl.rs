@@ -7,8 +7,8 @@ use std::collections::{BTreeSet, HashSet};
 use std::ops::ControlFlow;
 
 use super::{
-    coverage, delete, domain, dump as dump_mod, gc, ingest_log, insert, query, query_relay_index,
-    LmdbEventStore,
+    coverage, delete, domain, dump as dump_mod, fts, gc, ingest_log, insert, query,
+    query_relay_index, LmdbEventStore,
 };
 use crate::domain_handle::DomainHandle;
 use crate::events::{EventIter, EventStore};
@@ -207,6 +207,42 @@ impl EventStore for LmdbEventStore {
         target: &crate::types::EventId,
     ) -> Result<crate::TargetInteractionCounts, crate::StoreError> {
         super::interaction_counters::read_counts(&self.inner, target)
+    }
+
+    // ─── Full-text search (issue #1811) — durable LMDB inverted index ───────────
+
+    fn install_search_index_specs(&self, specs: Vec<crate::text_search::CompiledIndexSpec>) {
+        // Composition-time install (single writer). Store the spec set on Inner,
+        // then run the one-time / tokenizer-version backfill so the durable index
+        // is consistent with the spec set before the first query. A poisoned lock
+        // degrades to "no FTS" (search then returns Unsupported) — never a panic.
+        match self.inner.fts_specs.write() {
+            Ok(mut g) => *g = specs,
+            Err(e) => {
+                tracing::warn!(error = %e, "install_search_index_specs: fts_specs lock poisoned");
+                return;
+            }
+        }
+        if let Err(e) = fts::backfill_fts_index(&self.inner) {
+            tracing::warn!("FTS backfill failed (search degraded to IndexBuilding/empty): {e}");
+        }
+    }
+
+    fn cache_search_scopes(
+        &self,
+    ) -> Vec<(crate::text_search::SearchScopeId, BTreeSet<u32>)> {
+        // Mirrors the mem backend: the cache-serve hook reads the installed
+        // cache-eligible scopes so a search shape whose kinds intersect a scope
+        // is served from this durable inverted index instead of relay-only.
+        self.inner.fts_cache_scopes()
+    }
+
+    fn text_search_visit(
+        &self,
+        query: &crate::text_search::TextSearchQuery,
+        visitor: &mut dyn FnMut(crate::text_search::TextSearchHit) -> ControlFlow<()>,
+    ) -> Result<crate::text_search::TextSearchStatus, StoreError> {
+        fts::text_search_visit(&self.inner, query, visitor)
     }
 
     // ─── F-TTL replaceable freshness ───────────────────────────────────────────

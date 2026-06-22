@@ -140,6 +140,40 @@ pub struct Inner {
     /// Ingest-log metadata: "last_seq" / "gc_floor" → u64 BE.
     pub(crate) ingest_meta: Database<Bytes, Bytes>,
 
+    // ── #1811 full-text-search inverted index (durable backend of the FTS seam) ─
+    /// Inverted postings (`nmp-fts-postings`):
+    /// `scope_discriminant(4 BE) || token_bytes || 0x00 || (!created_at)(8 BE) ||
+    /// doc_key(32)` → empty.
+    ///
+    /// The `!created_at` (`u64::MAX - created_at`) segment makes a forward cursor
+    /// scan over a token's range yield documents newest-first; the `0x00`
+    /// delimiter after the (NUL-free, see `fts.rs`) token bytes makes every key
+    /// unambiguously decodable. Maintained in the SAME `RwTxn` as the event write
+    /// at every insert/replace/delete/GC site (mirrors `relay_index`).
+    pub(crate) fts_postings: Database<Bytes, Bytes>,
+
+    /// Doc → terms (`nmp-fts-doc-terms`): `doc_key(32)` → packed `Vec<token>`.
+    ///
+    /// Drives DOC-KEY-driven removal: every delete path reads the doc's term list
+    /// here and deletes exactly that document's postings WITHOUT re-tokenizing the
+    /// (possibly unavailable) event body. Value layout in `fts.rs::encode_terms`.
+    pub(crate) fts_doc_terms: Database<Bytes, Bytes>,
+
+    /// Term stats (`nmp-fts-term-stats`): `scope_discriminant(4 BE) || token_bytes`
+    /// → doc-frequency(8 BE).
+    ///
+    /// Lets the query planner pick the RAREST root term to seed the scan (smallest
+    /// posting list first), so AND-intersection touches the fewest candidate docs.
+    pub(crate) fts_term_stats: Database<Bytes, Bytes>,
+
+    /// Installed FTS specs (#1811), set once at composition by
+    /// `install_search_index_specs`. Wrapped in an `RwLock` because the spec set
+    /// (with its type-erased extractor closures) is not known until after the
+    /// store is opened. Single-writer (composition), many-reader (every event
+    /// write + every query). A poisoned lock degrades to "no FTS" (search then
+    /// returns `Unsupported`), never a panic (D6).
+    pub(crate) fts_specs: RwLock<Vec<crate::text_search::CompiledIndexSpec>>,
+
     // ── GC scan state (V-117 fixes) ───────────────────────────────────────
     /// Phase-3/3b tombstone-purge gate: unix_secs of the last pass that
     /// actually ran the tombstone scan.  The Phase-3 scan iterates and
@@ -171,6 +205,44 @@ impl Inner {
     /// (the serializing invariant is the write txn, not actor single-threading).
     /// A poisoned lock is non-fatal — fall back to an empty set (normal trim,
     /// the consumer degrades to an explicit `PullGap`, never a silent skip).
+    /// Snapshot the installed FTS spec set (#1811) for one event-write txn.
+    ///
+    /// Cloned once per event mutation so the txn sees a consistent spec set while
+    /// indexing. A poisoned lock degrades to an empty set — that mutation simply
+    /// writes no FTS rows (search returns Unsupported/empty), never a panic (D6).
+    pub(crate) fn fts_specs_snapshot(&self) -> Vec<crate::text_search::CompiledIndexSpec> {
+        match self.fts_specs.read() {
+            Ok(g) => g.clone(),
+            Err(e) => {
+                tracing::warn!(error = %e, "fts_specs lock poisoned; indexing with empty spec set");
+                Vec::new()
+            }
+        }
+    }
+
+    /// The installed cache-searchable scopes and the kinds each indexes — the
+    /// read side of [`crate::EventStore::cache_search_scopes`] (#1811). Mirrors
+    /// the mem backend: every spec in `fts_specs` is already cache-eligible
+    /// (`SearchScopeRegistry::compile` drops `RelayOnly` / `LocalOnlyPrivate`
+    /// scopes and private kinds before install), so the cache-serve hook can
+    /// match a search shape against these `(scope, kinds)` pairs without naming
+    /// any FTS noun. A poisoned lock degrades to "no cache scopes" (D6 — search
+    /// then stays relay-served, never a panic).
+    pub(crate) fn fts_cache_scopes(
+        &self,
+    ) -> Vec<(crate::text_search::SearchScopeId, std::collections::BTreeSet<u32>)> {
+        match self.fts_specs.read() {
+            Ok(g) => g
+                .iter()
+                .map(|spec| (spec.scope_id, spec.kinds.clone()))
+                .collect(),
+            Err(e) => {
+                tracing::warn!(error = %e, "fts_specs lock poisoned; reporting no cache search scopes");
+                Vec::new()
+            }
+        }
+    }
+
     pub(crate) fn retention_claims_snapshot(&self) -> Vec<LogRetentionClaim> {
         match self.retention_claims.read() {
             Ok(g) => g.clone(),

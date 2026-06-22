@@ -68,6 +68,10 @@ pub(super) fn insert(
     // so every append-time trim within it sees a consistent set.
     let retention_claims = inner.retention_claims_snapshot();
 
+    // #1811: snapshot the installed FTS specs once for this event txn so indexing
+    // sees a consistent spec set within the same RwTxn as the event write (D6).
+    let fts_specs = inner.fts_specs_snapshot();
+
     // 4. Per-id tombstone check (NMP-side).
     if let Some(tomb) = tombstones::get(inner.tombstones, &txn, &id_bytes)? {
         let applies = match tomb.origin {
@@ -123,6 +127,7 @@ pub(super) fn insert(
             source,
             received_at_ms,
             &retention_claims,
+            &fts_specs,
         )?;
         txn.commit()
             .map_err(|e| classify_heed_err(e, inner.map_size, inner.max_readers))?;
@@ -169,6 +174,9 @@ pub(super) fn insert(
             )?;
             // Stamp LRU access for the newly stored event.
             gc::lru_stamp(inner, &mut txn, &id_bytes)?;
+            // #1811: index the newly stored event into every installed FTS scope
+            // whose kinds contain this kind (same txn — D6). Idempotent per doc.
+            super::fts::fts_add_event(inner, &mut txn, &fts_specs, &event, received_at_ms)?;
             // V-118: index this event's expiry if it carries an expiration tag.
             if let Some(exp) = event.expiration() {
                 gc::expiry_index_put(inner, &mut txn, exp, &id_bytes)?;
@@ -198,6 +206,9 @@ pub(super) fn insert(
                     event.kind,
                 )?;
                 gc::lru_delete(inner, &mut txn, &replaced_id)?;
+                // #1811: drop the replaced event's FTS rows (doc-key-driven — no
+                // re-tokenize; the replaced body is not loaded on this path).
+                super::fts::fts_remove_by_id(inner, &mut txn, &replaced_id)?;
                 // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
                 gc::expiry_index_delete_exact(inner, &mut txn, replaced_expiry, &replaced_id)?;
                 // Delete the replaceable_freshness row so stale TTL data cannot

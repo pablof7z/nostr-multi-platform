@@ -71,6 +71,10 @@ impl NmpApp {
         }
     }
 
+    // #1811 — `register_search_scope` (FTS scope registration) lives in the
+    // cohesive `app_config_search` sibling module (another `impl NmpApp` block)
+    // to keep this file under the file-size hard cap.
+
     /// Remove the parser registered under `slot_key` for `kind`, if any.
     /// Used by teardown paths (e.g. Marmot sign-out) to clear a
     /// lifecycle-managed slot without installing a replacement.

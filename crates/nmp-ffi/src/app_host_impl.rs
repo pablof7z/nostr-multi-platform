@@ -17,7 +17,8 @@ use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
     EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
     KernelReaderRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
+    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SearchScopeRegistrar,
+    SnapshotProjectionRegistrar,
 };
 
 use super::*;
@@ -127,6 +128,15 @@ impl IngestParserRegistrar for NmpApp {
 
     fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
         NmpApp::unregister_ingest_parser_range(self, slot_key);
+    }
+}
+
+impl SearchScopeRegistrar for NmpApp {
+    fn register_search_scope(
+        &self,
+        provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>,
+    ) {
+        NmpApp::register_search_scope(self, provider);
     }
 }
 

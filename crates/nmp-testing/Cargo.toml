@@ -78,6 +78,13 @@ nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip68 = { path = "../nmp-nip68" }
 nmp-nip42 = { path = "../nmp-nip42" }
 nmp-nip47 = { path = "../nmp-nip47" }
+# #1811 cache-FTS integration gate (cache_fts_integration_gate.rs) — drives the
+# crate-owned NIP-50 public search scopes + NIP-29 group-metadata scope through
+# the real `SearchScopeRegistry::compile`/`install_into` seam against both store
+# backends (mem + LMDB) to prove early-stop bounds, privacy exclusion, cleanup
+# on delete/replace/kind:5/GC, CacheOnly relay-silence, and mem↔lmdb parity.
+nmp-nip50 = { path = "../nmp-nip50" }
+nmp-nip29 = { path = "../nmp-nip29" }
 nmp-nip57 = { path = "../nmp-nip57" }
 nmp-nip59 = { path = "../nmp-nip59" }
 # cold_start_demand_interest.rs — drives the REAL `register_substrate` +

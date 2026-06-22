@@ -4561,6 +4561,7 @@ dependencies = [
  "nmp-nip22",
  "nmp-nip25",
  "nmp-nip47",
+ "nmp-nip50",
  "nmp-nip51",
  "nmp-nip57",
  "nmp-nip59",
@@ -4838,6 +4839,7 @@ dependencies = [
  "nmp-core",
  "nmp-kinds",
  "nmp-planner",
+ "nmp-store",
  "serde",
  "serde_json",
 ]
@@ -5058,6 +5060,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tracing",
+ "unicode-normalization",
  "web-time",
 ]
 
@@ -5090,8 +5093,10 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip17",
  "nmp-nip18",
+ "nmp-nip29",
  "nmp-nip42",
  "nmp-nip47",
+ "nmp-nip50",
  "nmp-nip51",
  "nmp-nip57",
  "nmp-nip59",

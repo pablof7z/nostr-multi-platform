@@ -26,6 +26,7 @@
 mod domain_handle;
 mod domain_migration;
 mod events;
+mod events_query_dispatch;
 pub mod ingest_log;
 pub(crate) mod interaction;
 mod lmdb;
@@ -33,6 +34,10 @@ mod mem;
 // D20 — wasm-safe time shim. All wasm-reachable code in this crate that
 // needs `Instant` imports from here instead of directly from `std::time`.
 pub(crate) mod time;
+// #1811 — cache-side full-text search seam (noun-free vocabulary + shared
+// tokenizer + CompiledIndexSpec). `nmp-core` compiles its protocol-aware
+// SearchScopeProviders into the noun-free types here.
+pub mod text_search;
 pub mod types;
 
 pub use domain_handle::{DomainHandle, DomainScanIter};
@@ -51,6 +56,13 @@ pub mod relay_scores {
     pub use super::lmdb::relay_scores::{load_all_raw, put_batch_raw};
 }
 pub use mem::MemEventStore;
+// #1811 — FTS public surface. Re-exported at the crate root so backends and
+// `nmp-core`'s scope compiler import from `nmp_store::*`.
+pub use text_search::{
+    is_prefix_match, split_query_terms, tokenize, CompiledIndexSpec, ExtractFn, SearchDocumentKey,
+    SearchField, SearchScopeId, SearchScore, TextSearchBudget, TextSearchHit, TextSearchOrder,
+    TextSearchQuery, TextSearchStatus, MAX_TOKENS_PER_DOC, MIN_TOKEN_BYTES, TOKENIZER_VERSION,
+};
 pub use types::{
     coverage_key, coverage_key_parts, CoverageGuard, CoverageMatchFn, CoverageRow, DeleteFilter,
     DumpFormat, DumpStats, EventId, GcBudget, GcReport, InsertOutcome, ProvenanceEntry, PubKey,

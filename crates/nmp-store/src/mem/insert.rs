@@ -11,6 +11,7 @@
 
 use std::sync::Arc;
 
+use super::fts::{fts_index_add, fts_index_remove};
 use super::{access_remove, access_stamp, bytes_to_hex, relay_index_add, relay_index_remove, relay_kind_add, relay_kind_remove_id, upsert_provenance, MemEventStore, MemState};
 use super::ic::{ic_decrement, ic_increment};
 use super::insert_kind5;
@@ -187,6 +188,7 @@ pub(super) fn delete_by_filter(
         st.provenance.remove(&id);
         relay_index_remove(&mut *st, &id);
         relay_kind_remove_id(&mut *st, &id);
+        fts_index_remove(&mut *st, &id);
         access_remove(&mut *st, &id);
         // Issue #1519: decrement counter for deleted event.
         if let Some((ik, ref it)) = ic_data {
@@ -280,6 +282,7 @@ fn handle_supersession(
             st.provenance.remove(existing_hex);
             relay_index_remove(st, existing_hex);
             relay_kind_remove_id(st, existing_hex);
+            fts_index_remove(st, existing_hex);
             access_remove(st, existing_hex);
             // Issue #1519: decrement counter for replaced event.
             if let Some((rk, ref rt)) = replaced_ic {
@@ -299,6 +302,7 @@ fn handle_supersession(
                 },
             );
             access_stamp(st, &id_hex);
+            fts_add_by_id(st, &id_hex);
             // Issue #1519: increment counter for new event.
             ic_increment(st, new_ic_kind, &new_ic_tags);
             let p = st.provenance.entry(id_hex.clone()).or_default();
@@ -340,6 +344,7 @@ fn handle_supersession(
             },
         );
         access_stamp(st, &id_hex);
+        fts_add_by_id(st, &id_hex);
         // Issue #1519: increment interaction counter.
         ic_increment(st, ic_kind, &ic_tags);
         let sources_after = {
@@ -361,6 +366,18 @@ fn handle_supersession(
             id: id_bytes,
             sources_after,
         }
+    }
+}
+
+/// Index the just-inserted event (looked up by hex id) into every installed
+/// FTS scope. Re-reads from `st.events` so we don't borrow the moved `event`.
+/// Cheap: `StoredEvent` is `Arc<RawEvent>` so the clone is a refcount bump.
+fn fts_add_by_id(st: &mut MemState, id_hex: &str) {
+    if st.fts.specs.is_empty() {
+        return;
+    }
+    if let Some(stored) = st.events.get(id_hex).cloned() {
+        fts_index_add(st, &stored);
     }
 }
 
@@ -401,6 +418,7 @@ fn handle_normal_insert(
         },
     );
     access_stamp(st, &id_hex);
+    fts_add_by_id(st, &id_hex);
     // Issue #1519: increment interaction counter.
     ic_increment(st, ic_kind, &ic_tags);
     let sources_after = {

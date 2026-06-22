@@ -31,8 +31,12 @@ fn main() {
     //    hook, and the DM-inbox + zap-receipts + WOT runtime controllers.
     nmp_defaults::register_defaults(&mut builder);
 
-    // 3. (Optional) Register any app-specific projections / actions here.
-    //    e.g. nmp_nip29::register_actions(&mut builder) for group chat.
+    // 3. (Optional) Register any app-specific projections / actions / search
+    //    scopes here. A group-chat app opts into NIP-29 group-metadata
+    //    full-text search (#1811) with
+    //    `nmp_nip29::register_search_scopes(&builder)` — NIP-29 is a leaf-app
+    //    feature, NOT part of the default bundle, so its `nip29.groups`
+    //    cache-only scope is wired here rather than in `register_defaults`.
 
     // 4. Commit the storage choice, declare the consumed projections, decide
     //    the initial relay set, and start the kernel. `.in_memory()` advances

@@ -48,7 +48,7 @@ use std::sync::Arc;
 
 use nostr::prelude::*;
 
-use super::{coverage, gc_tombstones, ingest_log, provenance, tombstones, Inner};
+use super::{coverage, fts, gc_tombstones, ingest_log, provenance, tombstones, Inner};
 use crate::ingest_log::DeleteReason;
 use crate::types::{CoverageGuard, EventId, GcBudget, GcReport, TombstoneOrigin, TombstoneRow};
 use crate::StoreError;
@@ -185,6 +185,8 @@ pub(super) fn gc_step(
                     kind,
                 )?;
                 lru_delete(inner, &mut txn, id)?;
+                // #1811: drop the expired event's FTS rows (doc-key-driven).
+                fts::fts_remove_by_id(inner, &mut txn, id)?;
                 // Bug-2 fix: delete stale replaceable_freshness row.
                 if let Some(fk) = freshness_key {
                     inner
@@ -356,6 +358,8 @@ pub(super) fn gc_step(
                         kind,
                     )?;
                     lru_delete(inner, &mut txn, id)?;
+                    // #1811: drop the LRU-evicted event's FTS rows (doc-key-driven).
+                    fts::fts_remove_by_id(inner, &mut txn, id)?;
                     // V-118: clean expiry-index using the known expiry timestamp.
                     expiry_index_delete_exact(inner, &mut txn, expiry, id)?;
                     // Issue #1519: decrement interaction-counter for evicted event.

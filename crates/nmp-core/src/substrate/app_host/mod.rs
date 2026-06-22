@@ -341,6 +341,7 @@ pub trait AppHost:
     + DmInboxRelayRegistrar
     + BlockedRelayLookupRegistrar
     + RoutingFactoryRegistrar
+    + super::search::SearchScopeRegistrar
     + HostCapabilities
 {
 }
@@ -359,6 +360,7 @@ impl<T> AppHost for T where
         + DmInboxRelayRegistrar
         + BlockedRelayLookupRegistrar
         + RoutingFactoryRegistrar
+        + super::search::SearchScopeRegistrar
         + HostCapabilities
 {
 }

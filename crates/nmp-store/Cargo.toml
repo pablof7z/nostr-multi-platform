@@ -27,6 +27,10 @@ nostr = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, features = ["raw_value"] }
 tracing = "0.1"
+# #1811 — shared FTS tokenizer NFKC normalization. Already in the dependency
+# graph transitively (nostr → idna); named directly so the tokenizer can
+# `.nfkc()`. wasm-safe (pure Rust, no platform deps).
+unicode-normalization = "0.1"
 # D20 — wasm-safe time shim. `web-time 1.1.0` provides drop-in replacements
 # for `std::time::{Instant, SystemTime, UNIX_EPOCH}` backed by
 # `performance.now()` / `Date.now()` on wasm32-unknown-unknown. On native
