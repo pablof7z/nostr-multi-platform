@@ -46,6 +46,14 @@ NIP25_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip25/schema"
 NIP25_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip25/src/wire/generated"
 NIP02_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip02/schema"
 NIP02_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip02/src/wire/generated"
+BLOSSOM_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-blossom/schema"
+BLOSSOM_GENERATED_DIR="${REPO_ROOT}/crates/nmp-blossom/src/wire/generated"
+NIP17_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip17/schema"
+NIP17_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip17/src/wire/generated"
+NIP57_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip57/schema"
+NIP57_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip57/src/wire/generated"
+NIP22_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip22/schema"
+NIP22_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip22/src/wire/generated"
 SCHEMA_PAIRS=(
     "${SCHEMA_DIR}/nmp_update.fbs::${GENERATED_DIR}/nmp_update_generated.rs"
     "${SCHEMA_DIR}/dispatch_envelope.fbs::${GENERATED_DIR}/dispatch_envelope_generated.rs"
@@ -54,6 +62,11 @@ SCHEMA_PAIRS=(
     "${NIP25_SCHEMA_DIR}/unreact.fbs::${NIP25_GENERATED_DIR}/unreact_generated.rs"
     "${NIP02_SCHEMA_DIR}/follow_action.fbs::${NIP02_GENERATED_DIR}/follow_action_generated.rs"
     "${NIP02_SCHEMA_DIR}/follow_many_action.fbs::${NIP02_GENERATED_DIR}/follow_many_action_generated.rs"
+    "${BLOSSOM_SCHEMA_DIR}/upload.fbs::${BLOSSOM_GENERATED_DIR}/upload_generated.rs"
+    "${NIP17_SCHEMA_DIR}/send.fbs::${NIP17_GENERATED_DIR}/send_generated.rs"
+    "${NIP17_SCHEMA_DIR}/dm_relay_list_action.fbs::${NIP17_GENERATED_DIR}/dm_relay_list_action_generated.rs"
+    "${NIP57_SCHEMA_DIR}/zap.fbs::${NIP57_GENERATED_DIR}/zap_generated.rs"
+    "${NIP22_SCHEMA_DIR}/post_comment.fbs::${NIP22_GENERATED_DIR}/post_comment_generated.rs"
 )
 
 if ! command -v flatc >/dev/null 2>&1; then

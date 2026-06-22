@@ -2,246 +2,321 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_17 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_17 {
 
+        pub enum SendDmPayloadOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum SendDmPayloadOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct SendDmPayload<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct SendDmPayload<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for SendDmPayload<'a> {
+            type Inner = SendDmPayload<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for SendDmPayload<'a> {
-  type Inner = SendDmPayload<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> SendDmPayload<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_RECIPIENT_PUBKEY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REPLY_TO: ::flatbuffers::VOffsetT = 10;
 
-impl<'a> SendDmPayload<'a> {
-  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-  pub const VT_RECIPIENT_PUBKEY: ::flatbuffers::VOffsetT = 6;
-  pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
-  pub const VT_REPLY_TO: ::flatbuffers::VOffsetT = 10;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SendDmPayload { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SendDmPayloadArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SendDmPayload<'bldr>> {
+                let mut builder = SendDmPayloadBuilder::new(_fbb);
+                if let Some(x) = args.reply_to {
+                    builder.add_reply_to(x);
+                }
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                if let Some(x) = args.recipient_pubkey {
+                    builder.add_recipient_pubkey(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    SendDmPayload { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args SendDmPayloadArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<SendDmPayload<'bldr>> {
-    let mut builder = SendDmPayloadBuilder::new(_fbb);
-    if let Some(x) = args.reply_to { builder.add_reply_to(x); }
-    if let Some(x) = args.content { builder.add_content(x); }
-    if let Some(x) = args.recipient_pubkey { builder.add_recipient_pubkey(x); }
-    builder.add_schema_version(args.schema_version);
-    builder.finish()
-  }
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(SendDmPayload::VT_SCHEMA_VERSION, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn recipient_pubkey(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
+                            SendDmPayload::VT_RECIPIENT_PUBKEY,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
+                            SendDmPayload::VT_CONTENT,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn reply_to(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        SendDmPayload::VT_REPLY_TO,
+                        None,
+                    )
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for SendDmPayload<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "recipient_pubkey",
+                        Self::VT_RECIPIENT_PUBKEY,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "reply_to",
+                        Self::VT_REPLY_TO,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SendDmPayloadArgs<'a> {
+            pub schema_version: u32,
+            pub recipient_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reply_to: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for SendDmPayloadArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SendDmPayloadArgs {
+                    schema_version: 0,
+                    recipient_pubkey: None, // required field
+                    content: None,          // required field
+                    reply_to: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn schema_version(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(SendDmPayload::VT_SCHEMA_VERSION, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn recipient_pubkey(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SendDmPayload::VT_RECIPIENT_PUBKEY, None).unwrap()}
-  }
-  #[inline]
-  pub fn content(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SendDmPayload::VT_CONTENT, None).unwrap()}
-  }
-  #[inline]
-  pub fn reply_to(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SendDmPayload::VT_REPLY_TO, None)}
-  }
-}
+        pub struct SendDmPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SendDmPayloadBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_
+                    .push_slot::<u32>(SendDmPayload::VT_SCHEMA_VERSION, schema_version, 0);
+            }
+            #[inline]
+            pub fn add_recipient_pubkey(
+                &mut self,
+                recipient_pubkey: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SendDmPayload::VT_RECIPIENT_PUBKEY,
+                    recipient_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SendDmPayload::VT_CONTENT,
+                    content,
+                );
+            }
+            #[inline]
+            pub fn add_reply_to(&mut self, reply_to: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SendDmPayload::VT_REPLY_TO,
+                    reply_to,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> SendDmPayloadBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SendDmPayloadBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SendDmPayload<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_
+                    .required(o, SendDmPayload::VT_RECIPIENT_PUBKEY, "recipient_pubkey");
+                self.fbb_.required(o, SendDmPayload::VT_CONTENT, "content");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for SendDmPayload<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("recipient_pubkey", Self::VT_RECIPIENT_PUBKEY, true)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content", Self::VT_CONTENT, true)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reply_to", Self::VT_REPLY_TO, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct SendDmPayloadArgs<'a> {
-    pub schema_version: u32,
-    pub recipient_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub reply_to: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for SendDmPayloadArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    SendDmPayloadArgs {
-      schema_version: 0,
-      recipient_pubkey: None, // required field
-      content: None, // required field
-      reply_to: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for SendDmPayload<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SendDmPayload");
+                ds.field("schema_version", &self.schema_version());
+                ds.field("recipient_pubkey", &self.recipient_pubkey());
+                ds.field("content", &self.content());
+                ds.field("reply_to", &self.reply_to());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `SendDmPayload`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_send_dm_payload_unchecked`.
+        pub fn root_as_send_dm_payload(
+            buf: &[u8],
+        ) -> Result<SendDmPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<SendDmPayload>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `SendDmPayload` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_send_dm_payload_unchecked`.
+        pub fn size_prefixed_root_as_send_dm_payload(
+            buf: &[u8],
+        ) -> Result<SendDmPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<SendDmPayload>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `SendDmPayload` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_send_dm_payload_unchecked`.
+        pub fn root_as_send_dm_payload_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<SendDmPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<SendDmPayload<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `SendDmPayload` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_send_dm_payload_unchecked`.
+        pub fn size_prefixed_root_as_send_dm_payload_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<SendDmPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<SendDmPayload<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a SendDmPayload and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `SendDmPayload`.
+        pub unsafe fn root_as_send_dm_payload_unchecked(buf: &[u8]) -> SendDmPayload<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<SendDmPayload>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed SendDmPayload and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `SendDmPayload`.
+        pub unsafe fn size_prefixed_root_as_send_dm_payload_unchecked(
+            buf: &[u8],
+        ) -> SendDmPayload<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<SendDmPayload>(buf) }
+        }
+        pub const SEND_DM_PAYLOAD_IDENTIFIER: &str = "N17S";
 
-pub struct SendDmPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SendDmPayloadBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(SendDmPayload::VT_SCHEMA_VERSION, schema_version, 0);
-  }
-  #[inline]
-  pub fn add_recipient_pubkey(&mut self, recipient_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SendDmPayload::VT_RECIPIENT_PUBKEY, recipient_pubkey);
-  }
-  #[inline]
-  pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SendDmPayload::VT_CONTENT, content);
-  }
-  #[inline]
-  pub fn add_reply_to(&mut self, reply_to: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SendDmPayload::VT_REPLY_TO, reply_to);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SendDmPayloadBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    SendDmPayloadBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<SendDmPayload<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, SendDmPayload::VT_RECIPIENT_PUBKEY,"recipient_pubkey");
-    self.fbb_.required(o, SendDmPayload::VT_CONTENT,"content");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn send_dm_payload_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, SEND_DM_PAYLOAD_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for SendDmPayload<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("SendDmPayload");
-      ds.field("schema_version", &self.schema_version());
-      ds.field("recipient_pubkey", &self.recipient_pubkey());
-      ds.field("content", &self.content());
-      ds.field("reply_to", &self.reply_to());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `SendDmPayload`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_send_dm_payload_unchecked`.
-pub fn root_as_send_dm_payload(buf: &[u8]) -> Result<SendDmPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<SendDmPayload>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `SendDmPayload` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_send_dm_payload_unchecked`.
-pub fn size_prefixed_root_as_send_dm_payload(buf: &[u8]) -> Result<SendDmPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<SendDmPayload>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `SendDmPayload` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_send_dm_payload_unchecked`.
-pub fn root_as_send_dm_payload_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<SendDmPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<SendDmPayload<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `SendDmPayload` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_send_dm_payload_unchecked`.
-pub fn size_prefixed_root_as_send_dm_payload_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<SendDmPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<SendDmPayload<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a SendDmPayload and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `SendDmPayload`.
-pub unsafe fn root_as_send_dm_payload_unchecked(buf: &[u8]) -> SendDmPayload<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<SendDmPayload>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed SendDmPayload and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `SendDmPayload`.
-pub unsafe fn size_prefixed_root_as_send_dm_payload_unchecked(buf: &[u8]) -> SendDmPayload<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<SendDmPayload>(buf) }
-}
-pub const SEND_DM_PAYLOAD_IDENTIFIER: &str = "N17S";
+        #[inline]
+        pub fn send_dm_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, SEND_DM_PAYLOAD_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn send_dm_payload_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, SEND_DM_PAYLOAD_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_send_dm_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<SendDmPayload<'a>>,
+        ) {
+            fbb.finish(root, Some(SEND_DM_PAYLOAD_IDENTIFIER));
+        }
 
-#[inline]
-pub fn send_dm_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, SEND_DM_PAYLOAD_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_send_dm_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<SendDmPayload<'a>>) {
-  fbb.finish(root, Some(SEND_DM_PAYLOAD_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_send_dm_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<SendDmPayload<'a>>) {
-  fbb.finish_size_prefixed(root, Some(SEND_DM_PAYLOAD_IDENTIFIER));
-}
-}  // pub mod nip17
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_send_dm_payload_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<SendDmPayload<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(SEND_DM_PAYLOAD_IDENTIFIER));
+        }
+    } // pub mod nip17
+} // pub mod nmp

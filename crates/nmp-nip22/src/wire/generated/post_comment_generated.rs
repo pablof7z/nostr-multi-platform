@@ -2,315 +2,444 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_22 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_22 {
 
+        pub enum PostCommentOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum PostCommentOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct PostComment<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct PostComment<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for PostComment<'a> {
+            type Inner = PostComment<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for PostComment<'a> {
-  type Inner = PostComment<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> PostComment<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_ROOT_TAG_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ROOT_TAG_VALUE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_ROOT_KIND: ::flatbuffers::VOffsetT = 10;
+            pub const VT_PARENT_EVENT_ID: ::flatbuffers::VOffsetT = 12;
+            pub const VT_ROOT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 14;
+            pub const VT_PARENT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 16;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 18;
 
-impl<'a> PostComment<'a> {
-  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-  pub const VT_ROOT_TAG_NAME: ::flatbuffers::VOffsetT = 6;
-  pub const VT_ROOT_TAG_VALUE: ::flatbuffers::VOffsetT = 8;
-  pub const VT_ROOT_KIND: ::flatbuffers::VOffsetT = 10;
-  pub const VT_PARENT_EVENT_ID: ::flatbuffers::VOffsetT = 12;
-  pub const VT_ROOT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 14;
-  pub const VT_PARENT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 16;
-  pub const VT_CONTENT: ::flatbuffers::VOffsetT = 18;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PostComment { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PostCommentArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PostComment<'bldr>> {
+                let mut builder = PostCommentBuilder::new(_fbb);
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                if let Some(x) = args.parent_author_pubkey {
+                    builder.add_parent_author_pubkey(x);
+                }
+                if let Some(x) = args.root_author_pubkey {
+                    builder.add_root_author_pubkey(x);
+                }
+                if let Some(x) = args.parent_event_id {
+                    builder.add_parent_event_id(x);
+                }
+                builder.add_root_kind(args.root_kind);
+                if let Some(x) = args.root_tag_value {
+                    builder.add_root_tag_value(x);
+                }
+                if let Some(x) = args.root_tag_name {
+                    builder.add_root_tag_name(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    PostComment { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args PostCommentArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<PostComment<'bldr>> {
-    let mut builder = PostCommentBuilder::new(_fbb);
-    if let Some(x) = args.content { builder.add_content(x); }
-    if let Some(x) = args.parent_author_pubkey { builder.add_parent_author_pubkey(x); }
-    if let Some(x) = args.root_author_pubkey { builder.add_root_author_pubkey(x); }
-    if let Some(x) = args.parent_event_id { builder.add_parent_event_id(x); }
-    builder.add_root_kind(args.root_kind);
-    if let Some(x) = args.root_tag_value { builder.add_root_tag_value(x); }
-    if let Some(x) = args.root_tag_name { builder.add_root_tag_name(x); }
-    builder.add_schema_version(args.schema_version);
-    builder.finish()
-  }
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(PostComment::VT_SCHEMA_VERSION, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn root_tag_name(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
+                            PostComment::VT_ROOT_TAG_NAME,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn root_tag_value(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
+                            PostComment::VT_ROOT_TAG_VALUE,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn root_kind(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(PostComment::VT_ROOT_KIND, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn parent_event_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PostComment::VT_PARENT_EVENT_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn root_author_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PostComment::VT_ROOT_AUTHOR_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn parent_author_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PostComment::VT_PARENT_AUTHOR_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PostComment::VT_CONTENT, None)
+                        .unwrap()
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for PostComment<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "root_tag_name",
+                        Self::VT_ROOT_TAG_NAME,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "root_tag_value",
+                        Self::VT_ROOT_TAG_VALUE,
+                        true,
+                    )?
+                    .visit_field::<u32>("root_kind", Self::VT_ROOT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "parent_event_id",
+                        Self::VT_PARENT_EVENT_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "root_author_pubkey",
+                        Self::VT_ROOT_AUTHOR_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "parent_author_pubkey",
+                        Self::VT_PARENT_AUTHOR_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        true,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PostCommentArgs<'a> {
+            pub schema_version: u32,
+            pub root_tag_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub root_tag_value: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub root_kind: u32,
+            pub parent_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub root_author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub parent_author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PostCommentArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PostCommentArgs {
+                    schema_version: 0,
+                    root_tag_name: None,  // required field
+                    root_tag_value: None, // required field
+                    root_kind: 0,
+                    parent_event_id: None,
+                    root_author_pubkey: None,
+                    parent_author_pubkey: None,
+                    content: None, // required field
+                }
+            }
+        }
 
-  #[inline]
-  pub fn schema_version(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(PostComment::VT_SCHEMA_VERSION, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn root_tag_name(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PostComment::VT_ROOT_TAG_NAME, None).unwrap()}
-  }
-  #[inline]
-  pub fn root_tag_value(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PostComment::VT_ROOT_TAG_VALUE, None).unwrap()}
-  }
-  #[inline]
-  pub fn root_kind(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(PostComment::VT_ROOT_KIND, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn parent_event_id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PostComment::VT_PARENT_EVENT_ID, None)}
-  }
-  #[inline]
-  pub fn root_author_pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PostComment::VT_ROOT_AUTHOR_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn parent_author_pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PostComment::VT_PARENT_AUTHOR_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn content(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PostComment::VT_CONTENT, None).unwrap()}
-  }
-}
+        pub struct PostCommentBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PostCommentBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PostComment::VT_SCHEMA_VERSION, schema_version, 0);
+            }
+            #[inline]
+            pub fn add_root_tag_name(&mut self, root_tag_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PostComment::VT_ROOT_TAG_NAME,
+                    root_tag_name,
+                );
+            }
+            #[inline]
+            pub fn add_root_tag_value(
+                &mut self,
+                root_tag_value: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PostComment::VT_ROOT_TAG_VALUE,
+                    root_tag_value,
+                );
+            }
+            #[inline]
+            pub fn add_root_kind(&mut self, root_kind: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PostComment::VT_ROOT_KIND, root_kind, 0);
+            }
+            #[inline]
+            pub fn add_parent_event_id(
+                &mut self,
+                parent_event_id: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PostComment::VT_PARENT_EVENT_ID,
+                    parent_event_id,
+                );
+            }
+            #[inline]
+            pub fn add_root_author_pubkey(
+                &mut self,
+                root_author_pubkey: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PostComment::VT_ROOT_AUTHOR_PUBKEY,
+                    root_author_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_parent_author_pubkey(
+                &mut self,
+                parent_author_pubkey: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PostComment::VT_PARENT_AUTHOR_PUBKEY,
+                    parent_author_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PostComment::VT_CONTENT,
+                    content,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> PostCommentBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PostCommentBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PostComment<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_
+                    .required(o, PostComment::VT_ROOT_TAG_NAME, "root_tag_name");
+                self.fbb_
+                    .required(o, PostComment::VT_ROOT_TAG_VALUE, "root_tag_value");
+                self.fbb_.required(o, PostComment::VT_CONTENT, "content");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for PostComment<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("root_tag_name", Self::VT_ROOT_TAG_NAME, true)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("root_tag_value", Self::VT_ROOT_TAG_VALUE, true)?
-     .visit_field::<u32>("root_kind", Self::VT_ROOT_KIND, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("parent_event_id", Self::VT_PARENT_EVENT_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("root_author_pubkey", Self::VT_ROOT_AUTHOR_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("parent_author_pubkey", Self::VT_PARENT_AUTHOR_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content", Self::VT_CONTENT, true)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct PostCommentArgs<'a> {
-    pub schema_version: u32,
-    pub root_tag_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub root_tag_value: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub root_kind: u32,
-    pub parent_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub root_author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub parent_author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for PostCommentArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    PostCommentArgs {
-      schema_version: 0,
-      root_tag_name: None, // required field
-      root_tag_value: None, // required field
-      root_kind: 0,
-      parent_event_id: None,
-      root_author_pubkey: None,
-      parent_author_pubkey: None,
-      content: None, // required field
-    }
-  }
-}
+        impl ::core::fmt::Debug for PostComment<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PostComment");
+                ds.field("schema_version", &self.schema_version());
+                ds.field("root_tag_name", &self.root_tag_name());
+                ds.field("root_tag_value", &self.root_tag_value());
+                ds.field("root_kind", &self.root_kind());
+                ds.field("parent_event_id", &self.parent_event_id());
+                ds.field("root_author_pubkey", &self.root_author_pubkey());
+                ds.field("parent_author_pubkey", &self.parent_author_pubkey());
+                ds.field("content", &self.content());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `PostComment`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_post_comment_unchecked`.
+        pub fn root_as_post_comment(
+            buf: &[u8],
+        ) -> Result<PostComment<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<PostComment>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `PostComment` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_post_comment_unchecked`.
+        pub fn size_prefixed_root_as_post_comment(
+            buf: &[u8],
+        ) -> Result<PostComment<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<PostComment>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `PostComment` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_post_comment_unchecked`.
+        pub fn root_as_post_comment_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<PostComment<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<PostComment<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `PostComment` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_post_comment_unchecked`.
+        pub fn size_prefixed_root_as_post_comment_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<PostComment<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<PostComment<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a PostComment and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `PostComment`.
+        pub unsafe fn root_as_post_comment_unchecked(buf: &[u8]) -> PostComment<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<PostComment>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed PostComment and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `PostComment`.
+        pub unsafe fn size_prefixed_root_as_post_comment_unchecked(buf: &[u8]) -> PostComment<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<PostComment>(buf) }
+        }
+        pub const POST_COMMENT_IDENTIFIER: &str = "N22C";
 
-pub struct PostCommentBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PostCommentBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(PostComment::VT_SCHEMA_VERSION, schema_version, 0);
-  }
-  #[inline]
-  pub fn add_root_tag_name(&mut self, root_tag_name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PostComment::VT_ROOT_TAG_NAME, root_tag_name);
-  }
-  #[inline]
-  pub fn add_root_tag_value(&mut self, root_tag_value: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PostComment::VT_ROOT_TAG_VALUE, root_tag_value);
-  }
-  #[inline]
-  pub fn add_root_kind(&mut self, root_kind: u32) {
-    self.fbb_.push_slot::<u32>(PostComment::VT_ROOT_KIND, root_kind, 0);
-  }
-  #[inline]
-  pub fn add_parent_event_id(&mut self, parent_event_id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PostComment::VT_PARENT_EVENT_ID, parent_event_id);
-  }
-  #[inline]
-  pub fn add_root_author_pubkey(&mut self, root_author_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PostComment::VT_ROOT_AUTHOR_PUBKEY, root_author_pubkey);
-  }
-  #[inline]
-  pub fn add_parent_author_pubkey(&mut self, parent_author_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PostComment::VT_PARENT_AUTHOR_PUBKEY, parent_author_pubkey);
-  }
-  #[inline]
-  pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PostComment::VT_CONTENT, content);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PostCommentBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    PostCommentBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<PostComment<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, PostComment::VT_ROOT_TAG_NAME,"root_tag_name");
-    self.fbb_.required(o, PostComment::VT_ROOT_TAG_VALUE,"root_tag_value");
-    self.fbb_.required(o, PostComment::VT_CONTENT,"content");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn post_comment_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, POST_COMMENT_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for PostComment<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("PostComment");
-      ds.field("schema_version", &self.schema_version());
-      ds.field("root_tag_name", &self.root_tag_name());
-      ds.field("root_tag_value", &self.root_tag_value());
-      ds.field("root_kind", &self.root_kind());
-      ds.field("parent_event_id", &self.parent_event_id());
-      ds.field("root_author_pubkey", &self.root_author_pubkey());
-      ds.field("parent_author_pubkey", &self.parent_author_pubkey());
-      ds.field("content", &self.content());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `PostComment`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_post_comment_unchecked`.
-pub fn root_as_post_comment(buf: &[u8]) -> Result<PostComment<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<PostComment>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `PostComment` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_post_comment_unchecked`.
-pub fn size_prefixed_root_as_post_comment(buf: &[u8]) -> Result<PostComment<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<PostComment>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `PostComment` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_post_comment_unchecked`.
-pub fn root_as_post_comment_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<PostComment<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<PostComment<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `PostComment` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_post_comment_unchecked`.
-pub fn size_prefixed_root_as_post_comment_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<PostComment<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<PostComment<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a PostComment and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `PostComment`.
-pub unsafe fn root_as_post_comment_unchecked(buf: &[u8]) -> PostComment<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<PostComment>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed PostComment and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `PostComment`.
-pub unsafe fn size_prefixed_root_as_post_comment_unchecked(buf: &[u8]) -> PostComment<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<PostComment>(buf) }
-}
-pub const POST_COMMENT_IDENTIFIER: &str = "N22C";
+        #[inline]
+        pub fn post_comment_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, POST_COMMENT_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn post_comment_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, POST_COMMENT_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_post_comment_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<PostComment<'a>>,
+        ) {
+            fbb.finish(root, Some(POST_COMMENT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn post_comment_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, POST_COMMENT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_post_comment_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<PostComment<'a>>) {
-  fbb.finish(root, Some(POST_COMMENT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_post_comment_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<PostComment<'a>>) {
-  fbb.finish_size_prefixed(root, Some(POST_COMMENT_IDENTIFIER));
-}
-}  // pub mod nip22
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_post_comment_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<PostComment<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(POST_COMMENT_IDENTIFIER));
+        }
+    } // pub mod nip22
+} // pub mod nmp
