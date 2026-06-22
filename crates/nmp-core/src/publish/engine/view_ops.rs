@@ -96,90 +96,14 @@ impl PublishEngine {
         self.pending_terminals.push(terminal);
     }
 
-    /// Record a terminal `"failed"` verdict for a dispatched action that never
-    /// reached the publish engine's in-flight set — the event was never signed,
-    /// so there is no `PublishHandle` and no `TerminalOutcome`.
-    ///
-    /// This closes a broken-promise gap: a host that dispatched a
-    /// `PublishRaw` / `PublishProfile` through `nmp_app_dispatch_action`
-    /// received a registry-minted `correlation_id` and is waiting to see its
-    /// outcome in the `action_results` snapshot projection. When the *sign*
-    /// step fails (no active account, a malformed reply id, a local-key sign
-    /// error, or a remote-signer timeout / rejection) the publish never
-    /// happens — without this entry the host's spinner keyed on that
-    /// `correlation_id` would hang forever.
-    ///
-    /// Unlike `record_engine_error` this does **not** push a `RecentFailure`
-    /// row: no event/handle exists to anchor one, and the caller already
-    /// surfaces a `set_last_error_toast`. This records *only* the
-    /// `action_results` terminal so the dispatched action's promise is
-    /// honoured.
-    pub(crate) fn record_action_terminal_failure(
-        &mut self,
-        correlation_id: String,
-        error: String,
-        reason_code: Option<&'static str>,
-    ) {
-        self.record_terminal(LastTerminal {
-            correlation_id,
-            status: "failed",
-            error: Some(error),
-            // No event was ever signed on this path (sign-step failure), so
-            // there is no event id to surface (#1702).
-            event_id: None,
-            result_json: None,
-            reason_code,
-        });
-    }
-
-    /// Record a terminal `"ok"` verdict for a dispatched action that completed
-    /// **without** going through the publish-engine in-flight set — i.e. the
-    /// outcome is observed off-band, not via a relay OK on a signed event.
-    ///
-    /// The motivating consumer is NIP-47 NWC `pay_invoice`: the action's
-    /// terminal outcome is the **wallet's** kind:23195 response carrying a
-    /// `preimage`. That response never reaches the publish engine (the
-    /// kind:23194 request itself settles separately as a normal publish; the
-    /// *payment* outcome lives in the NWC response channel), so a host that
-    /// dispatched the payment through `nmp_app_dispatch_action` would
-    /// otherwise have no `action_results` entry to drain its spinner — the
-    /// same broken-promise gap `record_action_terminal_failure` closes for
-    /// sign-step failures.
-    ///
-    /// Mirrors `record_action_terminal_failure`: pushes a single
-    /// `LastTerminal { status: "ok", error: None }` onto `pending_terminals`
-    /// for the next snapshot drain. No `RecentFailure` row is written (success
-    /// paths don't anchor failure rows); the caller is responsible for any
-    /// projection-level state (e.g. wallet balance refresh) it needs.
-    ///
-    /// `result_json` (ADR-0043 Decision 4) is an opaque structured result body
-    /// the action attaches to its success terminal — forwarded verbatim into
-    /// the `action_results` row's `result` field. `nmp-core` NEVER parses it.
-    /// `None` for the NWC pay-invoice path; `Some(json)` for a protocol crate
-    /// (e.g. a Blossom blob descriptor) that carries a return payload.
-    // `#[allow(dead_code)]`: the live callers are `Kernel::record_action_success`
-    // (publish_cmd.rs, gated behind the `wallet` feature for NWC) and the
-    // `RecordActionSuccess { result_json }` dispatch arm. A plain
-    // `cargo check -p nmp-core` (default features) may not see a consumer, and
-    // the per-crate dead-code lint can fire; the cross-feature truth is
-    // invisible to rustc here.
-    #[allow(dead_code)]
-    pub(crate) fn record_action_terminal_success(
-        &mut self,
-        correlation_id: String,
-        result_json: Option<String>,
-    ) {
-        self.record_terminal(LastTerminal {
-            correlation_id,
-            status: "ok",
-            error: None,
-            // Off-band success (e.g. NWC pay-invoice): the terminal is not a
-            // published nostr event, so there is no event id to surface (#1702).
-            event_id: None,
-            result_json,
-            reason_code: None,
-        });
-    }
+    // S11 slice 2 (#1758): the off-band terminal recorders
+    // (`record_action_terminal_failure` / `record_action_terminal_success`)
+    // were deleted. Those sign-step-failure and NWC-success verdicts now record
+    // DIRECTLY into the `ActionLedger` (the single source of `action_results`)
+    // via `Kernel::record_action_failure_coded` / `record_action_success`, not
+    // through the engine `pending_terminals` `Vec`. The engine transport keeps
+    // only terminals that ORIGINATE inside the engine (relay ack/tick via
+    // `from_outcome`, `emit_no_targets`, cancel).
 
     /// T128: drain every terminal verdict recorded since the last call. The
     /// kernel calls this after every engine entrypoint (`start_publish` /

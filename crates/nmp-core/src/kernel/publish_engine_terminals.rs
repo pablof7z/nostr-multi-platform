@@ -30,117 +30,114 @@ impl Kernel {
         }
     }
 
-    /// Direction review #29: drain ALL terminals that settled since the last
-    /// emit, returning them as a JSON array for the `action_results` snapshot
-    /// projection. Each tick surfaces every result that arrived, not just the
-    /// most recent. The host uses this to resolve any spinner whose
-    /// `correlation_id` appears here.
+    /// Fold every terminal the engine produced since the last fold into the
+    /// `ActionLedger` — the SINGLE source of `action_results` (S11 slice 2,
+    /// #1758). Called at every kernel↔engine boundary (alongside
+    /// `apply_engine_completions`, plus the `NoTargets` and cancel paths that
+    /// bypass it) so an engine-origin terminal lands in the ledger at the moment
+    /// it is PRODUCED — the same instant an off-band terminal
+    /// (`record_action_failure_coded` / `record_action_success`) records itself.
+    /// That preserves the chronological producer order across mixed terminal
+    /// sources within a tick (byte-identical to the prior single engine `Vec`),
+    /// rather than deferring engine terminals to emit time.
     ///
-    /// As a sibling effect, every terminal also records an `Accepted`
-    /// / `Failed` stage into the `action_stages` snapshot mirror so a host
-    /// that listens through the stage seam (a richer lifecycle than the
-    /// boolean `action_results` drain) observes the terminal exactly once.
-    /// The two surfaces are additive: `action_results` is the per-tick edge,
-    /// `action_stages` is the persisted mirror. A host may use either.
+    /// Maps the engine's internal status vocabulary to the WIRE status + the
+    /// substrate stage in one place, and threads the curated `reason_code` (#1735)
+    /// into the `action_lifecycle` view. Pure drain of `pending_terminals` — a
+    /// boundary with no settled terminal is a cheap no-op (empty `Vec`).
+    pub(in super::super) fn drain_engine_terminals_into_ledger(&mut self) {
+        let pending = self.publish_engine.take_pending_terminals();
+        if pending.is_empty() {
+            return;
+        }
+        // The mirror's `at_ms` is sourced from `now_ms()` so a `FixedClock`
+        // keeps the timestamp deterministic.
+        let now_ms = self.now_ms();
+        for terminal in pending {
+            // S7 (#1754): a user-initiated cancel is the DISTINCT `Cancelled`
+            // terminal, never `Failed`. The engine records the cancel terminal
+            // with `status == "cancelled"` (see `PublishEngine::cancel_by_handle`)
+            // under the ORIGINAL correlation_id; this is the single path that
+            // mirrors it into `action_stages` / `action_lifecycle`.
+            let (stage, status) = match terminal.status {
+                "ok" => (
+                    super::super::action_stages::ActionStage::Accepted,
+                    "published",
+                ),
+                "cancelled" => (
+                    super::super::action_stages::ActionStage::Cancelled,
+                    "cancelled",
+                ),
+                _ => (
+                    super::super::action_stages::ActionStage::Failed {
+                        reason: terminal
+                            .error
+                            .clone()
+                            .unwrap_or_else(|| terminal.status.to_string()),
+                    },
+                    "failed",
+                ),
+            };
+            // #1735: thread the curated `reason_code` (e.g. the D10 routing-leak
+            // refusal) into the `action_lifecycle` projection. `record_terminal`
+            // is silent on cap hits (D6) — the diagnostic counters in the
+            // underlying trackers surface the event without interrupting the
+            // publish path.
+            self.action_ledger.record_terminal(
+                &terminal.correlation_id,
+                stage,
+                status,
+                terminal.error,
+                terminal.result_json,
+                terminal.event_id,
+                terminal.reason_code,
+                None,
+                now_ms,
+            );
+            // A terminal verdict is always snapshot-worthy. Bump the enqueue
+            // source version so the `action_stages` / `action_lifecycle`
+            // projections (which depend on it) re-serialise on the next emit —
+            // the same bump the off-band ledger-record paths perform.
+            self.changed_since_emit = true;
+            self.projection_rev_tracker
+                .source_versions
+                .bump_settlement_enqueue();
+        }
+    }
+
+    /// Drain ALL terminals that settled since the last emit, returning them as a
+    /// JSON array for the `action_results` snapshot projection. Each tick
+    /// surfaces every result that arrived, not just the most recent. The host
+    /// uses this to resolve any spinner whose `correlation_id` appears here.
+    ///
+    /// S11 slice 2 (#1758): the ledger is the SINGLE source of these rows. Engine-
+    /// origin terminals (relay ack/tick, NoTargets, cancel) were already folded
+    /// into the ledger at their production boundary by
+    /// [`Self::drain_engine_terminals_into_ledger`]; off-band terminals (sign-step
+    /// failures, NWC successes) recorded into the ledger directly. This method is
+    /// therefore a pure drain of the ledger's per-tick terminal buffer via
+    /// [`ActionLedger::take_terminal_results`] — there is no second source to
+    /// serialise. (A defensive final fold catches any boundary that produced a
+    /// terminal without going through `apply_engine_completions`; it is a no-op
+    /// in steady state.)
     pub(in super::super) fn take_action_results_projection(&mut self) -> serde_json::Value {
-        let terminals = self.publish_engine.take_pending_terminals();
+        // Defensive: fold any straggler engine terminal so no verdict is
+        // stranded if a boundary missed the production-time fold. A no-op when
+        // `pending_terminals` is already empty (the common case).
+        self.drain_engine_terminals_into_ledger();
+        // Drain the ledger's per-tick terminal buffer — the single source.
+        let rows = self.action_ledger.take_terminal_results();
         // ADR-0055 Rung 1 (F2): drive the drain tristate exactly once per emit.
         // `note_drain_emit` bumps `settlement_drain_ver` only on a non-empty
         // drain (Changed) or on the non-empty -> empty transition (Cleared, so
         // the host drops its prior copy without a replay); a stably-empty drain
         // settles to Unchanged with no churn.
         self.projection_rev_tracker
-            .note_drain_emit("action_results", !terminals.is_empty());
-        if terminals.is_empty() {
+            .note_drain_emit("action_results", !rows.is_empty());
+        if rows.is_empty() {
             return serde_json::Value::Null;
         }
-        // Record the terminal into the stage mirror *before* serializing
-        // the action_results array. The mirror's `at_ms` is sourced from
-        // `now_ms()` so a `FixedClock` keeps the timestamp deterministic.
-        //
-        // V5 thin-shell: route through `record_action_stage_coded` (instead of
-        // the bare `action_stages.record`) so the `action_lifecycle`
-        // display projection picks up the terminal in the same edge. A
-        // host that only consumes `action_lifecycle` now sees engine
-        // terminals appear in `recent_terminal` exactly as it sees
-        // sign-step terminals from `record_action_failure` /
-        // `record_action_success`.
-        //
-        // #1735: use `record_action_stage_coded` so that terminals carrying a
-        // curated `reason_code` (e.g. the D10 routing-leak refusal from
-        // `record_action_terminal_failure`) thread the code into the
-        // `action_lifecycle` projection instead of overwriting it with a
-        // None via the plain `record_action_stage` path.
-        for terminal in &terminals {
-            let stage = match terminal.status {
-                "ok" => super::super::action_stages::ActionStage::Accepted,
-                // S7 (#1754): a user-initiated cancel is the DISTINCT `Cancelled`
-                // terminal, never `Failed`. The engine records the cancel terminal
-                // with `status == "cancelled"` (see `PublishEngine::cancel_by_handle`)
-                // under the ORIGINAL correlation_id; this is the single path that
-                // mirrors it into `action_stages` / `action_lifecycle`.
-                "cancelled" => super::super::action_stages::ActionStage::Cancelled,
-                _ => super::super::action_stages::ActionStage::Failed {
-                    reason: terminal
-                        .error
-                        .clone()
-                        .unwrap_or_else(|| terminal.status.to_string()),
-                },
-            };
-            // `record_action_stage_coded` is silent on cap hits (D6) — the
-            // diagnostic counters in the underlying trackers surface the
-            // event without interrupting the publish path.
-            self.record_action_stage_coded(
-                &terminal.correlation_id,
-                stage,
-                None,
-                terminal.reason_code,
-                None,
-            );
-        }
-        let arr: Vec<serde_json::Value> = terminals
-            .iter()
-            .map(|terminal| {
-                let status = match terminal.status {
-                    "ok" => "published",
-                    other => other,
-                };
-                let mut row = serde_json::json!({
-                    "correlation_id": terminal.correlation_id,
-                    "status": status,
-                    "error": terminal.error,
-                });
-                // ADR-0043 Decision 4 — forward the opaque structured result
-                // body verbatim under `result` when the action attached one.
-                // The string is re-parsed into a `serde_json::Value` purely so
-                // the host reads a JSON object (not a JSON-encoded string); this
-                // is forwarding, NOT interpretation — `nmp-core` learns no
-                // protocol noun (D0). A non-JSON body is forwarded as a raw
-                // string rather than dropped.
-                if let Some(result_json) = &terminal.result_json {
-                    let value = serde_json::from_str::<serde_json::Value>(result_json)
-                        .unwrap_or_else(|_| serde_json::Value::String(result_json.clone()));
-                    if let Some(obj) = row.as_object_mut() {
-                        obj.insert("result".to_string(), value);
-                    }
-                }
-                // #1702 — surface the published event's id (when this terminal
-                // concerns a signed event) under `event_id`, omitted entirely
-                // when absent (mirrors `result`). Lets a consumer reference the
-                // just-published event even on the `PublishRaw` path where
-                // `correlation_id` is a registry dispatch id, not the event id.
-                if let Some(event_id) = &terminal.event_id {
-                    if let Some(obj) = row.as_object_mut() {
-                        obj.insert(
-                            "event_id".to_string(),
-                            serde_json::Value::String(event_id.clone()),
-                        );
-                    }
-                }
-                row
-            })
-            .collect();
-        serde_json::Value::Array(arr)
+        serde_json::Value::Array(rows)
     }
 
     /// T128: drain every terminal verdict the engine recorded since the last
@@ -156,6 +153,15 @@ impl Kernel {
     /// - any accepted (with or without failures) → `"ok"`
     /// - both empty → `"failed"` defensively (no relays settled at all)
     pub(in super::super) fn apply_engine_completions(&mut self) {
+        // S11 slice 2 (#1758): fold any engine-origin `action_results` terminal
+        // into the ledger at this engine boundary — at PRODUCTION time, not at
+        // emit time — so its producer order is preserved relative to off-band
+        // terminals. This is the `action_results` (single-source) lane, distinct
+        // from the `recently_completed` publish_queue lane drained below. It must
+        // run BEFORE the early return: a `pending_terminals` verdict
+        // (e.g. NoTargets, cancel, a relay settlement) can exist independently of
+        // a `recently_completed` row.
+        self.drain_engine_terminals_into_ledger();
         let completions = self.publish_engine.take_completed();
         if completions.is_empty() {
             return;

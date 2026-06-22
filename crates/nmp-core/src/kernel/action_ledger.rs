@@ -16,9 +16,9 @@
 //! with the prior surfaces becoming *derived projections* of the ledger rather
 //! than parallel sources of truth (D4 — single writer of action state).
 //!
-//! # First slice (this file): `action_lifecycle` derives from the ledger
+//! # First slice (#1847): `action_lifecycle` derives from the ledger
 //!
-//! This slice resolves #1684: `action_lifecycle` is no longer an independent
+//! That slice resolved #1684: `action_lifecycle` is no longer an independent
 //! store. The ledger owns the substrate stage history (the [`ActionStageTracker`]
 //! storage) plus the per-`correlation_id` curated failure reason code (#1735),
 //! and the `action_lifecycle` projection is *computed* from that one record via
@@ -27,10 +27,37 @@
 //! history the `action_stages` projection serialises, collapsed to the latest
 //! stage per `correlation_id`.
 //!
-//! The other three surfaces (`action_results` drain, `action_stages` history,
-//! `publish_queue` status) still record through the same recording path and are
-//! collapsed in follow-up slices; this slice removes the lifecycle parallel
-//! path only and is byte-identical to the prior `ActionLifecycleTracker` output.
+//! # Second slice (this change): `action_results` derives from the ledger
+//!
+//! `action_results` is the per-tick *drain* of terminal verdicts the host reads
+//! to clear an action spinner. It used to be serialised from a PARALLEL source —
+//! the publish engine's `pending_terminals` `Vec`, which every terminal-recording
+//! path also pushed onto in addition to mirroring the stage into the ledger. That
+//! made the engine `Vec` a SECOND source of truth for terminal verdicts.
+//!
+//! This slice inverts the source: the ledger is now the SINGLE writer of terminal
+//! verdicts. Every terminal — an engine relay-settlement drained from
+//! `pending_terminals`, a sign-step failure, a cancel, an off-band NWC success —
+//! records into the ledger via [`ActionLedger::record_terminal`], which appends a
+//! per-tick [`ActionResultRecord`] onto a drain buffer alongside the stage write.
+//! `action_results` is serialised by draining that buffer
+//! ([`ActionLedger::take_terminal_results`]). The off-band engine-side terminal
+//! pushes (`record_action_terminal_failure` / `_success`) are deleted: those
+//! verdicts now go straight to the ledger, not through the engine `Vec`. The
+//! engine `pending_terminals` survives only as the inbound transport for terminals
+//! that ORIGINATE asynchronously inside the engine (relay ack/tick, NoTargets,
+//! cancel); the kernel drains that transport and records each into the ledger, so
+//! the ledger is the one source the projection reads — there is no parallel
+//! representation of a terminal verdict.
+//!
+//! The remaining surface (`publish_queue` per-`event_id` terminal status) is a
+//! SEPARATE path keyed on `event_id` (the engine's `recently_completed` →
+//! `take_completed` → `set_publish_entry_terminal` lane); it is collapsed in a
+//! follow-up slice and is untouched here. This change is byte-identical to the
+//! prior `pending_terminals`-sourced `action_results` output (the same per-tick
+//! drain semantics, the same `ok → published` status mapping, the same `error` /
+//! `result` / `event_id` fields, and the same `reason_code` threading into the
+//! lifecycle view).
 //!
 //! # D-doctrine
 //!
@@ -73,6 +100,73 @@ pub(crate) const RECENT_TERMINAL_TTL_MS: u64 = TERMINAL_STAGE_RETENTION_MS;
 struct CodedReason {
     code: Option<String>,
     subject: Option<String>,
+}
+
+/// One drained `action_results` row — the per-tick terminal-verdict record the
+/// ledger is now the SINGLE source of.
+///
+/// Appended by [`ActionLedger::record_terminal`] on every terminal write and
+/// drained once per emit by [`ActionLedger::take_terminal_results`]. Carries the
+/// already-mapped WIRE `status` (`"published"` / `"failed"` / `"cancelled"` —
+/// the `ok → published` mapping is resolved at record time, not at serialise
+/// time) plus the fields the host reads off the row: the verbatim `error`, the
+/// opaque `result_json` (ADR-0043 Decision 4, forwarded into `result`), and the
+/// signed `event_id` (#1702). These are stored ALONGSIDE the stage history
+/// rather than re-derived from it because the row's `error` is the terminal's
+/// own verbatim string (a `failed` terminal can carry an `error` distinct from
+/// the stage's prose `reason`), and `result_json` / `event_id` never enter the
+/// substrate stage type.
+#[derive(Clone, Debug)]
+pub(crate) struct ActionResultRecord {
+    /// Correlation id of the dispatched action this terminal reports on.
+    correlation_id: String,
+    /// Already-mapped wire status: `"published"`, `"failed"`, or `"cancelled"`.
+    status: &'static str,
+    /// Verbatim failure string (`None` on success / cancel).
+    error: Option<String>,
+    /// Opaque structured result body, forwarded verbatim into the row's
+    /// `result` field. `None` unless the action attached one.
+    result_json: Option<String>,
+    /// The signed event's id, when one backs this terminal (#1702). `None` for
+    /// off-band terminals where no event was ever signed.
+    event_id: Option<String>,
+}
+
+impl ActionResultRecord {
+    /// Serialise this record into the exact `action_results` row JSON the prior
+    /// `pending_terminals`-sourced drain produced: `{correlation_id, status,
+    /// error}` always (the `error` key present, `null` when `None`), plus an
+    /// optional `result` (forwarded `result_json`, parsed to a JSON object when
+    /// it parses, else carried as a raw string) and an optional `event_id`.
+    fn to_row(&self) -> serde_json::Value {
+        let mut row = serde_json::json!({
+            "correlation_id": self.correlation_id,
+            "status": self.status,
+            "error": self.error,
+        });
+        // ADR-0043 Decision 4 — forward the opaque structured result body
+        // verbatim under `result`. Re-parse so the host reads a JSON object (not
+        // a JSON-encoded string); a non-JSON body forwards as a raw string. This
+        // is forwarding, NOT interpretation (D0).
+        if let Some(result_json) = &self.result_json {
+            let value = serde_json::from_str::<serde_json::Value>(result_json)
+                .unwrap_or_else(|_| serde_json::Value::String(result_json.clone()));
+            if let Some(obj) = row.as_object_mut() {
+                obj.insert("result".to_string(), value);
+            }
+        }
+        // #1702 — surface the published event's id under `event_id`, omitted
+        // entirely when absent (mirrors `result`).
+        if let Some(event_id) = &self.event_id {
+            if let Some(obj) = row.as_object_mut() {
+                obj.insert(
+                    "event_id".to_string(),
+                    serde_json::Value::String(event_id.clone()),
+                );
+            }
+        }
+        row
+    }
 }
 
 /// The latest lifecycle state of one `correlation_id` — the authoritative
@@ -203,6 +297,14 @@ pub(crate) struct ActionLedger {
     /// record the history dropped at its per-correlation cap still keeps a
     /// stable lifecycle position.
     latest_order: Vec<String>,
+    /// Per-tick terminal-verdict drain — the SINGLE source of `action_results`
+    /// (S11 slice 2, #1758). Every terminal recorded via [`Self::record_terminal`]
+    /// appends one [`ActionResultRecord`] here in producer order; the kernel
+    /// serialises and clears it once per emit via [`Self::take_terminal_results`].
+    /// Unbounded only WITHIN a tick (drained every emit), so it cannot grow
+    /// across ticks — the same per-tick `Vec` lifetime the deleted engine
+    /// `pending_terminals` had.
+    terminal_results: Vec<ActionResultRecord>,
 }
 
 impl ActionLedger {
@@ -271,6 +373,61 @@ impl ActionLedger {
         if is_new {
             self.latest_order.push(correlation_id.to_string());
         }
+    }
+
+    /// Record a TERMINAL verdict for `correlation_id` — the single write that
+    /// makes the ledger the source of `action_results` (S11 slice 2, #1758).
+    ///
+    /// Does two things in one call: (1) records the terminal `stage` into the
+    /// ledger via [`Self::record_coded`] (so the `action_stages` history and the
+    /// derived `action_lifecycle` view pick it up, with `reason_code` /
+    /// `reason_subject` threaded), and (2) appends one [`ActionResultRecord`]
+    /// onto the per-tick `terminal_results` drain the kernel serialises into
+    /// `action_results`. `status` is the already-mapped WIRE status
+    /// (`"published"` / `"failed"` / `"cancelled"`); `error` / `result_json` /
+    /// `event_id` are the verbatim row fields.
+    ///
+    /// This is the ONE funnel every terminal-recording path routes through:
+    /// engine relay-settlements (drained from the engine transport), sign-step
+    /// failures, cancels, and off-band NWC successes. Each terminal appends
+    /// exactly one row — so `action_results` carries one entry per terminal,
+    /// drained once.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn record_terminal(
+        &mut self,
+        correlation_id: &str,
+        stage: ActionStage,
+        status: &'static str,
+        error: Option<String>,
+        result_json: Option<String>,
+        event_id: Option<String>,
+        reason_code: Option<&str>,
+        reason_subject: Option<&str>,
+        at_ms: u64,
+    ) {
+        // Record the stage first so the `action_stages` / `action_lifecycle`
+        // projections observe the terminal in the same edge.
+        self.record_coded(correlation_id, stage, None, reason_code, reason_subject, at_ms);
+        // Then enqueue the per-tick action_results row — the single source.
+        self.terminal_results.push(ActionResultRecord {
+            correlation_id: correlation_id.to_string(),
+            status,
+            error,
+            result_json,
+            event_id,
+        });
+    }
+
+    /// Drain the per-tick terminal-verdict buffer into the `action_results` row
+    /// array. Pure drain (D-review #29 semantics, now ledger-owned): each
+    /// terminal appears exactly once, then is consumed — a later tick with no
+    /// new terminal yields an empty `Vec`. Returns the rows in producer order.
+    #[must_use]
+    pub(crate) fn take_terminal_results(&mut self) -> Vec<serde_json::Value> {
+        std::mem::take(&mut self.terminal_results)
+            .iter()
+            .map(ActionResultRecord::to_row)
+            .collect()
     }
 
     /// Early-dismiss `correlation_id` from the ledger. Idempotent (D6). Drops

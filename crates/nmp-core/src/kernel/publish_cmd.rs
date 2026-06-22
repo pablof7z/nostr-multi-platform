@@ -127,33 +127,42 @@ impl Kernel {
         reason_code: Option<&'static str>,
         reason_subject: Option<String>,
     ) {
-        // A sign-step failure also lifts into the `action_stages`
-        // mirror so a host listening only on the stage seam (not the
-        // per-tick action_results drain) still sees the `Failed`
-        // terminal. The mirror also drives the lifecycle history a
-        // diagnostic view would render. The shared `correlation_id` is
-        // the join key — the host's stage observer and its
-        // action_results observer match on the same value.
+        // S11 slice 2 (#1758): a sign-step failure records its terminal
+        // DIRECTLY into the ledger — the single source of `action_results`.
+        // `record_terminal` does the dual write in one call: it appends the
+        // per-tick `action_results` row (status `"failed"`, the verbatim
+        // `error`) AND mirrors the `Failed` stage into the `action_stages`
+        // history + the derived `action_lifecycle` view (threading the curated
+        // `reason_code` / `reason_subject`, #1735). No second push onto the
+        // engine `pending_terminals` — that parallel source is gone; this path
+        // never touches the engine. The shared `correlation_id` is the join key.
         //
-        // V5 thin-shell: `record_action_stage` mirrors into both the
-        // `action_stages` history AND the `action_lifecycle` display
-        // projection in one call, so the host shell sees the terminal
-        // appear in `recent_terminal` on the next snapshot tick with no
-        // reducer-side bookkeeping.
-        self.record_action_stage_coded(
+        // No event was ever signed on this path (the sign step failed), so
+        // there is no `event_id` to surface (#1702), and no structured result
+        // body. The substrate `action_stages` history sees only the prose
+        // `reason`; the structured reason code rides the lifecycle view.
+        let at_ms = self.now_ms();
+        self.action_ledger.record_terminal(
             &correlation_id,
             super::action_stages::ActionStage::Failed {
                 reason: error.clone(),
             },
+            "failed",
+            Some(error),
+            None,
             None,
             reason_code,
             reason_subject.as_deref(),
+            at_ms,
         );
-        self.publish_engine
-            .record_action_terminal_failure(correlation_id, error, reason_code);
         // A terminal verdict is always snapshot-worthy: the next emit drains
-        // it into `action_results` via `take_action_results_projection`.
+        // it into `action_results` via `take_action_results_projection`. Bump
+        // the enqueue source version so the `action_stages` / `action_lifecycle`
+        // projections (which depend on it) re-serialise this tick.
         self.changed_since_emit = true;
+        self.projection_rev_tracker
+            .source_versions
+            .bump_settlement_enqueue();
     }
 
     /// Record a terminal `"ok"` verdict for a dispatched action whose terminal
@@ -184,31 +193,42 @@ impl Kernel {
     // wallet response handler is the off-band success consumer for pay-invoice
     // flows, including the NIP-57 LNURL → wallet chain.
     pub fn record_action_success(&mut self, correlation_id: String, result_json: Option<String>) {
-        // Mirror `record_action_failure`'s dual write: an `Accepted` stage in
-        // the `action_stages` mirror so a host listening only on the stage
-        // seam sees the terminal, and the per-tick `action_results` drain so
-        // the spinner-keyed host clears on the next emit. Same join-key
-        // contract — the host's stage observer and its action_results
-        // observer match on the same `correlation_id`.
-        //
-        // V5 thin-shell: `record_action_stage` mirrors into both the
-        // `action_stages` history AND the `action_lifecycle` display
-        // projection in one call.
+        // S11 slice 2 (#1758): mirror `record_action_failure`'s single-source
+        // write — record the terminal DIRECTLY into the ledger. `record_terminal`
+        // appends the per-tick `action_results` row (status `"published"`,
+        // carrying `result_json`) AND mirrors the `Accepted` stage into the
+        // `action_stages` history + the derived `action_lifecycle` view in one
+        // call. No second push onto the engine `pending_terminals` — that
+        // parallel source is gone. Same join-key contract — the host's stage
+        // observer and its action_results observer match on the same
+        // `correlation_id`.
         //
         // `result_json` (ADR-0043 Decision 4) is an opaque structured result
         // body the action attaches to its `action_results` row's `result`
         // field. The kernel never parses it — it only forwards it (D0: no
-        // protocol noun enters the substrate).
-        self.record_action_stage(
+        // protocol noun enters the substrate). Off-band success (e.g. NWC
+        // pay-invoice): the terminal is not a published nostr event, so there
+        // is no `event_id` to surface (#1702).
+        let at_ms = self.now_ms();
+        self.action_ledger.record_terminal(
             &correlation_id,
             super::action_stages::ActionStage::Accepted,
+            "published",
             None,
+            result_json,
+            None,
+            None,
+            None,
+            at_ms,
         );
-        self.publish_engine
-            .record_action_terminal_success(correlation_id, result_json);
         // A terminal verdict is always snapshot-worthy: the next emit drains
-        // it into `action_results` via `take_action_results_projection`.
+        // it into `action_results` via `take_action_results_projection`. Bump
+        // the enqueue source version so the `action_stages` / `action_lifecycle`
+        // projections (which depend on it) re-serialise this tick.
         self.changed_since_emit = true;
+        self.projection_rev_tracker
+            .source_versions
+            .bump_settlement_enqueue();
     }
 
     /// Record the outcome of a `SignEventForReturn` op under `correlation_id`.

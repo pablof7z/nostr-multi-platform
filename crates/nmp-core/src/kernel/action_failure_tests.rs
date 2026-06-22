@@ -17,9 +17,11 @@
 //!
 //! These tests pin the *kernel-layer* contract — that `record_action_failure`
 //! lands a `{correlation_id, status:"failed", error}` entry in the wire
-//! snapshot. The engine-side push (`record_action_terminal_failure`) is
-//! covered by `publish/engine/tests.rs`; the actor-loop wiring
-//! (parked-remote-sign timeout / error) is covered there in lockstep.
+//! snapshot. S11 slice 2 (#1758): the terminal records DIRECTLY into the
+//! `ActionLedger` (the single source of `action_results`) — there is no longer
+//! a separate engine-side `pending_terminals` push for sign-step failures. The
+//! actor-loop wiring (parked-remote-sign timeout / error) is covered in
+//! `publish/engine/tests.rs` in lockstep.
 
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;

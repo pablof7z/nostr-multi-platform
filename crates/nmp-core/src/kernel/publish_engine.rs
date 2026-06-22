@@ -249,14 +249,23 @@ impl Kernel {
                 self.publish_engine
                     .record_engine_error(&err, &handle, &signed.id, now_ms);
                 let (toast, status, category) = describe_engine_error(&err);
+                // S11 slice 2 (#1758): fold any engine-origin terminal the failed
+                // `start_publish` already pushed (the `NoTargets` path's
+                // `emit_no_targets` records a `"failed"` verdict on
+                // `pending_terminals`) into the ledger NOW, BEFORE the off-band
+                // `record_action_failure` below. This preserves the prior
+                // producer order — the engine `emit_no_targets` row precedes the
+                // engine-error broken-promise row — now that the off-band path
+                // records straight into the ledger instead of onto the same
+                // engine `Vec`. A no-op for errors that pushed no pending
+                // terminal (`DuplicateHandle`, `Store`, `UnsupportedAction`).
+                self.drain_engine_terminals_into_ledger();
                 // Broken-promise fix: an engine-level error (`DuplicateHandle`,
                 // `Store`, `UnsupportedAction`) for a dispatched action — one
                 // that carries a `correlation_id_override` — must also reach
                 // `action_results` so the host spinner clears. `record_engine_error`
                 // above writes only a `RecentFailure` row, not a terminal
-                // action verdict. (`NoTargets` does not reach here — it is a
-                // terminal handled by `emit_no_targets`, which records its own
-                // verdict.) `None` (a non-dispatch publish) is a no-op.
+                // action verdict. `None` (a non-dispatch publish) is a no-op.
                 if let Some(id) = correlation_id_for_failure {
                     self.record_action_failure(id, toast.clone());
                 }

@@ -180,12 +180,17 @@ impl Kernel {
         // INFALLIBLE (D6): it removes any in-flight engine row AND ALWAYS records
         // the `Cancelled` terminal under `correlation_id` BEFORE the best-effort
         // durable delete — so a store-delete failure can never orphan the host
-        // spinner. The terminal drains through `take_pending_terminals` →
-        // `drain_action_results`, which mirrors it into `action_stages` /
-        // `action_lifecycle` as the distinct `cancelled` stage. No parallel
-        // `record_action_stage` here — one path only.
+        // spinner. The terminal is pushed onto the engine `pending_terminals`
+        // transport; the fold below moves it into the ledger (the single source
+        // of `action_results`, S11 slice 2 / #1758) at production time, which
+        // mirrors it into `action_stages` / `action_lifecycle` as the distinct
+        // `cancelled` stage. No parallel `record_action_stage` here — one path.
         self.publish_engine
             .cancel_by_handle(&handle, &correlation_id, now_ms);
+        // S11 slice 2 (#1758): fold the just-recorded cancel terminal into the
+        // ledger NOW so its producer order is preserved relative to any off-band
+        // terminal recorded later in the same tick.
+        self.drain_engine_terminals_into_ledger();
         self.set_publish_entry_terminal(&handle, "cancelled", Vec::new());
         self.publish_handle_correlation.forget(&handle);
         self.bump_publish_if_engine_view_changed(engine_rev_before);

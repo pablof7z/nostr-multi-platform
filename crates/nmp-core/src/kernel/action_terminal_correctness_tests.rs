@@ -82,6 +82,55 @@ fn action_results(kernel: &mut Kernel) -> serde_json::Value {
         .unwrap_or(serde_json::Value::Null)
 }
 
+/// S11 slice 2 (#1758): the dispatched `NoTargets` path emits TWO
+/// `action_results` rows under the same correlation_id — the engine's
+/// `emit_no_targets` verdict (carrying `event_id`) FOLLOWED BY the engine-error
+/// broken-promise verdict from `record_action_failure`. This pre-existing
+/// two-row shape and its PRODUCER ORDER must be byte-identical after the source
+/// inversion: the engine terminal is folded into the ledger at its production
+/// boundary (in the `run_publish_engine_at` Err arm, before the off-band
+/// record), so the off-band row never jumps ahead of it.
+#[test]
+fn dispatched_notargets_emits_engine_then_offband_row_in_order() {
+    let author = "f9".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    // No kind:10002 seeded → resolver returns NoTargets.
+    let signed = fake_signed(&"e9".repeat(32), &author, 1, "notargets");
+    let cid = "corr-notargets".to_string();
+    let _ = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        Some(cid.clone()),
+        0,
+    );
+    let results = action_results(&mut kernel);
+    let arr = results
+        .as_array()
+        .cloned()
+        .expect("dispatched NoTargets surfaces action_results rows");
+    let rows: Vec<&serde_json::Value> = arr
+        .iter()
+        .filter(|r| r.get("correlation_id").and_then(|v| v.as_str()) == Some(cid.as_str()))
+        .collect();
+    assert_eq!(rows.len(), 2, "two rows for dispatched NoTargets (engine + off-band): {arr:#?}");
+    // Row 0 is the engine `emit_no_targets` verdict — it carries the signed
+    // event id; row 1 is the off-band engine-error broken-promise verdict.
+    assert_eq!(
+        rows[0].get("event_id").and_then(|v| v.as_str()),
+        Some(signed.id.as_str()),
+        "the engine emit_no_targets row (with event_id) must come FIRST"
+    );
+    assert_eq!(
+        rows[0].get("error").and_then(|v| v.as_str()),
+        Some("no relays resolved for publish target"),
+    );
+    assert!(
+        rows[1].get("event_id").is_none(),
+        "the off-band engine-error row (no event_id) must come SECOND"
+    );
+}
+
 #[test]
 fn exactly_one_action_result_row_per_correlation_id_across_terminal_paths() {
     let author = "c7".repeat(32);
