@@ -61,6 +61,12 @@ fn run() -> Result<(), String> {
         // presence-classification sets for `nmp-core`'s projection_rev module,
         // from the contract's `presence_policy` column. No stdin.
         "presence-keys" => cli_builtin::run_gen_presence_keys(args, &h),
+        // #1723 — generated per-projection producer constants (`*_SCHEMA_ID` /
+        // `*_FILE_IDENTIFIER` / `*_SCHEMA_VERSION`) for the `nmp-core` kernel +
+        // actor `*_fb.rs` codecs, from each projection's PROJECTION_CONTRACT
+        // entry. Writes one `<name>_producer_consts.generated.rs` per producer
+        // under `--repo-root` (default `.`); no stdin.
+        "producer-consts" => cli_builtin::run_gen_producer_consts(args, &h),
         // #1493 P9 — generate the native known-signer detection lists (Kotlin
         // `KNOWN_NOSTR_SIGNERS` + Swift `knownSigners`) from the Rust catalog
         // JSON on stdin (`dump_signer_catalog`). Mirrors `gen swift`: reads the
@@ -83,6 +89,7 @@ fn help() -> String {
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
      nmp gen builtin-deps      [--out <path>] [--check]\n  \
      nmp gen presence-keys     [--out <path>] [--check]\n  \
+     nmp gen producer-consts   [--repo-root <path>] [--check]\n  \
      nmp gen signer-catalog    [--catalog - | <path>] [--check]"
         .to_string()
 }

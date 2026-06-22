@@ -61,6 +61,12 @@ pub mod projection_tier;
 // list so the kernel built-in key set is not hand-maintained and cannot drift
 // from what codegen decodes / the kernel emits.
 pub mod rust_builtin_keys;
+// #1723 (epic #1719) — generator for the per-projection producer constants
+// (`*_SCHEMA_ID` / `*_FILE_IDENTIFIER` / `*_SCHEMA_VERSION`) the `nmp-core`
+// kernel + actor `*_fb.rs` codecs `include!` in place of the deleted
+// hand-declared blocks, so those wire-identity facts derive from the projection
+// contract instead of being re-stated per producer.
+pub mod producer_consts;
 // #1493 P9 — generate the native known-signer detection lists (Kotlin
 // `KNOWN_NOSTR_SIGNERS` + Swift `knownSigners`) from the Rust catalog JSON
 // (`nmp_core::signer_catalog` via `dump_signer_catalog`). Parses the catalog
@@ -85,6 +91,10 @@ pub use rust_builtin_keys::{
     check_builtin_deps, check_builtin_keys, check_presence_keys, generate_builtin_deps,
     generate_builtin_keys, generate_presence_keys, render_builtin_deps, render_builtin_keys,
     render_presence_keys, BuiltinKeysCheckOutcome,
+};
+pub use producer_consts::{
+    check_all_producer_consts, generate_all_producer_consts, render_producer_consts,
+    ProducerConstTarget, ProducerConstsCheckOutcome, PRODUCER_CONST_TARGETS,
 };
 pub use signer_catalog::{
     check_signer_catalog, generate_signer_catalog, parse_catalog, render_kotlin_known_signers,

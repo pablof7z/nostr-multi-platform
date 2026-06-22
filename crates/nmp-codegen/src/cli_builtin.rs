@@ -177,3 +177,74 @@ pub fn run_gen_presence_keys(args: Vec<String>, help: &str) -> Result<(), String
         Ok(())
     }
 }
+
+/// `nmp gen producer-consts [--repo-root <path>] [--check]`.
+///
+/// #1723 — generates the per-projection producer constants (`*_SCHEMA_ID` /
+/// `*_FILE_IDENTIFIER` / `*_SCHEMA_VERSION`) the `nmp-core` kernel + actor
+/// `*_fb.rs` codecs `include!`, one `<name>_producer_consts.generated.rs` per
+/// producer, from each projection's `PROJECTION_CONTRACT` entry. Unlike the
+/// single-file generators this writes MANY files, so it takes a `--repo-root`
+/// (default `.`, the repo root CI runs from) the per-target paths are joined
+/// onto, rather than a single `--out`.
+///
+/// `--check` diffs every target against its file on disk and exits non-zero on
+/// the first drift. The CI gate at `.github/workflows/codegen-drift.yml` uses
+/// this mode.
+pub fn run_gen_producer_consts(args: Vec<String>, help: &str) -> Result<(), String> {
+    let mut repo_root = PathBuf::from(".");
+    let mut check = false;
+    let mut index = 0;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--repo-root" => {
+                index += 1;
+                repo_root = args
+                    .get(index)
+                    .map(PathBuf::from)
+                    .ok_or_else(|| "--repo-root requires a path".to_string())?;
+            }
+            "--check" => check = true,
+            other => return Err(format!("unknown argument {other}\n{help}")),
+        }
+        index += 1;
+    }
+
+    if check {
+        let outcomes =
+            nmp_codegen::check_all_producer_consts(&repo_root).map_err(|e| e.to_string())?;
+        let stale: Vec<_> = outcomes.iter().filter(|o| !o.up_to_date).collect();
+        if stale.is_empty() {
+            println!(
+                "nmp gen producer-consts --check: ok ({} files)",
+                outcomes.len()
+            );
+            Ok(())
+        } else {
+            let detail = stale
+                .iter()
+                .map(|o| {
+                    let where_diff = o
+                        .first_diff_line
+                        .map(|n| format!(" (first differing line {n})"))
+                        .unwrap_or_else(|| " (file missing)".to_string());
+                    format!("  {}{where_diff}", o.out_path)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            Err(format!(
+                "producer-consts codegen stale ({} file(s)):\n{detail}\n\
+                 Regenerate with:\n  \
+                 cargo run -p nmp-codegen -- gen producer-consts",
+                stale.len()
+            ))
+        }
+    } else {
+        nmp_codegen::generate_all_producer_consts(&repo_root).map_err(|e| e.to_string())?;
+        println!(
+            "wrote {} producer-consts file(s)",
+            nmp_codegen::PRODUCER_CONST_TARGETS.len()
+        );
+        Ok(())
+    }
+}

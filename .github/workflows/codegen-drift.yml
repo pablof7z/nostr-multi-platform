@@ -102,6 +102,16 @@ jobs:
       - name: Check kernel presence-key codegen is up to date
         run: cargo run --quiet -p nmp-codegen -- gen presence-keys --check
 
+      # #1723 (epic #1719) — the per-projection producer constants
+      # (*_SCHEMA_ID / *_FILE_IDENTIFIER / *_SCHEMA_VERSION) the nmp-core kernel +
+      # actor *_fb.rs codecs include! (one *_producer_consts.generated.rs each)
+      # are DERIVED from each projection's PROJECTION_CONTRACT entry (schema_id /
+      # file_identifier / version columns). Fails any PR whose checked-in files
+      # differ from a fresh run, so the producer wire-identity constants cannot
+      # drift from the contract.
+      - name: Check per-projection producer-const codegen is up to date
+        run: cargo run --quiet -p nmp-codegen -- gen producer-consts --check
+
       # #1493 P9 — the native known-signer detection lists (Kotlin
       # KnownSigners.generated.kt × 3 + Swift KnownSigners.generated.swift × 2)
       # are GENERATED from the Rust catalog (nmp_core::signer_catalog) via the
