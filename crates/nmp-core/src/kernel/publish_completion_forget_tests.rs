@@ -3,10 +3,12 @@
 //!
 //! The index is bounded by [`super::handle_correlation::MAX_HANDLE_CORRELATION_ENTRIES`]
 //! (D8), but that cap tracks the live in-flight set only when every terminal
-//! path — success, failure, AND cancel — calls `forget`. Before the fix,
-//! `apply_engine_completions` updated the queue entry but never called
-//! `forget`, leaving a stale handle↔correlation entry for every completed
-//! publish. These tests prove the fix: after a terminal engine completion the
+//! path — success, failure, AND cancel — calls `forget`. Before the fix, the
+//! engine-completion queue update never called `forget`, leaving a stale
+//! handle↔correlation entry for every completed publish. (S11 slice 4 / #1758:
+//! the queue update and that `forget` now live in the single engine-terminal
+//! fold's settled arm — `apply_publish_queue_terminal`.) These tests prove the
+//! fix: after a terminal engine completion the
 //! index is empty (no stale entry survives). Split into its own file (not
 //! appended to `cancel_correlation_tests.rs`) to stay within the 500-LOC
 //! file-size baseline (AGENTS.md §file-size).
@@ -99,8 +101,8 @@ fn handle_correlation_index_is_empty_after_successful_completion() {
     // D8 REGRESSION — PD-036 fix completeness. A publish that reaches the
     // SUCCESS terminal (all relays ACK) must remove its handle↔correlation
     // entry from the durable index. Without `publish_handle_correlation.forget`
-    // in `apply_engine_completions`, the entry would survive indefinitely
-    // (stale, bounded only by the cap, not the live in-flight set).
+    // in the engine-terminal fold's settled arm, the entry would survive
+    // indefinitely (stale, bounded only by the cap, not the live in-flight set).
     //
     // This assertion FAILS against the pre-fix code (index still contains the
     // entry after completion) and PASSES after the fix.
@@ -128,7 +130,7 @@ fn handle_correlation_index_is_empty_after_successful_completion() {
     let _ = kernel.handle_publish_ok_at(WRITE_R1, ok_payload(&signed.id, true, ""), 10);
     let _ = kernel.handle_publish_ok_at(WRITE_R2, ok_payload(&signed.id, true, ""), 20);
 
-    // `apply_engine_completions` runs inside `handle_publish_ok_at` on the
+    // The engine-terminal fold runs inside `handle_publish_ok_at` on the
     // second ack (the publish is now terminal). The index must be empty.
     assert_eq!(
         correlation_index_len(&kernel),

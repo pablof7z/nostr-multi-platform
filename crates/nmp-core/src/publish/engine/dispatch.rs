@@ -57,12 +57,12 @@ impl PublishEngine {
         // Record the cancelled terminal FIRST — BEFORE the best-effort durable
         // delete — so the host spinner is ALWAYS resolved under the original
         // correlation_id, even if the store delete fails (D6: a durable-cleanup
-        // failure is not a reason to orphan the user's cancel). Direction review
-        // #24: cancellation never flows through `recently_completed`, so it is
-        // recorded directly on `pending_terminals` (drained into `action_results`
-        // / `action_lifecycle` as the distinct `cancelled` stage), even for an
-        // unknown / already-settled handle — it is a terminal verdict the host
-        // asked for.
+        // failure is not a reason to orphan the user's cancel). It is recorded on
+        // the single `pending_terminals` engine→ledger stream (drained into
+        // `action_results` / `action_lifecycle` as the distinct `cancelled` stage,
+        // AND — via its `PublishQueueTerminal::Cancelled` payload — into the
+        // event-id-keyed `publish_queue` row), even for an unknown / already-settled
+        // handle: it is a terminal verdict the host asked for.
         self.record_terminal(LastTerminal {
             // S7 (#1754): the terminal correlation_id is the ORIGINAL dispatch
             // id, never the handle — this is the PD-036 fix.
@@ -73,6 +73,15 @@ impl PublishEngine {
             event_id: Some(handle.clone()),
             result_json: None,
             reason_code: None,
+            // S11 slice 4 (#1758): the SAME terminal flips the event-id-keyed
+            // queue row to `"cancelled"` (empty per-relay outcomes) — the kernel's
+            // ledger fold drives `set_publish_entry_terminal` from here, replacing
+            // the prior explicit cancel-path `set_publish_entry_terminal` call. The
+            // queue is keyed by the resolved publish `handle` (the prior cancel-path
+            // key), carried explicitly so the kernel never unwraps `event_id`.
+            publish_queue: super::types::PublishQueueTerminal::Cancelled {
+                event_id: handle.clone(),
+            },
         });
         // Best-effort durable cleanup. A delete failure (or a not-found row)
         // is a silent no-op: the in-memory cancel and the terminal already

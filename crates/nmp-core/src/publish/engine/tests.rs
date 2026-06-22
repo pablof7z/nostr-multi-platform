@@ -1,15 +1,20 @@
 //! Engine-internal tests for the T128 terminal-outcome drain
-//! (`PublishEngine::take_completed` / `TerminalOutcome`).
+//! (`PublishEngine::take_pending_terminals` / `TerminalOutcome`).
 //!
-//! These live in-crate (not in `tests/`) because `take_completed` is
-//! `pub(crate)` — it is the kernel's projection hook, not a public API. The
-//! kernel calls it after every engine entrypoint to flip its
-//! `PublishQueueEntry` projection from `accepted_locally` to `"ok"` /
-//! `"failed"`. The state-machine and basic-orchestration tests stay in
-//! `publish/tests.rs`; this file isolates the terminal-drain concern.
+//! These live in-crate (not in `tests/`) because `take_pending_terminals` is
+//! `pub(crate)` — it is the kernel's projection hook, not a public API. S11
+//! slice 4 (#1758) collapsed the separate `recently_completed` /
+//! `take_completed` publish-queue lane: a settled publish's per-relay
+//! [`TerminalOutcome`] now rides out on the SINGLE engine→ledger terminal stream
+//! as the [`PublishQueueTerminal::Settled`] payload of a `LastTerminal`. The
+//! kernel folds each terminal once, refining BOTH `action_results` and the
+//! event-id-keyed `PublishQueueEntry` from it. These tests assert the engine
+//! produces exactly that per-relay split via the helper below. The state-machine
+//! and basic-orchestration tests stay in `publish/tests.rs`.
 
 use std::sync::Arc;
 
+use super::types::PublishQueueTerminal;
 use super::PublishEngine;
 use crate::publish::action::{PublishAction, PublishTarget};
 use crate::publish::state::{RelayAck, RetryPolicy};
@@ -17,7 +22,25 @@ use crate::publish::traits::{
     InMemoryPublishStore, NoopSigner, QueueDispatcher, RelayDispatcher, ReplayDispatcher,
     StaticOutbox,
 };
+use crate::publish::TerminalOutcome;
 use crate::substrate::{SignedEvent, UnsignedEvent};
+
+/// Drain the engine's single terminal stream and collect the per-relay
+/// [`TerminalOutcome`]s carried on `PublishQueueTerminal::Settled` payloads — the
+/// settled-publish facet the kernel folds into the event-id-keyed
+/// `PublishQueueEntry`. Replaces the deleted `take_completed` drain in these
+/// tests: same data (one `TerminalOutcome` per settled handle, in drain order),
+/// now sourced from the single stream.
+fn drain_settled_outcomes(engine: &mut PublishEngine) -> Vec<TerminalOutcome> {
+    engine
+        .take_pending_terminals()
+        .into_iter()
+        .filter_map(|t| match t.publish_queue {
+            PublishQueueTerminal::Settled(outcome) => Some(outcome),
+            PublishQueueTerminal::Cancelled { .. } | PublishQueueTerminal::None => None,
+        })
+        .collect()
+}
 
 fn signed_event(id: &str, author: &str, kind: u32) -> SignedEvent {
     SignedEvent {
@@ -44,12 +67,13 @@ fn engine_with(outbox: Arc<StaticOutbox>, dispatcher: Arc<ReplayDispatcher>) -> 
 }
 
 #[test]
-fn engine_take_completed_drains_terminal_outcome_then_empties() {
-    // `take_completed` is the kernel's projection hook — it drains the
-    // per-handle `TerminalOutcome` recorded the moment a publish settles,
-    // before the in-flight row is evicted. The kernel relies on: (1) exactly
-    // one outcome per settled handle, (2) the accepted/failed split is
-    // correct, (3) a second drain yields nothing (pure drain — no replay).
+fn engine_drains_settled_outcome_then_empties() {
+    // The kernel folds the engine's single terminal stream once per settled
+    // publish; the `PublishQueueTerminal::Settled` payload carries the per-handle
+    // `TerminalOutcome` recorded the moment a publish settles, before the
+    // in-flight row is evicted. The kernel relies on: (1) exactly one outcome per
+    // settled handle, (2) the accepted/failed split is correct, (3) a second
+    // drain yields nothing (pure drain — no replay).
     let mut outbox = StaticOutbox::default();
     outbox.author_writes.insert(
         "alice".to_string(),
@@ -74,7 +98,7 @@ fn engine_take_completed_drains_terminal_outcome_then_empties() {
 
     // The publish settled inside start_publish (both acks scripted OK). The
     // engine must have recorded exactly one terminal outcome for the handle.
-    let drained = engine.take_completed();
+    let drained = drain_settled_outcomes(&mut engine);
     assert_eq!(drained.len(), 1, "one settled handle → one TerminalOutcome");
     let outcome = &drained[0];
     assert_eq!(outcome.event_id, "ev-tc1");
@@ -93,13 +117,13 @@ fn engine_take_completed_drains_terminal_outcome_then_empties() {
     // Pure drain: a second call yields nothing — the engine keeps no
     // per-publish history after the kernel has consumed it.
     assert!(
-        engine.take_completed().is_empty(),
-        "take_completed is a pure drain — second call is empty"
+        drain_settled_outcomes(&mut engine).is_empty(),
+        "the terminal stream is a pure drain — second call is empty"
     );
 }
 
 #[test]
-fn engine_take_completed_reports_mixed_accepted_and_failed_split() {
+fn engine_settled_outcome_reports_mixed_accepted_and_failed_split() {
     // A mixed publish (≥1 Ok + ≥1 permanent failure) must surface BOTH lists
     // on the same `TerminalOutcome` so the kernel can decide what status
     // string to project. This is the kernel-facing twin of the snapshot's
@@ -131,7 +155,7 @@ fn engine_take_completed_reports_mixed_accepted_and_failed_split() {
         )
         .unwrap();
 
-    let drained = engine.take_completed();
+    let drained = drain_settled_outcomes(&mut engine);
     assert_eq!(drained.len(), 1);
     let outcome = &drained[0];
     assert_eq!(
@@ -402,7 +426,7 @@ fn inflight_timeout_sweep_transitions_stuck_relay_through_retry_to_failure() {
     // Before the deadline: relay stays InFlight, no completed outcomes.
     engine.tick(t0 + 4_000);
     assert!(
-        engine.take_completed().is_empty(),
+        drain_settled_outcomes(&mut engine).is_empty(),
         "relay should still be InFlight before the deadline"
     );
 
@@ -410,14 +434,14 @@ fn inflight_timeout_sweep_transitions_stuck_relay_through_retry_to_failure() {
     // transitions to TimedOut and is immediately re-dispatched as attempt 2.
     engine.tick(t0 + 5_000);
     assert!(
-        engine.take_completed().is_empty(),
+        drain_settled_outcomes(&mut engine).is_empty(),
         "relay should be retried (attempt 2), not yet failed"
     );
 
     // Second deadline: attempt 2 >= transient_max_retries (2) →
     // sweep transitions directly to FailedAfterRetries → publish settles.
     engine.tick(t0 + 10_001);
-    let completed = engine.take_completed();
+    let completed = drain_settled_outcomes(&mut engine);
     assert_eq!(
         completed.len(),
         1,

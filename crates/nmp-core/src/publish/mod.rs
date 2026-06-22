@@ -75,7 +75,7 @@ pub use action::{
 };
 pub use engine::{
     engine_error_to_failure, outcome_of, LastTerminal, PublishEngine, PublishEngineError,
-    TerminalOutcome, ENGINE_FAILURE_RELAY_URL,
+    PublishQueueTerminal, TerminalOutcome, ENGINE_FAILURE_RELAY_URL,
 };
 pub use fs_store::FsPublishStore;
 // `Nip65OutboxResolver` lives in `nmp-router` (spec §271, 2026-05-25). The

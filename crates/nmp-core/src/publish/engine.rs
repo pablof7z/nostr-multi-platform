@@ -31,11 +31,12 @@ mod view_ops;
 
 pub use error_mapping::{engine_error_to_failure, ENGINE_FAILURE_RELAY_URL};
 pub use helpers::outcome_of;
-pub use types::{LastTerminal, TerminalOutcome};
+pub use types::{LastTerminal, PublishQueueTerminal, TerminalOutcome};
 // Re-exported for `engine::helpers` which references both type names via
 // `super::{InFlight, TerminalOutcome}`. `InFlight` stays crate-private (it is
 // an internal engine detail, not part of any public surface) while
-// `TerminalOutcome` rides out through the engine's public `take_completed`.
+// `TerminalOutcome` rides out on each `LastTerminal`'s `publish_queue` payload
+// (S11 slice 4, #1758) for the kernel's single terminal fold.
 pub(super) use types::InFlight;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -87,12 +88,6 @@ pub struct PublishEngine {
     /// vector clears the stale row even though nothing in the live map is
     /// marked dirty.
     needs_in_flight_rebuild: bool,
-    /// T128: terminal verdicts the engine recorded since the last drain.
-    /// Populated in `on_ack` (and any other path that evicts a completed row)
-    /// just before `in_flight.remove(handle)`. The kernel drains via
-    /// [`PublishEngine::take_completed`] after every engine call to update
-    /// the `PublishQueueEntry` projection the shell reads.
-    recently_completed: BTreeMap<PublishHandle, TerminalOutcome>,
     /// Direction review #29: every terminal action result that settled since
     /// the last drain. This Vec *accumulates* — so when two actions reach a
     /// terminal state between two snapshot emits, both are retained. The
@@ -122,7 +117,6 @@ impl PublishEngine {
             store,
             signer,
             needs_in_flight_rebuild: false,
-            recently_completed: BTreeMap::new(),
             pending_terminals: Vec::new(),
         }
     }
@@ -302,7 +296,8 @@ impl PublishEngine {
     /// without ever calling `on_ack`) is settled and removed from the durable
     /// store EXACTLY ONCE — never left pending to be re-refused on the next
     /// resume. Mirrors the `on_ack` completion path verbatim (terminal verdict
-    /// → `recently_completed` → `store.delete` → evict).
+    /// → `record_terminal` (carrying the `publish_queue` payload) → `store.delete`
+    /// → evict).
     fn finalize_completed_rows(&mut self, handles: &[PublishHandle], now_ms: u64) {
         for handle in handles {
             let Some(in_flight) = self.in_flight.get(handle) else {
@@ -322,7 +317,6 @@ impl PublishEngine {
                 &outcome,
             );
             self.record_terminal(terminal);
-            self.recently_completed.insert(handle.clone(), outcome);
             let _ = self.store.delete(handle);
             self.in_flight.remove(handle);
             self.needs_in_flight_rebuild = true;
@@ -362,7 +356,10 @@ impl PublishEngine {
             // projection BEFORE evicting the row. Once `in_flight.remove`
             // runs the per-relay state is gone, and the kernel has no other
             // hook to recover the Ok/Failed map (recent_ok / recent_errors
-            // are capped at 32 and not indexed by handle).
+            // are capped at 32 and not indexed by handle). S11 slice 4 (#1758):
+            // the per-relay map rides out on the terminal's `publish_queue`
+            // payload (`PublishQueueTerminal::Settled`) so the SINGLE ledger fold
+            // refines the queue row — no parallel `recently_completed` lane.
             let outcome = helpers::terminal_outcome_of(in_flight);
             // Build the terminal verdict into a local AND read `event_id` off
             // `in_flight` before calling `record_terminal` — that method takes
@@ -376,7 +373,6 @@ impl PublishEngine {
             );
             let event_id = in_flight.event.id.clone();
             self.record_terminal(terminal);
-            self.recently_completed.insert(handle.clone(), outcome);
             if let Err(err) = self.store.delete(handle) {
                 self.view.push_failure(RecentFailure {
                     handle: handle.clone(),

@@ -1,19 +1,23 @@
 //! Terminal-verdict drains for the kernel ↔ `PublishEngine` wiring.
 //!
 //! Extracted from `publish_engine.rs` to keep that file under the 500-LOC
-//! hand-authored ceiling (AGENTS.md / V-12). This module owns the two
-//! per-tick drains and projection-source sync the kernel runs against the engine:
+//! hand-authored ceiling (AGENTS.md / V-12). This module owns the per-tick
+//! drains and projection-source sync the kernel runs against the engine:
 //!   - `take_action_results_projection` — the `action_results` projection
 //!     edge the host reads to clear per-action spinners.
-//!   - `apply_engine_completions` — flips `PublishQueueEntry` rows from
-//!     `accepted_locally` to their terminal `"ok"` / `"failed"` status.
+//!   - `drain_engine_terminals_into_ledger` — the SINGLE engine-terminal fold:
+//!     it records each engine terminal into the `ActionLedger` (the single source
+//!     of `action_results` / `action_stages` / `action_lifecycle`) AND, from the
+//!     SAME terminal, refines the event-id-keyed `PublishQueueEntry` row to its
+//!     terminal `"ok"` / `"failed"` / `"cancelled"` status (S11 slice 4, #1758 —
+//!     the prior parallel `recently_completed` lane is deleted).
 //!   - `bump_publish_if_engine_view_changed` — keeps ADR-0055's `publish_engine_ver`
 //!     aligned with the engine-owned in-flight view used by `publish_outbox`.
 //!
 //! Plus the free-standing `classify_terminal_outcome` helper that maps a
 //! `TerminalOutcome` into the wire-level `(status, outcomes)` pair.
 
-use crate::publish::TerminalOutcome;
+use crate::publish::{PublishQueueTerminal, TerminalOutcome};
 
 use super::super::Kernel;
 
@@ -32,10 +36,14 @@ impl Kernel {
 
     /// Fold every terminal the engine produced since the last fold into the
     /// `ActionLedger` — the SINGLE source of `action_results` (S11 slice 2,
-    /// #1758). Called at every kernel↔engine boundary (alongside
-    /// `apply_engine_completions`, plus the `NoTargets` and cancel paths that
-    /// bypass it) so an engine-origin terminal lands in the ledger at the moment
-    /// it is PRODUCED — the same instant an off-band terminal
+    /// #1758) — AND, from the SAME terminal, refine the event-id-keyed
+    /// `PublishQueueEntry` row to its terminal status (S11 slice 4, #1758).
+    /// This is the ONE place engine terminals drive BOTH projections: the prior
+    /// parallel `recently_completed` → `take_completed` → `set_publish_entry_terminal`
+    /// lane is deleted. Called at every kernel↔engine boundary (every former
+    /// `apply_engine_completions` site, plus the `NoTargets` and cancel paths) so
+    /// an engine-origin terminal lands in the ledger AND flips its queue row at
+    /// the moment it is PRODUCED — the same instant an off-band terminal
     /// (`record_action_failure_coded` / `record_action_success`) records itself.
     /// That preserves the chronological producer order across mixed terminal
     /// sources within a tick (byte-identical to the prior single engine `Vec`),
@@ -78,6 +86,12 @@ impl Kernel {
                     "failed",
                 ),
             };
+            // S11 slice 4 (#1758): refine the event-id-keyed `publish_queue` row
+            // from the SAME terminal, BEFORE the action_results fold consumes the
+            // terminal's fields. The queue status DERIVES from the per-relay
+            // `TerminalOutcome` (one status authority) — the prior parallel
+            // `recently_completed` lane is gone.
+            self.apply_publish_queue_terminal(&terminal.publish_queue);
             // #1735: thread the curated `reason_code` (e.g. the D10 routing-leak
             // refusal) into the `action_lifecycle` projection. `record_terminal`
             // is silent on cap hits (D6) — the diagnostic counters in the
@@ -105,6 +119,54 @@ impl Kernel {
         }
     }
 
+    /// S11 slice 4 (#1758): refine the event-id-keyed `PublishQueueEntry` row from
+    /// a single engine terminal's [`PublishQueueTerminal`] payload — the queue side
+    /// of the SINGLE terminal fold. Replaces the deleted `apply_engine_completions`
+    /// (which drained the parallel `recently_completed` lane). Byte-identical
+    /// behaviour: a relay settlement flips the row to `"ok"` / `"failed"` with the
+    /// per-relay outcome map (and the all-failed toast); a cancel flips it to
+    /// `"cancelled"` with an empty outcome map; a `None` payload (the `NoTargets`
+    /// failure, whose queue row is pushed by the kernel error path) touches nothing.
+    /// The terminal's own `event_id` keys the update — never unwrapped by
+    /// convention, it is carried non-optionally inside the `Settled` outcome and as
+    /// the explicit handle in the `Cancelled` arm.
+    fn apply_publish_queue_terminal(&mut self, payload: &PublishQueueTerminal) {
+        match payload {
+            PublishQueueTerminal::Settled(outcome) => {
+                let (status, outcomes) = classify_terminal_outcome(outcome);
+                self.set_publish_entry_terminal(&outcome.event_id, status, outcomes);
+                // S7 (#1754) D8 — forget the handle↔correlation index entry now
+                // that this publish has reached a terminal outcome (ok or failed).
+                // Every terminal path (success, failure, cancel) must forget
+                // exactly once; non-terminal stage updates must NOT forget so the
+                // index tracks only the live in-flight set. Without this, a
+                // completed publish leaves a stale entry bounded only by the cap.
+                self.publish_handle_correlation.forget(&outcome.event_id);
+                // V-18: surface a user-visible toast when every relay returned
+                // `FailedAfterRetries`. `classify_terminal_outcome` maps the
+                // empty-accepted case to `"failed"`, so we trust the helper. The
+                // `NoTargets` / pre-sign-step path is handled separately by
+                // `record_engine_error`.
+                if status == "failed" {
+                    self.set_last_error_toast(Some(
+                        "Couldn't reach any relay — your post is in the Outbox".to_string(),
+                    ));
+                }
+            }
+            PublishQueueTerminal::Cancelled { event_id } => {
+                // The cancel path's queue flip, keyed by the resolved publish
+                // handle the engine carried explicitly. An unknown handle is a
+                // no-op against the queue (`set_publish_entry_terminal` returns
+                // early when no row matches), matching the prior behaviour. The
+                // handle↔correlation index forget stays in `cancel_publish` (it
+                // owns the resolve→cancel→forget sequence), so it is NOT repeated
+                // here.
+                self.set_publish_entry_terminal(event_id, "cancelled", Vec::new());
+            }
+            PublishQueueTerminal::None => {}
+        }
+    }
+
     /// Drain ALL terminals that settled since the last emit, returning them as a
     /// JSON array for the `action_results` snapshot projection. Each tick
     /// surfaces every result that arrived, not just the most recent. The host
@@ -118,8 +180,10 @@ impl Kernel {
     /// therefore a pure drain of the ledger's per-tick terminal buffer via
     /// [`ActionLedger::take_terminal_results`] — there is no second source to
     /// serialise. (A defensive final fold catches any boundary that produced a
-    /// terminal without going through `apply_engine_completions`; it is a no-op
-    /// in steady state.)
+    /// terminal without going through `drain_engine_terminals_into_ledger`; it is
+    /// a no-op in steady state. That fold also drives the `publish_queue` row, so
+    /// a straggler terminal would refine it here too — but the boundary fold
+    /// already ran, so this is never the first queue mutator.)
     pub(in super::super) fn take_action_results_projection(&mut self) -> serde_json::Value {
         // Defensive: fold any straggler engine terminal so no verdict is
         // stranded if a boundary missed the production-time fold. A no-op when
@@ -140,68 +204,11 @@ impl Kernel {
         serde_json::Value::Array(rows)
     }
 
-    /// T128: drain every terminal verdict the engine recorded since the last
-    /// drain and flip the matching `PublishQueueEntry` from `accepted_locally`
-    /// to its terminal `"ok"` / `"failed"` status, carrying the per-relay
-    /// outcome map. Called after every engine entrypoint
-    /// (`run_publish_engine_at`, `handle_publish_ok_at`, `tick_publish_engine`,
-    /// `resume_publish_engine`).
-    ///
-    /// Status mapping (per the iOS UX requirement — partial success is still
-    /// surfaced under the `"ok"` branch with N/M detail):
-    /// - `accepted.is_empty() && !failed.is_empty()` → `"failed"`
-    /// - any accepted (with or without failures) → `"ok"`
-    /// - both empty → `"failed"` defensively (no relays settled at all)
-    pub(in super::super) fn apply_engine_completions(&mut self) {
-        // S11 slice 2 (#1758): fold any engine-origin `action_results` terminal
-        // into the ledger at this engine boundary — at PRODUCTION time, not at
-        // emit time — so its producer order is preserved relative to off-band
-        // terminals. This is the `action_results` (single-source) lane, distinct
-        // from the `recently_completed` publish_queue lane drained below. It must
-        // run BEFORE the early return: a `pending_terminals` verdict
-        // (e.g. NoTargets, cancel, a relay settlement) can exist independently of
-        // a `recently_completed` row.
-        self.drain_engine_terminals_into_ledger();
-        let completions = self.publish_engine.take_completed();
-        if completions.is_empty() {
-            return;
-        }
-        for outcome in completions {
-            let (status, outcomes) = classify_terminal_outcome(&outcome);
-            self.set_publish_entry_terminal(&outcome.event_id, status, outcomes);
-            // S7 (#1754) D8 — forget the handle↔correlation index entry now
-            // that this publish has reached a terminal outcome (ok or failed).
-            // Mirrors the cancel/clear paths in `publish_outbox.rs` (lines
-            // :175/:190). Every terminal path (success, failure, cancel) must
-            // forget exactly once; non-terminal stage updates (publishing /
-            // awaiting_capability) must NOT forget so the index tracks only
-            // the live in-flight set. Without this, a completed publish leaves
-            // a stale handle↔correlation entry bounded only by the cap, not
-            // by the actual in-flight set — a D8 violation.
-            self.publish_handle_correlation.forget(&outcome.event_id);
-            // V-18: surface a user-visible toast when every relay returned
-            // `FailedAfterRetries`. Without this, a post that no relay
-            // accepted would silently sit in the Outbox with no feedback to
-            // the user. `classify_terminal_outcome` already maps the
-            // empty-accepted case to `"failed"`, so we trust the helper. The
-            // `NoTargets` / pre-sign-step path is handled separately by
-            // `record_engine_error`.
-            if status == "failed" {
-                self.set_last_error_toast(Some(
-                    "Couldn't reach any relay — your post is in the Outbox".to_string(),
-                ));
-            }
-        }
-        // `changed_since_emit` is set inside `set_publish_entry_terminal` on
-        // any field change; setting again here is redundant but documents the
-        // intent (terminal transitions are always snapshot-worthy).
-        self.changed_since_emit = true;
-    }
 }
 
 /// T128: map a `TerminalOutcome` into the wire-level `(status, outcomes)`
 /// pair. Kept free-standing so the kernel tests can assert the contract
-/// without going through `apply_engine_completions`.
+/// without going through the engine-terminal fold.
 fn classify_terminal_outcome(
     outcome: &TerminalOutcome,
 ) -> (&'static str, Vec<super::super::RelayAckOutcome>) {

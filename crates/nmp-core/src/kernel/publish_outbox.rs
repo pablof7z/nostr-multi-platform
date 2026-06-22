@@ -125,7 +125,7 @@ impl Kernel {
             self.bump_publish_if_engine_view_changed(engine_rev_before);
             return Vec::new();
         }
-        self.apply_engine_completions();
+        self.drain_engine_terminals_into_ledger();
         let drained = self.publish_dispatcher.drain();
         if !drained.is_empty() {
             self.changed_since_emit = true;
@@ -187,11 +187,13 @@ impl Kernel {
         // `cancelled` stage. No parallel `record_action_stage` here — one path.
         self.publish_engine
             .cancel_by_handle(&handle, &correlation_id, now_ms);
-        // S11 slice 2 (#1758): fold the just-recorded cancel terminal into the
-        // ledger NOW so its producer order is preserved relative to any off-band
-        // terminal recorded later in the same tick.
+        // S11 slice 2 + slice 4 (#1758): fold the just-recorded cancel terminal
+        // into the ledger NOW so its producer order is preserved relative to any
+        // off-band terminal recorded later in the same tick. The SAME fold drives
+        // the `publish_queue` row to `"cancelled"` from the terminal's
+        // `PublishQueueTerminal::Cancelled { event_id: handle }` payload — there is
+        // no longer a separate `set_publish_entry_terminal` call here.
         self.drain_engine_terminals_into_ledger();
-        self.set_publish_entry_terminal(&handle, "cancelled", Vec::new());
         self.publish_handle_correlation.forget(&handle);
         self.bump_publish_if_engine_view_changed(engine_rev_before);
         self.changed_since_emit = true;

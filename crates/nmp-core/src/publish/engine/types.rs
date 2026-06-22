@@ -39,11 +39,12 @@ pub(crate) struct InFlight {
     pub correlation_id_override: Option<String>,
 }
 
-/// T128: terminal verdict for a settled publish. The engine records one of
-/// these into `recently_completed` the moment `in_flight.remove(handle)` is
-/// about to fire (`is_complete == true`), and the kernel drains it via
-/// [`super::PublishEngine::take_completed`] to flip the `PublishQueueEntry`
-/// status from `accepted_locally` to `"ok"` / `"failed"`.
+/// T128: per-relay terminal verdict for a settled publish, carried on the
+/// engine→ledger terminal stream ([`LastTerminal::publish_queue`]) so the
+/// kernel can refine the event-id-keyed `PublishQueueEntry` from the SAME
+/// terminal that records the correlation-id-keyed `action_results` row (S11
+/// slice 4, #1758). The engine builds one the moment `in_flight.remove(handle)`
+/// is about to fire (`is_complete == true`).
 ///
 /// `accepted` is the relays that landed `PerRelayState::Ok`; `failed` carries
 /// the `(relay_url, reason)` pairs from `FailedAfterRetries`. Mixed publishes
@@ -63,6 +64,36 @@ pub struct TerminalOutcome {
     pub accepted: Vec<RelayUrl>,
     pub failed: Vec<(RelayUrl, String)>,
     pub relay_reasons: BTreeMap<RelayUrl, Vec<RelaySelectionReason>>,
+}
+
+/// S11 slice 4 (#1758): how a single engine terminal refines the event-id-keyed
+/// `publish_queue` row, carried on [`LastTerminal::publish_queue`] alongside the
+/// correlation-id-keyed `action_results` fields. The `publish_queue` row is no
+/// longer maintained by a parallel `recently_completed` lane — its terminal
+/// status DERIVES from this payload at the moment the kernel folds the terminal
+/// into the [`crate::kernel::action_ledger::ActionLedger`]. There is ONE status
+/// authority per terminal: the queue status is derived from the `TerminalOutcome`
+/// (relay settlement) or is the fixed `"cancelled"` token (user cancel), never a
+/// second independent status string.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum PublishQueueTerminal {
+    /// A relay-settlement terminal (every relay reached a terminal `PerRelayState`).
+    /// The kernel classifies the `TerminalOutcome` into the wire `"ok"` / `"failed"`
+    /// status + per-relay outcome map, keyed by `TerminalOutcome::event_id`.
+    Settled(TerminalOutcome),
+    /// A user-initiated cancel. Flips the queue row keyed by this `event_id`
+    /// (the publish handle the kernel resolved the cancel against) to
+    /// `"cancelled"` with an empty per-relay outcome map — byte-identical to the
+    /// prior explicit `set_publish_entry_terminal(handle, "cancelled", vec![])`.
+    /// The id is carried explicitly (non-optional) so the queue update never
+    /// unwraps `LastTerminal::event_id` by convention.
+    Cancelled { event_id: String },
+    /// This terminal does not refine the `publish_queue` (no queue row exists for
+    /// it, or one is pushed separately by the kernel error path). The `NoTargets`
+    /// failure is the only engine-origin case: `start_publish` returns
+    /// `Err(NoTargets)` before any in-flight row, and the kernel error path pushes
+    /// the queue row itself.
+    None,
 }
 
 /// Direction review #29: one terminal action result the engine records into
@@ -109,6 +140,14 @@ pub struct LastTerminal {
     /// `action_lifecycle` projection via `record_action_stage_coded` so
     /// the first coded write is NOT overwritten by a second un-coded pass.
     pub reason_code: Option<&'static str>,
+    /// S11 slice 4 (#1758): how this terminal refines the event-id-keyed
+    /// `publish_queue` row. The kernel's single terminal fold
+    /// (`drain_engine_terminals_into_ledger`) reads this to drive
+    /// `set_publish_entry_terminal` from the SAME terminal that records the
+    /// `action_results` row — replacing the deleted parallel `recently_completed`
+    /// lane. `None` (the enum variant) for off-band / `NoTargets` terminals that
+    /// do not touch the queue.
+    pub publish_queue: PublishQueueTerminal,
 }
 
 impl LastTerminal {
@@ -148,6 +187,8 @@ impl LastTerminal {
                 event_id: Some(outcome.event_id.clone()),
                 result_json: None,
                 reason_code: None,
+                // The same settled outcome refines the event-id-keyed queue row.
+                publish_queue: PublishQueueTerminal::Settled(outcome.clone()),
             }
         } else {
             Self {
@@ -157,6 +198,7 @@ impl LastTerminal {
                 event_id: Some(outcome.event_id.clone()),
                 result_json: None,
                 reason_code: None,
+                publish_queue: PublishQueueTerminal::Settled(outcome.clone()),
             }
         }
     }
