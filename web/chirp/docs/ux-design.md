@@ -470,9 +470,7 @@ design. **[GAP-8]** tracks wiring NIP-10 replies.
 ### 5.6 The NMP Inspector
 
 The soul of the showcase. Not a console — an **instrument cluster**: curated,
-pre-digested by Rust (`relay_diagnostics` ships raw tokens; the shell derives
-labels and tones from those tokens and lays out type). Persistent left tab list inside the
-dock; every panel deep-linkable.
+pre-digested by Rust (`relay_diagnostics` ships raw tokens; the shell derives labels and tones). Persistent left tab list; every panel deep-linkable.
 
 ```
 Dock frame (expanded, 400px):

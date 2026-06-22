@@ -48,7 +48,7 @@ Notes:
 ### 1.4 Blocked-still-shown behavior
 
 - A blocked relay **remains a row** in both `DiagnosticsView`'s relay list and reachable via `RelayDetailView`.
-- Its connection status renders as `Blocked` (a new `connection_label`/`connection_tone` value — `"Blocked"` / `"muted"`), distinct from `Disconnected`.
+- Its connection status renders as `Blocked`, distinct from `Disconnected` (the wire carries the raw `connection` token `"blocked"`; the shell derives the label and tone from that token).
 - It **still shows its reasons** (Outbox / Interest / Hint / App relay) — i.e., why it *would* be connected — because attribution is computed by the planner *before* the blocked-relay subtractive filter is applied (§3.3). We compute "why", then separately decide "but we don't connect".
 - A relay that is blocked **and** has no other reason (the user blocked something we never wanted anyway) still appears as long as it is in the kind:10006 list, so the user can find and unblock it (§3.3, "blocked-set seeding").
 
