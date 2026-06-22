@@ -412,3 +412,26 @@ fn execute_publish_signed_event_emits_publish_signed_event_command() {
         other => panic!("expected PublishSignedEvent, got {other:?}"),
     }
 }
+
+/// #1756 / S9 fail-closed invariant: the opaque-passthrough byte route is for
+/// APP-OWNED host-op namespaces ONLY. The canonical NMP protocol module
+/// (`nmp.publish`), whose `Action` the kernel DOES model and which rides the
+/// TYPED FlatBuffers route (`decode_payload` is `Some`), MUST NOT opt into
+/// opaque-passthrough. Asserting it here prevents a regression where a
+/// kernel-modeled protocol action sprouts a JSON-bytes opaque shim (the
+/// no-JSON-doorway-for-protocol rule). The default for any module is `false`;
+/// this proves the canonical protocol module keeps it.
+#[test]
+fn publish_module_does_not_opt_into_opaque_passthrough() {
+    assert!(
+        !<PublishModule as crate::substrate::ActionModule>::accepts_opaque_payload(),
+        "the kernel-modeled `nmp.publish` protocol module must ride the typed \
+         byte route, never the app-owned opaque-passthrough route (#1756/S9)"
+    );
+    // It is typed (decode_payload Some) — so even if it (wrongly) set the opaque
+    // flag, the adapter's typed-first precedence would never take the opaque arm.
+    assert!(
+        <PublishModule as crate::substrate::ActionModule>::decode_payload(&[]).is_some(),
+        "PublishModule is a typed-payload protocol module"
+    );
+}
