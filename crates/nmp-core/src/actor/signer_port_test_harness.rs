@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use super::commands::{self, IdentityRuntime};
 use super::dispatch::{dispatch_command, ActorContext};
-use super::pending_sign::ParkedOp;
+use super::pending_sign::{ParkedOp, ParkedSignerOps};
 use super::{ActorCommand, ActorConfigSources, ActorMail, CommandSender};
 use crate::kernel::Kernel;
 
@@ -45,7 +45,7 @@ pub(super) fn dispatch_one(
     let mut running = true;
     let mut emit_hz = 4u32;
     let mut startup_sent = false;
-    let mut parked_ops: Vec<ParkedOp> = Vec::new();
+    let mut parked_ops = ParkedSignerOps::new();
     let capability_callback: crate::capability_socket::CapabilityCallbackSlot =
         Arc::new(Mutex::new(None));
     let (capability_work_inner_tx, _capability_work_rx) = channel::<ActorMail>();
@@ -122,5 +122,5 @@ pub(super) fn dispatch_one(
         external_event_sink_dispatcher: &external_event_sink_dispatcher,
     };
     dispatch_command(cmd, &mut ctx);
-    parked_ops
+    parked_ops.into_vec()
 }

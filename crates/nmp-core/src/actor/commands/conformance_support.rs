@@ -134,7 +134,7 @@ impl ConformanceHarness {
             unsigned,
             None,
             None,
-            &mut Vec::new(),
+            &mut crate::actor::pending_sign::ParkedSignerOps::new(),
         );
         last_event_json(&outbound)
     }
@@ -147,7 +147,7 @@ impl ConformanceHarness {
             pubkey,
             add,
             None,
-            &mut Vec::new(),
+            &mut crate::actor::pending_sign::ParkedSignerOps::new(),
         );
         last_event_json(&outbound)
     }
@@ -186,7 +186,7 @@ impl ConformanceHarness {
             unsigned,
             None,
             None,
-            &mut Vec::new(),
+            &mut crate::actor::pending_sign::ParkedSignerOps::new(),
         );
         last_event_json(&outbound)
     }
@@ -212,7 +212,7 @@ impl ConformanceHarness {
             None,
             // Conformance harness signs with the active account.
             None,
-            &mut Vec::new(),
+            &mut crate::actor::pending_sign::ParkedSignerOps::new(),
         );
         last_event_json(&outbound)
     }

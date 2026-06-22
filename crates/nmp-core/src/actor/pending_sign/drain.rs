@@ -116,8 +116,12 @@ pub(crate) fn resolve_parked_op(
             };
             // D13 `SignEventForReturn`: write signed JSON / error into the
             // `signed_events[correlation_id]` projection.
-            let recorded =
-                outcome.map(|signed| crate::actor::dispatch::signed_event_to_json(&signed));
+            // `SignedEvent::to_nip01_json` is the always-compiled flat-NIP-01
+            // serializer (the native `dispatch::signed_event_to_json` is a thin
+            // wrapper over it); calling the public method directly keeps this
+            // drain free of the `native`-gated `dispatch` module so it compiles
+            // on wasm too (#1753).
+            let recorded = outcome.map(|signed| signed.to_nip01_json());
             kernel.record_signed_event_return(correlation_id, recorded);
             DrainOutcome::resolved()
         }

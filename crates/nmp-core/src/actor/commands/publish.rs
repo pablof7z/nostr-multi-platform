@@ -9,7 +9,7 @@
 use crate::actor::commands::identity::{
     sign_active_nonblocking, sign_with_account_nonblocking, IdentityRuntime,
 };
-use crate::actor::pending_sign::ParkedOp;
+use crate::actor::pending_sign::{ParkedOp, ParkedSignerOps};
 use crate::kernel::Kernel;
 use crate::publish::{validate_explicit_relays, validate_publish_target, PublishTarget};
 use crate::relay::OutboundMessage;
@@ -115,7 +115,7 @@ pub(crate) fn publish_unsigned_event(
     unsigned: UnsignedEvent,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
-    parked_ops: &mut Vec<ParkedOp>,
+    parked_ops: &mut ParkedSignerOps,
 ) -> Vec<OutboundMessage> {
     // `signer_pubkey: Some(_)` publishes under a SPECIFIC (possibly non-active)
     // account — the active-account guard is skipped (a non-active signer
@@ -215,7 +215,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
     relays: Vec<crate::publish::RelayUrl>,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
-    parked_ops: &mut Vec<ParkedOp>,
+    parked_ops: &mut ParkedSignerOps,
 ) -> Vec<OutboundMessage> {
     // `signer_pubkey: Some(_)` publishes under a SPECIFIC (possibly non-active)
     // account — skip the active-account guard. `None` keeps the legacy
@@ -420,7 +420,7 @@ pub(crate) fn publish_profile(
     kernel: &mut Kernel,
     fields: serde_json::Map<String, serde_json::Value>,
     correlation_id: Option<String>,
-    parked_ops: &mut Vec<ParkedOp>,
+    parked_ops: &mut ParkedSignerOps,
 ) -> Vec<OutboundMessage> {
     let Some(pubkey) = identity.active_pubkey() else {
         // Broken-promise fix: `toast_no_account` records `Failed` against the
@@ -510,7 +510,7 @@ pub(crate) fn follow(
     pubkey: &str,
     add: bool,
     correlation_id: Option<String>,
-    parked_ops: &mut Vec<ParkedOp>,
+    parked_ops: &mut ParkedSignerOps,
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
         // Broken-promise fix: `toast_no_account` records `Failed` against the
@@ -618,7 +618,7 @@ pub(crate) fn follow_many(
     pubkeys: &[String],
     active_pubkey_hint: Option<&str>,
     correlation_id: Option<String>,
-    parked_ops: &mut Vec<ParkedOp>,
+    parked_ops: &mut ParkedSignerOps,
 ) -> Vec<OutboundMessage> {
     let Some(author) = identity.active_pubkey() else {
         return toast_no_account(kernel, "follow_many", correlation_id);

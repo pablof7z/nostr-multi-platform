@@ -24,9 +24,51 @@ pub enum WorkerRequest {
     /// `kind`: `"nip07"` — the only kind wired in Stage 3b. Other kinds
     /// return [`WorkerEvent::CapabilityFailure`] with `unsupported_signer_kind`.
     SetSigner(SetSigner),
+    /// #1753 S6 — begin a NIP-07 sign capability round-trip.
+    ///
+    /// The worker parks a sign op (ADR-0050 §D1) bound to `account_pubkey` and
+    /// emits a [`WorkerEvent::SignRequest`] the **main-thread JS bridge** (the
+    /// broker — Web Workers have no `window.nostr`) fulfils by calling
+    /// `window.nostr.signEvent(unsigned)`. The bridge posts the signed bytes
+    /// back as [`WorkerRequest::DeliverSignerResponse`]. Pure message re-entry:
+    /// no polling, no tick-dependence (D8).
+    BeginSign(BeginSign),
+    /// #1753 S6 — the main-thread broker delivers a signer response (the
+    /// `sign`-verb fulfiller feeding the ADR-0050 §D3b `DeliverSignerResponse`
+    /// command). `signed_json` is the flat-NIP-01 event from
+    /// `window.nostr.signEvent`; `error` is set instead when the user rejected
+    /// or `window.nostr` was unavailable. Account-pinned: the worker rejects a
+    /// signature authored by an account other than the one the round-trip was
+    /// begun for.
+    DeliverSignerResponse(DeliverSignerResponse),
     Stop {
         correlation_id: String,
     },
+}
+
+/// Payload for [`WorkerRequest::BeginSign`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BeginSign {
+    /// Lowercase-hex account the sign is pinned to (the host already has it from
+    /// the NIP-07 `getPublicKey()` handshake).
+    pub account_pubkey: String,
+    /// The unsigned flat-NIP-01 (or nested-`UnsignedEvent`) JSON to sign.
+    pub unsigned_json: String,
+}
+
+/// Payload for [`WorkerRequest::DeliverSignerResponse`].
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliverSignerResponse {
+    /// The `correlation_id` from the [`WorkerEvent::SignRequest`] this fulfils.
+    pub correlation_id: String,
+    /// The signed flat-NIP-01 event JSON from `window.nostr.signEvent`. Present
+    /// on success; `None` when `error` is set.
+    #[serde(default)]
+    pub signed_json: Option<String>,
+    /// A failure reason (user rejected, no `window.nostr`, etc.). Present on
+    /// failure; `None` on success.
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -229,6 +271,30 @@ pub enum WorkerEvent {
         bytes: Vec<u8>,
     },
     CapabilityFailure(CapabilityFailure),
+    /// #1753 S6 — a sign capability request the worker emits for the
+    /// **main-thread JS bridge** (the broker) to fulfil. The bridge calls
+    /// `window.nostr.signEvent(unsigned_json)` (ensuring `window.nostr` is on
+    /// `account_pubkey` first) and posts the result back as a
+    /// [`WorkerRequest::DeliverSignerResponse`] carrying this `correlation_id`.
+    SignRequest {
+        correlation_id: String,
+        account_pubkey: String,
+        unsigned_json: String,
+    },
+    /// #1753 S6 — a sign round-trip completed via message re-entry. Carries the
+    /// signed flat-NIP-01 JSON. **NOTE:** behind the honest-disable gate this
+    /// signed event is NOT published (web publish is blocked on #1007); the
+    /// host observes the completion to confirm the signing mechanism works.
+    SignCompleted {
+        correlation_id: String,
+        signed_json: String,
+    },
+    /// #1753 S6 — a sign round-trip failed (parse error, account-pin mismatch,
+    /// user rejection, or an unknown/stale correlation id).
+    SignFailed {
+        correlation_id: String,
+        reason: String,
+    },
     Error {
         code: String,
         message: String,

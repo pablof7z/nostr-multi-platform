@@ -397,7 +397,7 @@ fn create_account_next_note_routes_via_local_relay_rows_before_relay_echo() {
         content: "first note after signup".to_string(),
         created_at: 0,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(
         outbound
             .iter()
@@ -485,7 +485,7 @@ fn publish_unsigned_event_without_account_toasts_and_no_outbound() {
         content: "body".into(),
         created_at: 0,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -509,7 +509,7 @@ fn publish_unsigned_event_signs_and_publishes_arbitrary_kind() {
         content: "# body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":30023"));
     assert!(outbound[0]
@@ -546,7 +546,7 @@ fn publish_unsigned_event_rejects_oversized_kind_with_toast() {
         content: "should not publish".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(
         outbound.is_empty(),
         "oversized kind must produce no outbound frames"
@@ -577,7 +577,7 @@ fn publish_unsigned_event_valid_kind_publishes_normally() {
         content: "valid kind".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(
         !outbound.is_empty(),
         "valid kind:1 must produce outbound frames"
@@ -600,7 +600,7 @@ fn publish_unsigned_event_rejects_malformed_tag_with_toast() {
         content: "tag test".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(
         outbound.is_empty(),
         "malformed tag must produce no outbound frames"
@@ -634,7 +634,7 @@ fn publish_unsigned_event_valid_tags_pass_through() {
         content: "body".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(!outbound.is_empty());
     assert_eq!(kernel.last_error_toast_snapshot(), None);
     assert!(outbound[0].text.contains("\"d\""));
@@ -1217,7 +1217,7 @@ fn publish_unsigned_event_to_relays_signs_and_routes_to_exactly_those() {
         relays.clone(),
         None,
         None,
-        &mut Vec::new(),
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
 
     assert!(!outbound.is_empty(), "host-pinned publish must route");
@@ -1270,7 +1270,7 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
         relays,
         None,
         None,
-        &mut Vec::new(),
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
 
     assert!(
@@ -1305,7 +1305,7 @@ fn publish_unsigned_event_to_relays_empty_relays_fails_closed() {
         Vec::new(),
         None,
         None,
-        &mut Vec::new(),
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
 
     assert!(
@@ -1341,7 +1341,7 @@ fn publish_unsigned_event_to_relays_invalid_relay_fails_closed() {
         vec!["https://not-a-nostr-relay.example".to_string()],
         None,
         None,
-        &mut Vec::new(),
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
     );
 
     assert!(
@@ -1429,7 +1429,7 @@ fn unfollow_removes_pubkey_from_contact_list() {
     let drop = "d".repeat(64);
     seed_contact_list(&mut kernel, &author, &[&keep, &drop]);
 
-    let outbound = follow(&id, &mut kernel, &drop, false, None, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &drop, false, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(!outbound.is_empty(), "unfollow must re-publish the kind:3");
     let event = last_published_event_json(&outbound);
     assert_eq!(event["kind"], 3);
@@ -1459,7 +1459,7 @@ fn follow_already_followed_is_idempotent_no_duplicate() {
     let already = "e".repeat(64);
     seed_contact_list(&mut kernel, &author, &[&already]);
 
-    let outbound = follow(&id, &mut kernel, &already, true, None, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &already, true, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(!outbound.is_empty(), "follow must re-publish the kind:3");
     let event = last_published_event_json(&outbound);
     let p_pubkeys: Vec<String> = tags_of(&event)
@@ -1479,7 +1479,7 @@ fn follow_without_account_toasts_and_no_outbound() {
     // D6: follow with no active account → toast naming the `follow` action.
     let (id, mut kernel) = fresh();
     let target = "f".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true, None, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &target, true, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(
         outbound.is_empty(),
         "follow with no active account must produce no outbound frames"
@@ -1495,7 +1495,7 @@ fn unfollow_without_account_toasts_with_unfollow_action() {
     // (`unfollow`) — publish.rs:301 picks the action string off `add`.
     let (id, mut kernel) = fresh();
     let target = "f".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, false, None, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, &target, false, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(outbound.is_empty());
     assert!(kernel
         .last_error_toast_snapshot()
@@ -1508,7 +1508,7 @@ fn follow_malformed_pubkey_toasts_and_refuses() {
     // user-visible error (D6 toast), not a silent no-op — and must not panic.
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    let outbound = follow(&id, &mut kernel, "xyz", true, None, &mut Vec::new());
+    let outbound = follow(&id, &mut kernel, "xyz", true, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(
         outbound.is_empty(),
         "follow with a malformed pubkey must produce no outbound frames"
@@ -1545,7 +1545,7 @@ fn profile_update_publishes_kind0_metadata_event() {
         content: r#"{"name":"marcus","display_name":"Marcus Webb"}"#.into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(
         !outbound.is_empty(),
         "kind:0 update must produce an EVENT frame"
@@ -1582,7 +1582,7 @@ fn publish_profile_merges_edits_onto_cached_kind0_fields() {
         serde_json::Value::String("Marcus Updated".to_string()),
     );
 
-    let outbound = publish_profile(&id, &mut kernel, fields, None, &mut Vec::new());
+    let outbound = publish_profile(&id, &mut kernel, fields, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(
         !outbound.is_empty(),
         "PublishProfile must produce an EVENT frame"
@@ -1611,7 +1611,7 @@ fn profile_update_without_account_toasts_and_no_outbound() {
         content: r#"{"display_name":"Nobody"}"#.into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert!(
         outbound.is_empty(),
         "profile update with no active account must produce no outbound frames"
@@ -1729,7 +1729,7 @@ fn snapshot_json_carries_new_projections() {
         content: "json shape check".to_string(),
         created_at: 0,
     };
-    publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     add_relay(&mut kernel, "wss://relay.damus.io", "both");
     let json = kernel.make_update_json_for_test(true);
     assert!(json.contains("\"accounts\""));
