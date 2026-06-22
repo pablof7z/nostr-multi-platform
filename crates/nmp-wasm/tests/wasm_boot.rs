@@ -45,7 +45,7 @@ use nmp_wasm::{
 };
 
 // Imports used only by the wasm32-only typed-write honest-disable test
-// (#1202 / #1007 guard). `DispatchBytes`/`SetIdentity` are wasm32-gated here too
+// (#1202 / #1008 guard). `DispatchBytes`/`SetIdentity` are wasm32-gated here too
 // so native builds (where that test is `cfg`-compiled out) carry no unused
 // imports.
 #[cfg(target_arch = "wasm32")]
@@ -144,7 +144,7 @@ fn wasm_runtime_boots_without_panicking() {
     );
 }
 
-/// #1202/#1007 regression guard — a typed wasm write MUST surface an explicit
+/// #1202/#1008 regression guard — a typed wasm write MUST surface an explicit
 /// `publish_not_supported_in_web_preview` `CapabilityFailure` instead of
 /// silently swallowing the event.
 ///
@@ -155,7 +155,7 @@ fn wasm_runtime_boots_without_panicking() {
 /// a write over the typed `DispatchBytes` doorway (the ONLY wasm write path
 /// after #1743 Cut A) must resolve to a `CapabilityFailure` with the
 /// `publish_not_supported_in_web_preview:` prefix while the real composition
-/// root is pending (#1007).
+/// root is pending (#1008).
 ///
 /// The native variant of this guard is the
 /// `publish_not_supported_in_web_preview_reason_has_stable_prefix` unit test in

@@ -211,7 +211,7 @@ pub enum WorkerEvent {
     },
     /// #1753 S6 — a sign round-trip completed via message re-entry. Carries the
     /// signed flat-NIP-01 JSON. **NOTE:** behind the honest-disable gate this
-    /// signed event is NOT published (web publish is blocked on #1007); the
+    /// signed event is NOT published (web publish is blocked on #1008); the
     /// host observes the completion to confirm the signing mechanism works.
     SignCompleted {
         correlation_id: String,

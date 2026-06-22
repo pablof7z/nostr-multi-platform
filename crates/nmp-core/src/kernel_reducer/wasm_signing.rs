@@ -40,11 +40,11 @@
 //! rejects a mismatch — a mid-flight account switch cannot deliver a signature
 //! from a different key into the originating request (ADR-0050 §D5 pinning).
 //!
-//! # Behind the honest-disable gate (web publish stays disabled, #1007)
+//! # Behind the honest-disable gate (web publish stays disabled, #1008)
 //!
 //! S6 wires the *signing round-trip mechanism only*. The completion continuation
 //! records the signed event into an observable sink — it does **not** publish
-//! (web publish is blocked on #1007). The host reads the completion to confirm
+//! (web publish is blocked on #1008). The host reads the completion to confirm
 //! the round-trip worked; it must not treat it as "published".
 
 use std::collections::HashMap;
@@ -90,7 +90,7 @@ pub(crate) struct SignRoundTripState {
     senders: HashMap<String, mpsc::Sender<Result<SignedEvent, SignerError>>>,
     /// Observable completion sink. The continuation pushes the outcome here so a
     /// host (and the no-polling oracle test) can confirm the round-trip
-    /// completed — WITHOUT publishing (honest-disable gate, #1007).
+    /// completed — WITHOUT publishing (honest-disable gate, #1008).
     completions: SharedCompletions,
 }
 
@@ -244,7 +244,7 @@ impl super::KernelReducer {
         let completions = std::sync::Arc::clone(&self.sign_roundtrip.completions);
         let continuation = SignContinuation::new(move |outcome| {
             // Account-pinning enforcement + honest-disable terminal: record the
-            // completion; do NOT publish (web publish blocked on #1007).
+            // completion; do NOT publish (web publish blocked on #1008).
             let recorded = match outcome {
                 Ok(signed) => {
                     if signed.unsigned.pubkey != pin {
@@ -350,7 +350,7 @@ impl super::KernelReducer {
         // The wasm round-trip parks only `SignContinuation` sinks, which settle
         // in-drain (no `Publish` / `Auth` obligations); the returned batch's
         // obligation vecs are therefore always empty. We ignore them rather than
-        // route relay frames (web publish is disabled — #1007).
+        // route relay frames (web publish is disabled — #1008).
         let _batch = self.sign_roundtrip.parked.drive(&mut self.kernel);
     }
 
@@ -387,7 +387,7 @@ impl super::KernelReducer {
 
     /// #1753 S6 — drain and return the recorded round-trip completions. The host
     /// reads these to confirm the signing mechanism worked (NOT that anything
-    /// was published — honest-disable gate, #1007). Drains so each completion is
+    /// was published — honest-disable gate, #1008). Drains so each completion is
     /// observed once.
     #[must_use]
     pub fn take_sign_completions(&mut self) -> Vec<SignRoundTripCompletion> {

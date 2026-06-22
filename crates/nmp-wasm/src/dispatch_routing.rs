@@ -191,7 +191,7 @@ fn ref_liveness_from_int(value: u32) -> Option<RefLiveness> {
 /// - **No active account.** The host hasn't sent `SetIdentity` yet — the user has
 ///   not signed in. Banner: "sign in to publish".
 /// - **Account seeded but publishing disabled in the web preview.** The web
-///   preview build has no real `OutboxResolver` wired (#1202/#1007), so
+///   preview build has no real `OutboxResolver` wired (#1202/#1008), so
 ///   app-level writes are disabled — surface the single canonical disable token
 ///   (`publish_not_supported_in_web_preview`).
 ///
