@@ -1234,6 +1234,13 @@ pub enum ActorCommand {
         consumer_id: String,
         /// Scope — same semantic as `OpenInterest`.
         scope: u32,
+        /// Relay pin (out-of-band routing hint): when `Some`, the interest is
+        /// routed to exactly this relay via the planner's relay-pin lane,
+        /// bypassing NIP-65 outbox routing. NIP-50 search opens one pinned
+        /// interest per resolved search relay; `None` is the normal
+        /// outbox-routed path. The pin participates in the `InterestShape` hash,
+        /// so the matching `CloseInterest` MUST carry the same pin.
+        relay_pin: Option<String>,
         /// The muted observer id to replay events to and then activate.
         observer_id: KernelEventObserverId,
         /// `InterestShape`s used to match events in the read-cache during
@@ -1251,6 +1258,11 @@ pub enum ActorCommand {
         filter_json: String,
         consumer_id: String,
         scope: u32,
+        /// Relay pin matching the open (NIP-50 search / NIP-29 groups). MUST
+        /// equal the pin the corresponding `OpenInterest` / `OpenObservedInterest`
+        /// used, so the reconstructed `InterestShape` hash lands on the same
+        /// registry slot. `None` for the normal outbox-routed path.
+        relay_pin: Option<String>,
     },
     /// Test-support synchronisation primitive (V-105). When the actor dequeues
     /// this command it sends `()` on the `ack` channel, proving all prior

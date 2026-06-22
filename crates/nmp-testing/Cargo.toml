@@ -93,6 +93,9 @@ nmp-nip59 = { path = "../nmp-nip59" }
 # NIP-51 kind:10003 snapshot surfaces a stored bookmark via cold-start
 # cache-serve on sign-in, with no relay delivery.
 nmp-nip51 = { path = "../nmp-nip51" }
+# real_relay_nip50_search.rs — drives the higher-order NIP-50 search projection
+# against a live search relay (search.nos.lol) for kind:0 + kind:30023.
+nmp-nip50 = { path = "../nmp-nip50" }
 nmp-coverage-gate = { path = "../nmp-coverage-gate" }
 # F-04 zap E2E harness (zap_e2e_nwc_roundtrip.rs) — the fake NIP-47 wallet
 # service reuses the canonical NWC NIP-04 crypto (`nmp_nwc::crypto`) to
@@ -238,6 +241,18 @@ path = "tests/real_relay_smoke.rs"
 [[test]]
 name = "real_relay_nip17_roundtrip"
 path = "tests/real_relay_nip17_roundtrip.rs"
+
+# Higher-order NIP-50 search — drives the `nmp_nip50` SearchResultsProjection
+# against a LIVE search relay (search.nos.lol) for kind:0 (Users) and kind:30023
+# (LongForm). Proves the generic `InterestShape.search` wire field + the dedup
+# projection ingest real relay hits end-to-end. `#[ignore]` by default AND
+# gated behind `real-relay` (same posture as A1-A6) so CI stays deterministic:
+#   cargo test -p nmp-testing --features real-relay --test real_relay_nip50_search \
+#     -- --ignored --nocapture
+[[test]]
+name = "real_relay_nip50_search"
+path = "tests/real_relay_nip50_search.rs"
+required-features = ["real-relay"]
 
 # F-02 cold-start DM receive-side verification (issue #977).
 # Alice publishes a kind:1059 gift-wrap while Bob is offline; Bob cold-starts a

@@ -83,14 +83,14 @@ fn author_shape(author: &str, kinds: &[u32]) -> InterestShape {
 
 /// Build a SubIdentity for testing (filter_json + consumer_id + scope).
 fn sub_identity(filter_json: &str, consumer_id: &str, scope: u32) -> SubIdentity {
-    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope)
+    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope, None)
         .map(|(id, _)| id)
         .expect("valid filter → identity")
 }
 
 /// Build a LogicalInterest (Tailing) for testing.
 fn logical_interest(filter_json: &str, consumer_id: &str, scope: u32) -> LogicalInterest {
-    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope)
+    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope, None)
         .map(|(_, interest)| interest)
         .expect("valid filter → interest")
 }

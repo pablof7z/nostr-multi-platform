@@ -258,6 +258,7 @@ pub(super) fn build_scope_session(
                     filter_json,
                     consumer_id: key_for_close.clone(),
                     scope,
+                    relay_pin: None,
                 });
             }
         }));

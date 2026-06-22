@@ -74,6 +74,15 @@ nmp-store = { path = "../nmp-store" }
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-nip18 = { path = "../nmp-nip18" }
+# Higher-order NIP-50 search: `nmp-ffi` is the composition root that owns the
+# `NmpApp` actor handle, so `nmp_app_search_*` lives here (the same role the
+# chirp interest_feed plays, but reusable by every NmpApp host — hl + Chirp).
+# nmp-nip50 owns the orchestration primitives (relay resolution, the
+# relay-pinned plan, the dedup projection, the typed N50S sidecar codec);
+# nmp-nip51 supplies the kind:10007 SearchRelayListProjection read seam. Both
+# edges are acyclic (neither NIP crate names nmp-ffi).
+nmp-nip50 = { path = "../nmp-nip50" }
+nmp-nip51 = { path = "../nmp-nip51" }
 nmp-signer-broker = { path = "../nmp-signer-broker", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
 nmp-signers = { path = "../nmp-signers", optional = true }

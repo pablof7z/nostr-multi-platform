@@ -99,6 +99,10 @@ mod composition_report;
 // origin-blind seam. Lane H deleted the per-kind profile claim/release symbols;
 // profiles resolve exclusively through resolve_ref (claim_event is retained).
 mod resolve_ref;
+// Higher-order NIP-50 search: `nmp_app_search_open` / `_close` / `_snapshot`
+// C-ABI + the `NmpApp::open_search` Rust API hl calls directly. Reusable by
+// every NmpApp host; orchestration primitives live in `nmp-nip50`.
+mod search;
 mod snapshot;
 mod storage;
 mod timeline;
@@ -414,6 +418,19 @@ type IdentityChangeObserverSlot = Arc<Mutex<Vec<IdentityChangeCallback>>>;
 
 fn new_identity_change_observer_slot() -> IdentityChangeObserverSlot {
     Arc::new(Mutex::new(Vec::new()))
+}
+
+/// Host-registered NIP-50 search-relay source (the kind:10007 read seam +
+/// app-default fallback). Populated once by the composition root via
+/// [`NmpApp::set_search_relay_source`]; read by `open_search` to resolve
+/// `UserPreferred` / `AppDefault` targets. `None` (the default) means no source
+/// was registered, so those targets resolve to an empty relay set (cache-only
+/// search, D6 graceful degrade). Not shared with the actor thread.
+type SearchRelaySourceSlot =
+    Arc<Mutex<Option<Arc<dyn nmp_nip50::SearchRelaySource + Send + Sync>>>>;
+
+fn new_search_relay_source_slot() -> SearchRelaySourceSlot {
+    Arc::new(Mutex::new(None))
 }
 
 fn read_active_account(slot: &ActiveAccountSlot) -> Option<String> {
@@ -875,6 +892,21 @@ pub struct NmpApp {
     /// no `actor_*` clone. `None` (the default) means "no relay hints known",
     /// which the encoder treats as the npub fallback.
     mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,
+    /// NIP-50 higher-order search relay source (kind:10007 read seam +
+    /// app-default fallback). The composition root writes a concrete
+    /// `nmp_nip50::SearchRelaySource` here via [`Self::set_search_relay_source`]
+    /// before `nmp_app_start`; `open_search` reads it to resolve `UserPreferred`
+    /// / `AppDefault` targets. `None` (the default) makes those targets resolve
+    /// to an empty relay set — a cache-only search rather than a crash (D6).
+    /// Read-only on the FFI thread, never shared with the actor.
+    search_relay_source: SearchRelaySourceSlot,
+    /// Live NIP-50 search sessions, keyed by host session id. One record per
+    /// [`Self::open_search`] call owning that session's teardown recipe (the
+    /// muted observer id, the projection key, and the per-relay pinned-close
+    /// args). [`Self::close_search`] looks the session up and runs its teardown
+    /// idempotently. Protocol-agnostic bookkeeping (D0 — a `key → teardown` map
+    /// carries no NIP nouns beyond the opaque interest args).
+    search_sessions: Mutex<std::collections::HashMap<String, search::SearchSession>>,
     /// Test-support GC budget ceiling.  Set by `nmp_app_configure_gc_budget`
     /// before `nmp_app_start`; actor startup snapshots it into
     /// `ActorConfigSources::gc_budget_ceiling`.  `None` (the default) preserves
@@ -1448,6 +1480,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // crate wires the SAME `InMemoryMailboxCache` it gives the routing
         // factory + Kind10002Parser through `set_mailbox_cache_reader`.
         mailbox_cache_reader: Mutex::new(None),
+        // NIP-50 search relay source — None until the composition root wires
+        // the kind:10007 read seam + app-default via `set_search_relay_source`.
+        search_relay_source: new_search_relay_source_slot(),
+        // NIP-50 live search sessions — empty until the first open_search.
+        search_sessions: Mutex::new(std::collections::HashMap::new()),
         // Test-support GC budget ceiling — None (production default = LRU disabled)
         // until `nmp_app_configure_gc_budget` is called before start.
         #[cfg(any(test, feature = "test-support"))]
@@ -1696,6 +1733,37 @@ impl NmpApp {
         replay_shapes: Vec<nmp_planner::InterestShape>,
         replay_limit: usize,
     ) {
+        self.open_observed_interest_pinned(
+            filter_json,
+            consumer_id,
+            scope,
+            None,
+            observer_id,
+            replay_shapes,
+            replay_limit,
+        );
+    }
+
+    /// ADR-0062 + relay-pin — the [`Self::open_observed_interest`] variant that
+    /// routes the interest to exactly one relay (the planner's relay-pin lane).
+    ///
+    /// `relay_pin` — `Some(host)` pins the interest to that relay, bypassing
+    /// NIP-65 outbox routing; `None` is identical to `open_observed_interest`.
+    /// NIP-50 search (`nmp_app_search_open`) opens one pinned interest per
+    /// resolved search relay. The pin participates in the `InterestShape` hash,
+    /// so the matching close MUST pass the same pin (see
+    /// [`Self::close_interest_pinned`]).
+    #[allow(clippy::too_many_arguments)]
+    pub fn open_observed_interest_pinned(
+        &self,
+        filter_json: &str,
+        consumer_id: &str,
+        scope: u32,
+        relay_pin: Option<String>,
+        observer_id: KernelEventObserverId,
+        replay_shapes: Vec<nmp_planner::InterestShape>,
+        replay_limit: usize,
+    ) {
         // Validate filter — same guard as nmp_app_open_interest.
         if nmp_planner::InterestShape::from_filter_json(filter_json).is_none() {
             // D6: invalid filter is a no-op (the caller already surfaced a
@@ -1707,9 +1775,29 @@ impl NmpApp {
             filter_json: filter_json.to_string(),
             consumer_id: consumer_id.to_string(),
             scope,
+            relay_pin,
             observer_id,
             replay_shapes,
             replay_limit,
+        });
+    }
+
+    /// Send a relay-pinned `CloseInterest` matching a
+    /// [`Self::open_observed_interest_pinned`] open. The `(filter_json,
+    /// consumer_id, scope, relay_pin)` tuple MUST match the open so the
+    /// reconstructed `InterestShape` hash lands on the same registry slot.
+    pub fn close_interest_pinned(
+        &self,
+        filter_json: &str,
+        consumer_id: &str,
+        scope: u32,
+        relay_pin: Option<String>,
+    ) {
+        self.send_cmd(ActorCommand::CloseInterest {
+            filter_json: filter_json.to_string(),
+            consumer_id: consumer_id.to_string(),
+            scope,
+            relay_pin,
         });
     }
 

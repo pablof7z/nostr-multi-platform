@@ -14,6 +14,15 @@ mod projection;
 mod request;
 mod scopes;
 
+// Higher-order `open_search` orchestration (relay resolution + per-relay
+// relay-pinned interest plan + the host registration seam) and the typed N50S
+// FlatBuffers sidecar codec for `SearchResultsSnapshot`. The substrate owns the
+// generic `InterestShape.search` wire field; these modules own NIP-50 relay
+// selection, the dedup result projection's transparent wiring, and the typed
+// snapshot transport.
+pub mod search;
+pub mod wire;
+
 pub use projection::{
     SearchHit, SearchHitSource, SearchResultsProjection, SearchResultsSnapshot,
 };
@@ -24,4 +33,13 @@ pub use request::{
 pub use scopes::{
     register_search_scopes, LongFormSearchScope, NoteSearchScope, ProfileSearchScope,
     SCOPE_LABEL_LONGFORM, SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES,
+};
+pub use search::{
+    resolve_search_relays, search_relay_plan, RelayPinnedInterest, SearchRelaySource,
+    SearchRelaySourceRegistrar,
+};
+pub use wire::{
+    decode_search_results_snapshot, encode_search_results_snapshot,
+    FILE_IDENTIFIER as SEARCH_RESULTS_FILE_IDENTIFIER, SCHEMA_ID as SEARCH_RESULTS_SCHEMA_ID,
+    SCHEMA_VERSION as SEARCH_RESULTS_SCHEMA_VERSION,
 };

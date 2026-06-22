@@ -56,6 +56,8 @@ NIP22_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip22/schema"
 NIP22_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip22/src/wire/generated"
 NIP29_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip29/schema"
 NIP29_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip29/src/wire/generated"
+NIP50_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip50/schema"
+NIP50_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip50/src/wire/generated"
 SCHEMA_PAIRS=(
     "${SCHEMA_DIR}/nmp_update.fbs::${GENERATED_DIR}/nmp_update_generated.rs"
     "${SCHEMA_DIR}/dispatch_envelope.fbs::${GENERATED_DIR}/dispatch_envelope_generated.rs"
@@ -74,6 +76,7 @@ SCHEMA_PAIRS=(
     "${NIP29_SCHEMA_DIR}/group_defaults.fbs::${NIP29_GENERATED_DIR}/group_defaults_generated.rs"
     "${NIP29_SCHEMA_DIR}/group_events.fbs::${NIP29_GENERATED_DIR}/group_events_generated.rs"
     "${NIP29_SCHEMA_DIR}/joined_groups.fbs::${NIP29_GENERATED_DIR}/joined_groups_generated.rs"
+    "${NIP50_SCHEMA_DIR}/search_results.fbs::${NIP50_GENERATED_DIR}/search_results_generated.rs"
 )
 
 if ! command -v flatc >/dev/null 2>&1; then

@@ -25,14 +25,25 @@ use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 /// `scope == 0` → `InterestScope::ActiveAccount` (re-route on account switch).
 /// Any other value → `InterestScope::Global`.
 ///
+/// `relay_pin` — when `Some`, the parsed shape's `relay_pin` is set to that
+/// host so the planner's relay-pin lane (`case_e_relay_pinned`) routes the
+/// interest to exactly that relay, bypassing NIP-65 outbox routing (the
+/// substrate-generic mechanism NIP-50 search and NIP-29 groups both need). The
+/// pin participates in the `InterestShape` hash, so a pinned open and its
+/// matching pinned close land on the same registry slot, while opens pinned to
+/// different relays occupy distinct slots. `None` leaves the shape unpinned
+/// (the normal outbox-routed path).
+///
 /// Returns `None` when `filter_json` is not a valid NIP-01 filter object
 /// (D6 — the caller treats this as a silent no-op).
 pub(crate) fn build_interest_pair(
     filter_json: &str,
     consumer_id: &str,
     scope: u32,
+    relay_pin: Option<&str>,
 ) -> Option<(SubIdentity, LogicalInterest)> {
-    let shape = crate::planner::InterestShape::from_filter_json(filter_json)?;
+    let mut shape = crate::planner::InterestShape::from_filter_json(filter_json)?;
+    shape.relay_pin = relay_pin.map(str::to_string);
 
     // `0` = ActiveAccount (re-route on switch), anything else = Global.
     let interest_scope = if scope == 0 {
@@ -75,7 +86,7 @@ mod tests {
     #[test]
     fn parses_filter_into_tailing_interest_with_scope() {
         let (identity, interest) =
-            build_interest_pair(r#"{"kinds":[1,6],"authors":["aa"]}"#, "author-aa", 0)
+            build_interest_pair(r#"{"kinds":[1,6],"authors":["aa"]}"#, "author-aa", 0, None)
                 .expect("valid filter");
 
         assert_eq!(interest.lifecycle, InterestLifecycle::Tailing);
@@ -88,14 +99,14 @@ mod tests {
     #[test]
     fn scope_one_maps_to_global() {
         let (_id, interest) =
-            build_interest_pair(r##"{"kinds":[1],"#t":["bitcoin"]}"##, "tag-bitcoin", 1).unwrap();
+            build_interest_pair(r##"{"kinds":[1],"#t":["bitcoin"]}"##, "tag-bitcoin", 1, None).unwrap();
         assert_eq!(interest.scope, InterestScope::Global);
     }
 
     #[test]
     fn malformed_filter_is_none() {
-        assert!(build_interest_pair("not json", "c", 0).is_none());
-        assert!(build_interest_pair("[]", "c", 0).is_none());
+        assert!(build_interest_pair("not json", "c", 0, None).is_none());
+        assert!(build_interest_pair("[]", "c", 0, None).is_none());
     }
 
     #[test]
@@ -104,9 +115,9 @@ mod tests {
         let mut reg = InterestRegistry::new();
         let t = RegistryWriteToken::for_test();
         let (id_a, int_a) =
-            build_interest_pair(r#"{"kinds":[1,6],"authors":["aa","bb"]}"#, "c", 0).unwrap();
+            build_interest_pair(r#"{"kinds":[1,6],"authors":["aa","bb"]}"#, "c", 0, None).unwrap();
         let (id_b, int_b) =
-            build_interest_pair(r#"{"authors":["bb","aa"],"kinds":[6,1]}"#, "c", 0).unwrap();
+            build_interest_pair(r#"{"authors":["bb","aa"],"kinds":[6,1]}"#, "c", 0, None).unwrap();
 
         let r1 = reg.apply(&t, InterestWrite::EnsureAbsent, id_a, int_a);
         assert!(r1.newly_installed, "first open installs");
@@ -124,8 +135,8 @@ mod tests {
         let mut reg = InterestRegistry::new();
         let t = RegistryWriteToken::for_test();
         let filter = r#"{"kinds":[1,6],"authors":["aa"]}"#;
-        let (id1, int1) = build_interest_pair(filter, "consumer-1", 0).unwrap();
-        let (id2, int2) = build_interest_pair(filter, "consumer-2", 0).unwrap();
+        let (id1, int1) = build_interest_pair(filter, "consumer-1", 0, None).unwrap();
+        let (id2, int2) = build_interest_pair(filter, "consumer-2", 0, None).unwrap();
 
         let r1 = reg.apply(&t, InterestWrite::EnsureAbsent, id1.clone(), int1);
         assert!(r1.newly_installed, "consumer-1 installs");
@@ -133,11 +144,11 @@ mod tests {
         assert!(!r2.newly_installed, "consumer-2 attaches");
         assert_eq!(reg.len(), 1);
 
-        let (close1, _) = build_interest_pair(filter, "consumer-1", 0).unwrap();
+        let (close1, _) = build_interest_pair(filter, "consumer-1", 0, None).unwrap();
         assert!(!reg.drop_owner(&close1), "slot survives first close");
         assert_eq!(reg.len(), 1);
 
-        let (close2, _) = build_interest_pair(filter, "consumer-2", 0).unwrap();
+        let (close2, _) = build_interest_pair(filter, "consumer-2", 0, None).unwrap();
         assert!(reg.drop_owner(&close2), "last close drops the slot");
         assert!(reg.is_empty());
     }
@@ -148,8 +159,8 @@ mod tests {
         let mut reg = InterestRegistry::new();
         let t = RegistryWriteToken::for_test();
         let filter = r##"{"kinds":[1],"#t":["bitcoin"]}"##;
-        let (id_active, int_active) = build_interest_pair(filter, "c", 0).unwrap();
-        let (id_global, int_global) = build_interest_pair(filter, "c", 1).unwrap();
+        let (id_active, int_active) = build_interest_pair(filter, "c", 0, None).unwrap();
+        let (id_global, int_global) = build_interest_pair(filter, "c", 1, None).unwrap();
 
         let r1 = reg.apply(&t, InterestWrite::EnsureAbsent, id_active, int_active);
         assert!(r1.newly_installed);
@@ -159,5 +170,40 @@ mod tests {
             "different scope → newly installed, not a dedup"
         );
         assert_eq!(reg.len(), 2);
+    }
+
+    #[test]
+    fn relay_pin_sets_shape_and_distinct_pins_are_distinct_slots() {
+        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
+        let filter = r#"{"kinds":[0],"search":"nostr"}"#;
+
+        // The pin lands on the shape verbatim.
+        let (_id, interest) =
+            build_interest_pair(filter, "search-c", 1, Some("wss://search.nos.lol/")).unwrap();
+        assert_eq!(
+            interest.shape.relay_pin.as_deref(),
+            Some("wss://search.nos.lol/")
+        );
+
+        // Same filter+consumer, two different pins → two distinct registry slots
+        // (the pin participates in the InterestShape hash → distinct SubKey).
+        let mut reg = InterestRegistry::new();
+        let t = RegistryWriteToken::for_test();
+        let (id_a, int_a) =
+            build_interest_pair(filter, "search-c", 1, Some("wss://a.example/")).unwrap();
+        let (id_b, int_b) =
+            build_interest_pair(filter, "search-c", 1, Some("wss://b.example/")).unwrap();
+        assert!(reg.apply(&t, InterestWrite::EnsureAbsent, id_a, int_a).newly_installed);
+        assert!(
+            reg.apply(&t, InterestWrite::EnsureAbsent, id_b, int_b).newly_installed,
+            "a different relay pin is a distinct slot, not a dedup"
+        );
+        assert_eq!(reg.len(), 2);
+
+        // A pinned close reconstructs the same slot (pin matches) and drops it.
+        let (close_a, _) =
+            build_interest_pair(filter, "search-c", 1, Some("wss://a.example/")).unwrap();
+        assert!(reg.drop_owner(&close_a), "pinned close drops its own slot");
+        assert_eq!(reg.len(), 1);
     }
 }

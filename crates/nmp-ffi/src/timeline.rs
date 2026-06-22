@@ -96,6 +96,7 @@ pub extern "C" fn nmp_app_close_interest(
         filter_json,
         consumer_id,
         scope,
+        relay_pin: None,
     });
 }
 

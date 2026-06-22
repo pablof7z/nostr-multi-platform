@@ -368,8 +368,9 @@ fn build_open_interest(
     filter_json: &str,
     consumer_id: &str,
     scope: u32,
+    relay_pin: Option<&str>,
 ) -> Option<(crate::subs::SubIdentity, crate::planner::LogicalInterest)> {
-    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope)
+    crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope, relay_pin)
 }
 
 pub(super) fn dispatch_command(
@@ -1465,7 +1466,7 @@ pub(super) fn dispatch_command(
             // D6: a malformed filter is a silent no-op (the FFI shim already
             // surfaced a toast before sending — see `nmp_app_open_interest`).
             if let Some((identity, interest)) =
-                build_open_interest(&filter_json, &consumer_id, scope)
+                build_open_interest(&filter_json, &consumer_id, scope, None)
             {
                 // ensure_sub + trigger-on-newly-installed live in the kernel
                 // method so the open/close arms cannot drift on the invariant.
@@ -1478,6 +1479,7 @@ pub(super) fn dispatch_command(
             filter_json,
             consumer_id,
             scope,
+            relay_pin,
             observer_id,
             replay_shapes,
             replay_limit,
@@ -1486,8 +1488,10 @@ pub(super) fn dispatch_command(
             // observer, then activate it. Reuses the same filter→interest
             // parsing as OpenInterest; D6: a malformed filter is a silent
             // no-op (the FFI shim already surfaced a toast before sending).
+            // `relay_pin` (NIP-50 search / NIP-29 groups) routes the interest
+            // to exactly one relay via the planner's relay-pin lane.
             if let Some((identity, interest)) =
-                build_open_interest(&filter_json, &consumer_id, scope)
+                build_open_interest(&filter_json, &consumer_id, scope, relay_pin.as_deref())
             {
                 let replay = crate::kernel::ObserverReplayRequest {
                     observer_id,
@@ -1508,13 +1512,14 @@ pub(super) fn dispatch_command(
             filter_json,
             consumer_id,
             scope,
+            relay_pin,
         } => {
             // M2 (ADR-0042) — detach one owner; drop the live sub on the last
             // leave. The `(owner, key, scope)` identity is reconstructed from
-            // the SAME filter + consumer + scope the open used, so the
-            // InterestShape hash lands on the same registry slot.
+            // the SAME filter + consumer + scope + relay_pin the open used, so
+            // the InterestShape hash lands on the same registry slot.
             if let Some((identity, _interest)) =
-                build_open_interest(&filter_json, &consumer_id, scope)
+                build_open_interest(&filter_json, &consumer_id, scope, relay_pin.as_deref())
             {
                 let _ = ctx.kernel.close_interest_sub(&identity);
             }
@@ -2013,7 +2018,7 @@ mod open_interest_tests {
         let before = kernel.lifecycle_mut().pending_trigger_count();
 
         let (identity, interest) =
-            build_open_interest(r#"{"kinds":[1,6],"authors":["aa"]}"#, "author-aa", 0).unwrap();
+            build_open_interest(r#"{"kinds":[1,6],"authors":["aa"]}"#, "author-aa", 0, None).unwrap();
         let newly_installed = kernel.open_interest_sub(identity, interest);
 
         assert!(newly_installed, "first open installs the slot");
@@ -2029,14 +2034,14 @@ mod open_interest_tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let filter = r#"{"kinds":[1,6],"authors":["aa"]}"#;
 
-        let (id1, int1) = build_open_interest(filter, "consumer-1", 0).unwrap();
+        let (id1, int1) = build_open_interest(filter, "consumer-1", 0, None).unwrap();
         assert!(kernel.open_interest_sub(id1, int1));
         let after_first = kernel.lifecycle_mut().pending_trigger_count();
 
         // Second owner on the SAME (scope,key) slot: attaches but does NOT
         // re-install, so no second trigger (idempotent — would otherwise churn
         // the compiler on every re-mount).
-        let (id2, int2) = build_open_interest(filter, "consumer-2", 0).unwrap();
+        let (id2, int2) = build_open_interest(filter, "consumer-2", 0, None).unwrap();
         assert!(
             !kernel.open_interest_sub(id2, int2),
             "second owner attaches"
@@ -2053,14 +2058,14 @@ mod open_interest_tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let filter = r#"{"kinds":[1,6],"authors":["aa"]}"#;
 
-        let (id1, int1) = build_open_interest(filter, "consumer-1", 0).unwrap();
-        let (id2, int2) = build_open_interest(filter, "consumer-2", 0).unwrap();
+        let (id1, int1) = build_open_interest(filter, "consumer-1", 0, None).unwrap();
+        let (id2, int2) = build_open_interest(filter, "consumer-2", 0, None).unwrap();
         kernel.open_interest_sub(id1, int1);
         kernel.open_interest_sub(id2, int2);
         let after_opens = kernel.lifecycle_mut().pending_trigger_count();
 
         // First close: slot survives (consumer-2 still attached) → no trigger.
-        let (close1, _) = build_open_interest(filter, "consumer-1", 0).unwrap();
+        let (close1, _) = build_open_interest(filter, "consumer-1", 0, None).unwrap();
         assert!(!kernel.close_interest_sub(&close1), "slot survives");
         assert_eq!(
             kernel.lifecycle_mut().pending_trigger_count(),
@@ -2069,7 +2074,7 @@ mod open_interest_tests {
         );
 
         // Last close: slot dropped → exactly one trigger.
-        let (close2, _) = build_open_interest(filter, "consumer-2", 0).unwrap();
+        let (close2, _) = build_open_interest(filter, "consumer-2", 0, None).unwrap();
         assert!(kernel.close_interest_sub(&close2), "last close drops slot");
         assert_eq!(
             kernel.lifecycle_mut().pending_trigger_count(),

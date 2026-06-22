@@ -81,7 +81,7 @@ pub use registry::InterestRegistry;
 pub use sub_key::{SubIdentity, SubKey, SubKeyBuilder, SubOwnerKey, SubScope};
 pub use trigger::{AccountId, CompileTrigger, InvalidateReason, RelayAuthState, SignerId};
 pub use unknown_ids::UnknownIds;
-pub use wire::{plan_diff, WireFrame};
+pub use wire::{filter_json_for, plan_diff, WireFrame};
 
 /// Post-compile plan-mutation hook (negentropy coverage gate seam).
 ///

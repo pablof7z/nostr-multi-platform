@@ -30,7 +30,7 @@ impl super::KernelReducer {
         scope: u32,
     ) -> Vec<OutboundMessage> {
         if let Some((identity, interest)) =
-            crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope)
+            crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope, None)
         {
             let _ = self.kernel.open_interest_sub(identity, interest);
         }
@@ -50,7 +50,7 @@ impl super::KernelReducer {
         scope: u32,
     ) -> Vec<OutboundMessage> {
         if let Some((identity, _interest)) =
-            crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope)
+            crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope, None)
         {
             let _ = self.kernel.close_interest_sub(&identity);
         }

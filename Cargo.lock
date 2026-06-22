@@ -4609,6 +4609,8 @@ dependencies = [
  "nmp-core",
  "nmp-feed",
  "nmp-nip18",
+ "nmp-nip50",
+ "nmp-nip51",
  "nmp-planner",
  "nmp-signer-broker",
  "nmp-signer-iface",
@@ -4836,6 +4838,7 @@ dependencies = [
 name = "nmp-nip50"
 version = "0.8.0"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-kinds",
  "nmp-planner",
