@@ -4,23 +4,28 @@
 //! exactly like `nak`) a kind:10002 NIP-65 list naming a read relay R
 //! (`wss://nos.lol`) AND a kind:10007 NIP-51 search-relay list naming
 //! `wss://nostr.wine`, both to R. A real `NmpApp` then cold-starts with ONLY
-//! `nmp_defaults::register_defaults` — NO `set_search_relay_source`, NO explicit
-//! relay argument anywhere in this test. The kernel:
+//! `nmp_defaults::register_defaults` — NO manual search-relay-source install, NO
+//! explicit relay argument anywhere in this test. The kernel:
 //!
 //!   1. signs the fresh account in,
-//!   2. the `SearchRelayRuntimeController` (wired by `register_defaults`) pushes
-//!      the kind:10007 `authors=[me]` interest, routed to the account's read
-//!      relay R (from the published kind:10002),
+//!   2. the kernel's self-kinds tailing bundle (kind:10007 added to
+//!      `SELF_KINDS_TAILING` in #1829) self-fetches the account's kind:10007 from
+//!      its read relay R (the proven path that also fetches kind:0/3/10002/10006),
 //!   3. R returns the kind:10007, the `SearchRelayListProjection` ingests it,
-//!   4. the auto-wired default `SearchRelaySource.user_preferred()` now returns
-//!      `wss://nostr.wine`.
+//!   4. the auto-wired default search-relay source (installed by
+//!      `register_defaults` via `nmp_nip50::install_search_relay_source`) now
+//!      resolves `UserPreferred` to `wss://nostr.wine`.
 //!
 //! Then we call ONLY `open_search("bitcoin", Users, UserPreferred, ..)` and
-//! assert the search REQ actually fans out to `wss://nostr.wine` — observed in
-//! the kernel's own `RoutingTraceProjection` (the same trace the routing
-//! validation harness uses) — and returns results. The harness does NOTHING
-//! explicit to register that relay. This proves NMP discovers + uses the user's
-//! kind:10007 transparently.
+//! assert the search REQ actually fans out to `wss://nostr.wine` and returns
+//! results. The harness does NOTHING explicit to register that relay. This
+//! proves NMP discovers + uses the user's kind:10007 transparently.
+//!
+//! With #1829's kind:10007 self-fetch on master this scenario should PASS (it was
+//! a skip-with-finding before #1829, when the kind:10007 interest never reached
+//! the wire). The hermetic counterpart is
+//! `nmp-defaults/tests/search_relay_transparency.rs` (#1829) +
+//! `nmp-ffi`'s `open_search_user_preferred_fans_out_to_installed_primary_relays`.
 //!
 //! Readiness uses the kernel's own snapshot-update callback signal (no sleeps,
 //! no polling loops — we block on the update channel and re-check the kernel's
@@ -145,7 +150,7 @@ pub(crate) fn run() {
     let app = nmp_app_new();
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
 
-    // The ONLY wiring. No set_search_relay_source. No explicit search relay.
+    // The ONLY wiring. No manual search-relay-source install. No explicit relay.
     // SAFETY: `app` is a live pointer from `nmp_app_new`; the exclusive borrow
     // is released before any other access.
     nmp_defaults::register_defaults(unsafe { &mut *app });
@@ -281,12 +286,12 @@ fn drive_and_assert(app: *mut nmp_ffi::NmpApp, rx: &Receiver<()>) -> Outcome {
                 "UserPreferred discovery did not drive the search to {WINE} within \
                  {DISCOVERY_BUDGET:?} (hits={distinct}, hit_from_wine={from_wine}, \
                  routing_trace_wine={wine_hit}). The Explicit-relay probe through the SAME \
-                 open_search surface + NMP pool DID return hits from {WINE} (explicit_proved={explicit_proved}) \
-                 — so the search engine, relay-pin fan-out, transparency glue, and {WINE} reachability \
-                 are all proven; the gap is the active-account kind:10007 self-fetch interest never \
-                 reaching the wire. The routing trace shows only the follow interest routed, never the \
-                 kind:10007 interest id — a defect in the #1817 SearchRelayRuntimeController kind:10007 \
-                 compilation, NOT in the open_search surface."
+                 open_search surface + NMP pool DID return hits from {WINE} (explicit_proved={explicit_proved}). \
+                 With #1829's kind:10007 self-fetch on master this should PASS; a skip here means the live \
+                 network was too slow/flaky to complete boot → kind:10007 self-fetch from R → projection \
+                 within budget (the hermetic counterparts — nmp-defaults search_relay_transparency + \
+                 nmp-ffi open_search_user_preferred_fans_out_to_installed_primary_relays — prove the path \
+                 deterministically)."
             ));
         }
         // Block on the kernel's own snapshot tick (no sleep/poll).

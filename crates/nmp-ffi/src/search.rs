@@ -260,6 +260,24 @@ impl NmpApp {
             .find(|d| d.key == key && !d.payload.is_empty())
             .map(|d| d.payload)
     }
+
+    /// Test-only: the resolved relay set a live search session fanned out to
+    /// (the per-relay pinned interests it opened). Proves UserPreferred
+    /// resolution end-to-end — that the installed `PreferredRelaySource` drove
+    /// the actual search fan-out, not just `effective_search_relays`.
+    #[cfg(test)]
+    #[must_use]
+    pub(crate) fn search_session_relays(&self, session_id: &str) -> Vec<String> {
+        self.search_sessions
+            .lock()
+            .ok()
+            .and_then(|sessions| {
+                sessions
+                    .get(session_id)
+                    .map(|s| s.relay_closes.iter().map(|(_, _, relay)| relay.clone()).collect())
+            })
+            .unwrap_or_default()
+    }
 }
 
 // ===========================================================================

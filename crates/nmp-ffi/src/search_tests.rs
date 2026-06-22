@@ -114,6 +114,57 @@ fn close_search_tears_down_the_projection() {
     nmp_app_free(app);
 }
 
+/// End-to-end transparency proof: with the default `PreferredRelaySource`
+/// installed (exactly what `register_defaults` does via
+/// `nmp_nip50::install_search_relay_source`), `open_search(UserPreferred)` fans
+/// out to the source's PRIMARY relays (the user's published kind:10007 list),
+/// and falls back to the app default when the user list is empty — with ZERO
+/// per-relay app wiring at the call site.
+#[test]
+fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
+    let app = nmp_app_new();
+    // SAFETY: `nmp_app_new` never returns null.
+    let app_ref = unsafe { &*app };
+
+    // Non-empty primary (the user's kind:10007 list) → UserPreferred uses it.
+    install_search_relay_source(
+        app_ref,
+        Arc::new(StubSource {
+            preferred: vec!["wss://user-search.example/".to_string()],
+            default: vec!["wss://app-default.example/".to_string()],
+        }),
+    );
+    let request =
+        SearchRequest::new("nostr", SearchScope::Users, SearchTargets::UserPreferred, Some(10))
+            .expect("request");
+    app_ref.open_search(request, "user");
+    assert_eq!(
+        app_ref.search_session_relays("user"),
+        vec!["wss://user-search.example/".to_string()],
+        "UserPreferred must fan the search REQ out to the installed primary (kind:10007) relays"
+    );
+
+    // Empty primary → UserPreferred falls back to the app default.
+    install_search_relay_source(
+        app_ref,
+        Arc::new(StubSource {
+            preferred: Vec::new(),
+            default: vec!["wss://app-default.example/".to_string()],
+        }),
+    );
+    let req2 =
+        SearchRequest::new("nostr", SearchScope::Users, SearchTargets::UserPreferred, Some(10))
+            .expect("request");
+    app_ref.open_search(req2, "fallback");
+    assert_eq!(
+        app_ref.search_session_relays("fallback"),
+        vec!["wss://app-default.example/".to_string()],
+        "UserPreferred with an empty user list must fall back to the app default"
+    );
+
+    nmp_app_free(app);
+}
+
 #[test]
 fn open_search_without_source_is_cache_only_not_a_crash() {
     let app = nmp_app_new();
