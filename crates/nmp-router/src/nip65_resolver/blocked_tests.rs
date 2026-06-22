@@ -192,3 +192,78 @@ fn blocked_relay_excluded_with_differing_case() {
     );
     assert!(urls.is_empty(), "only relay was blocked → empty resolution, got {urls:?}");
 }
+
+#[test]
+fn non_canonical_stored_tag_is_blocked_when_canonical_form_is_in_blocked_set() {
+    // Security: the blocked set stores canonical (lowercase) relay URLs.  A
+    // kind:10002 tag stored with a non-canonical spelling (e.g. mixed-case
+    // host `wss://Block.Example/`) must be canonicalized by the resolver
+    // BEFORE the blocked-set filter runs — otherwise the non-canonical
+    // spelling escapes the filter and the relay receives publish traffic.
+    //
+    // This test stores a NON-canonical tag directly in the store (bypassing
+    // the ingest canonicalization that production events go through, to
+    // simulate the gap) and asserts that the resolver still filters it out
+    // when the blocked set carries the canonical form.
+    //
+    // Pre-fix this test FAILS: the raw `wss://Block.Example/` tag survives
+    // `is_relay_url` (starts_with "wss://") and is pushed as-is; the
+    // blocked-set `contains("wss://block.example")` misses it.
+    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    store_kind10002(
+        store.as_ref(),
+        AUTHOR_HEX,
+        // Intentionally NON-canonical: uppercase host + trailing slash.
+        // Canonical form is `wss://block.example` (no trailing slash, lowercase).
+        vec![vec!["r".into(), "wss://Block.Example/".into(), "write".into()]],
+    );
+    let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
+
+    // Blocked set uses the canonical form (as kind:10006 ingest produces).
+    let blocked = blocked_with(&["wss://block.example"]);
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &blocked);
+    let urls = urls_of(&out);
+
+    assert!(
+        !urls.contains(&"wss://Block.Example/".to_string()),
+        "non-canonical raw form must not appear in output (resolver canonicalized it), got {urls:?}"
+    );
+    assert!(
+        !urls.contains(&"wss://block.example".to_string()),
+        "canonical form of blocked relay must not appear in output, got {urls:?}"
+    );
+    assert!(
+        urls.is_empty(),
+        "only relay was a non-canonical spelling of a blocked relay → must resolve empty, got {urls:?}"
+    );
+}
+
+#[test]
+fn non_canonical_tag_without_matching_block_canonicalizes_and_is_included() {
+    // Complement of the above: a non-canonical stored tag for an UNBLOCKED
+    // relay must still resolve (after canonicalization) to the canonical form
+    // and be included in the output.  Fail-closed does not mean all
+    // non-canonical URLs are dropped — only un-canonicalizable ones are.
+    let store: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+    store_kind10002(
+        store.as_ref(),
+        AUTHOR_HEX,
+        // Non-canonical: uppercase host + trailing slash.
+        vec![vec!["r".into(), "wss://Good.Example/".into(), "write".into()]],
+    );
+    let resolver = Nip65OutboxResolver::new(store, new_indexer_relays_slot());
+
+    // Nothing blocked.
+    let out = resolver.resolve(AUTHOR_HEX, &[], &PublishTarget::Auto, 1, &BlockedRelaySet::new());
+    let urls = urls_of(&out);
+
+    // The resolver must return the CANONICAL form, not the raw stored form.
+    assert!(
+        urls.contains(&"wss://good.example".to_string()),
+        "non-canonical tag for unblocked relay must resolve to its canonical form, got {urls:?}"
+    );
+    assert!(
+        !urls.contains(&"wss://Good.Example/".to_string()),
+        "raw non-canonical form must not appear in output; resolver must canonicalize, got {urls:?}"
+    );
+}
