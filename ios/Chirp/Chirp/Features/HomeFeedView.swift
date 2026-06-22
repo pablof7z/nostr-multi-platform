@@ -40,6 +40,8 @@ struct HomeFeedView: View {
     @State private var showCompose = false
     /// Controls the publish outbox sheet.
     @State private var showOutbox = false
+    /// Controls the NIP-50 search sheet (magnifier toolbar button).
+    @State private var showSearch = false
     /// V-106 — the zap target awaiting an amount selection. Non-nil drives the
     /// `ZapAmountSheet` presentation; the row's `onZap` closure populates it
     /// (the kernel still owns relay selection + LNURL — the sheet only picks
@@ -72,6 +74,9 @@ struct HomeFeedView: View {
             NavigationStack {
                 NotificationsView()
             }
+        }
+        .sheet(isPresented: $showSearch) {
+            SearchSheet()
         }
         // V-106 — amount picker. `item:` binds to the pending zap target so the
         // sheet's `onConfirm` has the (eventID, pubkey, lnurl) captured at tap
@@ -202,6 +207,16 @@ struct HomeFeedView: View {
             }
             .accessibilityLabel("Publish outbox")
             .accessibilityIdentifier("publish-outbox-button")
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                showSearch = true
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+            .accessibilityLabel("Search")
+            .accessibilityIdentifier("search-button")
         }
 
         ToolbarItem(placement: .navigationBarTrailing) {
