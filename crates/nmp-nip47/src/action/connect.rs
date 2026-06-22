@@ -5,7 +5,9 @@
 
 use serde::{Deserialize, Serialize};
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_core::ActorCommand;
 
 use crate::protocol::{WalletConnectCommand, WalletDisconnectCommand};
@@ -45,6 +47,13 @@ impl WalletConnectModule {
 impl ActionModule for WalletConnectModule {
     const NAMESPACE: &'static str = "nmp.wallet.connect";
     type Action = WalletConnectAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0064 / #1756) — delegates to the
+    /// `nmp.wallet.connect` `ActionPayload` codec (`N47C`). The registry adapter
+    /// runs the fail-closed `schema_version` gate BEFORE `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     /// Validate the NWC URI before the runtime attempts to parse it.
     ///
@@ -120,6 +129,13 @@ impl WalletDisconnectModule {
 impl ActionModule for WalletDisconnectModule {
     const NAMESPACE: &'static str = "nmp.wallet.disconnect";
     type Action = WalletDisconnectAction;
+
+    /// Typed FlatBuffers payload decode (ADR-0064 / #1756) — delegates to the
+    /// `nmp.wallet.disconnect` `ActionPayload` codec (`N47D`). The registry
+    /// adapter runs the fail-closed `schema_version` gate BEFORE `start()`.
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn execute(
         &self,
