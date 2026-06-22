@@ -82,6 +82,45 @@ fn unblock_relay_wrong_schema_version_is_rejected() {
     );
 }
 
+/// Decode of a `PublishRelayListPayload` whose entry carries a `RelayMarker`
+/// ordinal outside [0, 3] must return `Malformed`, NOT silently map to a
+/// default known marker or panic.  This is the fail-closed gate for
+/// forward-compat unknown discriminants (doctrine concern, #1834 nit).
+///
+/// Load-bearing proof: a decode that silently coerced an unknown ordinal to
+/// `RelayMarker::Both` (ordinal 0) would return `Ok(…)` here and the
+/// `expect_err` assertion would fail.
+#[test]
+fn publish_relay_list_unknown_marker_ordinal_is_malformed() {
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+    let url = fbb.create_string("wss://relay.example");
+    // Ordinal 99 is outside the known set [0 (Both), 1 (Read), 2 (Write), 3 (Indexer)].
+    let entry = relay_list_fb::RelayListEntry::create(
+        &mut fbb,
+        &relay_list_fb::RelayListEntryArgs {
+            url: Some(url),
+            marker: relay_list_fb::RelayMarker(99),
+        },
+    );
+    let relays = fbb.create_vector(&[entry]);
+    let payload = relay_list_fb::PublishRelayListPayload::create(
+        &mut fbb,
+        &relay_list_fb::PublishRelayListPayloadArgs {
+            schema_version: SCHEMA_VERSION,
+            relays: Some(relays),
+        },
+    );
+    relay_list_fb::finish_publish_relay_list_payload_buffer(&mut fbb, payload);
+    let bytes = fbb.finished_data().to_vec();
+
+    let err = PublishRelayListInput::decode(&bytes)
+        .expect_err("unknown RelayMarker ordinal must be rejected fail-closed");
+    assert!(
+        matches!(err, ActionPayloadDecodeError::Malformed { .. }),
+        "expected Malformed, got {err:?}"
+    );
+}
+
 /// A `BlockRelayPayload` (`NBLK`) must NOT decode as an `UnblockRelayPayload`
 /// (`NUBL`) — distinct file identifiers keep the two namespaces apart.
 #[test]
