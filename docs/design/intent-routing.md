@@ -8,12 +8,16 @@
 
 1. Apps call one function to search users / long-form / arbitrary kinds,
    get cache hits synchronously, and stream relay hits as they arrive.
+   Search orchestration (entrypoint, relay selection, cache scan, ranking,
+   dedup, result projection) lives entirely in `nmp-nip50` and above — this is
+   the **higher-order search model** (ADR-0020 amendment 2026-06-22).
 2. The kernel knows which relay class an event belongs to and routes
    accordingly, without app code naming relay URLs.
 3. NIP-51 lists with routing semantics become live routing inputs,
    observed and applied the same way kind:10002 is today:
-   - **10006** blocked relays (global filter).
-   - **10007** search relays → `EventClass::Search`.
+   - **10006** blocked relays (global filter via `blocked_relays()`).
+   - **10007** search relays → read by `SearchRelayListProjection` in
+     `nmp-nip51`; consumed by `nmp-nip50` directly (not a core routing class).
    - **10013** draft relays (nip44-encrypted) → `EventClass::Draft`.
    - **10102** good wiki relays → `EventClass::Wiki` (publisher-keyed).
 4. The diagnostic UI sees every class-routed decision as a distinct
@@ -70,11 +74,13 @@ pub enum EventClass {
     /// participates in `class_relays`; NIP-29 events use the existing
     /// `InterestShape::relay_pin` lane (ADR-0012).
     GroupMessage,
-    /// Search REQs — not an event class on the wire, but used by the
-    /// planner to pick the search-relay set.
-    Search,
     /// Anything not enumerated above. Falls through to NIP-65 routing.
     Other,
+    // NOTE (2026-06-22): EventClass::Search was removed. Search routing does
+    // not need a planner class. The generic InterestShape.search wire-filter
+    // field is sufficient; relay selection from kind:10007 is performed at the
+    // higher layer by SearchRelayListProjection (nmp-nip51), consumed by
+    // nmp-nip50. See ADR-0020 higher-order search amendment.
 }
 
 impl EventClass {
@@ -100,7 +106,9 @@ impl EventClass {
 
 pub enum RoutingFamily {
     /// Active account's NIP-51 list. No author argument.
-    /// Used by: Search, Draft.
+    /// Used by: Draft.
+    /// NOTE (2026-06-22): Search was removed from this family. kind:10007
+    /// relay selection is higher-order (see nmp-nip50/SearchRelayListProjection).
     Personal,
     /// Publisher's NIP-51 list, consulted per author at compile time.
     /// Used by: Wiki.
@@ -126,14 +134,17 @@ pub struct InterestShape {
 
     /// Optional class hint set by the consumer. When `None`, the planner
     /// derives the class from `kinds` via `EventClass::from_kind`. When
-    /// `Some`, the value wins — used by `SearchScope::Custom` and by
-    /// apps that emit ambiguous kinds.
+    /// `Some`, the value wins — used by apps that emit ambiguous kinds.
+    /// NOTE (2026-06-22): `EventClass::Search` is no longer a valid value
+    /// here; search shapes are expressed solely via the `search` field above
+    /// and routed at the higher layer in `nmp-nip50`.
     pub class_hint: Option<EventClass>,
 }
 ```
 
 Both fields are `Option`; `search` is substrate-only, while NIP-50 query
-parsing, views, ranking, and projection live in the owning search module.
+parsing, views, ranking, relay selection from kind:10007, and projection live
+in the owning search module (`nmp-nip50`).
 
 ### 3.3 Extended `OutboxResolver`
 
@@ -145,7 +156,10 @@ pub trait OutboxResolver: Send + Sync {
 
     /// Personal NIP-51 routing — active account context, no author.
     /// Used for classes whose NIP-51 list is intrinsically self-keyed
-    /// (Search: "where I search," Draft: "where I store my drafts").
+    /// (Draft: "where I store my drafts").
+    /// NOTE (2026-06-22): kind:10007 search relays are NOT routed through
+    /// this method. Search relay selection is performed at the higher layer
+    /// by `nmp-nip50` via `SearchRelayListProjection` from `nmp-nip51`.
     /// Returns `None` when no list / no app default exists.
     fn class_relays_personal(&self, class: &EventClass) -> Option<Vec<RelayUrl>>;
 
@@ -199,6 +213,13 @@ would classify away from `Other`.
 
 ### 3.5 Search FFI surface
 
+**This surface lives in `nmp-nip50` (higher-order crate), not in `nmp-core`.**
+The core substrate contributes only the `InterestShape.search` wire-filter field.
+Everything below — query types, relay selection from kind:10007, cache scan,
+result projection, dedup, and ranking — is owned by `nmp-nip50` and consumed
+from `SearchRelayListProjection` (in `nmp-nip51`). Blocked-relay subtraction is
+applied by `nmp-nip50` using the generic `blocked_relays()` resolver method.
+
 The search surface consumes text search only. It is not the generic "whatever
 the user typed" parser: direct Nostr references, NIP-05 identifiers, relay
 URLs, and group targets are classified by the input-intent front door below
@@ -214,7 +235,8 @@ pub enum SearchScope {
     /// Caller-specified kinds. Cache-side scan disabled.
     Kinds(std::collections::BTreeSet<u32>),
     /// Power-user escape hatch — caller builds the full InterestShape.
-    /// `search` and `class_hint = Some(Search)` are filled in by the kernel.
+    /// The `search` field is filled in by `nmp-nip50`; `class_hint` must not
+    /// be `EventClass::Search` (that variant no longer exists).
     Custom(InterestShape),
 }
 
@@ -325,13 +347,21 @@ interest: shape = { kinds: [30818], authors: [bob, alice] }
 
 When `class.routing_family() == Personal`, the partition does not split
 by author — the active account's `class_relays_personal(class)` answers
-the whole interest. When `class.routing_family() == None`, the planner
-skips class routing entirely and runs the existing four-lane partition.
+the whole interest (used for Draft/kind:10013 only). When
+`class.routing_family() == None`, the planner skips class routing entirely
+and runs the existing four-lane partition.
 
-This is implemented as a new partition case `case_g_class_routed` that
-runs after `case_a_authors` and before `case_e_relay_pinned`. NIP-29
-events still take the `relay_pin` lane because their `EventClass::GroupMessage`
-has `routing_family == RelayPin`, and the partition cases gate on family.
+**Search interests are NOT handled by `case_g_class_routed`.** A search
+`InterestShape` (one with `search: Some(_)`) routes via the generic
+four-lane planner with relay URLs supplied directly by `nmp-nip50` from
+`SearchRelayListProjection`; the planner does not inspect `EventClass` for
+search-bearing shapes. This is the higher-order model (ADR-0020 2026-06-22
+amendment): search relay selection is performed entirely above the planner.
+
+`case_g_class_routed` runs after `case_a_authors` and before
+`case_e_relay_pinned`. NIP-29 events still take the `relay_pin` lane
+because their `EventClass::GroupMessage` has `routing_family == RelayPin`,
+and the partition cases gate on family.
 
 ### 4.2 New merge rule
 
@@ -379,14 +409,17 @@ This keeps the working set bounded by active view lifetimes.
 | NIP-51 kind | Class / role               | Resolver method consumes it            | Encrypted? | Per-author? |
 |-------------|----------------------------|----------------------------------------|------------|-------------|
 | 10006       | blocked (global filter)    | `blocked_relays()`                     | no         | no          |
-| 10007       | `Search`                   | `class_relays_personal(&Search)`       | no         | no          |
+| 10007       | search relays (higher-order) | `SearchRelayListProjection` in `nmp-nip51`; consumed by `nmp-nip50` directly — NOT routed via `class_relays_personal` | no | no |
 | 10013       | `Draft` (NIP-37)           | `class_relays_personal(&Draft)`        | **yes** (nip44 to self) | no |
 | 10102       | `Wiki` (NIP-54)            | `class_relays_for_author(&Wiki, _)`    | no         | **yes**     |
 | 10050       | DM (NIP-17)                | decoded only; routing deferred         | no         | no          |
 | 30002       | named — see §5.1           | not consumed in v1                     | n/a        | n/a         |
 
-Kind:10007 parsing/projection are owned by `nmp-nip51`; the router consumes
-facts and does not parse NIP-51 list events.
+Kind:10007 parsing/projection are owned by `nmp-nip51` via
+`SearchRelayListProjection`. The planner/resolver does NOT consume kind:10007
+— this is the higher-order search model. `nmp-nip50` reads from
+`SearchRelayListProjection` directly, applies app-default fallback, and
+subtracts blocked relays before building the relay set for any NIP-50 REQ.
 
 ### 5.1 Kind:30002 named relay sets — deferred
 
@@ -400,7 +433,11 @@ runtime `(d_value, EventClass)` binding API.
 
 ```rust
 pub struct Nip51RoutingFacts {
-    pub search: Vec<RelayUrl>,                            // from kind:10007
+    // NOTE (2026-06-22): kind:10007 search relays are NOT included here.
+    // They are projected by SearchRelayListProjection in nmp-nip51 and
+    // consumed directly by nmp-nip50. This struct covers only the relay
+    // facts needed by the core routing resolver.
+
     pub blocked: BTreeSet<RelayUrl>,                      // from kind:10006
 
     /// From kind:10013 (NIP-37 draft relays). Encrypted; the resolver
@@ -421,12 +458,14 @@ pub struct Nip51RoutingFacts {
 
 Wiring steps:
 
-1. Register the kinds with the `nmp-nip51` decoder — add 10006, 10007,
-   10013, 10050, 10102 to `ALL_KINDS`.
-2. **Subscribe to the personal lists** (10006, 10007, 10013, 10050) as
+1. Register the kinds with the `nmp-nip51` decoder — add 10006, 10013,
+   10050, 10102 to `ALL_KINDS` for core routing. Kind:10007 is decoded
+   by `nmp-nip51`'s `SearchRelayListProjection` independently.
+2. **Subscribe to the personal lists** (10006, 10013, 10050) as
    part of the active-account boot sequence, alongside the existing
-   kind:10002 NIP-65 fetch. These four are replaceable, so each is
-   exactly one tailing subscription.
+   kind:10002 NIP-65 fetch. These are replaceable, so each is exactly one
+   tailing subscription. Kind:10007 subscription is managed by `nmp-nip50`
+   or `SearchRelayListProjection` — not by the core routing resolver.
 3. **For kind:10013 only**, decrypt `.content` via the active signer's
    NIP-44 self-decryption. The decrypted blob contains the `"relay"`
    tags. Parsing is identical post-decryption.
@@ -487,8 +526,14 @@ role tags simultaneously: `ClassRouted` (this ADR), `Indexer`, and
   (capped at the first 4 KB of `.content`).
 
 Both run synchronously inside `open_search` before returning the view.
-Wall-clock budget: ≤ 5 ms for 10k profiles, ≤ 20 ms for 1k articles.
-Above those sizes, switch to a proper inverted index in v2.
+**Migration baseline budgets:** ≤ 5 ms for 10k profiles, ≤ 20 ms for 1k
+articles. Above those corpus sizes the linear scan becomes the bottleneck.
+Scalable cache-side search is delivered by issue #1811 (cache FTS inverted
+index epic): a visitor-style `text_search_visit` store seam + LMDB FTS
+sub-databases + a crate-registered scope registry that lets `nmp-nip50` and
+future protocol crates register their own FTS scope without touching core.
+Until #1811 lands, linear scan is the only cache-side path; search-bearing
+shapes that exceed the budget are relay-served only.
 
 ### 7.2 Dedupe and merge
 
@@ -509,17 +554,25 @@ Ordering in the view:
 ### 7.3 Fanout policy
 
 `SearchTargets::UserPreferred` fans REQ out to **all** relays in the
-user's kind:10007 list — no cap. No NIP-11 `supported_nips` probing;
-relays that don't implement NIP-50 surface as zero-result lanes in the
-per-relay diagnostic. If kind:10007 is missing/empty, fall back to
-`DefaultRelayLists::search`; if that's also empty, only cache results
-are returned. Until cache indexing lands, search-bearing shapes are
-relay-served only and deliberately uncovered by cache-serve.
+user's kind:10007 list — no cap. Relay selection is performed by `nmp-nip50`
+reading `SearchRelayListProjection` from `nmp-nip51`; this is NOT routed
+through the core planner's class-routing machinery. No NIP-11
+`supported_nips` probing; relays that don't implement NIP-50 surface as
+zero-result lanes in the per-relay diagnostic. If kind:10007 is
+missing/empty, fall back to `DefaultRelayLists::search`; if that's also
+empty, only cache results are returned. Blocked-relay subtraction is applied
+by `nmp-nip50` using `blocked_relays()` from the resolver. Until cache
+indexing lands (#1811), search-bearing shapes are relay-served only and
+deliberately uncovered by cache-serve.
 
 ## 9. FFI / app-developer ergonomics
 
 ```swift
-// Searching users — one call, streaming view.
+// Searching users — one call, streaming view (nmp-nip50 higher-order API).
+// nmp-nip50 reads kind:10007 from SearchRelayListProjection (nmp-nip51),
+// applies app-default fallback, subtracts blocked relays, and fans out.
+// The core planner sees only an InterestShape { search: Some("satoshi"), .. }
+// with relay URLs already resolved — no EventClass::Search involved.
 let view = kernel.openSearch(.init(
     query: "satoshi",
     scope: .users,
@@ -572,7 +625,8 @@ The "app authors forget" failure mode the user flagged is closed by:
   `kind` constants. **Checkpoint↔parent class equivalence:**
   `from_kind(1234) == from_kind(31234) == EventClass::Draft`. Rule 10
   merge refusal. Blocked-relay subtraction. `RoutingFamily` mapping for
-  every variant.
+  every variant. NOTE: `EventClass::Search` is no longer a valid variant;
+  search tests belong in `nmp-nip50`, not in the core planner test suite.
 - **NIP-44 decryption gating:** kind:10013 surfaces only when a signer
   is attached and self-decrypt succeeds.
 - **Per-author Wiki partition:** interest with `authors=[bob, alice],
@@ -584,9 +638,12 @@ The "app authors forget" failure mode the user flagged is closed by:
 - **Fail-loud blocked:** plan with every relay in `blocked_relays()`
   returns `PlannerError::AllRelaysBlocked`; `PublishEngine` maps to
   `PublishOutcome::AllRelaysBlocked`.
-- **Integration:** real-relay search test against `search.nos.lol` for
-  kind:0 and kind:30023. Mirror of
-  `crates/nmp-testing/tests/real_relay_outbox.rs`.
+- **Search relay selection (nmp-nip50 test):** `SearchTargets::UserPreferred`
+  reads from `SearchRelayListProjection` (nmp-nip51), applies fallback, and
+  subtracts blocked relays; all assertions live in `nmp-nip50` tests. The
+  real-relay integration test against `search.nos.lol` for kind:0 and
+  kind:30023 is a mirror of `crates/nmp-testing/tests/real_relay_outbox.rs`
+  but registered in `nmp-nip50`.
 - **Diagnostic:** five-lane assertion fixture covering one example per
   lane plus one blocked-relay subtraction and one `AllRelaysBlocked`
   failure path.
@@ -609,7 +666,10 @@ extension points:
   per-author Search or Draft list, the trait already supports it —
   add a new `EventClass` and its `RoutingFamily::PublisherKeyed`
   mapping.
-- **Proper inverted index** for cache-side search when corpus
-  exceeds the linear-scan budget (~10k profiles, ~1k articles).
+- **Cache-side full-text inverted index** (issue #1811) — replaces linear
+  scan once corpus exceeds the migration baseline (~10k profiles, ~1k
+  articles). Deliverables: a visitor-style `text_search_visit` store seam,
+  LMDB FTS sub-databases, and a crate-registered scope registry so `nmp-nip50`
+  and future protocol crates own their FTS scope without touching core.
 - **NIP-11 probing** of search relays if blind fanout proves too noisy
   in practice.
