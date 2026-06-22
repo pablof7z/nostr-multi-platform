@@ -1,6 +1,6 @@
 //! Cold-start REQ emission: self profile / NIP-65 relay list / NIP-17 DM relay
-//! list / kind:10006 blocked-relay list, and the active account's kind:3 follow
-//! list. No hardcoded seed timeline.
+//! list / kind:10006 blocked-relay list / kind:10007 search-relay list, and the
+//! active account's kind:3 follow list. No hardcoded seed timeline.
 
 use super::super::{Duration, Instant, Kernel, OutboundMessage};
 use crate::planner::{
@@ -12,7 +12,7 @@ use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 /// keeps live after sign-in.
 ///
 /// Reactive design: the host wires up its kind:0 / kind:3 / kind:10002 /
-/// kind:10006 readers exactly once at sign-in and gets fresh data
+/// kind:10006 / kind:10007 readers exactly once at sign-in and gets fresh data
 /// automatically whenever the account republishes any of these. The
 /// pre-V-04 model fired a one-shot REQ per kind and closed it on EOSE,
 /// which left apps stale after the first round-trip and forced ad-hoc
@@ -26,6 +26,14 @@ use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 /// - **10006**: blocked-relay list (fed into the [`crate::substrate::BlockedRelayLookup`]
 ///   handle so the router's subtractive blocked-set post-pass picks up
 ///   changes mid-session)
+/// - **10007**: search-relay list (NIP-51 — fed into the host-side
+///   `SearchRelayListProjection` in `nmp-nip51` so transparent NIP-50 search
+///   (`open_search(UserPreferred)`) can fan out to the user's preferred
+///   search relays. Like kind:10006, this is an account-specific replaceable
+///   list whose self-fetch must route + survive account switches; routing it
+///   here through the proven tailing bundle is what makes the projection
+///   populate with zero app involvement. The kernel learns NO NIP-51 nouns —
+///   it only tails a kind number, exactly as it does for 10006.)
 ///
 /// kind:10000 (mute list) is intentionally excluded: the host-side
 /// `MuteRuntimeController` (in `nmp-defaults`) owns a dedicated
@@ -33,7 +41,7 @@ use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 /// `PushInterest` on sign-in. Free-riding on this bundle would route mute
 /// lists through the wrong interest scope — D0 forbids the kernel knowing
 /// about NIP-51 mute semantics.
-const SELF_KINDS_TAILING: &[u32] = &[0, 3, 10002, 10006];
+const SELF_KINDS_TAILING: &[u32] = &[0, 3, 10002, 10006, 10007];
 
 impl Kernel {
     pub(crate) fn startup_requests(&mut self) -> Vec<OutboundMessage> {
@@ -110,7 +118,7 @@ impl Kernel {
         // ── Reactive tailing self-kind subscription ──────────────────────
         //
         // One Tailing interest carrying every account-config kind in
-        // `SELF_KINDS_TAILING` (kinds 0, 3, 10002, 10006). The
+        // `SELF_KINDS_TAILING` (kinds 0, 3, 10002, 10006, 10007). The
         // planner coalesces these into a single REQ on the active
         // account's outbox (NIP-65 write set when known, falling back to
         // `bootstrap_indexer_relays` while the kind:10002 round-trip is
@@ -267,222 +275,10 @@ impl Kernel {
     }
 }
 
+// Bootstrap REQ-emission tests live in a sibling file (kept out of this module
+// body to hold startup.rs under the 500-LOC hard ceiling) but compile as a
+// child `tests` module so they reach the private bootstrap helpers via
+// `super::*`.
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::relay::DEFAULT_VISIBLE_LIMIT;
-    use serde_json::Value;
-
-    const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-
-    /// V-04 Stage 2: install the planner-extension bootstrap relay lanes so
-    /// the planner has somewhere to land the `OneShot + Global` bootstrap
-    /// interests. Production wires these from `bootstrap_urls_for_role` in
-    /// `identity_state::set_configured_relays`; bare
-    /// `Kernel::new` tests must install them directly, matching
-    /// `discovery_tests::install_bootstrap_relays`.
-    ///
-    /// Also clears the `cfg(test)` default `wss://purplepag.es` indexer relay
-    /// so assertions pin discovery REQs to the test bootstrap relay rather
-    /// than collapsing onto the indexer fallback path.
-    fn install_bootstrap_relays(kernel: &mut Kernel) {
-        let lifecycle = kernel.lifecycle_mut();
-        lifecycle.set_indexer_relays(vec![]);
-        lifecycle.set_bootstrap_indexer_relays(vec!["wss://bootstrap-indexer.test/".to_string()]);
-    }
-
-    /// Extract the REQ frames from a list of `OutboundMessage`s. V-04 Stage 2:
-    /// sub-ids are now planner-assigned `sub-<hash>` strings, not the
-    /// human-readable `"profile-target"` / `"self-dm-relays"` / … labels —
-    /// so assertions must grep on filter content (kinds / authors / limit)
-    /// inside `text`, not on sub-id substrings.
-    fn req_filters(msgs: &[OutboundMessage]) -> Vec<Value> {
-        msgs.iter()
-            .filter_map(|m| {
-                let parsed: Value = serde_json::from_str(&m.text).ok()?;
-                let arr = parsed.as_array()?;
-                if arr.first()? != "REQ" {
-                    return None;
-                }
-                arr.get(2).cloned()
-            })
-            .collect()
-    }
-
-    /// True iff at least one REQ in `msgs` carries a filter author-pinned
-    /// to `pk` whose `kinds` array equals `expected_kinds` (order-insensitive)
-    /// and whose `limit` matches `expected_limit` (`None` = no `limit` key).
-    fn has_filter_for(
-        msgs: &[OutboundMessage],
-        pk: &str,
-        expected_kinds: &[u32],
-        expected_limit: Option<u32>,
-    ) -> bool {
-        let want_kinds: std::collections::BTreeSet<u32> = expected_kinds.iter().copied().collect();
-        req_filters(msgs).iter().any(|filter| {
-            let author_ok = filter["authors"] == serde_json::json!([pk]);
-            let kinds_ok = filter["kinds"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|v| v.as_u64().map(|n| n as u32))
-                        .collect::<std::collections::BTreeSet<u32>>()
-                })
-                .map_or(false, |k| k == want_kinds);
-            let limit_ok = match expected_limit {
-                Some(n) => filter["limit"] == serde_json::json!(n),
-                None => filter.get("limit").is_none() || filter["limit"].is_null(),
-            };
-            author_ok && kinds_ok && limit_ok
-        })
-    }
-
-    /// Active-account bootstrap must emit:
-    /// 1. One reactive Tailing REQ for the self-kinds (kinds 0, 3, 10002,
-    ///    10006) pinned to the active account with NO `limit` — fresh data
-    ///    flows in as the account republishes any of them. kind:10000 (mute
-    ///    list) is owned by `MuteRuntimeController` and excluded here.
-    /// 2. A kind:10050 OneShot pinned to the active account with `limit:1`
-    ///    (NIP-17 DM relay list — F-02 cold-start fetch, intentionally
-    ///    NOT folded into the tailing REQ because the DM gift-wrap
-    ///    publish path reads it on-demand, not reactively).
-    ///
-    /// V-04 Stage 2: the bootstrap interests are registered through the
-    /// `InterestRegistry`; the planner compiles them on the next
-    /// `drain_lifecycle_outbound` call. The function itself returns an
-    /// empty `Vec<OutboundMessage>` (zero-cost no-op for the caller's
-    /// `extend`).
-    #[test]
-    fn bootstrap_emits_tailing_self_kinds_plus_dm_relay_oneshot() {
-        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-        install_bootstrap_relays(&mut kernel);
-        kernel.active_account = Some(ALICE.to_string());
-
-        let direct = kernel.active_account_bootstrap_requests();
-        assert!(
-            direct.is_empty(),
-            "active_account_bootstrap_requests must return Vec::new() — \
-             the planner emits the wire frames on the next drain"
-        );
-
-        let msgs = kernel.drain_lifecycle_outbound();
-        assert!(!msgs.is_empty(), "planner must emit bootstrap wire frames");
-
-        // (1) Reactive Tailing self-kinds REQ — kinds [0,3,10002,10006],
-        // pinned to ALICE, NO `limit` (no truncation of mid-session updates).
-        // kind:10000 excluded — owned by MuteRuntimeController.
-        assert!(
-            has_filter_for(&msgs, ALICE, SELF_KINDS_TAILING, None),
-            "bootstrap must emit a Tailing REQ for kinds {:?} pinned to \
-             ALICE with no limit; got REQs: {:#?}",
-            SELF_KINDS_TAILING,
-            req_filters(&msgs),
-        );
-
-        // (2) kind:10050 NIP-17 DM relay list one-shot with `limit:1`.
-        assert!(
-            has_filter_for(&msgs, ALICE, &[10050], Some(1)),
-            "bootstrap must emit a kind:10050 REQ pinned to ALICE with \
-             limit:1; got REQs: {:#?}",
-            req_filters(&msgs),
-        );
-    }
-
-    /// Without an active account, bootstrap is a no-op — the existing
-    /// contract (early return on `None`) must continue to hold, including
-    /// for the new kind:10050 path. Pins the negative case so a future
-    /// "always fetch" refactor that ignores `active_account` is caught.
-    ///
-    /// V-04 Stage 2: the contract now means "no `ensure_sub` calls and no
-    /// trigger enqueued" → the planner has nothing to compile → the next
-    /// `drain_lifecycle_outbound` returns empty.
-    #[test]
-    fn bootstrap_emits_no_dm_relay_list_req_without_active_account() {
-        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-        install_bootstrap_relays(&mut kernel);
-        kernel.active_account = None;
-
-        let direct = kernel.active_account_bootstrap_requests();
-        assert!(direct.is_empty(), "early-return path returns empty");
-
-        let msgs = kernel.drain_lifecycle_outbound();
-        assert!(
-            msgs.is_empty(),
-            "no active account → no bootstrap interests registered → \
-             planner emits no wire frames; got: {:#?}",
-            msgs.iter().map(|m| &m.text).collect::<Vec<_>>()
-        );
-    }
-
-    /// Re-mount must not register additional `(scope, key)` slots in the
-    /// registry. The bootstrap path uses `set_sub` (NOT `ensure_sub`) so the
-    /// slot's author cell is replaced in-place across re-mounts / account
-    /// switches; the SLOT COUNT stays at exactly two (one Tailing self-kinds
-    /// slot + one OneShot kind:10050 slot). Pins the registry-shape
-    /// invariant so a regression that mints fresh slots per call (e.g.
-    /// account-pubkey-derived `SubKey`s) is caught.
-    #[test]
-    fn bootstrap_is_idempotent_under_remount() {
-        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-        install_bootstrap_relays(&mut kernel);
-        kernel.active_account = Some(ALICE.to_string());
-
-        let _ = kernel.active_account_bootstrap_requests();
-        let first_count = kernel.lifecycle_mut().registry_mut().len();
-        assert_eq!(
-            first_count, 2,
-            "two bootstrap slots must be registered (Tailing self-kinds + \
-             OneShot kind:10050)"
-        );
-
-        let _ = kernel.active_account_bootstrap_requests();
-        let second_count = kernel.lifecycle_mut().registry_mut().len();
-        assert_eq!(
-            second_count, first_count,
-            "re-mount must not register additional slots — `set_sub` \
-             replaces in-place"
-        );
-    }
-
-    /// Account-switch eviction: bootstrapping under a different
-    /// `active_account` must replace the prior account's author in the
-    /// slot, not leak it across the switch. This is the V-04 stale-feed
-    /// fix that motivated moving from `ensure_sub` to `set_sub`.
-    #[test]
-    fn account_switch_replaces_self_kinds_author_in_slot() {
-        const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-        install_bootstrap_relays(&mut kernel);
-
-        // Sign in as ALICE — slot carries ALICE.
-        kernel.active_account = Some(ALICE.to_string());
-        let _ = kernel.active_account_bootstrap_requests();
-        let _drained_alice = kernel.drain_lifecycle_outbound();
-
-        // Switch to BOB. The slot count must stay at 2 (set_sub replaces in
-        // place); the author in the Tailing self-kinds REQ must be BOB.
-        kernel.active_account = Some(BOB.to_string());
-        let _ = kernel.active_account_bootstrap_requests();
-        assert_eq!(
-            kernel.lifecycle_mut().registry_mut().len(),
-            2,
-            "account switch must NOT mint additional registry slots"
-        );
-
-        let msgs = kernel.drain_lifecycle_outbound();
-        assert!(
-            has_filter_for(&msgs, BOB, SELF_KINDS_TAILING, None),
-            "after account switch, the Tailing self-kinds REQ must be \
-             pinned to BOB (not ALICE); got REQs: {:#?}",
-            req_filters(&msgs)
-        );
-        // ALICE must no longer appear as an author in any newly-emitted
-        // bootstrap REQ — her slot was replaced, not duplicated.
-        assert!(
-            !has_filter_for(&msgs, ALICE, SELF_KINDS_TAILING, None),
-            "after account switch, ALICE must NOT still be subscribed to her \
-             own self-kinds (stale-feed leak); got REQs: {:#?}",
-            req_filters(&msgs)
-        );
-    }
-}
+#[path = "startup_tests.rs"]
+mod tests;
