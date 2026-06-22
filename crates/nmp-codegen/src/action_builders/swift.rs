@@ -65,6 +65,12 @@ pub fn render(builders: &[ActionBuilder]) -> String {
         out.push('\n');
         render_one(builder, &mut out);
     }
+    // The `nmp.publish` UNION builders (separate emitter — different encode
+    // shape; see `swift_publish`). Only emitted for the default registry, which
+    // is what `render_default` (and therefore the CLI + drift gate) uses.
+    if std::ptr::eq(builders.as_ptr(), ACTION_BUILDERS.as_ptr()) {
+        crate::action_builders::swift_publish::render_publish(&mut out);
+    }
     out.push_str("}\n");
     out
 }
@@ -128,7 +134,11 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     out.push_str("        correlationId: String");
     for field in builder.fields {
         out.push_str(",\n");
-        out.push_str(&format!("        {}: {}", field.name, swift_param_type(field)));
+        out.push_str(&format!(
+            "        {}: {}",
+            field.name,
+            swift_param_type(field)
+        ));
     }
     out.push_str("\n    ) -> [UInt8] {\n");
 

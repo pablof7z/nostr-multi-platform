@@ -104,15 +104,15 @@ pub struct ActionBuilder {
     pub doc: &'static str,
 }
 
-/// The S3 module trio's flat-table builders (ADR-0064 §3 acceptance scope).
+/// The flat-table builders (ADR-0064 §3 acceptance scope).
 ///
-/// `nmp.publish` carries a FlatBuffers UNION body (`PublishSigned` /
-/// `PublishProfile` / `PublishRaw`) rather than a flat table; its builders are a
-/// deliberate follow-up (the union encode is materially more involved than the
-/// flat-table S3 members and warrants its own slice — see the issue's
-/// STOP-and-report). This registry covers the five flat-table namespaces
-/// end-to-end: every primitive (string, uint, optional string, string vector)
-/// is exercised, so the publish union is the only encode shape left.
+/// `nmp.publish` carries a FlatBuffers UNION body rather than a flat table, so
+/// it does NOT live here — its encode shape (a nested body table + a union type
+/// discriminant) is materially different from the flat-table primitives below.
+/// The publish builders are described by [`PUBLISH_BUILDERS`] and hand-modelled
+/// by the emitters' `render_publish_*` paths. This registry covers the five
+/// flat-table namespaces end-to-end: every primitive (string, uint, optional
+/// string, string vector) is exercised.
 pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     // nip25 — react / unreact (react.fbs / unreact.fbs).
     ActionBuilder {
@@ -121,9 +121,21 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         payload_file_identifier: "N25R",
         payload_schema_version: 1,
         fields: &[
-            PayloadField { name: "targetEventId", kind: FieldKind::Str, optional: false },
-            PayloadField { name: "reaction", kind: FieldKind::Str, optional: false },
-            PayloadField { name: "targetAuthorPubkey", kind: FieldKind::Str, optional: true },
+            PayloadField {
+                name: "targetEventId",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "reaction",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "targetAuthorPubkey",
+                kind: FieldKind::Str,
+                optional: true,
+            },
         ],
         doc: "Publish a NIP-25 reaction to a target event.",
     },
@@ -133,8 +145,16 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         payload_file_identifier: "N25U",
         payload_schema_version: 1,
         fields: &[
-            PayloadField { name: "reactionEventId", kind: FieldKind::Str, optional: false },
-            PayloadField { name: "reason", kind: FieldKind::Str, optional: false },
+            PayloadField {
+                name: "reactionEventId",
+                kind: FieldKind::Str,
+                optional: false,
+            },
+            PayloadField {
+                name: "reason",
+                kind: FieldKind::Str,
+                optional: false,
+            },
         ],
         doc: "Retract a previously-published NIP-25 reaction.",
     },
@@ -146,7 +166,11 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         method: "follow",
         payload_file_identifier: "NF2A",
         payload_schema_version: 1,
-        fields: &[PayloadField { name: "pubkey", kind: FieldKind::Str, optional: false }],
+        fields: &[PayloadField {
+            name: "pubkey",
+            kind: FieldKind::Str,
+            optional: false,
+        }],
         doc: "Follow a single pubkey (NIP-02 contact-list add).",
     },
     ActionBuilder {
@@ -154,7 +178,11 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         method: "unfollow",
         payload_file_identifier: "NF2A",
         payload_schema_version: 1,
-        fields: &[PayloadField { name: "pubkey", kind: FieldKind::Str, optional: false }],
+        fields: &[PayloadField {
+            name: "pubkey",
+            kind: FieldKind::Str,
+            optional: false,
+        }],
         doc: "Unfollow a single pubkey (NIP-02 contact-list remove).",
     },
     ActionBuilder {
@@ -162,7 +190,98 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
         method: "followMany",
         payload_file_identifier: "NFMA",
         payload_schema_version: 1,
-        fields: &[PayloadField { name: "pubkeys", kind: FieldKind::StrVec, optional: true }],
+        fields: &[PayloadField {
+            name: "pubkeys",
+            kind: FieldKind::StrVec,
+            optional: true,
+        }],
         doc: "Follow many pubkeys in one race-free read-modify-write cycle (NIP-02).",
+    },
+];
+
+// ── nmp.publish — the UNION-bodied builders (ADR-0064 §3) ────────────────────
+//
+// `nmp.publish` is the namespace EVERY second-app consumer (hl / tenex-off /
+// podcast, iOS + Android) actually writes through, so the typed builders don't
+// unblock those migrations without it. Unlike the flat tables above, the
+// `PublishPayload` root wraps a UNION body (`publish.fbs`):
+//
+//   table PublishPayload {        // root, file_identifier "NPUB"
+//     schema_version:uint;        // slot 0 — fail-closed tripwire (vtable 4)
+//     body:PublishPayloadBody (required); // union → body_type at slot 1
+//   }                                     //         body offset at slot 2
+//   union PublishPayloadBody { PublishSigned, PublishProfile, PublishRaw }
+//
+// A FlatBuffers union expands to TWO root fields: a `*_type` ubyte discriminant
+// (declaration-order: NONE=0, PublishSigned=1, PublishProfile=2, PublishRaw=3)
+// and the body table offset. The emitters build the nested body table first,
+// then stamp `(schema_version, body_type, body)` into the root — the byte-for-
+// byte twin of `encode_publish_payload` in `nmp-core/src/publish/wire.rs`.
+//
+// Modelling the body shapes as data (rather than special-casing each in the
+// emitter) keeps the Swift/Kotlin emitters' publish paths a single shared
+// template. `PublishSigned` is intentionally NOT a builder: its body carries
+// the OPAQUE canonical NIP-01 bytes a signer produced (signature byte-
+// exactness — never a typed re-encode), which is a pre-signed-event handoff,
+// not a typed-field write. The two typed-field variants consumers use —
+// `PublishRaw` (generic publish) and `PublishProfile` (kind:0 metadata) — are
+// the builders.
+
+/// The union member discriminant (declaration order in `union
+/// PublishPayloadBody`, with NONE=0). Stamped as the `body_type` ubyte at the
+/// `PublishPayload` root.
+pub const PUBLISH_BODY_PUBLISH_PROFILE: u8 = 2;
+/// See [`PUBLISH_BODY_PUBLISH_PROFILE`].
+pub const PUBLISH_BODY_PUBLISH_RAW: u8 = 3;
+
+/// The `nmp.publish` open-registry routing key.
+pub const PUBLISH_NAMESPACE: &str = "nmp.publish";
+/// The `PublishPayload` root buffer file identifier.
+pub const PUBLISH_FILE_IDENTIFIER: &str = "NPUB";
+/// The `nmp.publish` payload schema version (`nmp_core::publish::wire::SCHEMA_VERSION`).
+pub const PUBLISH_SCHEMA_VERSION: u32 = 1;
+
+/// One `nmp.publish` union-bodied builder.
+///
+/// Each maps to one `PublishPayloadBody` variant. The emitters hand-roll the
+/// nested body table from [`PublishBuilder::body`] (a `BodyShape`), then wrap it
+/// in the `PublishPayload` root with [`PublishBuilder::body_type`].
+pub struct PublishBuilder {
+    /// Host-facing method name (`publishRaw`, `publishProfile`).
+    pub method: &'static str,
+    /// The union discriminant for this body (`PUBLISH_BODY_*`).
+    pub body_type: u8,
+    /// The body table shape the emitter encodes.
+    pub body: BodyShape,
+    /// One-line doc for the generated method.
+    pub doc: &'static str,
+}
+
+/// The shape of a `PublishPayloadBody` variant's body table. Each variant is a
+/// distinct FlatBuffers table layout, so this is a closed enum the emitter
+/// matches on (not a generic field list — the publish body tables nest other
+/// tables: `PublishTarget`, `TagRow`, `ProfileField`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BodyShape {
+    /// `PublishRaw { kind:uint, tags:[TagRow], content:string,
+    /// target:PublishTarget, signer_pubkey:string }`.
+    PublishRaw,
+    /// `PublishProfile { fields:[ProfileField] }`.
+    PublishProfile,
+}
+
+/// The `nmp.publish` builders. See [`PublishBuilder`].
+pub const PUBLISH_BUILDERS: &[PublishBuilder] = &[
+    PublishBuilder {
+        method: "publishRaw",
+        body_type: PUBLISH_BODY_PUBLISH_RAW,
+        body: BodyShape::PublishRaw,
+        doc: "Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).",
+    },
+    PublishBuilder {
+        method: "publishProfile",
+        body_type: PUBLISH_BODY_PUBLISH_PROFILE,
+        body: BodyShape::PublishProfile,
+        doc: "Sign-and-publish a kind:0 profile metadata event for the active account.",
     },
 ];

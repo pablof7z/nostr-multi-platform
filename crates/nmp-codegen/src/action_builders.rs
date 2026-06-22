@@ -23,7 +23,9 @@ use std::path::Path;
 pub mod registry;
 
 pub mod kotlin;
+pub mod kotlin_publish;
 pub mod swift;
+pub mod swift_publish;
 
 pub use registry::{ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS};
 
@@ -45,7 +47,9 @@ impl Platform {
         match s {
             "swift" => Ok(Self::Swift),
             "kotlin" => Ok(Self::Kotlin),
-            other => Err(format!("unknown --platform `{other}` (expected swift|kotlin)")),
+            other => Err(format!(
+                "unknown --platform `{other}` (expected swift|kotlin)"
+            )),
         }
     }
 }

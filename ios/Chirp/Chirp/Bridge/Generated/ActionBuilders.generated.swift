@@ -166,4 +166,88 @@ public enum GeneratedActionBuilders {
             payload: payload
         )
     }
+
+    /// Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).
+    /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishRaw`) for the byte doorway.
+    public static func publishRaw(
+        correlationId: String,
+        kind: UInt32,
+        tags: [[String]],
+        content: String,
+        relays: [String]? = nil,
+        signerPubkey: String? = nil
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let tagRowOffsets: [Offset] = tags.map { row in
+            let valueOffsets = row.map { fbb.create(string: $0) }
+            let valuesVec = fbb.createVector(ofOffsets: valueOffsets)
+            let start = fbb.startTable(with: 1)
+            fbb.add(offset: valuesVec, at: 4) // slot 0: values
+            return Offset(offset: fbb.endTable(at: start))
+        }
+        let tagsVec = fbb.createVector(ofOffsets: tagRowOffsets)
+        let contentOffset = fbb.create(string: content)
+        let signerPubkeyOffset: Offset = signerPubkey.map { fbb.create(string: $0) } ?? Offset()
+        let targetOffset: Offset = {
+            let explicit = (relays?.isEmpty == false)
+            let relayOffsets = (relays ?? []).map { fbb.create(string: $0) }
+            let relaysVec = fbb.createVector(ofOffsets: relayOffsets)
+            let start = fbb.startTable(with: 2)
+            fbb.add(element: explicit, def: false, at: 4) // slot 0: explicit
+            fbb.add(offset: relaysVec, at: 6) // slot 1: relays
+            return Offset(offset: fbb.endTable(at: start))
+        }()
+        let rawStart = fbb.startTable(with: 5)
+        fbb.add(element: kind, def: UInt32(0), at: 4) // slot 0: kind
+        fbb.add(offset: tagsVec, at: 6) // slot 1: tags
+        fbb.add(offset: contentOffset, at: 8) // slot 2: content
+        fbb.add(offset: targetOffset, at: 10) // slot 3: target
+        if signerPubkeyOffset.o != 0 { fbb.add(offset: signerPubkeyOffset, at: 12) } // slot 4: signer_pubkey
+        let bodyOffset = Offset(offset: fbb.endTable(at: rawStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(3), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NPUB")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.publish",
+            payload: payload
+        )
+    }
+
+    /// Sign-and-publish a kind:0 profile metadata event for the active account.
+    /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishProfile`) for the byte doorway.
+    public static func publishProfile(
+        correlationId: String,
+        fields: [(String, String)]
+    ) -> [UInt8] {
+        var fbb = FlatBufferBuilder()
+        let profileFieldOffsets: [Offset] = fields.map { (key, value) in
+            let keyOffset = fbb.create(string: key)
+            let valueOffset = fbb.create(string: value)
+            let start = fbb.startTable(with: 2)
+            fbb.add(offset: keyOffset, at: 4) // slot 0: key
+            fbb.add(offset: valueOffset, at: 6) // slot 1: value
+            return Offset(offset: fbb.endTable(at: start))
+        }
+        let fieldsVec = fbb.createVector(ofOffsets: profileFieldOffsets)
+        let profileStart = fbb.startTable(with: 1)
+        fbb.add(offset: fieldsVec, at: 4) // slot 0: fields
+        let bodyOffset = Offset(offset: fbb.endTable(at: profileStart))
+        let payloadStart = fbb.startTable(with: 3)
+        fbb.add(element: UInt32(1), def: UInt32(0), at: 4) // slot 0: schema_version
+        fbb.add(element: UInt8(2), def: UInt8(0), at: 6) // slot 1: body_type
+        fbb.add(offset: bodyOffset, at: 8) // slot 2: body
+        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))
+        fbb.finish(offset: payloadRoot, fileId: "NPUB")
+        let payload = fbb.sizedByteArray
+        return encodeDispatchEnvelope(
+            correlationId: correlationId,
+            actionNamespace: "nmp.publish",
+            payload: payload
+        )
+    }
 }

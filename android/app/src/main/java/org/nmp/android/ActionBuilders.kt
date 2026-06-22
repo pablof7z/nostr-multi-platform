@@ -171,4 +171,102 @@ object GeneratedActionBuilders {
             payload = payload,
         )
     }
+
+    /// Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).
+    /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishRaw`) for the byte doorway.
+    fun publishRaw(
+        correlationId: String,
+        kind: Int,
+        tags: List<List<String>>,
+        content: String,
+        relays: List<String>? = null,
+        signerPubkey: String? = null,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val tagRowOffsets = IntArray(tags.size) { r ->
+            val row = tags[r]
+            val valueOffsets = IntArray(row.size) { i -> fbb.createString(row[i]) }
+            fbb.startVector(4, valueOffsets.size, 4)
+            for (i in valueOffsets.size - 1 downTo 0) fbb.addOffset(valueOffsets[i])
+            val valuesVec = fbb.endVector()
+            fbb.startTable(1)
+            fbb.addOffset(0, valuesVec, 0) // slot 0: values
+            fbb.endTable()
+        }
+        val tagsVec = run {
+            fbb.startVector(4, tagRowOffsets.size, 4)
+            for (i in tagRowOffsets.size - 1 downTo 0) fbb.addOffset(tagRowOffsets[i])
+            fbb.endVector()
+        }
+        val contentOffset = fbb.createString(content)
+        val signerPubkeyOffset = signerPubkey?.let { fbb.createString(it) } ?: 0
+        val targetRelays = relays ?: emptyList()
+        val explicit = targetRelays.isNotEmpty()
+        val targetRelaysVec = run {
+            val offsets = IntArray(targetRelays.size) { i -> fbb.createString(targetRelays[i]) }
+            fbb.startVector(4, offsets.size, 4)
+            for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
+            fbb.endVector()
+        }
+        fbb.startTable(2)
+        fbb.addBoolean(0, explicit, false) // slot 0: explicit
+        fbb.addOffset(1, targetRelaysVec, 0) // slot 1: relays
+        val targetOffset = fbb.endTable()
+        fbb.startTable(5)
+        fbb.addInt(0, kind, 0) // slot 0: kind
+        fbb.addOffset(1, tagsVec, 0) // slot 1: tags
+        fbb.addOffset(2, contentOffset, 0) // slot 2: content
+        fbb.addOffset(3, targetOffset, 0) // slot 3: target
+        if (signerPubkeyOffset != 0) fbb.addOffset(4, signerPubkeyOffset, 0) // slot 4: signer_pubkey
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 3.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NPUB")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.publish",
+            payload = payload,
+        )
+    }
+
+    /// Sign-and-publish a kind:0 profile metadata event for the active account.
+    /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishProfile`) for the byte doorway.
+    fun publishProfile(
+        correlationId: String,
+        fields: List<Pair<String, String>>,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val profileFieldOffsets = IntArray(fields.size) { i ->
+            val keyOffset = fbb.createString(fields[i].first)
+            val valueOffset = fbb.createString(fields[i].second)
+            fbb.startTable(2)
+            fbb.addOffset(0, keyOffset, 0) // slot 0: key
+            fbb.addOffset(1, valueOffset, 0) // slot 1: value
+            fbb.endTable()
+        }
+        val fieldsVec = run {
+            fbb.startVector(4, profileFieldOffsets.size, 4)
+            for (i in profileFieldOffsets.size - 1 downTo 0) fbb.addOffset(profileFieldOffsets[i])
+            fbb.endVector()
+        }
+        fbb.startTable(1)
+        fbb.addOffset(0, fieldsVec, 0) // slot 0: fields
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 2.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NPUB")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.publish",
+            payload = payload,
+        )
+    }
 }
