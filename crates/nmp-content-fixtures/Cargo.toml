@@ -17,13 +17,19 @@ path = "src/bin/build-bundle.rs"
 name = "build-wire-fixtures"
 path = "src/bin/build-wire-fixtures.rs"
 
+[[bin]]
+name = "build-android-gallery-bundle"
+path = "src/bin/build-android-gallery-bundle.rs"
+
 [dependencies]
 nmp-content = { path = "../nmp-content" }
 nmp-core = { path = "../nmp-core" }
 # Direct dep on nmp-store for RawEvent / VerifiedEvent — the nmp_core::store
 # compat facade is deleted (#1608).
 nmp-store = { path = "../nmp-store" }
-nmp-signers = { path = "../nmp-signers" }
+# Deterministic BIP340 schnorr signing for reproducible fixture bundles
+# (`sign_schnorr_no_aux_rand`); no relay/networking features needed.
+nostr = { workspace = true, features = ["std"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 url = "2.5"

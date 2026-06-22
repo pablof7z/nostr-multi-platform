@@ -9,7 +9,7 @@
 //! `nmp_content::Segment` / `ContentTree` deliberately do **not** derive
 //! serde, and there is no live `ContentTree` FFI projection (T93
 //! "ContentTree FFI ADR" is in flight, not landed). This crate **consumes**
-//! `nmp-content` / `nmp-nip23` / `nmp-signers` unchanged: it runs the real
+//! `nmp-content` / `nmp-nip23` unchanged: it runs the real
 //! tokenizer + NIP-23 decode + recursion guard on each fixture and projects
 //! the result to a serde-derivable `ContentTreeDto` (see [`dto`] +
 //! [`project`]). The Rust side does all real content work; only the
@@ -24,8 +24,9 @@
 //! so STAGE 3 ships it as an app resource (no build-order dependency on a
 //! `target/`-relative artifact).
 //!
-//! Every event is signed in-process by `nmp_signers::LocalKeySigner` with
-//! deterministic test keys and is **never** published to a relay.
+//! Every event is signed in-process with deterministic test keys via BIP340
+//! schnorr **without auxiliary randomness** (so signatures are byte-stable
+//! across runs) and is **never** published to a relay.
 
 pub mod dto;
 pub mod embed_store;
