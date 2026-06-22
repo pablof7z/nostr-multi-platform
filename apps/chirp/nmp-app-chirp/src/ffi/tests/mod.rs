@@ -17,3 +17,4 @@ mod register;
 mod social;
 mod tag_feed;
 mod typed_actions;
+mod typed_only_doorway;
