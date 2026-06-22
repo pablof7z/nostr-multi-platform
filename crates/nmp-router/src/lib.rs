@@ -52,6 +52,7 @@ mod relay_admission;
 mod router;
 
 pub mod publish_relay_list;
+pub mod wire;
 
 pub use block_relay::{
     register_block_relay_actions, BlockRelayAction, BlockRelayInput, UnblockRelayAction,

@@ -5003,6 +5003,7 @@ version = "0.8.0"
 name = "nmp-router"
 version = "0.8.0"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-kinds",
  "nmp-planner",

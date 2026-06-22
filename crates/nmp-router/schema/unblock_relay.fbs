@@ -1,0 +1,26 @@
+namespace nmp.router;
+
+// ADR-0064 (#1756) — typed FlatBuffers payload for the `nmp.nip51.unblock_relay`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch).
+//
+// Structural sibling of `block_relay.fbs` (kind:10006). Kept as a distinct
+// table/identifier so the two namespaces cannot decode each other's buffers.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-router/src/wire/generated \
+//         crates/nmp-router/schema/unblock_relay.fbs
+
+table UnblockRelayPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The relay URL to unblock. Must be `wss://`; canonicalised by the module.
+  url:string (required);
+  // Active account hex pubkey — used to read the current blocked set.
+  account_pubkey:string (required);
+}
+
+file_identifier "NUBL";
+root_type UnblockRelayPayload;

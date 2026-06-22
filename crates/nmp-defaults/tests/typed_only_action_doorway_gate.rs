@@ -40,14 +40,16 @@ use nmp_ffi::{nmp_app_free, nmp_app_new};
 /// ride the JSON doorway (`nmp_app_dispatch_action`) only and are rejected
 /// `NotTypedCapable` by the byte doorway. This is the ADR-0064 migration
 /// backlog. It MUST only shrink: each removal is a crate that finished its
-/// typed migration (`nmp-router` owns all three — block/unblock relay and the
-/// NIP-65 relay-list publish). When this is empty, ADR-0064 Cut B can delete the
-/// JSON doorway and this whole gate collapses to "untyped set is empty".
-const MIGRATION_PENDING_UNTYPED: &[&str] = &[
-    "nmp.nip51.block_relay",
-    "nmp.nip51.unblock_relay",
-    "nmp.nip65.publish_relay_list",
-];
+/// typed migration.
+///
+/// As of #1756 this allowlist is EMPTY: the last three pending modules — the
+/// `nmp-router`-owned `nmp.nip51.block_relay`, `nmp.nip51.unblock_relay`, and
+/// `nmp.nip65.publish_relay_list` — are now typed, so EVERY canonical default
+/// module decodes a typed FlatBuffers payload. The gate below now effectively
+/// asserts "the untyped set is empty", the Cut-B end state: ADR-0064 Cut B can
+/// delete the JSON doorway and this whole gate collapses to that assertion. A
+/// re-grown allowlist entry would be a regression.
+const MIGRATION_PENDING_UNTYPED: &[&str] = &[];
 
 /// THE production gate: after the canonical `register_defaults` wiring, the
 /// untyped (JSON-doorway-only) module set is EXACTLY the frozen migration

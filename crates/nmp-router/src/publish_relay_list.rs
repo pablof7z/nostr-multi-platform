@@ -66,7 +66,10 @@
 //! across the move from `nmp-nip65` so callers do not need to change.
 
 use nmp_core::kinds::KIND_RELAY_LIST;
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRegistrar, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection,
+};
 use nmp_signer_iface::UnsignedEvent;
 use nmp_core::{canonical_relay_url, ActorCommand};
 use serde::{de, Deserialize, Deserializer, Serialize};
@@ -260,6 +263,14 @@ pub struct PublishRelayListAction;
 impl ActionModule for PublishRelayListAction {
     const NAMESPACE: &'static str = "nmp.nip65.publish_relay_list";
     type Action = PublishRelayListInput;
+
+    /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<PublishRelayListInput as ActionPayload>::decode(bytes))
+    }
 
     /// Reject an empty relay set — a kind:10002 with zero `r` tags is the
     /// canonical "I cleared my NIP-65 metadata" signal in
