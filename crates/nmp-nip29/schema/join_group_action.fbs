@@ -1,0 +1,37 @@
+namespace nmp.nip29;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the `nmp.nip29.join`
+// `ActionModule` (publishes a kind:9021 join-request).
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
+// decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch). WRITE-direction action payload — distinct from the
+// READ-direction snapshot sidecars (group_chat.fbs / …).
+//
+// Self-contained (no `include`); the `GroupRef` sub-table is declared inline so
+// each action schema generates an independent `_generated.rs` module. Regenerate
+// the checked-in Rust bindings only with the workspace FlatBuffers pin
+// (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/join_group_action.fbs
+
+// NIP-29 group identity (`{host_relay_url, local_id}`). Non-emptiness / charset
+// validation stays in `start()`; this is a pure shape decode.
+table GroupRef {
+  host_relay_url:string (required);
+  local_id:string (required);
+}
+
+table JoinGroupPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  group:GroupRef (required);
+  // Optional invite code; presence preserved (absent -> None,
+  // present-empty -> Some("")).
+  invite_code:string;
+  // Optional human-readable reason; absent => empty content.
+  reason:string;
+}
+
+file_identifier "N29J";
+root_type JoinGroupPayload;

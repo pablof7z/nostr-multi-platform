@@ -1,6 +1,8 @@
 //! User-sent content action: chat (kind:9).
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -32,9 +34,19 @@ fn post_chat_message_plan(action: &PostChatMessageInput) -> PublishPlan {
         tags.push(vec!["previous".into(), previous_tag_prefix(prefix)]);
     }
     if let Some(reply) = &action.reply_to_event_id {
-        tags.push(vec!["e".into(), reply.clone(), String::new(), "reply".into()]);
+        tags.push(vec![
+            "e".into(),
+            reply.clone(),
+            String::new(),
+            "reply".into(),
+        ]);
     }
-    PublishPlan::pinned(&action.group, KIND_CHAT_MESSAGE, action.content.clone(), tags)
+    PublishPlan::pinned(
+        &action.group,
+        KIND_CHAT_MESSAGE,
+        action.content.clone(),
+        tags,
+    )
 }
 
 #[derive(Default)]
@@ -42,12 +54,18 @@ pub struct PostChatMessageAction;
 impl ActionModule for PostChatMessageAction {
     const NAMESPACE: &'static str = "nmp.nip29.post_chat_message";
     type Action = PostChatMessageInput;
-    fn start(
-        &self,
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
-        action.group.require_routable().map_err(ActionRejection::Invalid)?;
+
+    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<PostChatMessageInput as ActionPayload>::decode(bytes))
+    }
+
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+        action
+            .group
+            .require_routable()
+            .map_err(ActionRejection::Invalid)?;
         if action.content.is_empty() {
             return Err(ActionRejection::Invalid("empty chat message".into()));
         }
@@ -62,8 +80,7 @@ impl ActionModule for PostChatMessageAction {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(post_chat_message_plan(&action)
-            .into_actor_command(Some(correlation_id.to_string()))?);
+        send(post_chat_message_plan(&action).into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
@@ -84,7 +101,7 @@ mod tests {
     #[test]
     fn well_formed_passes_validator() {
         let mut ctx = ActionContext::default();
-        assert!(PostChatMessageAction.start(&mut ctx,input()).is_ok());
+        assert!(PostChatMessageAction.start(&mut ctx, input()).is_ok());
     }
 
     #[test]
@@ -95,7 +112,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            PostChatMessageAction.start(&mut ctx,action),
+            PostChatMessageAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -108,7 +125,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            PostChatMessageAction.start(&mut ctx,action),
+            PostChatMessageAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -121,7 +138,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            PostChatMessageAction.start(&mut ctx,action),
+            PostChatMessageAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -132,14 +149,24 @@ mod tests {
         use std::cell::RefCell;
 
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        PostChatMessageAction.execute(input(), "cid-99", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
-        .expect("well-formed input executes");
+        PostChatMessageAction
+            .execute(input(), "cid-99", &|cmd| {
+                captured.borrow_mut().push(cmd);
+            })
+            .expect("well-formed input executes");
         let cmds = captured.into_inner();
-        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        assert_eq!(
+            cmds.len(),
+            1,
+            "executor must send exactly one command, got {cmds:?}"
+        );
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, .. } => {
+            ActorCommand::PublishUnsignedEventToRelays {
+                event,
+                relays,
+                correlation_id,
+                ..
+            } => {
                 assert_eq!(event.kind, KIND_CHAT_MESSAGE, "must emit kind:9");
                 assert_eq!(
                     relays,
@@ -147,7 +174,10 @@ mod tests {
                     "must be pinned to the group's host relay"
                 );
                 assert!(
-                    event.tags.iter().any(|t| t == &["h".to_string(), "room".to_string()]),
+                    event
+                        .tags
+                        .iter()
+                        .any(|t| t == &["h".to_string(), "room".to_string()]),
                     "must carry the ['h', local_id] group tag, got {:?}",
                     event.tags
                 );

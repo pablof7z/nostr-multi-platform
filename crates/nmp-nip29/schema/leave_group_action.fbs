@@ -1,0 +1,28 @@
+namespace nmp.nip29;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the `nmp.nip29.leave`
+// `ActionModule` (publishes a kind:9022 leave-request).
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
+// decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Self-contained (no `include`). Regenerate the checked-in Rust bindings only
+// with the workspace FlatBuffers pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/leave_group_action.fbs
+
+table GroupRef {
+  host_relay_url:string (required);
+  local_id:string (required);
+}
+
+table LeaveGroupPayload {
+  schema_version:uint;
+  group:GroupRef (required);
+  // Optional human-readable reason; absent => empty content.
+  reason:string;
+}
+
+file_identifier "N29L";
+root_type LeaveGroupPayload;

@@ -1,0 +1,50 @@
+namespace nmp.nip29;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// `nmp.nip29.create_public_group` `ActionModule` (publishes a kind:9007 create
+// followed by a kind:9002 metadata edit).
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
+// decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Self-contained (no `include`). Regenerate the checked-in Rust bindings only
+// with the workspace FlatBuffers pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/create_public_group_action.fbs
+
+table GroupRef {
+  host_relay_url:string (required);
+  local_id:string (required);
+}
+
+// `"public"` / `"private"` NIP-29 visibility (defaults to Public).
+enum GroupVisibility:byte {
+  Public = 0,
+  Private = 1,
+}
+
+// `"open"` / `"closed"` NIP-29 access (defaults to Open).
+enum GroupAccess:byte {
+  Open = 0,
+  Closed = 1,
+}
+
+table CreatePublicGroupPayload {
+  schema_version:uint;
+  group:GroupRef (required);
+  // `start()` rejects an empty (trimmed) name — preserved verbatim.
+  name:string (required);
+  // Optional metadata; presence preserved (absent -> None,
+  // present-empty -> Some("")). The `start()` validator never rejects on
+  // these, so a collapse here would be invisible — but presence is preserved
+  // to keep the round-trip lossless.
+  about:string;
+  picture:string;
+  // Scalars default to 0 (Public / Open) when absent.
+  visibility:GroupVisibility;
+  access:GroupAccess;
+}
+
+file_identifier "N29P";
+root_type CreatePublicGroupPayload;
