@@ -108,6 +108,23 @@ jobs:
           cargo run --quiet -p nmp-codegen -- gen keyed-ref-cache --platform kotlin --check \
             --out android/app/src/main/java/org/nmp/android/KeyedRefCache.kt
 
+      # ADR-0064 §3 (#1783) — the generated typed action-builders
+      # (`ActionBuilders.generated.swift` + `ActionBuilders.kt`) are DERIVED from
+      # the `ACTION_BUILDERS` registry. They emit the host-facing typed write
+      # builders that construct the `DispatchEnvelope` bytes for the native byte
+      # doorway (`nmp_app_dispatch_action_bytes`, #1752) so the iOS/Android shells
+      # never spell an `action_namespace` or hand-assemble FlatBuffers. Fails any
+      # PR whose checked-in builders differ from a fresh run, so the builders
+      # cannot drift from the registered modules (and stay in sync across the two
+      # hosts). The wire shape they emit is round-trip-tested against the S2
+      # `decode_dispatch_envelope` in `nmp-nip25`'s dispatch_integration test.
+      - name: Check action-builder codegen is up to date
+        run: |
+          cargo run --quiet -p nmp-codegen -- gen action-builders --platform swift --check \
+            --out ios/Chirp/Chirp/Bridge/Generated/ActionBuilders.generated.swift
+          cargo run --quiet -p nmp-codegen -- gen action-builders --platform kotlin --check \
+            --out android/app/src/main/java/org/nmp/android/ActionBuilders.kt
+
   # PR-B (#991/#979) — Rust flatc transport-binding drift gate. The checked-in
   # bindings at crates/nmp-core/src/transport/generated/nmp_update_generated.rs
   # must be byte-identical to a fresh `flatc --rust` run (rustfmt'd) over
