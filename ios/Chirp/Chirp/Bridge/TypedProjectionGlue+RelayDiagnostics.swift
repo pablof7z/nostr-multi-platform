@@ -32,11 +32,8 @@ extension TypedProjectionGlue {
         RelayDiagnosticsRow(
             relayUrl: row.relayUrl ?? "",
             role: row.role ?? "",
-            roleTone: row.roleTone ?? "",
             connection: row.connection ?? "",
-            connectionTone: row.connectionTone ?? "",
             auth: row.auth ?? "",
-            authTone: row.authTone ?? "",
             totalSubCount: row.totalSubCount,
             activeSubCount: row.activeSubCount,
             eosedSubCount: row.eosedSubCount,
@@ -78,7 +75,6 @@ extension TypedProjectionGlue {
         }
         return RelayConnectionReason(
             kind: reason.kind ?? "",
-            tone: reason.tone ?? "",
             authorPubkeys: reason.authorPubkeys.map { $0 ?? "" },
             authorTotal: reason.authorTotal,
             kinds: kinds,
@@ -94,7 +90,6 @@ extension TypedProjectionGlue {
             relayUrl: sub.relayUrl ?? "",
             filterSummary: sub.filterSummary ?? "",
             state: sub.state ?? "",
-            stateTone: sub.stateTone ?? "",
             consumerCount: sub.consumerCount,
             eventsRx: sub.eventsRx,
             eoseObserved: sub.eoseObserved,
@@ -111,7 +106,6 @@ extension TypedProjectionGlue {
         RelayDiagnosticsInterest(
             key: interest.key ?? "",
             state: interest.state ?? "",
-            stateTone: interest.stateTone ?? "",
             refcount: interest.refcount,
             cacheCoverage: interest.cacheCoverage ?? "",
             relayUrls: interest.relayUrls.map { $0 ?? "" }

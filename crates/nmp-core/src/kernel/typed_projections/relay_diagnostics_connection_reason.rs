@@ -18,8 +18,6 @@ use super::generated::nmp::kernel as fb;
 pub struct ConnectionReasonRow {
     /// Stable machine tag: `"nip65"` / `"hint"` / `"app_relay"` / … / `"blocked"` / `"interest"`.
     pub kind: String,
-    /// Semantic hue key (`"ok"` / `"warn"` / `"accent"` / `"muted"`).
-    pub tone: String,
     /// Hex pubkeys of relevant authors (capped at 8).
     pub author_pubkeys: Vec<String>,
     /// Exact author total (>= `author_pubkeys.len()`). Zero when not applicable.
@@ -35,7 +33,6 @@ pub(super) fn create_connection_reason<'a>(
     row: &ConnectionReasonRow,
 ) -> WIPOffset<fb::RelayConnectionReason<'a>> {
     let kind = fbb.create_string(&row.kind);
-    let tone = fbb.create_string(&row.tone);
     let pubkey_offsets: Vec<WIPOffset<&str>> = row
         .author_pubkeys
         .iter()
@@ -48,7 +45,6 @@ pub(super) fn create_connection_reason<'a>(
         fbb,
         &fb::RelayConnectionReasonArgs {
             kind: Some(kind),
-            tone: Some(tone),
             author_pubkeys: Some(author_pubkeys),
             author_total: row.author_total,
             kinds: Some(kinds),
@@ -75,7 +71,6 @@ pub(super) fn connection_reason_from_fb(r: fb::RelayConnectionReason<'_>) -> Con
     }
     ConnectionReasonRow {
         kind: r.kind().unwrap_or_default().to_string(),
-        tone: r.tone().unwrap_or_default().to_string(),
         author_pubkeys,
         author_total: r.author_total(),
         kinds,

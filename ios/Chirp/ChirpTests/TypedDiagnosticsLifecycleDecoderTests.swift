@@ -36,12 +36,11 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         let row = snap.relays[0]
         XCTAssertEqual(row.relayUrl, "wss://typed-diag.example")
         // Raw decoded fields (aim.md §62: no pre-formatted strings on wire).
+        // #1768 — no semantic tone on the wire; the shell derives its own hue
+        // from these raw tokens via `DiagnosticsTone`.
         XCTAssertEqual(row.role, "content")
-        XCTAssertEqual(row.roleTone, "primary")
         XCTAssertEqual(row.connection, "connected")
-        XCTAssertEqual(row.connectionTone, "ok")
         XCTAssertEqual(row.auth, "ok")
-        XCTAssertEqual(row.authTone, "ok")
         // Shell-side computed display labels derived from the raw fields above.
         XCTAssertEqual(row.shortUrl, "typed-diag.example")
         XCTAssertEqual(row.roleLabel, "Content")
@@ -78,7 +77,6 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         // Raw decoded fields + shell-side computed labels.
         XCTAssertEqual(sub.state, "open")
         XCTAssertEqual(sub.stateLabel, "Open")
-        XCTAssertEqual(sub.stateTone, "ok")
         XCTAssertEqual(sub.consumerCount, 1)
         XCTAssertEqual(sub.consumerCountLabel, "1 consumer")
         XCTAssertEqual(sub.eventsRx, 34)
@@ -99,7 +97,6 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         let interest = snap.interests[0]
         XCTAssertEqual(interest.key, "typed-interest")
         XCTAssertEqual(interest.state, "Typed Active")
-        XCTAssertEqual(interest.stateTone, "ok")
         XCTAssertEqual(interest.refcount, 3)
         XCTAssertEqual(interest.cacheCoverage, "typed 80%")
         XCTAssertEqual(interest.relayUrls, ["wss://typed-a", "wss://typed-b"])
@@ -213,14 +210,12 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         let subRelayUrl = fbb.create(string: "wss://typed-diag.example")
         let subFilter = fbb.create(string: "typed filter")
         let subState = fbb.create(string: "open")
-        let subStateTone = fbb.create(string: "ok")
         let sub = nmp_kernel_RelayDiagnosticsWireSub.createRelayDiagnosticsWireSub(
             &fbb,
             wireIdOffset: subWireId,
             relayUrlOffset: subRelayUrl,
             filterSummaryOffset: subFilter,
             stateOffset: subState,
-            stateToneOffset: subStateTone,
             consumerCount: 1,
             eventsRx: 34,
             eoseObserved: true,
@@ -237,22 +232,16 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         // carries raw kind numbers the shell renders via `discoveryKindsLabel`.
         let relayUrl = fbb.create(string: "wss://typed-diag.example")
         let role = fbb.create(string: "content")
-        let roleTone = fbb.create(string: "primary")
         let connection = fbb.create(string: "connected")
-        let connTone = fbb.create(string: "ok")
         let auth = fbb.create(string: "ok")
-        let authTone = fbb.create(string: "ok")
         let lastError = fbb.create(string: "typed boom")
         let discoveryKindsVec = fbb.createVector([UInt64(0), UInt64(10002)])
         let row = nmp_kernel_RelayDiagnosticsRow.createRelayDiagnosticsRow(
             &fbb,
             relayUrlOffset: relayUrl,
             roleOffset: role,
-            roleToneOffset: roleTone,
             connectionOffset: connection,
-            connectionToneOffset: connTone,
             authOffset: auth,
-            authToneOffset: authTone,
             totalSubCount: 7,
             activeSubCount: 5,
             eosedSubCount: 3,
@@ -272,7 +261,6 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         // Interest row with a 2-element relay-url string vector.
         let iKey = fbb.create(string: "typed-interest")
         let iState = fbb.create(string: "Typed Active")
-        let iTone = fbb.create(string: "ok")
         let iCoverage = fbb.create(string: "typed 80%")
         let urlA = fbb.create(string: "wss://typed-a")
         let urlB = fbb.create(string: "wss://typed-b")
@@ -281,7 +269,6 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
             &fbb,
             keyOffset: iKey,
             stateOffset: iState,
-            stateToneOffset: iTone,
             refcount: 3,
             cacheCoverageOffset: iCoverage,
             relayUrlsVectorOffset: urlsVec)
@@ -339,20 +326,14 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
 
         let relayUrl = fbb.create(string: "wss://typed-info.example")
         let role = fbb.create(string: "content")
-        let roleTone = fbb.create(string: "primary")
         let connection = fbb.create(string: "connected")
-        let connTone = fbb.create(string: "ok")
         let auth = fbb.create(string: "ok")
-        let authTone = fbb.create(string: "ok")
         let row = nmp_kernel_RelayDiagnosticsRow.createRelayDiagnosticsRow(
             &fbb,
             relayUrlOffset: relayUrl,
             roleOffset: role,
-            roleToneOffset: roleTone,
             connectionOffset: connection,
-            connectionToneOffset: connTone,
             authOffset: auth,
-            authToneOffset: authTone,
             totalSubCount: 0,
             activeSubCount: 0,
             eosedSubCount: 0,

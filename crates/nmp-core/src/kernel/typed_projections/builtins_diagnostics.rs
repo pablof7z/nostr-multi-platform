@@ -53,7 +53,6 @@ fn wire_sub_row(sub: &super::super::relay_diagnostics::RelayDiagnosticsWireSub) 
         relay_url: sub.relay_url.clone(),
         filter_summary: sub.filter_summary.clone(),
         state: sub.state.clone(),
-        state_tone: sub.state_tone.clone(),
         consumer_count: sub.consumer_count,
         events_rx: sub.events_rx,
         eose_observed: sub.eose_observed,
@@ -69,11 +68,8 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
     RelayRow {
         relay_url: row.relay_url.clone(),
         role: row.role.clone(),
-        role_tone: row.role_tone.clone(),
         connection: row.connection.clone(),
-        connection_tone: row.connection_tone.clone(),
         auth: row.auth.clone(),
-        auth_tone: row.auth_tone.clone(),
         total_sub_count: row.total_sub_count,
         active_sub_count: row.active_sub_count,
         eosed_sub_count: row.eosed_sub_count,
@@ -95,7 +91,6 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
             .iter()
             .map(|r| ConnectionReasonRow {
                 kind: r.kind.clone(),
-                tone: r.tone.clone(),
                 author_pubkeys: r.author_pubkeys.clone(),
                 author_total: r.author_total,
                 kinds: r.kinds.clone(),
@@ -129,7 +124,6 @@ fn interest_row(row: &super::super::relay_diagnostics::RelayDiagnosticsInterest)
     InterestRow {
         key: row.key.clone(),
         state: row.state.clone(),
-        state_tone: row.state_tone.clone(),
         refcount: row.refcount,
         cache_coverage: row.cache_coverage.clone(),
         relay_urls: row.relay_urls.clone(),

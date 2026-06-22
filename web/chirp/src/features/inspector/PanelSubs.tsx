@@ -1,9 +1,11 @@
 import { For, Show } from "solid-js";
 import type { DecodedLogicalInterest, DecodedWireSub } from "../../nmp/updateFrame";
+import { interestStateTone, wireSubStateTone } from "../../nmp/relayDiagnosticsTone";
 
 function LogicalRow(props: { interest: DecodedLogicalInterest }) {
   const i = props.interest;
-  const tone = i.stateTone ?? "muted";
+  // #1768 — derive the hue shell-side from the raw `state` token.
+  const tone = interestStateTone(i.state);
   return (
     <div class="ins-sub-row">
       <div class="ins-sub-header">
@@ -26,7 +28,8 @@ function LogicalRow(props: { interest: DecodedLogicalInterest }) {
 
 function WireRow(props: { sub: DecodedWireSub }) {
   const s = props.sub;
-  const tone = s.stateTone ?? "muted";
+  // #1768 — derive the hue shell-side from the raw `state` token.
+  const tone = wireSubStateTone(s.state);
   return (
     <div class="ins-sub-row">
       <div class="ins-sub-header">

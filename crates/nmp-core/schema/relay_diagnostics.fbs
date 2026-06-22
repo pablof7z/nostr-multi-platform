@@ -59,10 +59,8 @@ table RelayDiagnosticsWireSub {
   // Filter prose, propagated unchanged from `WireSub.filter_summary`.
   filter_summary:string;
   // Raw state string (`"open"` / `"pending"` / `"closed"` / …).
-  // Shells title-case for display.
+  // Shells title-case for display and derive their own state hue.
   state:string;
-  // Semantic state hue (`"ok"` / `"warn"` / `"muted"` / `"error"`).
-  state_tone:string;
   // Raw consumer count. Shells format as "N consumer(s)" or empty when zero.
   consumer_count:uint;
   // Raw events received counter. Shells format as compact count when > 0.
@@ -132,9 +130,6 @@ table RelayConnectionReason {
   // `"account_write"` / `"indexer"` / `"app_relay"` / `"debug"` /
   // `"bootstrap"` / `"blocked"` / `"interest"`.
   kind:string;
-  // Semantic hue key reusing the existing tone vocabulary
-  // (`"ok"` / `"warn"` / `"accent"` / `"muted"`).
-  tone:string;
   // Hex pubkeys of authors relevant to this reason (capped at 8).
   // Non-empty for `"nip65"` and `"interest"` variants.
   author_pubkeys:[string];
@@ -154,20 +149,14 @@ table RelayDiagnosticsRow {
   // by stripping `ws[s]://` and trailing `/`.
   relay_url:string;
   // Raw role string (`"content"` / `"indexer"` / `"wallet"` / `"outbox"` / …).
-  // Shells title-case for display.
+  // Shells title-case for display and derive their own role hue.
   role:string;
-  // Semantic role hue (`"primary"` / `"write"` / `"accent"` / `"secondary"`).
-  role_tone:string;
   // Raw connection string (`"connected"` / `"reconnecting"` / `"disconnected"` / …).
-  // Shells title-case for display.
+  // Shells title-case for display and derive their own connection hue.
   connection:string;
-  // Semantic connection hue (`"ok"` / `"warn"` / `"error"` / `"muted"`).
-  connection_tone:string;
   // Raw auth string (`"ok"` / `"pending"` / `"required"` / `"—"` / …).
-  // Shells title-case for display (pass through `"—"` as-is).
+  // Shells title-case for display (pass through `"—"` as-is) and derive their own hue.
   auth:string;
-  // Semantic auth hue (`"ok"` / `"warn"` / `"muted"`).
-  auth_tone:string;
   // Total wire subscriptions known to this relay.
   total_sub_count:uint;
   // Wire subscriptions in an active state.
@@ -216,8 +205,6 @@ table RelayDiagnosticsRow {
 table RelayDiagnosticsInterest {
   key:string;
   state:string;
-  // Semantic state hue (`"ok"` / `"warn"` / `"muted"`).
-  state_tone:string;
   refcount:uint;
   cache_coverage:string;
   relay_urls:[string];

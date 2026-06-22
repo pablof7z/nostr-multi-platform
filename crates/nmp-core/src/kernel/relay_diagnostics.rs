@@ -35,14 +35,12 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 
 mod discovery;
-mod format;
 mod info;
 mod notice;
 mod reasons;
 
 use super::{Kernel, RelayStatus, WireSubscriptionStatus};
 use discovery::discovery_kinds_for_subs;
-use format::{auth_tone, connection_tone, interest_state_tone, role_tone, state_tone};
 pub(in crate::kernel) use info::RelayDiagnosticsInfo;
 pub(in crate::kernel) use notice::RelayDiagnosticsNotice;
 use reasons::{build_reasons, RelayConnectionReason};
@@ -68,20 +66,14 @@ pub(super) struct RelayDiagnosticsRow {
     /// Raw role string: `"content"`, `"indexer"`, `"wallet"`, `"outbox"`, etc.
     /// Shells title-case for display.
     pub(super) role: String,
-    /// Semantic role hue key — one of `"primary"`, `"write"`, `"accent"`,
-    /// `"secondary"`. The shell maps it to a Color enum (UI styling is the
-    /// shell's job; the *decision* of which class this row is in lives here).
-    pub(super) role_tone: String,
     /// Raw connection string: `"connected"`, `"reconnecting"`,
-    /// `"disconnected"`, `"unknown"`, etc. Shells title-case for display.
+    /// `"disconnected"`, `"unknown"`, etc. Shells title-case for display and
+    /// derive their own connection hue.
     pub(super) connection: String,
-    /// Semantic connection hue: `"ok" | "warn" | "error" | "muted"`.
-    pub(super) connection_tone: String,
     /// Raw auth string: `"ok"`, `"pending"`, `"required"`, `"—"`, etc.
-    /// Shells title-case for display (pass-through `"—"` as-is).
+    /// Shells title-case for display (pass-through `"—"` as-is) and derive
+    /// their own hue.
     pub(super) auth: String,
-    /// Semantic auth hue: `"ok" | "warn" | "muted"`.
-    pub(super) auth_tone: String,
     /// Total wire subscriptions known to this relay.
     pub(super) total_sub_count: u32,
     /// Wire subscriptions in an active state (`open` / `live` / `active` /
@@ -147,10 +139,8 @@ pub(super) struct RelayDiagnosticsWireSub {
     /// Filter prose, propagated unchanged from `WireSub.filter_summary`.
     pub(super) filter_summary: String,
     /// Raw state string, e.g. `"open"`, `"pending"`, `"closed"`.
-    /// Shells title-case for display.
+    /// Shells title-case for display and derive their own state hue.
     pub(super) state: String,
-    /// Semantic state hue: `"ok" | "warn" | "muted" | "error"`.
-    pub(super) state_tone: String,
     /// Raw consumer count. Shells format as `"N consumer(s)"` or empty
     /// string when zero.
     pub(super) consumer_count: u32,
@@ -171,15 +161,13 @@ pub(super) struct RelayDiagnosticsWireSub {
     pub(super) close_reason: Option<String>,
 }
 
-/// Enriched logical-interest row. The base `LogicalInterestStatus` already
-/// has prose `state` / `cache_coverage` strings; we add the semantic hue
-/// tone so the shell never branches on the state keyword.
+/// Logical-interest row. The base `LogicalInterestStatus` already has prose
+/// `state` / `cache_coverage` strings; shells derive their own hue from the
+/// raw `state` keyword.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(super) struct RelayDiagnosticsInterest {
     pub(super) key: String,
     pub(super) state: String,
-    /// Semantic state hue: `"ok" | "warn" | "muted"`.
-    pub(super) state_tone: String,
     pub(super) refcount: u32,
     pub(super) cache_coverage: String,
     pub(super) relay_urls: Vec<String>,
@@ -194,7 +182,7 @@ pub(super) struct RelayDiagnosticsSnapshot {
     /// never re-sorts.
     pub(super) relays: Vec<RelayDiagnosticsRow>,
     /// Pre-rolled interest rows — same prose as the legacy
-    /// `LogicalInterestStatus` projection plus the semantic state tone.
+    /// `LogicalInterestStatus` projection.
     pub(super) interests: Vec<RelayDiagnosticsInterest>,
 }
 
@@ -257,7 +245,6 @@ impl Kernel {
             .logical_interests()
             .into_iter()
             .map(|interest| RelayDiagnosticsInterest {
-                state_tone: interest_state_tone(&interest.state).to_string(),
                 key: interest.key,
                 state: interest.state,
                 refcount: interest.refcount,
@@ -413,11 +400,8 @@ fn finish_row(
     RelayDiagnosticsRow {
         relay_url,
         role: role.to_string(),
-        role_tone: role_tone(role).to_string(),
         connection: connection.to_string(),
-        connection_tone: connection_tone(connection).to_string(),
         auth: auth.to_string(),
-        auth_tone: auth_tone(auth).to_string(),
         total_sub_count,
         active_sub_count,
         eosed_sub_count,
@@ -441,7 +425,6 @@ fn finish_row(
 fn build_wire_sub(s: WireSubscriptionStatus, started_unix_ms: u64) -> RelayDiagnosticsWireSub {
     RelayDiagnosticsWireSub {
         state: s.state.clone(),
-        state_tone: state_tone(&s.state).to_string(),
         consumer_count: s.logical_consumer_count,
         events_rx: s.events_rx,
         eose_observed: s.eose_at_ms.is_some(),

@@ -22,9 +22,9 @@ struct RelayDiagnosticsWireSub: Decodable, Identifiable, Equatable {
     let wireId: String
     let relayUrl: String
     let filterSummary: String
-    /// Raw state string from Rust (e.g. "open", "closed", "pending"). Shell formats.
+    /// Raw state string from Rust (e.g. "open", "closed", "pending"). Shell
+    /// formats AND derives its own hue (see `DiagnosticsTone.wireSubState`).
     let state: String
-    let stateTone: String
     let consumerCount: UInt32
     let eventsRx: UInt64
     let eoseObserved: Bool
@@ -106,14 +106,13 @@ struct RelayDiagnosticsNotice: Decodable, Identifiable, Equatable {
 /// `kindsDisplayLabel`) are computed here in the shell from the machine fields
 /// (aim.md §4.5).
 ///
-/// `kind` is a stable machine tag; `tone` is the semantic hue key
-/// (`"ok"` / `"warn"` / `"accent"` / `"muted"`). `authorPubkeys` carries the
-/// (capped) author pubkey list; `authorTotal` is the exact total count.
-/// `kinds` carries raw kind numbers for interest reasons. `sourceEventId`
-/// carries the hint origin event id when known.
+/// `kind` is a stable machine tag; the shell derives its own semantic hue from
+/// it (see `DiagnosticsTone.reason`). `authorPubkeys` carries the (capped)
+/// author pubkey list; `authorTotal` is the exact total count. `kinds` carries
+/// raw kind numbers for interest reasons. `sourceEventId` carries the hint
+/// origin event id when known.
 struct RelayConnectionReason: Decodable, Equatable {
     let kind: String
-    let tone: String
     let authorPubkeys: [String]
     let authorTotal: UInt32
     /// Raw kind numbers for interest reasons. Non-empty for `"interest"` only.
@@ -152,15 +151,15 @@ struct RelayConnectionReason: Decodable, Equatable {
 /// One rolled-up relay row.
 struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     let relayUrl: String
-    /// Raw role string from Rust (e.g. "content", "indexer", "both"). Shell formats.
+    /// Raw role string from Rust (e.g. "content", "indexer", "both"). Shell
+    /// formats AND derives its own hue (see `DiagnosticsTone.role`).
     let role: String
-    let roleTone: String
-    /// Raw connection string from Rust (e.g. "connected", "closed", "connecting"). Shell formats.
+    /// Raw connection string from Rust (e.g. "connected", "closed",
+    /// "connecting"). Shell formats AND derives its own hue.
     let connection: String
-    let connectionTone: String
-    /// Raw auth string from Rust (e.g. "ok", "pending", "—"). Shell formats.
+    /// Raw auth string from Rust (e.g. "ok", "pending", "—"). Shell formats AND
+    /// derives its own hue.
     let auth: String
-    let authTone: String
     let totalSubCount: UInt32
     let activeSubCount: UInt32
     let eosedSubCount: UInt32
@@ -236,11 +235,11 @@ struct RelayDiagnosticsRow: Decodable, Identifiable, Equatable {
     }
 }
 
-/// Logical interest with semantic tone pre-classified.
+/// Logical interest. The shell derives its own hue from the raw `state` token
+/// (see `DiagnosticsTone.interestState`).
 struct RelayDiagnosticsInterest: Decodable, Identifiable, Equatable {
     let key: String
     let state: String
-    let stateTone: String
     let refcount: UInt32
     let cacheCoverage: String
     let relayUrls: [String]

@@ -69,9 +69,8 @@ pub struct WireSubRow {
     pub wire_id: String,
     pub relay_url: String,
     pub filter_summary: String,
-    /// Raw state string. Shells title-case for display.
+    /// Raw state string. Shells title-case for display and derive their own hue.
     pub state: String,
-    pub state_tone: String,
     /// Raw consumer count. Shells format for display.
     pub consumer_count: u32,
     /// Raw events received counter. Shells format as compact count when > 0.
@@ -90,15 +89,12 @@ pub struct WireSubRow {
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RelayRow {
     pub relay_url: String,
-    /// Raw role string. Shells title-case for display.
+    /// Raw role string. Shells title-case for display and derive their own hue.
     pub role: String,
-    pub role_tone: String,
-    /// Raw connection string. Shells title-case for display.
+    /// Raw connection string. Shells title-case for display and derive their own hue.
     pub connection: String,
-    pub connection_tone: String,
-    /// Raw auth string. Shells title-case for display.
+    /// Raw auth string. Shells title-case for display and derive their own hue.
     pub auth: String,
-    pub auth_tone: String,
     pub total_sub_count: u32,
     pub active_sub_count: u32,
     pub eosed_sub_count: u32,
@@ -147,7 +143,6 @@ pub struct InfoRow {
 pub struct InterestRow {
     pub key: String,
     pub state: String,
-    pub state_tone: String,
     pub refcount: u32,
     pub cache_coverage: String,
     pub relay_urls: Vec<String>,
@@ -170,7 +165,6 @@ fn create_wire_sub<'a>(
     let relay_url = fbb.create_string(&row.relay_url);
     let filter_summary = fbb.create_string(&row.filter_summary);
     let state = fbb.create_string(&row.state);
-    let state_tone = fbb.create_string(&row.state_tone);
     let close_reason = row.close_reason.as_ref().map(|v| fbb.create_string(v));
     fb::RelayDiagnosticsWireSub::create(
         fbb,
@@ -179,7 +173,6 @@ fn create_wire_sub<'a>(
             relay_url: Some(relay_url),
             filter_summary: Some(filter_summary),
             state: Some(state),
-            state_tone: Some(state_tone),
             consumer_count: row.consumer_count,
             events_rx: row.events_rx,
             eose_observed: row.eose_observed,
@@ -254,11 +247,8 @@ fn create_relay_row<'a>(
     let info = row.info.as_ref().map(|i| create_info(fbb, i));
     let relay_url = fbb.create_string(&row.relay_url);
     let role = fbb.create_string(&row.role);
-    let role_tone = fbb.create_string(&row.role_tone);
     let connection = fbb.create_string(&row.connection);
-    let connection_tone = fbb.create_string(&row.connection_tone);
     let auth = fbb.create_string(&row.auth);
-    let auth_tone = fbb.create_string(&row.auth_tone);
     let last_notice = row.last_notice.as_ref().map(|v| fbb.create_string(v));
     let last_error = row.last_error.as_ref().map(|v| fbb.create_string(v));
     let discovery_kinds = fbb.create_vector(&row.discovery_kinds);
@@ -267,11 +257,8 @@ fn create_relay_row<'a>(
         &fb::RelayDiagnosticsRowArgs {
             relay_url: Some(relay_url),
             role: Some(role),
-            role_tone: Some(role_tone),
             connection: Some(connection),
-            connection_tone: Some(connection_tone),
             auth: Some(auth),
-            auth_tone: Some(auth_tone),
             total_sub_count: row.total_sub_count,
             active_sub_count: row.active_sub_count,
             eosed_sub_count: row.eosed_sub_count,
@@ -304,14 +291,12 @@ fn create_interest<'a>(
     let relay_urls = fbb.create_vector(&url_offsets);
     let key = fbb.create_string(&row.key);
     let state = fbb.create_string(&row.state);
-    let state_tone = fbb.create_string(&row.state_tone);
     let cache_coverage = fbb.create_string(&row.cache_coverage);
     fb::RelayDiagnosticsInterest::create(
         fbb,
         &fb::RelayDiagnosticsInterestArgs {
             key: Some(key),
             state: Some(state),
-            state_tone: Some(state_tone),
             refcount: row.refcount,
             cache_coverage: Some(cache_coverage),
             relay_urls: Some(relay_urls),
@@ -386,7 +371,6 @@ fn wire_sub_from_fb(row: fb::RelayDiagnosticsWireSub<'_>) -> WireSubRow {
         relay_url: row.relay_url().unwrap_or_default().to_string(),
         filter_summary: row.filter_summary().unwrap_or_default().to_string(),
         state: row.state().unwrap_or_default().to_string(),
-        state_tone: row.state_tone().unwrap_or_default().to_string(),
         consumer_count: row.consumer_count(),
         events_rx: row.events_rx(),
         eose_observed: row.eose_observed(),
@@ -421,11 +405,8 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
     RelayRow {
         relay_url: row.relay_url().unwrap_or_default().to_string(),
         role: row.role().unwrap_or_default().to_string(),
-        role_tone: row.role_tone().unwrap_or_default().to_string(),
         connection: row.connection().unwrap_or_default().to_string(),
-        connection_tone: row.connection_tone().unwrap_or_default().to_string(),
         auth: row.auth().unwrap_or_default().to_string(),
-        auth_tone: row.auth_tone().unwrap_or_default().to_string(),
         total_sub_count: row.total_sub_count(),
         active_sub_count: row.active_sub_count(),
         eosed_sub_count: row.eosed_sub_count(),
@@ -480,7 +461,6 @@ fn interest_from_fb(row: fb::RelayDiagnosticsInterest<'_>) -> InterestRow {
     InterestRow {
         key: row.key().unwrap_or_default().to_string(),
         state: row.state().unwrap_or_default().to_string(),
-        state_tone: row.state_tone().unwrap_or_default().to_string(),
         refcount: row.refcount(),
         cache_coverage: row.cache_coverage().unwrap_or_default().to_string(),
         relay_urls,

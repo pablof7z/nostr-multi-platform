@@ -13,11 +13,8 @@ fn sample() -> RelayDiagnosticsModel {
         relays: vec![RelayRow {
             relay_url: "wss://relay.one".to_string(),
             role: "content".to_string(),
-            role_tone: "accent".to_string(),
             connection: "connected".to_string(),
-            connection_tone: "ok".to_string(),
             auth: "ok".to_string(),
-            auth_tone: "ok".to_string(),
             total_sub_count: 3,
             active_sub_count: 2,
             eosed_sub_count: 1,
@@ -39,7 +36,6 @@ fn sample() -> RelayDiagnosticsModel {
                 relay_url: "wss://relay.one".to_string(),
                 filter_summary: "kinds:[1]".to_string(),
                 state: "open".to_string(),
-                state_tone: "ok".to_string(),
                 consumer_count: 1,
                 events_rx: 42,
                 eose_observed: true,
@@ -67,7 +63,6 @@ fn sample() -> RelayDiagnosticsModel {
         interests: vec![InterestRow {
             key: "home".to_string(),
             state: "Live".to_string(),
-            state_tone: "ok".to_string(),
             refcount: 2,
             cache_coverage: "full".to_string(),
             relay_urls: vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
@@ -150,7 +145,6 @@ fn reasons_round_trip() {
     model.relays[0].reasons = vec![
         ConnectionReasonRow {
             kind: "blocked".to_string(),
-            tone: "muted".to_string(),
             author_pubkeys: vec![],
             author_total: 0,
             kinds: vec![],
@@ -158,7 +152,6 @@ fn reasons_round_trip() {
         },
         ConnectionReasonRow {
             kind: "nip65".to_string(),
-            tone: "accent".to_string(),
             author_pubkeys: vec![
                 "aabbcc".to_string(),
                 "ddeeff".to_string(),
@@ -169,7 +162,6 @@ fn reasons_round_trip() {
         },
         ConnectionReasonRow {
             kind: "hint".to_string(),
-            tone: "warn".to_string(),
             author_pubkeys: vec![],
             author_total: 0,
             kinds: vec![],
@@ -177,7 +169,6 @@ fn reasons_round_trip() {
         },
         ConnectionReasonRow {
             kind: "interest".to_string(),
-            tone: "ok".to_string(),
             author_pubkeys: vec!["abc123".to_string()],
             author_total: 1,
             kinds: vec![0, 3, 10002],

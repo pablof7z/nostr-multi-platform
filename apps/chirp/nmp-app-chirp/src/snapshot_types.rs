@@ -32,21 +32,18 @@ pub struct RuntimeMetrics {
 pub struct RelayRow {
     #[serde(default)]
     pub relay_url: String,
-    /// Raw role token (e.g. `"content"`, `"indexer"`). Shells title-case.
+    /// Raw role token (e.g. `"content"`, `"indexer"`). Shells title-case and
+    /// derive their own hue.
     #[serde(default)]
     pub role: String,
-    #[serde(default)]
-    pub role_tone: String,
-    /// Raw connection token (e.g. `"connected"`). Shells title-case.
+    /// Raw connection token (e.g. `"connected"`). Shells title-case and derive
+    /// their own hue.
     #[serde(default)]
     pub connection: String,
-    #[serde(default)]
-    pub connection_tone: String,
-    /// Raw auth token (e.g. `"ok"`, `"—"`). Shells title-case (pass `"—"`).
+    /// Raw auth token (e.g. `"ok"`, `"—"`). Shells title-case (pass `"—"`) and
+    /// derive their own hue.
     #[serde(default)]
     pub auth: String,
-    #[serde(default)]
-    pub auth_tone: String,
     #[serde(default)]
     pub total_sub_count: u64,
     #[serde(default)]
@@ -93,11 +90,9 @@ pub struct RelayWireSubRow {
     pub relay_url: String,
     #[serde(default)]
     pub filter_summary: String,
-    /// Raw state token (e.g. `"open"`). Shells title-case.
+    /// Raw state token (e.g. `"open"`). Shells title-case and derive their hue.
     #[serde(default)]
     pub state: String,
-    #[serde(default)]
-    pub state_tone: String,
     /// Raw consumer count. Shells format as `"N consumer(s)"`.
     #[serde(default)]
     pub consumer_count: u32,

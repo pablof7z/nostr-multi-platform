@@ -4,9 +4,10 @@ import SwiftUI
 // kernel's `relay_diagnostics` projection plus the existing scalar metrics.
 // NO `.filter` / `.sorted` / `.reduce` / `.first(where:)`, NO
 // `Date(timeIntervalSince1970:)`, NO `switch` on protocol semantics: the
-// Rust projection owns role / connection / auth labels + tones, the relay-
-// row + wire-sub roll-ups, and every relative-time string (aim.md §4.5 /
-// §6 anti-pattern #1 / §"Where do views live?").
+// Rust projection owns the relay-row + wire-sub roll-ups and every
+// relative-time string (aim.md §4.5 / §6 anti-pattern #1). The shell derives
+// its OWN color (tone) from the raw role / connection / auth / state tokens
+// via `DiagnosticsTone` (#1768 — core emits raw tokens, never semantic hue).
 
 struct DiagnosticsView: View {
     @EnvironmentObject private var model: KernelModel
@@ -232,7 +233,7 @@ struct DiagnosticsView: View {
                         HStack(spacing: 12) {
                             Text(interest.state)
                                 .font(.caption)
-                                .foregroundStyle(DiagnosticsColor.color(forTone: interest.stateTone))
+                                .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.interestState(interest.state)))
                             Text("ref \(interest.refcount)")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
@@ -370,7 +371,7 @@ struct DiagRelayRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .center, spacing: 8) {
                 Circle()
-                    .fill(DiagnosticsColor.color(forTone: row.connectionTone))
+                    .fill(DiagnosticsColor.color(forTone: DiagnosticsTone.connection(row.connection)))
                     .frame(width: 8, height: 8)
                 Text(row.relayUrl)
                     .font(.body.monospaced())
@@ -379,15 +380,15 @@ struct DiagRelayRow: View {
                 Spacer(minLength: 0)
                 Text(row.roleLabel)
                     .font(.caption2.weight(.bold))
-                    .foregroundStyle(DiagnosticsColor.color(forTone: row.roleTone))
+                    .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.role(row.role)))
             }
             HStack(spacing: 12) {
                 Text(row.connectionLabel)
                     .font(.caption)
-                    .foregroundStyle(DiagnosticsColor.color(forTone: row.connectionTone))
+                    .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.connection(row.connection)))
                 Text("Auth: \(row.authLabel)")
                     .font(.caption)
-                    .foregroundStyle(DiagnosticsColor.color(forTone: row.authTone))
+                    .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.auth(row.auth)))
                 Text("\(row.activeSubCount) subs")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -457,25 +458,6 @@ private struct DiagPublishRow: View {
         case "published", "ok", "sent": return ChirpColor.success
         case "pending", "queued": return ChirpColor.warning
         case "failed", "error": return ChirpColor.danger
-        default: return ChirpColor.textSecondary
-        }
-    }
-}
-
-/// Single Swift-side helper: map a SEMANTIC tone string (decided by the
-/// Rust projection) to a SwiftUI Color. This is rendering, not policy —
-/// the kernel decides which class a row is in; the shell decides how to
-/// paint each class.
-enum DiagnosticsColor {
-    static func color(forTone tone: String) -> Color {
-        switch tone {
-        case "ok": return ChirpColor.success
-        case "warn": return ChirpColor.warning
-        case "error": return ChirpColor.danger
-        case "write": return ChirpColor.success
-        case "accent": return ChirpColor.accent
-        case "primary": return ChirpColor.accent
-        case "muted", "secondary": return ChirpColor.textSecondary
         default: return ChirpColor.textSecondary
         }
     }

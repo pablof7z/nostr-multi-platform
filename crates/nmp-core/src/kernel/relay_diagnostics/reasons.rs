@@ -27,9 +27,6 @@ pub(crate) struct RelayConnectionReason {
     /// `"account_write"` | `"indexer"` | `"app_relay"` | `"debug"` |
     /// `"bootstrap"` | `"blocked"` | `"interest"`.
     pub(crate) kind: String,
-    /// Semantic hue key reusing the existing tone vocabulary:
-    /// `"ok"` | `"warn"` | `"accent"` | `"muted"` | `"error"`.
-    pub(crate) tone: String,
     /// Hex pubkeys (capped at [`AUTHOR_CAP`]). Non-empty for outbox and
     /// author-shaped interest reasons; empty for app_relay / hint / blocked.
     pub(crate) author_pubkeys: Vec<String>,
@@ -51,11 +48,11 @@ pub(crate) struct RelayConnectionReason {
 /// Order: blocked (sentinel) → outbox → hints → app-relay sub-categories →
 /// interest. The product spec says App relay → Outbox → Hint → Interest, but
 /// the blocked sentinel must be first when present so the shell can surface the
-/// icon/tone before checking `connection_tone`.
+/// icon/hue before checking the raw `connection` token.
 ///
-/// Capping and tone assignment happens here — the planner stays noun-free (D0).
-/// Shells derive display labels from the raw `kind`, `author_total`, and `kinds`
-/// fields; no English prose is emitted by this function.
+/// Capping happens here — the planner stays noun-free (D0). Shells derive
+/// display labels and hue from the raw `kind`, `author_total`, and `kinds`
+/// fields; no English prose or semantic tone is emitted by this function.
 pub(crate) fn build_reasons(
     attr: Option<&RelayAttribution>,
     is_blocked: bool,
@@ -65,7 +62,6 @@ pub(crate) fn build_reasons(
     if is_blocked {
         out.push(RelayConnectionReason {
             kind: "blocked".to_string(),
-            tone: "muted".to_string(),
             author_pubkeys: Vec::new(),
             author_total: 0,
             kinds: Vec::new(),
@@ -86,7 +82,6 @@ pub(crate) fn build_reasons(
             .collect();
         out.push(RelayConnectionReason {
             kind: "nip65".to_string(),
-            tone: "accent".to_string(),
             author_total: outbox_total as u32,
             author_pubkeys,
             kinds: Vec::new(),
@@ -104,7 +99,6 @@ pub(crate) fn build_reasons(
         });
         out.push(RelayConnectionReason {
             kind: "hint".to_string(),
-            tone: "warn".to_string(),
             author_pubkeys: Vec::new(),
             author_total: 0,
             kinds: Vec::new(),
@@ -124,7 +118,6 @@ pub(crate) fn build_reasons(
         };
         out.push(RelayConnectionReason {
             kind: kind.to_string(),
-            tone: "ok".to_string(),
             author_pubkeys: Vec::new(),
             author_total: 0,
             kinds: Vec::new(),
@@ -150,7 +143,6 @@ fn interest_reason(ia: &InterestAttribution) -> RelayConnectionReason {
     kinds.dedup();
     RelayConnectionReason {
         kind: "interest".to_string(),
-        tone: "ok".to_string(),
         author_pubkeys,
         author_total: total as u32,
         kinds,

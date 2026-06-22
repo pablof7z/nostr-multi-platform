@@ -23,13 +23,10 @@ data class RelayDiagnosticsRow(
     val relayUrl: String = "",
     /** Raw role string from Rust (e.g. "content", "indexer", "both"). Shell formats. */
     val role: String = "",
-    val roleTone: String = "",
     /** Raw connection string from Rust (e.g. "connected", "closed"). Shell formats. */
     val connection: String = "",
-    val connectionTone: String = "",
     /** Raw auth string from Rust (e.g. "ok", "pending", "—"). Shell formats. */
     val auth: String = "",
-    val authTone: String = "",
     val totalSubCount: Int = 0,
     val activeSubCount: Int = 0,
     val eosedSubCount: Int = 0,
@@ -72,6 +69,11 @@ data class RelayDiagnosticsRow(
 
     /** Auth label: "—" passthrough; otherwise title-cased. */
     val authLabel: String get() = if (auth == "—") "—" else auth.replaceFirstChar { it.uppercase() }
+
+    /** Shell-derived semantic hue (#1768) from the raw tokens above. */
+    val roleTone: String get() = RelayDiagnosticsTone.role(role)
+    val connectionTone: String get() = RelayDiagnosticsTone.connection(connection)
+    val authTone: String get() = RelayDiagnosticsTone.auth(auth)
 
     /** Compact formatted total events received. */
     val totalEventsDisplay: String get() = compactCount(totalEventsRx)
@@ -117,7 +119,6 @@ data class RelayDiagnosticsWireSub(
     val filterSummary: String = "",
     /** Raw state string from Rust (e.g. "open", "closed", "pending"). Shell formats. */
     val state: String = "",
-    val stateTone: String = "",
     /** Raw consumer count. Shell derives display string. */
     val consumerCount: Int = 0,
     /** Raw events received counter. Shell derives display string. */
@@ -137,6 +138,9 @@ data class RelayDiagnosticsWireSub(
     /** Title-cased state label (e.g. "open" → "Open"). */
     val stateLabel: String get() = state.replaceFirstChar { it.uppercase() }
 
+    /** Shell-derived semantic hue (#1768) from the raw `state` token. */
+    val stateTone: String get() = RelayDiagnosticsTone.wireSubState(state)
+
     /** Human-readable consumer count (empty when 0). */
     val consumerCountLabel: String get() = when (consumerCount) {
         0 -> ""
@@ -152,11 +156,64 @@ data class RelayDiagnosticsWireSub(
 data class RelayDiagnosticsInterest(
     val key: String = "",
     val state: String = "",
-    val stateTone: String = "",
     val refcount: Int = 0,
     val cacheCoverage: String = "",
     val relayUrls: List<String> = emptyList(),
-)
+) {
+    /** Shell-derived semantic hue (#1768) from the raw `state` token. */
+    val stateTone: String get() = RelayDiagnosticsTone.interestState(state)
+}
+
+/**
+ * Shell-side tone policy (#1768): derive a semantic hue token from the RAW
+ * protocol tokens the `relay_diagnostics` projection now emits. The kernel
+ * emits only raw `role` / `connection` / `auth` / `state` / reason `kind`
+ * strings; deciding which hue class each belongs to is the app's job. Ported
+ * verbatim from the former kernel `relay_diagnostics/format.rs` + `reasons.rs`
+ * selectors. The presentation layer maps these tokens to a Color.
+ */
+internal object RelayDiagnosticsTone {
+    fun role(role: String): String = if (role == "write") "write" else "accent"
+
+    fun connection(connection: String): String {
+        val lower = connection.lowercase()
+        return when {
+            lower == "connected" -> "ok"
+            lower.startsWith("disconnect") || lower == "failed" -> "error"
+            lower.contains("connect") -> "warn"
+            lower == "unknown" || lower == "idle" || lower == "—" || lower == "blocked" -> "muted"
+            else -> "error"
+        }
+    }
+
+    fun auth(auth: String): String {
+        val lower = auth.lowercase()
+        return when {
+            lower == "ok" || lower == "authenticated" -> "ok"
+            lower == "pending" -> "warn"
+            else -> "muted"
+        }
+    }
+
+    fun wireSubState(state: String): String = when (state.lowercase()) {
+        "open", "active", "live" -> "ok"
+        "pending", "warming", "opening", "auth_paused" -> "warn"
+        else -> "muted"
+    }
+
+    fun interestState(state: String): String = when (state) {
+        "active", "warming", "tailing", "complete" -> "ok"
+        "idle" -> "muted"
+        else -> "warn"
+    }
+
+    fun reason(kind: String): String = when (kind) {
+        "blocked" -> "muted"
+        "nip65" -> "accent"
+        "hint" -> "warn"
+        else -> "ok"
+    }
+}
 
 // ── Shell-side display helpers for relay diagnostics ─────────────────────────
 // These are file-private so they can be used by RelayDiagnosticsRow and

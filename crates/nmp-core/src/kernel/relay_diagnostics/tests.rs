@@ -53,14 +53,6 @@ fn snapshot_is_byte_stable_without_intervening_event() {
 }
 
 #[test]
-fn connection_tone_classifies_states() {
-    assert_eq!(connection_tone("connected"), "ok");
-    assert_eq!(connection_tone("Reconnecting"), "warn");
-    assert_eq!(connection_tone("Disconnected"), "error");
-    assert_eq!(connection_tone("unknown"), "muted");
-}
-
-#[test]
 fn snapshot_emits_one_row_per_known_relay() {
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -99,9 +91,10 @@ fn snapshot_emits_one_row_per_known_relay() {
     }
     // The interest snapshot includes the always-on lanes.
     assert!(snap.interests.iter().any(|i| i.key == "Timeline"));
-    // Every interest carries a non-empty semantic tone.
+    // Every interest carries a non-empty RAW state token (no semantic tone is
+    // emitted by core any more — #1768; shells derive their own hue).
     for interest in &snap.interests {
-        assert!(!interest.state_tone.is_empty());
+        assert!(!interest.state.is_empty());
     }
 }
 

@@ -85,11 +85,8 @@ object TypedRelayDiagnosticsDecoder {
         return RelayDiagnosticsRow(
             relayUrl = row.relayUrl ?: "",
             role = row.role ?: "",
-            roleTone = row.roleTone ?: "",
             connection = row.connection ?: "",
-            connectionTone = row.connectionTone ?: "",
             auth = row.auth ?: "",
-            authTone = row.authTone ?: "",
             totalSubCount = row.totalSubCount.toInt(),
             activeSubCount = row.activeSubCount.toInt(),
             eosedSubCount = row.eosedSubCount.toInt(),
@@ -137,7 +134,6 @@ object TypedRelayDiagnosticsDecoder {
         relayUrl = sub.relayUrl ?: "",
         filterSummary = sub.filterSummary ?: "",
         state = sub.state ?: "",
-        stateTone = sub.stateTone ?: "",
         consumerCount = sub.consumerCount.toInt(),
         eventsRx = sub.eventsRx.toLong(),
         eoseObserved = sub.eoseObserved,
@@ -156,7 +152,6 @@ object TypedRelayDiagnosticsDecoder {
         return RelayDiagnosticsInterest(
             key = interest.key ?: "",
             state = interest.state ?: "",
-            stateTone = interest.stateTone ?: "",
             refcount = interest.refcount.toInt(),
             cacheCoverage = interest.cacheCoverage ?: "",
             relayUrls = urls,
