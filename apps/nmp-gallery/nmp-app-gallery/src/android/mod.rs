@@ -20,11 +20,13 @@ use jni::JNIEnv;
 
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_claim_event, nmp_app_deliver_external_signer_response,
-    nmp_app_dispatch_action, nmp_app_new, nmp_app_release_event,
+    nmp_app_new, nmp_app_release_event,
     nmp_app_release_ref, nmp_app_resolve_ref, nmp_app_set_capability_callback,
     nmp_app_set_update_callback, nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
-    nmp_external_signer_init, nmp_free_string,
+    nmp_external_signer_init,
 };
+
+use crate::dispatch_bytes::dispatch_action_bytes_for;
 
 use crate::android_push::{SignerRequestListenerSlot, SignerRequestPushListener};
 
@@ -285,6 +287,22 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClearUpdat
     }
 }
 
+/// Dispatch a write through the typed BYTE doorway (ADR-0064 / Cut-B, #1756).
+///
+/// The Kotlin shell hands us `(action, payload)` — the action's host namespace
+/// and the canonical serde body for that write. The
+/// [`dispatch_action_bytes_for`] seam deserializes the body into the
+/// namespace's typed [`ActionPayload`](nmp_core::substrate::ActionPayload),
+/// wraps it in an open dispatch envelope, and hands TYPED BYTES to
+/// [`nmp_ffi::nmp_app_dispatch_action_bytes`]. No JSON crosses the FFI; the
+/// JSON is an in-process intermediate only.
+///
+/// Returns the kernel's result envelope JSON (`{"correlation_id":…}` on accept,
+/// `{"error":…}` on synchronous rejection). A seam-side failure (null app,
+/// unknown / mis-shaped namespace) is surfaced to the UI as a fail-closed
+/// `{"error":…}` envelope rather than a silent null, so the unknown-namespace
+/// case is observable (D6). A null/dead handle (no live session) is still a
+/// null no-op.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAction<'l>(
     mut env: JNIEnv<'l>,
@@ -297,12 +315,13 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAc
     let Some(s) = session_ref(handle) else { return null };
     let Some(action_c) = jstring_to_cstring(&mut env, &action) else { return null };
     let Some(payload_c) = jstring_to_cstring(&mut env, &payload) else { return null };
-    let ptr = nmp_app_dispatch_action(s.app, action_c.as_ptr(), payload_c.as_ptr());
-    if ptr.is_null() {
+    let (Ok(namespace), Ok(body)) = (action_c.to_str(), payload_c.to_str()) else {
         return null;
-    }
-    let result = unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().into_owned();
-    nmp_free_string(ptr);
+    };
+    let result = match dispatch_action_bytes_for(s.app, namespace, body) {
+        Ok(envelope_json) => envelope_json,
+        Err(message) => serde_json::json!({ "error": message }).to_string(),
+    };
     match env.new_string(result) {
         Ok(js) => js.into_raw(),
         Err(_) => null,

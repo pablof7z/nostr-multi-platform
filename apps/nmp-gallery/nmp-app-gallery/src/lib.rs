@@ -52,6 +52,13 @@
 mod android;
 #[cfg(feature = "android-ffi")]
 mod android_push;
+// ADR-0064 / Cut-B (#1756) — typed byte-doorway dispatch seam. Native-only:
+// it names the `nmp_ffi` C-ABI `nmp_app_*` symbols, which exist only under the
+// `native` feature (wasm uses wasm-bindgen, not the C ABI). The `android-ffi`
+// JNI shell is the in-repo caller; the seam itself is reused by any native
+// gallery shell that dispatches a write.
+#[cfg(feature = "native")]
+pub mod dispatch_bytes;
 mod snapshot_json;
 
 pub mod registry;
