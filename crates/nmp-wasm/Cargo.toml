@@ -27,13 +27,6 @@ nmp-nip18 = { path = "../nmp-nip18" }
 # `nmp-core::relay_protocol` to `nmp-network::relay_protocol`. Wasm32 uses the
 # pure-Rust `native = false` slice of nmp-network (no tungstenite/mio/rustls).
 nmp-network = { path = "../nmp-network", default-features = false }
-# V-01 Stage 3b — `nmp-signers` for the NIP-07 browser-extension `Signer`.
-# Always-on dependency: `nmp-signers` itself compiles on every host (its native
-# code is the non-wasm fallback that returns `SignerError::Unsupported`). The
-# `wasm` feature unlocks the real `window.nostr.signEvent(...)` bridge on
-# wasm32; on native targets the feature is a no-op (the cfg guard inside
-# `signers/nip07.rs` evaluates `false`).
-nmp-signers = { path = "../nmp-signers", features = ["wasm"] }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nostr = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive"] }
@@ -57,13 +50,6 @@ js-sys = "0.3.98"
 # lifecycle into `nmp-network::browser_driver`. This crate no longer needs
 # a direct `web-sys` dependency — the driver is consumed through
 # `nmp-network` (which has its own wasm32-gated `web-sys` dep).
-# V-01 Stage 3b — drive the `Nip07Signer::sign()` Promise round-trip from the
-# JS event loop without blocking the wasm thread. `spawn_local` parks a future
-# that awaits `window.nostr.signEvent(...).then(...)` and pushes the result
-# into an `mpsc::Receiver` the `SignerOp::Pending(rx)` carries back to the
-# caller. No tokio — `wasm-bindgen-futures` is a pure JS Promise glue crate
-# (it is already a transitive dep of the workspace through `nostr`).
-wasm-bindgen-futures = "0.4.71"
 # PR-2 — 1 Hz periodic tick driver. `gloo_timers::callback::Interval` fires
 # on the JS event loop without blocking; dropping it cancels `setInterval`.
 # In 0.3.x the callback API ships in the default crate (no extra feature flag).

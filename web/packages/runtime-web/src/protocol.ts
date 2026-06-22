@@ -21,10 +21,14 @@ export type WorkerRequest =
       payload: unknown;
       correlation_id: string;
     }
+  /** ADR-0064 / S2 (#1750) — the typed binary write doorway. `bytes` are a
+   *  finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying the
+   *  correlation_id + generated action_namespace + opaque typed payload. This
+   *  is the ONLY app-level write path (the hand-rolled `app_action` envelope was
+   *  deleted in #1743 Cut A); it is identical in shape to the native FFI seam. */
   | {
-      type: "app_action";
-      action: ChirpAction;
-      correlation_id: string;
+      type: "dispatch_bytes";
+      bytes: Uint8Array;
     }
   | {
       type: "capability_result";
@@ -33,10 +37,11 @@ export type WorkerRequest =
       payload: unknown;
     }
   | { type: "stop"; correlation_id: string }
-  /** V-01 Stage 3b — install a NIP-07 signer.
-   *  The browser host calls window.nostr.getPublicKey() first, then sends
-   *  this request so the wasm runtime's install path stays synchronous.
-   *  kind: "nip07" (the only kind wired in Stage 3b). */
+  /** Set the active identity. The browser host calls window.nostr.getPublicKey()
+   *  first, then sends this request so the wasm runtime can seed the kernel's
+   *  active account. kind: "nip07" (the only kind wired). ADR-0064 §5: this does
+   *  NOT install a persistent signer — signing is the begin_sign capability
+   *  round-trip. */
   | {
       type: "set_signer";
       kind: string;

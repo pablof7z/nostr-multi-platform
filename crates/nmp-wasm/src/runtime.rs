@@ -1,5 +1,5 @@
 //! Browser-side runtime (`WasmRuntime`) backed by `KernelReducer`, the
-//! wasm32 relay pool, the signer slot, and the snapshot-callback push channel.
+//! wasm32 relay pool, and the snapshot-callback push channel.
 //!
 //! # Current capabilities
 //!
@@ -12,16 +12,16 @@
 //!   exponential backoff + jitter constants the native worker uses, ingest
 //!   frames into the kernel, route outbound back to the wire, and push a
 //!   fresh snapshot to the JS host through the registered callback (if any).
-//! - **(wasm32, feature = "wasm" in nmp-signers)** `Nip07Signer::sign()`
-//!   bridges into `window.nostr.signEvent(...)` via `spawn_local`.
+//! - **(wasm32)** Signed writes use the ADR-0050 capability round-trip
+//!   (`BeginSign` → `SignRequest` → `DeliverSignerResponse`): the main-thread
+//!   broker calls `window.nostr.signEvent(...)` and re-enters the worker with
+//!   the result. The reducer never awaits the world (D7/D8).
 
 use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use nmp_core::{KernelAction, KernelReducer, KernelUpdate, OutboundMessage};
-use nmp_signers::Signer;
 
 #[cfg(target_arch = "wasm32")]
 use crate::relay_pool;
@@ -32,11 +32,6 @@ use crate::dispatch_routing::browser_driver_missing_reason;
 use crate::protocol::{
     CapabilityFailure, RuntimeStatus, StartConfig, WorkerEvent, WorkerRequest,
 };
-// `AppAction` is only named as a type by the wasm32-only async-publish path
-// (`start_publish_app_action`); the native `WorkerRequest::AppAction(_)` arm
-// destructures the enum variant without naming the inner type.
-#[cfg(target_arch = "wasm32")]
-use crate::protocol::AppAction;
 use crate::snapshot::{build_snapshot_bytes, RuntimeMeta};
 
 const PROTOCOL_VERSION: u16 = 1;
@@ -51,8 +46,8 @@ type SnapshotCallback = js_sys::Function;
 #[cfg(not(target_arch = "wasm32"))]
 type SnapshotCallback = ();
 
-/// Browser-side runtime backed by a real `KernelReducer` plus the Stage 3b
-/// signer slot and snapshot-callback push channel.
+/// Browser-side runtime backed by a real `KernelReducer` plus the
+/// snapshot-callback push channel.
 ///
 /// `Default::default()` constructs the reducer eagerly — the kernel is cheap
 /// to allocate (no I/O, no threads) and constructing it lazily would complicate
@@ -68,19 +63,6 @@ pub struct WasmRuntime {
     /// runtime itself (which the sink, captured by JS event handlers,
     /// cannot).
     meta: Rc<RefCell<RuntimeMeta>>,
-    /// V-01 Stage 3b — signer slot. `None` until the host calls
-    /// `SetSigner`. App-level writes that hit `app_action()` distinguish
-    /// the two states (no slot → `signer_not_installed`; slot filled →
-    /// `publish_not_supported_in_web_preview`, the single canonical disable
-    /// token) so the JS host can present an honest UX banner instead of
-    /// guessing.
-    ///
-    /// `Arc<dyn Signer>` (not `Rc`) matches the existing `nmp-signers`
-    /// shape — `Signer` is `Send + Sync` because the native actor loop
-    /// hands signer ops across threads. On wasm32 there are no threads
-    /// to cross; the `Arc` cost over `Rc` is one atomic increment per
-    /// install and is otherwise free.
-    signer: Option<Arc<dyn Signer>>,
     /// V-01 Stage 3b — snapshot push callback. Wasm32 stores the JS
     /// `Function`; native carries `()`. The relay-pool sink reads this slot
     /// after every kernel-mutating inbound frame and pushes a fresh snapshot
@@ -116,7 +98,6 @@ impl Default for WasmRuntime {
         Self {
             reducer: Rc::new(RefCell::new(KernelReducer::new())),
             meta: Rc::new(RefCell::new(RuntimeMeta::new())),
-            signer: None,
             snapshot_callback: Rc::new(RefCell::new(None)),
             post_tick_drain: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
@@ -197,10 +178,11 @@ impl WasmRuntime {
                 }])
             }
             WorkerRequest::Start(config) => self.start(config),
-            WorkerRequest::AppAction(action) => {
-                self.app_action(action.action, action.correlation_id)
-            }
             WorkerRequest::Dispatch(action) => self.dispatch(action),
+            // ADR-0064 / S2 — the one binary write doorway. Decodes the
+            // `DispatchEnvelope` and routes by `action_namespace` (same open
+            // transport as the native FFI). Total — never returns `Err`.
+            WorkerRequest::DispatchBytes(request) => Ok(self.dispatch_bytes(&request.bytes)),
             WorkerRequest::CapabilityResult(result) => {
                 // The native actor handles capability completions through its
                 // capability-socket arm; that arm lives behind the `native`
@@ -379,7 +361,7 @@ impl WasmRuntime {
         let _ = outbound;
     }
 
-    // `accepted_with_snapshot`, `app_action`, and `dispatch` — the
+    // `accepted_with_snapshot`, `dispatch_bytes`, and `dispatch` — the
     // action-namespace routing arm of `handle` — live in the sibling
     // `runtime/dispatch.rs` module (LOC ceiling). They are still private
     // methods of `WasmRuntime` (`impl WasmRuntime` in that file).
@@ -391,61 +373,6 @@ impl WasmRuntime {
     fn snapshot_event(&mut self) -> WorkerEvent {
         let bytes = build_snapshot_bytes(&mut self.reducer.borrow_mut(), &self.meta.borrow());
         WorkerEvent::UpdateBytes { bytes }
-    }
-
-    /// V-01 Stage 3c — start an async publish for an `AppAction`. Wasm32-only.
-    ///
-    /// Returns a [`std::future::Future`] resolving to the [`WorkerEvent`] the
-    /// host should observe — `ActionAccepted` if the sign + publish succeeded,
-    /// `CapabilityFailure` for every honest failure mode (no signer, wrong
-    /// backend, unsupported action variant, sign rejected, sign failed).
-    ///
-    /// Lifetime / borrow contract: this method snapshots the runtime's `Rc`
-    /// handles up-front (signer, reducer, drivers, snapshot_callback, meta)
-    /// and the returned future owns those clones — no reference into `self`
-    /// outlives the call. That lets the `NmpWasmRuntime` wasm-bindgen wrapper
-    /// hand the future to `wasm_bindgen_futures::future_to_promise(...)` and
-    /// the Promise can outlive any particular `&mut self` borrow window.
-    ///
-    /// `now_secs` is supplied by the wasm bindings layer (which sources it
-    /// from `js_sys::Date::now() / 1000.0`) so the kernel's internal clock
-    /// (which is `pub(crate)` on the native side and not reachable through
-    /// `KernelReducer`) is bypassed. Production correctness is unaffected —
-    /// the publish engine treats `created_at` as a per-event field, not a
-    /// scheduling input.
-    #[cfg(target_arch = "wasm32")]
-    pub fn start_publish_app_action(
-        &self,
-        action: AppAction,
-        correlation_id: String,
-        now_secs: u64,
-    ) -> impl std::future::Future<Output = WorkerEvent> + 'static {
-        let signer_slot = self.signer.clone();
-        let reducer = Rc::clone(&self.reducer);
-        let drivers = Rc::clone(&self.relays);
-        let snapshot_callback = Rc::clone(&self.snapshot_callback);
-        let meta = Rc::clone(&self.meta);
-        async move {
-            let Some(signer) = signer_slot else {
-                let (action_type, _) = action.into_dispatch_parts();
-                return WorkerEvent::CapabilityFailure(CapabilityFailure {
-                    capability: action_type,
-                    correlation_id,
-                    reason: crate::dispatch_routing::write_path_unavailable_reason(None),
-                });
-            };
-            crate::publish_path::publish_app_action(
-                action,
-                correlation_id,
-                signer,
-                reducer,
-                drivers,
-                snapshot_callback,
-                meta,
-                now_secs,
-            )
-            .await
-        }
     }
 }
 

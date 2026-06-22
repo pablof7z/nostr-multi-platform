@@ -1,8 +1,27 @@
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_wasm::{
-    AppAction, AppActionDispatch, ClientHello, RelayBootstrapEntry, RuntimeStatus, SetSigner,
-    StartConfig, WasmRuntime, WorkerEvent, WorkerRequest,
+    ClientHello, DispatchBytes, RelayBootstrapEntry, RuntimeStatus, SetSigner, StartConfig,
+    WasmRuntime, WorkerEvent, WorkerRequest,
 };
 use serde_json::json;
+
+/// Build a `WorkerRequest::DispatchBytes` carrying a finished `DispatchEnvelope`
+/// for `action_namespace` with an opaque payload — the SAME open transport the
+/// native FFI uses. This is the ONLY wasm write doorway after #1743 Cut A;
+/// there is no `AppAction` enum / `"app_action"` envelope.
+fn dispatch_bytes_request(
+    correlation_id: &str,
+    action_namespace: &str,
+    payload: &[u8],
+) -> WorkerRequest {
+    let bytes = encode_dispatch_envelope(
+        correlation_id,
+        action_namespace,
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        payload,
+    );
+    WorkerRequest::DispatchBytes(DispatchBytes { bytes })
+}
 
 #[test]
 fn hello_round_trips_through_json() {
@@ -80,88 +99,67 @@ fn invalid_protocol_is_rejected_before_start() {
     }
 }
 
+/// ADR-0064 / #1743: there is NO wasm-only write vocabulary. The deleted
+/// `"app_action"` envelope must fail serde decode — a host that still sends it
+/// gets a loud rejection, not a silent accept through a back-compat alias.
 #[test]
-fn app_action_publish_note_maps_to_kernel_publish_raw_action() {
-    // The WASM worker protocol still exposes a `PublishNote` app-action verb,
-    // but it now lowers to the generic core `PublishRaw` (kind:1) envelope —
-    // the kind:1-specific `PublishAction::PublishNote` was removed in #906.
-    let action = AppActionDispatch {
-        action: AppAction::PublishNote {
-            content: "hello from web".to_string(),
-            reply_to_id: None,
-        },
-        correlation_id: "pub-1".to_string(),
-    }
-    .into_action_dispatch();
-
-    assert_eq!(action.action_type, "nmp.publish");
-    assert_eq!(
-        action.payload,
-        json!({
-            "PublishRaw": {
-                "kind": 1,
-                "tags": [],
-                "content": "hello from web",
-                "target": "Auto",
-            }
-        })
-    );
-}
-
-#[test]
-fn app_action_react_defaults_to_like_without_host_policy() {
-    let request: WorkerRequest = serde_json::from_value(json!({
+fn deleted_app_action_envelope_does_not_deserialize() {
+    let result: Result<WorkerRequest, _> = serde_json::from_value(json!({
         "type": "app_action",
         "correlation_id": "react-1",
-        "action": {
-            "action": "react",
-            "target_event_id": "event-id"
-        }
-    }))
-    .unwrap();
-
-    let WorkerRequest::AppAction(action) = request else {
-        panic!("expected app action request");
-    };
-    let dispatch = action.into_action_dispatch();
-
-    assert_eq!(dispatch.action_type, "nmp.nip25.react");
-    assert_eq!(
-        dispatch.payload,
-        json!({
-            "target_event_id": "event-id",
-            "reaction": "+"
-        })
+        "action": { "action": "react", "target_event_id": "event-id" }
+    }));
+    assert!(
+        result.is_err(),
+        "the `app_action` envelope was deleted in #1743 Cut A; it must NOT \
+         round-trip through serde, got: {result:?}"
     );
 }
 
+/// A wasm write routes through the generic typed `DispatchEnvelope` over the one
+/// `DispatchBytes` doorway — identical in shape to the native FFI seam. The
+/// envelope's `correlation_id` + `action_namespace` survive the decode, and the
+/// runtime routes by namespace (publishing itself stays honestly-disabled in the
+/// web preview, #1007 — but it crossed via the TYPED path, not `AppAction`).
 #[test]
-fn app_action_uses_same_generic_worker_event_path() {
+fn typed_write_routes_through_dispatch_envelope_not_app_action() {
     let mut runtime = WasmRuntime::new();
-
     let events = runtime
-        .handle(WorkerRequest::AppAction(AppActionDispatch {
-            action: AppAction::Follow {
-                pubkey: "deadbeef".to_string(),
-            },
-            correlation_id: "follow-1".to_string(),
-        }))
+        .handle(dispatch_bytes_request("follow-1", "nmp.follow", b"opaque-payload"))
         .unwrap();
 
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
+            // The namespace from the DECODED envelope is echoed back — proof the
+            // typed envelope crossed and routed by `action_namespace`.
             assert_eq!(failure.capability, "nmp.follow");
             assert_eq!(failure.correlation_id, "follow-1");
-            // Stage 3b: no signer installed → `signer_not_installed`. The
-            // host pattern-matches on this prefix to surface a "sign in to
-            // publish" banner.
+            // No active account yet → "sign in to publish".
             assert!(
                 failure.reason.starts_with("signer_not_installed"),
                 "expected signer_not_installed prefix, got: {}",
                 failure.reason
             );
         }
-        other => panic!("expected degraded dispatch failure, got {other:?}"),
+        other => panic!("expected CapabilityFailure, got {other:?}"),
+    }
+}
+
+/// A malformed write buffer (not a `DispatchEnvelope` root) fails CLOSED with a
+/// data-shaped `Error` — never a panic, never a silent accept (D6).
+#[test]
+fn dispatch_bytes_rejects_non_envelope_buffer() {
+    let mut runtime = WasmRuntime::new();
+    let events = runtime
+        .handle(WorkerRequest::DispatchBytes(DispatchBytes {
+            bytes: b"not a flatbuffer".to_vec(),
+        }))
+        .unwrap();
+    match &events[0] {
+        WorkerEvent::Error { code, .. } => {
+            assert_eq!(code, "dispatch_envelope_rejected");
+        }
+        other => panic!("expected dispatch_envelope_rejected Error, got {other:?}"),
     }
 }
 
@@ -206,23 +204,15 @@ fn start_emits_flatbuffer_snapshot_update_from_real_kernel() {
 }
 
 #[test]
-fn publish_note_without_signer_returns_signer_not_installed() {
+fn typed_write_without_active_account_returns_signer_not_installed() {
     let mut runtime = WasmRuntime::new();
 
     let events = runtime
-        .handle(WorkerRequest::AppAction(AppActionDispatch {
-            action: AppAction::PublishNote {
-                content: "hello from web".to_string(),
-                reply_to_id: None,
-            },
-            correlation_id: "pub-1".to_string(),
-        }))
+        .handle(dispatch_bytes_request("pub-1", "nmp.publish", b"opaque"))
         .unwrap();
 
-    // V-01 Stage 3b: with no signer installed, app-level writes fail with
-    // `signer_not_installed` (more precise than the Stage 3
-    // `browser_actor_driver_missing` blanket — see runtime.rs comment for
-    // the two-state model).
+    // With no active account seeded, app-level writes fail with the honest
+    // `signer_not_installed` token ("sign in to publish").
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
             assert_eq!(failure.capability, "nmp.publish");
@@ -238,14 +228,12 @@ fn publish_note_without_signer_returns_signer_not_installed() {
 }
 
 #[test]
-fn publish_note_after_set_signer_returns_publish_disabled_token() {
+fn typed_write_after_set_signer_returns_publish_disabled_token() {
     let mut runtime = WasmRuntime::new();
 
-    // Install a nip07 signer with a real (test-fixture) pubkey hex. On
-    // native this constructs a stub that returns `Unsupported` from sign();
-    // we don't reach sign() in this assertion — the runtime stops at the
-    // publish-disabled error because the web preview has no outbox resolver
-    // wired (#1202), not because Stage 3b skipped the sync publish path.
+    // Seed the active identity (NO persistent signer is installed — ADR-0064
+    // §5; `SetSigner` only validates/canonicalizes the pubkey and sets the
+    // kernel active account).
     let set_events = runtime
         .handle(WorkerRequest::SetSigner(SetSigner {
             kind: "nip07".to_string(),
@@ -265,22 +253,12 @@ fn publish_note_after_set_signer_returns_publish_disabled_token() {
         other => panic!("expected ActionAccepted, got {other:?}"),
     }
 
-    // Now the same app-level write surfaces the *second* honest error: a
-    // signer is installed but publishing is disabled in the web preview
-    // (#1202). Fix #1748 collapses the two divergent "publish is disabled"
-    // strings (`publish_path_not_wired` + `publish_not_supported_in_web_preview`)
-    // onto the SINGLE canonical token, so the sync `handle()` path and the
-    // async `dispatch_app_action_async` path now surface the same prefix. Hosts
-    // distinguish "you need to sign in" (`signer_not_installed`) from
-    // "publishing is disabled" by pattern-matching that one canonical prefix.
+    // Now the same typed write surfaces the *second* honest state: an account
+    // is active but publishing is disabled in the web preview (#1202/#1007).
+    // Hosts distinguish "you need to sign in" (`signer_not_installed`) from
+    // "publishing is disabled" by pattern-matching the one canonical prefix.
     let events = runtime
-        .handle(WorkerRequest::AppAction(AppActionDispatch {
-            action: AppAction::PublishNote {
-                content: "hello from web".to_string(),
-                reply_to_id: None,
-            },
-            correlation_id: "pub-1".to_string(),
-        }))
+        .handle(dispatch_bytes_request("pub-1", "nmp.publish", b"opaque"))
         .unwrap();
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
@@ -292,8 +270,6 @@ fn publish_note_after_set_signer_returns_publish_disabled_token() {
                 "expected the canonical publish-disabled token, got: {}",
                 failure.reason
             );
-            // The legacy token must be gone — a host that string-matched it
-            // must be updated to the canonical one (#1748).
             assert!(
                 !failure.reason.starts_with("publish_path_not_wired"),
                 "legacy publish_path_not_wired token must be gone, got: {}",

@@ -13,7 +13,7 @@ import {
   type WorkerRequest,
   type ChirpAction,
 } from "@nmp/runtime-web";
-import type { RuntimeCommand } from "./actions";
+import { chirpActionRequest, typedWriteRequest, TYPED_WRITE_NAMESPACES, type RuntimeCommand } from "./actions";
 import { chirpStartRelays } from "../chirpConfig";
 import { fulfilSignRequestViaExtension } from "./signBroker";
 import {
@@ -329,33 +329,31 @@ class WorkerNmpClient extends BaseClient {
     });
   }
 
+  // ADR-0064 / #1743: app-level signed writes (TYPED_WRITE_NAMESPACES) cross the
+  // typed `dispatch_bytes` doorway (correlation_id lives INSIDE the envelope) — no
+  // parallel app-write path. Everything else rides the generic JSON `dispatch` arm.
   async dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot> {
     await this.helloReady;
-    return this.request({
-      type: "dispatch",
-      action_type: actionType,
-      payload,
-      correlation_id: makeCorrelationId("web", this.nextCorrelationId++),
-    });
+    const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
+    if (TYPED_WRITE_NAMESPACES.has(actionType)) {
+      return this.request(typedWriteRequest(actionType, payload, correlationId), correlationId);
+    }
+    return this.request(
+      { type: "dispatch", action_type: actionType, payload, correlation_id: correlationId },
+      correlationId,
+    );
   }
 
   async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {
     await this.helloReady;
-    return this.request({
-      type: "app_action",
-      action,
-      correlation_id: makeCorrelationId("web", this.nextCorrelationId++),
-    });
+    const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
+    return this.request(chirpActionRequest(action, correlationId), correlationId);
   }
 
   async setSigner(pubkeyHex: string): Promise<RuntimeSnapshot> {
     await this.helloReady;
-    return this.request({
-      type: "set_signer",
-      kind: "nip07",
-      pubkey_hex: pubkeyHex,
-      correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),
-    });
+    const correlation_id = makeCorrelationId("web-signer", this.nextCorrelationId++);
+    return this.request({ type: "set_signer", kind: "nip07", pubkey_hex: pubkeyHex, correlation_id });
   }
 
   beginSign(accountPubkey: string, unsignedJson: string): void {
@@ -366,8 +364,9 @@ class WorkerNmpClient extends BaseClient {
     } satisfies WorkerRequest);
   }
 
-  private request(request: WorkerRequest): Promise<RuntimeSnapshot> {
-    const correlationId = "correlation_id" in request ? request.correlation_id : undefined;
+  private request(request: WorkerRequest, explicitCorrelationId?: string): Promise<RuntimeSnapshot> {
+    const correlationId =
+      explicitCorrelationId ?? ("correlation_id" in request ? request.correlation_id : undefined);
     if (!correlationId) {
       this.worker.postMessage(request);
       return Promise.resolve(this.snapshot());
@@ -437,20 +436,22 @@ class InProcessNmpClient extends BaseClient {
   }
 
   async dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot> {
+    // Same typed-write routing as WorkerNmpClient.dispatch, sent synchronously.
+    const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
+    if (TYPED_WRITE_NAMESPACES.has(actionType)) {
+      return this.send(typedWriteRequest(actionType, payload, correlationId));
+    }
     return this.send({
       type: "dispatch",
       action_type: actionType,
       payload,
-      correlation_id: makeCorrelationId("web", this.nextCorrelationId++),
+      correlation_id: correlationId,
     });
   }
 
   async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {
-    return this.send({
-      type: "app_action",
-      action,
-      correlation_id: makeCorrelationId("web", this.nextCorrelationId++),
-    });
+    const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
+    return this.send(chirpActionRequest(action, correlationId));
   }
 
   async setSigner(pubkeyHex: string): Promise<RuntimeSnapshot> {

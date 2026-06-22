@@ -44,9 +44,14 @@ use nmp_wasm::{
     WorkerRequest,
 };
 
-// Imports used only by the wasm32-only async publish test (#1202 guard).
+// Imports used only by the wasm32-only typed-write honest-disable test
+// (#1202 / #1007 guard). `DispatchBytes`/`SetSigner` are wasm32-gated here too
+// so native builds (where that test is `cfg`-compiled out) carry no unused
+// imports.
 #[cfg(target_arch = "wasm32")]
-use nmp_wasm::{AppAction, CapabilityFailure, SetSigner};
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+#[cfg(target_arch = "wasm32")]
+use nmp_wasm::{CapabilityFailure, DispatchBytes, SetSigner};
 
 /// Boot the runtime through Hello → Start and assert:
 /// - `HelloAccepted` is returned for a matching protocol version.
@@ -139,29 +144,29 @@ fn wasm_runtime_boots_without_panicking() {
     );
 }
 
-/// #1202 regression guard — the async publish path MUST surface an explicit
+/// #1202/#1007 regression guard — a typed wasm write MUST surface an explicit
 /// `publish_not_supported_in_web_preview` `CapabilityFailure` instead of
 /// silently swallowing the event.
 ///
-/// Before #1202 the path called `publish_signed_event` on a kernel whose
-/// `NoopOutboxResolver` resolved zero relay targets (`PublishTarget::Auto` →
-/// `NoTargets`), then returned `ActionAccepted` — the host had no way to know
+/// Before #1202 the publish path called `publish_signed_event` on a kernel
+/// whose `NoopOutboxResolver` resolved zero relay targets (`PublishTarget::Auto`
+/// → `NoTargets`), then returned `ActionAccepted` — the host had no way to know
 /// the event was never sent. This test asserts the honest-disable contract:
-/// `start_publish_app_action` must resolve to a `CapabilityFailure` with the
-/// `publish_not_supported_in_web_preview:` prefix for every app-level write
-/// action while the real composition root is pending (#1007).
+/// a write over the typed `DispatchBytes` doorway (the ONLY wasm write path
+/// after #1743 Cut A) must resolve to a `CapabilityFailure` with the
+/// `publish_not_supported_in_web_preview:` prefix while the real composition
+/// root is pending (#1007).
 ///
-/// This test runs only on `wasm32` (where `start_publish_app_action` exists)
-/// via `wasm-pack test --headless --chrome`. The native variant of this guard
-/// is the `publish_not_supported_in_web_preview_reason_has_stable_prefix` unit
-/// test in `publish_path.rs`, which pins the reason-string prefix contract
-/// cross-target.
+/// The native variant of this guard is the
+/// `publish_not_supported_in_web_preview_reason_has_stable_prefix` unit test in
+/// `publish_path.rs`, plus the `typed_write_after_set_signer_*` test in
+/// `protocol.rs`.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen_test]
-async fn async_publish_path_surfaces_honest_disable_not_action_accepted() {
-    // Install a NIP-07 signer so the gate cannot be attributed to a missing
-    // signer (we want to reach the honest-disable gate, not the
-    // `signer_not_installed` gate).
+fn typed_write_surfaces_honest_disable_not_action_accepted() {
+    // Seed the active identity so the gate cannot be attributed to a missing
+    // account (we want to reach the honest-disable gate, not the
+    // `signer_not_installed` gate). ADR-0064 §5: no persistent signer.
     let mut runtime = WasmRuntime::new();
     runtime
         .handle(WorkerRequest::SetSigner(SetSigner {
@@ -172,36 +177,34 @@ async fn async_publish_path_surfaces_honest_disable_not_action_accepted() {
         }))
         .expect("SetSigner must succeed");
 
-    // Drive the async publish path — this is the path that previously hit
-    // NoopOutboxResolver → NoTargets → silent ActionAccepted (the #1202 bug).
-    let event = runtime
-        .start_publish_app_action(
-            AppAction::PublishNote {
-                content: "hello from wasm".to_string(),
-                reply_to_id: None,
-            },
-            "pub-wasm-1".to_string(),
-            // now_secs: fixed; the honest-disable gate returns before any
-            // publish_signed_event call so the timestamp is never used.
-            1_700_000_000,
-        )
-        .await;
+    // Drive a typed write through the one binary doorway — the path that would
+    // hit NoopOutboxResolver → NoTargets → silent ActionAccepted (the #1202 bug)
+    // once publishing is wired.
+    let bytes = encode_dispatch_envelope(
+        "pub-wasm-1",
+        "nmp.publish",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        b"opaque-publish-payload",
+    );
+    let events = runtime
+        .handle(WorkerRequest::DispatchBytes(DispatchBytes { bytes }))
+        .expect("DispatchBytes must not error");
 
-    match event {
+    match &events[0] {
         WorkerEvent::CapabilityFailure(CapabilityFailure { capability, reason, .. }) => {
             assert_eq!(
                 capability, "nmp.publish",
-                "CapabilityFailure must carry the correct capability; got: {capability:?}"
+                "CapabilityFailure must carry the decoded namespace; got: {capability:?}"
             );
             assert!(
                 reason.starts_with("publish_not_supported_in_web_preview:"),
-                "async publish path must surface 'publish_not_supported_in_web_preview:' prefix, \
+                "typed write must surface 'publish_not_supported_in_web_preview:' prefix, \
                  NOT 'action_accepted' or any silent-success indicator; got: {reason:?}"
             );
         }
         WorkerEvent::ActionAccepted { .. } => {
             panic!(
-                "#1202 regression: async publish path returned ActionAccepted but the event \
+                "#1202 regression: typed write returned ActionAccepted but the event \
                  was silently dropped (NoopOutboxResolver → NoTargets). The honest-disable \
                  gate must return CapabilityFailure before any publish_signed_event call."
             );

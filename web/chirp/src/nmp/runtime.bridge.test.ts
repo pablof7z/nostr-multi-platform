@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { publishNoteAction } from "./actions";
 import type { WorkerEvent, WorkerRequest } from "@nmp/runtime-web";
-import { protocolVersion } from "@nmp/runtime-web";
+import { encodeDispatchEnvelope, protocolVersion } from "@nmp/runtime-web";
 
 type WorkerHarness = {
   onmessage: ((message: MessageEvent<WorkerRequest>) => void) | null;
@@ -39,10 +38,15 @@ describe("worker runtime bridge", () => {
       database_name: "chirp-test",
       correlation_id: "start-1",
     });
+    // ADR-0064 / #1743: a write crosses the typed `dispatch_bytes` doorway
+    // (the `app_action` envelope was deleted). The degraded runtime decodes the
+    // envelope's namespace + correlation_id and surfaces the honest failure.
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ PublishRaw: { kind: 1, tags: [], content: "hello", target: "Auto" } }),
+    );
     await sendWorkerRequest(harness, {
-      type: "app_action",
-      action: publishNoteAction("hello"),
-      correlation_id: "dispatch-1",
+      type: "dispatch_bytes",
+      bytes: encodeDispatchEnvelope("dispatch-1", "nmp.publish", payload),
     });
 
     expect(events[0]).toMatchObject({
@@ -58,7 +62,7 @@ describe("worker runtime bridge", () => {
       },
       {
         type: "capability_failure",
-        capability: "app_action",
+        capability: "nmp.publish",
         correlation_id: "dispatch-1",
         reason: events[0].type === "error" ? events[0].message : "",
       },

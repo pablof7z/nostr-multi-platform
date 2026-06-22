@@ -124,9 +124,12 @@ describe("createNmpClient fallback", () => {
       type: "runtime_status",
       correlation_id: "web-start",
     });
+    // ADR-0064 / #1743: the write lowers to the typed `dispatch_bytes` doorway;
+    // the degraded runtime decodes the envelope's namespace (`nmp.publish`) and
+    // correlation_id and surfaces the honest failure keyed on that namespace.
     expect(dispatched.events[0]).toMatchObject({
       type: "capability_failure",
-      capability: "app_action",
+      capability: "nmp.publish",
       reason: "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
     });
   });

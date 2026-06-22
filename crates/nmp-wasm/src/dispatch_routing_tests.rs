@@ -181,26 +181,16 @@ fn ref_dispatch_fails_closed_on_unknown_liveness_discriminant() {
 
 #[test]
 fn write_path_unavailable_reason_distinguishes_signer_states() {
-    assert!(write_path_unavailable_reason(None).starts_with("signer_not_installed"));
-    // Build a real Arc<dyn Signer> using the NIP-07 stub so we exercise
-    // the `Some` arm honestly. The signer's sign() will return
-    // Unsupported on native; we never call sign() here.
-    use nmp_signers::Nip07Signer;
-    let signer: Arc<dyn Signer> = Arc::new(Nip07Signer::from_cached_pubkey(
-        nostr::PublicKey::from_hex(
-            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
-        )
-        .unwrap(),
-    ));
-    // Fix #1748: the signer-installed "publishing is disabled" branch now
-    // surfaces the SINGLE canonical disable token shared with the async path,
-    // not the divergent legacy `publish_path_not_wired` string. A host
-    // pattern-matches exactly ONE "publishing disabled" prefix across both
-    // the sync and async entrypoints.
-    let reason = write_path_unavailable_reason(Some(&signer));
+    // No active account → "sign in to publish".
+    assert!(write_path_unavailable_reason(false).starts_with("signer_not_installed"));
+    // Account seeded but the web preview has no outbox resolver: the single
+    // canonical disable token (ADR-0064 §5 removed the persistent signer slot;
+    // the discriminator is the active account, not an `Arc<dyn Signer>`). A
+    // host pattern-matches exactly ONE "publishing disabled" prefix.
+    let reason = write_path_unavailable_reason(true);
     assert!(
         reason.starts_with("publish_not_supported_in_web_preview"),
-        "signer-installed disable branch must emit the canonical token; got: {reason}"
+        "account-seeded disable branch must emit the canonical token; got: {reason}"
     );
     assert!(
         !reason.starts_with("publish_path_not_wired"),
