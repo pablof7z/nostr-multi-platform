@@ -32,7 +32,9 @@ public struct NostrContentView: View {
     /// default so non-article surfaces keep the lightweight `Text` path.
     public var selectionEnabled: Bool
 
-    @Environment(\.nostrContentRenderer) private var renderer
+    // Non-private so the article-mode extension (NostrContentArticleView,
+    // NostrContentAttributed) in the same module can read theming + callbacks.
+    @Environment(\.nostrContentRenderer) var renderer
     @Environment(\.embedEnvelopeSource) private var embedEnvelopeSource
     @Environment(\.embedClaimSink) private var embedClaimSink
     @Environment(\.nostrKindRegistry) private var nostrKindRegistry
@@ -56,9 +58,14 @@ public struct NostrContentView: View {
         if groups.isEmpty {
             EmptyView()
         } else if articleMode {
+            // Footnote-definition paragraphs (`[^1]: …`) are rendered once, by
+            // `footnoteSection`. Suppress the originals from the normal loop so
+            // the body shows each definition exactly once and the marker
+            // scrolls to the single rendered block.
+            let bodyGroups = groups.filter { !isFootnoteDefinitionGroup($0) }
             ScrollViewReader { proxy in
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                    ForEach(Array(bodyGroups.enumerated()), id: \.offset) { _, group in
                         groupView(group, proxy: proxy)
                     }
                     footnoteSection(proxy: proxy)

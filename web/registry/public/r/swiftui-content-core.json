@@ -2,7 +2,7 @@
   "name": "swiftui-content-core",
   "type": "registry:ui",
   "title": "Content Core (SwiftUI)",
-  "description": "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components.",
+  "description": "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components. Includes the article-reading callback seams (onTextSelected highlight-creation, onDecorationTap range-overlay tap).",
   "dependencies": [],
   "registryDependencies": [],
   "files": [

@@ -21,6 +21,31 @@ extension NostrContentView {
 
     func footnoteAnchorId(_ label: String) -> String { "nmp-footnote-\(label)" }
 
+    /// True when an inline group is *only* footnote definitions (`[^label]: …`)
+    /// for labels that resolved to a real footnote. Such groups are suppressed
+    /// from the body loop because `footnoteSection` renders them — rendering
+    /// them in both places would duplicate every definition and split the
+    /// scroll-to anchor. Groups that mix a definition with other prose are kept
+    /// (we only drop pure-definition paragraphs); an empty group is not a
+    /// definition.
+    func isFootnoteDefinitionGroup(_ group: NostrContentGroup) -> Bool {
+        guard case .inline(_, let children) = group else { return false }
+        let text = nostrContentPlainText(tree, children: children, mentionLabel: mentionLabel)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+        let knownLabels = Set(footnotes.map(\.label))
+        // Every non-empty line must be a definition for a known footnote label.
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+        guard !lines.isEmpty else { return false }
+        for line in lines {
+            let defs = footnoteDefinitions(in: String(line))
+            guard defs.count == 1, let (label, _) = defs.first, knownLabels.contains(label) else {
+                return false
+            }
+        }
+        return true
+    }
+
     /// Route a tapped link from `NostrSelectableText`: decoration → app
     /// callback, footnote → scroll, anything else (real `http(s)` links) →
     /// `onLinkTap`.

@@ -163,7 +163,9 @@ extension NostrContentView {
         footnotes: [NostrContentFootnote]
     ) {
         guard !footnotes.isEmpty else { return }
-        let byLabel = Dictionary(uniqueKeysWithValues: footnotes.map { ($0.label, $0) })
+        // `nostrContentFootnotes` already dedupes by label; `uniquingKeysWith`
+        // keeps this crash-proof even if a duplicate label ever slips through.
+        let byLabel = Dictionary(footnotes.map { ($0.label, $0) }, uniquingKeysWith: { first, _ in first })
         // Replace from the end so earlier ranges stay valid as we mutate.
         let plain = out.string as NSString
         var replacements: [(NSRange, NostrContentFootnote)] = []

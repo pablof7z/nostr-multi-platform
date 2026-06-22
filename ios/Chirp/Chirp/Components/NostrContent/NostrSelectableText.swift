@@ -60,15 +60,17 @@ struct NostrSelectableText: UIViewRepresentable {
         func attach(_ view: UITextView) { self.view = view }
 
         // Route decoration / footnote link taps (custom-scheme URLs) to the app
-        // instead of letting UIKit try to open them.
+        // instead of letting UIKit try to open them. iOS 17+ text-item API.
         func textView(
             _ textView: UITextView,
-            shouldInteractWith url: URL,
-            in characterRange: NSRange,
-            interaction: UITextItemInteraction
-        ) -> Bool {
-            parent.onLink(url)
-            return false
+            primaryActionFor textItem: UITextItem,
+            defaultAction: UIAction
+        ) -> UIAction? {
+            if case .link(let url) = textItem.content {
+                let parent = self.parent
+                return UIAction { _ in parent.onLink(url) }
+            }
+            return defaultAction
         }
 
         // Inject a "Highlight" action into the selection edit menu (iOS 16+).

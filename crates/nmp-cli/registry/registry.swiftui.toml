@@ -7,7 +7,7 @@
 id = "swiftui/content-core"
 version = "0.2.0"
 target = "swiftui"
-description = "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components."
+description = "Shared SwiftUI renderer configuration + ContentTreeWire Codable mirror for app-owned Nostr content components. Includes the article-reading callback seams (onTextSelected highlight-creation, onDecorationTap range-overlay tap)."
 [[components.files]]
 source = "swiftui/content-core/NostrContentRenderer.swift"
 target = "Components/NostrContent/NostrContentRenderer.swift"
