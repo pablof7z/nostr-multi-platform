@@ -107,7 +107,6 @@ crates/nmp-wasm/src/runtime.rs	557
 docs/architecture-audit/pd033c-plan.md	689
 docs/architecture-audit/v6-codegen-plan.md	724
 docs/decisions/0038-typed-op-feed-projection.md	625
-docs/design/intent-routing.md	615
 docs/design/relay-roles.md	614
 docs/perf/op-centric-feed-architecture.md	1237
 docs/perf/pending-user-decisions.md	1406

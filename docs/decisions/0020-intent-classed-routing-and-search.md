@@ -16,20 +16,36 @@
 
 > **Ownership split (Issue #1561).** `nmp-planner` / `nmp-core` own only the
 > generic wire-filter and routing substrate: the bounded `InterestShape.search`
-> field, filter serialization, merge equality, class-routed planning
-> primitives, diagnostics, and local-store coverage refusal when no FTS index
-> exists. NIP-50 query semantics, app-facing search actions/views, result
-> ranking, and search-hit projection live in the owning search module
-> (`nmp-nip50`). NIP-51 kind:10007 relay-list parsing and active-account
-> routing facts live in `nmp-nip51`. There is no `nmp-core::search` module: any
-> "search lives in the kernel" reading of the decisions below means only the
-> generic substrate primitive, never protocol-specific search behavior.
+> field, filter serialization, merge equality, and generic blocked-relay
+> subtraction. NIP-50 query semantics, app-facing search actions/views, result
+> ranking, relay selection from kind:10007, and search-hit projection live in
+> the owning search module (`nmp-nip50`). NIP-51 kind:10007 relay-list parsing
+> lives in `nmp-nip51` (`SearchRelayListProjection`). There is no
+> `nmp-core::search` module and no search routing class: any "search lives in
+> the kernel" reading of the decisions below means only the generic
+> `InterestShape.search` wire-filter field, never protocol-specific search
+> behavior or relay-selection policy.
 > **Input-intent amendment (2026-06-22).** User-entered text is not
 > automatically a NIP-50 search. A framework-owned input resolver first
 > classifies raw strings through generic parsers and namespaced scopes
 > registered by composed NMP/app modules, or rejects invalid/secret input.
 > Direct references route through the existing open/resolve-reference path;
 > only free-text search requests enter the `nmp-nip50` search surface.
+> **Higher-order search amendment (2026-06-22).** The `EventClass::Search`
+> variant and `RoutingFamily::Personal` usage for search are withdrawn. Search
+> routing does not need and does not use a planner routing class. The
+> investigation confirmed: search routes today purely via the generic
+> `InterestShape.search` wire field + the kind-agnostic ingest chokepoint
+> (ADR-0057) + generic blocked-relay subtraction. The planner's
+> `EventClass::Search` / `RoutingFamily::Personal` / `case_g_class_routed`
+> machinery is unnecessary for search and was never implemented (only
+> `EventClass::Search` existed, used solely in diagnostic JSON). Relay
+> selection from kind:10007 is performed at the higher layer by
+> `SearchRelayListProjection` (in `nmp-nip51`), with app-default fallback and
+> blocked-relay subtraction applied in `nmp-nip50`. `EventClass` is retained
+> for Draft / Wiki / GroupMessage routing only; Search is no longer a member.
+> See also: issues #1561 (search anchoring), #1804 (input-intent resolver),
+> #1794 (relay routing), #1811 (cache FTS inverted index).
 
 ## Context
 
@@ -81,14 +97,23 @@ NIP-51 kind:10007 list when present; parsing that list is owned by
 kind → class table: PublicNote / Profile / RelayList / LongForm / Draft
 (covers 1234 + 31234) / Wiki (covers 818 + 30818 + 30819) / DM (reserved,
 routing deferred) / GroupMessage (kept for diagnostics, never routes
-through `class_relays` — uses the existing `relay_pin` lane) / Search
-(planner-internal, not a wire kind) / Other.
+through `class_relays` — uses the existing `relay_pin` lane) / Other.
+**Note (2026-06-22 amendment):** `EventClass::Search` was over-reach and
+has been removed. Search does not need a planner routing class. The
+`InterestShape.search` wire-filter field is sufficient; relay selection is
+higher-order, performed by `nmp-nip50` via `SearchRelayListProjection` from
+`nmp-nip51`. If `EventClass` is extended in the future, Search remains out
+of scope unless a planner-level routing need is proven.
 
 **(3) Two-shape resolver trait.** NIP-51 lists fall into two routing
 families, and the `OutboxResolver` trait grows methods for each:
 - **Personal lists** (active-account context, no author argument):
-  search (10007), drafts (10013), blocked (10006). Method:
+  drafts (10013), blocked (10006). Method:
   `class_relays_personal(class) -> Option<Vec<RelayUrl>>`.
+  **Note:** kind:10007 search relays are NOT consumed here; they are read
+  by `SearchRelayListProjection` in `nmp-nip51` and consumed by `nmp-nip50`
+  directly — this is part of the higher-order search model (2026-06-22
+  amendment).
 - **Publisher-keyed lists** (per-author, consulted for the author of the
   events being routed): wiki (10102) is the only v1 entry. Method:
   `class_relays_for_author(class, author) -> Option<Vec<RelayUrl>>`.
@@ -285,6 +310,7 @@ is eligible for cache plus NIP-50 text search.
 - ADR-0012 — `relay_pin` and the third routing lane.
 - ADR-0015 — M6 signer design (NIP-44 self-decrypt dependency).
 - ADR-0021 — Relay roles: Indexer + AppRelay (this ADR's prerequisite).
+- ADR-0057 — Unified kind-agnostic ingest chokepoint (search routes through this).
 - `docs/architecture/crate-boundaries.md` §3.1 — the seven routing lanes
   (NIP-65, Hint, Provenance, UserConfigured, ClassRouted, Indexer, AppRelay)
   and the worker-vs-planner abstraction split that the as-built routing code
@@ -292,5 +318,12 @@ is eligible for cache plus NIP-50 text search.
 - `docs/architecture/crate-boundaries.md` §5, §8 — the routing contract and
   the protocol-crate ownership boundary (`nmp-nip50` query, `nmp-nip51`
   list parsing).
+- `docs/design/intent-routing.md` — companion design doc (updated to match
+  the higher-order search model per the 2026-06-22 amendment).
+- Issue #1561 — NIP-50 search anchoring (origin of the ownership split).
+- Issue #1804 — Input-intent resolver (front door for raw user text).
+- Issue #1794 — Relay routing (blocked-relay subtraction in publish engine).
+- Issue #1811 — Cache-side full-text inverted index (`text_search_visit`
+  store seam + LMDB FTS sub-databases + crate-registered scope registry).
 - NIP-37 (drafts + checkpoints), NIP-50 (search), NIP-51 (lists),
   NIP-54 (wikis), NIP-29 (relay groups), NIP-51 PR #1985 (kind:10086).
