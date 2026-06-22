@@ -77,8 +77,11 @@ fn open_error_token(err: &FeedOpenError) -> &'static str {
 /// non-null app).
 #[must_use]
 fn into_raw_json(json: String) -> *mut c_char {
+    // Interior NUL is impossible for our JSON; if it ever occurred, fall back to a
+    // static NUL-free error envelope, then to an empty string — never panic (D6).
     CString::new(json)
-        .unwrap_or_else(|_| CString::new(r#"{"error":"encode"}"#).expect("static is NUL-free"))
+        .or_else(|_| CString::new(r#"{"error":"encode"}"#))
+        .unwrap_or_default()
         .into_raw()
 }
 
