@@ -237,81 +237,6 @@ fn unfollow_envelope_has_required_fields() {
     );
 }
 
-/// Test: SignInNsec action envelope has required fields.
-///
-/// Validates:
-/// - Top-level key: "SignInNsec"
-/// - "SignInNsec.secret" is present and non-empty
-#[test]
-fn sign_in_nsec_envelope_has_required_fields() {
-    // Simulate what ChirpClient::sign_in_nsec builds internally.
-    let action = json!({
-        "SignInNsec": {
-            "secret": "nsec1p0sted123..."
-        }
-    })
-    .to_string();
-
-    assert_action_has_fields(&action, &["SignInNsec"], "sign_in_nsec");
-
-    let obj = serde_json::from_str::<Value>(&action).unwrap();
-    let sign_in = &obj["SignInNsec"];
-
-    assert!(
-        sign_in
-            .get("secret")
-            .and_then(Value::as_str)
-            .map(|s| !s.is_empty())
-            .unwrap_or(false),
-        "sign_in_nsec: SignInNsec.secret must be present and non-empty"
-    );
-}
-
-/// Test: CreateAccount action envelope has required fields.
-///
-/// Validates:
-/// - Top-level key: "CreateAccount"
-/// - "CreateAccount.profile" is an object
-/// - "CreateAccount.relays" is an array
-/// - "CreateAccount.mls" is a boolean
-#[test]
-fn create_account_envelope_has_required_fields() {
-    let action = json!({
-        "CreateAccount": {
-            "profile": {
-                "name": "Alice",
-                "about": "Test user",
-                "picture": "https://example.com/pic.jpg"
-            },
-            "relays": [
-                {"url": "wss://relay.example.com", "role": "read+write"}
-            ],
-            "mls": false
-        }
-    })
-    .to_string();
-
-    assert_action_has_fields(&action, &["CreateAccount"], "create_account");
-
-    let obj = serde_json::from_str::<Value>(&action).unwrap();
-    let create = &obj["CreateAccount"];
-
-    assert!(
-        create.get("profile").map(Value::is_object).unwrap_or(false),
-        "create_account: CreateAccount.profile must be present and an object"
-    );
-
-    assert!(
-        create.get("relays").map(Value::is_array).unwrap_or(false),
-        "create_account: CreateAccount.relays must be present and an array"
-    );
-
-    assert!(
-        create.get("mls").map(Value::is_boolean).unwrap_or(false),
-        "create_account: CreateAccount.mls must be present and a boolean"
-    );
-}
-
 /// Test: PublishProfile action envelope has required fields.
 ///
 /// Validates:
@@ -438,54 +363,6 @@ fn zap_envelope_has_required_fields() {
     );
 }
 
-/// Test: SwitchAccount action envelope has required fields.
-///
-/// Validates:
-/// - Top-level key: "pubkey"
-/// - "pubkey" is non-empty
-#[test]
-fn switch_account_envelope_has_required_fields() {
-    let action = json!({
-        "pubkey": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
-    })
-    .to_string();
-
-    assert_action_has_fields(&action, &["pubkey"], "switch_account");
-
-    let obj = serde_json::from_str::<Value>(&action).unwrap();
-
-    assert!(
-        obj.get("pubkey")
-            .and_then(Value::as_str)
-            .map(|pk| !pk.is_empty())
-            .unwrap_or(false),
-        "switch_account: pubkey must be present and non-empty"
-    );
-}
-
-/// Test: RemoveAccount action envelope has required fields.
-///
-/// Validates: same as switch_account.
-#[test]
-fn remove_account_envelope_has_required_fields() {
-    let action = json!({
-        "pubkey": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
-    })
-    .to_string();
-
-    assert_action_has_fields(&action, &["pubkey"], "remove_account");
-
-    let obj = serde_json::from_str::<Value>(&action).unwrap();
-
-    assert!(
-        obj.get("pubkey")
-            .and_then(Value::as_str)
-            .map(|pk| !pk.is_empty())
-            .unwrap_or(false),
-        "remove_account: pubkey must be present and non-empty"
-    );
-}
-
 // ────────────────────────────────────────────────────────────────────────────
 // Cross-platform consistency: all envelopes must be valid JSON
 // ────────────────────────────────────────────────────────────────────────────
@@ -521,10 +398,6 @@ fn all_action_json_parses_valid() {
         (
             "follow",
             json!({"pubkey": "def456"}).to_string(),
-        ),
-        (
-            "sign_in_nsec",
-            json!({"SignInNsec": {"secret": "nsec1234"}}).to_string(),
         ),
     ];
 

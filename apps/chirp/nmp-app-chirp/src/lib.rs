@@ -79,9 +79,8 @@ pub use snapshot_types::{
     RuntimeMetrics,
 };
 pub use typed_api::{
-    create_account_action, follow_action, publish_note_action, publish_profile_action,
-    react_action, remove_account_action, repost_action, send_dm_action, sign_in_nsec_action,
-    switch_account_action, unfollow_action, zap_action, ChirpClient,
+    follow_action, publish_note_action, publish_profile_action, react_action, repost_action,
+    send_dm_action, unfollow_action, zap_action, ChirpClient,
 };
 
 /// V-80 rung 7 / issue #1613 — the home-feed snapshot served under `"nmp.feed.home"`.

@@ -12,8 +12,7 @@
 //! ```
 
 use nmp_app_chirp::typed_api::{
-    follow_action, publish_note_action, react_action, send_dm_action, sign_in_nsec_action,
-    switch_account_action, unfollow_action,
+    follow_action, publish_note_action, react_action, send_dm_action, unfollow_action,
 };
 use nmp_core::tags::Nip10Refs;
 use nmp_nip01::NoteRecord;
@@ -170,27 +169,3 @@ fn send_dm_action_has_correct_namespace_and_fields() {
     assert_eq!(v["content"], "secret message");
 }
 
-// ---------------------------------------------------------------------------
-// sign_in_nsec_action
-// ---------------------------------------------------------------------------
-
-#[test]
-fn sign_in_nsec_action_has_correct_namespace_and_nested_secret() {
-    let (ns, json) = sign_in_nsec_action("nsec1abc");
-    assert_eq!(ns, "nmp.sign_in_nsec");
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-    // secret is NESTED under SignInNsec
-    assert_eq!(v["SignInNsec"]["secret"], "nsec1abc");
-}
-
-// ---------------------------------------------------------------------------
-// switch_account_action
-// ---------------------------------------------------------------------------
-
-#[test]
-fn switch_account_action_has_correct_namespace_and_pubkey() {
-    let (ns, json) = switch_account_action("pubkey789");
-    assert_eq!(ns, "nmp.switch_account");
-    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
-    assert_eq!(v["pubkey"], "pubkey789");
-}

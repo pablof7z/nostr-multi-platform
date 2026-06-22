@@ -11,7 +11,8 @@ use std::ffi::CString;
 use nmp_nip01::NoteRecord;
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_cancel_action, nmp_app_remove_relay, nmp_app_retry_publish,
+    nmp_app_add_relay, nmp_app_cancel_action, nmp_app_remove_account, nmp_app_remove_relay,
+    nmp_app_retry_publish, nmp_app_switch_active,
 };
 
 use super::AppRuntime;
@@ -91,11 +92,27 @@ impl AppRuntime {
     // ------------------------------------------------------------------
 
     pub fn switch_account(&self, pubkey: &str) {
-        let _ = self.client.switch_account(pubkey);
+        // Canonical account path: the dedicated C-ABI symbol (matches Android/
+        // TUI), NOT the dead `nmp.switch_account` JSON doorway. Fire-and-forget
+        // UI action: silent return on null app or NUL byte in the pubkey.
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(pubkey) {
+            unsafe { nmp_app_switch_active(self.app, c.as_ptr()) };
+        }
     }
 
     pub fn remove_account(&self, pubkey: &str) {
-        let _ = self.client.remove_account(pubkey);
+        // Canonical account path: the dedicated C-ABI symbol (matches Android/
+        // TUI), NOT the dead `nmp.remove_account` JSON doorway. Fire-and-forget
+        // UI action: silent return on null app or NUL byte in the pubkey.
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(pubkey) {
+            unsafe { nmp_app_remove_account(self.app, c.as_ptr()) };
+        }
     }
 
     pub fn publish_profile(
