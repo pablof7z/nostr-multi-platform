@@ -14,12 +14,14 @@ impl Kernel {
     /// `event_claims` key — so the `claimed_events` projection rev advances
     /// without waiting for a profile bump.
     ///
-    /// `event_claims` keys (`requests/event.rs::primary_id`) are either a hex64
-    /// event id (note claims) OR a `"kind:pubkey:d_tag"` coordinate (addressable /
-    /// parameterized-replaceable claims). BOTH are checked on BOTH the `Inserted`
-    /// and `Replaced` arms (F1): a kind:30023 longform arriving for the FIRST time
-    /// returns `Inserted{id}` but is claimed by COORD, not by id — an id-only
-    /// check would stall the rev and dark the embed.
+    /// `event_claims` keys (`requests/event.rs::primary_id`) are a hex64 event id
+    /// (note claims), a `"kind:pubkey:d_tag"` coordinate (addressable /
+    /// parameterized-replaceable claims), OR an `"i:<external-id>"` NIP-73
+    /// external ref (#1654). ALL are checked on BOTH the `Inserted` and `Replaced`
+    /// arms (F1): a kind:30023 longform arriving for the FIRST time returns
+    /// `Inserted{id}` but is claimed by COORD, not by id — an id-only check would
+    /// stall the rev and dark the embed; likewise a NIP-22 comment satisfying an
+    /// external ref is claimed by its `i` tag, not by id.
     pub(super) fn maybe_bump_claimed_event_content(
         &mut self,
         outcome: &InsertOutcome,
@@ -30,9 +32,10 @@ impl Kernel {
             InsertOutcome::Replaced { new_id, .. } => Some(new_id),
             _ => None,
         };
-        // Resolve WHICH live `event_claims` key this insert satisfies (the hex id
-        // OR the addressable coordinate) so ADR-0063's per-key rev can bump that
-        // exact row (D6a), not just the whole-projection scalar.
+        // Resolve WHICH live `event_claims` key this insert satisfies (the hex id,
+        // the addressable coordinate, OR a NIP-73 external ref) so ADR-0063's
+        // per-key rev can bump that exact row (D6a), not just the whole-projection
+        // scalar.
         let matched_key: Option<String> = claimed_id.and_then(|id| {
             let hex_id: String = id.iter().map(|b| format!("{b:02x}")).collect();
             if self.event_claims.contains_key(&hex_id) {
@@ -53,6 +56,17 @@ impl Kernel {
                 let coord_key = format!("{}:{}:{}", event.kind, event.pubkey, d);
                 if self.event_claims.contains_key(&coord_key) {
                     return Some(coord_key);
+                }
+            }
+            // NIP-73 external-ref fallback (#1654): the event satisfies a claimed
+            // `i:<external-id>` ref iff it carries a matching `["i", <external-id>]`
+            // tag. Kind-agnostic — any kind may reference an external id.
+            for tag in &event.tags {
+                if tag.len() >= 2 && tag[0] == "i" {
+                    let ext_key = format!("i:{}", tag[1]);
+                    if self.event_claims.contains_key(&ext_key) {
+                        return Some(ext_key);
+                    }
                 }
             }
             None

@@ -26,6 +26,9 @@ pub use profile::ProfileLiveness;
 // gate the re-export so a non-test build emits no unused-import warning.
 #[cfg(test)]
 pub(in crate::kernel) use event_key::parse_event_key;
+// #1654: NIP-73 external-ref key accessor — consumed by the store/cache lookup
+// paths (`views.rs::lookup_for_primary_id`, `event_live.rs::event_already_known`).
+pub(in crate::kernel) use event_key::external_id_from_key;
 pub(in crate::kernel) use event_key::PendingEventClaim;
 
 use super::{
@@ -404,7 +407,8 @@ impl Kernel {
             // Unified front-door path: prepare + register_interest (EnsureAbsent
             // = register-if-absent, so same-shape reverifies share one slot).
             let (_token, interest_id, identity, interest) =
-                self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
+                self.oneshot
+                    .prepare(InterestScope::Global, shape, Vec::new());
             self.register_interest(
                 &[crate::kernel::cache_serve::InterestRegistration {
                     identity,
