@@ -181,6 +181,15 @@ Doctrine:
 - No variant carries an `Arc<dyn Trait>` or callback — capabilities are bridged separately.
 - A `tag()` method (`pub fn tag(&self) -> &'static str`) returns a log-safe label that never reveals secrets (mnemonics, nsec, plaintext DMs).
 
+#### Input intent and search
+
+Raw user text is resolved before it becomes an action. The framework-level
+input resolver runs generic parsing first, then dispatches to namespaced scopes
+registered by composed modules. Direct references reuse `OpenUri`/`resolve_ref`;
+NIP-05 produces an async lookup; protocol crates such as `nmp-nip29` own their
+domain targets; only text queries call the search module. Apps choose registered
+scopes and presentation, but they do not duplicate parsing or relay routing.
+
 ### 6.4 AppUpdate
 
 `AppUpdate` is the outbound stream. Snapshots by default (D5); granular variants only where profiling warrants. The canonical runtime encoding is FlatBuffers, with this logical schema:

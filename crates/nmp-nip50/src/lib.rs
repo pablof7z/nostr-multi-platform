@@ -3,6 +3,11 @@
 //! The planner/core substrate owns only the generic `search` filter field and
 //! wire serialization. This crate owns NIP-50 query scopes and bounded
 //! deduplicating result projection.
+//!
+//! This crate is not the generic user-input resolver. Direct NIP-19/NIP-21
+//! references, NIP-05 identifiers, relay URLs, and crate-registered domains
+//! such as NIP-29 groups are classified before search and routed through their
+//! existing seams; only free-text search requests enter `SearchRequest`.
 
 use std::collections::{BTreeMap, BTreeSet};
 

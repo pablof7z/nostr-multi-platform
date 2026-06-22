@@ -24,6 +24,12 @@
 > routing facts live in `nmp-nip51`. There is no `nmp-core::search` module: any
 > "search lives in the kernel" reading of the decisions below means only the
 > generic substrate primitive, never protocol-specific search behavior.
+> **Input-intent amendment (2026-06-22).** User-entered text is not
+> automatically a NIP-50 search. A framework-owned input resolver first
+> classifies raw strings through generic parsers and namespaced scopes
+> registered by composed NMP/app modules, or rejects invalid/secret input.
+> Direct references route through the existing open/resolve-reference path;
+> only free-text search requests enter the `nmp-nip50` search surface.
 
 ## Context
 
@@ -33,8 +39,10 @@ update to NIP-37 and NIP-51 landing mid-discussion:
 1. **Search.** Apps want to search users (kind:0 `name`/`about`) and long-form
    content (kind:30023 body). NIP-50 specifies the wire shape (a `search`
    string in the filter). The user's preferred search relays are enumerable
-   from NIP-51 kind:10007. NMP today has no search filter field and no
-   NIP-50 path.
+   from NIP-51 kind:10007. The generic field and `nmp-nip50` primitives now
+   exist; the remaining product gap is the framework front door that decides
+   which registered intent/search scope handles raw user input, or whether it
+   falls through to free-text search.
 
 2. **Specialized-relay routing.** NIP-51 enumerates several relay lists
    carrying routing semantics: kind:10006 blocked relays, kind:10007 search
@@ -56,8 +64,8 @@ already does.
 
 ## Decision
 
-The fourteen calls below are the v1 contract. The companion design doc
-spells out the types, the planner integration, and the five-phase rollout.
+The fifteen calls below are the v1 contract. The companion design doc spells
+out the types, the planner integration, and the rollout.
 
 **(1) Add NIP-50 search through a protocol-owner split.** New bounded
 `search: Option<String>` field on `InterestShape` is a generic wire-filter
@@ -164,11 +172,27 @@ reserved, kind:10050 decoded into the fact stream but no
 `class_relays(DM)` lookup wired. A future ADR addresses NIP-17 routing
 and gift-wrap relay semantics without re-plumbing this design.
 
+**(15) Input-intent resolution is a separate front door, not NIP-50 search.**
+Apps may pass raw user-entered strings to a framework resolver, but the
+resolver must classify before it searches. NIP-19/NIP-21 references route to
+`open_uri` / `resolve_ref`; NIP-05 identifiers start the NIP-05 lookup path
+and then resolve a profile reference; relay URLs normalize into relay metadata
+or relay-management views; NIP-29 group targets use the existing `relay_pin`
+group lane; only free text becomes a `SearchQuery`. Apps declare allowed
+namespaced scopes, and composed crates own their domain semantics
+(`nmp-nip29` groups, `nmp-nip50` text search, future `nmp-nip60` wallet
+search). NMP owns classifier reuse, routing, relay fanout, blocked-relay
+subtraction, diagnostics, and secret rejection.
+No app should need to know that `naddr1...` is a direct load while `"pablo"`
+is eligible for cache plus NIP-50 text search.
+
 ## Consequences
 
 ### Wins
 
 - Apps get search via one FFI call with cache-first synchronous results.
+- Apps can also hand NMP raw input and select registered scopes without making
+  `nmp-core` learn every protocol or app domain.
 - Drafts go to draft relays, wikis to (publisher's) wiki relays, without
   app authors needing to know which kinds map to which class.
 - Blocked relays are kernel-enforced — no path bypasses them, including
@@ -214,6 +238,9 @@ and gift-wrap relay semantics without re-plumbing this design.
   in their kind:10007 list see dead lanes. Acceptable — per-relay
   diagnostic surfaces this — but worth documenting prominently in the
   FFI docs so app authors aren't surprised by empty result sets.
+- **Input resolution adds another public seam.** The seam is justified only if
+  it reuses the existing NIP-19/NIP-21, NIP-05, relay, NIP-29, `open_uri`, and
+  `resolve_ref` paths instead of becoming a parallel parser or policy engine.
 
 ### Non-decisions deferred
 
@@ -246,6 +273,9 @@ and gift-wrap relay semantics without re-plumbing this design.
 - **NIP-11 probe of search relays.** Rejected per decision (8). Adds
   plumbing for marginal benefit; surfaces in the per-relay diagnostic
   instead.
+- **Treat every raw input as NIP-50 search first.** Rejected. Direct Nostr
+  references, relay URLs, NIP-05 names, and group identifiers have stronger
+  semantics than free-text search and must not fan out as blind search REQs.
 - **`AllRelaysBlocked` as a silent empty plan.** Rejected per decision
   (7). The user-facing failure mode of "I blocked all my relays and now
   nothing publishes" is easier to debug when loud.
