@@ -94,8 +94,9 @@ mod routing_trace;
 // the snapshot tick.
 mod composition_report;
 // ADR-0063 Lane D — unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI
-// symbols. Generalizes the former per-kind profile claim + claim_event behind one origin-blind seam;
-// old claim/release symbols kept AS-IS until Lane H.
+// symbols. Generalizes the former per-kind profile claim + claim_event behind one
+// origin-blind seam. Lane H deleted the per-kind profile claim/release symbols;
+// profiles resolve exclusively through resolve_ref (claim_event is retained).
 mod resolve_ref;
 mod snapshot;
 mod storage;
@@ -236,9 +237,9 @@ pub use timeline::{
     nmp_app_open_uri,
     nmp_app_release_event,
 };
-// ADR-0063 Lane D — unified ref-resolution C-ABI entry points. These sit
-// beside the claim/release scaffold (kept until Lane H) so both surfaces
-// compile and link; shells migrate to resolve_ref/release_ref independently.
+// ADR-0063 Lane D — unified ref-resolution C-ABI entry points. Lane H deleted the
+// per-kind profile claim/release symbols; these are the sole profile-resolution
+// surface (the event claim/release URI front-door is retained alongside them).
 #[cfg(feature = "native")]
 pub use resolve_ref::{nmp_app_release_ref, nmp_app_resolve_ref};
 

@@ -139,7 +139,7 @@ struct ModularBlockView: View {
         // ADR-0032: presentation layer derives the secondary monospaced
         // pubkey label from the raw hex pubkey it already has on hand.
         // Resolve the display name through the same lookup the rest of the
-        // view uses (resolved_profiles → card name → shortHex). Previously
+        // view uses (refs.profile → card name → shortHex). Previously
         // hardcoded `pubkey.shortHex`, which ignored every known profile.
         let display = displayName(item: item, card: card)
         let content = displayContent(item: item, card: card)

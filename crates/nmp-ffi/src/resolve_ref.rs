@@ -1,16 +1,18 @@
 //! ADR-0063 Lane D — unified `resolve_ref` / `release_ref` C-ABI surface.
 //!
-//! Generalizes `nmp_app_claim_profile` + `nmp_app_claim_event` behind one
-//! origin-blind entry point. The old `claim_*` / `release_*` symbols are kept
-//! AS-IS (they remain scaffold delegators until Lane H deletes them in the same
-//! migration cut as the three legacy projections).
+//! Generalizes the former per-kind profile claim + `nmp_app_claim_event` behind
+//! one origin-blind entry point. ADR-0063 Lane H deleted the per-kind profile
+//! `claim_*` / `release_*` symbols; profiles now resolve exclusively through
+//! `nmp_app_resolve_ref`. `nmp_app_claim_event` / `nmp_app_release_event` are
+//! retained (event claims keep their dedicated URI front-door).
 //!
 //! ## Integer encoding
 //!
 //! **Why `i32` integers for namespace/shape/liveness?** The C-ABI boundary
 //! cannot cross Rust enums. Three small closed integer codes with in-process
-//! decode (fail-closed on unknown values) match the existing `liveness` arg on
-//! `nmp_app_claim_profile` and keep the header readable without a C enum typedef.
+//! decode (fail-closed on unknown values) carry the same `liveness` intent the
+//! former per-kind profile claim used, and keep the header readable without a C
+//! enum typedef.
 //! An alternative was to keep the shape as a pair `(namespace, shape_within_ns)`,
 //! but a single `shape` int avoids ambiguity: each value is globally unique and
 //! unambiguous regardless of the caller's namespace, making the pair check at the
