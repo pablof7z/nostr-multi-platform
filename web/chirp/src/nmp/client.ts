@@ -15,11 +15,8 @@ import {
   type ChirpAction,
 } from "@nmp/runtime-web";
 import type { RuntimeCommand } from "./actions";
-import {
-  CHIRP_RELAY_BOOTSTRAP,
-  chirpDefaultRelayUrls,
-  type ChirpRelayBootstrapEntry,
-} from "../chirpConfig";
+import { chirpStartRelays } from "../chirpConfig";
+import { fulfilSignRequestViaExtension } from "./signBroker";
 import {
   decodeUpdateFrameBytes,
   SNAPSHOT_SCHEMA_VERSION,
@@ -115,33 +112,6 @@ export const runtimeConnection: RuntimeConnection = {
   databaseName: "chirp-web",
 };
 
-/** Resolve the `relays` + `relay_bootstrap` the Chirp web host supplies in the
- *  Start request. Relay policy is host policy (#1125): the nmp-wasm protocol
- *  has no built-in defaults, so the host always sends an explicit list.
- *
- *  When `overrideRelays` is supplied (e.g. the Playwright smoke test via the
- *  `?relay=` query parameter), those URLs replace the Chirp defaults. Each is
- *  given role "both,indexer" (not just "both") so a single injected relay also
- *  serves profile-claim discovery requests (BootstrapSeed::IndexerOnly) —
- *  "both" alone excludes the indexer lane, so a relay supplied via ?relay=
- *  would otherwise silently receive no kind:0 claim REQs. Otherwise the host
- *  sends its own Chirp relay defaults (mirrors nmp-chirp-config). */
-export function chirpStartRelays(overrideRelays?: string[]): {
-  relays: string[];
-  relay_bootstrap: ChirpRelayBootstrapEntry[];
-} {
-  if (overrideRelays && overrideRelays.length > 0) {
-    return {
-      relays: overrideRelays,
-      relay_bootstrap: overrideRelays.map((url) => ({ url, role: "both,indexer" })),
-    };
-  }
-  return {
-    relays: chirpDefaultRelayUrls(),
-    relay_bootstrap: CHIRP_RELAY_BOOTSTRAP,
-  };
-}
-
 export type NmpClient = {
   snapshot(): RuntimeSnapshot;
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
@@ -155,6 +125,9 @@ export type NmpClient = {
    *  first and supply the resulting hex pubkey. The wasm runtime installs the
    *  signer synchronously; subsequent write actions use it. */
   setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
+  /** S6 — NIP-07 sign round-trip: parks a sign op, emits sign_request for the
+   *  main-thread broker; resolves via sign_completed / sign_failed (#1007). */
+  beginSign(accountPubkey: string, unsignedJson: string): void;
 };
 
 export function createNmpClient(): NmpClient {
@@ -334,6 +307,7 @@ abstract class BaseClient implements NmpClient {
   }
   abstract dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
   abstract setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
+  abstract beginSign(accountPubkey: string, unsignedJson: string): void;
 }
 
 class WorkerNmpClient extends BaseClient {
@@ -403,6 +377,14 @@ class WorkerNmpClient extends BaseClient {
     });
   }
 
+  beginSign(accountPubkey: string, unsignedJson: string): void {
+    this.worker.postMessage({
+      type: "begin_sign",
+      account_pubkey: accountPubkey,
+      unsigned_json: unsignedJson,
+    } satisfies WorkerRequest);
+  }
+
   private request(request: WorkerRequest): Promise<RuntimeSnapshot> {
     const correlationId = "correlation_id" in request ? request.correlation_id : undefined;
     if (!correlationId) {
@@ -419,6 +401,16 @@ class WorkerNmpClient extends BaseClient {
     const snapshot = this.record(event);
     if (event.type === "hello_accepted") {
       this.resolveHello?.();
+    }
+    // S6 — broker: worker emits sign_request; main thread calls window.nostr.signEvent
+    // and posts deliver_signer_response back (pure message re-entry, no polling).
+    if (event.type === "sign_request") {
+      void fulfilSignRequestViaExtension(
+        (request) => this.worker.postMessage(request),
+        event.correlation_id,
+        event.unsigned_json,
+      );
+      return;
     }
     const correlationId = eventCorrelationId(event);
     if (!correlationId) {
@@ -487,6 +479,11 @@ class InProcessNmpClient extends BaseClient {
       pubkey_hex: pubkeyHex,
       correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),
     });
+  }
+
+  beginSign(accountPubkey: string, unsignedJson: string): void {
+    // Degraded runtime has no kernel — begin_sign returns a sign_failed.
+    this.send({ type: "begin_sign", account_pubkey: accountPubkey, unsigned_json: unsignedJson });
   }
 
   private send(request: WorkerRequest): RuntimeSnapshot {

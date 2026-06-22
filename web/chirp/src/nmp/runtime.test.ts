@@ -137,6 +137,35 @@ describe("shared Chirp web semantics", () => {
     expect(eventCorrelationId({ type: "update_bytes", bytes: new Uint8Array([1, 2, 3]) })).toBeUndefined();
   });
 
+  // #1753 S6 — sign round-trip terminals are correlation-keyed so a pending
+  // begin resolves on completion; `sign_request` is a broker instruction (not a
+  // reply) so it carries no resolvable correlation id.
+  it("routes sign round-trip terminals by correlation id but not sign_request", () => {
+    expect(
+      eventCorrelationId({ type: "sign_completed", correlation_id: "c1", signed_json: "{}" }),
+    ).toBe("c1");
+    expect(eventCorrelationId({ type: "sign_failed", correlation_id: "c2", reason: "x" })).toBe("c2");
+    expect(
+      eventCorrelationId({
+        type: "sign_request",
+        correlation_id: "c3",
+        account_pubkey: "ab",
+        unsigned_json: "{}",
+      }),
+    ).toBeUndefined();
+  });
+
+  it("degraded beginSign fails the round-trip closed (no kernel to park in)", () => {
+    vi.stubGlobal("Worker", undefined);
+    const client = createNmpClient();
+    client.beginSign(
+      "ab".repeat(32),
+      JSON.stringify({ pubkey: "ab", kind: 1, tags: [], content: "x", created_at: 0 }),
+    );
+    const snap = client.snapshot();
+    expect(snap.events.some((e) => e.type === "sign_failed")).toBe(true);
+  });
+
   it("decodes Tier-3 running and relayStatuses from a snapshot frame", () => {
     const bytes = makeSnapshotBytes({
       running: true,

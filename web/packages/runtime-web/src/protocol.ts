@@ -42,6 +42,25 @@ export type WorkerRequest =
       kind: string;
       pubkey_hex: string;
       correlation_id: string;
+    }
+  /** #1753 S6 — begin a NIP-07 sign capability round-trip. The worker parks a
+   *  sign op (ADR-0050 §D1) and emits a `sign_request` event the MAIN THREAD
+   *  fulfils via window.nostr.signEvent (Workers have no window.nostr). Pure
+   *  message re-entry: no polling (D8). */
+  | {
+      type: "begin_sign";
+      account_pubkey: string;
+      unsigned_json: string;
+    }
+  /** #1753 S6 — the main-thread broker delivers the signer response (the
+   *  `sign`-verb fulfiller feeding ADR-0050 §D3b). Exactly one of `signed_json`
+   *  / `error` is set. Account-pinned: the worker rejects a signature authored
+   *  by a different account than the round-trip was begun for. */
+  | {
+      type: "deliver_signer_response";
+      correlation_id: string;
+      signed_json?: string | null;
+      error?: string | null;
     };
 
 export type RuntimeStatus =
@@ -67,6 +86,23 @@ export type WorkerEvent =
       correlation_id: string;
       reason: string;
     }
+  /** #1753 S6 — a sign capability request the worker emits for the MAIN-THREAD
+   *  broker to fulfil: call window.nostr.signEvent(unsigned_json) (ensuring the
+   *  extension is on account_pubkey first) and post back a
+   *  `deliver_signer_response` carrying this correlation_id. */
+  | {
+      type: "sign_request";
+      correlation_id: string;
+      account_pubkey: string;
+      unsigned_json: string;
+    }
+  /** #1753 S6 — a sign round-trip completed via message re-entry. NOTE: behind
+   *  the honest-disable gate the signed event is NOT published (web publish is
+   *  blocked on #1007); the host observes this to confirm the mechanism. */
+  | { type: "sign_completed"; correlation_id: string; signed_json: string }
+  /** #1753 S6 — a sign round-trip failed (parse, account-pin mismatch, user
+   *  rejection, or unknown/stale correlation id). */
+  | { type: "sign_failed"; correlation_id: string; reason: string }
   | { type: "error"; code: string; message: string; correlation_id?: string };
 
 export type ChirpAction =
@@ -85,6 +121,13 @@ export function eventCorrelationId(event: WorkerEvent): string | undefined {
       return event.correlation_id;
     case "capability_failure":
       return event.correlation_id;
+    // #1753 S6 — sign round-trip terminals are correlation-keyed so a pending
+    // request resolves on completion; `sign_request` is NOT (it is a broker
+    // instruction the main thread acts on, not a reply to a pending caller).
+    case "sign_completed":
+    case "sign_failed":
+      return event.correlation_id;
+    case "sign_request":
     case "hello_accepted":
     case "update_bytes":
       return undefined;
