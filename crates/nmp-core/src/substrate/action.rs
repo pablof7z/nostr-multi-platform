@@ -263,6 +263,17 @@ pub trait ActionRegistrar {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ActionRejection {
     Invalid(String),
+    /// A structured rejection carrying a stable machine `code` and an English
+    /// `message` fallback (UiToken shape, issue #1734). The FFI layer surfaces
+    /// `{"error":"…","code":"…"}` so shells can localize. Prefer this over
+    /// `Invalid` when the rejection site is NWC-connect or another curated path
+    /// that owns its prose in the crate's `ui_codes` module.
+    InvalidCoded {
+        /// Stable machine key from the owning crate's closed `ui_codes` set.
+        code: &'static str,
+        /// English prose for non-localizing shells / diagnostics.
+        message: String,
+    },
     Unauthorized(String),
     Conflict(String),
 }

@@ -257,7 +257,7 @@ pub(super) fn dispatch_action_json(
             // identically (#1676 BUG-A/B/C).
             finish_dispatch(app, &correlation_id, execute_action(app, namespace, action_json, &correlation_id))
         }
-        Err(rejection) => error_json(&rejection_message(rejection)),
+        Err(rejection) => rejection_json(rejection),
     }
 }
 
@@ -330,11 +330,34 @@ fn execute_action(
 }
 
 /// Flatten an [`ActionRejection`] into a human-readable message.
+///
+/// For [`ActionRejection::InvalidCoded`] callers that need the machine code,
+/// use [`rejection_json`] directly instead.
 fn rejection_message(rejection: ActionRejection) -> String {
     match rejection {
         ActionRejection::Invalid(s) => s,
+        ActionRejection::InvalidCoded { message, .. } => message,
         ActionRejection::Unauthorized(s) => format!("unauthorized: {s}"),
         ActionRejection::Conflict(s) => format!("conflict: {s}"),
+    }
+}
+
+/// Build a `{"error":"…"}` or `{"error":"…","code":"…"}` JSON object from an
+/// [`ActionRejection`].
+///
+/// [`ActionRejection::InvalidCoded`] carries a stable machine `code` that
+/// shells use to localize the error (issue #1734). All other variants produce
+/// the plain `{"error":"…"}` envelope (no `code` field).
+pub(super) fn rejection_json(rejection: ActionRejection) -> String {
+    match rejection {
+        ActionRejection::InvalidCoded { code, message } => {
+            format!(
+                r#"{{"error":{},"code":{}}}"#,
+                json_string(&message),
+                json_string(code),
+            )
+        }
+        other => error_json(&rejection_message(other)),
     }
 }
 

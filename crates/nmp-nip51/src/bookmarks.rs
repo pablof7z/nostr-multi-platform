@@ -410,6 +410,7 @@ fn action_rejection_message(rejection: ActionRejection) -> String {
         ActionRejection::Invalid(message)
         | ActionRejection::Unauthorized(message)
         | ActionRejection::Conflict(message) => message,
+        ActionRejection::InvalidCoded { message, .. } => message,
     }
 }
 

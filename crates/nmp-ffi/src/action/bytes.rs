@@ -19,7 +19,7 @@
 use std::ffi::{c_char, CString};
 
 use super::super::{app_ref, NmpApp};
-use super::{error_json, finish_dispatch, rejection_message};
+use super::{error_json, finish_dispatch, rejection_json};
 use nmp_core::dispatch_envelope::{
     decode_dispatch_envelope, DispatchDecodeError, MAX_DISPATCH_ENVELOPE_BYTES,
 };
@@ -163,7 +163,7 @@ pub(in crate::action) fn dispatch_action_bytes(app: Option<&NmpApp>, bytes: &[u8
             );
             finish_dispatch(app, &correlation_id, outcome)
         }
-        Err(rejection) => error_json(&rejection_message(rejection)),
+        Err(rejection) => rejection_json(rejection),
     }
 }
 
