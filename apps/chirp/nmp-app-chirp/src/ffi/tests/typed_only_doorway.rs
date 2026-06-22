@@ -62,19 +62,15 @@ use super::super::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle
 /// with `--features marmot`; the default test/CI build does NOT). The allowlist
 /// below is feature-gated to match the composition actually built, so the gate
 /// stays exact in both configurations.
-const MIGRATION_PENDING_UNTYPED: &[&str] = &[
-    // Owner: nmp-relations (`VisibleNoteRelationsModule`). The cross-protocol
-    // visible-note-relations claim/release action is still a serde-tagged enum
-    // with no `decode_payload` override (see
-    // `crates/nmp-relations/src/visible_relations.rs`). Typed migration pending.
-    "nmp.nip01.visible_note_relations",
-    // Owner: nmp-nip29 (`DiscoverGroupsAction`). The group-discovery action is
-    // the lone NIP-29 module still without a `decode_payload` override — its
-    // siblings (post/react/share/repost/create/join/leave/put_user/invite) are
-    // already typed (#1837/#1838). Typed migration pending
-    // (`crates/nmp-nip29/src/action/discover.rs`).
-    "nmp.nip29.discover",
-];
+/// All previously-pending modules have been migrated to typed FlatBuffers
+/// payloads on origin/master:
+///  - `nmp.nip01.visible_note_relations`: `decode_payload` added in #1838
+///    (`crates/nmp-relations/src/visible_relations.rs:68`).
+///  - `nmp.nip29.discover`: `decode_payload` added in #1838
+///    (`crates/nmp-nip29/src/action/discover.rs:54`).
+/// The default-feature untyped set is now empty. Cut B for the full
+/// composition (excluding the `marmot` feature) is REACHED.
+const MIGRATION_PENDING_UNTYPED: &[&str] = &[];
 
 /// `nmp.marmot` is JSON-only (`MarmotActionModule` overrides no
 /// `decode_payload`; see `crates/nmp-marmot/src/projection/action.rs`). Owner:
