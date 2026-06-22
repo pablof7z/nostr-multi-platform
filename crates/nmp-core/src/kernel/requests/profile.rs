@@ -54,8 +54,9 @@
 //! slot so they dedup to a single wire REQ.
 //!
 //! `profile_claims` (the `HashMap<pubkey, BTreeSet<consumer_id>>` refcount)
-//! is RETAINED as the `claimed_profiles` projection source-of-truth; the
-//! registry interest is driven off it.
+//! is RETAINED as the resolve-refcount source-of-truth; the registry interest
+//! is driven off it (ADR-0063 Lane H: the `claimed_profiles` projection it once
+//! fed is deleted — resolved cards now flow through `refs.profile`).
 
 use super::super::{short_hex, truncate, Kernel, OutboundMessage};
 use crate::kernel::refs::{ProfileShape, RefLiveness};

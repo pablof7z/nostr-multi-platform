@@ -8,8 +8,8 @@ let kbLog = Logger(subsystem: "io.f7z.chirp", category: "KernelBridge")
 // `KernelHandle.claimProfile` / `KernelHandle.releaseProfile` wrappers it fed
 // are removed. The shell resolves/releases profiles through the unified
 // `resolveRef` / `releaseRef` (namespace `.profile`) seam; `RefLiveness` below
-// is its liveness intent. The underlying `nmp_app_claim_profile` C symbol stays
-// (Rust scaffold) until Lane H deletes it.
+// is its liveness intent. ADR-0063 Lane H deleted the per-kind profile C
+// symbols; profiles now resolve exclusively through `nmp_app_resolve_ref`.
 
 /// ADR-0063 Lane D (#1671) — the origin-blind reference namespace for the
 /// unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI. Raw values

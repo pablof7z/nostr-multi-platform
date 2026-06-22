@@ -167,8 +167,8 @@ fn publish_signed_event_does_not_reject_valid_gift_wrap_for_nip_shape() {
 }
 
 #[test]
-fn claim_profile_on_fresh_reducer_parks_returns_empty() {
-    // M2 migration: `claim_profile` always returns empty outbound — it
+fn resolve_profile_on_fresh_reducer_parks_returns_empty() {
+    // M2 migration: a profile `resolve_ref` always returns empty outbound — it
     // registers a kind:0 `LogicalInterest` and the planner emits the wire REQ
     // on the next drain (the reducer drains inline via `drain_lifecycle_outbound`).
     // A fresh reducer with no relay connected still returns empty from the call.
@@ -183,11 +183,11 @@ fn claim_profile_on_fresh_reducer_parks_returns_empty() {
         RefShape::Profile(ProfileShape::Card),
         RefLiveness::CacheOk.into(),
     );
-    assert!(out.is_empty(), "claim_profile must emit no outbound directly");
+    assert!(out.is_empty(), "resolve_ref must emit no outbound directly");
 }
 
 #[test]
-fn claim_profile_refcount_dedup_does_not_double_fetch() {
+fn resolve_profile_refcount_dedup_does_not_double_fetch() {
     // Two different consumer_ids for the same pubkey dedup to ONE registry
     // interest (registry owner refcount); neither claim emits outbound directly.
     // (Detailed batch/routing/dedup assertions live in profile_claim_tests.rs.)

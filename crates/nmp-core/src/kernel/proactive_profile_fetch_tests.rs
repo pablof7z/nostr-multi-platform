@@ -5,7 +5,7 @@
 //! `timeline.rs` previously called `request_profile_for_rendered_note` on every
 //! kind:1 ingest, unconditionally queueing a kind:0 REQ for the author regardless
 //! of any component claim. The F-CR-00 capstone removes that call so the kernel
-//! fetches kind:0 ONLY in response to a `claim_profile` from a component.
+//! fetches kind:0 ONLY in response to a profile `resolve_ref` from a component.
 //!
 //! Two invariants are pinned here:
 //!
@@ -13,9 +13,9 @@
 //!    author does NOT move the author into `profile_requests.pending` or
 //!    `profile_requests.requested`. The proactive fetch is gone.
 //!
-//! 2. `claim_profile_after_ingest_queues_fetch` — after the same ingest,
-//!    calling `claim_profile(author, can_send=true)` DOES emit a kind:0 REQ.
-//!    The claim-driven path fully replaces the proactive path.
+//! 2. `resolve_profile_after_ingest_queues_fetch` — after the same ingest,
+//!    resolving the author's profile (`resolve_ref`, can_send=true) DOES emit a
+//!    kind:0 REQ. The resolve-driven path fully replaces the proactive path.
 //!
 //! Together these two tests are the deterministic before/after proof required
 //! by the F-CR-00 capstone task (timeline.rs:172 removal).
@@ -30,8 +30,8 @@
 //! (including `request_profile_for_rendered_note` before removal and its
 //! absence after removal).
 //!
-//! `Kernel::relay_connected` is called for both roles so that `claim_profile`
-//! with `can_send=true` finds an open relay and emits REQs synchronously
+//! `Kernel::relay_connected` is called for both roles so that the profile
+//! `resolve_ref` with `can_send=true` finds an open relay and emits REQs synchronously
 //! (the `can_send=false` queue path is already exercised by `profile_claim_tests`).
 
 use super::nostr::NostrEvent;
@@ -100,16 +100,16 @@ fn kind1_ingest_does_not_queue_profile_fetch() {
     );
 }
 
-/// F-CR-00 invariant 2: `claim_profile` after ingest DOES fetch kind:0.
+/// F-CR-00 invariant 2: a profile `resolve_ref` after ingest DOES fetch kind:0.
 ///
-/// After the proactive fetch is removed the claim-driven path must still
+/// After the proactive fetch is removed the resolve-driven path must still
 /// trigger a kind:0 fetch — otherwise author names would blank out. M2
-/// migration: `claim_profile` registers a kind:0 `LogicalInterest`; the planner
+/// migration: `resolve_ref` registers a kind:0 `LogicalInterest`; the planner
 /// emits the REQ on the next `drain_lifecycle_outbound`. This test drives the
-/// claim, then the drain, and asserts a kind:0 REQ mentioning the author is
+/// resolve, then the drain, and asserts a kind:0 REQ mentioning the author is
 /// emitted to the cold-start indexer relay.
 #[test]
-fn claim_profile_after_ingest_queues_fetch() {
+fn resolve_profile_after_ingest_queues_fetch() {
     let keys = ::nostr::Keys::generate();
     let event = signed_kind1(&keys, "a note to trigger ingest", 1_700_000_001);
     let author = event.pubkey.clone();
@@ -130,7 +130,7 @@ fn claim_profile_after_ingest_queues_fetch() {
         "ingest alone must not register a kind:0 claim interest"
     );
 
-    // Now a component claims the author (CacheOk → OneShot kind:0 fetch).
+    // Now a component resolves the author (CacheOk → OneShot kind:0 fetch).
     let _ = kernel.resolve_ref(
             RefNamespace::Profile,
             author.clone(),
@@ -142,7 +142,7 @@ fn claim_profile_after_ingest_queues_fetch() {
         );
     assert!(
         kernel.profile_claim_interest_registered_for_test(&author),
-        "claim_profile must register a kind:0 claim interest for the author"
+        "resolve_ref must register a kind:0 claim interest for the author"
     );
 
     // The planner emits the wire REQ on the next drain.
