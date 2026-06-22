@@ -21,8 +21,20 @@ public struct NostrContentView: View {
     public var tree: ContentTreeWire
     public var font: Font
     public var mentionLabel: (NostrWireUri) -> String
+    /// Highlight overlays to paint on the body. Each decoration's `quote` is
+    /// matched against the rendered plain text and painted with its colour;
+    /// taps route to `renderer.callbacks.onDecorationTap`. Empty (the default)
+    /// keeps the fast `Text`-concatenation path.
+    public var decorations: [NostrContentDecoration]
+    /// Opt-in body text selection. When `true`, paragraph/heading runs become
+    /// selectable and the selection edit menu gains a "Highlight" action that
+    /// fires `renderer.callbacks.onTextSelected(quote, context)`. Off by
+    /// default so non-article surfaces keep the lightweight `Text` path.
+    public var selectionEnabled: Bool
 
-    @Environment(\.nostrContentRenderer) private var renderer
+    // Non-private so the article-mode extension (NostrContentArticleView,
+    // NostrContentAttributed) in the same module can read theming + callbacks.
+    @Environment(\.nostrContentRenderer) var renderer
     @Environment(\.embedEnvelopeSource) private var embedEnvelopeSource
     @Environment(\.embedClaimSink) private var embedClaimSink
     @Environment(\.nostrKindRegistry) private var nostrKindRegistry
@@ -30,21 +42,34 @@ public struct NostrContentView: View {
     public init(
         tree: ContentTreeWire,
         font: Font = .body,
-        mentionLabel: @escaping (NostrWireUri) -> String = NostrContentView.defaultMentionLabel
+        mentionLabel: @escaping (NostrWireUri) -> String = NostrContentView.defaultMentionLabel,
+        decorations: [NostrContentDecoration] = [],
+        selectionEnabled: Bool = false
     ) {
         self.tree = tree
         self.font = font
         self.mentionLabel = mentionLabel
+        self.decorations = decorations
+        self.selectionEnabled = selectionEnabled
     }
 
     public var body: some View {
         let groups = nostrContentGroups(tree)
         if groups.isEmpty {
             EmptyView()
+        } else if articleMode {
+            ScrollViewReader { proxy in
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                        groupView(group, proxy: proxy)
+                    }
+                    footnoteSection(proxy: proxy)
+                }
+            }
         } else {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                    groupView(group)
+                    groupView(group, proxy: nil)
                 }
             }
         }
@@ -53,10 +78,10 @@ public struct NostrContentView: View {
     // MARK: - Group dispatch
 
     @ViewBuilder
-    private func groupView(_ group: NostrContentGroup) -> some View {
+    private func groupView(_ group: NostrContentGroup, proxy: ScrollViewProxy?) -> some View {
         switch group {
         case .inline(let level, let children):
-            inlineGroup(level: level, children: children)
+            inlineGroup(level: level, children: children, proxy: proxy)
         case .media(let urls, let kind):
             mediaGroup(urls: urls, kind: kind)
         case .eventRef(let uri):
@@ -77,21 +102,25 @@ public struct NostrContentView: View {
     }
 
     @ViewBuilder
-    private func inlineGroup(level: NostrContentInlineLevel, children: [UInt32]) -> some View {
-        let concatenated = children.reduce(Text("")) { acc, child in
-            acc + inlineText(child)
-        }
-        switch level {
-        case .paragraph:
-            concatenated
-                .font(font)
-                .foregroundStyle(renderer.textColor)
-                .fixedSize(horizontal: false, vertical: true)
-        case .heading(let lvl):
-            concatenated
-                .font(headingFont(for: lvl))
-                .foregroundStyle(renderer.textColor)
-                .fixedSize(horizontal: false, vertical: true)
+    private func inlineGroup(level: NostrContentInlineLevel, children: [UInt32], proxy: ScrollViewProxy?) -> some View {
+        if articleMode {
+            articleInlineGroup(level: level, children: children, proxy: proxy)
+        } else {
+            let concatenated = children.reduce(Text("")) { acc, child in
+                acc + inlineText(child)
+            }
+            switch level {
+            case .paragraph:
+                concatenated
+                    .font(font)
+                    .foregroundStyle(renderer.textColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            case .heading(let lvl):
+                concatenated
+                    .font(headingFont(for: lvl))
+                    .foregroundStyle(renderer.textColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -328,7 +357,7 @@ public struct NostrContentView: View {
 
     // MARK: - Defaults / helpers
 
-    public static func defaultMentionLabel(_ uri: NostrWireUri) -> String {
+    public nonisolated static func defaultMentionLabel(_ uri: NostrWireUri) -> String {
         let value = uri.primaryId
         guard value.count > 12 else { return value }
         return "\(value.prefix(8))…\(value.suffix(4))"
