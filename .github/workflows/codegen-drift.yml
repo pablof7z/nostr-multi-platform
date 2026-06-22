@@ -142,6 +142,8 @@ jobs:
             --out ios/Chirp/Chirp/Bridge/Generated/ActionBuilders.generated.swift
           cargo run --quiet -p nmp-codegen -- gen action-builders --platform kotlin --check \
             --out android/app/src/main/java/org/nmp/android/ActionBuilders.kt
+          cargo run --quiet -p nmp-codegen -- gen action-builders --platform ts --check \
+            --out web/packages/runtime-web/src/actionBuilders.generated.ts
 
   # PR-B (#991/#979) — Rust flatc transport-binding drift gate. The checked-in
   # bindings at crates/nmp-core/src/transport/generated/nmp_update_generated.rs

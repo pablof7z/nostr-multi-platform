@@ -14,6 +14,13 @@ export {
   DISPATCH_ENVELOPE_SCHEMA_VERSION,
 } from "./dispatchEnvelope";
 
+// ADR-0064 §3 (#1776) — generated typed write builders. Field-level sugar that
+// encodes the per-crate FlatBuffers payload + wraps it in a `DispatchEnvelope`
+// for the `dispatch_bytes` doorway, so the host never hand-assembles FlatBuffers
+// or spells an `action_namespace`. GENERATED — see
+// `crates/nmp-codegen/src/action_builders/registry.rs`.
+export { GeneratedActionBuilders } from "./actionBuilders.generated";
+
 // Wasm bridge
 export type { WasmBridgeLoadResult, WasmBridgeUnavailable, UpdateBytesSink } from "./wasmBridge";
 export { WasmBridge, loadWasmBridge } from "./wasmBridge";
