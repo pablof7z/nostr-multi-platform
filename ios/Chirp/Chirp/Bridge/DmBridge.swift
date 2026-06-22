@@ -26,7 +26,8 @@ import Foundation
 // ── Write side ────────────────────────────────────────────────────────────
 //
 //   • `sendDm(recipientPubkey:content:replyTo:)` dispatches the `nmp.nip17.send`
-//     action through the generic `nmp_app_dispatch_action` path.
+//     action via `dispatchChirpIntent`, which routes through the Chirp byte
+//     doorway (`nmp_app_chirp_dispatch_intent_bytes`).
 //     Fire-and-forget — the sent message reappears through the next snapshot
 //     tick (the actor gift-wraps a self-copy to the sender).
 // ─────────────────────────────────────────────────────────────────────────
@@ -35,9 +36,9 @@ import Foundation
 
 extension KernelHandle {
     /// Dispatch a `nmp.nip17.send` action — send a NIP-17 private direct message
-    /// to `recipientPubkey`. Routes through the generic
-    /// `nmp_app_dispatch_action` path; the kind:14 rumor, the NIP-59
-    /// gift-wrap, and signing are all owned by Rust (thin-shell rule).
+    /// to `recipientPubkey`. Routes via `dispatchChirpIntent` through the Chirp
+    /// byte doorway (`nmp_app_chirp_dispatch_intent_bytes`); the kind:14 rumor,
+    /// the NIP-59 gift-wrap, and signing are all owned by Rust (thin-shell rule).
     /// Fire-and-forget: the returned correlation JSON is freed and ignored —
     /// the sent message surfaces through the next `nip17.dm_inbox` snapshot
     /// tick (the actor gift-wraps a self-copy).

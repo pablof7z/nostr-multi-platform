@@ -20,7 +20,7 @@ extension KernelHandle {
             pgLog.error("createPublicGroup: failed to encode action payload")
             return .failure("failed to encode public group create payload")
         }
-        return dispatchRawAction(
+        return dispatchRawActionBytes(
             namespace: "nmp.nip29.create_public_group",
             bodyJson: json)
     }

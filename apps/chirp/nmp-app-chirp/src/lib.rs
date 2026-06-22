@@ -59,6 +59,15 @@ pub use ffi::nmp_app_chirp_declare_consumed_projections;
 // `nmp_app_create_new_account` auto-follows nobody; the Swift/Kotlin shells call
 // THIS symbol so the seed pubkeys never transit the thin shell.
 pub use ffi::nmp_app_chirp_create_new_account;
+// ADR-0064 / Cut-B host slice (#1782) — the typed byte-doorway action seam the
+// iOS host calls: intent→spec→typed-bytes (`nmp_app_chirp_dispatch_intent_bytes`)
+// and the direct namespace+body dispatch (`nmp_app_chirp_dispatch_action_bytes`).
+// The retired `nmp_app_chirp_action_spec` symbol stays exported until the host
+// stops calling it (later cleanup).
+pub use ffi::{
+    nmp_app_chirp_action_spec, nmp_app_chirp_dispatch_action_bytes,
+    nmp_app_chirp_dispatch_intent_bytes,
+};
 // M2 (ADR-0042 §5.1, V-112): per-open flat author/thread feeds that replace the
 // `author_view`/`thread_view` projections + the four `open_*`/`close_*` symbols.
 pub use action_specs::{
