@@ -64,6 +64,23 @@ pub(crate) struct RuntimeMeta {
     /// the `BrowserRelayDriver` instances on wasm32. Cleared on a fresh
     /// runtime before `Start`.
     pub(crate) relay_bootstrap: Vec<crate::protocol::RelayBootstrapEntry>,
+    /// Optional post-encode frame observer (issue #1767). Installed by a
+    /// composition root via [`crate::WasmRuntime::install_frame_observer`] and
+    /// fired from [`build_snapshot_bytes`] with the just-encoded frame bytes —
+    /// AFTER `make_update_frame` returns, so the callback sees only `&[u8]`
+    /// and never re-enters the reducer. This is the wasm twin of nmp-ffi's
+    /// listener-thread `update_embed_sidecar_from_frame` hook: a composition
+    /// root that depends on `nmp-content` decodes the `claimed_events` KCEV
+    /// from the bytes, resolves each embed, and stores the resolved map in its
+    /// own slot, which a typed snapshot projection reads on the NEXT tick
+    /// (one-tick lag — identical to native, and acceptable for the async
+    /// claimed-events flow). `nmp-wasm` itself stays policy-free: it owns the
+    /// chokepoint, not the resolution.
+    ///
+    /// `Rc<dyn Fn(&[u8])>` (not `Send + Sync`) is correct on wasm32: the JS
+    /// event loop is single-threaded, and the callback runs synchronously on
+    /// the same thread that built the frame.
+    pub(crate) frame_observer: Option<Rc<dyn Fn(&[u8])>>,
 }
 
 impl RuntimeMeta {
@@ -72,6 +89,7 @@ impl RuntimeMeta {
             started: false,
             database_name: String::new(),
             relay_bootstrap: Vec::new(),
+            frame_observer: None,
         }
     }
 }
@@ -88,7 +106,16 @@ impl RuntimeMeta {
 /// `meta.started` is forwarded as the `running` flag so the envelope reflects
 /// the current lifecycle state.
 pub(crate) fn build_snapshot_bytes(reducer: &mut KernelReducer, meta: &RuntimeMeta) -> Vec<u8> {
-    reducer.make_update_frame(meta.started)
+    let bytes = reducer.make_update_frame(meta.started);
+    // #1767 — fire the post-encode frame observer (if a composition root
+    // installed one) AFTER the bytes are produced. The callback receives only
+    // `&[u8]`; it must not touch the reducer (which is mutably borrowed by this
+    // call's caller). This is the single chokepoint for EVERY snapshot path
+    // (tick, relay-push, handle-return, publish) so one hook covers them all.
+    if let Some(observer) = meta.frame_observer.as_ref() {
+        observer(&bytes);
+    }
+    bytes
 }
 
 /// Push a snapshot envelope through the JS callback the host registered via

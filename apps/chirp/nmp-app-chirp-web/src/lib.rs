@@ -16,6 +16,12 @@
 //!   perspective changes.
 
 pub mod composition;
+// #1767 — JSON embed-projection sidecar (`claimed_event_embeds_json`). The web
+// twin of `nmp-ffi::embed_sidecar`: resolves the kernel's raw `claimed_events`
+// into pre-dispatched `EmbeddedEventEnvelope`s (via `nmp-content`) and surfaces
+// them in the snapshot so the web shell renders from the resolved projection
+// instead of re-parsing NIP-23 / NIP-84 tags.
+mod embed_sidecar;
 // wasm32 composition-root entry point. Compiled only for the wasm32 target so
 // `wasm-bindgen` glue is never emitted for native builds or test binaries.
 #[cfg(target_arch = "wasm32")]

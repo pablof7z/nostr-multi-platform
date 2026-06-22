@@ -251,6 +251,14 @@ pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
             })
         });
 
+    // 11. #1767 — JSON embed-projection sidecar. Installs the post-encode frame
+    //     observer that resolves the kernel's raw `claimed_events` into
+    //     pre-dispatched `EmbeddedEventEnvelope`s (via nmp-content) and the
+    //     `claimed_event_embeds_json` typed projection that surfaces them. This
+    //     is the web twin of nmp-ffi's embed sidecar: the web shell consumes the
+    //     resolved `projection` instead of re-parsing NIP-23 / NIP-84 tags.
+    crate::embed_sidecar::setup_embed_sidecar(runtime);
+
     ChirpWebFeedSetup {
         engine,
         follow_set,

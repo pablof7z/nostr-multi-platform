@@ -1,8 +1,43 @@
 import { type JSX } from "solid-js";
 
-import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 import { WireNodeKind } from "./nmp/generated/nmp/content/wire-node-kind";
 import { type ClaimedEventWire, type RelayStatusRow, tagValue } from "./nmp/profileHost";
+import type {
+  ArticleProjection,
+  EmbeddedEventModel,
+  EmbedAuthor,
+  HighlightProjection,
+} from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
+import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
+
+// #1767 — pure projections of the kernel-RESOLVED embed envelope. The standalone
+// embed-article / embed-highlight showcase sections render their card fields
+// from the resolved per-kind projection (NOT re-parsed NIP-23/NIP-84 tags); these
+// narrow the projection union to the variant payload. Pure — App.tsx wraps them
+// in a `createMemo` so reactivity stays at the component call site.
+
+/** The `article` variant payload of a resolved embed, else undefined. */
+export function articleProjectionOf(
+  embed: EmbeddedEventModel | undefined,
+): ArticleProjection | undefined {
+  if (!embed) return undefined;
+  return embed.projection.variant === "article" ? embed.projection.data : undefined;
+}
+
+/** The `highlight` variant payload of a resolved embed, else undefined. */
+export function highlightProjectionOf(
+  embed: EmbeddedEventModel | undefined,
+): HighlightProjection | undefined {
+  if (!embed) return undefined;
+  return embed.projection.variant === "highlight" ? embed.projection.data : undefined;
+}
+
+/** Host-resolved author byline from a resolved profile. The kernel projection
+ *  carries no author by design; the displaying host resolves it from the
+ *  `refs.profile` store and threads it into the registry card. */
+export function bylineOf(profile: ProfileWire | undefined): EmbedAuthor | undefined {
+  return profile ? { name: profile.displayName, picture: profile.pictureUrl } : undefined;
+}
 
 export function StatusBar(props: {
   status: unknown;
@@ -61,19 +96,6 @@ export function contentReady(ev: ClaimedEventWire | undefined): ClaimedEventWire
   return ev;
 }
 
-export function toEmbedded(
-  ev: ClaimedEventWire,
-  author: { displayName?: string; pictureUrl?: string } | undefined,
-): EmbeddedEventModel {
-  return {
-    kind: ev.kind,
-    content: ev.content,
-    createdAt: ev.createdAt,
-    tags: ev.tags,
-    authorName: author?.displayName,
-    authorPicture: author?.pictureUrl,
-  };
-}
 
 export function collectMediaUrls(ev: ClaimedEventWire | undefined): string[] {
   const out: string[] = [];
