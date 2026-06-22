@@ -80,7 +80,7 @@
 		72E6C28DE61F97428F972267 /* RootShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F55FC6A139DA43D434DBF9 /* RootShell.swift */; };
 		8132C0EF7B0D475A47201AED /* RelayReasonsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = B07886EA628FF8E299E53963 /* RelayReasonsSection.swift */; };
 		81DD4A55F9CB39E1CA036CFD /* NostrKindRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5EC56C5F40E415157200F282 /* NostrKindRegistry.swift */; };
-		821C01932D552C3E58B95B67 /* ResolvedProfiles.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8ACEAFE25D0DCECE8B802799 /* ResolvedProfiles.generated.swift */; };
+
 		82CC2009FF54F2B7DAD35B06 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D32D744B5446C909E7AEEB8F /* OnboardingView.swift */; };
 		8BC2E6CECB2964BCD13A6552 /* MarmotGroupsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F7C6ADBA250165B0FFE7338 /* MarmotGroupsView.swift */; };
 		8C75B8359EA53ACEFAC93DD4 /* BunkerHandshake.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DDD17888ABA40FE82E0DFD0 /* BunkerHandshake.generated.swift */; };
@@ -166,7 +166,7 @@
 		F5855D7CD651AF7B2D3AF696 /* ActionLifecycle.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EEBF0C891ECD1257BB81163 /* ActionLifecycle.generated.swift */; };
 		F5E5940625200643254B4588 /* NostrContentRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7475509EE4AB3F523D5551F7 /* NostrContentRenderer.swift */; };
 		F5FD930826F67FCA83839B26 /* TypedProjectionGlue+RelayDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 783F02654D52CA1DACFDCC32 /* TypedProjectionGlue+RelayDiagnostics.swift */; };
-		F731094F7DA7435EB07DC3BE /* ClaimedProfiles.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BBC604F7E2A71C09DC52DE5 /* ClaimedProfiles.generated.swift */; };
+
 		F92DA1B7A5EF8D796F674546 /* TimelineBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4E597BC58FFF686CC596A91 /* TimelineBlock.swift */; };
 		FA730D14B795CFDB3D15284A /* EventClaimSink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D432D59A7DF3AB9BA0C78DB /* EventClaimSink.swift */; };
 		FE40E7C03666DA6206011600 /* NostrMinimalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E197335AFEEA7FFCA5CE05 /* NostrMinimalContentView.swift */; };
@@ -218,7 +218,7 @@
 		25460F5E697F421F8C7BE89E /* ChirpUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChirpUITests.swift; sourceTree = "<group>"; };
 		26F1B192612D9C6F32B2C698 /* OpFeedDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpFeedDecoderTests.swift; sourceTree = "<group>"; };
 		29AEBE8F2D795D794B979BA3 /* ArticleEmbed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArticleEmbed.swift; sourceTree = "<group>"; };
-		2BBC604F7E2A71C09DC52DE5 /* ClaimedProfiles.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaimedProfiles.generated.swift; sourceTree = "<group>"; };
+
 		2C01000494AC737F8F8E286D /* ThreadScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThreadScreen.swift; sourceTree = "<group>"; };
 		2E15791A2205C8614CDA8D4B /* NostrRelayList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrRelayList.swift; sourceTree = "<group>"; };
 		2F9E4580C1A561577607FE7A /* AccountsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountsView.swift; sourceTree = "<group>"; };
@@ -282,7 +282,7 @@
 		886A82F866183EB8C3674AD1 /* NmpCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = NmpCore.h; sourceTree = "<group>"; };
 		8A2F197E5F54DB82A966F8BA /* ZapAmountSheetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZapAmountSheetTests.swift; sourceTree = "<group>"; };
 		8A938A23FD5F01DD4278F774 /* TypedProjectionGlue+RelayDiagnosticsInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TypedProjectionGlue+RelayDiagnosticsInfo.swift"; sourceTree = "<group>"; };
-		8ACEAFE25D0DCECE8B802799 /* ResolvedProfiles.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ResolvedProfiles.generated.swift; sourceTree = "<group>"; };
+
 		8C88FE40DE954EED68068786 /* DiagnosticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsView.swift; sourceTree = "<group>"; };
 		8E023AE4D2D23646A31F274E /* EmbedHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmbedHost.swift; sourceTree = "<group>"; };
 		8EEBF0C891ECD1257BB81163 /* ActionLifecycle.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionLifecycle.generated.swift; sourceTree = "<group>"; };
@@ -423,7 +423,7 @@
 				5DDD17888ABA40FE82E0DFD0 /* BunkerHandshake.generated.swift */,
 				BA696E3683CB5A03549E76E3 /* ClaimedEventEmbeds.generated.swift */,
 				3422EE09C4761D61694F7BFF /* ClaimedEvents.generated.swift */,
-				2BBC604F7E2A71C09DC52DE5 /* ClaimedProfiles.generated.swift */,
+
 				0B50243EC2D32D04FF7003CE /* ConfiguredRelays.generated.swift */,
 				17C13BDDC2BB37FD854A42B7 /* ContentTree.generated.swift */,
 				AB6AB62ADB750E771B9F1D0F /* DiscoveredGroups.generated.swift */,
@@ -449,7 +449,7 @@
 				368325DE8946EA98B754C2D0 /* PublishQueue.generated.swift */,
 				FD8E1C093624727988CF7D0D /* RelayDiagnostics.generated.swift */,
 				550440DC731E63D13B088D60 /* RelayRoleOptions.generated.swift */,
-				8ACEAFE25D0DCECE8B802799 /* ResolvedProfiles.generated.swift */,
+
 				EFAA2430D446BC5045B521C3 /* SettingsHub.generated.swift */,
 				837C186C97D2718D69953747 /* SignerState.generated.swift */,
 				963FD6DE472A7F2DE345A656 /* TimelineSnapshot.generated.swift */,
@@ -877,7 +877,7 @@
 				28DDB51A3E188547CD78D215 /* ChirpTheme.swift in Sources */,
 				C1634483DA1ABCA6690D3B77 /* ClaimedEventEmbeds.generated.swift in Sources */,
 				44AC82FB729E6F725EB6A993 /* ClaimedEvents.generated.swift in Sources */,
-				F731094F7DA7435EB07DC3BE /* ClaimedProfiles.generated.swift in Sources */,
+
 				159A0AB673722908A2785D5C /* ComposeView.swift in Sources */,
 				9270B58217AF84C5A100F45A /* ConfiguredRelays.generated.swift in Sources */,
 				AFBFC7203C4F3C4BB2CC16DA /* ContentTree.generated.swift in Sources */,
@@ -976,7 +976,7 @@
 				E2628E82F930E2172C3B5FD5 /* RelaySeeding.swift in Sources */,
 				B6D3716BDDDD6ECC762599C3 /* RelaySettingsView.swift in Sources */,
 				E92487F0CC342196B1A26C35 /* RenderIdentifiable.swift in Sources */,
-				821C01932D552C3E58B95B67 /* ResolvedProfiles.generated.swift in Sources */,
+
 				72E6C28DE61F97428F972267 /* RootShell.swift in Sources */,
 				96C98C820B23613308B5C31A /* SettingsHub.generated.swift in Sources */,
 				C5A3FCE92DF36AD33D083F83 /* SettingsHubView.swift in Sources */,

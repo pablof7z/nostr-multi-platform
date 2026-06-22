@@ -246,7 +246,7 @@ impl AppRuntime {
             nmp_app_chirp_close_author_feed(self.app, c.as_ptr());
         }
         // ADR-0063 (#1671 Lane F): release the open-screen profile.card/Live ref.
-        self.release_profile(OPEN_PROFILE_CONSUMER, pubkey);
+        self.release_ref(OPEN_PROFILE_CONSUMER, pubkey);
     }
 
     /// ADR-0063 (#1671 Lane F): resolve a feed/list-row author at `profile.ref` /
@@ -264,7 +264,7 @@ impl AppRuntime {
     /// Release a feed/list-row author's `profile.ref` claim when it scrolls off /
     /// the view closes (D5 — bounded by what is open).
     pub fn release_feed_author_ref(&self, pubkey: &str) {
-        self.release_profile(FEED_AUTHOR_CONSUMER, pubkey);
+        self.release_ref(FEED_AUTHOR_CONSUMER, pubkey);
     }
 
     fn resolve_profile_card_live(&self, pubkey: &str) {
@@ -293,7 +293,7 @@ impl AppRuntime {
         );
     }
 
-    fn release_profile(&self, consumer: &str, pubkey: &str) {
+    fn release_ref(&self, consumer: &str, pubkey: &str) {
         if self.app.is_null() {
             return;
         }

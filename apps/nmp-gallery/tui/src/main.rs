@@ -682,7 +682,7 @@ struct VisibleProfileClaims {
 impl VisibleProfileClaims {
     fn reconcile(&mut self, sink: &LiveKernelSink, current: BTreeSet<(String, String)>) {
         for (pubkey, consumer_id) in self.active.difference(&current) {
-            sink.release_profile(pubkey, consumer_id);
+            sink.release_ref(pubkey, consumer_id);
         }
         self.active = current;
     }

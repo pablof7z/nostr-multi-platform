@@ -25,7 +25,7 @@ pub trait NostrProfileHost {
     /// CacheOk)` to the kernel. Called by the widget on every render frame for
     /// each visible pubkey; the kernel deduplicates and refcounts.
     fn resolve_ref(&self, pubkey: &str, consumer_id: &str);
-    fn release_profile(&self, pubkey: &str, consumer_id: &str);
+    fn release_ref(&self, pubkey: &str, consumer_id: &str);
 }
 
 const PALETTE: [Color; 8] = [

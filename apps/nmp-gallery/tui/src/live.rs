@@ -208,7 +208,7 @@ impl LiveKernelSink {
 
     /// Release a profile reference previously resolved via [`Self::resolve_profile`].
     /// Pass the SAME `(pubkey, consumer_id)` so the kernel reclaims the slot.
-    pub fn release_profile(&self, pubkey: &str, consumer_id: &str) {
+    pub fn release_ref(&self, pubkey: &str, consumer_id: &str) {
         let Ok(pk) = CString::new(pubkey) else { return };
         let Ok(cid) = CString::new(consumer_id) else {
             return;

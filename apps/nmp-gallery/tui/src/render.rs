@@ -302,9 +302,9 @@ impl NostrProfileHost for GalleryProfileHost<'_> {
         self.claim(pubkey, consumer_id);
     }
 
-    fn release_profile(&self, pubkey: &str, consumer_id: &str) {
+    fn release_ref(&self, pubkey: &str, consumer_id: &str) {
         if let Some(sink) = self.sink {
-            sink.release_profile(pubkey, consumer_id);
+            sink.release_ref(pubkey, consumer_id);
         }
     }
 }
