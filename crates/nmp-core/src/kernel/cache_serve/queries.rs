@@ -65,15 +65,27 @@ use crate::store::StoreQuery;
 ///   ADR-0045 E1–E3; relay serves. Tracked as post-v1 follow-up; deliberately
 ///   out of scope, not a bug.
 /// - **Text / full-text search candidates:** shapes with `search` set always
-///   return empty. There is no `StoreQuery` variant or FTS index; search shapes
-///   rely on relay NIP-50. Tracked as post-v1 follow-up; not an accidental
-///   broad scan.
+///   return empty from THIS function — full-text matching has no `StoreQuery`
+///   variant (its index is the tokenized inverted index, not a structural
+///   `idx_*` scan). Such a shape is NOT necessarily relay-only, though: when a
+///   cache search scope is registered for the shape's kinds, cache-serve routes
+///   it to the store's `text_search_visit` via
+///   [`Kernel::try_cache_serve_search`](super::Kernel::try_cache_serve_search)
+///   (issue #1811, the `search` sibling module) BEFORE this function is
+///   consulted. With no matching scope the search stays relay-served (NIP-50).
+///   So: covered when a cache scope is registered; relay-only otherwise — never
+///   an accidental broad structural scan.
 ///
 /// See `issue_1517_every_scope_shape_has_a_plan_or_tracked_exception` in
 /// `cache_serve_budget_tests` for the contract guard.
 pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<StoreQuery> {
-    // Relay NIP-50 only for now. Do not degrade a search+kind shape into
-    // KindTime/AuthorKind local replay; that would serve non-search results.
+    // Search-bearing shapes have no STRUCTURAL `StoreQuery`: full-text matching
+    // is the tokenized inverted index, served separately by
+    // `Kernel::try_cache_serve_search` (#1811) before this function runs. Do NOT
+    // degrade a search+kind shape into KindTime/AuthorKind local replay here —
+    // that would serve non-search results. (Cache-coverage vs. relay-only for a
+    // search shape is decided by scope registration in the `search` module, not
+    // by this empty vec.)
     if shape.search.is_some() {
         return Vec::new();
     }

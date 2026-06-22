@@ -23,6 +23,10 @@ mod conv;
 mod coverage;
 #[cfg(feature = "lmdb-backend")]
 mod delete;
+// #1811 — durable LMDB full-text-search inverted index (postings / doc-terms /
+// term-stats sub-dbs + same-txn maintenance + query planner + backfill).
+#[cfg(feature = "lmdb-backend")]
+mod fts;
 #[cfg(feature = "lmdb-backend")]
 pub(crate) mod domain;
 #[cfg(feature = "lmdb-backend")]
@@ -120,6 +124,9 @@ mod tests_ingest_log_fixes;
 // ADR-0058 §6 step-4 — Protected-cursor log-retention tests.
 #[cfg(all(test, feature = "lmdb-backend"))]
 mod tests_retention;
+// #1811 — durable FTS index: mem↔lmdb parity, early-stop bound, sub-db slot.
+#[cfg(all(test, feature = "lmdb-backend"))]
+mod tests_fts;
 
 use std::path::{Path, PathBuf};
 

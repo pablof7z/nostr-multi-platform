@@ -482,7 +482,6 @@ pub mod testing {
         let path_slot = new_storage_path_slot();
         *path_slot.lock().expect("storage_path slot") = Some(storage_path.to_string());
 
-        // All other slots are throwaways matching the pattern in run_actor().
         thread::spawn(move || {
             let runtime = ActorRuntimeSlots {
                 lifecycle_observer: crate::actor::new_lifecycle_observer_slot(),

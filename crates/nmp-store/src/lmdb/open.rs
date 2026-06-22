@@ -51,7 +51,12 @@ pub(super) fn open_impl_with_limits(
     // Stage 3 (dead persisted-watermark machinery had zero production callers);
     // the K3 coverage ledger below is its purpose-built, actually-read successor
     // (ADR-0056 §2.1 / §3 — re-created, not re-activated).
-    const NMP_ADDITIONAL_DBS: u32 = 14;
+    //
+    // #1811 bump 14 → 17: three durable full-text-search sub-dbs — nmp-fts-postings,
+    // nmp-fts-doc-terms, nmp-fts-term-stats (the persistent inverted index, the
+    // durable backend of the FTS seam). Each is opened on the SAME write txn as
+    // the others below so every FTS write commits atomically with its event write.
+    const NMP_ADDITIONAL_DBS: u32 = 17;
 
     std::fs::create_dir_all(path).map_err(|e| StoreError::Io(e.to_string()))?;
 
@@ -96,6 +101,13 @@ pub(super) fn open_impl_with_limits(
     // ADR-0058 §4 — ingest-log sub-dbs.
     let ingest_log_db = open("nmp-ingest-log", &mut txn)?;
     let ingest_meta_db = open("nmp-ingest-meta", &mut txn)?;
+    // #1811 — durable FTS inverted index. Key codecs documented in `fts.rs`.
+    //   postings:   scope(4 BE) || token || 0x00 || !created_at(8 BE) || doc(32) → ∅
+    //   doc-terms:  doc(32) → packed Vec<(scope_disc, token)>  (doc-key-driven cleanup)
+    //   term-stats: scope(4 BE) || token → doc-frequency(8 BE) (rarest-term pick)
+    let fts_postings = open("nmp-fts-postings", &mut txn)?;
+    let fts_doc_terms = open("nmp-fts-doc-terms", &mut txn)?;
+    let fts_term_stats = open("nmp-fts-term-stats", &mut txn)?;
 
     // Initialise the in-memory seq counter from the max persisted value so
     // a crash-restart never reuses sequence numbers.
@@ -172,6 +184,11 @@ pub(super) fn open_impl_with_limits(
             interaction_counters_usable,
             ingest_log: ingest_log_db,
             ingest_meta: ingest_meta_db,
+            fts_postings,
+            fts_doc_terms,
+            fts_term_stats,
+            // #1811 — empty until `install_search_index_specs` runs at composition.
+            fts_specs: std::sync::RwLock::new(Vec::new()),
             gc_last_tombstone_purge_secs: AtomicU64::new(0),
             // ADR-0058 §6 step-4: volatile, never persisted — empty on every open.
             retention_claims: std::sync::RwLock::new(Vec::new()),

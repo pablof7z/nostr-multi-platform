@@ -89,6 +89,10 @@
 
 pub(super) mod continuation;
 pub(super) mod queries;
+// #1811 — cache-side full-text serve for search-bearing shapes. Routes a
+// `shape.search` interest to the store's tokenized index (`text_search_visit`)
+// when a registered cache scope covers its kinds; otherwise relay-only.
+pub(super) mod search;
 // #1520 cache-serve wakeup DRAIN — kept inside the cache_serve module so it can
 // reach the module-sealed `enqueue_interest_cache_serve_deferred`. The wake ARM
 // + the `StoreWakeups` owner live in `kernel::store_wakeup` (ADR-0058 §10).
@@ -308,6 +312,15 @@ impl Kernel {
             .iter()
             .any(|p| p.completion_key == completion_key)
         {
+            return;
+        }
+
+        // #1811 — search-bearing shape. If a registered cache scope covers its
+        // kinds, serve from the local FTS index now (bounded, synchronous) and
+        // record completion. If no scope matches, fall through: `search` shapes
+        // produce no `StoreQuery` (relay NIP-50 serves them) and are marked
+        // served below like any other uncovered shape.
+        if shape.search.is_some() && self.try_cache_serve_search(shape, completion_key) {
             return;
         }
 

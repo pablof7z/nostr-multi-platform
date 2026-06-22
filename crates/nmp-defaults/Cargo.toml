@@ -40,6 +40,12 @@ nmp-nip17 = { path = "../nmp-nip17" }
 # (V-95 / issue #619 — install-before-dispatch enforced by move semantics).
 nmp-nip47 = { path = "../nmp-nip47" }
 nmp-nip57 = { path = "../nmp-nip57" }
+# NIP-50 public full-text search scopes (#1811): `register_search_scopes`
+# installs the `nip50.profiles` / `nip50.notes` / `nip50.longform`
+# crate-owned `SearchScopeProvider`s into the shared FTS scope registry so the
+# cache-serve path can serve search from the tokenized store index. Public,
+# additive/yielding, names no FTS noun in core (D0).
+nmp-nip50 = { path = "../nmp-nip50" }
 nmp-nip77 = { path = "../nmp-nip77" }
 nmp-wot = { path = "../nmp-wot" }
 # NIP-51 mute-list adapter: `MuteListProjection` (kind:10000 observer +

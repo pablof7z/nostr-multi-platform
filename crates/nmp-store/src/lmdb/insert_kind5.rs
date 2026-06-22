@@ -26,8 +26,9 @@ use std::sync::Arc;
 use heed::RwTxn;
 use nostr_database::FlatBufferBuilder;
 
-use super::{conv, gc, ingest_log, provenance, tombstones, Inner};
+use super::{conv, fts, gc, ingest_log, provenance, tombstones, Inner};
 use crate::ingest_log::{DeleteReason, LogRetentionClaim};
+use crate::text_search::CompiledIndexSpec;
 use crate::types::{InsertOutcome, RawEvent, RelayUrl};
 use crate::StoreError;
 
@@ -42,6 +43,7 @@ pub(super) fn handle_kind5(
     source: &RelayUrl,
     received_at_ms: u64,
     claims: &[LogRetentionClaim],
+    fts_specs: &[CompiledIndexSpec],
 ) -> Result<InsertOutcome, StoreError> {
     use nostr::prelude::*;
 
@@ -113,6 +115,8 @@ pub(super) fn handle_kind5(
                 target_kind,
             )?;
             gc::lru_delete(inner, txn, &target_id_bytes)?;
+            // #1811: drop the self-deleted target's FTS rows (doc-key-driven).
+            fts::fts_remove_by_id(inner, txn, &target_id_bytes)?;
             // V-118: O(1) expiry-index cleanup using the known expiry timestamp.
             gc::expiry_index_delete_exact(inner, txn, target_expiry, &target_id_bytes)?;
             // Issue #1519: decrement interaction-counter for the removed event.
@@ -203,6 +207,8 @@ pub(super) fn handle_kind5(
                             tgt_kind,
                         )?;
                         gc::lru_delete(inner, txn, &existing_id)?;
+                        // #1811: drop the removed coordinate target's FTS rows.
+                        fts::fts_remove_by_id(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
                         // Issue #1519: decrement interaction-counter for removed addressable.
                         if inner.interaction_counters_usable {
@@ -268,6 +274,8 @@ pub(super) fn handle_kind5(
                             tgt_kind,
                         )?;
                         gc::lru_delete(inner, txn, &existing_id)?;
+                        // #1811: drop the removed coordinate target's FTS rows.
+                        fts::fts_remove_by_id(inner, txn, &existing_id)?;
                         gc::expiry_index_delete_exact(inner, txn, existing_expiry, &existing_id)?;
                         // Issue #1519: decrement interaction-counter for removed replaceable.
                         if inner.interaction_counters_usable {
@@ -363,6 +371,9 @@ pub(super) fn handle_kind5(
     )?;
     // Stamp LRU access for the newly stored kind:5 event.
     gc::lru_stamp(inner, txn, &kind5_id)?;
+    // #1811: index the kind:5 event itself into any installed scope whose kinds
+    // include kind 5 (normally none — kept uniform with the regular insert path).
+    fts::fts_add_event(inner, txn, fts_specs, &event, received_at_ms)?;
     // V-118: index the kind:5's own expiry if present (defensive — kind:5
     // events do not normally carry expiration tags, but keep the index honest).
     if let Some(exp) = event.expiration() {

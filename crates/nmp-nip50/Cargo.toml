@@ -11,9 +11,19 @@ crate-type = ["rlib"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
+# Direct dep on nmp-store for the FTS seam (text_search_visit / TextSearchQuery /
+# SearchScopeId / StoredEvent / SearchField) the cache-search path and scope
+# providers build against. #1811.
+nmp-store = { path = "../nmp-store" }
 # Direct dep on nmp-planner for bounded_search_query / InterestShape —
 # the nmp_core::planner compat facade is deleted (#1608).
 nmp-planner = { path = "../nmp-planner" }
 nmp-kinds = { path = "../nmp-kinds" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+# `test-support` exposes `VerifiedEvent::from_raw_unchecked` so the cache-hit
+# projection tests can seed a `MemEventStore` with synthetic events and drive
+# the real FTS seam end-to-end. #1811.
+nmp-store = { path = "../nmp-store", features = ["test-support"] }

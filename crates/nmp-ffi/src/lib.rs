@@ -30,6 +30,7 @@ mod active_account_handle_tests;
 // ingest driven through the actor thread; publish-back slot survives Reset).
 mod action;
 mod app_config_hooks;
+mod app_config_search; // #1811: `register_search_scope` (impl NmpApp; LOC ceiling).
 mod app_config_substrate;
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpApp` extracted here (LOC ceiling).
 mod capability;

@@ -243,6 +243,26 @@ fn register_defaults_inner(
     // shared `coverage_gate` feeds both). See [`register_substrate`].
     register_substrate(app, coverage_gate);
 
+    // ── NIP-50 public full-text search scopes (#1811) ────────────────────
+    //
+    // Register the crate-owned `nip50.profiles` / `nip50.notes` /
+    // `nip50.longform` `SearchScopeProvider`s into the shared FTS scope
+    // registry. Search is a generic public-query capability (NIP-50 is
+    // transport infrastructure, not a social preference), so all three are
+    // wired in the default bundle regardless of the social toggles — an
+    // unqueried scope merely indexes events that already pass the kind filter,
+    // and registration is additive/yielding (ADR-0049). The scopes are all
+    // `PublicIndexable`, so private kinds ([4,13,14,15,1059,1060]) are dropped
+    // from the compiled spec by construction; `nmp-core` names no FTS noun (the
+    // call lives here in the composition crate, never in the kernel — D0).
+    //
+    // The registry the host accumulates these into is compiled +
+    // `install_into(store)` at actor-kernel construction
+    // (`nmp-core::actor::config::apply_to_kernel`), so they MUST be registered
+    // before `start()` — guaranteed because `register_defaults` is a pre-start
+    // config step.
+    nmp_nip50::register_search_scopes(app);
+
     // ── Social-feature defaults (toggleable) ─────────────────────────────
 
     if social {

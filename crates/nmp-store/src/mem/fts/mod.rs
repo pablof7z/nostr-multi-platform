@@ -69,6 +69,15 @@ impl FtsState {
             self.specs.insert(id, Arc::new(spec));
         }
     }
+
+    /// The installed cache-searchable scopes and the kinds each indexes —
+    /// the read side of [`crate::EventStore::cache_search_scopes`].
+    pub(in crate::mem) fn cache_scopes(&self) -> Vec<(SearchScopeId, BTreeSet<u32>)> {
+        self.specs
+            .values()
+            .map(|spec| (spec.scope_id, spec.kinds.clone()))
+            .collect()
+    }
 }
 
 /// Index `stored` into every installed scope whose kinds include the event's

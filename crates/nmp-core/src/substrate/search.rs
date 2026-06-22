@@ -195,6 +195,18 @@ impl SearchScopeRegistry {
     }
 }
 
+/// The registry is itself a [`SearchScopeRegistrar`]: a protocol crate's
+/// `register_search_scopes(host: &impl SearchScopeRegistrar)` helper can be
+/// driven directly against a bare `SearchScopeRegistry` (composition roots /
+/// integration harnesses that hold the registry without an `AppHost`). The
+/// `AppHost`/FFI shell forwards to the same `register` method, so the
+/// ADR-0049 yield semantics are identical on both paths.
+impl SearchScopeRegistrar for SearchScopeRegistry {
+    fn register_search_scope(&self, provider: Arc<dyn SearchScopeProvider>) {
+        let _ = self.register(provider);
+    }
+}
+
 /// Compile one provider, returning `None` when it contributes no public cache
 /// index (LocalOnlyPrivate, RelayOnly, or all-private-kinds).
 fn compile_one(provider: &Arc<dyn SearchScopeProvider>) -> Option<CompiledIndexSpec> {

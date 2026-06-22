@@ -26,6 +26,7 @@
 mod domain_handle;
 mod domain_migration;
 mod events;
+mod events_query_dispatch;
 pub mod ingest_log;
 pub(crate) mod interaction;
 mod lmdb;

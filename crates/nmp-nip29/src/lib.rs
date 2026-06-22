@@ -43,6 +43,7 @@ pub mod interest;
 pub mod kinds;
 pub mod projection;
 pub mod register;
+pub mod search;
 pub mod wire;
 
 pub use group_id::GroupId;
@@ -54,6 +55,9 @@ pub use projection::{
     JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
 pub use register::register_actions;
+pub use search::{
+    register_search_scopes, GroupMetadataSearchScope, GROUP_SEARCH_SCOPE_LABEL,
+};
 pub use wire::discovered_groups_fb::{
     decode_discovered_groups_snapshot, encode_discovered_groups_snapshot,
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
