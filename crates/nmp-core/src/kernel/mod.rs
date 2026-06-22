@@ -33,6 +33,8 @@ mod action_terminal_correctness_tests;
 pub(crate) mod action_lifecycle;
 #[cfg(test)]
 mod action_lifecycle_tests;
+#[cfg(test)]
+mod action_lifecycle_kernel_tests;
 pub(crate) mod action_stages;
 #[cfg(test)]
 mod action_stages_tests;
@@ -191,6 +193,7 @@ mod provenance;
 #[cfg(test)]
 mod provenance_wire_tests;
 mod publish_cmd;
+mod publish_cmd_contact_accessors;
 mod publish_engine;
 mod publish_verify;
 #[cfg(test)]
