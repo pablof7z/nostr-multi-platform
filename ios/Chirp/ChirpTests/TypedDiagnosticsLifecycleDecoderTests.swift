@@ -222,7 +222,54 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         // `.failed(reason:)` reconstruction — the reason is distinct from any
         // plausible JSON value, so a pass proves the typed enum won.
         XCTAssertEqual(snap.recentTerminal[1].correlationId, "typed-terminal-fail")
-        XCTAssertEqual(snap.recentTerminal[1].stage, .failed(reason: "TYPED relay rejected the event"))
+        // #1735: a prose-only (un-coded) failure decodes with nil reasonCode/Subject.
+        XCTAssertEqual(
+            snap.recentTerminal[1].stage,
+            .failed(reason: "TYPED relay rejected the event", reasonCode: nil, reasonSubject: nil))
+    }
+
+    /// #1735: a curated failure carries a `reason_code` (+ optional subject) on
+    /// the wire; the typed decoder lifts both, and `localizedReason` resolves to
+    /// the localized copy. An un-coded failure (above) keeps `reasonCode == nil`
+    /// and `localizedReason` falls back to the prose `reason`.
+    func testTypedActionLifecycleCuratedReasonCodeLifts() throws {
+        var fbb = FlatBufferBuilder(initialSize: 256)
+        let cidOff = fbb.create(string: "typed-coded")
+        let stageOff = fbb.create(string: "failed")
+        let reasonOff = fbb.create(string: "no active account")
+        let codeOff = fbb.create(string: "lifecycle_no_active_account")
+        let entry = nmp_kernel_LifecycleEntry.createLifecycleEntry(
+            &fbb,
+            correlationIdOffset: cidOff,
+            stageOffset: stageOff,
+            hasReason: true,
+            reasonOffset: reasonOff,
+            hasReasonCode: true,
+            reasonCodeOffset: codeOff)
+        let recent = fbb.createVector(ofOffsets: [entry])
+        let root = nmp_kernel_ActionLifecycleSnapshot.createActionLifecycleSnapshot(
+            &fbb, recentTerminalVectorOffset: recent)
+        nmp_kernel_ActionLifecycleSnapshot.finish(&fbb, end: root)
+
+        let envelope = TypedProjectionEnvelope(
+            key: TypedActionLifecycleDecoder.key,
+            schemaId: TypedActionLifecycleDecoder.schemaId,
+            schemaVersion: 1,
+            fileIdentifier: TypedActionLifecycleDecoder.fileIdentifier,
+            payload: fbb.data)
+        let snap = try XCTUnwrap(TypedActionLifecycleDecoder.decode(from: [envelope]))
+        XCTAssertEqual(snap.recentTerminal.count, 1)
+        XCTAssertEqual(
+            snap.recentTerminal[0].stage,
+            .failed(
+                reason: "no active account",
+                reasonCode: "lifecycle_no_active_account",
+                reasonSubject: nil))
+        // The shell resolves the curated code to localized copy (not the prose).
+        XCTAssertEqual(
+            snap.recentTerminal[0].stage.localizedReason,
+            UiLifecycleReasonProse.localized(code: "lifecycle_no_active_account", subject: nil))
+        XCTAssertNotEqual(snap.recentTerminal[0].stage.localizedReason, "no active account")
     }
 
     /// An unrecognised wire stage must collapse to `.unknown(raw:)` (D1

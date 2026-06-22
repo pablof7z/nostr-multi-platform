@@ -8,11 +8,16 @@ fn sample() -> ActionLifecycleModel {
             correlation_id: "corr-1".to_string(),
             stage: "publishing".to_string(),
             reason: None,
+            reason_code: None,
+            reason_subject: None,
         }],
         recent_terminal: vec![LifecycleEntryRow {
             correlation_id: "corr-2".to_string(),
             stage: "failed".to_string(),
             reason: Some("no relays".to_string()),
+            // Curated-copy row: carries a localizable reason_code (#1735).
+            reason_code: Some("lifecycle_no_active_account".to_string()),
+            reason_subject: Some("alice".to_string()),
         }],
     }
 }
@@ -44,7 +49,17 @@ fn empty_struct_round_trips() {
 fn model_from_json_mirrors_the_producer_shape() {
     let value = serde_json::json!({
         "in_flight": [ { "correlation_id": "corr-1", "stage": "publishing" } ],
-        "recent_terminal": [ { "correlation_id": "corr-2", "stage": "failed", "reason": "boom" } ],
+        "recent_terminal": [
+            // Prose-only failure (un-coded upstream text) — reason_code absent.
+            { "correlation_id": "corr-2", "stage": "failed", "reason": "boom" },
+            // Curated-copy failure — reason_code (+ subject) present (#1735).
+            {
+                "correlation_id": "corr-3", "stage": "failed",
+                "reason": "no active account",
+                "reason_code": "lifecycle_no_active_account",
+                "reason_subject": "alice"
+            },
+        ],
     });
     let model = model_from_json(&value);
     assert_eq!(model.in_flight.len(), 1);
@@ -52,9 +67,19 @@ fn model_from_json_mirrors_the_producer_shape() {
     assert_eq!(model.in_flight[0].stage, "publishing");
     assert_eq!(model.in_flight[0].reason, None);
 
-    assert_eq!(model.recent_terminal.len(), 1);
+    assert_eq!(model.recent_terminal.len(), 2);
+    // Prose-only row: reason carried, no code (mirrors #1711's guard).
     assert_eq!(model.recent_terminal[0].stage, "failed");
     assert_eq!(model.recent_terminal[0].reason.as_deref(), Some("boom"));
+    assert_eq!(model.recent_terminal[0].reason_code, None);
+    assert_eq!(model.recent_terminal[0].reason_subject, None);
+    // Curated row: code + subject parsed alongside the prose fallback.
+    assert_eq!(model.recent_terminal[1].reason.as_deref(), Some("no active account"));
+    assert_eq!(
+        model.recent_terminal[1].reason_code.as_deref(),
+        Some("lifecycle_no_active_account")
+    );
+    assert_eq!(model.recent_terminal[1].reason_subject.as_deref(), Some("alice"));
 }
 
 #[test]

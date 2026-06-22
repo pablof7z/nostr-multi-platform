@@ -113,7 +113,10 @@ struct RelaySettingsView: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(ChirpColor.positive)
                     .padding(.vertical, ChirpSpace.s)
-            case let .failed(reason):
+            case .failed:
+                // #1735: localize the reason_code, falling back to the English
+                // prose `reason` the wire carries.
+                let reason = stage.localizedReason ?? ""
                 VStack(alignment: .leading, spacing: ChirpSpace.xs) {
                     Text("Publish failed")
                         .font(.subheadline.weight(.semibold))

@@ -30,6 +30,10 @@ impl<'a> LifecycleEntry<'a> {
   pub const VT_STAGE: ::flatbuffers::VOffsetT = 6;
   pub const VT_HAS_REASON: ::flatbuffers::VOffsetT = 8;
   pub const VT_REASON: ::flatbuffers::VOffsetT = 10;
+  pub const VT_HAS_REASON_CODE: ::flatbuffers::VOffsetT = 12;
+  pub const VT_REASON_CODE: ::flatbuffers::VOffsetT = 14;
+  pub const VT_HAS_REASON_SUBJECT: ::flatbuffers::VOffsetT = 16;
+  pub const VT_REASON_SUBJECT: ::flatbuffers::VOffsetT = 18;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -41,9 +45,13 @@ impl<'a> LifecycleEntry<'a> {
     args: &'args LifecycleEntryArgs<'args>
   ) -> ::flatbuffers::WIPOffset<LifecycleEntry<'bldr>> {
     let mut builder = LifecycleEntryBuilder::new(_fbb);
+    if let Some(x) = args.reason_subject { builder.add_reason_subject(x); }
+    if let Some(x) = args.reason_code { builder.add_reason_code(x); }
     if let Some(x) = args.reason { builder.add_reason(x); }
     if let Some(x) = args.stage { builder.add_stage(x); }
     if let Some(x) = args.correlation_id { builder.add_correlation_id(x); }
+    builder.add_has_reason_subject(args.has_reason_subject);
+    builder.add_has_reason_code(args.has_reason_code);
     builder.add_has_reason(args.has_reason);
     builder.finish()
   }
@@ -77,6 +85,34 @@ impl<'a> LifecycleEntry<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(LifecycleEntry::VT_REASON, None)}
   }
+  #[inline]
+  pub fn has_reason_code(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(LifecycleEntry::VT_HAS_REASON_CODE, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn reason_code(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(LifecycleEntry::VT_REASON_CODE, None)}
+  }
+  #[inline]
+  pub fn has_reason_subject(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(LifecycleEntry::VT_HAS_REASON_SUBJECT, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn reason_subject(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(LifecycleEntry::VT_REASON_SUBJECT, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for LifecycleEntry<'_> {
@@ -89,6 +125,10 @@ impl ::flatbuffers::Verifiable for LifecycleEntry<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("stage", Self::VT_STAGE, false)?
      .visit_field::<bool>("has_reason", Self::VT_HAS_REASON, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reason", Self::VT_REASON, false)?
+     .visit_field::<bool>("has_reason_code", Self::VT_HAS_REASON_CODE, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reason_code", Self::VT_REASON_CODE, false)?
+     .visit_field::<bool>("has_reason_subject", Self::VT_HAS_REASON_SUBJECT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reason_subject", Self::VT_REASON_SUBJECT, false)?
      .finish();
     Ok(())
   }
@@ -98,6 +138,10 @@ pub struct LifecycleEntryArgs<'a> {
     pub stage: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub has_reason: bool,
     pub reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub has_reason_code: bool,
+    pub reason_code: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub has_reason_subject: bool,
+    pub reason_subject: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for LifecycleEntryArgs<'a> {
   #[inline]
@@ -107,6 +151,10 @@ impl<'a> Default for LifecycleEntryArgs<'a> {
       stage: None,
       has_reason: false,
       reason: None,
+      has_reason_code: false,
+      reason_code: None,
+      has_reason_subject: false,
+      reason_subject: None,
     }
   }
 }
@@ -133,6 +181,22 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> LifecycleEntryBuilder<'a, 'b,
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(LifecycleEntry::VT_REASON, reason);
   }
   #[inline]
+  pub fn add_has_reason_code(&mut self, has_reason_code: bool) {
+    self.fbb_.push_slot::<bool>(LifecycleEntry::VT_HAS_REASON_CODE, has_reason_code, false);
+  }
+  #[inline]
+  pub fn add_reason_code(&mut self, reason_code: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(LifecycleEntry::VT_REASON_CODE, reason_code);
+  }
+  #[inline]
+  pub fn add_has_reason_subject(&mut self, has_reason_subject: bool) {
+    self.fbb_.push_slot::<bool>(LifecycleEntry::VT_HAS_REASON_SUBJECT, has_reason_subject, false);
+  }
+  #[inline]
+  pub fn add_reason_subject(&mut self, reason_subject: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(LifecycleEntry::VT_REASON_SUBJECT, reason_subject);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> LifecycleEntryBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     LifecycleEntryBuilder {
@@ -154,6 +218,10 @@ impl ::core::fmt::Debug for LifecycleEntry<'_> {
       ds.field("stage", &self.stage());
       ds.field("has_reason", &self.has_reason());
       ds.field("reason", &self.reason());
+      ds.field("has_reason_code", &self.has_reason_code());
+      ds.field("reason_code", &self.reason_code());
+      ds.field("has_reason_subject", &self.has_reason_subject());
+      ds.field("reason_subject", &self.reason_subject());
       ds.finish()
   }
 }

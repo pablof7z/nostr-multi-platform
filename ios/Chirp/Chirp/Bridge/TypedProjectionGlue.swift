@@ -181,7 +181,13 @@ enum TypedProjectionGlue {
         case "awaiting_capability", "awaitingCapability": return .awaitingCapability
         case "publishing": return .publishing
         case "accepted": return .accepted
-        case "failed": return .failed(reason: row.hasReason ? (row.reason ?? "") : "")
+        case "failed":
+            // #1735: lift the curated reason_code (+ subject) when present; an
+            // un-coded failure has hasReasonCode == false and degrades to prose.
+            return .failed(
+                reason: row.hasReason ? (row.reason ?? "") : "",
+                reasonCode: row.hasReasonCode ? row.reasonCode : nil,
+                reasonSubject: row.hasReasonSubject ? row.reasonSubject : nil)
         case let raw: return .unknown(raw: raw)
         }
     }

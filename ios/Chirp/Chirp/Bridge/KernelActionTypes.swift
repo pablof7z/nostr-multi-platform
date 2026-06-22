@@ -156,9 +156,14 @@ enum ActionLifecycleStage: Equatable {
     case awaitingCapability
     case publishing
     case accepted
-    /// `reason` is the human-readable failure message the host renders
-    /// verbatim. Same field-level shape as `ActionStage.failed`.
-    case failed(reason: String)
+    /// `reason` is the English prose fallback the host renders when no
+    /// `reasonCode` is present or recognized. `reasonCode` (#1735) is the stable
+    /// machine key the shell localizes via `UiLifecycleReasonProse`, present ONLY
+    /// for the kernel's own curated copy; opaque upstream / diagnostic text is
+    /// prose-only (`reasonCode == nil`). `reasonSubject` is an optional
+    /// contextual value for interpolation. Read `localizedReason` to get the
+    /// host-facing string (localized code, falling back to `reason`).
+    case failed(reason: String, reasonCode: String?, reasonSubject: String?)
     /// Catchall for future kernel stages — preserves the raw tag so a
     /// diagnostic view can still display something meaningful.
     case unknown(raw: String)
@@ -168,6 +173,18 @@ enum ActionLifecycleStage: Equatable {
         case .accepted, .failed: return true
         default: return false
         }
+    }
+
+    /// The host-facing failure reason for a `.failed` stage: the localized
+    /// `reasonCode` when present and recognized, else the English `reason`
+    /// fallback the wire always carries (#1735). `nil` for non-`failed` stages.
+    var localizedReason: String? {
+        guard case let .failed(reason, reasonCode, reasonSubject) = self else { return nil }
+        if let code = reasonCode,
+            let localized = UiLifecycleReasonProse.localized(code: code, subject: reasonSubject) {
+            return localized
+        }
+        return reason
     }
 }
 
@@ -185,6 +202,8 @@ struct ActionLifecycleEntry: Decodable, Equatable, Identifiable {
         case correlationId
         case stage
         case reason
+        case reasonCode = "reason_code"
+        case reasonSubject = "reason_subject"
     }
 
     init(from decoder: Decoder) throws {
@@ -198,7 +217,11 @@ struct ActionLifecycleEntry: Decodable, Equatable, Identifiable {
         case "accepted": stage = .accepted
         case "failed":
             let reason = try container.decodeIfPresent(String.self, forKey: .reason) ?? ""
-            stage = .failed(reason: reason)
+            // #1735: the curated machine code (+ optional subject) is absent for
+            // prose-only failures, so they degrade to the `reason` fallback.
+            let reasonCode = try container.decodeIfPresent(String.self, forKey: .reasonCode)
+            let reasonSubject = try container.decodeIfPresent(String.self, forKey: .reasonSubject)
+            stage = .failed(reason: reason, reasonCode: reasonCode, reasonSubject: reasonSubject)
         default:
             stage = .unknown(raw: raw)
         }

@@ -145,8 +145,47 @@ data class ActionStageEntry(
 data class ActionLifecycleEntry(
     @SerialName("correlation_id") val correlationId: String = "",
     val stage: String = "",
+    /** English prose failure fallback (always carried for a `failed` stage). */
     val reason: String? = null,
-)
+    /**
+     * Stable machine code for a CURATED failure reason (#1735); `null` for
+     * opaque upstream / diagnostic text (prose-only, mirroring #1711's guard).
+     * Read [localizedReason] to get the host-facing string.
+     */
+    @SerialName("reason_code") val reasonCode: String? = null,
+    /** Optional contextual subject interpolated into the localized [reasonCode]. */
+    @SerialName("reason_subject") val reasonSubject: String? = null,
+) {
+    /**
+     * The host-facing failure reason: the localized [reasonCode] when present
+     * and recognized, else the English [reason] fallback the wire always carries
+     * (#1735). Mirrors iOS `ActionLifecycleStage.localizedReason`.
+     */
+    val localizedReason: String?
+        get() = reasonCode
+            ?.let { UiLifecycleReasonProse.localized(it, reasonSubject) }
+            ?: reason
+}
+
+/**
+ * Maps a kernel `action_lifecycle` `reason_code` (#1735) to user-facing failure
+ * copy — the Android parallel of iOS `UiLifecycleReasonProse`. The kernel ships a
+ * stable code only for its OWN curated copy; opaque upstream / diagnostic text
+ * stays prose-only (`reason_code` absent), so the caller falls back to the
+ * English `reason` the wire carries. Returns `null` for an unrecognized key.
+ *
+ * Android has no localized string-resource layer yet, so these return inlined
+ * English copy (kept in lockstep with the iOS `NSLocalizedString` defaults); the
+ * surface is wire-ready for a future `R.string` migration.
+ */
+object UiLifecycleReasonProse {
+    fun localized(code: String, subject: String?): String? = when (code) {
+        "lifecycle_no_active_account" -> "Sign in to an account first."
+        "lifecycle_publish_no_explicit_target" ->
+            "This private note needs an explicit relay to publish to."
+        else -> null
+    }
+}
 
 @Serializable
 data class ActionLifecycleSnapshot(

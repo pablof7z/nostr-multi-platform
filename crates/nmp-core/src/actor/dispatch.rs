@@ -1070,6 +1070,12 @@ pub(super) fn dispatch_command(
             // verdict to `action_results` — both surfaces the host uses to
             // clear the spinner. Without this, an executor that fails before
             // emitting an ActorCommand would orphan the correlation_id.
+            //
+            // Prose-only (#1735): the `reason` is whatever the failing executor
+            // supplied (opaque upstream / protocol-crate diagnostic text), not
+            // curated kernel app copy — un-coded, mirroring #1711's guard. (An
+            // executor that wants a localizable failure carries its own code on
+            // the S7 lifecycle wire, #1754.)
             ctx.kernel.record_action_failure(correlation_id, reason);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())

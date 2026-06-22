@@ -122,8 +122,9 @@ private fun GroupListScreen(
             createError = null
             showCreate = false
         } else {
-            // "failed": keep dialog open; surface the Rust reason verbatim.
-            createError = terminal.reason
+            // "failed": keep dialog open; surface the localized reason_code,
+            // falling back to the Rust prose `reason` when un-coded (#1735).
+            createError = terminal.localizedReason
         }
     }
 

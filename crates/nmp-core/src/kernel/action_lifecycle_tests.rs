@@ -80,9 +80,82 @@ fn tracker_failed_lands_in_recent_terminal_with_reason() {
     let payload: LifecycleSnapshot = serde_json::from_value(snap).unwrap();
     assert_eq!(payload.recent_terminal.len(), 1);
     match &payload.recent_terminal[0].stage {
-        LifecycleStage::Failed { reason } => assert_eq!(reason, "no relays"),
+        LifecycleStage::Failed {
+            reason,
+            reason_code,
+            ..
+        } => {
+            assert_eq!(reason, "no relays");
+            // Un-coded path: a plain `record(Failed)` carries NO reason_code —
+            // prose-only, the default for opaque text (#1735).
+            assert_eq!(reason_code, &None);
+        }
         other => panic!("expected Failed, got {:?}", other),
     }
+}
+
+/// `record_coded` attaches the curated `reason_code` (+ subject) to a `Failed`
+/// display row while the prose `reason` is still carried (#1735). The snapshot
+/// JSON serializes both — the shell localizes the code, falling back to prose.
+#[test]
+fn tracker_failed_coded_carries_reason_code_and_subject() {
+    let mut t = ActionLifecycleTracker::new();
+    t.record_coded(
+        "corr-coded",
+        ActionStage::Failed {
+            reason: "no active account".to_string(),
+        },
+        Some("lifecycle_no_active_account"),
+        Some("alice"),
+        0,
+    );
+
+    let snap = t.snapshot(0);
+    // Assert against the serialized JSON — the host-visible shape.
+    let row = &snap["recent_terminal"][0];
+    assert_eq!(row["stage"], "failed");
+    assert_eq!(row["reason"], "no active account");
+    assert_eq!(row["reason_code"], "lifecycle_no_active_account");
+    assert_eq!(row["reason_subject"], "alice");
+
+    let payload: LifecycleSnapshot = serde_json::from_value(snap).unwrap();
+    match &payload.recent_terminal[0].stage {
+        LifecycleStage::Failed {
+            reason_code,
+            reason_subject,
+            ..
+        } => {
+            assert_eq!(reason_code.as_deref(), Some("lifecycle_no_active_account"));
+            assert_eq!(reason_subject.as_deref(), Some("alice"));
+        }
+        other => panic!("expected Failed, got {:?}", other),
+    }
+}
+
+/// `record_coded` with `reason_code = None` is equivalent to the prose-only
+/// path: the snapshot omits the `reason_code`/`reason_subject` keys entirely
+/// (the `skip_serializing_if` guard), so an un-coded reason never regresses a
+/// host that branches on key presence.
+#[test]
+fn tracker_failed_uncoded_omits_reason_code_keys() {
+    let mut t = ActionLifecycleTracker::new();
+    t.record_coded(
+        "corr-prose",
+        ActionStage::Failed {
+            reason: "boom".to_string(),
+        },
+        None,
+        None,
+        0,
+    );
+    let snap = t.snapshot(0);
+    let row = &snap["recent_terminal"][0];
+    assert_eq!(row["reason"], "boom");
+    assert!(row.get("reason_code").is_none(), "un-coded reason must omit reason_code");
+    assert!(
+        row.get("reason_subject").is_none(),
+        "un-coded reason must omit reason_subject"
+    );
 }
 
 /// Terminal rows drop on TTL expiry. Snapshotting at exactly

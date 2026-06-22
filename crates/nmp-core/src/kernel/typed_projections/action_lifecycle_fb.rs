@@ -56,8 +56,15 @@ pub const ACTION_LIFECYCLE_SCHEMA_VERSION: u32 = 1;
 pub struct LifecycleEntryRow {
     pub correlation_id: String,
     pub stage: String,
-    /// `Failed { reason }`'s reason, lifted as a sibling of `stage`.
+    /// `Failed { reason }`'s reason, lifted as a sibling of `stage`. Always the
+    /// English prose fallback.
     pub reason: Option<String>,
+    /// Stable machine code for a CURATED failure reason (#1735); `None` for
+    /// opaque upstream / diagnostic text (prose-only, mirroring #1711's guard).
+    pub reason_code: Option<String>,
+    /// Optional contextual subject the shell interpolates into the localized
+    /// `reason_code` template.
+    pub reason_subject: Option<String>,
 }
 
 /// The `"action_lifecycle"` read model — the `{ in_flight, recent_terminal }`
@@ -105,6 +112,16 @@ fn entry_from_json(row: &serde_json::Value) -> LifecycleEntryRow {
             .filter(|v| !v.is_null())
             .and_then(serde_json::Value::as_str)
             .map(str::to_string),
+        reason_code: row
+            .get("reason_code")
+            .filter(|v| !v.is_null())
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
+        reason_subject: row
+            .get("reason_subject")
+            .filter(|v| !v.is_null())
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_string),
     }
 }
 
@@ -119,6 +136,8 @@ fn create_lifecycle_entry<'a>(
     let correlation_id = fbb.create_string(&row.correlation_id);
     let stage = fbb.create_string(&row.stage);
     let reason = row.reason.as_ref().map(|v| fbb.create_string(v));
+    let reason_code = row.reason_code.as_ref().map(|v| fbb.create_string(v));
+    let reason_subject = row.reason_subject.as_ref().map(|v| fbb.create_string(v));
     fb::LifecycleEntry::create(
         fbb,
         &fb::LifecycleEntryArgs {
@@ -126,6 +145,10 @@ fn create_lifecycle_entry<'a>(
             stage: Some(stage),
             has_reason: row.reason.is_some(),
             reason,
+            has_reason_code: row.reason_code.is_some(),
+            reason_code,
+            has_reason_subject: row.reason_subject.is_some(),
+            reason_subject,
         },
     )
 }
@@ -207,6 +230,12 @@ fn lifecycle_entry_from_fb(row: fb::LifecycleEntry<'_>) -> LifecycleEntryRow {
         reason: row
             .has_reason()
             .then(|| row.reason().unwrap_or_default().to_string()),
+        reason_code: row
+            .has_reason_code()
+            .then(|| row.reason_code().unwrap_or_default().to_string()),
+        reason_subject: row
+            .has_reason_subject()
+            .then(|| row.reason_subject().unwrap_or_default().to_string()),
     }
 }
 

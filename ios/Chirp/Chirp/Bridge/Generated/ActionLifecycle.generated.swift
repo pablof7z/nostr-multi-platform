@@ -24,6 +24,10 @@ public struct nmp_kernel_LifecycleEntry: FlatBufferTable, FlatbuffersVectorIniti
     case stage = 6
     case hasReason = 8
     case reason = 10
+    case hasReasonCode = 12
+    case reasonCode = 14
+    case hasReasonSubject = 16
+    case reasonSubject = 18
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -35,25 +39,45 @@ public struct nmp_kernel_LifecycleEntry: FlatBufferTable, FlatbuffersVectorIniti
   public var hasReason: Bool { let o = _accessor.offset(VTOFFSET.hasReason.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var reason: String? { let o = _accessor.offset(VTOFFSET.reason.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var reasonSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.reason.v) }
-  public static func startLifecycleEntry(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 4) }
+  public var hasReasonCode: Bool { let o = _accessor.offset(VTOFFSET.hasReasonCode.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var reasonCode: String? { let o = _accessor.offset(VTOFFSET.reasonCode.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var reasonCodeSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.reasonCode.v) }
+  public var hasReasonSubject: Bool { let o = _accessor.offset(VTOFFSET.hasReasonSubject.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var reasonSubject: String? { let o = _accessor.offset(VTOFFSET.reasonSubject.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var reasonSubjectSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.reasonSubject.v) }
+  public static func startLifecycleEntry(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 8) }
   public static func add(correlationId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: correlationId, at: VTOFFSET.correlationId.p) }
   public static func add(stage: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: stage, at: VTOFFSET.stage.p) }
   public static func add(hasReason: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasReason, def: false,
    at: VTOFFSET.hasReason.p) }
   public static func add(reason: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: reason, at: VTOFFSET.reason.p) }
+  public static func add(hasReasonCode: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasReasonCode, def: false,
+   at: VTOFFSET.hasReasonCode.p) }
+  public static func add(reasonCode: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: reasonCode, at: VTOFFSET.reasonCode.p) }
+  public static func add(hasReasonSubject: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasReasonSubject, def: false,
+   at: VTOFFSET.hasReasonSubject.p) }
+  public static func add(reasonSubject: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: reasonSubject, at: VTOFFSET.reasonSubject.p) }
   public static func endLifecycleEntry(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createLifecycleEntry(
     _ fbb: inout FlatBufferBuilder,
     correlationIdOffset correlationId: Offset = Offset(),
     stageOffset stage: Offset = Offset(),
     hasReason: Bool = false,
-    reasonOffset reason: Offset = Offset()
+    reasonOffset reason: Offset = Offset(),
+    hasReasonCode: Bool = false,
+    reasonCodeOffset reasonCode: Offset = Offset(),
+    hasReasonSubject: Bool = false,
+    reasonSubjectOffset reasonSubject: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_LifecycleEntry.startLifecycleEntry(&fbb)
     nmp_kernel_LifecycleEntry.add(correlationId: correlationId, &fbb)
     nmp_kernel_LifecycleEntry.add(stage: stage, &fbb)
     nmp_kernel_LifecycleEntry.add(hasReason: hasReason, &fbb)
     nmp_kernel_LifecycleEntry.add(reason: reason, &fbb)
+    nmp_kernel_LifecycleEntry.add(hasReasonCode: hasReasonCode, &fbb)
+    nmp_kernel_LifecycleEntry.add(reasonCode: reasonCode, &fbb)
+    nmp_kernel_LifecycleEntry.add(hasReasonSubject: hasReasonSubject, &fbb)
+    nmp_kernel_LifecycleEntry.add(reasonSubject: reasonSubject, &fbb)
     return nmp_kernel_LifecycleEntry.endLifecycleEntry(&fbb, start: __start)
   }
 
@@ -63,6 +87,10 @@ public struct nmp_kernel_LifecycleEntry: FlatBufferTable, FlatbuffersVectorIniti
     try _v.visit(field: VTOFFSET.stage.p, fieldName: "stage", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.hasReason.p, fieldName: "hasReason", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.reason.p, fieldName: "reason", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasReasonCode.p, fieldName: "hasReasonCode", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.reasonCode.p, fieldName: "reasonCode", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.hasReasonSubject.p, fieldName: "hasReasonSubject", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.reasonSubject.p, fieldName: "reasonSubject", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

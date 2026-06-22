@@ -86,7 +86,22 @@ pub enum LifecycleStage {
     AwaitingCapability,
     Publishing,
     Accepted,
-    Failed { reason: String },
+    /// `reason` is always the English prose fallback. `reason_code` is the
+    /// stable machine key the shell localizes, present ONLY when the kernel set
+    /// CURATED app copy (#1735) — opaque upstream / executor-supplied diagnostic
+    /// text stays prose-only (`reason_code == None`), mirroring #1711's guard.
+    /// `reason_subject` is an optional contextual value the shell interpolates.
+    /// This is a DISPLAY-only enum (distinct from the substrate
+    /// [`ActionStage::Failed`], which keeps just `reason` — the substrate's own
+    /// structured reason code is S7's, #1754); the code rides the lifecycle
+    /// projection only and never bleeds into `action_stages`.
+    Failed {
+        reason: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason_code: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason_subject: Option<String>,
+    },
 }
 
 impl LifecycleStage {
@@ -115,8 +130,32 @@ impl LifecycleStage {
             ActionStage::AwaitingCapability => Self::AwaitingCapability,
             ActionStage::Publishing => Self::Publishing,
             ActionStage::Accepted => Self::Accepted,
-            ActionStage::Failed { reason } => Self::Failed { reason },
+            ActionStage::Failed { reason } => Self::Failed {
+                reason,
+                reason_code: None,
+                reason_subject: None,
+            },
         }
+    }
+
+    /// Attach the kernel's curated failure `reason_code` (+ optional
+    /// `reason_subject`) to a `Failed` display stage (#1735). A no-op for any
+    /// non-`Failed` stage. Used by [`super::Kernel::record_action_failure_coded`]
+    /// so a curated app-copy failure carries a localizable code on the
+    /// `action_lifecycle` projection while the substrate `action_stages` history
+    /// keeps just the English `reason` (the substrate's structured reason code is
+    /// S7's, #1754).
+    fn with_reason_code(mut self, code: Option<&str>, subject: Option<&str>) -> Self {
+        if let Self::Failed {
+            reason_code,
+            reason_subject,
+            ..
+        } = &mut self
+        {
+            *reason_code = code.map(str::to_string);
+            *reason_subject = subject.map(str::to_string);
+        }
+        self
     }
 }
 
@@ -195,7 +234,24 @@ impl ActionLifecycleTracker {
     /// `at_ms` is the kernel clock at record time and is the retention anchor
     /// for both terminal and non-terminal rows.
     pub(crate) fn record(&mut self, correlation_id: &str, stage: ActionStage, at_ms: u64) {
-        let display_stage = LifecycleStage::from_action_stage(stage);
+        self.record_coded(correlation_id, stage, None, None, at_ms);
+    }
+
+    /// As [`Self::record`], but attaches the kernel's curated failure
+    /// `reason_code` (+ optional `reason_subject`) to a `Failed` display stage
+    /// (#1735). `reason_code` is ignored for non-`Failed` stages. The substrate
+    /// `action_stages` history is unaffected — only this display projection
+    /// carries the code.
+    pub(crate) fn record_coded(
+        &mut self,
+        correlation_id: &str,
+        stage: ActionStage,
+        reason_code: Option<&str>,
+        reason_subject: Option<&str>,
+        at_ms: u64,
+    ) {
+        let display_stage =
+            LifecycleStage::from_action_stage(stage).with_reason_code(reason_code, reason_subject);
         let is_new = !self.entries.contains_key(correlation_id);
         if is_new && self.entries.len() >= MAX_TRACKED_CORRELATIONS {
             // Evict the front of the order. Mirrors

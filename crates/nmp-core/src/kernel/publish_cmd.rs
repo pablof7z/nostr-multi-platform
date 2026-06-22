@@ -107,6 +107,26 @@ impl Kernel {
     /// `correlation_id`; a `react` / `follow` / conformance-harness publish
     /// carries `None` and is a no-op here (nothing is waiting on an id).
     pub fn record_action_failure(&mut self, correlation_id: String, error: String) {
+        self.record_action_failure_coded(correlation_id, error, None, None);
+    }
+
+    /// As [`Self::record_action_failure`], but attaches the kernel's CURATED
+    /// failure `reason_code` (+ optional `reason_subject`) to the
+    /// `action_lifecycle` display projection (#1735). The substrate
+    /// `action_stages` history and the `action_results` terminal keep only the
+    /// English `error` prose — the structured reason code there is S7's (#1754).
+    ///
+    /// Pass a code ONLY for curated app copy the kernel itself authored (a host
+    /// would localize it); leave opaque upstream / executor-supplied diagnostic
+    /// text un-coded (`reason_code == None`), mirroring #1711's guard. Shells
+    /// localize the code, falling back to the `error` prose.
+    pub fn record_action_failure_coded(
+        &mut self,
+        correlation_id: String,
+        error: String,
+        reason_code: Option<&'static str>,
+        reason_subject: Option<String>,
+    ) {
         // A sign-step failure also lifts into the `action_stages`
         // mirror so a host listening only on the stage seam (not the
         // per-tick action_results drain) still sees the `Failed`
@@ -120,12 +140,14 @@ impl Kernel {
         // projection in one call, so the host shell sees the terminal
         // appear in `recent_terminal` on the next snapshot tick with no
         // reducer-side bookkeeping.
-        self.record_action_stage(
+        self.record_action_stage_coded(
             &correlation_id,
             super::action_stages::ActionStage::Failed {
                 reason: error.clone(),
             },
             None,
+            reason_code,
+            reason_subject.as_deref(),
         );
         self.publish_engine
             .record_action_terminal_failure(correlation_id, error);
@@ -274,6 +296,22 @@ impl Kernel {
         stage: super::action_stages::ActionStage,
         detail: Option<serde_json::Value>,
     ) {
+        self.record_action_stage_coded(correlation_id, stage, detail, None, None);
+    }
+
+    /// As [`Self::record_action_stage`], but threads the kernel's curated
+    /// failure `reason_code` (+ optional `reason_subject`) into the
+    /// `action_lifecycle` display projection ONLY (#1735). The substrate
+    /// `action_stages` history sees the un-coded `ActionStage` — its structured
+    /// reason code is S7's (#1754). A non-`Failed` stage ignores the code.
+    pub(crate) fn record_action_stage_coded(
+        &mut self,
+        correlation_id: &str,
+        stage: super::action_stages::ActionStage,
+        detail: Option<serde_json::Value>,
+        reason_code: Option<&str>,
+        reason_subject: Option<&str>,
+    ) {
         let at_ms = self.now_ms();
         // V5 thin-shell: mirror the transition into the
         // `action_lifecycle` display tracker before persisting to the
@@ -284,7 +322,7 @@ impl Kernel {
         // `action_stages::record` consumes the value; the display tracker
         // collapses to its own enum independent of substrate growth.
         self.action_lifecycle
-            .record(correlation_id, stage.clone(), at_ms);
+            .record_coded(correlation_id, stage.clone(), reason_code, reason_subject, at_ms);
         self.action_stages
             .record(correlation_id, stage, detail, at_ms);
         self.changed_since_emit = true;
