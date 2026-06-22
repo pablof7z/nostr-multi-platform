@@ -40,7 +40,10 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-EXPECTED_FLATC_VERSION="25.12.19"
+# #1723 — flatc version pins are single-sourced from ci/flatc-pins.sh.
+# shellcheck source=ci/flatc-pins.sh
+source "${SCRIPT_DIR}/flatc-pins.sh"
+EXPECTED_FLATC_VERSION="${FLATC_PIN_RUST_SWIFT}"
 GENERATED_DIR="${REPO_ROOT}/ios/Chirp/Chirp/Bridge/Generated"
 mkdir -p "${GENERATED_DIR}"
 
@@ -54,7 +57,7 @@ if [[ "${ACTUAL_FLATC_VERSION}" != "${EXPECTED_FLATC_VERSION}" ]]; then
     echo "swift-flatc-drift: flatc ${ACTUAL_FLATC_VERSION} found, but the Swift" >&2
     echo "FlatBuffers bindings are pinned to flatc ${EXPECTED_FLATC_VERSION}" >&2
     echo "(matching the 'flatbuffers = \"${EXPECTED_FLATC_VERSION}\"' runtime pin in Cargo.toml;" >&2
-    echo "this is the Rust+Swift pin, distinct from Android 25.2.10 / Web 25.9.23)." >&2
+    echo "this is the Rust+Swift pin, distinct from Android ${FLATC_PIN_KOTLIN} / Web ${FLATC_PIN_TS})." >&2
     exit 1
 fi
 

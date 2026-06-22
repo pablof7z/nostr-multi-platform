@@ -48,7 +48,10 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-EXPECTED_FLATC_VERSION="25.9.23"
+# #1723 — flatc version pins are single-sourced from ci/flatc-pins.sh.
+# shellcheck source=ci/flatc-pins.sh
+source "${SCRIPT_DIR}/flatc-pins.sh"
+EXPECTED_FLATC_VERSION="${FLATC_PIN_TS}"
 TRANSPORT_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/nmp_update.fbs"
 FEED_INCLUDE_DIR="${REPO_ROOT}/crates/nmp-nip01/schema"
 FEED_SCHEMAS=(
@@ -92,7 +95,7 @@ if ! command -v flatc >/dev/null 2>&1; then
     echo "  Install flatc ${EXPECTED_FLATC_VERSION} from:" >&2
     echo "  https://github.com/google/flatbuffers/releases/tag/v${EXPECTED_FLATC_VERSION}" >&2
     echo "  (Note: the Web/TS pin is ${EXPECTED_FLATC_VERSION}, distinct from the" >&2
-    echo "   Rust+Swift pin 25.12.19 and the Kotlin pin 25.2.10.)" >&2
+    echo "   Rust+Swift pin ${FLATC_PIN_RUST_SWIFT} and the Kotlin pin ${FLATC_PIN_KOTLIN}.)" >&2
     exit 1
 fi
 
@@ -107,7 +110,7 @@ if [[ "${ACTUAL_FLATC_VERSION}" != "${EXPECTED_FLATC_VERSION}" ]]; then
     echo "  https://github.com/google/flatbuffers/releases/tag/v${EXPECTED_FLATC_VERSION}" >&2
     echo "" >&2
     echo "NOTE: the Web/TS pin (${EXPECTED_FLATC_VERSION}) is intentionally different from" >&2
-    echo "the Rust+Swift pin (25.12.19) and the Kotlin pin (25.2.10)." >&2
+    echo "the Rust+Swift pin (${FLATC_PIN_RUST_SWIFT}) and the Kotlin pin (${FLATC_PIN_KOTLIN})." >&2
     echo "Do not regenerate TypeScript bindings with the Rust/Swift or Kotlin flatc." >&2
     exit 1
 fi
