@@ -51,9 +51,9 @@ mod host_op;
 mod host_op_handler;
 mod identity;
 // pub(crate) re-export so nmp-core internals can still use
-// `crate::substrate::{SignedEvent, UnsignedEvent, SigningError}` without churn.
+// `crate::substrate::{SignedEvent, UnsignedEvent}` without churn.
 // External callers must use `nmp_signer_iface` directly (issue #1772).
-pub(crate) use identity::{SignedEvent, SigningError, UnsignedEvent};
+pub(crate) use identity::{SignedEvent, UnsignedEvent};
 mod ingest;
 mod keyring;
 mod payment;
@@ -105,16 +105,6 @@ pub use contacts_lookup::{
 pub use contacts_lookup::{TestContactsCache, TestKind3Parser};
 
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
-/// V-78 — NIP crates need to name `SignerOp` to `op.wait()` a parked
-/// remote (NIP-46 bunker) sign on an off-actor worker thread (the
-/// `nmp-nip57` zap path). Re-exported through the substrate so NIP crates
-/// reach it via `nmp_core::substrate::SignerOp` rather than adding a direct
-/// `nmp-signer-iface` dependency — every signer surface a NIP crate touches
-/// stays funnelled through `nmp_core::substrate`.
-/// [`SignerError`] rides along because `SignerOp::Pending` carries a
-/// `Receiver<Result<T, SignerError>>`, so any crate constructing or matching
-/// on a pending op needs the error name too.
-pub use nmp_signer_iface::{SignerError, SignerOp};
 pub use ingest::{EventIngestDispatcher, IngestParser};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
