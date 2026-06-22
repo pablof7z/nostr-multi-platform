@@ -19,6 +19,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# #1723 — flatc version pins are single-sourced from ci/flatc-pins.sh.
+# shellcheck source=ci/flatc-pins.sh
+source "${SCRIPT_DIR}/flatc-pins.sh"
+
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "${TMP_ROOT}"' EXIT
 
@@ -116,14 +120,14 @@ require_command rustfmt
 
 cd "${REPO_ROOT}"
 
-run_with_flatc 25.12.19 bash ci/check-rust-flatc-drift.sh --write
-run_with_flatc 25.12.19 bash ci/check-swift-flatc-drift.sh --write
-run_with_flatc 25.2.10 bash ci/check-kotlin-flatc-drift.sh --write
-run_with_flatc 25.9.23 bash ci/check-ts-flatc-drift.sh --write
+run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-rust-flatc-drift.sh --write
+run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-swift-flatc-drift.sh --write
+run_with_flatc "${FLATC_PIN_KOTLIN}" bash ci/check-kotlin-flatc-drift.sh --write
+run_with_flatc "${FLATC_PIN_TS}" bash ci/check-ts-flatc-drift.sh --write
 
-run_with_flatc 25.12.19 bash ci/check-marmot-flatc-drift.sh rust --write
-run_with_flatc 25.12.19 bash ci/check-marmot-flatc-drift.sh swift --write
-run_with_flatc 25.2.10 bash ci/check-marmot-flatc-drift.sh kotlin --write
+run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-marmot-flatc-drift.sh rust --write
+run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-marmot-flatc-drift.sh swift --write
+run_with_flatc "${FLATC_PIN_KOTLIN}" bash ci/check-marmot-flatc-drift.sh kotlin --write
 
 echo "regenerate-flatbuffers: complete"
 echo "regenerate-flatbuffers: verify via the codegen-drift workflow or local pinned-flatc drift checks"

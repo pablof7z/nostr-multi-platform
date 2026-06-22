@@ -47,6 +47,10 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# #1723 — flatc version pins are single-sourced from ci/flatc-pins.sh.
+# shellcheck source=ci/flatc-pins.sh
+source "${SCRIPT_DIR}/flatc-pins.sh"
+
 SNAPSHOT_SCHEMA="${REPO_ROOT}/crates/nmp-marmot/schema/marmot_snapshot.fbs"
 MESSAGES_SCHEMA="${REPO_ROOT}/crates/nmp-marmot/schema/marmot_messages.fbs"
 
@@ -68,7 +72,7 @@ require_flatc_version() {
 case "${MODE}" in
 # ── Rust: flatc --rust 25.12.19 + rustfmt diff ─────────────────────────────
 rust)
-    require_flatc_version "25.12.19"
+    require_flatc_version "${FLATC_PIN_RUST_SWIFT}"
     if ! command -v rustfmt >/dev/null 2>&1; then
         echo "marmot-flatc-drift: rustfmt not found on PATH" >&2
         exit 1
@@ -97,20 +101,20 @@ rust)
         fi
     done
     if [[ "${WRITE}" -eq 1 ]]; then
-        echo "marmot-flatc-drift: wrote ${written} Rust bindings (flatc 25.12.19)"
+        echo "marmot-flatc-drift: wrote ${written} Rust bindings (flatc ${FLATC_PIN_RUST_SWIFT})"
         exit 0
     fi
     if [[ "${drift}" -ne 0 ]]; then
         exit 1
     fi
-    echo "marmot-flatc-drift: OK rust (flatc 25.12.19, both bindings in sync)"
+    echo "marmot-flatc-drift: OK rust (flatc ${FLATC_PIN_RUST_SWIFT}, both bindings in sync)"
     ;;
 
 # ── Swift: flatc --swift 25.12.19; flatc emits snake_case, repo renames to
 #    PascalCase (marmot_snapshot_generated.swift → MarmotSnapshot.generated.swift).
 #    Rename the fresh output before diffing. ─────────────────────────────────
 swift)
-    require_flatc_version "25.12.19"
+    require_flatc_version "${FLATC_PIN_RUST_SWIFT}"
     GENERATED_DIR="${REPO_ROOT}/ios/Chirp/Chirp/Bridge/Generated"
 
     TMP_DIR="$(mktemp -d)"
@@ -151,18 +155,18 @@ swift)
         fi
     done
     if [[ "${WRITE}" -eq 1 ]]; then
-        echo "marmot-flatc-drift: wrote ${written} Swift bindings (flatc 25.12.19)"
+        echo "marmot-flatc-drift: wrote ${written} Swift bindings (flatc ${FLATC_PIN_RUST_SWIFT})"
         exit 0
     fi
     if [[ "${drift}" -ne 0 ]]; then
         exit 1
     fi
-    echo "marmot-flatc-drift: OK swift (flatc 25.12.19, both bindings in sync)"
+    echo "marmot-flatc-drift: OK swift (flatc ${FLATC_PIN_RUST_SWIFT}, both bindings in sync)"
     ;;
 
 # ── Kotlin: flatc --kotlin 25.2.10; dir diff against nmp/marmot. ────────────
 kotlin)
-    require_flatc_version "25.2.10"
+    require_flatc_version "${FLATC_PIN_KOTLIN}"
     CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/marmot"
 
     TMP_DIR="$(mktemp -d)"
@@ -175,7 +179,7 @@ kotlin)
         rm -rf "${CHECKED_IN_DIR}"
         mkdir -p "$(dirname "${CHECKED_IN_DIR}")"
         cp -R "${GENERATED_DIR}" "${CHECKED_IN_DIR}"
-        echo "marmot-flatc-drift: wrote Kotlin bindings (flatc 25.2.10)"
+        echo "marmot-flatc-drift: wrote Kotlin bindings (flatc ${FLATC_PIN_KOTLIN})"
         exit 0
     fi
 
@@ -186,7 +190,7 @@ kotlin)
         echo "  bash ci/regenerate-flatbuffers.sh" >&2
         exit 1
     fi
-    echo "marmot-flatc-drift: OK kotlin (flatc 25.2.10, bindings in sync)"
+    echo "marmot-flatc-drift: OK kotlin (flatc ${FLATC_PIN_KOTLIN}, bindings in sync)"
     ;;
 
 *)

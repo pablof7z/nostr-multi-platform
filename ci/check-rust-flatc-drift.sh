@@ -31,7 +31,10 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-EXPECTED_FLATC_VERSION="25.12.19"
+# #1723 — flatc version pins are single-sourced from ci/flatc-pins.sh.
+# shellcheck source=ci/flatc-pins.sh
+source "${SCRIPT_DIR}/flatc-pins.sh"
+EXPECTED_FLATC_VERSION="${FLATC_PIN_RUST_SWIFT}"
 
 # Every checked-in Rust binding surface guarded by this drift gate, as
 # "schema.fbs::checked_in_generated.rs" pairs. The read-direction UpdateFrame
