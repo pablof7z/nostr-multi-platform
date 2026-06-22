@@ -3,7 +3,8 @@
 //!
 //! Per `docs/design/nip29/kinds.md` §2.3, kind:9007 establishes the group
 //! and the relay treats the signer as the founding admin. The immediate
-//! 9002 sets the user-visible metadata and marks the group public/open.
+//! 9002 sets the user-visible metadata and the caller-chosen visibility and
+//! access markers.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::ActorCommand;
@@ -14,12 +15,46 @@ use crate::kinds::{KIND_CREATE_GROUP, KIND_EDIT_METADATA};
 
 use super::publish_plan::PublishPlan;
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+/// Whether the group is publicly listed or unlisted (private).
+/// Serialises as `"public"` / `"private"` in JSON and as the corresponding
+/// NIP-29 tag on the kind:9002 metadata event.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GroupVisibility {
+    #[default]
+    Public,
+    Private,
+}
+
+/// Whether the group is open (anyone may join) or closed (invite-only).
+/// Serialises as `"open"` / `"closed"` in JSON and as the corresponding
+/// NIP-29 tag on the kind:9002 metadata event.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum GroupAccess {
+    #[default]
+    Open,
+    Closed,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct CreatePublicGroupInput {
     pub group: GroupId,
     pub name: String,
     #[serde(default)]
     pub about: Option<String>,
+    /// URL for the group picture. When `Some` and non-empty, emits a
+    /// `["picture", url]` tag on the kind:9002 event.
+    #[serde(default)]
+    pub picture: Option<String>,
+    /// Controls the `["public"]` / `["private"]` NIP-29 visibility tag.
+    /// Defaults to `Public`.
+    #[serde(default)]
+    pub visibility: GroupVisibility,
+    /// Controls the `["open"]` / `["closed"]` NIP-29 access tag.
+    /// Defaults to `Open`.
+    #[serde(default)]
+    pub access: GroupAccess,
 }
 
 fn create_group_plan(action: &CreatePublicGroupInput) -> PublishPlan {
@@ -35,8 +70,6 @@ fn metadata_plan(action: &CreatePublicGroupInput) -> PublishPlan {
     let mut tags = vec![
         vec!["h".into(), action.group.local_id.clone()],
         vec!["name".into(), action.name.trim().to_string()],
-        vec!["public".into()],
-        vec!["open".into()],
     ];
     if let Some(about) = action
         .about
@@ -46,6 +79,24 @@ fn metadata_plan(action: &CreatePublicGroupInput) -> PublishPlan {
     {
         tags.push(vec!["about".into(), about.to_string()]);
     }
+    if let Some(picture) = action
+        .picture
+        .as_ref()
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+    {
+        tags.push(vec!["picture".into(), picture.to_string()]);
+    }
+    let visibility_tag = match action.visibility {
+        GroupVisibility::Public => "public",
+        GroupVisibility::Private => "private",
+    };
+    tags.push(vec![visibility_tag.into()]);
+    let access_tag = match action.access {
+        GroupAccess::Open => "open",
+        GroupAccess::Closed => "closed",
+    };
+    tags.push(vec![access_tag.into()]);
     PublishPlan::pinned(&action.group, KIND_EDIT_METADATA, "", tags)
 }
 
@@ -108,6 +159,7 @@ mod tests {
             group: GroupId::new("wss://groups.example.com", "rust-nostr"),
             name: "Rust Nostr".to_string(),
             about: Some("Protocol work".to_string()),
+            ..Default::default()
         }
     }
 
@@ -119,10 +171,17 @@ mod tests {
         Ok(captured.into_inner())
     }
 
+    fn metadata_tags(cmds: &[ActorCommand]) -> &[Vec<String>] {
+        match &cmds[1] {
+            ActorCommand::PublishUnsignedEventToRelays { event, .. } => &event.tags,
+            other => panic!("expected kind:9002 publish, got {other:?}"),
+        }
+    }
+
     #[test]
     fn well_formed_passes_validator() {
         let mut ctx = ActionContext::default();
-        assert!(CreatePublicGroupAction.start(&mut ctx,input()).is_ok());
+        assert!(CreatePublicGroupAction.start(&mut ctx, input()).is_ok());
     }
 
     #[test]
@@ -186,7 +245,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            CreatePublicGroupAction.start(&mut ctx,action),
+            CreatePublicGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -199,7 +258,7 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            CreatePublicGroupAction.start(&mut ctx,action),
+            CreatePublicGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -212,8 +271,135 @@ mod tests {
             ..input()
         };
         assert!(matches!(
-            CreatePublicGroupAction.start(&mut ctx,action),
+            CreatePublicGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
+    }
+
+    // ── new field tests ──────────────────────────────────────────────────────
+
+    #[test]
+    fn private_visibility_emits_private_tag_not_public() {
+        let action = CreatePublicGroupInput {
+            visibility: GroupVisibility::Private,
+            ..input()
+        };
+        let cmds = run_execute(action).expect("executes");
+        let tags = metadata_tags(&cmds);
+        assert!(
+            tags.iter().any(|t| t == &vec!["private".to_string()]),
+            "expected [\"private\"] tag, got {tags:?}"
+        );
+        assert!(
+            !tags.iter().any(|t| t == &vec!["public".to_string()]),
+            "must not emit [\"public\"] when Private, got {tags:?}"
+        );
+    }
+
+    #[test]
+    fn closed_access_emits_closed_tag_not_open() {
+        let action = CreatePublicGroupInput {
+            access: GroupAccess::Closed,
+            ..input()
+        };
+        let cmds = run_execute(action).expect("executes");
+        let tags = metadata_tags(&cmds);
+        assert!(
+            tags.iter().any(|t| t == &vec!["closed".to_string()]),
+            "expected [\"closed\"] tag, got {tags:?}"
+        );
+        assert!(
+            !tags.iter().any(|t| t == &vec!["open".to_string()]),
+            "must not emit [\"open\"] when Closed, got {tags:?}"
+        );
+    }
+
+    #[test]
+    fn picture_some_non_empty_emits_picture_tag() {
+        let action = CreatePublicGroupInput {
+            picture: Some("https://example.com/img.jpg".to_string()),
+            ..input()
+        };
+        let cmds = run_execute(action).expect("executes");
+        let tags = metadata_tags(&cmds);
+        assert!(
+            tags.iter().any(|t| t
+                == &vec![
+                    "picture".to_string(),
+                    "https://example.com/img.jpg".to_string()
+                ]),
+            "expected [\"picture\", url] tag, got {tags:?}"
+        );
+    }
+
+    #[test]
+    fn picture_none_does_not_emit_picture_tag() {
+        let action = CreatePublicGroupInput {
+            picture: None,
+            ..input()
+        };
+        let cmds = run_execute(action).expect("executes");
+        let tags = metadata_tags(&cmds);
+        assert!(
+            !tags.iter().any(|t| t.first().map(|s| s == "picture").unwrap_or(false)),
+            "must not emit [\"picture\", ...] when None, got {tags:?}"
+        );
+    }
+
+    #[test]
+    fn picture_some_empty_does_not_emit_picture_tag() {
+        let action = CreatePublicGroupInput {
+            picture: Some("   ".to_string()),
+            ..input()
+        };
+        let cmds = run_execute(action).expect("executes");
+        let tags = metadata_tags(&cmds);
+        assert!(
+            !tags.iter().any(|t| t.first().map(|s| s == "picture").unwrap_or(false)),
+            "must not emit [\"picture\", ...] for blank picture, got {tags:?}"
+        );
+    }
+
+    #[test]
+    fn missing_new_fields_in_json_deserialise_to_defaults() {
+        // Simulates what the existing chirp-tui runtime_commands sends over FFI:
+        // JSON with only {group, name} — no picture/visibility/access.
+        // Avoid raw-string literals here: the doctrine-lint brace counter does
+        // not handle `r#"..."#` and would miscount the JSON braces, causing a
+        // false-positive D6 finding inside this cfg(test) module.
+        let json = concat!(
+            "{",
+            "\"group\":{\"host_relay_url\":\"wss://groups.example.com\",\"local_id\":\"room-1\"},",
+            "\"name\":\"Test Room\"",
+            "}"
+        );
+        let parsed: CreatePublicGroupInput =
+            serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.picture, None);
+        assert_eq!(parsed.visibility, GroupVisibility::Public);
+        assert_eq!(parsed.access, GroupAccess::Open);
+    }
+
+    #[test]
+    fn visibility_and_access_roundtrip_lowercase_json() {
+        let action = CreatePublicGroupInput {
+            group: GroupId::new("wss://groups.example.com", "room-2"),
+            name: "Room".to_string(),
+            visibility: GroupVisibility::Private,
+            access: GroupAccess::Closed,
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&action).unwrap();
+        assert!(
+            json.contains("\"private\""),
+            "visibility must serialise as \"private\", got {json}"
+        );
+        assert!(
+            json.contains("\"closed\""),
+            "access must serialise as \"closed\", got {json}"
+        );
+        let roundtripped: CreatePublicGroupInput = serde_json::from_str(&json).unwrap();
+        assert_eq!(roundtripped.visibility, GroupVisibility::Private);
+        assert_eq!(roundtripped.access, GroupAccess::Closed);
     }
 }

@@ -6,7 +6,7 @@
 //! cached `PublicKey`, and reconstructs a transient `nostr::SecretKey` for the
 //! duration of each individual crypto operation.
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::nips::{nip04, nip44};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use zeroize::{Zeroize, Zeroizing};

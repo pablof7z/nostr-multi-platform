@@ -1,0 +1,26 @@
+namespace nmp.nip02;
+
+// ADR-0064 / S3 (#1751) — typed FlatBuffers payload for the `nmp.follow` /
+// `nmp.unfollow` `ActionModule`s (both carry the same single-pubkey shape).
+//
+// The OPAQUE `DispatchEnvelope.payload` for those namespaces; the registry
+// adapter (S3) decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch). Distinct from `follow_list.fbs`, which is
+// the READ-direction snapshot sidecar — this is the WRITE-direction action
+// payload.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip02/src/wire/generated \
+//         crates/nmp-nip02/schema/follow_action.fbs
+
+table FollowActionPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // Target pubkey, lowercase hex (hex-shape validation stays in the actor's
+  // command handler — this is a pure shape decode).
+  pubkey:string (required);
+}
+
+file_identifier "NF2A";
+root_type FollowActionPayload;

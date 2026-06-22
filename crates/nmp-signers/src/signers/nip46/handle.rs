@@ -14,8 +14,8 @@
 //! Per **D6** (no panics across FFI), this file never `unwrap()`s or panics on
 //! malformed input — bad JSON is logged and dropped.
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
-use nmp_core::RemoteSignerHandle;
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::{SignerError, SignerOp};
 use nostr::PublicKey;
 

@@ -24,7 +24,7 @@
 //! other failure mode is a structured [`SignerError`] the caller maps to
 //! `toast: Option<String>` at the FFI boundary.
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::PublicKey;
 
 use super::payload::{Nip07Payload, SignerPayload};

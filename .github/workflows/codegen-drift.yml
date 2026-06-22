@@ -136,7 +136,19 @@ jobs:
       - name: Check Rust transport bindings are in sync with the schema
         run: bash ci/check-rust-flatc-drift.sh
 
-  # Swift flatc binding drift gate. The 35 checked-in `flatc --swift` Swift
+      # ADR-0064 / S2 (#1750) — DispatchEnvelope fail-closed gates: the write
+      # envelope keeps its own file identifier (NMPD), the schema_version
+      # tripwire field, an opaque [ubyte] payload (NOT a union), the
+      # MAX_DISPATCH_ENVELOPE_BYTES size bound in the decode path, and no two
+      # ActionModules share a namespace. --self-test first proves every gate
+      # trips on its bad case (asserts the negative), then the live check runs.
+      - name: DispatchEnvelope fail-closed gates trip on the bad case
+        run: bash ci/check-dispatch-envelope-gates.sh --self-test
+
+      - name: DispatchEnvelope fail-closed gates hold for the live schema
+        run: bash ci/check-dispatch-envelope-gates.sh
+
+  # Swift flatc binding drift gate. The checked-in `flatc --swift` Swift
   # binding files at ios/Chirp/Chirp/Bridge/Generated/*.generated.swift (every
   # `.generated.swift` EXCEPT KernelTypes.generated.swift and
   # TypedProjectionDecoders.generated.swift, which are nmp-codegen outputs

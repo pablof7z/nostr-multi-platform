@@ -44,13 +44,21 @@
 
 use std::sync::Arc;
 
+// `ActionModule` is re-exported into the `tests` module's `use super::*;` glob
+// (the namespace + executor tests call `FollowModule::NAMESPACE` / `.execute`).
+// The `ActionPayload` typed-decode impls live in `action_modules.rs`.
+#[cfg_attr(not(test), allow(unused_imports))]
+use nmp_core::substrate::ActionModule;
 use nmp_core::substrate::{
-    ActionModule, ActionRegistrar, ContactsLookup, HostCapabilities, IdentityChangeRegistrar,
+    ActionRegistrar, ContactsLookup, HostCapabilities, IdentityChangeRegistrar,
     SnapshotProjectionRegistrar,
 };
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
+// The `ActionModule` impls for the three follow verbs (split out to keep this
+// file under the 500-LOC ceiling after the S3 typed-payload overrides).
+mod action_modules;
 pub mod active_follow_set;
 pub mod projection;
 pub mod wire;
@@ -110,24 +118,6 @@ pub struct FollowManyAction {
 /// `dispatch_action`.
 pub struct FollowModule;
 
-impl ActionModule for FollowModule {
-    const NAMESPACE: &'static str = "nmp.follow";
-    type Action = PubkeyAction;
-
-    fn execute(
-        &self,
-        action: Self::Action,
-        correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        send(ActorCommand::Follow {
-            pubkey: action.pubkey,
-            correlation_id: Some(correlation_id.to_string()),
-        });
-        Ok(())
-    }
-}
-
 /// `nmp.unfollow` — remove `pubkey` from the active account's kind:3
 /// follow set and re-publish it.
 ///
@@ -146,41 +136,9 @@ pub struct UnfollowModule;
 /// read-modify-write-publish cycle on its exclusive execution slot.
 pub struct FollowManyModule;
 
-impl ActionModule for UnfollowModule {
-    const NAMESPACE: &'static str = "nmp.unfollow";
-    type Action = PubkeyAction;
-
-    fn execute(
-        &self,
-        action: Self::Action,
-        correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        send(ActorCommand::Unfollow {
-            pubkey: action.pubkey,
-            correlation_id: Some(correlation_id.to_string()),
-        });
-        Ok(())
-    }
-}
-
-impl ActionModule for FollowManyModule {
-    const NAMESPACE: &'static str = "nmp.follow_many";
-    type Action = FollowManyAction;
-
-    fn execute(
-        &self,
-        action: Self::Action,
-        correlation_id: &str,
-        send: &dyn Fn(ActorCommand),
-    ) -> Result<(), String> {
-        send(ActorCommand::FollowMany {
-            pubkeys: action.pubkeys,
-            correlation_id: Some(correlation_id.to_string()),
-        });
-        Ok(())
-    }
-}
+// The `ActionModule` impls for these three structs (incl. the ADR-0064 / S3
+// typed-payload `decode_payload` overrides) live in `action_modules.rs` — split
+// out to keep this file under the 500-LOC ceiling.
 
 // ---------------------------------------------------------------------------
 // Registration helper

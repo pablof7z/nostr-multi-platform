@@ -418,8 +418,8 @@ impl Signer for Nip55Signer {
 
     fn sign(
         &self,
-        unsigned: nmp_core::substrate::UnsignedEvent,
-    ) -> SignerOp<nmp_core::substrate::SignedEvent> {
+        unsigned: nmp_signer_iface::UnsignedEvent,
+    ) -> SignerOp<nmp_signer_iface::SignedEvent> {
         let payload = match serde_json::to_string(&unsigned) {
             Ok(s) => s,
             Err(e) => {

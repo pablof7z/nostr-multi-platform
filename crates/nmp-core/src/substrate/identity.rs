@@ -1,66 +1,13 @@
-//! Signing value types shared across the publish / signer pipeline.
+//! Signing value types — re-exported from `nmp-signer-iface`.
 //!
-//! The signing value types below (`UnsignedEvent`, `SignedEvent`, `SigningError`)
-//! are load-bearing: the publish engine, the NIP-42 flow, and every signer crate
-//! exchange events through them.
+//! `UnsignedEvent`, `SignedEvent`, and `SigningError` are dependency-light
+//! NIP-01 event vocabulary (serde value types, no kernel behavior). Issue #1720
+//! moved their definitions into the tier-0 `nmp-signer-iface` crate so signer
+//! and protocol crates can name them without depending on `nmp-core`. They are
+//! re-exported here so the kernel-side and protocol-crate
+//! `nmp_core::substrate::{SignedEvent, UnsignedEvent, SigningError}` import
+//! paths keep resolving. This re-export is a staged migration aid, not a
+//! durable seam — deletion gate: issue #1772 migrates every importer onto
+//! direct `nmp_signer_iface` imports and removes it.
 
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct UnsignedEvent {
-    pub pubkey: String,
-    pub kind: u32,
-    pub tags: Vec<Vec<String>>,
-    pub content: String,
-    pub created_at: u64,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub struct SignedEvent {
-    pub id: String,
-    pub sig: String,
-    pub unsigned: UnsignedEvent,
-}
-
-impl SignedEvent {
-    /// Serialize to the FLAT NIP-01 wire JSON object
-    /// (`{ id, pubkey, created_at, kind, tags, content, sig }`), NOT this
-    /// type's nested `derive(Serialize)` shape (which nests under `unsigned`).
-    ///
-    /// This is the form every relay and out-of-band transport (e.g. a Blossom
-    /// `Authorization: Nostr <base64(json)>` header) expects. Generic — no
-    /// protocol noun; the actor's sign-and-return drain and protocol-crate
-    /// workers share this one serializer.
-    #[must_use]
-    pub fn to_nip01_json(&self) -> String {
-        serde_json::json!({
-            "id": self.id,
-            "pubkey": self.unsigned.pubkey,
-            "created_at": self.unsigned.created_at,
-            "kind": self.unsigned.kind,
-            "tags": self.unsigned.tags,
-            "content": self.unsigned.content,
-            "sig": self.sig,
-        })
-        .to_string()
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-pub enum SigningError {
-    Unsupported(String),
-    Rejected(String),
-    Failed(String),
-}
-
-impl std::fmt::Display for SigningError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Unsupported(msg) => write!(f, "signing unsupported: {msg}"),
-            Self::Rejected(msg) => write!(f, "signing rejected: {msg}"),
-            Self::Failed(msg) => write!(f, "signing failed: {msg}"),
-        }
-    }
-}
-
-impl std::error::Error for SigningError {}
+pub use nmp_signer_iface::{SignedEvent, SigningError, UnsignedEvent};

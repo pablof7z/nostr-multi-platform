@@ -21,8 +21,8 @@
 
 use std::time::Duration;
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
-use nmp_core::RemoteSignerHandle;
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::{SignerError, SignerOp};
 use nostr::PublicKey;
 

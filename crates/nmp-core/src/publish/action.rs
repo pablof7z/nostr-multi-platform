@@ -13,7 +13,10 @@ use crate::publish::policy::{
     classify_publish_behavior, target_is_explicit_nonempty, validate_publish_routing,
 };
 use crate::relay::CanonicalRelayUrl;
-use crate::substrate::{ActionContext, ActionModule, ActionRejection, SignedEvent};
+use crate::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+    SignedEvent,
+};
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
 /// entries and to address the action in the ledger when M6 wires the ledger.
@@ -205,6 +208,17 @@ impl ActionModule for PublishModule {
     #[rustfmt::skip]
     fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites in actor/dispatch.rs + kernel/publish_*.rs
         true
+    }
+
+    /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway. The decode
+    /// (including the fail-closed `schema_version` gate, run BEFORE `start()`)
+    /// delegates to `<PublishAction as ActionPayload>::decode` in `publish/wire.rs`
+    /// — the single typed-decode site. The pre-signed `Publish` event is carried
+    /// as opaque canonical NIP-01 bytes there (signature byte-exactness).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<PublishAction as ActionPayload>::decode(bytes))
     }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {

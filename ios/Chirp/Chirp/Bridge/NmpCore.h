@@ -348,6 +348,21 @@ typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
 void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
 char *nmp_app_dispatch_capability(void *app, const char *request_json);
 char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
+// ADR-0064 / S4 (#1752) — the typed-FlatBuffers BYTE doorway, the twin of
+// `nmp_app_dispatch_action`. Instead of `(namespace, action_json)`, the caller
+// passes the bytes of an open `DispatchEnvelope` (correlation_id + GENERATED
+// `action_namespace` + schema_version + opaque per-crate payload). The
+// generated host builders (Swift/Kotlin `client.publishNote(...)` etc.) stamp
+// the namespace + typed payload into the envelope so the host NEVER
+// hand-assembles FlatBuffers or spells a namespace string. Returns the same
+// heap-allocated `{"correlation_id":"<32-hex>"}` (accepted+enqueued) or
+// `{"error":"…"}` JSON shape, which MUST be freed via `nmp_free_string`. Lands
+// ADDITIVELY beside the JSON doorway (the JSON path is retired later at Cut B,
+// not now). Fail-closed (D6): a null `app`, a null `ptr`, an oversize /
+// malformed / wrong-identifier / wrong-schema-version / namespace-less
+// envelope, or an unknown namespace all return `{"error":…}` — never NULL for a
+// non-NULL app, never a panic across the ABI.
+char *nmp_app_dispatch_action_bytes(void *app, const uint8_t *ptr, uintptr_t len);
 void nmp_app_load_older_feed(void *app, const char *feed_key);
 typedef void (*NmpActionResultObserver)(const char *result_json);
 void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver observer);

@@ -1,0 +1,242 @@
+//! End-to-end tests for the typed-bytes (ADR-0064 / S3 #1751) registry doorway:
+//! a `DispatchEnvelope` payload's bytes → `start_bytes`/`execute_bytes` → typed
+//! decode → `start()`/`execute()`. Every fail-closed gate asserts the NEGATIVE
+//! (bad schema_version / not-typed-capable / unknown namespace → REJECTED).
+
+use super::*;
+use crate::publish::{PublishAction, PublishTarget};
+use crate::substrate::{ActionContext, ActionPayload, SignedEvent, UnsignedEvent};
+
+fn ctx() -> ActionContext {
+    ActionContext::default()
+}
+
+fn fixture_signed_event() -> SignedEvent {
+    SignedEvent {
+        id: "a".repeat(64),
+        sig: "b".repeat(128),
+        unsigned: UnsignedEvent {
+            pubkey: "c".repeat(64),
+            kind: 1,
+            tags: vec![vec!["e".to_string(), "d".repeat(64)]],
+            content: "typed-bytes round trip".to_string(),
+            created_at: 1_700_000_000,
+        },
+    }
+}
+
+// ---- Happy path: typed bytes → start_bytes → minted correlation_id ----------
+
+// ---- True S2 → S3 seam: DispatchEnvelope bytes → decode → start_bytes -------
+
+#[test]
+fn dispatch_envelope_bytes_decode_and_route_into_start_bytes_end_to_end() {
+    use crate::transport::dispatch_envelope::{
+        decode_dispatch_envelope, encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION,
+    };
+
+    let registry = default_registry();
+    // The app-facing typed builder would stamp the namespace + the typed payload
+    // into the envelope; here we drive the same primitives directly.
+    let action = PublishAction::Publish {
+        handle: "e2e".to_string(),
+        event: fixture_signed_event(),
+        target: PublishTarget::Auto,
+    };
+    let payload = action.encode();
+    let envelope = encode_dispatch_envelope(
+        "corr-e2e",
+        "nmp.publish",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        &payload,
+    );
+
+    // S2: decode the open envelope (transport never peeks the opaque payload).
+    let decoded = decode_dispatch_envelope(&envelope).expect("S2 envelope decodes");
+    assert_eq!(decoded.action_namespace, "nmp.publish");
+    assert_eq!(decoded.payload, payload, "opaque payload carried verbatim");
+
+    // S3: route the opaque payload by namespace into the registry's typed
+    // doorway — typed decode (incl. the schema_version gate) → start() →
+    // execute() → ActorCommand.
+    let id = registry
+        .start_bytes(
+            &mut ctx(),
+            1_700_000_000_000,
+            &decoded.action_namespace,
+            &decoded.payload,
+        )
+        .expect("S3 typed start_bytes accepts the routed payload");
+    assert_eq!(id.len(), 32);
+
+    use crate::actor::ActorCommand;
+    use std::cell::RefCell;
+    let sent: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+    registry
+        .execute_bytes(
+            &decoded.action_namespace,
+            &decoded.payload,
+            &id,
+            &|cmd| sent.borrow_mut().push(cmd),
+        )
+        .expect("S3 execute_bytes enqueues");
+    assert_eq!(sent.into_inner().len(), 1, "exactly one ActorCommand enqueued");
+}
+
+#[test]
+fn start_bytes_publish_raw_returns_minted_correlation_id() {
+    let registry = default_registry();
+    let action = PublishAction::PublishRaw {
+        kind: 1,
+        tags: vec![],
+        content: "hello typed".to_string(),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+    };
+    let payload = action.encode();
+    let id = registry
+        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.publish", &payload)
+        .expect("typed publish raw should be accepted");
+    assert_eq!(id.len(), 32, "minted correlation_id is 32 hex");
+    assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
+}
+
+#[test]
+fn start_bytes_presigned_publish_mints_id_not_event_id() {
+    // The typed path preserves the #1748 invariant: identity is the minted
+    // correlation_id, never the event id.
+    let registry = default_registry();
+    let event = fixture_signed_event();
+    let event_id = event.id.clone();
+    let action = PublishAction::Publish {
+        handle: "h".to_string(),
+        event,
+        target: PublishTarget::Auto,
+    };
+    let id = registry
+        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.publish", &action.encode())
+        .expect("typed pre-signed publish accepted");
+    assert_ne!(id, event_id, "correlation_id must not be the event id");
+    assert_eq!(id.len(), 32);
+}
+
+#[test]
+fn execute_bytes_publish_signed_sends_publish_signed_event_command() {
+    use crate::actor::ActorCommand;
+    use std::cell::RefCell;
+
+    let registry = default_registry();
+    let action = PublishAction::Publish {
+        handle: "h".to_string(),
+        event: fixture_signed_event(),
+        target: PublishTarget::Auto,
+    };
+    let sent: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+    registry
+        .execute_bytes(
+            "nmp.publish",
+            &action.encode(),
+            "corr-typed-1",
+            &|cmd| sent.borrow_mut().push(cmd),
+        )
+        .expect("typed execute should enqueue the publish command");
+    let cmds = sent.into_inner();
+    assert_eq!(cmds.len(), 1, "exactly one ActorCommand enqueued");
+    match &cmds[0] {
+        ActorCommand::PublishSignedEvent { correlation_id, .. } => {
+            assert_eq!(correlation_id.as_deref(), Some("corr-typed-1"));
+        }
+        other => panic!("expected PublishSignedEvent, got {other:?}"),
+    }
+}
+
+// ---- Fail CLOSED: schema_version trip rejected BEFORE start() ----------------
+
+#[test]
+fn start_bytes_rejects_wrong_schema_version_before_start() {
+    let registry = default_registry();
+    // Build a publish payload buffer carrying a bogus schema_version.
+    let bytes = bad_version_publish_payload();
+    let err = registry
+        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.publish", &bytes)
+        .expect_err("a wrong schema_version must be rejected before start()");
+    match err {
+        ActionRejection::Invalid(msg) => assert!(
+            msg.contains("schema_version mismatch"),
+            "rejection should name the version trip: {msg}"
+        ),
+        other => panic!("expected Invalid, got {other:?}"),
+    }
+}
+
+/// A finished `nmp.publish` payload buffer whose `schema_version` is 999 — the
+/// fail-closed tripwire must reject it before the body is decoded / `start` runs.
+fn bad_version_publish_payload() -> Vec<u8> {
+    crate::publish::wire::encode_with_schema_version_for_test(999)
+}
+
+#[test]
+fn start_bytes_rejects_malformed_payload() {
+    let registry = default_registry();
+    let err = registry
+        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.publish", b"not a flatbuffer")
+        .expect_err("malformed payload must be rejected");
+    assert!(matches!(err, ActionRejection::Invalid(_)));
+}
+
+#[test]
+fn start_bytes_unknown_namespace_is_rejected() {
+    let registry = default_registry();
+    let err = registry
+        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.nope", b"\x00\x00\x00\x00")
+        .expect_err("unknown namespace rejected");
+    match err {
+        ActionRejection::Invalid(msg) => assert!(msg.contains("unknown action namespace")),
+        other => panic!("expected Invalid, got {other:?}"),
+    }
+}
+
+// ---- Fail CLOSED: a non-migrated module is not typed-capable -----------------
+
+struct JsonOnlyModule;
+impl ActionModule for JsonOnlyModule {
+    const NAMESPACE: &'static str = "nmp.test.json_only";
+    type Action = serde_json::Value;
+    fn execute(
+        &self,
+        _action: Self::Action,
+        _correlation_id: &str,
+        _send: &dyn Fn(crate::actor::ActorCommand),
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[test]
+fn start_bytes_rejects_not_typed_capable_module() {
+    // A module that left `decode_payload` defaulted (serde_json::Value Action,
+    // cannot implement ActionPayload) is rejected by the typed doorway — it does
+    // NOT silently fall back to JSON.
+    let mut registry = ActionRegistry::new();
+    registry.register(JsonOnlyModule);
+    let err = registry
+        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.test.json_only", b"anything")
+        .expect_err("a non-typed-capable module must reject typed bytes");
+    match err {
+        ActionRejection::Invalid(msg) => assert!(
+            msg.contains("does not support typed FlatBuffers"),
+            "got: {msg}"
+        ),
+        other => panic!("expected Invalid, got {other:?}"),
+    }
+}
+
+#[test]
+fn execute_bytes_unknown_namespace_reports_no_executor() {
+    let registry = ActionRegistry::new();
+    let failure = registry
+        .execute_bytes("nmp.nope", b"x", "c", &|_| {})
+        .expect_err("unknown namespace has no executor");
+    assert_eq!(failure.kind, ActionFailureKind::NoExecutor);
+    assert!(!failure.enqueued);
+}

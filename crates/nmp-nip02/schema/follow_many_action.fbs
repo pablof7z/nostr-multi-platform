@@ -1,0 +1,24 @@
+namespace nmp.nip02;
+
+// ADR-0064 / S3 (#1751) — typed FlatBuffers payload for the `nmp.follow_many`
+// `ActionModule` (the race-free bulk-follow primitive).
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
+// (S3) decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip02/src/wire/generated \
+//         crates/nmp-nip02/schema/follow_many_action.fbs
+
+table FollowManyActionPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The set of hex pubkeys to follow (may include dups / self — the actor drops
+  // them silently in one read-modify-write-publish cycle).
+  pubkeys:[string];
+}
+
+file_identifier "NFMA";
+root_type FollowManyActionPayload;

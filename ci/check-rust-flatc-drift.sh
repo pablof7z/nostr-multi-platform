@@ -32,8 +32,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 EXPECTED_FLATC_VERSION="25.12.19"
-SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/nmp_update.fbs"
-CHECKED_IN="${REPO_ROOT}/crates/nmp-core/src/transport/generated/nmp_update_generated.rs"
+
+# Every checked-in Rust binding surface guarded by this drift gate, as
+# "schema.fbs::checked_in_generated.rs" pairs. The read-direction UpdateFrame
+# (nmp_update), the ADR-0064 / S2 (#1750) write-direction DispatchEnvelope, and
+# the ADR-0064 / S3 (#1751) typed ACTION PAYLOADS (nmp.publish + the nip25 /
+# nip02 trio) all regenerate identically with the pinned flatc, so a schema and
+# its checked-in bindings can never drift apart.
+SCHEMA_DIR="${REPO_ROOT}/crates/nmp-core/schema"
+GENERATED_DIR="${REPO_ROOT}/crates/nmp-core/src/transport/generated"
+PUBLISH_GENERATED_DIR="${REPO_ROOT}/crates/nmp-core/src/publish/wire/generated"
+NIP25_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip25/schema"
+NIP25_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip25/src/wire/generated"
+NIP02_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-nip02/schema"
+NIP02_GENERATED_DIR="${REPO_ROOT}/crates/nmp-nip02/src/wire/generated"
+SCHEMA_PAIRS=(
+    "${SCHEMA_DIR}/nmp_update.fbs::${GENERATED_DIR}/nmp_update_generated.rs"
+    "${SCHEMA_DIR}/dispatch_envelope.fbs::${GENERATED_DIR}/dispatch_envelope_generated.rs"
+    "${SCHEMA_DIR}/publish.fbs::${PUBLISH_GENERATED_DIR}/publish_generated.rs"
+    "${NIP25_SCHEMA_DIR}/react.fbs::${NIP25_GENERATED_DIR}/react_generated.rs"
+    "${NIP25_SCHEMA_DIR}/unreact.fbs::${NIP25_GENERATED_DIR}/unreact_generated.rs"
+    "${NIP02_SCHEMA_DIR}/follow_action.fbs::${NIP02_GENERATED_DIR}/follow_action_generated.rs"
+    "${NIP02_SCHEMA_DIR}/follow_many_action.fbs::${NIP02_GENERATED_DIR}/follow_many_action_generated.rs"
+)
 
 if ! command -v flatc >/dev/null 2>&1; then
     echo "rust-flatc-drift: flatc not found on PATH (need ${EXPECTED_FLATC_VERSION})" >&2
@@ -56,22 +77,32 @@ fi
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
-flatc --rust -o "${TMP_DIR}" "${SCHEMA}"
-rustfmt --edition 2021 "${TMP_DIR}/nmp_update_generated.rs"
+for pair in "${SCHEMA_PAIRS[@]}"; do
+    schema="${pair%%::*}"
+    checked_in="${pair##*::}"
+    basename_rs="$(basename "${checked_in}")"
+
+    flatc --rust -o "${TMP_DIR}" "${schema}"
+    rustfmt --edition 2021 "${TMP_DIR}/${basename_rs}"
+
+    if [[ "${MODE}" == "--write" ]]; then
+        cp "${TMP_DIR}/${basename_rs}" "${checked_in}"
+        echo "rust-flatc-drift: wrote ${checked_in#${REPO_ROOT}/} (flatc ${EXPECTED_FLATC_VERSION})"
+        continue
+    fi
+
+    if ! diff -u "${checked_in}" "${TMP_DIR}/${basename_rs}"; then
+        echo "" >&2
+        echo "rust-flatc-drift: checked-in Rust transport bindings differ from a" >&2
+        echo "fresh 'flatc --rust' run over ${schema#${REPO_ROOT}/}." >&2
+        echo "Regenerate with:" >&2
+        echo "  bash ci/regenerate-flatbuffers.sh" >&2
+        exit 1
+    fi
+done
 
 if [[ "${MODE}" == "--write" ]]; then
-    cp "${TMP_DIR}/nmp_update_generated.rs" "${CHECKED_IN}"
-    echo "rust-flatc-drift: wrote ${CHECKED_IN#${REPO_ROOT}/} (flatc ${EXPECTED_FLATC_VERSION})"
     exit 0
-fi
-
-if ! diff -u "${CHECKED_IN}" "${TMP_DIR}/nmp_update_generated.rs"; then
-    echo "" >&2
-    echo "rust-flatc-drift: checked-in Rust transport bindings differ from a" >&2
-    echo "fresh 'flatc --rust' run over crates/nmp-core/schema/nmp_update.fbs." >&2
-    echo "Regenerate with:" >&2
-    echo "  bash ci/regenerate-flatbuffers.sh" >&2
-    exit 1
 fi
 
 echo "rust-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, bindings in sync)"

@@ -1,0 +1,53 @@
+namespace nmp.transport;
+
+// ADR-0064 — Unified write/command boundary: the open write envelope.
+//
+// One generic *byte* transport doorway carries this envelope across BOTH
+// boundaries (native FFI `nmp_app_dispatch_action_bytes(app, ptr, len)` and the
+// wasm `WorkerRequest::DispatchBytes { bytes }`). The bytes are a finished
+// `DispatchEnvelope` FlatBuffers root — NOT a `Vec<u8>` inside a serde-JSON enum
+// (that would re-encode as a JSON number array; ADR-0064 §1).
+//
+// Runtime pins are intentionally asymmetric until every platform package
+// manager publishes the same FlatBuffers line:
+// - Rust + Swift: 25.12.19
+// - Web/TypeScript: 25.9.23
+// - Android/Kotlin runtime: 25.2.10
+// Regenerate checked-in bindings only with the matching runtime guard for that
+// platform; ci/check-flatbuffers-version-pins.sh enforces the current set.
+//
+// # The envelope is OPEN (D0)
+//
+// `nmp-core` enumerates NO action here. `action_namespace` is the open-registry
+// extension key (e.g. "nmp.publish", "nmp.nip25.react") that the `ActionModule`
+// registry routes on; it is GENERATED into typed host builders and never
+// hand-written by app code (ADR-0064 §2/§3). `payload` is an OPAQUE byte blob —
+// a FlatBuffers root owned by the registering crate. The transport NEVER peeks
+// inside `payload`; the per-crate typed payload decode is the `ActionModule`'s
+// job (S3 / #1751), not the transport's. Keeping `payload` `[ubyte]` (not a
+// union) preserves the open seam: a NIP crate adds a write with zero `nmp-core`
+// edits.
+table DispatchEnvelope {
+  // Host-supplied operation identity, end to end (ADR-0064 §4). Threaded from
+  // dispatch through every action stage; NEVER replaced by the event id.
+  correlation_id:string (required);
+
+  // Open-registry extension key. Required: an envelope with no namespace is a
+  // fail-closed reject (the transport cannot route it). GENERATED into builders.
+  action_namespace:string (required);
+
+  // Fail-closed tripwire (NOT a multi-version decoder). The decoder rejects any
+  // envelope whose `schema_version` it does not recognise — it does not attempt
+  // to decode an unknown version. Bumping this is a deliberate, lockstep change.
+  schema_version:uint;
+
+  // OPAQUE payload — a finished FlatBuffers root owned by the action's crate.
+  // The transport carries these bytes verbatim to the registered module and
+  // does not interpret them. Do NOT promote this to a union (closes the seam).
+  payload:[ubyte] (required);
+}
+
+root_type DispatchEnvelope;
+// Distinct from UpdateFrame's "NMPU" (read direction). The write envelope's own
+// magic so the byte doorway fails closed on a wrong-root buffer.
+file_identifier "NMPD";

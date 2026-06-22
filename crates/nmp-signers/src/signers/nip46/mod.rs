@@ -34,7 +34,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::{Keys, PublicKey, SecretKey};
 use zeroize::Zeroizing;
 
