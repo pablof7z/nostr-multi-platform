@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
 import org.nmp.android.addRelay
+import org.nmp.android.publishDmRelayList
 import org.nmp.android.publishRelayList
 import org.nmp.android.removeRelay
 import org.nmp.android.model.RelayDiagnosticsRow
