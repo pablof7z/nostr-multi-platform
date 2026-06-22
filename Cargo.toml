@@ -123,3 +123,12 @@ rustls = { version = "0.23", default-features = false }
 tungstenite = { version = "0.24", default-features = false }
 # Secret-material zeroization. `derive` enables `#[derive(ZeroizeOnDrop)]`.
 zeroize = { version = "1", features = ["derive"] }
+
+# Smaller debug info for faster compile + smaller target/ cache. Line tables
+# preserve backtraces; full debug info bloats compile and the CI cache by
+# ~30%. This is the standard tradeoff for dev/test builds.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.test]
+debug = "line-tables-only"
