@@ -2,8 +2,8 @@
 //!
 //! Covers the contract the FFI seam relies on:
 //!
-//! 1. `record_action_stage` appends to the actor-owned tracker and flips
-//!    `changed_since_emit` so the next tick emits.
+//! 1. `record_action_stage` appends to the ledger's stage-history facet and
+//!    flips `changed_since_emit` so the next tick emits.
 //! 2. The snapshot mirror is a *copy*, not a drain — terminal entries
 //!    persist across ticks inside their retention window.
 //! 3. `ack_action_stage` drops the entry early, and terminal TTL expiry drops

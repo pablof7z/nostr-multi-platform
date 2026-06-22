@@ -1,4 +1,20 @@
-//! `action_stages` — actor-owned per-`correlation_id` lifecycle tracking.
+//! `action_stages` — the [`ActionLedger`]'s stage-history facet substrate.
+//!
+//! # Why this lives here (S11, #1758 / #1684)
+//!
+//! This module owns the per-`correlation_id` stage *vocabulary* ([`ActionStage`],
+//! [`StageEntry`]) and the bounded transition-history *storage* ([`StageHistory`])
+//! that the single [`ActionLedger`] keeps as one of its facets. It is NOT a
+//! standalone, separately-maintained tracker: there is exactly one
+//! [`StageHistory`] in the system — the ledger's private `stages` field — and the
+//! host-facing `action_stages` projection is a *derived view* of it, serialised
+//! via [`ActionLedger::stages_snapshot`]. No production path constructs or writes
+//! a [`StageHistory`] outside the ledger (S11 slice 3 collapsed the last vestige
+//! of a peer tracker into this facet — there is no parallel `action_stages`
+//! source of truth).
+//!
+//! [`ActionLedger`]: super::action_ledger::ActionLedger
+//! [`ActionLedger::stages_snapshot`]: super::action_ledger::ActionLedger::stages_snapshot
 //!
 //! # The shape of the seam
 //!
@@ -7,7 +23,7 @@
 //! `action_stages` is the bounded diagnostic mirror of an action's lifecycle:
 //! the full history of transitions an async action went through (`Requested` →
 //! `Publishing` → `Accepted`/`Failed`), retained until host ack or kernel-owned
-//! expiry.
+//! expiry — derived from this facet's storage, not a second copy.
 //!
 //! The two surfaces are complementary, not redundant:
 //!
@@ -79,8 +95,8 @@ pub(crate) const MAX_STAGES_PER_CORRELATION: usize = 64;
 /// correlation pushes past this.
 pub(crate) const MAX_TRACKED_CORRELATIONS: usize = 1024;
 
-/// Terminal retention window shared by the legacy stage mirror and the
-/// display-level `action_lifecycle` projection. After this many milliseconds,
+/// Terminal retention window shared by the `action_stages` stage-history facet
+/// and the display-level `action_lifecycle` projection. After this many milliseconds,
 /// a terminal action row drops on the next snapshot/update edge even if no
 /// host ack or relay ingest arrives.
 pub(crate) const TERMINAL_STAGE_RETENTION_MS: u64 = 3_000;
@@ -179,7 +195,10 @@ pub struct StageEntry {
     pub detail: Option<serde_json::Value>,
 }
 
-/// Actor-owned per-correlation_id stage tracker.
+/// The [`ActionLedger`]'s stage-history facet storage — the bounded
+/// per-`correlation_id` transition log the `action_stages` projection derives
+/// from. There is exactly ONE of these in the system (the ledger's private
+/// `stages` field); it is never a standalone, separately-written tracker.
 ///
 /// Insertion order is preserved: `correlation_order` is a parallel ring of
 /// keys that grows on first record for a `correlation_id` and shrinks on
@@ -187,8 +206,10 @@ pub struct StageEntry {
 /// the order (oldest first-recorded id) is evicted. The map and the order
 /// are kept in sync: every entry in `entries` has exactly one matching
 /// slot in `correlation_order`.
+///
+/// [`ActionLedger`]: super::action_ledger::ActionLedger
 #[derive(Default)]
-pub(crate) struct ActionStageTracker {
+pub(crate) struct StageHistory {
     /// `correlation_id` → ordered stage history.
     entries: HashMap<String, Vec<StageEntry>>,
     /// First-recorded order of `correlation_ids`; the oldest entry is
@@ -214,11 +235,13 @@ pub(crate) struct ActionStageTracker {
     pub(crate) per_correlation_terminal_evictions: u64,
 }
 
-impl ActionStageTracker {
-    /// The [`super::action_ledger::ActionLedger`] owns the tracker via
-    /// `Default`; this explicit constructor is exercised by the
-    /// `action_stages` unit tests.
-    #[cfg_attr(not(test), allow(dead_code))]
+impl StageHistory {
+    /// The [`super::action_ledger::ActionLedger`] owns this facet via
+    /// `Default`; this explicit constructor exists ONLY for the white-box
+    /// stage-history unit tests, which exercise the cap/eviction/TTL substrate
+    /// directly. Production code never constructs a [`StageHistory`] — it lives
+    /// solely inside the one ledger.
+    #[cfg(test)]
     #[must_use]
     pub(crate) fn new() -> Self {
         Self::default()

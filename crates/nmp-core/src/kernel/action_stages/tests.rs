@@ -8,7 +8,7 @@ fn detail(s: &str) -> Option<serde_json::Value> {
 /// order, with timestamps preserved verbatim.
 #[test]
 fn record_appends_in_order() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let cid = "corr-1";
     t.record(cid, ActionStage::Requested, None, 1_000);
     t.record(cid, ActionStage::Publishing, detail("dispatch"), 1_010);
@@ -30,7 +30,7 @@ fn record_appends_in_order() {
 /// `Failed` carries an opaque reason string the host renders verbatim.
 #[test]
 fn failed_stage_carries_reason() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     t.record(
         "corr-2",
         ActionStage::Failed {
@@ -63,7 +63,7 @@ fn is_terminal_matches_only_terminal_variants() {
 /// cleanup path; terminal entries also expire on snapshot TTL without it.
 #[test]
 fn ack_drops_entry() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let cid = "corr-ack";
     t.record(cid, ActionStage::Requested, None, 1);
     t.record(cid, ActionStage::Accepted, None, 2);
@@ -79,7 +79,7 @@ fn ack_drops_entry() {
 /// `ack` of an unknown id is a silent no-op (D6).
 #[test]
 fn ack_unknown_is_noop() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let removed = t.ack("never-recorded");
     assert!(!removed);
     assert!(t.entries.is_empty());
@@ -89,7 +89,7 @@ fn ack_unknown_is_noop() {
 /// the terminal retention window — the snapshot is a copy, not a drain.
 #[test]
 fn terminal_snapshot_is_a_copy_until_ttl() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let cid = "corr-persist";
     t.record(cid, ActionStage::Requested, None, 1);
     t.record(cid, ActionStage::Accepted, None, 2);
@@ -107,7 +107,7 @@ fn terminal_snapshot_is_a_copy_until_ttl() {
 /// remain in the mirror through the shorter terminal TTL.
 #[test]
 fn non_terminal_snapshot_survives_terminal_ttl_window() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let cid = "corr-pending";
     t.record(cid, ActionStage::Requested, None, 1);
     let snap = t.snapshot(1 + TERMINAL_STAGE_RETENTION_MS * 10);
@@ -117,7 +117,7 @@ fn non_terminal_snapshot_survives_terminal_ttl_window() {
 
 #[test]
 fn non_terminal_snapshot_expires_at_pending_ttl() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let cid = "corr-pending";
     t.record(cid, ActionStage::Requested, None, 1);
     let snap = t.snapshot(1 + PENDING_STAGE_RETENTION_MS);
@@ -129,7 +129,7 @@ fn non_terminal_snapshot_expires_at_pending_ttl() {
 /// can omit the key (parallels `action_results`'s convention).
 #[test]
 fn snapshot_is_null_when_empty() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     assert!(t.snapshot(0).is_null());
 }
 
@@ -138,7 +138,7 @@ fn snapshot_is_null_when_empty() {
 /// This is the contract the host parses against.
 #[test]
 fn snapshot_shape_matches_host_expectations() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     t.record("c1", ActionStage::Requested, None, 100);
     t.record(
         "c1",
@@ -168,7 +168,7 @@ fn snapshot_shape_matches_host_expectations() {
 /// alongside the tag, matching serde's internally-tagged convention.
 #[test]
 fn failed_stage_serialises_with_reason() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     t.record(
         "c-fail",
         ActionStage::Failed {
@@ -188,7 +188,7 @@ fn failed_stage_serialises_with_reason() {
 /// never drive UI cleanup). The history's existing entries survive.
 #[test]
 fn per_correlation_cap_drops_non_terminal_silently() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let cid = "c-cap";
     for i in 0..MAX_STAGES_PER_CORRELATION {
         t.record(cid, ActionStage::Publishing, None, i as u64);
@@ -217,7 +217,7 @@ fn per_correlation_cap_drops_non_terminal_silently() {
 /// under a pathological retry storm.
 #[test]
 fn per_correlation_cap_evicts_non_terminal_to_seat_terminal() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let cid = "c-cap-term";
     for i in 0..MAX_STAGES_PER_CORRELATION {
         t.record(cid, ActionStage::Publishing, None, i as u64);
@@ -248,7 +248,7 @@ fn per_correlation_cap_evicts_non_terminal_to_seat_terminal() {
     );
     // The Failed-shape variant also survives — exercises the
     // `is_terminal` predicate on both arms.
-    let mut t2 = ActionStageTracker::new();
+    let mut t2 = StageHistory::new();
     for i in 0..MAX_STAGES_PER_CORRELATION {
         t2.record("c2", ActionStage::Publishing, None, i as u64);
     }
@@ -271,7 +271,7 @@ fn per_correlation_cap_evicts_non_terminal_to_seat_terminal() {
 /// contract still holds.
 #[test]
 fn per_correlation_cap_terminal_at_cap_full_of_terminals() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let cid = "c-degen";
     for i in 0..MAX_STAGES_PER_CORRELATION {
         t.record(cid, ActionStage::Accepted, None, i as u64);
@@ -308,7 +308,7 @@ fn per_correlation_cap_terminal_at_cap_full_of_terminals() {
 /// touching the second-oldest id after the cap does not bump it.
 #[test]
 fn global_cap_evicts_oldest_correlation() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     for i in 0..MAX_TRACKED_CORRELATIONS {
         t.record(&format!("c-{i:04}"), ActionStage::Requested, None, i as u64);
     }
@@ -342,7 +342,7 @@ fn global_cap_evicts_oldest_correlation() {
 /// retrying the same action handle relies on.
 #[test]
 fn record_after_ack_starts_fresh() {
-    let mut t = ActionStageTracker::new();
+    let mut t = StageHistory::new();
     let cid = "c-retry";
     t.record(cid, ActionStage::Requested, None, 1);
     t.record(cid, ActionStage::Accepted, None, 2);

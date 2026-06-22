@@ -19,7 +19,7 @@
 //! # First slice (#1847): `action_lifecycle` derives from the ledger
 //!
 //! That slice resolved #1684: `action_lifecycle` is no longer an independent
-//! store. The ledger owns the substrate stage history (the [`ActionStageTracker`]
+//! store. The ledger owns the substrate stage history (the [`StageHistory`]
 //! storage) plus the per-`correlation_id` curated failure reason code (#1735),
 //! and the `action_lifecycle` projection is *computed* from that one record via
 //! [`ActionLedger::lifecycle_snapshot`]. There is no second `HashMap`: the
@@ -49,10 +49,16 @@
 //! into the ledger, so the ledger is the one source the projection reads — there
 //! is no parallel representation of a terminal verdict.
 //!
+//! # Third slice (#1758 slice 3): `action_stages` formalised as a derived facet
+//!
+//! The stage-history storage (renamed [`StageHistory`], `new()` test-only) is
+//! documented as the ledger's facet, derived solely (byte-identically) via
+//! [`ActionLedger::stages_snapshot`].
+//!
 //! The remaining surface (`publish_queue` per-`event_id` terminal status) is a
 //! SEPARATE path keyed on `event_id` (the engine's `recently_completed` →
-//! `take_completed` → `set_publish_entry_terminal` lane); it is collapsed in a
-//! follow-up slice and is untouched here. This change is byte-identical to the
+//! `take_completed` → `set_publish_entry_terminal` lane); it is collapsed in the
+//! final slice and is untouched here. This change is byte-identical to the
 //! prior `pending_terminals`-sourced `action_results` output (the same per-tick
 //! drain semantics, the same `ok → published` status mapping, the same `error` /
 //! `result` / `event_id` fields, and the same `reason_code` threading into the
@@ -64,7 +70,7 @@
 //!   second source of truth.
 //! * **D6** — derivation is infallible; a serialization failure collapses to
 //!   `Null` (the projection key is then omitted).
-//! * **D8** — bounded by the inner [`ActionStageTracker`] caps
+//! * **D8** — bounded by the inner [`StageHistory`] caps
 //!   (`MAX_TRACKED_CORRELATIONS`, `MAX_STAGES_PER_CORRELATION`); the coded-reason
 //!   sidecar is pruned in lock-step with the history so it can never outgrow it.
 //! * **D9** — all wall-clock reads route through the caller-supplied `now_ms`
@@ -77,7 +83,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use super::action_stages::{
-    ActionStage, ActionStageTracker, MAX_TRACKED_CORRELATIONS, PENDING_STAGE_RETENTION_MS,
+    ActionStage, MAX_TRACKED_CORRELATIONS, PENDING_STAGE_RETENTION_MS, StageHistory,
     TERMINAL_STAGE_RETENTION_MS,
 };
 #[cfg(test)]
@@ -207,7 +213,7 @@ pub struct LifecycleSnapshot {
 
 /// The single per-`correlation_id` record of action state.
 ///
-/// Owns the substrate stage history ([`ActionStageTracker`], the
+/// Owns the substrate stage history ([`StageHistory`], the
 /// `action_stages` source) plus the per-`correlation_id` latest-lifecycle slot
 /// (the `action_lifecycle` source). Both projections are *derived views* over
 /// this one record — there is no second tracker. The two facets share the same
@@ -215,10 +221,9 @@ pub struct LifecycleSnapshot {
 /// latest-lifecycle map can never outgrow the D8-bounded history.
 #[derive(Default)]
 pub(crate) struct ActionLedger {
-    /// Substrate stage history — the bounded per-`correlation_id` transition
-    /// log. Owns the eviction order, caps, and TTL semantics for
-    /// `action_stages`.
-    stages: ActionStageTracker,
+    /// Substrate stage-history facet — the bounded per-`correlation_id`
+    /// transition log owning the eviction order, caps, and TTL for `action_stages`.
+    stages: StageHistory,
     /// Latest lifecycle state per `correlation_id` — the source the derived
     /// `action_lifecycle` view collapses to. Updated on EVERY record (even when
     /// the history cap drops a non-terminal diagnostic row). Bounded by its own
@@ -287,7 +292,7 @@ impl ActionLedger {
         let is_new = !self.latest.contains_key(correlation_id);
         if is_new && self.latest.len() >= MAX_TRACKED_CORRELATIONS {
             // Global cap: evict the oldest lifecycle slot by first-record order,
-            // mirroring `ActionStageTracker`'s overflow semantics so the two
+            // mirroring `StageHistory`'s overflow semantics so the two
             // facets agree on which ids survive at cap.
             if let Some(oldest) = self.latest_order.first().cloned() {
                 self.latest.remove(&oldest);
@@ -394,9 +399,9 @@ impl ActionLedger {
         self.latest.len()
     }
 
-    /// Serialise the `action_stages` projection — the bounded full history
-    /// keyed by `correlation_id`. Byte-identical to the prior standalone
-    /// tracker output. Prunes expired history rows (TTL sweep).
+    /// Derive the `action_stages` projection — the SINGLE serialisation of the
+    /// ledger's [`StageHistory`] facet (bounded full history, no parallel
+    /// tracker). Byte-identical to the prior output. Prunes expired rows (TTL).
     ///
     /// Does NOT touch the latest-lifecycle facet: the two facets prune on their
     /// own anchors (a record the history dropped at its per-correlation cap
