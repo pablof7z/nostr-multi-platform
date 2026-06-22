@@ -16,7 +16,7 @@
 //!
 //! # No operator policy in protocol crates
 //!
-//! The built-in default relay (`wss://search.nos.lol`) lives here in
+//! The built-in default relay (`wss://relay.nostr.band`) lives here in
 //! `nmp-defaults`, which is a composition/operator-policy crate (step 10 of
 //! `docs/architecture/crate-boundaries.md`). It is NEVER in `nmp-core` or any
 //! NIP protocol crate. Apps that want a different default override it with
@@ -27,7 +27,7 @@
 //!
 //! ```rust,ignore
 //! // 1. Configure at build time (optional — NMP ships a sensible built-in).
-//! let search_defaults = SearchDefaults::default(); // uses wss://search.nos.lol
+//! let search_defaults = SearchDefaults::default(); // uses wss://relay.nostr.band
 //! // or: SearchDefaults::with_default_relays(vec!["wss://my-search.example".to_string()])
 //!
 //! // 2. Register the runtime and keep the projection handle.
@@ -44,12 +44,13 @@ use nmp_nip51::SearchRelayListProjection;
 /// NMP's built-in fallback search relay, used when the app supplies no
 /// override and the active account has no published kind:10007 list.
 ///
-/// `wss://search.nos.lol` is the canonical NIP-50 search relay operated by
-/// nos.social. Apps that prefer a different relay (or wish to supply none at
-/// all) set [`SearchDefaults::default_relays`] before calling
-/// `register_defaults`. This constant is intentionally in `nmp-defaults` (the
-/// composition/operator-policy crate), not in any NIP protocol crate.
-pub const NMP_BUILTIN_SEARCH_RELAY: &str = "wss://search.nos.lol";
+/// `wss://relay.nostr.band` is a live, free, public NIP-50 full-text-search
+/// relay (the prior built-in `wss://search.nos.lol` is dead — NXDOMAIN). Apps
+/// that prefer a different relay (or wish to supply none at all) set
+/// [`SearchDefaults::default_relays`] before calling `register_defaults`. This
+/// constant is intentionally in `nmp-defaults` (the composition/operator-policy
+/// crate), not in any NIP protocol crate.
+pub const NMP_BUILTIN_SEARCH_RELAY: &str = "wss://relay.nostr.band";
 
 /// App-overridable default search-relay configuration.
 ///

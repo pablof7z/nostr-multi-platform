@@ -197,7 +197,7 @@ pub struct NmpDefaultRuntimeHandles {
 /// [`register_substrate`] directly; one that wants to toggle individual
 /// social features or override the coverage policy / bootstrap relay calls
 /// [`register_defaults_with`].
-pub fn register_defaults(app: &mut impl AppHost) {
+pub fn register_defaults(app: &mut (impl AppHost + nmp_nip50::SearchRelaySourceRegistrar)) {
     let _ = register_defaults_with_handles(app, NmpDefaults::default());
 }
 
@@ -207,7 +207,7 @@ pub fn register_defaults(app: &mut impl AppHost) {
 /// runtime directly while preserving the same one-time registration semantics as
 /// [`register_defaults`].
 pub fn register_defaults_with_handles(
-    app: &mut impl AppHost,
+    app: &mut (impl AppHost + nmp_nip50::SearchRelaySourceRegistrar),
     defaults: NmpDefaults,
 ) -> NmpDefaultRuntimeHandles {
     register_defaults_inner(app, defaults)
@@ -228,12 +228,12 @@ pub fn register_defaults_with_handles(
 /// no-arg path wires no relay URL at all.
 ///
 /// See [`NmpDefaults`] for the full field set and each field's default.
-pub fn register_defaults_with(app: &mut impl AppHost, defaults: NmpDefaults) {
+pub fn register_defaults_with(app: &mut (impl AppHost + nmp_nip50::SearchRelaySourceRegistrar), defaults: NmpDefaults) {
     let _ = register_defaults_with_handles(app, defaults);
 }
 
 fn register_defaults_inner(
-    app: &mut impl AppHost,
+    app: &mut (impl AppHost + nmp_nip50::SearchRelaySourceRegistrar),
     defaults: NmpDefaults,
 ) -> NmpDefaultRuntimeHandles {
     let NmpDefaults {

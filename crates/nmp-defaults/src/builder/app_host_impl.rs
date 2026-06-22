@@ -300,3 +300,16 @@ impl<S> IdentityChangeRegistrar for NmpAppBuilder<S> {
         app.register_identity_change_observer(f);
     }
 }
+
+/// NIP-50 search-source registration delegation. `register_defaults` (via
+/// `register_search_relay_runtime`) auto-wires the default `SearchRelaySource`
+/// onto whatever host it is given; the builder forwards to its inner `NmpApp`.
+impl<S> nmp_nip50::SearchRelaySourceRegistrar for NmpAppBuilder<S> {
+    fn set_search_relay_source(
+        &self,
+        source: Arc<dyn nmp_nip50::SearchRelaySource + Send + Sync>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        <NmpApp as nmp_nip50::SearchRelaySourceRegistrar>::set_search_relay_source(app, source);
+    }
+}

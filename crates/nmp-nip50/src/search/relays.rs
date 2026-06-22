@@ -10,7 +10,22 @@
 //! `nmp-nip51`, D0) while still owning the orchestration policy of WHICH source
 //! each `SearchTargets` variant draws from.
 
+use std::sync::Arc;
+
 use crate::SearchTargets;
+
+/// The host registration seam for the default [`SearchRelaySource`].
+///
+/// The composition root (`nmp-defaults`) calls this once, during
+/// `register_defaults`, to auto-wire the kind:10007 read seam + app-default
+/// fallback onto the host — so a plain app that calls only `open_search(..,
+/// UserPreferred)` transparently fans out to the user's published search relays
+/// with ZERO app code. The concrete host (`NmpApp` in `nmp-ffi`) implements
+/// this; `nmp-nip50` never names the host (D0 — this trait is the seam).
+pub trait SearchRelaySourceRegistrar {
+    /// Register the active [`SearchRelaySource`] on the host. Last-writer-wins.
+    fn set_search_relay_source(&self, source: Arc<dyn SearchRelaySource + Send + Sync>);
+}
 
 /// The read seam `open_search` uses to resolve relays for `UserPreferred` and
 /// `AppDefault` targets.

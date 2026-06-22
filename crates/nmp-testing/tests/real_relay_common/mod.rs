@@ -62,6 +62,29 @@ pub fn install_rustls_provider() {
     });
 }
 
+/// Connect with a `User-Agent` header set.
+///
+/// Some relays (e.g. `nostr.wine`) reject the bare tungstenite handshake with
+/// HTTP 403 unless the client identifies itself — a real Nostr client (and
+/// `nak`) always sends a User-Agent. Adding one is strictly additive: no relay
+/// rejects a request *for* carrying a User-Agent, so routing every connect
+/// through here only widens reachability. Falls back to a plain `connect` if the
+/// request cannot be built (it always can for a valid `wss://` URL).
+fn connect_with_ua(url: &str) -> Result<RelaySocket, tungstenite::Error> {
+    use tungstenite::client::IntoClientRequest;
+    match url.into_client_request() {
+        Ok(mut request) => {
+            request.headers_mut().insert(
+                "User-Agent",
+                // A static, valid header value — `nmp-testing` real-relay harness.
+                tungstenite::http::HeaderValue::from_static("nmp-testing-real-relay/1.0"),
+            );
+            connect(request).map(|(socket, _)| socket)
+        }
+        Err(_) => connect(url).map(|(socket, _)| socket),
+    }
+}
+
 fn apply_read_timeout(socket: &mut RelaySocket) {
     match socket.get_mut() {
         MaybeTlsStream::Plain(s) => {
@@ -80,7 +103,7 @@ fn apply_read_timeout(socket: &mut RelaySocket) {
 /// handshake cannot stall the whole run.
 pub fn open(url: &str) -> Result<RelaySocket, String> {
     install_rustls_provider();
-    let (mut socket, _response) = connect(url).map_err(|e| e.to_string())?;
+    let mut socket = connect_with_ua(url).map_err(|e| e.to_string())?;
     apply_read_timeout(&mut socket);
     Ok(socket)
 }
@@ -92,9 +115,9 @@ pub fn open_with_timeout(url: &str, budget: Duration) -> Result<RelaySocket, Str
     let (tx, rx) = mpsc::channel();
     let url_owned = url.to_string();
     thread::spawn(move || {
-        let result = connect(&url_owned)
+        let result = connect_with_ua(&url_owned)
             .map_err(|e| e.to_string())
-            .map(|(mut socket, _)| {
+            .map(|mut socket| {
                 apply_read_timeout(&mut socket);
                 socket
             });

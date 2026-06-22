@@ -47,11 +47,22 @@ use nmp_core::KernelEventObserverId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip50::{
     encode_search_results_snapshot, resolve_search_relays, search_relay_plan, SearchRelaySource,
-    SearchRequest, SearchResultsProjection, SEARCH_RESULTS_FILE_IDENTIFIER,
-    SEARCH_RESULTS_SCHEMA_ID, SEARCH_RESULTS_SCHEMA_VERSION,
+    SearchRelaySourceRegistrar, SearchRequest, SearchResultsProjection,
+    SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID, SEARCH_RESULTS_SCHEMA_VERSION,
 };
 
 use super::{app_ref, c_string_argument, NmpApp};
+
+/// D0 seam — the composition root (`nmp-defaults`) auto-wires the default
+/// search-relay source through this trait so a plain app gets transparent
+/// kind:10007 fan-out with zero app code. `NmpApp::set_search_relay_source`
+/// is the inherent method; this impl exposes it generically to `nmp-nip50`'s
+/// `register_search_relay_runtime` without that crate naming `NmpApp` (D0).
+impl SearchRelaySourceRegistrar for NmpApp {
+    fn set_search_relay_source(&self, source: std::sync::Arc<dyn SearchRelaySource + Send + Sync>) {
+        NmpApp::set_search_relay_source(self, source);
+    }
+}
 
 /// `1` = Global. A search interest pins a concrete relay + query; it is NOT
 /// re-routed on account switch (the host closes + re-opens on identity change).

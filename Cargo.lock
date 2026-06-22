@@ -4585,6 +4585,7 @@ dependencies = [
  "nmp-defaults",
  "nmp-ffi",
  "nmp-nip01",
+ "nmp-nip50",
  "nostr",
 ]
 

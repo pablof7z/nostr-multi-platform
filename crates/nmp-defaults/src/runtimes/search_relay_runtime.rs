@@ -40,7 +40,10 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{EventObserverRegistrar, HostCapabilities};
 use nmp_core::KernelEventObserver;
+use nmp_nip50::SearchRelaySource;
 use nmp_nip51::SearchRelayListProjection;
+
+use crate::search_defaults::SearchDefaults;
 
 /// Wire the NIP-51 search-relay-list observer into `app` and return the
 /// [`SearchRelayListProjection`] so callers can read the active account's
@@ -88,6 +91,17 @@ use nmp_nip51::SearchRelayListProjection;
 pub fn register_search_relay_runtime(
     app: &(impl EventObserverRegistrar + HostCapabilities),
 ) -> Arc<SearchRelayListProjection> {
+    register_search_relay_runtime_with(app, SearchDefaults::default())
+}
+
+/// [`register_search_relay_runtime`] with an explicit [`SearchDefaults`] for the
+/// app-default fallback that backs the transparently-wired default search-relay
+/// source. `register_search_relay_runtime` is the `SearchDefaults::default()`
+/// convenience (built-in NIP-50 relay).
+pub fn register_search_relay_runtime_with(
+    app: &(impl EventObserverRegistrar + HostCapabilities),
+    defaults: SearchDefaults,
+) -> Arc<SearchRelayListProjection> {
     // ── 1. Active-pubkey slot ────────────────────────────────────────────────
     let projection = Arc::new(SearchRelayListProjection::new(app.active_pubkey()));
 
@@ -99,5 +113,55 @@ pub fn register_search_relay_runtime(
     // projection here is the only wiring this runtime needs.
     app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
 
+    // ── 3. TRANSPARENCY GLUE — auto-wire the default search-relay source ──────
+    //
+    // So a plain app that calls only `open_search(.., UserPreferred)` fans out
+    // to the user's published kind:10007 relays with ZERO app code. The source
+    // reads the SAME live `SearchRelayListProjection` registered above for
+    // `user_preferred()`, and the app-default `SearchDefaults` for the
+    // fallback — exactly the `effective_search_relays` preference order, but
+    // exposed through the `nmp-nip50` read seam instead of requiring the app to
+    // call `effective_search_relays` itself.
+    //
+    // `nmp_nip50::install_search_relay_source` installs the source through the
+    // substrate-generic `HostCapabilities::install_preferred_relay_source` seam
+    // (default no-op, overridden by `NmpApp`). So this works for EVERY `AppHost`
+    // — a minimal / scaffolded host compiles for free (no-op), a real host wires
+    // it for real. D0: `nmp-nip50` never names the host type.
+    //
+    // Depends ONLY on the `projection` handle (the kind:10007 read model the
+    // kernel's self-kinds tailing bundle populates — #1829), never on any
+    // per-tick controller (deleted in #1829).
+    nmp_nip50::install_search_relay_source(
+        app,
+        Arc::new(DefaultSearchRelaySource {
+            projection: Arc::clone(&projection),
+            defaults,
+        }),
+    );
+
     projection
+}
+
+/// The default search-relay source the composition root auto-wires onto the
+/// host. `user_preferred()` returns the active account's live kind:10007 list
+/// (the `SearchRelayListProjection` the self-kinds tailing bundle populates);
+/// `app_default()` returns the app-configured [`SearchDefaults`] built-in.
+///
+/// Mirrors [`crate::effective_search_relays`]'s preference order (user list →
+/// default), but `nmp_nip50::resolve_search_relays` applies the fallback itself,
+/// so this source exposes the two lists independently.
+struct DefaultSearchRelaySource {
+    projection: Arc<SearchRelayListProjection>,
+    defaults: SearchDefaults,
+}
+
+impl SearchRelaySource for DefaultSearchRelaySource {
+    fn user_preferred(&self) -> Vec<String> {
+        self.projection.snapshot().relays
+    }
+
+    fn app_default(&self) -> Vec<String> {
+        self.defaults.default_relays.clone()
+    }
 }
