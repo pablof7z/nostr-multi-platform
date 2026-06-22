@@ -244,7 +244,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "apps/chirp wallet_runtime (NIP-47)",
         schema_id: "nmp.nip47.wallet",
         file_identifier: "NWST",
-        version: 0,
+        // nmp-nip47 wire/typed_fb::SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -290,7 +291,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         // schema_id.
         schema_id: "nmp.nip01.opfeed",
         file_identifier: "NOFS",
-        version: 0,
+        // nmp-nip01 op_feed/typed_wire::OP_FEED_SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -302,7 +304,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         // Deliberate key/schema_id split: envelope key vs payload schema id.
         schema_id: "nmp.nip02.follow_list",
         file_identifier: "NF02",
-        version: 0,
+        // nmp-nip02 wire/typed_fb::SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -313,7 +316,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "nmp-nip29 register",
         schema_id: "nmp.nip29.group_chat",
         file_identifier: "NGCS",
-        version: 0,
+        // nmp-nip29 wire/group_chat_fb::GROUP_CHAT_SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -324,7 +328,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "nmp-nip29 register",
         schema_id: "nmp.nip29.discovered_groups",
         file_identifier: "NDGS",
-        version: 0,
+        // nmp-nip29 wire/discovered_groups_fb::DISCOVERED_GROUPS_SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -335,7 +340,38 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "nmp-nip29 register::wire_group_defaults",
         schema_id: "nmp.nip29.group_defaults",
         file_identifier: "NGDF",
-        version: 0,
+        // nmp-nip29 wire/group_defaults_fb::GROUP_DEFAULTS_SCHEMA_VERSION
+        version: 1,
+        declaration_policy: DeclarationPolicy::RegistrationGated,
+        dependency_versions: &[],
+        presence_policy: PresencePolicy::None,
+    },
+    ProjectionContract {
+        // Registered by `nmp_nip29::wire_joined_groups` under this key. Was
+        // missing from the contract — a real Tier-1 projection key, not an
+        // internal wire type (the earlier #1723 investigation misclassified it).
+        key: "nmp.nip29.joined_groups",
+        tier: ProjectionTier::HostRegistered,
+        producer: "nmp-nip29 register::wire_joined_groups",
+        schema_id: "nmp.nip29.joined_groups",
+        file_identifier: "NJGS",
+        // nmp-nip29 wire/joined_groups_fb::JOINED_GROUPS_SCHEMA_VERSION
+        version: 1,
+        declaration_policy: DeclarationPolicy::RegistrationGated,
+        dependency_versions: &[],
+        presence_policy: PresencePolicy::None,
+    },
+    ProjectionContract {
+        // Registered by `nmp_nip29::wire_group_events` under this key. Was
+        // missing from the contract — a real Tier-1 projection key, not an
+        // internal wire type (the earlier #1723 investigation misclassified it).
+        key: "nmp.nip29.group_events",
+        tier: ProjectionTier::HostRegistered,
+        producer: "nmp-nip29 register::wire_group_events",
+        schema_id: "nmp.nip29.group_events",
+        file_identifier: "NGES",
+        // nmp-nip29 wire/group_events_fb::GROUP_EVENTS_SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -346,7 +382,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "nmp-nip17 register",
         schema_id: "nmp.nip17.dm_inbox",
         file_identifier: "NDMI",
-        version: 0,
+        // nmp-nip17 wire/dm_inbox_fb::DM_INBOX_SCHEMA_VERSION
+        version: 2,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -357,7 +394,23 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "nmp-nip17 register",
         schema_id: "nmp.nip17.dm_relay_list",
         file_identifier: "NDRL",
-        version: 0,
+        // nmp-nip17 wire/dm_relay_list_fb::DM_RELAY_LIST_SCHEMA_VERSION
+        version: 1,
+        declaration_policy: DeclarationPolicy::RegistrationGated,
+        dependency_versions: &[],
+        presence_policy: PresencePolicy::None,
+    },
+    ProjectionContract {
+        // Registered by `nmp_defaults::runtimes::mute_runtime` under this key.
+        // Was missing from the contract — a real Tier-1 projection key, not an
+        // internal wire type (the earlier #1723 investigation misclassified it).
+        key: "nmp.nip51.mute_list",
+        tier: ProjectionTier::HostRegistered,
+        producer: "nmp-defaults runtimes/mute_runtime (NIP-51)",
+        schema_id: "nmp.nip51.mute_list",
+        file_identifier: "NMUT",
+        // nmp-nip51 wire/mute_list_fb::MUTE_LIST_SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -368,7 +421,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "apps/chirp ffi/register zaps (NIP-57)",
         schema_id: "nmp.nip57.zaps",
         file_identifier: "NZAP",
-        version: 0,
+        // nmp-nip57 wire/typed_fb::SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -379,7 +433,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "nmp-ffi embed_sidecar",
         schema_id: "claimed_event_embeds",
         file_identifier: "NEMB",
-        version: 0,
+        // nmp-content wire/embed_sidecar_fb::SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -390,7 +445,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "nmp-marmot ffi (ADR-0039)",
         schema_id: "nmp.marmot.snapshot",
         file_identifier: "NMMS",
-        version: 0,
+        // nmp-marmot wire/snapshot_fb::SCHEMA_VERSION
+        version: 5,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -401,7 +457,8 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         producer: "nmp-marmot ffi (ADR-0039)",
         schema_id: "nmp.marmot.messages",
         file_identifier: "NMMG",
-        version: 0,
+        // nmp-marmot wire/messages_fb::SCHEMA_VERSION
+        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
