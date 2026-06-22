@@ -30,15 +30,15 @@ The Rust kernel emits raw values at the formatting boundary:
 - NIP-29 discovered groups emit raw name/group_id/public/open/member_count; display_name, initials, subtitle and finalize_display_fields are removed from Rust.
 - KeyPackageStatus emits raw published/age_secs/stale + is_registered:bool; bucket_age, render_subtitle and action_label are removed from Rust.
 - NIP-01 Nip10ReplyAttribution removes redundant flat author_display_name/author_picture_url mirrors; AuthorDisplay.npub is removed (shells use nmp_app_encode_profile).
-- format.rs retains only tone-selector functions (role_tone, connection_tone, auth_tone, state_tone, interest_state_tone); all display string formatters (title_case, short_relay_url, short_id, format_bytes, compact_count, role_label, auth_label) are removed from the kernel.
+- relay_diagnostics format.rs is deleted entirely (#1802): the tone-selector functions (role_tone, connection_tone, auth_tone, state_tone, interest_state_tone) are removed along with the display string formatters (title_case, short_relay_url, short_id, format_bytes, compact_count, role_label, auth_label) — the kernel emits only raw tokens.
 
-The *_tone semantic-hue tokens (role_tone, connection_tone, auth_tone, state_tone, interest_state_tone) are retained as raw tokens on the wire and are not reformatted by shells; they emit raw tokens, not colors/prose.
+The relay_diagnostics projection emits NO semantic tone on the wire (#1802). It carries only raw protocol tokens (role, connection, auth, state, and reason kind); each shell derives its own hue/color from those raw tokens, because tone/color is an app concern, never the kernel's. This was the last tone-on-wire holdout, removed to match signer_state (#1580), publish_outbox (#1568), marmot (#1536), and nip29 (#1537).
 
 Android WalletScreen must bind the Rust-computed WalletStatus.is_connected bool verbatim, not derive connection state from the tone discriminant.
 
 Known per-shell divergences in display formatting:
 - Discovery-kind labels: TUI renders empty as "none", maps 10002→"relay-list", unknowns→"list"; iOS renders empty as "", maps 10002→"relay list", 10003→"bookmarks", unknowns→"kind:N"; Android has no discovery-kind label computed property at all.
 - Byte-size formatting: Android uses binary KiB/MiB/GiB; TUI uses decimal KB/MB/GB; iOS delegates to locale-dependent ByteCountFormatter with .binary style; the old Rust kernel used mixed KB/MB notation.
-- TUI connection-classification logic (status_dot, zero_count_label, relay_is_connected) switched to raw lowercase connection tokens but still uses display-ish substring matching (contains("disconnected"), contains("connected")), which is fragile and should ideally use the retained connection_tone or an exact raw-token table.
+- TUI connection-classification logic (status_dot, zero_count_label, relay_is_connected) switched to raw lowercase connection tokens but still uses display-ish substring matching (contains("disconnected"), contains("connected")), which is fragile and should ideally use an exact raw-token table (there is no projected connection_tone — #1802 removed it; shells derive their own hue from the raw connection token).
 
 <!-- citations: [^11850-173] [^11850-143] [^11850-144] [^11850-145] [^11850-146] [^11850-147] [^11850-148] [^11850-168] [^11850-169] [^11850-170] [^11850-171] [^11850-172] [^019ed-145] [^11850-219] [^11850-231] [^11850-245] -->

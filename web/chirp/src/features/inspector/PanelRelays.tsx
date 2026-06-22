@@ -1,5 +1,6 @@
 import { For, Show } from "solid-js";
 import type { DecodedRelayStatus } from "../../nmp/updateFrame";
+import { authTone as deriveAuthTone, connectionTone as deriveConnectionTone } from "../../nmp/relayDiagnosticsTone";
 
 /** Map kernel role string → abbreviated label. */
 function roleLabel(role: string): string {
@@ -17,8 +18,9 @@ function fmtBigint(n: bigint): string {
 
 function RelayRow(props: { relay: DecodedRelayStatus }) {
   const r = props.relay;
-  const connTone = r.connectionTone ?? "muted";
-  const authTone = r.authTone ?? "muted";
+  // #1768 — derive the hue shell-side from the raw connection / auth tokens.
+  const connTone = deriveConnectionTone(r.status);
+  const authTone = deriveAuthTone(r.auth);
   return (
     <div
       class={`ins-relay-row${r.denied ? " ins-relay-denied" : ""}`}

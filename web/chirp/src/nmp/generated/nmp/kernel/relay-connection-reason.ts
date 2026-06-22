@@ -29,71 +29,60 @@ kind(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-tone():string|null
-tone(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-tone(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 6);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
 authorPubkeys(index: number):string
 authorPubkeys(index: number,optionalEncoding:flatbuffers.Encoding):string|Uint8Array
 authorPubkeys(index: number,optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
+  const offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? this.bb!.__string(this.bb!.__vector(this.bb_pos + offset) + index * 4, optionalEncoding) : null;
 }
 
 authorPubkeysLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
+  const offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 authorTotal():number {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
 kinds(index: number):number|null {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.readUint32(this.bb!.__vector(this.bb_pos + offset) + index * 4) : 0;
 }
 
 kindsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 kindsArray():Uint32Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? new Uint32Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
 }
 
 hasSourceEventId():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 sourceEventId():string|null
 sourceEventId(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 sourceEventId(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startRelayConnectionReason(builder:flatbuffers.Builder) {
-  builder.startObject(7);
+  builder.startObject(6);
 }
 
 static addKind(builder:flatbuffers.Builder, kindOffset:flatbuffers.Offset) {
   builder.addFieldOffset(0, kindOffset, 0);
 }
 
-static addTone(builder:flatbuffers.Builder, toneOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(1, toneOffset, 0);
-}
-
 static addAuthorPubkeys(builder:flatbuffers.Builder, authorPubkeysOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(2, authorPubkeysOffset, 0);
+  builder.addFieldOffset(1, authorPubkeysOffset, 0);
 }
 
 static createAuthorPubkeysVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -109,11 +98,11 @@ static startAuthorPubkeysVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addAuthorTotal(builder:flatbuffers.Builder, authorTotal:number) {
-  builder.addFieldInt32(3, authorTotal, 0);
+  builder.addFieldInt32(2, authorTotal, 0);
 }
 
 static addKinds(builder:flatbuffers.Builder, kindsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(4, kindsOffset, 0);
+  builder.addFieldOffset(3, kindsOffset, 0);
 }
 
 static createKindsVector(builder:flatbuffers.Builder, data:number[]|Uint32Array):flatbuffers.Offset;
@@ -134,11 +123,11 @@ static startKindsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addHasSourceEventId(builder:flatbuffers.Builder, hasSourceEventId:boolean) {
-  builder.addFieldInt8(5, +hasSourceEventId, +false);
+  builder.addFieldInt8(4, +hasSourceEventId, +false);
 }
 
 static addSourceEventId(builder:flatbuffers.Builder, sourceEventIdOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(6, sourceEventIdOffset, 0);
+  builder.addFieldOffset(5, sourceEventIdOffset, 0);
 }
 
 static endRelayConnectionReason(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -146,10 +135,9 @@ static endRelayConnectionReason(builder:flatbuffers.Builder):flatbuffers.Offset 
   return offset;
 }
 
-static createRelayConnectionReason(builder:flatbuffers.Builder, kindOffset:flatbuffers.Offset, toneOffset:flatbuffers.Offset, authorPubkeysOffset:flatbuffers.Offset, authorTotal:number, kindsOffset:flatbuffers.Offset, hasSourceEventId:boolean, sourceEventIdOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createRelayConnectionReason(builder:flatbuffers.Builder, kindOffset:flatbuffers.Offset, authorPubkeysOffset:flatbuffers.Offset, authorTotal:number, kindsOffset:flatbuffers.Offset, hasSourceEventId:boolean, sourceEventIdOffset:flatbuffers.Offset):flatbuffers.Offset {
   RelayConnectionReason.startRelayConnectionReason(builder);
   RelayConnectionReason.addKind(builder, kindOffset);
-  RelayConnectionReason.addTone(builder, toneOffset);
   RelayConnectionReason.addAuthorPubkeys(builder, authorPubkeysOffset);
   RelayConnectionReason.addAuthorTotal(builder, authorTotal);
   RelayConnectionReason.addKinds(builder, kindsOffset);

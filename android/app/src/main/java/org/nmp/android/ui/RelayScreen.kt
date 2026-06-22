@@ -69,10 +69,11 @@ fun RelayScreen(model: KernelModel, modifier: Modifier = Modifier) {
     val roleOptions = state.projections?.relayRoleOptions?.takeIf { it.isNotEmpty() }
         ?: defaultRelayRoleOptions()
     val defaultRole = defaultRelayRoleValue(roleOptions)
-    // #1099 / ADR-0032: the typed `relay_diagnostics` sidecar carries
-    // Rust-precomputed `connectionLabel`/`connectionTone` per relay. Prefer it
-    // over the Tier-3 raw `connection` string switch when a matching row exists
-    // (keyed by relayUrl); fall back to `statusColors` otherwise.
+    // #1099 / ADR-0032: the typed `relay_diagnostics` sidecar carries the raw
+    // `connection` token per relay. The shell computes `connectionLabel` and
+    // derives `connectionTone` from it (#1768). Prefer it over the Tier-3 raw
+    // `connection` string switch when a matching row exists (keyed by relayUrl);
+    // fall back to `statusColors` otherwise.
     val diagnosticsByUrl = state.projections?.relayDiagnostics?.relays
         ?.associateBy { it.relayUrl }
         ?: emptyMap()
@@ -240,10 +241,10 @@ private fun RelayRow(
                         )
                     }
                     // Status indicator + label. Prefer the typed
-                    // relay_diagnostics row's Rust-precomputed
-                    // connectionLabel/connectionTone (#1099 / ADR-0032); fall
-                    // back to the raw Tier-3 connection-string switch when no
-                    // matching diagnostics row is available on this tick.
+                    // relay_diagnostics row's connectionLabel + shell-derived
+                    // connectionTone (#1099 / ADR-0032 / #1768); fall back to
+                    // the raw Tier-3 connection-string switch when no matching
+                    // diagnostics row is available on this tick.
                     val (statusColor, statusLabel) = if (diagnostics != null) {
                         toneColor(diagnostics.connectionTone) to diagnostics.connectionLabel
                     } else {
@@ -280,16 +281,17 @@ private fun RelayRow(
 }
 
 /**
- * Map a Rust-precomputed semantic tone (ADR-0032) to an indicator colour.
- * "active" = green, "warning" = amber, "error" = red, anything else = grey.
- * The presentation layer maps tone→colour ONLY; it never inspects the raw
- * protocol connection token (thin-shell rule).
+ * Map a semantic tone token to an indicator colour. The tone itself is now
+ * derived shell-side from the raw protocol token by `RelayDiagnosticsTone`
+ * (#1768 — core emits raw tokens only). `ok`/`write` = green, `warn` = amber,
+ * `error` = red, everything else (incl. `muted`) = grey. The presentation
+ * layer maps tone→colour ONLY (thin-shell rule).
  */
 private fun toneColor(tone: String): Color = when (tone) {
-    "active"  -> Color(0xFF4CAF50)
-    "warning" -> Color(0xFFFFC107)
-    "error"   -> Color(0xFFF44336)
-    else      -> Color(0xFF9E9E9E)
+    "ok", "write"      -> Color(0xFF4CAF50)
+    "warn"             -> Color(0xFFFFC107)
+    "error"            -> Color(0xFFF44336)
+    else               -> Color(0xFF9E9E9E)
 }
 
 /**

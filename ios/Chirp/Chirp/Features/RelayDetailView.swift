@@ -2,15 +2,14 @@ import SwiftUI
 
 // Relay detail screen. THIN SHELL — every aggregate (active / EOSE'd /
 // total sub counts, total events_rx), every display string (relative-time
-// labels, role / connection / auth labels + tones, byte counters) is
-// pre-computed by the Rust `relay_diagnostics` projection. The view
-// renders fields directly.
+// labels, role / connection / auth labels, byte counters) is pre-computed by
+// the Rust `relay_diagnostics` projection. The view renders fields directly.
 //
 // NO `.filter` / `.sorted` / `.reduce`, NO `Date(timeIntervalSince1970:)`,
-// NO `switch` on protocol semantics (aim.md §4.5 / §6 anti-pattern #1 /
-// §"Where do views live?"). The only Swift-side mapping is
-// `DiagnosticsColor.color(forTone:)` — a tone string (decided by Rust) →
-// a SwiftUI Color (rendering, not policy).
+// NO `switch` on protocol semantics for business logic (aim.md §4.5 / §6
+// anti-pattern #1). Color is shell-owned: `DiagnosticsTone` derives a hue
+// token from the raw role / connection / auth / state tokens and
+// `DiagnosticsColor.color(forTone:)` paints it (#1768 — rendering, not policy).
 
 struct RelayDetailView: View {
     let row: RelayDiagnosticsRow
@@ -57,24 +56,24 @@ struct RelayDetailView: View {
                 RelayDetailRow(label: "Role") {
                     Text(row.roleLabel)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(DiagnosticsColor.color(forTone: row.roleTone))
+                        .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.role(row.role)))
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Connection") {
                     HStack(spacing: 4) {
                         Circle()
-                            .fill(DiagnosticsColor.color(forTone: row.connectionTone))
+                            .fill(DiagnosticsColor.color(forTone: DiagnosticsTone.connection(row.connection)))
                             .frame(width: 8, height: 8)
                         Text(row.connectionLabel)
                             .font(.callout.weight(.medium))
-                            .foregroundStyle(DiagnosticsColor.color(forTone: row.connectionTone))
+                            .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.connection(row.connection)))
                     }
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Auth") {
                     Text(row.authLabel)
                         .font(.body.monospaced())
-                        .foregroundStyle(DiagnosticsColor.color(forTone: row.authTone))
+                        .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.auth(row.auth)))
                 }
                 RelayDetailDivider()
                 RelayDetailRow(label: "Active Subs") {
@@ -388,11 +387,11 @@ private struct WireSubRow: View {
                 Spacer(minLength: 0)
                 Text(sub.stateLabel)
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(DiagnosticsColor.color(forTone: sub.stateTone))
+                    .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.wireSubState(sub.state)))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(
-                        DiagnosticsColor.color(forTone: sub.stateTone).opacity(0.15),
+                        DiagnosticsColor.color(forTone: DiagnosticsTone.wireSubState(sub.state)).opacity(0.15),
                         in: Capsule()
                     )
             }

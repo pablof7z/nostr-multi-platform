@@ -73,7 +73,7 @@ struct WireSubscriptionDetailView: View {
                 SubDetailRow(label: "State") {
                     Text(sub.stateLabel)
                         .font(.callout.weight(.semibold))
-                        .foregroundStyle(DiagnosticsColor.color(forTone: sub.stateTone))
+                        .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.wireSubState(sub.state)))
                 }
                 SubDetailDivider()
                 SubDetailRow(label: "Relay") {
@@ -188,5 +188,102 @@ private struct SubDetailRow<Value: View>: View {
 private struct SubDetailDivider: View {
     var body: some View {
         Divider()
+    }
+}
+
+// MARK: - Diagnostics color policy
+//
+// `DiagnosticsColor` + `DiagnosticsTone` were extracted out of
+// `DiagnosticsView.swift` to keep that file under the 500-LOC hard-cap gate
+// (AGENTS.md) once #1768 moved tone derivation shell-side. They are shared by
+// every relay-diagnostics view (DiagnosticsView / RelayDetailView /
+// RelayReasonsSection / this file). Co-located here (a registered SwiftUI
+// source) rather than a new file to avoid xcodegen pbxproj churn.
+
+/// Single Swift-side helper: map a SEMANTIC tone string to a SwiftUI Color.
+/// This is rendering, not policy — the shell decides how to paint each class.
+/// The tone itself is now derived shell-side from raw protocol tokens by
+/// `DiagnosticsTone` (#1768 — core emits raw tokens only).
+enum DiagnosticsColor {
+    static func color(forTone tone: String) -> Color {
+        switch tone {
+        case "ok": return ChirpColor.success
+        case "warn": return ChirpColor.warning
+        case "error": return ChirpColor.danger
+        case "write": return ChirpColor.success
+        case "accent": return ChirpColor.accent
+        case "primary": return ChirpColor.accent
+        case "muted", "secondary": return ChirpColor.textSecondary
+        default: return ChirpColor.textSecondary
+        }
+    }
+}
+
+/// Shell-side tone policy (#1768): derive a semantic hue token from the RAW
+/// protocol tokens the `relay_diagnostics` projection now emits. The kernel
+/// emits only raw `role` / `connection` / `auth` / `state` / reason `kind`
+/// strings; deciding which hue class each belongs to is the app's job. Feeds
+/// `DiagnosticsColor.color(forTone:)`. Ported verbatim from the former kernel
+/// `relay_diagnostics/format.rs` + `reasons.rs` selectors.
+enum DiagnosticsTone {
+    /// Relay role → tone.
+    static func role(_ role: String) -> String {
+        role == "write" ? "write" : "accent"
+    }
+
+    /// Relay connection → tone.
+    static func connection(_ connection: String) -> String {
+        let lower = connection.lowercased()
+        if lower == "connected" {
+            return "ok"
+        } else if lower.hasPrefix("disconnect") || lower == "failed" {
+            return "error"
+        } else if lower.contains("connect") {
+            return "warn"
+        } else if lower == "unknown" || lower == "idle" || lower == "—" || lower == "blocked" {
+            return "muted"
+        } else {
+            return "error"
+        }
+    }
+
+    /// Relay auth → tone.
+    static func auth(_ auth: String) -> String {
+        let lower = auth.lowercased()
+        if lower == "ok" || lower == "authenticated" {
+            return "ok"
+        } else if lower == "pending" {
+            return "warn"
+        } else {
+            return "muted"
+        }
+    }
+
+    /// Wire-subscription state → tone.
+    static func wireSubState(_ state: String) -> String {
+        switch state.lowercased() {
+        case "open", "active", "live": return "ok"
+        case "pending", "warming", "opening", "auth_paused": return "warn"
+        default: return "muted"
+        }
+    }
+
+    /// Logical-interest state → tone.
+    static func interestState(_ state: String) -> String {
+        switch state {
+        case "active", "warming", "tailing", "complete": return "ok"
+        case "idle": return "muted"
+        default: return "warn"
+        }
+    }
+
+    /// Connection-reason `kind` → tone.
+    static func reason(_ kind: String) -> String {
+        switch kind {
+        case "blocked": return "muted"
+        case "nip65": return "accent"
+        case "hint": return "warn"
+        default: return "ok"
+        }
     }
 }

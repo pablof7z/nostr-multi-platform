@@ -42,162 +42,141 @@ role(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-roleTone():string|null
-roleTone(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-roleTone(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 8);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
 connection():string|null
 connection(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 connection(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
-connectionTone():string|null
-connectionTone(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-connectionTone(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
+  const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 auth():string|null
 auth(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 auth(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
-authTone():string|null
-authTone(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authTone(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 totalSubCount():number {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
 activeSubCount():number {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
 eosedSubCount():number {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
 totalEventsRx():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 reconnectCount():number {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
 bytesRx():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 28);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 bytesTx():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 30);
+  const offset = this.bb!.__offset(this.bb_pos, 24);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 lastConnectedMs():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 32);
+  const offset = this.bb!.__offset(this.bb_pos, 26);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 lastEventMs():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 34);
+  const offset = this.bb!.__offset(this.bb_pos, 28);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 hasLastNotice():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 36);
+  const offset = this.bb!.__offset(this.bb_pos, 30);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 lastNotice():string|null
 lastNotice(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lastNotice(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 38);
+  const offset = this.bb!.__offset(this.bb_pos, 32);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 noticeCount():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 40);
+  const offset = this.bb!.__offset(this.bb_pos, 34);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 notices(index: number, obj?:RelayDiagnosticsNotice):RelayDiagnosticsNotice|null {
-  const offset = this.bb!.__offset(this.bb_pos, 42);
+  const offset = this.bb!.__offset(this.bb_pos, 36);
   return offset ? (obj || new RelayDiagnosticsNotice()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 noticesLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 42);
+  const offset = this.bb!.__offset(this.bb_pos, 36);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 hasLastError():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 44);
+  const offset = this.bb!.__offset(this.bb_pos, 38);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 lastError():string|null
 lastError(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 lastError(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 46);
+  const offset = this.bb!.__offset(this.bb_pos, 40);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 wireSubs(index: number, obj?:RelayDiagnosticsWireSub):RelayDiagnosticsWireSub|null {
-  const offset = this.bb!.__offset(this.bb_pos, 48);
+  const offset = this.bb!.__offset(this.bb_pos, 42);
   return offset ? (obj || new RelayDiagnosticsWireSub()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 wireSubsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 48);
+  const offset = this.bb!.__offset(this.bb_pos, 42);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 info(obj?:RelayDiagnosticsInfo):RelayDiagnosticsInfo|null {
-  const offset = this.bb!.__offset(this.bb_pos, 50);
+  const offset = this.bb!.__offset(this.bb_pos, 44);
   return offset ? (obj || new RelayDiagnosticsInfo()).__init(this.bb!.__indirect(this.bb_pos + offset), this.bb!) : null;
 }
 
 discoveryKinds(index: number):bigint|null {
-  const offset = this.bb!.__offset(this.bb_pos, 52);
+  const offset = this.bb!.__offset(this.bb_pos, 46);
   return offset ? this.bb!.readUint64(this.bb!.__vector(this.bb_pos + offset) + index * 8) : BigInt(0);
 }
 
 discoveryKindsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 52);
+  const offset = this.bb!.__offset(this.bb_pos, 46);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 reasons(index: number, obj?:RelayConnectionReason):RelayConnectionReason|null {
-  const offset = this.bb!.__offset(this.bb_pos, 54);
+  const offset = this.bb!.__offset(this.bb_pos, 48);
   return offset ? (obj || new RelayConnectionReason()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 reasonsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 54);
+  const offset = this.bb!.__offset(this.bb_pos, 48);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 static startRelayDiagnosticsRow(builder:flatbuffers.Builder) {
-  builder.startObject(26);
+  builder.startObject(23);
 }
 
 static addRelayUrl(builder:flatbuffers.Builder, relayUrlOffset:flatbuffers.Offset) {
@@ -208,76 +187,64 @@ static addRole(builder:flatbuffers.Builder, roleOffset:flatbuffers.Offset) {
   builder.addFieldOffset(1, roleOffset, 0);
 }
 
-static addRoleTone(builder:flatbuffers.Builder, roleToneOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(2, roleToneOffset, 0);
-}
-
 static addConnection(builder:flatbuffers.Builder, connectionOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(3, connectionOffset, 0);
-}
-
-static addConnectionTone(builder:flatbuffers.Builder, connectionToneOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(4, connectionToneOffset, 0);
+  builder.addFieldOffset(2, connectionOffset, 0);
 }
 
 static addAuth(builder:flatbuffers.Builder, authOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(5, authOffset, 0);
-}
-
-static addAuthTone(builder:flatbuffers.Builder, authToneOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(6, authToneOffset, 0);
+  builder.addFieldOffset(3, authOffset, 0);
 }
 
 static addTotalSubCount(builder:flatbuffers.Builder, totalSubCount:number) {
-  builder.addFieldInt32(7, totalSubCount, 0);
+  builder.addFieldInt32(4, totalSubCount, 0);
 }
 
 static addActiveSubCount(builder:flatbuffers.Builder, activeSubCount:number) {
-  builder.addFieldInt32(8, activeSubCount, 0);
+  builder.addFieldInt32(5, activeSubCount, 0);
 }
 
 static addEosedSubCount(builder:flatbuffers.Builder, eosedSubCount:number) {
-  builder.addFieldInt32(9, eosedSubCount, 0);
+  builder.addFieldInt32(6, eosedSubCount, 0);
 }
 
 static addTotalEventsRx(builder:flatbuffers.Builder, totalEventsRx:bigint) {
-  builder.addFieldInt64(10, totalEventsRx, BigInt('0'));
+  builder.addFieldInt64(7, totalEventsRx, BigInt('0'));
 }
 
 static addReconnectCount(builder:flatbuffers.Builder, reconnectCount:number) {
-  builder.addFieldInt32(11, reconnectCount, 0);
+  builder.addFieldInt32(8, reconnectCount, 0);
 }
 
 static addBytesRx(builder:flatbuffers.Builder, bytesRx:bigint) {
-  builder.addFieldInt64(12, bytesRx, BigInt('0'));
+  builder.addFieldInt64(9, bytesRx, BigInt('0'));
 }
 
 static addBytesTx(builder:flatbuffers.Builder, bytesTx:bigint) {
-  builder.addFieldInt64(13, bytesTx, BigInt('0'));
+  builder.addFieldInt64(10, bytesTx, BigInt('0'));
 }
 
 static addLastConnectedMs(builder:flatbuffers.Builder, lastConnectedMs:bigint) {
-  builder.addFieldInt64(14, lastConnectedMs, BigInt('0'));
+  builder.addFieldInt64(11, lastConnectedMs, BigInt('0'));
 }
 
 static addLastEventMs(builder:flatbuffers.Builder, lastEventMs:bigint) {
-  builder.addFieldInt64(15, lastEventMs, BigInt('0'));
+  builder.addFieldInt64(12, lastEventMs, BigInt('0'));
 }
 
 static addHasLastNotice(builder:flatbuffers.Builder, hasLastNotice:boolean) {
-  builder.addFieldInt8(16, +hasLastNotice, +false);
+  builder.addFieldInt8(13, +hasLastNotice, +false);
 }
 
 static addLastNotice(builder:flatbuffers.Builder, lastNoticeOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(17, lastNoticeOffset, 0);
+  builder.addFieldOffset(14, lastNoticeOffset, 0);
 }
 
 static addNoticeCount(builder:flatbuffers.Builder, noticeCount:bigint) {
-  builder.addFieldInt64(18, noticeCount, BigInt('0'));
+  builder.addFieldInt64(15, noticeCount, BigInt('0'));
 }
 
 static addNotices(builder:flatbuffers.Builder, noticesOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(19, noticesOffset, 0);
+  builder.addFieldOffset(16, noticesOffset, 0);
 }
 
 static createNoticesVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -293,15 +260,15 @@ static startNoticesVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addHasLastError(builder:flatbuffers.Builder, hasLastError:boolean) {
-  builder.addFieldInt8(20, +hasLastError, +false);
+  builder.addFieldInt8(17, +hasLastError, +false);
 }
 
 static addLastError(builder:flatbuffers.Builder, lastErrorOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(21, lastErrorOffset, 0);
+  builder.addFieldOffset(18, lastErrorOffset, 0);
 }
 
 static addWireSubs(builder:flatbuffers.Builder, wireSubsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(22, wireSubsOffset, 0);
+  builder.addFieldOffset(19, wireSubsOffset, 0);
 }
 
 static createWireSubsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -317,11 +284,11 @@ static startWireSubsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addInfo(builder:flatbuffers.Builder, infoOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(23, infoOffset, 0);
+  builder.addFieldOffset(20, infoOffset, 0);
 }
 
 static addDiscoveryKinds(builder:flatbuffers.Builder, discoveryKindsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(24, discoveryKindsOffset, 0);
+  builder.addFieldOffset(21, discoveryKindsOffset, 0);
 }
 
 static createDiscoveryKindsVector(builder:flatbuffers.Builder, data:bigint[]):flatbuffers.Offset {
@@ -337,7 +304,7 @@ static startDiscoveryKindsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addReasons(builder:flatbuffers.Builder, reasonsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(25, reasonsOffset, 0);
+  builder.addFieldOffset(22, reasonsOffset, 0);
 }
 
 static createReasonsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {

@@ -30,15 +30,14 @@ pub mod nmp {
             pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 6;
             pub const VT_FILTER_SUMMARY: ::flatbuffers::VOffsetT = 8;
             pub const VT_STATE: ::flatbuffers::VOffsetT = 10;
-            pub const VT_STATE_TONE: ::flatbuffers::VOffsetT = 12;
-            pub const VT_CONSUMER_COUNT: ::flatbuffers::VOffsetT = 14;
-            pub const VT_EVENTS_RX: ::flatbuffers::VOffsetT = 16;
-            pub const VT_EOSE_OBSERVED: ::flatbuffers::VOffsetT = 18;
-            pub const VT_OPENED_MS: ::flatbuffers::VOffsetT = 20;
-            pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 22;
-            pub const VT_EOSE_MS: ::flatbuffers::VOffsetT = 24;
-            pub const VT_HAS_CLOSE_REASON: ::flatbuffers::VOffsetT = 26;
-            pub const VT_CLOSE_REASON: ::flatbuffers::VOffsetT = 28;
+            pub const VT_CONSUMER_COUNT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_EVENTS_RX: ::flatbuffers::VOffsetT = 14;
+            pub const VT_EOSE_OBSERVED: ::flatbuffers::VOffsetT = 16;
+            pub const VT_OPENED_MS: ::flatbuffers::VOffsetT = 18;
+            pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 20;
+            pub const VT_EOSE_MS: ::flatbuffers::VOffsetT = 22;
+            pub const VT_HAS_CLOSE_REASON: ::flatbuffers::VOffsetT = 24;
+            pub const VT_CLOSE_REASON: ::flatbuffers::VOffsetT = 26;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -63,9 +62,6 @@ pub mod nmp {
                     builder.add_close_reason(x);
                 }
                 builder.add_consumer_count(args.consumer_count);
-                if let Some(x) = args.state_tone {
-                    builder.add_state_tone(x);
-                }
                 if let Some(x) = args.state {
                     builder.add_state(x);
                 }
@@ -127,18 +123,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         RelayDiagnosticsWireSub::VT_STATE,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn state_tone(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        RelayDiagnosticsWireSub::VT_STATE_TONE,
                         None,
                     )
                 }
@@ -261,11 +245,6 @@ pub mod nmp {
                         Self::VT_STATE,
                         false,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "state_tone",
-                        Self::VT_STATE_TONE,
-                        false,
-                    )?
                     .visit_field::<u32>("consumer_count", Self::VT_CONSUMER_COUNT, false)?
                     .visit_field::<u64>("events_rx", Self::VT_EVENTS_RX, false)?
                     .visit_field::<bool>("eose_observed", Self::VT_EOSE_OBSERVED, false)?
@@ -287,7 +266,6 @@ pub mod nmp {
             pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub filter_summary: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub state_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub consumer_count: u32,
             pub events_rx: u64,
             pub eose_observed: bool,
@@ -305,7 +283,6 @@ pub mod nmp {
                     relay_url: None,
                     filter_summary: None,
                     state: None,
-                    state_tone: None,
                     consumer_count: 0,
                     events_rx: 0,
                     eose_observed: false,
@@ -352,13 +329,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     RelayDiagnosticsWireSub::VT_STATE,
                     state,
-                );
-            }
-            #[inline]
-            pub fn add_state_tone(&mut self, state_tone: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelayDiagnosticsWireSub::VT_STATE_TONE,
-                    state_tone,
                 );
             }
             #[inline]
@@ -439,7 +409,6 @@ pub mod nmp {
                 ds.field("relay_url", &self.relay_url());
                 ds.field("filter_summary", &self.filter_summary());
                 ds.field("state", &self.state());
-                ds.field("state_tone", &self.state_tone());
                 ds.field("consumer_count", &self.consumer_count());
                 ds.field("events_rx", &self.events_rx());
                 ds.field("eose_observed", &self.eose_observed());
@@ -1275,12 +1244,11 @@ pub mod nmp {
 
         impl<'a> RelayConnectionReason<'a> {
             pub const VT_KIND: ::flatbuffers::VOffsetT = 4;
-            pub const VT_TONE: ::flatbuffers::VOffsetT = 6;
-            pub const VT_AUTHOR_PUBKEYS: ::flatbuffers::VOffsetT = 8;
-            pub const VT_AUTHOR_TOTAL: ::flatbuffers::VOffsetT = 10;
-            pub const VT_KINDS: ::flatbuffers::VOffsetT = 12;
-            pub const VT_HAS_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 14;
-            pub const VT_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 16;
+            pub const VT_AUTHOR_PUBKEYS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_AUTHOR_TOTAL: ::flatbuffers::VOffsetT = 8;
+            pub const VT_KINDS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_HAS_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 12;
+            pub const VT_SOURCE_EVENT_ID: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1307,9 +1275,6 @@ pub mod nmp {
                 if let Some(x) = args.author_pubkeys {
                     builder.add_author_pubkeys(x);
                 }
-                if let Some(x) = args.tone {
-                    builder.add_tone(x);
-                }
                 if let Some(x) = args.kind {
                     builder.add_kind(x);
                 }
@@ -1325,18 +1290,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         RelayConnectionReason::VT_KIND,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn tone(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        RelayConnectionReason::VT_TONE,
                         None,
                     )
                 }
@@ -1416,11 +1369,6 @@ pub mod nmp {
                         Self::VT_KIND,
                         false,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "tone",
-                        Self::VT_TONE,
-                        false,
-                    )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
                     >>("author_pubkeys", Self::VT_AUTHOR_PUBKEYS, false)?
@@ -1446,7 +1394,6 @@ pub mod nmp {
         }
         pub struct RelayConnectionReasonArgs<'a> {
             pub kind: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub tone: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub author_pubkeys: Option<
                 ::flatbuffers::WIPOffset<
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
@@ -1462,7 +1409,6 @@ pub mod nmp {
             fn default() -> Self {
                 RelayConnectionReasonArgs {
                     kind: None,
-                    tone: None,
                     author_pubkeys: None,
                     author_total: 0,
                     kinds: None,
@@ -1482,13 +1428,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     RelayConnectionReason::VT_KIND,
                     kind,
-                );
-            }
-            #[inline]
-            pub fn add_tone(&mut self, tone: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelayConnectionReason::VT_TONE,
-                    tone,
                 );
             }
             #[inline]
@@ -1557,7 +1496,6 @@ pub mod nmp {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
                 let mut ds = f.debug_struct("RelayConnectionReason");
                 ds.field("kind", &self.kind());
-                ds.field("tone", &self.tone());
                 ds.field("author_pubkeys", &self.author_pubkeys());
                 ds.field("author_total", &self.author_total());
                 ds.field("kinds", &self.kinds());
@@ -1586,30 +1524,27 @@ pub mod nmp {
         impl<'a> RelayDiagnosticsRow<'a> {
             pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 4;
             pub const VT_ROLE: ::flatbuffers::VOffsetT = 6;
-            pub const VT_ROLE_TONE: ::flatbuffers::VOffsetT = 8;
-            pub const VT_CONNECTION: ::flatbuffers::VOffsetT = 10;
-            pub const VT_CONNECTION_TONE: ::flatbuffers::VOffsetT = 12;
-            pub const VT_AUTH: ::flatbuffers::VOffsetT = 14;
-            pub const VT_AUTH_TONE: ::flatbuffers::VOffsetT = 16;
-            pub const VT_TOTAL_SUB_COUNT: ::flatbuffers::VOffsetT = 18;
-            pub const VT_ACTIVE_SUB_COUNT: ::flatbuffers::VOffsetT = 20;
-            pub const VT_EOSED_SUB_COUNT: ::flatbuffers::VOffsetT = 22;
-            pub const VT_TOTAL_EVENTS_RX: ::flatbuffers::VOffsetT = 24;
-            pub const VT_RECONNECT_COUNT: ::flatbuffers::VOffsetT = 26;
-            pub const VT_BYTES_RX: ::flatbuffers::VOffsetT = 28;
-            pub const VT_BYTES_TX: ::flatbuffers::VOffsetT = 30;
-            pub const VT_LAST_CONNECTED_MS: ::flatbuffers::VOffsetT = 32;
-            pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 34;
-            pub const VT_HAS_LAST_NOTICE: ::flatbuffers::VOffsetT = 36;
-            pub const VT_LAST_NOTICE: ::flatbuffers::VOffsetT = 38;
-            pub const VT_NOTICE_COUNT: ::flatbuffers::VOffsetT = 40;
-            pub const VT_NOTICES: ::flatbuffers::VOffsetT = 42;
-            pub const VT_HAS_LAST_ERROR: ::flatbuffers::VOffsetT = 44;
-            pub const VT_LAST_ERROR: ::flatbuffers::VOffsetT = 46;
-            pub const VT_WIRE_SUBS: ::flatbuffers::VOffsetT = 48;
-            pub const VT_INFO: ::flatbuffers::VOffsetT = 50;
-            pub const VT_DISCOVERY_KINDS: ::flatbuffers::VOffsetT = 52;
-            pub const VT_REASONS: ::flatbuffers::VOffsetT = 54;
+            pub const VT_CONNECTION: ::flatbuffers::VOffsetT = 8;
+            pub const VT_AUTH: ::flatbuffers::VOffsetT = 10;
+            pub const VT_TOTAL_SUB_COUNT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_ACTIVE_SUB_COUNT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_EOSED_SUB_COUNT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_TOTAL_EVENTS_RX: ::flatbuffers::VOffsetT = 18;
+            pub const VT_RECONNECT_COUNT: ::flatbuffers::VOffsetT = 20;
+            pub const VT_BYTES_RX: ::flatbuffers::VOffsetT = 22;
+            pub const VT_BYTES_TX: ::flatbuffers::VOffsetT = 24;
+            pub const VT_LAST_CONNECTED_MS: ::flatbuffers::VOffsetT = 26;
+            pub const VT_LAST_EVENT_MS: ::flatbuffers::VOffsetT = 28;
+            pub const VT_HAS_LAST_NOTICE: ::flatbuffers::VOffsetT = 30;
+            pub const VT_LAST_NOTICE: ::flatbuffers::VOffsetT = 32;
+            pub const VT_NOTICE_COUNT: ::flatbuffers::VOffsetT = 34;
+            pub const VT_NOTICES: ::flatbuffers::VOffsetT = 36;
+            pub const VT_HAS_LAST_ERROR: ::flatbuffers::VOffsetT = 38;
+            pub const VT_LAST_ERROR: ::flatbuffers::VOffsetT = 40;
+            pub const VT_WIRE_SUBS: ::flatbuffers::VOffsetT = 42;
+            pub const VT_INFO: ::flatbuffers::VOffsetT = 44;
+            pub const VT_DISCOVERY_KINDS: ::flatbuffers::VOffsetT = 46;
+            pub const VT_REASONS: ::flatbuffers::VOffsetT = 48;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -1657,20 +1592,11 @@ pub mod nmp {
                 builder.add_eosed_sub_count(args.eosed_sub_count);
                 builder.add_active_sub_count(args.active_sub_count);
                 builder.add_total_sub_count(args.total_sub_count);
-                if let Some(x) = args.auth_tone {
-                    builder.add_auth_tone(x);
-                }
                 if let Some(x) = args.auth {
                     builder.add_auth(x);
                 }
-                if let Some(x) = args.connection_tone {
-                    builder.add_connection_tone(x);
-                }
                 if let Some(x) = args.connection {
                     builder.add_connection(x);
-                }
-                if let Some(x) = args.role_tone {
-                    builder.add_role_tone(x);
                 }
                 if let Some(x) = args.role {
                     builder.add_role(x);
@@ -1708,18 +1634,6 @@ pub mod nmp {
                 }
             }
             #[inline]
-            pub fn role_tone(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        RelayDiagnosticsRow::VT_ROLE_TONE,
-                        None,
-                    )
-                }
-            }
-            #[inline]
             pub fn connection(&self) -> Option<&'a str> {
                 // Safety:
                 // Created from valid Table for this object
@@ -1732,18 +1646,6 @@ pub mod nmp {
                 }
             }
             #[inline]
-            pub fn connection_tone(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        RelayDiagnosticsRow::VT_CONNECTION_TONE,
-                        None,
-                    )
-                }
-            }
-            #[inline]
             pub fn auth(&self) -> Option<&'a str> {
                 // Safety:
                 // Created from valid Table for this object
@@ -1751,18 +1653,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         RelayDiagnosticsRow::VT_AUTH,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn auth_tone(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        RelayDiagnosticsRow::VT_AUTH_TONE,
                         None,
                     )
                 }
@@ -2032,28 +1922,13 @@ pub mod nmp {
                         false,
                     )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "role_tone",
-                        Self::VT_ROLE_TONE,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "connection",
                         Self::VT_CONNECTION,
                         false,
                     )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "connection_tone",
-                        Self::VT_CONNECTION_TONE,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "auth",
                         Self::VT_AUTH,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "auth_tone",
-                        Self::VT_AUTH_TONE,
                         false,
                     )?
                     .visit_field::<u32>("total_sub_count", Self::VT_TOTAL_SUB_COUNT, false)?
@@ -2113,11 +1988,8 @@ pub mod nmp {
         pub struct RelayDiagnosticsRowArgs<'a> {
             pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub role: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub role_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub connection: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub connection_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub auth: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub auth_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub total_sub_count: u32,
             pub active_sub_count: u32,
             pub eosed_sub_count: u32,
@@ -2165,11 +2037,8 @@ pub mod nmp {
                 RelayDiagnosticsRowArgs {
                     relay_url: None,
                     role: None,
-                    role_tone: None,
                     connection: None,
-                    connection_tone: None,
                     auth: None,
-                    auth_tone: None,
                     total_sub_count: 0,
                     active_sub_count: 0,
                     eosed_sub_count: 0,
@@ -2213,13 +2082,6 @@ pub mod nmp {
                 );
             }
             #[inline]
-            pub fn add_role_tone(&mut self, role_tone: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelayDiagnosticsRow::VT_ROLE_TONE,
-                    role_tone,
-                );
-            }
-            #[inline]
             pub fn add_connection(&mut self, connection: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     RelayDiagnosticsRow::VT_CONNECTION,
@@ -2227,27 +2089,10 @@ pub mod nmp {
                 );
             }
             #[inline]
-            pub fn add_connection_tone(
-                &mut self,
-                connection_tone: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelayDiagnosticsRow::VT_CONNECTION_TONE,
-                    connection_tone,
-                );
-            }
-            #[inline]
             pub fn add_auth(&mut self, auth: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     RelayDiagnosticsRow::VT_AUTH,
                     auth,
-                );
-            }
-            #[inline]
-            pub fn add_auth_tone(&mut self, auth_tone: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelayDiagnosticsRow::VT_AUTH_TONE,
-                    auth_tone,
                 );
             }
             #[inline]
@@ -2433,11 +2278,8 @@ pub mod nmp {
                 let mut ds = f.debug_struct("RelayDiagnosticsRow");
                 ds.field("relay_url", &self.relay_url());
                 ds.field("role", &self.role());
-                ds.field("role_tone", &self.role_tone());
                 ds.field("connection", &self.connection());
-                ds.field("connection_tone", &self.connection_tone());
                 ds.field("auth", &self.auth());
-                ds.field("auth_tone", &self.auth_tone());
                 ds.field("total_sub_count", &self.total_sub_count());
                 ds.field("active_sub_count", &self.active_sub_count());
                 ds.field("eosed_sub_count", &self.eosed_sub_count());
@@ -2480,10 +2322,9 @@ pub mod nmp {
         impl<'a> RelayDiagnosticsInterest<'a> {
             pub const VT_KEY: ::flatbuffers::VOffsetT = 4;
             pub const VT_STATE: ::flatbuffers::VOffsetT = 6;
-            pub const VT_STATE_TONE: ::flatbuffers::VOffsetT = 8;
-            pub const VT_REFCOUNT: ::flatbuffers::VOffsetT = 10;
-            pub const VT_CACHE_COVERAGE: ::flatbuffers::VOffsetT = 12;
-            pub const VT_RELAY_URLS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_REFCOUNT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CACHE_COVERAGE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_RELAY_URLS: ::flatbuffers::VOffsetT = 12;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -2507,9 +2348,6 @@ pub mod nmp {
                     builder.add_cache_coverage(x);
                 }
                 builder.add_refcount(args.refcount);
-                if let Some(x) = args.state_tone {
-                    builder.add_state_tone(x);
-                }
                 if let Some(x) = args.state {
                     builder.add_state(x);
                 }
@@ -2539,18 +2377,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         RelayDiagnosticsInterest::VT_STATE,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn state_tone(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        RelayDiagnosticsInterest::VT_STATE_TONE,
                         None,
                     )
                 }
@@ -2611,11 +2437,6 @@ pub mod nmp {
                         Self::VT_STATE,
                         false,
                     )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "state_tone",
-                        Self::VT_STATE_TONE,
-                        false,
-                    )?
                     .visit_field::<u32>("refcount", Self::VT_REFCOUNT, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "cache_coverage",
@@ -2632,7 +2453,6 @@ pub mod nmp {
         pub struct RelayDiagnosticsInterestArgs<'a> {
             pub key: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub state_tone: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub refcount: u32,
             pub cache_coverage: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub relay_urls: Option<
@@ -2647,7 +2467,6 @@ pub mod nmp {
                 RelayDiagnosticsInterestArgs {
                     key: None,
                     state: None,
-                    state_tone: None,
                     refcount: 0,
                     cache_coverage: None,
                     relay_urls: None,
@@ -2672,13 +2491,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     RelayDiagnosticsInterest::VT_STATE,
                     state,
-                );
-            }
-            #[inline]
-            pub fn add_state_tone(&mut self, state_tone: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    RelayDiagnosticsInterest::VT_STATE_TONE,
-                    state_tone,
                 );
             }
             #[inline]
@@ -2730,7 +2542,6 @@ pub mod nmp {
                 let mut ds = f.debug_struct("RelayDiagnosticsInterest");
                 ds.field("key", &self.key());
                 ds.field("state", &self.state());
-                ds.field("state_tone", &self.state_tone());
                 ds.field("refcount", &self.refcount());
                 ds.field("cache_coverage", &self.cache_coverage());
                 ds.field("relay_urls", &self.relay_urls());

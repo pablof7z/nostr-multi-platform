@@ -96,12 +96,27 @@ fn relay_diagnostics_emits_typed_sidecar_alongside_json() {
             json_i.get("state").and_then(serde_json::Value::as_str),
             "interest.state must agree field-for-field"
         );
-        assert_eq!(
-            Some(decoded_i.state_tone.as_str()),
-            json_i.get("state_tone").and_then(serde_json::Value::as_str),
-            "interest.state_tone must agree field-for-field"
+        // #1768 — core emits NO semantic tone any more; neither form carries a
+        // `state_tone` field (shells derive their own hue from `state`).
+        assert!(
+            json_i.get("state_tone").is_none(),
+            "interest.state_tone must be absent from the JSON projection (#1768)"
         );
     }
+    // #1768/#1802 — NO semantic tone survives anywhere in the relay_diagnostics
+    // projection. The schema + producer struct + drift gates structurally forbid
+    // the fields; this serialized-tree backstop catches any producer regression
+    // that re-introduces a hue on a relay row (role_tone/connection_tone/
+    // auth_tone), a wire-sub/interest (state_tone), or a reason (tone).
+    let rd_json = serde_json::to_string(json_rd).expect("serialize relay_diagnostics JSON");
+    assert!(
+        !rd_json.contains("_tone"),
+        "no *_tone hue field may appear in relay_diagnostics JSON (#1802): {rd_json}"
+    );
+    assert!(
+        !rd_json.contains("\"tone\""),
+        "no reason `tone` field may appear in relay_diagnostics JSON (#1802): {rd_json}"
+    );
 }
 
 /// The drain-on-emit four (`action_results` / `signed_events` / `action_stages` /

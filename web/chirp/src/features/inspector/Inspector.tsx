@@ -9,6 +9,7 @@ import { PanelSubs } from "./PanelSubs";
 import { PanelSync } from "./PanelSync";
 import { PanelRouting } from "./PanelRouting";
 import { PanelSigner } from "./PanelSigner";
+import { connectionTone as deriveConnectionTone } from "../../nmp/relayDiagnosticsTone";
 
 type InspectorTab = "overview" | "relays" | "subs" | "sync" | "routing" | "signer" | "frames";
 
@@ -44,7 +45,7 @@ export function NmpInspector(props: {
   const relays = () => props.snapshot.latestRelayStatuses ?? [];
   // rev is decoded cheaply on every frame (latestRev) for the collapsed strip.
   const rev = () => props.snapshot.latestRev?.toString() ?? "—";
-  // Full snapshot (logicalInterests, wireSubscriptions, metrics, KRDG tones)
+  // Full snapshot (logicalInterests, wireSubscriptions, metrics; tone derived shell-side from raw tokens)
   // is decoded lazily only when the dock is open, so it never runs on the hot
   // subscribe path while the user is reading the feed.
   const decodedSnapshot = createMemo((): DecodedSnapshot | undefined => {
@@ -104,7 +105,7 @@ export function NmpInspector(props: {
             <For each={relays().slice(0, 5)}>
               {(relay) => (
                 <span
-                  class={`ins-dot ins-dot-${relay.connectionTone ?? "muted"}`}
+                  class={`ins-dot ins-dot-${deriveConnectionTone(relay.status)}`}
                   title={`${relay.url} — ${relay.status}`}
                 />
               )}

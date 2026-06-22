@@ -22,7 +22,8 @@ import org.junit.Test
  * authLabel, totalEventsDisplay, bytesRxDisplay, etc.) in the shell.
  *
  * Coverage:
- *  - a KRDG buffer with one relay row decodes raw connection/connectionTone;
+ *  - a KRDG buffer with one relay row decodes raw connection; tone is derived
+ *    shell-side from the raw token (#1768, no tone on the wire);
  *  - computed connectionLabel derives from raw connection string;
  *  - nested wireSubs + interests (with relayUrls string vector) decode;
  *  - discoveryKinds decodes as List<Long>;
@@ -51,7 +52,9 @@ class TypedRelayDiagnosticsDecoderTest {
         assertEquals("wss://relay.example.com", row.relayUrl)
         // Raw wire fields
         assertEquals("connected", row.connection)
-        assertEquals("active", row.connectionTone)
+        // #1768 — tone is now derived shell-side from the raw `connection`
+        // token ("connected" → "ok"), not carried on the wire.
+        assertEquals("ok", row.connectionTone)
         assertEquals("content", row.role)
         assertEquals(3, row.totalSubCount)
         assertEquals(2L, row.totalEventsRx)
@@ -63,10 +66,10 @@ class TypedRelayDiagnosticsDecoderTest {
 
     @Test
     fun connectionToneIsGreenMapped() {
-        // The "active" tone is what RelayScreen maps to green. The contract
-        // is that the decoder surfaces the raw tone so the UI binds it.
+        // #1768 — the shell derives the tone from the raw `connection` token:
+        // "connected" → "ok", which RelayScreen.toneColor maps to green.
         val out = requireNotNull(TypedRelayDiagnosticsDecoder.decode(diagnosticsBuffer()))
-        assertEquals("active", out.relays[0].connectionTone)
+        assertEquals("ok", out.relays[0].connectionTone)
     }
 
     @Test
@@ -77,7 +80,8 @@ class TypedRelayDiagnosticsDecoderTest {
         assertEquals("sub-1", subs[0].wireId)
         // Raw wire fields
         assertEquals("open", subs[0].state)
-        assertEquals("active", subs[0].stateTone)
+        // #1768 — tone derived shell-side from raw `state` ("open" → "ok").
+        assertEquals("ok", subs[0].stateTone)
         assertEquals(2, subs[0].consumerCount)
         assertEquals(0L, subs[0].eventsRx)
         assertTrue(subs[0].eoseObserved)
@@ -173,13 +177,11 @@ class TypedRelayDiagnosticsDecoderTest {
         val subRelay = b.createString("wss://relay.example.com")
         val subFilter = b.createString("kinds=[1]")
         val subState = b.createString("open")
-        val subStateTone = b.createString("active")
         RelayDiagnosticsWireSub.startRelayDiagnosticsWireSub(b)
         RelayDiagnosticsWireSub.addWireId(b, subWireId)
         RelayDiagnosticsWireSub.addRelayUrl(b, subRelay)
         RelayDiagnosticsWireSub.addFilterSummary(b, subFilter)
         RelayDiagnosticsWireSub.addState(b, subState)
-        RelayDiagnosticsWireSub.addStateTone(b, subStateTone)
         RelayDiagnosticsWireSub.addConsumerCount(b, 2u)
         RelayDiagnosticsWireSub.addEventsRx(b, 0UL)
         RelayDiagnosticsWireSub.addEoseObserved(b, true)
@@ -191,19 +193,13 @@ class TypedRelayDiagnosticsDecoderTest {
         // relay row — raw fields (no shortUrl, roleLabel, connectionLabel, etc.)
         val relayUrl = b.createString("wss://relay.example.com")
         val role = b.createString("content")
-        val roleTone = b.createString("active")
         val conn = b.createString("connected")
-        val connTone = b.createString("active")
         val auth = b.createString("ok")
-        val authTone = b.createString("active")
         RelayDiagnosticsRow.startRelayDiagnosticsRow(b)
         RelayDiagnosticsRow.addRelayUrl(b, relayUrl)
         RelayDiagnosticsRow.addRole(b, role)
-        RelayDiagnosticsRow.addRoleTone(b, roleTone)
         RelayDiagnosticsRow.addConnection(b, conn)
-        RelayDiagnosticsRow.addConnectionTone(b, connTone)
         RelayDiagnosticsRow.addAuth(b, auth)
-        RelayDiagnosticsRow.addAuthTone(b, authTone)
         RelayDiagnosticsRow.addTotalSubCount(b, 3u)
         RelayDiagnosticsRow.addActiveSubCount(b, 1u)
         RelayDiagnosticsRow.addEosedSubCount(b, 2u)
@@ -216,7 +212,6 @@ class TypedRelayDiagnosticsDecoderTest {
         // interest with relayUrls string vector
         val iKey = b.createString("home-feed")
         val iState = b.createString("ready")
-        val iStateTone = b.createString("active")
         val iCoverage = b.createString("full")
         val url0 = b.createString("wss://a.relay")
         val url1 = b.createString("wss://b.relay")
@@ -224,7 +219,6 @@ class TypedRelayDiagnosticsDecoderTest {
         RelayDiagnosticsInterest.startRelayDiagnosticsInterest(b)
         RelayDiagnosticsInterest.addKey(b, iKey)
         RelayDiagnosticsInterest.addState(b, iState)
-        RelayDiagnosticsInterest.addStateTone(b, iStateTone)
         RelayDiagnosticsInterest.addRefcount(b, 2u)
         RelayDiagnosticsInterest.addCacheCoverage(b, iCoverage)
         RelayDiagnosticsInterest.addRelayUrls(b, urlsVec)
@@ -241,19 +235,13 @@ class TypedRelayDiagnosticsDecoderTest {
         val b = FlatBufferBuilder(512)
         val relayUrl = b.createString("wss://relay.example.com")
         val role = b.createString("content")
-        val roleTone = b.createString("accent")
         val conn = b.createString("connected")
-        val connTone = b.createString("ok")
         val auth = b.createString("ok")
-        val authTone = b.createString("ok")
         RelayDiagnosticsRow.startRelayDiagnosticsRow(b)
         RelayDiagnosticsRow.addRelayUrl(b, relayUrl)
         RelayDiagnosticsRow.addRole(b, role)
-        RelayDiagnosticsRow.addRoleTone(b, roleTone)
         RelayDiagnosticsRow.addConnection(b, conn)
-        RelayDiagnosticsRow.addConnectionTone(b, connTone)
         RelayDiagnosticsRow.addAuth(b, auth)
-        RelayDiagnosticsRow.addAuthTone(b, authTone)
         RelayDiagnosticsRow.addBytesRx(b, 4096UL)
         RelayDiagnosticsRow.addBytesTx(b, 0UL)
         val row = RelayDiagnosticsRow.endRelayDiagnosticsRow(b)
@@ -270,19 +258,13 @@ class TypedRelayDiagnosticsDecoderTest {
         val kindsVec = RelayDiagnosticsRow.createDiscoveryKindsVector(b, ulongArrayOf(0uL, 3uL, 10002uL))
         val relayUrl = b.createString("wss://relay.example.com")
         val role = b.createString("indexer")
-        val roleTone = b.createString("accent")
         val conn = b.createString("connected")
-        val connTone = b.createString("ok")
         val auth = b.createString("ok")
-        val authTone = b.createString("ok")
         RelayDiagnosticsRow.startRelayDiagnosticsRow(b)
         RelayDiagnosticsRow.addRelayUrl(b, relayUrl)
         RelayDiagnosticsRow.addRole(b, role)
-        RelayDiagnosticsRow.addRoleTone(b, roleTone)
         RelayDiagnosticsRow.addConnection(b, conn)
-        RelayDiagnosticsRow.addConnectionTone(b, connTone)
         RelayDiagnosticsRow.addAuth(b, auth)
-        RelayDiagnosticsRow.addAuthTone(b, authTone)
         RelayDiagnosticsRow.addDiscoveryKinds(b, kindsVec)
         val row = RelayDiagnosticsRow.endRelayDiagnosticsRow(b)
         val relaysVec = RelayDiagnosticsSnapshot.createRelaysVector(b, intArrayOf(row))
@@ -351,19 +333,13 @@ class TypedRelayDiagnosticsDecoderTest {
         // relay row carrying the info table — raw fields
         val relayUrl = b.createString("wss://relay.example.com")
         val role = b.createString("both")
-        val roleTone = b.createString("active")
         val conn = b.createString("connected")
-        val connTone = b.createString("active")
         val auth = b.createString("ok")
-        val authTone = b.createString("active")
         RelayDiagnosticsRow.startRelayDiagnosticsRow(b)
         RelayDiagnosticsRow.addRelayUrl(b, relayUrl)
         RelayDiagnosticsRow.addRole(b, role)
-        RelayDiagnosticsRow.addRoleTone(b, roleTone)
         RelayDiagnosticsRow.addConnection(b, conn)
-        RelayDiagnosticsRow.addConnectionTone(b, connTone)
         RelayDiagnosticsRow.addAuth(b, auth)
-        RelayDiagnosticsRow.addAuthTone(b, authTone)
         RelayDiagnosticsRow.addInfo(b, info)
         val row = RelayDiagnosticsRow.endRelayDiagnosticsRow(b)
         val relaysVec = RelayDiagnosticsSnapshot.createRelaysVector(b, intArrayOf(row))

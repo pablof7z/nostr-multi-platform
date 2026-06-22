@@ -4,7 +4,6 @@ import { DegradedRuntime } from "@nmp/runtime-web";
 import { decodeHomeFeed, findRefsProfileSidecar, type FeedItem } from "./feedProjection";
 import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
-import { decodeKrdgTones } from "./relayDiagnosticsProjection";
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
 import {
   eventCorrelationId,
@@ -83,9 +82,8 @@ export type RuntimeSnapshot = {
   /** Per-relay status rows decoded from the Tier-3 relay_statuses field of the
    *  most recent SnapshotFrame. Populated after the first successful decode;
    *  undefined before any snapshot arrives. Empty array means the kernel
-   *  has no relays configured yet.
-   *  connectionTone / authTone / roleTone are merged in from the KRDG
-   *  typed projection on every frame (cheap — relay count is small). */
+   *  has no relays configured yet. Carries raw protocol tokens only; the
+   *  inspector panels derive their own hue from them (#1768). */
   latestRelayStatuses?: DecodedRelayStatus[];
   /** Decoded home feed items from the nmp.feed.home typed projection.
    *  Populated after the first snapshot that contains the projection; undefined
@@ -197,8 +195,8 @@ abstract class BaseClient implements NmpClient {
         // metrics loops in decodeUpdateFrameBytes. Those arrays are only needed
         // by the Inspector panels when the dock is open; they are decoded lazily
         // there via decodeInspectorSnapshot(). The feed-critical path (relay
-        // statuses, rev, feed items, resolved profiles, KRDG relay tones) is
-        // kept lean so profile-resolution frames are processed without delay.
+        // statuses, rev, feed items, resolved profiles) is kept lean so
+        // profile-resolution frames are processed without delay.
         const decoded = decodeUpdateFrameBytes(bytes, { lite: true });
         if (decoded.type === "snapshot") {
           // Envelope schema version mismatch: the kernel's wire layout moved
@@ -219,8 +217,8 @@ abstract class BaseClient implements NmpClient {
               this.status = "running";
             }
             // Second pass over the same bytes to access typed projections
-            // (feed items, resolved profiles, KRDG relay tones). These are
-            // all feed-critical and must run on every frame.
+            // (feed items, resolved profiles). These are all feed-critical and
+            // must run on every frame.
             // Keep-last-good: only overwrite on a non-undefined result.
             try {
               const bb = new flatbuffers.ByteBuffer(bytes);
@@ -254,26 +252,9 @@ abstract class BaseClient implements NmpClient {
                         this.latestProfileCards = next;
                       }
                     }
-                    // Decode relay_diagnostics (KRDG) typed projection.
-                    // skipDetails=true: only relay-level tones are decoded
-                    // (connectionTone / authTone / roleTone). The per-relay
-                    // wireSubTones and interestTones maps are expensive to
-                    // build on every frame and are only needed by the
-                    // Inspector's expanded panels — they are decoded lazily
-                    // in decodeInspectorSnapshot() when the dock opens.
-                    const krdgTones = decodeKrdgTones(snap, { skipDetails: true });
-                    if (krdgTones !== undefined && this.latestRelayStatuses) {
-                      this.latestRelayStatuses = this.latestRelayStatuses.map((r) => {
-                        const t = krdgTones.relayTones.get(r.url);
-                        if (!t) return r;
-                        return {
-                          ...r,
-                          connectionTone: t.connectionTone,
-                          authTone: t.authTone,
-                          roleTone: t.roleTone,
-                        };
-                      });
-                    }
+                    // #1768 — relay-status hue is derived shell-side from the
+                    // raw `status` / `auth` / `role` tokens in the inspector
+                    // panels (see `relayDiagnosticsTone`); no KRDG tone decode.
                   }
                 }
               }

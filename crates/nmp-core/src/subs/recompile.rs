@@ -252,7 +252,8 @@ impl SubscriptionLifecycle {
         // wire-authoritative plan. Blocked relays must not receive REQs (the
         // user's kind:10006 list is a signal-to-noise / privacy boundary).
         // The diagnostic snapshot above already captured attribution for these
-        // relays, so `connection_tone("blocked")` can still surface them.
+        // relays, so the shell can still surface them (it derives a hue from the
+        // raw `"blocked"` connection token).
         if let Some(blocked) = blocked {
             if !blocked.is_empty() {
                 plan.per_relay.retain(|url, _| !blocked.contains(url));

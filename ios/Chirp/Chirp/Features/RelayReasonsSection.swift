@@ -3,10 +3,11 @@ import SwiftUI
 // Routing-provenance reasons for a relay, plus the Block / Unblock affordance.
 //
 // Extracted from `RelayDetailView` (Phase 5 — relay attribution). THIN SHELL —
-// the Rust projection supplies machine tokens (`kind`, `tone`, raw `authorTotal`,
+// the Rust projection supplies machine tokens (`kind`, raw `authorTotal`,
 // raw `kinds`); this view derives `displayLabel` and `kindsDisplayLabel` from
-// them (aim.md §4.5). It maps tones to colours and renders chip lists; it never
-// switches on protocol semantics.
+// them (aim.md §4.5). It derives its own hue from the raw `kind` via
+// `DiagnosticsTone.reason` and renders chip lists; it never switches on
+// protocol semantics for business logic.
 //
 // Author pubkeys arrive as hex strings (raw data, ADR-0032). `shortHex`
 // abbreviates them for display; the full hex is offered as the copy value
@@ -73,10 +74,10 @@ struct RelayReasonsSection: View {
 
 /// One routing-provenance card inside the reasons section.
 ///
-/// Renders the shell-computed `displayLabel` (tinted by `tone`), an optional
-/// `kindsDisplayLabel`, capped author pubkey chips with an overflow count, and
-/// an optional hint-origin event id. NO protocol logic — tone/kind mapping is
-/// done in `RelayConnectionReason.displayLabel`; this view is purely layout.
+/// Renders the shell-computed `displayLabel` (tinted by the shell-derived hue
+/// from `kind`), an optional `kindsDisplayLabel`, capped author pubkey chips
+/// with an overflow count, and an optional hint-origin event id. NO protocol
+/// logic — label/hue mapping is shell-side; this view is purely layout.
 private struct ReasonCard: View {
     let reason: RelayConnectionReason
 
@@ -84,7 +85,7 @@ private struct ReasonCard: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(reason.displayLabel)
                 .font(.callout.weight(.semibold))
-                .foregroundStyle(DiagnosticsColor.color(forTone: reason.tone))
+                .foregroundStyle(DiagnosticsColor.color(forTone: DiagnosticsTone.reason(reason.kind)))
 
             if !reason.kindsDisplayLabel.isEmpty {
                 Text(reason.kindsDisplayLabel)

@@ -82,7 +82,7 @@ DiscoveredGroup must emit raw fields (name/group_id/public/open/member_count) an
 
 Nip10ReplyAttribution and AuthorDisplay must remove redundant flat mirrors (author_display_name, author_picture_url) and the npub bech32-encoding from Rust projections; shells use the nested authorDisplay and nmp_app_encode_profile path.
 
-The relay_diagnostics *_tone selectors emit raw semantic tokens (not colors/prose) and remain in Rust; only the prose/label/formatting functions (short_url/short_id/role_label/format_bytes/compact_count) are moved to shells.
+The relay_diagnostics projection emits only raw tokens (role/connection/auth/state and reason kind); its `*_tone` hue selectors were removed (#1802, along with the prose/label/formatting functions short_url/short_id/role_label/format_bytes/compact_count) — shells derive their own color from the raw tokens.
 
 P4 Finding 4 (ExternalSignerCapabilityBridge transport selection and concurrent-Intent rejection) is not a violation; transport selection is mechanical from Rust-set fields and concurrent-Intent rejection is an OS capacity constraint.
 

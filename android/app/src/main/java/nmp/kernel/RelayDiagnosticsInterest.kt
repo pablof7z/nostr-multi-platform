@@ -50,35 +50,24 @@ class RelayDiagnosticsInterest : Table() {
         }
     val stateAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(6, 1)
     fun stateInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 6, 1)
-    val stateTone : String?
-        get() {
-            val o = __offset(8)
-            return if (o != 0) {
-                __string(o + bb_pos)
-            } else {
-                null
-            }
-        }
-    val stateToneAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(8, 1)
-    fun stateToneInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 8, 1)
     val refcount : UInt
         get() {
-            val o = __offset(10)
+            val o = __offset(8)
             return if(o != 0) bb.getInt(o + bb_pos).toUInt() else 0u
         }
     val cacheCoverage : String?
         get() {
-            val o = __offset(12)
+            val o = __offset(10)
             return if (o != 0) {
                 __string(o + bb_pos)
             } else {
                 null
             }
         }
-    val cacheCoverageAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(12, 1)
-    fun cacheCoverageInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 12, 1)
+    val cacheCoverageAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
+    fun cacheCoverageInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
     fun relayUrls(j: Int) : String? {
-        val o = __offset(14)
+        val o = __offset(12)
         return if (o != 0) {
             __string(__vector(o) + j * 4)
         } else {
@@ -87,7 +76,7 @@ class RelayDiagnosticsInterest : Table() {
     }
     val relayUrlsLength : Int
         get() {
-            val o = __offset(14); return if (o != 0) __vector_len(o) else 0
+            val o = __offset(12); return if (o != 0) __vector_len(o) else 0
         }
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
@@ -96,23 +85,21 @@ class RelayDiagnosticsInterest : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createRelayDiagnosticsInterest(builder: FlatBufferBuilder, keyOffset: Int, stateOffset: Int, stateToneOffset: Int, refcount: UInt, cacheCoverageOffset: Int, relayUrlsOffset: Int) : Int {
-            builder.startTable(6)
+        fun createRelayDiagnosticsInterest(builder: FlatBufferBuilder, keyOffset: Int, stateOffset: Int, refcount: UInt, cacheCoverageOffset: Int, relayUrlsOffset: Int) : Int {
+            builder.startTable(5)
             addRelayUrls(builder, relayUrlsOffset)
             addCacheCoverage(builder, cacheCoverageOffset)
             addRefcount(builder, refcount)
-            addStateTone(builder, stateToneOffset)
             addState(builder, stateOffset)
             addKey(builder, keyOffset)
             return endRelayDiagnosticsInterest(builder)
         }
-        fun startRelayDiagnosticsInterest(builder: FlatBufferBuilder) = builder.startTable(6)
+        fun startRelayDiagnosticsInterest(builder: FlatBufferBuilder) = builder.startTable(5)
         fun addKey(builder: FlatBufferBuilder, key: Int) = builder.addOffset(0, key, 0)
         fun addState(builder: FlatBufferBuilder, state: Int) = builder.addOffset(1, state, 0)
-        fun addStateTone(builder: FlatBufferBuilder, stateTone: Int) = builder.addOffset(2, stateTone, 0)
-        fun addRefcount(builder: FlatBufferBuilder, refcount: UInt) = builder.addInt(3, refcount.toInt(), 0)
-        fun addCacheCoverage(builder: FlatBufferBuilder, cacheCoverage: Int) = builder.addOffset(4, cacheCoverage, 0)
-        fun addRelayUrls(builder: FlatBufferBuilder, relayUrls: Int) = builder.addOffset(5, relayUrls, 0)
+        fun addRefcount(builder: FlatBufferBuilder, refcount: UInt) = builder.addInt(2, refcount.toInt(), 0)
+        fun addCacheCoverage(builder: FlatBufferBuilder, cacheCoverage: Int) = builder.addOffset(3, cacheCoverage, 0)
+        fun addRelayUrls(builder: FlatBufferBuilder, relayUrls: Int) = builder.addOffset(4, relayUrls, 0)
         fun createRelayUrlsVector(builder: FlatBufferBuilder, data: IntArray) : Int {
             builder.startVector(4, data.size, 4)
             for (i in data.size - 1 downTo 0) {
