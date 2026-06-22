@@ -220,6 +220,68 @@ fn pre_cached_tag_notes_are_not_pull_backfilled_known_limitation() {
     nmp_app_free(app);
 }
 
+/// **Session-engine structural pairing (#1740 — the open_feed author-migration
+/// unblocker)**: a Tag-scope feed opened through `open_feed` →
+/// `compile_feed_params` → `build_scope_session` MUST register its feed-author
+/// auto-resolve provider STRUCTURALLY PAIRED with its typed sidecar (ADR-0063 D7,
+/// #1671 Lane H) — exactly like the FlatFeed author/thread path. Before this fix
+/// `build_scope_session` installed ONLY the typed sidecar (bare
+/// `register_typed_snapshot_projection`, NO provider), so EVERY session-engine
+/// scope (Authors/Tag/List/Wot) would render with blank avatars. Migrating a Chirp
+/// feed onto the session engine would have REGRESSED avatars.
+///
+/// This test is LOAD-BEARING: it asserts the provider is present while the session
+/// feed is open, surfaces the visible card author for auto-resolve, and is RELEASED
+/// on close (no leak). If `build_scope_session` reverted to the bare typed-only
+/// registration, the provider-key assertion would fail.
+#[test]
+fn session_engine_tag_feed_registers_author_provider_structurally_and_releases_on_close() {
+    let (app, rx, _tx_box) = start_app();
+    let keys = Keys::generate();
+    let author = keys.public_key().to_hex();
+    let app_ref: &NmpApp = unsafe { &*app };
+    // The session engine anchors on the active viewer; sign one in so the Tag
+    // session opens (no active account fails closed).
+    *app_ref.active_account_handle().lock().expect("active slot") = Some(author.clone());
+
+    let tag = "structural-provider-probe";
+    let key = format!("nmp.feed.tag.{tag}");
+    let tag_c = CString::new(tag).unwrap();
+    nmp_app_chirp_open_tag_feed(app, tag_c.as_ptr());
+
+    // A `#t`-tagged note so the session's visible window carries a real author.
+    let note = tagged_note(&keys, "tagged for provider", &[tag], 1_000);
+    inject_and_wait(app, &note.as_json(), &note.id.to_hex(), &rx);
+    let _ = wait_for_tag_cards(app, &key, 1, &rx);
+
+    // STRUCTURAL: the session feed registered BOTH lanes under the SAME key.
+    assert!(
+        app_ref.registered_typed_projection_keys().contains(&key),
+        "session-engine tag feed typed sidecar must be registered"
+    );
+    assert!(
+        app_ref.registered_feed_author_provider_keys().contains(&key),
+        "session-engine tag feed MUST have a structurally-paired author provider \
+         (else open_feed migration regresses avatars — the #1740 gap this fixes)"
+    );
+
+    // The provider surfaces the feed's visible card author → it auto-resolves.
+    assert!(
+        app_ref.run_feed_author_provider_for_test(&key).contains(&author),
+        "the session author provider returns the visible author (auto-resolved via resolve_ref)"
+    );
+
+    // Close → BOTH lanes gone (no provider leak).
+    let close_c = CString::new(tag).unwrap();
+    nmp_app_chirp_close_tag_feed(app, close_c.as_ptr());
+    assert!(
+        !app_ref.registered_feed_author_provider_keys().contains(&key),
+        "session author provider released after close (no leak — paired teardown)"
+    );
+
+    nmp_app_free(app);
+}
+
 #[test]
 fn close_unopened_tag_feed_is_a_no_op() {
     let (app, _rx, _tx_box) = start_app();

@@ -175,14 +175,26 @@ impl FeedTeardown {
     }
 
     /// A teardown step that removes the (generic + typed) snapshot projection
-    /// registered under `key` (reuses the snapshot registry's `remove`).
+    /// registered under `key` AND its STRUCTURALLY-PAIRED feed-author provider
+    /// (ADR-0063 D7, #1671 Lane H, #1740).
+    ///
+    /// A session feed installs its typed sidecar through
+    /// `register_feed_render_source`, which pairs a feed-author auto-resolve
+    /// provider under the same key (so the session's rendered authors resolve
+    /// avatars). That provider lives in the same snapshot registry as the typed
+    /// projection, so closing the session must drop BOTH in the same lock — exactly
+    /// the canonical `NmpApp::unregister_feed` ordering. Without removing the
+    /// provider here it would leak: the kernel's next in-tick reconcile would keep
+    /// the consumer in the live set and never release the refs it auto-resolved.
     #[must_use]
     pub fn remove_projection(&self, key: impl Into<String>) -> TeardownAction {
         let projections = self.projections.clone();
         let key = key.into();
         Box::new(move || {
             if let Ok(mut registry) = projections.lock() {
-                let _ = registry.remove(&key);
+                let removed_proj = registry.remove(&key);
+                let removed_provider = registry.remove_feed_author_provider(&key);
+                let _ = removed_proj || removed_provider;
             }
         })
     }

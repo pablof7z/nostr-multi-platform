@@ -153,23 +153,37 @@ pub(super) fn build_scope_session(
         PullFeedController::new_with_perspective(provider, pull, apply, None, Some(reset), advance);
     app.register_feed(key.to_string(), controller.clone());
 
-    // ── 3b. Typed NOFS sidecar under the session key ─────────────────────
+    // ── 3b. Typed NOFS sidecar + feed-author auto-resolve provider, STRUCTURALLY
+    //         PAIRED under the session key (ADR-0063 D7, #1671 Lane H, #1740) ────
     //
-    // Mirrors the home feed's typed projection so a `NOFS`-aware host renders
-    // the session's window from the typed payload (generic `Value` fallback for
+    // Mirrors the home feed's typed projection so a `NOFS`-aware host renders the
+    // session's window from the typed payload (generic `Value` fallback for
     // others). Sessions emit always (no incremental-apply omit bookkeeping — a
     // session feed is short-lived; the home path owns the omit optimization).
+    //
+    // CRITICAL (the #1740 unblocker): route BOTH lanes through ONE
+    // `FeedRenderSource` via `register_feed_render_source` — NOT the bare
+    // `register_typed_snapshot_projection`. The bare path installs ONLY the typed
+    // sidecar and NO feed-author provider, so the authors a session feed renders
+    // would never auto-`resolve_ref` → blank avatars (the exact #1671 coverage
+    // hole). Pairing here makes the provider STRUCTURAL for EVERY session-engine
+    // scope (Authors/Tag/List/Wot/…): there is no path that installs the sidecar
+    // without the provider, so migrating a Chirp feed onto `open_feed` cannot
+    // regress avatars. The same per-tick window materialization feeds both lanes,
+    // so authors-resolved == window-emitted even if a concurrent `load_older`
+    // widens the window mid-tick (no 1-frame blank gap; ADR-0038). Teardown via
+    // `remove_projection` / `unregister_feed` (same key) covers both lanes.
     let engine_for_typed = Arc::clone(&engine);
     let typed_key = key.to_string();
-    app.register_typed_snapshot_projection(key.to_string(), move || {
-        let snapshot = engine_for_typed.snapshot_current_window();
+    let source = nmp_feed::FeedRenderSource::new(move || engine_for_typed.snapshot_current_window());
+    app.register_feed_render_source(key.to_string(), source, move |snapshot| {
         Some(nmp_core::TypedProjectionData {
             key: typed_key.clone(),
             schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
             schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
             file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
                 .into_owned(),
-            payload: nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot),
+            payload: nmp_nip01::op_feed::encode_op_feed_snapshot(snapshot),
             ..Default::default()
         })
     });
