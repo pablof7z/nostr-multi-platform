@@ -1,0 +1,29 @@
+namespace nmp.nip22;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the `nmp.nip22.post_comment`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter decodes against THIS schema, gating `schema_version`
+// BEFORE `start()` (fail-closed on mismatch).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip22/src/wire/generated \
+//         crates/nmp-nip22/schema/post_comment.fbs
+
+table PostComment {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  root_tag_name:string (required);
+  root_tag_value:string (required);
+  root_kind:uint;
+  // Optional parent event id; empty string when absent.
+  parent_event_id:string;
+  // Optional root author pubkey (uppercase P tag); empty string when absent.
+  root_author_pubkey:string;
+  // Optional parent author pubkey (lowercase p tag); empty string when absent.
+  parent_author_pubkey:string;
+  content:string (required);
+}
+
+file_identifier "N22C";
+root_type PostComment;

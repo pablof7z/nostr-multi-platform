@@ -5,8 +5,8 @@
 //! (`a`/`e`/`i` + `k`). Mirrors the `nmp-nip25` `react` action module shape.
 
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, ProtocolCommand,
-    ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError, UnsignedEvent,
 };
 use nmp_core::ActorCommand;
 use nmp_kinds::KIND_NIP22_COMMENT;
@@ -53,6 +53,14 @@ pub struct PostCommentModule;
 impl ActionModule for PostCommentModule {
     const NAMESPACE: &'static str = "nmp.nip22.post_comment";
     type Action = PostCommentAction;
+
+    /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<PostCommentAction as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         validate(&action).map_err(ActionRejection::Invalid)

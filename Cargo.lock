@@ -4761,6 +4761,7 @@ dependencies = [
 name = "nmp-nip22"
 version = "0.8.0"
 dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-kinds",
  "serde",
