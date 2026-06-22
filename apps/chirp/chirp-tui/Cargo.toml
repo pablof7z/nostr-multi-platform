@@ -17,6 +17,10 @@ path = "src/main.rs"
 nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 nmp-content = { path = "../../../crates/nmp-content" }
+# Canonical Nostr kind-integer registry (Layer-0, zero-dep). Source of the
+# `is_encrypted_content_kind` predicate the outbox preview reads instead of
+# hardcoding the encrypted-kind set (#1769).
+nmp-kinds = { path = "../../../crates/nmp-kinds" }
 # `test-support` is a TEST-ONLY feature ("Never enable in production builds" —
 # nmp-core/Cargo.toml). It compiles the ADR-0055 Rung-1 projection-rev oracle,
 # whose `run_projection_oracle` PANICS on any missed stamp. Enabling it on the

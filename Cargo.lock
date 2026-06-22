@@ -994,6 +994,7 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-ffi",
+ "nmp-kinds",
  "nmp-nip01",
  "nmp-nip02",
  "nmp-nip17",

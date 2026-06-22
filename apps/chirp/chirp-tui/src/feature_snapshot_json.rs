@@ -395,10 +395,9 @@ fn format_relay_message_token(token: &str) -> String {
 }
 
 fn json_outbox_preview(kind: u32, content: &str) -> String {
-    const KIND_LEGACY_DM: u32 = 4;
-    const KIND_LEGACY_VERSIONED_DM: u32 = 44;
-    const KIND_GIFT_WRAP: u32 = 1059;
-    if kind == KIND_LEGACY_DM || kind == KIND_LEGACY_VERSIONED_DM || kind == KIND_GIFT_WRAP {
+    // Encrypted-content classification is a Nostr protocol rule, owned by the
+    // canonical predicate rather than re-derived in the shell (#1769).
+    if nmp_kinds::is_encrypted_content_kind(kind) {
         return "Encrypted event content hidden".to_string();
     }
     let trimmed = content.trim();
@@ -410,4 +409,32 @@ fn json_outbox_preview(kind: u32, content: &str) -> String {
         preview.push('…');
     }
     preview
+}
+
+#[cfg(test)]
+mod json_outbox_preview_tests {
+    use super::json_outbox_preview;
+
+    #[test]
+    fn encrypted_kinds_hide_content_plaintext_shows_through() {
+        // Same canonical-predicate wiring as the typed path (#1769): ciphertext
+        // kinds hide their content...
+        assert_eq!(
+            json_outbox_preview(1059, "ciphertext"),
+            "Encrypted event content hidden",
+            "kind:1059 gift-wrap content must be hidden"
+        );
+        // ...plaintext kinds render verbatim (load-bearing negative: a blanket
+        // hide or a mis-classified kind:1 fails here).
+        assert_eq!(
+            json_outbox_preview(1, "hello world"),
+            "hello world",
+            "kind:1 short text note content must render verbatim"
+        );
+        assert_eq!(
+            json_outbox_preview(14, "decrypted dm body"),
+            "decrypted dm body",
+            "kind:14 rumor content is plaintext and must render"
+        );
+    }
 }
