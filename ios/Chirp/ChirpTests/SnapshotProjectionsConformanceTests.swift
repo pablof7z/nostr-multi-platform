@@ -47,7 +47,7 @@ import XCTest
 /// ships as a JSON `SnapshotProjections` field (`nmp.nip29.group_chat`,
 /// `nmp.nip29.discovered_groups`, `nmp.nip29.group_defaults`,
 /// `nmp.nip17.dm_inbox`, `nmp.follow_list`, `nmp.nip57.zaps`,
-/// `nmp.nip17.dm_relay_list`, `claimed_profiles`, `nmp.marmot.snapshot`,
+/// `nmp.nip17.dm_relay_list`, `nmp.marmot.snapshot`,
 /// `nmp.marmot.messages`) has its decoder covered by this conformance test
 /// (V-107 / ADR-0039).
 ///
@@ -105,14 +105,6 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
           "nmp.nip17.dm_relay_list": {
             "active_pubkey": null,
             "read_relay_urls": []
-          },
-          "claimed_profiles": {
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {
-              "pubkey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-              "npub": "npub1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-              "nip05": "",
-              "about": ""
-            }
           },
           "nmp.marmot.snapshot": {
             "groups": [
@@ -177,9 +169,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNotNil(
             projections.dmRelayList,
             "SnapshotProjections.dmRelayList decoded nil — check CodingKeys.dmRelayList raw value matches \"nmp.nip17.dmRelayList\" (post-convertFromSnakeCase of \"nmp.nip17.dm_relay_list\")")
-        XCTAssertNotNil(
-            projections.claimedProfiles,
-            "SnapshotProjections.claimedProfiles decoded nil — check CodingKeys.claimedProfiles raw value matches \"claimedProfiles\" (post-convertFromSnakeCase of \"claimed_profiles\")")
+        // ADR-0063 Lane H: claimedProfiles (KCPR) deleted from SnapshotProjections.
         // V-107 / ADR-0039: Marmot push projections.
         XCTAssertNotNil(
             projections.marmotSnapshot,
@@ -228,7 +218,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNil(projections.followList)
         XCTAssertNil(projections.zaps)
         XCTAssertNil(projections.dmRelayList)
-        XCTAssertNil(projections.claimedProfiles)
+        // ADR-0063 Lane H: claimedProfiles (KCPR) deleted from SnapshotProjections.
         // V-107 / ADR-0039: Marmot push projections also nil on empty map.
         XCTAssertNil(projections.marmotSnapshot)
         XCTAssertNil(projections.marmotMessages)

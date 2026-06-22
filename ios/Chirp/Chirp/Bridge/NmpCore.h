@@ -47,23 +47,6 @@ void nmp_app_open_interest(void *app, const char *filter_json,
                            const char *consumer_id, uint32_t scope);
 void nmp_app_close_interest(void *app, const char *filter_json,
                             const char *consumer_id, uint32_t scope);
-// F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
-// gate for the cached kind:0 profile. Pass `1` when the user explicitly opened
-// this author's profile screen or pulled to refresh; pass `0` for background /
-// `.onAppear` list-row claims. Replaces the removed `nmp_app_refresh_replaceable`
-// symbol (force-refresh is now an argument; no new C-ABI symbol).
-//
-// `liveness` (treated as the discrete values 0 / 1) declares the consumer's
-// desired subscription shape:
-//   * 0 = CacheOk — serve from cache; a OneShot kind:0 fetch fills a miss;
-//     NO live subscription. Use for feed avatars / inline list contexts.
-//   * 1 = Live — register a Tailing kind:0 interest so reactive profile-edit
-//     updates flow in. Use for the profile screen.
-// Mixed claims on one pubkey resolve Tailing-wins in the kernel, deduped to a
-// single REQ; the shell only passes its intent.
-void nmp_app_claim_profile(void *app, const char *pubkey, const char *consumer_id,
-                           int force, int liveness);
-void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer_id);
 // Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted per
 // `consumer_id`; the kernel fetches the event over the OneshotApi (single-
 // writer interest registration — D4) when not yet in the store, and surfaces
@@ -78,6 +61,23 @@ void nmp_app_release_profile(void *app, const char *pubkey, const char *consumer
 // pass `0` for background claims.
 void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id, int force);
 void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
+// ADR-0063 Lane D — unified, origin-blind reference-resolution entry points.
+// Generalize the former per-kind profile claim + nmp_app_claim_event behind one
+// seam. ADR-0063 Lane H deleted the old per-kind profile claim_/release_ symbols;
+// profiles now resolve exclusively through nmp_app_resolve_ref below.
+//
+// `namespace` — 0 = profile (kind:0), 1 = event.
+// `key` — lowercase 64-hex pubkey for profile; lowercase event-id hex or "kind:pubkey:d" for event.
+// `consumer_id` — opaque refcount owner key (e.g. SwiftUI view identity).
+// `shape` — 0=profile.ref 1=profile.card 2=event.embed 3=event.raw.
+//   Globally unique across namespaces; kernel fails closed on namespace/shape mismatch.
+// `liveness` — 0=CacheOk (background / feed row), non-zero=Live (open screen).
+// D6: null/invalid args and unknown int codes are silent no-ops, never panics.
+// D8: fire-and-forget; the actor processes commands asynchronously.
+void nmp_app_resolve_ref(void *app, int namespace, const char *key,
+                         const char *consumer_id, int shape, int liveness);
+void nmp_app_release_ref(void *app, int namespace, const char *key,
+                         const char *consumer_id);
 // V-68 / V-112 (ADR-0042): nmp_app_close_author, nmp_app_close_thread deleted.
 // Use nmp_app_chirp_close_author_feed / nmp_app_chirp_close_thread_feed below.
 //
@@ -168,6 +168,13 @@ void nmp_app_chirp_close_home_feed(void *app);
 // the caller MUST free via nmp_free_string.  D6: a null/invalid input or
 // any encode failure degrades to a copy of the raw input, never NULL.
 char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
+
+// (#1671 Lane E) — removed a stale DUPLICATE declaration of
+// `nmp_app_active_following_count` that returned `int32_t` here; the canonical
+// declaration (returning `int64_t`, matching the Rust
+// `nmp_app_active_following_count -> i64` in `following_count.rs`) is above.
+// The two conflicting prototypes broke the bridging-header precompile for every
+// iOS build on this branch; this keeps the single correct `int64_t` form.
 
 // Stateless NIP-21 / bare NIP-19 decode helper. Accepts `nostr:` URIs and bare
 // bech32 profile/event/address entities, returning bounded JSON:

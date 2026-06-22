@@ -9,11 +9,24 @@
 
 mod auth_gate;
 mod event;
+// ADR-0063 (#1671 Lane B): the Live/Tailing addressable-event slot + event-claim
+// lookup/parking helpers, split out to keep `event.rs` under the 500-LOC ceiling.
+mod event_live;
+// ADR-0063 (#1671 Lane D): the canonical raw event-key parser (lowercase-hex id
+// or `kind:pubkey:d` coordinate), split into its own module so `event.rs` stays
+// under the 500-LOC ceiling.
+mod event_key;
 mod profile;
 mod relay_lifecycle;
 mod startup;
 
 pub use profile::ProfileLiveness;
+// ADR-0063 (#1671 Lane D): the canonical cold-start-parked event target.
+// `parse_event_key` is only consumed by cfg(test) code (refs_tests_key.rs);
+// gate the re-export so a non-test build emits no unused-import warning.
+#[cfg(test)]
+pub(in crate::kernel) use event_key::parse_event_key;
+pub(in crate::kernel) use event_key::PendingEventClaim;
 
 use super::{
     discovery, json, wire_log, CanonicalRelayUrl, Kernel, OutboundMessage, RelayRole, Value,
@@ -67,7 +80,7 @@ impl Kernel {
         // thread_view.request_pending / prepare_thread_requests(), and
         // maybe_open_thread_hydration() deleted — per-app FlatFeed handles these.
         // M2 migration: profile (kind:0) claims are registry interests now
-        // (`claim_profile` → `InterestRegistry`); there is no bespoke
+        // (`resolve_ref` → `InterestRegistry`); there is no bespoke
         // `pending_profile_claim_requests` drain — the planner compiles them.
         requests.extend(self.pending_event_claim_requests());
         // F-TTL — register pending replaceable re-verification interests through
@@ -340,7 +353,7 @@ impl Kernel {
     /// Each due [`crate::store::ReplaceableKey`] becomes a `OneShot + Global`
     /// `LogicalInterest { kinds:[k], authors:[pk], #d?, limit:None }` registered
     /// via [`crate::subs::OneshotApi::request`] — the SAME single-registration
-    /// path `claim_event` / `claim_profile` use. This is what the pre-migration
+    /// path `claim_event` / `resolve_ref` use. This is what the pre-migration
     /// bespoke `req_for_relay` build could not give a reverify: by flowing
     /// through `recompile_and_diff`, a reverify of a stale replaceable for an
     /// author whose kind:10002 is uncached now triggers the D3 kind:10002 probe

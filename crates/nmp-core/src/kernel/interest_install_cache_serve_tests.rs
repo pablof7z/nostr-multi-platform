@@ -430,7 +430,7 @@ fn open_uri_serves_store_for_resolved_target() {
 /// `register_profile_claim_interest` routes through the unified front-door
 /// (`register_interest` with Replace policy). This test proves that a stored
 /// kind:0 metadata event populates the ProfileCache on a cold-cache kernel
-/// immediately after `claim_profile` — no relay delivery needed.
+/// immediately after `resolve_ref` — no relay delivery needed.
 ///
 /// Regression guard: before Phase C the profile-claim path called bare
 /// `set_sub` without a cache-serve enqueue, so a stored kind:0 was invisible
@@ -442,7 +442,7 @@ fn open_uri_serves_store_for_resolved_target() {
 /// where the in-memory ProfileCache is empty but the on-disk store is warm.
 #[test]
 fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
-    use crate::kernel::ProfileLiveness;
+    use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
     use crate::substrate::{ProfileLookup, TestKind0Parser, TestProfileCache};
 
     let base_ts: u64 = 1_770_000_000;
@@ -474,12 +474,14 @@ fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
     // ── Phase 3: claim the profile — routes through register_interest(Replace) ─
     // cold_cache.contains(&author) == false → want_register = true → front-door
     // fires, cache-serve enqueued. No relay connected, no wire event injected.
-    kernel.claim_profile(
+    kernel.resolve_ref(
+        RefNamespace::Profile,
         author.clone(),
         "test-consumer".to_string(),
-        false, // can_send
-        false, // force
-        ProfileLiveness::CacheOk,
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk.into(),
+        false,
+        Vec::new(),
     );
     drain_cache_serves(&mut kernel, 10);
 
@@ -487,7 +489,7 @@ fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
     assert!(
         cold_cache.profile(&author).is_some(),
         "PROFILE-CLAIM STORE-FIRST FAIL: profile_lookup().profile(P) must be Some \
-         after claim_profile installs the kind:0 interest and the cache-serve \
+         after resolve_ref installs the kind:0 interest and the cache-serve \
          runs from the store; got None. This is the cold-cache kind:0 bug \
          (timeline shows only pubkeys after relaunch)."
     );

@@ -244,7 +244,7 @@ private fun ProfileEmbedPage(
         )
         NostrContentView(tree = tree, mentionLabel = mentionLabel)
         Text(
-            "Profile mentions resolve via projections.claimed_profiles → resolved_profiles — the same kind:0 path the user-* pages use. No embed claim is required for `npub:` URIs.",
+            "Profile mentions resolve via resolve_ref → the refs.profile keyed cache — the same kind:0 path the user-* pages use. No embed claim is required for `npub:` URIs.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

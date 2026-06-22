@@ -12,7 +12,7 @@
 
 use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::ffi::{
-    nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_profile,
+    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
     nmp_app_set_update_callback, process_rss_bytes, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
@@ -252,8 +252,9 @@ fn fire_cycle(app: *mut NmpApp, pubkeys: &[std::ffi::CString], consumers: &[CStr
     // that is not representative of production memory pressure.
     let pk = &pubkeys[cycle as usize % pubkeys.len()];
     let consumer = &consumers[cycle as usize % consumers.len()];
-    nmp_app_claim_profile(app, pk.as_ptr(), consumer.as_ptr(), 0, 0);
+    // namespace=0 (Profile), shape=0 (ProfileRef), liveness=0 (CacheOk).
+    nmp_app_resolve_ref(app, 0, pk.as_ptr(), consumer.as_ptr(), 0, 0);
     // 1 ms between claim and release per spec.
     std::thread::sleep(Duration::from_millis(1)); // doctrine-allow: D8 — spec-mandated 1 ms gap between claim and release
-    nmp_app_release_profile(app, pk.as_ptr(), consumer.as_ptr());
+    nmp_app_release_ref(app, 0, pk.as_ptr(), consumer.as_ptr());
 }

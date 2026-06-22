@@ -50,6 +50,7 @@ fn empty_declared_set_emits_all_builtins() {
     // The unconditional Tier-2 built-ins must all be present (the drain-on-emit
     // four are absent in steady state — that is their own convention, unrelated
     // to the declared-set gate).
+    // ADR-0063 Lane H: mention_profiles / claimed_profiles / resolved_profiles deleted.
     for key in [
         "publish_queue",
         "publish_outbox",
@@ -61,10 +62,7 @@ fn empty_declared_set_emits_all_builtins() {
         "active_account",
         "profile",
         "relay_diagnostics",
-        "mention_profiles",
-        "claimed_profiles",
         "claimed_events",
-        "resolved_profiles",
     ] {
         assert!(
             projections.contains_key(key),
@@ -77,12 +75,14 @@ fn empty_declared_set_emits_all_builtins() {
 /// Non-empty declared set narrows to its members: declared keys present,
 /// undeclared keys absent. `relay_diagnostics` (the headline) is NOT declared
 /// here and must be omitted.
+///
+/// ADR-0063 Lane H: resolved_profiles deleted; test updated to use claimed_events.
 #[test]
 fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
     let (mut kernel, slot) = kernel_with_slot();
     slot.lock()
         .unwrap()
-        .declare_consumed_projections(["profile", "accounts", "resolved_profiles"]);
+        .declare_consumed_projections(["profile", "accounts", "claimed_events"]);
 
     let projections = projections_json(&mut kernel);
 
@@ -96,8 +96,8 @@ fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
         "declared `accounts` present"
     );
     assert!(
-        projections.contains_key("resolved_profiles"),
-        "declared `resolved_profiles` present"
+        projections.contains_key("claimed_events"),
+        "declared `claimed_events` present"
     );
 
     // THE acceptance criterion: relay_diagnostics is gated out.
@@ -111,13 +111,19 @@ fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
     for key in [
         "publish_queue",
         "settings_hub",
-        "claimed_profiles",
         "active_account",
     ] {
         assert!(
             !projections.contains_key(key),
             "undeclared built-in {key:?} must be omitted; got keys {:?}",
             projections.keys().collect::<Vec<_>>()
+        );
+    }
+    // ADR-0063 Lane H: these deleted projections must never appear.
+    for key in ["claimed_profiles", "mention_profiles", "resolved_profiles"] {
+        assert!(
+            !projections.contains_key(key),
+            "deleted projection `{key}` must never appear (ADR-0063 Lane H)"
         );
     }
 }

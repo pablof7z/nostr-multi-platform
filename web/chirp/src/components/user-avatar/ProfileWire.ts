@@ -1,5 +1,5 @@
 // Wire type for a Nostr user profile, mirroring the kernel's `ProfileCard`
-// projection (resolved_profiles / KRPR). All fields are raw protocol data as
+// row of the `refs.profile` keyed projection (ADR-0063). All fields are raw protocol data as
 // produced by the kernel from kind:0 — display names are verbatim, the pubkey
 // is 64-char lowercase hex (ADR-0032). The host app owns fetching and
 // persistence; these components only render the snapshot they are given.

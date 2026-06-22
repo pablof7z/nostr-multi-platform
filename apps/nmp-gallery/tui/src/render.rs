@@ -298,13 +298,13 @@ impl NostrProfileHost for GalleryProfileHost<'_> {
         self.resolve_profile(pubkey)
     }
 
-    fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+    fn resolve_ref(&self, pubkey: &str, consumer_id: &str) {
         self.claim(pubkey, consumer_id);
     }
 
-    fn release_profile(&self, pubkey: &str, consumer_id: &str) {
+    fn release_ref(&self, pubkey: &str, consumer_id: &str) {
         if let Some(sink) = self.sink {
-            sink.release_profile(pubkey, consumer_id);
+            sink.release_ref(pubkey, consumer_id);
         }
     }
 }
@@ -320,7 +320,7 @@ impl NostrMentionProfileHost for GalleryProfileHost<'_> {
         })
     }
 
-    fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+    fn resolve_ref(&self, pubkey: &str, consumer_id: &str) {
         self.claim(pubkey, consumer_id);
     }
 }
@@ -337,7 +337,7 @@ impl GalleryProfileHost<'_> {
                 .insert((pubkey.to_string(), consumer_id.to_string()));
         }
         if let Some(sink) = self.sink {
-            sink.claim_profile(pubkey, consumer_id);
+            sink.resolve_profile(pubkey, consumer_id);
         }
     }
 }

@@ -24,23 +24,31 @@
 //! `EventClaimSink` plugged into the renderer via the W4/W5 wiring.
 
 use std::{
+    collections::BTreeMap,
     ffi::{c_void, CString},
+    os::raw::c_int,
     sync::mpsc::{Receiver, Sender},
     time::Duration,
 };
 
 use nmp_content::EventClaimSink;
-use nmp_core::typed_projections::{
-    ClaimedEventsModel, CLAIMED_EVENTS_SCHEMA_ID,
-    ResolvedProfilesModel, RESOLVED_PROFILES_SCHEMA_ID,
-};
+use nmp_core::refs::{RefProfileStore, REFS_PROFILE_KEY};
+use nmp_core::typed_projections::{ClaimedEventsModel, ProfileCardModel, CLAIMED_EVENTS_SCHEMA_ID};
 
 use crate::data::showcase_pubkey;
+
+// ADR-0063 (#1671) FFI integer codes for `nmp_app_resolve_ref` / `release_ref`.
+/// `namespace` — the profile resolver.
+const REF_NS_PROFILE: c_int = 0;
+/// `shape` — `profile.ref` (`{pubkey, display_name, picture_url}`; feed-avatar).
+const REF_SHAPE_PROFILE_REF: c_int = 0;
+/// `liveness` — `CacheOk` (background; no per-row tailing sub).
+const REF_LIVENESS_CACHE_OK: c_int = 0;
 
 /// Hex pubkey of the gallery's primary showcase author — pablof7z, the
 /// NmpGallery showcase identity. The user-*
 /// components resolve this identity to a `ProfileWire` reactively through
-/// `LiveProfileMap`; `tui/user-avatar` fires `claim_profile` when rendered so
+/// `LiveProfileMap`; `tui/user-avatar` fires `resolve_profile` when rendered so
 /// the kernel fetches the kind:0 and a later snapshot carries real metadata.
 pub fn primary_pubkey() -> &'static str {
     showcase_pubkey()
@@ -51,9 +59,14 @@ pub struct LiveGallerySource;
 /// Decoded typed snapshot data — the gallery's view of one kernel tick.
 ///
 /// Built from the FlatBuffers typed-sidecar payload that the kernel emits on
-/// every actor tick (ADR-0037). The gallery reads two projection keys:
+/// every actor tick (ADR-0037). The gallery reads:
 /// - `claimed_events` — resolved embed events (embed host, EmbedHostState).
-/// - `resolved_profiles` — pre-merged pubkey→ProfileCard map (LiveProfileMap).
+/// - `profiles` — the materialised `pubkey -> ProfileCardModel` set merged from
+///   the `refs.profile` row-delta projection (ADR-0063 #1671). This replaces the
+///   retired `resolved_profiles` whole-map projection. Because `refs.profile` is
+///   a per-KEY row-delta batch, it can only be merged into the stateful
+///   [`RefProfileStore`] that lives across frames — see
+///   [`GalleryTypedSnapshot::from_frame_bytes`].
 ///
 /// Both fields degrade gracefully to empty when their respective typed sidecar
 /// entry is absent or fails to decode (D6 — no panic, no blank-render reset).
@@ -65,23 +78,38 @@ pub struct GalleryTypedSnapshot {
     /// Resolved embed events. Empty when no claims have been issued yet or
     /// while relay round-trips are in flight.
     pub claimed_events: ClaimedEventsModel,
-    /// Pre-merged pubkey→ProfileCard map. Empty until the kernel has ingested
-    /// at least one kind:0 for a claimed pubkey.
-    pub resolved_profiles: ResolvedProfilesModel,
+    /// Materialised `pubkey -> ProfileCardModel` set merged from the
+    /// `refs.profile` row-delta projection (resolve_ref output). Empty until the
+    /// kernel has resolved at least one kind:0 for a resolved pubkey. This is a
+    /// per-frame snapshot of the stateful [`RefProfileStore`]; it is NOT a second
+    /// app-side cache (D4) — the store is the sole owner.
+    pub profiles: BTreeMap<String, ProfileCardModel>,
     /// Per-relay connection statuses (Tier-3 envelope field). Used by the
     /// smoke mode to detect when at least one relay is connected.
     pub relay_statuses: Vec<nmp_core::RelayStatusEntry>,
 }
 
 impl GalleryTypedSnapshot {
-    /// Decode a raw FlatBuffers frame (as produced by `nmp_app_set_update_callback`)
-    /// into a `GalleryTypedSnapshot`. Tolerant: if any projection fails to decode
-    /// its field is left at the default (empty). Panics never occur (D6).
-    pub fn from_frame_bytes(bytes: &[u8]) -> Self {
-        // Tier-3 envelope: relay_statuses.
-        let relay_statuses = nmp_core::decode_snapshot_envelope(bytes)
-            .map(|env| env.relay_statuses)
+    /// Decode a raw FlatBuffers frame (as produced by `nmp_app_set_update_callback`),
+    /// merging its `refs.profile` row-delta batch into the persistent `store`, and
+    /// materialise the gallery's view of one tick.
+    ///
+    /// ADR-0063 (#1671): `refs.profile` is a per-KEY row-delta projection, so the
+    /// caller MUST thread a stateful [`RefProfileStore`] (one per update loop) —
+    /// a single frame's batch carries only changed/cleared rows. Tolerant: if any
+    /// projection fails to decode its field is left at the default (empty). A
+    /// malformed `refs.profile` payload is a fail-closed no-op inside the store
+    /// (prior rows retained). Panics never occur (D6).
+    pub fn from_frame_bytes(bytes: &[u8], store: &mut RefProfileStore) -> Self {
+        // Tier-3 envelope: relay_statuses + the (session_id, snapshot_epoch)
+        // identity the row-delta cache merges under.
+        let envelope = nmp_core::decode_snapshot_envelope(bytes);
+        let relay_statuses = envelope
+            .as_ref()
+            .map(|env| env.relay_statuses.clone())
             .unwrap_or_default();
+        let session_id = envelope.as_ref().map(|env| env.session_id).unwrap_or(0);
+        let snapshot_epoch = envelope.as_ref().map(|env| env.snapshot_epoch).unwrap_or(0);
 
         // Typed sidecar entries.
         let typed = nmp_core::decode_snapshot_typed_projections(bytes).unwrap_or_default();
@@ -97,13 +125,17 @@ impl GalleryTypedSnapshot {
             .and_then(|b| nmp_core::typed_projections::decode_claimed_events(b).ok())
             .unwrap_or_default();
 
-        let resolved_profiles = find(RESOLVED_PROFILES_SCHEMA_ID)
-            .and_then(|b| nmp_core::typed_projections::decode_resolved_profiles(b).ok())
-            .unwrap_or_default();
+        // ADR-0063 (#1671): merge the `refs.profile` row-delta batch into the
+        // stateful store (the ONLY app-side mirror of hydrated profiles, D4),
+        // then materialise the current full set for this frame's readers.
+        if let Some(payload) = find(REFS_PROFILE_KEY) {
+            store.apply_sidecar(payload, session_id, snapshot_epoch);
+        }
+        let profiles = store.profiles();
 
         Self {
             claimed_events,
-            resolved_profiles,
+            profiles,
             relay_statuses,
         }
     }
@@ -152,30 +184,42 @@ unsafe impl Send for LiveKernelSink {}
 unsafe impl Sync for LiveKernelSink {}
 
 impl LiveKernelSink {
-    /// Trigger a kind:0 fetch for `pubkey`. Registry widgets use this for
-    /// visible profile references; the next snapshot carries the resolved
-    /// profile through `claimed_profiles`.
-    pub fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
+    /// Resolve a visible profile reference for `pubkey` (ADR-0063 #1671). The
+    /// registry widgets (user-avatar / user-name) call this on render for each
+    /// visible author; the resolved kind:0 flows back through the `refs.profile`
+    /// row-delta projection (merged into [`RefProfileStore`]). Origin-blind:
+    /// every visible author resolves at the feed-avatar shape `profile.ref` and
+    /// `CacheOk` liveness (no per-row tailing sub) — the gallery renders only
+    /// inline avatars/names, never an open-profile pane.
+    pub fn resolve_profile(&self, pubkey: &str, consumer_id: &str) {
         let Ok(pk) = CString::new(pubkey) else { return };
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        // F-TTL — component-owned profile self-claim on render → force = 0.
-        nmp_ffi::nmp_app_claim_profile(self.app, pk.as_ptr(), cid.as_ptr(), 0, 0);
+        nmp_ffi::nmp_app_resolve_ref(
+            self.app,
+            REF_NS_PROFILE,
+            pk.as_ptr(),
+            cid.as_ptr(),
+            REF_SHAPE_PROFILE_REF,
+            REF_LIVENESS_CACHE_OK,
+        );
     }
 
-    pub fn release_profile(&self, pubkey: &str, consumer_id: &str) {
+    /// Release a profile reference previously resolved via [`Self::resolve_profile`].
+    /// Pass the SAME `(pubkey, consumer_id)` so the kernel reclaims the slot.
+    pub fn release_ref(&self, pubkey: &str, consumer_id: &str) {
         let Ok(pk) = CString::new(pubkey) else { return };
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        nmp_ffi::nmp_app_release_profile(self.app, pk.as_ptr(), cid.as_ptr());
+        nmp_ffi::nmp_app_release_ref(self.app, REF_NS_PROFILE, pk.as_ptr(), cid.as_ptr());
     }
 
     // V-112 (ADR-0042): `open_author` deleted — it wrapped the retired
     // `nmp_app_open_author` C-ABI symbol and had zero callers. Author feeds
     // go through the generic `nmp_app_open_interest` seam; user-avatar
-    // hydration uses component-owned `claim_profile` above.
+    // hydration uses component-owned `resolve_profile` above.
 }
 
 impl EventClaimSink for LiveKernelSink {

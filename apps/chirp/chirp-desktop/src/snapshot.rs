@@ -42,7 +42,7 @@ pub struct Snapshot {
     pub accounts: Vec<AccountSummary>,
 
     /// Host-registered and built-in projections (`nmp.feed.*`,
-    /// configured_relays, action_lifecycle, mention_profiles, ...).
+    /// configured_relays, action_lifecycle, ...).
     #[serde(default)]
     pub projections: HashMap<String, serde_json::Value>,
 
@@ -55,6 +55,15 @@ pub struct Snapshot {
     /// `primary_id` to render the embedded note instead of a `↗ note` placeholder.
     #[serde(default)]
     pub embeds: HashMap<String, nmp_content::EmbeddedEventEnvelope>,
+
+    /// ADR-0063 (#1671 Lane F) — `pubkey -> ProfileCard` materialised from the
+    /// kernel's `refs.profile` row-delta projection (the resolve_ref output),
+    /// merged into a persistent [`nmp_core::refs::RefProfileStore`] held by the
+    /// reader thread. Replaces the old `resolved_profiles` projection read for
+    /// avatar/name display. `#[serde(default)]`: never in the JSON envelope; the
+    /// reader thread sets it after merging the row-delta into the store.
+    #[serde(default)]
+    pub refs_profiles: HashMap<String, ProfileCard>,
 }
 
 impl Snapshot {
@@ -100,6 +109,31 @@ pub struct ProfileCard {
     pub lud06: Option<String>,
     #[serde(default)]
     pub lnurl: Option<String>,
+}
+
+impl ProfileCard {
+    /// ADR-0063 (#1671 Lane F) — build a desktop `ProfileCard` from the typed
+    /// `refs.profile` row (`nmp_core`'s `ProfileCardModel`). Field-identical
+    /// mapping; the desktop owns no second profile representation (D4).
+    #[must_use]
+    pub fn from_model(model: nmp_core::typed_projections::ProfileCardModel) -> Self {
+        Self {
+            pubkey: model.pubkey,
+            npub: model.npub,
+            display_name: model.display_name,
+            name: model.name,
+            raw_display_name: model.raw_display_name,
+            display_name_camel: model.display_name_camel,
+            picture_url: model.picture_url,
+            banner: model.banner,
+            website: model.website,
+            nip05: model.nip05,
+            about: model.about,
+            lud16: model.lud16,
+            lud06: model.lud06,
+            lnurl: model.lnurl,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -152,7 +186,8 @@ pub struct AccountSummary {
 // projections "nmp.feed.author.<pubkey>" / "nmp.feed.thread.<event_id>"
 // (ModularTimelineSnapshot).
 
-/// `mention_profiles` projection payload.
+/// Payload for the former `mention_profiles` projection (retired in ADR-0063
+/// Lane H; profiles now flow through the `refs.profile` row-delta).
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct MentionProfilePayload {
     #[serde(default)]
@@ -241,7 +276,8 @@ pub struct FollowEntry {
 ///
 /// Raw protocol data only — `author_pubkey` as hex, `created_at` as Unix
 /// seconds, `content` verbatim. The presentation layer resolves the display
-/// name via the snapshot's `resolved_profiles` map (aim.md §2). We keep the
+/// name via the snapshot's `refs_profiles` map (populated by `resolve_ref`,
+/// ADR-0063 #1671 Lane F; aim.md §2). We keep the
 /// mirror desktop-local (rather than importing the nmp-nip01 type) so the
 /// shell's decode surface stays decoupled from the projection's internal
 /// type. `content_tree` is omitted — the desktop renders rich text from
@@ -356,131 +392,9 @@ pub struct ActionStageRow {
     pub reason: Option<String>,
 }
 
+// Deserialisation regression tests live in the sibling `snapshot/tests.rs`
+// (kept out of this file so the data-type module stays under the 500-LOC hard
+// ceiling, AGENTS.md).
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The `nmp.feed.home` projection (typed `OpFeedSnapshot`) ships its cards
-    /// **wrapped** — each `cards[]` entry is a `RootCard` `{ "card": …,
-    /// "attribution": [...] }`, not a bare event card. This is the exact shape
-    /// `decode_op_feed_snapshot` → `serde_json::to_value` emits in the desktop
-    /// bridge. Regression guard for issue #920: an earlier mirror assumed bare
-    /// cards (`Vec<TimelineEventCard>`), which deserialized every entry to
-    /// all-defaults and left the Home tab blank.
-    #[test]
-    fn home_feed_decodes_wrapped_root_cards() {
-        let json = serde_json::json!({
-            "cards": [
-                {
-                    "card": {
-                        "id": "abc123",
-                        "author_pubkey": "deadbeef",
-                        "kind": 1,
-                        "created_at": 1_700_000_000_u64,
-                        "content": "hello nostr",
-                        "content_tree": { "nodes": [] },
-                        "relation_counts": {}
-                    },
-                    "attribution": []
-                }
-            ],
-            "page": null,
-            "metrics": null
-        });
-
-        let feed: ModularTimelineSnapshot =
-            serde_json::from_value(json).expect("wrapped root cards deserialize");
-
-        assert_eq!(feed.cards.len(), 1, "one root card");
-        let card = &feed.cards[0].card;
-        assert_eq!(card.id, "abc123");
-        assert_eq!(card.author_pubkey, "deadbeef");
-        assert_eq!(card.content, "hello nostr");
-        assert_eq!(card.created_at, 1_700_000_000);
-        assert_eq!(
-            card.relation_counts.summary(),
-            "reply ...  react ...  repost ...  zap ..."
-        );
-        assert!(card.reposted_by.is_none(), "ordinary note: no repost");
-    }
-
-    /// A repost-surfaced card carries `reposted_by` with the reposter's raw
-    /// pubkey and the original note's publish time.
-    #[test]
-    fn home_feed_decodes_repost_attribution() {
-        let json = serde_json::json!({
-            "cards": [
-                {
-                    "card": {
-                        "id": "note1",
-                        "author_pubkey": "originalauthor",
-                        "kind": 1,
-                        "created_at": 1_700_000_500_u64,
-                        "content": "the original note",
-                        "reposted_by": {
-                            "author_pubkey": "thereposter",
-                            "note_created_at": 1_700_000_100_u64
-                        }
-                    },
-                    "attribution": []
-                }
-            ]
-        });
-
-        let feed: ModularTimelineSnapshot =
-            serde_json::from_value(json).expect("repost card deserializes");
-        let repost = feed.cards[0]
-            .card
-            .reposted_by
-            .as_ref()
-            .expect("reposted_by present");
-        assert_eq!(repost.author_pubkey, "thereposter");
-        assert_eq!(repost.note_created_at, 1_700_000_100);
-    }
-
-    /// An empty feed (no cards yet — the "connecting" state) deserializes to an
-    /// empty `cards` vec, never an error.
-    #[test]
-    fn empty_home_feed_is_empty_cards() {
-        let json = serde_json::json!({ "cards": [], "page": null, "metrics": null });
-        let feed: ModularTimelineSnapshot =
-            serde_json::from_value(json).expect("empty feed deserializes");
-        assert!(feed.cards.is_empty());
-        assert!(feed.page.is_none());
-    }
-
-    #[test]
-    fn home_feed_decodes_has_more_page_flag() {
-        let json = serde_json::json!({
-            "cards": [],
-            "page": { "limit": 80, "has_more": true, "total_blocks": 120 }
-        });
-
-        let feed: ModularTimelineSnapshot =
-            serde_json::from_value(json).expect("feed page deserializes");
-        assert!(feed.page.as_ref().is_some_and(|page| page.has_more));
-    }
-
-    /// `resolved_profiles` decodes into the desktop's `ProfileCard` mirror,
-    /// keyed by hex pubkey, so the Home tab can resolve display names.
-    #[test]
-    fn resolved_profiles_decodes_profile_cards() {
-        let json = serde_json::json!({
-            "deadbeef": {
-                "pubkey": "deadbeef",
-                "npub": "npub1deadbeef",
-                "display_name": "Alice",
-                "picture_url": null,
-                "nip05": "",
-                "about": "",
-                "lnurl": null
-            }
-        });
-        let map: std::collections::HashMap<String, ProfileCard> =
-            serde_json::from_value(json).expect("resolved_profiles deserializes");
-        assert_eq!(
-            map.get("deadbeef").and_then(|p| p.display_name.as_deref()),
-            Some("Alice")
-        );
-    }
-}
+#[path = "snapshot/tests.rs"]
+mod tests;

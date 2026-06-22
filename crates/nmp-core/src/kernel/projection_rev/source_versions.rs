@@ -22,11 +22,15 @@
 //! direct consequence of a state mutation — never in a timer, never in a
 //! polling loop. Bumps are O(1) `u64::saturating_add(1)`.
 
+use std::collections::HashMap;
+
 use super::{
     SRC_ACCOUNTS, SRC_ACTIVE_ACCOUNT, SRC_CLAIMED_EVENT_CONTENT, SRC_CONFIGURED_RELAYS,
     SRC_DIAGNOSTICS_INPUTS, SRC_OPEN_VIEWS, SRC_PROFILES, SRC_PROFILE_CLAIMS, SRC_PUBLISH,
-    SRC_PUBLISH_ENGINE, SRC_SETTLEMENT_DRAIN, SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY,
+    SRC_PUBLISH_ENGINE, SRC_REF_EVENT_ROWS, SRC_REF_PROFILE_ROWS, SRC_SETTLEMENT_DRAIN,
+    SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY,
 };
+use crate::kernel::refs::RefNamespace;
 
 /// Typed source-version counters for the Tier-2 built-in projections.
 ///
@@ -53,7 +57,7 @@ pub(crate) struct SourceVersions {
     pub(crate) active_account_ver: u64,
 
     // ── profile/event claim cluster ───────────────────────────────────────────
-    /// Bumped at `claim_profile` / `release_profile` (the sole writers of
+    /// Bumped at `resolve_ref` / `release_ref` (the sole writers of
     /// `Kernel::profile_claims` — D4 via `requests/profile.rs`).
     pub(crate) profile_claims_ver: u64,
 
@@ -67,7 +71,7 @@ pub(crate) struct SourceVersions {
 
     /// Bumped when `open_views` changes. Currently always-empty (V-112/ADR-0042
     /// deleted author_view/thread_view). Still declared so a future view-open
-    /// populating `mention_profiles` triggers a rev bump.
+    /// driving the profile resolve path (`refs.profile`) triggers a rev bump.
     pub(crate) open_views_ver: u64,
 
     // ── relay/settings cluster ────────────────────────────────────────────────
@@ -124,6 +128,49 @@ pub(crate) struct SourceVersions {
     /// the existing emit/snapshot edge. Stable on idle ticks where no row
     /// crosses its deadline.
     pub(crate) ttl_expiry_ver: u64,
+
+    // ── ADR-0063 (#1671 Lane B): per-KEY ref-row revisions ────────────────────
+    /// Per-KEY revision for `refs.profile` rows (keyed by raw hex pubkey). The
+    /// whole-projection `profile_claims_ver` scalar above stays the ADR-0055
+    /// manifest source until Lane A migrates it; THIS map is the row-grain source
+    /// of truth ADR-0063 D6a needs (only the changed pubkey's row crosses FFI).
+    /// Bumped at three sites: resolve (`resolve_profile_ref`), release
+    /// (`release_profile_ref`), and the kind:0 ingest chokepoint
+    /// (`project_accepted_event`, gated on a live claim). Monotonic; reset only
+    /// on `Kernel` rebuild.
+    ///
+    /// ## Bounded-cleanup lifecycle (BLOCKING 2 fix)
+    ///
+    /// An entry is created ONLY when a row is actually mutated: every call site
+    /// gates the bump on a real claim / real refcount change / live-claimed
+    /// ingest, so a spurious release of a never-claimed key never inserts a row
+    /// (see the gated `bump_*_row` callers). When a row is fully released its
+    /// last-release teardown calls [`Self::clear_profile_row`], which bumps the
+    /// rev to its final post-clear value (so the `Cleared` row a downstream
+    /// emitter produces carries the monotonic value) and then **immediately
+    /// removes the entry in the same call** — there is no retained-rev / pending
+    /// state, so the map is always bounded to currently-claimed keys (D8). An
+    /// explicit `Cleared` resets the host cache entry (ADR-0055 §D1), so a later
+    /// re-resolve starts a fresh row lifetime at rev 1 — monotonicity only has to
+    /// hold while a row is live between `Changed` and `Cleared`.
+    pub(crate) profile_row_revs: HashMap<String, u64>,
+    /// Per-KEY revision for `refs.event` rows (keyed by `primary_id`: hex64 id or
+    /// `kind:pubkey:d` coord). Event twin of [`Self::profile_row_revs`]; bumped at
+    /// resolve/release (`requests/event.rs`) and the store-ingest chokepoint
+    /// (`maybe_bump_claimed_event_content`, already gated on a live claim). Same
+    /// bounded-cleanup lifecycle as `profile_row_revs`.
+    pub(crate) event_row_revs: HashMap<String, u64>,
+
+    // ── ADR-0063 (#1671 integration glue): whole-projection ref-row stamps ─────
+    /// Monotonic whole-projection stamp for `refs.profile`. Co-bumped inside
+    /// every per-KEY profile-row mutation chokepoint ([`Self::bump_profile_row`]
+    /// / [`Self::clear_profile_row`]) so the derived `refs.profile` projection rev
+    /// advances whenever ANY profile row mutates. Monotonic across release: unlike
+    /// summing `profile_row_revs` (which a clear shrinks by removing the entry),
+    /// this scalar only ever increases, so the manifest rev never regresses.
+    pub(crate) ref_profile_rows_ver: u64,
+    /// Event twin of [`Self::ref_profile_rows_ver`] for `refs.event`.
+    pub(crate) ref_event_rows_ver: u64,
 }
 
 impl SourceVersions {
@@ -144,6 +191,8 @@ impl SourceVersions {
             SRC_SETTLEMENT_ENQUEUE => self.settlement_enqueue_ver,
             SRC_SETTLEMENT_DRAIN => self.settlement_drain_ver,
             SRC_TTL_EXPIRY => self.ttl_expiry_ver,
+            SRC_REF_PROFILE_ROWS => self.ref_profile_rows_ver,
+            SRC_REF_EVENT_ROWS => self.ref_event_rows_ver,
             _ => 0,
         }
     }
@@ -216,5 +265,78 @@ impl SourceVersions {
     /// Bump `ttl_expiry_ver`.
     pub(crate) fn bump_ttl_expiry(&mut self) {
         self.ttl_expiry_ver = self.ttl_expiry_ver.saturating_add(1);
+    }
+
+    /// ADR-0063 (#1671 Lane B) — bump the per-KEY rev for one `refs.profile` row.
+    ///
+    /// Callers MUST gate this on an actual row mutation (a real claim, a real
+    /// refcount change, a shape-widen / liveness-upgrade, or a live-claimed
+    /// ingest) so the map stays bounded to claimed keys — a spurious or no-op bump
+    /// for an unchanged key would create / advance a row with nothing on the wire
+    /// to carry it (BLOCKING 2, BLOCKING 3).
+    pub(crate) fn bump_profile_row(&mut self, key: &str) {
+        let rev = self.profile_row_revs.entry(key.to_string()).or_insert(0);
+        *rev = rev.saturating_add(1);
+        // ADR-0063 integration glue: co-bump the whole-projection stamp so the
+        // derived `refs.profile` manifest rev advances on any row mutation
+        // (intrinsic — no separate call site to forget).
+        self.ref_profile_rows_ver = self.ref_profile_rows_ver.saturating_add(1);
+    }
+
+    /// ADR-0063 (#1671 Lane B) — bump the per-KEY rev for one `refs.event` row.
+    /// Same gating contract as [`Self::bump_profile_row`].
+    pub(crate) fn bump_event_row(&mut self, key: &str) {
+        let rev = self.event_row_revs.entry(key.to_string()).or_insert(0);
+        *rev = rev.saturating_add(1);
+        // ADR-0063 integration glue: co-bump the whole-projection stamp.
+        self.ref_event_rows_ver = self.ref_event_rows_ver.saturating_add(1);
+    }
+
+    /// ADR-0063 (#1671 Lane B) — final-`Cleared` teardown of one ref row's per-key
+    /// rev (BLOCKING 2). Called from the last-release / terminal-miss teardown
+    /// AFTER the consumer state is gone. It bumps the rev to its final post-clear
+    /// value (the value an ADR-0055 `Cleared` row carries) and **immediately
+    /// removes the entry in the same call** — there is no retained-rev or pending
+    /// state, so the map never accumulates released keys (D8: memory scales with
+    /// active views, not history). Returns the final rev so a row-delta emitter
+    /// can stamp the `Cleared` frame; on this branch (no Lane A emitter yet) the
+    /// caller discards it.
+    ///
+    /// Ordering (documented per BLOCKING 2): `bump → (emit Cleared with final
+    /// rev) → remove`, all in the same tick. With no in-branch emitter the middle
+    /// step is elided and the rev is dropped immediately after the bump. An
+    /// explicit `Cleared` resets the host cache entry (ADR-0055 §D1), so a later
+    /// re-resolve legitimately starts a fresh row at rev 1.
+    ///
+    /// No-op (returns 0) when the key has no rev entry — a never-claimed key never
+    /// reached the `Cleared` state, so a spurious release does not create a row.
+    pub(crate) fn clear_profile_row(&mut self, key: &str) -> u64 {
+        if !self.profile_row_revs.contains_key(key) {
+            return 0;
+        }
+        self.bump_profile_row(key);
+        let final_rev = self.profile_row_revs.get(key).copied().unwrap_or(0);
+        self.profile_row_revs.remove(key);
+        final_rev
+    }
+
+    /// Event twin of [`Self::clear_profile_row`].
+    pub(crate) fn clear_event_row(&mut self, key: &str) -> u64 {
+        if !self.event_row_revs.contains_key(key) {
+            return 0;
+        }
+        self.bump_event_row(key);
+        let final_rev = self.event_row_revs.get(key).copied().unwrap_or(0);
+        self.event_row_revs.remove(key);
+        final_rev
+    }
+
+    /// ADR-0063 (#1671 Lane B) — read the per-KEY rev for `(namespace, key)`.
+    /// Returns 0 for an unseen key (a row that has never resolved).
+    pub(crate) fn ref_row_rev(&self, namespace: RefNamespace, key: &str) -> u64 {
+        match namespace {
+            RefNamespace::Profile => self.profile_row_revs.get(key).copied().unwrap_or(0),
+            RefNamespace::Event => self.event_row_revs.get(key).copied().unwrap_or(0),
+        }
     }
 }

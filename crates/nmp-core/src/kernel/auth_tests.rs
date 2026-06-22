@@ -12,6 +12,7 @@
 
 use super::auth_test_helpers::*;
 use super::*;
+use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use crate::relay::{RelayRoleTestExt, DEFAULT_VISIBLE_LIMIT};
 use crate::subs::RelayAuthState;
 
@@ -482,14 +483,14 @@ fn nip42_kernel_auth_without_signer_holds_in_challenge_received() {
 // ───────────────────────────────────────────────────────────────────────────
 // Bonus regression: actor-flow integration — claim REQs are partitioned
 // at the single `send_all_outbound` choke point. This test mirrors what the
-// actor does for ActorCommand::ClaimProfile: it calls `kernel.claim_profile()`
+// actor does for ActorCommand::ClaimProfile: it calls `kernel.resolve_ref()`
 // (which emits a kind:0 REQ to the Indexer) and feeds the output through
 // `partition_auth_paused` (the routine `send_all_outbound` calls). Without
 // the relay_mgmt.rs choke-point change, this test would fail — the claim REQs
 // would bypass the AUTH gate.
 //
 // V-112 (ADR-0042): original test used `kernel.open_author()` (deleted).
-// Updated to use `kernel.claim_profile()` which also emits an Indexer REQ.
+// ADR-0063 Lane H: migrated from `kernel.claim_profile()` to `kernel.resolve_ref()`.
 // ───────────────────────────────────────────────────────────────────────────
 
 #[test]
@@ -509,12 +510,14 @@ fn nip42_kernel_claim_reqs_routed_through_auth_gate() {
     // Claim a profile (M2: registers a kind:0 interest; the planner emits the
     // REQ on drain). The Indexer-bound kind:0 REQ must NOT reach the wire while
     // the Indexer relay is AUTH-paused.
-    let _ = kernel.claim_profile(
+    let _ = kernel.resolve_ref(
+        RefNamespace::Profile,
         "1234567812345678123456781234567812345678123456781234567812345678".to_string(),
         "auth-gate-test".to_string(),
-        true,
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk.into(),
         false,
-        crate::kernel::ProfileLiveness::CacheOk,
+        Vec::new(),
     );
     let drained = kernel.drain_lifecycle_outbound();
     let post_partition = kernel.partition_auth_paused(drained);

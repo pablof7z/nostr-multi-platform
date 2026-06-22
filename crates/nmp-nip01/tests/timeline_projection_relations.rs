@@ -98,7 +98,7 @@ fn card_carries_raw_pubkey_and_kind0_does_not_mutate_it() {
     // GH #920: the card no longer denormalizes any kind:0 display copy. The
     // raw hex pubkey is the author identity it carries; a kind:0 for the
     // author neither adds a card nor mutates the existing one (display is
-    // resolved at the snapshot layer via `resolved_profiles`).
+    // resolved at the snapshot layer via `refs.profile`).
     let author = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     let proj = ModularTimelineProjection::new(&spec());
     proj.on_kernel_event(&note_by("S", author, 1, vec![]));

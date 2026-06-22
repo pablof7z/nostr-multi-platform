@@ -116,56 +116,6 @@ class KernelBridge {
     }
 
     /**
-     * Demand-driven profile fetch claim: the UI is rendering [pubkey] under
-     * [consumerId]; the kernel batches a kind:0 REQ against the indexer lane
-     * (or the author's NIP-65 write set once known). Direct mirror of iOS
-     * `KernelHandle.claimProfile(pubkey:consumerId:)`.
-     *
-     * Idempotent — duplicate calls with the same [consumerId] are no-ops. The
-     * matching [releaseProfile] must be called when the view disappears so
-     * the kernel can reclaim the claim slot.
-     */
-    fun claimProfile(pubkey: String, consumerId: String) {
-        if (handle != 0L) nativeClaimProfile(handle, pubkey, consumerId)
-    }
-
-    /**
-     * Demand-driven profile fetch release: the UI no longer needs [pubkey]
-     * under [consumerId]. When the last consumer releases the kernel
-     * reclaims the profile-claim entry; subsequent kind:0 fetches are
-     * gated by a fresh [claimProfile].
-     */
-    fun releaseProfile(pubkey: String, consumerId: String) {
-        if (handle != 0L) nativeReleaseProfile(handle, pubkey, consumerId)
-    }
-
-    /**
-     * Demand-driven embedded-event fetch claim (#984 / T180 / ADR-0034): the UI
-     * is rendering an out-of-feed `EventRef` ([uri] is the verbatim
-     * `nevent`/`note`/`naddr` URI) under [consumerId]; the kernel resolves the
-     * event (cache-first, then relay) and ships its typed projection in the next
-     * `NEMB` sidecar (`projections.claimedEventEmbeds`). Direct mirror of the
-     * gallery app's `claimEvent` and iOS `KernelHandle.claimEvent`.
-     *
-     * Idempotent per (uri, consumerId); the matching [releaseEvent] must be
-     * called when the embed leaves the composition so the kernel reclaims the
-     * resolution interest.
-     */
-    fun claimEvent(uri: String, consumerId: String) {
-        if (handle != 0L) nativeClaimEvent(handle, uri, consumerId)
-    }
-
-    /**
-     * Demand-driven embedded-event fetch release (#984): the UI no longer needs
-     * [uri] under [consumerId]. When the last consumer releases, the kernel
-     * drops the resolution interest. Safe to call even if no matching claim is
-     * live.
-     */
-    fun releaseEvent(uri: String, consumerId: String) {
-        if (handle != 0L) nativeReleaseEvent(handle, uri, consumerId)
-    }
-
-    /**
      * Dispatch a named action through the action registry.
      *
      * Returns the parsed Rust dispatch envelope:
@@ -459,10 +409,20 @@ class KernelBridge {
     private external fun nativeIsAlive(handle: Long): Boolean
     private external fun nativeSetUpdateListener(handle: Long, listener: KernelUpdateListener)
     private external fun nativeClearUpdateListener(handle: Long)
-    private external fun nativeClaimProfile(handle: Long, pubkey: String, consumerId: String)
-    private external fun nativeReleaseProfile(handle: Long, pubkey: String, consumerId: String)
-    private external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
-    private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
+    // Ref claim/release — `internal` so the cohesive ref-resolution wrappers live
+    // in the sibling KernelBridgeRefs.kt without inflating this file past the LOC ceiling.
+    // ADR-0063 Lane H: nativeClaimProfile / nativeReleaseProfile deleted.
+    internal external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
+    internal external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
+    internal external fun nativeResolveRef(
+        handle: Long,
+        namespace: Int,
+        key: String,
+        consumerId: String,
+        shape: Int,
+        liveness: Int,
+    )
+    internal external fun nativeReleaseRef(handle: Long, namespace: Int, key: String, consumerId: String)
     private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
     private external fun nativeAckActionStage(handle: Long, correlationId: String)
     // Outbox control-plane (parity GAP 4). `internal` so the cohesive

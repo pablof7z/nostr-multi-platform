@@ -157,11 +157,13 @@ fn render_header(f: &mut Frame, area: Rect, state: &AppState) {
 fn profile_for_header(state: &AppState) -> ProfileWire {
     let pubkey = &state.profile_pubkey;
 
-    // V-112 (ADR-0042): author_view projection deleted; profile display data
-    // comes from the kernel-owned resolved_profiles sidecar. Opened author-feed
-    // rows remain a fallback while a fresh profile resolution is still absent.
-    if let Some(profile) = state.features.resolved_profiles.get(pubkey) {
-        return profile.clone();
+    // ADR-0063 (#1671 Lane F): profile display data comes from the kernel-owned
+    // `refs.profile` row (the resolve_ref output), read via the RefRowCache
+    // mirror. The open profile pane resolve_ref's this pubkey at profile.card /
+    // Live (see runtime.rs), so the full card lands here. Opened author-feed rows
+    // remain a fallback while a fresh profile resolution is still absent.
+    if let Some(profile) = state.profile(pubkey) {
+        return profile;
     }
     let row_wire = state
         .profile_rows
@@ -315,9 +317,7 @@ fn short_pubkey(pubkey: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::feature_snapshot::FeatureSnapshot;
     use crate::timeline::TimelineRow;
-    use std::collections::HashMap;
 
     fn row(id: &str, author: &str, content: &str) -> TimelineRow {
         let snapshot = serde_json::json!({
@@ -389,29 +389,40 @@ mod tests {
         assert!(empty_text.contains("No posts in opened author feed"));
     }
 
+    /// ADR-0063 (#1671 Lane F): a `kind:0` ingest arrives as a `refs.profile`
+    /// row-delta, is merged into the shell's `RefProfileStore`, and the profile
+    /// header renders from it (the resolve_ref output) — preferred over the
+    /// stale feed-row author metadata. This is the rendered-profile-updates-via-
+    /// refs.profile gate for the open profile pane.
     #[test]
-    fn header_prefers_kernel_resolved_profile_over_feed_row_metadata() {
+    fn header_prefers_refs_profile_card_over_feed_row_metadata() {
+        use nmp_core::refs::{encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch};
+        use nmp_core::typed_projections::{encode_profile, ProfileCardModel};
+
         let author = "aa".repeat(32);
-        let row_with_stale_profile = row("author-row", &author, "author feed body");
-        let resolved = ProfileWire {
-            pubkey: author.clone(),
-            display_name: Some("Kernel Name".to_string()),
-            about: Some("kernel bio".to_string()),
-            picture_url: Some("https://example.test/avatar.png".to_string()),
-            nip05: Some("kernel@example.test".to_string()),
-            npub: "npub1kernel".to_string(),
-            npub_short: "npub1kernel".to_string(),
-        };
         let mut state = AppState {
             profile_pubkey: author.clone(),
-            profile_rows: vec![row_with_stale_profile],
-            features: FeatureSnapshot {
-                resolved_profiles: HashMap::from([(author.clone(), resolved.clone())]),
-                ..Default::default()
-            },
+            profile_rows: vec![row("author-row", &author, "author feed body")],
             ..Default::default()
         };
         state.profile_rows[0].author_profile.display_name = Some("Stale Row Name".to_string());
+
+        // Build the refs.profile sidecar payload the kernel emits for this pubkey
+        // after a kind:0 ingest (a KPRF card wrapped in a baseline NRRD batch).
+        let card = encode_profile(&ProfileCardModel {
+            pubkey: author.clone(),
+            display_name: Some("Kernel Name".to_string()),
+            about: "kernel bio".to_string(),
+            nip05: "kernel@example.test".to_string(),
+            picture_url: Some("https://example.test/avatar.png".to_string()),
+            ..Default::default()
+        });
+        let batch = encode_ref_row_delta_batch(&RefRowDeltaBatch {
+            namespace: "profile".to_string(),
+            baseline: true,
+            rows: vec![RefRow::changed(author.clone(), 1, card)],
+        });
+        state.ref_profiles.apply_sidecar(&batch, 1, 0);
 
         let profile = profile_for_header(&state);
 

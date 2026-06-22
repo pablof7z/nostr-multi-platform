@@ -253,12 +253,15 @@ fn run_smoke(
     let mut claims_issued = false;
     let mut snapshot_tick = 0u32;
     let mut resolved_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // ADR-0063 (#1671): the stateful `refs.profile` row-delta mirror — merged
+    // across frames so per-key deltas accumulate (D4: the sole profile store).
+    let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
 
     while started.elapsed() < timeout && resolved_ids.len() < targets.len() {
         let remaining = timeout - started.elapsed();
         match snapshot_rx.recv_timeout(remaining) {
             Ok(frame_bytes) => {
-                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes);
+                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes, &mut ref_profiles);
                 snapshot_tick += 1;
                 host.update_from_typed(&snap);
 
@@ -355,69 +358,8 @@ fn run_smoke(
     }
 }
 
-fn projection_label(p: &nmp_content::embed_projection::EmbedKindProjection) -> &'static str {
-    use nmp_content::embed_projection::EmbedKindProjection;
-    match p {
-        EmbedKindProjection::Article(_) => "Article (kind:30023)",
-        EmbedKindProjection::ShortNote(_) => "ShortNote (kind:1)",
-        EmbedKindProjection::Highlight(_) => "Highlight (kind:9802)",
-        EmbedKindProjection::Profile(_) => "Profile (kind:0)",
-        EmbedKindProjection::Unknown(_) => "Unknown",
-    }
-}
-
-fn print_resolved(label: &str, env: &nmp_content::embed_projection::EmbeddedEventEnvelope) {
-    use nmp_content::embed_projection::EmbedKindProjection;
-    match &env.projection {
-        EmbedKindProjection::Article(a) => {
-            println!("✓ {label} → ArticleProjection (kind:30023)");
-            println!("    id:        {}", a.id);
-            println!("    author:    {}", a.author_pubkey);
-            println!("    d_tag:     {}", a.d_tag);
-            if let Some(title) = &a.title {
-                println!("    title:     {title}");
-            }
-            if let Some(summary) = &a.summary {
-                println!("    summary:   {summary}");
-            }
-            if let Some(hero) = &a.hero_image_url {
-                println!("    hero:      {hero}");
-            }
-        }
-        EmbedKindProjection::ShortNote(n) => {
-            println!("✓ {label} → ShortNoteProjection (kind:1)");
-            println!("    id:        {}", n.id);
-            println!("    author:    {}", n.author_pubkey);
-            println!("    media:     {:?}", n.media_urls);
-        }
-        EmbedKindProjection::Highlight(h) => {
-            println!("✓ {label} → HighlightProjection (kind:9802)");
-            println!("    id:        {}", h.id);
-            println!(
-                "    quoted:    {}",
-                truncate_for_display(&h.highlighted_text, 80)
-            );
-        }
-        EmbedKindProjection::Profile(p) => {
-            println!("✓ {label} → ProfileProjection (kind:0)");
-            println!("    pubkey:    {}", p.pubkey);
-        }
-        EmbedKindProjection::Unknown(u) => {
-            println!("✓ {label} → UnknownProjection (kind:{})", u.kind);
-            println!("    content:   {}", truncate_for_display(&u.content, 80));
-        }
-    }
-}
-
-fn truncate_for_display(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        let mut out: String = s.chars().take(max).collect();
-        out.push('…');
-        out
-    }
-}
+mod smoke_display;
+use smoke_display::{print_resolved, projection_label};
 
 fn parse_args() -> Args {
     let mut component = "content-view".to_string();
@@ -563,7 +505,7 @@ fn drive(
             Ok(GalleryEvent::Snapshot(snapshot)) => {
                 let new_authors = host.update_from_typed(&snapshot);
                 live_profiles.update_from_typed(&snapshot);
-                claim_profiles_for(sink, &new_authors);
+                resolve_profiles_for(sink, &new_authors);
                 // Coalesce any additional snapshots that have already piled
                 // up so we don't redraw N times for N quick ticks. Latest
                 // wins (the host replaces its state from each tick).
@@ -572,7 +514,7 @@ fn drive(
                         GalleryEvent::Snapshot(next) => {
                             let more = host.update_from_typed(&next);
                             live_profiles.update_from_typed(&next);
-                            claim_profiles_for(sink, &more);
+                            resolve_profiles_for(sink, &more);
                         }
                         other => {
                             // A non-snapshot event landed during coalescing —
@@ -641,12 +583,12 @@ fn handle_input_after_snapshot(ev: Event, selected_index: &mut usize) {
     }
 }
 
-/// Fire `claim_profile` for each claimed-event author. `claimed_events` carries
-/// raw pubkeys only, so the profile components own kind:0 hydration through the
-/// normal per-(pubkey, consumer_id) refcounted claim path.
-fn claim_profiles_for(sink: &Arc<LiveKernelSink>, authors: &[String]) {
+/// Fire `resolve_profile` for each claimed-event author. `claimed_events`
+/// carries raw pubkeys only, so the profile components own kind:0 hydration
+/// through the normal per-(pubkey, consumer_id) refcounted resolve path.
+fn resolve_profiles_for(sink: &Arc<LiveKernelSink>, authors: &[String]) {
     for pubkey in authors {
-        sink.claim_profile(pubkey, "nmp-gallery-tui.embed.author");
+        sink.resolve_profile(pubkey, "nmp-gallery-tui.embed.author");
     }
 }
 
@@ -689,8 +631,13 @@ fn spawn_input_thread(tx: Sender<GalleryEvent>) {
 
 fn spawn_snapshot_thread(tx: Sender<GalleryEvent>, rx: std::sync::mpsc::Receiver<Vec<u8>>) {
     thread::spawn(move || {
+        // ADR-0063 (#1671): the stateful `refs.profile` row-delta mirror lives in
+        // the snapshot thread (the reader of the kernel frames), merged across
+        // ticks so per-key deltas accumulate. It is the sole app-side profile
+        // store (D4); each frame materialises its current set into the snapshot.
+        let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
         for frame_bytes in rx {
-            let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes);
+            let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes, &mut ref_profiles);
             if tx.send(GalleryEvent::Snapshot(Box::new(snap))).is_err() {
                 break;
             }
@@ -735,7 +682,7 @@ struct VisibleProfileClaims {
 impl VisibleProfileClaims {
     fn reconcile(&mut self, sink: &LiveKernelSink, current: BTreeSet<(String, String)>) {
         for (pubkey, consumer_id) in self.active.difference(&current) {
-            sink.release_profile(pubkey, consumer_id);
+            sink.release_ref(pubkey, consumer_id);
         }
         self.active = current;
     }

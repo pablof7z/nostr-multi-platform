@@ -2,7 +2,8 @@
 //!
 //! **Purpose:** empirical PASS/FAIL gate proving that Rung 3's producer-side
 //! omission of `Unchanged` projections suppresses Tier-2 wire rows on the
-//! `claimed_profiles` churn workload, with zero data loss (ADR-0055 §4 R3-S5 + §9).
+//! single-projection (refs.profile) churn workload, with zero data loss
+//! (ADR-0055 §4 R3-S5 + §9).
 //!
 //! **Honest measured result (reproducible, 5× by the methodology reviewer):**
 //! - Tier-2 row suppression: **1600 → 500 rows over the window (68.8%)** — every
@@ -37,18 +38,18 @@
 //! - Byte-identity oracle PASS (end-state reconstruction == full-frame, fail-closed)
 //!
 //! **Metric honesty (ADR-0055 §3 D3-7 / codex Q4):** the suppression measurement
-//! covers Tier-2 / claimed_profiles churn only. Tier-1 (feed-class) projections
+//! covers Tier-2 single-projection (refs.profile) churn only. Tier-1 (feed-class) projections
 //! stay always-Changed in Rung 3 — gating them is a later rung. The report
 //! notes line makes this explicit.
 //!
-//! D0: uses `nmp_app_inject_signed_events` and `nmp_app_claim_profile` /
-//! `nmp_app_release_profile` — both are cfg-gated test paths.
+//! D0: uses `nmp_app_inject_signed_events` and `nmp_app_resolve_ref` /
+//! `nmp_app_release_ref` (profile namespace) — both are cfg-gated test paths.
 //! D8: no polling; cycles are driven by `configure_and_await_frame` (event-driven
 //! waits via `FrameProbe`) — no busy-wait loops.
 
 use crate::common::{configure_and_await_frame, inject_signed_events, percentile_u64};
 use crate::ffi::{
-    nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_profile,
+    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
     nmp_app_set_update_callback, test_pubkeys, NmpApp,
 };
 use crate::report::ScenarioMetrics;
@@ -156,7 +157,7 @@ impl Default for S6Config {
 //
 // The identical claim/release churn cycle for both phases. Each cycle claims the
 // profile, awaits the resulting emit, releases it, then awaits the next emit —
-// exercising the claimed_profiles projection on and off. No polling (D8):
+// exercising the refs.profile projection on and off. No polling (D8):
 // `configure_and_await_frame` blocks on the FrameProbe until the actor fires the
 // update callback.
 
@@ -169,10 +170,11 @@ fn drive_churn_cycles(
     mut frame_count: impl FnMut() -> usize,
 ) {
     for _ in 0..cycles {
-        nmp_app_claim_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
+        // namespace=0 (Profile), shape=0 (ProfileRef), liveness=0 (CacheOk).
+        nmp_app_resolve_ref(app, 0, churn_pubkey.as_ptr(), consumer_id.as_ptr(), 0, 0);
         configure_and_await_frame(app, probe, 250, &mut frame_count);
 
-        nmp_app_release_profile(app, churn_pubkey.as_ptr(), consumer_id.as_ptr());
+        nmp_app_release_ref(app, 0, churn_pubkey.as_ptr(), consumer_id.as_ptr());
         configure_and_await_frame(app, probe, 250, &mut frame_count);
     }
 }

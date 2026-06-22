@@ -4,15 +4,46 @@ import os.log
 
 let kbLog = Logger(subsystem: "io.f7z.chirp", category: "KernelBridge")
 
-/// Desired subscription shape for a kind:0 profile claim — the 5th
-/// `liveness` argument to `nmp_app_claim_profile`. Mirrors the kernel's
-/// CacheOk / Live intents (the kernel resolves mixed claims Tailing-wins).
-enum ProfileLiveness: Int32 {
-    /// Serve from cache; a OneShot kind:0 fetch fills a miss; no live
-    /// subscription. Use for feed avatars and inline list contexts.
+// ADR-0063 Lane E (#1671): the legacy `ProfileLiveness` enum and the
+// `KernelHandle.claimProfile` / `KernelHandle.releaseProfile` wrappers it fed
+// are removed. The shell resolves/releases profiles through the unified
+// `resolveRef` / `releaseRef` (namespace `.profile`) seam; `RefLiveness` below
+// is its liveness intent. ADR-0063 Lane H deleted the per-kind profile C
+// symbols; profiles now resolve exclusively through `nmp_app_resolve_ref`.
+
+/// ADR-0063 Lane D (#1671) — the origin-blind reference namespace for the
+/// unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI. Raw values
+/// mirror the kernel's integer encoding (`crates/nmp-ffi/src/resolve_ref.rs`):
+/// `0` = profile (kind:0), `1` = event.
+enum RefNamespace: Int32 {
+    case profile = 0
+    case event = 1
+}
+
+/// ADR-0063 Lane D (#1671) — the requested projection shape for a `resolve_ref`
+/// claim. Codes are GLOBALLY UNIQUE across namespaces (the kernel fails closed
+/// on a namespace/shape mismatch). Each shape is valid with exactly one
+/// namespace:
+///   * `.profileRef`  (0) — `{pubkey, display_name, picture_url}` feed-avatar
+///     subset; namespace `.profile`. Use for feed cards / search / notifications.
+///   * `.profileCard` (1) — full `ProfileCard`; namespace `.profile`. Use for
+///     the open profile screen.
+///   * `.eventEmbed`  (2) — render-an-embed-card subset; namespace `.event`.
+///   * `.eventRaw`    (3) — full raw event; namespace `.event`.
+enum RefShape: Int32 {
+    case profileRef = 0
+    case profileCard = 1
+    case eventEmbed = 2
+    case eventRaw = 3
+}
+
+/// ADR-0063 Lane D (#1671) — liveness intent for a `resolve_ref` claim. `0`
+/// (CacheOk) serves from the store with a OneShot fill and no live sub (feed
+/// rows / background); non-zero (Live) keeps a tailing sub open while the
+/// consumer holds the key (open screen). Reuses the same semantics as the old
+/// `ProfileLiveness`, which `resolve_ref` supersedes.
+enum RefLiveness: Int32 {
     case cacheOk = 0
-    /// Register a Tailing kind:0 interest so reactive profile-edit updates
-    /// flow in. Use for the profile screen.
     case live = 1
 }
 
@@ -51,6 +82,14 @@ final class KernelHandle {
     /// instance per kernel) so the cache lifetime exactly matches the kernel
     /// lifetime, and `resetAndRestart()` can call `projectionCache.reset()`.
     let projectionCache = ProjectionMergeCache()
+    /// ADR-0063 Lane E (#1671): NMP-owned per-key row cache for the keyed
+    /// reference projections (`refs.profile` / `refs.event`). One instance per
+    /// kernel (lifetime == kernel lifetime, reset on `reset()`), fed the
+    /// row-delta batches in `KernelModel.apply` (on `@MainActor`, so its
+    /// per-key `rowChanged` Combine publisher drives SwiftUI). This is the
+    /// SOURCE of truth for resolved profiles/events the shell renders via the
+    /// `resolve_ref` claim path — there is NO app-side profile cache (D4).
+    let keyedRefCache = KeyedRefCache()
 
     init() {
         raw = nmp_app_new()
@@ -239,33 +278,34 @@ final class KernelHandle {
         }
     }
 
-    /// F-TTL — `force` controls the lazy re-verification gate for the cached
-    /// kind:0 profile. Pass `true` only when the user explicitly opened this
-    /// author's profile screen or pulled to refresh; default `false` is the
-    /// lazy, TTL-gated path for background / `.onAppear` component self-claims.
-    ///
-    /// `liveness` declares the desired subscription shape (see `ProfileLiveness`):
-    /// `.cacheOk` (cache + OneShot fill, no live sub) for feed avatars and inline
-    /// list contexts; `.live` (Tailing kind:0 interest, reactive profile-edit
-    /// updates) for the profile screen. Defaults to `.cacheOk` so the common
-    /// list path never opens an unnecessary live subscription.
-    func claimProfile(
-        pubkey: String,
+    /// ADR-0063 Lane E (#1671) — unified, origin-blind reference resolution.
+    /// Supersedes `claimProfile` / `claimEvent`: registers (or upgrades) this
+    /// `consumerID`'s interest in `(namespace, key)` at the requested `shape`
+    /// and `liveness`. The kernel surfaces the resolved entity in the matching
+    /// keyed projection (`refs.profile` / `refs.event`) keyed by `key`, which
+    /// the `keyedRefCache` consumes on the next frame. Fire-and-forget.
+    func resolveRef(
+        namespace: RefNamespace,
+        key: String,
         consumerID: String,
-        force: Bool = false,
-        liveness: ProfileLiveness = .cacheOk
+        shape: RefShape,
+        liveness: RefLiveness
     ) {
-        pubkey.withCString { pkPtr in
+        key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_claim_profile(raw, pkPtr, cidPtr, force ? 1 : 0, liveness.rawValue)
+                nmp_app_resolve_ref(
+                    raw, namespace.rawValue, keyPtr, cidPtr,
+                    shape.rawValue, liveness.rawValue)
             }
         }
     }
 
-    func releaseProfile(pubkey: String, consumerID: String) {
-        pubkey.withCString { pkPtr in
+    /// ADR-0063 Lane E (#1671) — release a reference registered via
+    /// `resolveRef`. Pass the SAME `namespace` / `key` / `consumerID`.
+    func releaseRef(namespace: RefNamespace, key: String, consumerID: String) {
+        key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_release_profile(raw, pkPtr, cidPtr)
+                nmp_app_release_ref(raw, namespace.rawValue, keyPtr, cidPtr)
             }
         }
     }
@@ -794,6 +834,18 @@ final class KernelHandle {
             let envelopes = mergeResult.mergedEnvelopes
             let changedKeys = mergeResult.changedKeys
             let needsResync = mergeResult.needsResync
+            // ADR-0063 Lane E (#1671): the keyed reference projections
+            // (`refs.profile` / `refs.event`) are NOT routed through the
+            // ProjectionMergeCache (which is keyed per WHOLE projection, not
+            // per row). They carry an `nmp.refs.RefRowDeltaBatch` (NRRD) payload
+            // that the per-key `KeyedRefCache` merges row-by-row. We carry the
+            // RAW pre-merge envelopes through to `KernelModel.apply` so the
+            // merge runs on `@MainActor` (its per-key `rowChanged` publisher
+            // drives SwiftUI). Filter off `rawEnvelopes` — they hold the
+            // verbatim wire payload, untouched by the projection-cache pass.
+            let refsRowEnvelopes = rawEnvelopes.filter {
+                KeyedRefCache.namespace(forProjectionKey: $0.key) != nil
+            }
             if needsResync {
                 kbLog.error("ProjectionMergeCache needsResync=true — one or more projection decode-before-commit failures; will be repaired on next genuine rev bump")
             }
@@ -846,15 +898,11 @@ final class KernelHandle {
             // on every tick. Nil only on an older kernel build → the generic
             // `projections["nmp.nip29.group_defaults"]` JSON path applies.
             let typedGroupDefaults = TypedGroupDefaultsDecoder.decode(from: envelopes)
-            // Profile-cluster typed sidecars (`profile` / `claimed_profiles` /
-            // `resolved_profiles`). All three share the `nmp_kernel_ProfileCard`
-            // reader (defined once in `ProfileCard.generated.swift`). Each returns
-            // nil when its sidecar is absent/malformed → the generic
-            // `projections.<field>` JSON path stays active (ADR-0037 Commitment 4),
-            // mirroring `typedAccounts` above.
+            // Profile-cluster typed sidecar (`profile` / KPRF). Returns nil when
+            // its sidecar is absent/malformed. `claimed_profiles` (KCPR) and
+            // `resolved_profiles` (KRPR) deleted — ADR-0063 Lane H. Profile data
+            // is now served via the refs.profile KPRF NRRD row-delta sidecar.
             let typedProfile = TypedProfileDecoder.decode(from: envelopes)
-            let typedClaimedProfiles = TypedClaimedProfilesDecoder.decode(from: envelopes)
-            let typedResolvedProfiles = TypedResolvedProfilesDecoder.decode(from: envelopes)
             // NIP-17 DM cluster + claimed-event map (`nmp.nip17.dm_inbox` /
             // `nmp.nip17.dm_relay_list` / `claimed_events`). Each returns nil when
             // its sidecar is absent/malformed → the generic `projections.<field>`
@@ -928,8 +976,6 @@ final class KernelHandle {
                     typedDiscoveredGroups: typedDiscoveredGroups,
                     typedGroupDefaults: typedGroupDefaults,
                     typedProfile: typedProfile,
-                    typedClaimedProfiles: typedClaimedProfiles,
-                    typedResolvedProfiles: typedResolvedProfiles,
                     typedDmInbox: typedDmInbox,
                     typedDmRelayList: typedDmRelayList,
                     typedClaimedEvents: typedClaimedEvents,
@@ -950,7 +996,10 @@ final class KernelHandle {
                     callbackReceivedAt: start,
                     decodeMicros: duration.microseconds,
                     changedKeys: changedKeys,
-                    needsResync: needsResync
+                    needsResync: needsResync,
+                    refsRowEnvelopes: refsRowEnvelopes,
+                    refsSessionId: sessionId,
+                    refsSnapshotEpoch: snapshotEpoch
                 )
             )
         } catch let error as DecodingError {

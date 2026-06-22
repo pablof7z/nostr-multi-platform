@@ -2,7 +2,7 @@
 #
 # Swift flatc codegen-drift gate (Issue #1, codegen drift correctness).
 #
-# The 34 checked-in `flatc --swift` Swift binding files under
+# The 35 checked-in `flatc --swift` Swift binding files under
 #   ios/Chirp/Chirp/Bridge/Generated/*.generated.swift
 # (every `.generated.swift` file EXCEPT KernelTypes.generated.swift and
 # TypedProjectionDecoders.generated.swift, which are emitted by the
@@ -70,7 +70,6 @@ MAPPINGS=(
     "crates/nmp-core/schema/active_account.fbs|active_account_generated.swift|ActiveAccount.generated.swift"
     "crates/nmp-core/schema/bunker_handshake.fbs|bunker_handshake_generated.swift|BunkerHandshake.generated.swift"
     "crates/nmp-core/schema/claimed_events.fbs|claimed_events_generated.swift|ClaimedEvents.generated.swift"
-    "crates/nmp-core/schema/claimed_profiles.fbs|claimed_profiles_generated.swift|ClaimedProfiles.generated.swift"
     "crates/nmp-core/schema/configured_relays.fbs|configured_relays_generated.swift|ConfiguredRelays.generated.swift"
     "crates/nmp-core/schema/nip46_onboarding.fbs|nip46_onboarding_generated.swift|Nip46Onboarding.generated.swift"
     "crates/nmp-core/schema/nmp_update.fbs|nmp_update_generated.swift|NmpUpdate.generated.swift"
@@ -81,7 +80,7 @@ MAPPINGS=(
     "crates/nmp-core/schema/publish_queue.fbs|publish_queue_generated.swift|PublishQueue.generated.swift"
     "crates/nmp-core/schema/relay_diagnostics.fbs|relay_diagnostics_generated.swift|RelayDiagnostics.generated.swift"
     "crates/nmp-core/schema/relay_role_options.fbs|relay_role_options_generated.swift|RelayRoleOptions.generated.swift"
-    "crates/nmp-core/schema/resolved_profiles.fbs|resolved_profiles_generated.swift|ResolvedProfiles.generated.swift"
+    "crates/nmp-core/schema/ref_rowdelta.fbs|ref_rowdelta_generated.swift|RefRowDelta.generated.swift"
     "crates/nmp-core/schema/settings_hub.fbs|settings_hub_generated.swift|SettingsHub.generated.swift"
     "crates/nmp-core/schema/signer_state.fbs|signer_state_generated.swift|SignerState.generated.swift"
     "crates/nmp-content/schema/content_tree.fbs|content_tree_generated.swift|ContentTree.generated.swift"

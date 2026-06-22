@@ -4,17 +4,17 @@
 //! Gate: docs/design/ffi-hardening/gates.md §G-S2
 //!
 //! 10,000 dispatches/sec from N=4 caller threads × 60 s.
-//! Mix: 60% claim_profile, 40% release_profile.
+//! Mix: 60% resolve_ref, 40% release_ref (profile namespace).
 //! V-68 / V-112 (ADR-0042): open_author / close_author deleted.
 //! Former 30/30/20/20 open_author/close_author/claim/release mix is now
-//! 60/40 claim/release (open_author+claim combined → claim; close_author+release → release).
+//! 60/40 resolve/release (open_author+claim combined → resolve; close_author+release → release).
 //!
 //! D8 (reactivity contract, <=60 Hz/view): actor mpsc backlog never exceeds 10,000.
 //! Bible #3 (fire-and-forget): every send call returns within p99 <= 1 ms.
 
 use crate::allocator::{alloc_snapshot, AllocSnapshot};
 use crate::ffi::{
-    nmp_app_claim_profile, nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_profile,
+    nmp_app_configure, nmp_app_free, nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
     nmp_app_set_update_callback, process_rss_bytes, test_pubkeys, NmpApp,
 };
 use crate::gate::Gate;
@@ -76,7 +76,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     let wall_start = Instant::now();
 
     // Configure-not-Start: nmp_app_configure sets emit_hz/visible_limit without spawning
-    // relay worker threads. S2 floods claim_profile/release_profile at 10k/sec; spawning
+    // relay worker threads. S2 floods resolve_ref/release_ref at 10k/sec; spawning
     // relay workers would send 3k+ REQ/CLOSE per second to real external relays, filling
     // the TCP write buffer and blocking relay threads indefinitely — causing a hang at teardown.
     let app: *mut NmpApp = nmp_app_new();
@@ -127,10 +127,12 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
                 while thread_start.elapsed() < duration {
                     let pk_idx = seq as usize % pubkeys.len();
                     let pk = &pubkeys[pk_idx];
-                    // Mix: 60% claim_profile, 40% release_profile.
+                    // Mix: 60% resolve_ref, 40% release_ref (ADR-0063 Lane H).
                     // V-68 / V-112 (ADR-0042): open_author / close_author deleted;
                     // former 30/30/20/20 open_author/close_author/claim/release
-                    // compressed to 60/40 claim/release.
+                    // compressed to 60/40 resolve/release.
+                    // ADR-0063 Lane H: claim_profile/release_profile → resolve_ref/release_ref.
+                    // namespace=0 (Profile), shape=0 (ProfileRef), liveness=0 (CacheOk).
                     let dispatch_kind = seq % 10;
 
                     let t0 = Instant::now();
@@ -138,12 +140,19 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
                         0..=5 => {
                             let consumer =
                                 CString::new(format!("t{thread_idx}-{seq}")).expect("no nuls");
-                            nmp_app_claim_profile(app_ptr, pk.as_ptr(), consumer.as_ptr(), 0, 0);
+                            nmp_app_resolve_ref(
+                                app_ptr,
+                                0,
+                                pk.as_ptr(),
+                                consumer.as_ptr(),
+                                0,
+                                0,
+                            );
                         }
                         _ => {
                             let consumer =
                                 CString::new(format!("t{thread_idx}-{seq}")).expect("no nuls");
-                            nmp_app_release_profile(app_ptr, pk.as_ptr(), consumer.as_ptr());
+                            nmp_app_release_ref(app_ptr, 0, pk.as_ptr(), consumer.as_ptr());
                         }
                     }
                     let elapsed_ns = t0.elapsed().as_nanos() as u64;

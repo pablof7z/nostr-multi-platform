@@ -48,7 +48,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.ExternalSignerCapabilityBridge
 import org.nmp.android.KernelModel
 import org.nmp.android.NostrSignerInfo
+import org.nmp.android.createAccount
 import org.nmp.android.detectInstalledSigners
+import org.nmp.android.signInBunker
+import org.nmp.android.signInNsec
 import org.nmp.android.model.SignerState
 
 /**

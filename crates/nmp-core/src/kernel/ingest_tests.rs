@@ -471,7 +471,7 @@ fn signed_note(keys: &::nostr::Keys, content: &str, ts: u64) -> NostrEvent {
 // the proactive kind:0 fetch at timeline.rs:172 was removed. The replacement
 // invariants live in `proactive_profile_fetch_tests.rs`:
 //   - `kind1_ingest_does_not_queue_profile_fetch` (no proactive fetch)
-//   - `claim_profile_after_ingest_queues_fetch` (claim path works)
+//   - `resolve_profile_after_ingest_queues_fetch` (resolve path works)
 
 /// A signed kind:1 from an author present in `timeline_authors` passes the
 /// timeline gate: it is persisted to the `events` read-cache AND appended to

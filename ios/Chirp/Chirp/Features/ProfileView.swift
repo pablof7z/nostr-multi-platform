@@ -15,7 +15,14 @@ struct ProfileView: View {
     @State private var isEditingProfile = false
 
     private var profileConsumerID: String { "profile-screen-\(pubkey)" }
-    private var profile: ProfileCard? { model.claimedProfiles[pubkey] ?? model.resolvedProfileCards[pubkey] }
+    /// ADR-0063 Lane E (#1671): the profile screen reads the unified
+    /// `refs.profile` keyed-ref cache (`profileCard(forPubkey:)`) — NOT the
+    /// legacy `claimedProfiles` / `resolvedProfileCards` maps. The screen claims
+    /// `.profileCard` + `.live`, so the full card flows in and reactive
+    /// profile-edit updates land here. `refresher` re-evaluates the body when
+    /// this pubkey's row commits (per-key observation, no whole-map invalidation).
+    @StateObject private var refresher = KeyedRefRowObserver()
+    private var profile: ProfileCard? { model.profileCard(forPubkey: pubkey) }
     private var items: [ChirpRootCard] { model.authorFeed(pubkey: pubkey)?.cards ?? [] }
 
     /// Rust-authored wire for the shared `NostrUserCard` primitive. Built from
@@ -73,12 +80,11 @@ struct ProfileView: View {
         )
     }
 
-    /// Render context fed to each `ProfileNoteRow`. `mentionProfiles` is the
-    /// Rust-derived projection (aim.md §4.2); the two remaining lookups are
-    /// folded into one context built once per body pass.
+    /// Render context fed to each `ProfileNoteRow`. ADR-0063 Lane E (#1671):
+    /// the whole-map `mentionProfiles` dictionary is gone — inline mention
+    /// labels read the per-key keyed-ref cache inside `NoteContentView`.
     private var noteRenderContext: NoteRenderContext {
         NoteRenderContext(
-            mentionProfiles: model.mentionProfiles,
             eventCards: Dictionary(uniqueKeysWithValues: items.map { ($0.card.id, $0.card) }),
             timelineItems: [:]
         )
@@ -99,10 +105,14 @@ struct ProfileView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             model.openAuthor(pubkey: pubkey)
-            // Profile screen → `.live`: open a Tailing kind:0 interest so a
-            // profile edit by this author updates the screen reactively.
-            model.claimProfile(
-                pubkey: pubkey, consumerID: profileConsumerID, liveness: .live)
+            // ADR-0063 Lane E (#1671): profile screen → `resolve_ref(Profile,
+            // …, .profileCard, .live)`. `.profileCard` requests the full card
+            // shape; `.live` opens a Tailing kind:0 interest so a profile edit
+            // by this author updates the screen reactively.
+            refresher.observe(model.profileRowChanged, pubkey: pubkey)
+            model.resolveProfile(
+                pubkey: pubkey, consumerID: profileConsumerID,
+                shape: .profileCard, liveness: .live)
         }
         .onDisappear {
             // T152: release the author sub on nav-away (wire_subs baseline).

@@ -42,12 +42,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.nmp.android.KernelModel
+import org.nmp.android.RefLiveness
+import org.nmp.android.RefShape
+import org.nmp.android.sendDm
 import org.nmp.android.components.LocalNostrProfileHost
 import org.nmp.android.components.NostrAvatar
 import org.nmp.android.model.DmConversation
 import org.nmp.android.model.DmInboxSnapshot
 import org.nmp.android.model.DmMessage
-import org.nmp.android.model.ProfileCard
 
 /**
  * NIP-17 direct-message conversations screen — Android peer of iOS `DmListView`.
@@ -62,13 +64,11 @@ import org.nmp.android.model.ProfileCard
  */
 @Composable
 fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
-    // Single collection of the kernel snapshot for this screen subtree. Both the
-    // conversation list (`dmInbox`) and the claim-host (`resolvedProfiles`) read
-    // from this one snapshot generation, so conversations and author profiles can
-    // never reflect different frames (issue #1303 — was double-collected before).
+    // Single collection of the kernel snapshot for this screen subtree (the DM
+    // inbox). ADR-0063 Lane G: author profiles are read per-key via the
+    // `refs.profile` keyed-ref cache through the profile host, not a snapshot map.
     val s by model.state.collectAsStateWithLifecycle()
     val dmInbox = s.projections?.dmInbox ?: DmInboxSnapshot()
-    val resolvedProfiles = s.projections?.resolvedProfiles ?: emptyMap()
 
     var selectedPeerPubkey by remember { mutableStateOf<String?>(null) }
     var showNewDmDialog by remember { mutableStateOf(false) }
@@ -84,7 +84,6 @@ fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
             DmConversationListScreen(
                 model = model,
                 dmInbox = dmInbox,
-                resolvedProfiles = resolvedProfiles,
                 onSelectConversation = { pubkey -> selectedPeerPubkey = pubkey },
                 onStartConversation = { showNewDmDialog = true },
             )
@@ -109,16 +108,16 @@ fun DmScreen(model: KernelModel, modifier: Modifier = Modifier) {
 private fun DmConversationListScreen(
     model: KernelModel,
     dmInbox: DmInboxSnapshot,
-    resolvedProfiles: Map<String, ProfileCard>,
     onSelectConversation: (String) -> Unit,
     onStartConversation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // ADR-0063 Lane G: list-row avatar fetches resolve ProfileRef / CacheOk.
     val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
-        if (claim) model.claimProfile(pubkey, consumerId)
+        if (claim) model.resolveProfile(pubkey, consumerId)
         else model.releaseProfile(pubkey, consumerId)
     }
-    val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
+    val profileHost = rememberKernelProfileHost(model)
     CompositionLocalProvider(
         LocalProfileClaimer provides claimer,
         LocalNostrProfileHost provides profileHost,
@@ -287,8 +286,10 @@ private fun DmConversationView(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // ADR-0063 Lane G: the open DM conversation is a live profile surface for the
+    // peer — resolve the full ProfileCard shape with Live liveness (tailing sub).
     DisposableEffect(peerPubkey) {
-        model.claimProfile(peerPubkey, "dm-thread")
+        model.resolveProfile(peerPubkey, "dm-thread", RefShape.ProfileCard, RefLiveness.Live)
         onDispose { model.releaseProfile(peerPubkey, "dm-thread") }
     }
 

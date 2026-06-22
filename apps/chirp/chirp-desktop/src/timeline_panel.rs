@@ -18,8 +18,9 @@ use crate::zap_amount::PendingZap;
 impl DesktopApp {
     pub(crate) fn timeline(&mut self, ui: &mut Ui, snap: &Snapshot) {
         let feed: ModularTimelineSnapshot = snap.projection("nmp.feed.home").unwrap_or_default();
-        let profiles: HashMap<String, ProfileCard> =
-            snap.projection("resolved_profiles").unwrap_or_default();
+        // ADR-0063 (#1671 Lane F): read author/mention profiles from the
+        // refs.profile mirror (resolve_ref output) instead of resolved_profiles.
+        let profiles: HashMap<String, ProfileCard> = snap.refs_profiles.clone();
 
         if feed.cards.is_empty() {
             ui.vertical_centered(|ui| {
@@ -30,6 +31,7 @@ impl DesktopApp {
             return;
         }
 
+        let mut nav: Option<AppTab> = None;
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -39,9 +41,9 @@ impl DesktopApp {
                         &entry.card,
                         &profiles,
                         &snap.embeds,
-                        &mut self.tab,
-                        &self.bridge,
+                        &mut nav,
                         &mut self.reply_to,
+                        &self.bridge,
                     ) {
                         self.zap_amount.open(target);
                     }
@@ -57,6 +59,11 @@ impl DesktopApp {
                     });
                 }
             });
+        // ADR-0063 (#1671 Lane F): apply a requested transition through the
+        // single navigation chokepoint (releases the outgoing view's ref).
+        if let Some(next) = nav {
+            self.navigate_to(next);
+        }
     }
 }
 
@@ -69,14 +76,18 @@ fn display_label(pubkey: &str, profiles: &HashMap<String, ProfileCard>) -> Strin
         .unwrap_or_else(|| nmp_core::display::short_npub(pubkey))
 }
 
+/// Render one feed card. Navigation (author/thread open) is NOT performed here:
+/// a requested tab transition is written to `nav` so the caller can route it
+/// through the single `DesktopApp::navigate_to` chokepoint (ADR-0063 #1671 Lane
+/// F — releasing the outgoing Author/Thread view's ref before opening the next).
 pub(crate) fn feed_card(
     ui: &mut Ui,
     card: &TimelineEventCard,
     profiles: &HashMap<String, ProfileCard>,
     embeds: &HashMap<String, nmp_content::EmbeddedEventEnvelope>,
-    tab: &mut AppTab,
-    bridge: &AppRuntime,
+    nav: &mut Option<AppTab>,
     reply_to: &mut Option<NoteRecord>,
+    bridge: &AppRuntime,
 ) -> Option<PendingZap> {
     let author_display = display_label(&card.author_pubkey, profiles);
     let initials =
@@ -107,8 +118,7 @@ pub(crate) fn feed_card(
                     }
                     ui.horizontal(|ui| {
                         if ui.button(RichText::new(&author_display).strong()).clicked() {
-                            *tab = AppTab::Author(card.author_pubkey.clone());
-                            bridge.open_author(&card.author_pubkey);
+                            *nav = Some(AppTab::Author(card.author_pubkey.clone()));
                         }
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             ui.label(RichText::new(&created_at_display).weak().small());
@@ -128,8 +138,7 @@ pub(crate) fn feed_card(
                             note_body(ui, text.as_ref(), embeds, profiles);
                         });
                         if scope.response.interact(egui::Sense::click()).clicked() {
-                            *tab = AppTab::Thread(card.id.clone());
-                            bridge.open_thread(&card.id);
+                            *nav = Some(AppTab::Thread(card.id.clone()));
                         }
                     }
                     ui.label(

@@ -58,6 +58,11 @@ pub struct DesktopApp {
     pub(crate) nwc_input: String,
     pub(crate) pending_account_removal: Option<String>,
     pub(crate) zap_amount: ZapAmountState,
+    /// ADR-0063 (#1671 Lane F) — feed/list-row authors currently resolved at
+    /// `profile.ref` / `CacheOk`. Diffed each frame against the visible authors so
+    /// a pubkey is resolved when it appears and released when the view changes
+    /// (D5/D7: every rendered reference resolves; bounded by what is open).
+    pub(crate) resolved_feed_authors: std::collections::HashSet<String>,
 }
 
 impl DesktopApp {
@@ -69,6 +74,13 @@ impl DesktopApp {
         let reader_latest = Arc::clone(&latest);
         let egui_ctx = cc.egui_ctx.clone();
         std::thread::spawn(move || {
+            // ADR-0063 (#1671 Lane F): the persistent host-side mirror of the
+            // `refs.profile` row-delta projection. Lives for the reader thread's
+            // lifetime — row-deltas merge into it across frames (it is NOT
+            // rebuilt per frame). The ONLY app-side store of hydrated profile
+            // facts (D4); the snapshot's `refs_profiles` is a per-frame
+            // materialisation of this cache, not a second cache.
+            let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
             for event in rx {
                 // PR-B (#991/#979): typed-first decode. The `payload:Value`
                 // blob is no longer emitted; every field is read from the
@@ -79,8 +91,10 @@ impl DesktopApp {
                 // (built via `serde_json::json!`, since the `snapshot::*`
                 // payload structs are `Deserialize`-only) so the existing
                 // `snap.projection::<T>(key)` read sites keep working unchanged.
-                let Some(snap) = crate::snapshot_decode::decode_snapshot_typed(&event.payload)
-                else {
+                let Some(snap) = crate::snapshot_decode::decode_snapshot_typed(
+                    &event.payload,
+                    &mut ref_profiles,
+                ) else {
                     continue;
                 };
                 if let Ok(mut slot) = reader_latest.lock() {
@@ -110,11 +124,146 @@ impl DesktopApp {
             nwc_input: String::new(),
             pending_account_removal: None,
             zap_amount: ZapAmountState::default(),
+            resolved_feed_authors: std::collections::HashSet::new(),
         }
+    }
+
+    /// ADR-0063 (#1671 Lane F) — auto-resolve every profile reference rendered in
+    /// the current view at `profile.ref` / `CacheOk` and release any reference
+    /// that is no longer on screen. "Reference" is the full visible set: row
+    /// authors + reposters AND every note-body mention the cards render (the
+    /// mention set is extracted via the same tokenisation the renderer walks, see
+    /// `collect_feed_authors`). Runs once per frame; the kernel dedupes per pubkey
+    /// so the per-frame resolve is idempotent. This closes the D7 coverage hole: a
+    /// feed/profile/thread author OR mention cannot render without a live ref
+    /// resolving it.
+    fn sync_feed_author_refs(&mut self, snap: &Snapshot) {
+        let mut visible: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // Home is always live; the open author/thread feed (if any) adds its rows.
+        if let Some(feed) = snap.projection::<ModularTimelineSnapshot>("nmp.feed.home") {
+            collect_feed_authors(&feed, &mut visible);
+        }
+        match &self.tab {
+            AppTab::Author(pubkey) => {
+                visible.insert(pubkey.clone());
+                if let Some(feed) =
+                    snap.projection::<ModularTimelineSnapshot>(&format!("nmp.feed.author.{pubkey}"))
+                {
+                    collect_feed_authors(&feed, &mut visible);
+                }
+            }
+            AppTab::Thread(event_id) => {
+                if let Some(feed) = snap
+                    .projection::<ModularTimelineSnapshot>(&format!("nmp.feed.thread.{event_id}"))
+                {
+                    collect_feed_authors(&feed, &mut visible);
+                }
+            }
+            _ => {}
+        }
+
+        for pubkey in visible.difference(&self.resolved_feed_authors) {
+            self.bridge.resolve_feed_author_ref(pubkey);
+        }
+        for pubkey in self.resolved_feed_authors.difference(&visible) {
+            self.bridge.release_feed_author_ref(pubkey);
+        }
+        self.resolved_feed_authors = visible;
     }
 
     fn snapshot(&self) -> Option<Snapshot> {
         self.latest.lock().ok().and_then(|s| s.clone())
+    }
+
+    /// ADR-0063 (#1671 Lane F) — the ONE desktop tab/view-transition chokepoint.
+    ///
+    /// `open_author` resolves `profile.card` / `Live` and `open_thread` opens a
+    /// thread feed; both are refcounted by (namespace, key, consumer_id) in the
+    /// ABI, so leaving or replacing an Author/Thread view WITHOUT releasing the
+    /// outgoing key leaks it Live forever. Every navigation that changes
+    /// `self.tab` MUST go through here: it releases the outgoing Author/Thread
+    /// ref BEFORE opening the next view, covering Author A→B (release A, open B),
+    /// Author→Home/Settings/Dms (release A), Author→Thread / Thread→Author
+    /// (release the outgoing, open the incoming), and Thread→Thread. Switching to
+    /// the same tab is a no-op (no spurious release/re-open). Feed/list-row author
+    /// + mention refs (`profile.ref` / `CacheOk`) are handled separately by the
+    /// per-frame `sync_feed_author_refs` diff — this chokepoint owns only the
+    /// open-view (`profile.card` / thread-feed) lifecycle.
+    pub(crate) fn navigate_to(&mut self, next: AppTab) {
+        let Some((close, open)) = view_transition(&self.tab, &next) else {
+            return;
+        };
+        // Release the OUTGOING open-view ref first (no leak on replace/leave)…
+        match close {
+            ViewRef::Author(pk) => self.bridge.close_author(&pk),
+            ViewRef::Thread(id) => self.bridge.close_thread(&id),
+            ViewRef::None => {}
+        }
+        // …then open the INCOMING view's ref.
+        match open {
+            ViewRef::Author(pk) => self.bridge.open_author(&pk),
+            ViewRef::Thread(id) => self.bridge.open_thread(&id),
+            ViewRef::None => {
+                if matches!(next, AppTab::Home) {
+                    self.bridge.open_timeline();
+                }
+            }
+        }
+        self.tab = next;
+    }
+}
+
+/// ADR-0063 (#1671 Lane F) — the open-view (`profile.card` / thread-feed)
+/// reference a tab holds, if any. `Home`/`Settings`/`Dms`/`Diagnostics`/`Outbox`
+/// hold none.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum ViewRef {
+    None,
+    Author(String),
+    Thread(String),
+}
+
+/// ADR-0063 (#1671 Lane F) — pure decision for `navigate_to`: given the current
+/// and next tab, what open-view ref must be released and what must be opened.
+/// `None` means "same tab, do nothing". Extracted as a pure function so the
+/// release-before-open contract is unit-testable without booting the FFI kernel.
+fn view_transition(current: &AppTab, next: &AppTab) -> Option<(ViewRef, ViewRef)> {
+    if current == next {
+        return None;
+    }
+    Some((tab_view_ref(current), tab_view_ref(next)))
+}
+
+fn tab_view_ref(tab: &AppTab) -> ViewRef {
+    match tab {
+        AppTab::Author(pk) => ViewRef::Author(pk.clone()),
+        AppTab::Thread(id) => ViewRef::Thread(id.clone()),
+        _ => ViewRef::None,
+    }
+}
+
+/// ADR-0063 (#1671 Lane F) — collect every profile pubkey rendered by `feed`
+/// into `out`: root author + repost attribution AND every note-body mention the
+/// card renders. The mention set is extracted with the SAME tokenisation the
+/// renderer walks (`render::collect_body_mention_pubkeys` mirrors `note_body`),
+/// so a mentioned pubkey that is not also an author/reposter still gets resolved
+/// and its name renders instead of the fallback npub (D7 — every rendered
+/// reference resolves). Raw hex only (ADR-0032).
+fn collect_feed_authors(
+    feed: &ModularTimelineSnapshot,
+    out: &mut std::collections::HashSet<String>,
+) {
+    for entry in &feed.cards {
+        if !entry.card.author_pubkey.is_empty() {
+            out.insert(entry.card.author_pubkey.clone());
+        }
+        if let Some(repost) = &entry.card.reposted_by {
+            if !repost.author_pubkey.is_empty() {
+                out.insert(repost.author_pubkey.clone());
+            }
+        }
+        // Rendered note-body mentions (render.rs note_body / mention_label).
+        crate::render::collect_body_mention_pubkeys(&entry.card.content, out);
     }
 }
 
@@ -126,8 +275,13 @@ impl App for DesktopApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         let snap = self.snapshot().unwrap_or_default();
         if matches!(self.tab, AppTab::Diagnostics) && !diagnostics_flag::enabled() {
-            self.tab = AppTab::Home;
+            self.navigate_to(AppTab::Home);
         }
+
+        // ADR-0063 (#1671 Lane F): resolve every visible feed/profile/thread
+        // author at profile.ref/CacheOk (release those no longer on screen) so
+        // names/avatars render through the unified resolve_ref path (D7).
+        self.sync_feed_author_refs(&snap);
 
         self.status_bar(ctx, &snap);
         self.sidebar(ctx, &snap);
@@ -189,33 +343,34 @@ impl DesktopApp {
 
                 let current_tab = self.tab.clone();
 
+                // ADR-0063 (#1671 Lane F): every sidebar transition routes
+                // through `navigate_to` so leaving an Author/Thread view
+                // releases its open-view ref (no leak on tab switch).
                 if ui
                     .selectable_label(matches!(current_tab, AppTab::Home), "🏠  Home")
                     .clicked()
                 {
-                    self.tab = AppTab::Home;
-                    self.bridge.open_timeline();
+                    self.navigate_to(AppTab::Home);
                 }
                 if ui
                     .selectable_label(matches!(current_tab, AppTab::Author(_)), "👤  Profile")
                     .clicked()
                 {
                     if let Some(ref pk) = snap.active_account {
-                        self.tab = AppTab::Author(pk.clone());
-                        self.bridge.open_author(pk);
+                        self.navigate_to(AppTab::Author(pk.clone()));
                     }
                 }
                 if ui
                     .selectable_label(matches!(current_tab, AppTab::Dms), "💬  DMs")
                     .clicked()
                 {
-                    self.tab = AppTab::Dms;
+                    self.navigate_to(AppTab::Dms);
                 }
                 if ui
                     .selectable_label(matches!(current_tab, AppTab::Settings), "⚙️  Settings")
                     .clicked()
                 {
-                    self.tab = AppTab::Settings;
+                    self.navigate_to(AppTab::Settings);
                 }
                 if diagnostics_flag::enabled() {
                     if ui
@@ -225,14 +380,14 @@ impl DesktopApp {
                         )
                         .clicked()
                     {
-                        self.tab = AppTab::Diagnostics;
+                        self.navigate_to(AppTab::Diagnostics);
                     }
                 }
                 if ui
                     .selectable_label(matches!(current_tab, AppTab::Outbox), "📤  Outbox")
                     .clicked()
                 {
-                    self.tab = AppTab::Outbox;
+                    self.navigate_to(AppTab::Outbox);
                 }
 
                 ui.add_space(12.0);
@@ -276,8 +431,8 @@ impl DesktopApp {
                 // V-112 (ADR-0042): read from flat-feed projection instead of deleted author_view.
                 let key = format!("nmp.feed.author.{pubkey}");
                 let feed: Option<ModularTimelineSnapshot> = snap.projection(&key);
-                let profiles: HashMap<String, ProfileCard> =
-                    snap.projection("resolved_profiles").unwrap_or_default();
+                // ADR-0063 (#1671 Lane F): read from the refs.profile mirror.
+                let profiles: HashMap<String, ProfileCard> = snap.refs_profiles.clone();
                 self.author_view(ui, snap, pubkey, feed, profiles);
             }
             AppTab::Dms => crate::dm_panel::show(self, ui, snap),
@@ -389,13 +544,14 @@ impl DesktopApp {
         event_id: &str,
         feed: Option<ModularTimelineSnapshot>,
     ) {
-        let eid = event_id.to_string();
-        let profiles: HashMap<String, ProfileCard> =
-            snap.projection("resolved_profiles").unwrap_or_default();
+        let _eid = event_id.to_string();
+        // ADR-0063 (#1671 Lane F): read from the refs.profile mirror.
+        let profiles: HashMap<String, ProfileCard> = snap.refs_profiles.clone();
         ui.horizontal(|ui| {
             if ui.button("← Back").clicked() {
-                self.tab = AppTab::Home;
-                self.bridge.close_thread(&eid);
+                // ADR-0063 (#1671 Lane F): release the outgoing thread feed via
+                // the navigation chokepoint (no manual close_thread leak).
+                self.navigate_to(AppTab::Home);
             }
             ui.label(RichText::new("Thread").strong());
         });
@@ -409,6 +565,7 @@ impl DesktopApp {
 
         ui.add_space(4.0);
 
+        let mut nav: Option<AppTab> = None;
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -418,15 +575,20 @@ impl DesktopApp {
                         &entry.card,
                         &profiles,
                         &snap.embeds,
-                        &mut self.tab,
-                        &self.bridge,
+                        &mut nav,
                         &mut self.reply_to,
+                        &self.bridge,
                     ) {
                         self.zap_amount.open(target);
                     }
                     ui.add_space(4.0);
                 }
             });
+        // ADR-0063 (#1671 Lane F): route the in-card transition through the
+        // chokepoint so this thread feed is released before the next view opens.
+        if let Some(next) = nav {
+            self.navigate_to(next);
+        }
     }
 
     fn author_view(
@@ -440,15 +602,17 @@ impl DesktopApp {
         let pk = pubkey.to_string();
         ui.horizontal(|ui| {
             if ui.button("← Back").clicked() {
-                self.tab = AppTab::Home;
-                self.bridge.close_author(&pk);
+                // ADR-0063 (#1671 Lane F): release the outgoing author's
+                // profile.card ref via the navigation chokepoint (no leak).
+                self.navigate_to(AppTab::Home);
             }
             ui.label(RichText::new("Profile").strong());
         });
         ui.separator();
 
         // V-112 (ADR-0042): author_view projection deleted; items come from flat feed.
-        // Profile header uses resolved_profiles (kernel-claimed via claim_profile).
+        // Profile header reads the refs_profiles mirror (ADR-0063 #1671 Lane F:
+        // populated by resolve_ref at profile.card/Live, kept live by open_author).
         let initials = nmp_core::display::avatar_initials(&nmp_core::display::to_npub(pubkey));
         let color = nmp_core::display::avatar_color_hex(pubkey);
         let profile = profiles.get(pubkey).cloned().unwrap_or_default();
@@ -506,6 +670,7 @@ impl DesktopApp {
             return;
         };
 
+        let mut nav: Option<AppTab> = None;
         ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -515,15 +680,20 @@ impl DesktopApp {
                         &entry.card,
                         &profiles,
                         &snap.embeds,
-                        &mut self.tab,
-                        &self.bridge,
+                        &mut nav,
                         &mut self.reply_to,
+                        &self.bridge,
                     ) {
                         self.zap_amount.open(target);
                     }
                     ui.add_space(4.0);
                 }
             });
+        // ADR-0063 (#1671 Lane F): an author A→B / author→thread click routes
+        // through the chokepoint so A's profile.card ref is released first.
+        if let Some(next) = nav {
+            self.navigate_to(next);
+        }
     }
 
     fn outbox_panel(&mut self, ui: &mut Ui, snap: &Snapshot) {
@@ -642,5 +812,149 @@ pub(crate) fn relay_role_label(role: &str) -> &str {
         "write,indexer" => "Write + Index",
         other if other.is_empty() => "Both",
         other => other,
+    }
+}
+
+#[cfg(test)]
+mod ref_lifecycle_tests {
+    use super::*;
+    use crate::snapshot::{RootCard, TimelineEventCard};
+    use std::collections::HashSet;
+
+    fn feed_with_cards(cards: Vec<TimelineEventCard>) -> ModularTimelineSnapshot {
+        ModularTimelineSnapshot {
+            cards: cards.into_iter().map(|card| RootCard { card }).collect(),
+            page: None,
+        }
+    }
+
+    fn npub_mention(pubkey_hex: &str) -> String {
+        let npub = nmp_core::nip19::encode_npub(pubkey_hex).expect("fixture npub encodes");
+        format!("hi nostr:{npub}")
+    }
+
+    // ── Fix 1: rendered note-body mentions resolve (BLOCKING) ───────────────
+
+    #[test]
+    fn body_mention_of_non_author_is_in_visible_set() {
+        let author = "a".repeat(64);
+        let mentioned = "b".repeat(64);
+        let feed = feed_with_cards(vec![TimelineEventCard {
+            id: "n1".to_string(),
+            author_pubkey: author.clone(),
+            content: npub_mention(&mentioned),
+            ..Default::default()
+        }]);
+
+        let mut visible: HashSet<String> = HashSet::new();
+        collect_feed_authors(&feed, &mut visible);
+
+        assert!(
+            visible.contains(&author),
+            "row author must be resolved"
+        );
+        assert!(
+            visible.contains(&mentioned),
+            "a non-author pubkey mentioned in the note body must also be resolved \
+             (its name renders via mention_label, not the fallback npub)"
+        );
+    }
+
+    #[test]
+    fn scrolling_a_mention_away_drops_it_from_the_visible_set() {
+        let author = "a".repeat(64);
+        let mentioned = "b".repeat(64);
+
+        // Frame 1: the mention is on screen → resolved (in the visible set).
+        let frame1 = feed_with_cards(vec![TimelineEventCard {
+            id: "n1".to_string(),
+            author_pubkey: author.clone(),
+            content: npub_mention(&mentioned),
+            ..Default::default()
+        }]);
+        let mut resolved: HashSet<String> = HashSet::new();
+        collect_feed_authors(&frame1, &mut resolved);
+        assert!(resolved.contains(&mentioned));
+
+        // Frame 2: that card scrolled away (empty feed) → the mention is no
+        // longer visible, so sync_feed_author_refs releases it (the diff
+        // `resolved.difference(visible)` now contains it).
+        let frame2 = feed_with_cards(vec![]);
+        let mut visible: HashSet<String> = HashSet::new();
+        collect_feed_authors(&frame2, &mut visible);
+
+        let released: Vec<&String> = resolved.difference(&visible).collect();
+        assert!(
+            released.contains(&&mentioned),
+            "a mention that scrolls off screen must be released (D5 — bounded)"
+        );
+    }
+
+    // ── Fix 2: open-view ref release on tab transition (BLOCKING) ───────────
+
+    #[test]
+    fn author_a_to_author_b_releases_a_then_opens_b() {
+        let a = AppTab::Author("a".repeat(64));
+        let b = AppTab::Author("b".repeat(64));
+        let (close, open) = view_transition(&a, &b).expect("A→B is a real transition");
+        assert_eq!(close, ViewRef::Author("a".repeat(64)), "release outgoing A");
+        assert_eq!(open, ViewRef::Author("b".repeat(64)), "open incoming B");
+    }
+
+    #[test]
+    fn author_to_home_releases_author_no_open_view() {
+        let a = AppTab::Author("a".repeat(64));
+        let (close, open) = view_transition(&a, &AppTab::Home).expect("Author→Home transitions");
+        assert_eq!(close, ViewRef::Author("a".repeat(64)), "release A on leave");
+        assert_eq!(open, ViewRef::None, "Home holds no open-profile/thread ref");
+    }
+
+    #[test]
+    fn author_to_settings_releases_author() {
+        let a = AppTab::Author("a".repeat(64));
+        let (close, open) =
+            view_transition(&a, &AppTab::Settings).expect("Author→Settings transitions");
+        assert_eq!(
+            close,
+            ViewRef::Author("a".repeat(64)),
+            "leaving the author view for Settings must release A (no leak)"
+        );
+        assert_eq!(open, ViewRef::None);
+    }
+
+    #[test]
+    fn author_to_thread_releases_author_and_opens_thread() {
+        let a = AppTab::Author("a".repeat(64));
+        let t = AppTab::Thread("evt".to_string());
+        let (close, open) = view_transition(&a, &t).expect("Author→Thread transitions");
+        assert_eq!(close, ViewRef::Author("a".repeat(64)));
+        assert_eq!(open, ViewRef::Thread("evt".to_string()));
+    }
+
+    #[test]
+    fn thread_to_author_releases_thread_and_opens_author() {
+        let t = AppTab::Thread("evt".to_string());
+        let a = AppTab::Author("a".repeat(64));
+        let (close, open) = view_transition(&t, &a).expect("Thread→Author transitions");
+        assert_eq!(close, ViewRef::Thread("evt".to_string()));
+        assert_eq!(open, ViewRef::Author("a".repeat(64)));
+    }
+
+    #[test]
+    fn same_tab_is_a_noop_no_spurious_release() {
+        let a = AppTab::Author("a".repeat(64));
+        assert!(
+            view_transition(&a, &a.clone()).is_none(),
+            "re-selecting the same author must NOT release/re-open (no churn)"
+        );
+        assert!(view_transition(&AppTab::Home, &AppTab::Home).is_none());
+    }
+
+    #[test]
+    fn home_to_author_opens_b_with_nothing_to_release() {
+        let b = AppTab::Author("b".repeat(64));
+        let (close, open) = view_transition(&AppTab::Home, &b).expect("Home→Author transitions");
+        assert_eq!(close, ViewRef::None, "Home held no open-view ref to release");
+        assert_eq!(open, ViewRef::Author("b".repeat(64)));
     }
 }

@@ -1736,6 +1736,8 @@ dependencies = [
  "nmp-nip18",
  "nmp-nip29",
  "nmp-nip57",
+ "nmp-planner",
+ "nmp-store",
  "nmp-threading",
  "nostr",
  "serde",
@@ -1817,12 +1819,16 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip11",
  "nmp-nip17",
+ "nmp-nip18",
+ "nmp-nip22",
  "nmp-nip25",
  "nmp-nip47",
  "nmp-nip51",
  "nmp-nip57",
  "nmp-nip77",
+ "nmp-planner",
  "nmp-router",
+ "nmp-store",
  "nmp-substrate-defaults",
  "nmp-wot",
  "nostr",
@@ -1836,6 +1842,8 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-planner",
+ "nmp-store",
  "nmp-threading",
  "serde",
  "serde_json",
@@ -1848,9 +1856,12 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-feed",
+ "nmp-nip18",
+ "nmp-planner",
  "nmp-signer-broker",
  "nmp-signer-iface",
  "nmp-signers",
+ "nmp-store",
  "nostr",
  "serde",
  "serde_json",
@@ -1874,6 +1885,8 @@ dependencies = [
  "nmp-core",
  "nmp-ffi",
  "nmp-nip59",
+ "nmp-planner",
+ "nmp-store",
  "nostr",
  "serde",
  "serde_json",
@@ -1903,7 +1916,10 @@ dependencies = [
  "nmp-core",
  "nmp-feed",
  "nmp-nip18",
+ "nmp-nip22",
  "nmp-nip57",
+ "nmp-planner",
+ "nmp-store",
  "nmp-threading",
  "serde",
  "serde_json",
@@ -1941,6 +1957,8 @@ dependencies = [
  "nmp-core",
  "nmp-kinds",
  "nmp-nip59",
+ "nmp-planner",
+ "nmp-store",
  "nostr",
  "serde",
  "serde_json",
@@ -1952,6 +1970,16 @@ name = "nmp-nip18"
 version = "0.8.0"
 dependencies = [
  "nmp-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "nmp-nip22"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-kinds",
  "serde",
  "serde_json",
 ]
@@ -1972,6 +2000,8 @@ dependencies = [
  "flatbuffers",
  "nmp-core",
  "nmp-ffi",
+ "nmp-planner",
+ "nmp-store",
  "serde",
  "serde_json",
 ]
@@ -2018,6 +2048,8 @@ dependencies = [
  "nmp-core",
  "nmp-kinds",
  "nmp-nip47",
+ "nmp-planner",
+ "nmp-store",
  "nostr",
  "serde",
  "serde_json",
@@ -2041,6 +2073,8 @@ dependencies = [
  "negentropy",
  "nmp-core",
  "nmp-coverage-gate",
+ "nmp-planner",
+ "nmp-store",
  "nostr",
  "serde_json",
 ]
@@ -2083,6 +2117,8 @@ version = "0.8.0"
 dependencies = [
  "nmp-core",
  "nmp-kinds",
+ "nmp-planner",
+ "nmp-store",
  "serde",
  "tracing",
 ]
@@ -2163,6 +2199,7 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-planner",
  "nostr",
  "serde",
  "serde_json",

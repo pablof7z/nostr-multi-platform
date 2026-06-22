@@ -45,31 +45,13 @@ fn extract_op_feeds_from_typed(
 // `snapshot::*` payload structs derive `Deserialize` only — never `Serialize`).
 // ---------------------------------------------------------------------------
 
-/// Map a kernel `ProfileCardModel` to the wire-shape `Value` the desktop
-/// `snapshot::ProfileCard` deserialises from.
-fn profile_card_value(card: &nmp_core::typed_projections::ProfileCardModel) -> serde_json::Value {
-    serde_json::json!({
-        "pubkey": card.pubkey,
-        "npub": card.npub,
-        "display_name": card.display_name,
-        "name": card.name,
-        "raw_display_name": card.raw_display_name,
-        "display_name_camel": card.display_name_camel,
-        "picture_url": card.picture_url,
-        "banner": card.banner,
-        "website": card.website,
-        "nip05": card.nip05,
-        "about": card.about,
-        "lud16": card.lud16,
-        "lud06": card.lud06,
-        "lnurl": card.lnurl,
-    })
-}
-
 /// Decode one transport payload into a fully-populated [`Snapshot`] from typed
 /// sources only. Returns `None` when the Tier-3 envelope itself fails to decode
 /// (a malformed frame the shell should skip).
-pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
+pub(crate) fn decode_snapshot_typed(
+    payload: &[u8],
+    ref_profiles: &mut nmp_core::refs::RefProfileStore,
+) -> Option<Snapshot> {
     use nmp_core::typed_projections as tp;
 
     let envelope = nmp_core::decode_snapshot_envelope(payload).ok()?;
@@ -160,20 +142,23 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
         }
     }
 
-    // resolved_profiles — pubkey -> ProfileCard map (mention/display resolution).
-    if let Some(m) =
-        find(tp::RESOLVED_PROFILES_SCHEMA_ID).and_then(|b| tp::decode_resolved_profiles(b).ok())
+    // ADR-0063 (#1671 Lane F): `refs.profile` replaces the `resolved_profiles`
+    // projection. The sidecar is a per-KEY row-delta batch (only changed/cleared
+    // rows, or a baseline on identity change), so it MUST be merged into the
+    // persistent RefRowCache the reader thread holds — not decoded per-frame.
+    // The merged full set is materialised into `refs_profiles` below.
+    if let Some(entry) = typed
+        .iter()
+        .find(|p| p.key == nmp_core::refs::REFS_PROFILE_KEY)
     {
-        let map: serde_json::Map<String, serde_json::Value> = m
-            .entries
-            .iter()
-            .map(|(k, card)| (k.clone(), profile_card_value(card)))
-            .collect();
-        projections.insert(
-            "resolved_profiles".to_string(),
-            serde_json::Value::Object(map),
-        );
+        ref_profiles.apply_sidecar(&entry.payload, envelope.session_id, envelope.snapshot_epoch);
     }
+    let refs_profiles: std::collections::HashMap<String, crate::snapshot::ProfileCard> =
+        ref_profiles
+            .profiles()
+            .into_iter()
+            .map(|(k, card)| (k, crate::snapshot::ProfileCard::from_model(card)))
+            .collect();
 
     // configured_relays — relay-edit rows for the Settings pane.
     if let Some(m) =
@@ -350,6 +335,7 @@ pub(crate) fn decode_snapshot_typed(payload: &[u8]) -> Option<Snapshot> {
         accounts,
         projections,
         embeds,
+        refs_profiles,
     })
 }
 

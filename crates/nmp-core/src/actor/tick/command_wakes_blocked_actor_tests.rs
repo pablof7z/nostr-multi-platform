@@ -85,12 +85,16 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
     // replay dropping/deferring it) would stall up to the full idle cap.
     let pk = "0".repeat(64);
     let start = Instant::now();
+    // ADR-0063 Lane H: ClaimProfile deleted; use ResolveRef.
     cmd_tx
-        .send(ActorCommand::ClaimProfile {
-            pubkey: pk.clone(),
+        .send(ActorCommand::ResolveRef {
+            namespace: crate::kernel::RefNamespace::Profile,
+            key: pk.clone(),
             consumer_id: "wake-test".to_string(),
+            shape: crate::kernel::RefShape::Profile(crate::kernel::refs::ProfileShape::Card),
+            liveness: crate::kernel::RefLiveness::CacheOk,
             force: false,
-            liveness: crate::kernel::ProfileLiveness::CacheOk,
+            hints: Vec::new(),
         })
         .expect("inbox open");
 

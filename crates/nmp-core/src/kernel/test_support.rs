@@ -515,4 +515,5 @@ impl Kernel {
     pub(crate) fn probed_mailboxes_for_test(&self) -> &std::collections::BTreeSet<String> {
         self.lifecycle.probed_mailboxes()
     }
+
 }

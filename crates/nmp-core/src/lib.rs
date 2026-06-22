@@ -6,8 +6,8 @@ pub mod external_signer_hook;
 // SHARED FlatBuffers `ProfileCard` row type, mounted at the crate root so the
 // profile-cluster generated bindings can resolve it.
 //
-// `profile.fbs` / `claimed_profiles.fbs` / `resolved_profiles.fbs` all `include
-// "profile_card.fbs"` and reference its `ProfileCard` table. `flatc` (no
+// `profile.fbs` `include`s `profile_card.fbs` and references its `ProfileCard`
+// table. `flatc` (no
 // `--gen-all`) emits `ProfileCard` ONLY into `profile_card_generated.rs` and
 // drops a crate-root `use crate::profile_card_generated::*;` into each per-key
 // `*_generated.rs`. That glob only sees items at the *top* of
@@ -70,12 +70,9 @@ pub mod capability_socket;
 pub mod display;
 // Step 11 final — the C-ABI surface that used to live in `mod ffi;` now lives
 // in the standalone `nmp-ffi` crate (`docs/architecture/crate-boundaries.md`
-// §5 step 11-final). The substrate types the FFI marshals are re-exported
-// through the public surface below + the `__ffi_internal` module so the
-// extracted crate can name them through normal Rust paths.
-//
-// `mod ffi;` is gone — `pub use ffi::*` at the bottom of this file is gone
-// too — consumers reach the symbols through `nmp_ffi::*` directly.
+// §5 step 11-final). `mod ffi;` / `pub use ffi::*` are gone; consumers reach
+// the symbols through `nmp_ffi::*` directly. The substrate types the FFI
+// marshals are re-exported through the public surface below + `__ffi_internal`.
 // ffi_guard: pure catch_unwind wrapper. Not I/O-bound; kept always-on
 // because actor/commands/* use it on the native side (also actor is always
 // compiled until Phase 1c decoupling). Promoted from `mod ffi_guard` to
@@ -97,12 +94,11 @@ mod kernel_reducer;
 pub mod kinds;
 pub mod nip19;
 pub mod nip21;
-// Subscription compiler — internal path for nmp-core consumers.
-// External callers must depend on `nmp-planner` directly and use
-// `nmp_planner::*`; the `nmp_core::planner` re-export path is deleted
-// (#1608, D0/D3: facades leak planner internals into the app-facing surface).
-// Only items actively used by nmp-core internals are re-exported here; the
-// old catch-all list is trimmed so unused-import warnings become impossible.
+// Subscription compiler — internal path for nmp-core consumers. External
+// callers must depend on `nmp-planner` directly (`nmp_planner::*`); the
+// `nmp_core::planner` re-export path is deleted (#1608, D0/D3: facades leak
+// planner internals into the app-facing surface). Only items nmp-core
+// internals actively use are re-exported here.
 pub(crate) mod planner {
     pub use nmp_planner::compiler::{MailboxCache, MailboxSnapshot, SubscriptionCompiler};
     pub use nmp_planner::interest::{
@@ -163,6 +159,7 @@ pub(crate) mod store {
     pub use nmp_store::*;
 }
 pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection omit helper.
+pub mod refs; // ADR-0063 Lane A (#1671) — row-grain delta carrier for keyed reference projections.
 // Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`) and the
 // actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
 // (private); promoted here so the crate-private actor module can still name them after
@@ -194,6 +191,9 @@ pub use kernel::{
     read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel, ProfileLiveness,
     KERNEL_BUILTIN_PROJECTION_KEYS,
 };
+// ADR-0063 Lane D — closed typed `resolve_ref`/`release_ref` surface at the crate root.
+pub use kernel::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+pub use kernel::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7 (#1671)
 pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0058
 pub use kernel::pull_cursor::{PullCursorId, PullCursorMode};
 pub use kernel::pull_wake::{decode_pull_wake_batch, PullWakeRow, PULL_WAKE_KEY};

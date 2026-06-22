@@ -1,6 +1,6 @@
 use super::super::{truncate, AccountSummary, Kernel, ProfileCard, StoredEvent};
 #[cfg(test)]
-use super::super::{MentionProfilePayload, TimelineItem};
+use super::super::TimelineItem;
 #[cfg(test)]
 use super::helpers::parse_repost_inner;
 use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored};
@@ -15,7 +15,7 @@ impl Kernel {
     /// d-tags may legally contain `:` (rare but spec-allowed); the
     /// split is bounded to the first two colons so a d-tag like
     /// `"foo:bar"` round-trips correctly.
-    pub(super) fn lookup_for_primary_id(&self, key: &str) -> Option<StoredEvent> {
+    pub(in crate::kernel) fn lookup_for_primary_id(&self, key: &str) -> Option<StoredEvent> {
         // Try the in-memory timeline cache first (kind:1 / kind:6 are inserted
         // here by `ingest_timeline_event`). The addressable / unknown-kind
         // path below needs to query the EventStore which returns owned
@@ -105,7 +105,7 @@ impl Kernel {
             // lookup. Rust decides zapability.
             author_lnurl: profile.as_ref().and_then(|p| p.lnurl.clone()),
             // Author display name baked into the snapshot item so the renderer
-            // has it without depending on the `claimed_profiles` claim
+            // has it without depending on the `refs.profile` claim
             // lifecycle. Empty string → `None` at this projection boundary
             // (aim.md §2), mirroring `mention_profiles_from_items`.
             author_display_name: profile

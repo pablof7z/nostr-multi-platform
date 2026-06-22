@@ -90,4 +90,36 @@ impl NmpApp {
             .map(|registry| registry.frame_identity_handles())
             .unwrap_or_else(|_| (Arc::new(AtomicU64::new(0)), Arc::new(AtomicU64::new(0))))
     }
+
+    /// ADR-0063 D7 (#1671 Lane H) — a clone of the per-tick rev handle the kernel
+    /// bumps at the top of every `make_update`.
+    ///
+    /// A [`nmp_feed::FeedRenderSource`] captures this once at registration and
+    /// reads it lock-free (`Acquire`) inside both its provider and typed-producer
+    /// closures, so the two share one per-tick window materialization (no
+    /// `load_older` gap). Returns a fresh zero-handle if the registry mutex is
+    /// poisoned (D6).
+    #[must_use]
+    pub fn frame_tick_rev_handle(&self) -> Arc<AtomicU64> {
+        self.snapshot_projections
+            .lock()
+            .map(|registry| registry.frame_tick_rev_handle())
+            .unwrap_or_else(|_| Arc::new(AtomicU64::new(0)))
+    }
+
+    /// ADR-0063 D7 (#1671 Lane H) — a clone of the emitted-author sink handle for
+    /// the structural guardrail (BLOCKING 2).
+    ///
+    /// A feed's typed-producer closure captures this once at registration and
+    /// writes the author keys it ENCODES onto the wire each tick (via
+    /// [`nmp_core::record_emitted_feed_authors`]) WITHOUT re-locking the registry
+    /// (it runs inside `run_typed()` while that mutex is held). Returns a fresh
+    /// empty handle if the registry mutex is poisoned (D6).
+    #[must_use]
+    pub fn emitted_feed_authors_handle(&self) -> nmp_core::EmittedFeedAuthorsSlot {
+        self.snapshot_projections
+            .lock()
+            .map(|registry| registry.emitted_feed_authors_handle())
+            .unwrap_or_else(|_| std::sync::Arc::new(std::sync::Mutex::new((0, Default::default()))))
+    }
 }

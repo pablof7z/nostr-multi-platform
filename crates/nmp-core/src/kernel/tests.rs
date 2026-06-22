@@ -1,4 +1,5 @@
 use super::*;
+use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use crate::display::avatar_color_hex;
 use crate::relay::{DEFAULT_VISIBLE_LIMIT, FIATJAF_PUBKEY, JB55_PUBKEY};
 use crate::store::InsertOutcome;
@@ -25,24 +26,23 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
     kernel.relay_connected(RelayRole::Content);
     kernel.relay_connected(RelayRole::Indexer);
 
-    // M2 migration: claim_profile registers a kind:0 interest and returns empty
-    // (the planner emits the wire REQ on drain). Two consumers of one pubkey
-    // dedup to ONE interest while keeping the `profile_claims` refcount at 2.
-    let first = kernel.claim_profile(
-        FIATJAF_PUBKEY.to_string(),
-        "timeline-row:first".to_string(),
-        true,
-        false,
-        crate::kernel::ProfileLiveness::CacheOk,
-    );
-    let second = kernel.claim_profile(
-        FIATJAF_PUBKEY.to_string(),
-        "timeline-row:second".to_string(),
-        true,
-        false,
-        crate::kernel::ProfileLiveness::CacheOk,
-    );
-    assert!(first.is_empty(), "claim_profile emits no outbound directly");
+    // M2 migration: a profile resolve_ref registers a kind:0 interest and
+    // returns empty (the planner emits the wire REQ on drain). Two consumers of
+    // one pubkey dedup to ONE interest, keeping `profile_claims` refcount at 2.
+    let mut resolve = |consumer: &str| {
+        kernel.resolve_ref(
+            RefNamespace::Profile,
+            FIATJAF_PUBKEY.to_string(),
+            consumer.to_string(),
+            RefShape::Profile(ProfileShape::Card),
+            RefLiveness::CacheOk.into(),
+            false,
+            Vec::new(),
+        )
+    };
+    let first = resolve("timeline-row:first");
+    let second = resolve("timeline-row:second");
+    assert!(first.is_empty(), "profile resolve emits no outbound directly");
     assert!(second.is_empty());
 
     // The planner emits a kind:0 REQ for the claimed author (detailed routing /
@@ -67,7 +67,7 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
         Some(2)
     );
 
-    let first_release = kernel.release_profile(FIATJAF_PUBKEY, "timeline-row:first");
+    let first_release = kernel.release_ref(RefNamespace::Profile, FIATJAF_PUBKEY, "timeline-row:first");
     assert!(first_release.is_empty());
     assert_eq!(
         kernel
@@ -77,7 +77,7 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
         Some(1)
     );
 
-    let second_release = kernel.release_profile(FIATJAF_PUBKEY, "timeline-row:second");
+    let second_release = kernel.release_ref(RefNamespace::Profile, FIATJAF_PUBKEY, "timeline-row:second");
     assert!(second_release.is_empty());
     assert!(!kernel.profile_claims.contains_key(FIATJAF_PUBKEY));
 }

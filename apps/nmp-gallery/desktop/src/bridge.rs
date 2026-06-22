@@ -42,8 +42,13 @@ impl GalleryBridge {
             .expect("snapshot receiver available immediately after LiveKernel::new");
 
         thread::spawn(move || {
+            // ADR-0063 (#1671): the stateful `refs.profile` row-delta mirror lives
+            // in the reader thread, merged across frames so per-key deltas
+            // accumulate. It is the sole app-side profile store (D4); each frame
+            // materialises its current set into the snapshot.
+            let mut ref_profiles = nmp_core::refs::RefProfileStore::new();
             for frame_bytes in rx {
-                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes);
+                let snap = GalleryTypedSnapshot::from_frame_bytes(&frame_bytes, &mut ref_profiles);
                 // Send on the tokio channel. Ignore send error (subscription
                 // dropped); the loop exits gracefully.
                 let _ = snapshot_tx.send(snap);
@@ -63,12 +68,12 @@ impl GalleryBridge {
         self.sink.claim(uri, consumer_id);
     }
 
-    /// Forward a kind:0 profile claim into the kernel's `OneshotApi` interest
-    /// registry. Idempotent per `(pubkey, consumer_id)` pair. Call on every
-    /// poll tick so the claim sticks once a relay connects (the kernel
-    /// silently drops claims issued before any relay is ready).
-    pub fn claim_profile(&self, pubkey: &str, consumer_id: &str) {
-        self.sink.claim_profile(pubkey, consumer_id);
+    /// Resolve a visible profile reference (ADR-0063 #1671 — `resolve_ref` at
+    /// `profile.ref` / `CacheOk`). Idempotent per `(pubkey, consumer_id)` pair.
+    /// Call on every poll tick so the resolution sticks once a relay connects
+    /// (the kernel silently drops requests issued before any relay is ready).
+    pub fn resolve_profile(&self, pubkey: &str, consumer_id: &str) {
+        self.sink.resolve_profile(pubkey, consumer_id);
     }
 
     /// Take the snapshot receiver for use in the iced subscription. Called

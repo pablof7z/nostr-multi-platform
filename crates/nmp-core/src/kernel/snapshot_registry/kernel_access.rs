@@ -66,6 +66,24 @@ impl Kernel {
         }
     }
 
+    /// ADR-0063 D7 (#1671 Lane H) — collect every registered feed-author
+    /// provider's CURRENT visible-author set for this tick, as
+    /// `(feed_key, keys)`.
+    ///
+    /// Reads through the shared slot; empty when no slot is bound, the mutex is
+    /// poisoned, or nothing is registered (D6). Called from `make_update`; the
+    /// kernel then reconciles each set against the prior tick via
+    /// [`Kernel::reconcile_feed_author_refs`].
+    pub(in crate::kernel) fn collect_feed_author_sets(&self) -> Vec<(String, Vec<String>)> {
+        match &self.snapshot_projections {
+            Some(slot) => slot
+                .lock()
+                .map(|registry| registry.run_feed_author_providers())
+                .unwrap_or_default(),
+            None => Vec::new(),
+        }
+    }
+
     /// ADR-0053 — snapshot the host-declared consumed-projection set for this
     /// tick.
     ///
@@ -107,7 +125,45 @@ impl Kernel {
         if let Some(slot) = &self.snapshot_projections {
             if let Ok(registry) = slot.lock() {
                 registry.publish_frame_identity(session_id, snapshot_epoch);
+                // ADR-0063 D7 (#1671 Lane H) — advance the per-tick rev in the
+                // SAME lock so every feed-author provider + typed producer this
+                // tick reads one rev and materializes its window exactly once.
+                registry.bump_frame_tick_rev();
             }
+        }
+    }
+
+    /// ADR-0063 D7 (#1671 Lane H) — the per-tick rev for THIS `make_update`.
+    ///
+    /// Read AFTER [`Self::publish_frame_identity`] has bumped it, so it matches the
+    /// rev every feed closure used this tick. Used to drain the emitted-author
+    /// sink for the structural guardrail. Returns `0` when no slot is bound (no
+    /// feeds, so nothing to check).
+    pub(in crate::kernel) fn current_frame_tick_rev(&self) -> u64 {
+        use std::sync::atomic::Ordering;
+        match &self.snapshot_projections {
+            Some(slot) => slot
+                .lock()
+                .map(|registry| registry.frame_tick_rev_handle().load(Ordering::Acquire))
+                .unwrap_or(0),
+            None => 0,
+        }
+    }
+
+    /// ADR-0063 D7 (#1671 Lane H) — drain the emitted-author sink for the tick
+    /// matching `tick_rev`: `(consumer_id, author_key)` pairs every feed's typed
+    /// producer recorded as ACTUALLY EMITTED onto the wire this tick.
+    ///
+    /// Empty when no slot is bound, the mutex is poisoned, or no feed recorded
+    /// this tick (D6). Read by [`Kernel::warn_emitted_unresolved_feed_authors`]
+    /// AFTER the typed projections are emitted.
+    pub(in crate::kernel) fn emitted_feed_authors(&self, tick_rev: u64) -> Vec<(String, String)> {
+        match &self.snapshot_projections {
+            Some(slot) => slot
+                .lock()
+                .map(|registry| registry.emitted_feed_authors_for_tick(tick_rev))
+                .unwrap_or_default(),
+            None => Vec::new(),
         }
     }
 

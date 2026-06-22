@@ -48,6 +48,18 @@ impl Kernel {
         if profile_before != profile_after {
             self.cached_estimated_store_bytes.set(None);
             self.projection_rev_tracker.source_versions.bump_profiles();
+            // ADR-0063 Lane B (D6a) — per-key rev (ingest site 3 of 3): a kind:0
+            // rewrote this author's row, so bump ITS rev (and only its) when the
+            // author is a live `refs.profile` ref. Gating on a live claim keeps the
+            // per-key map bounded to resolved refs (unclaimed authors never enter
+            // `refs.profile`, so their row rev is never consulted). Claimed
+            // profiles are pinned against RAM eviction (`ram_eviction.rs`), so the
+            // eviction `bump_profiles` site needs no per-key counterpart.
+            if self.profile_claims.contains_key(&author) {
+                self.projection_rev_tracker
+                    .source_versions
+                    .bump_profile_row(&author);
+            }
         }
         let mailbox_after = self.mailbox_cache().snapshot(&author);
         if mailbox_before != mailbox_after {

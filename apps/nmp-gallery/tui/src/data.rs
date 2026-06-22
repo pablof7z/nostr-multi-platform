@@ -106,11 +106,11 @@ pub struct MediaProtocol {
 /// This is the "every app gets this for free" layer: instead of each app
 /// hand-extracting kind:0 fields from the kernel snapshot and stuffing them
 /// into bespoke state, the app holds one `LiveProfileMap`, calls
-/// `update_from_snapshot` on every snapshot tick, and `resolve(pubkey)` at
-/// render time. The map fills itself from the kernel's canonical
-/// `resolved_profiles` projection — a single pre-merged ProfileCard per
-/// pubkey. There is no app-side three-source merge, no field-by-field
-/// copying, and no invented profile label.
+/// `update_from_typed` on every snapshot tick, and `resolve(pubkey)` at
+/// render time. The map fills itself from the materialised `refs.profile`
+/// set (ADR-0063 #1671 — the resolve_ref output, merged in the snapshot
+/// thread's `RefProfileStore`). There is no app-side three-source merge, no
+/// field-by-field copying, and no invented profile label.
 #[derive(Default)]
 pub struct LiveProfileMap {
     profiles: HashMap<String, ProfileWire>,
@@ -121,18 +121,23 @@ impl LiveProfileMap {
         Self::default()
     }
 
-    /// Ingest a typed kernel snapshot, updating the resolved-profile map.
+    /// Ingest a typed kernel snapshot, REPLACING the resolved-profile map.
     ///
-    /// Reads the kernel's canonical `resolved_profiles` typed sidecar (PR-B
-    /// typed-first migration): a pre-merged pubkey→ProfileCard map produced
-    /// once in Rust with the kernel's precedence rules. The app no longer
-    /// re-implements that three-source merge — it decodes the finished card
-    /// directly from the `ClaimedEventsModel`.
+    /// Reads the materialised `refs.profile` set (ADR-0063 #1671 — the
+    /// resolve_ref output, merged once in the snapshot thread's
+    /// `RefProfileStore` with the kernel's precedence rules). The app no longer
+    /// re-implements any three-source merge — it copies the finished
+    /// `ProfileCardModel` fields directly.
     ///
-    /// Absent or empty resolved_profiles is a no-op (the map retains any
-    /// profiles it already holds from previous ticks).
+    /// The snapshot already carries the FULL current `RefProfileStore` set
+    /// every frame (`live.rs` materialises the whole store), so this REPLACES
+    /// the map exactly — there is no app-side cache beyond `RefProfileStore`.
+    /// A `refs.profile` clear/release (e.g. release-on-scroll-off) drops the
+    /// row from the snapshot set, so the row is dropped here too — accumulating
+    /// would leak released profiles as stale rows.
     pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) {
-        for (pubkey, card) in &snapshot.resolved_profiles.entries {
+        self.profiles.clear();
+        for (pubkey, card) in &snapshot.profiles {
             let display_name = non_empty(card.display_name.as_deref());
             let picture_url = non_empty(card.picture_url.as_deref());
             let nip05 = non_empty(Some(card.nip05.as_str()));
@@ -208,8 +213,8 @@ impl GalleryData {
     }
 
     /// Build trees that contain only real Nostr references. Relay-provided
-    /// fields arrive through `claimed_events`, `claimed_profiles`, and
-    /// `mention_profiles`; this initializer does not invent event bodies,
+    /// fields arrive through `claimed_events` and the `refs.profile` keyed
+    /// projection; this initializer does not invent event bodies,
     /// authors, media, profile names, or profile pictures.
     fn build(primary_pubkey: &str) -> Self {
         let mention_uri = format!("nostr:{}", showcase_npub());
@@ -270,25 +275,24 @@ fn tree_for_content(content: &str) -> Result<ContentTreeWire, String> {
 mod live_profile_map_tests {
     use super::*;
     use crate::live::GalleryTypedSnapshot;
-    use nmp_core::typed_projections::{
-        ClaimedEventsModel, ProfileCardModel, ResolvedProfilesModel,
-    };
+    use nmp_core::typed_projections::{ClaimedEventsModel, ProfileCardModel};
+    use std::collections::BTreeMap;
 
     fn typed_snapshot_with_profile(pubkey: &str, card: ProfileCardModel) -> GalleryTypedSnapshot {
+        let mut profiles = BTreeMap::new();
+        profiles.insert(pubkey.to_string(), card);
         GalleryTypedSnapshot {
             claimed_events: ClaimedEventsModel::default(),
-            resolved_profiles: ResolvedProfilesModel {
-                entries: vec![(pubkey.to_string(), card)],
-            },
+            profiles,
             relay_statuses: Vec::new(),
         }
     }
 
-    /// A typed snapshot carrying the `resolved_profiles` sidecar populates
-    /// the map with the kernel's pre-merged card — `resolve(pubkey)` returns
-    /// those fields verbatim, no app-side merge.
+    /// A typed snapshot carrying the materialised `refs.profile` set populates
+    /// the map with the resolved card — `resolve(pubkey)` returns those fields
+    /// verbatim, no app-side merge.
     #[test]
-    fn reads_resolved_profiles_typed() {
+    fn reads_refs_profile_typed() {
         let pubkey = showcase_pubkey();
         let card = ProfileCardModel {
             pubkey: pubkey.to_string(),
@@ -315,11 +319,48 @@ mod live_profile_map_tests {
         assert_eq!(wire.about.as_deref(), Some("merged once in the kernel"));
     }
 
-    /// Graceful degradation: a typed snapshot with an empty `resolved_profiles`
-    /// model is a no-op. `resolve(pubkey)` falls back to the identity-only wire
+    /// ADR-0063 (#1671) — a `refs.profile` CLEAR/release drops the row.
+    /// `update_from_typed` REPLACES the map from the snapshot's full
+    /// `RefProfileStore` set each frame; once the kernel releases a profile (so
+    /// it no longer materialises in the set), the next snapshot omits it and the
+    /// map must DROP the row — not retain it as stale. Proves the
+    /// replace-not-accumulate fix: release-on-scroll-off actually drops rows.
+    #[test]
+    fn refs_profile_clear_drops_row_from_live_map() {
+        let pubkey = showcase_pubkey();
+        let card = ProfileCardModel {
+            pubkey: pubkey.to_string(),
+            display_name: Some("Soon Gone".to_string()),
+            ..Default::default()
+        };
+
+        let mut map = LiveProfileMap::new();
+
+        // Frame 1: the materialised set carries the resolved profile.
+        map.update_from_typed(&typed_snapshot_with_profile(pubkey, card));
+        assert_eq!(
+            map.resolve(pubkey).display_name.as_deref(),
+            Some("Soon Gone"),
+            "profile must be present after it resolves"
+        );
+
+        // Frame 2: the kernel released the ref, so the materialised set no
+        // longer contains it (empty profiles). The row must be GONE — accumulating
+        // would leave a stale "Soon Gone" wire.
+        map.update_from_typed(&GalleryTypedSnapshot::default());
+        let wire = map.resolve(pubkey);
+        assert_eq!(
+            wire.display_name, None,
+            "a cleared/released profile must drop from the map, not persist stale"
+        );
+        assert_eq!(wire.pubkey, pubkey);
+    }
+
+    /// Graceful degradation: a typed snapshot with an empty `refs.profile`
+    /// set is a no-op. `resolve(pubkey)` falls back to the identity-only wire
     /// — the honest "no profile yet" state, never a fabricated name.
     #[test]
-    fn empty_resolved_profiles_is_a_noop() {
+    fn empty_refs_profile_is_a_noop() {
         let pubkey = showcase_pubkey();
         let snapshot = GalleryTypedSnapshot::default();
 

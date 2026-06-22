@@ -5,24 +5,22 @@ import XCTest
 ///
 /// ## The defect
 ///
-/// When the user navigates away from the timeline and back,
-/// `claimed_profiles[pubkey]` is absent for 1–2 snapshot ticks (~250–500ms)
-/// even though the kernel still has the kind:0 cached. During that window
-/// `KernelModel.profile(forPubkey:)` returns `nil` and
-/// `NoteRowView.authorDisplayLabel` falls through to `pubkey.shortHex`, so a
-/// real name briefly flickers to a raw hex stub. This is a Swift-side
-/// claim-churn gap, not a kernel data loss.
+/// When the user navigates away from the timeline and back, a profile card may
+/// be absent for 1–2 snapshot ticks (~250–500ms) even though the kernel still
+/// has the kind:0 cached. During that window `KernelModel.profile(forPubkey:)`
+/// returns `nil` and `NoteRowView.authorDisplayLabel` falls through to
+/// `pubkey.shortHex`, so a real name briefly flickers to a raw hex stub.
 ///
-/// These tests lock the two load-bearing fallback behaviours that keep the
-/// flicker from being worse than a single regression rung, exercised on the
-/// REAL read path (typed `claimedProfiles` / `resolvedProfiles` slots →
-/// projection accessors — the SAME slots `apply(result:)` assigns from the
-/// `KCPR` / `KRPR` sidecars):
+/// ADR-0063 Lane H (#1671): `claimed_profiles` (KCPR) and `resolved_profiles`
+/// (KRPR) JSON snapshot projections are deleted. Profile data is now served via
+/// the `refs.profile` KPRF NRRD row-delta sidecar. These tests exercise the
+/// SAME read path (`keyedRefCache` → `profileCard(forPubkey:)`) via the
+/// `setTypedSnapshotForTesting(profileCards:)` test seam.
 ///
-///   * Test A — `KernelModel.profile(forPubkey:)` precedence + the `isRawKey`
-///     guard that stops a mention card from echoing the raw key as a name.
+///   * Test A — `KernelModel.profile(forPubkey:)` fallback + the `isRawKey`
+///     guard that stops a no-kind:0 card from echoing the raw key as a name.
 ///   * Test B — `NoteRowView`'s `eventCards` gap-filler, the rung that keeps
-///     a row labelled during the claim-churn window.
+///     a row labelled during a profile-miss window.
 @MainActor
 final class ProfileNameFallbackTests: XCTestCase {
 
@@ -31,34 +29,12 @@ final class ProfileNameFallbackTests: XCTestCase {
 
     // MARK: - Synthetic snapshot construction
 
-    /// A bundle of the two profile-cluster typed projections under test, fed to
-    /// `KernelModel.setTypedSnapshotForTesting` so the read accessors
-    /// (`claimedProfiles`, `mentionProfiles`, `profile(forPubkey:)`) exercise
-    /// the SAME typed slots production assigns from the `KCPR` / `KRPR` sidecars.
-    private struct ProfileFixture {
-        let claimed: [String: ProfileCard]
-        let resolved: [String: ProfileCard]
-    }
+    /// ADR-0063 Lane H: the old `ProfileFixture(claimed:resolved:)` pair is gone.
+    /// Tests now supply the merged per-key profile map directly to
+    /// `setTypedSnapshotForTesting(profileCards:)`.
 
-    /// Build the two typed profile projections under test directly as
-    /// `ProfileCard` maps — the typed read path. The generic `payload:Value`
-    /// JSON decode is retired (Chirp no longer reads it); the typed sidecars
-    /// are authoritative, so the fixture exercises the authoritative path.
-    ///
-    /// - Parameters:
-    ///   - claimed: pubkey → `claimed_profiles` card.
-    ///   - resolved: pubkey → `resolved_profiles` card (drives
-    ///     `KernelModel.mentionProfiles`).
-    private func makeProfileFixture(
-        claimed: [String: ProfileCard] = [:],
-        resolved: [String: ProfileCard] = [:]
-    ) -> ProfileFixture {
-        ProfileFixture(claimed: claimed, resolved: resolved)
-    }
-
-    /// A `claimed_profiles` / `resolved_profiles` `ProfileCard`. `displayName`
-    /// is `nil` to model "no kind:0 yet" (the card's `displayLabel` then falls
-    /// back to the abbreviated hex pubkey).
+    /// A profile `ProfileCard`. `displayName` is `nil` to model "no kind:0 yet"
+    /// (the card's `displayLabel` then falls back to the abbreviated hex pubkey).
     private func card(pubkey: String, displayName: String?) -> ProfileCard {
         ProfileCard(
             pubkey: pubkey,
@@ -76,70 +52,57 @@ final class ProfileNameFallbackTests: XCTestCase {
             lnurl: nil)
     }
 
-    private func model(with fixture: ProfileFixture) -> KernelModel {
+    private func model(cards: [String: ProfileCard] = [:]) -> KernelModel {
         let m = KernelModel()
-        m.setTypedSnapshotForTesting(
-            claimedProfiles: fixture.claimed,
-            resolvedProfiles: fixture.resolved)
+        m.setTypedSnapshotForTesting(profileCards: cards)
         return m
     }
 
     // MARK: - Test A — profile(forPubkey:) fallback chain
 
     func test_profile_forPubkey_fallback_chain() throws {
-        // 1. claimed_profiles carries a real display name → returned verbatim.
-        let claimedFixture = makeProfileFixture(
-            claimed: [pk: card(pubkey: pk, displayName: "Alice")])
+        // 1. Profile card with a real display name → returned verbatim.
         XCTAssertEqual(
-            model(with: claimedFixture).profile(forPubkey: pk)?.display, "Alice",
-            "A claimed_profiles card with a non-empty displayName must win.")
+            model(cards: [pk: card(pubkey: pk, displayName: "Alice")]).profile(forPubkey: pk)?.display, "Alice",
+            "A profile card with a non-empty displayName must win.")
 
-        // 2. claimed_profiles empty, resolved_profiles (mentionProfiles) carries
-        //    a real, non-shortHex display → mention display is returned.
-        let mentionFixture = makeProfileFixture(
-            resolved: [pk: card(pubkey: pk, displayName: "Bob")])
+        // 2. A non-shortHex display from the resolved set → display is returned.
         XCTAssertEqual(
-            model(with: mentionFixture).profile(forPubkey: pk)?.display, "Bob",
-            "With no claimed card, the resolved/mention display must fill in.")
+            model(cards: [pk: card(pubkey: pk, displayName: "Bob")]).profile(forPubkey: pk)?.display, "Bob",
+            "A resolved display name must be returned from the profile card.")
 
-        // 3. mention display == shortHex (no kind:0 → ProfileCard.displayLabel
-        //    falls back to shortHex, so MentionProfile.display == shortHex).
-        //    The `isRawKey` guard must blank displayName so the row does NOT
-        //    echo a raw key as if it were a real name.
-        let rawKeyFixture = makeProfileFixture(
-            resolved: [pk: card(pubkey: pk, displayName: nil)])
-        let rawProfile = model(with: rawKeyFixture).profile(forPubkey: pk)
-        XCTAssertNotNil(rawProfile, "A mention card still yields a ProfileWire.")
+        // 3. No kind:0 yet (displayName == nil → card's displayLabel falls back to
+        //    shortHex). The `isRawKey` guard must blank displayName so the row does
+        //    NOT echo a raw key as if it were a real name.
+        let rawProfile = model(cards: [pk: card(pubkey: pk, displayName: nil)]).profile(forPubkey: pk)
+        XCTAssertNotNil(rawProfile, "A card with nil displayName still yields a ProfileWire.")
         XCTAssertNil(
             rawProfile?.displayName,
-            "isRawKey guard must nil out displayName when mention.display == shortHex.")
+            "isRawKey guard must nil out displayName when card.displayLabel == shortHex.")
 
-        // 4. Both projections empty → profile(forPubkey:) is nil → the caller
-        //    is responsible for showing shortHex.
-        let emptyFixture = makeProfileFixture()
+        // 4. No cards → profile(forPubkey:) is nil → the caller is responsible
+        //    for showing shortHex.
         XCTAssertNil(
-            model(with: emptyFixture).profile(forPubkey: pk),
+            model().profile(forPubkey: pk),
             "With no profile data the accessor must return nil (caller → shortHex).")
     }
 
     func test_nameRegressionMetric_counts_only_missing_after_resolved_name() throws {
-        let claimed = makeProfileFixture(
-            claimed: [pk: card(pubkey: pk, displayName: "Alice")])
-        let empty = makeProfileFixture()
-        let m = model(with: empty)
+        let aliceCards: [String: ProfileCard] = [pk: card(pubkey: pk, displayName: "Alice")]
+        let m = model()
 
         XCTAssertNil(m.profile(forPubkey: pk))
         XCTAssertEqual(
             m.appMetrics.nameRegressionCount, 0,
             "First-load misses must not be counted as name regressions.")
 
-        m.setTypedSnapshotForTesting(claimedProfiles: claimed.claimed, resolvedProfiles: claimed.resolved)
+        m.setTypedSnapshotForTesting(profileCards: aliceCards)
         XCTAssertEqual(m.profile(forPubkey: pk)?.display, "Alice")
         XCTAssertEqual(
             m.appMetrics.nameRegressionCount, 0,
             "Resolving a name arms the detector without incrementing it.")
 
-        m.setTypedSnapshotForTesting(claimedProfiles: empty.claimed, resolvedProfiles: empty.resolved)
+        m.setTypedSnapshotForTesting(profileCards: [:])
         XCTAssertNil(m.profile(forPubkey: pk))
         XCTAssertEqual(
             m.appMetrics.nameRegressionCount, 1,
@@ -150,9 +113,9 @@ final class ProfileNameFallbackTests: XCTestCase {
             m.appMetrics.nameRegressionCount, 1,
             "Repeated reads during the same missing window must not overcount.")
 
-        m.setTypedSnapshotForTesting(claimedProfiles: claimed.claimed, resolvedProfiles: claimed.resolved)
+        m.setTypedSnapshotForTesting(profileCards: aliceCards)
         XCTAssertEqual(m.profile(forPubkey: pk)?.display, "Alice")
-        m.setTypedSnapshotForTesting(claimedProfiles: empty.claimed, resolvedProfiles: empty.resolved)
+        m.setTypedSnapshotForTesting(profileCards: [:])
         XCTAssertNil(m.profile(forPubkey: pk))
         XCTAssertEqual(
             m.appMetrics.nameRegressionCount, 2,
@@ -172,13 +135,12 @@ final class ProfileNameFallbackTests: XCTestCase {
     func test_noteRow_authorDisplayLabel_eventCards_gap_filler() {
         let short = pk.shortHex
 
-        // claimed_profiles dropped this pubkey (profileDisplay == nil), but the
-        // event card still carries the author name → that name must show.
+        // the refs.profile resolve dropped this pubkey (profileDisplay == nil), but
+        // the event card still carries the author name → that name must show.
         XCTAssertEqual(
             NoteRowView.resolveAuthorLabel(
                 profileDisplay: nil,
                 eventCardName: "Carol",
-                mentionDisplay: nil,
                 shortHex: short),
             "Carol",
             "eventCards author name must fill the gap when the profile claim churns.")
@@ -188,7 +150,6 @@ final class ProfileNameFallbackTests: XCTestCase {
             NoteRowView.resolveAuthorLabel(
                 profileDisplay: "Alice",
                 eventCardName: "Carol",
-                mentionDisplay: nil,
                 shortHex: short),
             "Alice",
             "A resolved profile display must outrank the event-card gap-filler.")
@@ -201,7 +162,6 @@ final class ProfileNameFallbackTests: XCTestCase {
                 profileDisplay: nil,
                 itemAuthorName: "Bob",
                 eventCardName: "Carol",
-                mentionDisplay: nil,
                 shortHex: short),
             "Bob",
             "The TimelineItem-baked author name must outrank the event card and prevent the flicker.")
@@ -211,7 +171,6 @@ final class ProfileNameFallbackTests: XCTestCase {
             NoteRowView.resolveAuthorLabel(
                 profileDisplay: nil,
                 eventCardName: nil,
-                mentionDisplay: nil,
                 shortHex: short),
             short,
             "With no name source the label collapses to shortHex.")

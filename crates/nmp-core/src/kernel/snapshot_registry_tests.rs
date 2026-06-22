@@ -63,14 +63,12 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // steady state) so a host that pre-allocates the map slot
             // never sees an absent key.
             "claimed_events",
-            // generic claimed-profile projection: pubkey -> ProfileCard for
-            // profile references a component has called `claim_profile` on.
-            "claimed_profiles",
+            // ADR-0063 Lane H: claimed_profiles / mention_profiles / resolved_profiles
+            // deleted. Profile resolution is now served by refs.profile (KPRF
+            // NRRD row-delta sidecar).
+            //
             // app-declared relay configuration (formerly `relay_edit_rows`).
             "configured_relays",
-            // derived view: per-author mention payloads scoped to the
-            // open author-view items (aim.md §4.2). Always present (D1).
-            "mention_profiles",
             // publish cluster — outbox header summary (§6 anti-pattern #1)
             "outbox_summary",
             // views cluster (D0) — `profile` is always present
@@ -81,11 +79,6 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             // diagnostics roll-up (aim.md §4.5 / §6 anti-pattern #1 cleanup)
             "relay_diagnostics",
             "relay_role_options",
-            // pre-merged profile map: pubkey -> ProfileCard, merged once in
-            // Rust from claimed_profiles > mention_profiles (only-if-absent).
-            // Always present (D1) so consumers can delete
-            // their per-platform merge code.
-            "resolved_profiles",
             // settings-hub view (relays subtitle pre-format)
             "settings_hub",
             // D5: dynamic feed keys and the retired timeline delta keys are
@@ -132,12 +125,19 @@ fn builtin_projection_keys_const_matches_runtime() {
     }
 
     // Reverse: every const key is either emitted on an idle tick or one of the
-    // four documented drain-on-emit conditionals.
+    // four documented drain-on-emit conditionals, OR one of the two ADR-0063
+    // (#1671) keyed row-delta carriers (`refs.profile` / `refs.event`). The
+    // latter are typed-sidecar-ONLY built-ins (an opaque NRRD per-key batch
+    // consumed by the host `RefRowCache`) — they have no generic JSON
+    // `projections` map entry, so they will never appear in the JSON snapshot
+    // this test parses, yet they ARE produced every tick on the typed sidecar.
     let conditional = [
         "action_results",
         "signed_events",
         "action_stages",
         "action_lifecycle",
+        "refs.profile",
+        "refs.event",
     ];
     for key in KERNEL_BUILTIN_PROJECTION_KEYS {
         assert!(

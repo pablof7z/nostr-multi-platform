@@ -118,12 +118,8 @@ struct KernelUpdateResult {
     /// Typed `profile` projection decode (`KPRF`). `nil` ⇒ generic
     /// `projections["profile"]` JSON fallback.
     let typedProfile: ProfileCard?
-    /// Typed `claimed_profiles` projection decode (`KCPR`). `nil` ⇒ generic
-    /// `projections["claimed_profiles"]` JSON fallback.
-    let typedClaimedProfiles: [String: ProfileCard]?
-    /// Typed `resolved_profiles` projection decode (`KRPR`). `nil` ⇒ generic
-    /// `projections["resolved_profiles"]` JSON fallback.
-    let typedResolvedProfiles: [String: ProfileCard]?
+    // ADR-0063 Lane H: typedClaimedProfiles (KCPR) and typedResolvedProfiles (KRPR)
+    // deleted. Profile data is now served via the refs.profile KPRF NRRD row-delta sidecar.
     /// Typed `nmp.nip17.dm_inbox` projection decode (`NDMI`). `nil` ⇒ generic
     /// `projections["nmp.nip17.dm_inbox"]` JSON fallback. Routed to the
     /// `dmInbox` store (typed-first effective value) in `KernelModel.apply`.
@@ -223,6 +219,21 @@ struct KernelUpdateResult {
     /// known-degraded for that key until the next genuine rev bump. Rung 3
     /// logs this; Rung 4 drains it via `nmp_app_request_full_snapshot()`.
     let needsResync: Bool
+    /// ADR-0063 Lane E (#1671): the RAW `refs.profile` / `refs.event` row-delta
+    /// batch envelopes for this frame, carried verbatim (NOT decoded) from the
+    /// wire so `KernelModel.apply` can feed them into `keyedRefCache.merge` on
+    /// `@MainActor` — that is where the cache's per-key `rowChanged` Combine
+    /// publisher must fire so it drives SwiftUI. Empty when the frame carried
+    /// no keyed-ref projection. The merge needs the frame's identity scalars
+    /// (`refsSessionId` / `refsSnapshotEpoch`) to detect a session/epoch bump.
+    let refsRowEnvelopes: [TypedProjectionEnvelope]
+    /// ADR-0063 Lane E (#1671): the frame's `sessionId` (R3-S3 identity) so the
+    /// keyed-ref cache can rebuild on an identity bump (same as the
+    /// `ProjectionMergeCache` contract).
+    let refsSessionId: UInt64
+    /// ADR-0063 Lane E (#1671): the frame's `snapshotEpoch` (R3-S3 identity)
+    /// for the keyed-ref cache's session/epoch baseline detection.
+    let refsSnapshotEpoch: UInt64
 }
 
 // ─── dispatch_action return envelope (PR-A) ───────────────────────────────

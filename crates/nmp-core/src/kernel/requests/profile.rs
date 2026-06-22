@@ -1,12 +1,12 @@
-//! Profile (kind:0) claim/release — registry-backed (M2 migration).
+//! Profile (kind:0) resolve/release — registry-backed (M2 migration).
 //!
 //! # M2 migration (compiler.md §3.5) — DONE
 //!
-//! `claim_profile` / `release_profile` no longer build kind:0 REQ frames
-//! directly. Each claim registers a `LogicalInterest { kinds:[0],
+//! Profile `resolve_ref` / `release_ref` do not build kind:0 REQ frames
+//! directly. Each resolve registers a `LogicalInterest { kinds:[0],
 //! authors:[P], limit:None }` through the [`crate::subs::InterestRegistry`]
 //! (the same single-writer chokepoint the follow feed and `claim_event` use),
-//! so a claimed profile inherits, for free:
+//! so a resolved profile inherits, for free:
 //!
 //! * **D3 implicit kind:10002 discovery** — `recompile_and_diff` auto-emits a
 //!   batched `kinds:[10002]` probe for any author with no cached mailbox
@@ -46,16 +46,20 @@
 //!   profile screen.
 //!
 //! Mixed liveness on one pubkey resolves to **Tailing wins**: a `Live` claim
-//! upgrades an existing `CacheOk` slot in place (`set_sub`), and the slot
-//! stays `Tailing` until the last owner releases (downgrade only on full
-//! teardown). Both liveness levels share ONE `(scope, key)` slot so they
-//! dedup to a single wire REQ.
+//! upgrades an existing `CacheOk` slot in place (`set_sub`), and the slot stays
+//! `Tailing` while ANY `Live` owner remains. When the LAST `Live` owner releases
+//! but a `CacheOk` owner still holds the slot, the slot is DOWNGRADED in place
+//! from `Tailing` back to `OneShot` (HIGH 5) — it does not linger as a dangling
+//! `Live` tail until full teardown. Both liveness levels share ONE `(scope, key)`
+//! slot so they dedup to a single wire REQ.
 //!
 //! `profile_claims` (the `HashMap<pubkey, BTreeSet<consumer_id>>` refcount)
-//! is RETAINED as the `claimed_profiles` projection source-of-truth; the
-//! registry interest is driven off it.
+//! is RETAINED as the resolve-refcount source-of-truth; the registry interest
+//! is driven off it (ADR-0063 Lane H: the `claimed_profiles` projection it once
+//! fed is deleted — resolved cards now flow through `refs.profile`).
 
 use super::super::{short_hex, truncate, Kernel, OutboundMessage};
+use crate::kernel::refs::{ProfileShape, RefLiveness};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, RelayHint,
 };
@@ -110,47 +114,32 @@ fn profile_claim_interest_id(pubkey: &str) -> InterestId {
 }
 
 impl Kernel {
-    pub(crate) fn claim_profile(
-        &mut self,
-        pubkey: String,
-        consumer_id: String,
-        // `can_send` is retained for call-site compatibility but is no longer a
-        // gate: the registry registers immediately and the planner lands the
-        // REQ when a relay connects (reconnect-replay, V-87 #602). The old
-        // park-until-connect `pending` queue is gone.
-        _can_send: bool,
-        force: bool,
-        liveness: ProfileLiveness,
-    ) -> Vec<OutboundMessage> {
-        // No relay hints on the bare hex path; the nprofile/nevent entry point
-        // uses `claim_profile_with_hints`.
-        self.claim_profile_inner(pubkey, consumer_id, force, liveness, Vec::new())
-    }
+    // ADR-0063 Lane H: claim_profile / claim_profile_with_hints deleted.
+    // Call resolve_ref(RefNamespace::Profile, pubkey, consumer_id,
+    //   RefShape::Profile(ProfileShape::Card), liveness.into(), force, Vec::new())
+    // directly instead.
+    //
+    // release_profile deleted. Call release_ref(RefNamespace::Profile, pubkey, consumer_id)
+    // directly instead.
 
-    /// nprofile/nevent-originated claim: identical to [`Self::claim_profile`]
-    /// but seeds the registered interest's `hints` with the NIP-19 relay TLVs
-    /// embedded in the URI, so a stranger whose kind:10002 is on no indexer
-    /// still resolves from the embedded relay (parity with `claim_event`).
-    #[cfg(test)] // only called from profile_claim_discovery_tests
-    pub(crate) fn claim_profile_with_hints(
+    /// The `profile` reference resolver (ADR-0063). Generalizes the former
+    /// `claim_profile_inner`: refcount the consumer, register/upgrade the
+    /// kernel-owned kind:0 interest, record the widest demanded shape, and bump
+    /// the per-key rev. `shape` selects the projected bytes (Lane C) and is
+    /// orthogonal to `liveness` (the kind:0 fetch is identical either way).
+    pub(in crate::kernel) fn resolve_profile_ref(
         &mut self,
         pubkey: String,
         consumer_id: String,
+        shape: ProfileShape,
+        liveness: RefLiveness,
         force: bool,
-        liveness: ProfileLiveness,
         relay_hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
-        self.claim_profile_inner(pubkey, consumer_id, force, liveness, relay_hints)
-    }
+        // Liveness is the namespace-agnostic axis; the kind:0 routing below is
+        // expressed in the profile-specific `ProfileLiveness` it has always used.
+        let liveness: ProfileLiveness = liveness.into();
 
-    fn claim_profile_inner(
-        &mut self,
-        pubkey: String,
-        consumer_id: String,
-        force: bool,
-        liveness: ProfileLiveness,
-        relay_hints: Vec<String>,
-    ) -> Vec<OutboundMessage> {
         // T114b — per-pubkey claim consumer-id retention bound. Drop-newest on
         // overflow mirrors the bounded actor channel; the dropped claim is a
         // silent no-op (D6) and bumps `claim_drops_total`.
@@ -166,6 +155,27 @@ impl Kernel {
             let inserted = consumers.insert(consumer_id.clone());
             (inserted, consumers.len())
         };
+        // BLOCKING 3 — a per-key rev bump (and the `changed_since_emit` flag) must
+        // fire ONLY on an actual row mutation: a new consumer, a shape widen, a
+        // liveness upgrade, or (at the ingest site) a content change. A duplicate
+        // identical (key, consumer, shape, liveness) re-resolve is NOT a mutation
+        // and must leave the rev untouched. Capture the widest demanded shape and
+        // whether this key already has a Live owner BEFORE recording this claim so
+        // the after-state comparison below detects a real widen / upgrade.
+        let widest_before = self.ref_demanded_profile_shape(&pubkey);
+        let live_before = self.live_profile_claims.contains_key(&pubkey);
+        // ADR-0063 D5 — record THIS consumer's demanded shape (per-consumer so a
+        // later release recomputes the widest among currently-live consumers —
+        // HIGH 4). Only reached for a real claim (overflow returned above), so the
+        // map stays bounded to claimed pubkeys. Independent of liveness.
+        self.ref_profile_shapes
+            .entry(pubkey.clone())
+            .or_default()
+            .insert(consumer_id.clone(), shape);
+        let widest_after = self.ref_demanded_profile_shape(&pubkey);
+        let shape_widened = widest_before != widest_after;
+        let liveness_upgraded = liveness == ProfileLiveness::Live && !live_before;
+        let mutated = inserted || shape_widened || liveness_upgraded;
         if inserted {
             self.log(format!(
                 "claim profile {} consumer {} ref {} liveness {:?} hints {}",
@@ -176,10 +186,18 @@ impl Kernel {
                 relay_hints.len(),
             ));
         }
-        self.changed_since_emit = true;
-        // ADR-0055 Rung 1: bump profile_claims_ver. (claimed_profiles projection
-        // derives from `profile_claims`, untouched by the registry migration.)
-        self.projection_rev_tracker.source_versions.bump_profile_claims();
+        // BLOCKING 3 — only stamp the projection when something actually changed.
+        // A no-op re-resolve (same key/consumer/shape/liveness) re-asserts nothing,
+        // so it must not advance any rev (the host already has the current row).
+        if mutated {
+            self.changed_since_emit = true;
+            // ADR-0055 Rung 1: bump profile_claims_ver. (the `refs.profile` projection
+            // derives from `profile_claims`, untouched by the registry migration.)
+            self.projection_rev_tracker.source_versions.bump_profile_claims();
+            // ADR-0063 Lane B (D6a) — bump THIS pubkey's per-key rev (resolve site 1
+            // of 3). The row appears / re-asserts; only this key's row need cross FFI.
+            self.projection_rev_tracker.source_versions.bump_profile_row(&pubkey);
+        }
 
         // F-TTL — a profile is a kind:0 replaceable identity. When it is already
         // cached the TTL gate decides whether a lazy re-verification REQ is due
@@ -232,15 +250,18 @@ impl Kernel {
         let owner = SubOwnerKey::new(("profile-claim-owner", consumer_id));
         let identity = SubIdentity::new(owner, key, scope.clone());
 
-        // Tailing wins: keep the slot Tailing once any Live claim has been seen
-        // for this pubkey. The registry has no per-interest lifecycle reader, so
-        // we track Live pubkeys in a dedicated set (cleared on full teardown in
-        // `release_profile`).
-        let want_tailing =
-            liveness == ProfileLiveness::Live || self.live_profile_claims.contains(pubkey);
+        // Tailing wins: keep the slot Tailing while ANY consumer holds a Live
+        // owner for this pubkey. HIGH 5 — track Live owners PER-CONSUMER (mirroring
+        // `register_event_claim_interest`) so releasing the last Live owner while a
+        // CacheOk owner remains downgrades the slot from Tailing in place, instead
+        // of staying Tailing (a dangling Live tail) until full teardown.
         if liveness == ProfileLiveness::Live {
-            self.live_profile_claims.insert(pubkey.to_string());
+            self.live_profile_claims
+                .entry(pubkey.to_string())
+                .or_default()
+                .insert(consumer_id.to_string());
         }
+        let want_tailing = self.live_profile_claims.contains_key(pubkey);
         let lifecycle = if want_tailing {
             InterestLifecycle::Tailing
         } else {
@@ -285,23 +306,52 @@ impl Kernel {
         );
     }
 
-    pub(crate) fn release_profile(
+    /// The `profile` reference release (ADR-0063). Generalizes the former
+    /// `release_profile`: drop the consumer's refcount + registry owner, tear the
+    /// slot down on the last owner, and bump the per-key rev.
+    pub(in crate::kernel) fn release_profile_ref(
         &mut self,
         pubkey: &str,
         consumer_id: &str,
     ) -> Vec<OutboundMessage> {
+        // Widest demanded shape BEFORE this consumer's shape is dropped, so a
+        // release that drops the widest consumer (narrowing the row) counts as a
+        // mutation even though no claim was added (HIGH 4 + BLOCKING 3).
+        let widest_before = self.ref_demanded_profile_shape(pubkey);
+        let mut actually_removed = false;
         let mut remove_claim = false;
         let mut remaining = 0;
         if let Some(consumers) = self.profile_claims.get_mut(pubkey) {
-            consumers.remove(consumer_id);
+            actually_removed = consumers.remove(consumer_id);
             remaining = consumers.len();
             remove_claim = consumers.is_empty();
         }
+        // ADR-0063 D5 (HIGH 4) — drop THIS consumer's per-consumer shape so the
+        // widest demanded shape recomputes over the CURRENTLY-LIVE consumers. A
+        // Card consumer leaving while a Ref consumer remains narrows the row to
+        // Ref (instead of staying Card until full teardown); the per-key rev bump
+        // below carries the narrowing to the wire.
+        if let Some(consumers) = self.ref_profile_shapes.get_mut(pubkey) {
+            consumers.remove(consumer_id);
+            if consumers.is_empty() {
+                self.ref_profile_shapes.remove(pubkey);
+            }
+        }
+        let shape_narrowed = widest_before != self.ref_demanded_profile_shape(pubkey);
+
+        // HIGH 5 — detach THIS consumer's Live owner (per-consumer, mirroring
+        // `release_event_claim_interest`). When the LAST Live owner leaves while
+        // CacheOk consumers remain, the slot must downgrade from Tailing to OneShot
+        // in place rather than dangle a Live tail until full teardown.
+        let mut liveness_downgraded = false;
+        if let Some(live_owners) = self.live_profile_claims.get_mut(pubkey) {
+            if live_owners.remove(consumer_id) && live_owners.is_empty() {
+                self.live_profile_claims.remove(pubkey);
+                liveness_downgraded = !remove_claim;
+            }
+        }
         if remove_claim {
             self.profile_claims.remove(pubkey);
-            // Last consumer gone: drop the Live marker so a future claim starts
-            // fresh (downgrade only on full teardown).
-            self.live_profile_claims.remove(pubkey);
         }
 
         // Detach this consumer's owner from the registry slot. When the last
@@ -316,10 +366,53 @@ impl Kernel {
             self.lifecycle.enqueue_trigger(CompileTrigger::ViewOpened {
                 interest_ids: Vec::new(),
             });
+        } else if liveness_downgraded {
+            // HIGH 5 — the slot survives (CacheOk consumers remain) but no Live
+            // owner is left: re-register it as OneShot (Replace = set_sub) so the
+            // tailing kind:0 sub is downgraded in place. Re-attach an arbitrary
+            // surviving consumer as the owner (any valid owner keeps the slot; the
+            // refcount is `profile_claims`, not the registry owner set).
+            if let Some(survivor) = self
+                .profile_claims
+                .get(pubkey)
+                .and_then(|c| c.iter().next())
+                .cloned()
+            {
+                self.register_profile_claim_interest(
+                    pubkey,
+                    &survivor,
+                    ProfileLiveness::CacheOk,
+                    Vec::new(),
+                );
+            }
         }
 
-        self.changed_since_emit = true;
-        self.projection_rev_tracker.source_versions.bump_profile_claims();
+        // BLOCKING 3 — only stamp the projection on a real change: a refcount drop,
+        // a shape narrow, or a liveness downgrade. A spurious release of a
+        // never-claimed pubkey (no refcount change, no shape, no live owner) leaves
+        // every rev untouched, so it never creates a permanent row (BLOCKING 2 (a)).
+        let mutated = actually_removed || shape_narrowed || liveness_downgraded;
+        if mutated {
+            self.changed_since_emit = true;
+            self.projection_rev_tracker.source_versions.bump_profile_claims();
+        }
+        // ADR-0063 Lane B (D6a) — per-key rev. On a full teardown the row is gone:
+        // `clear_profile_row` bumps it to the final post-clear rev and immediately
+        // removes the entry IN THE SAME CALL (BLOCKING 2 (b) — no retained-rev /
+        // pending-clear state; the map stays bounded to live keys, D8). Otherwise a
+        // surviving-row mutation bumps the rev so the narrowed/downgraded row
+        // crosses FFI.
+        if remove_claim && actually_removed {
+            let _final_rev = self
+                .projection_rev_tracker
+                .source_versions
+                .clear_profile_row(pubkey);
+            // `_final_rev` is the value an ADR-0055 `Cleared` row would carry; the
+            // downstream row-delta emitter (Lane A) is out of this branch's scope,
+            // so it is dropped here and the rev entry is already gone.
+        } else if mutated {
+            self.projection_rev_tracker.source_versions.bump_profile_row(pubkey);
+        }
         self.log(format!(
             "release profile {} consumer {} ref {}",
             short_hex(pubkey),

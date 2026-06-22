@@ -143,8 +143,8 @@ export function chirpTimelineFromEnvelope(envelope: unknown): ChirpTimelineSnaps
  * map to `CountState` `{count}` / `{status:"loading"}` so HomePanel's
  * `countLabel()` renders correctly.
  *
- * `resolvedProfiles` is the decoded `resolved_profiles` KRPR map (pubkey →
- * display name). Root cards carry no denormalized author display copy (GH #920
+ * `resolvedProfiles` is the display-name join map (pubkey → display name)
+ * derived from the `refs.profile` row cache. Root cards carry no denormalized author display copy (GH #920
  * ADR-0032 raw-data doctrine); the presentation layer joins here instead.
  * When absent (no profile claimed yet) `item.authorDisplayName` stays undefined
  * and `displayAuthor` falls back to `shortKey(authorPubkey)`.

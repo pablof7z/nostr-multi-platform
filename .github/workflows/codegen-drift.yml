@@ -96,6 +96,18 @@ jobs:
           cargo run --quiet -p nmp-core --bin dump_signer_catalog \
             | cargo run --quiet -p nmp-codegen -- gen signer-catalog --check
 
+      # ADR-0063 Lane A (#1671) — the generated per-key (row-keyed) reference
+      # caches (`KeyedRefCache.generated.swift` + `KeyedRefCache.kt`) are
+      # DERIVED from `KEYED_PROJECTIONS`. Fails any PR whose checked-in cache
+      # differs from a fresh run, so the keyed caches cannot drift from the
+      # registry (or from each other / the Rust reference model).
+      - name: Check keyed-ref-cache codegen is up to date
+        run: |
+          cargo run --quiet -p nmp-codegen -- gen keyed-ref-cache --check \
+            --out ios/Chirp/Chirp/Bridge/Generated/KeyedRefCache.generated.swift
+          cargo run --quiet -p nmp-codegen -- gen keyed-ref-cache --platform kotlin --check \
+            --out android/app/src/main/java/org/nmp/android/KeyedRefCache.kt
+
   # PR-B (#991/#979) — Rust flatc transport-binding drift gate. The checked-in
   # bindings at crates/nmp-core/src/transport/generated/nmp_update_generated.rs
   # must be byte-identical to a fresh `flatc --rust` run (rustfmt'd) over
@@ -136,7 +148,7 @@ jobs:
       - name: DispatchEnvelope fail-closed gates hold for the live schema
         run: bash ci/check-dispatch-envelope-gates.sh
 
-  # Swift flatc binding drift gate. The 34 checked-in `flatc --swift` Swift
+  # Swift flatc binding drift gate. The checked-in `flatc --swift` Swift
   # binding files at ios/Chirp/Chirp/Bridge/Generated/*.generated.swift (every
   # `.generated.swift` EXCEPT KernelTypes.generated.swift and
   # TypedProjectionDecoders.generated.swift, which are nmp-codegen outputs

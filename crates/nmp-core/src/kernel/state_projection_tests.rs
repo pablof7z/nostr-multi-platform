@@ -532,86 +532,11 @@ fn profile_card_carries_raw_pubkey_without_npub() {
     );
 }
 
-// V-112 (ADR-0042): mention_profiles_projection_carries_each_author_in_author_view
-// deleted — mention_profiles now comes from claimed_profiles (component-owned claiming).
-
-#[test]
-fn mention_profiles_projection_empty_when_no_visible_items_or_views() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.active_account = Some(ACCOUNT.to_string());
-
-    let snap = snapshot(&mut kernel);
-    let mp = &snap["projections"]["mention_profiles"];
-    assert!(mp.is_object(), "mention_profiles must always be present");
-    assert_eq!(
-        mp.as_object().map(|m| m.len()),
-        Some(0),
-        "mention_profiles must be empty when no events are visible and no view is open"
-    );
-}
-
-/// Claimed profiles project immediately, then refine after kind:0 arrives.
-#[test]
-fn claimed_profiles_projection_refines_claimed_pubkey() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let _ = kernel.claim_profile(
-        ACCOUNT.to_string(),
-        "avatar".to_string(),
-        false,
-        false,
-        crate::kernel::ProfileLiveness::CacheOk,
-    );
-
-    let before = snapshot(&mut kernel);
-    let entry = &before["projections"]["claimed_profiles"][ACCOUNT];
-    assert!(
-        !entry.is_null(),
-        "claimed_profiles must carry a placeholder for every claimed pubkey"
-    );
-    assert_eq!(entry["pubkey"].as_str(), Some(ACCOUNT));
-    // ADR-0032 / V-115: shells encode bech32 themselves.
-    assert!(
-        entry.get("npub").is_none(),
-        "claimed_profiles entry must not carry npub — shells encode bech32"
-    );
-    assert!(
-        entry.get("has_profile").is_none(),
-        "D1 #606: render-gate field removed"
-    );
-    assert!(entry["display_name"].is_null());
-    assert!(entry["picture_url"].is_null());
-
-    let event = nostr::NostrEvent {
-        id: "0000000000000000000000000000000000000000000000000000000000000021".to_string(),
-        pubkey: ACCOUNT.to_string(),
-        created_at: 1_700_000_100,
-        kind: 0,
-        tags: vec![],
-        content: r#"{"display_name":"Claimed Profile","picture":"https://example.com/claimed.png","nip05":"claimed@example.com","about":"profile from claim"}"#.to_string(),
-        sig: String::new(),
-    };
-    kernel.inject_profile(event);
-
-    let after = snapshot(&mut kernel);
-    let entry = &after["projections"]["claimed_profiles"][ACCOUNT];
-    assert!(
-        entry.get("has_profile").is_none(),
-        "D1 #606: render-gate field removed"
-    );
-    assert_eq!(entry["display_name"].as_str(), Some("Claimed Profile"));
-    assert_eq!(
-        entry["picture_url"].as_str(),
-        Some("https://example.com/claimed.png")
-    );
-    assert_eq!(entry["nip05"].as_str(), Some("claimed@example.com"));
-
-    let _ = kernel.release_profile(ACCOUNT, "avatar");
-    let released = snapshot(&mut kernel);
-    assert!(
-        released["projections"]["claimed_profiles"][ACCOUNT].is_null(),
-        "released profile claims must leave the claimed_profiles projection"
-    );
-}
+// ADR-0063 Lane H: mention_profiles_projection_empty_when_no_visible_items_or_views
+// deleted — mention_profiles projection removed entirely (replaced by refs.profile).
+// ADR-0063 Lane H: claimed_profiles_projection_refines_claimed_pubkey deleted —
+// claimed_profiles projection removed entirely (replaced by refs.profile KPRF
+// row-delta sidecar). Profile refinement tests live in the refs integration suite.
 
 // ─── kind:3 contacts → metrics projection ────────────────────────────────────
 

@@ -209,12 +209,11 @@ object KernelUpdateFrameDecoder {
         // absent or failed typed sidecars with explicit empty/null defaults.
         val typedWallet = TypedWalletDecoder.decode(typedProjections)
         val typedActiveAccount = TypedAccountsDecoder.decodeActiveAccount(typedProjections)
+        // ADR-0063 Lane H: claimed_profiles / mention_profiles / resolved_profiles deleted.
+        // Profile data is now served via the refs.profile KPRF NRRD row-delta sidecar.
         return SnapshotProjections(
             activeAccount = typedActiveAccount?.pubkey,
             accounts = TypedAccountsDecoder.decodeAccounts(typedProjections) ?: emptyList(),
-            claimedProfiles = TypedProfilesDecoder.decodeClaimed(typedProjections) ?: emptyMap(),
-            mentionProfiles = emptyMap(),
-            resolvedProfiles = TypedProfilesDecoder.decodeResolved(typedProjections) ?: emptyMap(),
             flatFeeds = TypedHomeFeedDecoder.decodeFlatFeeds(typedProjections),
             dmInbox = TypedDmInboxDecoder.decode(typedProjections),
             walletStatus = typedWallet?.status,

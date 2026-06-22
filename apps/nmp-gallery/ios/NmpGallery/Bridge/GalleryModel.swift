@@ -75,16 +75,17 @@ let SHOWCASE_NOTE_NEVENT = GALLERY_SHOWCASE.note.uri
 let SHOWCASE_HIGHLIGHT_EVENT_ID = GALLERY_SHOWCASE.highlight.primaryId
 let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 
-/// Wire-shape of one entry in `projections.resolved_profiles` — the kernel's
+/// Wire-shape of one entry in `projections."refs.profile"` — the kernel's
 /// `ProfileCard`. Field names use snake_case in JSON; the decoder uses the
 /// global `.convertFromSnakeCase` strategy so Swift sees camelCase.
 ///
-/// The kernel pre-merges `claimed_profiles` and `mention_profiles` into this
-/// single key, so every entry
-/// carries a Rust-formatted bech32 `npub` regardless of which source won —
-/// mention-sourced entries simply have empty `nip05` / `about` and `lnurl:
-/// null`. The extra `lnurl` field the card carries is ignored here.
-private struct ResolvedProfileWire: Decodable, Sendable {
+/// ADR-0063 (#1671): the map is SOURCED from the kernel's `refs.profile`
+/// row-delta projection (the resolve_ref output), merged host-side into the
+/// `GalleryRefProfileStore` and materialised under the `refs.profile` JSON key
+/// by `nmp_app_gallery_snapshot_json_from_update_frame`. Every entry carries a
+/// Rust-formatted bech32 `npub`. The extra `lnurl` field the card carries is
+/// ignored here.
+private struct RefProfileWire: Decodable, Sendable {
     let pubkey: String
     let npub: String
     let displayName: String?
@@ -95,12 +96,12 @@ private struct ResolvedProfileWire: Decodable, Sendable {
 
 /// Snapshot wire-shape pushed through `nmp_app_set_update_callback`. The
 /// kernel's `KernelSnapshot` ships a host-extensible `projections` map; the
-/// gallery reads the pre-merged profile key from it:
+/// gallery reads the resolved-profile key from it:
 ///
-///   * `projections.resolved_profiles[pubkey]` — the kernel's single,
-///     pre-merged `ProfileCard` per pubkey. The kernel applies precedence
-///     (`claimed_profiles` → `mention_profiles`) once in Rust; the gallery no
-///     longer re-implements that merge. Always present (`{}` when empty).
+///   * `projections."refs.profile"[pubkey]` — the kernel's single resolved
+///     `ProfileCard` per pubkey (ADR-0063 #1671 — the resolve_ref output,
+///     materialised from the `refs.profile` row-delta store host-side). The
+///     gallery owns no precedence merge. Always present (`{}` when empty).
 ///
 /// `snapshot.profiles[pubkey] -> ProfileWire?` is decoded directly from that
 /// surface so the per-component pages stay decoupled from the wire
@@ -138,7 +139,11 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
     }
 
     private enum ProjectionsKeys: String, CodingKey {
-        case resolvedProfiles, accounts
+        // ADR-0063 (#1671): the resolved-profile map is keyed by the dotted
+        // `refs.profile` projection key. `.convertFromSnakeCase` does NOT touch
+        // a dotted key, so the raw value is spelled out explicitly here.
+        case refsProfile = "refs.profile"
+        case accounts
         // `claimed_event_embeds` — with `.convertFromSnakeCase` this matches
         // the camelCase key after conversion.
         case claimedEventEmbeds
@@ -161,17 +166,16 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
             keyedBy: ProjectionsKeys.self,
             forKey: .projections
         ) {
-            // The kernel ships one pre-merged card per pubkey under
-            // `resolved_profiles`. The precedence
-            // (claimed_profiles -> mention_profiles) is applied in Rust; the
-            // gallery just decodes the result.
+            // ADR-0063 (#1671): the kernel ships one resolved card per pubkey
+            // under `refs.profile` (the resolve_ref output, materialised from
+            // the row-delta store in Rust). The gallery just decodes the result.
             if let resolved = try? projections.decodeIfPresent(
-                [String: ResolvedProfileWire].self,
-                forKey: .resolvedProfiles
+                [String: RefProfileWire].self,
+                forKey: .refsProfile
             ) {
                 for (pubkey, card) in resolved {
                     let key = card.pubkey.isEmpty ? pubkey : card.pubkey
-                    assembled[key] = profileWire(fromResolvedProfile: card, pubkey: key)
+                    assembled[key] = profileWire(fromRefProfile: card, pubkey: key)
                 }
             }
             if let accs = try? projections.decodeIfPresent(
@@ -213,13 +217,12 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
     }
 }
 
-/// Build a `ProfileWire` from one `resolved_profiles` entry (the kernel's
-/// pre-merged `ProfileCard`, which carries `npub` already-formatted by Rust
-/// per aim.md §2). `npubShort` is the only Swift-side derivation; aim.md §2
-/// stipulates shells own abbreviation. Every entry — including
-/// mention-sourced ones — carries a real bech32 `npub`, so the truncation is
-/// uniform.
-private func profileWire(fromResolvedProfile card: ResolvedProfileWire, pubkey: String) -> ProfileWire {
+/// Build a `ProfileWire` from one `refs.profile` entry (the kernel's resolved
+/// `ProfileCard`, which carries `npub` already-formatted by Rust per aim.md §2).
+/// `npubShort` is the only Swift-side derivation; aim.md §2 stipulates shells
+/// own abbreviation. Every entry carries a real bech32 `npub`, so the
+/// truncation is uniform.
+private func profileWire(fromRefProfile card: RefProfileWire, pubkey: String) -> ProfileWire {
     ProfileWire(
         pubkey: pubkey,
         displayName: card.displayName?.nonEmpty,
@@ -318,8 +321,8 @@ final class GalleryModel: NostrProfileHost {
             kernel.addRelay(url: relay.url, role: relay.role)
         }
         // Do not open the showcase author here. The user-avatar registry component
-        // claims `SHOWCASE_PUBKEY_HEX` when it mounts, and the kernel surfaces the
-        // result through `projections.claimed_profiles`.
+        // resolves `SHOWCASE_PUBKEY_HEX` when it mounts, and the kernel surfaces the
+        // result through `projections."refs.profile"`.
     }
 
     /// Decode a FlatBuffers update frame received from the push callback. A
@@ -331,7 +334,8 @@ final class GalleryModel: NostrProfileHost {
     /// embed map; the separate `JSONSerialization` + `EmbedHost.update(fromSnapshotJSON:)`
     /// path is deleted (the kind-dispatch now runs in Rust, not in Swift).
     func decode(frame: Data) {
-        guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(from: frame) else {
+        guard let data = GalleryFlatBufferSnapshotDecoder.snapshotJSONData(
+            from: frame, store: kernel.refProfileStore) else {
             return
         }
         let decoder = JSONDecoder()

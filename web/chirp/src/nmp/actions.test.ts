@@ -1,54 +1,68 @@
-// F-CR-00 — vitest for claim/release command builders.
+// ADR-0063 (#1671) — vitest for the resolve_ref/release_ref command builders.
 //
 // Pins the exact wire shape the Rust dispatch recognizer
-// (`claim_dispatch_from_action`) expects to parse. Key consistency between
-// Step 4 (builders) and Step 2 (recognizer) is the one cross-step failure mode
-// that degrades silently to None (D6) and never fires — asserting shape here
-// catches it before it reaches the Rust layer.
+// (`resolve_dispatch_from_action` in crates/nmp-wasm/src/dispatch_routing.rs)
+// expects to parse. Key/discriminant consistency between the TS builders and the
+// Rust recognizer is the one cross-step failure mode that degrades silently to
+// None (D6) and never fires — asserting the shape here catches it before it
+// reaches the Rust layer.
 import { describe, expect, it } from "vitest";
 import {
-  claimEventCommand,
-  claimProfileCommand,
+  REF_LIVENESS_CACHE_OK,
+  REF_NS_EVENT,
+  REF_NS_PROFILE,
+  REF_SHAPE_EVENT_EMBED,
+  REF_SHAPE_PROFILE_REF,
   releaseEventCommand,
   releaseProfileCommand,
+  resolveEventCommand,
+  resolveProfileCommand,
 } from "./actions";
 
-describe("F-CR-00 claim/release command builders", () => {
-  it("claimProfileCommand produces expected wire shape", () => {
-    expect(claimProfileCommand("abc123pubkey", "chirp-web-author-eventid1")).toEqual({
-      actionType: "nmp.kernel.claim_profile",
+describe("ADR-0063 resolve_ref/release_ref command builders", () => {
+  it("resolveProfileCommand produces the Lane D resolve_ref wire shape", () => {
+    expect(resolveProfileCommand("abc123pubkey", "chirp-web-author-eventid1")).toEqual({
+      actionType: "nmp.kernel.resolve_ref",
       payload: {
-        pubkey: "abc123pubkey",
+        namespace: REF_NS_PROFILE,
+        key: "abc123pubkey",
         consumer_id: "chirp-web-author-eventid1",
+        shape: REF_SHAPE_PROFILE_REF,
+        liveness: REF_LIVENESS_CACHE_OK,
       },
     });
   });
 
-  it("releaseProfileCommand produces expected wire shape", () => {
+  it("releaseProfileCommand produces the release_ref wire shape (no shape/liveness)", () => {
     expect(releaseProfileCommand("abc123pubkey", "chirp-web-author-eventid1")).toEqual({
-      actionType: "nmp.kernel.release_profile",
+      actionType: "nmp.kernel.release_ref",
       payload: {
-        pubkey: "abc123pubkey",
+        namespace: REF_NS_PROFILE,
+        key: "abc123pubkey",
         consumer_id: "chirp-web-author-eventid1",
       },
     });
   });
 
-  it("claimEventCommand produces expected wire shape", () => {
-    expect(claimEventCommand("nostr:nevent1xyz", "chirp-web-embed-eventid2")).toEqual({
-      actionType: "nmp.kernel.claim_event",
+  it("resolveEventCommand produces the event-namespace resolve_ref wire shape", () => {
+    expect(resolveEventCommand("eventidhex", "chirp-web-embed-eventid2")).toEqual({
+      actionType: "nmp.kernel.resolve_ref",
       payload: {
-        uri: "nostr:nevent1xyz",
+        namespace: REF_NS_EVENT,
+        key: "eventidhex",
         consumer_id: "chirp-web-embed-eventid2",
+        shape: REF_SHAPE_EVENT_EMBED,
+        liveness: REF_LIVENESS_CACHE_OK,
       },
     });
   });
 
-  it("releaseEventCommand produces expected wire shape", () => {
-    expect(releaseEventCommand("nostr:nevent1xyz", "chirp-web-embed-eventid2")).toEqual({
-      actionType: "nmp.kernel.release_event",
+  it("releaseEventCommand produces the event-namespace release_ref wire shape", () => {
+    expect(releaseEventCommand("eventidhex", "chirp-web-embed-eventid2")).toEqual({
+      actionType: "nmp.kernel.release_ref",
       payload: {
-        uri: "nostr:nevent1xyz",
+        namespace: REF_NS_EVENT,
+        key: "eventidhex",
         consumer_id: "chirp-web-embed-eventid2",
       },
     });
@@ -57,15 +71,21 @@ describe("F-CR-00 claim/release command builders", () => {
   it("consumer_id key is snake_case (Rust parser expects consumer_id not consumerId)", () => {
     // The Rust `str_field(&payload, "consumer_id")` call requires exactly this
     // key. A camelCase mismatch would produce None from the recognizer and the
-    // claim would silently fall through to write-path-unavailable.
-    const cmd = claimProfileCommand("pk", "my-consumer");
+    // resolve would silently fall through to write-path-unavailable.
+    const cmd = resolveProfileCommand("pk", "my-consumer");
     const payload = cmd.payload as Record<string, unknown>;
     expect(Object.keys(payload)).toContain("consumer_id");
     expect(Object.keys(payload)).not.toContain("consumerId");
+    // `key` (not `pubkey`) is the unified namespace-agnostic field name.
+    expect(payload.key).toBe("pk");
   });
 
-  it("claim_profile and claim_event use distinct action_type prefixes", () => {
-    expect(claimProfileCommand("pk", "c").actionType).toBe("nmp.kernel.claim_profile");
-    expect(claimEventCommand("nostr:note1abc", "c").actionType).toBe("nmp.kernel.claim_event");
+  it("profile and event resolves share the action_type but differ in namespace", () => {
+    expect(resolveProfileCommand("pk", "c").actionType).toBe("nmp.kernel.resolve_ref");
+    expect(resolveEventCommand("ev", "c").actionType).toBe("nmp.kernel.resolve_ref");
+    const profile = resolveProfileCommand("pk", "c").payload as Record<string, unknown>;
+    const event = resolveEventCommand("ev", "c").payload as Record<string, unknown>;
+    expect(profile.namespace).toBe(REF_NS_PROFILE);
+    expect(event.namespace).toBe(REF_NS_EVENT);
   });
 });

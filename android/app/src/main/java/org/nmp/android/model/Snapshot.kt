@@ -54,12 +54,9 @@ data class SnapshotProjections(
     // projection is present on this tick. Mirrors iOS `status.isConnected`.
     val walletIsConnected: Boolean? = null,
     @SerialName("relay_role_options") val relayRoleOptions: List<RelayRoleOption> = emptyList(),
-    @SerialName("claimed_profiles") val claimedProfiles: Map<String, ProfileCard> = emptyMap(),
-    @SerialName("mention_profiles") val mentionProfiles: Map<String, ProfileCard> = emptyMap(),
-    // Pre-merged profile map shipped by the kernel. The UI reads this single key;
-    // claimed_profiles / mention_profiles above are retained for non-UI consumers
-    // but no longer merged in the presentation layer.
-    @SerialName("resolved_profiles") val resolvedProfiles: Map<String, ProfileCard> = emptyMap(),
+    // ADR-0063 Lane H: claimed_profiles / mention_profiles / resolved_profiles JSON snapshot
+    // projections deleted. Profile data is now served via the refs.profile KPRF NRRD
+    // row-delta sidecar (ADR-0063 / #1671).
     @SerialName("action_results") val actionResults: List<LastActionResult> = emptyList(),
     @SerialName("last_action_result") val lastActionResult: LastActionResult? = null,
     @SerialName("action_stages") val actionStages: Map<String, List<ActionStageEntry>> = emptyMap(),

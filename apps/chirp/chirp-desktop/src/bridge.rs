@@ -28,17 +28,38 @@ use nmp_app_chirp::{
     nmp_app_nostrconnect_uri, nmp_marmot_unregister,
     nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle, NmpRegisterStatus,
 };
-use nmp_nip01::NoteRecord;
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_cancel_publish, nmp_app_dispatch_action, nmp_app_free,
-    nmp_app_load_older_feed, nmp_app_remove_relay, nmp_app_retry_publish,
-    nmp_app_set_capability_callback, nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
+    nmp_app_dispatch_action, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref,
+    nmp_app_resolve_ref, nmp_app_set_capability_callback, nmp_app_start, nmp_free_string, NmpApp,
+    NmpConfigStatus,
 };
 use serde_json::Value;
 use std::ffi::c_void;
+use std::os::raw::c_int;
+
+// ADR-0063 (#1671 Lane F) — resolve_ref / release_ref FFI codes + consumer ids.
+/// `namespace` — profile resolver.
+const REF_NS_PROFILE: c_int = 0;
+/// `shape` — `profile.ref` (feed-avatar subset).
+const REF_SHAPE_PROFILE_REF: c_int = 0;
+/// `shape` — `profile.card` (full ProfileCard; profile screen).
+const REF_SHAPE_PROFILE_CARD: c_int = 1;
+/// `liveness` — `CacheOk` (background; no tailing sub).
+const REF_LIVENESS_CACHE_OK: c_int = 0;
+/// `liveness` — `Live` (open screen; tailing sub for replacements).
+const REF_LIVENESS_LIVE: c_int = 1;
+/// Consumer id for feed/list-row author refs (profile.ref / CacheOk). Shared
+/// across rows — the kernel dedupes per (namespace, key); release on view change.
+const FEED_AUTHOR_CONSUMER: &str = "chirp-desktop.feed-author";
+/// Consumer id for the open profile screen's ref (profile.card / Live).
+const OPEN_PROFILE_CONSUMER: &str = "chirp-desktop.open-profile";
 
 // #1607: nmp_app_wallet_{connect,disconnect} deleted from the C ABI.
 // Wallet operations now route through nmp_app_dispatch_action (D11).
+
+// Wallet / social / account / relay / publish-lifecycle `impl AppRuntime`
+// methods (split out to keep this file under the 500-LOC hard ceiling).
+mod actions;
 
 // ---------------------------------------------------------------------------
 // Update bridge (mirrors chirp-tui/src/bridge.rs)
@@ -212,6 +233,9 @@ impl AppRuntime {
         if let Ok(c) = CString::new(pubkey) {
             nmp_app_chirp_open_author_feed(self.app, c.as_ptr());
         }
+        // ADR-0063 (#1671 Lane F): the open profile screen demands the full card,
+        // kept Live for reactive kind:0 replacement.
+        self.resolve_profile_card_live(pubkey);
     }
 
     pub fn close_author(&self, pubkey: &str) {
@@ -221,6 +245,62 @@ impl AppRuntime {
         if let Ok(c) = CString::new(pubkey) {
             nmp_app_chirp_close_author_feed(self.app, c.as_ptr());
         }
+        // ADR-0063 (#1671 Lane F): release the open-screen profile.card/Live ref.
+        self.release_ref(OPEN_PROFILE_CONSUMER, pubkey);
+    }
+
+    /// ADR-0063 (#1671 Lane F): resolve a feed/list-row author at `profile.ref` /
+    /// `CacheOk` so its avatar/name renders. Origin-blind and deduped per pubkey;
+    /// idempotent. Best-effort (D6: invalid args are a silent no-op in the FFI).
+    pub fn resolve_feed_author_ref(&self, pubkey: &str) {
+        self.resolve_ref(
+            pubkey,
+            FEED_AUTHOR_CONSUMER,
+            REF_SHAPE_PROFILE_REF,
+            REF_LIVENESS_CACHE_OK,
+        );
+    }
+
+    /// Release a feed/list-row author's `profile.ref` claim when it scrolls off /
+    /// the view closes (D5 — bounded by what is open).
+    pub fn release_feed_author_ref(&self, pubkey: &str) {
+        self.release_ref(FEED_AUTHOR_CONSUMER, pubkey);
+    }
+
+    fn resolve_profile_card_live(&self, pubkey: &str) {
+        self.resolve_ref(
+            pubkey,
+            OPEN_PROFILE_CONSUMER,
+            REF_SHAPE_PROFILE_CARD,
+            REF_LIVENESS_LIVE,
+        );
+    }
+
+    fn resolve_ref(&self, pubkey: &str, consumer: &str, shape: c_int, liveness: c_int) {
+        if self.app.is_null() {
+            return;
+        }
+        let (Ok(key), Ok(consumer)) = (CString::new(pubkey), CString::new(consumer)) else {
+            return;
+        };
+        nmp_app_resolve_ref(
+            self.app,
+            REF_NS_PROFILE,
+            key.as_ptr(),
+            consumer.as_ptr(),
+            shape,
+            liveness,
+        );
+    }
+
+    fn release_ref(&self, consumer: &str, pubkey: &str) {
+        if self.app.is_null() {
+            return;
+        }
+        let (Ok(key), Ok(consumer)) = (CString::new(pubkey), CString::new(consumer)) else {
+            return;
+        };
+        nmp_app_release_ref(self.app, REF_NS_PROFILE, key.as_ptr(), consumer.as_ptr());
     }
 
     pub fn load_older_timeline(&self) {
@@ -280,147 +360,11 @@ impl AppRuntime {
     }
 
     // ------------------------------------------------------------------
-    // Wallet actions (NIP-47 NWC)
+    // Wallet / social / account / relay / publish-lifecycle actions
     // ------------------------------------------------------------------
-
-    // ── NIP-47 wallet commands (#1607 — dispatch_action seam) ──────────────
     //
-    // The bespoke nmp_app_wallet_{connect,disconnect} C-ABI symbols were
-    // deleted (D11 — one action door). Both operations now route through
-    // nmp_app_dispatch_action.
-
-    pub fn wallet_connect(&self, nwc_uri: &str) -> Result<String, String> {
-        if self.app.is_null() {
-            return Err("runtime app is not available".to_string());
-        }
-        let action = serde_json::json!({ "Connect": { "uri": nwc_uri } });
-        let action_json = serde_json::to_string(&action)
-            .map_err(|e| format!("serialize wallet.connect action: {e}"))?;
-        self.dispatch_action("nmp.wallet.connect", &action_json)
-    }
-
-    pub fn wallet_disconnect(&self) -> Result<String, String> {
-        if self.app.is_null() {
-            return Err("runtime app is not available".to_string());
-        }
-        self.dispatch_action("nmp.wallet.disconnect", "\"Disconnect\"")
-    }
-
-    // ------------------------------------------------------------------
-    // Social actions
-    // ------------------------------------------------------------------
-
-    pub fn publish_note(
-        &self,
-        content: &str,
-        reply_to: Option<&NoteRecord>,
-    ) -> Result<String, String> {
-        self.client.publish_note(content, reply_to)
-    }
-
-    pub fn react(&self, event_id: &str, reaction: &str) -> Result<String, String> {
-        self.client.react(event_id, reaction)
-    }
-
-    pub fn follow(&self, pubkey: &str) -> Result<String, String> {
-        self.client.follow(pubkey)
-    }
-
-    pub fn unfollow(&self, pubkey: &str) -> Result<String, String> {
-        self.client.unfollow(pubkey)
-    }
-
-    pub fn repost(&self, event_id: &str, author_pubkey: &str) -> Result<String, String> {
-        self.client.repost(event_id, author_pubkey)
-    }
-
-    pub fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<String, String> {
-        self.client.send_dm(recipient_pubkey, content)
-    }
-
-    pub fn zap(&self, recipient_pubkey: &str, amount_msats: u64, target_event_id: &str) -> Result<String, String> {
-        self.client.zap(recipient_pubkey, amount_msats, target_event_id, "")
-    }
-
-    // ------------------------------------------------------------------
-    // Account lifecycle
-    // ------------------------------------------------------------------
-
-    pub fn switch_account(&self, pubkey: &str) {
-        let _ = self.client.switch_account(pubkey);
-    }
-
-    pub fn remove_account(&self, pubkey: &str) {
-        let _ = self.client.remove_account(pubkey);
-    }
-
-    pub fn publish_profile(&self, name: &str, about: &str, picture: &str) -> Result<String, String> {
-        self.client.publish_profile(name, about, picture)
-    }
-
-    // ------------------------------------------------------------------
-    // Relay actions
-    // ------------------------------------------------------------------
-
-    pub fn add_relay(&self, url: &str, role: &str) {
-        if self.app.is_null() {
-            return;
-        }
-        if let (Ok(url_c), Ok(role_c)) = (CString::new(url), CString::new(role)) {
-            unsafe { nmp_app_add_relay(self.app, url_c.as_ptr(), role_c.as_ptr()) };
-        }
-    }
-
-    pub fn remove_relay(&self, url: &str) {
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(url_c) = CString::new(url) {
-            unsafe { nmp_app_remove_relay(self.app, url_c.as_ptr()) };
-        }
-    }
-
-    /// Publish the user's NIP-65 relay list (kind:10002) via the existing
-    /// `nmp.nip65.publish_relay_list` action. `relays` is the configured-relay
-    /// set as `(url, role)` pairs read from the settings UI projection.
-    pub fn publish_relay_list(&self, relays: &[(&str, &str)]) -> Result<String, String> {
-        self.client.publish_relay_list(relays)
-    }
-
-    // ------------------------------------------------------------------
-    // Publish lifecycle actions
-    // ------------------------------------------------------------------
-
-    pub fn retry_publish(&self, handle: &str) {
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(handle) {
-            unsafe { nmp_app_retry_publish(self.app, c.as_ptr()) };
-        }
-    }
-
-    pub fn cancel_publish(&self, handle: &str) {
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(handle) {
-            unsafe { nmp_app_cancel_publish(self.app, c.as_ptr()) };
-        }
-    }
-
-    /// Acknowledge a terminal action stage so the kernel evicts it from the
-    /// `action_stages` map.  Must be called after a `"published"`, `"failed"`,
-    /// or `"error"` stage has been shown to the user — mirrors the TUI's
-    /// `runtime.rs` `ack_action_stage` and the Android FFI pattern.
-    pub fn ack_action_stage(&self, correlation_id: &str) {
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(correlation_id) {
-            unsafe { nmp_ffi::nmp_app_ack_action_stage(self.app, c.as_ptr()) };
-        }
-    }
+    // Those methods live in the `bridge::actions` child module (same inherent
+    // `impl AppRuntime`) so this file stays under the 500-LOC hard ceiling.
 
     // ------------------------------------------------------------------
     // Action dispatch

@@ -223,8 +223,6 @@ struct SnapshotProjections: Decodable, Equatable {
     let zaps: ZapsAggregateSnapshot?
     let dmRelayList: DmRelayListSnapshot?
     let relayDiagnostics: RelayDiagnosticsSnapshot?
-    let resolvedProfiles: [String: ProfileCard]?
-    let claimedProfiles: [String: ProfileCard]?
     let claimedEvents: [String: ClaimedEventDto]?
     let claimedEventEmbeds: [String: EmbeddedEventEnvelope]?
     let settingsHub: [String: Int]?
@@ -256,8 +254,6 @@ struct SnapshotProjections: Decodable, Equatable {
         case zaps = "nmp.nip57.zaps"
         case dmRelayList = "nmp.nip17.dmRelayList"
         case relayDiagnostics
-        case resolvedProfiles
-        case claimedProfiles
         case claimedEvents
         case claimedEventEmbeds
         case settingsHub

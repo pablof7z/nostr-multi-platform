@@ -1,29 +1,49 @@
+use std::collections::BTreeMap;
+
 use serde_json::{json, Map, Value};
 
 use nmp_content::wire::{
     decode_claimed_event_embeds, EMBED_SIDECAR_PROJECTION_KEY, EMBED_SIDECAR_SCHEMA_ID,
 };
+use nmp_core::refs::{RefProfileStore, REFS_PROFILE_KEY};
 use nmp_core::{
     decode_snapshot_envelope, decode_snapshot_typed_projections,
     display::{short_npub, to_npub},
     typed_projections::{
-        decode_accounts, decode_claimed_events, decode_relay_role_options,
-        decode_resolved_profiles, decode_signer_state, AccountsModel, ClaimedEventRow,
-        ClaimedEventsModel, ProfileCardModel, RelayRoleOptionsModel, ResolvedProfilesModel,
-        SignerStateModel, ACCOUNTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_ID,
-        RELAY_ROLE_OPTIONS_SCHEMA_ID, RESOLVED_PROFILES_SCHEMA_ID, SIGNER_STATE_SCHEMA_ID,
+        decode_accounts, decode_claimed_events, decode_relay_role_options, decode_signer_state,
+        AccountsModel, ClaimedEventRow, ClaimedEventsModel, ProfileCardModel,
+        RelayRoleOptionsModel, SignerStateModel, ACCOUNTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_ID,
+        RELAY_ROLE_OPTIONS_SCHEMA_ID, SIGNER_STATE_SCHEMA_ID,
     },
     TypedProjectionData,
 };
 
-pub(crate) fn snapshot_json_from_update_frame(bytes: &[u8]) -> Result<String, String> {
+/// The JSON projection key the native shells read for resolved profiles.
+/// ADR-0063 (#1671): the map is SOURCED from the `refs.profile` row-delta
+/// projection (merged into a stateful [`RefProfileStore`]) and emitted under
+/// that same key — the retired `resolved_profiles` whole-map projection is
+/// gone end-to-end (Rust emitter + Swift/Kotlin readers).
+const PROFILES_JSON_KEY: &str = REFS_PROFILE_KEY;
+
+pub(crate) fn snapshot_json_from_update_frame(
+    bytes: &[u8],
+    ref_profiles: &mut RefProfileStore,
+) -> Result<String, String> {
     let envelope = decode_snapshot_envelope(bytes).map_err(|err| err.to_string())?;
     let typed = decode_snapshot_typed_projections(bytes).map_err(|err| err.to_string())?;
 
+    // ADR-0063 (#1671): merge this frame's `refs.profile` row-delta batch into
+    // the stateful store (the sole app-side mirror, D4), then materialise the
+    // current full set. A malformed sidecar is a fail-closed no-op inside the
+    // store (prior rows retained).
+    if let Some(entry) = find_projection(&typed, REFS_PROFILE_KEY)? {
+        ref_profiles.apply_sidecar(&entry.payload, envelope.session_id, envelope.snapshot_epoch);
+    }
+
     let mut projections = Map::new();
     projections.insert(
-        RESOLVED_PROFILES_SCHEMA_ID.to_string(),
-        resolved_profiles_json(find_projection(&typed, RESOLVED_PROFILES_SCHEMA_ID)?)?,
+        PROFILES_JSON_KEY.to_string(),
+        refs_profiles_json(&ref_profiles.profiles()),
     );
     projections.insert(
         CLAIMED_EVENTS_SCHEMA_ID.to_string(),
@@ -71,17 +91,13 @@ fn find_projection<'a>(
     }
 }
 
-fn resolved_profiles_json(entry: Option<&TypedProjectionData>) -> Result<Value, String> {
-    let Some(entry) = entry else {
-        return Ok(Value::Object(Map::new()));
-    };
-    let model = decode_resolved_profiles(&entry.payload)?;
-    Ok(resolved_profiles_model_json(&model))
-}
-
-fn resolved_profiles_model_json(model: &ResolvedProfilesModel) -> Value {
-    let mut out = Map::with_capacity(model.entries.len());
-    for (key, card) in &model.entries {
+/// Render the materialised `refs.profile` set (ADR-0063 #1671 — the resolve_ref
+/// output, merged in the caller's [`RefProfileStore`]) as the native shells'
+/// `refs.profile` JSON map. Replaces the retired `resolved_profiles` whole-map
+/// projection decode.
+fn refs_profiles_json(profiles: &BTreeMap<String, ProfileCardModel>) -> Value {
+    let mut out = Map::with_capacity(profiles.len());
+    for (key, card) in profiles {
         let pubkey = if card.pubkey.is_empty() {
             key.as_str()
         } else {
@@ -251,7 +267,9 @@ fn empty_string_as_null(value: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::{encode_snapshot_frame, SnapshotEnvelope};
+    use nmp_core::refs::{encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch};
+    use nmp_core::typed_projections::encode_profile;
+    use nmp_core::{encode_snapshot_frame, SnapshotEnvelope, TypedProjectionData};
 
     #[test]
     fn empty_typed_snapshot_decodes_to_gallery_shape() {
@@ -264,18 +282,147 @@ mod tests {
             &[],
         );
 
+        let mut store = RefProfileStore::new();
         let value: Value =
-            serde_json::from_str(&snapshot_json_from_update_frame(&frame).expect("decode"))
+            serde_json::from_str(&snapshot_json_from_update_frame(&frame, &mut store).expect("decode"))
                 .expect("json");
 
         assert_eq!(value["schema_version"], 1);
         assert_eq!(value["running"], true);
-        assert_eq!(value["projections"]["resolved_profiles"], json!({}));
+        assert_eq!(value["projections"][REFS_PROFILE_KEY], json!({}));
         assert_eq!(value["projections"]["claimed_events"], json!({}));
         assert_eq!(value["projections"]["accounts"], json!([]));
         assert_eq!(value["projections"]["relay_role_options"], json!([]));
         assert_eq!(value["projections"]["claimed_event_embeds"], json!({}));
         assert!(value["projections"].get("signer_state").is_none());
+    }
+
+    #[test]
+    fn refs_profile_row_delta_surfaces_in_refs_profile_json() {
+        // ADR-0063 (#1671): a `refs.profile` baseline row carrying a fresh KPRF
+        // card must merge into the store and surface under the
+        // `refs.profile` JSON key the native shells read.
+        let pubkey = "1111111111111111111111111111111111111111111111111111111111111111";
+        let card_payload = encode_profile(&ProfileCardModel {
+            pubkey: pubkey.to_string(),
+            display_name: Some("Refs Name".to_string()),
+            picture_url: Some("https://example.com/refs.png".to_string()),
+            ..Default::default()
+        });
+        let batch = encode_ref_row_delta_batch(&RefRowDeltaBatch {
+            namespace: "profile".to_string(),
+            baseline: true,
+            rows: vec![RefRow::changed(pubkey, 1, card_payload)],
+        });
+        let frame = encode_snapshot_frame(
+            &SnapshotEnvelope {
+                running: true,
+                update_kind: "ViewBatch".to_string(),
+                session_id: 1,
+                ..Default::default()
+            },
+            &[TypedProjectionData {
+                key: REFS_PROFILE_KEY.to_string(),
+                schema_id: REFS_PROFILE_KEY.to_string(),
+                schema_version: 1,
+                file_identifier: String::new(),
+                payload: batch,
+                ..Default::default()
+            }],
+        );
+
+        let mut store = RefProfileStore::new();
+        let value: Value = serde_json::from_str(
+            &snapshot_json_from_update_frame(&frame, &mut store).expect("decode"),
+        )
+        .expect("json");
+
+        let entry = &value["projections"][REFS_PROFILE_KEY][pubkey];
+        assert_eq!(entry["display_name"], "Refs Name");
+        assert_eq!(entry["picture_url"], "https://example.com/refs.png");
+        assert_eq!(entry["pubkey"], pubkey);
+    }
+
+    #[test]
+    fn refs_profile_clear_drops_row_from_refs_profile_json() {
+        // ADR-0063 (#1671): snapshot_json materialises the FULL current
+        // RefProfileStore set each frame. A subsequent `refs.profile` CLEAR
+        // (release-on-scroll-off) must DROP the row from the `refs.profile`
+        // JSON map — the materialised set is the sole source of truth (D4),
+        // no stale row.
+        let pubkey = "2222222222222222222222222222222222222222222222222222222222222222";
+        let card_payload = encode_profile(&ProfileCardModel {
+            pubkey: pubkey.to_string(),
+            display_name: Some("Soon Gone".to_string()),
+            ..Default::default()
+        });
+
+        let mut store = RefProfileStore::new();
+
+        // Frame 1: baseline carrying the resolved card — present.
+        let add_frame = encode_snapshot_frame(
+            &SnapshotEnvelope {
+                running: true,
+                update_kind: "ViewBatch".to_string(),
+                session_id: 1,
+                ..Default::default()
+            },
+            &[TypedProjectionData {
+                key: REFS_PROFILE_KEY.to_string(),
+                schema_id: REFS_PROFILE_KEY.to_string(),
+                schema_version: 1,
+                file_identifier: String::new(),
+                payload: encode_ref_row_delta_batch(&RefRowDeltaBatch {
+                    namespace: "profile".to_string(),
+                    baseline: true,
+                    rows: vec![RefRow::changed(pubkey, 1, card_payload)],
+                }),
+                ..Default::default()
+            }],
+        );
+        let added: Value = serde_json::from_str(
+            &snapshot_json_from_update_frame(&add_frame, &mut store).expect("decode add"),
+        )
+        .expect("json");
+        assert_eq!(
+            added["projections"][REFS_PROFILE_KEY][pubkey]["display_name"],
+            "Soon Gone",
+            "row must be present after the baseline add"
+        );
+
+        // Frame 2: a CLEAR row-delta (release) for the same key — the row must
+        // be GONE from the materialised set, not retained as stale.
+        let clear_frame = encode_snapshot_frame(
+            &SnapshotEnvelope {
+                running: true,
+                update_kind: "ViewBatch".to_string(),
+                session_id: 1,
+                ..Default::default()
+            },
+            &[TypedProjectionData {
+                key: REFS_PROFILE_KEY.to_string(),
+                schema_id: REFS_PROFILE_KEY.to_string(),
+                schema_version: 1,
+                file_identifier: String::new(),
+                payload: encode_ref_row_delta_batch(&RefRowDeltaBatch {
+                    namespace: "profile".to_string(),
+                    baseline: false,
+                    rows: vec![RefRow::cleared(pubkey, 2)],
+                }),
+                ..Default::default()
+            }],
+        );
+        let cleared: Value = serde_json::from_str(
+            &snapshot_json_from_update_frame(&clear_frame, &mut store).expect("decode clear"),
+        )
+        .expect("json");
+        assert!(
+            cleared["projections"][REFS_PROFILE_KEY]
+                .get(pubkey)
+                .is_none(),
+            "a refs.profile CLEAR must drop the row from the refs.profile map; got {:?}",
+            cleared["projections"][REFS_PROFILE_KEY]
+        );
     }
 
     #[test]

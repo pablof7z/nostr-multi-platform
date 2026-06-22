@@ -108,7 +108,7 @@ struct ProfileEmbedPage: View {
                             ?? NostrContentView.defaultMentionLabel(uri)
                     }
                 )
-                Text("Profile mentions resolve via `projections.claimed_profiles` → `resolved_profiles` — the same kind:0 path the user-* pages use.")
+                Text("Profile mentions resolve via `resolve_ref` → the `refs.profile` keyed cache — the same kind:0 path the user-* pages use.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)

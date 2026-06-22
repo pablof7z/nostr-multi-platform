@@ -20,6 +20,7 @@ mod params;
 mod perspective;
 mod pull_controller;
 mod registry;
+mod render_source;
 mod root_indexed;
 mod session;
 pub mod typed_wire;
@@ -43,10 +44,12 @@ pub use pull_controller::{
     PullFn,
 };
 pub use registry::{new_feed_registry_slot, FeedController, FeedRegistry, FeedRegistrySlot};
+pub use render_source::FeedRenderSource;
 pub use session::{FeedSessionBuild, FeedSessionRegistry, TeardownAction};
 pub use root_indexed::{
-    admit_all_roots, AttributionPayload, CardBuilder, EventGate, EventLookup, FollowPredicate,
-    RootAdmission, RootCard, RootFeedSnapshot, RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
+    admit_all_roots, AttributionAuthors, AttributionPayload, CardAuthors, CardBuilder, EventGate,
+    EventLookup, FeedAuthorRefs, FollowPredicate, RootAdmission, RootCard, RootFeedSnapshot,
+    RootIndexedFeed, MAX_ATTRIBUTION_PER_ROOT,
 };
 pub use typed_wire::{
     decode_feed_window, encode_feed_window, FeedWindowWire, FEED_WINDOW_FILE_IDENTIFIER,

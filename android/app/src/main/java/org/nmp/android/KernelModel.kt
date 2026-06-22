@@ -6,8 +6,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -32,12 +34,41 @@ private const val HOME_FEED_KEY = "nmp.feed.home"
  */
 class KernelModel : ViewModel() {
 
-    private val bridge = KernelBridge()
+    // `internal` so sibling extension files (KernelModelAccounts, KernelModelActions)
+    // in the same package can call bridge methods without re-exposing them as public.
+    internal val bridge = KernelBridge()
 
     // ADR-0055 R3-S4: NMP-owned rev-aware projection cache. One instance per
     // kernel session. Reset on session teardown (onCleared). Fed each FlatBuffers
     // frame in decodeUpdate before the TypedXDecoder family runs.
     private val projectionCache = ProjectionMergeCache()
+
+    // ADR-0063 Lane G (#1671): NMP-owned per-key (row-keyed) reference cache for
+    // the keyed reference projections (`refs.profile` / `refs.event`). The Android
+    // twin of iOS `KernelHandle.keyedRefCache`. One instance per kernel session;
+    // fed the RAW `nmp.refs.RefRowDeltaBatch` (NRRD) sidecar envelopes each frame
+    // in decodeUpdate (NOT through ProjectionMergeCache, which is keyed per WHOLE
+    // projection, not per row). Profiles are read per-key via [profileCard].
+    private val keyedRefCache = KeyedRefCache()
+
+    // ADR-0063 Lane G: per-key row-change broadcast. The cache notifies one
+    // [KeyedRowChange] per committed/cleared key; we re-emit it on this flow so a
+    // single avatar/name leaf observes ONLY its own pubkey (per-key reactivity,
+    // not a whole-map StateFlow broadcast — the iOS `rowChanged` publisher twin).
+    private val _profileRowChanged =
+        kotlinx.coroutines.flow.MutableSharedFlow<KeyedRowChange>(
+            extraBufferCapacity = 256,
+            onBufferOverflow = kotlinx.coroutines.channels.BufferOverflow.DROP_OLDEST,
+        )
+    /** Per-key profile row-change events — one per committed/cleared `refs.profile` key. */
+    val profileRowChanged: SharedFlow<KeyedRowChange> =
+        _profileRowChanged.asSharedFlow()
+
+    init {
+        // Bridge the cache's synchronous row-change listener (invoked on the
+        // native update-listener thread) onto the shared flow consumers observe.
+        keyedRefCache.addRowChangeListener { change -> _profileRowChanged.tryEmit(change) }
+    }
 
     /**
      * Marmot (MLS-over-Nostr encrypted groups) write operations. Mirrors the iOS
@@ -52,7 +83,9 @@ class KernelModel : ViewModel() {
      * `repost`/`follow`/`unfollow`/`sendDm` methods below delegate to it, so the
      * call-site surface (`model.zapNote(…)` etc.) is unchanged.
      */
-    private val social = SocialActions(
+    // `internal` so KernelModelActions.kt (same package) can delegate social write
+    // ops without re-exposing the SocialActions object as public.
+    internal val social = SocialActions(
         buildActionSpec = { intentJson -> bridge.buildActionSpec(intentJson) },
         dispatchAction = { ns, json -> bridge.dispatchAction(ns, json) },
     )
@@ -205,15 +238,49 @@ class KernelModel : ViewModel() {
         bridge.createLocalAccount()
     }
 
-    /** Demand-driven profile fetch claim (Compose LaunchedEffect → DisposableEffect). */
-    fun claimProfile(pubkey: String, consumerId: String) {
-        bridge.claimProfile(pubkey, consumerId)
+    /**
+     * ADR-0063 Lane G (#1671) — resolve a profile reference via the unified
+     * `resolve_ref` seam (Profile namespace), the Android twin of iOS
+     * `resolveProfile`. Replaces the legacy `claim_profile` path: the kernel
+     * resolves the kind:0 and ships it in the next `refs.profile` (NRRD) sidecar,
+     * read per-key via [profileCard].
+     *
+     * [shape] — [RefShape.ProfileRef] for feed/list/avatar (the small subset),
+     *   [RefShape.ProfileCard] for the open profile screen (the full card).
+     * [liveness] — [RefLiveness.CacheOk] for background/feed rows,
+     *   [RefLiveness.Live] for the open screen (keeps a tailing sub).
+     */
+    fun resolveProfile(
+        pubkey: String,
+        consumerId: String,
+        shape: RefShape = RefShape.ProfileRef,
+        liveness: RefLiveness = RefLiveness.CacheOk,
+    ) {
+        bridge.resolveRef(RefNamespace.Profile, pubkey, consumerId, shape, liveness)
     }
 
-    /** Inverse of [claimProfile]; safe to call even if no matching claim is live. */
+    /** Inverse of [resolveProfile]; safe to call even if no matching ref is live. */
     fun releaseProfile(pubkey: String, consumerId: String) {
-        bridge.releaseProfile(pubkey, consumerId)
+        bridge.releaseRef(RefNamespace.Profile, pubkey, consumerId)
     }
+
+    /**
+     * ADR-0063 Lane G (#1671) — the per-key TYPED profile read backed by the
+     * `refs.profile` keyed-ref cache (the source of truth, D4 — no app-side
+     * profile cache). The iOS `profileCard(forPubkey:)` twin. Returns null until
+     * the kernel resolves the kind:0 for [pubkey]; a leaf re-reads this when
+     * [profileRowChanged] fires for its key so exactly one avatar re-renders.
+     */
+    fun profileCard(pubkey: String): org.nmp.android.model.ProfileCard? =
+        keyedRefCache.profile(pubkey)
+
+    /**
+     * ADR-0063 Lane G (#1671) — the per-key TYPED event read backed by the
+     * `refs.event` keyed-ref cache. Exposed for parity with iOS `refEvent`;
+     * events still render via the `claimed_events` projection (Lane H converges
+     * them). Returns null until the kernel resolves [primaryId].
+     */
+    fun refEvent(primaryId: String): ClaimedEventDto? = keyedRefCache.event(primaryId)
 
     /**
      * Demand-driven embedded-event fetch claim (#984): the UI is rendering an
@@ -274,133 +341,13 @@ class KernelModel : ViewModel() {
         bridge.closeAuthor(pubkey)
     }
 
-    /**
-     * Dispatch a named action through the action registry (generic path).
-     * Fire-and-forget — outcomes arrive in the next snapshot tick.
-     */
-    fun dispatchAction(namespace: String, actionJson: String): DispatchResult {
-        val result = bridge.dispatchAction(namespace, actionJson)
-        Log.d(TAG, "dispatchAction($namespace) response: $result")
-        return result
-    }
+    // Action dispatch, wallet, and outbox control-plane are extension functions in
+    // KernelModelActions.kt (same package). See also KernelModelAccounts.kt.
 
-    fun ackActionStage(correlationId: String) {
-        bridge.ackActionStage(correlationId)
-    }
-
-    /** Retry a failed publish from the outbox (#1291 GAP 4). */
-    fun retryPublish(correlationId: String) {
-        bridge.retryPublish(correlationId)
-    }
-
-    /** Cancel an in-flight publish from the outbox (#1291 GAP 4). */
-    fun cancelPublish(correlationId: String) {
-        bridge.cancelPublish(correlationId)
-    }
-
-    // -------------------------------------------------------------------------
-    // Account management
-    // -------------------------------------------------------------------------
-
-    /** Sign in with an nsec secret key (direct C-ABI — no ActionModule for sign-in namespace).
-     *
-     *  No imperative post-identity `openHomeFeed()`: the home-feed interest is
-     *  registered by the view that renders it (`TimelineScreen` →
-     *  `LaunchedEffect { model.openHomeFeed() }`), exactly as on iOS
-     *  (`HomeFeedView.task { model.openHomeFeed() }`). The kernel now persists
-     *  the host-declared active-follows kinds even before an account exists
-     *  (#1493 P4 / active-follows declaration), so the sign-in reconcile re-registers
-     *  the feed without the shell re-declaring it. Driving it from the identity
-     *  op was a per-platform policy band-aid the shell must not carry (D7). */
-    fun signInNsec(secret: String) {
-        bridge.signInNsec(secret)
-    }
-
-    /** Sign in with a NIP-46 bunker URI through the Rust signer broker. */
-    fun signInBunker(uri: String) {
-        bridge.signInBunker(uri)
-    }
-
-    /** ADR-0048 Stage 2 — begin NIP-55 sign-in; Rust builds the get_public_key request. */
-    fun signInWithAmber(signer: NostrSignerInfo) {
-        bridge.signInNip55(signer.packageName ?: signer.contentAuthority)
-    }
-
-    /** ADR-0048 Stage 2 — route ExternalSignerResponse JSON back to the Rust NIP-55 driver. */
-    fun deliverSignerResponse(responseJson: String) {
-        bridge.deliverSignerResponse(responseJson)
-    }
-
-    fun cancelBunkerHandshake() {
-        bridge.cancelBunkerHandshake()
-    }
-
-    fun nostrConnectUri(callbackScheme: String? = null): String? =
-        bridge.nostrConnectUri(callbackScheme)
-
-    /** Create a new local account with the given display name.
-     *  See [signInNsec] re: no imperative post-identity `openHomeFeed()`. */
-    fun createAccount(displayName: String) {
-        bridge.createLocalAccount(displayName)
-    }
-
-    /** Switch the active account (direct C-ABI — no ActionModule for switch namespace).
-     *  See [signInNsec] re: no imperative post-identity `openHomeFeed()`. */
-    fun switchAccount(pubkey: String) {
-        bridge.switchAccount(pubkey)
-    }
-
-    /** Remove the account identified by the given pubkey (direct C-ABI). */
-    fun removeAccount(pubkey: String) = bridge.removeAccount(pubkey)
-
-    // -------------------------------------------------------------------------
-    // Relay management
-    // -------------------------------------------------------------------------
-
-    /** Add a relay with the given URL and role ("read", "write", or "both"). */
-    fun addRelay(url: String, role: String = "both") = bridge.addRelay(url, role)
-
-    /** Remove a relay by URL. */
-    fun removeRelay(url: String) = bridge.removeRelay(url)
-
-    /** Publish the current relay set as NIP-65 (kind:10002). #1291 GAP 5. */
-    fun publishRelayList(relays: List<RelayStatus>): DispatchResult =
-        bridge.publishRelayList(relays)
-
-    /** Publish a NIP-17 DM relay-list (kind:10050) from `wss://` URLs. #1291 GAP 5. */
-    fun publishDmRelayList(relays: List<String>): DispatchResult =
-        bridge.publishDmRelayList(relays)
-
-    // -------------------------------------------------------------------------
-    // Social + DM — write ops live in [social: SocialActions]; these delegate so
-    // the public surface (model.zapNote(…) etc.) is unchanged.
-    // -------------------------------------------------------------------------
-
-    /** Zap a note (NIP-57). */
-    fun zapNote(
-        eventId: String,
-        recipientPubkey: String,
-        amountMsats: Long = 21000L,
-        comment: String = "",
-    ): DispatchResult? = social.zapNote(eventId, recipientPubkey, amountMsats, comment)
-
-    /** React to a note (NIP-25). */
-    fun react(eventId: String, reaction: String = "+"): DispatchResult? =
-        social.react(eventId, reaction)
-
-    /** Repost a note (NIP-18 kind:6). Mirrors iOS `model.repost(eventID:authorPubkey:)`. */
-    fun repost(eventId: String, authorPubkey: String): DispatchResult? =
-        social.repost(eventId, authorPubkey)
-
-    /** Follow a pubkey. */
-    fun follow(pubkey: String): DispatchResult? = social.follow(pubkey)
-
-    /** Unfollow a pubkey. */
-    fun unfollow(pubkey: String): DispatchResult? = social.unfollow(pubkey)
-
-    /** Send a NIP-17 direct message to the given recipient pubkey. */
-    fun sendDm(recipientPubkey: String, content: String): DispatchResult? =
-        social.sendDm(recipientPubkey, content)
+    // Account management, relay management, and social/wallet write ops are
+    // extension functions in KernelModelAccounts.kt and KernelModelActions.kt
+    // (same package, no import required). Extracted to keep this file under the
+    // 500-LOC ceiling (AGENTS.md File Size). Public API surface is unchanged.
 
     // -------------------------------------------------------------------------
     // Marmot registration trampoline — write ops live in [marmot: MarmotActions]
@@ -409,22 +356,6 @@ class KernelModel : ViewModel() {
     /** Idempotent per-account Marmot MLS registration. [dbDir] = context.filesDir.path. */
     fun registerMarmotIfNeeded(dbDir: String) {
         marmot.registerIfNeeded(state.value.activeAccount, dbDir, bridge)
-    }
-
-    // -------------------------------------------------------------------------
-    // Wallet (NIP-47 / NWC)
-    // -------------------------------------------------------------------------
-
-    /** Connect a NIP-47 wallet via NWC URI. [actionJson] = {"Connect":{"uri":"nostr+walletconnect://..."}} */
-    fun dispatchWalletConnect(actionJson: String) {
-        val response = bridge.dispatchAction("nmp.wallet.connect", actionJson)
-        Log.d(TAG, "wallet connect response: $response")
-    }
-
-    /** Disconnect the current NIP-47 wallet. */
-    fun dispatchWalletDisconnect() {
-        val response = bridge.dispatchAction("nmp.wallet.disconnect", "\"Disconnect\"")
-        Log.d(TAG, "wallet disconnect response: $response")
     }
 
     /**
@@ -462,6 +393,23 @@ class KernelModel : ViewModel() {
                 if (mergeResult.changedKeys.isNotEmpty()) {
                     Log.d(TAG, "projection cache merge: changedKeys=${mergeResult.changedKeys}")
                 }
+                // ADR-0063 Lane G (#1671): feed the keyed reference projections
+                // (`refs.profile` / `refs.event`) into the per-key KeyedRefCache.
+                // They are NOT routed through ProjectionMergeCache (which is keyed
+                // per WHOLE projection, not per row); they carry an
+                // `nmp.refs.RefRowDeltaBatch` (NRRD) payload the per-key cache
+                // merges row-by-row. Use the RAW pre-merge envelopes (the verbatim
+                // wire payload, untouched by the projection-cache pass) so each
+                // committed row fires `profileRowChanged` for exactly its key.
+                for (envelope in frame.typedProjections) {
+                    if (!envelope.key.startsWith("refs.")) continue
+                    keyedRefCache.merge(
+                        projectionKey = envelope.key,
+                        payload = envelope.payload,
+                        sessionId = frame.sessionId,
+                        snapshotEpoch = frame.snapshotEpoch,
+                    )
+                }
                 // Re-decode using the MERGED envelope set (cached values for omitted keys
                 // are reinstated; Cleared keys are absent; Changed keys carry fresh bytes).
                 // Replace the projections slot on the already-decoded KernelUpdate with the
@@ -491,6 +439,9 @@ class KernelModel : ViewModel() {
         // ADR-0055 R3-S4: reset the projection cache so the next session
         // starts from a clean baseline (D4 mandatory reset on session end).
         projectionCache.reset()
+        // ADR-0063 Lane G: reset the keyed-ref cache too (D4 — the next
+        // refs.profile / refs.event frame is a full baseline after teardown).
+        keyedRefCache.reset()
         super.onCleared()
     }
 }

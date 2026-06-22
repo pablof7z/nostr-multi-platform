@@ -13,7 +13,6 @@
 //! of the Rust module split.
 
 use super::{app_ref, c_string_argument, NmpApp};
-use nmp_core::__ffi_internal::is_hex_pubkey;
 use nmp_core::ActorCommand;
 use std::ffi::{c_char, c_int};
 
@@ -118,79 +117,6 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
     }));
 }
 
-/// Refcount a consumer's interest in `pubkey`'s kind:0 profile.
-///
-/// F-TTL — `force` (`c_int`, treated as `force != 0`) controls the lazy
-/// re-verification gate for the cached profile. Pass `1` when the user
-/// explicitly opened this author's profile screen or pulled to refresh;
-/// pass `0` for background / `.onAppear` list-row claims. `force` is the
-/// replacement for the removed `nmp_app_refresh_replaceable` symbol —
-/// force-refresh is now an argument on the existing claim function, so no
-/// new C-ABI symbol is added (keeps ffi-drift + surface-freeze green).
-///
-/// `liveness` (`c_int`) is the client freshness hint mapped to the registered
-/// kind:0 interest's lifecycle:
-/// * `0` = CacheOk — serve from cache; on a miss a OneShot fetch; no live sub.
-///   Use for feed-row avatars.
-/// * non-zero = Live — a Tailing kind:0 sub stays open while claimed so
-///   profile edits arrive reactively. Use for an open profile screen.
-/// Mixed claims on one pubkey resolve to Tailing (Live wins).
-///
-/// FFI-clean (D6): null/invalid pubkey is a silent no-op, never a panic.
-#[no_mangle]
-pub extern "C" fn nmp_app_claim_profile(
-    app: *mut NmpApp,
-    pubkey: *const c_char,
-    consumer_id: *const c_char,
-    force: c_int,
-    liveness: c_int,
-) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(pubkey) = c_string_argument(pubkey) else {
-        return;
-    };
-    let Some(consumer_id) = c_string_argument(consumer_id) else {
-        return;
-    };
-    if !is_hex_pubkey(&pubkey) {
-        return;
-    }
-
-    app.send_cmd(ActorCommand::ClaimProfile {
-        pubkey,
-        consumer_id,
-        force: force != 0,
-        liveness: nmp_core::ProfileLiveness::from_ffi(liveness),
-    });
-}
-
-#[no_mangle]
-pub extern "C" fn nmp_app_release_profile(
-    app: *mut NmpApp,
-    pubkey: *const c_char,
-    consumer_id: *const c_char,
-) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(pubkey) = c_string_argument(pubkey) else {
-        return;
-    };
-    let Some(consumer_id) = c_string_argument(consumer_id) else {
-        return;
-    };
-    if !is_hex_pubkey(&pubkey) {
-        return;
-    }
-
-    app.send_cmd(ActorCommand::ReleaseProfile {
-        pubkey,
-        consumer_id,
-    });
-}
-
 /// Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted
 /// per `consumer_id`; the kernel fetches the event over the OneshotApi
 /// (single-writer interest registration — D4) when not yet in the store,
@@ -230,8 +156,8 @@ pub extern "C" fn nmp_app_claim_event(
     });
 }
 
-/// Release a previously-claimed embedded event (T180 / ADR-0034). Mirrors
-/// `nmp_app_release_profile`: decrements the per-consumer refcount in the
+/// Release a previously-claimed embedded event (T180 / ADR-0034). Decrements
+/// the per-consumer refcount in the
 /// kernel's `event_claims` table; the kernel drops the row when the set
 /// is empty. The OneshotApi interest itself is released EOSE-driven via
 /// the existing `complete_unknown_oneshot` path. FFI-clean (D6): a null

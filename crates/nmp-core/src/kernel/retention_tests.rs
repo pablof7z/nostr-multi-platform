@@ -41,7 +41,7 @@
 //! |------------------------------|------------------------------------|------------|---------------------------------------|
 //! | FFI command channel          | `command_tx` mpsc                  | unbounded  | unbounded (ADR-0029's bounded shed-load design was never built — see ADR-0029, marked Not implemented); depth is observable via `actor_queue_depth` |
 //! | view-command emit gate       | per-dispatch `emit_now`            | unconditional | `maybe_emit_after_dispatch` skips when `running=false` (this fix — load-bearing) |
-//! | `claim_profile`              | `profile_claims[pk]: BTreeSet`     | unbounded  | `MAX_CLAIMS_PER_PUBKEY=256` — drop-newest + `claim_drops_total` |
+//! | `resolve_ref`                | `profile_claims[pk]: BTreeSet`     | unbounded  | `MAX_CLAIMS_PER_PUBKEY=256` — drop-newest + `claim_drops_total` |
 //! | latency sketch (harness)     | `Vec<u64>` per-sample              | unbounded  | fixed 32-bucket log2 histogram (`s2_dispatch_flood.rs::LatencyHistogram`) — 256 B per thread |
 //! | (was: `open_author`)         | deleted — V-112 (ADR-0042)         | —          | —                                          |
 //! | (was: `close_author`)        | deleted — V-112 (ADR-0042)         | —          | —                                          |
@@ -104,6 +104,26 @@ fn deterministic_pubkey(idx: u32) -> String {
     hex
 }
 
+/// Resolve a profile reference at the feed-avatar shape (`Profile`/`Card`,
+/// `CacheOk`, no force, no hints) — the only shape these per-pubkey retention
+/// tests exercise. Collapses the 8-arg `resolve_ref` call so each claim site
+/// stays one line. Returns the kernel's outbound vec unchanged.
+fn resolve_profile_card(
+    kernel: &mut Kernel,
+    pubkey: &str,
+    consumer_id: impl Into<String>,
+) -> Vec<OutboundMessage> {
+    kernel.resolve_ref(
+        RefNamespace::Profile,
+        pubkey.to_string(),
+        consumer_id.into(),
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::CacheOk.into(),
+        false,
+        Vec::new(),
+    )
+}
+
 /// T114b core invariant: per-pubkey claim consumer-id set is bounded.
 /// Pump 4× the cap of unique consumer_ids onto one pubkey. The set must
 /// stabilise at `MAX_CLAIMS_PER_PUBKEY` and `claim_drops_total` must record
@@ -116,7 +136,7 @@ fn claim_profile_set_bounded_at_per_pubkey_cap() {
     let n = MAX_CLAIMS_PER_PUBKEY * 4;
     for i in 0..n {
         // Unique consumer_id per call — mirrors S2's mix (no matching release).
-        kernel.claim_profile(pk.clone(), format!("c{i}"), false, false, crate::kernel::ProfileLiveness::CacheOk);
+        resolve_profile_card(&mut kernel, &pk, format!("c{i}"));
     }
 
     assert_eq!(
@@ -132,7 +152,7 @@ fn claim_profile_set_bounded_at_per_pubkey_cap() {
 }
 
 /// T114b — D6 invariant: a dropped claim is a silent no-op, not an FFI error.
-/// `claim_profile` returns `Vec<OutboundMessage>` for the actor's outbound
+/// a profile `resolve_ref` returns `Vec<OutboundMessage>` for the actor's outbound
 /// path; a dropped claim must produce an empty Vec, never a panic or partial
 /// mutation that could later trip an assertion.
 #[test]
@@ -142,12 +162,12 @@ fn dropped_claim_is_silent_noop() {
 
     // Fill to cap.
     for i in 0..MAX_CLAIMS_PER_PUBKEY {
-        kernel.claim_profile(pk.clone(), format!("c{i}"), false, false, crate::kernel::ProfileLiveness::CacheOk);
+        resolve_profile_card(&mut kernel, &pk, format!("c{i}"));
     }
     assert_eq!(kernel.claim_drops_total_test(), 0);
 
     // One past the cap.
-    let overflow = kernel.claim_profile(pk.clone(), "overflow-consumer".into(), false, false, crate::kernel::ProfileLiveness::CacheOk);
+    let overflow = resolve_profile_card(&mut kernel, &pk, "overflow-consumer");
     assert!(
         overflow.is_empty(),
         "dropped claim must return empty outbound"
@@ -157,7 +177,7 @@ fn dropped_claim_is_silent_noop() {
     // Re-claiming an already-present consumer is NOT a drop — it's an
     // idempotent no-op handled by `BTreeSet::insert` returning false. The
     // cap check must skip when the consumer is already in the set.
-    let dup = kernel.claim_profile(pk.clone(), "c0".into(), false, false, crate::kernel::ProfileLiveness::CacheOk);
+    let dup = resolve_profile_card(&mut kernel, &pk, "c0");
     assert!(dup.is_empty());
     assert_eq!(
         kernel.claim_drops_total_test(),
@@ -176,7 +196,7 @@ fn claim_cap_is_per_pubkey_not_global() {
 
     // Saturate pk_a.
     for i in 0..(MAX_CLAIMS_PER_PUBKEY + 16) {
-        kernel.claim_profile(pk_a.clone(), format!("a{i}"), false, false, crate::kernel::ProfileLiveness::CacheOk);
+        resolve_profile_card(&mut kernel, &pk_a, format!("a{i}"));
     }
     assert_eq!(
         kernel.profile_claims_len_for_test(&pk_a),
@@ -186,7 +206,7 @@ fn claim_cap_is_per_pubkey_not_global() {
 
     // pk_b is fresh — claims must succeed up to its own cap.
     for i in 0..32 {
-        kernel.claim_profile(pk_b.clone(), format!("b{i}"), false, false, crate::kernel::ProfileLiveness::CacheOk);
+        resolve_profile_card(&mut kernel, &pk_b, format!("b{i}"));
     }
     assert_eq!(kernel.profile_claims_len_for_test(&pk_b), 32);
     assert_eq!(
@@ -206,20 +226,20 @@ fn claim_recovers_after_release_post_drop() {
 
     // Fill + overflow.
     for i in 0..(MAX_CLAIMS_PER_PUBKEY + 1) {
-        kernel.claim_profile(pk.clone(), format!("c{i}"), false, false, crate::kernel::ProfileLiveness::CacheOk);
+        resolve_profile_card(&mut kernel, &pk, format!("c{i}"));
     }
     assert_eq!(kernel.claim_drops_total_test(), 1);
 
     // Release one existing consumer (c0..c1023 are in the set; the overflow
     // c1024 was dropped, so releasing c0 frees a slot).
-    kernel.release_profile(&pk, "c0");
+    kernel.release_ref(RefNamespace::Profile, &pk, "c0");
     assert_eq!(
         kernel.profile_claims_len_for_test(&pk),
         MAX_CLAIMS_PER_PUBKEY - 1
     );
 
     // The previously-dropped consumer can now claim.
-    kernel.claim_profile(pk.clone(), "post-release-consumer".into(), false, false, crate::kernel::ProfileLiveness::CacheOk);
+    resolve_profile_card(&mut kernel, &pk, "post-release-consumer");
     assert_eq!(
         kernel.profile_claims_len_for_test(&pk),
         MAX_CLAIMS_PER_PUBKEY
@@ -291,7 +311,7 @@ fn claim_flood_does_not_grow_unbounded() {
 
     let flood_size = MAX_CLAIMS_PER_PUBKEY * 16;
     for i in 0..flood_size {
-        kernel.claim_profile(pk.clone(), format!("flood-{i:08}"), false, false, crate::kernel::ProfileLiveness::CacheOk);
+        resolve_profile_card(&mut kernel, &pk, format!("flood-{i:08}"));
     }
 
     // The set is at cap, no more.

@@ -51,6 +51,22 @@ pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send 
 /// a lock.
 pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
 
+/// A feed-author-set provider (ADR-0063 D7, #1671 Lane H).
+///
+/// Returns the set of raw author keys a feed projection will RENDER for its
+/// CURRENT visible window — recomputed fresh each time the kernel calls it. The
+/// kernel reconciles this set against the prior tick's set for the same consumer
+/// and auto-`resolve_ref`s the additions / `release_ref`s the removals, so a
+/// shell cannot silently render an author it never resolved.
+///
+/// `Send + Sync` because the box lives behind the shared registry slot
+/// (`Arc<Mutex<…>>`). D8: the kernel invokes it INSIDE the snapshot tick (so the
+/// auto-resolve lands in the SAME frame the row appears — no 1-frame blank gap),
+/// so it MUST be non-blocking — it only reads the engine's current window
+/// (`snapshot_current_window`) and returns the keys; it does no I/O and waits on
+/// no lock the actor thread could be holding.
+pub type FeedAuthorProviderFn = Box<dyn Fn() -> Vec<String> + Send + Sync + 'static>;
+
 // D5 — registration-count ceilings and the loud-no-op admission helpers
 // (`MAX_SNAPSHOT_PROJECTIONS` / `MAX_TICK_OBSERVERS` + `admit_keyed` /
 // `admit_additive`). Extracted to a `pub` submodule so the registry file stays
@@ -114,6 +130,14 @@ pub struct SnapshotRegistry {
     /// fire on every tick. (Production wires exactly one today, the re-homed
     /// zap-subscription reconciler.)
     tick_observers: Vec<TickObserverFn>,
+    /// ADR-0063 D7 (#1671 Lane H) — feed-author-set providers, keyed by the feed
+    /// snapshot key (e.g. `"nmp.feed.home"`) so a re-registration replaces (not
+    /// duplicates) the provider and an `unregister_feed` removes it. Each closure
+    /// returns the author keys its feed will RENDER this tick; the kernel
+    /// reconciles them through `resolve_ref` inside the snapshot tick. Keyed by
+    /// the feed key (not the derived consumer id) so the lifecycle matches the
+    /// `typed_projections` registry exactly.
+    feed_author_providers: HashMap<String, FeedAuthorProviderFn>,
     /// ADR-0053 — the host-declared set of consumed Tier-2 built-in projection
     /// keys. Empty (the default) means "no opinion / no narrowing" — every
     /// Tier-2 built-in is emitted, as before this ADR. A non-empty set narrows
@@ -154,6 +178,62 @@ pub struct SnapshotRegistry {
     /// registry survives `Reset`.
     frame_session_id: Arc<AtomicU64>,
     frame_snapshot_epoch: Arc<AtomicU64>,
+    /// ADR-0063 D7 (#1671 Lane H) — a monotone per-tick rev published at the TOP
+    /// of every `make_update`, BEFORE any feed-author provider or typed producer
+    /// closure runs.
+    ///
+    /// A [`FeedRenderSource`](nmp_feed::FeedRenderSource) keys its per-tick window
+    /// memo on this value so the author provider (run first) and the typed
+    /// producer (run later in the SAME tick) materialize the window EXACTLY ONCE
+    /// and share it — closing the `load_older` 1-frame gap. Unlike
+    /// `frame_snapshot_epoch` (which only changes on account-switch / schema bump)
+    /// this changes on EVERY tick, so a feed re-materializes once per tick.
+    frame_tick_rev: Arc<AtomicU64>,
+    /// ADR-0063 D7 (#1671 Lane H) — the emitted-author sink for the structural
+    /// guardrail (BLOCKING 2).
+    ///
+    /// Each feed's typed producer, when it materializes the window it ENCODES onto
+    /// the wire this tick, records that window's actual author keys here under its
+    /// `feed-author:<feed_key>` consumer id. The kernel reads this AFTER the typed
+    /// projections are emitted and warns (debug-only) for any EMITTED author with
+    /// no live resolver demand — catching a missed provider OR a `FeedAuthorRefs`
+    /// field the provider's author set didn't cover (the row crossed the wire but
+    /// was never resolved). Cleared each tick when the rev advances so a stale
+    /// feed's authors don't linger. `BTreeSet` for dedup; keyed by consumer id.
+    ///
+    /// An `Arc<Mutex<…>>` (NOT a plain field) because a typed-producer closure
+    /// writes to it WHILE the registry's own mutex is held by `run_typed()` — it
+    /// captures a clone of THIS handle (via [`Self::emitted_feed_authors_handle`])
+    /// and writes without re-locking the registry (which would deadlock).
+    emitted_feed_authors: EmittedFeedAuthorsSlot,
+}
+
+/// ADR-0063 D7 (#1671 Lane H) — the shared emitted-author sink handle: the tick
+/// rev it was last written for, and `consumer_id → emitted author keys`.
+pub type EmittedFeedAuthorsSlot =
+    Arc<Mutex<(u64, HashMap<String, std::collections::BTreeSet<String>>)>>;
+
+/// ADR-0063 D7 (#1671 Lane H) — record `authors` as EMITTED under `consumer_id`
+/// for `tick_rev` into the shared sink, clearing the sink when the rev advances.
+///
+/// A free function (not a method) so a typed-producer closure that captured a
+/// clone of the [`EmittedFeedAuthorsSlot`] handle can write WITHOUT holding a
+/// `&SnapshotRegistry` (it runs inside `run_typed()` while the registry mutex is
+/// already held). A poisoned sink mutex (D6) is a silent no-op.
+pub fn record_emitted_feed_authors(
+    slot: &EmittedFeedAuthorsSlot,
+    tick_rev: u64,
+    consumer_id: impl Into<String>,
+    authors: impl IntoIterator<Item = String>,
+) {
+    if let Ok(mut guard) = slot.lock() {
+        if guard.0 != tick_rev {
+            guard.0 = tick_rev;
+            guard.1.clear();
+        }
+        let set = guard.1.entry(consumer_id.into()).or_default();
+        set.extend(authors.into_iter().filter(|k| !k.is_empty()));
+    }
 }
 
 use std::collections::HashMap;
@@ -314,6 +394,14 @@ impl SnapshotRegistry {
             let _ = catch_unwind(AssertUnwindSafe(observer));
         }
     }
+
+    // ADR-0063 D7 (#1671 Lane H) — the feed-author-provider + emitted-author-sink
+    // methods (`register_feed_author_provider`, `remove_feed_author_provider`,
+    // `registered_feed_author_provider_keys`, `run_feed_author_provider(s)`,
+    // `record_emitted_feed_authors`, `emitted_feed_authors_handle`,
+    // `emitted_feed_authors_for_tick`) live in the `feed_authors` submodule to
+    // keep this file under its 500-LOC hard ceiling. They operate on the
+    // `feed_author_providers` / `emitted_feed_authors` fields defined above.
 }
 
 /// Shared snapshot-projection registry handle.
@@ -342,3 +430,8 @@ mod kernel_access;
 // `incremental_apply` submodule to keep this file within its LOC ceiling. The
 // two backing fields remain on the struct definition above.
 mod incremental_apply;
+
+// ADR-0063 D7 (#1671 Lane H) — the feed-author-provider + emitted-author-sink
+// inherent methods live in the `feed_authors` submodule to keep this file under
+// its 500-LOC hard ceiling. The two backing fields remain on the struct above.
+mod feed_authors;

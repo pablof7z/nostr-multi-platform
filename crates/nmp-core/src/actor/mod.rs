@@ -839,29 +839,12 @@ pub enum ActorCommand {
     /// live REQs. D6: no active account (or no prior declaration) is a silent
     /// no-op.
     ClearActiveFollowsFeed,
-    /// Refcounted profile (kind:0) claim. `force` (F-TTL) bypasses the TTL
-    /// freshness gate so a user-initiated navigation / pull-to-refresh always
-    /// re-verifies the cached profile; `force == false` is the lazy, gated
-    /// path used by background claims and `.onAppear` list rows.
-    ///
-    /// `liveness` is the client freshness hint: `CacheOk` (a feed avatar —
-    /// serve from cache, OneShot fetch on miss, no live sub) vs `Live` (an
-    /// open profile screen — a Tailing kind:0 sub so profile edits arrive
-    /// reactively). Mixed claims on one pubkey resolve to Tailing.
-    ClaimProfile {
-        pubkey: String,
-        consumer_id: String,
-        force: bool,
-        liveness: crate::kernel::ProfileLiveness,
-    },
-    ReleaseProfile {
-        pubkey: String,
-        consumer_id: String,
-    },
+    // ADR-0063 Lane H: ClaimProfile / ReleaseProfile deleted.
+    // Use ResolveRef { namespace: RefNamespace::Profile, .. } instead.
     /// Refcounted event claim — drives the generic `claim_event` kernel
     /// primitive (F-CR-06 / ADR-0034). `uri` is a `nostr:` URI
-    /// (nevent/note/naddr); profile URIs are rejected (use `ClaimProfile`).
-    /// Symmetric with `ClaimProfile` in shape and dispatch. `force` (F-TTL)
+    /// (nevent/note/naddr); profile URIs should use ResolveRef instead.
+    /// `force` (F-TTL)
     /// bypasses the TTL freshness gate for addressable (naddr) coordinates;
     /// it is a silent no-op for immutable nevent/note URIs.
     ClaimEvent {
@@ -875,6 +858,32 @@ pub enum ActorCommand {
     /// `event_claim_requested` is cleared so a re-claim can re-fetch.
     ReleaseEvent {
         uri: String,
+        consumer_id: String,
+    },
+    /// ADR-0063 Lane D/H — unified, origin-blind reference-resolution seam.
+    ///
+    /// Generalizes the deleted `ClaimProfile` + `ClaimEvent` into one variant.
+    /// The kernel's `Kernel::resolve_ref` dispatches the typed `(namespace, shape)`
+    /// pair to the matching resolver body, failing closed (D6) on a mismatch.
+    /// `force` threads into the resolver's F-TTL gate.
+    /// `hints` are optional NIP-19 relay TLVs seeding the registered interest.
+    ResolveRef {
+        namespace: crate::kernel::RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: crate::kernel::RefShape,
+        liveness: crate::kernel::RefLiveness,
+        force: bool,
+        hints: Vec<String>,
+    },
+    /// ADR-0063 Lane D — release a reference previously registered via
+    /// `ResolveRef`. Decrements the refcount; the slot is torn down when the
+    /// last consumer releases. `(namespace, key, consumer_id)` must match the
+    /// original `ResolveRef` call. A release of an unknown key is a silent
+    /// no-op (D6).
+    ReleaseRef {
+        namespace: crate::kernel::RefNamespace,
+        key: String,
         consumer_id: String,
     },
     // V-68 / V-112 (ADR-0042): CloseAuthor / CloseThread deleted.
@@ -1673,7 +1682,7 @@ pub fn run_actor_with_observers(
                     //
                     // Fix A (universal latent-bug fix): `relays_ready` is the
                     // SINGLE claim/open send-gate, computed here once per dispatch
-                    // and fed to every consumer (claim_event / claim_profile /
+                    // and fed to every consumer (claim_event / resolve_ref /
                     // open_author / open_thread / open_firehose /
                     // sign_in_nsec→retarget / session restore). `claim_send_gate`
                     // returns true as soon as ANY bootstrap lane is connected; the

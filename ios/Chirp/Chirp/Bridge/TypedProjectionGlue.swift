@@ -303,7 +303,7 @@ enum TypedProjectionGlue {
     // MARK: profile cluster → ProfileCard
 
     /// Map the SHARED `nmp_kernel_ProfileCard` reader (`ProfileCard.generated.swift`,
-    /// `include`d by `profile` / `claimed_profiles` / `resolved_profiles`) to the
+    /// `include`d by `profile` / `refs.profile`) to the
     /// Chirp `ProfileCard` domain type — the SAME value the JSON `payload` path
     /// yields. The three `has_*` companion bools reproduce the JSON
     /// `null`-when-`None` semantics (ADR-0032): when `has_x == false` the
@@ -337,37 +337,9 @@ enum TypedProjectionGlue {
         reader.card.map(profileCard)
     }
 
-    // MARK: claimed_profiles → [String: ProfileCard]
-
-    /// Map the typed `claimed_profiles` sidecar (`KCPR` /
-    /// `nmp_kernel_ClaimedProfilesSnapshot`) to the `[String: ProfileCard]` the
-    /// JSON `projections.claimedProfiles` path yields. FlatBuffers has no map
-    /// type, so the producer flattens the `pubkey -> ProfileCard` map to a
-    /// key-sorted `[{key, value}]` vector; this rebuilds the dictionary.
-    static func claimedProfiles(
-        _ reader: nmp_kernel_ClaimedProfilesSnapshot
-    ) -> [String: ProfileCard] {
-        reader.entries.reduce(into: [String: ProfileCard]()) { out, entry in
-            guard let key = entry.key, let value = entry.value else { return }
-            out[key] = profileCard(value)
-        }
-    }
-
-    // MARK: resolved_profiles → [String: ProfileCard]
-
-    /// Map the typed `resolved_profiles` sidecar (`KRPR` /
-    /// `nmp_kernel_ResolvedProfilesSnapshot`) to the `[String: ProfileCard]` the
-    /// JSON `projections.resolvedProfiles` path yields — the pre-merged
-    /// pubkey -> card map (claimed > author_view > mention precedence applied in
-    /// Rust). Same flattened-vector shape as `claimed_profiles`.
-    static func resolvedProfiles(
-        _ reader: nmp_kernel_ResolvedProfilesSnapshot
-    ) -> [String: ProfileCard] {
-        reader.entries.reduce(into: [String: ProfileCard]()) { out, entry in
-            guard let key = entry.key, let value = entry.value else { return }
-            out[key] = profileCard(value)
-        }
-    }
+    // ADR-0063 Lane H: claimedProfiles() (KCPR) and resolvedProfiles() (KRPR)
+    // glue functions deleted. Profile data is now served via the refs.profile
+    // KPRF NRRD row-delta sidecar, not these whole-map snapshot projections.
 
     // MARK: nmp.nip17.dm_inbox → DmInboxSnapshot
 
@@ -457,6 +429,11 @@ enum TypedProjectionGlue {
             )
         }
     }
+
+    // MARK: refs.event row → ClaimedEventDto (ADR-0063 Lane C, #1671)
+    //
+    // Moved to `TypedProjectionGlue+Refs.swift` (codex NIT: keep this
+    // hand-authored file under its file-size cap). See `refRowEvent(_:)` there.
 
     // MARK: bunker_handshake → BunkerHandshake
 

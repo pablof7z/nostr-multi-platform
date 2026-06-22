@@ -93,6 +93,11 @@ mod routing_trace;
 // (`nmp_app_composition_report`). Pull-only diagnostic surface; not folded into
 // the snapshot tick.
 mod composition_report;
+// ADR-0063 Lane D — unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI
+// symbols. Generalizes the former per-kind profile claim + claim_event behind one
+// origin-blind seam. Lane H deleted the per-kind profile claim/release symbols;
+// profiles resolve exclusively through resolve_ref (claim_event is retained).
+mod resolve_ref;
 mod snapshot;
 mod storage;
 mod timeline;
@@ -221,18 +226,22 @@ pub use timeline::{
     // nmp_app_open_thread, nmp_app_close_thread deleted from timeline.rs.
     // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline
     // deleted from identity.rs.
+    // ADR-0063 Lane H: nmp_app_claim_profile, nmp_app_release_profile deleted.
     clear_active_follows_feed,
     declare_active_follows_feed,
     nmp_app_claim_event,
-    nmp_app_claim_profile,
     nmp_app_close_contact_feed,
     nmp_app_close_interest,
     nmp_app_open_contact_feed,
     nmp_app_open_interest,
     nmp_app_open_uri,
     nmp_app_release_event,
-    nmp_app_release_profile,
 };
+// ADR-0063 Lane D — unified ref-resolution C-ABI entry points. Lane H deleted the
+// per-kind profile claim/release symbols; these are the sole profile-resolution
+// surface (the event claim/release URI front-door is retained alongside them).
+#[cfg(feature = "native")]
+pub use resolve_ref::{nmp_app_release_ref, nmp_app_resolve_ref};
 
 // ── test-support delta ───────────────────────────────────────────────────
 // Live-bench harnesses (`live-bench`) and integration test binaries
@@ -1706,10 +1715,20 @@ impl NmpApp {
     /// join remains the hard fence for in-flight callbacks.
     pub fn unregister_feed(&self, key: &str) -> bool {
         let removed_feed = self.feed_registry.unregister(key);
+        // ADR-0063 D7 (#1671 Lane H) — remove this feed's typed projection AND
+        // its feed-author provider in the same lock. Dropping the provider means
+        // the kernel's next in-tick reconcile no longer sees this consumer in
+        // the live set and releases-all the refs it auto-resolved (the transient
+        // author/thread feed leak guard; the permanent home feed keeps its
+        // provider and is never swept).
         let removed_projection = self
             .snapshot_projections
             .lock()
-            .map(|mut registry| registry.remove(key))
+            .map(|mut registry| {
+                let removed_proj = registry.remove(key);
+                let removed_provider = registry.remove_feed_author_provider(key);
+                removed_proj || removed_provider
+            })
             .unwrap_or(false);
         let removed_observer = self
             .interest_feed_observers

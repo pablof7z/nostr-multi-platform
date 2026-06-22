@@ -51,7 +51,6 @@ import org.nmp.android.ui.embed.LocalClaimedEventEmbeds
 import org.nmp.android.ui.embed.LocalEventClaimer
 import org.nmp.android.model.ChirpEventCard
 import org.nmp.android.model.ChirpRootCard
-import org.nmp.android.model.ProfileCard
 import org.nmp.android.model.TimelineItem
 
 /**
@@ -68,17 +67,6 @@ typealias ProfileClaimer = (pubkey: String, consumerId: String, claim: Boolean) 
 
 val LocalProfileClaimer = compositionLocalOf<ProfileClaimer?> { null }
 
-/**
- * Pre-merged author profile map from the kernel's `resolved_profiles`
- * projection (PR #812), keyed by hex pubkey. Every consumer reads one map
- * instead of re-deriving profile fallback precedence locally.
- *
- * Provided once at each screen root (timeline, profile) and read by [NoteRow]
- * — including embedded notes rendered via `NostrRichText`, which a parameter
- * thread would miss. Defaults to an empty map outside a provider scope so the
- * `shortPubkey` fallback still applies.
- */
-val LocalResolvedProfiles = compositionLocalOf<Map<String, ProfileCard>> { emptyMap() }
 
 /**
  * Lightweight 64-hex pubkey gate. Mirrors the C-ABI `is_hex_pubkey` guard so
@@ -157,8 +145,10 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         return
     }
 
+    // ADR-0063 Lane G (#1671): feed/list profile fetches resolve the small
+    // ProfileRef shape with CacheOk liveness via the unified resolve_ref seam.
     val claimer: ProfileClaimer = { pubkey, consumerId, claim ->
-        if (claim) model.claimProfile(pubkey, consumerId)
+        if (claim) model.resolveProfile(pubkey, consumerId)
         else model.releaseProfile(pubkey, consumerId)
     }
     val eventClaimer: EventClaimer = { uri, consumerId, claim ->
@@ -166,16 +156,14 @@ fun TimelineScreen(model: KernelModel, modifier: Modifier = Modifier) {
         else model.releaseEvent(uri, consumerId)
     }
 
-    val resolvedProfiles = s.projections?.resolvedProfiles ?: emptyMap()
     val claimedEventEmbeds = s.projections?.claimedEventEmbeds ?: emptyMap()
-    val profileHost = rememberKernelProfileHost(model, resolvedProfiles)
+    val profileHost = rememberKernelProfileHost(model)
 
     CompositionLocalProvider(
         LocalProfileClaimer provides claimer,
         LocalEventClaimer provides eventClaimer,
-        LocalResolvedProfiles provides resolvedProfiles,
-        LocalClaimedEventEmbeds provides claimedEventEmbeds,
         LocalNostrProfileHost provides profileHost,
+        LocalClaimedEventEmbeds provides claimedEventEmbeds,
     ) {
         Box(modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
@@ -360,10 +348,13 @@ internal fun NoteRow(
         authorPubkey.ifEmpty { "unknown" }
     }
     // Resolve author name: prefer the typed-feed card authorDisplayName, then
-    // the kernel's pre-merged resolved_profiles (PR #812), then shortPubkey.
-    val resolvedProfiles = LocalResolvedProfiles.current
+    // the per-key `refs.profile` keyed-ref cache (ADR-0063 Lane G — read via the
+    // profile host, re-rendered per-key when this pubkey's kind:0 lands), then
+    // shortPubkey. NostrAvatar already resolves+observes this pubkey, so the host
+    // read below recomposes when the row commits.
+    val profileHost = LocalNostrProfileHost.current
     val author = card?.authorDisplayName?.nonEmptyOrNull()
-        ?: resolvedProfiles[authorPubkey]?.displayName?.nonEmptyOrNull()
+        ?: profileHost?.profileForPubkey(authorPubkey)?.displayName?.nonEmptyOrNull()
         ?: shortPubkey
     val createdAt = item?.createdAt?.takeIf { it > 0 }
         ?: card?.createdAt?.takeIf { it > 0 }

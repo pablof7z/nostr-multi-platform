@@ -60,7 +60,7 @@ impl EmbedHostState {
     /// falls back to a loading placeholder until a well-formed snapshot lands).
     ///
     /// Returns the pubkeys of claimed-event authors so the caller can issue
-    /// `claim_profile`; `claimed_events` itself carries raw event data only.
+    /// `resolve_profile`; `claimed_events` itself carries raw event data only.
     pub fn update_from_typed(&mut self, snapshot: &GalleryTypedSnapshot) -> Vec<String> {
         // An absent (empty) claimed_events model is a no-op — do not wipe
         // existing envelopes when no events are claimed yet (mirrors the
@@ -202,15 +202,12 @@ mod tests {
         showcase_pubkey,
     };
     use nmp_content::embed_projection::EmbedKindProjection;
-    use nmp_core::typed_projections::{
-        ClaimedEventRow, ClaimedEventsModel,
-        ResolvedProfilesModel,
-    };
+    use nmp_core::typed_projections::{ClaimedEventRow, ClaimedEventsModel};
 
     fn snapshot_with(entries: Vec<(String, ClaimedEventRow)>) -> GalleryTypedSnapshot {
         GalleryTypedSnapshot {
             claimed_events: ClaimedEventsModel { entries },
-            resolved_profiles: ResolvedProfilesModel::default(),
+            profiles: std::collections::BTreeMap::new(),
             relay_statuses: Vec::new(),
         }
     }

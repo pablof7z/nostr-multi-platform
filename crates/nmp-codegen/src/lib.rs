@@ -60,6 +60,13 @@ pub mod rust_builtin_keys;
 // (`nmp_core::signer_catalog` via `dump_signer_catalog`). Parses the catalog
 // into a LOCAL typed struct so `nmp-codegen` keeps its no-`nmp-core` posture.
 pub mod signer_catalog;
+// ADR-0063 Lane A (#1671) — generated per-key (row-keyed) reference caches for
+// keyed projections (`refs.profile` / `refs.event`). Sourced from
+// `KEYED_PROJECTIONS`; decode `nmp.refs.RefRowDeltaBatch` and merge row deltas
+// under the five invariants, semantically identical to
+// `nmp_core::refs::RefRowCache` and to each other across platforms.
+pub mod swift_keyed_cache;
+pub mod kotlin_keyed_cache;
 
 pub use manifest::{AppManifest, ModuleSet, NmpDependency};
 pub use projection_tier::{
@@ -81,6 +88,14 @@ pub use swift_projection_cache::{
 pub use kotlin_projection_cache::{
     check_kotlin_projection_cache, generate_kotlin_projection_cache,
     render_kotlin_projection_cache, KotlinProjectionCacheCheckOutcome,
+};
+pub use swift_keyed_cache::{
+    check_keyed_ref_cache, generate_keyed_ref_cache, render_keyed_ref_cache,
+    KeyedRefCacheCheckOutcome,
+};
+pub use kotlin_keyed_cache::{
+    check_kotlin_keyed_ref_cache, generate_kotlin_keyed_ref_cache, render_kotlin_keyed_ref_cache,
+    KotlinKeyedRefCacheCheckOutcome,
 };
 pub use swift_typed_decoders::{
     check_typed_decoders, generate_typed_decoders, render_typed_decoders, TypedDecodersCheckOutcome,

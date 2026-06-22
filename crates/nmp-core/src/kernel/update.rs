@@ -49,6 +49,13 @@ mod rung3_buffer_reuse_tests;
 #[cfg(test)]
 #[path = "rung3_cleared_signal_tests.rs"]
 mod rung3_cleared_signal_tests;
+// ADR-0063 (#1671) refs.* tests via `#[path]`: integration gate + Lane C decode proof.
+#[cfg(test)]
+#[path = "refs_glue_integration_tests.rs"]
+mod refs_glue_integration_tests;
+#[cfg(test)]
+#[path = "refs_glue_typed_decode_tests.rs"]
+mod refs_glue_typed_decode_tests;
 
 // ADR-0055 Rung 0 — projection-churn instrumentation. The ENTIRE measurement
 // pass (payload hashing, per-key hash store, cumulative counters) is gated on
@@ -235,25 +242,21 @@ impl Kernel {
     pub(crate) fn make_update(&mut self, running: bool) -> UpdateFrameBytes {
         let emit_started = Instant::now();
         // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
-        // above is monotonic and cannot be compared to a shell-side clock, so
-        // a separate wall-clock reading is required. D7 / D9: the kernel owns
-        // time — route through the injected `Clock` via `now_ms()` so
-        // deterministic replay and tests observe the same `last_tick_ms` the
-        // production tick emitted. `now_ms()` already collapses a pre-epoch
-        // clock to `0` (D6: no panic at the public boundary).
+        // above is monotonic and cannot be compared to a shell-side clock, so a
+        // separate wall-clock reading is required. D7 / D9: the kernel owns time
+        // — route through the injected `Clock` via `now_ms()` so deterministic
+        // replay and tests observe the same `last_tick_ms` the production tick
+        // emitted. `now_ms()` collapses a pre-epoch clock to `0` (D6: no panic).
         let last_tick_ms = self.now_ms();
         self.rev = self.rev.saturating_add(1);
         self.update_sequence = self.update_sequence.saturating_add(1);
 
         // ADR-0055 R6-S1 — publish this tick's frame identity
-        // `(session_id, snapshot_epoch)` into the shared registry handles BEFORE
-        // any host projection closure runs (generic projections run inside
-        // `build_snapshot_struct`; typed projections run in
-        // `run_typed_projections`). A Tier-1 producer that omits unchanged
-        // frames (the feed change-signal) reads this and forces a rebaseline
-        // when EITHER value changes — the SAME signal the host cache resets on,
-        // keeping producer and host in lockstep across account-switch AND Reset.
+        // `(session_id, snapshot_epoch)` + the ADR-0063 per-tick rev into the
+        // shared registry handles BEFORE any host projection closure runs, so a
+        // Tier-1 omit-unchanged producer rebaselines on the host cache's signal.
         self.publish_frame_identity();
+        let _ = self.reconcile_feed_author_refs(); // ADR-0063 D7 (Lane H): in-tick, no gap
 
         let batch_events = self.events_since_last_update;
         self.max_events_per_update = self.max_events_per_update.max(batch_events);
@@ -284,6 +287,10 @@ impl Kernel {
         // each is wrapped in `catch_unwind` so a panicking observer can never
         // unwind the actor thread into a terminal `Panic` frame.
         self.run_tick_observers();
+        // ADR-0063 D7 (#1671 Lane H, BLOCKING 2) — STRUCTURAL emitted-set guardrail
+        // (debug-only): warn for any author a feed emitted with no resolver demand.
+        #[cfg(debug_assertions)]
+        self.warn_emitted_unresolved_feed_authors(self.current_frame_tick_rev());
         // Drain the per-tick drain-on-emit projections and capture their values
         // for the typed FlatBuffers sidecar. Must run BEFORE
         // `merge_builtin_typed_projections` so `captured_*` fields are fresh.
@@ -317,7 +324,7 @@ impl Kernel {
         // host-side consumer matches by first key (`projections.first(where:)`),
         // so a colliding host entry must be dropped — not merely appended — or it
         // would shadow the built-in and silently contradict the JSON contract.
-        let typed = self.merge_builtin_typed_projections(typed);
+        let mut typed = self.merge_builtin_typed_projections(typed);
         let declared = self.declared_projections_snapshot();
         self.projection_rev_tracker
             .reconcile_declared_permits(&declared);
@@ -356,6 +363,30 @@ impl Kernel {
             // this tick's manifest sees last_emitted=∅ → all Changed.
             self.projection_rev_tracker.reset_last_emitted();
         }
+        // ADR-0063 (#1671 integration glue, codex "Artifact 1") — the keyed
+        // `refs.profile` / `refs.event` row-delta producer. Hooked HERE (between
+        // the baseline-latch reset above and the manifest assembly below) because
+        // it needs live `&mut self`: it advances Lane A's per-host last-emitted
+        // tracker over the kernel's own `RefRowRevSource` impl and baselines on
+        // session/epoch change OR `baseline_pending`. Both entries are always
+        // pushed so the manifest's unconditional-Tier-2 `Changed`-must-emit
+        // invariant (rung3_omit §10.2) holds; Rung-2/3 stamp + omit them below.
+        // ADR-0053 parity: pass the per-key declared-set permit verdict into the
+        // producer so it does NOT advance the row-delta tracker for a key
+        // filtered off the wire, and re-baselines on a false→true (newly
+        // declared) edge — see `refs_row_delta_projections` for the full
+        // rationale (#1671 codex D5 bug). `permits` is `true` for the
+        // non-narrowing `Undeclared` / `All` states (those hosts are unaffected).
+        let profile_permitted = declared.permits(super::typed_projections::REFS_PROFILE_KEY);
+        let event_permitted = declared.permits(super::typed_projections::REFS_EVENT_KEY);
+        let mut refs_entries =
+            self.refs_row_delta_projections(baseline_pending, profile_permitted, event_permitted);
+        // Drop the unpermitted entries off the wire (the producer already
+        // returned empty no-op batches for them and left the tracker untouched).
+        if declared.is_narrowing() {
+            refs_entries.retain(|entry| declared.permits(&entry.key));
+        }
+        typed.extend(refs_entries);
         // ADR-0055 Rung 2 — build the per-projection revision manifest and stamp
         // each TypedProjectionData with its rev + presence from it (see
         // `rung2_stamp`). The diagnostics fingerprint MUST be reconciled before

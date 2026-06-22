@@ -30,10 +30,13 @@ impl Kernel {
             InsertOutcome::Replaced { new_id, .. } => Some(new_id),
             _ => None,
         };
-        let should_bump = claimed_id.is_some_and(|id| {
+        // Resolve WHICH live `event_claims` key this insert satisfies (the hex id
+        // OR the addressable coordinate) so ADR-0063's per-key rev can bump that
+        // exact row (D6a), not just the whole-projection scalar.
+        let matched_key: Option<String> = claimed_id.and_then(|id| {
             let hex_id: String = id.iter().map(|b| format!("{b:02x}")).collect();
             if self.event_claims.contains_key(&hex_id) {
-                return true;
+                return Some(hex_id);
             }
             // Addressable / parameterized-replaceable coord fallback — applies to
             // BOTH Inserted (fresh) and Replaced (supersede).
@@ -48,14 +51,21 @@ impl Kernel {
                     .map(|s| s.as_str())
                     .unwrap_or("");
                 let coord_key = format!("{}:{}:{}", event.kind, event.pubkey, d);
-                return self.event_claims.contains_key(&coord_key);
+                if self.event_claims.contains_key(&coord_key) {
+                    return Some(coord_key);
+                }
             }
-            false
+            None
         });
-        if should_bump {
+        if let Some(key) = matched_key {
             self.projection_rev_tracker
                 .source_versions
                 .bump_claimed_event_content();
+            // ADR-0063 Lane B (D6a) — per-key rev (ingest site 3 of 3): a freshly
+            // persisted event rewrote THIS claimed row's data; bump only its rev.
+            self.projection_rev_tracker
+                .source_versions
+                .bump_event_row(&key);
         }
     }
 }

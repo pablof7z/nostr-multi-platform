@@ -158,54 +158,9 @@ pub(super) struct ProfileCard {
     pub(super) lnurl: Option<String>,
 }
 
-impl ProfileCard {
-    /// Build a card from a lightweight `mention_profiles` payload.
-    /// `nip05`/`about` are empty, `lnurl` is None — the mention projection
-    /// never carries them.
-    pub(in crate::kernel) fn from_mention(pubkey: &str, m: &MentionProfilePayload) -> Self {
-        Self {
-            pubkey: pubkey.to_string(),
-            display_name: m.display_name.clone(),
-            name: None,
-            raw_display_name: m.display_name.clone(),
-            display_name_camel: None,
-            picture_url: m.picture_url.clone(),
-            banner: None,
-            website: None,
-            nip05: String::new(),
-            about: String::new(),
-            lud16: None,
-            lud06: None,
-            lnurl: None,
-        }
-    }
-}
-
-// V-112 (ADR-0042): ProfileDispatchSpec, ProfileAction, AuthorViewPayload,
-// ThreadViewPayload deleted — the author_view / thread_view kernel projections
-// are removed. Profile display for the author screen now comes from the
-// resolved_profiles (claimed_profiles) projection.
-
-/// Per-author payload bundled into the `mention_profiles` projection.
-///
-/// Carries raw protocol identifiers + raw kind:0 fields only (aim.md §2 —
-/// NMP is a data framework; presentation layers own bech32 encoding,
-/// abbreviation, avatar initials/tint, and any "no kind:0 yet" fallback).
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-pub(super) struct MentionProfilePayload {
-    /// Hex pubkey (64 chars) for the mentioned author. Carried in the
-    /// struct body so shells consuming a flat array of payloads do not
-    /// lose provenance (the map key alone is not enough when the payload
-    /// flows through a JSON-serialised projection).
-    pub(super) pubkey: String,
-    /// Display name from kind:0 (`display_name` / `displayName` / `name`,
-    /// first non-empty wins). `None` when no kind:0 has arrived yet for
-    /// this author — presentation layer renders its own fallback.
-    pub(super) display_name: Option<String>,
-    /// Picture URL from kind:0. `None` when no kind:0 has arrived yet
-    /// or the metadata carries no `picture` field.
-    pub(super) picture_url: Option<String>,
-}
+// ADR-0063 Lane H: ProfileCard::from_mention() and MentionProfilePayload deleted.
+// The mention_profiles projection is removed; profile data is served via
+// the refs.profile KPRF NRRD row-delta sidecar (ADR-0063).
 
 // ── Relay health and wire subscription state ──────────────────────────────────
 // V6 Stage 1 — visibility widened from `pub(super)` to `pub(crate)` so the
@@ -596,7 +551,7 @@ pub(crate) struct Metrics {
     pub(super) last_event_to_emit_ms: Option<u128>,
     pub(super) max_event_to_emit_ms: u128,
     pub(super) max_events_per_update: u64,
-    /// T114b — `claim_profile` drops on per-pubkey `MAX_CLAIMS_PER_PUBKEY`
+    /// T114b — `resolve_ref` drops on per-pubkey `MAX_CLAIMS_PER_PUBKEY`
     /// overflow. Kernel-lifetime counter; resets on `ActorCommand::Reset`
     /// (the cap is a per-kernel D8 invariant, not a process metric).
     pub(super) claim_drops_total: u64,
@@ -747,8 +702,7 @@ pub(crate) struct KernelSnapshot {
 /// kernel primitive that drives this projection is `claim_event` and
 /// can carry any kind, not just embed-class events.
 ///
-/// Mirrors the `MentionProfilePayload` projection pattern: `pub(crate)`
-/// struct with `pub(super)` fields, serialised through
+/// `pub(crate)` struct with `pub(super)` fields, serialised through
 /// `serde_json::to_value` from `kernel/update.rs`.
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 pub(crate) struct ClaimedEventDto {

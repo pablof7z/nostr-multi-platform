@@ -139,8 +139,6 @@ mod event_claim_tests;
 mod interest_install_cache_serve_support;
 #[cfg(test)]
 mod interest_install_cache_serve_tests;
-#[cfg(test)]
-mod resolved_profiles_tests;
 // V-59 rung 1 (#4) — `event_claim_released` ring projection + the
 // in-process `EventClaimReleasedObserver` registration. `pub(crate)` so the
 // trait is reachable for the struct field type in this module.
@@ -181,8 +179,6 @@ mod outbox_tests;
 mod proactive_profile_fetch_tests;
 #[cfg(test)]
 mod profile_claim_discovery_tests;
-#[cfg(test)]
-mod profile_claim_projection_tests;
 #[cfg(test)]
 mod profile_claim_test_support;
 #[cfg(test)]
@@ -263,6 +259,13 @@ mod replay;
 mod replay_tests;
 mod requests;
 pub use requests::ProfileLiveness;
+// ADR-0063 (#1671) — kernel `RefResolver`; Lane D exports to `pub` for `nmp-ffi`.
+pub(crate) mod refs;
+pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+mod ref_row_source; // ADR-0063 (#1671 glue) — `impl RefRowRevSource for Kernel`
+mod feed_author_refs; // ADR-0063 D7 (#1671 Lane H) — feed-author auto-resolve
+#[cfg(test)]
+mod refs_tests; // ADR-0063 (#1671) — `RefResolver` tests; sub-modules use `*_tests_*` infix.
 #[cfg(test)]
 mod retention_tests;
 // Host-extensible snapshot output — the `nmp_app_register_snapshot_projection`
@@ -378,7 +381,7 @@ use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_H
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::marker::PhantomData;
 use std::sync::Arc;
 // W1 — use the wasm-safe time shim (`crate::time`) rather than `std::time`
@@ -524,6 +527,7 @@ pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen
 // field type).
 pub use snapshot_registry::new_snapshot_projection_slot;
 pub use snapshot_registry::SnapshotProjectionSlot;
+pub use snapshot_registry::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7
 
 // Typed slot wrappers + constructors. `AppRelaySlot` /
 // `AppRelayList` are re-exported below at `pub use` because per-app
@@ -588,14 +592,14 @@ pub(crate) use types::KernelSnapshot;
 use types::TimelineItem;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
-    MentionProfilePayload, Metrics, NoticeEntry, OutboxSummarySnapshot, ProfileCard,
+    Metrics, NoticeEntry, OutboxSummarySnapshot, ProfileCard,
     PublishOutboxItem, PublishOutboxRelay, RelayHealth, RelayStatus, StoredEvent, TimingMilestones,
     WireSub, WireSubscriptionState, WireSubscriptionStatus, MAX_NOTICE_LOG,
 };
 
 /// Per-pubkey claim consumer-id retention cap (T114b — per-dispatch retention audit).
 ///
-/// `profile_claims[pk]: BTreeSet<consumer_id>` grows once per `claim_profile` call;
+/// `profile_claims[pk]: BTreeSet<consumer_id>` grows once per `resolve_ref` call;
 /// without a cap a long-lived process accumulates `consumer_ids` in proportion to
 /// dispatch count rather than working-set size (a D8 violation — see PD-021
 /// line-11 and `docs/perf/m10.5/s2-drain-analysis.md`). The S2 flood mix issues
@@ -689,11 +693,13 @@ pub struct Kernel {
     clock: Arc<dyn Clock>,
     rev: u64,
     visible_limit: usize,
-    /// ADR-0055 Rung 1 — per-projection revision tracker (typed `SourceVersions`
-    /// counters + dependency-derived per-key monotonic revs). Internal-only in
-    /// Rung 1: `make_update` does NOT consult it (wire bytes unchanged). Reset to
-    /// 0 on `Kernel` rebuild (fresh `Default`).
+    /// ADR-0055 — per-projection revision tracker (typed `SourceVersions` +
+    /// dependency-derived per-key revs; Rung 2/3 stamp/omit from it). 0 on rebuild.
     pub(crate) projection_rev_tracker: projection_rev::ProjectionRevTracker,
+    /// ADR-0063/0053 (#1671 glue) — row-delta producer state. See `typed_projections::builtins_refs`.
+    ref_row_delta_tracker: crate::refs::RefRowDeltaTracker,
+    ref_row_last_identity: Option<(u64, u64)>,
+    ref_row_last_permits: (bool, bool),
     /// ADR-0055 Rung 1 (F3) — biconditional completeness oracle state, carried
     /// across ticks. `cfg(any(test, test-support))` ONLY: a production build
     /// neither holds this field nor runs the oracle (ZERO emit-path cost).
@@ -946,22 +952,36 @@ pub struct Kernel {
     /// side-effect that `set_follow_feed_kinds` fires.
     pub(crate) follow_feed_kinds: BTreeSet<u32>,
     profile_claims: HashMap<String, BTreeSet<String>>,
-    /// Pubkeys with at least one `ProfileLiveness::Live` claim outstanding.
-    /// Drives the "Tailing wins" liveness upgrade in `register_profile_claim_interest`
-    /// (a `Live` claim keeps the kind:0 slot `Tailing` even if a later `CacheOk`
-    /// claim arrives); cleared when the last consumer of a pubkey releases.
-    live_profile_claims: BTreeSet<String>,
-    /// Generic event-claim refcount: `primary_id → BTreeSet<consumer_id>`,
-    /// keyed by the same `primary_id` the snapshot's `claimed_events`
-    /// projection uses (hex64 event id for nevent/note URIs;
-    /// `kind:pubkey:d_tag` coordinate for naddr URIs).
-    ///
-    /// Driven by [`Kernel::claim_event`] / [`Kernel::release_event`]
-    /// (F-CR-06 / ADR-0034). Capped per key by
-    /// [`MAX_EVENT_CLAIMS_PER_KEY`]; overflow bumps
-    /// [`Self::event_claim_drops_total`]. Symmetric with `profile_claims`
-    /// and likewise NOT preserved across `Kernel::Reset` (claim refcounts
-    /// are view-derived; views re-claim on re-open).
+    /// ADR-0063 (#1671 Lane B, HIGH 5) — `pubkey` → per-consumer set of
+    /// `ProfileLiveness::Live` owners. Drives "Tailing wins"; per-consumer
+    /// (mirroring [`Self::live_event_claims`]) so releasing the LAST Live owner
+    /// while CacheOk owners remain downgrades the slot in place (no dangling tail).
+    live_profile_claims: HashMap<String, BTreeSet<String>>,
+    /// ADR-0063 (#1671 Lane B) — `primary_id` → per-consumer set of Live tailing
+    /// owners. Event twin of [`Self::live_profile_claims`], per-consumer so each
+    /// Live release detaches only its own owner (BLOCKING 1): the slot tears down
+    /// when the set empties. Immutable nevent/note ids never enter this map.
+    live_event_claims: HashMap<String, BTreeSet<String>>,
+    /// ADR-0063 (#1671 Lane B) — per-consumer demanded [`refs::ProfileShape`]:
+    /// `pubkey → (consumer_id → shape)`. The projection row carries the WIDEST
+    /// shape over the inner map (D5, via [`Self::ref_demanded_profile_shape`]).
+    /// Tracking per-consumer (not a single widened scalar) lets a release
+    /// recompute the widest among CURRENTLY-LIVE consumers, so the row narrows
+    /// when the widest consumer leaves instead of staying over-broad until full
+    /// teardown (HIGH 4). The pubkey entry is dropped when its last consumer
+    /// releases.
+    ref_profile_shapes: HashMap<String, BTreeMap<String, refs::ProfileShape>>,
+    /// ADR-0063 (#1671 Lane B) — per-consumer demanded [`refs::EventShape`] per
+    /// claimed `primary_id`. Event twin of [`Self::ref_profile_shapes`].
+    ref_event_shapes: HashMap<String, BTreeMap<String, refs::EventShape>>,
+    auto_profile_refs_by_consumer: BTreeMap<String, BTreeSet<String>>, // ADR-0063 D7 (Lane H)
+    /// Generic event-claim refcount: `primary_id → BTreeSet<consumer_id>`, keyed
+    /// by the same `primary_id` the snapshot's `claimed_events` projection uses
+    /// (hex64 event id for nevent/note URIs; `kind:pubkey:d_tag` for naddr URIs).
+    /// Driven by [`Kernel::claim_event`] / [`Kernel::release_event`] (F-CR-06 /
+    /// ADR-0034). Capped per key by [`MAX_EVENT_CLAIMS_PER_KEY`]; overflow bumps
+    /// [`Self::event_claim_drops_total`]. Symmetric with `profile_claims` and
+    /// likewise NOT preserved across `Kernel::Reset` (views re-claim on re-open).
     event_claims: HashMap<String, BTreeSet<String>>,
     /// Set of `primary_id`s for which a `OneShot + Global` interest has
     /// already been registered with [`crate::subs::OneshotApi`] by
@@ -989,28 +1009,18 @@ pub struct Kernel {
     /// the C-ABI channel can be added later mirroring
     /// `actor/commands/raw_event_observer.rs` when an FFI consumer appears.
     event_claim_released_observers: Vec<Arc<dyn event_claim_released::EventClaimReleasedObserver>>,
-    /// Cold-start parking queue for `claim_event` calls that arrived
-    /// before any relay socket reached the warm `can_send` state.
-    ///
-    /// Each entry is a `(uri, consumer_id)` pair — the exact arguments
-    /// the host originally passed to `claim_event`. The parked claim has
-    /// already been refcounted into [`Self::event_claims`] (so the
-    /// renderer sees the claim row immediately) but has NOT yet
-    /// registered a `OneShot + Global` interest with the OneshotApi —
-    /// no relay is reachable so there is nowhere to send a REQ.
-    ///
-    /// Drained by [`Kernel::pending_event_claim_requests`] which the
-    /// per-tick view-request dispatcher calls once at least one relay
-    /// is connected. Each parked pair is replayed as a warm
-    /// `claim_event(uri, consumer_id, can_send=true)` — `claim_event`
-    /// is idempotent on the refcount side (the second `insert` on the
-    /// same `(primary_id, consumer_id)` is a no-op) so the replay
-    /// simply registers the OneshotApi interest that the cold-start
-    /// path skipped.
-    ///
-    /// NOT preserved across `Kernel::Reset` (claims are view-derived;
-    /// views re-claim on re-open).
-    pub(super) pending_event_claims: Vec<(String, String)>,
+    /// Cold-start parking queue for event refs that arrived before any relay
+    /// reached the warm `can_send` state. Each entry is a CANONICAL
+    /// [`requests::PendingEventClaim`] (raw key + shape/liveness/force/author/
+    /// relay-hints) — NOT a `(uri, consumer_id)` pair. The claim is already
+    /// refcounted into [`Self::event_claims`] but has registered no OneshotApi
+    /// interest yet (no relay is reachable to send a REQ). Drained by
+    /// [`Kernel::pending_event_claim_requests`] once a relay connects: each target
+    /// is replayed through the canonical raw body (`resolve_event_ref_inner`, not
+    /// the legacy URI front door — that is what lets a raw key parked while cold
+    /// actually resolve, the Lane D coverage-hole fix), idempotent on the refcount
+    /// side. NOT preserved across `Kernel::Reset` (views re-claim on re-open).
+    pub(in crate::kernel) pending_event_claims: Vec<requests::PendingEventClaim>,
     /// Counter for `claim_event` attempts dropped because a single
     /// `primary_id`'s consumer set hit [`MAX_EVENT_CLAIMS_PER_KEY`].
     /// Read-only diagnostic; mirrors `claim_drops_total` for the
@@ -1236,7 +1246,7 @@ pub struct Kernel {
     /// to expose `RelayUsefulness.novelty_ratio`
     /// (`docs/design/outbox-explorer-diagnostics.md` §2 line 152).
     pub(in crate::kernel) event_provenance: provenance::EventProvenance,
-    /// T114b — count of `claim_profile` requests dropped because a single
+    /// T114b — count of `resolve_ref` requests dropped because a single
     /// pubkey's `consumer_id` set hit `MAX_CLAIMS_PER_PUBKEY`. Surfaced on the
     /// snapshot via [`Metrics::claim_drops_total`] for D8 visibility into
     /// per-dispatch retention pressure.
@@ -1957,9 +1967,11 @@ impl Kernel {
             clock: Arc::new(SystemClock),
             rev: 0,
             visible_limit,
-            // ADR-0055 Rung 1: initialized to default (all counters 0, epoch 0).
-            // Resets are free on the Kernel rebuild (Reset) path.
+            // ADR-0055 Rung 1: default (all counters 0, epoch 0); free on Reset.
             projection_rev_tracker: projection_rev::ProjectionRevTracker::default(),
+            ref_row_delta_tracker: crate::refs::RefRowDeltaTracker::default(), // ADR-0063/0053 glue
+            ref_row_last_identity: None,
+            ref_row_last_permits: (false, false),
             #[cfg(any(test, feature = "test-support"))]
             projection_oracle: projection_rev::oracle::OracleState::default(),
             timing: TimingMilestones::default(),
@@ -2016,7 +2028,11 @@ impl Kernel {
             follow_feed_interest_ids: BTreeSet::new(),
             follow_feed_kinds: BTreeSet::new(),
             profile_claims: HashMap::new(),
-            live_profile_claims: BTreeSet::new(),
+            live_profile_claims: HashMap::new(),
+            live_event_claims: HashMap::new(),
+            ref_profile_shapes: HashMap::new(),
+            ref_event_shapes: HashMap::new(),
+            auto_profile_refs_by_consumer: BTreeMap::new(),
             event_claims: HashMap::new(),
             event_claim_requested: BTreeSet::new(),
             event_claim_released: crate::substrate::BoundedRing::new(MAX_PROJECTION_MESSAGES),

@@ -289,8 +289,64 @@ if [[ "${nip02_drift}" -ne 0 ]]; then
 fi
 fi
 
+# ── Reference row-delta bindings (ADR-0063 / #1671) — nmp.refs namespace ────
+#
+# `ref_rowdelta.fbs` (crates/nmp-core/schema/) uses `namespace nmp.refs` and is
+# the keyed-projection row-delta payload the Android `KeyedRefCache` decodes.
+# Generated independently into `nmp/refs/`; drift assertion identical to embed.
+REFS_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/ref_rowdelta.fbs"
+REFS_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/refs"
+
+flatc --kotlin -o "${TMP_DIR}" "${REFS_SCHEMA}"
+REFS_GENERATED_DIR="${TMP_DIR}/nmp/refs"
+
 if [[ "${MODE}" == "--write" ]]; then
-    echo "kotlin-flatc-drift: wrote transport + ${kernel_written} kernel (removed ${kernel_removed}) + ${embed_checked} embed + ${nip02_checked} NIP-02 bindings (flatc ${EXPECTED_FLATC_VERSION})"
+    rm -rf "${REFS_CHECKED_IN_DIR}"
+    mkdir -p "$(dirname "${REFS_CHECKED_IN_DIR}")"
+    cp -R "${REFS_GENERATED_DIR}" "${REFS_CHECKED_IN_DIR}"
+    refs_checked=0
+    for checked_in in "${REFS_CHECKED_IN_DIR}"/*.kt; do
+        [[ -f "${checked_in}" ]] || continue
+        refs_checked=$((refs_checked + 1))
+    done
 else
-    echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + ${kernel_checked} kernel + ${embed_checked} embed + ${nip02_checked} NIP-02 bindings in sync)"
+refs_drift=0
+refs_checked=0
+if [[ -d "${REFS_CHECKED_IN_DIR}" ]]; then
+    for checked_in in "${REFS_CHECKED_IN_DIR}"/*.kt; do
+        [[ -f "${checked_in}" ]] || continue
+        base="$(basename "${checked_in}")"
+        fresh="${REFS_GENERATED_DIR}/${base}"
+        if [[ ! -f "${fresh}" ]]; then
+            echo "kotlin-flatc-drift: checked-in refs binding ${base} has no" >&2
+            echo "  counterpart in a fresh flatc run over ref_rowdelta.fbs —" >&2
+            echo "  its source table was renamed or removed from the schema." >&2
+            refs_drift=$((refs_drift + 1))
+            continue
+        fi
+        if ! diff -u "${checked_in}" "${fresh}"; then
+            echo "kotlin-flatc-drift: refs binding ${base} drifted from a fresh run." >&2
+            refs_drift=$((refs_drift + 1))
+            continue
+        fi
+        refs_checked=$((refs_checked + 1))
+    done
+fi
+
+if [[ "${refs_drift}" -ne 0 ]]; then
+    echo "" >&2
+    echo "kotlin-flatc-drift: ${refs_drift} refs binding(s) drifted from a fresh" >&2
+    echo "'flatc --kotlin' run over crates/nmp-core/schema/ref_rowdelta.fbs." >&2
+    echo "Regenerate with:" >&2
+    echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
+    echo "      crates/nmp-core/schema/ref_rowdelta.fbs" >&2
+    echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
+    exit 1
+fi
+fi
+
+if [[ "${MODE}" == "--write" ]]; then
+    echo "kotlin-flatc-drift: wrote transport + ${kernel_written} kernel (removed ${kernel_removed}) + ${embed_checked} embed + ${nip02_checked} NIP-02 + ${refs_checked} refs bindings (flatc ${EXPECTED_FLATC_VERSION})"
+else
+    echo "kotlin-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + ${kernel_checked} kernel + ${embed_checked} embed + ${nip02_checked} NIP-02 + ${refs_checked} refs bindings in sync)"
 fi

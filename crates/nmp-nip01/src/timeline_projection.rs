@@ -38,33 +38,28 @@ pub use nmp_feed::{
 };
 
 /// One render-ready event card surfaced through the modular timeline
-/// projection. Carries raw protocol data only — pubkeys as hex,
-/// timestamps as Unix seconds, display name/picture as `Option<String>`
-/// (None when no kind:0 has arrived). Presentation layers own all
-/// formatting decisions (aim.md §2).
+/// projection. Carries raw protocol data only — pubkeys as hex, timestamps as
+/// Unix seconds. Presentation layers own all formatting decisions (aim.md §2).
 ///
-/// For NIP-18 repost cards (a kind:6 whose target the grouper has
-/// superseded) the `author_*` fields name the *original* note's author and
-/// `content` carries the note's body — the kind:6 wrapper is exposed via
-/// `reposted_by`. `created_at` is the *outer* event's timestamp (the repost
-/// time) so the feed cursor bumps the card to the top; the underlying
-/// note's publish time travels on `reposted_by.note_created_at`.
+/// For NIP-18 repost cards (a kind:6 whose target the grouper superseded) the
+/// `author_*` fields name the *original* note's author and `content` carries the
+/// note's body — the kind:6 wrapper is exposed via `reposted_by`. `created_at` is
+/// the *outer* event's timestamp (repost time) so the cursor bumps the card to
+/// the top; the note's publish time travels on `reposted_by.note_created_at`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct TimelineEventCard {
     pub id: String,
-    /// Author Nostr pubkey, hex (64 chars). The presentation layer joins
-    /// against the snapshot's `resolved_profiles` map (keyed by pubkey) for
-    /// the display name / picture — the row carries no denormalized display
-    /// copy of its own (aim.md §2 — raw protocol data only).
+    /// Author Nostr pubkey, hex (64 chars). The shell resolves the display name
+    /// / picture via `refs.profile` (ADR-0063) — the row carries no denormalized
+    /// display copy (aim.md §2 — raw protocol data only).
     pub author_pubkey: String,
     pub kind: u32,
     pub created_at: u64,
     pub content: String,
-    /// Structural parse of `content` (NIP-19 URIs, hashtags, links). This is
-    /// a protocol projection of the note body, not a render decision — the
-    /// presentation layer walks the tree to lay out mentions / embeds, and
-    /// resolves any referenced profile/event via the snapshot's
-    /// `resolved_profiles` / `claimed_events` maps.
+    /// Structural parse of `content` (NIP-19 URIs, hashtags, links). A protocol
+    /// projection of the note body, not a render decision — the shell walks the
+    /// tree to lay out mentions / embeds and resolves any referenced
+    /// profile/event via `refs.profile` / `refs.event` (ADR-0063).
     pub content_tree: ContentTreeWire,
     pub relation_counts: NoteRelationCounts,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -82,8 +77,8 @@ pub struct TimelineEventCard {
 /// note's author; this names the *reposter*.
 ///
 /// Raw protocol data only: the reposter's hex pubkey and the original note's
-/// publish time. The presentation layer resolves the reposter's display name /
-/// picture via the snapshot's `resolved_profiles` map (aim.md §2).
+/// publish time. The shell resolves the reposter's display name / picture via
+/// `refs.profile` (ADR-0063, aim.md §2).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct RepostAttribution {
     /// Reposter (kind:6 wrapper author) Nostr pubkey, hex (64 chars).
@@ -93,6 +88,20 @@ pub struct RepostAttribution {
     /// repost bumps the note to the top); this is the timestamp the UI shows
     /// next to the original author.
     pub note_created_at: u64,
+}
+
+impl nmp_feed::CardAuthors for TimelineEventCard {
+    /// ADR-0063 D7 — author keys this card RENDERS: the primary `author_pubkey`
+    /// (for a repost, the original note's author shown in the body) plus the
+    /// reposter (`reposted_by.author_pubkey`). Both render an avatar → both must
+    /// auto-resolve; the kernel dedupes.
+    fn rendered_author_keys(&self) -> Vec<String> {
+        let mut keys = vec![self.author_pubkey.clone()];
+        if let Some(repost) = &self.reposted_by {
+            keys.push(repost.author_pubkey.clone());
+        }
+        keys
+    }
 }
 
 impl TimelineEventCard {
@@ -259,12 +268,10 @@ impl RenderPayload {
         }
     }
 
-    /// Build the `reposted_by` attribution from the *outer* event (the
-    /// kind:6 wrapper). Returns `None` for ordinary notes and for e-tag-only
-    /// reposts (no inner note → no original-author/timestamp split to
-    /// surface). Carries the reposter's raw pubkey only — the presentation
-    /// layer resolves the display name via the snapshot `resolved_profiles`
-    /// map (aim.md §2).
+    /// Build the `reposted_by` attribution from the *outer* event (the kind:6
+    /// wrapper). Returns `None` for ordinary notes and e-tag-only reposts (no
+    /// inner note → no author/timestamp split). Carries the reposter's raw pubkey
+    /// only — the shell resolves the display name via `refs.profile` (ADR-0063).
     fn repost_attribution(&self, outer_author: &str) -> Option<RepostAttribution> {
         let note_created_at = self.note_created_at?;
         Some(RepostAttribution {
@@ -492,10 +499,9 @@ impl KernelEventObserver for ModularTimelineProjection {
             return;
         };
         let ctx = ViewContext::default();
-        // kind:0 carries no card and the card row no longer denormalizes any
-        // profile display (the presentation layer joins against the snapshot's
-        // `resolved_profiles` map). So profile events are inert for this
-        // projection — skip them entirely.
+        // kind:0 carries no card and the row denormalizes no profile display
+        // (the shell resolves via `refs.profile`, ADR-0063), so profile events
+        // are inert for this projection — skip them.
         if profile_from_event(event).is_some() {
             return;
         }

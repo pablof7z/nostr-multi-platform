@@ -6,16 +6,17 @@
 #   web/chirp/src/nmp/generated/nmp/
 # and, when present on a branch,
 #   web/nmp-gallery/src/nmp/generated/nmp/
-# cover eight schemas in four groups:
+# cover schemas in five groups:
 #   transport  — crates/nmp-core/schema/nmp_update.fbs
 #   feed        — crates/nmp-nip01/schema/op_feed.fbs
 #              + crates/nmp-nip01/schema/timeline_snapshot.fbs
 #              + crates/nmp-content/schema/content_tree.fbs
 #              + crates/nmp-feed/schema/feed_home.fbs
-#   KRPR        — crates/nmp-core/schema/profile_card.fbs
-#              + crates/nmp-core/schema/resolved_profiles.fbs
+#   KPRF        — crates/nmp-core/schema/profile_card.fbs
+#              + crates/nmp-core/schema/profile.fbs
+#              + crates/nmp-core/schema/claimed_events.fbs
 #   KRDG        — crates/nmp-core/schema/relay_diagnostics.fbs
-#   KCEV        — crates/nmp-core/schema/claimed_events.fbs
+#   NRRD        — crates/nmp-core/schema/ref_rowdelta.fbs (ADR-0063 / #1671)
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
 # ci/check-flatbuffers-version-pins.sh and web/chirp/package.json).
 #
@@ -57,12 +58,24 @@ FEED_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-feed/schema/feed_home.fbs"
 )
 KERNEL_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-core/schema"
+# KPRF kernel profile bindings (ADR-0063 #1671): `profile.fbs` (the
+# `ProfileSnapshot` root carrying one `ProfileCard`, file id KPRF) is the
+# per-ROW payload of the `refs.profile` row-delta projection. `profile_card.fbs`
+# is its shared `include`d row table and MUST be a root argument so flatc emits
+# `profile-card.ts` (it does not without `--gen-all`). `claimed_events.fbs`
+# (KCEV) is the per-row event payload mirror for the gallery's `refs.event`
+# consumer. The whole-map `resolved_profiles.fbs` (KRPR) decode is GONE — every
+# web consumer now reads the per-key `refs.profile` row-delta cache instead.
 KERNEL_SCHEMAS=(
   "${REPO_ROOT}/crates/nmp-core/schema/profile_card.fbs"
-  "${REPO_ROOT}/crates/nmp-core/schema/resolved_profiles.fbs"
+  "${REPO_ROOT}/crates/nmp-core/schema/profile.fbs"
+  "${REPO_ROOT}/crates/nmp-core/schema/claimed_events.fbs"
 )
 KRDG_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/relay_diagnostics.fbs"
-KCEV_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/claimed_events.fbs"
+# NRRD reference row-delta carrier (ADR-0063 / #1671) — `namespace nmp.refs`,
+# generated independently into `nmp/refs/`. The keyed-projection row-delta
+# payload every web `RefRowCache` decodes.
+REFS_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/ref_rowdelta.fbs"
 CHECKED_IN_ROOTS=("${REPO_ROOT}/web/chirp/src/nmp/generated")
 GALLERY_TS_ROOT="${REPO_ROOT}/web/nmp-gallery/src/nmp/generated"
 if [[ -d "${GALLERY_TS_ROOT}" ]]; then
@@ -115,25 +128,28 @@ flatc --ts -o "${TMP_DIR}" \
     -I "${FEED_INCLUDE_DIR}" \
     "${FEED_SCHEMAS[@]}"
 
-# ── KRPR schemas (profile_card + resolved_profiles → nmp/kernel/) ────────────
-# profile_card.fbs must be listed as a root argument: resolved_profiles.fbs
-# includes it via `include "profile_card.fbs"`, but without --gen-all flatc
-# only emits profile-card.ts when the file is an explicit root argument.
+# ── KPRF/KCEV kernel schemas (profile_card + profile + claimed_events →
+#    nmp/kernel/) ───────────────────────────────────────────────────────────
+# profile_card.fbs must be listed as a root argument: profile.fbs /
+# claimed_events.fbs include it via `include "profile_card.fbs"`, but without
+# --gen-all flatc only emits profile-card.ts when the file is an explicit root
+# argument. profile.fbs adds the ProfileSnapshot (KPRF) root that wraps one
+# ProfileCard — the per-row payload of the refs.profile projection.
 flatc --ts -o "${TMP_DIR}" \
     -I "${KERNEL_SCHEMA_DIR}" \
     "${KERNEL_SCHEMAS[@]}"
 
 # ── KRDG schema (relay_diagnostics → nmp/kernel/) ────────────────────────────
-# Self-contained: no includes. Output lands in nmp/kernel/ alongside KRPR.
+# Self-contained: no includes. Output lands in nmp/kernel/ alongside the KPRF
+# bindings.
 flatc --ts -o "${TMP_DIR}" \
     -I "${KERNEL_SCHEMA_DIR}" \
     "${KRDG_SCHEMA}"
 
-# ── KCEV schema (claimed_events → nmp/kernel/) ───────────────────────────────
-# Self-contained: no includes. Output lands in nmp/kernel/ alongside KRPR/KRDG.
-flatc --ts -o "${TMP_DIR}" \
-    -I "${KERNEL_SCHEMA_DIR}" \
-    "${KCEV_SCHEMA}"
+# ── NRRD refs schema (ref_rowdelta → nmp/refs/) ──────────────────────────────
+# Self-contained (no includes). `namespace nmp.refs` lands in nmp/refs/. This is
+# the row-delta carrier the per-key RefRowCache merges (ADR-0063 / #1671).
+flatc --ts -o "${TMP_DIR}" "${REFS_SCHEMA}"
 
 GENERATED_DIR="${TMP_DIR}/nmp"
 
@@ -184,4 +200,4 @@ if [[ "${drift}" -ne 0 ]]; then
     exit 1
 fi
 
-echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KRPR + KRDG + KCEV bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s) + components-web content)"
+echo "ts-flatc-drift: OK (flatc ${EXPECTED_FLATC_VERSION}, transport + feed + KPRF + KRDG + NRRD bindings in sync across ${#CHECKED_IN_ROOTS[@]} TS tree(s))"
