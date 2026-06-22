@@ -263,6 +263,35 @@ pub fn ptags_are_recipients(kind: u32) -> bool {
     !(is_replaceable(kind) || is_parameterized_replaceable(kind))
 }
 
+/// Whether an event of this kind carries its payload as opaque **ciphertext**
+/// in the `content` field, so a content-rendering surface MUST show an
+/// "encrypted, content hidden" placeholder rather than the raw `content`.
+///
+/// This is a Nostr *protocol* rule (NIP-04 / NIP-44 / NIP-59), not a per-shell
+/// UI choice. It lives here as the single source of truth so no shell (TUI,
+/// Swift, Kotlin, web) re-derives the encrypted-kind set inline (#1769).
+///
+/// The set:
+/// - kind:4 — NIP-04 legacy direct message (`content` is base64 ciphertext).
+/// - kind:13 — NIP-59 seal (`content` is the NIP-44-encrypted rumor).
+/// - kind:44 — legacy versioned encrypted DM (`content` is ciphertext).
+/// - kind:1059 — NIP-59 gift-wrap (`content` is the NIP-44-encrypted seal).
+/// - kind:1060 — legacy gift-wrap envelope (`content` is ciphertext).
+///
+/// Deliberately EXCLUDES the NIP-17 rumor kinds 14/15: a kind:14 chat message
+/// rumor (see [`KIND_CHAT_MESSAGE`]) and kind:15 file rumor are the *decrypted*
+/// inner payload, so their `content` is plaintext and must NOT be hidden. This
+/// is the one place this predicate and `nmp-store`'s relay-provenance privacy
+/// gate intentionally diverge: that gate (kinds {4,13,14,15,1059,1060}) hides a
+/// kind's *presence on a relay* — a metadata concern that DOES cover 14/15 —
+/// whereas this predicate hides a kind's *content* — which 14/15 do not carry
+/// in ciphertext. Two distinct questions, two distinct sets; do not unify them.
+#[inline]
+#[must_use]
+pub fn is_encrypted_content_kind(kind: u32) -> bool {
+    matches!(kind, 4 | 13 | 44 | KIND_GIFT_WRAP | 1060)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -355,6 +384,43 @@ mod tests {
         assert!(
             ptags_are_recipients(1059),
             "kind:1059 gift-wrap — recipient routing (via Explicit, but semantics correct)"
+        );
+    }
+
+    #[test]
+    fn encrypted_content_kinds_are_ciphertext_only() {
+        // Ciphertext-content kinds — `content` must be hidden.
+        assert!(is_encrypted_content_kind(4), "kind:4 NIP-04 DM");
+        assert!(is_encrypted_content_kind(13), "kind:13 NIP-59 seal");
+        assert!(is_encrypted_content_kind(44), "kind:44 legacy versioned DM");
+        assert!(
+            is_encrypted_content_kind(KIND_GIFT_WRAP),
+            "kind:1059 gift-wrap"
+        );
+        assert!(
+            is_encrypted_content_kind(1060),
+            "kind:1060 legacy gift-wrap"
+        );
+
+        // The DIVERGENCE from relay-provenance privacy: NIP-17 rumors carry
+        // PLAINTEXT content, so they are NOT content-hidden even though their
+        // relay presence is privacy-gated.
+        assert!(
+            !is_encrypted_content_kind(KIND_CHAT_MESSAGE),
+            "kind:14 NIP-17 chat rumor content is the decrypted plaintext"
+        );
+        assert!(
+            !is_encrypted_content_kind(15),
+            "kind:15 NIP-17 file rumor content is plaintext"
+        );
+
+        // Ordinary public kinds — content is plaintext.
+        assert!(!is_encrypted_content_kind(0), "kind:0 profile metadata");
+        assert!(!is_encrypted_content_kind(1), "kind:1 short text note");
+        assert!(!is_encrypted_content_kind(7), "kind:7 reaction");
+        assert!(
+            !is_encrypted_content_kind(30_023),
+            "kind:30023 long-form article"
         );
     }
 }

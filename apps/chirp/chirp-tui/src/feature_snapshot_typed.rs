@@ -386,11 +386,9 @@ fn outbox_relay_status_label(status: &str) -> String {
 }
 
 fn outbox_preview(kind: u32, content: &str) -> String {
-    // Encrypted kinds: hide content.
-    const KIND_LEGACY_DM: u32 = 4;
-    const KIND_LEGACY_VERSIONED_DM: u32 = 44;
-    const KIND_GIFT_WRAP: u32 = 1059;
-    if kind == KIND_LEGACY_DM || kind == KIND_LEGACY_VERSIONED_DM || kind == KIND_GIFT_WRAP {
+    // Whether this kind's `content` is opaque ciphertext is a Nostr protocol
+    // rule, not a shell decision — read the canonical predicate (#1769).
+    if nmp_kinds::is_encrypted_content_kind(kind) {
         return "Encrypted event content hidden".to_string();
     }
     let trimmed = content.trim();
@@ -440,3 +438,41 @@ fn outbox_summary_subtitle(
 #[cfg(test)]
 #[path = "feature_snapshot_typed_roundtrip_tests.rs"]
 mod roundtrip_tests;
+
+#[cfg(test)]
+mod outbox_preview_tests {
+    use super::outbox_preview;
+
+    #[test]
+    fn encrypted_kinds_hide_content_plaintext_shows_through() {
+        // The leak this replaces (#1769): kinds 4/44/1059 hid content via a
+        // hardcoded set. The placeholder must now come from the canonical
+        // predicate — gift-wrap ciphertext is hidden...
+        assert_eq!(
+            outbox_preview(1059, "AAEC-this-would-be-base64-ciphertext"),
+            "Encrypted event content hidden",
+            "kind:1059 gift-wrap content must be hidden"
+        );
+        assert_eq!(
+            outbox_preview(4, "legacy-nip04-ciphertext?iv=..."),
+            "Encrypted event content hidden",
+            "kind:4 NIP-04 DM content must be hidden"
+        );
+
+        // ...while a plaintext public note shows its content (NOT hidden). This
+        // is the load-bearing negative: a regression that hid everything, or a
+        // predicate that wrongly classified kind:1 as encrypted, fails here.
+        assert_eq!(
+            outbox_preview(1, "hello world"),
+            "hello world",
+            "kind:1 short text note content must render verbatim"
+        );
+        // kind:14 NIP-17 rumor content is plaintext — it must NOT be hidden,
+        // even though its relay presence is privacy-gated elsewhere.
+        assert_eq!(
+            outbox_preview(14, "decrypted dm body"),
+            "decrypted dm body",
+            "kind:14 rumor content is plaintext and must render"
+        );
+    }
+}
