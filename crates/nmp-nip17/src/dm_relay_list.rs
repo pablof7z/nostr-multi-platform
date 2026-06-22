@@ -42,7 +42,7 @@
 //! from `kernel.now_secs()` before signing; this crate never reads the system
 //! clock.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection, UnsignedEvent};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection, UnsignedEvent};
 use nmp_core::{canonical_relay_url, ActorCommand};
 use nmp_kinds::KIND_DM_RELAY_LIST;
 use serde::{Deserialize, Serialize};
@@ -126,6 +126,14 @@ pub struct PublishDmRelayListAction;
 impl ActionModule for PublishDmRelayListAction {
     const NAMESPACE: &'static str = "nmp.nip17.publish_relay_list";
     type Action = PublishDmRelayListInput;
+
+    /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<PublishDmRelayListInput as ActionPayload>::decode(bytes))
+    }
 
     /// Reject an empty relay set — a kind:10050 with zero `relay` tags is
     /// the canonical "I cleared my DM-inbox list" signal in

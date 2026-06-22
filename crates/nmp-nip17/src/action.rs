@@ -23,7 +23,7 @@
 //! re-derives the pubkey from the signing `Keys` at gift-wrap time, exactly
 //! as the NIP-29 actions do.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -49,6 +49,14 @@ pub struct SendDmAction;
 impl ActionModule for SendDmAction {
     const NAMESPACE: &'static str = "nmp.nip17.send";
     type Action = SendDmInput;
+
+    /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(
+        bytes: &[u8],
+    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<SendDmInput as ActionPayload>::decode(bytes))
+    }
 
     /// Validate a DM send request. `start` carries no side effects: it only
     /// rejects an empty body or a missing recipient. The actual seal /
