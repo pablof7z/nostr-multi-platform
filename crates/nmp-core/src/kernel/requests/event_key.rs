@@ -76,14 +76,73 @@ pub(in crate::kernel) fn is_lower_hex64(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-/// `true` when `s` is a usable NIP-73 external identifier (#1654): non-empty and
+/// `true` when `s` is a usable NIP-73 external identifier (#1654): non-empty,
 /// free of ASCII control / whitespace bytes that could never appear in a wire
-/// `i`-tag value. Deliberately permissive otherwise — NIP-73 external ids are
-/// open-ended scheme strings (`podcast:item:guid:<guid>`, `isbn:<n>`,
-/// `doi:<id>`, `geo:<id>`, …) and the kernel must not gate on a scheme allowlist
-/// it does not own. An empty id fails closed so `i:` alone never resolves.
+/// `i`-tag value, AND carrying a recognised NIP-73 scheme (fail-CLOSED — a ref
+/// whose scheme the kernel does not understand never fabricates a `#i` REQ).
+///
+/// The earlier shape of this guard accepted ANY non-empty, whitespace-free
+/// string, so `i:<anything>` issued a network `#i` REQ for an arbitrary/unknown
+/// id (codex lead-gate HIGH 1). NIP-73 defines a CLOSED set of external-id
+/// schemes; we mirror that set here. The kernel still does not *interpret* the id
+/// (it forwards the verbatim value as a `#i` filter) — it only refuses to fetch a
+/// scheme NIP-73 never minted.
 pub(in crate::kernel) fn is_valid_external_id(s: &str) -> bool {
-    !s.is_empty() && !s.bytes().any(|b| b.is_ascii_control() || b == b' ')
+    !s.is_empty()
+        && !s.bytes().any(|b| b.is_ascii_control() || b == b' ')
+        && is_known_nip73_scheme(s)
+}
+
+/// `true` when `s` matches one of the external-id schemes defined by NIP-73
+/// (<https://github.com/nostr-protocol/nips/blob/master/73.md>). This is the
+/// fail-closed allowlist `is_valid_external_id` gates on; an `i:` ref whose value
+/// is not one of these forms is rejected (no `#i` REQ, no fabricated preview).
+///
+/// `s` is the bytes AFTER the `i:` projection-key prefix has been stripped — i.e.
+/// the verbatim NIP-73 `i`-tag value. Callers guarantee it is non-empty and
+/// whitespace/control-free before this runs, so each arm only has to recognise
+/// the scheme shape, not re-validate byte hygiene.
+fn is_known_nip73_scheme(s: &str) -> bool {
+    // Bare web URL — the only NIP-73 form with NO scheme prefix. A `:`-free value
+    // can never be a prefixed scheme, so it MUST be a URL to be valid.
+    if let Some(rest) = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+    {
+        return !rest.is_empty();
+    }
+    // Hashtag — `#<topic>`.
+    if let Some(topic) = s.strip_prefix('#') {
+        return !topic.is_empty();
+    }
+    // Ethereum carries a decimal `<chainId>` segment between `ethereum:` and the
+    // `address:`/`tx:` selector: `ethereum:<chainId>:address:<addr>` /
+    // `ethereum:<chainId>:tx:<hash>`.
+    if let Some(rest) = s.strip_prefix("ethereum:") {
+        let mut parts = rest.splitn(3, ':');
+        let chain_id = parts.next().unwrap_or("");
+        let selector = parts.next().unwrap_or("");
+        let value = parts.next().unwrap_or("");
+        let chain_ok = !chain_id.is_empty() && chain_id.bytes().all(|b| b.is_ascii_digit());
+        return chain_ok && matches!(selector, "address" | "tx") && !value.is_empty();
+    }
+    // Fixed-prefix schemes — the value after the prefix must be non-empty. Ordered
+    // longest-prefix-first so `podcast:item:guid:` wins over `podcast:guid:` etc.
+    const PREFIXES: &[&str] = &[
+        "podcast:item:guid:",
+        "podcast:publisher:guid:",
+        "podcast:guid:",
+        "bitcoin:address:",
+        "bitcoin:tx:",
+        "isbn:",
+        "geo:",
+        "iso3166:",
+        "isan:",
+        "doi:",
+    ];
+    PREFIXES
+        .iter()
+        .any(|p| s.strip_prefix(p).is_some_and(|rest| !rest.is_empty()))
 }
 
 /// Recover the verbatim NIP-73 external id from an `i:<external-id>` projection

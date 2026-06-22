@@ -392,6 +392,65 @@ fn malformed_external_ref_whitespace_id_fails_closed() {
 }
 
 #[test]
+fn malformed_external_ref_unknown_scheme_fails_closed() {
+    // codex lead-gate HIGH 1: an `i:<value>` whose scheme is NOT one of the NIP-73
+    // external-id forms must FAIL CLOSED — no `#i` REQ for an arbitrary/unknown id,
+    // no fabricated preview. Proven-red: with the pre-fix `is_valid_external_id`
+    // (non-empty + whitespace-free only, NO scheme allowlist) every one of these
+    // parsed to a `{"#i":[…], limit:1}` filter and recorded a bogus claim row.
+    assert_event_key_fails_closed("i:unknown:whatever");
+    assert_event_key_fails_closed("i:ftp://example.com/file"); // not http/https
+    assert_event_key_fails_closed("i:mailto:nobody@example.com");
+    assert_event_key_fails_closed("i:javascript:alert(1)");
+    assert_event_key_fails_closed("i:bareword"); // no scheme prefix, not a URL
+    assert_event_key_fails_closed("i:isbn:"); // known prefix, EMPTY value
+    assert_event_key_fails_closed("i:ethereum:notdecimal:address:0xabc"); // bad chainId
+    assert_event_key_fails_closed("i:ethereum:1:badselector:0xabc"); // bad selector
+    assert_event_key_fails_closed("i:#"); // hashtag prefix, empty topic
+}
+
+#[test]
+fn well_formed_external_ref_known_schemes_resolve() {
+    // codex lead-gate HIGH 1 complement: the canonical NIP-73 external-id schemes
+    // MUST still parse — the fail-closed allowlist is not vacuously rejecting every
+    // external ref. One representative per NIP-73 scheme family.
+    for external_id in [
+        "https://blog.example.com/post/hello",
+        "http://example.com/x",
+        "#bitcoin",
+        "isbn:9780765382030",
+        "geo:ezs42e44yx96",
+        "iso3166:US-CA",
+        "isan:0000-0000-401A-0000-7",
+        "doi:10.1000/xyz123",
+        "podcast:guid:c90e609a-df1e-596a-bd5e-57bcc8aad6cc",
+        "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f",
+        "podcast:publisher:guid:18bcbf10-6701-4ffb-b255-bc057390d738",
+        "bitcoin:address:1HQ3Go3ggs8pFnXuHVHRytPCq5fGG8Hbhx",
+        "bitcoin:tx:a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d",
+        "ethereum:1:address:0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+        "ethereum:1:tx:0xabc123",
+    ] {
+        let key = format!("i:{external_id}");
+        let target = parse_event_key(&key).unwrap_or_else(|| {
+            panic!("known NIP-73 scheme {key:?} was rejected by parse_event_key")
+        });
+        assert!(
+            target.replaceable_coord.is_none(),
+            "external ref {key:?} is never replaceable"
+        );
+        assert!(
+            target
+                .filter
+                .tags
+                .get("i")
+                .is_some_and(|v| v.contains(external_id)),
+            "external ref {key:?} must build an `#i` filter for the verbatim id"
+        );
+    }
+}
+
+#[test]
 fn event_key_d_tag_with_colons_is_accepted() {
     // NIP-01 §"Replaceable events": the d-tag value is an arbitrary string and
     // MAY itself contain colons (e.g. namespaced slugs like "doc:section:2").

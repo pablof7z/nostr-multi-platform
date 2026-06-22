@@ -138,6 +138,81 @@ fn external_ref_per_key_rev_advances_on_ingest() {
     );
 }
 
+/// A signed event carrying TWO NIP-73 `["i", …]` tags — used to prove the
+/// ingest chokepoint bumps EVERY claimed external-ref row the event satisfies,
+/// not just the first (codex lead-gate HIGH 2).
+fn signed_two_external(
+    keys: &::nostr::Keys,
+    kind: u32,
+    external_a: &str,
+    external_b: &str,
+    ts: u64,
+) -> NostrEvent {
+    use ::nostr::{EventBuilder, Kind, Tag, Timestamp};
+    let ev = EventBuilder::new(Kind::from(kind as u16), "body")
+        .tags([
+            Tag::parse(["i", external_a]).expect("parse i tag a"),
+            Tag::parse(["i", external_b]).expect("parse i tag b"),
+        ])
+        .custom_created_at(Timestamp::from(ts))
+        .sign_with_keys(keys)
+        .expect("sign_with_keys");
+    NostrEvent {
+        id: ev.id.to_hex(),
+        pubkey: ev.pubkey.to_hex(),
+        created_at: ev.created_at.as_secs(),
+        kind: ev.kind.as_u16() as u32,
+        tags: ev.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+        content: ev.content.clone(),
+        sig: ev.sig.to_string(),
+    }
+}
+
+#[test]
+fn external_ref_multi_tag_bumps_every_claimed_row() {
+    // codex lead-gate HIGH 2: a single ingested event carrying TWO claimed `i`
+    // tags must advance the per-key rev of BOTH external-ref rows — not just the
+    // first match. Proven-red: with the pre-fix `maybe_bump_claimed_event_content`
+    // (which `return`ed on the first matching `i` tag) only `key_a` advanced and
+    // the second preview never re-rendered.
+    let external_a = "podcast:item:guid:aaaa-1111";
+    let external_b = "isbn:9780375704024";
+    let key_a = format!("i:{external_a}");
+    let key_b = format!("i:{external_b}");
+    let keys = ::nostr::Keys::generate();
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected(RelayRole::Content);
+    for key in [&key_a, &key_b] {
+        kernel.resolve_ref(
+            RefNamespace::Event,
+            key.clone(),
+            "view".into(),
+            RefShape::Event(EventShape::Embed),
+            RefLiveness::CacheOk,
+            false,
+            Vec::new(),
+        );
+    }
+    let before_a = kernel.ref_row_rev(RefNamespace::Event, &key_a);
+    let before_b = kernel.ref_row_rev(RefNamespace::Event, &key_b);
+
+    // One event tags BOTH external ids — ingesting it satisfies both claims.
+    let ev = signed_two_external(&keys, 1111, external_a, external_b, 1_700_000_000);
+    kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.example/", "view", ev);
+
+    let after_a = kernel.ref_row_rev(RefNamespace::Event, &key_a);
+    let after_b = kernel.ref_row_rev(RefNamespace::Event, &key_b);
+    assert!(
+        after_a > before_a,
+        "first claimed external ref rev must advance (before={before_a}, after={after_a})"
+    );
+    assert!(
+        after_b > before_b,
+        "SECOND claimed external ref rev must ALSO advance — the ingest bump must \
+         not early-return after the first match (before={before_b}, after={after_b})"
+    );
+}
+
 #[test]
 fn external_ref_unresolved_fails_closed() {
     // #1654 / fail-closed: a claimed external ref with NO matching cached event

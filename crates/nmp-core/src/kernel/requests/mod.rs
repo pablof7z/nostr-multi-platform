@@ -407,8 +407,7 @@ impl Kernel {
             // Unified front-door path: prepare + register_interest (EnsureAbsent
             // = register-if-absent, so same-shape reverifies share one slot).
             let (_token, interest_id, identity, interest) =
-                self.oneshot
-                    .prepare(InterestScope::Global, shape, Vec::new());
+                self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
             self.register_interest(
                 &[crate::kernel::cache_serve::InterestRegistration {
                     identity,
