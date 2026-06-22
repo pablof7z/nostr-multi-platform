@@ -247,7 +247,7 @@ fn render_snapshot_projections(entries: &[SnapshotProjectionEntry], out: &mut St
     out.push('\n');
     out.push_str("    enum CodingKeys: String, CodingKey {\n");
     for entry in entries {
-        let post_transform = post_convert_from_snake_case(entry.json_key);
+        let post_transform = post_convert_from_snake_case(entry.key);
         if post_transform == entry.swift_field {
             out.push_str(&format!("        case {}\n", entry.swift_field));
         } else {

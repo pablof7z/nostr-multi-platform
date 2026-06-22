@@ -11,7 +11,7 @@ use super::super::{ClaimedEventDto, Kernel};
 //
 // 1. The registry-coverage gate
 //    (`nmp-app-chirp::ffi::tests::producer_completeness::every_codegen_registry_key_is_registered_at_runtime`)
-//    asserts every `nmp-codegen` `SNAPSHOT_PROJECTIONS` json_key is either a
+//    asserts every `nmp-codegen` `SNAPSHOT_PROJECTIONS` key is either a
 //    runtime-registered Tier-1 closure key or a member of this list — closing
 //    the #1084-class hole where a producer-side key rename ships without its
 //    consumers (the codegen registry, the Swift/Kotlin bridges).

@@ -11,21 +11,19 @@ use crate::swift_projections_registry::TypedSidecar;
 fn mixed_registry() -> Vec<SnapshotProjectionEntry> {
     vec![
         SnapshotProjectionEntry {
-            json_key: "active_account",
+            key: "active_account",
             swift_field: "activeAccount",
             swift_type: "String",
             typed_sidecar: Some(TypedSidecar {
-                key: "active_account",
                 swift_reader_type: Some("nmp_kernel_ActiveAccountSnapshot"),
             }),
         },
         // Sidecar present, but reader binding not generated yet → skipped.
         SnapshotProjectionEntry {
-            json_key: "settings_hub",
+            key: "settings_hub",
             swift_field: "settingsHub",
             swift_type: "[String: Int]",
             typed_sidecar: Some(TypedSidecar {
-                key: "settings_hub",
                 swift_reader_type: None,
             }),
         },
@@ -109,11 +107,10 @@ fn output_ends_with_single_newline() {
 #[test]
 fn empty_when_no_reader_bindings() {
     let entries = vec![SnapshotProjectionEntry {
-        json_key: "settings_hub",
+        key: "settings_hub",
         swift_field: "settingsHub",
         swift_type: "[String: Int]",
         typed_sidecar: Some(TypedSidecar {
-            key: "settings_hub",
             swift_reader_type: None,
         }),
     }];

@@ -177,11 +177,10 @@ pub fn render_projection_cache(entries: &[SnapshotProjectionEntry]) -> String {
          \x20\x20\x20\x20\x20\x20\x20\x20switch key {\n",
     );
     for entry in &typed_entries {
-        let sidecar = entry.typed_sidecar.as_ref().unwrap();
         let decoder = decoder_enum_name(entry.swift_field);
         out.push_str(&format!(
             "        case {:?}: return {decoder}.decode(bytes: bytes) != nil\n",
-            sidecar.key
+            entry.key
         ));
     }
     out.push_str(

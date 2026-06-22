@@ -66,36 +66,88 @@ fn tier_and_revision_semantics_are_consistent() {
     }
 }
 
-/// FAIL-CLOSED: every Swift `SNAPSHOT_PROJECTIONS` entry's neutral facts (the
-/// FAIL-CLOSED: every Swift `SNAPSHOT_PROJECTIONS` entry's producer `key` MUST
-/// resolve to a [`PROJECTION_CONTRACT`] row, AND that row's `key` must equal the
-/// entry's `json_key` OR carry a deliberate producer-key/json-key split that the
-/// contract knows about. The Swift registry no longer OWNS `schema_id` /
-/// `file_identifier` (those fields were removed in #1723 — the host-decoder
-/// generator sources them from the contract by `key`), so there is nothing to
-/// drift; this test proves the binding (`sidecar.key` → contract row) the
-/// generator relies on is total. A registry entry whose producer key has no
-/// contract row fails here via `contract_for`'s panic.
+/// FAIL-CLOSED: every Swift `SNAPSHOT_PROJECTIONS` entry's `key` MUST resolve to
+/// a [`PROJECTION_CONTRACT`] row whose `key` is identical. The Swift registry no
+/// longer OWNS any neutral fact — `schema_id` / `file_identifier` were removed in
+/// #1723 (sourced from the contract), and item-2 collapsed the once-duplicated
+/// `json_key` + `TypedSidecar::key` spellings onto this single `key`. This test
+/// proves the binding (`entry.key` → contract row) the host-decoder generator
+/// relies on is total: a registry entry whose key has no contract row fails here
+/// via `contract_for`'s panic.
 #[test]
 fn swift_registry_keys_resolve_to_contract() {
     for entry in SNAPSHOT_PROJECTIONS {
-        let sidecar = entry
-            .typed_sidecar
-            .as_ref()
-            .expect("coverage gate guarantees Some");
-        // Fail-closed: panics if the producer key has no contract row.
-        let contract = contract_for(sidecar.key);
-        // The contract row this entry binds to must be the one keyed by the
-        // producer key (identity), so the generator's neutral lookup is correct.
+        // Fail-closed: panics if the key has no contract row.
+        let contract = contract_for(entry.key);
         assert_eq!(
-            contract.key, sidecar.key,
+            contract.key, entry.key,
             "contract lookup for {:?} returned a row keyed {:?}",
-            sidecar.key, contract.key
+            entry.key, contract.key
         );
-        // The json_key must ALSO have a contract row (it is the kernel-emitted
-        // map key; for most entries json_key == sidecar.key, but the op-feed /
-        // follow-list deliberately split them — both must be known).
-        let _ = contract_for(entry.json_key);
+    }
+}
+
+/// FAIL-CLOSED (item-2, the contract→registry direction): the set of projection
+/// keys the Swift presentation registry covers MUST equal the set of contract
+/// keys that are Swift-presented — every contract row that is NOT one of the
+/// known non-presented exceptions has a `SNAPSHOT_PROJECTIONS` entry, and the
+/// registry carries no key absent from the contract. This is the drift gate that
+/// makes the registry's projection SET unable to silently diverge from the
+/// contract: add a contract entry that should surface in the iOS shell and forget
+/// the registry row (or vice versa) and this test fails at commit time.
+///
+/// The non-presented contract keys are the ones that deliberately have NO
+/// whole-value Swift `SnapshotProjections` field:
+/// - `signed_events` — the D13 sign-and-return drain, consumed out-of-band (no
+///   shell decoder), per its `PROJECTION_CONTRACT` provenance note.
+/// - `refs.profile` / `refs.event` — the keyed row-delta carriers, served by the
+///   SEPARATE `KEYED_PROJECTIONS` registry (the `keyed_and_snapshot_registries_are_disjoint`
+///   test enforces they never appear in `SNAPSHOT_PROJECTIONS`).
+#[test]
+fn swift_presented_contract_keys_match_registry() {
+    // Contract keys that intentionally carry no whole-value Swift presentation.
+    const NOT_SWIFT_PRESENTED: &[&str] = &["signed_events", "refs.profile", "refs.event"];
+
+    let registry_keys: std::collections::BTreeSet<&str> =
+        SNAPSHOT_PROJECTIONS.iter().map(|e| e.key).collect();
+    let keyed_keys: std::collections::BTreeSet<&str> =
+        KEYED_PROJECTIONS.iter().map(|e| e.projection_key).collect();
+
+    // Direction 1 — every Swift-presented contract key has a registry entry.
+    for c in PROJECTION_CONTRACT {
+        if NOT_SWIFT_PRESENTED.contains(&c.key) {
+            // These must NOT be in the whole-value registry (the keyed pair is
+            // covered by KEYED_PROJECTIONS; signed_events is out-of-band).
+            assert!(
+                !registry_keys.contains(c.key),
+                "contract key {:?} is marked NOT_SWIFT_PRESENTED but appears in \
+                 SNAPSHOT_PROJECTIONS",
+                c.key
+            );
+            continue;
+        }
+        assert!(
+            registry_keys.contains(c.key),
+            "contract key {:?} has no SNAPSHOT_PROJECTIONS entry — every contract \
+             projection that is not in NOT_SWIFT_PRESENTED (signed_events / refs.*) \
+             must have a Swift presentation row, or this gate is stale. Add the \
+             registry entry or extend NOT_SWIFT_PRESENTED with a justification.",
+            c.key
+        );
+    }
+
+    // Direction 2 — every registry key is a contract key (no registry-only keys).
+    // `swift_registry_keys_resolve_to_contract` already proves each resolves; this
+    // also pins that none is a stray that should have been keyed instead.
+    for key in &registry_keys {
+        assert!(
+            lookup(key).is_some(),
+            "registry key {key:?} has no contract row"
+        );
+        assert!(
+            !keyed_keys.contains(key),
+            "registry key {key:?} is also a KEYED_PROJECTIONS key"
+        );
     }
 }
 

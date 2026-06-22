@@ -40,17 +40,17 @@ fn swift_field_names_are_unique() {
     }
 }
 
-/// Every JSON key must be unique. The kernel registers one closure per
+/// Every projection key must be unique. The kernel registers one closure per
 /// key; declaring the same key twice on the Swift side would silently
 /// shadow one decoder case with another.
 #[test]
-fn json_keys_are_unique() {
+fn projection_keys_are_unique() {
     let mut seen = std::collections::BTreeSet::new();
     for entry in SNAPSHOT_PROJECTIONS {
         assert!(
-            seen.insert(entry.json_key),
-            "duplicate json_key {:?} in SNAPSHOT_PROJECTIONS",
-            entry.json_key
+            seen.insert(entry.key),
+            "duplicate key {:?} in SNAPSHOT_PROJECTIONS",
+            entry.key
         );
     }
 }
@@ -64,7 +64,7 @@ fn json_keys_are_unique() {
 fn all_dotted_keys_are_present() {
     let dotted: Vec<&str> = SNAPSHOT_PROJECTIONS
         .iter()
-        .map(|e| e.json_key)
+        .map(|e| e.key)
         .filter(|k| k.contains('.'))
         .collect();
     // Ten dotted keys. `nmp.feed.home` is a NOFS typed sidecar decoded by
@@ -100,13 +100,8 @@ fn all_dotted_keys_are_present() {
 /// typed-sidecar key.
 #[test]
 fn keyed_and_snapshot_registries_are_disjoint() {
-    let snapshot_keys: std::collections::BTreeSet<&str> = SNAPSHOT_PROJECTIONS
-        .iter()
-        .flat_map(|e| {
-            let sidecar = e.typed_sidecar.as_ref().map(|s| s.key);
-            std::iter::once(e.json_key).chain(sidecar)
-        })
-        .collect();
+    let snapshot_keys: std::collections::BTreeSet<&str> =
+        SNAPSHOT_PROJECTIONS.iter().map(|e| e.key).collect();
     let mut seen_keyed = std::collections::BTreeSet::new();
     for entry in KEYED_PROJECTIONS {
         assert!(
@@ -146,14 +141,14 @@ fn typed_sidecar_coverage_gate() {
 
     for entry in SNAPSHOT_PROJECTIONS {
         if entry.typed_sidecar.is_none()
-            && !ALLOWED_SIDECAR_LESS.contains(&entry.json_key)
+            && !ALLOWED_SIDECAR_LESS.contains(&entry.key)
         {
             panic!(
                 "registry entry {:?} has typed_sidecar: None without an approved \
                  exemption. Either add a typed FlatBuffer sidecar for this key OR \
                  open a GitHub issue naming the owner + deadline and add the key to \
                  ALLOWED_SIDECAR_LESS with the issue number in a comment.",
-                entry.json_key
+                entry.key
             );
         }
     }
