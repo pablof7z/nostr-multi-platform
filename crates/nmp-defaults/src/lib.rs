@@ -105,6 +105,7 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{AppHost, EventObserverRegistrar, SnapshotProjectionRegistrar};
 
+pub mod action_payloads;
 pub mod builder;
 pub mod op_feed_defaults;
 pub(crate) mod relay_config;
