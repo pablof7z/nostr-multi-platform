@@ -64,17 +64,21 @@ pub(super) trait ErasedActionModule: Send + Sync {
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String>;
 
-    /// Typed-payload (ADR-0064 / S3) twin of [`Self::start`]: decode the OPAQUE
-    /// FlatBuffers `payload` into the module's `Action` and validate it.
+    /// Byte-route (ADR-0064 / S3 + #1756 / S9) twin of [`Self::start`]: resolve
+    /// the OPAQUE envelope `payload` into the module's `Action` and validate it.
     ///
-    /// The decode runs the fail-closed `schema_version` gate BEFORE `start()`
-    /// (inside [`ActionModule::decode_payload`] → the module's `ActionPayload`
-    /// impl). Returns:
-    /// * `Err(NotTypedCapable)` — the module has not migrated to a typed payload
-    ///   (it left `decode_payload` defaulted). Distinct from a decode rejection.
-    /// * `Err(Decode(_))` — a `schema_version` trip or a malformed buffer
-    ///   (fail-closed; `start()` never ran).
-    /// * `Err(Rejected(_))` — the typed action decoded but `start()` rejected it.
+    /// Two opt-in routes (see [`decode_byte_action`]): the TYPED FlatBuffers
+    /// route ([`ActionModule::decode_payload`], with its fail-closed
+    /// `schema_version` gate BEFORE `start()`), and the OPAQUE-PASSTHROUGH route
+    /// for app-owned host-op modules ([`ActionModule::accepts_opaque_payload`]).
+    /// Returns:
+    /// * `Err(NotTypedCapable)` — the module opted into NEITHER route (untyped
+    ///   AND not opaque-opted). Fail-closed: `start()` never ran.
+    /// * `Err(Decode(_))` — typed route: a `schema_version` trip or malformed
+    ///   FlatBuffers (fail-closed; `start()` never ran).
+    /// * `Err(OpaqueMalformed(_))` — opaque route: the app's JSON-bytes payload
+    ///   did not deserialize (fail-closed; `start()` never ran).
+    /// * `Err(Rejected(_))` — the action decoded but `start()` rejected it.
     /// * `Ok(())` — decoded and validated; the caller mints the `correlation_id`.
     fn start_bytes(
         &self,
@@ -99,10 +103,18 @@ pub(super) trait ErasedActionModule: Send + Sync {
 /// **data** (D6) — none crosses the FFI/worker boundary as a panic/exception.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum TypedDispatchError {
-    /// The namespace's module has not migrated to a typed FlatBuffers payload
-    /// (it returns `None` from [`ActionModule::decode_payload`]). The typed
-    /// doorway fails closed on it rather than guessing.
+    /// The namespace's module supports NEITHER byte route: it returns `None`
+    /// from [`ActionModule::decode_payload`] (not typed) AND `false` from
+    /// [`ActionModule::accepts_opaque_payload`] (not opaque-opted). The byte
+    /// doorway fails closed on it rather than guessing — a non-opted untyped
+    /// module never reaches `start()` (#1756 fail-closed).
     NotTypedCapable,
+    /// The module opted into the opaque-passthrough route
+    /// ([`ActionModule::accepts_opaque_payload`] is `true`) but the opaque
+    /// payload bytes did not deserialize into its `Action` (the app owns this
+    /// JSON-bytes format; a malformed payload fails closed — `start()` never
+    /// ran). Distinct from [`Self::Decode`], which is a typed-FlatBuffers trip.
+    OpaqueMalformed(String),
     /// The typed payload failed to decode — a fail-closed `schema_version` trip
     /// or a malformed buffer. `start()` never ran.
     Decode(ActionPayloadDecodeError),
@@ -118,6 +130,7 @@ impl core::fmt::Display for TypedDispatchError {
             Self::NotTypedCapable => {
                 write!(f, "namespace does not support typed FlatBuffers payloads")
             }
+            Self::OpaqueMalformed(m) => write!(f, "opaque payload malformed: {m}"),
             Self::Decode(e) => write!(f, "{e}"),
             Self::Rejected(r) => write!(f, "action rejected: {r:?}"),
             Self::Execute(m) => write!(f, "{m}"),
@@ -162,15 +175,12 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         ctx: &mut ActionContext,
         payload: &[u8],
     ) -> Result<(), TypedDispatchError> {
-        // THE single typed-decode site (ADR-0064 / S3). `decode_payload` is the
-        // module's opt-in hook; `None` means it has not migrated. The decode
-        // (which runs the fail-closed `schema_version` gate) happens HERE,
-        // BEFORE `start()`.
-        let action = match M::decode_payload(payload) {
-            None => return Err(TypedDispatchError::NotTypedCapable),
-            Some(Err(e)) => return Err(TypedDispatchError::Decode(e)),
-            Some(Ok(action)) => action,
-        };
+        // THE single byte-route decode site (ADR-0064 / S3 + #1756 / S9).
+        // `decode_payload` is the typed opt-in (its `schema_version` gate runs
+        // HERE, BEFORE `start()`); `accepts_opaque_payload` is the app-owned
+        // opaque opt-in. Resolve typed-first, then opaque; a module that opted
+        // into NEITHER fails closed (`NotTypedCapable`).
+        let action = decode_byte_action::<M>(payload)?;
         self.0
             .start(ctx, action)
             .map_err(TypedDispatchError::Rejected)
@@ -182,13 +192,39 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), TypedDispatchError> {
-        let action = match M::decode_payload(payload) {
-            None => return Err(TypedDispatchError::NotTypedCapable),
-            Some(Err(e)) => return Err(TypedDispatchError::Decode(e)),
-            Some(Ok(action)) => action,
-        };
+        let action = decode_byte_action::<M>(payload)?;
         self.0
             .execute(action, correlation_id, send)
             .map_err(TypedDispatchError::Execute)
     }
+}
+
+/// Resolve the OPAQUE envelope `payload` bytes into a module `M`'s `Action`,
+/// applying the byte-route opt-in precedence (#1756 / S9 + ADR-0064 / S3). This
+/// is the SOLE byte-route decode function — both `start_bytes` and
+/// `execute_bytes` call it, mirroring how the JSON twins each
+/// `serde_json::from_str` (one decoder, re-supplied per lifecycle phase, not two
+/// divergent paths).
+///
+/// Precedence + fail-closed (#1756):
+/// * `decode_payload` returns `Some` → TYPED FlatBuffers route (its fail-closed
+///   `schema_version` gate ran inside it). This wins if a module opted into both.
+/// * else `accepts_opaque_payload()` is `true` → OPAQUE-PASSTHROUGH route: the
+///   bytes are the app's own JSON-bytes action; `serde_json::from_slice` is the
+///   app's deserialize. NMP imposes no `schema_version` gate (the payload is
+///   opaque to NMP); a malformed buffer fails closed as `OpaqueMalformed`.
+/// * else → `NotTypedCapable`: the module opted into NEITHER route. A non-opted
+///   untyped module (and, upstream, an unknown namespace) is REJECTED — never a
+///   blanket default-accept.
+fn decode_byte_action<M: ActionModule>(
+    payload: &[u8],
+) -> Result<M::Action, TypedDispatchError> {
+    if let Some(decoded) = M::decode_payload(payload) {
+        return decoded.map_err(TypedDispatchError::Decode);
+    }
+    if M::accepts_opaque_payload() {
+        return serde_json::from_slice::<M::Action>(payload)
+            .map_err(|e| TypedDispatchError::OpaqueMalformed(e.to_string()));
+    }
+    Err(TypedDispatchError::NotTypedCapable)
 }
