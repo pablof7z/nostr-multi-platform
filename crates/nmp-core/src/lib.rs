@@ -511,6 +511,7 @@ pub mod testing {
                 relay_text_interceptor: crate::substrate::new_relay_text_interceptor_slot(),
                 relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
                 ingest_dispatcher: Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),
+                search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
                 dm_inbox_relays: Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
                 profile_lookup: Arc::new(Mutex::new(crate::substrate::empty_profile_lookup())),
                 contacts_lookup: Arc::new(Mutex::new(crate::substrate::empty_contacts_lookup())),

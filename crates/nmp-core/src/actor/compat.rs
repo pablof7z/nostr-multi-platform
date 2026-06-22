@@ -70,6 +70,7 @@ pub fn run_actor_with_lifecycle_observer(
         relay_text_interceptor: crate::substrate::new_relay_text_interceptor_slot(),
         relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
         ingest_dispatcher,
+        search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
         dm_inbox_relays: Arc::new(Mutex::new(crate::substrate::empty_dm_inbox_relay_lookup())),
         profile_lookup,
         contacts_lookup,

@@ -71,6 +71,49 @@ impl NmpApp {
         }
     }
 
+    /// #1811 — register a [`nmp_core::substrate::SearchScopeProvider`] against
+    /// the shared crate-registered FTS scope registry. Per-protocol crates
+    /// (today none in production; Phase-2 wires `nmp-nip50` / `nmp-nip29`) call
+    /// this through their `register_actions` entry point.
+    ///
+    /// MUST be called before `nmp_app_start` so the registry is compiled +
+    /// installed into the kernel store at construction. A duplicate scope id
+    /// **yields** (ADR-0049): the first registration keeps the scope; a later
+    /// one for the same id is recorded as `YieldedToExisting` in the
+    /// `"search_scope"` composition-ledger seam and is NOT installed.
+    pub fn register_search_scope(
+        &self,
+        provider: std::sync::Arc<dyn nmp_core::substrate::SearchScopeProvider>,
+    ) -> NmpConfigStatus {
+        let scope_label = provider.spec().scope.label();
+        if let Err(status) = self.ensure_prestart_config(
+            "search_scope",
+            scope_label,
+            std::any::type_name::<dyn nmp_core::substrate::SearchScopeProvider>(),
+        ) {
+            return status;
+        }
+        let disposition = self.search_scope_registry.register(provider);
+        // ADR-0049 Part 2 — record the install/yield decision in the
+        // "search_scope" ledger seam.
+        let ledger_disposition = match disposition {
+            nmp_core::substrate::SearchScopeDisposition::Installed => {
+                nmp_core::Disposition::Installed
+            }
+            nmp_core::substrate::SearchScopeDisposition::YieldedToExisting => {
+                nmp_core::Disposition::YieldedToExisting
+            }
+        };
+        self.composition_ledger.record(
+            "search_scope",
+            scope_label,
+            std::any::type_name::<dyn nmp_core::substrate::SearchScopeProvider>(),
+            ledger_disposition,
+            None,
+        );
+        NmpConfigStatus::Ok
+    }
+
     /// Remove the parser registered under `slot_key` for `kind`, if any.
     /// Used by teardown paths (e.g. Marmot sign-out) to clear a
     /// lifecycle-managed slot without installing a replacement.

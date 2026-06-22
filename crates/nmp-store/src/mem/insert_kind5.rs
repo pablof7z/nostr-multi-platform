@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use super::fts::fts_index_remove;
 use super::ic::{ic_decrement, ic_increment};
 use super::ingest_log;
 use super::{
@@ -65,6 +66,7 @@ pub(super) fn handle_kind5_insert(
             st.provenance.remove(&target_hex);
             relay_index_remove(st, &target_hex);
             relay_kind_remove_id(st, &target_hex);
+            fts_index_remove(st, &target_hex);
             access_remove(st, &target_hex);
             // Issue #1519: decrement counter for removed event.
             ic_decrement(st, ic_kind, &ic_tags);
@@ -156,6 +158,7 @@ pub(super) fn handle_kind5_insert(
                 st.provenance.remove(&target_hex);
                 relay_index_remove(st, &target_hex);
                 relay_kind_remove_id(st, &target_hex);
+                fts_index_remove(st, &target_hex);
                 access_remove(st, &target_hex);
                 // Issue #1519: decrement counter for removed event.
                 if let Some((ik, ref it)) = ic_data {

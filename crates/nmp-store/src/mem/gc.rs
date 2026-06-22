@@ -21,6 +21,7 @@ use std::collections::HashSet;
 // on wasm32 and to `std::time::Instant` on native (zero-cost re-export).
 use crate::time::Instant;
 
+use super::fts::fts_index_remove;
 use super::ingest_log;
 use super::{
     access_remove, bytes_to_hex, relay_index_remove, relay_kind_remove_id, MemEventStore,
@@ -80,6 +81,7 @@ pub(super) fn gc_step_with_pins(
             st.provenance.remove(id_hex);
             relay_index_remove(&mut *st, id_hex);
             relay_kind_remove_id(&mut *st, id_hex);
+            fts_index_remove(&mut *st, id_hex);
             access_remove(&mut *st, id_hex);
             // Issue #1519: decrement interaction counter for expired event.
             if let Some((ik, ref it)) = ic_data {
@@ -175,6 +177,7 @@ pub(super) fn gc_step_with_pins(
                 st.provenance.remove(&id_hex);
                 relay_index_remove(&mut *st, &id_hex);
                 relay_kind_remove_id(&mut *st, &id_hex);
+                fts_index_remove(&mut *st, &id_hex);
                 access_remove(&mut *st, &id_hex);
                 // Issue #1519: decrement interaction counter for evicted event.
                 if let Some((ik, ref it)) = ic_data {

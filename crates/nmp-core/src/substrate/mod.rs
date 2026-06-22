@@ -66,6 +66,10 @@ mod relay_score_store;
 mod req_intercept;
 mod routing;
 mod routing_trace;
+// #1811 — crate-registered full-text search scopes (protocol-aware
+// SearchIndexSpec + SearchScopeProvider; compiled into nmp-store's noun-free
+// CompiledIndexSpec at composition time).
+pub mod search;
 mod view;
 
 pub use action::{
@@ -80,6 +84,11 @@ pub use app_host::{
     SnapshotProjectionRegistrar,
 };
 pub use blocked_relays::{empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBlockedRelayLookup};
+// #1811 — FTS scope registry surface.
+pub use search::{
+    CacheSearchMode, SearchIndexSpec, SearchPrivacyPolicy, SearchScopeDisposition,
+    SearchScopeProvider, SearchScopeRegistrar, SearchScopeRegistry,
+};
 pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};
 pub use bounded::{BoundedMessageMap, BoundedRing, MAX_PROJECTION_MESSAGES};
 pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};

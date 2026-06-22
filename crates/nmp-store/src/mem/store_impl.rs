@@ -358,6 +358,24 @@ impl EventStore for MemEventStore {
         }))
     }
 
+    // ─── Full-text search (issue #1811) ──────────────────────────────────────
+
+    fn install_search_index_specs(&self, specs: Vec<crate::text_search::CompiledIndexSpec>) {
+        // Composition-time install. A poisoned lock degrades to "no FTS" (D6 —
+        // search then returns Unsupported rather than crashing the host).
+        if let Ok(mut st) = self.lock() {
+            st.fts.install(specs);
+        }
+    }
+
+    fn text_search_visit(
+        &self,
+        query: &crate::text_search::TextSearchQuery,
+        visitor: &mut dyn FnMut(crate::text_search::TextSearchHit) -> ControlFlow<()>,
+    ) -> Result<crate::text_search::TextSearchStatus, StoreError> {
+        super::fts::text_search_visit(self, query, visitor)
+    }
+
     fn replace_log_retention_claims(&self, claims: &[crate::ingest_log::LogRetentionClaim]) {
         // Single-writer (kernel) wholesale replace, under the SAME mutex as the
         // ingest log so the next append-time trim sees a consistent claim set.

@@ -47,6 +47,9 @@
 //!   domain.rs     — domain rows + migrations
 
 pub(super) mod domain;
+// #1811 — in-memory full-text inverted index (parity target for the Phase-2
+// LMDB FTS sub-databases).
+pub(super) mod fts;
 pub(super) mod gc;
 pub(super) mod ic;
 pub(super) mod insert;
@@ -180,6 +183,15 @@ pub(super) struct MemState {
     /// Maintained symmetrically with the event map — any insert increments,
     /// any removal decrements. Parity with the LMDB backend.
     pub(super) interaction_counters: HashMap<(String, u8), u64>,
+
+    /// #1811 — full-text inverted index (installed specs + per-scope index).
+    ///
+    /// Empty until `install_search_index_specs` runs at composition. Maintained
+    /// symmetrically with the event map: every insert/replace/delete/GC site
+    /// calls `fts::fts_index_add` / `fts::fts_index_remove`, so a search hit
+    /// never survives source deletion. Parity target for the Phase-2 LMDB FTS
+    /// sub-databases.
+    pub(in crate::mem) fts: fts::FtsState,
 }
 
 impl MemState {
@@ -202,6 +214,7 @@ impl MemState {
             ingest_log: std::collections::BTreeMap::new(),
             log_gc_floor: 0,
             retention_claims: Vec::new(),
+            fts: fts::FtsState::default(),
         }
     }
 
