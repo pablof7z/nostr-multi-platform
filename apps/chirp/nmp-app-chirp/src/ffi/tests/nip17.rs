@@ -7,10 +7,10 @@ use super::helpers::{dispatch, register_app};
 
 /// THE NIP-17 SEND-VERB PROOF: after `nmp_app_chirp_register`, the
 /// `nmp.nip17.send` action — `SendDmAction`, an `ActionModule` living in the
-/// `nmp-nip17` protocol crate — is reachable through the generic
-/// `dispatch_action` path. A well-formed `SendDmInput` yields a 32-hex
-/// `correlation_id` (both the typed module validator AND the executor are
-/// wired); a malformed / empty body is rejected with `error`.
+/// `nmp-nip17` protocol crate — is reachable through the typed byte doorway
+/// (ADR-0064 / Cut-B, #1756). A well-formed `SendDmInput` yields an echoed
+/// host-supplied `correlation_id` (both the typed module validator AND the
+/// executor are wired); a malformed / empty body is rejected with `error`.
 #[test]
 fn nip17_dm_send_dispatches_through_action_registry() {
     let app = nmp_app_new();
@@ -23,7 +23,11 @@ fn nip17_dm_send_dispatches_through_action_registry() {
         .get("correlation_id")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
-    assert_eq!(id.len(), 32, "correlation id should be 32 hex");
+    // ADR-0064 / Cut-B (#1756): the byte doorway echoes the host-supplied id.
+    assert!(
+        !id.is_empty(),
+        "byte doorway must echo a non-empty correlation id"
+    );
 
     // Empty content is rejected by the typed `SendDmAction::start`
     // validator surfaced through the host seam (D6).

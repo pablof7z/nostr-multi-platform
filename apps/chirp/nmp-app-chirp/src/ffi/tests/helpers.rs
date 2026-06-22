@@ -5,11 +5,10 @@
 //! exposing the helpers beyond the test tree.
 
 use std::cell::RefCell;
-use std::ffi::{CStr, CString};
 
 use nmp_core::substrate::ActionModule;
 use nmp_core::ActorCommand;
-use nmp_ffi::{nmp_app_dispatch_action, nmp_free_string, NmpApp};
+use nmp_ffi::NmpApp;
 
 use super::super::{nmp_app_chirp_register, ChirpHandle, NmpRegisterStatus};
 
@@ -54,15 +53,20 @@ pub(super) fn register_app(app: *mut NmpApp) -> *mut ChirpHandle {
     handle
 }
 
-/// Drive `nmp_app_dispatch_action` for `namespace`/`action_json` and
-/// return the parsed JSON result. The returned C string is freed.
+/// Drive the typed **byte** doorway for `namespace`/`action_json` and return the
+/// parsed JSON result envelope.
+///
+/// ADR-0064 / Cut-B (#1756): the Chirp crates dispatch exclusively through the
+/// byte doorway now, so this probe goes through the SAME
+/// `crate::dispatch_bytes` seam the production callers use — `action_json` (the
+/// canonical action body) is encoded to the namespace's typed `ActionPayload`,
+/// enveloped with a host-minted correlation id, and handed to
+/// `nmp_app_dispatch_action_bytes`. The returned `{"correlation_id"}` /
+/// `{"error"}` envelope is parsed into a `serde_json::Value` so the existing
+/// per-domain assertions are unchanged in shape.
 pub(super) fn dispatch(app: *mut NmpApp, namespace: &str, action_json: &str) -> serde_json::Value {
-    let ns = CString::new(namespace).unwrap();
-    let body = CString::new(action_json).unwrap();
-    let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
-    assert!(!ptr.is_null(), "dispatch_action must never return null");
-    // SAFETY: `ptr` is a valid C string from `nmp_app_dispatch_action`.
-    let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
-    nmp_free_string(ptr);
-    serde_json::from_str(&out).unwrap()
+    match crate::dispatch_bytes::dispatch_action_bytes_for(app, namespace, action_json) {
+        Ok(correlation_id) => serde_json::json!({ "correlation_id": correlation_id }),
+        Err(error) => serde_json::json!({ "error": error }),
+    }
 }

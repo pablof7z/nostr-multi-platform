@@ -29,12 +29,10 @@ use nmp_app_chirp::{
     nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle, NmpRegisterStatus,
 };
 use nmp_ffi::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref,
-    nmp_app_resolve_ref, nmp_app_set_capability_callback, nmp_app_signin_nsec,
-    nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
+    nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref, nmp_app_resolve_ref,
+    nmp_app_set_capability_callback, nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
+    NmpConfigStatus,
 };
-use serde_json::Value;
-use std::ffi::c_void;
 use std::os::raw::c_int;
 
 // ADR-0063 (#1671 Lane F) — resolve_ref / release_ref FFI codes + consumer ids.
@@ -378,30 +376,17 @@ impl AppRuntime {
     // Action dispatch
     // ------------------------------------------------------------------
 
-    pub fn dispatch_action(&self,
-        namespace: &str,
-        action_json: &str,
-    ) -> Result<String, String> {
-        if self.app.is_null() {
-            return Err("runtime app is not available".to_string());
-        }
-        let namespace = CString::new(namespace)
-            .map_err(|_| "action namespace contains NUL byte".to_string())?;
-        let action =
-            CString::new(action_json).map_err(|_| "action JSON contains NUL byte".to_string())?;
-
-        // SAFETY: `app` is a valid, non-null pointer.
-        let ptr = unsafe { nmp_app_dispatch_action(self.app, namespace.as_ptr(), action.as_ptr()) };
-        if ptr.is_null() {
-            return Err("action dispatch returned null".to_string());
-        }
-        let text = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-        unsafe { nmp_free_string(ptr) };
-        let value: Value = serde_json::from_str(&text)
-            .map_err(|e| format!("action dispatch returned invalid JSON: {e}"))?;
-        parse_dispatch_envelope(&value)
+    /// Dispatch a Chirp action through the typed byte doorway.
+    ///
+    /// `action_json` is the canonical action body produced by a Chirp builder;
+    /// the shared `nmp_app_chirp::dispatch_bytes` seam encodes it into the
+    /// namespace's typed [`ActionPayload`] bytes, wraps it in a host-minted
+    /// dispatch envelope, and calls `nmp_app_dispatch_action_bytes` — the JSON
+    /// never crosses the FFI (ADR-0064 / Cut-B, #1756). The desktop bridge only
+    /// dispatches the NIP-47 wallet verbs directly through here; the social
+    /// verbs go through the embedded `ChirpClient` (which uses the same seam).
+    pub fn dispatch_action(&self, namespace: &str, action_json: &str) -> Result<String, String> {
+        nmp_app_chirp::dispatch_action_bytes_for(self.app, namespace, action_json)
     }
 }
 
@@ -426,14 +411,6 @@ impl Drop for AppRuntime {
     }
 }
 
-fn parse_dispatch_envelope(value: &Value) -> Result<String, String> {
-    if let Some(error) = value.get("error").and_then(Value::as_str) {
-        return Err(error.to_string());
-    }
-    value
-        .get("correlation_id")
-        .and_then(Value::as_str)
-        .filter(|id| !id.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| "action dispatch envelope missing correlation_id".to_string())
-}
+// The dispatch-result envelope parser moved into `nmp_app_chirp::dispatch_bytes`
+// alongside the byte-doorway call that produces the envelope (ADR-0064 / Cut-B,
+// #1756); it is unit-tested there. The desktop bridge no longer owns a copy.

@@ -88,6 +88,11 @@ nmp-relations = { path = "../../../crates/nmp-relations" }
 # `nmp_nip02::register_actions(app)` call (Opus direction review #10
 # 30-day call). D0-clean: `nmp-core` gains no NIP-02 / NIP-25 nouns.
 nmp-nip02 = { path = "../../../crates/nmp-nip02" }
+# NIP-25 reactions — the `ReactAction` / `UnreactAction` typed payload encoders
+# for the `nmp.nip25.{react,unreact}` byte-doorway dispatch (Cut-B caller slice,
+# #1756). `ReactAction` is also re-exported via nmp-nip02, but `UnreactAction`
+# is not, so the direct dep names both from one place.
+nmp-nip25 = { path = "../../../crates/nmp-nip25" }
 # NIP-17 DM action input type used by Chirp's Rust-owned action-spec builders.
 nmp-nip17 = { path = "../../../crates/nmp-nip17" }
 # NIP-29 relay-based groups. Chirp registers the crate's typed
@@ -101,6 +106,13 @@ nmp-nip29 = { path = "../../../crates/nmp-nip29" }
 # `nmp.nip57.zap` action module + kind:9734 builder + LNURL fetcher are
 # wired by `nmp-defaults::register_defaults` (transitively).
 nmp-nip57 = { path = "../../../crates/nmp-nip57" }
+# NIP-65 relay-list + NIP-51 blocked-relay typed payload encoders
+# (`PublishRelayListInput` / `BlockRelayInput` / `UnblockRelayInput`) for the
+# byte-doorway dispatch of `nmp.nip65.publish_relay_list` and
+# `nmp.nip51.{block,unblock}_relay` (Cut-B caller slice, #1756). The router's
+# action MODULES are wired by `register_defaults`; this dep is only the typed
+# payload encoders the host-side dispatch needs.
+nmp-router = { path = "../../../crates/nmp-router" }
 # V-38: NIP-47 NWC wallet stack moved out of `nmp-core`. Optional + gated
 # behind the `wallet` feature so the default-off build excludes it.
 nmp-nip47 = { path = "../../../crates/nmp-nip47", optional = true }

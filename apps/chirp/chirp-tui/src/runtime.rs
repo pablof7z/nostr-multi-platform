@@ -1,5 +1,5 @@
 use std::cell::Cell;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::os::raw::c_int;
 use std::ptr;
 use std::sync::mpsc::Receiver;
@@ -19,8 +19,8 @@ use nmp_nip01::NoteRecord;
 
 use crate::app::ReplyTarget;
 use nmp_ffi::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref,
-    nmp_app_resolve_ref, nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
+    nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref, nmp_app_resolve_ref,
+    nmp_app_start, NmpApp, NmpConfigStatus,
 };
 use serde_json::{json, Value};
 
@@ -273,22 +273,17 @@ impl AppRuntime {
         self.app
     }
 
+    /// Dispatch a Chirp action through the typed byte doorway.
+    ///
+    /// `action_json` is the canonical action body produced by a Chirp builder
+    /// (`crate::action_specs` / a runtime `json!` body). The shared
+    /// `nmp_app_chirp::dispatch_bytes` seam encodes it into the namespace's typed
+    /// [`ActionPayload`] bytes, wraps it in a host-minted dispatch envelope, and
+    /// calls `nmp_app_dispatch_action_bytes` — the JSON never crosses the FFI
+    /// (ADR-0064 / Cut-B, #1756). The Marmot path is unaffected: it uses the
+    /// native `MarmotHandle::dispatch` accessor, not this seam.
     pub(crate) fn dispatch_action(&self, namespace: &str, action_json: &str) -> Result<String> {
-        let namespace = CString::new(namespace)
-            .map_err(|_| "action namespace contains NUL byte".to_string())?;
-        let action =
-            CString::new(action_json).map_err(|_| "action JSON contains NUL byte".to_string())?;
-        let ptr = nmp_app_dispatch_action(self.app, namespace.as_ptr(), action.as_ptr());
-        if ptr.is_null() {
-            return Err("action dispatch returned null".to_string());
-        }
-        let text = unsafe { CStr::from_ptr(ptr) }
-            .to_string_lossy()
-            .into_owned();
-        nmp_free_string(ptr);
-        let value: Value = serde_json::from_str(&text)
-            .map_err(|e| format!("action dispatch returned invalid JSON: {e}"))?;
-        parse_dispatch_envelope(&value)
+        nmp_app_chirp::dispatch_action_bytes_for(self.app, namespace, action_json)
     }
 
     pub(crate) fn with_cstr<T>(&self, value: &str, f: impl FnOnce(&CString) -> T) -> Result<T> {
@@ -343,17 +338,9 @@ impl AppRuntime {
     }
 }
 
-fn parse_dispatch_envelope(value: &Value) -> Result<String> {
-    if let Some(error) = value.get("error").and_then(Value::as_str) {
-        return Err(error.to_string());
-    }
-    value
-        .get("correlation_id")
-        .and_then(Value::as_str)
-        .filter(|id| !id.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| "action dispatch envelope missing correlation_id".to_string())
-}
+// The dispatch-result envelope parser moved into `nmp_app_chirp::dispatch_bytes`
+// alongside the byte-doorway call that produces the envelope (ADR-0064 / Cut-B,
+// #1756); it is unit-tested there. The TUI no longer owns a copy.
 
 impl Drop for AppRuntime {
     fn drop(&mut self) {
@@ -460,6 +447,10 @@ mod tests {
 
     #[test]
     fn dispatch_envelope_requires_correlation_id_or_error() {
+        // The parser now lives in the shared `nmp_app_chirp::dispatch_bytes` seam
+        // (ADR-0064 / Cut-B, #1756); assert through its public re-export so the
+        // TUI keeps a smoke check on the contract it depends on.
+        use nmp_app_chirp::parse_dispatch_envelope;
         assert_eq!(
             parse_dispatch_envelope(&serde_json::json!({"correlation_id": "abc"})),
             Ok("abc".to_string())
