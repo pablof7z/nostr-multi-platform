@@ -1,0 +1,26 @@
+namespace nmp.nip17;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// `nmp.nip17.publish_relay_list` `ActionModule`. The OPAQUE
+// `DispatchEnvelope.payload` for that namespace; the registry adapter (S9)
+// decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch).
+//
+// Distinct from `dm_relay_list.fbs` which is the READ-direction snapshot
+// projection sidecar (ADR-0037). This file is the WRITE-direction action
+// payload.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip17/src/wire/generated \
+//         crates/nmp-nip17/schema/dm_relay_list_action.fbs
+
+table PublishDmRelayListPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The user's DM-inbox relay set to advertise as a kind:10050 event.
+  relays:[string];
+}
+
+file_identifier "N17R";
+root_type PublishDmRelayListPayload;

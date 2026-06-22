@@ -1,0 +1,25 @@
+namespace nmp.nip17;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the `nmp.nip17.send`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter (S9) decodes against THIS schema, gating `schema_version`
+// BEFORE `start()` (fail-closed on mismatch).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip17/src/wire/generated \
+//         crates/nmp-nip17/schema/send.fbs
+
+table SendDmPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // Recipient's Nostr public key, lowercase hex.
+  recipient_pubkey:string (required);
+  // The plaintext message body — becomes the kind:14 `content`.
+  content:string (required);
+  // Optional event id (hex) this message replies to. Empty string means absent.
+  reply_to:string;
+}
+
+file_identifier "N17S";
+root_type SendDmPayload;
