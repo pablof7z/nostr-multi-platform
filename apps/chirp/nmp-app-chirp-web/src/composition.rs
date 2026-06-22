@@ -136,8 +136,26 @@ fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
 ///
 /// Call this once after `WasmRuntime::new()`, before `Start`. The engine
 /// will observe kernel events as soon as relays are connected.
+///
+/// Takes `&mut` so it can register the non-publish write modules (ADR-0064 / S3,
+/// #1751 / #1008) into the runtime's typed action registry: `nmp-wasm` cannot
+/// depend on the NIP crates (D0 / layering), so this composition root — which
+/// CAN — is where the per-NIP `register_actions` entry points run, exactly as
+/// the native FFI app delegates to each crate's `register_actions`.
 #[must_use]
-pub fn setup_chirp_web_feeds(runtime: &WasmRuntime) -> ChirpWebFeedSetup {
+pub fn setup_chirp_web_feeds(runtime: &mut WasmRuntime) -> ChirpWebFeedSetup {
+    // S3 — register the typed write modules so a typed FlatBuffers payload
+    // dispatched through the `dispatch_bytes` doorway DECODES per-crate and
+    // reaches the module's `start()` instead of the generic envelope-level
+    // write-path `CapabilityFailure`. `nmp_nip02::register_actions` wires the
+    // NIP-02 follow verbs (`nmp.follow` / `nmp.unfollow` / `nmp.follow_many`)
+    // AND, transitively, the NIP-25 reaction verbs (`nmp.nip25.react` /
+    // `nmp.nip25.unreact`) via `nmp_nip25::register_actions`. The terminal write (execute →
+    // ActorCommand → kind:N publish) still requires the #1007 OutboxResolver the
+    // web preview does not yet wire, so a validated write surfaces the honest
+    // `publish_not_supported_in_web_preview` token — never a silent accept.
+    nmp_nip02::register_actions(runtime);
+
     let reducer = runtime.reducer_handle();
 
     // 0. Install the production substrate cache/parser pairs. The wasm32 path

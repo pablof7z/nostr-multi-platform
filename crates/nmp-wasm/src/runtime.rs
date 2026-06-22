@@ -21,7 +21,10 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use nmp_core::{KernelAction, KernelReducer, KernelUpdate, OutboundMessage};
+use nmp_core::substrate::{ActionModule, ActionRegistrar};
+use nmp_core::{
+    default_registry, ActionRegistry, KernelAction, KernelReducer, KernelUpdate, OutboundMessage,
+};
 
 #[cfg(target_arch = "wasm32")]
 use crate::relay_pool;
@@ -91,6 +94,17 @@ pub struct WasmRuntime {
     /// `start()` fills it; `stop()` clears it. `wasm32`-only.
     #[cfg(target_arch = "wasm32")]
     tick_interval: Option<gloo_timers::callback::Interval>,
+    /// ADR-0064 / S3 (#1751) — the typed action registry. The wasm twin of
+    /// `NmpApp::action_registry`: it owns the per-namespace `ActionModule`
+    /// values whose `start_bytes` runs the typed FlatBuffers `decode_payload`
+    /// + the fail-closed `schema_version` gate before `start()`. Seeded with
+    /// `default_registry()` (the kernel `PublishModule`, exactly like native);
+    /// the composition root (`nmp-app-chirp-web`, which CAN depend on the NIP
+    /// crates — `nmp-wasm` cannot, D0/layering) registers the NIP-02/NIP-25
+    /// write modules through [`WasmRuntime::register_action`] /
+    /// [`WasmRuntime::register_default_action`], mirroring the per-NIP
+    /// `register_actions` entry points the native FFI app calls.
+    action_registry: ActionRegistry,
 }
 
 impl Default for WasmRuntime {
@@ -106,6 +120,7 @@ impl Default for WasmRuntime {
             handlers_slot: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
             tick_interval: None,
+            action_registry: default_registry(),
         }
     }
 }
@@ -148,6 +163,31 @@ impl WasmRuntime {
     #[must_use]
     pub fn reducer_handle(&self) -> Rc<RefCell<KernelReducer>> {
         Rc::clone(&self.reducer)
+    }
+
+    /// Register a typed [`ActionModule`] under its `NAMESPACE` into the runtime's
+    /// action registry. The wasm twin of `NmpApp::register_action`.
+    ///
+    /// The composition root (`nmp-app-chirp-web`) calls this — directly or
+    /// through the per-NIP `register_actions(&mut impl ActionRegistrar)` entry
+    /// points — to populate the non-publish write namespaces (NIP-02 follow /
+    /// unfollow / follow_many, NIP-25 react / unreact). A typed payload
+    /// dispatched through `dispatch_bytes` for a registered namespace then
+    /// reaches the module's typed `start_bytes` decode (S3 / #1751) instead of
+    /// the generic write-path `CapabilityFailure`. `nmp-wasm` itself cannot
+    /// depend on the NIP crates (D0 / layering), so registration is the
+    /// composition root's job — exactly as the native FFI app delegates to each
+    /// crate's `register_actions`.
+    pub fn register_action<M: ActionModule + 'static>(&mut self, module: M) {
+        self.action_registry.register(module);
+    }
+
+    /// Register a typed [`ActionModule`] **only if** its namespace is not
+    /// already claimed (returns `true` on first registration). The wasm twin of
+    /// `NmpApp::register_default_action`; the per-NIP `register_actions`
+    /// helpers call this through the [`ActionRegistrar`] impl below.
+    pub fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
+        self.action_registry.register_default(module)
     }
 
     /// Install (or clear, with `None`) the snapshot push callback. Wasm32
@@ -436,6 +476,20 @@ impl fmt::Display for WasmRuntimeError {
             Self::InvalidConfig(message) => write!(formatter, "invalid config: {message}"),
             Self::KernelContract(message) => write!(formatter, "kernel contract: {message}"),
         }
+    }
+}
+
+/// Lets the per-NIP `register_actions(&mut impl ActionRegistrar)` entry points
+/// (e.g. `nmp_nip02::register_actions`, `nmp_nip25::register_actions`) register
+/// straight into the runtime's typed action registry — the wasm twin of the
+/// `impl ActionRegistrar for NmpApp` the native FFI app provides.
+impl ActionRegistrar for WasmRuntime {
+    fn register_action<M: ActionModule + 'static>(&mut self, module: M) {
+        WasmRuntime::register_action(self, module);
+    }
+
+    fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
+        WasmRuntime::register_default_action(self, module)
     }
 }
 

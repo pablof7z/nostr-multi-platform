@@ -21,8 +21,8 @@ fn kind0_content(display_name: &str) -> String {
 
 #[test]
 fn kind3_parser_updates_kernel_follow_feed_authors() {
-    let runtime = WasmRuntime::new();
-    let setup = setup_chirp_web_feeds(&runtime);
+    let mut runtime = WasmRuntime::new();
+    let setup = setup_chirp_web_feeds(&mut runtime);
 
     runtime
         .reducer_handle()
@@ -63,8 +63,8 @@ fn kind3_parser_updates_kernel_follow_feed_authors() {
 fn kind10002_parser_updates_profile_claim_routing_cache() {
     const BOB_RELAY: &str = "wss://bob.relay.example";
 
-    let runtime = WasmRuntime::new();
-    let _setup = setup_chirp_web_feeds(&runtime);
+    let mut runtime = WasmRuntime::new();
+    let _setup = setup_chirp_web_feeds(&mut runtime);
     let reducer = runtime.reducer_handle();
 
     reducer.borrow_mut().project_raw_event_for_test(

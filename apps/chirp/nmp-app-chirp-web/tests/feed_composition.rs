@@ -53,8 +53,8 @@ fn p_tag(pubkey: &str) -> Vec<String> {
 
 #[test]
 fn setup_completes_without_panic() {
-    let runtime = WasmRuntime::new();
-    let setup = setup_chirp_web_feeds(&runtime);
+    let mut runtime = WasmRuntime::new();
+    let setup = setup_chirp_web_feeds(&mut runtime);
     // Snapshot is empty but accessible — setup did not panic.
     let snapshot = setup.engine.snapshot(&FeedRequest::default());
     assert_eq!(snapshot.cards.len(), 0);
@@ -114,8 +114,8 @@ fn wired_path_follow_feed_populates_snapshot() {
     // `setup_chirp_web_feeds` actually wires the engine into the kernel's
     // fan-out. The existing tests above drive the engine directly; this test
     // drives it through the registered slot.
-    let runtime = WasmRuntime::new();
-    let setup = setup_chirp_web_feeds(&runtime);
+    let mut runtime = WasmRuntime::new();
+    let setup = setup_chirp_web_feeds(&mut runtime);
 
     // Set ALICE as the active account. This writes to the `ActiveAccountSlot`
     // that `ActiveFollowSet` reads from.
@@ -160,8 +160,8 @@ fn wired_kind3_parser_updates_kernel_follow_feed_authors() {
     //   3. the active account's kind:3 arrives through the projection chokepoint
     //   4. the kernel's follow-feed author set expands from self-only to include
     //      BOB, so the wasm relay pool can subscribe to BOB's notes.
-    let runtime = WasmRuntime::new();
-    let setup = setup_chirp_web_feeds(&runtime);
+    let mut runtime = WasmRuntime::new();
+    let setup = setup_chirp_web_feeds(&mut runtime);
     let reducer = runtime.reducer_handle();
 
     let _ = reducer.borrow_mut().set_active_account(ALICE.to_string());
@@ -206,8 +206,8 @@ fn wired_path_attribution_surfaces_when_missing_root_arrives() {
     //   3. assert no card yet — root absent
     //   4. BOB's root arrives via observer
     //   5. assert 1 card with ALICE's attribution
-    let runtime = WasmRuntime::new();
-    let setup = setup_chirp_web_feeds(&runtime);
+    let mut runtime = WasmRuntime::new();
+    let setup = setup_chirp_web_feeds(&mut runtime);
 
     runtime
         .reducer_handle()
@@ -277,7 +277,7 @@ fn setup_chirp_web_feeds_projection_appears_in_snapshot() {
     use nmp_nip01::op_feed::{OP_FEED_SCHEMA_ID, OP_FEED_SNAPSHOT_KEY};
 
     let mut runtime = WasmRuntime::new();
-    let _setup = setup_chirp_web_feeds(&runtime);
+    let _setup = setup_chirp_web_feeds(&mut runtime);
 
     // `snapshot_bytes_for_test` builds the FlatBuffers update frame the same
     // way the wasm32 relay-pool sink does (via `make_update_frame`), which
@@ -318,8 +318,8 @@ fn notify_account_changed_resets_engine_on_switch() {
     //   2. Switch to BOB → notify_account_changed detects pubkey change
     //   3. engine is reset → snapshot empty
     //   4. BOB's root arrives → snapshot has BOB's root
-    let runtime = WasmRuntime::new();
-    let setup = setup_chirp_web_feeds(&runtime);
+    let mut runtime = WasmRuntime::new();
+    let setup = setup_chirp_web_feeds(&mut runtime);
 
     // Step 1: set ALICE, seed follow set, deliver ALICE's root.
     runtime
