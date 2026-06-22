@@ -33,7 +33,7 @@ Notes:
 ### 1.2 Presentation of combinations + counts
 
 - Reasons render as a vertically stacked `reasonsSection` on `RelayDetailView`, one card per reason, in a fixed priority order decided in Rust (App relay → Outbox → Relay hint → Interest), so the shell never sorts.
-- Each reason card carries a **pre-formatted headline label** (`role_label`/`role_tone`-style strings, consistent with the existing diagnostics projection contract — `relay_diagnostics.rs:69-84`) plus its structured payload.
+- Each reason card carries a **shell-derived headline label** computed from the raw `kind` token on the wire (consistent with the existing diagnostics projection contract — `relay_diagnostics.rs:69-84`; tone is derived by the shell, not emitted by Rust) plus its structured payload.
 - Pubkey lists are **capped at a small display N** (proposed: 8) with an exact `total` count so the UI can render "alice, bob, … +142 (150 total)". Capping happens in Rust; the cap and the total are both projection fields.
 - Kinds render from a Rust pre-formatted `kinds_label` (mirroring the existing `discovery_kinds_label` precedent — `relay_diagnostics.rs:118-121`) so the shell never switches on kind numbers (aim.md §4.5; ADR honored by the existing projection).
 
@@ -112,7 +112,7 @@ SubscriptionCompiler — capture per-lane attribution at the lane-tag sites   [N
                        └─ Chirp renders reasonsSection + Block button         [thin shell]
 ```
 
-No new projection key, no new FFI snapshot, no app logic. We extend the **existing** `relay_diagnostics` projection (`crates/nmp-core/src/kernel/relay_diagnostics.rs`) — which already pre-rolls every relay row, pre-formats labels/tones, and is decoded by Chirp at `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift:225-291`.
+No new projection key, no new FFI snapshot, no app logic. We extend the **existing** `relay_diagnostics` projection (`crates/nmp-core/src/kernel/relay_diagnostics.rs`) — which already pre-rolls every relay row with raw protocol tokens (shells derive labels/tones), and is decoded by Chirp at `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift:225-291`.
 
 ### 3.2 Planner: retain attribution (no recompute)
 

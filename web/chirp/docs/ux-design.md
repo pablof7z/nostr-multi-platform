@@ -58,9 +58,9 @@ events_rx, denied}`, `wire_subscriptions[]{wire_id, relay_url, state}`,
 `last_error_toast`, `last_error_category`, `last_planner_error`.
 
 **Typed projection sidecar (kernel-side, decoders exist in `nmp-core`):**
-`relay_diagnostics` (pre-rolled rows with *labels and tones already chosen by
-Rust* — `connection_label`/`connection_tone`, `auth_label`/`auth_tone`,
-per-relay wire subs, logical interests with `cache_coverage`),
+`relay_diagnostics` (rows carrying raw protocol tokens — `role`, `connection`,
+`auth` as lowercase strings; the web shell derives labels and tones from those
+tokens; per-relay wire subs, logical interests with `cache_coverage`),
 `configured_relays`, `accounts`, `active_account`, `profile`,
 `resolved_profiles`, `claimed_profiles`, `claimed_events`, `publish_queue`,
 `publish_outbox`, `outbox_summary`, `action_results`, `action_stages`,
@@ -77,10 +77,11 @@ and renders honest "not yet reported by the browser runtime" placeholders for
 fields the wasm frame leaves at zero. Every such dependency is a numbered gap
 in §9.
 
-Cardinal rule for the shell: **labels and tones come from Rust where Rust
-provides them** (`relay_diagnostics` ships `*_label` + `*_tone` strings). The
-shell maps tone strings to CSS custom properties and renders. It does not
-re-derive status semantics in TypeScript.
+Cardinal rule for the shell: **raw protocol tokens come from Rust; the shell
+derives labels and tones from them.** `relay_diagnostics` ships lowercase
+token strings (`role`, `connection`, `auth`, `state`); the web shell maps
+those tokens to CSS custom properties and display labels. It does not
+re-derive status semantics — it reads the token and maps to presentation.
 
 ---
 
@@ -469,8 +470,8 @@ design. **[GAP-8]** tracks wiring NIP-10 replies.
 ### 5.6 The NMP Inspector
 
 The soul of the showcase. Not a console — an **instrument cluster**: curated,
-pre-digested by Rust (`relay_diagnostics` ships labels and tones; the shell
-maps tones to tokens and lays out type). Persistent left tab list inside the
+pre-digested by Rust (`relay_diagnostics` ships raw tokens; the shell derives
+labels and tones from those tokens and lays out type). Persistent left tab list inside the
 dock; every panel deep-linkable.
 
 ```
@@ -517,7 +518,7 @@ legitimately the shell's), `events_rx`, `actor_queue_depth`,
 #### 5.6.2 Relays — live connection panel
 
 The flagship. One card per relay, driven by `relay_diagnostics` rows
-(pre-rolled `short_url`, role/connection/auth labels + tones, rolled-up sub
+(pre-rolled `short_url`, raw role/connection/auth tokens — shell derives labels + tones, rolled-up sub
 counts, pre-formatted byte/time displays) with `relay_statuses` as the
 fallback surface until the sidecar flows **[GAP-2]**.
 

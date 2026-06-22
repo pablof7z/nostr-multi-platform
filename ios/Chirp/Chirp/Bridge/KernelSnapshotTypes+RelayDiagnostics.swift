@@ -8,11 +8,12 @@ import Foundation
 // (role, connection, auth as lowercase strings; bytes as u64 counters;
 // discoveryKinds as [UInt64]). Display formatting is the shell's job.
 //
-// Thin-shell rule: these are pure DTOs. The shell renders fields directly —
-// it does NOT filter / sort / reduce wireSubscriptions, does NOT compute
-// `Date(timeIntervalSince1970:)` from `lastEventAtMs`, does NOT switch on
-// `state == "open"` to pick a color. All of that is in the Rust projection
-// (aim.md §4.5 / §6 anti-pattern #1 / §"Where do views live?" — line 241).
+// Thin-shell rule: these are pure DTOs. The wire carries raw protocol tokens
+// (role / connection / auth / state as lowercase strings). The shell derives
+// display labels and color from those tokens — it does NOT filter / sort /
+// reduce wireSubscriptions and does NOT compute `Date(timeIntervalSince1970:)`
+// from `lastEventAtMs`. No tone strings on the wire (aim.md §4.5 / §6
+// anti-pattern #1 / §"Where do views live?" — line 241).
 //
 // Extracted from `KernelSnapshotTypes.swift` to satisfy the 500-LOC
 // file-size hard-cap gate (AGENTS.md).
