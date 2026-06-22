@@ -150,9 +150,10 @@ fn render_one_decoder(entry: &SnapshotProjectionEntry, out: &mut String) {
         .expect("caller filters to Some reader types");
     // #1723: the neutral schema_id / file_identifier are SOURCED from the
     // projection contract (the single source), not from the Swift registry — the
-    // `TypedSidecar` no longer redeclares them. Fail-closed: an entry whose
-    // producer key has no contract row panics here.
-    let contract = crate::projection_contract::contract_for(sidecar.key);
+    // `TypedSidecar` no longer redeclares them, nor the producer envelope `key`
+    // (the entry's own `key` IS the producer envelope key). Fail-closed: an entry
+    // whose key has no contract row panics here.
+    let contract = crate::projection_contract::contract_for(entry.key);
     let schema_id = contract.schema_id;
     let file_identifier = contract.file_identifier;
     let enum_name = decoder_enum_name(entry.swift_field);
@@ -162,12 +163,12 @@ fn render_one_decoder(entry: &SnapshotProjectionEntry, out: &mut String) {
     out.push_str(&format!("// MARK: - {enum_name}\n"));
     out.push_str(&format!(
         "// Projection `{}` → typed sidecar `{}` ({}). Domain type: `{}?`.\n",
-        entry.json_key, schema_id, file_identifier, domain
+        entry.key, schema_id, file_identifier, domain
     ));
     out.push_str(&format!("enum {enum_name} {{\n"));
     out.push_str(&format!(
         "    /// `TypedProjection.key` the producer publishes for this projection.\n    static let key = {:?}\n",
-        sidecar.key
+        entry.key
     ));
     out.push_str(&format!(
         "    /// `TypedPayload.schema_id` carried on the sidecar buffer.\n    static let schemaId = {:?}\n",
@@ -184,7 +185,7 @@ fn render_one_decoder(entry: &SnapshotProjectionEntry, out: &mut String) {
     // absent / wrong-schema / malformed (graceful fallback to the JSON path).
     out.push_str(&format!(
         "    /// Decode the typed `{}` sidecar from the snapshot's typed-projection\n",
-        entry.json_key
+        entry.key
     ));
     out.push_str(
         "    /// envelopes into the Chirp domain value. Returns `nil` (so the host\n",

@@ -28,13 +28,13 @@ mod tests {
     use super::*;
     use crate::swift_projections_registry::SNAPSHOT_PROJECTIONS;
 
-    /// Every registry `json_key` must be classified by [`projection_tier`] (i.e.
+    /// Every registry `key` must be classified by [`projection_tier`] (i.e.
     /// have a contract entry). A new entry without a contract row trips the
     /// fail-closed panic here at commit time.
     #[test]
     fn every_registry_key_is_classified() {
         for entry in SNAPSHOT_PROJECTIONS {
-            let _ = projection_tier(entry.json_key);
+            let _ = projection_tier(entry.key);
         }
     }
 

@@ -15,7 +15,7 @@
 //! both platforms.
 //!
 //! This gate puts the codegen registry and the runtime producer in ONE
-//! assertion: each registry `json_key` must be either
+//! assertion: each registry `key` must be either
 //! - a key with a registered Tier-1 closure in the live `SnapshotRegistry`
 //!   (host registrations + the actor's built-ins — they share one
 //!   `Arc<Mutex<…>>`), or
@@ -180,7 +180,7 @@ fn every_codegen_registry_key_is_registered_at_runtime() {
     let uncovered: Vec<&str> = SNAPSHOT_PROJECTIONS
         .iter()
         .filter(|entry| entry.typed_sidecar.is_some())
-        .map(|entry| entry.json_key)
+        .map(|entry| entry.key)
         .filter(|key| !exempt.contains(key) && !runtime_keys.contains(*key))
         .collect();
     assert!(
