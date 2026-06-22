@@ -75,7 +75,20 @@ mod cipher_for_account_tests;
 mod nip42_async_auth_tests;
 #[cfg(feature = "native")]
 mod outbound;
-#[cfg(feature = "native")]
+// #1753 S6 — the parked-signer-op queue + drain is target-agnostic: the native
+// actor loop drives it on idle ticks, the wasm `KernelReducer` drives it on a
+// sign-completion message (pure re-entry). It must compile on all targets, so it
+// is NOT `native`-gated. Its dependencies (`Kernel`, `SignerOp`, `PublishTarget`,
+// `SignedEvent`, the boxed continuations) are all always-compiled.
+//
+// On the pure-kernel (non-`native`, i.e. wasm) build only the `SignContinuation`
+// sink + `ParkedSignerOps::drive` are exercised (the wasm signing round-trip);
+// the publish / auth / sign-and-return sinks and `DrainBatch`'s obligation
+// fields are native-loop-only and legitimately dead there. Suppress the
+// resulting dead-code warnings on that build rather than fracturing the module
+// into `#[cfg]`-gated enum variants (which would force the drain's match to be
+// gated too).
+#[cfg_attr(not(feature = "native"), allow(dead_code))]
 pub(crate) mod pending_sign;
 #[cfg(all(test, feature = "native"))]
 mod protocol_panic_isolation_tests;
@@ -213,7 +226,7 @@ pub use config::{ActorChannels, ActorConfig, ActorConfigSources, ActorRuntimeSlo
 #[cfg(feature = "native")]
 use dispatch::{dispatch_command, ActorContext};
 #[cfg(feature = "native")]
-use pending_sign::{resolve_parked_op, AuthObligation, ParkedOp, PublishObligation};
+use pending_sign::{ParkedSignerOps, PublishObligation};
 
 use crate::kernel::LifecyclePhase;
 
@@ -1604,12 +1617,14 @@ pub fn run_actor_with_observers(
     // (performance-timing) read, never the business clock — D9-clean.
     let mut last_gc = Instant::now();
     let mut startup_sent = false;
-    // The single unified parked-op queue (ADR-0050 §D2). `dispatch_command`
+    // The single unified parked-op queue (ADR-0050 §D2; #1753). `dispatch_command`
     // pushes a `ParkedOp` whenever a remote (NIP-46 / NIP-55) signer goes
     // `Pending` — publish, sign-and-return, the generic sign port, and the
-    // cipher port (§D1) all land here and are drained in ONE `retain_mut` below.
+    // cipher port (§D1) all land here and are drained in ONE `drive` below.
+    // `ParkedSignerOps` is the target-agnostic queue + drain driver shared with
+    // the wasm `KernelReducer` (#1753) so there is one drain, not a parallel copy.
     // Lives outside the loop so parked ops survive across ticks.
-    let mut parked_ops: Vec<ParkedOp> = Vec::new();
+    let mut parked_ops = ParkedSignerOps::new();
     let mut queued_publish_outbound = Vec::new();
     let mut first_command = None;
 
@@ -2050,24 +2065,20 @@ pub fn run_actor_with_observers(
         // deadline is the wall-clock gate). Projection / continuation sinks
         // resolve against the kernel in `resolve_parked_op`; the `Publish` sink
         // hands back a `PublishObligation` (the loop owns relay routing).
-        // Obligations are collected during the retain and run after it so the
+        // Obligations are collected during the drive and run after it so the
         // drain's `&mut kernel` borrow never overlaps `route_dispatch_outbound`.
-        // Empty `parked_ops` is a heap-free zero-item retain.
+        // Empty `parked_ops` is a heap-free zero-item drive.
+        //
+        // `ParkedSignerOps::drive` is the ONE canonical drain driver (#1753),
+        // shared verbatim with the wasm `KernelReducer`; the native loop drives
+        // it on the idle tick, the wasm reducer drives it on a sign-completion
+        // message — same `retain_mut`, no parallel copy.
         if !parked_ops.is_empty() {
-            let mut publish_obligations: Vec<PublishObligation> = Vec::new();
-            let mut auth_obligations: Vec<AuthObligation> = Vec::new();
-            let mut any_changed = false;
-            parked_ops.retain_mut(|parked| {
-                let outcome = resolve_parked_op(parked, &mut kernel);
-                if let Some(obligation) = outcome.publish {
-                    publish_obligations.push(obligation);
-                }
-                if let Some(obligation) = outcome.auth {
-                    auth_obligations.push(obligation);
-                }
-                any_changed |= outcome.changed;
-                outcome.keep
-            });
+            let pending_sign::DrainBatch {
+                publish: publish_obligations,
+                auth: auth_obligations,
+                changed: any_changed,
+            } = parked_ops.drive(&mut kernel);
             // V-06 / #960: execute the NIP-42 AUTH obligations the `Auth` sink
             // handed back (re-enter `dispatch_signed_auth` / `fail_auth_sign` and
             // route outbound) — see `auth_sign::run_auth_obligations`. Runs here

@@ -55,7 +55,7 @@ fn pool_frame_to_relay_frame(frame: PoolFrame) -> RelayFrame {
 
 use super::capability_worker::CapabilityWorkSender;
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
-use super::pending_sign::ParkedOp;
+use super::pending_sign::{ParkedOp, ParkedSignerOps};
 use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
     shutdown_relay_worker, spawn_missing_relays,
@@ -155,7 +155,7 @@ fn maybe_publish_relay_list_after_edit(
     identity: &commands::IdentityRuntime,
     kernel: &mut Kernel,
     projection_before: &[crate::kernel::AppRelay],
-    parked_ops: &mut Vec<ParkedOp>,
+    parked_ops: &mut ParkedSignerOps,
 ) -> Vec<OutboundMessage> {
     // Guard 1: must have an active signer.
     if identity.active_pubkey().is_none() {
@@ -284,7 +284,7 @@ pub(super) struct ActorContext<'a> {
     /// NIP-55) signer goes `Pending`. The idle loop drains them in one
     /// `retain_mut`. Local-key ops resolve inline in the dispatch arm and never
     /// reach this vec.
-    pub(super) parked_ops: &'a mut Vec<ParkedOp>,
+    pub(super) parked_ops: &'a mut ParkedSignerOps,
     /// Self-feedback [`crate::actor::CommandSender`] — the actor's own waking
     /// inbox handle (ADR-0050 §D3a) from the perspective of code running on
     /// the actor thread. `dispatch.rs` arms that spawn background workers
@@ -2153,7 +2153,7 @@ mod nip65_auto_publish_tests {
         // signed-in user produces a kind:10002 frame.
         let mut kernel = fresh_kernel();
         let mut identity = signed_in_identity(&mut kernel);
-        let mut pending = Vec::new();
+        let mut pending = crate::actor::pending_sign::ParkedSignerOps::new();
 
         // Capture the projection BEFORE the mutation, as the dispatch arm
         // does, then mutate and call the helper directly.
@@ -2177,7 +2177,7 @@ mod nip65_auto_publish_tests {
         // (and must NOT set the no-account error toast).
         let mut kernel = fresh_kernel();
         let mut identity = fresh_identity();
-        let mut pending = Vec::new();
+        let mut pending = crate::actor::pending_sign::ParkedSignerOps::new();
 
         let before = kernel.configured_relays_snapshot().to_vec();
         add_relay(&mut kernel, "wss://relay.example", "both");
@@ -2204,7 +2204,7 @@ mod nip65_auto_publish_tests {
         // write and bumps the kind:10002 timestamp for nothing.
         let mut kernel = fresh_kernel();
         let mut identity = signed_in_identity(&mut kernel);
-        let mut pending = Vec::new();
+        let mut pending = crate::actor::pending_sign::ParkedSignerOps::new();
 
         // First add — projection changes; this would publish.
         add_relay(&mut kernel, "wss://relay.example", "both");
@@ -2230,7 +2230,7 @@ mod nip65_auto_publish_tests {
         // re-publish.
         let mut kernel = fresh_kernel();
         let mut identity = signed_in_identity(&mut kernel);
-        let mut pending = Vec::new();
+        let mut pending = crate::actor::pending_sign::ParkedSignerOps::new();
 
         // Seed one row so the projection is non-empty (otherwise guard 3
         // would also trip and we couldn't distinguish guard-2 from guard-3).
@@ -2258,7 +2258,7 @@ mod nip65_auto_publish_tests {
         // dispatch.
         let mut kernel = fresh_kernel();
         let mut identity = signed_in_identity(&mut kernel);
-        let mut pending = Vec::new();
+        let mut pending = crate::actor::pending_sign::ParkedSignerOps::new();
 
         // Seed two rows so the post-removal projection still has at least
         // one NIP-65-eligible row — otherwise guard 3 (don't publish
@@ -2289,7 +2289,7 @@ mod nip65_auto_publish_tests {
         // "wipe my NIP-65 outbox"; that needs its own explicit verb.
         let mut kernel = fresh_kernel();
         let mut identity = signed_in_identity(&mut kernel);
-        let mut pending = Vec::new();
+        let mut pending = crate::actor::pending_sign::ParkedSignerOps::new();
 
         add_relay(&mut kernel, "wss://only.example", "both");
 

@@ -350,7 +350,7 @@ fn publish_unsigned_event_with_active_remote_uses_stub_signer() {
         content: "# hello bunker".into(),
         created_at: 1_700_000_000,
     };
-    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut Vec::new());
+    let outbound = publish_unsigned_event(&id, &mut kernel, unsigned, None, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
     assert_eq!(
         count.load(Ordering::Relaxed),
         1,

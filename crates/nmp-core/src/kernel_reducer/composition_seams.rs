@@ -136,6 +136,51 @@ impl super::KernelReducer {
     pub fn active_timeline_authors(&self) -> Vec<String> {
         self.kernel.active_timeline_authors()
     }
+
+    // ── Composition-root wiring (moved here for the LOC ceiling, #1753) ──────
+
+    /// Populate the kernel's configured-relay lanes from a caller-supplied
+    /// list of `(url, role)` pairs.
+    ///
+    /// Each `role` string is canonicalised via the kernel's own
+    /// `canonical_relay_role` pass (same normalisation the native actor
+    /// applies on every relay-edit write). [`crate::kernel::AppRelay`] is
+    /// `pub(crate)`; external crates (e.g. `nmp-wasm`) pass raw string
+    /// pairs and let this method build the typed rows internally.
+    ///
+    /// Calling this before the first `make_update_frame` ensures the
+    /// `relay_statuses` Tier-3 rows and the `configured_relays` typed
+    /// projection both carry real URLs rather than empty defaults.
+    pub fn set_configured_relays(&mut self, rows: Vec<(String, String)>) {
+        use crate::kernel::AppRelay;
+        let relay_rows: Vec<AppRelay> = rows
+            .into_iter()
+            .map(|(url, role)| AppRelay::new(url, role))
+            .collect();
+        self.kernel.set_configured_relays(relay_rows);
+    }
+
+    /// Install the production outbox-routing substrate on the wrapped kernel.
+    ///
+    /// The wasm32 composition has no `AppHost` / actor `set_routing_substrate`
+    /// seam (that path is native-only), so the chirp-web composition root calls
+    /// this directly to swap the kernel's default no-op
+    /// [`crate::substrate::EmptyOutboxRouter`] for the production
+    /// `nmp_router::GenericOutboxRouter` + a `MailboxCache`. Without this every
+    /// outbox-direction REQ (kind:0 profile claims, kind:3 contacts, kind:10002
+    /// NIP-65) silently resolves to no relays. Must be called before `Start`.
+    pub fn set_routing(
+        &mut self,
+        router: Arc<dyn crate::substrate::OutboxRouter>,
+        cache: Arc<dyn crate::substrate::MailboxCache>,
+    ) {
+        self.kernel.set_routing(router, cache);
+    }
+
+    /// Install a content parser on the wrapped kernel (wasm composition seam).
+    pub fn set_content_parser(&mut self, parser: Arc<dyn crate::substrate::ContentParser>) {
+        self.kernel.set_content_parser(parser);
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]
@@ -153,4 +198,5 @@ impl super::KernelReducer {
         self.kernel
             .project_raw_event_for_test(id, pubkey, created_at, kind, tags, content);
     }
+
 }

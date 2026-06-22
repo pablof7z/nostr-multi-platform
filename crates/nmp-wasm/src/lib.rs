@@ -46,8 +46,8 @@ mod snapshot;
 mod tick;
 
 pub use protocol::{
-    ActionDispatch, AppAction, AppActionDispatch, CapabilityFailure, CapabilityResult, ClientHello,
-    DegradedMode, RelayBootstrapEntry, RuntimeStatus, SetSigner, StartConfig, WorkerEvent,
-    WorkerRequest,
+    ActionDispatch, AppAction, AppActionDispatch, BeginSign, CapabilityFailure, CapabilityResult,
+    ClientHello, DegradedMode, DeliverSignerResponse, RelayBootstrapEntry, RuntimeStatus,
+    SetSigner, StartConfig, WorkerEvent, WorkerRequest,
 };
 pub use runtime::{WasmRuntime, WasmRuntimeError};

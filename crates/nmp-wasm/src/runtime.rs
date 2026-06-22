@@ -214,9 +214,22 @@ impl WasmRuntime {
                 })])
             }
             WorkerRequest::SetSigner(request) => Ok(self.set_signer(request)),
+            // #1753 S6 — the wasm signing capability round-trip (pure message
+            // re-entry). `begin_sign` parks an op + emits the broker request;
+            // `deliver_signer_response` drives the parked op once from this
+            // message handler — no polling, no tick-dependence (D8). Both
+            // delegate to the target-agnostic `KernelReducer` seam.
+            WorkerRequest::BeginSign(request) => Ok(self.begin_sign(request)),
+            WorkerRequest::DeliverSignerResponse(response) => {
+                Ok(self.deliver_signer_response(response))
+            }
             WorkerRequest::Stop { correlation_id } => self.stop(correlation_id),
         }
     }
+
+    // `begin_sign` / `deliver_signer_response` — the #1753 S6 wasm signing
+    // capability round-trip arms — live in the sibling `runtime/signer.rs`
+    // module (LOC ceiling). They are still private methods on `WasmRuntime`.
 
     fn start(&mut self, config: StartConfig) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
         if config.app_id.trim().is_empty() {
