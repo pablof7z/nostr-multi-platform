@@ -1,6 +1,7 @@
 use std::env;
 
 mod cli;
+mod cli_action_builders;
 
 fn main() {
     match run() {
@@ -39,6 +40,12 @@ fn run() -> Result<(), String> {
         // `KeyedRefCache.generated.swift` or `KeyedRefCache.kt` (per
         // `--platform`) from `KEYED_PROJECTIONS`; decodes `RefRowDeltaBatch`.
         "keyed-ref-cache" => cli::run_gen_keyed_ref_cache(args, &h),
+        // ADR-0064 §3 (#1783) — generated typed action-builders. Writes
+        // `ActionBuilders.generated.swift` or `ActionBuilders.kt` (per
+        // `--platform`) from `ACTION_BUILDERS`; emits the host-facing typed write
+        // builders that construct the `DispatchEnvelope` bytes for the native
+        // byte doorway. No stdin.
+        "action-builders" => cli_action_builders::run_gen_action_builders(args, &h),
         // ADR-0053 / Workstream-E4 — generated `KERNEL_BUILTIN_PROJECTION_KEYS`
         // Rust const for `nmp-core`. Writes
         // `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`
@@ -62,6 +69,7 @@ fn help() -> String {
      nmp gen typed-decoders    --out <path> [--check]\n  \
      nmp gen projection-cache  --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen keyed-ref-cache   --platform swift|kotlin --out <path> [--check]\n  \
+     nmp gen action-builders   --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
      nmp gen signer-catalog    [--catalog - | <path>] [--check]"
         .to_string()

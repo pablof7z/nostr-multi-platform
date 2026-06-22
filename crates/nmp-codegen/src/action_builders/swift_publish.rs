@@ -1,0 +1,142 @@
+//! ADR-0064 §3 (#1783) — Swift emitter for the `nmp.publish` UNION builders.
+//!
+//! Split out of [`crate::action_builders::swift`] purely as a size-management
+//! seam (AGENTS.md / V-12): the flat-table emitter and this union emitter
+//! together would exceed the 500-LOC ceiling. This file hand-rolls the
+//! `PublishPayload` encode — a nested body table (`PublishRaw` / `PublishProfile`)
+//! wrapped in the union root — the byte-for-byte twin of `encode_publish_payload`
+//! in `nmp_core::publish::wire`.
+//!
+//! The body tables nest further tables (`PublishTarget`, `TagRow`,
+//! `ProfileField`), so the shape is matched on the closed
+//! [`crate::action_builders::registry::BodyShape`] enum rather than the generic
+//! flat-table [`PayloadField`] list.
+
+use crate::action_builders::registry::{
+    BodyShape, PublishBuilder, PUBLISH_BUILDERS, PUBLISH_FILE_IDENTIFIER, PUBLISH_NAMESPACE,
+    PUBLISH_SCHEMA_VERSION,
+};
+
+/// Render every `nmp.publish` builder into `out`.
+pub(crate) fn render_publish(out: &mut String) {
+    for builder in PUBLISH_BUILDERS {
+        out.push('\n');
+        render_one(builder, out);
+    }
+}
+
+fn render_one(builder: &PublishBuilder, out: &mut String) {
+    out.push_str(&format!("    /// {}\n", builder.doc));
+    out.push_str(&format!(
+        "    /// Builds the `{PUBLISH_NAMESPACE}` `DispatchEnvelope` bytes (body \
+         `{:?}`) for the byte doorway.\n",
+        builder.body
+    ));
+    out.push_str(&format!("    public static func {}(\n", builder.method));
+    out.push_str("        correlationId: String,\n");
+    match builder.body {
+        BodyShape::PublishRaw => {
+            out.push_str("        kind: UInt32,\n");
+            out.push_str("        tags: [[String]],\n");
+            out.push_str("        content: String,\n");
+            out.push_str("        relays: [String]? = nil,\n");
+            out.push_str("        signerPubkey: String? = nil\n");
+        }
+        BodyShape::PublishProfile => {
+            out.push_str("        fields: [(String, String)]\n");
+        }
+    }
+    out.push_str("    ) -> [UInt8] {\n");
+    out.push_str("        var fbb = FlatBufferBuilder()\n");
+
+    match builder.body {
+        BodyShape::PublishRaw => render_raw_body(out),
+        BodyShape::PublishProfile => render_profile_body(out),
+    }
+
+    // PublishPayload root: schema_version (slot 0 / vt 4), body_type ubyte
+    // (slot 1 / vt 6), body offset (slot 2 / vt 8).
+    out.push_str(&format!(
+        "        let payloadStart = fbb.startTable(with: 3)\n\
+         \x20       fbb.add(element: UInt32({PUBLISH_SCHEMA_VERSION}), def: UInt32(0), at: 4) // slot 0: schema_version\n\
+         \x20       fbb.add(element: UInt8({}), def: UInt8(0), at: 6) // slot 1: body_type\n\
+         \x20       fbb.add(offset: bodyOffset, at: 8) // slot 2: body\n",
+        builder.body_type
+    ));
+    out.push_str("        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))\n");
+    out.push_str(&format!(
+        "        fbb.finish(offset: payloadRoot, fileId: {PUBLISH_FILE_IDENTIFIER:?})\n"
+    ));
+    out.push_str("        let payload = fbb.sizedByteArray\n");
+    out.push_str(&format!(
+        "        return encodeDispatchEnvelope(\n\
+         \x20           correlationId: correlationId,\n\
+         \x20           actionNamespace: {PUBLISH_NAMESPACE:?},\n\
+         \x20           payload: payload\n\
+         \x20       )\n"
+    ));
+    out.push_str("    }\n");
+}
+
+/// Encode a `PublishTarget` from an optional `[String]` of relays. `nil`/empty →
+/// `Auto` (`explicit = false`); a non-empty set → `Explicit`. Leaves the offset
+/// in `targetOffset`. Matches `build_target` in `nmp_core::publish::wire`.
+fn render_target(out: &mut String) {
+    out.push_str(
+        "        let targetOffset: Offset = {\n\
+         \x20           let explicit = (relays?.isEmpty == false)\n\
+         \x20           let relayOffsets = (relays ?? []).map { fbb.create(string: $0) }\n\
+         \x20           let relaysVec = fbb.createVector(ofOffsets: relayOffsets)\n\
+         \x20           let start = fbb.startTable(with: 2)\n\
+         \x20           fbb.add(element: explicit, def: false, at: 4) // slot 0: explicit\n\
+         \x20           fbb.add(offset: relaysVec, at: 6) // slot 1: relays\n\
+         \x20           return Offset(offset: fbb.endTable(at: start))\n\
+         \x20       }()\n",
+    );
+}
+
+fn render_raw_body(out: &mut String) {
+    // Nested objects (tags rows, target, content/signer strings) must be built
+    // before the PublishRaw table that references them.
+    out.push_str(
+        "        let tagRowOffsets: [Offset] = tags.map { row in\n\
+         \x20           let valueOffsets = row.map { fbb.create(string: $0) }\n\
+         \x20           let valuesVec = fbb.createVector(ofOffsets: valueOffsets)\n\
+         \x20           let start = fbb.startTable(with: 1)\n\
+         \x20           fbb.add(offset: valuesVec, at: 4) // slot 0: values\n\
+         \x20           return Offset(offset: fbb.endTable(at: start))\n\
+         \x20       }\n\
+         \x20       let tagsVec = fbb.createVector(ofOffsets: tagRowOffsets)\n\
+         \x20       let contentOffset = fbb.create(string: content)\n\
+         \x20       let signerPubkeyOffset: Offset = signerPubkey.map { fbb.create(string: $0) } ?? Offset()\n",
+    );
+    render_target(out);
+    // PublishRaw: kind (slot 0 / vt 4), tags (slot 1 / vt 6), content
+    // (slot 2 / vt 8), target (slot 3 / vt 10), signer_pubkey (slot 4 / vt 12).
+    out.push_str(
+        "        let rawStart = fbb.startTable(with: 5)\n\
+         \x20       fbb.add(element: kind, def: UInt32(0), at: 4) // slot 0: kind\n\
+         \x20       fbb.add(offset: tagsVec, at: 6) // slot 1: tags\n\
+         \x20       fbb.add(offset: contentOffset, at: 8) // slot 2: content\n\
+         \x20       fbb.add(offset: targetOffset, at: 10) // slot 3: target\n\
+         \x20       if signerPubkeyOffset.o != 0 { fbb.add(offset: signerPubkeyOffset, at: 12) } // slot 4: signer_pubkey\n\
+         \x20       let bodyOffset = Offset(offset: fbb.endTable(at: rawStart))\n",
+    );
+}
+
+fn render_profile_body(out: &mut String) {
+    out.push_str(
+        "        let profileFieldOffsets: [Offset] = fields.map { (key, value) in\n\
+         \x20           let keyOffset = fbb.create(string: key)\n\
+         \x20           let valueOffset = fbb.create(string: value)\n\
+         \x20           let start = fbb.startTable(with: 2)\n\
+         \x20           fbb.add(offset: keyOffset, at: 4) // slot 0: key\n\
+         \x20           fbb.add(offset: valueOffset, at: 6) // slot 1: value\n\
+         \x20           return Offset(offset: fbb.endTable(at: start))\n\
+         \x20       }\n\
+         \x20       let fieldsVec = fbb.createVector(ofOffsets: profileFieldOffsets)\n\
+         \x20       let profileStart = fbb.startTable(with: 1)\n\
+         \x20       fbb.add(offset: fieldsVec, at: 4) // slot 0: fields\n\
+         \x20       let bodyOffset = Offset(offset: fbb.endTable(at: profileStart))\n",
+    );
+}

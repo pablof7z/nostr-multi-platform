@@ -100,3 +100,12 @@ pub use kotlin_keyed_cache::{
 pub use swift_typed_decoders::{
     check_typed_decoders, generate_typed_decoders, render_typed_decoders, TypedDecodersCheckOutcome,
 };
+// ADR-0064 §3 (#1783) — generated typed action-builder codegen (Swift + Kotlin).
+// Emits the host-facing typed write builders that construct the
+// `DispatchEnvelope` bytes for the native byte doorway from typed inputs, so the
+// shells never spell an `action_namespace` or hand-assemble FlatBuffers.
+pub mod action_builders;
+pub use action_builders::{
+    check_action_builders, generate_action_builders, render as render_action_builders,
+    ActionBuildersCheckOutcome, Platform as ActionBuilderPlatform,
+};
