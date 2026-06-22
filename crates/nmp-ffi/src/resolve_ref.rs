@@ -45,7 +45,8 @@
 //! ## Key encoding
 //!
 //! For the `Profile` namespace `key` must be a 64-hex-char lowercase pubkey (the
-//! same constraint as `nmp_app_claim_profile`). For the `Event` namespace `key`
+//! same constraint the former per-kind profile claim enforced). For the `Event`
+//! namespace `key`
 //! is either a 64-char **lowercase** hex event id or a `"kind:pubkey:d"`
 //! coordinate (canonical decimal kind, lowercase-hex pubkey; the `naddr`
 //! primary-id encoding) — NOT a `nostr:`/NIP-21 URI. An invalid key (wrong case,
@@ -158,8 +159,9 @@ pub extern "C" fn nmp_app_resolve_ref(
 /// [`nmp_app_resolve_ref`].
 ///
 /// Decrements the refcount for `consumer_id`'s stake in `(namespace, key)`.
-/// The resolver slot is torn down when the last consumer releases (same contract
-/// as `nmp_app_release_profile` / `nmp_app_release_event`).
+/// The resolver slot is torn down when the last consumer releases (the same
+/// release contract the former per-kind profile release and `nmp_app_release_event`
+/// use).
 ///
 /// **`namespace`** — `0` = profile, `1` = event (must match the `resolve_ref` call).
 /// **`key`** — same key that was passed to `nmp_app_resolve_ref`.

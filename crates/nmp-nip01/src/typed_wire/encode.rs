@@ -276,7 +276,7 @@ pub(crate) fn encode_card<'bldr>(
     // copy (`author_display`, `author_display_name`, `author_picture_url`),
     // the render preview (`content_preview`), or the embedded-ref render facts
     // (`content_render`). The presentation layer joins against the snapshot's
-    // `resolved_profiles` / `claimed_events` maps instead. The `.fbs` schema +
+    // `refs.profile` / `claimed_events` maps instead. The `.fbs` schema +
     // generated bindings stay byte-identical (the coordinated cross-language
     // wire-slot removal rides with the iOS/Android follow-up), so the encoder
     // fills the now-vestigial slots with the absent shape: a fallback
