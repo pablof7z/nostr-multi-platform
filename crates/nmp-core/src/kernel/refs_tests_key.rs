@@ -404,9 +404,28 @@ fn malformed_external_ref_unknown_scheme_fails_closed() {
     assert_event_key_fails_closed("i:javascript:alert(1)");
     assert_event_key_fails_closed("i:bareword"); // no scheme prefix, not a URL
     assert_event_key_fails_closed("i:isbn:"); // known prefix, EMPTY value
-    assert_event_key_fails_closed("i:ethereum:notdecimal:address:0xabc"); // bad chainId
-    assert_event_key_fails_closed("i:ethereum:1:badselector:0xabc"); // bad selector
     assert_event_key_fails_closed("i:#"); // hashtag prefix, empty topic
+}
+
+#[test]
+fn malformed_blockchain_external_ref_fails_closed() {
+    // FIX #1 (codex re-gate): the generic `<blockchain>[:<chainId>]:{tx,address}:`
+    // form must still fail closed when the SELECTOR is missing/garbage or the value
+    // is empty — generalising the chain token must not weaken the selector/value
+    // checks. Proven-red: with the blockchain arm hardcoded to bitcoin/ethereum the
+    // generic positives (solana) were rejected; these negatives stay rejected.
+    // bad middle segment (not tx/address, and no further selector):
+    assert_event_key_fails_closed("i:bitcoin:nonsense:deadbeef");
+    // chainId ok, bad selector:
+    assert_event_key_fails_closed("i:ethereum:1:badselector:0xabc");
+    // selector ok, EMPTY value:
+    assert_event_key_fails_closed("i:bitcoin:tx:");
+    // selector ok, value segment MISSING entirely:
+    assert_event_key_fails_closed("i:bitcoin:tx");
+    // uppercase blockchain token (must be lowercase alnum):
+    assert_event_key_fails_closed("i:Bitcoin:tx:abc");
+    // chainId + selector ok, EMPTY value:
+    assert_event_key_fails_closed("i:ethereum:1:address:");
 }
 
 #[test]
@@ -426,10 +445,13 @@ fn well_formed_external_ref_known_schemes_resolve() {
         "podcast:guid:c90e609a-df1e-596a-bd5e-57bcc8aad6cc",
         "podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f",
         "podcast:publisher:guid:18bcbf10-6701-4ffb-b255-bc057390d738",
-        "bitcoin:address:1HQ3Go3ggs8pFnXuHVHRytPCq5fGG8Hbhx",
+        "bitcoin:address:1HQ3Go3ggs8pFnXuHVHRytPCq5fGG8Hbhx", // blockchain, no chainId
         "bitcoin:tx:a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d",
-        "ethereum:1:address:0xd8da6bf26964af9d7eed9e03e53415d37aa96045",
+        "ethereum:1:address:0xd8da6bf26964af9d7eed9e03e53415d37aa96045", // blockchain WITH chainId
         "ethereum:1:tx:0xabc123",
+        "solana:tx:5j7s8...signature", // FIX #1: generic blockchain — solana resolves with no code change
+        "solana:address:7nYa...mintAddr",
+        "ethereum:11155111:tx:0xfeed", // multi-digit (non-mainnet) chainId
     ] {
         let key = format!("i:{external_id}");
         let target = parse_event_key(&key).unwrap_or_else(|| {

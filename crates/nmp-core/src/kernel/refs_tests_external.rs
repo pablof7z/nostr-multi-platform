@@ -246,6 +246,90 @@ fn external_ref_unresolved_fails_closed() {
 }
 
 #[test]
+fn external_ref_known_scheme_junk_value_renders_no_preview() {
+    // codex re-gate SCOPE-OUT #2: a KNOWN scheme with a junk VALUE
+    // (`isbn:garbage`) is NOT format-validated — the kernel issues a `#i` REQ that
+    // returns nothing and renders NO preview. This is the intended fail-closed-AT-
+    // RESOLUTION property: the scheme allowlist is not an input-format gate. Proves
+    // the junk-value path resolves to absence, not a fabricated card.
+    let key = "i:isbn:garbage".to_string();
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected(RelayRole::Content);
+    kernel.resolve_ref(
+        RefNamespace::Event,
+        key.clone(),
+        "view".into(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
+    // The known scheme is accepted (a discovery REQ is in flight)…
+    assert!(
+        kernel.event_claims.contains_key(&key),
+        "a known scheme with a junk value is still a valid scheme (REQ in flight)"
+    );
+    // …but with no matching event cached, NO preview is fabricated.
+    assert!(
+        kernel.lookup_for_primary_id(&key).is_none(),
+        "junk-value known scheme resolves to NO preview (absence, not a card)"
+    );
+    assert!(
+        !kernel.event_already_known(&key),
+        "junk-value known scheme: event_already_known stays false"
+    );
+}
+
+#[test]
+fn event_id_and_external_ref_both_bump_on_ingest() {
+    // codex re-gate FIX #3: ONE ingested event whose EVENT-ID is claimed AND which
+    // carries a claimed `i:` tag must advance BOTH per-key revs — the event-id row
+    // AND the external-ref row. Proven-red: reinstating an early-return after the
+    // event-id match leaves the `i:` row stale, so its rev never advances and the
+    // external-ref preview never re-renders.
+    let external_id = "podcast:item:guid:both-1111";
+    let ext_key = format!("i:{external_id}");
+    let keys = ::nostr::Keys::generate();
+
+    // Build the event FIRST so we know its id, then claim that id directly.
+    let ev = signed_external(&keys, 1111, external_id, 1_700_000_000);
+    let id_key = ev.id.clone();
+
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected(RelayRole::Content);
+    for key in [&id_key, &ext_key] {
+        kernel.resolve_ref(
+            RefNamespace::Event,
+            key.clone(),
+            "view".into(),
+            RefShape::Event(EventShape::Embed),
+            RefLiveness::CacheOk,
+            false,
+            Vec::new(),
+        );
+    }
+    let before_id = kernel.ref_row_rev(RefNamespace::Event, &id_key);
+    let before_ext = kernel.ref_row_rev(RefNamespace::Event, &ext_key);
+
+    // Ingest the single event — its id satisfies the id claim AND its `i` tag
+    // satisfies the external-ref claim.
+    kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.example/", "view", ev);
+
+    let after_id = kernel.ref_row_rev(RefNamespace::Event, &id_key);
+    let after_ext = kernel.ref_row_rev(RefNamespace::Event, &ext_key);
+    assert!(
+        after_id > before_id,
+        "the event-id claim row rev must advance (before={before_id}, after={after_id})"
+    );
+    assert!(
+        after_ext > before_ext,
+        "the external-ref claim row rev must ALSO advance for the SAME ingested \
+         event — the bump must not stop after the event-id match \
+         (before={before_ext}, after={after_ext})"
+    );
+}
+
+#[test]
 fn external_ref_does_not_match_different_external_id() {
     // #1654 — a claimed external ref must resolve ONLY its own external id. A
     // cached event tagging a DIFFERENT `i` value must not satisfy it (no

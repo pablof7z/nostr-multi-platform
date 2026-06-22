@@ -102,6 +102,14 @@ pub(in crate::kernel) fn is_valid_external_id(s: &str) -> bool {
 /// the verbatim NIP-73 `i`-tag value. Callers guarantee it is non-empty and
 /// whitespace/control-free before this runs, so each arm only has to recognise
 /// the scheme shape, not re-validate byte hygiene.
+///
+/// This recognises the SCHEME SHAPE only — it deliberately does NOT validate the
+/// per-scheme value FORMAT (ISBN checksums, geohash alphabet, DOI regex, caip-2
+/// chain-id charset beyond non-empty/alnum, …). The safety property is
+/// fail-closed AT RESOLUTION: a known-scheme ref with a junk value
+/// (e.g. `isbn:garbage`) issues a `#i` REQ that matches no event and renders NO
+/// preview — that is acceptable and correct, not a hole. Input-format
+/// gatekeeping is out of scope (codex re-gate SCOPE-OUT #2).
 fn is_known_nip73_scheme(s: &str) -> bool {
     // Bare web URL — the only NIP-73 form with NO scheme prefix. A `:`-free value
     // can never be a prefixed scheme, so it MUST be a URL to be valid.
@@ -115,16 +123,15 @@ fn is_known_nip73_scheme(s: &str) -> bool {
     if let Some(topic) = s.strip_prefix('#') {
         return !topic.is_empty();
     }
-    // Ethereum carries a decimal `<chainId>` segment between `ethereum:` and the
-    // `address:`/`tx:` selector: `ethereum:<chainId>:address:<addr>` /
-    // `ethereum:<chainId>:tx:<hash>`.
-    if let Some(rest) = s.strip_prefix("ethereum:") {
-        let mut parts = rest.splitn(3, ':');
-        let chain_id = parts.next().unwrap_or("");
-        let selector = parts.next().unwrap_or("");
-        let value = parts.next().unwrap_or("");
-        let chain_ok = !chain_id.is_empty() && chain_id.bytes().all(|b| b.is_ascii_digit());
-        return chain_ok && matches!(selector, "address" | "tx") && !value.is_empty();
+    // Blockchain (NIP-73 generic form) — `<blockchain>:[<chainId>:]tx:<id>` and
+    // `<blockchain>:[<chainId>:]address:<addr>`. `<blockchain>` is a lowercase
+    // alphanumeric token (bitcoin, ethereum, solana, …); the optional `<chainId>`
+    // (caip-2 style) is any non-empty alnum segment — we do NOT over-validate its
+    // charset. `bitcoin:tx:<id>` (no chainId) and `ethereum:1:address:<a>` (with
+    // chainId) both pass; `bitcoin:nonsense:<v>` (bad middle segment) and a
+    // missing `tx`/`address` selector fail closed.
+    if is_known_blockchain_scheme(s) {
+        return true;
     }
     // Fixed-prefix schemes — the value after the prefix must be non-empty. Ordered
     // longest-prefix-first so `podcast:item:guid:` wins over `podcast:guid:` etc.
@@ -132,8 +139,6 @@ fn is_known_nip73_scheme(s: &str) -> bool {
         "podcast:item:guid:",
         "podcast:publisher:guid:",
         "podcast:guid:",
-        "bitcoin:address:",
-        "bitcoin:tx:",
         "isbn:",
         "geo:",
         "iso3166:",
@@ -143,6 +148,47 @@ fn is_known_nip73_scheme(s: &str) -> bool {
     PREFIXES
         .iter()
         .any(|p| s.strip_prefix(p).is_some_and(|rest| !rest.is_empty()))
+}
+
+/// `true` when `s` is a NIP-73 blockchain external id:
+/// `<blockchain>[:<chainId>]:<selector>:<value>` where `<selector>` is `tx` or
+/// `address`. The leading `<blockchain>` token must be a non-empty lowercase
+/// alphanumeric string; the optional `<chainId>` is any non-empty alphanumeric
+/// segment (caip-2 style — not charset-validated beyond non-empty/alnum). The
+/// trailing `<value>` (tx hash / address) must be non-empty.
+///
+/// Generalises the formerly-hardcoded `bitcoin:`/`ethereum:` arms so any chain
+/// NIP-73 mints (`solana:tx:<id>`, …) resolves without a code change, while
+/// `<chain>:<garbage>:<value>` (bad selector) still fails closed.
+fn is_known_blockchain_scheme(s: &str) -> bool {
+    let mut parts = s.split(':');
+    let blockchain = parts.next().unwrap_or("");
+    // `<blockchain>` — non-empty lowercase alphanumeric (rejects empty, uppercase,
+    // and punctuation so a bare URL host or a `#`-tag never lands here).
+    if blockchain.is_empty()
+        || !blockchain
+            .bytes()
+            .all(|b| matches!(b, b'a'..=b'z' | b'0'..=b'9'))
+    {
+        return false;
+    }
+    // Next segment is either the selector (`tx`/`address`, no chainId) OR a
+    // chainId followed by the selector. After this block `parts` is positioned at
+    // the value (the tx hash / address).
+    let second = parts.next().unwrap_or("");
+    if second != "tx" && second != "address" {
+        // `second` must instead be a non-empty alphanumeric chainId, with the
+        // selector in the FOLLOWING segment.
+        let chain_id_ok = !second.is_empty() && second.bytes().all(|b| b.is_ascii_alphanumeric());
+        let selector = parts.next().unwrap_or("");
+        if !chain_id_ok || (selector != "tx" && selector != "address") {
+            return false;
+        }
+    }
+    // The remaining text (the tx hash / address, which MAY itself contain colons)
+    // must be non-empty.
+    let value: String = parts.collect::<Vec<_>>().join(":");
+    !value.is_empty()
 }
 
 /// Recover the verbatim NIP-73 external id from an `i:<external-id>` projection
