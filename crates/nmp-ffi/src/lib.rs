@@ -420,14 +420,16 @@ fn new_identity_change_observer_slot() -> IdentityChangeObserverSlot {
     Arc::new(Mutex::new(Vec::new()))
 }
 
-/// Host-registered NIP-50 search-relay source (the kind:10007 read seam +
-/// app-default fallback). Populated once by the composition root via
-/// [`NmpApp::set_search_relay_source`]; read by `open_search` to resolve
+/// Host-installed preferred-relay source (the substrate-generic
+/// [`PreferredRelaySource`](nmp_core::substrate::PreferredRelaySource) seam —
+/// the kind:10007 read + app-default fallback for NIP-50 search). Populated by
+/// the composition root through [`NmpApp::install_preferred_relay_source`] (the
+/// `HostCapabilities` override); read by `open_search` to resolve
 /// `UserPreferred` / `AppDefault` targets. `None` (the default) means no source
-/// was registered, so those targets resolve to an empty relay set (cache-only
+/// was installed, so those targets resolve to an empty relay set (cache-only
 /// search, D6 graceful degrade). Not shared with the actor thread.
 type SearchRelaySourceSlot =
-    Arc<Mutex<Option<Arc<dyn nmp_nip50::SearchRelaySource + Send + Sync>>>>;
+    Arc<Mutex<Option<Arc<dyn nmp_core::substrate::PreferredRelaySource>>>>;
 
 fn new_search_relay_source_slot() -> SearchRelaySourceSlot {
     Arc::new(Mutex::new(None))
@@ -893,8 +895,9 @@ pub struct NmpApp {
     /// which the encoder treats as the npub fallback.
     mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,
     /// NIP-50 higher-order search relay source (kind:10007 read seam +
-    /// app-default fallback). The composition root writes a concrete
-    /// `nmp_nip50::SearchRelaySource` here via [`Self::set_search_relay_source`]
+    /// app-default fallback). The composition root installs a concrete
+    /// `PreferredRelaySource` here via
+    /// [`Self::install_preferred_relay_source`] (the `HostCapabilities` override)
     /// before `nmp_app_start`; `open_search` reads it to resolve `UserPreferred`
     /// / `AppDefault` targets. `None` (the default) makes those targets resolve
     /// to an empty relay set — a cache-only search rather than a crash (D6).
@@ -1480,8 +1483,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // crate wires the SAME `InMemoryMailboxCache` it gives the routing
         // factory + Kind10002Parser through `set_mailbox_cache_reader`.
         mailbox_cache_reader: Mutex::new(None),
-        // NIP-50 search relay source — None until the composition root wires
-        // the kind:10007 read seam + app-default via `set_search_relay_source`.
+        // NIP-50 search relay source — None until the composition root installs
+        // the kind:10007 read seam + app-default via `install_preferred_relay_source`.
         search_relay_source: new_search_relay_source_slot(),
         // NIP-50 live search sessions — empty until the first open_search.
         search_sessions: Mutex::new(std::collections::HashMap::new()),

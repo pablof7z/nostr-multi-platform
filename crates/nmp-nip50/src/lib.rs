@@ -35,8 +35,8 @@ pub use scopes::{
     SCOPE_LABEL_LONGFORM, SCOPE_LABEL_NOTES, SCOPE_LABEL_PROFILES,
 };
 pub use search::{
-    resolve_search_relays, search_relay_plan, RelayPinnedInterest, SearchRelaySource,
-    SearchRelaySourceRegistrar,
+    install_search_relay_source, resolve_search_relays, search_relay_plan, RelayPinnedInterest,
+    SearchRelaySource,
 };
 pub use wire::{
     decode_search_results_snapshot, encode_search_results_snapshot,

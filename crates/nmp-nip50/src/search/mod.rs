@@ -20,4 +20,4 @@ pub mod plan;
 pub mod relays;
 
 pub use plan::{search_relay_plan, RelayPinnedInterest};
-pub use relays::{resolve_search_relays, SearchRelaySource, SearchRelaySourceRegistrar};
+pub use relays::{install_search_relay_source, resolve_search_relays, SearchRelaySource};

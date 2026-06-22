@@ -12,19 +12,41 @@
 
 use std::sync::Arc;
 
+use nmp_core::substrate::{HostCapabilities, PreferredRelaySource};
+
 use crate::SearchTargets;
 
-/// The host registration seam for the default [`SearchRelaySource`].
+/// Install `source` as the host's preferred-relay provider (the transparent
+/// kind:10007 read seam + app-default fallback), so a plain app that calls only
+/// `open_search(.., UserPreferred)` fans out to the user's published search
+/// relays with ZERO app code.
 ///
-/// The composition root (`nmp-defaults`) calls this once, during
-/// `register_defaults`, to auto-wire the kind:10007 read seam + app-default
-/// fallback onto the host — so a plain app that calls only `open_search(..,
-/// UserPreferred)` transparently fans out to the user's published search relays
-/// with ZERO app code. The concrete host (`NmpApp` in `nmp-ffi`) implements
-/// this; `nmp-nip50` never names the host (D0 — this trait is the seam).
-pub trait SearchRelaySourceRegistrar {
-    /// Register the active [`SearchRelaySource`] on the host. Last-writer-wins.
-    fn set_search_relay_source(&self, source: Arc<dyn SearchRelaySource + Send + Sync>);
+/// Works against **any** [`HostCapabilities`] (hence any `AppHost`):
+/// `install_preferred_relay_source` has a default no-op, so a minimal /
+/// scaffolded host compiles and runs for free, while a real composition host
+/// (`NmpApp`) overrides it to store the provider. `nmp-nip50` never names the
+/// host type (D0); the generic [`PreferredRelaySource`] seam in `nmp-core` is
+/// the bridge. The composition root (`nmp-defaults`) calls this once during
+/// `register_defaults`.
+pub fn install_search_relay_source(
+    host: &impl HostCapabilities,
+    source: Arc<dyn SearchRelaySource + Send + Sync>,
+) {
+    host.install_preferred_relay_source(Arc::new(SearchRelaySourceBridge(source)));
+}
+
+/// Bridges a NIP-50 [`SearchRelaySource`] to the substrate-generic
+/// [`PreferredRelaySource`] seam (`user_preferred → primary`,
+/// `app_default → fallback`).
+struct SearchRelaySourceBridge(Arc<dyn SearchRelaySource + Send + Sync>);
+
+impl PreferredRelaySource for SearchRelaySourceBridge {
+    fn primary(&self) -> Vec<String> {
+        self.0.user_preferred()
+    }
+    fn fallback(&self) -> Vec<String> {
+        self.0.app_default()
+    }
 }
 
 /// The read seam `open_search` uses to resolve relays for `UserPreferred` and

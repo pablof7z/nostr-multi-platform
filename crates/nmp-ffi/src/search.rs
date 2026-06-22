@@ -40,33 +40,39 @@
 //! empty snapshot) rather than crossing the FFI as a panic.
 
 use std::ffi::{c_char, c_int};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::register_rust_observer_muted;
+use nmp_core::substrate::PreferredRelaySource;
 use nmp_core::KernelEventObserverId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip50::{
-    encode_search_results_snapshot, resolve_search_relays, search_relay_plan, SearchRelaySource,
-    SearchRelaySourceRegistrar, SearchRequest, SearchResultsProjection,
-    SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID, SEARCH_RESULTS_SCHEMA_VERSION,
+    encode_search_results_snapshot, search_relay_plan, SearchRequest, SearchResultsProjection,
+    SearchTargets, SEARCH_RESULTS_FILE_IDENTIFIER, SEARCH_RESULTS_SCHEMA_ID,
+    SEARCH_RESULTS_SCHEMA_VERSION,
 };
 
 use super::{app_ref, c_string_argument, NmpApp};
 
-/// D0 seam — the composition root (`nmp-defaults`) auto-wires the default
-/// search-relay source through this trait so a plain app gets transparent
-/// kind:10007 fan-out with zero app code. `NmpApp::set_search_relay_source`
-/// is the inherent method; this impl exposes it generically to `nmp-nip50`'s
-/// `register_search_relay_runtime` without that crate naming `NmpApp` (D0).
-impl SearchRelaySourceRegistrar for NmpApp {
-    fn set_search_relay_source(&self, source: std::sync::Arc<dyn SearchRelaySource + Send + Sync>) {
-        NmpApp::set_search_relay_source(self, source);
-    }
-}
-
 /// `1` = Global. A search interest pins a concrete relay + query; it is NOT
 /// re-routed on account switch (the host closes + re-opens on identity change).
 const SCOPE_GLOBAL: u32 = 1;
+
+/// `&self` [`KernelEventObserver`](nmp_core::KernelEventObserver) adapter over
+/// the `&mut self` [`SearchResultsProjection`]. Locks the shared projection on
+/// each fanned-out event and ingests it as a relay hit (the delivering relay is
+/// the event's first `relay_provenance` entry). A poisoned lock degrades to a
+/// dropped event (D6) rather than a panic across the kernel fan-out.
+struct SearchObserver(Arc<Mutex<SearchResultsProjection>>);
+
+impl nmp_core::KernelEventObserver for SearchObserver {
+    fn on_kernel_event(&self, event: &nmp_core::substrate::KernelEvent) {
+        let relay = event.relay_provenance.first().cloned().unwrap_or_default();
+        if let Ok(mut projection) = self.0.lock() {
+            projection.ingest_relay_event(event, relay);
+        }
+    }
+}
 
 /// Teardown recipe for one live search session (held in
 /// `NmpApp::search_sessions`). Records exactly what
@@ -94,31 +100,50 @@ fn search_consumer(session_id: &str, relay: &str) -> String {
 }
 
 impl NmpApp {
-    /// Register the NIP-50 search relay source (kind:10007 read seam +
-    /// app-default fallback). Intended as a host-init call before
-    /// `nmp_app_start`. Last-writer-wins; a poisoned slot is a silent no-op (D6).
-    ///
-    /// ## Seam for the sibling kind:10007 read helper
-    ///
-    /// The composition root backs `user_preferred()` with the live
-    /// `nmp_nip51::SearchRelayListProjection::snapshot().relays` and
-    /// `app_default()` with the app-declared default set. When the sibling lane
-    /// lands a dedicated read helper, only this registration's closure body
-    /// changes — `open_search` is unaffected.
-    pub fn set_search_relay_source(
-        &self,
-        source: Arc<dyn SearchRelaySource + Send + Sync>,
-    ) {
+    /// Store the host-installed preferred-relay source (the substrate-generic
+    /// [`PreferredRelaySource`] seam — NIP-50's kind:10007 read + app-default
+    /// fallback). The `HostCapabilities::install_preferred_relay_source` override
+    /// forwards here; `open_search` reads it back. Last-writer-wins; a poisoned
+    /// slot is a silent no-op (D6).
+    pub fn install_preferred_relay_source(&self, source: Arc<dyn PreferredRelaySource>) {
         if let Ok(mut slot) = self.search_relay_source.lock() {
             *slot = Some(source);
         }
+    }
+
+    /// Resolve the effective relay set for `targets` from the installed
+    /// [`PreferredRelaySource`] (UserPreferred → `primary`, falling back to
+    /// `fallback` when empty; AppDefault → `fallback`; Explicit → the given
+    /// list). De-duplicated, first-seen order. Empty when no source installed.
+    fn resolve_search_relays(&self, targets: &SearchTargets) -> Vec<String> {
+        let (primary, fallback) = self
+            .search_relay_source
+            .lock()
+            .ok()
+            .and_then(|slot| slot.as_ref().map(|s| (s.primary(), s.fallback())))
+            .unwrap_or_default();
+        let raw = match targets {
+            SearchTargets::Explicit(list) => list.clone(),
+            SearchTargets::UserPreferred => {
+                if primary.is_empty() {
+                    fallback
+                } else {
+                    primary
+                }
+            }
+            SearchTargets::AppDefault => fallback,
+        };
+        let mut seen = std::collections::BTreeSet::new();
+        raw.into_iter()
+            .filter(|r| !r.is_empty() && seen.insert(r.clone()))
+            .collect()
     }
 
     /// Open a NIP-50 search session — the reusable Rust API `hl` calls directly.
     ///
     /// `request` is the validated [`SearchRequest`]; `session_id` keys the
     /// session for teardown and the snapshot projection. Resolves relays from
-    /// the registered [`SearchRelaySource`] (empty when none is registered →
+    /// the installed [`PreferredRelaySource`] (empty when none is installed →
     /// cache-only search), registers the result projection + typed `N50S`
     /// sidecar under `nmp.nip50.search.<session_id>`, and opens one relay-pinned
     /// observed interest per resolved relay.
@@ -130,43 +155,39 @@ impl NmpApp {
         // Idempotent re-open: drop any prior session under this id first.
         self.close_search(session_id);
 
-        let relays = {
-            let resolved = self
-                .search_relay_source
-                .lock()
-                .ok()
-                .and_then(|slot| {
-                    slot.as_ref()
-                        .map(|src| resolve_search_relays(&request.targets, src.as_ref()))
-                });
-            resolved.unwrap_or_default()
-        };
+        let relays = self.resolve_search_relays(&request.targets);
 
         let key = search_key(session_id);
-        let projection = Arc::new(SearchResultsProjection::new(request.clone()));
+        // #1827's `SearchResultsProjection` is `&mut self` (the cache-FTS owner);
+        // wrap it in an `Arc<Mutex<…>>` so it can be BOTH a `&self`
+        // KernelEventObserver (live relay-hit ingest) AND read by the typed
+        // sidecar closure, while keeping the projection's single-writer model.
+        let projection = Arc::new(Mutex::new(SearchResultsProjection::new(request.clone())));
 
         // Typed N50S sidecar reading the projection snapshot every tick.
         {
             let projection_for_sidecar = Arc::clone(&projection);
             let key_for_encode = key.clone();
             self.register_typed_snapshot_projection(key.clone(), move || {
+                let snapshot = projection_for_sidecar.lock().ok()?.snapshot();
                 Some(nmp_core::TypedProjectionData {
                     key: key_for_encode.clone(),
                     schema_id: SEARCH_RESULTS_SCHEMA_ID.to_string(),
                     schema_version: SEARCH_RESULTS_SCHEMA_VERSION,
                     file_identifier: String::from_utf8_lossy(SEARCH_RESULTS_FILE_IDENTIFIER)
                         .into_owned(),
-                    payload: encode_search_results_snapshot(&projection_for_sidecar.snapshot()),
+                    payload: encode_search_results_snapshot(&snapshot),
                     ..Default::default()
                 })
             });
         }
 
-        // Register the projection as a MUTED observer; each pinned open below
-        // replays the read-cache to it and activates it (idempotent activation).
+        // Register the projection (via the `&self` observer adapter) as a MUTED
+        // observer; each pinned open below replays the read-cache to it and
+        // activates it (idempotent activation).
         let observer_id = register_rust_observer_muted(
             &self.event_observers,
-            Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>,
+            Arc::new(SearchObserver(Arc::clone(&projection))) as Arc<dyn nmp_core::KernelEventObserver>,
         );
 
         // One relay-pinned observed interest per resolved relay.

@@ -58,7 +58,7 @@ pub const FOLLOWING_PRIMARY_FEED_KINDS: [u32; 1] = [1];
 /// [`nmp_defaults::register_defaults`] wires the NIP-01/02/17/57/65 action
 /// modules, the production routing substrate, and the standard runtime
 /// controllers. Call before `start`.
-pub fn register(app: &mut (impl AppHost + nmp_nip50::SearchRelaySourceRegistrar)) {
+pub fn register(app: &mut impl AppHost) {
     nmp_defaults::register_defaults(app);
 }
 

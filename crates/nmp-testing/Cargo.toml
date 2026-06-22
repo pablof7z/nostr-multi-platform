@@ -93,9 +93,6 @@ nmp-nip59 = { path = "../nmp-nip59" }
 # NIP-51 kind:10003 snapshot surfaces a stored bookmark via cold-start
 # cache-serve on sign-in, with no relay delivery.
 nmp-nip51 = { path = "../nmp-nip51" }
-# real_relay_nip50_search.rs — drives the higher-order NIP-50 search projection
-# against a live search relay (search.nos.lol) for kind:0 + kind:30023.
-nmp-nip50 = { path = "../nmp-nip50" }
 nmp-coverage-gate = { path = "../nmp-coverage-gate" }
 # F-04 zap E2E harness (zap_e2e_nwc_roundtrip.rs) — the fake NIP-47 wallet
 # service reuses the canonical NWC NIP-04 crypto (`nmp_nwc::crypto`) to

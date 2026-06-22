@@ -53,12 +53,6 @@ nmp-wot = { path = "../nmp-wot" }
 # active account's muted pubkeys and event-ids are suppressed from every
 # timeline projection that calls `set_suppression` with the returned Arc.
 nmp-nip51 = { path = "../nmp-nip51" }
-# NIP-50 higher-order search: the composition root auto-wires the default
-# `SearchRelaySource` (kind:10007 read seam + `SearchDefaults` fallback) onto the
-# host via `SearchRelaySourceRegistrar`, so a plain app gets transparent search
-# fan-out with zero app code. `nmp-defaults` is the operator-policy crate
-# entitled to bind the read seam to the app default.
-nmp-nip50 = { path = "../nmp-nip50" }
 # Layer-A content sidecar: supplies the typed NIP-23 `LongformProjection`
 # (reuses the existing `ArticleProjection` resolver) the template registers as
 # the default kind:30023 TYPED snapshot projection (`nmp.nip23.articles`).

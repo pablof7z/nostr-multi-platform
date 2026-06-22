@@ -104,7 +104,7 @@ pub(crate) struct ScopeRun {
 /// fresh projection until EOSE / CLOSED / budget, and return the snapshot.
 pub(crate) fn run_scope(socket: &mut RelaySocket, request: SearchRequest, sub_id: &str) -> ScopeRun {
     let filter = nmp_core::subs::filter_json_for(&request.interest_shape());
-    let projection = SearchResultsProjection::new(request);
+    let mut projection = SearchResultsProjection::new(request);
 
     if let Err(e) = send_text(socket, format!(r#"["REQ","{sub_id}",{filter}]"#)) {
         eprintln!("SKIP: REQ send failed: {e}");

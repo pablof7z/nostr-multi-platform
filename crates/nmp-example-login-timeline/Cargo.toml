@@ -17,9 +17,6 @@ nmp-defaults = { path = "../nmp-defaults" }
 nmp-ffi = { path = "../nmp-ffi" }
 # Kernel substrate — the `AppHost` trait `register` takes.
 nmp-core = { path = "../nmp-core" }
-# `SearchRelaySourceRegistrar` — the bound `register_defaults` adds so the
-# composition root can auto-wire the transparent NIP-50 search relay source.
-nmp-nip50 = { path = "../nmp-nip50" }
 # The OP-feed typed projection decoder (`decode_op_feed_snapshot`) + key.
 nmp-nip01 = { path = "../nmp-nip01" }
 

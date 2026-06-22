@@ -2,7 +2,10 @@
 
 use super::*;
 use crate::{nmp_app_free, nmp_app_new};
-use nmp_nip50::{decode_search_results_snapshot, SearchScope, SearchTargets};
+use nmp_nip50::{
+    decode_search_results_snapshot, install_search_relay_source, SearchRelaySource, SearchScope,
+    SearchTargets,
+};
 use std::ffi::CString;
 
 /// A registered `SearchRelaySource` lets `open_search` resolve `UserPreferred`
@@ -53,7 +56,7 @@ fn open_search_registers_typed_sidecar_under_session_key() {
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null.
     let app_ref = unsafe { &*app };
-    app_ref.set_search_relay_source(Arc::new(StubSource {
+    install_search_relay_source(app_ref, Arc::new(StubSource {
         preferred: vec!["wss://search.nos.lol/".to_string()],
         default: Vec::new(),
     }));
@@ -86,7 +89,7 @@ fn close_search_tears_down_the_projection() {
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null.
     let app_ref = unsafe { &*app };
-    app_ref.set_search_relay_source(Arc::new(StubSource {
+    install_search_relay_source(app_ref, Arc::new(StubSource {
         preferred: vec!["wss://search.nos.lol/".to_string()],
         default: Vec::new(),
     }));

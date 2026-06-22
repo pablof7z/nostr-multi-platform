@@ -265,6 +265,14 @@ impl<S> HostCapabilities for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.configured_relays_handle()
     }
+
+    fn install_preferred_relay_source(
+        &self,
+        source: Arc<dyn nmp_core::substrate::PreferredRelaySource>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.install_preferred_relay_source(source);
+    }
 }
 
 impl<S> EventObserverRegistrar for NmpAppBuilder<S> {
@@ -301,15 +309,3 @@ impl<S> IdentityChangeRegistrar for NmpAppBuilder<S> {
     }
 }
 
-/// NIP-50 search-source registration delegation. `register_defaults` (via
-/// `register_search_relay_runtime`) auto-wires the default `SearchRelaySource`
-/// onto whatever host it is given; the builder forwards to its inner `NmpApp`.
-impl<S> nmp_nip50::SearchRelaySourceRegistrar for NmpAppBuilder<S> {
-    fn set_search_relay_source(
-        &self,
-        source: Arc<dyn nmp_nip50::SearchRelaySource + Send + Sync>,
-    ) {
-        let app: &NmpApp = unsafe { &*self.app };
-        <NmpApp as nmp_nip50::SearchRelaySourceRegistrar>::set_search_relay_source(app, source);
-    }
-}
