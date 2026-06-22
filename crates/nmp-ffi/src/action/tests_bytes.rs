@@ -11,8 +11,9 @@
 
 use std::ffi::CStr;
 
-use super::super::{nmp_app_free, nmp_app_new};
-use super::*;
+use super::{dispatch_action_bytes, nmp_app_dispatch_action_bytes};
+use crate::free::nmp_free_string;
+use crate::{nmp_app_free, nmp_app_new, NmpApp};
 use nmp_core::dispatch_envelope::{
     encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION, MAX_DISPATCH_ENVELOPE_BYTES,
 };
@@ -49,7 +50,12 @@ fn publish_raw_envelope(correlation_id: &str) -> Vec<u8> {
 // ─── Happy path ──────────────────────────────────────────────────────────────
 
 #[test]
-fn dispatch_bytes_publish_raw_returns_correlation_id() {
+fn dispatch_bytes_returns_host_supplied_correlation_id() {
+    // ADR-0064 §4: on the byte lane the operation identity is the HOST-SUPPLIED
+    // envelope `correlation_id`, threaded end-to-end — NOT a kernel-minted id.
+    // The host's spinner is keyed on the id it stamped into the envelope, so the
+    // accept envelope MUST echo it back (substituting a fresh id would strand
+    // the spinner — the identity-substitution class #1748 closed).
     with_app(|app| {
         let envelope = publish_raw_envelope("corr-bytes-1");
         let out = dispatch_action_bytes(Some(app), &envelope);
@@ -58,11 +64,10 @@ fn dispatch_bytes_publish_raw_returns_correlation_id() {
             .get("correlation_id")
             .and_then(|v| v.as_str())
             .unwrap_or_else(|| panic!("expected a correlation_id field, got: {out}"));
-        assert_eq!(id.len(), 32, "minted correlation id is 32 hex chars");
-        assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
-        // The minted id is the operation identity — NOT the host-supplied
-        // envelope correlation_id (#1748: identity is kernel-minted).
-        assert_ne!(id, "corr-bytes-1");
+        assert_eq!(
+            id, "corr-bytes-1",
+            "byte doorway echoes the host-supplied envelope correlation_id (ADR-0064 §4)"
+        );
     });
 }
 
@@ -73,16 +78,42 @@ fn dispatch_bytes_drives_through_the_c_symbol() {
     with_app(|app| {
         let envelope = publish_raw_envelope("corr-c-abi");
         let ptr = std::ptr::addr_of!(*app).cast_mut();
-        let raw = super::nmp_app_dispatch_action_bytes(ptr, envelope.as_ptr(), envelope.len());
+        let raw = nmp_app_dispatch_action_bytes(ptr, envelope.as_ptr(), envelope.len());
         assert!(!raw.is_null(), "non-null app must never return NULL (D6)");
         // SAFETY: `raw` is a freshly minted NUL-terminated string from the call.
         let out = unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned();
-        super::super::free::nmp_free_string(raw);
+        nmp_free_string(raw);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert!(
-            parsed.get("correlation_id").is_some(),
-            "expected acceptance: {out}"
+        assert_eq!(
+            parsed.get("correlation_id").and_then(|v| v.as_str()),
+            Some("corr-c-abi"),
+            "the C symbol echoes the host-supplied envelope correlation_id: {out}"
         );
+    });
+}
+
+#[test]
+fn dispatch_bytes_oversize_via_c_symbol_rejects_before_slice() {
+    // The ABI gates `len > MAX_DISPATCH_ENVELOPE_BYTES` BEFORE forming a slice,
+    // so a hostile length never constructs a `&[u8]` of that span. We pass a
+    // dangling (but non-null) pointer with an oversize `len`: a correct
+    // implementation rejects on `len` alone and never dereferences `ptr`.
+    with_app(|app| {
+        let appp = std::ptr::addr_of!(*app).cast_mut();
+        // A small real allocation; the oversize `len` is a lie the gate must
+        // catch before any read. NonNull, but we assert `ptr` is never read.
+        let backing = [0u8; 8];
+        let raw = nmp_app_dispatch_action_bytes(
+            appp,
+            backing.as_ptr(),
+            MAX_DISPATCH_ENVELOPE_BYTES + 1,
+        );
+        assert!(!raw.is_null());
+        let out = unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned();
+        nmp_free_string(raw);
+        let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
+        let err = parsed.get("error").and_then(|v| v.as_str()).unwrap();
+        assert!(err.contains("oversize"), "got: {err}");
     });
 }
 
@@ -101,10 +132,10 @@ fn dispatch_bytes_null_ptr_via_c_symbol_returns_error_json() {
     // A null `ptr` is an empty buffer — rejected fail-closed, never deref'd.
     with_app(|app| {
         let ptr = std::ptr::addr_of!(*app).cast_mut();
-        let raw = super::nmp_app_dispatch_action_bytes(ptr, std::ptr::null(), 0);
+        let raw = nmp_app_dispatch_action_bytes(ptr, std::ptr::null(), 0);
         assert!(!raw.is_null());
         let out = unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned();
-        super::super::free::nmp_free_string(raw);
+        nmp_free_string(raw);
         let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert!(parsed.get("error").is_some(), "expected error: {out}");
     });

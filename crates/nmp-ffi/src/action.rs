@@ -55,8 +55,14 @@
 use std::ffi::{c_char, CString};
 
 use super::{app_ref, c_string_argument, NmpApp};
-use nmp_core::dispatch_envelope::{decode_dispatch_envelope, DispatchDecodeError};
 use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
+
+// ADR-0064 / S4 (#1752) — the native byte doorway lives in this sibling so
+// `action.rs` stays under its hand-authored LOC ceiling (AGENTS.md / V-12). It
+// is a size-management seam, not an API boundary: `nmp_app_dispatch_action_bytes`
+// is an ordinary `#[no_mangle]` C symbol and reaches the shared post-mint
+// helpers (`finish_dispatch` / `error_json` / `rejection_message`) below.
+mod bytes;
 
 /// Dispatch a named action through the action registry.
 ///
@@ -90,62 +96,6 @@ pub extern "C" fn nmp_app_dispatch_action(
         c_string_argument(namespace).as_deref().unwrap_or(""),
         c_string_argument(action_json).as_deref().unwrap_or(""),
     );
-    // JSON never contains an interior NUL; the `c"{}"` literal fallback is
-    // NUL-checked at compile time, so there is no runtime panic path (D6).
-    CString::new(result)
-        .unwrap_or_else(|_| c"{}".to_owned())
-        .into_raw()
-}
-
-/// ADR-0064 / S4 (#1752) — dispatch a typed action through the **byte**
-/// doorway.
-///
-/// This is the typed-FlatBuffers twin of [`nmp_app_dispatch_action`]: instead
-/// of `(namespace, action_json)`, the caller passes the bytes of an open
-/// [`nmp_core::dispatch_envelope::DispatchEnvelope`] (correlation_id +
-/// generated `action_namespace` + schema_version + opaque per-crate payload).
-/// The generated host builders (`client.publishNote(...)`, Swift/Kotlin
-/// equivalents) stamp the namespace + payload into that envelope so the host
-/// never hand-assembles FlatBuffers or spells a namespace string.
-///
-/// Lands ADDITIVELY beside the JSON doorway (ADR-0064 staged migration step 1):
-/// the JSON `nmp_app_dispatch_action` stays alive; it is retired later at Cut B
-/// / S9, not here.
-///
-/// Returns a freshly heap-allocated, NUL-terminated JSON C string the caller
-/// MUST release via [`super::free::nmp_free_string`]:
-///
-/// * `{"correlation_id":"<32-hex>"}` — the action was accepted, assigned a
-///   correlation id, and enqueued with the actor for execution.
-/// * `{"error":"<message>"}` — the action was rejected. Fail-closed (D6): a
-///   null `app`, a null `ptr`, an oversize / malformed / wrong-identifier /
-///   wrong-schema-version / namespace-less envelope, an unknown namespace, or a
-///   not-typed-capable module all come back here. Never NULL for a non-null
-///   `app`, never a panic across the ABI.
-///
-/// # Safety
-/// `app` must be a valid non-null pointer from [`super::nmp_app_new`], or null
-/// (a null `app` yields error JSON, never a crash). `ptr`/`len` must describe a
-/// valid readable byte range (the finished envelope bytes), or `ptr` may be
-/// null with `len` `0` (treated as an empty buffer and rejected). The bytes are
-/// read but never retained or freed by this call.
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_dispatch_action_bytes(
-    app: *mut NmpApp,
-    ptr: *const u8,
-    len: usize,
-) -> *mut c_char {
-    // A null `ptr` (or zero `len`) is an empty buffer — the S2 decoder rejects
-    // it fail-closed (BadFileIdentifier), so we never dereference a null.
-    let bytes: &[u8] = if ptr.is_null() || len == 0 {
-        &[]
-    } else {
-        // SAFETY: the caller's safety contract guarantees `ptr`/`len` describe
-        // a valid readable byte range for the duration of this call.
-        unsafe { std::slice::from_raw_parts(ptr, len) }
-    };
-    let result = dispatch_action_bytes(app_ref(app), bytes);
     // JSON never contains an interior NUL; the `c"{}"` literal fallback is
     // NUL-checked at compile time, so there is no runtime panic path (D6).
     CString::new(result)
@@ -308,63 +258,6 @@ pub(super) fn dispatch_action_json(
     }
 }
 
-/// ADR-0064 / S4 (#1752) — the native **byte** doorway.
-///
-/// Pure (FFI-free) core of [`nmp_app_dispatch_action_bytes`]: decode the open
-/// [`nmp_core::dispatch_envelope::DispatchEnvelope`] (S2), route the opaque
-/// per-crate payload by `action_namespace` into the registry's typed
-/// `start_bytes` / `execute_bytes` doorway (S3), and return the same
-/// `{"correlation_id":…}` / `{"error":…}` JSON shape as the JSON twin.
-///
-/// This is the typed-bytes path the generated host builders target; it lands
-/// ADDITIVELY beside [`dispatch_action_json`] (the JSON doorway is retired
-/// later at ADR-0064 Cut B / S9, not here).
-///
-/// Fail-closed (D6): a null app, an oversize / malformed / wrong-identifier /
-/// wrong-version / namespace-less envelope, or an unknown namespace all come
-/// back as a populated `{"error":…}` — never a panic across the ABI. The S2
-/// decoder and the S3 registry both `catch_unwind` internally; this function
-/// adds no new unwind path.
-pub(super) fn dispatch_action_bytes(app: Option<&NmpApp>, bytes: &[u8]) -> String {
-    let Some(app) = app else {
-        return error_json("null app");
-    };
-    // S2 — decode the open envelope and run its fail-closed gates. The
-    // transport never peeks the opaque payload (S3 owns the typed decode).
-    let decoded = match decode_dispatch_envelope(bytes) {
-        Ok(decoded) => decoded,
-        Err(err) => return error_json(&decode_error_message(err)),
-    };
-    let dispatch_now_ms = {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0)
-    };
-    let mut ctx = ActionContext {};
-    // S3 — route the opaque payload by namespace into the typed registry
-    // doorway. `start_bytes` runs the per-crate typed decode + the fail-closed
-    // `schema_version` gate BEFORE `start()`; an unknown namespace, a
-    // not-typed-capable module, or a decode/version trip all surface as
-    // `ActionRejection::Invalid` (the module never ran).
-    match app
-        .action_registry
-        .start_bytes(&mut ctx, dispatch_now_ms, &decoded.action_namespace, &decoded.payload)
-    {
-        Ok(correlation_id) => {
-            let outcome = app.action_registry.execute_bytes(
-                &decoded.action_namespace,
-                &decoded.payload,
-                &correlation_id,
-                &|cmd| app.send_cmd(cmd),
-            );
-            finish_dispatch(app, &correlation_id, outcome)
-        }
-        Err(rejection) => error_json(&rejection_message(rejection)),
-    }
-}
-
 /// Shared post-mint outcome handling for BOTH the JSON ([`dispatch_action_json`])
 /// and byte ([`dispatch_action_bytes`]) doorways.
 ///
@@ -410,13 +303,6 @@ fn finish_dispatch(
             error_json_with_correlation_id(correlation_id, &failure.message)
         }
     }
-}
-
-/// Flatten a [`DispatchDecodeError`] (S2 fail-closed gate) into a
-/// human-readable message for the `{"error":…}` envelope. The error is data
-/// (D6): every gate trip is a populated string, never a panic.
-fn decode_error_message(err: DispatchDecodeError) -> String {
-    err.to_string()
 }
 
 /// Drive the validated action toward execution via the registry's executor
@@ -479,10 +365,6 @@ fn json_string(s: &str) -> String {
 #[cfg(test)]
 #[path = "action/tests.rs"]
 mod tests;
-
-#[cfg(test)]
-#[path = "action/tests_bytes.rs"]
-mod tests_bytes;
 
 #[cfg(test)]
 #[path = "action/tests_host_op.rs"]
