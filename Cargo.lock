@@ -4401,7 +4401,6 @@ dependencies = [
  "nmp-relations",
  "nmp-store",
  "nmp-threading",
- "nmp-wasm",
  "nostr",
  "serde",
  "serde_json",
@@ -4424,7 +4423,6 @@ dependencies = [
  "nmp-wasm",
  "serde_json",
  "wasm-bindgen",
- "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -5123,12 +5121,10 @@ dependencies = [
  "nmp-network",
  "nmp-nip18",
  "nmp-signer-iface",
- "nmp-signers",
  "nostr",
  "serde",
  "serde_json",
  "wasm-bindgen",
- "wasm-bindgen-futures",
  "wasm-bindgen-test",
 ]
 

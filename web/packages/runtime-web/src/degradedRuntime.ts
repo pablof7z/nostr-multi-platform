@@ -1,3 +1,4 @@
+import { decodeDispatchEnvelopeRouting } from "./dispatchEnvelope";
 import type { RuntimeStatus, WorkerEvent, WorkerRequest } from "./protocol";
 
 export type DegradedRuntimeMode = "browser_actor_driver_missing" | "browser_bridge_unavailable";
@@ -32,15 +33,29 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
-      case "app_action":
+      case "dispatch_bytes": {
+        // Decode only the routing fields (correlation_id + action_namespace);
+        // the opaque payload is never interpreted. A buffer that is not a
+        // DispatchEnvelope root fails closed with an honest error (D6).
+        const routing = decodeDispatchEnvelopeRouting(request.bytes);
+        if (!routing) {
+          return [
+            {
+              type: "error",
+              code: "dispatch_envelope_rejected",
+              message: "dispatch_bytes did not carry a DispatchEnvelope root (bad file identifier)",
+            },
+          ];
+        }
         return [
           {
             type: "capability_failure",
-            capability: request.type,
-            correlation_id: request.correlation_id,
+            capability: routing.actionNamespace,
+            correlation_id: routing.correlationId,
             reason: this.unavailableReason,
           },
         ];
+      }
       case "capability_result":
         return [
           {

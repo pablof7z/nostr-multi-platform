@@ -37,13 +37,10 @@
 //! the routing table has a single owner that codegen / kernel-namespace
 //! additions touch directly.
 
-use std::sync::Arc;
-
 use nmp_core::{
     EventShape, KernelAction, KernelReducer, OutboundMessage, ProfileShape, RefLiveness,
     RefNamespace, RefShape,
 };
-use nmp_signers::Signer;
 use serde_json::Value;
 
 use crate::protocol::ActionDispatch;
@@ -186,26 +183,23 @@ fn ref_liveness_from_int(value: u32) -> Option<RefLiveness> {
 }
 
 /// Single-source reason string for app-level writes that cannot complete on
-/// the wasm runtime. Distinguishes the two honest failure modes:
+/// the wasm runtime. Distinguishes the two honest failure modes by whether the
+/// kernel has an **active account** seeded (`set_active_account`, via the
+/// `SetSigner` identity request — ADR-0064 §5 removed the persistent signer
+/// slot, so the discriminator is the account, not an `Arc<dyn Signer>`):
 ///
-/// - **No signer installed.** The host hasn't called `SetSigner` yet — the
-///   user has not signed in. Banner: "sign in to publish".
-/// - **Signer installed but publishing disabled in the web preview.** A signer
-///   IS installed, but the web preview build has no real `OutboxResolver`
-///   wired (#1202), so app-level writes are disabled everywhere — the
-///   asynchronous `dispatch_app_action_async` path returns the SAME honest
-///   token (see `publish_path::publish_not_supported_in_web_preview_reason`).
-///   This branch therefore surfaces the one canonical disable token rather than
-///   a second, divergent "wrong entrypoint" string that would have implied the
-///   async path could publish (it cannot, until #1007).
+/// - **No active account.** The host hasn't sent `SetSigner` yet — the user has
+///   not signed in. Banner: "sign in to publish".
+/// - **Account seeded but publishing disabled in the web preview.** The web
+///   preview build has no real `OutboxResolver` wired (#1202/#1007), so
+///   app-level writes are disabled — surface the single canonical disable token
+///   (`publish_not_supported_in_web_preview`).
 ///
 /// Both strings start with a stable underscore-snake-case prefix the JS host
-/// can pattern-match without parsing the full reason text. The publish-disabled
-/// branch returns the SINGLE canonical token shared with the async path so a
-/// host pattern-matches exactly one "publishing is disabled" prefix.
-pub(crate) fn write_path_unavailable_reason(signer: Option<&Arc<dyn Signer>>) -> String {
-    if signer.is_none() {
-        return "signer_not_installed: no signer installed; send WorkerRequest::SetSigner \
+/// can pattern-match without parsing the full reason text.
+pub(crate) fn write_path_unavailable_reason(has_active_account: bool) -> String {
+    if !has_active_account {
+        return "signer_not_installed: no active account; send WorkerRequest::SetSigner \
                 with kind = \"nip07\" and the pubkey from window.nostr.getPublicKey() \
                 before dispatching app-level writes."
             .to_string();

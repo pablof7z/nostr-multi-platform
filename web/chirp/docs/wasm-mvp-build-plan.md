@@ -434,8 +434,8 @@ peers' lint sweeps touch (cf. recent `nmp-signers`/`nmp-planner` lint PRs).
 `publish_path.rs:25-34` explicitly anticipates this): extract the native
 NIP-25 `k`-tag derivation (react command) and the kind:3 follow-set merge
 (**from kernel contact state** — `Kernel::seed_contacts`, never the shell)
-into the shared builders; route `AppAction::React`/`Follow`/`Unfollow`
-(`protocol.rs:105-115`) through `publish_app_action`. Follow/Unfollow with no
+into the shared builders; route the typed `nmp.nip25.react`/`nmp.follow`/`nmp.unfollow`
+writes through the `dispatch_bytes` doorway + `ActionModule` registry (ADR-0064). Follow/Unfollow with no
 cached kind:3 fails closed (`contact_list_unknown:` prefix) rather than
 publishing a destructive single-entry kind:3 — the same trap the native
 command guards against.

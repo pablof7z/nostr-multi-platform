@@ -49,9 +49,6 @@ nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # Panic hook — routes wasm panics to the browser DevTools console.
 console_error_panic_hook = "0.1"
-# `js_sys::Function` (snapshot callback), `js_sys::Promise` / `Date`
-# (dispatch_app_action_async).
+# `js_sys::Function` (snapshot callback) + `js_sys::Uint8Array` (binary snapshot
+# push through the callback channel).
 js-sys = "0.3.98"
-# `future_to_promise` — bridges Rust futures into JS Promises for
-# dispatch_app_action_async.
-wasm-bindgen-futures = "0.4.71"

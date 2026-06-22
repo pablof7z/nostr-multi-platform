@@ -23,20 +23,19 @@ mod relay_pool;
 // wasm32-only.
 mod relay_plan;
 mod runtime;
-// V-01 Stage 3b — signer install path + snapshot push helpers. Both modules
-// are always-compiled (no `cfg(wasm32)`): the signer slot is a `Signer`
-// trait object usable on any target (Nip07Signer.sign() returns Unsupported
-// off-wasm, which is the same honest answer the runtime would give anyway).
-// snapshot.rs builds the binary update frame on both targets; the JS-callback push
-// inside it is `cfg(target_arch = "wasm32")`-gated, with a native no-op
-// shim so call sites stay shim-free.
+// Active-identity validation (`signer_slot`) + snapshot push helpers. Both
+// modules are always-compiled (no `cfg(wasm32)`): `signer_slot` only
+// validates/canonicalizes the `SetSigner` pubkey for the kernel active account
+// (ADR-0064 §5 removed the persistent `Arc<dyn Signer>` slot). snapshot.rs
+// builds the binary update frame on both targets; the JS-callback push inside
+// it is `cfg(target_arch = "wasm32")`-gated, with a native no-op shim so call
+// sites stay shim-free.
 mod dispatch_routing;
-// V-01 Stage 3c — async publish path for app-level write actions on wasm32.
-// Always-compiled (the pure reason-string helpers are needed on the native
-// `runtime.rs` write-path failure arms too); the `publish_app_action` async
-// function and `fan_out_outbound` helper are `cfg(target_arch = "wasm32")`-
-// gated because they own `BrowserRelayDriver` and `js_sys::Function`
-// references — neither exists off-wasm.
+// Honest write-path disable token (`publish_not_supported_in_web_preview`).
+// ADR-0064 §5 removed the wasm `Arc<dyn Signer>.await`-inside-publish path; a
+// signed wasm write is the ADR-0050 capability round-trip (`BeginSign` →
+// `SignRequest` → `DeliverSignerResponse`). Always-compiled — the reason string
+// is needed on the native `runtime.rs`/`dispatch.rs` write-path failure arms.
 mod publish_path;
 mod signer_slot;
 mod snapshot;
@@ -46,8 +45,8 @@ mod snapshot;
 mod tick;
 
 pub use protocol::{
-    ActionDispatch, AppAction, AppActionDispatch, BeginSign, CapabilityFailure, CapabilityResult,
-    ClientHello, DegradedMode, DeliverSignerResponse, RelayBootstrapEntry, RuntimeStatus,
-    SetSigner, StartConfig, WorkerEvent, WorkerRequest,
+    ActionDispatch, BeginSign, CapabilityFailure, CapabilityResult, ClientHello, DegradedMode,
+    DeliverSignerResponse, DispatchBytes, RelayBootstrapEntry, RuntimeStatus, SetSigner,
+    StartConfig, WorkerEvent, WorkerRequest,
 };
 pub use runtime::{WasmRuntime, WasmRuntimeError};

@@ -5,14 +5,18 @@
 //! construction so the `nmp.feed.home` typed projection is registered and
 //! produced in every snapshot frame that leaves the wasm module.
 //!
-//! # JS API surface (unchanged from `nmp-wasm`)
+//! # JS API surface
 //!
-//! The class name (`NmpWasmRuntime`) and all four method names
-//! (`handle_json`, `set_snapshot_callback`, `recent_routing_decisions`,
-//! `dispatch_app_action_async`) are identical to the binding that previously
-//! lived in `crates/nmp-wasm/src/lib.rs`. The generated JS module file is now
-//! `nmp_app_chirp_web.js` (derived from the crate name); `wasmBridge.ts`
-//! updates only its `defaultModulePath` constant.
+//! The class name (`NmpWasmRuntime`) and the method names (`handle_json`,
+//! `set_snapshot_callback`, `recent_routing_decisions`) are stable. The
+//! generated JS module file is `nmp_app_chirp_web.js` (derived from the crate
+//! name); `wasmBridge.ts` sets its `defaultModulePath` constant accordingly.
+//!
+//! ADR-0064 §5 / #1743: there is NO `dispatch_app_action_async` Promise
+//! entrypoint. Writes route through the typed `WorkerRequest::DispatchBytes`
+//! doorway (via `handle_json`); signing is the `BeginSign` capability
+//! round-trip driven by pure message re-entry — no `Arc<dyn Signer>` is awaited
+//! inside a publish flow.
 //!
 //! # Identity-change hook
 //!
@@ -40,16 +44,16 @@
 //!   in the serde impl. In both cases the JS host's catch boundary (in
 //!   `wasmBridge.ts`) converts the rejection to a synthetic `error` event so
 //!   the JS caller still sees data, not an unhandled Promise failure.
-//! * **D8** — `handle_json` is synchronous; the only async path is
-//!   `dispatch_app_action_async` which returns a `Promise`.
+//! * **D8** — `handle_json` is synchronous; writes (including signing) ride the
+//!   message-driven worker protocol, never an in-flow `Promise` over a
+//!   persistent signer.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
-use wasm_bindgen_futures::future_to_promise;
 
-use nmp_wasm::{AppActionDispatch, WasmRuntime, WasmRuntimeError, WorkerEvent, WorkerRequest};
+use nmp_wasm::{WasmRuntime, WasmRuntimeError, WorkerEvent, WorkerRequest};
 
 use crate::composition::{setup_chirp_web_feeds, ChirpWebFeedSetup};
 
@@ -173,58 +177,6 @@ impl NmpWasmRuntime {
     #[wasm_bindgen]
     pub fn recent_routing_decisions(&self) -> String {
         self.runtime.recent_routing_decisions()
-    }
-
-    /// Async dispatch entry point for app-level write actions that need a
-    /// signer.
-    ///
-    /// Accepts a JSON-serialised [`AppActionDispatch`] and returns a
-    /// `js_sys::Promise` that resolves to the JSON-serialised [`WorkerEvent`].
-    ///
-    /// # D6 — errors as data
-    ///
-    /// Parse failures resolve as `WorkerEvent::CapabilityFailure` (with
-    /// `capability = "nmp.dispatch_app_action"` and `correlation_id = ""`
-    /// since neither is parseable from invalid JSON). Promise rejection is
-    /// reserved for the catastrophic case where the resolved `WorkerEvent`
-    /// itself cannot be serialised — indicating a serde regression; the
-    /// wasmBridge.ts catch boundary converts it to a synthetic error event.
-    ///
-    /// Delegates to [`WasmRuntime::start_publish_app_action`].
-    #[wasm_bindgen]
-    pub fn dispatch_app_action_async(&mut self, request_json: &str) -> js_sys::Promise {
-        let dispatch: AppActionDispatch = match serde_json::from_str(request_json) {
-            Ok(d) => d,
-            Err(err) => {
-                // D6: invalid JSON is a protocol-layer error; resolve with a
-                // CapabilityFailure so the caller sees data, not a rejection.
-                use nmp_wasm::CapabilityFailure;
-                let event = WorkerEvent::CapabilityFailure(CapabilityFailure {
-                    capability: "nmp.dispatch_app_action".to_string(),
-                    correlation_id: String::new(),
-                    reason: format!("parse_error: {err}"),
-                });
-                let json = serde_json::to_string(&event)
-                    .unwrap_or_else(|_| r#"{"type":"error","code":"serialize_error","message":"failed to serialise parse_error event","correlation_id":null}"#.to_string());
-                return js_sys::Promise::resolve(&JsValue::from_str(&json));
-            }
-        };
-        #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
-        let now_secs = (js_sys::Date::now() / 1000.0) as u64;
-        let future = self.runtime.start_publish_app_action(
-            dispatch.action,
-            dispatch.correlation_id,
-            now_secs,
-        );
-        future_to_promise(async move {
-            let event = future.await;
-            // Catastrophic only: if a valid WorkerEvent cannot be serialised,
-            // reject so the wasmBridge.ts catch boundary surfaces a synthetic
-            // error event. Under normal operation this branch is unreachable.
-            serde_json::to_string(&event)
-                .map(|s| JsValue::from_str(&s))
-                .map_err(|e| JsValue::from_str(&format!("serialize_error: {e}")))
-        })
     }
 }
 

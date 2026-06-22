@@ -1,8 +1,8 @@
 //! Action-dispatch arm of [`super::WasmRuntime::handle`].
 //!
-//! Split out of `runtime.rs` (LOC ceiling) — the synchronous `dispatch`
-//! router plus its two helpers (`app_action`, `accepted_with_snapshot`) are a
-//! cohesive unit: they translate a host `ActionDispatch` / `AppAction` into the
+//! Split out of `runtime.rs` (LOC ceiling) — the binary `dispatch_bytes`
+//! doorway and the legacy JSON `dispatch` router plus `accepted_with_snapshot`
+//! are a cohesive unit: they translate a host write command into the
 //! `KernelReducer` mutation + the `[ActionAccepted, UpdateBytes?]` reply. The
 //! relay-driven snapshot push and the `Start`/`Stop`/`SetSigner` arms stay in
 //! `runtime.rs`; only the action-namespace routing lives here.
@@ -15,7 +15,7 @@ use crate::dispatch_routing::{
     execute_ref_dispatch, kernel_action_from_dispatch, ref_dispatch_from_action,
     write_path_unavailable_reason,
 };
-use crate::protocol::{ActionDispatch, AppAction, CapabilityFailure, WorkerEvent};
+use crate::protocol::{ActionDispatch, CapabilityFailure, WorkerEvent};
 use nmp_core::dispatch_envelope::{decode_dispatch_envelope, DecodedDispatch};
 use nmp_core::KernelUpdate;
 
@@ -69,11 +69,24 @@ impl WasmRuntime {
         // decode the typed FlatBuffers root. For S2 the binary doorway routes by
         // namespace and surfaces the same honest write-path reason the JSON arm
         // does for app-level writes, proving the envelope crossed and decoded.
+        // Publishing itself stays honestly-disabled until the web composition
+        // root wires a real `OutboxResolver` (#1007); ADR-0064 §5 signing is the
+        // `BeginSign` capability round-trip, never an in-flow `Arc<dyn Signer>`.
+        let reason = write_path_unavailable_reason(self.has_active_account());
         vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
             capability: action_namespace,
             correlation_id,
-            reason: write_path_unavailable_reason(self.signer.as_ref()),
+            reason,
         })]
+    }
+
+    /// Whether the kernel has an active account seeded (via `SetSigner` /
+    /// `set_active_account`). The two honest write-unavailability states key on
+    /// this instead of a persistent signer slot (removed in #1743 Cut A,
+    /// ADR-0064 §5): no account → `signer_not_installed`; account seeded but the
+    /// web preview has no outbox resolver → `publish_not_supported_in_web_preview`.
+    fn has_active_account(&self) -> bool {
+        self.reducer.borrow().active_account_pubkey().is_some()
     }
 
     /// Build an `[ActionAccepted, UpdateBytes]` pair for a successful
@@ -88,19 +101,6 @@ impl WasmRuntime {
             WorkerEvent::ActionAccepted { action_type, correlation_id },
             self.snapshot_event(),
         ]
-    }
-
-    pub(super) fn app_action(
-        &mut self,
-        action: AppAction,
-        correlation_id: String,
-    ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        let (action_type, _payload) = action.into_dispatch_parts();
-        Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-            capability: action_type,
-            correlation_id,
-            reason: write_path_unavailable_reason(self.signer.as_ref()),
-        })])
     }
 
     pub(super) fn dispatch(
@@ -151,10 +151,11 @@ impl WasmRuntime {
             }
             return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));
         }
+        let reason = write_path_unavailable_reason(self.has_active_account());
         Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
             capability: action.action_type,
             correlation_id: action.correlation_id,
-            reason: write_path_unavailable_reason(self.signer.as_ref()),
+            reason,
         })])
     }
 }

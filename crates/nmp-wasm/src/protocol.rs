@@ -7,22 +7,29 @@ pub enum WorkerRequest {
     Hello(ClientHello),
     Start(StartConfig),
     Dispatch(ActionDispatch),
-    #[serde(rename = "app_action")]
-    AppAction(AppActionDispatch),
+    /// ADR-0064 / S2 (#1750) — the **binary write doorway**. The host posts the
+    /// raw bytes of a finished `DispatchEnvelope` (`correlation_id` + generated
+    /// `action_namespace` + typed FlatBuffers `payload`). This is the SAME open
+    /// transport the native FFI (`nmp_app_dispatch_action_bytes`) uses — there
+    /// is no wasm-specific write vocabulary (the hand-rolled `AppAction` enum +
+    /// `"app_action"` envelope were deleted in #1743 Cut A).
+    DispatchBytes(DispatchBytes),
     CapabilityResult(CapabilityResult),
-    /// V-01 Stage 3b — install a signer for app-level write actions.
+    /// Set the active identity for app-level writes.
     ///
     /// The browser host runs the asynchronous half of the handshake itself
     /// (e.g. `await window.nostr.getPublicKey()` for NIP-07) and supplies the
-    /// already-known pubkey hex in this request. The wasm runtime then
-    /// constructs the matching [`nmp_signers::Signer`] synchronously and
-    /// stores it in its signer slot. Subsequent app-level writes that need
-    /// signing (PublishNote, React, Follow, Unfollow) call into the slot's
-    /// `sign()` method, which on wasm32 dispatches the actual signing call
-    /// (`window.nostr.signEvent(...)`) through `wasm-bindgen-futures`.
+    /// already-known pubkey hex in this request. The wasm runtime validates +
+    /// canonicalizes the pubkey and seeds the kernel's active account so
+    /// active-follows resolution and bootstrap interests know whose data to
+    /// load.
     ///
-    /// `kind`: `"nip07"` — the only kind wired in Stage 3b. Other kinds
-    /// return [`WorkerEvent::CapabilityFailure`] with `unsupported_signer_kind`.
+    /// **No persistent signer is installed** (ADR-0064 §5): signing is the
+    /// ADR-0050 capability round-trip ([`Self::BeginSign`] →
+    /// [`WorkerEvent::SignRequest`] → [`Self::DeliverSignerResponse`]), not an
+    /// `Arc<dyn Signer>` awaited inside the publish flow. `kind`: `"nip07"` is
+    /// the only kind wired; other kinds return [`WorkerEvent::CapabilityFailure`]
+    /// with `unsupported_signer_kind`.
     SetSigner(SetSigner),
     /// #1753 S6 — begin a NIP-07 sign capability round-trip.
     ///
@@ -107,96 +114,16 @@ pub struct ActionDispatch {
     pub correlation_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AppActionDispatch {
-    pub action: AppAction,
-    pub correlation_id: String,
-}
-
-impl AppActionDispatch {
-    #[must_use]
-    pub fn into_action_dispatch(self) -> ActionDispatch {
-        let (action_type, payload) = self.action.into_dispatch_parts();
-        ActionDispatch {
-            action_type,
-            payload,
-            correlation_id: self.correlation_id,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "action", rename_all = "snake_case")]
-pub enum AppAction {
-    PublishNote {
-        content: String,
-        #[serde(default)]
-        reply_to_id: Option<String>,
-    },
-    React {
-        target_event_id: String,
-        #[serde(default = "default_reaction")]
-        reaction: String,
-    },
-    Follow {
-        pubkey: String,
-    },
-    Unfollow {
-        pubkey: String,
-    },
-}
-
-impl AppAction {
-    #[must_use]
-    pub fn into_dispatch_parts(self) -> (String, Value) {
-        match self {
-            Self::PublishNote {
-                content,
-                // NIP-10 reply-tag construction now belongs to the host (issue
-                // #906): the core `PublishAction::PublishNote` variant is gone,
-                // so a kind:1 note dispatches as a generic `PublishRaw`. Replies
-                // are wired through the async publish path in `publish_path.rs`:
-                // `build_reply_tags` resolves the NIP-10 tags from the kernel
-                // store before the sign `.await`, and the resulting tagged event
-                // is published via `publish_signed_event`. A top-level note
-                // carries no tags here; `reply_to_id` is consumed by the async
-                // path and not forwarded into the FlatBuffers dispatch.
-                reply_to_id: _,
-            } => (
-                "nmp.publish".to_string(),
-                serde_json::json!({
-                    "PublishRaw": {
-                        "kind": 1,
-                        "tags": [],
-                        "content": content,
-                        "target": "Auto",
-                    }
-                }),
-            ),
-            Self::React {
-                target_event_id,
-                reaction,
-            } => (
-                "nmp.nip25.react".to_string(),
-                serde_json::json!({
-                    "target_event_id": target_event_id,
-                    "reaction": reaction,
-                }),
-            ),
-            Self::Follow { pubkey } => (
-                "nmp.follow".to_string(),
-                serde_json::json!({ "pubkey": pubkey }),
-            ),
-            Self::Unfollow { pubkey } => (
-                "nmp.unfollow".to_string(),
-                serde_json::json!({ "pubkey": pubkey }),
-            ),
-        }
-    }
-}
-
-fn default_reaction() -> String {
-    "+".to_string()
+/// Payload for [`WorkerRequest::DispatchBytes`] — the ADR-0064 binary write
+/// doorway. `bytes` are the raw bytes of a finished `DispatchEnvelope`
+/// FlatBuffers root (file identifier `NMPD`); the runtime decodes them through
+/// `nmp_core::dispatch_envelope::decode_dispatch_envelope` (the SAME path the
+/// native FFI `nmp_app_dispatch_action_bytes` uses). The host posts them as a
+/// transferable `Uint8Array`; serde renders them as a JSON number array on the
+/// degraded in-process path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DispatchBytes {
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -208,9 +135,11 @@ pub struct CapabilityResult {
 
 /// Payload for [`WorkerRequest::SetSigner`].
 ///
-/// `kind` is the discriminator the runtime uses to select a [`nmp_signers::Signer`]
-/// constructor. Stage 3b ships `"nip07"` only; other kinds are honestly rejected
-/// rather than silently dropped.
+/// `kind` is the backend discriminator the host obtained the pubkey from.
+/// `"nip07"` is the only kind wired; other kinds are honestly rejected rather
+/// than silently dropped. The runtime seeds the kernel's active account from
+/// the validated pubkey — it does NOT install a persistent signer (ADR-0064 §5:
+/// signing is the [`WorkerRequest::BeginSign`] capability round-trip).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SetSigner {
     /// Backend kind. Currently must be `"nip07"`.
@@ -218,9 +147,8 @@ pub struct SetSigner {
     /// Hex-encoded public key the host already obtained from the backend.
     ///
     /// For NIP-07 this is the result of `await window.nostr.getPublicKey()`.
-    /// Supplied by the host so the wasm runtime's install path stays
-    /// synchronous — the async getPublicKey() round-trip happens in JS, before
-    /// the request is sent.
+    /// Supplied by the host so the wasm runtime stays synchronous — the async
+    /// getPublicKey() round-trip happens in JS, before the request is sent.
     pub pubkey_hex: String,
     /// Correlation id echoed back in [`WorkerEvent::ActionAccepted`] (or
     /// [`WorkerEvent::CapabilityFailure`] on failure) so the host can match

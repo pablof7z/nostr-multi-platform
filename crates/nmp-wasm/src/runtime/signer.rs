@@ -1,5 +1,5 @@
-//! Signer installation + the #1753 S6 wasm signing capability round-trip arms
-//! for [`super::WasmRuntime`].
+//! Active-identity seeding + the #1753 S6 wasm signing capability round-trip
+//! arms for [`super::WasmRuntime`].
 
 use crate::protocol::{BeginSign, CapabilityFailure, DeliverSignerResponse, SetSigner, WorkerEvent};
 use crate::signer_slot;
@@ -7,21 +7,21 @@ use crate::signer_slot;
 use super::WasmRuntime;
 
 impl WasmRuntime {
-    /// V-01 Stage 3b - install a signer from a [`SetSigner`] request.
+    /// Seed the kernel's active account from a [`SetSigner`] identity request.
     ///
-    /// Pure: no I/O, no JS-event-loop interaction. Construction failure
-    /// surfaces as `CapabilityFailure` with a stable code (e.g.
-    /// `unsupported_signer_kind`, `invalid_signer_pubkey`); success surfaces
-    /// as `ActionAccepted` with `action_type = "nmp.set_signer"`.
+    /// Pure: no I/O, no JS-event-loop interaction. Validation failure surfaces
+    /// as `CapabilityFailure` with a stable code (e.g. `unsupported_signer_kind`,
+    /// `invalid_signer_pubkey`); success surfaces as `ActionAccepted` with
+    /// `action_type = "nmp.set_signer"`.
     ///
-    /// PR-3 viewer-pubkey hand-off: on success the pubkey from the signer
-    /// request is fed into the kernel via `set_active_account` so
-    /// active-follows resolution and bootstrap interests know whose follows
-    /// to load without waiting for a separate `set_active_account` action.
+    /// **No persistent signer is installed** (ADR-0064 §5): the request only
+    /// validates + canonicalizes the pubkey and feeds it into the kernel via
+    /// `set_active_account` so active-follows resolution and bootstrap interests
+    /// know whose follows to load. Signing is the [`Self::begin_sign`] capability
+    /// round-trip, never an `Arc<dyn Signer>` awaited inside a publish flow.
     pub(super) fn set_signer(&mut self, request: SetSigner) -> Vec<WorkerEvent> {
-        match signer_slot::install_from_request(&request) {
-            Ok((signer, canonical_pubkey)) => {
-                self.signer = Some(signer);
+        match signer_slot::canonical_pubkey_from_request(&request) {
+            Ok(canonical_pubkey) => {
                 // Use the canonical lowercase hex from the parsed key, not the
                 // raw wire string. Uppercase input must not seed a non-canonical
                 // active_account (B2).

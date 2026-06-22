@@ -1,4 +1,4 @@
-import type { ChirpAction } from "@nmp/runtime-web";
+import { encodeDispatchEnvelope, type ChirpAction, type WorkerRequest } from "@nmp/runtime-web";
 
 export type RuntimeCommand = {
   actionType: string;
@@ -11,6 +11,84 @@ export function publishNoteAction(content: string, replyToId: string | null = nu
     content,
     reply_to_id: replyToId,
   };
+}
+
+// ── ADR-0064 typed write lowering (#1743 Cut A) ──────────────────────────────
+//
+// A Chirp app-level write (`ChirpAction`) crosses the wasm boundary through the
+// ONE typed `dispatch_bytes` doorway carrying a `DispatchEnvelope` — identical
+// in shape to the native FFI seam. The `action_namespace` is a GENERATED
+// discriminant; no human spells it at a call site. This lowering is the only
+// place those namespace strings live, mirroring the native `ActionModule`
+// registry keys. There is NO wasm-only write enum (the hand-rolled `app_action`
+// envelope + `AppAction` enum were deleted in #1743 Cut A).
+
+/** A write command lowered to the open transport: a generated `action_namespace`
+ *  discriminant plus an opaque per-crate payload. */
+interface DispatchParts {
+  actionNamespace: string;
+  payload: unknown;
+}
+
+const utf8Encoder = new TextEncoder();
+
+/** Lower a `ChirpAction` to its generated `action_namespace` + opaque payload. */
+function chirpActionToDispatchParts(action: ChirpAction): DispatchParts {
+  switch (action.action) {
+    case "publish_note":
+      // NIP-10 reply-tag construction belongs to the host (#906): a kind:1 note
+      // lowers to the engine-generic `PublishRaw`. `reply_to_id` is resolved by
+      // the publish path, not forwarded into the envelope.
+      return {
+        actionNamespace: "nmp.publish",
+        payload: { PublishRaw: { kind: 1, tags: [], content: action.content, target: "Auto" } },
+      };
+    case "react":
+      return {
+        actionNamespace: "nmp.nip25.react",
+        payload: { target_event_id: action.target_event_id, reaction: action.reaction ?? "+" },
+      };
+    case "follow":
+      return { actionNamespace: "nmp.follow", payload: { pubkey: action.pubkey } };
+    case "unfollow":
+      return { actionNamespace: "nmp.unfollow", payload: { pubkey: action.pubkey } };
+  }
+}
+
+/** The app-level write namespaces that ride the typed `dispatch_bytes` doorway
+ *  (ADR-0064 / #1743 Cut A "those modules" — the registry actions given typed
+ *  payloads in migration step 2). A `RuntimeCommand` whose `actionType` is in
+ *  this set is an app-level signed write and MUST cross the typed envelope, not
+ *  the generic JSON `dispatch` arm — there is no parallel app-write doorway.
+ *  Everything else (`nmp.kernel.*`, `nmp.view.*`, `nmp.wallet.*`, and the
+ *  not-yet-migrated NIP crates `nmp.nip17.*` / `nmp.nip29.*`) stays on JSON
+ *  dispatch until its own migration stage (ADR-0064 §Migration step 6). */
+export const TYPED_WRITE_NAMESPACES: ReadonlySet<string> = new Set([
+  "nmp.publish",
+  "nmp.nip25.react",
+  "nmp.follow",
+  "nmp.unfollow",
+]);
+
+/** Build the `dispatch_bytes` worker request for an app-level write: encode the
+ *  opaque payload and wrap it with the generated `actionNamespace` in a typed
+ *  `DispatchEnvelope` keyed by `correlationId`. The single envelope-building
+ *  seam shared by `dispatchChirp` and the typed arm of `dispatchCommand`. */
+export function typedWriteRequest(
+  actionNamespace: string,
+  payload: unknown,
+  correlationId: string,
+): WorkerRequest {
+  const payloadBytes = utf8Encoder.encode(JSON.stringify(payload));
+  const bytes = encodeDispatchEnvelope(correlationId, actionNamespace, payloadBytes);
+  return { type: "dispatch_bytes", bytes };
+}
+
+/** Build the `dispatch_bytes` worker request for a Chirp `ChirpAction`: lower it
+ *  to (namespace, payload), then wrap in a typed `DispatchEnvelope`. */
+export function chirpActionRequest(action: ChirpAction, correlationId: string): WorkerRequest {
+  const { actionNamespace, payload } = chirpActionToDispatchParts(action);
+  return typedWriteRequest(actionNamespace, payload, correlationId);
 }
 
 export function publishProfileCommand(fields: Record<string, string>): RuntimeCommand {

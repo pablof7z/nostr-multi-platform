@@ -1,8 +1,9 @@
 # WASM Surface Reference
 
-> **Reviewed:** 2026-06-12. Sourced directly from `crates/nmp-wasm/src/`.
+> **Reviewed:** 2026-06-22. Sourced directly from `crates/nmp-wasm/src/`.
 > This document is the single source of truth for the `crates/nmp-wasm` worker
-> protocol contract. See ADR-0047 for rationale.
+> protocol contract. See ADR-0047 (worker write/signing contract now defers to
+> **ADR-0064** — the unified write/command boundary).
 
 `crates/nmp-wasm` exposes the NMP browser runtime as a `wasm-bindgen` class
 (`NmpWasmRuntime`) that a dedicated Worker instantiates. The Worker event loop
@@ -21,8 +22,13 @@ uses two channels:
    bytes) whenever a relay-driven kernel mutation produces a fresh snapshot.
    See §4.
 
-There is a third entrypoint for app-level writes that need a JS Promise:
-`dispatch_app_action_async(request_json: string): Promise<string>` (§3).
+App-level **writes** ride the JSON control channel as a typed
+`WorkerRequest::DispatchBytes` carrying a `DispatchEnvelope` (ADR-0064 §1; §3
+below). There is no Promise write entrypoint and no wasm-only write enum: the
+former `dispatch_app_action_async` / `AppAction` / `"app_action"` envelope were
+deleted (#1743 Cut A). Signing is the ADR-0050 capability round-trip
+(`begin_sign` → `sign_request` → `deliver_signer_response`), driven by pure
+message re-entry — the reducer never awaits a persistent signer (D7/D8).
 
 ---
 
@@ -38,10 +44,12 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 6–30.
 | `"hello"` | `Hello(ClientHello)` | `app_id: String`, `platform: String`, `protocol_version: u16` | **Host convention:** send before `Start`. The runtime enforces no ordering — `Start` without a prior `Hello` succeeds (`runtime.rs:185-223`). Protocol version must be `1`; mismatch returns `WorkerEvent::Error` with `code = "protocol_mismatch"`. |
 | `"start"` | `Start(StartConfig)` | `app_id: String`, `relays: Vec<String>`, `relay_bootstrap: Vec<{url, role}>`, `database_name: String`, `correlation_id: String` | Starts the `KernelReducer`, spawns relay drivers (wasm32 only). Relay/bootstrap input is explicit host policy; the framework has no app-default fallback. |
 | `"stop"` | `Stop` | `correlation_id: String` | Closes relay drivers, stops the kernel. |
-| `"dispatch"` | `Dispatch(ActionDispatch)` | `action_type: String`, `payload: Value`, `correlation_id: String` | Generic kernel-namespaced dispatch. Routes `nmp.kernel.*` actions through `KernelReducer::reduce`. App-namespaced writes not routed through the sync path (see §3). |
-| `"app_action"` | `AppAction(AppActionDispatch)` | `action: AppAction`, `correlation_id: String` | Framework-neutral app action tag. On the sync path this always returns `CapabilityFailure`; use `dispatch_app_action_async` instead (§3). |
+| `"dispatch"` | `Dispatch(ActionDispatch)` | `action_type: String`, `payload: Value`, `correlation_id: String` | Generic kernel-namespaced JSON dispatch. Routes `nmp.kernel.*` actions through `KernelReducer::reduce`. App-namespaced writes use `dispatch_bytes` (see §3). |
+| `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the SAME path the native FFI `nmp_app_dispatch_action_bytes` uses. There is no wasm-only write vocabulary. |
 | `"capability_result"` | `CapabilityResult(CapabilityResult)` | `capability: String`, `correlation_id: String`, `payload: Value` | Browser-side capability completion. Returns `CapabilityFailure` with reason `browser_actor_driver_missing` — the native actor capability handler is not available on wasm. |
-| `"set_signer"` | `SetSigner(SetSigner)` | `kind: String`, `pubkey_hex: String`, `correlation_id: String` | Install a signer. Only `kind = "nip07"` is wired. `pubkey_hex` is the result of `await window.nostr.getPublicKey()` — the host completes the async handshake before sending this request. |
+| `"set_signer"` | `SetSigner(SetSigner)` | `kind: String`, `pubkey_hex: String`, `correlation_id: String` | Set the active identity. Only `kind = "nip07"` is wired. `pubkey_hex` is the result of `await window.nostr.getPublicKey()`. **No persistent signer is installed** (ADR-0064 §5): this only validates + canonicalizes the pubkey and seeds the kernel active account; signing is the `begin_sign` capability round-trip. |
+| `"begin_sign"` | `BeginSign(BeginSign)` | `account_pubkey: String`, `unsigned_json: String` | ADR-0050 sign capability round-trip. Parks a sign op and emits `sign_request` for the main-thread broker to fulfil via `window.nostr.signEvent`. Pure message re-entry (D8). |
+| `"deliver_signer_response"` | `DeliverSignerResponse(DeliverSignerResponse)` | `correlation_id: String`, `signed_json?: String`, `error?: String` | The broker delivers the signer response (success or rejection). Drives the parked op exactly once from this message handler — no polling (D8). Account-pinned. |
 
 ### `Dispatch` kernel-namespaced action types
 
@@ -100,11 +108,11 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 206–220.
 
 ---
 
-## 3. Sync vs async dispatch paths
+## 3. The dispatch path (`handle_json`) and the typed write doorway
 
-### Sync path — `handle_json`
+### `handle_json`
 
-Source: `crates/nmp-wasm/src/lib.rs` lines 71–99.
+Source: `apps/chirp/nmp-app-chirp-web/src/wasm_binding.rs`.
 
 ```
 handle_json(request: string): Result<JsValue, JsValue>
@@ -114,53 +122,64 @@ Accepts a JSON-serialised `WorkerRequest`. Returns a JSON string (array of
 `WorkerEvent`s). `UpdateBytes` events are drained out of the array and pushed
 through the snapshot callback before `handle_json` returns. The host sees a
 single binary channel for snapshot frames regardless of whether they were
-produced by a relay-inbound frame or by a `Start`/`Dispatch` request.
+produced by a relay-inbound frame or by a `Start`/`Dispatch`/`DispatchBytes`
+request.
 
 **D6:** Returns `Err(JsValue)` for JSON deserialisation failure *and* for any
-`WasmRuntimeError` from `WasmRuntime::handle` (`lib.rs:76`) — concretely:
-`InvalidConfig` (empty `app_id`, `database_name`, or `relays` on `Start`;
-relay-spawn failure on wasm32) or `KernelContract` (unexpected `KernelUpdate`
-variant returned by the pure reducer). All three cases are programmer errors.
-All other runtime failures surface as `CapabilityFailure` inside the `Ok`
-result — never a `JsValue` rejection on anything the user can cause.
+`WasmRuntimeError` from `WasmRuntime::handle` — concretely: `InvalidConfig`
+(empty `app_id`, `database_name`, or `relays` on `Start`; relay-spawn failure
+on wasm32) or `KernelContract` (unexpected `KernelUpdate` variant returned by
+the pure reducer). All other runtime failures surface as `CapabilityFailure`
+inside the `Ok` result — never a `JsValue` rejection on anything the user can
+cause.
 
-### Async path — `dispatch_app_action_async`
+### The typed write doorway — `DispatchBytes`
 
-Source: `crates/nmp-wasm/src/lib.rs` lines 188–215.
+App-level writes cross as `WorkerRequest::DispatchBytes { bytes }` where `bytes`
+are a finished `DispatchEnvelope` (ADR-0064 §1). The host builds the envelope
+through generated/typed builders (`web/packages/runtime-web/src/dispatchEnvelope.ts`
+→ `encodeDispatchEnvelope`; the Chirp `action_namespace` lowering lives in
+`web/chirp/src/nmp/actions.ts`). The `action_namespace` is a generated
+discriminant — no human spells it at a call site — and is identical to the
+native `ActionModule` registry key. The wasm runtime decodes the envelope
+(`runtime/dispatch.rs::dispatch_bytes`) and routes by namespace; the opaque
+payload is carried verbatim (the per-crate typed payload decode is the
+`ActionModule`'s job).
 
-```
-dispatch_app_action_async(request_json: string): Promise<string>
-```
+A decode rejection (bad file identifier, schema_version tripwire mismatch,
+oversize, missing routing fields) fails CLOSED with a data-shaped
+`WorkerEvent::Error { code: "dispatch_envelope_rejected" }` — never a panic,
+never a silent accept (D6).
 
-Accepts a JSON-serialised `AppActionDispatch` (the inner struct from
-`WorkerRequest::AppAction`, without the outer `"type":"app_action"` wrapper).
-Returns a `Promise` resolving to a JSON-serialised `WorkerEvent` —
-`ActionAccepted` on success or `CapabilityFailure` for every honest failure mode.
-Promise rejects only on invalid `request_json` (programmer error).
+**Web-preview disable.** Current web builds surface `CapabilityFailure` with the
+`publish_not_supported_in_web_preview` prefix for every app-level write, because
+the wasm composition root has no real `Nip65OutboxResolver`; accepting a write
+would report success while publishing to zero relays. The write nonetheless
+crosses through the typed envelope (not a wasm-only enum).
 
-**Why a separate entrypoint:** `handle_json` is synchronous; the NIP-07 sign
-step (`window.nostr.signEvent(...)`) is an async JS Promise the wasm thread
-cannot block on. The async entrypoint lets the host `await` the Promise without
-changing the synchronous contract of `handle_json`.
+### Signing — the ADR-0050 capability round-trip
 
-### AppAction variants
+Signing is **not** an in-flow `Arc<dyn Signer>.await` (that path was deleted in
+#1743 Cut A). A signed write is the message-driven capability round-trip:
 
-Source: `crates/nmp-wasm/src/protocol.rs` lines 97–116.
-Serialised with `"action"` tag (`serde(tag = "action", rename_all = "snake_case")`).
+1. The host sends `begin_sign { account_pubkey, unsigned_json }`.
+2. The worker parks a sign op and emits `sign_request { correlation_id,
+   account_pubkey, unsigned_json }` for the **main-thread broker** (Web Workers
+   have no `window.nostr`).
+3. The broker calls `window.nostr.signEvent(...)` and posts
+   `deliver_signer_response { correlation_id, signed_json | error }` back.
+4. The worker drives the parked op exactly once from that message handler — no
+   polling, no tick-dependence (D8) — and emits `sign_completed` / `sign_failed`.
 
-Current web preview builds return `CapabilityFailure` with reason prefix
-`publish_not_supported_in_web_preview` for every app-level write before any
-NIP-07 signing step. The runtime does this because the wasm composition root has
-no real `Nip65OutboxResolver`; accepting a write would report success while
-publishing to zero relays. The table below documents the compiled action
-mapping behind that honest-disable gate.
+The signer backend (local key / NIP-07 / NIP-46 / NIP-55) is invisible to the
+action vocabulary; the action payload carries no signer hint (V-78).
 
-| `action` | Payload fields | Notes |
+| Chirp `ChirpAction` | `action_namespace` | Notes |
 |---|---|---|
-| `"publish_note"` | `content: String`, `reply_to_id?: String` | Maps to `nmp.publish / PublishRaw { kind: 1 }`. `reply_to_id` is consumed by the async publish path to build NIP-10 tags from the kernel store; absent or non-kind:1 parents fail closed with `reply_target_unknown`. |
-| `"react"` | `target_event_id: String`, `reaction?: String` (default `"+"`) | Maps to `nmp.nip25.react` and validates a 64-hex target event id before building the kind:7 draft. |
-| `"follow"` | `pubkey: String` | Maps to `nmp.follow`; requires the active account kind:3 contact list before building the replacement event. |
-| `"unfollow"` | `pubkey: String` | Maps to `nmp.unfollow`; requires the active account kind:3 contact list before building the replacement event. |
+| `publish_note` | `nmp.publish` | Lowers to `PublishRaw { kind: 1 }`. `reply_to_id` is host-resolved (NIP-10), not forwarded into the envelope. |
+| `react` | `nmp.nip25.react` | `target_event_id` + `reaction` (default `"+"`). |
+| `follow` | `nmp.follow` | `pubkey`. |
+| `unfollow` | `nmp.unfollow` | `pubkey`. |
 
 ---
 
@@ -185,15 +204,10 @@ The callback fires on three triggers:
   the push fires only on relay activity.
 - **Request-driven mutations:** `handle_json` drains `UpdateBytes` events from
   the handle result and routes them through the callback before returning.
-- **Async publish mutations:** `dispatch_app_action_async` calls
-  `push_snapshot_if_callback` after a successful sign + publish
-  (`publish_path.rs:242`). The host sees the new publish-queue entry
-  (status: `"accepted_locally"`) immediately without waiting for the next
-  relay-inbound frame.
 
 In all cases the host receives snapshot frames on the same binary channel,
-regardless of whether the mutation originated from the network, a host
-dispatch, or an async publish.
+regardless of whether the mutation originated from the network or a host
+dispatch.
 
 ---
 
@@ -203,17 +217,15 @@ The runtime surfaces honest failure reasons as stable snake_case prefix strings
 in `CapabilityFailure.reason`. Hosts must pattern-match on the prefix (split on
 the first `: `).
 
-Source: `crates/nmp-wasm/src/dispatch_routing.rs` lines 112–138;
-`crates/nmp-wasm/src/signer_slot.rs` lines 47–67;
-`crates/nmp-wasm/src/publish_path.rs` lines 69–75, 83–88, 216.
+Source: `crates/nmp-wasm/src/dispatch_routing.rs`;
+`crates/nmp-wasm/src/signer_slot.rs`;
+`crates/nmp-wasm/src/publish_path.rs`.
 
 | Prefix | Source function | Condition |
 |---|---|---|
-| `signer_not_installed` | `write_path_unavailable_reason(None)` | App-level write dispatched before `SetSigner`. Host should prompt sign-in. |
-| `publish_not_supported_in_web_preview` | `write_path_unavailable_reason(Some(&signer))` AND `publish_app_action` (async) | Signer installed but publishing is disabled in the web preview (no `OutboxResolver` wired, #1202). #1748 collapsed the former divergent `publish_path_not_wired` (sync path) token onto this single canonical "publishing disabled" prefix, so the sync `handle_json` path and the async `dispatch_app_action_async` path now surface the SAME token. A host that string-matched `publish_path_not_wired` must update to this prefix. |
-| `publish_path_not_wired_for_kind` | `write_path_not_wired_for_kind_reason` | Async path received `React`, `Follow`, or `Unfollow` (or `PublishNote` with non-null `reply_to_id`). Only plain `PublishNote` (kind:1, no reply) is wired in the current async path. |
-| `unsupported_signer_backend_for_writes` | `unsupported_signer_backend_reason` | Installed signer backend is not NIP-07 (e.g. `LocalKey`). Only NIP-07 is wired for wasm async writes. |
-| `nip07_sign_failed` | inline in `publish_app_action` | `window.nostr.signEvent` was rejected or returned an error. The failure detail follows the prefix after `": "`. |
+| `signer_not_installed` | `write_path_unavailable_reason(false)` | App-level write dispatched before `SetSigner` seeded an active account. Host should prompt sign-in. |
+| `publish_not_supported_in_web_preview` | `write_path_unavailable_reason(true)` → `publish_not_supported_in_web_preview_reason` | An active account is seeded but publishing is disabled in the web preview (no `OutboxResolver` wired, #1202/#1007). The single canonical "publishing disabled" prefix; hosts pattern-match it to surface an honest banner. |
+| `dispatch_envelope_rejected` | `dispatch_bytes` decode | The `DispatchBytes` buffer is not a valid `DispatchEnvelope` (bad file identifier, schema_version mismatch, oversize, missing routing fields). Surfaced as `WorkerEvent::Error`, not `CapabilityFailure`. |
 | `browser_actor_driver_missing` | `browser_driver_missing_reason()` | `CapabilityResult` received; no native actor to route it. The wasm runtime drains the JS pending state and returns this reason. |
 | `unsupported_signer_kind` | `SignerInstallError::UnsupportedKind` | `SetSigner.kind` is not `"nip07"`. Only NIP-07 is wired. |
 | `invalid_signer_pubkey` | `SignerInstallError::InvalidPubkey` | `SetSigner.pubkey_hex` failed secp256k1 x-only pubkey parse. |
@@ -241,14 +253,15 @@ work across both surfaces.
 
 ## 7. Follow-on work (not yet shipped)
 
-- **Web publish enablement.** `dispatch_app_action_async` currently returns
-  `CapabilityFailure` with reason prefix `publish_not_supported_in_web_preview`
-  for every app-level write because the wasm runtime lacks a real
-  `Nip65OutboxResolver`. The `PublishNote`, reply, React, Follow, and Unfollow
-  builders are compiled and tested behind that gate; enabling writes means
-  installing the real composition root and removing the honest-disable gate.
+- **Web publish enablement.** The typed `DispatchBytes` write doorway currently
+  returns `CapabilityFailure` with reason prefix
+  `publish_not_supported_in_web_preview` for every app-level write because the
+  wasm composition root lacks a real `Nip65OutboxResolver`. Enabling writes
+  means installing the real composition root and wiring the per-crate typed
+  payload decode + publish through the `ActionModule` registry (#1007).
 - **IndexedDB store.** The kernel runs in memory; state resets on page reload.
   An IndexedDB replay-log adapter feeding explicit events into the kernel is
   unimplemented.
-- **NIP-46 (bunker) signer on wasm.** `SetSigner` only accepts `kind = "nip07"`.
-  A wasm NIP-46 transport is a future Stage 3c follow-up.
+- **NIP-46 (bunker) / NIP-55 signer on wasm.** `SetSigner` only accepts
+  `kind = "nip07"`. Other backends join as ADR-0050 sign capability fulfillers
+  on the same `begin_sign` / `deliver_signer_response` round-trip.
