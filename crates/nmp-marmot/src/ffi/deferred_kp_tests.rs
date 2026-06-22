@@ -44,7 +44,7 @@ fn create_group_with_missing_kp_parks_and_retries_on_kp_arrival() {
     let alice_keys = Keys::generate();
     let bob_keys = Keys::generate();
 
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
 
     // Alice publishes her own KP (needed by the group op).
     proj.with_inner(|h| {
@@ -146,7 +146,7 @@ fn pending_op_expires_after_deadline_on_next_ingest_edge() {
     let bob_keys = Keys::generate();
     let carol_keys = Keys::generate(); // Carol's KP arrives (unrelated to the blocking op).
 
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
 
     // Alice publishes her own KP.
     proj.with_inner(|h| {
@@ -227,7 +227,7 @@ fn duplicate_create_group_while_pending_is_rejected_as_duplicate() {
     let alice_keys = Keys::generate();
     let bob_keys = Keys::generate();
 
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
 
     proj.with_inner(|h| {
         ops::dispatch(
@@ -300,7 +300,7 @@ fn duplicate_create_group_while_pending_is_rejected_as_duplicate() {
 /// present.
 #[test]
 fn create_group_without_correlation_id_returns_terminal_soft_fail() {
-    let proj = MarmotProjection::new(in_memory(Keys::generate()), true);
+    let proj = MarmotProjection::new(in_memory(Keys::generate()), None);
     let r = proj
         .with_inner(|h| {
             ops::dispatch(
@@ -334,7 +334,7 @@ fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
     let alice_keys = Keys::generate();
     let bob_keys = Keys::generate();
 
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
         ops::dispatch(
             h,
@@ -406,7 +406,7 @@ fn exactly_one_terminal_command_per_correlation_id() {
     let bob_keys = Keys::generate(); // retry-success peer
     let carol_keys = Keys::generate(); // expiry peer (KP never arrives in time)
 
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
         ops::dispatch(
             h,

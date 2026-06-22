@@ -37,15 +37,16 @@
 //! probe for the MLS DB key id. A decodable `ok` or `not_found` response
 //! confirms the handler is alive and speaks the keyring vocabulary; any
 //! other outcome (undecodable envelope, missing handler, explicit `error`
-//! status) degrades silently to the mock store and sets `keyring_unavailable`.
+//! status) degrades silently to the mock store and surfaces
+//! `MarmotInitError::KeyringUnavailable` in the snapshot (#1651).
 //!
 //! # V-62 contract (preserved)
 //!
 //! `register_with_keys` (in `ffi.rs`) reads the `Option<bool>` returned by
 //! `initialize()`:
-//! - `Some(false)` → real capability store, `keyring_unavailable = false`.
+//! - `Some(false)` → real capability store, `init_error = None`.
 //! - `Some(true)` → mock store (escape hatch or probe failure),
-//!   `keyring_unavailable = true` in the snapshot.
+//!   `init_error = Some(MarmotInitError::KeyringUnavailable)` in the snapshot.
 //! - `None` → store setup panicked; return null handle.
 //!
 //! # iOS ordering invariant (verified)
@@ -55,20 +56,20 @@
 //! what drives the first `nmp_marmot_register*` call. This means the
 //! capability slot is populated before `initialize()` runs its probe. Any
 //! future reordering will cause the probe to fail → mock fallback →
-//! `keyring_unavailable = true` in the snapshot, which is visible to the
-//! host. The ordering invariant is therefore self-enforcing.
+//! `MarmotInitError::KeyringUnavailable` in the snapshot, which is visible to
+//! the host. The ordering invariant is therefore self-enforcing.
 
 use zeroize::Zeroizing;
 
 use keyring_core::{
     api::{CredentialApi, CredentialPersistence, CredentialStoreApi},
-    set_default_store,
-    Entry, Error as KeyringError, Result as KeyringResult,
+    set_default_store, Entry, Error as KeyringError, Result as KeyringResult,
 };
 use nmp_core::{
     capability_socket::{dispatch_capability, CapabilityCallbackSlot},
     substrate::{
-        CapabilityModule, KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult as NmpKeyringResult, KeyringStatus,
+        CapabilityModule, KeyringCapability, KeyringIdentityWiring, KeyringRequest,
+        KeyringResult as NmpKeyringResult, KeyringStatus,
     },
 };
 use std::{
@@ -139,8 +140,7 @@ impl CapabilityCredential {
         let cap_req = nmp_core::substrate::CapabilityRequest {
             namespace: KeyringCapability::NAMESPACE.to_string(),
             correlation_id,
-            payload_json: serde_json::to_string(&request)
-                .unwrap_or_else(|_| "{}".to_string()),
+            payload_json: serde_json::to_string(&request).unwrap_or_else(|_| "{}".to_string()),
         };
         let json = serde_json::to_string(&cap_req).unwrap_or_else(|_| "{}".to_string());
         let envelope_json = dispatch_capability(&self.slot, &json);
@@ -188,8 +188,7 @@ impl CredentialApi for CapabilityCredential {
                 // key bytes are wiped from the heap when we return.  The decoded
                 // `Vec<u8>` is returned to mdk-sqlite-storage; the caller is
                 // responsible for the lifetime of those bytes.
-                let encoded: Zeroizing<String> =
-                    Zeroizing::new(result.secret.unwrap_or_default());
+                let encoded: Zeroizing<String> = Zeroizing::new(result.secret.unwrap_or_default());
                 base64::engine::general_purpose::STANDARD
                     .decode(encoded.as_str())
                     .map_err(|_| platform_failure(Some(-50)))
@@ -278,11 +277,7 @@ fn try_install_capability_store(
     // service-id and the generic DB-key id. Both must be slash-free so the
     // `"{service}/{user}"` join in `build` and the `split_once('/')` in
     // `get_specifiers` stay injective (see the INVARIANT comment there).
-    let probe_id = format!(
-        "{}/{}",
-        keyring_service_id,
-        super::ffi::KEYRING_DB_KEY_ID
-    );
+    let probe_id = format!("{}/{}", keyring_service_id, super::ffi::KEYRING_DB_KEY_ID);
     let credential = CapabilityCredential {
         slot: Arc::clone(&slot),
         account_id: probe_id,
@@ -301,7 +296,7 @@ fn try_install_capability_store(
         Some(false)
     } else {
         // Handler missing, returned error, or envelope was malformed.
-        // Degrade to mock; register_with_keys will set keyring_unavailable.
+        // Degrade to mock; register_with_keys surfaces KeyringUnavailable.
         install_mock_store()
     }
 }

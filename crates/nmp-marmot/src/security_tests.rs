@@ -20,7 +20,7 @@ use crate::service::MarmotService;
 fn in_memory_proj(keys: Keys) -> MarmotProjection {
     let storage = MdkSqliteStorage::new_in_memory().expect("in-memory storage");
     let service = MarmotService::from_storage(storage, keys, Default::default());
-    MarmotProjection::new(service, true)
+    MarmotProjection::new(service, None)
 }
 
 // ─── Signature verification gate ─────────────────────────────────────────────

@@ -74,11 +74,12 @@ use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 use nostr::{Event, JsonUtil, PublicKey, RelayUrl};
 
-use crate::service::MarmotService;
 use crate::projection::payload::{
-    KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotSnapshot, PendingWelcomeRow,
+    KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotInitError, MarmotSnapshot,
+    PendingWelcomeRow,
 };
 use crate::projection::pending::PendingOpsStore;
+use crate::service::MarmotService;
 
 // Marmot KeyPackage kinds — canonical `u32` integers from `nmp-kinds` (via
 // `crate::interest`). Previously re-declared as a local literal here, diverging
@@ -98,7 +99,6 @@ struct CachedWelcome {
     inviter_npub: String,
 }
 
-
 pub(super) struct Inner {
     service: MarmotService,
     /// kind:1059 gift-wrap-event-id hex → cached pending Welcome.
@@ -115,11 +115,13 @@ pub(super) struct Inner {
     /// for the in-memory test projection (publish degrades to a silent
     /// no-op there — the D6 fire-and-forget contract).
     app: *mut NmpApp,
-    /// V-62: `true` when the projection was initialized with an in-memory
-    /// mock credential store because the platform keyring was unavailable.
-    /// Set once at construction; never flipped back to `false`. Surfaced in
-    /// the snapshot so the host can warn the user and block group features.
-    keyring_unavailable: bool,
+    /// #1651: the service-init failure surfaced in every snapshot, or `None`
+    /// on a healthy registration. `Some(KeyringUnavailable)` when the projection
+    /// was built over the in-memory mock credential store (formerly the V-62
+    /// `keyring_unavailable` bool). Set once at construction; never cleared.
+    /// (The `DbKeyLost` variant is carried by the degraded slot in `ffi.rs`,
+    /// which has no `MarmotProjection` to hold it — see `MarmotSlotState`.)
+    init_error: Option<MarmotInitError>,
     /// Pending ops deferred because invitee KPs were not yet in the cache.
     /// Re-tried on every KP ingest; expired via wall-clock gate (D8).
     pub(super) pending_ops: PendingOpsStore,
@@ -178,11 +180,12 @@ impl MarmotProjection {
     /// [`MarmotProjection::set_app`] with the retained pointer. Tests that
     /// build the projection directly leave it `null` → publish no-ops.
     ///
-    /// `keyring_unavailable` must be `true` when the service was initialized
-    /// with the in-memory mock credential store (V-62). The flag is surfaced
-    /// in every subsequent snapshot so the host can warn the user.
+    /// `init_error` is `Some(MarmotInitError::KeyringUnavailable)` when the
+    /// service was initialized with the in-memory mock credential store
+    /// (formerly V-62 `keyring_unavailable = true`), else `None`. It is
+    /// surfaced in every subsequent snapshot so the host can warn the user.
     #[must_use]
-    pub fn new(service: MarmotService, keyring_unavailable: bool) -> Self {
+    pub fn new(service: MarmotService, init_error: Option<MarmotInitError>) -> Self {
         Self {
             inner: Mutex::new(Inner {
                 service,
@@ -191,7 +194,7 @@ impl MarmotProjection {
                 key_package_d_tag: None,
                 group_relays: HashMap::new(),
                 app: std::ptr::null_mut(),
-                keyring_unavailable,
+                init_error,
                 pending_ops: PendingOpsStore::new(),
                 last_op_error: None,
                 #[cfg(test)]
@@ -245,12 +248,10 @@ impl MarmotProjection {
                 .unwrap_or_default();
             let mut map = serde_json::Map::with_capacity(group_ids.len());
             for gid_hex in group_ids {
-                let rows =
-                    crate::projection::ops::group_messages(h, &gid_hex, page);
+                let rows = crate::projection::ops::group_messages(h, &gid_hex, page);
                 map.insert(
                     gid_hex,
-                    serde_json::to_value(rows)
-                        .unwrap_or(serde_json::Value::Array(vec![])),
+                    serde_json::to_value(rows).unwrap_or(serde_json::Value::Array(vec![])),
                 );
             }
             serde_json::Value::Object(map)
@@ -292,8 +293,7 @@ impl MarmotProjection {
             group_ids
                 .into_iter()
                 .map(|gid_hex| {
-                    let rows =
-                        crate::projection::ops::group_messages(h, &gid_hex, page);
+                    let rows = crate::projection::ops::group_messages(h, &gid_hex, page);
                     (gid_hex, rows)
                 })
                 .collect()
@@ -380,7 +380,7 @@ impl MarmotProjection {
 
         let cached_kp_pubkeys = inner.service.cached_kp_pubkeys();
         let orphaned_commit_count = inner.service.orphaned_commit_count();
-        let keyring_unavailable = inner.keyring_unavailable;
+        let init_error = inner.init_error.clone();
         // Deferred-op snapshot rows + the last-op-error banner are built by the
         // `deferred` sub-module (the owner of all pending-op shape decisions).
         let pending_ops = super::deferred::pending_op_rows(&inner.pending_ops, now_secs);
@@ -392,7 +392,7 @@ impl MarmotProjection {
             cached_kp_pubkeys,
             is_registered: true,
             orphaned_commit_count,
-            keyring_unavailable,
+            init_error,
             pending_ops,
             last_op_error,
         }

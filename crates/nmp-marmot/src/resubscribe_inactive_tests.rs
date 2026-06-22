@@ -119,7 +119,7 @@ fn resubscribe_all_groups_skips_inactive_groups() {
     // `resubscribe_all_groups` must NOT seed the relay cache for it.
     {
         let bob2 = file_backed_service(db_path_str, bob_keys.clone());
-        let proj2 = MarmotProjection::new(bob2, false);
+        let proj2 = MarmotProjection::new(bob2, None);
 
         proj2.resubscribe_all_groups();
 
@@ -237,7 +237,7 @@ fn resubscribe_all_groups_active_subscribed_inactive_skipped() {
     //   assert Active group IS seeded and Inactive group is NOT seeded.
     {
         let carol2 = file_backed_service(db_path_str, carol_keys.clone());
-        let proj2 = MarmotProjection::new(carol2, false);
+        let proj2 = MarmotProjection::new(carol2, None);
 
         proj2.resubscribe_all_groups();
 
