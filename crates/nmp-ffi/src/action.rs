@@ -399,3 +399,7 @@ mod tests_host_op;
 #[cfg(test)]
 #[path = "action/terminal_correctness_tests.rs"]
 mod terminal_correctness_tests;
+
+#[cfg(test)]
+#[path = "action/coded_rejection_tests.rs"]
+mod coded_rejection_tests;
