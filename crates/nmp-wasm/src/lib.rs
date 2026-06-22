@@ -25,7 +25,7 @@ mod relay_plan;
 mod runtime;
 // Active-identity validation (`signer_slot`) + snapshot push helpers. Both
 // modules are always-compiled (no `cfg(wasm32)`): `signer_slot` only
-// validates/canonicalizes the `SetSigner` pubkey for the kernel active account
+// validates/canonicalizes the `SetIdentity` pubkey for the kernel active account
 // (ADR-0064 §5 removed the persistent `Arc<dyn Signer>` slot). snapshot.rs
 // builds the binary update frame on both targets; the JS-callback push inside
 // it is `cfg(target_arch = "wasm32")`-gated, with a native no-op shim so call
@@ -46,7 +46,7 @@ mod tick;
 
 pub use protocol::{
     ActionDispatch, BeginSign, CapabilityFailure, CapabilityResult, ClientHello, DegradedMode,
-    DeliverSignerResponse, DispatchBytes, RelayBootstrapEntry, RuntimeStatus, SetSigner,
+    DeliverSignerResponse, DispatchBytes, RelayBootstrapEntry, RuntimeStatus, SetIdentity,
     StartConfig, WorkerEvent, WorkerRequest,
 };
 pub use runtime::{WasmRuntime, WasmRuntimeError};

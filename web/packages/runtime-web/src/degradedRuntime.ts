@@ -65,11 +65,11 @@ export class DegradedRuntime {
             reason: "capability completions require a running actor",
           },
         ];
-      case "set_signer":
+      case "set_identity":
         return [
           {
             type: "capability_failure",
-            capability: "set_signer",
+            capability: "set_identity",
             correlation_id: request.correlation_id,
             reason: this.unavailableReason,
           },

@@ -20,9 +20,9 @@
 //!
 //! # Identity-change hook
 //!
-//! `handle_json` detects a `SetSigner` request and calls
+//! `handle_json` detects a `SetIdentity` request and calls
 //! [`ChirpWebFeedSetup::notify_account_changed`] after `WasmRuntime::handle`
-//! returns. The call is unconditional: on a failed signer install the active
+//! returns. The call is unconditional: on a failed identity install the active
 //! account slot is unchanged, so `notify_account_changed` short-circuits with
 //! no engine reset. On success the follow set is re-seeded and the perspective
 //! reset clears the prior account's roots from the engine.
@@ -94,7 +94,7 @@ impl NmpWasmRuntime {
     /// binary frames on the callback channel and control events on the JSON
     /// return value — same contract as the prior `nmp-wasm` entry point.
     ///
-    /// A `SetSigner` request additionally triggers
+    /// A `SetIdentity` request additionally triggers
     /// [`ChirpWebFeedSetup::notify_account_changed`] so the follow set is
     /// re-seeded from the newly-active account and the engine resets on a
     /// real perspective change.
@@ -122,7 +122,7 @@ impl NmpWasmRuntime {
                 return serialize_events_to_js(&events);
             }
         };
-        let is_set_signer = matches!(req, WorkerRequest::SetSigner(_));
+        let is_set_identity = matches!(req, WorkerRequest::SetIdentity(_));
         let events = match self.runtime.handle(req) {
             Ok(evts) => evts,
             Err(WasmRuntimeError::InvalidConfig(msg)) => {
@@ -142,8 +142,8 @@ impl NmpWasmRuntime {
                 return Err(JsValue::from_str(&format!("kernel_contract: {msg}")));
             }
         };
-        if is_set_signer {
-            // Unconditional: failed signer install leaves the slot unchanged,
+        if is_set_identity {
+            // Unconditional: a failed identity install leaves the slot unchanged,
             // so notify_account_changed is a no-op. Successful install
             // re-seeds the follow set and resets the feed perspective.
             self.setup.notify_account_changed();

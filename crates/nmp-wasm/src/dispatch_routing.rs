@@ -185,10 +185,10 @@ fn ref_liveness_from_int(value: u32) -> Option<RefLiveness> {
 /// Single-source reason string for app-level writes that cannot complete on
 /// the wasm runtime. Distinguishes the two honest failure modes by whether the
 /// kernel has an **active account** seeded (`set_active_account`, via the
-/// `SetSigner` identity request — ADR-0064 §5 removed the persistent signer
+/// `SetIdentity` identity request — ADR-0064 §5 removed the persistent signer
 /// slot, so the discriminator is the account, not an `Arc<dyn Signer>`):
 ///
-/// - **No active account.** The host hasn't sent `SetSigner` yet — the user has
+/// - **No active account.** The host hasn't sent `SetIdentity` yet — the user has
 ///   not signed in. Banner: "sign in to publish".
 /// - **Account seeded but publishing disabled in the web preview.** The web
 ///   preview build has no real `OutboxResolver` wired (#1202/#1007), so
@@ -199,7 +199,7 @@ fn ref_liveness_from_int(value: u32) -> Option<RefLiveness> {
 /// can pattern-match without parsing the full reason text.
 pub(crate) fn write_path_unavailable_reason(has_active_account: bool) -> String {
     if !has_active_account {
-        return "signer_not_installed: no active account; send WorkerRequest::SetSigner \
+        return "signer_not_installed: no active account; send WorkerRequest::SetIdentity \
                 with kind = \"nip07\" and the pubkey from window.nostr.getPublicKey() \
                 before dispatching app-level writes."
             .to_string();

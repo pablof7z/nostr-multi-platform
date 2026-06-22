@@ -113,7 +113,7 @@ export const authComponents: Component[] = [
         ],
         screenshots: ["login-block-web-preview.png"],
         customization: [
-          "Wire `onSignerSelected(info, provider)` to your sign-in flow: `await provider.getPublicKey()` then install the signer on your kernel host (e.g. the web `set_signer` worker request).",
+          "Wire `onSignerSelected(info, provider)` to your sign-in flow: `await provider.getPublicKey()` then install the identity on your kernel host (e.g. the web `set_identity` worker request).",
           "Wire `onManualKey(key)` to your key-import flow; gate `nsec` handling behind explicit user intent.",
           "Style via the `nostr-login-block*` classes; swap the inline `<svg>` for your brand mark.",
         ],

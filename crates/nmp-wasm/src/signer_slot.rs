@@ -1,7 +1,7 @@
-//! Active-identity validation for [`WorkerRequest::SetSigner`].
+//! Active-identity validation for [`WorkerRequest::SetIdentity`].
 //!
 //! ADR-0064 §5: the wasm runtime no longer installs a persistent
-//! `Arc<dyn Signer>`. A `SetSigner` request only carries the user's public
+//! `Arc<dyn Signer>`. A `SetIdentity` request only carries the user's public
 //! identity; this module validates + canonicalizes the supplied pubkey (the
 //! backend `kind` is honestly gated) so the runtime can seed the kernel's
 //! active account. Signing is the ADR-0050 capability round-trip
@@ -16,9 +16,9 @@
 
 use nostr::PublicKey;
 
-use crate::protocol::SetSigner;
+use crate::protocol::SetIdentity;
 
-/// Outcome of validating a [`SetSigner`] identity request. `Debug` is derived
+/// Outcome of validating a [`SetIdentity`] identity request. `Debug` is derived
 /// so test assertions (and any future log/trace plumbing) can render the
 /// variant without manual formatting; the variants carry no key material so
 /// the derive is leak-free.
@@ -62,7 +62,7 @@ impl SignerInstallError {
     }
 }
 
-/// Validate + canonicalize the active-account pubkey from a [`SetSigner`]
+/// Validate + canonicalize the active-account pubkey from a [`SetIdentity`]
 /// identity request. Pure: no I/O, no thread-spawning, no JS-event-loop
 /// interaction, and (ADR-0064 §5) no persistent signer construction.
 ///
@@ -72,7 +72,7 @@ impl SignerInstallError {
 /// `nip07` is the only kind wired; other kinds are rejected so the host has
 /// an honest, stable error to surface to the user.
 pub(crate) fn canonical_pubkey_from_request(
-    request: &SetSigner,
+    request: &SetIdentity,
 ) -> Result<String, SignerInstallError> {
     match request.kind.as_str() {
         "nip07" => {
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn nip07_with_valid_hex_canonicalizes() {
-        let request = SetSigner {
+        let request = SetIdentity {
             kind: "nip07".to_string(),
             pubkey_hex:
                 "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn unknown_kind_returns_unsupported() {
-        let request = SetSigner {
+        let request = SetIdentity {
             kind: "magic".to_string(),
             pubkey_hex: String::new(),
             correlation_id: "set-1".to_string(),
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn nip07_with_garbage_hex_returns_invalid_pubkey() {
-        let request = SetSigner {
+        let request = SetIdentity {
             kind: "nip07".to_string(),
             pubkey_hex: "not-hex".to_string(),
             correlation_id: "set-1".to_string(),
@@ -138,7 +138,7 @@ mod tests {
     fn nip07_uppercase_hex_returns_canonical_lowercase() {
         // B2 canonicalization guard: an uppercase pubkey must be normalised to
         // lowercase so `set_active_account` stores a canonical key.
-        let request = SetSigner {
+        let request = SetIdentity {
             kind: "nip07".to_string(),
             pubkey_hex:
                 "3BF0C63FCB93463407AF97A5E5EE64FA883D107EF9E558472C4EB9AAAEFA459D"

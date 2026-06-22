@@ -30,7 +30,7 @@ pub enum WorkerRequest {
     /// `Arc<dyn Signer>` awaited inside the publish flow. `kind`: `"nip07"` is
     /// the only kind wired; other kinds return [`WorkerEvent::CapabilityFailure`]
     /// with `unsupported_signer_kind`.
-    SetSigner(SetSigner),
+    SetIdentity(SetIdentity),
     /// #1753 S6 — begin a NIP-07 sign capability round-trip.
     ///
     /// The worker parks a sign op (ADR-0050 §D1) bound to `account_pubkey` and
@@ -133,7 +133,7 @@ pub struct CapabilityResult {
     pub payload: Value,
 }
 
-/// Payload for [`WorkerRequest::SetSigner`].
+/// Payload for [`WorkerRequest::SetIdentity`].
 ///
 /// `kind` is the backend discriminator the host obtained the pubkey from.
 /// `"nip07"` is the only kind wired; other kinds are honestly rejected rather
@@ -141,7 +141,7 @@ pub struct CapabilityResult {
 /// the validated pubkey — it does NOT install a persistent signer (ADR-0064 §5:
 /// signing is the [`WorkerRequest::BeginSign`] capability round-trip).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SetSigner {
+pub struct SetIdentity {
     /// Backend kind. Currently must be `"nip07"`.
     pub kind: String,
     /// Hex-encoded public key the host already obtained from the backend.
