@@ -314,7 +314,7 @@ fn s3_bite_stably_empty_drain_does_not_advance_rev() {
 #[test]
 fn s4_action_lifecycle_ttl_expiry_bumps_rev_only_on_expiry() {
     use crate::kernel::action_stages::ActionStage;
-    use crate::kernel::action_lifecycle::RECENT_TERMINAL_TTL_MS;
+    use crate::kernel::action_ledger::RECENT_TERMINAL_TTL_MS;
 
     let base_secs = 4_000u64;
     let (mut kernel, base) = kernel_at(base_secs);

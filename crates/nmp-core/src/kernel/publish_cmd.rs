@@ -313,18 +313,21 @@ impl Kernel {
         reason_subject: Option<&str>,
     ) {
         let at_ms = self.now_ms();
-        // V5 thin-shell: mirror the transition into the
-        // `action_lifecycle` display tracker before persisting to the
-        // substrate-level `action_stages` history. Both writes share the
-        // same `at_ms` so a TTL eviction in `action_lifecycle` and a
-        // history append in `action_stages` are coherent under a
-        // `FixedClock`. The mirror takes a `clone` of the stage because
-        // `action_stages::record` consumes the value; the display tracker
-        // collapses to its own enum independent of substrate growth.
-        self.action_lifecycle
-            .record_coded(correlation_id, stage.clone(), reason_code, reason_subject, at_ms);
-        self.action_stages
-            .record(correlation_id, stage, detail, at_ms);
+        // S11 (#1758): one ledger, one write. The ledger owns the substrate
+        // stage history AND the curated reason-code sidecar (#1735); the
+        // `action_stages` history and the `action_lifecycle`
+        // `{in_flight, recent_terminal}` view are BOTH derived from this one
+        // record (resolves #1684 — no second tracker). `reason_code` /
+        // `reason_subject` ride the derived lifecycle view only; the substrate
+        // history keeps just the prose `reason`.
+        self.action_ledger.record_coded(
+            correlation_id,
+            stage,
+            detail,
+            reason_code,
+            reason_subject,
+            at_ms,
+        );
         self.changed_since_emit = true;
         // ADR-0055 Rung 1: bump settlement_enqueue_ver for action_stages/lifecycle.
         self.projection_rev_tracker
@@ -350,9 +353,10 @@ impl Kernel {
     /// preventing incremental hosts from retaining the stale lifecycle overlay.
     pub(crate) fn action_lifecycle_projection(&mut self) -> serde_json::Value {
         let now = self.now_ms();
-        let len_before = self.action_lifecycle.entry_count();
-        let result = self.action_lifecycle.snapshot(now);
-        let len_after = self.action_lifecycle.entry_count();
+        let len_before = self.action_ledger.lifecycle_entry_count();
+        // S11 (#1758): derived from the ONE ledger, not a parallel tracker.
+        let result = self.action_ledger.lifecycle_snapshot(now);
+        let len_after = self.action_ledger.lifecycle_entry_count();
         // ADR-0055 Rung 1 (codex #3): bump ttl_expiry_ver when prune_expired
         // actually removed a row. Wall-clock gated — called from the existing
         // emit/ingest edge (D8 compliant, no separate timer).
@@ -393,9 +397,11 @@ impl Kernel {
     /// → delivered as `Changed` exactly once. Both mechanisms are required
     /// (#1390 review FIX 2).
     pub(crate) fn ack_action_stage(&mut self, correlation_id: &str) {
-        let removed_stage = self.action_stages.ack(correlation_id);
-        let removed_lifecycle = self.action_lifecycle.dismiss(correlation_id);
-        if removed_stage || removed_lifecycle {
+        // S11 (#1758): one ack against the one ledger. The lifecycle view is
+        // derived, so dismissing the ledger row drops it from BOTH the
+        // `action_stages` history and the `action_lifecycle` projection.
+        let removed = self.action_ledger.ack(correlation_id);
+        if removed {
             self.changed_since_emit = true;
             // Advance the rev so a partial ack is delivered as Changed exactly
             // once and the oracle stays sharp without relying on a presence
@@ -420,9 +426,9 @@ impl Kernel {
     /// final post-drain state.
     pub(crate) fn action_stages_projection(&mut self) -> serde_json::Value {
         let now = self.now_ms();
-        let len_before = self.action_stages.entry_count();
-        let result = self.action_stages.snapshot(now);
-        let len_after = self.action_stages.entry_count();
+        let len_before = self.action_ledger.stages_entry_count();
+        let result = self.action_ledger.stages_snapshot(now);
+        let len_after = self.action_ledger.stages_entry_count();
         if len_after < len_before {
             self.projection_rev_tracker
                 .source_versions
