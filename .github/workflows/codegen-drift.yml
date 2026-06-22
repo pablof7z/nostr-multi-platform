@@ -84,6 +84,24 @@ jobs:
       - name: Check kernel built-in key codegen is up to date
         run: cargo run --quiet -p nmp-codegen -- gen builtin-keys --check
 
+      # #1723 (epic #1719) — the kernel built-in projection REVISION dependency
+      # table (crates/nmp-core/src/kernel/projection_rev/builtin_projection_deps.generated.rs)
+      # is DERIVED from the SAME neutral projection contract as the built-in key
+      # set (projection_contract::PROJECTION_CONTRACT). Fails any PR whose
+      # checked-in table differs from a fresh run, so the dependency table, the
+      # built-in key set, and the contract cannot drift from each other.
+      - name: Check kernel built-in dependency-table codegen is up to date
+        run: cargo run --quiet -p nmp-codegen -- gen builtin-deps --check
+
+      # #1723 (epic #1719) — the kernel's presence-classification key sets
+      # (DRAIN_PROJECTION_KEYS / CONDITIONAL_PRESENCE_KEYS in
+      # crates/nmp-core/src/kernel/projection_rev/presence_keys.generated.rs) are
+      # DERIVED from the SAME contract's `presence_policy` column. Fails any PR
+      # whose checked-in sets differ from a fresh run, so the kernel's presence
+      # semantics cannot drift from the contract.
+      - name: Check kernel presence-key codegen is up to date
+        run: cargo run --quiet -p nmp-codegen -- gen presence-keys --check
+
       # #1493 P9 — the native known-signer detection lists (Kotlin
       # KnownSigners.generated.kt × 3 + Swift KnownSigners.generated.swift × 2)
       # are GENERATED from the Rust catalog (nmp_core::signer_catalog) via the

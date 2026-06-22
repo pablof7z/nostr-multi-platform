@@ -29,6 +29,12 @@ pub mod swift;
 // keys like `"nmp.nip29.group_chat"` without tripping doctrine-lint on
 // `nmp-core`. See module doc for the full rationale.
 pub mod swift_projections_registry;
+// #1723 (epic #1719) — the neutral projection contract manifest. The single
+// platform-independent source for each projection's key / tier / schema_id /
+// file_identifier / version / declaration policy / source-version dependencies /
+// presence policy. The kernel built-in key set, the revision dependency table,
+// and the registries' neutral columns are derived FROM this. See module doc.
+pub mod projection_contract;
 // V6 Stage 4 (consumer-side) — generated typed-FlatBuffer-sidecar decoders.
 // Reads `SnapshotProjectionEntry::typed_sidecar` and emits, per projection key
 // with a checked-in `flatc --swift` reader binding, the mechanical
@@ -69,12 +75,16 @@ pub mod swift_keyed_cache;
 pub mod kotlin_keyed_cache;
 
 pub use manifest::{AppManifest, ModuleSet, NmpDependency};
-pub use projection_tier::{
-    kernel_builtin_projection_keys, projection_tier, ProjectionTier,
-    KERNEL_BUILTINS_WITHOUT_SHELL_DECODER,
+pub use projection_contract::{
+    contract_for, drain_projection_keys, kernel_builtin_dependencies,
+    kernel_builtin_projection_keys, lookup, rev_conditional_presence_keys, DeclarationPolicy,
+    PresencePolicy, ProjectionContract, ProjectionTier, PROJECTION_CONTRACT,
 };
+pub use projection_tier::projection_tier;
 pub use rust_builtin_keys::{
-    check_builtin_keys, generate_builtin_keys, render_builtin_keys, BuiltinKeysCheckOutcome,
+    check_builtin_deps, check_builtin_keys, check_presence_keys, generate_builtin_deps,
+    generate_builtin_keys, generate_presence_keys, render_builtin_deps, render_builtin_keys,
+    render_presence_keys, BuiltinKeysCheckOutcome,
 };
 pub use signer_catalog::{
     check_signer_catalog, generate_signer_catalog, parse_catalog, render_kotlin_known_signers,

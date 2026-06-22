@@ -159,51 +159,27 @@ pub(crate) const SRC_REF_EVENT_ROWS: &str = "ref_event_rows_ver";
 
 /// Per-key source-counter dependency list (Rung 1 dependency map).
 ///
-/// Each entry is `(projection_key, &[source_counter_name, ...])`.
-/// Every key in `KERNEL_BUILTIN_PROJECTION_KEYS` MUST have an entry here.
-/// The `all_builtin_keys_have_dependency_entries` test asserts this.
-pub(crate) const BUILTIN_PROJECTION_DEPENDENCIES: &[(&str, &[&str])] = &[
-    // identity cluster
-    ("profile",          &[SRC_PROFILES, SRC_ACTIVE_ACCOUNT]),
-    ("accounts",         &[SRC_ACCOUNTS, SRC_PROFILES]),
-    ("active_account",   &[SRC_ACTIVE_ACCOUNT]),
-    // ADR-0063 Lane H: claimed_profiles / resolved_profiles / mention_profiles
-    // deleted. Profile resolution is now served by refs.profile (KPRF NRRD
-    // row-delta sidecar). SRC_PROFILE_CLAIMS / SRC_OPEN_VIEWS retained as
-    // source counters for refs.profile / relay_diagnostics respectively.
-    //
-    // claimed_event_content_ver: bumped on (1) claim_event/release_event and
-    // (2) store-ingest that matches a live claim. Profile enrichment is
-    // intentionally excluded: claimed_events carries raw event authors only.
-    ("claimed_events",   &[SRC_CLAIMED_EVENT_CONTENT]),
-    // relay/settings cluster — all depend on configured_relays_ver
-    ("configured_relays",&[SRC_CONFIGURED_RELAYS]),
-    ("relay_role_options",&[SRC_CONFIGURED_RELAYS]),
-    ("settings_hub",     &[SRC_CONFIGURED_RELAYS]),
-    // publish cluster
-    ("publish_queue",    &[SRC_PUBLISH]),
-    ("publish_outbox",   &[SRC_PUBLISH_ENGINE]),
-    ("outbox_summary",   &[SRC_PUBLISH_ENGINE]),
-    // drain projections: settlement-enqueue + DRAIN presence rule (codex #2).
-    // settlement_drain_ver bumped when a drain returns non-empty (Changed) or
-    // empty (Cleared). The rev still advances on enqueue.
-    ("action_results",   &[SRC_SETTLEMENT_ENQUEUE, SRC_SETTLEMENT_DRAIN]),
-    ("signed_events",    &[SRC_SETTLEMENT_ENQUEUE, SRC_SETTLEMENT_DRAIN]),
-    // copy-with-TTL: settlement-enqueue + wall-clock TTL-expiry edge (codex #3).
-    ("action_stages",    &[SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY]),
-    ("action_lifecycle", &[SRC_SETTLEMENT_ENQUEUE, SRC_TTL_EXPIRY]),
-    // relay_diagnostics: broad diagnostics_inputs_ver (sub-fork A, codex #4).
-    // One broad stamp covers: relay status/health, transport info, wire.subs,
-    // logical interests, profile_claims, active account, profile cache,
-    // mailbox/cache coverage, configured_relays, lifecycle status.
-    ("relay_diagnostics",&[SRC_DIAGNOSTICS_INPUTS]),
-    // ADR-0063 (#1671 integration glue) — keyed row-delta projections. Each
-    // depends on its namespace's whole-projection monotonic stamp; the per-key
-    // NRRD row-deltas the carrier emits are gated by the per-key revs, but the
-    // PROJECTION rev advances iff any row in the namespace mutated this tick.
-    ("refs.profile",     &[SRC_REF_PROFILE_ROWS]),
-    ("refs.event",       &[SRC_REF_EVENT_ROWS]),
-];
+/// #1723 (epic #1719): this table is now GENERATED from the neutral projection
+/// contract (`crates/nmp-codegen/src/projection_contract.rs`,
+/// `PROJECTION_CONTRACT` KernelBuiltin entries' `dependency_versions`) rather
+/// than hand-maintained here. Each entry is
+/// `(projection_key, &[source_counter_name, ...])`; the `SRC_*` consts above
+/// are the named targets the generated rows reference. Every key in
+/// `KERNEL_BUILTIN_PROJECTION_KEYS` has a row (the
+/// `all_builtin_keys_have_dependency_entries` test asserts this), and both the
+/// key set and this dependency table are derived from the SAME contract, so
+/// they cannot drift. Regenerate via `nmp gen builtin-deps`; the drift gate in
+/// `.github/workflows/codegen-drift.yml` fails any stale checkout.
+///
+/// Rationale for the source counters (preserved from the prior hand table):
+/// identity cluster depends on profile/account stamps; the relay/settings
+/// cluster on `configured_relays_ver`; the publish cluster on
+/// publish/publish-engine stamps; `action_results`/`signed_events` are drains
+/// (settlement-enqueue + drain edge); `action_stages`/`action_lifecycle` are
+/// copy-with-TTL (settlement-enqueue + TTL-expiry edge); `relay_diagnostics`
+/// folds all diagnostic inputs into one broad `diagnostics_inputs_ver`; the
+/// keyed `refs.*` carriers each depend on their namespace's row stamp.
+include!("builtin_projection_deps.generated.rs");
 
 // ── Revision tracker ──────────────────────────────────────────────────────────
 
@@ -256,21 +232,18 @@ pub(crate) struct ProjectionRevTracker {
     last_seen_publish_engine_fingerprint: u64,
 }
 
-/// The two drain projections whose presence is a `Changed -> Cleared ->
-/// Unchanged` tristate driven by `note_drain_emit`, not by the rev alone.
-pub(crate) const DRAIN_PROJECTION_KEYS: &[&str] = &["action_results", "signed_events"];
-
-/// The four conditionally-present keys: `action_results` / `signed_events`
-/// (true drains) + `action_stages` / `action_lifecycle` (copy-with-TTL).
-/// These are the keys whose accessor returns `Null` when the tracker is
-/// empty, so absence in `typed` is unambiguous — it means the tracker went
-/// empty this tick. Used by `omit_unchanged`'s inverse pass (§10.2).
-pub(crate) const CONDITIONAL_PRESENCE_KEYS: &[&str] = &[
-    "action_results",
-    "signed_events",
-    "action_stages",
-    "action_lifecycle",
-];
+// #1723 (epic #1719): DRAIN_PROJECTION_KEYS + CONDITIONAL_PRESENCE_KEYS are now
+// GENERATED from the neutral projection contract's `presence_policy` column
+// (Drain → DRAIN_PROJECTION_KEYS; Drain ∪ CopyWithTtl → CONDITIONAL_PRESENCE_KEYS),
+// so the contract is the single source for the kernel's presence semantics too.
+// `DRAIN_PROJECTION_KEYS` are the true drains (presence is a `Changed → Cleared →
+// Unchanged` tristate driven by `note_drain_emit`); `CONDITIONAL_PRESENCE_KEYS`
+// adds the copy-with-TTL keys (accessor returns `Null` when the tracker is empty,
+// so absence in `typed` is unambiguous). Both are used via `.contains()`, so the
+// generated ordering (drains first, then copy-with-TTL, each sorted) is not
+// load-bearing. Regenerate via `nmp gen presence-keys`; the drift gate in
+// `.github/workflows/codegen-drift.yml` fails any stale checkout.
+include!("presence_keys.generated.rs");
 
 impl ProjectionRevTracker {
     /// Return the current derived revision for `key`.
