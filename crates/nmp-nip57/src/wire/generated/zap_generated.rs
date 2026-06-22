@@ -2,296 +2,400 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_57 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_57 {
 
+        pub enum ZapPayloadOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum ZapPayloadOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct ZapPayload<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct ZapPayload<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for ZapPayload<'a> {
+            type Inner = ZapPayload<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for ZapPayload<'a> {
-  type Inner = ZapPayload<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> ZapPayload<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_RECIPIENT_PUBKEY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_AMOUNT_MSATS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_LNURL: ::flatbuffers::VOffsetT = 10;
+            pub const VT_RELAYS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_TARGET_EVENT_ID: ::flatbuffers::VOffsetT = 14;
+            pub const VT_COMMENT: ::flatbuffers::VOffsetT = 16;
 
-impl<'a> ZapPayload<'a> {
-  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-  pub const VT_RECIPIENT_PUBKEY: ::flatbuffers::VOffsetT = 6;
-  pub const VT_AMOUNT_MSATS: ::flatbuffers::VOffsetT = 8;
-  pub const VT_LNURL: ::flatbuffers::VOffsetT = 10;
-  pub const VT_RELAYS: ::flatbuffers::VOffsetT = 12;
-  pub const VT_TARGET_EVENT_ID: ::flatbuffers::VOffsetT = 14;
-  pub const VT_COMMENT: ::flatbuffers::VOffsetT = 16;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ZapPayload { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ZapPayloadArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ZapPayload<'bldr>> {
+                let mut builder = ZapPayloadBuilder::new(_fbb);
+                builder.add_amount_msats(args.amount_msats);
+                if let Some(x) = args.comment {
+                    builder.add_comment(x);
+                }
+                if let Some(x) = args.target_event_id {
+                    builder.add_target_event_id(x);
+                }
+                if let Some(x) = args.relays {
+                    builder.add_relays(x);
+                }
+                if let Some(x) = args.lnurl {
+                    builder.add_lnurl(x);
+                }
+                if let Some(x) = args.recipient_pubkey {
+                    builder.add_recipient_pubkey(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    ZapPayload { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args ZapPayloadArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<ZapPayload<'bldr>> {
-    let mut builder = ZapPayloadBuilder::new(_fbb);
-    builder.add_amount_msats(args.amount_msats);
-    if let Some(x) = args.comment { builder.add_comment(x); }
-    if let Some(x) = args.target_event_id { builder.add_target_event_id(x); }
-    if let Some(x) = args.relays { builder.add_relays(x); }
-    if let Some(x) = args.lnurl { builder.add_lnurl(x); }
-    if let Some(x) = args.recipient_pubkey { builder.add_recipient_pubkey(x); }
-    builder.add_schema_version(args.schema_version);
-    builder.finish()
-  }
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(ZapPayload::VT_SCHEMA_VERSION, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn recipient_pubkey(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
+                            ZapPayload::VT_RECIPIENT_PUBKEY,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn amount_msats(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(ZapPayload::VT_AMOUNT_MSATS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn lnurl(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ZapPayload::VT_LNURL, None)
+                }
+            }
+            #[inline]
+            pub fn relays(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(ZapPayload::VT_RELAYS, None)
+                }
+            }
+            #[inline]
+            pub fn target_event_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ZapPayload::VT_TARGET_EVENT_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn comment(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ZapPayload::VT_COMMENT, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for ZapPayload<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "recipient_pubkey",
+                        Self::VT_RECIPIENT_PUBKEY,
+                        true,
+                    )?
+                    .visit_field::<u64>("amount_msats", Self::VT_AMOUNT_MSATS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "lnurl",
+                        Self::VT_LNURL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("relays", Self::VT_RELAYS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "target_event_id",
+                        Self::VT_TARGET_EVENT_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "comment",
+                        Self::VT_COMMENT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ZapPayloadArgs<'a> {
+            pub schema_version: u32,
+            pub recipient_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub amount_msats: u64,
+            pub lnurl: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub relays: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+            pub target_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub comment: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ZapPayloadArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ZapPayloadArgs {
+                    schema_version: 0,
+                    recipient_pubkey: None, // required field
+                    amount_msats: 0,
+                    lnurl: None,
+                    relays: None,
+                    target_event_id: None,
+                    comment: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn schema_version(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(ZapPayload::VT_SCHEMA_VERSION, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn recipient_pubkey(&self) -> &'a str {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ZapPayload::VT_RECIPIENT_PUBKEY, None).unwrap()}
-  }
-  #[inline]
-  pub fn amount_msats(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(ZapPayload::VT_AMOUNT_MSATS, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn lnurl(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ZapPayload::VT_LNURL, None)}
-  }
-  #[inline]
-  pub fn relays(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(ZapPayload::VT_RELAYS, None)}
-  }
-  #[inline]
-  pub fn target_event_id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ZapPayload::VT_TARGET_EVENT_ID, None)}
-  }
-  #[inline]
-  pub fn comment(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ZapPayload::VT_COMMENT, None)}
-  }
-}
+        pub struct ZapPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ZapPayloadBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_
+                    .push_slot::<u32>(ZapPayload::VT_SCHEMA_VERSION, schema_version, 0);
+            }
+            #[inline]
+            pub fn add_recipient_pubkey(
+                &mut self,
+                recipient_pubkey: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ZapPayload::VT_RECIPIENT_PUBKEY,
+                    recipient_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_amount_msats(&mut self, amount_msats: u64) {
+                self.fbb_
+                    .push_slot::<u64>(ZapPayload::VT_AMOUNT_MSATS, amount_msats, 0);
+            }
+            #[inline]
+            pub fn add_lnurl(&mut self, lnurl: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ZapPayload::VT_LNURL, lnurl);
+            }
+            #[inline]
+            pub fn add_relays(
+                &mut self,
+                relays: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ZapPayload::VT_RELAYS, relays);
+            }
+            #[inline]
+            pub fn add_target_event_id(
+                &mut self,
+                target_event_id: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ZapPayload::VT_TARGET_EVENT_ID,
+                    target_event_id,
+                );
+            }
+            #[inline]
+            pub fn add_comment(&mut self, comment: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ZapPayload::VT_COMMENT,
+                    comment,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ZapPayloadBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ZapPayloadBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ZapPayload<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_
+                    .required(o, ZapPayload::VT_RECIPIENT_PUBKEY, "recipient_pubkey");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for ZapPayload<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("recipient_pubkey", Self::VT_RECIPIENT_PUBKEY, true)?
-     .visit_field::<u64>("amount_msats", Self::VT_AMOUNT_MSATS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("lnurl", Self::VT_LNURL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("relays", Self::VT_RELAYS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("target_event_id", Self::VT_TARGET_EVENT_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("comment", Self::VT_COMMENT, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct ZapPayloadArgs<'a> {
-    pub schema_version: u32,
-    pub recipient_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub amount_msats: u64,
-    pub lnurl: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub relays: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-    pub target_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub comment: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for ZapPayloadArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    ZapPayloadArgs {
-      schema_version: 0,
-      recipient_pubkey: None, // required field
-      amount_msats: 0,
-      lnurl: None,
-      relays: None,
-      target_event_id: None,
-      comment: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for ZapPayload<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ZapPayload");
+                ds.field("schema_version", &self.schema_version());
+                ds.field("recipient_pubkey", &self.recipient_pubkey());
+                ds.field("amount_msats", &self.amount_msats());
+                ds.field("lnurl", &self.lnurl());
+                ds.field("relays", &self.relays());
+                ds.field("target_event_id", &self.target_event_id());
+                ds.field("comment", &self.comment());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `ZapPayload`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_zap_payload_unchecked`.
+        pub fn root_as_zap_payload(
+            buf: &[u8],
+        ) -> Result<ZapPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<ZapPayload>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `ZapPayload` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_zap_payload_unchecked`.
+        pub fn size_prefixed_root_as_zap_payload(
+            buf: &[u8],
+        ) -> Result<ZapPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<ZapPayload>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `ZapPayload` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_zap_payload_unchecked`.
+        pub fn root_as_zap_payload_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<ZapPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<ZapPayload<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `ZapPayload` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_zap_payload_unchecked`.
+        pub fn size_prefixed_root_as_zap_payload_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<ZapPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<ZapPayload<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a ZapPayload and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `ZapPayload`.
+        pub unsafe fn root_as_zap_payload_unchecked(buf: &[u8]) -> ZapPayload<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<ZapPayload>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed ZapPayload and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `ZapPayload`.
+        pub unsafe fn size_prefixed_root_as_zap_payload_unchecked(buf: &[u8]) -> ZapPayload<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<ZapPayload>(buf) }
+        }
+        pub const ZAP_PAYLOAD_IDENTIFIER: &str = "N57Z";
 
-pub struct ZapPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ZapPayloadBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(ZapPayload::VT_SCHEMA_VERSION, schema_version, 0);
-  }
-  #[inline]
-  pub fn add_recipient_pubkey(&mut self, recipient_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ZapPayload::VT_RECIPIENT_PUBKEY, recipient_pubkey);
-  }
-  #[inline]
-  pub fn add_amount_msats(&mut self, amount_msats: u64) {
-    self.fbb_.push_slot::<u64>(ZapPayload::VT_AMOUNT_MSATS, amount_msats, 0);
-  }
-  #[inline]
-  pub fn add_lnurl(&mut self, lnurl: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ZapPayload::VT_LNURL, lnurl);
-  }
-  #[inline]
-  pub fn add_relays(&mut self, relays: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ZapPayload::VT_RELAYS, relays);
-  }
-  #[inline]
-  pub fn add_target_event_id(&mut self, target_event_id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ZapPayload::VT_TARGET_EVENT_ID, target_event_id);
-  }
-  #[inline]
-  pub fn add_comment(&mut self, comment: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ZapPayload::VT_COMMENT, comment);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ZapPayloadBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    ZapPayloadBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<ZapPayload<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    self.fbb_.required(o, ZapPayload::VT_RECIPIENT_PUBKEY,"recipient_pubkey");
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn zap_payload_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, ZAP_PAYLOAD_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for ZapPayload<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("ZapPayload");
-      ds.field("schema_version", &self.schema_version());
-      ds.field("recipient_pubkey", &self.recipient_pubkey());
-      ds.field("amount_msats", &self.amount_msats());
-      ds.field("lnurl", &self.lnurl());
-      ds.field("relays", &self.relays());
-      ds.field("target_event_id", &self.target_event_id());
-      ds.field("comment", &self.comment());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `ZapPayload`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_zap_payload_unchecked`.
-pub fn root_as_zap_payload(buf: &[u8]) -> Result<ZapPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<ZapPayload>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `ZapPayload` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_zap_payload_unchecked`.
-pub fn size_prefixed_root_as_zap_payload(buf: &[u8]) -> Result<ZapPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<ZapPayload>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `ZapPayload` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_zap_payload_unchecked`.
-pub fn root_as_zap_payload_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<ZapPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<ZapPayload<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `ZapPayload` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_zap_payload_unchecked`.
-pub fn size_prefixed_root_as_zap_payload_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<ZapPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<ZapPayload<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a ZapPayload and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `ZapPayload`.
-pub unsafe fn root_as_zap_payload_unchecked(buf: &[u8]) -> ZapPayload<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<ZapPayload>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed ZapPayload and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `ZapPayload`.
-pub unsafe fn size_prefixed_root_as_zap_payload_unchecked(buf: &[u8]) -> ZapPayload<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<ZapPayload>(buf) }
-}
-pub const ZAP_PAYLOAD_IDENTIFIER: &str = "N57Z";
+        #[inline]
+        pub fn zap_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, ZAP_PAYLOAD_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn zap_payload_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, ZAP_PAYLOAD_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_zap_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<ZapPayload<'a>>,
+        ) {
+            fbb.finish(root, Some(ZAP_PAYLOAD_IDENTIFIER));
+        }
 
-#[inline]
-pub fn zap_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, ZAP_PAYLOAD_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_zap_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<ZapPayload<'a>>) {
-  fbb.finish(root, Some(ZAP_PAYLOAD_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_zap_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<ZapPayload<'a>>) {
-  fbb.finish_size_prefixed(root, Some(ZAP_PAYLOAD_IDENTIFIER));
-}
-}  // pub mod nip57
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_zap_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<ZapPayload<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(ZAP_PAYLOAD_IDENTIFIER));
+        }
+    } // pub mod nip57
+} // pub mod nmp
