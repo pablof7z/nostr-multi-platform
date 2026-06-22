@@ -4,23 +4,25 @@
 //! ## Why this exists
 //!
 //! The [`crate::projection_contract`] manifest is the single source for each
-//! projection's `version`. For the `nmp-core` kernel + actor producers, #1849's
-//! [`crate::producer_consts`] generator already collapses the producer's
+//! projection's `version`. For the `nmp-core` kernel + actor producers AND the
+//! Tier-1 NIP-crate producers in `nmp-nip17` / `nmp-nip29` / `nmp-nip51`, the
+//! [`crate::producer_consts`] generator collapses the producer's
 //! `*_SCHEMA_VERSION` const ONTO the contract (the const is generated FROM the
-//! contract, so it can never disagree). But the Tier-1 NIP-crate producers
-//! (`nmp-nip17` / `nmp-nip29` / `nmp-nip51` / `nmp-nip01` / `nmp-nip02` /
-//! `nmp-nip47` / `nmp-nip57`, `nmp-marmot`, `nmp-content`) do NOT depend on
-//! `nmp-codegen`, so they still HAND-DECLARE their own `*_SCHEMA_VERSION` const.
-//! Nothing prevented the contract's `version` from drifting away from those
-//! producer consts — and it had: every NIP projection carried a `version: 0`
+//! contract, so it can never disagree — #1849 did `nmp-core`, #1723 finished the
+//! NIP crates). The producers still checked HERE are the remaining ones that do
+//! NOT depend on `nmp-codegen` and still HAND-DECLARE their own `*_SCHEMA_VERSION`
+//! const (`nmp-nip01` / `nmp-nip02` / `nmp-nip47` / `nmp-nip57`, `nmp-marmot`,
+//! `nmp-content`). Nothing prevents the contract's `version` from drifting away
+//! from those
+//! producer consts — at one point every NIP projection carried a `version: 0`
 //! placeholder while its producer stamped a real version (e.g. `dm_inbox` = 2).
 //!
 //! ## What this gate does
 //!
-//! Until the producer-const migration reaches the NIP crates (a separate slice
-//! that needs a codegen/dependency path INTO those crates — see the module-level
-//! STOP note below), this gate closes the drift the other direction: it READS
-//! each NIP producer's `*_fb.rs`/`typed_fb.rs` source on disk and asserts the
+//! For the producers that still hand-declare their `*_SCHEMA_VERSION` (those that
+//! do not depend on `nmp-codegen` and were not migrated to the generated-include
+//! pattern), this gate closes the drift the other direction: it READS each
+//! producer's `*_fb.rs`/`typed_fb.rs` source on disk and asserts the
 //! `*_SCHEMA_VERSION` literal it declares EQUALS the contract's `version` for
 //! that key. A future edit that bumps a producer's schema version (or the
 //! contract's) without bumping the other fails this gate at commit time.
@@ -30,17 +32,18 @@
 //! `nmp-codegen` test harness with the repo checked out, so the producer sources
 //! are reachable via `CARGO_MANIFEST_DIR` even though the crates aren't linked.
 //!
-//! ## STOP-and-report — what the FULL producer migration still needs
+//! ## Migrating a hand-declaring producer to the generated-include pattern
 //!
-//! Making the NIP producers DERIVE their `*_SCHEMA_VERSION` from the contract
-//! (the way the `nmp-core` producers now do via [`crate::producer_consts`])
-//! requires a codegen/dependency path INTO the NIP crates — they do not depend
-//! on `nmp-codegen`, and `nmp-codegen` deliberately does not depend on them. That
-//! is a SEPARATE slice (extend `PRODUCER_CONST_TARGETS` to emit
-//! `*_producer_consts.generated.rs` into each NIP crate + have each NIP `*_fb.rs`
-//! `include!` it + wire those paths into `codegen-drift.yml`). This gate is the
-//! interim fail-closed guard that makes the contract authoritative NOW; it does
-//! not perform that migration.
+//! To make one of the remaining producers DERIVE its `*_SCHEMA_VERSION` from the
+//! contract (the way `nmp-core` and the `nmp-nip17` / `nmp-nip29` / `nmp-nip51`
+//! producers now do via [`crate::producer_consts`]): add it to
+//! `PRODUCER_CONST_TARGETS`, have its `*_fb.rs` `include!` the emitted
+//! `*_producer_consts.generated.rs`, delete the hand-declared block, wire the new
+//! path into `codegen-drift.yml`, and remove its entry from
+//! [`PRODUCER_VERSION_SOURCES`] below. The generator writes by repo-relative path,
+//! so no build-dep on `nmp-codegen` is needed (each crate just `include!`s the
+//! committed file). For producers not yet migrated, this gate is the fail-closed
+//! guard that keeps the contract authoritative.
 
 use std::path::PathBuf;
 
@@ -67,46 +70,12 @@ pub struct ProducerVersionSource {
 /// from the contract by [`crate::producer_consts`], so they cannot drift and are
 /// covered by that generator's `--check` gate instead.
 pub const PRODUCER_VERSION_SOURCES: &[ProducerVersionSource] = &[
-    ProducerVersionSource {
-        key: "nmp.nip17.dm_inbox",
-        source_path: "crates/nmp-nip17/src/wire/dm_inbox_fb.rs",
-        const_name: "DM_INBOX_SCHEMA_VERSION",
-    },
-    ProducerVersionSource {
-        key: "nmp.nip17.dm_relay_list",
-        source_path: "crates/nmp-nip17/src/wire/dm_relay_list_fb.rs",
-        const_name: "DM_RELAY_LIST_SCHEMA_VERSION",
-    },
-    ProducerVersionSource {
-        key: "nmp.nip29.group_chat",
-        source_path: "crates/nmp-nip29/src/wire/group_chat_fb.rs",
-        const_name: "GROUP_CHAT_SCHEMA_VERSION",
-    },
-    ProducerVersionSource {
-        key: "nmp.nip29.discovered_groups",
-        source_path: "crates/nmp-nip29/src/wire/discovered_groups_fb.rs",
-        const_name: "DISCOVERED_GROUPS_SCHEMA_VERSION",
-    },
-    ProducerVersionSource {
-        key: "nmp.nip29.group_defaults",
-        source_path: "crates/nmp-nip29/src/wire/group_defaults_fb.rs",
-        const_name: "GROUP_DEFAULTS_SCHEMA_VERSION",
-    },
-    ProducerVersionSource {
-        key: "nmp.nip29.joined_groups",
-        source_path: "crates/nmp-nip29/src/wire/joined_groups_fb.rs",
-        const_name: "JOINED_GROUPS_SCHEMA_VERSION",
-    },
-    ProducerVersionSource {
-        key: "nmp.nip29.group_events",
-        source_path: "crates/nmp-nip29/src/wire/group_events_fb.rs",
-        const_name: "GROUP_EVENTS_SCHEMA_VERSION",
-    },
-    ProducerVersionSource {
-        key: "nmp.nip51.mute_list",
-        source_path: "crates/nmp-nip51/src/wire/mute_list_fb.rs",
-        const_name: "MUTE_LIST_SCHEMA_VERSION",
-    },
+    // NOTE: `nmp.nip17.*` / `nmp.nip29.*` / `nmp.nip51.mute_list` are intentionally
+    // ABSENT here — #1723 migrated their producer consts to be GENERATED from the
+    // contract (`crate::producer_consts` `PRODUCER_CONST_TARGETS`), so they cannot
+    // drift and are covered by that generator's `--check` gate instead, exactly
+    // like the `nmp-core` producers. Only the remaining hand-declaring producers
+    // are checked here.
     ProducerVersionSource {
         key: "nmp.feed.home",
         source_path: "crates/nmp-nip01/src/op_feed/typed_wire.rs",
