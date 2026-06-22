@@ -1,0 +1,30 @@
+namespace nmp.nip29;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// `nmp.nip29.create_invite` admin `ActionModule` (publishes one or more
+// kind:9009 events fanning out invite codes).
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
+// decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Self-contained (no `include`). Regenerate the checked-in Rust bindings only
+// with the workspace FlatBuffers pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/create_invite_action.fbs
+
+table GroupRef {
+  host_relay_url:string (required);
+  local_id:string (required);
+}
+
+table CreateInvitePayload {
+  schema_version:uint;
+  group:GroupRef (required);
+  // The invite codes to mint. `start()` rejects an empty list and any
+  // empty / non-printable code.
+  codes:[string];
+}
+
+file_identifier "N29I";
+root_type CreateInvitePayload;

@@ -1,0 +1,34 @@
+namespace nmp.nip29;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// `nmp.nip29.react_in_group` `ActionModule` (publishes a host-pinned kind:7
+// reaction; NIP-29 owns only the `h`-tag routing concern).
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
+// decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Self-contained (no `include`). Regenerate the checked-in Rust bindings only
+// with the workspace FlatBuffers pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/react_in_group_action.fbs
+
+table GroupRef {
+  host_relay_url:string (required);
+  local_id:string (required);
+}
+
+table ReactInGroupPayload {
+  schema_version:uint;
+  group:GroupRef (required);
+  // `start()` rejects an empty target_event_id — preserved verbatim.
+  target_event_id:string (required);
+  // Optional `p` tag author; presence preserved (absent -> None,
+  // present-empty -> Some("")).
+  target_author_pubkey:string;
+  // `start()` rejects empty reaction content — preserved verbatim.
+  content:string (required);
+}
+
+file_identifier "N29X";
+root_type ReactInGroupPayload;

@@ -4,7 +4,9 @@
 //! 16 semantics stay protocol-neutral; downstream crates decide whether a row is
 //! an article share, media share, repost, or something else.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -101,6 +103,12 @@ impl ActionModule for ShareEventInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.share_event_in_group";
     type Action = ShareEventInGroupInput;
 
+    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<ShareEventInGroupInput as ActionPayload>::decode(bytes))
+    }
+
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         validate_group_event_input(&action.group, &action.target, &action.additional_tags)?;
         share_event_plan(&action)
@@ -123,6 +131,12 @@ pub struct RepostInGroupAction;
 impl ActionModule for RepostInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.repost_in_group";
     type Action = RepostInGroupInput;
+
+    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<RepostInGroupInput as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         validate_group_event_input(&action.group, &action.target, &action.additional_tags)?;

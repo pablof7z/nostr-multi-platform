@@ -5,7 +5,9 @@
 //! structurally validated and host-pinned here. Relay-enforced admin authority
 //! remains reflected through relay-signed 39001/39002 snapshots.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -140,6 +142,12 @@ impl ActionModule for PutUserAction {
     const NAMESPACE: &'static str = "nmp.nip29.put_user";
     type Action = PutUserInput;
 
+    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<PutUserInput as ActionPayload>::decode(bytes))
+    }
+
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         validate_put_user(&action)
     }
@@ -161,6 +169,12 @@ pub struct CreateInviteAction;
 impl ActionModule for CreateInviteAction {
     const NAMESPACE: &'static str = "nmp.nip29.create_invite";
     type Action = CreateInviteInput;
+
+    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<CreateInviteInput as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         validate_create_invite(&action)

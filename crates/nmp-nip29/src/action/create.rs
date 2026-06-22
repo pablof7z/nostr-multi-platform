@@ -6,7 +6,9 @@
 //! 9002 sets the user-visible metadata and the caller-chosen visibility and
 //! access markers.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -119,6 +121,12 @@ pub struct CreatePublicGroupAction;
 impl ActionModule for CreatePublicGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.create_public_group";
     type Action = CreatePublicGroupInput;
+
+    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<CreatePublicGroupInput as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         validate_group_id(&action.group).map_err(ActionRejection::Invalid)?;
@@ -341,7 +349,9 @@ mod tests {
         let cmds = run_execute(action).expect("executes");
         let tags = metadata_tags(&cmds);
         assert!(
-            !tags.iter().any(|t| t.first().map(|s| s == "picture").unwrap_or(false)),
+            !tags
+                .iter()
+                .any(|t| t.first().map(|s| s == "picture").unwrap_or(false)),
             "must not emit [\"picture\", ...] when None, got {tags:?}"
         );
     }
@@ -355,7 +365,9 @@ mod tests {
         let cmds = run_execute(action).expect("executes");
         let tags = metadata_tags(&cmds);
         assert!(
-            !tags.iter().any(|t| t.first().map(|s| s == "picture").unwrap_or(false)),
+            !tags
+                .iter()
+                .any(|t| t.first().map(|s| s == "picture").unwrap_or(false)),
             "must not emit [\"picture\", ...] for blank picture, got {tags:?}"
         );
     }
@@ -373,8 +385,7 @@ mod tests {
             "\"name\":\"Test Room\"",
             "}"
         );
-        let parsed: CreatePublicGroupInput =
-            serde_json::from_str(json).unwrap();
+        let parsed: CreatePublicGroupInput = serde_json::from_str(json).unwrap();
         assert_eq!(parsed.picture, None);
         assert_eq!(parsed.visibility, GroupVisibility::Public);
         assert_eq!(parsed.access, GroupAccess::Open);

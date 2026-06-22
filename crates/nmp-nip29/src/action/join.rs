@@ -16,7 +16,9 @@
 //! [`crate::projection::DiscoveredGroupsProjection`] (or a per-group
 //! projection) — this action only emits the request.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -54,15 +56,21 @@ pub struct JoinGroupAction;
 impl ActionModule for JoinGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.join";
     type Action = JoinGroupInput;
-    fn start(
-        &self,
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
+
+    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<JoinGroupInput as ActionPayload>::decode(bytes))
+    }
+
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         // The host pin must be present and non-empty (a missing
         // `host_relay_url` would route the request through the NIP-65 outbox
         // — wrong relay, the join would never reach the host).
-        action.group.require_routable().map_err(ActionRejection::Invalid)?;
+        action
+            .group
+            .require_routable()
+            .map_err(ActionRejection::Invalid)?;
         join_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for join request".into()))?;
@@ -74,8 +82,7 @@ impl ActionModule for JoinGroupAction {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(join_group_plan(&action)
-            .into_actor_command(Some(correlation_id.to_string()))?);
+        send(join_group_plan(&action).into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
@@ -106,9 +113,18 @@ mod tests {
     #[test]
     fn well_formed_input_yields_host_pinned_kind_9021_publish_command() {
         let cmds = run_execute(input()).expect("well-formed input executes");
-        assert_eq!(cmds.len(), 1, "join executor must send exactly one command, got {cmds:?}");
+        assert_eq!(
+            cmds.len(),
+            1,
+            "join executor must send exactly one command, got {cmds:?}"
+        );
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, .. } => {
+            ActorCommand::PublishUnsignedEventToRelays {
+                event,
+                relays,
+                correlation_id,
+                ..
+            } => {
                 // Pinned to EXACTLY the host relay — never the NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.kind, KIND_JOIN_REQUEST);
@@ -144,7 +160,10 @@ mod tests {
             other => panic!("expected publish, got {other:?}"),
         };
         assert!(
-            event.tags.iter().any(|t| t == &vec!["code".to_string(), "secret-1".to_string()]),
+            event
+                .tags
+                .iter()
+                .any(|t| t == &vec!["code".to_string(), "secret-1".to_string()]),
             "must carry the ['code', invite_code] tag, got {:?}",
             event.tags
         );

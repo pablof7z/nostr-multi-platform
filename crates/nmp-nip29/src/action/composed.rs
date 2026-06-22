@@ -4,7 +4,9 @@
 //! per `kinds.md` §4. It lives here because the routing concern (the `h`
 //! tag) is the discriminator.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
 
@@ -43,12 +45,18 @@ pub struct ReactInGroupAction;
 impl ActionModule for ReactInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.react_in_group";
     type Action = ReactInGroupInput;
-    fn start(
-        &self,
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
-        action.group.require_routable().map_err(ActionRejection::Invalid)?;
+
+    /// ADR-0064 / S9 (#1747): opt into the typed FlatBuffers payload doorway; the
+    /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<ReactInGroupInput as ActionPayload>::decode(bytes))
+    }
+
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+        action
+            .group
+            .require_routable()
+            .map_err(ActionRejection::Invalid)?;
         if action.target_event_id.is_empty() {
             return Err(ActionRejection::Invalid("target_event_id is empty".into()));
         }
@@ -57,7 +65,9 @@ impl ActionModule for ReactInGroupAction {
         }
         react_in_group_plan(&action)
             .validate_no_unpinned_h()
-            .map_err(|_| ActionRejection::Invalid("missing host pin for in-group reaction".into()))?;
+            .map_err(|_| {
+                ActionRejection::Invalid("missing host pin for in-group reaction".into())
+            })?;
         Ok(())
     }
     fn execute(
@@ -66,8 +76,7 @@ impl ActionModule for ReactInGroupAction {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(react_in_group_plan(&action)
-            .into_actor_command(Some(correlation_id.to_string()))?);
+        send(react_in_group_plan(&action).into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
@@ -89,7 +98,7 @@ mod tests {
     #[test]
     fn react_well_formed_passes_validator() {
         let mut ctx = ActionContext::default();
-        assert!(ReactInGroupAction.start(&mut ctx,react_input()).is_ok());
+        assert!(ReactInGroupAction.start(&mut ctx, react_input()).is_ok());
     }
 
     #[test]
@@ -100,7 +109,7 @@ mod tests {
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction.start(&mut ctx,action),
+            ReactInGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -113,7 +122,7 @@ mod tests {
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction.start(&mut ctx,action),
+            ReactInGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -126,7 +135,7 @@ mod tests {
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction.start(&mut ctx,action),
+            ReactInGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -139,7 +148,7 @@ mod tests {
             ..react_input()
         };
         assert!(matches!(
-            ReactInGroupAction.start(&mut ctx,action),
+            ReactInGroupAction.start(&mut ctx, action),
             Err(ActionRejection::Invalid(_))
         ));
     }
@@ -147,14 +156,24 @@ mod tests {
     #[test]
     fn react_execute_emits_host_pinned_kind7_publish_command() {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        ReactInGroupAction.execute(react_input(), "react-cid", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
-        .expect("well-formed input executes");
+        ReactInGroupAction
+            .execute(react_input(), "react-cid", &|cmd| {
+                captured.borrow_mut().push(cmd);
+            })
+            .expect("well-formed input executes");
         let cmds = captured.into_inner();
-        assert_eq!(cmds.len(), 1, "react executor must send exactly one command, got {cmds:?}");
+        assert_eq!(
+            cmds.len(),
+            1,
+            "react executor must send exactly one command, got {cmds:?}"
+        );
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, .. } => {
+            ActorCommand::PublishUnsignedEventToRelays {
+                event,
+                relays,
+                correlation_id,
+                ..
+            } => {
                 assert_eq!(event.kind, REACTION_KIND, "react must emit kind:7");
                 assert_eq!(
                     relays,
@@ -162,7 +181,10 @@ mod tests {
                     "react must be pinned to the group's host relay"
                 );
                 assert!(
-                    event.tags.iter().any(|t| t == &["h".to_string(), "room".to_string()]),
+                    event
+                        .tags
+                        .iter()
+                        .any(|t| t == &["h".to_string(), "room".to_string()]),
                     "must carry the ['h', local_id] group tag, got {:?}",
                     event.tags
                 );

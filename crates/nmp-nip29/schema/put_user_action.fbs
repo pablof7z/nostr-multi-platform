@@ -1,0 +1,36 @@
+namespace nmp.nip29;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// `nmp.nip29.put_user` admin `ActionModule` (publishes a kind:9000 add/role
+// event).
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry adapter
+// decodes against THIS schema, gating `schema_version` BEFORE `start()`
+// (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Self-contained (no `include`). Regenerate the checked-in Rust bindings only
+// with the workspace FlatBuffers pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/put_user_action.fbs
+
+table GroupRef {
+  host_relay_url:string (required);
+  local_id:string (required);
+}
+
+table PutUserPayload {
+  schema_version:uint;
+  group:GroupRef (required);
+  // `start()` requires 64-hex — preserved verbatim.
+  target_pubkey:string (required);
+  // Optional role; PRESENCE-CRITICAL — `start()` rejects a present-but-empty
+  // role (`Some("")` -> Invalid). Collapsing empty -> None would BYPASS that
+  // check (fail-open). Presence is preserved: absent -> None,
+  // present-empty -> Some("").
+  role:string;
+  // Optional reason; presence preserved.
+  reason:string;
+}
+
+file_identifier "N29U";
+root_type PutUserPayload;
