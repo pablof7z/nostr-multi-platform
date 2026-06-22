@@ -469,3 +469,33 @@ enum UiProgressProse {
         }
     }
 }
+
+/// Maps a kernel `action_lifecycle` `reason_code` (#1735) to localized
+/// failure copy — the parallel of `UiErrorProse` / `UiProgressProse` for the
+/// `LifecycleStage.failed` reason. The kernel ships a stable `reason_code` only
+/// for its OWN curated copy; opaque upstream / diagnostic text stays prose-only
+/// (`reason_code` absent), so the caller falls back to the English `reason`
+/// string the wire always carries. Returns `nil` for an unrecognized key.
+///
+/// `subject` is the optional contextual value the kernel attaches
+/// (`reason_subject`) for interpolation — none of the current codes use it, but
+/// the signature carries it so a future subject-bearing code lands without a
+/// surface change.
+enum UiLifecycleReasonProse {
+    static func localized(code: String, subject: String?) -> String? {
+        switch code {
+        case "lifecycle_no_active_account":
+            return NSLocalizedString(
+                "lifecycle.reason.no_active_account",
+                value: "Sign in to an account first.",
+                comment: "Action failed: no account is signed in")
+        case "lifecycle_publish_no_explicit_target":
+            return NSLocalizedString(
+                "lifecycle.reason.publish_no_explicit_target",
+                value: "This private note needs an explicit relay to publish to.",
+                comment: "Action failed: a private/encrypted publish had no explicit relay pin")
+        default:
+            return nil
+        }
+    }
+}

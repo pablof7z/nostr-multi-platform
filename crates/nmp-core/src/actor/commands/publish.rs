@@ -31,9 +31,8 @@ use crate::substrate::UnsignedEvent;
 /// honour ad-hoc; centralising it here keeps the pattern uniform and removes
 /// the risk of a new handler forgetting the second leg.
 ///
-/// The `action_failure` reason is the bare `"no active account"` string the
-/// per-handler sites used historically — matching across handlers so the host
-/// can pattern-match consistently regardless of which verb dispatched.
+/// The lifecycle `reason` is the bare `"no active account"` prose; #1735 also
+/// sets the curated `LIFECYCLE_NO_ACTIVE_ACCOUNT` code the host localizes.
 fn toast_no_account(
     kernel: &mut Kernel,
     action: &str,
@@ -43,7 +42,8 @@ fn toast_no_account(
         "cannot {action}: no active account — sign in first"
     )));
     if let Some(id) = correlation_id {
-        kernel.record_action_failure(id, "no active account".to_string());
+        let code = crate::ui_token::codes::LIFECYCLE_NO_ACTIVE_ACCOUNT;
+        kernel.record_action_failure_coded(id, "no active account".into(), Some(code), None);
     }
     Vec::new()
 }
@@ -68,6 +68,7 @@ fn fail_publish(
 ) -> Vec<OutboundMessage> {
     kernel.set_last_error_toast(Some(reason.clone()));
     if let Some(id) = correlation_id {
+        // Prose-only (#1735): caller-supplied diagnostic text, not curated copy.
         kernel.record_action_failure(id, reason);
     }
     Vec::new()
@@ -81,6 +82,7 @@ fn fail_invalid_target(
     let toast = format!("explicit publish target rejected: {reason}");
     kernel.set_last_error_toast(Some(toast.clone()));
     if let Some(id) = correlation_id {
+        // Prose-only (#1735): wraps caller-supplied upstream diagnostic text.
         kernel.record_action_failure(id, toast);
     }
     Vec::new()
@@ -381,17 +383,15 @@ pub(crate) fn publish_signed_event(
              supply PublishTarget::Explicit with a non-empty relay set.",
         );
         kernel.set_last_error_toast(Some(reason.clone()));
-        // Broken-promise fix: if this publish came in via `dispatch_action`'s
-        // `PublishAction::Publish` path, the host received a `correlation_id`
-        // and the dispatch arm already recorded `ActionStage::Requested`. The
-        // refusal here must reach `action_results` under that id so the
-        // host's spinner clears with a terminal failure verdict — the same
-        // pattern the per-verb publishers (`publish_profile`) apply on their
-        // sign-step early-exits. No-op for `None`
-        // (non-dispatch callers — `NmpApp::publish_signed_explicit`,
-        // conformance harnesses — have nothing waiting on an id).
+        // Broken-promise fix: a `dispatch_action` `PublishAction::Publish`
+        // recorded `Requested` under `correlation_id`; the refusal must reach
+        // `action_results` under that id so the host's spinner clears (same
+        // pattern as the per-verb sign-step early-exits). No-op for `None`.
         if let Some(id) = correlation_id {
-            kernel.record_action_failure(id, reason);
+            // Curated kernel policy copy (the D10 routing-leak refusal) — the
+            // host localizes it (#1735).
+            let code = crate::ui_token::codes::LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET;
+            kernel.record_action_failure_coded(id, reason, Some(code), None);
         }
         return Vec::new();
     }

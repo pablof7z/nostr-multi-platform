@@ -58,13 +58,19 @@ impl Kernel {
         // the action_results array. The mirror's `at_ms` is sourced from
         // `now_ms()` so a `FixedClock` keeps the timestamp deterministic.
         //
-        // V5 thin-shell: route through `record_action_stage` (instead of
+        // V5 thin-shell: route through `record_action_stage_coded` (instead of
         // the bare `action_stages.record`) so the `action_lifecycle`
         // display projection picks up the terminal in the same edge. A
         // host that only consumes `action_lifecycle` now sees engine
         // terminals appear in `recent_terminal` exactly as it sees
         // sign-step terminals from `record_action_failure` /
         // `record_action_success`.
+        //
+        // #1735: use `record_action_stage_coded` so that terminals carrying a
+        // curated `reason_code` (e.g. the D10 routing-leak refusal from
+        // `record_action_terminal_failure`) thread the code into the
+        // `action_lifecycle` projection instead of overwriting it with a
+        // None via the plain `record_action_stage` path.
         for terminal in &terminals {
             let stage = match terminal.status {
                 "ok" => super::super::action_stages::ActionStage::Accepted,
@@ -75,10 +81,16 @@ impl Kernel {
                         .unwrap_or_else(|| terminal.status.to_string()),
                 },
             };
-            // `record_action_stage` is silent on cap hits (D6) — the
+            // `record_action_stage_coded` is silent on cap hits (D6) — the
             // diagnostic counters in the underlying trackers surface the
             // event without interrupting the publish path.
-            self.record_action_stage(&terminal.correlation_id, stage, None);
+            self.record_action_stage_coded(
+                &terminal.correlation_id,
+                stage,
+                None,
+                terminal.reason_code,
+                None,
+            );
         }
         let arr: Vec<serde_json::Value> = terminals
             .iter()

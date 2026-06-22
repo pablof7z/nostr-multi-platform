@@ -99,6 +99,16 @@ pub struct LastTerminal {
     /// path; `Some(json)` only on the `RecordActionSuccess { result_json }`
     /// off-band path.
     pub result_json: Option<String>,
+    /// Curated kernel policy `reason_code` for shell localization (#1735).
+    ///
+    /// Set only for kernel-authored refusals (e.g. D10 routing-leak guard)
+    /// where the host is expected to show localized copy keyed by the code.
+    /// Engine-driven terminals (relay give-up, etc.) leave this `None` —
+    /// those carry opaque upstream text that cannot be localized.
+    /// `take_action_results_projection` forwards the code into the
+    /// `action_lifecycle` projection via `record_action_stage_coded` so
+    /// the first coded write is NOT overwritten by a second un-coded pass.
+    pub reason_code: Option<&'static str>,
 }
 
 impl LastTerminal {
@@ -137,6 +147,7 @@ impl LastTerminal {
                 error,
                 event_id: Some(outcome.event_id.clone()),
                 result_json: None,
+                reason_code: None,
             }
         } else {
             Self {
@@ -145,6 +156,7 @@ impl LastTerminal {
                 error: None,
                 event_id: Some(outcome.event_id.clone()),
                 result_json: None,
+                reason_code: None,
             }
         }
     }

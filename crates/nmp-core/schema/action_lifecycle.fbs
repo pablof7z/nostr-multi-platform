@@ -55,6 +55,22 @@ table LifecycleEntry {
   // when `stage == "failed"`.
   has_reason:bool;
   reason:string;
+  // Stable machine code for a CURATED user-facing failure reason (#1735), e.g.
+  // `lifecycle_no_active_account`. `has_reason_code == false` for opaque
+  // upstream / diagnostic text (relay give-up reasons, executor-supplied
+  // detail) — that stays prose-only in `reason`, mirroring #1711's guard. Shells
+  // localize the code, falling back to `reason` when absent. The `reason`
+  // English prose is always carried regardless, so un-coded reasons never
+  // regress. Appended at the table end — additive, no vtable break for clients
+  // built against the prior schema. (Prereq for the write-lane S7 lifecycle
+  // wire rewrite, #1754.)
+  has_reason_code:bool;
+  reason_code:string;
+  // Optional contextual subject the shell interpolates into the localized
+  // template for `reason_code` (parallel of `UiToken::subject`). Absent for
+  // codes with no contextual value.
+  has_reason_subject:bool;
+  reason_subject:string;
 }
 
 // `{ in_flight, recent_terminal }` — the two ordered arrays the host binds.

@@ -81,7 +81,9 @@ class TypedActionLifecycleDecoderTest {
         val corrOff = b.createString(correlationId)
         val stageOff = b.createString(stage)
         val reasonOff = if (reason != null) b.createString(reason) else 0
-        return LifecycleEntry.createLifecycleEntry(b, corrOff, stageOff, reason != null, reasonOff)
+        return LifecycleEntry.createLifecycleEntry(
+            b, corrOff, stageOff, reason != null, reasonOff, false, 0, false, 0,
+        )
     }
 
     private fun lifecycleBuffer(): ByteArray {

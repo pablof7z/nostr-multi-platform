@@ -195,6 +195,24 @@ pub mod codes {
     /// The kernel is restoring a persisted NIP-46 bunker session at launch.
     pub const PROGRESS_RESTORING_BROKER_SESSION: &str =
         "signer_progress_restoring_broker_session";
+
+    // ── action_lifecycle failure-reason codes (#1735) ────────────────────────
+    // Stable machine keys for the kernel's OWN curated action-failure copy,
+    // carried on the `action_lifecycle` projection's `reason_code` field
+    // alongside the English `reason` fallback. ONLY curated app copy gets a
+    // code; opaque upstream / executor-supplied diagnostic text stays prose-only
+    // (`reason_code` absent), mirroring the #1711 progress-code guard. Shells
+    // localize the code, falling back to `reason`. (Prereq for the write-lane S7
+    // lifecycle wire rewrite, #1754.)
+    /// A dispatched publish (or other account-gated action) was refused because
+    /// no account is signed in. The shell's localized copy prompts sign-in.
+    pub const LIFECYCLE_NO_ACTIVE_ACCOUNT: &str = "lifecycle_no_active_account";
+    /// A signed-event publish carrying no NIP-65 outbox route and no explicit
+    /// relay target was refused (publishing would leak the encrypted envelope to
+    /// the default outbox — a D10 violation). The shell explains the host must
+    /// supply an explicit relay set.
+    pub const LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET: &str =
+        "lifecycle_publish_no_explicit_target";
 }
 
 #[cfg(test)]

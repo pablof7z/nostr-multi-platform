@@ -107,6 +107,26 @@ impl Kernel {
     /// `correlation_id`; a `react` / `follow` / conformance-harness publish
     /// carries `None` and is a no-op here (nothing is waiting on an id).
     pub fn record_action_failure(&mut self, correlation_id: String, error: String) {
+        self.record_action_failure_coded(correlation_id, error, None, None);
+    }
+
+    /// As [`Self::record_action_failure`], but attaches the kernel's CURATED
+    /// failure `reason_code` (+ optional `reason_subject`) to the
+    /// `action_lifecycle` display projection (#1735). The substrate
+    /// `action_stages` history and the `action_results` terminal keep only the
+    /// English `error` prose — the structured reason code there is S7's (#1754).
+    ///
+    /// Pass a code ONLY for curated app copy the kernel itself authored (a host
+    /// would localize it); leave opaque upstream / executor-supplied diagnostic
+    /// text un-coded (`reason_code == None`), mirroring #1711's guard. Shells
+    /// localize the code, falling back to the `error` prose.
+    pub fn record_action_failure_coded(
+        &mut self,
+        correlation_id: String,
+        error: String,
+        reason_code: Option<&'static str>,
+        reason_subject: Option<String>,
+    ) {
         // A sign-step failure also lifts into the `action_stages`
         // mirror so a host listening only on the stage seam (not the
         // per-tick action_results drain) still sees the `Failed`
@@ -120,15 +140,17 @@ impl Kernel {
         // projection in one call, so the host shell sees the terminal
         // appear in `recent_terminal` on the next snapshot tick with no
         // reducer-side bookkeeping.
-        self.record_action_stage(
+        self.record_action_stage_coded(
             &correlation_id,
             super::action_stages::ActionStage::Failed {
                 reason: error.clone(),
             },
             None,
+            reason_code,
+            reason_subject.as_deref(),
         );
         self.publish_engine
-            .record_action_terminal_failure(correlation_id, error);
+            .record_action_terminal_failure(correlation_id, error, reason_code);
         // A terminal verdict is always snapshot-worthy: the next emit drains
         // it into `action_results` via `take_action_results_projection`.
         self.changed_since_emit = true;
@@ -274,6 +296,22 @@ impl Kernel {
         stage: super::action_stages::ActionStage,
         detail: Option<serde_json::Value>,
     ) {
+        self.record_action_stage_coded(correlation_id, stage, detail, None, None);
+    }
+
+    /// As [`Self::record_action_stage`], but threads the kernel's curated
+    /// failure `reason_code` (+ optional `reason_subject`) into the
+    /// `action_lifecycle` display projection ONLY (#1735). The substrate
+    /// `action_stages` history sees the un-coded `ActionStage` — its structured
+    /// reason code is S7's (#1754). A non-`Failed` stage ignores the code.
+    pub(crate) fn record_action_stage_coded(
+        &mut self,
+        correlation_id: &str,
+        stage: super::action_stages::ActionStage,
+        detail: Option<serde_json::Value>,
+        reason_code: Option<&str>,
+        reason_subject: Option<&str>,
+    ) {
         let at_ms = self.now_ms();
         // V5 thin-shell: mirror the transition into the
         // `action_lifecycle` display tracker before persisting to the
@@ -284,7 +322,7 @@ impl Kernel {
         // `action_stages::record` consumes the value; the display tracker
         // collapses to its own enum independent of substrate growth.
         self.action_lifecycle
-            .record(correlation_id, stage.clone(), at_ms);
+            .record_coded(correlation_id, stage.clone(), reason_code, reason_subject, at_ms);
         self.action_stages
             .record(correlation_id, stage, detail, at_ms);
         self.changed_since_emit = true;
@@ -399,119 +437,4 @@ impl Kernel {
         result
     }
 
-    /// Hex pubkey of the author of `event_id_hex`, or `None` if that event is
-    /// not in the kernel's read-cache.
-    ///
-    /// Reads `self.events` — the lightweight read-cache — rather than the
-    /// store directly. Production ingest (`ingest/timeline.rs`) populates both
-    /// in lockstep, so the read-cache is a faithful view; the choice avoids a
-    /// store round-trip on the publish hot path. `None` is a normal result
-    /// (the event simply hasn't been ingested);
-    /// the caller degrades gracefully (D6 — emit the reaction with only the `e`
-    /// tag, never panic).
-    #[must_use]
-    pub(crate) fn event_author(&self, event_id_hex: &str) -> Option<String> {
-        self.events.get(event_id_hex).map(|e| e.author.clone())
-    }
-
-    /// Latest kind:3 follow set for the active account, distinguishing
-    /// "not loaded" from "loaded but empty".
-    ///
-    /// Returns `Some(pubkeys)` when the active account's kind:3 contact list
-    /// IS present in the store — even when no valid `p` tags survive the
-    /// hex-validation filter (legitimately empty follow list → `Some(vec![])`).
-    ///
-    /// Returns `None` when:
-    /// - No active account is set, **or**
-    /// - The active account's kind:3 has not been ingested yet.
-    ///
-    /// This is the safety gate for wasm Follow / Unfollow: callers MUST
-    /// receive `Some` before editing the follow set. Publishing an edit when
-    /// `None` is returned would risk silently wiping an unloaded contact list.
-    ///
-    /// Note: the list is uncapped — and the follow set is now uncapped
-    /// everywhere (#1497 amendment 6 collapsed the follow-feed to one
-    /// multi-author interest with no per-author limit).
-    #[must_use]
-    pub(crate) fn try_current_follows(&self) -> Option<Vec<String>> {
-        let (tags, _content) = self.try_current_kind3_event()?;
-        let follows = tags
-            .iter()
-            .filter(|t: &&Vec<String>| t.first().map(String::as_str) == Some("p"))
-            .filter_map(|t| t.get(1).cloned())
-            .filter(|pk| is_hex_pubkey(pk))
-            .collect();
-        Some(follows)
-    }
-
-    /// Return the active account's FULL existing kind:3 raw event — every tag
-    /// verbatim (`Vec<Vec<String>>`, including relay-hint and petname columns
-    /// on `p` tags and every non-`p` tag) plus the original `content` string —
-    /// so a follow-list edit can splice ONLY the `p` section and re-publish
-    /// without discarding the rest of the user's contact list (issue #1246).
-    ///
-    /// Fails closed: returns `None` when no active account is set OR the active
-    /// account's kind:3 has not been ingested yet — the SAME safety gate as
-    /// [`Self::try_current_follows`]. Callers MUST receive `Some` before
-    /// editing; publishing an edit built from `None` would silently wipe an
-    /// unloaded contact list. The tag set is uncapped (a cap is a subscription
-    /// concern, not a contact-list-editing one — capping here would silently
-    /// drop follows ≥501 on every edit).
-    #[must_use]
-    pub(crate) fn try_current_kind3_event(&self) -> Option<(Vec<Vec<String>>, String)> {
-        let author_hex = self.active_account_pubkey()?;
-        let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
-        let Ok(mut iter) = self.store.scan_by_author_kind(&author, &[3], None, None, 1) else {
-            return None;
-        };
-        let Some(Ok(stored)) = iter.next() else {
-            // kind:3 not yet ingested — None, not empty.
-            return None;
-        };
-        Some((stored.raw.tags.clone(), stored.raw.content.clone()))
-    }
-
-    /// Resolve the active account's CURRENT kind:3 baseline for a follow-set
-    /// edit (the actor `follow` / `follow_many` write path), in priority order:
-    ///
-    /// 1. The FULL raw kind:3 event from the store — every tag + content
-    ///    verbatim ([`Self::try_current_kind3_event`]). This preserves relay
-    ///    hints, petnames, non-`p` tags, and content on re-publish (issue
-    ///    #1246a). It is the synced / locally-published path.
-    /// 2. If NO raw kind:3 is in the store but the capability-owned contacts
-    ///    cache KNOWS this account's follow set (`follows()` is `Some`, the empty
-    ///    list included), rebuild a minimal `p`-only kind:3 from those follows
-    ///    with empty content. The cache is `Some` ONLY when the follow set is
-    ///    genuinely known: a brand-new account seeded at `create_account` (empty
-    ///    list), an account restored from persisted contacts, or a relay-synced
-    ///    cache. In this branch the store — the only place relay hints / petnames
-    ///    / non-`p` content ever live — holds no event, so a `p`-only
-    ///    reconstruction loses nothing recoverable.
-    /// 3. Otherwise `None` — an EXISTING account whose kind:3 has NOT synced yet
-    ///    (cache `None`). Editing here would silently clobber an unsynced remote
-    ///    contact list, so callers MUST fail closed (issue #1246b).
-    ///
-    /// This is the gate that distinguishes "no list exists (a brand-new local
-    /// account, safe to publish its first kind:3)" from "a list exists remotely
-    /// but is not loaded (must fail closed)". The store-only
-    /// [`Self::try_current_kind3_event`] remains the wasm reducer seam's gate and
-    /// keeps its strict not-loaded → `None` contract unchanged.
-    #[must_use]
-    pub(crate) fn try_current_kind3_event_for_edit(
-        &self,
-    ) -> Option<(Vec<Vec<String>>, String)> {
-        if let Some(raw) = self.try_current_kind3_event() {
-            return Some(raw);
-        }
-        // No raw kind:3 in the store — fall back to the contacts cache's
-        // authoritative follow set. `None` (unknown / unsynced) fails closed;
-        // `Some(list)` (known, possibly empty) rebuilds a `p`-only baseline.
-        let author_hex = self.active_account_pubkey()?;
-        let follows = self.contacts_lookup().follows(author_hex)?;
-        let tags = follows
-            .into_iter()
-            .map(|pk| vec!["p".to_string(), pk])
-            .collect();
-        Some((tags, String::new()))
-    }
 }

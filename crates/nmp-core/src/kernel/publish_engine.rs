@@ -165,7 +165,11 @@ impl Kernel {
             // failure so its spinner clears. No-op for `None` (internal /
             // conformance callers have nothing waiting on an id).
             if let Some(id) = correlation_id_override {
-                self.record_action_failure(id, reason);
+                // Curated kernel policy copy (the D10 routing-leak refusal) — the
+                // host localizes it (#1735). Mirrors the action-layer chokepoint
+                // in `actor/commands/publish.rs` which already codes this path.
+                let code = crate::ui_token::codes::LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET;
+                self.record_action_failure_coded(id, reason, Some(code), None);
             }
             return Vec::new();
         }

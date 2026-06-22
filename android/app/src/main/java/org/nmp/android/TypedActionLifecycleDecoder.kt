@@ -74,6 +74,10 @@ object TypedActionLifecycleDecoder {
                     correlationId = entry.correlationId ?: "",
                     stage = entry.stage ?: "",
                     reason = if (entry.hasReason) entry.reason else null,
+                    // #1735: lift the curated reason_code (+ subject) when present;
+                    // an un-coded failure has hasReasonCode == false -> null.
+                    reasonCode = if (entry.hasReasonCode) entry.reasonCode else null,
+                    reasonSubject = if (entry.hasReasonSubject) entry.reasonSubject else null,
                 )
             )
         }

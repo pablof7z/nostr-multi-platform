@@ -66,6 +66,38 @@ class LifecycleEntry : Table() {
         }
     val reasonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(10, 1)
     fun reasonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 10, 1)
+    val hasReasonCode : Boolean
+        get() {
+            val o = __offset(12)
+            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
+        }
+    val reasonCode : String?
+        get() {
+            val o = __offset(14)
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
+        }
+    val reasonCodeAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(14, 1)
+    fun reasonCodeInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 14, 1)
+    val hasReasonSubject : Boolean
+        get() {
+            val o = __offset(16)
+            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
+        }
+    val reasonSubject : String?
+        get() {
+            val o = __offset(18)
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
+        }
+    val reasonSubjectAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(18, 1)
+    fun reasonSubjectInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 18, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsLifecycleEntry(_bb: ByteBuffer): LifecycleEntry = getRootAsLifecycleEntry(_bb, LifecycleEntry())
@@ -73,19 +105,27 @@ class LifecycleEntry : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createLifecycleEntry(builder: FlatBufferBuilder, correlationIdOffset: Int, stageOffset: Int, hasReason: Boolean, reasonOffset: Int) : Int {
-            builder.startTable(4)
+        fun createLifecycleEntry(builder: FlatBufferBuilder, correlationIdOffset: Int, stageOffset: Int, hasReason: Boolean, reasonOffset: Int, hasReasonCode: Boolean, reasonCodeOffset: Int, hasReasonSubject: Boolean, reasonSubjectOffset: Int) : Int {
+            builder.startTable(8)
+            addReasonSubject(builder, reasonSubjectOffset)
+            addReasonCode(builder, reasonCodeOffset)
             addReason(builder, reasonOffset)
             addStage(builder, stageOffset)
             addCorrelationId(builder, correlationIdOffset)
+            addHasReasonSubject(builder, hasReasonSubject)
+            addHasReasonCode(builder, hasReasonCode)
             addHasReason(builder, hasReason)
             return endLifecycleEntry(builder)
         }
-        fun startLifecycleEntry(builder: FlatBufferBuilder) = builder.startTable(4)
+        fun startLifecycleEntry(builder: FlatBufferBuilder) = builder.startTable(8)
         fun addCorrelationId(builder: FlatBufferBuilder, correlationId: Int) = builder.addOffset(0, correlationId, 0)
         fun addStage(builder: FlatBufferBuilder, stage: Int) = builder.addOffset(1, stage, 0)
         fun addHasReason(builder: FlatBufferBuilder, hasReason: Boolean) = builder.addBoolean(2, hasReason, false)
         fun addReason(builder: FlatBufferBuilder, reason: Int) = builder.addOffset(3, reason, 0)
+        fun addHasReasonCode(builder: FlatBufferBuilder, hasReasonCode: Boolean) = builder.addBoolean(4, hasReasonCode, false)
+        fun addReasonCode(builder: FlatBufferBuilder, reasonCode: Int) = builder.addOffset(5, reasonCode, 0)
+        fun addHasReasonSubject(builder: FlatBufferBuilder, hasReasonSubject: Boolean) = builder.addBoolean(6, hasReasonSubject, false)
+        fun addReasonSubject(builder: FlatBufferBuilder, reasonSubject: Int) = builder.addOffset(7, reasonSubject, 0)
         fun endLifecycleEntry(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

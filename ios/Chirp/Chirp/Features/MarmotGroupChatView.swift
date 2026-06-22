@@ -92,7 +92,9 @@ struct MarmotGroupChatView: View {
         switch entry.stage {
         case .accepted:
             dismiss()
-        case .failed(let reason):
+        case .failed:
+            // #1735: prefer the localized reason_code, falling back to prose.
+            let reason = entry.stage.localizedReason ?? ""
             leaveError = reason.isEmpty ? "Leaving the group failed." : reason
         default:
             break

@@ -151,7 +151,10 @@ struct MarmotInviteSheet: View {
         switch entry.stage {
         case .accepted:
             dismiss()
-        case .failed(let reason):
+        case .failed:
+            // #1735: prefer the localized reason_code, falling back to the
+            // English prose `reason` the wire carries.
+            let reason = entry.stage.localizedReason ?? ""
             syncError = reason.isEmpty ? "Invite failed" : reason
         default:
             break

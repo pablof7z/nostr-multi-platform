@@ -196,75 +196,7 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         XCTAssertTrue(snap.interests.isEmpty)
     }
 
-    // ── action_lifecycle (KALC) ──────────────────────────────────────────────
-
-    func testTypedActionLifecycleSidecarDecodes() throws {
-        let envelope = TypedProjectionEnvelope(
-            key: TypedActionLifecycleDecoder.key,
-            schemaId: TypedActionLifecycleDecoder.schemaId,
-            schemaVersion: 1,
-            fileIdentifier: TypedActionLifecycleDecoder.fileIdentifier,
-            payload: buildActionLifecycle())
-
-        let snap = try XCTUnwrap(
-            TypedActionLifecycleDecoder.decode(from: [envelope]),
-            "well-formed KALC sidecar must decode")
-
-        XCTAssertEqual(snap.inFlight.count, 2)
-        XCTAssertEqual(snap.inFlight[0].correlationId, "typed-inflight-1")
-        XCTAssertEqual(snap.inFlight[0].stage, .publishing)
-        XCTAssertEqual(snap.inFlight[1].correlationId, "typed-inflight-2")
-        XCTAssertEqual(snap.inFlight[1].stage, .awaitingCapability)
-
-        XCTAssertEqual(snap.recentTerminal.count, 2)
-        XCTAssertEqual(snap.recentTerminal[0].correlationId, "typed-terminal-ok")
-        XCTAssertEqual(snap.recentTerminal[0].stage, .accepted)
-        // `.failed(reason:)` reconstruction — the reason is distinct from any
-        // plausible JSON value, so a pass proves the typed enum won.
-        XCTAssertEqual(snap.recentTerminal[1].correlationId, "typed-terminal-fail")
-        XCTAssertEqual(snap.recentTerminal[1].stage, .failed(reason: "TYPED relay rejected the event"))
-    }
-
-    /// An unrecognised wire stage must collapse to `.unknown(raw:)` (D1
-    /// forward-compat), mirroring the JSON `init(from:)` default branch.
-    func testTypedActionLifecycleUnknownStageDegrades() throws {
-        let envelope = TypedProjectionEnvelope(
-            key: TypedActionLifecycleDecoder.key,
-            schemaId: TypedActionLifecycleDecoder.schemaId,
-            schemaVersion: 1,
-            fileIdentifier: TypedActionLifecycleDecoder.fileIdentifier,
-            payload: buildActionLifecycleUnknownStage())
-        let snap = try XCTUnwrap(TypedActionLifecycleDecoder.decode(from: [envelope]))
-        XCTAssertEqual(snap.inFlight.count, 1)
-        XCTAssertEqual(snap.inFlight[0].stage, .unknown(raw: "future_stage_xyz"))
-    }
-
-    func testAbsentActionLifecycleSidecarFallsBack() {
-        XCTAssertNil(TypedActionLifecycleDecoder.decode(from: []))
-    }
-
-    func testWrongSchemaActionLifecycleFallsBack() {
-        let envelope = TypedProjectionEnvelope(
-            key: TypedActionLifecycleDecoder.key,
-            schemaId: "not.action_lifecycle",
-            schemaVersion: 1,
-            fileIdentifier: TypedActionLifecycleDecoder.fileIdentifier,
-            payload: buildActionLifecycle())
-        XCTAssertNil(TypedActionLifecycleDecoder.decode(from: [envelope]))
-    }
-
-    // NOTE: the garbled-file-identifier test was removed. The decode path now
-    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
-    // file-identifier magic is NOT verified. A structurally-valid buffer with
-    // a clobbered magic still decodes successfully (possibly to empty/default
-    // field values). The key+schemaId envelope routing in `decode(from:)` is
-    // the selection mechanism, not the file identifier.
-
-    func testEmptyActionLifecyclePayloadFallsBack() {
-        XCTAssertNil(TypedActionLifecycleDecoder.decode(bytes: Data()))
-    }
-
-    // ── Builders ─────────────────────────────────────────────────────────────
+    // ── Builders (relay_diagnostics) ─────────────────────────────────────────
 
     /// Build a KRDG buffer with one fully-populated relay row (one `has_*`
     /// present, one absent — to prove the nil-vs-empty distinction), one nested
@@ -441,47 +373,4 @@ final class TypedDiagnosticsLifecycleDecoderTests: XCTestCase {
         return fbb.data
     }
 
-    private func buildActionLifecycle() -> Data {
-        var fbb = FlatBufferBuilder(initialSize: 512)
-
-        let entries = lifecycleVec(&fbb, [
-            ("typed-inflight-1", "publishing", false, ""),
-            ("typed-inflight-2", "awaiting_capability", false, ""),
-        ])
-        let terminals = lifecycleVec(&fbb, [
-            ("typed-terminal-ok", "accepted", false, ""),
-            ("typed-terminal-fail", "failed", true, "TYPED relay rejected the event"),
-        ])
-        let root = nmp_kernel_ActionLifecycleSnapshot.createActionLifecycleSnapshot(
-            &fbb, inFlightVectorOffset: entries, recentTerminalVectorOffset: terminals)
-        nmp_kernel_ActionLifecycleSnapshot.finish(&fbb, end: root)
-        return fbb.data
-    }
-
-    private func buildActionLifecycleUnknownStage() -> Data {
-        var fbb = FlatBufferBuilder(initialSize: 256)
-        let entries = lifecycleVec(&fbb, [("typed-unknown", "future_stage_xyz", false, "")])
-        let root = nmp_kernel_ActionLifecycleSnapshot.createActionLifecycleSnapshot(
-            &fbb, inFlightVectorOffset: entries)
-        nmp_kernel_ActionLifecycleSnapshot.finish(&fbb, end: root)
-        return fbb.data
-    }
-
-    private func lifecycleVec(
-        _ fbb: inout FlatBufferBuilder,
-        _ rows: [(String, String, Bool, String)]
-    ) -> Offset {
-        let offsets: [Offset] = rows.map { (correlationId, stage, hasReason, reason) in
-            let cidOff = fbb.create(string: correlationId)
-            let stageOff = fbb.create(string: stage)
-            let reasonOff = hasReason ? fbb.create(string: reason) : Offset()
-            return nmp_kernel_LifecycleEntry.createLifecycleEntry(
-                &fbb,
-                correlationIdOffset: cidOff,
-                stageOffset: stageOff,
-                hasReason: hasReason,
-                reasonOffset: reasonOff)
-        }
-        return fbb.createVector(ofOffsets: offsets)
-    }
 }

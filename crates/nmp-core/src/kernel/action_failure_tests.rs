@@ -214,6 +214,20 @@ fn record_action_success_with_non_json_result_forwards_as_string() {
     );
 }
 
+fn signed_kind(id: &str, author: &str, kind: u32) -> SignedEvent {
+    SignedEvent {
+        id: id.to_string(),
+        sig: format!("sig-{id}"),
+        unsigned: UnsignedEvent {
+            pubkey: author.to_string(),
+            kind,
+            tags: Vec::new(),
+            content: format!("content-{id}"),
+            created_at: 1_700_000_000,
+        },
+    }
+}
+
 fn signed(id: &str, author: &str) -> SignedEvent {
     SignedEvent {
         id: id.to_string(),
@@ -321,5 +335,76 @@ fn engine_error_for_dispatched_action_reaches_action_results() {
     assert!(
         error.contains("already in flight"),
         "the error carries the DuplicateHandle reason: {error}"
+    );
+}
+
+/// Read `projections.action_lifecycle` from a fresh wire snapshot.
+fn action_lifecycle(kernel: &mut Kernel) -> serde_json::Value {
+    let snapshot_json = kernel.make_update_json_for_test(true);
+    let parsed: serde_json::Value =
+        serde_json::from_str(&snapshot_json).expect("snapshot must be valid JSON");
+    parsed
+        .get("projections")
+        .and_then(|v| v.get("action_lifecycle"))
+        .cloned()
+        .unwrap_or(serde_json::Value::Null)
+}
+
+/// Engine D10 routing-leak guard — `reason_code` consistency (#1735).
+///
+/// The D10 private-envelope gate in `run_publish_engine_at` must emit the SAME
+/// `LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET` code as the action-layer chokepoint in
+/// `publish_signed_event`.  When the caller provides a `correlation_id_override`
+/// (a dispatched action), the engine guard calls `record_action_failure_coded`
+/// with that code so the `action_lifecycle` display projection carries
+/// `reason_code` for shell localization (#1735).
+///
+/// Proof-of-load-bearing: if the engine guard reverts to the un-coded
+/// `record_action_failure`, `reason_code` is absent and this test fails.
+#[test]
+fn engine_d10_routing_leak_guard_emits_reason_code_when_correlation_id_present() {
+    let author = "d1".repeat(32);
+    let mut kernel = Kernel::new(crate::relay::DEFAULT_VISIBLE_LIMIT);
+    // Seed write relays — ensures the D10 gate is the ONLY reason zero frames
+    // are emitted (a public kind with this seed routes normally to two relays).
+    seed_kind10002(&mut kernel, &author, "wss://d10-write-r1.test");
+
+    // A kind:1059 gift-wrap with Auto target + a correlation_id (the dispatched
+    // action shape — a host spinner is waiting on this id).
+    let signed = signed_kind(&"d1".repeat(32), &author, 1059);
+    let cid = "corr-d10-engine".to_string();
+
+    let outbound = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        Some(cid.clone()),
+        1_000,
+    );
+    assert!(
+        outbound.is_empty(),
+        "engine D10 guard must emit zero frames for kind:1059 + Auto target"
+    );
+
+    // The lifecycle projection must carry reason_code so the shell can localize
+    // the refusal message — both chokepoints must agree on the same code.
+    let proj = action_lifecycle(&mut kernel);
+    let recent = proj["recent_terminal"]
+        .as_array()
+        .expect("D10 guard must record a terminal into action_lifecycle");
+    let entry = recent
+        .iter()
+        .find(|e| e.get("correlation_id").and_then(|v| v.as_str()) == Some(cid.as_str()))
+        .expect("the correlation_id must appear in recent_terminal");
+    assert_eq!(
+        entry.get("stage").and_then(|v| v.as_str()),
+        Some("failed"),
+        "engine D10 guard records a Failed terminal"
+    );
+    assert_eq!(
+        entry.get("reason_code").and_then(|v| v.as_str()),
+        Some(crate::ui_token::codes::LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET),
+        "engine D10 guard must emit reason_code == LIFECYCLE_PUBLISH_NO_EXPLICIT_TARGET, \
+         matching the action-layer chokepoint (#1735)"
     );
 }

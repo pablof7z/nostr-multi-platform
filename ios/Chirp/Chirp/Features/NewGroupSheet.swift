@@ -277,7 +277,9 @@ struct NewGroupSheet: View {
         switch entry.stage {
         case .accepted:
             dismiss()
-        case .failed(let reason):
+        case .failed:
+            // #1735: prefer the localized reason_code, falling back to prose.
+            let reason = entry.stage.localizedReason ?? ""
             syncError = reason.isEmpty ? "Group creation failed" : reason
         default:
             break
