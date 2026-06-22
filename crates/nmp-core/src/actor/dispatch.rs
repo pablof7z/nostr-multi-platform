@@ -60,6 +60,7 @@ use super::relay_mgmt::{
     close_relays, ensure_relay_worker, maybe_send_startup, send_all_outbound,
     shutdown_relay_worker, spawn_missing_relays,
 };
+use super::relay_reconnect::reconnect_relays;
 use super::session_persistence;
 use super::signer_port_dispatch;
 use super::tick::{clamp_emit_hz_logged, emit_now, maybe_emit_after_dispatch};
@@ -1042,6 +1043,15 @@ pub(super) fn dispatch_command(
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
+        }
+        ActorCommand::ReconnectRelays => {
+            // #1689: kernel-driven "reconnect all". Fail-closed — a no-op before
+            // `Start` (nothing consented to re-dial; never dial unconsented relays).
+            if *ctx.running {
+                reconnect_relays(ctx.relay_controls, ctx.pool, ctx.kernel);
+                maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            }
+            Some(Vec::new())
         }
         ActorCommand::DeclareActiveFollowsFeed { acquisition_kinds } => {
             let outbound =

@@ -118,15 +118,27 @@ impl PoolInner {
         };
         if let Some(&slot_id) = self.url_to_slot.get(&canonical) {
             if let Some(Some(state)) = self.slots.get(slot_id as usize) {
-                if state.command_tx.is_some() {
+                // A live worker keeps its `command_tx`. EXCEPT after a
+                // permanent failure (HTTP 401/403): the worker thread has
+                // already `return`ed (see `relay_worker`), so its `command_tx`
+                // is a dead channel, yet `apply_prepared` leaves the sender in
+                // place while marking health `Closed`. Treating that lingering
+                // sender as "live" would wedge a permanently-errored relay
+                // forever — an explicit `ensure_open` (the manual "reconnect
+                // all" path, #1689) could never re-dial it. So a `Closed` slot
+                // always falls through to `reopen_slot`, even with a sender
+                // present. The pool still does not AUTO-reconnect permanent
+                // failures (no worker re-spawns itself); recovery requires an
+                // explicit `ensure_open`, which this preserves.
+                if state.command_tx.is_some() && state.health.state != HealthState::Closed {
                     return RelayHandle {
                         slot: slot_id,
                         generation: state.generation,
                     };
                 }
             }
-            // Slot exists but is closed/closing — fall through to
-            // allocate a fresh generation in-place.
+            // Slot exists but is closed/closing (or permanently errored) —
+            // fall through to allocate a fresh generation in-place.
             return self.reopen_slot(slot_id, canonical, role);
         }
         self.open_new_slot(canonical, role)
@@ -379,3 +391,81 @@ fn translator_loop(
 
 // Off-lock pre-translation (`prepare_event`) and the O(1) locked apply
 // (`apply_prepared`) live in the sibling `pool::translate` module.
+
+#[cfg(test)]
+mod permanent_failure_reopen_tests {
+    use super::*;
+    use crate::pool::translate::PreparedEvent;
+
+    /// #1689 — a permanently-errored slot (HTTP 401/403) must be re-openable by
+    /// an explicit `ensure_open` (the manual "reconnect all" path), even though
+    /// the pool does not AUTO-reconnect permanent failures.
+    ///
+    /// Regression guard: `apply_prepared` marks a permanent `Failed` as health
+    /// `Closed` but does NOT take `command_tx` (the worker thread has already
+    /// exited, so the sender is a dead channel). If `ensure_open` treated that
+    /// lingering sender as "live", it would return the same handle and the
+    /// relay would be wedged dead forever — `reconnect_relays` (#1689) could
+    /// never recover it. This test pins that `ensure_open` reopens (bumps the
+    /// generation) a `Closed` slot regardless of the lingering sender.
+    #[test]
+    fn ensure_open_reopens_permanently_failed_slot() {
+        let (tx, _rx) = mpsc::channel::<PoolEvent>();
+        let inner = PoolInner::new(PoolConfig::default(), Arc::new(tx));
+        let mut guard = inner.lock().expect("lock");
+
+        // port 1 never connects, but the slot bookkeeping is synchronous.
+        let h1 = guard.ensure_open("wss://127.0.0.1:1", RelayRole::Content);
+        assert_ne!(h1.slot, u32::MAX, "ensure_open must allocate a real slot");
+        let canonical = canonicalize("wss://127.0.0.1:1").expect("canonical");
+
+        // Simulate the worker emitting a PERMANENT failure (e.g. 403 Forbidden):
+        // health → Closed, but command_tx is left in place by `apply_prepared`.
+        let ev = apply_prepared(
+            &mut guard,
+            PreparedEvent::Failed {
+                relay_url: canonical.as_str().to_string(),
+                generation: h1.generation,
+                error: "403 Forbidden".to_string(),
+                permanent: true,
+            },
+        );
+        assert!(matches!(ev, Some(PoolEvent::Failed { .. })));
+
+        let state = guard.slots[h1.slot as usize].as_ref().expect("slot");
+        assert_eq!(
+            state.health.state,
+            HealthState::Closed,
+            "permanent failure must mark the slot Closed"
+        );
+        assert!(
+            state.command_tx.is_some(),
+            "precondition: the permanent-failure path leaves the (now dead) \
+             command_tx in place — this is exactly the trap ensure_open must \
+             not fall into"
+        );
+
+        // The fix: ensure_open reopens the Closed slot (fresh generation) rather
+        // than returning the dead handle.
+        let h2 = guard.ensure_open("wss://127.0.0.1:1", RelayRole::Content);
+        assert_eq!(h2.slot, h1.slot, "reopen reuses the slot id");
+        assert!(
+            h2.generation > h1.generation,
+            "#1689: a permanently-errored slot must reopen with a bumped \
+             generation (before={}, after={})",
+            h1.generation,
+            h2.generation,
+        );
+        assert_eq!(
+            guard.slots[h2.slot as usize]
+                .as_ref()
+                .expect("slot")
+                .health
+                .state,
+            HealthState::Connecting,
+            "reopen re-dials: health returns to Connecting"
+        );
+
+        guard.shutdown();
+    }
+}
