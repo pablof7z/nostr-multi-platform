@@ -3,16 +3,19 @@
 //! This crate owns generic repost wire interpretation. It does not render UI,
 //! choose relay policy, or depend on any app crate.
 
-use std::collections::BTreeSet;
-
 use nmp_core::substrate::KernelEvent;
 use serde::Deserialize;
 
 mod coordinate;
 mod delete;
+mod primary_kind;
 
 pub use coordinate::{is_addressable_kind, AddressCoordinate};
 pub use delete::{DeleteRecord, KIND_DELETE};
+pub use primary_kind::{
+    acquisition_kinds_for_primary, try_acquisition_kinds_for_primary, validate_primary_kinds,
+    PrimaryKindError,
+};
 
 /// NIP-18 repost event kind for kind:1 short-text notes.
 pub const KIND_REPOST: u32 = 6;
@@ -24,114 +27,6 @@ pub const KIND_GENERIC_REPOST: u32 = 16;
 #[must_use]
 pub const fn is_repost_kind(kind: u32) -> bool {
     kind == KIND_REPOST || kind == KIND_GENERIC_REPOST
-}
-
-/// Error returned when an app-declared primary feed kind is not actually primary.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PrimaryKindError {
-    /// Repost wrapper kinds are acquisition mechanics derived from primary
-    /// content kinds. Apps must not declare them as primary content.
-    RepostWrapper { kind: u32 },
-    /// The NIP-09 deletion kind (5) is compiler-derived suppression acquisition,
-    /// never a primary content kind an app declares.
-    DeleteKind,
-    /// No primary kinds were declared. Surfaced by [`validate_primary_kinds`]
-    /// (the open-a-feed validator); the permissive
-    /// [`try_acquisition_kinds_for_primary`] treats an empty set as the
-    /// canonical clear-feed signal instead.
-    EmptyPrimaryKinds,
-}
-
-/// Compile app-declared primary feed kinds into acquisition kinds.
-///
-/// Apps declare the content kinds they want to render. Repost wrapper kinds are
-/// protocol mechanics: kind `6` for primary kind `1`, and kind `16` for every
-/// non-kind-1 primary target.
-#[must_use]
-pub fn acquisition_kinds_for_primary<I>(primary_kinds: I) -> BTreeSet<u32>
-where
-    I: IntoIterator<Item = u32>,
-{
-    try_acquisition_kinds_for_primary(primary_kinds)
-        .expect("primary feed kinds must not include repost-wrapper or delete kinds")
-}
-
-/// Try to compile app-declared primary feed kinds into acquisition kinds.
-///
-/// This is the single canonical, boundary-safe transform for FFI/WASM/user
-/// input (issue #1740 step 5). It:
-///
-/// * rejects kind `6` and kind `16` (NIP-18 repost wrappers) as primary kinds —
-///   apps say "I render `[1]`" and the wrappers are derived;
-/// * rejects kind `5` (NIP-09 deletion) as a primary kind for the same reason;
-/// * derives the repost wrapper acquisition kinds (`6` for primary `1`, `16` for
-///   every non-`1` primary);
-/// * derives kind `5` acquisition for any non-empty feed so live subscriptions
-///   receive the deletes that suppress superseded/retracted rows. An empty
-///   primary set stays empty — that is the canonical clear-feed signal.
-pub fn try_acquisition_kinds_for_primary<I>(
-    primary_kinds: I,
-) -> Result<BTreeSet<u32>, PrimaryKindError>
-where
-    I: IntoIterator<Item = u32>,
-{
-    let mut kinds = BTreeSet::new();
-    let mut needs_kind6 = false;
-    let mut needs_kind16 = false;
-
-    for kind in primary_kinds {
-        if is_repost_kind(kind) {
-            return Err(PrimaryKindError::RepostWrapper { kind });
-        }
-        if kind == KIND_DELETE {
-            return Err(PrimaryKindError::DeleteKind);
-        }
-        kinds.insert(kind);
-        match kind {
-            1 => needs_kind6 = true,
-            _ => needs_kind16 = true,
-        }
-    }
-
-    if needs_kind6 {
-        kinds.insert(KIND_REPOST);
-    }
-    if needs_kind16 {
-        kinds.insert(KIND_GENERIC_REPOST);
-    }
-    // Deletions suppress superseded/retracted rows, so a live feed must acquire
-    // them for the observer's kind:5 handling to fire. But an EMPTY primary set
-    // is the canonical "clear this feed" signal — an empty acquisition set
-    // withdraws the subscription (`parse_primary_kinds_json("[]")`,
-    // `declare_active_follows_feed(empty)` -> `set_follow_feed_kinds(empty)`).
-    // Injecting kind:5 there would turn a clear into a deletes-only
-    // subscription, so only add it when the feed has primary content to suppress.
-    if !kinds.is_empty() {
-        kinds.insert(KIND_DELETE);
-    }
-
-    Ok(kinds)
-}
-
-/// Validate app-declared primary feed kinds for opening a feed, and compile them
-/// into the acquisition kind set.
-///
-/// The single canonical primary-kind validator for the FFI / WASM / compiler
-/// boundaries (issue #1740). It is the strict twin of
-/// [`try_acquisition_kinds_for_primary`]: identical wrapper/delete rejection and
-/// acquisition derivation, but it ALSO rejects an empty primary set
-/// ([`PrimaryKindError::EmptyPrimaryKinds`]) — an open feed must declare at least
-/// one primary content kind, whereas the permissive transform treats an empty
-/// set as the clear-feed signal.
-pub fn validate_primary_kinds<I>(primary_kinds: I) -> Result<BTreeSet<u32>, PrimaryKindError>
-where
-    I: IntoIterator<Item = u32>,
-{
-    let kinds: Vec<u32> = primary_kinds.into_iter().collect();
-    if kinds.is_empty() {
-        return Err(PrimaryKindError::EmptyPrimaryKinds);
-    }
-    try_acquisition_kinds_for_primary(kinds)
 }
 
 /// Decoded inner event embedded in a repost `content` field.
@@ -266,6 +161,8 @@ fn first_address_tag(tags: &[Vec<String>]) -> Option<AddressCoordinate> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
+
     use super::*;
 
     fn event(kind: u32, content: &str, tags: Vec<Vec<&str>>) -> KernelEvent {
