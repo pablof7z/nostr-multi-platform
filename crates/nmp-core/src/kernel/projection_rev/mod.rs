@@ -157,28 +157,28 @@ pub(crate) const SRC_TTL_EXPIRY: &str = "ttl_expiry_ver";
 pub(crate) const SRC_REF_PROFILE_ROWS: &str = "ref_profile_rows_ver";
 pub(crate) const SRC_REF_EVENT_ROWS: &str = "ref_event_rows_ver";
 
-/// Per-key source-counter dependency list (Rung 1 dependency map).
-///
-/// #1723 (epic #1719): this table is now GENERATED from the neutral projection
-/// contract (`crates/nmp-codegen/src/projection_contract.rs`,
-/// `PROJECTION_CONTRACT` KernelBuiltin entries' `dependency_versions`) rather
-/// than hand-maintained here. Each entry is
-/// `(projection_key, &[source_counter_name, ...])`; the `SRC_*` consts above
-/// are the named targets the generated rows reference. Every key in
-/// `KERNEL_BUILTIN_PROJECTION_KEYS` has a row (the
-/// `all_builtin_keys_have_dependency_entries` test asserts this), and both the
-/// key set and this dependency table are derived from the SAME contract, so
-/// they cannot drift. Regenerate via `nmp gen builtin-deps`; the drift gate in
-/// `.github/workflows/codegen-drift.yml` fails any stale checkout.
-///
-/// Rationale for the source counters (preserved from the prior hand table):
-/// identity cluster depends on profile/account stamps; the relay/settings
-/// cluster on `configured_relays_ver`; the publish cluster on
-/// publish/publish-engine stamps; `action_results`/`signed_events` are drains
-/// (settlement-enqueue + drain edge); `action_stages`/`action_lifecycle` are
-/// copy-with-TTL (settlement-enqueue + TTL-expiry edge); `relay_diagnostics`
-/// folds all diagnostic inputs into one broad `diagnostics_inputs_ver`; the
-/// keyed `refs.*` carriers each depend on their namespace's row stamp.
+// Per-key source-counter dependency list (Rung 1 dependency map).
+//
+// #1723 (epic #1719): this table is now GENERATED from the neutral projection
+// contract (`crates/nmp-codegen/src/projection_contract.rs`,
+// `PROJECTION_CONTRACT` KernelBuiltin entries' `dependency_versions`) rather
+// than hand-maintained here. Each entry is
+// `(projection_key, &[source_counter_name, ...])`; the `SRC_*` consts above
+// are the named targets the generated rows reference. Every key in
+// `KERNEL_BUILTIN_PROJECTION_KEYS` has a row (the
+// `all_builtin_keys_have_dependency_entries` test asserts this), and both the
+// key set and this dependency table are derived from the SAME contract, so
+// they cannot drift. Regenerate via `nmp gen builtin-deps`; the drift gate in
+// `.github/workflows/codegen-drift.yml` fails any stale checkout.
+//
+// Rationale for the source counters (preserved from the prior hand table):
+// identity cluster depends on profile/account stamps; the relay/settings
+// cluster on `configured_relays_ver`; the publish cluster on
+// publish/publish-engine stamps; `action_results`/`signed_events` are drains
+// (settlement-enqueue + drain edge); `action_stages`/`action_lifecycle` are
+// copy-with-TTL (settlement-enqueue + TTL-expiry edge); `relay_diagnostics`
+// folds all diagnostic inputs into one broad `diagnostics_inputs_ver`; the
+// keyed `refs.*` carriers each depend on their namespace's row stamp.
 include!("builtin_projection_deps.generated.rs");
 
 // ── Revision tracker ──────────────────────────────────────────────────────────
