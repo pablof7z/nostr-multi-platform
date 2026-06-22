@@ -1,0 +1,35 @@
+namespace nmp.nip47;
+
+// ADR-0064 (#1756) — typed FlatBuffers payload for the `nmp.wallet.pay_invoice`
+// `ActionModule`. The OPAQUE `DispatchEnvelope.payload` for that namespace; the
+// registry adapter decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Mirrors `WalletAction::PayInvoice { bolt11, amount_msats }`. `amount_msats` is
+// an `Option<u64>` on the Rust side — a FlatBuffers scalar defaults to 0 when
+// absent, so its presence is carried by a companion `has_amount_msats:bool`
+// flag (the workspace `has_<field>` convention, see `embed_sidecar.fbs`). The
+// decode reconstructs `Some(v)` only when the flag is set, so `Some(0)` never
+// collapses to `None` and `None` never reads as `Some(0)`.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip47/src/wire/generated \
+//         crates/nmp-nip47/schema/wallet_pay_invoice.fbs
+
+table WalletPayInvoicePayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The BOLT-11 Lightning invoice to pay. Non-empty validation + the UI-layer
+  // double-tap guard stay in the module's start() — this is a pure shape decode.
+  bolt11:string (required);
+  // Optional explicit amount in millisatoshis (for amountless invoices). Carried
+  // alongside `has_amount_msats` so `Option<u64>` presence is preserved exactly.
+  amount_msats:ulong;
+  // Presence flag for `amount_msats`. `true` -> Some(amount_msats); `false` ->
+  // None (the scalar is then ignored). Preserves `Some(0)` vs `None`.
+  has_amount_msats:bool;
+}
+
+file_identifier "N47P";
+root_type WalletPayInvoicePayload;
