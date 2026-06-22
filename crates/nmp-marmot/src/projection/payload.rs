@@ -22,6 +22,36 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Why the Marmot service could not be initialized at registration time
+/// (#1651). Surfaced verbatim in [`MarmotSnapshot::init_error`] so the host
+/// shells can render a minimal diagnostic. Replaces the degenerate one-bit
+/// `keyring_unavailable: bool` it subsumes.
+///
+/// Raw data only (aim.md §2): the variant is the machine reason; `detail` (for
+/// `DbKeyLost`) is the raw service-init error string. Shells map both to copy.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub enum MarmotInitError {
+    /// The platform keyring was unavailable at registration, so Marmot fell
+    /// back to an in-memory credential store. MLS group secrets live only in
+    /// process memory — lost on the next launch, every group unjoinable. The
+    /// host should surface a prominent warning and block group features until
+    /// the user resolves the keyring issue. (Formerly `keyring_unavailable`.)
+    KeyringUnavailable,
+    /// The encrypted MLS SQLite DB exists but its keyring encryption key was
+    /// lost, so `MarmotService::new` returned `Err` and no usable service
+    /// exists. `detail` carries the raw service-init error string. Encrypted
+    /// groups are unavailable; the data is unrecoverable without the key.
+    DbKeyLost { detail: String },
+    /// `MarmotService::new` failed for a reason OTHER than a lost encryption
+    /// key — e.g. the disk is full, the DB path is unwritable, or the store is
+    /// unencrypted-but-encryption-was-requested. Encrypted groups are
+    /// unavailable, but — unlike [`Self::DbKeyLost`] — the failure is NOT
+    /// necessarily a permanent data-loss; `detail` carries the raw error.
+    /// Shells render a neutral "could not open the encrypted message database"
+    /// message rather than the unrecoverable-data copy.
+    Other { detail: String },
+}
+
 /// One group row in the snapshot. `id_hex` is the MLS group id hex-encoded
 /// (the opaque handle Swift passes back to `group_messages` / `dispatch`).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -158,20 +188,20 @@ pub struct MarmotSnapshot {
     /// do not read it degrade gracefully.
     #[serde(default)]
     pub orphaned_commit_count: u32,
-    /// `true` when Marmot was initialized with an in-memory credential store
-    /// because the platform keyring was unavailable at registration time
-    /// (V-62 diagnostic).
+    /// Set when Marmot could not be initialized at registration time (#1651):
+    /// either the platform keyring was unavailable (in-memory fallback —
+    /// `KeyringUnavailable`, formerly the `keyring_unavailable` bool) or the
+    /// encrypted MLS DB exists but its keyring key was lost so
+    /// `MarmotService::new` failed (`DbKeyLost`). `None` on a healthy
+    /// registration.
     ///
-    /// When `true`, MLS group secrets live only in process memory — they are
-    /// lost on the next launch and every group becomes unjoinable. The host
-    /// should surface a prominent warning and block group features until the
-    /// user resolves the keyring issue (e.g. via Keychain access prompt,
-    /// device unlock, or app re-install). This field is `false` when the real
-    /// platform keyring is in use and is never set to `true` silently. This
-    /// is an additive field — older hosts that do not read it degrade
-    /// gracefully.
+    /// When set, encrypted groups are degraded/unavailable — the host should
+    /// surface a minimal diagnostic and block group features. The
+    /// `nmp.marmot.snapshot` projection is registered even when init fails, so
+    /// this is the surface that carries the failure into kernel-owned state
+    /// (thin-shell doctrine: Rust owns the failure, shells render the reason).
     #[serde(default)]
-    pub keyring_unavailable: bool,
+    pub init_error: Option<MarmotInitError>,
     /// Ops parked in the deferred-completion store, waiting for peer KPs.
     /// Empty when no ops are pending. Shells derive display copy from
     /// `op_tag` and `missing_count` (aim.md §2). Additive — older hosts
@@ -200,7 +230,7 @@ impl MarmotSnapshot {
             cached_kp_pubkeys: Vec::new(),
             is_registered: false,
             orphaned_commit_count: 0,
-            keyring_unavailable: false,
+            init_error: None,
             pending_ops: Vec::new(),
             last_op_error: None,
         }

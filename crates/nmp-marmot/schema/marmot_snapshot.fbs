@@ -94,7 +94,10 @@ table MarmotSnapshot {
   cached_kp_pubkeys:[string];      // peer pubkeys (hex) with a cached KeyPackage
   is_registered:bool;              // built against a registered signing identity
   orphaned_commit_count:uint32;    // V-61 dropped-handle diagnostic
-  keyring_unavailable:bool;        // V-62 in-memory-credential-store diagnostic
+  // #1651 service-init failure (replaces the V-62 `keyring_unavailable` bool).
+  // Raw token: ""=none, "keyring_unavailable", "db_key_lost". Shells map to copy.
+  init_error_kind:string;          // machine token, empty = no init error
+  init_error_detail:string;        // raw detail (DbKeyLost only), empty otherwise
   pending_ops:[PendingOpRow];      // ops parked waiting for peer KPs (deferred completion)
   last_op_error:LastOpError;       // most recent terminal op failure (absent table = none)
 }

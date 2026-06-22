@@ -712,40 +712,39 @@ fn dropped_self_remove_does_not_increment_orphaned_count() {
     );
 }
 
-// ─── V-62: keyring_unavailable surfaced in snapshot ──────────────────────────
+// ─── V-62 / #1651: init_error surfaced in snapshot ───────────────────────────
 
-/// V-62: a `MarmotProjection` created with `keyring_unavailable = true` must
-/// surface that flag in every snapshot so the host can warn the user.
-/// This test verifies the snapshot wire shape — the host reads it and may
-/// block group features or prompt keychain recovery.
+/// V-62 / #1651: a `MarmotProjection` built with
+/// `Some(MarmotInitError::KeyringUnavailable)` surfaces that reason in every
+/// snapshot (replaces the former `keyring_unavailable` bool assertion).
 #[test]
 fn keyring_unavailable_is_surfaced_in_snapshot() {
+    use crate::projection::payload::MarmotInitError;
     use crate::projection::state::MarmotProjection;
 
     let service = in_memory_service(Keys::generate());
-    // Simulate the path where `credential_store::initialize()` returned
-    // `Some(true)` (mock store) — i.e. the real Keychain was not available.
-    let proj = MarmotProjection::new(service, true);
+    // `credential_store::initialize()` returned `Some(true)` (mock store).
+    let proj = MarmotProjection::new(service, Some(MarmotInitError::KeyringUnavailable));
     let snap = proj.snapshot(0);
-    assert!(
-        snap.keyring_unavailable,
-        "snapshot.keyring_unavailable must be true when initialized with mock store"
+    assert_eq!(
+        snap.init_error,
+        Some(MarmotInitError::KeyringUnavailable),
+        "init_error must be KeyringUnavailable with the mock store"
     );
 }
 
-/// V-62: a `MarmotProjection` created with `keyring_unavailable = false` must
-/// NOT set the flag — the real Keychain is in use, no warning needed.
+/// V-62 / #1651: a `MarmotProjection` built with `None` carries no init error —
+/// the real Keychain is in use, no warning needed.
 #[test]
 fn keyring_available_not_flagged_in_snapshot() {
     use crate::projection::state::MarmotProjection;
 
     let service = in_memory_service(Keys::generate());
-    // Simulate the path where `credential_store::initialize()` returned
-    // `Some(false)` (real Apple Keychain).
-    let proj = MarmotProjection::new(service, false);
+    // `credential_store::initialize()` returned `Some(false)` (real Keychain).
+    let proj = MarmotProjection::new(service, None);
     let snap = proj.snapshot(0);
-    assert!(
-        !snap.keyring_unavailable,
-        "snapshot.keyring_unavailable must be false when real Keychain is in use"
+    assert_eq!(
+        snap.init_error, None,
+        "init_error must be None when the real Keychain is in use"
     );
 }

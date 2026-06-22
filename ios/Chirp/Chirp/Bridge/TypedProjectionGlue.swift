@@ -694,11 +694,13 @@ enum TypedProjectionGlue {
     /// (schema v4 — aim.md §2). Every `has_*` companion bool reproduces the
     /// JSON `null`-when-`None` semantics: `unreadCount`/`lastMsgAt`
     /// (`UInt32?`/`UInt64?`), `dTag`/`ageSecs` (`String?`/`UInt64?`),
-    /// byte-identical to the JSON path. The wire's `orphanedCommitCount` /
-    /// `keyringUnavailable` diagnostics are NOT carried by the Chirp domain type;
-    /// the JSON `Decodable` drops them too (field-subset, not divergence). A
-    /// missing `keyPackage` sub-table (defensive — the producer always emits it)
-    /// falls back to `.empty`, matching the JSON decode of an absent object.
+    /// byte-identical to the JSON path. The wire's `orphanedCommitCount`
+    /// diagnostic is NOT carried by the Chirp domain type. #1651: the
+    /// `initErrorKind` / `initErrorDetail` service-init diagnostic (replacing
+    /// the former `keyringUnavailable` bool the domain type dropped) IS now
+    /// carried so GroupsView can render a minimal failure surface. A missing
+    /// `keyPackage` sub-table (defensive — the producer always emits it) falls
+    /// back to `.empty`, matching the JSON decode of an absent object.
     static func marmotSnapshot(_ reader: nmp_marmot_MarmotSnapshot) -> MarmotSnapshot {
         let keyPackage: MarmotKeyPackage = reader.keyPackage.map { kp in
             MarmotKeyPackage(
@@ -732,7 +734,12 @@ enum TypedProjectionGlue {
             lastOpError: reader.lastOpError.map { e in
                 MarmotLastOpError(op: e.op ?? "", reason: e.reason ?? "",
                                   atSecs: e.atSecs, correlationId: e.correlationId ?? "")
-            }
+            },
+            // #1651 service-init failure raw tokens ("" = none). The Chirp
+            // domain type now carries these (formerly dropped); GroupsView
+            // renders a minimal diagnostic from initErrorKind.
+            initErrorKind: reader.initErrorKind ?? "",
+            initErrorDetail: reader.initErrorDetail ?? ""
         )
     }
 

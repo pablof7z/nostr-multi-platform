@@ -156,6 +156,12 @@ struct MarmotSnapshot: Decodable, Equatable {
     var pendingOps: [MarmotPendingOp] = []
     /// Most recent terminal op failure (v2+), or `nil`. Typed-decode only.
     var lastOpError: MarmotLastOpError?
+    /// #1651 service-init failure machine token (replaces the V-62
+    /// `keyringUnavailable` bool the Chirp domain type formerly dropped):
+    /// `""` = none, `"keyring_unavailable"`, `"db_key_lost"`. Typed-decode only.
+    var initErrorKind: String = ""
+    /// #1651 raw init-error detail (`db_key_lost` only), empty otherwise.
+    var initErrorDetail: String = ""
 
     // ── Shell-owned presentation (aim.md §2) ────────────────────────────
 
@@ -190,12 +196,14 @@ struct MarmotSnapshot: Decodable, Equatable {
         groups: [MarmotGroup], pendingWelcomes: [MarmotPendingWelcome],
         keyPackage: MarmotKeyPackage, cachedKpPubkeys: [String],
         isRegistered: Bool,
-        pendingOps: [MarmotPendingOp] = [], lastOpError: MarmotLastOpError? = nil
+        pendingOps: [MarmotPendingOp] = [], lastOpError: MarmotLastOpError? = nil,
+        initErrorKind: String = "", initErrorDetail: String = ""
     ) {
         self.groups = groups; self.pendingWelcomes = pendingWelcomes
         self.keyPackage = keyPackage; self.cachedKpPubkeys = cachedKpPubkeys
         self.isRegistered = isRegistered
         self.pendingOps = pendingOps; self.lastOpError = lastOpError
+        self.initErrorKind = initErrorKind; self.initErrorDetail = initErrorDetail
     }
 
     static let empty = MarmotSnapshot(

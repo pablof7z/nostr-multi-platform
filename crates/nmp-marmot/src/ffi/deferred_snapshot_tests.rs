@@ -36,7 +36,7 @@ fn pending_op_appears_in_snapshot_and_clears_after_retry() {
     let alice_keys = Keys::generate();
     let bob_keys = Keys::generate();
 
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
         ops::dispatch(
             h,
@@ -103,7 +103,7 @@ fn last_op_error_is_set_on_expiry_and_cleared_on_next_success() {
     let alice_keys = Keys::generate();
     let bob_keys = Keys::generate();
 
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
         ops::dispatch(
             h,

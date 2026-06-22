@@ -47,11 +47,13 @@ class TypedMarmotDecoderTest {
      * embedded (with [lastOpErrorOp]); otherwise the table is absent (offset 0).
      */
     private fun snapshotBuffer(
-        schemaVersion: UInt = 4u,
+        schemaVersion: UInt = 5u,
         pendingOpCid: String? = null,
         pendingOpAgeSecs: ULong = 0u,
         lastOpErrorOp: String = "create_group",
         lastOpErrorReason: String? = null,
+        initErrorKind: String = "",
+        initErrorDetail: String = "",
     ): ByteArray {
         val builder = FlatBufferBuilder(1024)
         // group: one member, unread present, last_msg present.
@@ -115,11 +117,15 @@ class TypedMarmotDecoderTest {
 
         // v4: no has_invites_chip_label / invites_chip_label — shells compute
         // plural label from pendingWelcomes.size (aim.md §2).
+        // v5 (#1651): init_error_kind / init_error_detail raw tokens (empty = none).
+        val initErrorKindOff = builder.createString(initErrorKind)
+        val initErrorDetailOff = builder.createString(initErrorDetail)
         val snap = FbMarmotSnapshot.createMarmotSnapshot(
             builder, schemaVersion, groups, welcomes, kp, cachedVec,
             true, // is_registered
             0u, // orphaned_commit_count
-            false, // keyring_unavailable
+            initErrorKindOff, // init_error_kind ("" = no init error)
+            initErrorDetailOff, // init_error_detail
             pendingOpsVec, // pending_ops
             lastOpErrorOff, // last_op_error (table offset; 0 = absent)
         )
@@ -243,12 +249,35 @@ class TypedMarmotDecoderTest {
 
     @Test
     fun schemaV4DecodesCorrectly() {
-        // Verify the decoder accepts v4 buffers (presentation fields removed from wire).
+        // Verify the decoder still accepts older v4 buffers (presentation fields
+        // removed from wire) — kept so a future bump can't silently drop v4.
         val snap = requireNotNull(TypedMarmotDecoder.decodeSnapshot(snapshotBuffer(schemaVersion = 4u)))
         assertEquals("Team", snap.groups.single().name)
         // Shell-computed properties work even when decoder uses v4 path.
         assertEquals("Team", snap.groups.single().displayName)
         assertEquals("1 invite", snap.invitesChipLabel)
+    }
+
+    @Test
+    fun schemaV5DecodesAndCarriesInitError() {
+        // #1651: the CURRENT wire version (v5) MUST be accepted (the regression
+        // delta caught: the decoder rejected v5 and dropped the whole snapshot),
+        // and the new init_error_kind/init_error_detail tokens must reach state.
+        val snap = requireNotNull(
+            TypedMarmotDecoder.decodeSnapshot(
+                snapshotBuffer(
+                    schemaVersion = 5u,
+                    initErrorKind = "db_key_lost",
+                    initErrorDetail = "no encryption key found in keyring",
+                ),
+            ),
+        )
+        assertEquals("db_key_lost", snap.initErrorKind)
+        assertEquals("no encryption key found in keyring", snap.initErrorDetail)
+
+        // The default (no init error) v5 buffer decodes with empty tokens.
+        val healthy = requireNotNull(TypedMarmotDecoder.decodeSnapshot(snapshotBuffer()))
+        assertEquals("", healthy.initErrorKind)
     }
 
     // ── messages happy path ──────────────────────────────────────────────────
@@ -270,7 +299,7 @@ class TypedMarmotDecoderTest {
         val snapEnv = TypedProjectionEnvelope(
             key = TypedMarmotDecoder.SNAPSHOT_KEY,
             schemaId = TypedMarmotDecoder.SNAPSHOT_SCHEMA_ID,
-            schemaVersion = 4u,
+            schemaVersion = 5u,
             fileIdentifier = TypedMarmotDecoder.SNAPSHOT_FILE_IDENTIFIER,
             payload = snapshotBuffer(),
         )

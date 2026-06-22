@@ -54,8 +54,9 @@ object TypedMarmotDecoder {
 
     // Snapshot (NMMS): v1 = original shape; v2 adds pending_ops + last_op_error;
     // v3 removes age_display/subtitle/action_label, adds is_registered on KeyPackageStatus;
-    // v4 removes display_name/initials/invites_chip_label/display_label (shells now own presentation).
-    private val SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: Set<UInt> = setOf(1u, 2u, 3u, 4u)
+    // v4 removes display_name/initials/invites_chip_label/display_label (shells now own presentation);
+    // v5 replaces keyring_unavailable:bool with init_error_kind/init_error_detail (#1651).
+    private val SUPPORTED_SNAPSHOT_SCHEMA_VERSIONS: Set<UInt> = setOf(1u, 2u, 3u, 4u, 5u)
 
     // Messages (NMMG): unchanged at v1.
     private const val SUPPORTED_MESSAGES_SCHEMA_VERSION: UInt = 1u
@@ -109,7 +110,8 @@ object TypedMarmotDecoder {
                 cachedKpPubkeys = cachedKp,
                 isRegistered = snap.isRegistered,
                 orphanedCommitCount = snap.orphanedCommitCount.toInt(),
-                keyringUnavailable = snap.keyringUnavailable,
+                initErrorKind = snap.initErrorKind ?: "",
+                initErrorDetail = snap.initErrorDetail ?: "",
                 pendingOps = pendingOps,
                 lastOpError = snap.lastOpError?.let { mapLastOpError(it) },
             )

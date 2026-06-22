@@ -103,7 +103,7 @@ fn messages_all_groups_typed_round_trip_over_real_projection() {
             .as_json()
     };
 
-    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), true);
+    let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
         crate::projection::ops::dispatch(
             h,

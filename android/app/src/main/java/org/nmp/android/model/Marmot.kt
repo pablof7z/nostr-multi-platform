@@ -131,8 +131,17 @@ data class MarmotSnapshot(
     @SerialName("is_registered") val isRegistered: Boolean = false,
     /** V-61 diagnostic: local MLS state may have diverged from the relay epoch. */
     @SerialName("orphaned_commit_count") val orphanedCommitCount: Int = 0,
-    /** V-62 diagnostic: MLS secrets are in-memory only (keyring unavailable). */
-    @SerialName("keyring_unavailable") val keyringUnavailable: Boolean = false,
+    /**
+     * #1651 service-init failure machine token (replaces the V-62
+     * `keyring_unavailable` bool): "" = none, "keyring_unavailable" (MLS secrets
+     * are in-memory only, keyring unavailable), "db_key_lost" (the encrypted MLS
+     * DB key was lost, encrypted groups unavailable). FlatBuffers sidecar only.
+     */
+    @kotlinx.serialization.Transient
+    val initErrorKind: String = "",
+    /** #1651 raw init-error detail (db_key_lost only), empty otherwise. */
+    @kotlinx.serialization.Transient
+    val initErrorDetail: String = "",
     /**
      * Ops parked waiting for peer key packages (schema_version 2+). Empty when
      * none. FlatBuffers sidecar only — not present on the JSON path.
