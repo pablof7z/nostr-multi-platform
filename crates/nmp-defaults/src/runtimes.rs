@@ -500,6 +500,18 @@ pub use bookmarks_runtime::register_bookmark_runtime;
 mod comments_runtime;
 pub use comments_runtime::register_comment_runtime;
 
+// ───────────────────────────────────────────────────────────────────────
+// NIP-51 search-relay-list runtime
+// ───────────────────────────────────────────────────────────────────────
+//
+// Extracted to `runtimes/search_relay_runtime.rs` to hold this module under
+// the 500-LOC hard ceiling (AGENTS.md: extract, never bump the baseline).
+// Re-exported here so `runtimes::register_search_relay_runtime` (and the
+// `nmp_defaults::register_search_relay_runtime` facade in `lib.rs`) stay at
+// a stable path.
+mod search_relay_runtime;
+pub use search_relay_runtime::register_search_relay_runtime;
+
 // Co-located zap-reconciler unit tests live in a sibling file (kept out of this
 // module body to hold it under the 300-LOC ceiling) but compile as a child
 // module so they reach the private `ZapReceiptsRuntimeController`.
