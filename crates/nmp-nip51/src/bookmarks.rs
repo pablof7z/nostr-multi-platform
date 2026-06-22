@@ -9,7 +9,8 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, KernelEvent, UnsignedEvent,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection, KernelEvent, UnsignedEvent,
 };
 use nmp_core::{canonical_relay_url, ActorCommand, KernelEventObserver};
 use nmp_kinds::KIND_BOOKMARK_LIST;
@@ -203,6 +204,10 @@ impl ActionModule for AddBookmarkAction {
     const NAMESPACE: &'static str = "nmp.nip51.add_bookmark";
     type Action = BookmarkUpdateInput;
 
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
+
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         let item = normalize_item(&action.item).map_err(ActionRejection::Invalid)?;
         self.projection
@@ -253,6 +258,10 @@ impl RemoveBookmarkAction {
 impl ActionModule for RemoveBookmarkAction {
     const NAMESPACE: &'static str = "nmp.nip51.remove_bookmark";
     type Action = BookmarkUpdateInput;
+
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         let item = normalize_item(&action.item).map_err(ActionRejection::Invalid)?;
@@ -370,12 +379,9 @@ fn normalize_item(item: &BookmarkItem) -> Result<BookmarkItem, String> {
                 url: url.trim().to_string(),
             })
         }
-        BookmarkItem::Hashtag { hashtag } => {
-            let Some(value) = normalize_hashtag(hashtag) else {
-                return Err("hashtag bookmark requires a non-empty hashtag".to_string());
-            };
-            Ok(BookmarkItem::Hashtag { hashtag: value })
-        }
+        BookmarkItem::Hashtag { hashtag } => normalize_hashtag(hashtag)
+            .map(|hashtag| BookmarkItem::Hashtag { hashtag })
+            .ok_or_else(|| "hashtag bookmark requires a non-empty hashtag".to_string()),
     }
 }
 
@@ -448,16 +454,12 @@ fn is_hex64(value: &str) -> bool {
 
 fn valid_address_coordinate(value: &str) -> bool {
     let mut parts = value.splitn(3, ':');
-    let Some(kind) = parts.next() else {
-        return false;
-    };
-    let Some(pubkey) = parts.next() else {
-        return false;
-    };
-    let Some(identifier) = parts.next() else {
-        return false;
-    };
-    kind.parse::<u32>().is_ok() && is_hex64(pubkey) && !identifier.is_empty()
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(kind), Some(pubkey), Some(identifier)) => {
+            kind.parse::<u32>().is_ok() && is_hex64(pubkey) && !identifier.is_empty()
+        }
+        _ => false,
+    }
 }
 
 fn normalize_address_coordinate(value: &str) -> String {
