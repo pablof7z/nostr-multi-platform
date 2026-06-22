@@ -1607,6 +1607,23 @@ impl NmpApp {
         self.action_registry.register_default(module)
     }
 
+    /// Typed-only byte-doorway gate probe (ADR-0064 / #1756): the namespaces of
+    /// every registered action module that is NOT typed-capable — i.e. that
+    /// would be rejected `NotTypedCapable` by the byte doorway
+    /// (`nmp_app_dispatch_action_bytes`) because it left
+    /// [`nmp_core::substrate::ActionModule::decode_payload`] defaulted (a
+    /// JSON-only / no-decode_payload module). The byte doorway is typed-only;
+    /// this exposes the registry's intrinsic
+    /// [`ActionRegistry::untyped_namespaces`](nmp_core::kernel::ActionRegistry::untyped_namespaces)
+    /// so a composition gate (e.g. `nmp-defaults` after `register_defaults`) can
+    /// assert the full production module set is typed and never re-grows a
+    /// JSON-compat shim. Test-only surface — not a stable FFI/ABI boundary.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn untyped_action_namespaces(&self) -> Vec<String> {
+        self.action_registry.untyped_namespaces()
+    }
+
     /// ADR-0049 — read-only handle to the composition ledger for
     /// `nmp_app_composition_report`.
     #[must_use]

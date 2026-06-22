@@ -433,6 +433,13 @@ impl ActionRegistry {
     pub fn contains(&self, namespace: &str) -> bool {
         self.modules.contains_key(namespace)
     }
+
+    /// Intrinsic typed-only gate (ADR-0064 / #1756): sorted namespaces of
+    /// registered modules NOT typed-capable. See [`erased::untyped_namespaces`].
+    #[must_use]
+    pub fn untyped_namespaces(&self) -> Vec<String> {
+        erased::untyped_namespaces(&self.modules)
+    }
 }
 
 impl ActionRegistrar for ActionRegistry {

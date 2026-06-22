@@ -240,3 +240,59 @@ fn execute_bytes_unknown_namespace_reports_no_executor() {
     assert_eq!(failure.kind, ActionFailureKind::NoExecutor);
     assert!(!failure.enqueued);
 }
+
+// ─── Typed-only byte-doorway gate (ADR-0064 / #1756) ─────────────────────────
+//
+// Beyond the per-dispatch fail-closed negatives above, the registry exposes the
+// invariant intrinsically: `untyped_namespaces()` lists every registered module
+// that left `decode_payload` defaulted (rejected `NotTypedCapable` by the byte
+// doorway). The kernel-slice gate asserts the kernel's `default_registry` has
+// ZERO untyped modules; the full production composition is gated in
+// `nmp-defaults`. This prevents re-introducing the reverted opaque-passthrough /
+// JSON-compat shim (#1828).
+
+/// THE production gate (kernel slice): the registry the kernel ships with must
+/// have ZERO untyped namespaces — every module reachable through the byte
+/// doorway decodes a typed FlatBuffers payload. If a future change registers a
+/// JSON-only module under `default_registry`, this goes red.
+#[test]
+fn default_registry_has_no_untyped_namespaces() {
+    let untyped = default_registry().untyped_namespaces();
+    assert!(
+        untyped.is_empty(),
+        "every module reachable via the byte doorway must be typed (override \
+         `decode_payload`); untyped (JSON-only) namespaces are a doctrine \
+         violation (ADR-0064 / #1756 — no JSON-compat shim): {untyped:?}"
+    );
+}
+
+/// LOAD-BEARING negative: register the same JSON-only module the fail-closed
+/// `start_bytes` test above uses (`nmp.test.json_only`, no `decode_payload`) and
+/// prove the gate FLAGS it. If `untyped_namespaces()` (or the underlying
+/// `is_typed_capable` probe) stopped distinguishing typed from JSON-only
+/// modules, this goes green-when-it-should-be-red and the production gate above
+/// would be vacuous.
+#[test]
+fn untyped_namespaces_flags_a_json_only_module() {
+    let mut registry = ActionRegistry::new();
+    registry.register(crate::publish::PublishModule); // typed — must NOT be flagged
+    registry.register(JsonOnlyModule); // JSON-only — MUST be flagged
+    assert_eq!(
+        registry.untyped_namespaces(),
+        vec!["nmp.test.json_only".to_string()],
+        "the gate must flag exactly the JSON-only module's namespace and leave \
+         the typed `nmp.publish` module unflagged"
+    );
+}
+
+/// The canonical typed protocol module is NOT flagged — the probe does not
+/// false-positive on a real typed module.
+#[test]
+fn untyped_namespaces_does_not_flag_the_typed_publish_module() {
+    let mut registry = ActionRegistry::new();
+    registry.register(crate::publish::PublishModule);
+    assert!(
+        registry.untyped_namespaces().is_empty(),
+        "the typed `nmp.publish` module must be recognised as typed-capable"
+    );
+}
