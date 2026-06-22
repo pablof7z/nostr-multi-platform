@@ -265,6 +265,7 @@ impl FeedTeardown {
                 filter_json,
                 consumer_id,
                 scope,
+                relay_pin: None,
             });
         })
     }

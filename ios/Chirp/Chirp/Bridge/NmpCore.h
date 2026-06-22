@@ -47,6 +47,22 @@ void nmp_app_open_interest(void *app, const char *filter_json,
                            const char *consumer_id, uint32_t scope);
 void nmp_app_close_interest(void *app, const char *filter_json,
                             const char *consumer_id, uint32_t scope);
+// Higher-order NIP-50 search (nmp-nip50). `request_json` is the serde JSON of a
+// SearchRequest, e.g. {"query":"nostr","scope":"Users","targets":"UserPreferred",
+// "max_hits":50} (scope also accepts "LongForm" / {"Kinds":[...]}; targets also
+// "AppDefault" / {"Explicit":["wss://..."]}). `session_id` keys the session for
+// close + the typed N50S snapshot projection under `nmp.nip50.search.<session_id>`.
+void nmp_app_search_open(void *app, const char *request_json,
+                         const char *session_id);
+// Close a search session opened via `nmp_app_search_open`. Idempotent.
+void nmp_app_search_close(void *app, const char *session_id);
+// Copy the current typed N50S search-results buffer for `session_id` into
+// `out_buf` (capacity `cap` bytes). Returns the buffer's byte length (the
+// required size), or 0 when the session is unknown / has no data. If the return
+// value exceeds `cap`, nothing was copied — retry with a larger buffer (standard
+// two-call size-probe). The bytes match the snapshot frame's N50S sidecar.
+int nmp_app_search_snapshot(void *app, const char *session_id,
+                            uint8_t *out_buf, uintptr_t cap);
 // Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted per
 // `consumer_id`; the kernel fetches the event over the OneshotApi (single-
 // writer interest registration — D4) when not yet in the store, and surfaces

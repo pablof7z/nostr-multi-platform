@@ -317,6 +317,38 @@ pub trait HostCapabilities {
     fn actor_sender(&self) -> crate::actor::CommandSender;
 
     fn configured_relays_handle(&self) -> AppRelaySlot;
+
+    /// Install a host-side preferred-relay provider (a `(primary, fallback)`
+    /// relay-list pair the host resolves at use time, e.g. the active account's
+    /// published list → an app default). The composition root wires this so a
+    /// protocol crate that fans an interest to a per-account relay set can read
+    /// the resolved relays through the host without naming the host type.
+    ///
+    /// Substrate-generic: the provider returns plain relay-URL lists — no NIP
+    /// noun crosses this seam (same posture as [`super::BlockedRelayLookup`] /
+    /// `DmInboxRelayLookup`, which are NIP-keyed lists named generically here).
+    ///
+    /// **Default is a no-op**, so a minimal / scaffolded host that implements
+    /// `AppHost` compiles and runs for free without a relay provider — only a
+    /// real composition host (`NmpApp`) overrides this to store the provider.
+    /// The first consumer is NIP-50 search (`nmp-defaults` wires the kind:10007
+    /// list → `SearchDefaults`; `nmp-nip50` reads it through this seam).
+    fn install_preferred_relay_source(&self, _source: std::sync::Arc<dyn PreferredRelaySource>) {}
+}
+
+/// A host-installed provider of a `(primary, fallback)` relay-URL list pair,
+/// resolved at use time. Substrate-generic: returns plain `wss://` URLs with no
+/// NIP noun. Installed via [`HostCapabilities::install_preferred_relay_source`]
+/// and read by a protocol crate (NIP-50 search) that needs the active account's
+/// preferred relay set without naming the host type (D0).
+pub trait PreferredRelaySource: Send + Sync {
+    /// The primary relay list (e.g. the active account's published kind:10007
+    /// search relays). Empty when none are known.
+    fn primary(&self) -> Vec<String>;
+
+    /// The fallback relay list (e.g. the app default) used when `primary()` is
+    /// empty. Empty when the app declared none.
+    fn fallback(&self) -> Vec<String>;
 }
 
 /// Host surface needed by reusable NMP **composition roots**.

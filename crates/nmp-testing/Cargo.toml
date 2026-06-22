@@ -239,6 +239,18 @@ path = "tests/real_relay_smoke.rs"
 name = "real_relay_nip17_roundtrip"
 path = "tests/real_relay_nip17_roundtrip.rs"
 
+# Higher-order NIP-50 search — drives the `nmp_nip50` SearchResultsProjection
+# against a LIVE search relay (search.nos.lol) for kind:0 (Users) and kind:30023
+# (LongForm). Proves the generic `InterestShape.search` wire field + the dedup
+# projection ingest real relay hits end-to-end. `#[ignore]` by default AND
+# gated behind `real-relay` (same posture as A1-A6) so CI stays deterministic:
+#   cargo test -p nmp-testing --features real-relay --test real_relay_nip50_search \
+#     -- --ignored --nocapture
+[[test]]
+name = "real_relay_nip50_search"
+path = "tests/real_relay_nip50_search.rs"
+required-features = ["real-relay"]
+
 # F-02 cold-start DM receive-side verification (issue #977).
 # Alice publishes a kind:1059 gift-wrap while Bob is offline; Bob cold-starts a
 # fresh DmInboxProjection and must receive the stored event via EOSE backfill.

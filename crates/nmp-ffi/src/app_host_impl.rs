@@ -229,6 +229,17 @@ impl HostCapabilities for NmpApp {
     fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
         NmpApp::configured_relays_handle(self)
     }
+
+    /// Store the host-installed preferred-relay source (NIP-50 search reads it
+    /// back in `open_search`). Overrides the trait's no-op default so the real
+    /// composition host actually retains the provider; scaffolded hosts keep the
+    /// no-op and resolve to an empty relay set (cache-only search).
+    fn install_preferred_relay_source(
+        &self,
+        source: std::sync::Arc<dyn nmp_core::substrate::PreferredRelaySource>,
+    ) {
+        NmpApp::install_preferred_relay_source(self, source);
+    }
 }
 
 impl EventObserverRegistrar for NmpApp {

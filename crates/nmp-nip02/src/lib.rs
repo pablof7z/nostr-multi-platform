@@ -255,6 +255,7 @@ pub fn register_follow_state_runtime(
                 filter_json: format!(r#"{{"kinds":[3],"authors":["{pubkey}"]}}"#),
                 consumer_id: CONSUMER_ID.to_string(),
                 scope: 0,
+                relay_pin: None,
             });
         }
     };

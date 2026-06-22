@@ -265,6 +265,14 @@ impl<S> HostCapabilities for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.configured_relays_handle()
     }
+
+    fn install_preferred_relay_source(
+        &self,
+        source: Arc<dyn nmp_core::substrate::PreferredRelaySource>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        app.install_preferred_relay_source(source);
+    }
 }
 
 impl<S> EventObserverRegistrar for NmpAppBuilder<S> {
@@ -300,3 +308,4 @@ impl<S> IdentityChangeRegistrar for NmpAppBuilder<S> {
         app.register_identity_change_observer(f);
     }
 }
+

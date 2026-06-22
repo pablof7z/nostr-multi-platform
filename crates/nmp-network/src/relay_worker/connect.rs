@@ -40,9 +40,18 @@ const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) fn open_relay_socket(relay_url: &str) -> Result<RelaySocket, String> {
     install_rustls_provider();
 
-    let request = relay_url
+    let mut request = relay_url
         .into_client_request()
         .map_err(|error| error.to_string())?;
+    // Identify the client to the relay. Some relays (e.g. nostr.wine) reject
+    // the bare handshake with HTTP 403 unless the client sends a `User-Agent`
+    // — a NIP-50 search that resolves to such a relay would otherwise fail to
+    // connect at all. Sending a UA is strictly additive: no relay rejects a
+    // request *for* carrying one. `from_static` cannot fail for this literal.
+    request.headers_mut().insert(
+        "User-Agent",
+        tungstenite::http::HeaderValue::from_static(concat!("nmp/", env!("CARGO_PKG_VERSION"))),
+    );
     let uri = request.uri();
     let mode = uri_mode(uri).map_err(|error| error.to_string())?;
 

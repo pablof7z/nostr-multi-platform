@@ -1,0 +1,64 @@
+namespace nmp.nip50;
+
+// Typed FlatBuffers wire for `nmp_nip50::SearchResultsSnapshot` (the NIP-50
+// search-results noun projected onto the snapshot under the per-session key
+// `nmp.nip50.search.<consumer>`).
+//
+// This is the typed sidecar (ADR-0037, S9) the host platforms (Swift / Kotlin /
+// TypeScript) decode with generated accessors instead of JSON reflection. The
+// `open_search` higher-order entrypoint registers ONE such buffer per live
+// search session; an un-updated host has no NIP-50 search surface to fall back
+// to, so this typed payload is the authoritative search-results transport.
+//
+// Field-for-field mirror of the Rust structs (raw protocol values only,
+// ADR-0032):
+//   * `SearchResultsSnapshot { hits: Vec<SearchHit> }` becomes `[SearchHit]`,
+//     already newest-first then id-stable sorted by the projection.
+//   * `SearchHit { id, author, kind, created_at, content, tags,
+//     relay_provenance, source }`. `tags` is a vector of string vectors
+//     (each inner table is one tag row). `source` is the dedup provenance:
+//     `is_cache = true` → first arrival was a local cache scan hit;
+//     `is_cache = false` → first arrival was relay `source_relay`.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// has no `include`, so generate plainly:
+//   flatc --rust -o crates/nmp-nip50/src/wire/generated \
+//         crates/nmp-nip50/schema/search_results.fbs
+
+// One protocol tag row (`["e", "<id>", ...]` etc) carried verbatim.
+table TagRow {
+  cells:[string];
+}
+
+// One deduplicated search hit. `source_relay` is non-empty only when
+// `is_cache == false` (the first-arrival was a relay event); for a cache hit
+// the field is absent / empty.
+table SearchHit {
+  // Raw hex event id (dedup key).
+  id:string;
+  // Raw hex author pubkey.
+  author:string;
+  // Event kind.
+  kind:uint32;
+  // Raw signed created_at, Unix seconds.
+  created_at:uint64;
+  // Raw event content.
+  content:string;
+  // Raw protocol tags.
+  tags:[TagRow];
+  // Relays that delivered this event id (provenance union).
+  relay_provenance:[string];
+  // Dedup provenance: true = first arrival was a local cache scan hit.
+  is_cache:bool;
+  // The delivering relay when `is_cache == false`; absent for a cache hit.
+  source_relay:string;
+}
+
+table SearchResultsSnapshot {
+  // Deduplicated hits, newest-first then id-stable (the projection's order).
+  hits:[SearchHit];
+}
+
+file_identifier "N50S";
+root_type SearchResultsSnapshot;
