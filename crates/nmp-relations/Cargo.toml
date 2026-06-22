@@ -24,6 +24,9 @@ nmp-nip18 = { path = "../nmp-nip18" }
 nmp-nip22 = { path = "../nmp-nip22" }
 nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 serde = { workspace = true, features = ["derive"] }
+# Typed FlatBuffers action payload codec (ADR-0064 / Cut-B #1756).
+# Workspace-pinned to 25.12.19, enforced by ci/check-flatbuffers-version-pins.sh.
+flatbuffers = { workspace = true }
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"] }

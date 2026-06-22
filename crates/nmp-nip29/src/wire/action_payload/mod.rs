@@ -14,6 +14,7 @@
 //!   / `react_in_group`.
 //! - [`group_event`] — `share_event_in_group` / `repost_in_group`.
 //! - [`admin`] — `put_user` / `create_invite`.
+//! - [`discover`] — `discover_groups` (`nmp.nip29.discover`).
 //!
 //! Each generated module below is intrinsically `unsafe` (every accessor reads a
 //! raw `Table`); only the generated modules opt back into `unsafe`. The
@@ -72,8 +73,13 @@ generated_action_module!(
     create_invite_action_generated,
     "../generated/create_invite_action_generated.rs"
 );
+generated_action_module!(
+    discover_groups_action_generated,
+    "../generated/discover_groups_action_generated.rs"
+);
 
 pub mod admin;
+pub mod discover;
 pub mod group;
 pub mod group_event;
 

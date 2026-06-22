@@ -15,7 +15,7 @@
 
 use std::ffi::{CStr, CString};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::action_specs::{
     follow_spec, publish_note_spec, publish_profile_spec, publish_relay_list_spec, react_spec,
@@ -178,39 +178,6 @@ impl ChirpClient {
 
     // ── Account lifecycle ──────────────────────────────────────────────
 
-    /// Create a new account with the given profile metadata and relay list.
-    ///
-    /// `relays` is a list of `(url, role)` tuples, where role is typically
-    /// `"read"`, `"write"`, or `"read+write"`.
-    pub fn create_account(
-        &self,
-        name: &str,
-        about: &str,
-        picture: &str,
-        relays: &[(&str, &str)],
-    ) -> Result<String, String> {
-        let (namespace, action) = create_account_action(name, about, picture, relays);
-        self.dispatch_action(&namespace, &action)
-    }
-
-    /// Sign in with an nsec (secret key in Nostr format).
-    pub fn sign_in_nsec(&self, secret: &str) -> Result<String, String> {
-        let (namespace, action) = sign_in_nsec_action(secret);
-        self.dispatch_action(&namespace, &action)
-    }
-
-    /// Switch the active account to the given pubkey.
-    pub fn switch_account(&self, pubkey: &str) -> Result<String, String> {
-        let (namespace, action) = switch_account_action(pubkey);
-        self.dispatch_action(&namespace, &action)
-    }
-
-    /// Remove an account by pubkey (deletes it from the keyring).
-    pub fn remove_account(&self, pubkey: &str) -> Result<String, String> {
-        let (namespace, action) = remove_account_action(pubkey);
-        self.dispatch_action(&namespace, &action)
-    }
-
     /// Publish profile metadata (name, about, picture).
     pub fn publish_profile(
         &self,
@@ -322,69 +289,6 @@ pub fn zap_action(
         Vec::new(),
     )
     .into_tuple()
-}
-
-/// Build a CreateAccount action envelope.
-///
-/// `relays` is a list of `(url, role)` tuples, where role is typically
-/// `"read"`, `"write"`, or `"read+write"`.
-///
-/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
-pub fn create_account_action(
-    name: &str,
-    about: &str,
-    picture: &str,
-    relays: &[(&str, &str)],
-) -> (String, String) {
-    let mut profile_fields = serde_json::Map::new();
-    if !name.is_empty() {
-        profile_fields.insert("name".to_string(), Value::String(name.to_string()));
-    }
-    if !about.is_empty() {
-        profile_fields.insert("about".to_string(), Value::String(about.to_string()));
-    }
-    if !picture.is_empty() {
-        profile_fields.insert("picture".to_string(), Value::String(picture.to_string()));
-    }
-
-    let relays_json: Vec<serde_json::Value> = relays
-        .iter()
-        .map(|(url, role)| json!({ "url": url, "role": role }))
-        .collect();
-
-    let action = json!({
-        "CreateAccount": {
-            "profile": Value::Object(profile_fields),
-            "relays": relays_json,
-            "mls": false
-        }
-    })
-    .to_string();
-    ("nmp.create_account".to_string(), action)
-}
-
-/// Build a SignInNsec action envelope.
-///
-/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
-pub fn sign_in_nsec_action(secret: &str) -> (String, String) {
-    let action = json!({ "SignInNsec": { "secret": secret } }).to_string();
-    ("nmp.sign_in_nsec".to_string(), action)
-}
-
-/// Build a SwitchAccount action envelope.
-///
-/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
-pub fn switch_account_action(pubkey: &str) -> (String, String) {
-    let action = json!({ "pubkey": pubkey }).to_string();
-    ("nmp.switch_account".to_string(), action)
-}
-
-/// Build a RemoveAccount action envelope.
-///
-/// Returns `(namespace, action_json)` suitable for passing to `dispatch_action`.
-pub fn remove_account_action(pubkey: &str) -> (String, String) {
-    let action = json!({ "pubkey": pubkey }).to_string();
-    ("nmp.remove_account".to_string(), action)
 }
 
 /// Build a PublishProfile action envelope.

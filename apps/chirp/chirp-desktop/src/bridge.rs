@@ -30,8 +30,8 @@ use nmp_app_chirp::{
 };
 use nmp_ffi::{
     nmp_app_dispatch_action, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref,
-    nmp_app_resolve_ref, nmp_app_set_capability_callback, nmp_app_start, nmp_free_string, NmpApp,
-    NmpConfigStatus,
+    nmp_app_resolve_ref, nmp_app_set_capability_callback, nmp_app_signin_nsec,
+    nmp_app_start, nmp_free_string, NmpApp, NmpConfigStatus,
 };
 use serde_json::Value;
 use std::ffi::c_void;
@@ -321,7 +321,15 @@ impl AppRuntime {
     // 500-LOC ceiling (#1493).
 
     pub fn sign_in_nsec(&self, secret: &str) {
-        let _ = self.client.sign_in_nsec(secret);
+        // Canonical account path: the dedicated C-ABI signer symbol (matches
+        // Android/TUI), NOT the dead `nmp.sign_in_nsec` JSON doorway. Fire-and-
+        // forget UI action: silent return on null app or NUL byte in the secret.
+        if self.app.is_null() {
+            return;
+        }
+        if let Ok(c) = CString::new(secret) {
+            nmp_app_signin_nsec(self.app, c.as_ptr(), 1);
+        }
     }
 
     /// Generate a `nostrconnect://` URI. Rust selects the relay from the

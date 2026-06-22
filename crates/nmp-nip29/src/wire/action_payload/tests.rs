@@ -3,9 +3,9 @@
 //! optional-string PRESENCE invariant asserts both `None` and `Some("")`.
 
 use crate::action::{
-    CreateInviteInput, CreatePublicGroupInput, GroupAccess, GroupEventTarget, GroupVisibility,
-    JoinGroupInput, LeaveGroupInput, PostChatMessageInput, PutUserInput, ReactInGroupInput,
-    RepostInGroupInput, ShareEventInGroupInput,
+    CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupEventTarget,
+    GroupVisibility, JoinGroupInput, LeaveGroupInput, PostChatMessageInput, PutUserInput,
+    ReactInGroupInput, RepostInGroupInput, ShareEventInGroupInput,
 };
 use crate::group_id::GroupId;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
@@ -326,4 +326,28 @@ fn create_invite_round_trips() {
         .expect("decodes")
         .codes
         .is_empty());
+}
+
+// --- discover_groups ---------------------------------------------------------
+
+#[test]
+fn discover_groups_round_trips() {
+    let action = DiscoverGroupsInput {
+        relay_url: "wss://groups.example.com".to_string(),
+    };
+    assert_eq!(
+        DiscoverGroupsInput::decode(&action.encode()).expect("decodes"),
+        action
+    );
+}
+
+#[test]
+fn discover_groups_wss_and_ws_schemes_survive_round_trip() {
+    for url in &["wss://groups.example.com", "ws://localhost:7777"] {
+        let action = DiscoverGroupsInput {
+            relay_url: url.to_string(),
+        };
+        let decoded = DiscoverGroupsInput::decode(&action.encode()).expect("decodes");
+        assert_eq!(&decoded.relay_url, url);
+    }
 }

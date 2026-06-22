@@ -1,0 +1,27 @@
+namespace nmp.nip29;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// `nmp.nip29.discover` `ActionModule` (opens a kind:39000/39001/39002
+// subscription against a relay).
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry
+// adapter decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch). WRITE-direction action payload —
+// distinct from the READ-direction snapshot sidecars (discovered_groups.fbs).
+//
+// Self-contained (no `include`). Regenerate the checked-in Rust bindings
+// only with the workspace FlatBuffers pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/discover_groups_action.fbs
+
+table DiscoverGroupsPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // The host relay URL (`wss://…`) whose group catalog to subscribe to.
+  // Non-empty / scheme validation stays in `start()`; this is a pure shape
+  // decode.
+  relay_url:string (required);
+}
+
+file_identifier "N29D";
+root_type DiscoverGroupsPayload;
