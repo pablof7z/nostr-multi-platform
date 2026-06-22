@@ -1,6 +1,6 @@
 # Intent-classed routing + NIP-50 search — design
 
-> **Status:** Design draft. No code yet.
+> **Status:** ADR accepted; substrate/search pieces are partially implemented.
 > **ADR:** `docs/decisions/0020-intent-classed-routing-and-search.md`.
 > **Date:** 2026-05-18.
 
@@ -18,6 +18,8 @@
    - **10102** good wiki relays → `EventClass::Wiki` (publisher-keyed).
 4. The diagnostic UI sees every class-routed decision as a distinct
    lane — no silent "the kernel just did something."
+5. Raw user input resolves through one framework seam before free text reaches
+   scoped search.
 
 ## 2. Non-goals
 
@@ -29,6 +31,7 @@
 - NIP-72 communities, NIP-90 DVMs, kind:30002 named relay sets — all
   default to `EventClass::Other` / NIP-65 routing in v1.
 - Good wiki authors (kind:10101) — content allowlist, not relay routing.
+- A product omnibox ranking policy.
 
 ## 3. Type surface
 
@@ -196,6 +199,11 @@ would classify away from `Other`.
 
 ### 3.5 Search FFI surface
 
+The search surface consumes text search only. It is not the generic "whatever
+the user typed" parser: direct Nostr references, NIP-05 identifiers, relay
+URLs, and group targets are classified by the input-intent front door below
+and routed to their existing loaders before any NIP-50 fanout is considered.
+
 ```rust
 pub enum SearchScope {
     /// kind:0 events. Cache-side: scans name, display_name, about, nip05.
@@ -218,6 +226,9 @@ pub enum SearchTargets {
     UserPreferred,
     /// Caller pins a relay set. Blocked-relay filter still applies.
     Explicit(Vec<RelayUrl>),
+    /// Skip the active account list and use the app-provided default search
+    /// relays directly. If empty, only cache results are returned.
+    AppDefault,
     /// Cache only — no network. Returns immediately with whatever the
     /// local substrate scan finds. Useful for inline typeahead UI.
     CacheOnly,
@@ -266,6 +277,8 @@ The FFI surface is one function:
 ```rust
 pub fn open_search(query: SearchQuery) -> SearchResultView
 ```
+
+ADR-0020 decision 15 defines registered input scopes; only free text becomes `SearchQuery`.
 
 ### 3.6 Kernel-init defaults
 
@@ -502,19 +515,6 @@ per-relay diagnostic. If kind:10007 is missing/empty, fall back to
 `DefaultRelayLists::search`; if that's also empty, only cache results
 are returned. Until cache indexing lands, search-bearing shapes are
 relay-served only and deliberately uncovered by cache-serve.
-
-## 8. Migration / rollout plan
-
-| Phase | Deliverable                                                         | Gate                                                |
-|-------|---------------------------------------------------------------------|-----------------------------------------------------|
-| P1    | `EventClass` + `from_kind` + `RoutingFamily` + unit tests           | All existing tests still pass.                      |
-| P2    | `InterestShape::{search, class_hint}` + Rule 10 + partition case_g  | Determinism gate green; five-lane diagnostic asserts.|
-| P3    | NIP-51 routing facts substrate slice + two-method resolver trait    | Five-lane diagnostic doc updated; NIP-44 decrypt for 10013 wired through M6 signer; lazy 10102 fetch lifecycle test green. |
-| P4    | `SearchQuery` FFI + `SearchResultView` + cache scan + relay fanout  | Integration test against `search.nos.lol` for kind:0 + kind:30023. |
-| P5    | `PublishTarget::Auto` upgrade + blocked-relay filter + fail-loud    | Audit: every existing call site that emits a non-`Other` class still publishes correctly; Chirp's M11.5 exit gate adds "no event reached a blocked relay" assertion. |
-
-Each phase is its own commit / PR. P3 is the hinge — once NIP-51 becomes
-a fact stream and the resolver trait expands, P4 and P5 are mechanical.
 
 ## 9. FFI / app-developer ergonomics
 
