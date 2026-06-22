@@ -77,6 +77,18 @@ pub enum PubkeySetExpr {
     /// from the active account's kind:3; re-routed on account switch). The app
     /// supplies no concrete pubkeys.
     ActiveUserFollows,
+    /// A STATIC, app-named author set: the primary-kind timeline authored BY
+    /// these concrete pubkeys.
+    ///
+    /// Distinct from [`Self::ContactList`] — that names an owner whose *follows*
+    /// (kind:3) seed the scope; this names the authors THEMSELVES. The app
+    /// supplies the resolved hex pubkeys directly (e.g. one author for a profile
+    /// screen, several for a curated author list), so the scope is fixed at
+    /// declaration: it compiles to a fixed [`AdmitExpr::Authors`] admission over a
+    /// fixed author+kind acquisition (no reactive projection, no account
+    /// re-routing). An EMPTY set is fail-closed by the resolver (admits nobody,
+    /// acquires nothing) — never silently "all authors".
+    Authors { authors: std::collections::BTreeSet<String> },
     /// The contact list (kind:3 follows) of a specific owner pubkey.
     ContactList { owner: String },
     /// The members of an app-registered list (NIP-51 set / curated id).

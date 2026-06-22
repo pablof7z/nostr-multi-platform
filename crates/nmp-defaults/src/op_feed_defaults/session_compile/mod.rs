@@ -30,6 +30,7 @@ use super::{read_active, register_op_feed_defaults};
 
 mod custom;
 mod resolve;
+mod resolve_static;
 mod session_engine;
 mod set_algebra;
 
