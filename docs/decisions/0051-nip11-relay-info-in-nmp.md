@@ -118,7 +118,8 @@ otherwise. No app does HTTP, JSON, or knows what NIP-11 is — it reads
 
 - **Diagnostics-only, not routing.** This ADR surfaces NIP-11 as a *report*
   (D7). It deliberately does **not** wire `supported_nips` into planner routing
-  (`docs/design/intent-routing.md` leaves NIP-11 routing as a future option).
+  (`docs/design/intent-routing/ffi-tests-future.md` §11 leaves NIP-11 routing
+  as a future option).
   Consumers that want to filter relays by capability read the diagnostics
   `supported_nips`; the planner does not yet consume it.
 - **No on-disk persistence.** Chosen for simplicity (Article VII) and because a
