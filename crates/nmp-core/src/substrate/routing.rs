@@ -94,9 +94,11 @@ pub enum UserConfiguredCategory {
 }
 
 /// NIP-51 class routing target — the `class` part of `ClassRouted` (ADR-0020).
+///
+/// Note: NIP-50 search is a higher-order capability and does not have a core
+/// routing class; it is intentionally absent from this enum.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum EventClass {
-    Search,
     Draft,
     Wiki,
     /// Open-ended for NIP-51 classes not enumerated above.
@@ -134,7 +136,7 @@ pub enum RoutingSource {
     Provenance,
     /// Lane 4 — user-configured (active-account read/write, debug).
     UserConfigured(UserConfiguredCategory),
-    /// Lane 5 — NIP-51 class routing (search/draft/wiki — ADR-0020).
+    /// Lane 5 — NIP-51 class routing (draft/wiki — ADR-0020).
     ClassRouted {
         class: EventClass,
         via: ClassRoutingPath,
