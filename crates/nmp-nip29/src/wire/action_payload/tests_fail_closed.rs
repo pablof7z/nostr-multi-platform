@@ -3,9 +3,9 @@
 //! Every assertion is the NEGATIVE — a reject, never a silent decode.
 
 use crate::action::{
-    CreateInviteInput, CreatePublicGroupInput, GroupAccess, GroupEventTarget, GroupVisibility,
-    JoinGroupInput, LeaveGroupInput, PostChatMessageInput, PutUserInput, ReactInGroupInput,
-    RepostInGroupInput, ShareEventInGroupInput,
+    CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupEventTarget,
+    GroupVisibility, JoinGroupInput, LeaveGroupInput, PostChatMessageInput, PutUserInput,
+    ReactInGroupInput, RepostInGroupInput, ShareEventInGroupInput,
 };
 use crate::group_id::GroupId;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
@@ -52,6 +52,10 @@ fn malformed_buffers_are_rejected_for_every_payload() {
     ));
     assert!(matches!(
         CreateInviteInput::decode(&[]),
+        Err(ActionPayloadDecodeError::Malformed { .. })
+    ));
+    assert!(matches!(
+        DiscoverGroupsInput::decode(b"junk"),
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
 }
@@ -190,6 +194,12 @@ fn wrong_schema_version_is_rejected_for_every_payload() {
         CreateInviteInput {
             group: group(),
             codes: vec!["c".to_string()]
+        }
+    );
+    assert_bad_version!(
+        DiscoverGroupsInput,
+        DiscoverGroupsInput {
+            relay_url: "wss://groups.example.com".to_string()
         }
     );
 }

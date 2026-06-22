@@ -19,6 +19,7 @@
 
 mod classifier;
 mod visible_relations;
+mod wire;
 
 pub use classifier::{default_note_relation_classifier, DefaultNoteRelationClassifier};
 pub use visible_relations::{
