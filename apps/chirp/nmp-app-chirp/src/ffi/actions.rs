@@ -45,5 +45,10 @@ use nmp_ffi::NmpApp;
 /// The remaining admin / membership and artifact / discussion executors
 /// are deliberately out of scope for this milestone.
 pub(super) fn register_nip29_actions(app: &mut NmpApp) {
-    nmp_nip29::register_actions(app);
+    // `NmpApp::register_action` already logs a structured tracing::error! on
+    // collision in both dev and release (#1724 criterion 1). The Result is
+    // only returned so callers that do NOT log internally (e.g. test spies or
+    // WasmRuntime) can surface the error. Here we let the tracing log stand;
+    // a collision means double-init, which the tracing error will surface.
+    let _ = nmp_nip29::register_actions(app);
 }

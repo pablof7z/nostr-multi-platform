@@ -19,7 +19,9 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{ActionRegistrar, EventObserverRegistrar, SnapshotProjectionRegistrar};
+use nmp_core::substrate::{
+    ActionRegistrar, EventObserverRegistrar, RegistrationError, SnapshotProjectionRegistrar,
+};
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
 
 /// Opaque handle for a single group-discovery session.
@@ -144,7 +146,7 @@ pub fn wire_group_chat(
 /// `app` must outlive the returned handle.
 pub fn open_group_discovery<A>(app: &A, relay_url: String) -> Option<GroupDiscoveryHandle>
 where
-    A: EventObserverRegistrar + SnapshotProjectionRegistrar,
+    A: EventObserverRegistrar + SnapshotProjectionRegistrar + Send + Sync,
 {
     if relay_url.is_empty() {
         return None;
@@ -343,15 +345,20 @@ pub fn wire_group_defaults(app: &impl SnapshotProjectionRegistrar) {
 /// #1724): a pure-protocol crate must not name the FFI host type. The
 /// concrete `NmpApp` implements `ActionRegistrar`; the caller upcasts it
 /// via the trait, keeping this crate NIP-layer-only (D0 §3).
-pub fn register_actions(app: &mut impl ActionRegistrar) {
-    let _ = app.register_action(PostChatMessageAction);
-    let _ = app.register_action(ReactInGroupAction);
-    let _ = app.register_action(ShareEventInGroupAction);
-    let _ = app.register_action(RepostInGroupAction);
-    let _ = app.register_action(CreatePublicGroupAction);
-    let _ = app.register_action(DiscoverGroupsAction);
-    let _ = app.register_action(JoinGroupAction);
-    let _ = app.register_action(LeaveGroupAction);
-    let _ = app.register_action(PutUserAction);
-    let _ = app.register_action(CreateInviteAction);
+///
+/// Returns `Err(`[`RegistrationError`]`)` on the FIRST namespace collision
+/// detected (#1724 criterion 1: structured error in both dev and release).
+/// A collision means two init calls for the same app — the caller's bug.
+pub fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), RegistrationError> {
+    app.register_action(PostChatMessageAction)?;
+    app.register_action(ReactInGroupAction)?;
+    app.register_action(ShareEventInGroupAction)?;
+    app.register_action(RepostInGroupAction)?;
+    app.register_action(CreatePublicGroupAction)?;
+    app.register_action(DiscoverGroupsAction)?;
+    app.register_action(JoinGroupAction)?;
+    app.register_action(LeaveGroupAction)?;
+    app.register_action(PutUserAction)?;
+    app.register_action(CreateInviteAction)?;
+    Ok(())
 }
