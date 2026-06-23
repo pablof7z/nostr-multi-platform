@@ -179,4 +179,16 @@ impl NmpApp {
     pub fn take_pending_mls_autopublish(&self) -> bool {
         self.pending_mls_autopublish.swap(false, Ordering::AcqRel)
     }
+
+    /// Route a `nostr:` URI (or bare NIP-19 entity) through the kernel reducer
+    /// (T95/T80). Typed wrapper for
+    /// `ActorCommand::Kernel(KernelAction::OpenUri { uri })`.
+    ///
+    /// D6: best-effort send; a disconnected channel is a silent no-op (see
+    /// [`Self::send_cmd`]).
+    pub(crate) fn open_uri(&self, uri: String) {
+        self.send_cmd(ActorCommand::Kernel(nmp_core::KernelAction::OpenUri {
+            uri,
+        }));
+    }
 }

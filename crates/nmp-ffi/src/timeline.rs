@@ -13,7 +13,6 @@
 //! of the Rust module split.
 
 use super::{app_ref, c_string_argument, NmpApp};
-use nmp_core::ActorCommand;
 use std::ffi::c_char;
 
 /// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
@@ -102,9 +101,7 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
         return;
     };
 
-    app.send_cmd(ActorCommand::Kernel(nmp_core::KernelAction::OpenUri {
-        uri,
-    }));
+    app.open_uri(uri);
 }
 
 // #1726: `nmp_app_claim_event` and `nmp_app_release_event` C-ABI symbols
