@@ -256,6 +256,11 @@ fn estimated_store_bytes_cache_matches_fresh_compute() {
 /// This test builds two kernels at different scales and compares the per-event
 /// cost of make_update. A true O(store) double-scan would make the 20x larger
 /// kernel roughly 20-40x slower; with caching the per-event cost is nearly flat.
+///
+/// Issue #1840: take a median of repeated emits at each scale instead of
+/// comparing one baseline sample with one scaled sample. A single noisy
+/// scheduler tick can no longer move the ratio, while a real per-emit O(store)
+/// regression still shifts every sample toward the 20-40x failure band.
 #[test]
 fn snapshot_make_update_cost_is_sublinear_in_store_size() {
     // Baseline: 1k events, measure make_update cost.
@@ -272,8 +277,7 @@ fn snapshot_make_update_cost_is_sublinear_in_store_size() {
         );
     }
 
-    baseline_kernel.make_update(true);
-    let baseline_us = baseline_kernel.last_make_update_us;
+    let baseline_us = median_make_update_us(&mut baseline_kernel);
 
     // Scale test: 20k events (20x store size), measure make_update cost.
     // Using 20k instead of 100k to avoid exceeding the 30s sub-agent watchdog
@@ -292,14 +296,13 @@ fn snapshot_make_update_cost_is_sublinear_in_store_size() {
         );
     }
 
-    scaled_kernel.make_update(true);
-    let scaled_us = scaled_kernel.last_make_update_us;
+    let scaled_us = median_make_update_us(&mut scaled_kernel);
 
     // Print observed timings for CI diagnostics.
     eprintln!(
         "snapshot_make_update_cost_is_sublinear_in_store_size: \
-         baseline_us={baseline_us} (1k events) \
-         scaled_us={scaled_us} (20k events) \
+         baseline_us={baseline_us} (1k events, median of {MEDIAN_SAMPLES}) \
+         scaled_us={scaled_us} (20k events, median of {MEDIAN_SAMPLES}) \
          ratio={ratio:.1}x",
         ratio = scaled_us as f64 / baseline_us as f64
     );
@@ -311,11 +314,36 @@ fn snapshot_make_update_cost_is_sublinear_in_store_size() {
     // headroom for non-store fixed costs and CI jitter while still failing
     // the pre-fix double-scan (which would make scaled_us 20-40x baseline).
     assert!(
-        scaled_us <= baseline_us * 4,
+        scaled_us <= baseline_us * SUBLINEARITY_CEILING,
         "make_update cost scaled super-linearly: baseline_us={baseline_us} (1k events), \
          scaled_us={scaled_us} (20k events). A true O(store) double-scan would \
          produce ~20-40x, but we observe {ratio:.1}x. The caching fix may not be \
          working correctly, or there is another super-linear cost in the hot path.",
         ratio = scaled_us as f64 / baseline_us as f64
     );
+}
+
+/// Number of `make_update` samples taken per scale and reduced to the median.
+/// Five is the smallest cheap odd count that discards one noisy tail sample on
+/// either side without materially extending the already-signing-heavy fixture.
+const MEDIAN_SAMPLES: usize = 5;
+
+/// `scaled_median_us <= baseline_median_us * SUBLINEARITY_CEILING`.
+///
+/// A true O(store) double-scan over 20× store growth lands at ~20-40× the
+/// baseline median. `4×` keeps the gate 5-10× tighter than that regression
+/// band while leaving headroom for non-store fixed costs that dominate the
+/// cached path.
+const SUBLINEARITY_CEILING: u128 = 4;
+
+/// Take `MEDIAN_SAMPLES` `make_update` samples from `kernel` and return the
+/// median `last_make_update_us`.
+fn median_make_update_us(kernel: &mut Kernel) -> u128 {
+    let mut samples = [0_u128; MEDIAN_SAMPLES];
+    for sample in &mut samples {
+        kernel.make_update(true);
+        *sample = kernel.last_make_update_us;
+    }
+    samples.sort_unstable();
+    samples[samples.len() / 2]
 }
