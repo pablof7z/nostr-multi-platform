@@ -7,7 +7,6 @@
 use std::ffi::c_void;
 use std::sync::atomic::Ordering;
 
-use nmp_core::ActorCommand;
 use nmp_core::__ffi_internal::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 
 use crate::app_ref;
@@ -124,11 +123,7 @@ pub extern "C" fn nmp_app_start(
         app.spawn_actor_if_needed();
     }
 
-    app.send_cmd(ActorCommand::Start {
-        visible_limit: clamp_visible(visible_limit),
-        emit_hz: clamp_emit_hz(emit_hz),
-        initial_relays,
-    });
+    app.start(clamp_visible(visible_limit), clamp_emit_hz(emit_hz), initial_relays);
 }
 
 #[no_mangle]
@@ -141,10 +136,7 @@ pub extern "C" fn nmp_app_configure(
         return;
     };
 
-    app.send_cmd(ActorCommand::Configure {
-        visible_limit: clamp_visible(visible_limit),
-        emit_hz: clamp_emit_hz(emit_hz),
-    });
+    app.configure(clamp_visible(visible_limit), clamp_emit_hz(emit_hz));
 }
 
 #[no_mangle]
@@ -152,7 +144,7 @@ pub extern "C" fn nmp_app_stop(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.send_cmd(ActorCommand::Stop);
+    app.stop();
 }
 
 #[no_mangle]
@@ -160,7 +152,7 @@ pub extern "C" fn nmp_app_reset(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.send_cmd(ActorCommand::Reset);
+    app.reset();
 }
 
 pub(crate) fn clamp_visible(visible_limit: std::ffi::c_uint) -> usize {

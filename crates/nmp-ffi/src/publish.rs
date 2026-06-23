@@ -43,7 +43,6 @@
 //! re-opening the deleted door.
 
 use super::{app_ref, c_string_argument, NmpApp};
-use nmp_core::ActorCommand;
 use std::ffi::c_char;
 
 /// Retry a failed publish, addressed by its handle. This is the intentional
@@ -58,7 +57,7 @@ pub extern "C" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char)
     let Some(handle) = c_string_argument(handle) else {
         return;
     };
-    app.send_cmd(ActorCommand::RetryPublish { handle });
+    app.retry_publish(handle);
 }
 
 /// Cancel an in-flight operation, addressed by its dispatch `correlation_id`
@@ -81,5 +80,5 @@ pub extern "C" fn nmp_app_cancel_action(app: *mut NmpApp, correlation_id: *const
     let Some(correlation_id) = c_string_argument(correlation_id) else {
         return;
     };
-    app.send_cmd(ActorCommand::CancelPublish { correlation_id });
+    app.cancel_publish(correlation_id);
 }

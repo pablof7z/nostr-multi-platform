@@ -62,7 +62,7 @@
 
 use super::{app_ref, c_string_argument, NmpApp};
 use nmp_core::__ffi_internal::is_hex_pubkey;
-use nmp_core::{ActorCommand, EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+use nmp_core::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 use std::ffi::{c_char, c_int};
 
 /// Decode the `namespace` FFI integer into a [`RefNamespace`].
@@ -153,15 +153,7 @@ pub extern "C" fn nmp_app_resolve_ref(
 
     let liveness_val = RefLiveness::from_ffi(liveness);
 
-    app.send_cmd(ActorCommand::ResolveRef {
-        namespace: ns,
-        key,
-        consumer_id,
-        shape: shape_val,
-        liveness: liveness_val,
-        force: false,
-        hints: Vec::new(),
-    });
+    app.resolve_ref(ns, key, consumer_id, shape_val, liveness_val);
 }
 
 /// ADR-0063 Lane D — release a reference previously registered via
@@ -199,9 +191,5 @@ pub extern "C" fn nmp_app_release_ref(
         return;
     };
 
-    app.send_cmd(ActorCommand::ReleaseRef {
-        namespace: ns,
-        key,
-        consumer_id,
-    });
+    app.release_ref(ns, key, consumer_id);
 }

@@ -70,6 +70,7 @@ impl NmpApp {
         self.send_cmd(ActorCommand::MarkChangedSinceEmit);
     }
 
+
     /// Declare a feed of app-owned primary kinds from the active account's
     /// reactive follows perspective.
     ///
@@ -190,5 +191,39 @@ impl NmpApp {
         self.send_cmd(ActorCommand::Kernel(nmp_core::KernelAction::OpenUri {
             uri,
         }));
+    }
+
+    /// Start the kernel with the given visible-limit and emit-hz configuration.
+    /// Typed wrapper for [`ActorCommand::Start`].
+    pub(crate) fn start(
+        &self,
+        visible_limit: usize,
+        emit_hz: u32,
+        initial_relays: Vec<(String, String)>,
+    ) {
+        self.send_cmd(ActorCommand::Start {
+            visible_limit,
+            emit_hz,
+            initial_relays,
+        });
+    }
+
+    /// Reconfigure the kernel's visible-limit and emit-hz without a full
+    /// restart. Typed wrapper for [`ActorCommand::Configure`].
+    pub(crate) fn configure(&self, visible_limit: usize, emit_hz: u32) {
+        self.send_cmd(ActorCommand::Configure {
+            visible_limit,
+            emit_hz,
+        });
+    }
+
+    /// Signal the kernel to stop. Typed wrapper for [`ActorCommand::Stop`].
+    pub(crate) fn stop(&self) {
+        self.send_cmd(ActorCommand::Stop);
+    }
+
+    /// Signal the kernel to reset. Typed wrapper for [`ActorCommand::Reset`].
+    pub(crate) fn reset(&self) {
+        self.send_cmd(ActorCommand::Reset);
     }
 }
