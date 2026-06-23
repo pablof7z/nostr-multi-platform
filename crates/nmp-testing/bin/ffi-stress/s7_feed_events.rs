@@ -12,6 +12,7 @@
 
 use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::actor::ActorCommand;
+use nmp_core::TestSupportCommand;
 use nmp_ffi::NmpApp;
 
 /// 64-hex viewer pubkey (the active account; self-inclusion makes it a "follow"
@@ -85,7 +86,7 @@ fn send_events(app: *mut NmpApp, events: Vec<VerifiedEvent>) {
     let app_ref = unsafe { &*app };
     app_ref
         .actor_sender()
-        .send(ActorCommand::IngestPreVerifiedEvents(events))
+        .send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
         .ok();
 }
 

@@ -23,6 +23,9 @@ use nmp_core::slots::{
     PullCursorRegistryHandleSlot,
 };
 use nmp_core::actor::ActorCommand;
+use nmp_core::{
+    ContactsCommand, IdentityCommand, InterestsCommand, PublishCommand, RefsCommand, SignCommand,
+};
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
 use zeroize::Zeroizing;
 
@@ -77,7 +80,7 @@ impl NmpApp {
     /// Push a `LogicalInterest` into the subscription registry and schedule a
     /// recompile. Idempotent: same `InterestId` replaces the prior entry.
     pub fn push_interest(&self, interest: nmp_planner::LogicalInterest) {
-        self.send_cmd(ActorCommand::PushInterest(interest));
+        self.send_cmd(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
     }
 
     /// Route a typed capability request through the registered native
@@ -179,15 +182,15 @@ impl NmpApp {
         if make_active && matches!(source, nmp_core::SignerSource::LocalNsec(_)) {
             self.set_pending_mls_autopublish(true);
         }
-        self.send_cmd(ActorCommand::AddSigner {
+        self.send_cmd(ActorCommand::Identity(IdentityCommand::AddSigner {
             source,
             make_active,
-        });
+        }));
     }
 
     /// Remove an identity through the actor-owned identity reducer.
     pub fn remove_account(&self, identity_id: String) {
-        self.send_cmd(ActorCommand::RemoveAccount { identity_id });
+        self.send_cmd(ActorCommand::Identity(IdentityCommand::RemoveAccount { identity_id }));
     }
 
     /// Sign an event draft and park the result in `signed_events`.
@@ -198,11 +201,11 @@ impl NmpApp {
         unsigned_json: String,
         correlation_id: String,
     ) {
-        self.send_cmd(ActorCommand::SignEventForReturn {
+        self.send_cmd(ActorCommand::Sign(SignCommand::EventForReturn {
             account_pubkey,
             unsigned_json,
             correlation_id,
-        });
+        }));
     }
 
     /// Create a new account through the actor-owned identity reducer.
@@ -215,42 +218,42 @@ impl NmpApp {
         mls: bool,
         make_active: bool,
     ) {
-        self.send_cmd(ActorCommand::CreateAccount {
+        self.send_cmd(ActorCommand::Identity(IdentityCommand::CreateAccount {
             profile,
             relays,
             initial_follows,
             mls,
             make_active,
-        });
+        }));
     }
 
     /// Switch the active account. Typed wrapper for [`ActorCommand::SwitchActive`].
     pub(crate) fn switch_active(&self, identity_id: String) {
-        self.send_cmd(ActorCommand::SwitchActive { identity_id });
+        self.send_cmd(ActorCommand::Identity(IdentityCommand::SwitchActive { identity_id }));
     }
 
     /// Add a relay to the active account's relay list.
     /// Typed wrapper for [`ActorCommand::AddRelay`].
     pub(crate) fn add_relay(&self, url: String, role: String) {
-        self.send_cmd(ActorCommand::AddRelay { url, role });
+        self.send_cmd(ActorCommand::Relay(nmp_core::RelayCommand::AddRelay { url, role }));
     }
 
     /// Remove a relay from the active account's relay list.
     /// Typed wrapper for [`ActorCommand::RemoveRelay`].
     pub(crate) fn remove_relay(&self, url: String) {
-        self.send_cmd(ActorCommand::RemoveRelay { url });
+        self.send_cmd(ActorCommand::Relay(nmp_core::RelayCommand::RemoveRelay { url }));
     }
 
     /// Retry a failed publish, addressed by its handle.
     /// Typed wrapper for [`ActorCommand::RetryPublish`].
     pub(crate) fn retry_publish(&self, handle: String) {
-        self.send_cmd(ActorCommand::RetryPublish { handle });
+        self.send_cmd(ActorCommand::Publish(PublishCommand::RetryPublish { handle }));
     }
 
     /// Cancel an in-flight operation by its `correlation_id`.
     /// Typed wrapper for [`ActorCommand::CancelPublish`].
     pub(crate) fn cancel_publish(&self, correlation_id: String) {
-        self.send_cmd(ActorCommand::CancelPublish { correlation_id });
+        self.send_cmd(ActorCommand::Publish(PublishCommand::CancelPublish { correlation_id }));
     }
 
     /// Resolve a ref (profile or event) in the kernel's ref resolver.
@@ -263,7 +266,7 @@ impl NmpApp {
         shape: nmp_core::RefShape,
         liveness: nmp_core::RefLiveness,
     ) {
-        self.send_cmd(ActorCommand::ResolveRef {
+        self.send_cmd(ActorCommand::Refs(RefsCommand::Resolve {
             namespace,
             key,
             consumer_id,
@@ -271,7 +274,7 @@ impl NmpApp {
             liveness,
             force: false,
             hints: Vec::new(),
-        });
+        }));
     }
 
     /// Release a ref previously registered via [`Self::resolve_ref`].
@@ -282,11 +285,11 @@ impl NmpApp {
         key: String,
         consumer_id: String,
     ) {
-        self.send_cmd(ActorCommand::ReleaseRef {
+        self.send_cmd(ActorCommand::Refs(RefsCommand::Release {
             namespace,
             key,
             consumer_id,
-        });
+        }));
     }
 
     // `remove_account_forgetting_keyring` lives in `keyring_forget.rs` (kept
@@ -359,11 +362,11 @@ impl NmpApp {
             .iter()
             .map(std::string::ToString::to_string)
             .collect();
-        self.send_cmd(ActorCommand::PublishSignedEvent {
+        self.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent {
             raw,
             target: nmp_core::publish::PublishTarget::Explicit { relays },
             correlation_id: None,
-        });
+        }));
     }
 }
 

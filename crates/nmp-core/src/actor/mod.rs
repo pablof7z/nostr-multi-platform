@@ -84,7 +84,7 @@ pub(crate) mod pending_sign;
 // Per-URL relay-worker state (RelayControl, RelayConnectionKind).
 // Extracted from mod.rs to keep it within the 500-LOC ceiling (AGENTS.md).
 #[cfg(feature = "native")] mod relay_control;
-#[cfg(feature = "native")] pub(super) use relay_control::{RelayControl, RelayConnectionKind};
+#[cfg(feature = "native")] pub(in crate::actor) use relay_control::{RelayControl, RelayConnectionKind};
 #[cfg(feature = "native")] mod relay_event_guard;
 #[cfg(feature = "native")] mod relay_idle;
 #[cfg(feature = "native")] mod relay_mgmt;
@@ -105,12 +105,14 @@ mod relay_roles;
 mod actor_command;
 pub use actor_command::{
     ActionLedgerCommand, ActorCommand, ContactsCommand, IdentityCommand, InterestsCommand,
-    LifecycleCommand, PublishCommand, RelayCommand, RefsCommand, SignCommand,
+    LifecycleCommand, PublishCommand, RelayCommand, RefsCommand, SignCommand, SignerSource,
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use actor_command::TestSupportCommand;
 // Native actor entry point — `run_actor_with_observers`.
 // Extracted to keep this file within the 500-LOC ceiling (AGENTS.md).
+// `actor_loop` contains the extracted main event loop body called by `actor_run`.
+#[cfg(feature = "native")] mod actor_loop;
 #[cfg(feature = "native")] mod actor_run;
 #[cfg(feature = "native")] pub use actor_run::run_actor_with_observers;
 

@@ -109,6 +109,30 @@ pub(super) fn open_pull_cursor(
     Some(Vec::new())
 }
 
+/// Dispatch `InterestsCommand::RegisterPullCursor` (ADR-0065 / ADR-0058 step 3a).
+/// Bridges the new sub-enum fields → the existing kernel `open_pull_cursor` call.
+pub(super) fn register_pull_cursor(
+    cursor_id: u64,
+    consumer_id: String,
+    scope: crate::kernel::pull::PullScope,
+    mode: crate::kernel::pull_cursor::PullCursorMode,
+    after_seq: u64,
+    limits: crate::kernel::pull::PullLimits,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    use crate::kernel::pull_cursor::{PullConsumerId, PullCursorHandle, PullCursorSpec};
+    let handle = PullCursorHandle::from_dispatch_id(cursor_id);
+    let spec = PullCursorSpec {
+        consumer_id: PullConsumerId(consumer_id),
+        scope,
+        mode,
+        after_seq,
+        limits,
+    };
+    ctx.kernel.open_pull_cursor(handle, spec);
+    Some(Vec::new())
+}
+
 /// Dispatch `ActorCommand::AdvancePullCursor`.
 pub(super) fn advance_pull_cursor(
     cursor_id: crate::kernel::pull_cursor::PullCursorId,
@@ -275,9 +299,9 @@ pub(super) fn dispatch(
         InterestsCommand::RegisterPullCursor { cursor_id, consumer_id, scope, mode, after_seq, limits } =>
             register_pull_cursor(cursor_id, consumer_id, scope, mode, after_seq, limits, ctx),
         InterestsCommand::AdvancePullCursor { cursor_id, after_seq } =>
-            advance_pull_cursor(cursor_id, after_seq, ctx),
+            advance_pull_cursor(crate::kernel::pull_cursor::PullCursorId(cursor_id), after_seq, ctx),
         InterestsCommand::UnregisterPullCursor { cursor_id } =>
-            unregister_pull_cursor(cursor_id, ctx),
+            unregister_pull_cursor(crate::kernel::pull_cursor::PullCursorId(cursor_id), ctx),
         InterestsCommand::OpenInterest { filter_json, consumer_id, scope } =>
             open_interest(filter_json, consumer_id, scope, ctx),
         InterestsCommand::OpenObservedInterest {

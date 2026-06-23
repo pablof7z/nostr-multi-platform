@@ -112,7 +112,7 @@ pub extern "C" fn nmp_app_ack_action_stage(app: *mut NmpApp, correlation_id: *co
     if cid.is_empty() {
         return;
     }
-    app.send_cmd(nmp_core::actor::ActorCommand::AckActionStage(cid));
+    app.send_cmd(nmp_core::ActorCommand::ActionLedger(nmp_core::ActionLedgerCommand::Ack(cid)));
 }
 
 /// Host-supplied action result observer callback.
@@ -320,10 +320,10 @@ fn finish_dispatch(
             format!(r#"{{"correlation_id":{}}}"#, json_string(correlation_id))
         }
         Err(failure) => {
-            app.send_cmd(nmp_core::actor::ActorCommand::RecordActionFailure {
+            app.send_cmd(nmp_core::ActorCommand::ActionLedger(nmp_core::ActionLedgerCommand::RecordFailure {
                 correlation_id: correlation_id.to_string(),
                 reason: failure.message.clone(),
-            });
+            }));
             error_json_with_correlation_id(correlation_id, &failure.message)
         }
     }

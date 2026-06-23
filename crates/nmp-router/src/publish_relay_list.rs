@@ -71,8 +71,7 @@ use nmp_core::substrate::{
     ActionRejection,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::actor::ActorCommand;
-use nmp_core::{canonical_relay_url};
+use nmp_core::{ActorCommand, PublishCommand, canonical_relay_url};
 use serde::{de, Deserialize, Deserializer, Serialize};
 
 /// Per-relay role marker for a NIP-65 entry.
@@ -320,12 +319,12 @@ impl ActionModule for PublishRelayListAction {
         // fired on `dispatch_action` can be cleared with a terminal
         // verdict. Without this the dispatch arm never records a
         // terminal stage and the spinner hangs forever.
-        send(ActorCommand::PublishUnsignedEvent {
+        send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id: Some(correlation_id.to_string()),
             // The kind:10002 relay list signs with the active account.
             signer_pubkey: None,
-        });
+        }));
         Ok(())
     }
 }

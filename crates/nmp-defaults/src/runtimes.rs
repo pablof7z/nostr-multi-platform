@@ -47,7 +47,7 @@ use nmp_core::substrate::{
     HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::actor::ActorCommand;
-use nmp_core::{read_eligible_relay_urls, AppRelaySlot};
+use nmp_core::{read_eligible_relay_urls, AppRelaySlot, InterestsCommand, PublishCommand};
 use nmp_nip17::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
     DmRuntimeEffect, DmRuntimeState,
@@ -360,21 +360,21 @@ impl DmRuntimeController {
     fn apply(&self, effect: DmRuntimeEffect) {
         let cmd = match effect {
             DmRuntimeEffect::PushInboxInterest(pubkey) => {
-                ActorCommand::PushInterest(active_giftwrap_inbox_interest(&pubkey))
+                ActorCommand::Interests(InterestsCommand::PushInterest(active_giftwrap_inbox_interest(&pubkey)))
             }
             DmRuntimeEffect::WithdrawInboxInterest => {
-                ActorCommand::WithdrawInterest(active_giftwrap_inbox_interest_id())
+                ActorCommand::Interests(InterestsCommand::WithdrawInterest(active_giftwrap_inbox_interest_id()))
             }
             DmRuntimeEffect::PublishRelayList { event, .. } => {
                 // Non-dispatch internal path — the action-seam variant at
                 // `nmp_nip17::PublishDmRelayListAction::execute` is where
                 // the dispatch-side correlation_id round-trip happens.
-                ActorCommand::PublishUnsignedEvent {
+                ActorCommand::Publish(PublishCommand::UnsignedEvent {
                     event,
                     correlation_id: None,
                     // Internal DM-relay-list publish signs with the active account.
                     signer_pubkey: None,
-                }
+                })
             }
         };
         let _ = self.tx.send(cmd);
@@ -449,24 +449,24 @@ impl ZapReceiptsRuntimeController {
             (Some(now), None) => {
                 let _ = self
                     .tx
-                    .send(ActorCommand::PushInterest(self_zap_receipts_interest(now)));
+                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(self_zap_receipts_interest(now))));
                 *last = Some(now.to_string());
             }
             // Account switch: withdraw old (by pubkey-invariant id), push new.
             (Some(now), Some(_prev)) => {
-                let _ = self.tx.send(ActorCommand::WithdrawInterest(
+                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
                     self_zap_receipts_interest_id(),
-                ));
+                )));
                 let _ = self
                     .tx
-                    .send(ActorCommand::PushInterest(self_zap_receipts_interest(now)));
+                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(self_zap_receipts_interest(now))));
                 *last = Some(now.to_string());
             }
             // Logout: withdraw standing interest, clear slot.
             (None, Some(_)) => {
-                let _ = self.tx.send(ActorCommand::WithdrawInterest(
+                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
                     self_zap_receipts_interest_id(),
-                ));
+                )));
                 *last = None;
             }
             // Cold start before sign-in: nothing to do.

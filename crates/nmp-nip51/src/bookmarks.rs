@@ -13,8 +13,7 @@ use nmp_core::substrate::{
     ActionRejection, KernelEvent,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::actor::ActorCommand;
-use nmp_core::{canonical_relay_url, KernelEventObserver};
+use nmp_core::{ActorCommand, PublishCommand, canonical_relay_url, KernelEventObserver};
 use nmp_kinds::KIND_BOOKMARK_LIST;
 use serde::{Deserialize, Serialize};
 
@@ -237,11 +236,11 @@ impl ActionModule for AddBookmarkAction {
             .map_err(action_rejection_message)?;
         let mut snapshot = self.projection.snapshot_for_account(&action.account_pubkey);
         snapshot.items.push(item);
-        send(ActorCommand::PublishUnsignedEvent {
+        send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event: build_bookmark_list_event(&dedupe_snapshot(snapshot)),
             correlation_id: Some(correlation_id.to_string()),
             signer_pubkey: None,
-        });
+        }));
         Ok(())
     }
 }
@@ -294,11 +293,11 @@ impl ActionModule for RemoveBookmarkAction {
         snapshot
             .items
             .retain(|candidate| !same_item(candidate, &item));
-        send(ActorCommand::PublishUnsignedEvent {
+        send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event: build_bookmark_list_event(&snapshot),
             correlation_id: Some(correlation_id.to_string()),
             signer_pubkey: None,
-        });
+        }));
         Ok(())
     }
 }

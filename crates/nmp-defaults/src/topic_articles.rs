@@ -64,6 +64,7 @@ use nmp_core::substrate::{
     ActionContext, ActionModule, ActionRegistrar, ActionRejection, ViewDependencies,
 };
 use nmp_core::actor::ActorCommand;
+use nmp_core::InterestsCommand;
 use nmp_planner::stable_hash::stable_hash64;
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use serde::{Deserialize, Serialize};
@@ -256,26 +257,26 @@ impl ActionModule for TopicArticlesModule {
                 ref topic,
                 ref consumer_id,
             } => {
-                send(ActorCommand::EnsureInterest {
+                send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
                     identity: topic_articles_identity(topic, consumer_id),
                     interest: topic_articles_interest(topic),
-                });
-                send(ActorCommand::EnsureInterest {
+                }));
+                send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
                     identity: topic_article_reposts_identity(topic, consumer_id),
                     interest: topic_article_reposts_interest(topic),
-                });
+                }));
             }
             TopicArticlesAction::Release {
                 ref topic,
                 ref consumer_id,
             } => {
-                send(ActorCommand::DropInterestOwner(topic_articles_identity(
+                send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(topic_articles_identity(
                     topic,
                     consumer_id,
-                )));
-                send(ActorCommand::DropInterestOwner(
+                ))));
+                send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(
                     topic_article_reposts_identity(topic, consumer_id),
-                ));
+                )));
             }
         }
         Ok(())

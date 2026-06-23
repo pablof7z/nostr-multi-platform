@@ -22,7 +22,7 @@ use nmp_core::substrate::{
     ActionRegistrar, EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar,
 };
 use nmp_core::actor::ActorCommand;
-use nmp_core::{KernelEventObserver};
+use nmp_core::{KernelEventObserver, InterestsCommand};
 use nmp_nip51::{
     active_bookmark_list_interest, active_bookmark_list_interest_id, BookmarkListProjection,
 };
@@ -107,28 +107,28 @@ impl BookmarksRuntimeController {
             (Some(now), None) => {
                 let _ = self
                     .tx
-                    .send(ActorCommand::PushInterest(active_bookmark_list_interest(
+                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_bookmark_list_interest(
                         now,
-                    )));
+                    ))));
                 *last = Some(now.to_string());
             }
             // Account switch: withdraw old (by pubkey-invariant id), push new.
             (Some(now), Some(_prev)) => {
-                let _ = self.tx.send(ActorCommand::WithdrawInterest(
+                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
                     active_bookmark_list_interest_id(),
-                ));
+                )));
                 let _ = self
                     .tx
-                    .send(ActorCommand::PushInterest(active_bookmark_list_interest(
+                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_bookmark_list_interest(
                         now,
-                    )));
+                    ))));
                 *last = Some(now.to_string());
             }
             // Logout: withdraw standing interest, clear slot.
             (None, Some(_)) => {
-                let _ = self.tx.send(ActorCommand::WithdrawInterest(
+                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
                     active_bookmark_list_interest_id(),
-                ));
+                )));
                 *last = None;
             }
             // Cold start before sign-in: nothing to do.

@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
 use nmp_core::actor::ActorCommand;
-use nmp_core::{KernelEventObserver};
+use nmp_core::{KernelEventObserver, InterestsCommand};
 use nmp_feed::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
     PullFeedController, RootAdmission,
@@ -217,11 +217,11 @@ pub(super) fn build_scope_session(
                 }
                 log.push((filter_json.clone(), scope));
             }
-            let _ = sender.send(ActorCommand::OpenInterest {
+            let _ = sender.send(ActorCommand::Interests(InterestsCommand::OpenInterest {
                 filter_json,
                 consumer_id: key.clone(),
                 scope,
-            });
+            }));
         }
     };
 
@@ -269,12 +269,12 @@ pub(super) fn build_scope_session(
                 .map(|log| log.clone())
                 .unwrap_or_default();
             for (filter_json, scope) in drained {
-                let _ = sender_for_close.send(ActorCommand::CloseInterest {
+                let _ = sender_for_close.send(ActorCommand::Interests(InterestsCommand::CloseInterest {
                     filter_json,
                     consumer_id: key_for_close.clone(),
                     scope,
                     relay_pin: None,
-                });
+                }));
             }
         }));
     }

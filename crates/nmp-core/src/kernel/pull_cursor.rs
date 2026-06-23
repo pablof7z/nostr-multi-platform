@@ -64,6 +64,15 @@ impl PullCursorHandle {
     pub fn from_raw(id: u64) -> Self {
         PullCursorHandle(PullCursorId(id))
     }
+
+    /// Construct a handle from a raw id for the actor dispatch seam.
+    /// The actor's `RegisterPullCursor` command carries the id minted by
+    /// the FFI call to `alloc_handle`; the dispatch arm wraps it back
+    /// into a handle for the kernel call.
+    #[must_use]
+    pub(crate) fn from_dispatch_id(id: u64) -> Self {
+        PullCursorHandle(PullCursorId(id))
+    }
 }
 
 /// Typed consumer identity — replaces the raw `String` that previously appeared

@@ -166,10 +166,10 @@ impl InnerHandle<'_> {
             }
             let cmd = if ok == Some(true) {
                 // `dispatch()` already cleared the error banner on success.
-                nmp_core::actor::ActorCommand::RecordActionSuccess {
+                nmp_core::ActorCommand::ActionLedger(nmp_core::ActionLedgerCommand::RecordSuccess {
                     correlation_id: outcome.correlation_id,
                     result_json: None,
-                }
+                })
             } else {
                 let reason = result
                     .get("error")
@@ -187,10 +187,10 @@ impl InnerHandle<'_> {
                     outcome.correlation_id.clone(),
                     now_secs,
                 );
-                nmp_core::actor::ActorCommand::RecordActionFailure {
+                nmp_core::ActorCommand::ActionLedger(nmp_core::ActionLedgerCommand::RecordFailure {
                     correlation_id: outcome.correlation_id,
                     reason,
-                }
+                })
             };
             self.push_actor_command(cmd);
         }
@@ -216,10 +216,10 @@ impl InnerHandle<'_> {
                 op.correlation_id.clone(),
                 now_secs,
             );
-            self.push_actor_command(nmp_core::actor::ActorCommand::RecordActionFailure {
+            self.push_actor_command(nmp_core::ActorCommand::ActionLedger(nmp_core::ActionLedgerCommand::RecordFailure {
                 correlation_id: op.correlation_id,
                 reason: "key_package_unavailable".to_string(),
-            });
+            }));
         }
     }
 

@@ -13,6 +13,7 @@
 
 use super::{app_ref, NmpApp};
 use nmp_core::actor::ActorCommand;
+use nmp_core::TestSupportCommand;
 use std::ffi::{c_char, CStr};
 
 /// Inject `count` pre-verified kind-1 events into the kernel timeline via
@@ -88,7 +89,7 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
         })
         .collect();
 
-    app.send_cmd(ActorCommand::IngestPreVerifiedEvents(events));
+    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)));
 }
 
 /// Inject `count` real Schnorr-signed kind-1 events into the kernel timeline
@@ -136,7 +137,7 @@ pub extern "C" fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at
         })
         .collect();
 
-    app.send_cmd(ActorCommand::IngestPreVerifiedEvents(events));
+    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)));
 }
 
 /// Inject a single real signed event (supplied as NIP-01 JSON) through the
@@ -198,7 +199,7 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
         Ok(v) => v,
         Err(_) => return false,
     };
-    app.send_cmd(ActorCommand::IngestPreVerifiedEvents(vec![verified]));
+    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(vec![verified])));
     true
 }
 
@@ -302,11 +303,11 @@ pub extern "C" fn nmp_app_inject_unpinned_events_for_gc(
     let accepted = events.len() as u32;
 
     let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
-    app.send_cmd(ActorCommand::IngestPreVerifiedEventsForSubId {
+    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEventsForSubId {
         sub_id: "gc-oracle-unpinned".to_string(),
         events,
         ack: ack_tx,
-    });
+    }));
     // Block until the actor has ingested + re-sorted the whole batch (settled).
     let _ = ack_rx.recv_timeout(std::time::Duration::from_secs(30));
     accepted
@@ -330,7 +331,7 @@ pub extern "C" fn nmp_app_trigger_gc_step(app: *mut NmpApp) {
         return;
     };
     let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
-    app.send_cmd(ActorCommand::TriggerGcStep { ack: ack_tx });
+    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::TriggerGcStep { ack: ack_tx }));
     // Block until the GC pass is settled (RAM eviction + store LRU step done).
     let _ = ack_rx.recv_timeout(std::time::Duration::from_secs(30));
 }

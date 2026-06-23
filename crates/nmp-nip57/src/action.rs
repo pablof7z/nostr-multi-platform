@@ -35,7 +35,7 @@
 //! `SignedEvent` ever crosses the port).
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
-use nmp_core::actor::ActorCommand;
+use nmp_core::{ActionLedgerCommand, ActorCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::build::ZapRequest;
@@ -158,10 +158,10 @@ impl ZapAction {
 }
 
 fn record_action_failure(send: &dyn Fn(ActorCommand), correlation_id: &str, reason: String) {
-    send(ActorCommand::RecordActionFailure {
+    send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
         correlation_id: correlation_id.to_string(),
         reason,
-    });
+    }));
 }
 
 impl ActionModule for ZapAction {

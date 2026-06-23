@@ -53,7 +53,7 @@ use nmp_core::substrate::{
     ActionRegistrar, ContactsLookup, HostCapabilities, IdentityChangeRegistrar,
     SnapshotProjectionRegistrar,
 };
-use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorCommand, InterestsCommand};
 use serde::{Deserialize, Serialize};
 
 // The `ActionModule` impls for the three follow verbs (split out to keep this
@@ -240,23 +240,23 @@ pub fn register_follow_state_runtime(
     let push_interest = {
         let tx = tx.clone();
         move |pubkey: &str| {
-            let _ = tx.send(ActorCommand::OpenInterest {
+            let _ = tx.send(ActorCommand::Interests(InterestsCommand::OpenInterest {
                 filter_json: format!(r#"{{"kinds":[3],"authors":["{pubkey}"]}}"#),
                 consumer_id: CONSUMER_ID.to_string(),
                 scope: 0, // ActiveAccount
-            });
+            }));
         }
     };
 
     let close_interest = {
         let tx = tx.clone();
         move |pubkey: &str| {
-            let _ = tx.send(ActorCommand::CloseInterest {
+            let _ = tx.send(ActorCommand::Interests(InterestsCommand::CloseInterest {
                 filter_json: format!(r#"{{"kinds":[3],"authors":["{pubkey}"]}}"#),
                 consumer_id: CONSUMER_ID.to_string(),
                 scope: 0,
                 relay_pin: None,
-            });
+            }));
         }
     };
 
@@ -348,7 +348,7 @@ pub fn typed_projection_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::actor::ActorCommand;
+    use nmp_core::ActorCommand;
     use std::cell::RefCell;
 
     // ----- namespaces ------------------------------------------------------

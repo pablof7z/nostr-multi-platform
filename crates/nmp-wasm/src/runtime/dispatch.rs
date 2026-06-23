@@ -12,6 +12,7 @@
 //! seam, not an API boundary.
 
 use nmp_core::actor::ActorCommand;
+use nmp_core::PublishCommand;
 
 use crate::dispatch_routing::{
     execute_ref_dispatch, kernel_action_from_dispatch, ref_dispatch_from_action,
@@ -194,7 +195,7 @@ impl WasmRuntime {
             match cmd {
                 // Pre-signed event: route through the kernel publish engine.
                 // The `WasmOutboxResolver` (#1008) provides the write relay set.
-                ActorCommand::PublishSignedEvent { raw, target, correlation_id: cid } => {
+                ActorCommand::Publish(PublishCommand::SignedEvent { raw, target, correlation_id: cid }) => {
                     let outbound = self
                         .reducer
                         .borrow_mut()
@@ -212,14 +213,14 @@ impl WasmRuntime {
                 // `DeliverSignerResponse`; from there `deliver_signer_response`
                 // emits `SignCompleted` and the host publishes via a follow-up
                 // `PublishSignedEvent` dispatch or by noting the signed JSON.
-                ActorCommand::PublishRawEvent {
+                ActorCommand::Publish(PublishCommand::RawEvent {
                     kind,
                     tags,
                     content,
                     target: _,
                     signer_pubkey: _,
                     correlation_id: cid,
-                } => {
+                }) => {
                     let account_pubkey = match self.reducer.borrow().active_account_pubkey() {
                         Some(pk) => pk,
                         None => {
@@ -263,7 +264,7 @@ impl WasmRuntime {
                 }
                 // Profile (kind:0): build the kind:0 content JSON and start the
                 // BeginSign round-trip, same as PublishRawEvent above.
-                ActorCommand::PublishProfile { fields, correlation_id: cid } => {
+                ActorCommand::Publish(PublishCommand::Profile { fields, correlation_id: cid }) => {
                     let account_pubkey = match self.reducer.borrow().active_account_pubkey() {
                         Some(pk) => pk,
                         None => {
