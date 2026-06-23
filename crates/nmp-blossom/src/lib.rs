@@ -38,5 +38,6 @@ pub use upload::BlossomUploadCommand;
 ///
 /// [`ActionRegistrar`]: nmp_core::substrate::ActionRegistrar
 pub fn register_actions(app: &mut impl nmp_core::substrate::ActionRegistrar) {
-    let _ = app.register_action(UploadAction);
+    app.register_action(UploadAction)
+        .expect("duplicate registration: nmp-blossom UploadAction"); // doctrine-allow: D6 — startup-only call; a RegistrationError here is a programmer error (duplicate module wiring), not a runtime failure
 }

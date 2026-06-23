@@ -136,7 +136,8 @@ pub fn visible_note_relations_identity(event_id: &str, consumer_id: &str) -> Sub
 }
 
 pub fn register_visible_note_relation_actions(app: &mut impl ActionRegistrar) {
-    let _ = app.register_action(VisibleNoteRelationsModule);
+    app.register_action(VisibleNoteRelationsModule)
+        .expect("duplicate registration: nmp-relations VisibleNoteRelationsModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error (duplicate wiring), not a runtime failure
 }
 
 fn is_hex64(value: &str) -> bool {

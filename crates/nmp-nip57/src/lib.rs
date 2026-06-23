@@ -74,7 +74,8 @@ pub fn register_zap_with_payment_port(
     app: &mut impl nmp_core::substrate::ActionRegistrar,
     payment_port: std::sync::Arc<dyn nmp_core::substrate::PaymentPort>,
 ) {
-    let _ = app.register_action(ZapAction::with_payment_port(payment_port));
+    app.register_action(ZapAction::with_payment_port(payment_port))
+        .expect("duplicate registration: nmp-nip57 ZapAction"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error (duplicate wiring), not a runtime failure
 }
 
 // `nmp-nip57` exposes `ZapsView` as a plain public type whose `open` /

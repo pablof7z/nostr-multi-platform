@@ -38,7 +38,7 @@ fn assert_version_trip(err: ActionRejection) {
 fn start_bytes_rejects_wrong_schema_version_for_block_relay() {
     let cache = Arc::new(InMemoryBlockedRelayCache::new());
     let mut registry = ActionRegistry::new();
-    let _ =     registry.register_action(BlockRelayAction::new(cache));
+    let _ = registry.register_action(BlockRelayAction::new(cache));
 
     // Encode a good payload, then corrupt its schema_version slot via a hand
     // build with version 999.
@@ -53,7 +53,7 @@ fn start_bytes_rejects_wrong_schema_version_for_block_relay() {
 fn start_bytes_accepts_good_block_relay_payload() {
     let cache = Arc::new(InMemoryBlockedRelayCache::new());
     let mut registry = ActionRegistry::new();
-    let _ =     registry.register_action(BlockRelayAction::new(cache));
+    let _ = registry.register_action(BlockRelayAction::new(cache));
 
     let action = BlockRelayInput {
         url: "wss://relay.example".to_string(),
