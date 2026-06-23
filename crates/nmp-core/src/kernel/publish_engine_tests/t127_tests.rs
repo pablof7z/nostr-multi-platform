@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! T127 follow-up tests — actor-tick and boot-resume wiring, plus PD-025/5.
 //!
 //! T117 left two honest residuals:

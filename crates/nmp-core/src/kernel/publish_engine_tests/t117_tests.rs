@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! T117 core publish engine integration tests.
 //!
 //! Covers the four canonical bullets from the T117 spec:

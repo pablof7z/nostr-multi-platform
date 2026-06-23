@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! User-driven publish action tests — manual retry and cancel operations.
 
 use std::sync::Arc;

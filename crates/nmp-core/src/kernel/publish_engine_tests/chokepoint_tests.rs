@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! D10 chokepoint tests — private-envelope (gift-wrap / kind:1059) routing.
 //!
 //! T-publish-resolver-indexer: fail-closed semantics for unroutable authors and
