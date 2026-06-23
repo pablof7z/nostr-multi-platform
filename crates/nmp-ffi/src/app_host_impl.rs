@@ -17,8 +17,8 @@ use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
     EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
     KernelReaderRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SearchScopeRegistrar,
-    SnapshotProjectionRegistrar,
+    InputScopeRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 
 use super::*;
@@ -137,6 +137,15 @@ impl SearchScopeRegistrar for NmpApp {
         provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>,
     ) {
         NmpApp::register_search_scope(self, provider);
+    }
+}
+
+impl InputScopeRegistrar for NmpApp {
+    fn register_input_scope(
+        &self,
+        recognizer: Arc<dyn nmp_core::substrate::InputScopeRecognizer>,
+    ) {
+        NmpApp::register_input_scope(self, recognizer);
     }
 }
 

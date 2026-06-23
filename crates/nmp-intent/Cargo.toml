@@ -1,0 +1,19 @@
+[package]
+name = "nmp-intent"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "Input-intent resolver for NMP (#1804). Higher-order orchestrator: turns one untyped input string into a classified intent (direct reference / relay URL / NIP-05 shape / free-text search / registered recognizer). The recognizer trait + registry live noun-free in nmp-core::substrate::intent; this crate owns the orchestrator + generic parsers."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core" }
+# NIP-50 search request shape — the orchestrator serializes a `SearchRequest`
+# into the opaque `InputIntentTarget::TextQuery { request_json }` so nmp-core
+# stays noun-free.
+nmp-nip50 = { path = "../nmp-nip50" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }

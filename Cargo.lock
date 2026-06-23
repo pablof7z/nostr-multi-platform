@@ -4657,6 +4657,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-intent"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nip50",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nmp-kinds"
 version = "0.8.0"
 
@@ -4725,6 +4735,16 @@ dependencies = [
  "nostr",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-nip05"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "serde",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]
