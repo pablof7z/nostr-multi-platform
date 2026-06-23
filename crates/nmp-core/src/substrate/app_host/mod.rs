@@ -374,6 +374,7 @@ pub trait AppHost:
     + BlockedRelayLookupRegistrar
     + RoutingFactoryRegistrar
     + super::search::SearchScopeRegistrar
+    + super::intent::InputScopeRegistrar
     + HostCapabilities
 {
 }
@@ -393,6 +394,7 @@ impl<T> AppHost for T where
         + BlockedRelayLookupRegistrar
         + RoutingFactoryRegistrar
         + super::search::SearchScopeRegistrar
+        + super::intent::InputScopeRegistrar
         + HostCapabilities
 {
 }

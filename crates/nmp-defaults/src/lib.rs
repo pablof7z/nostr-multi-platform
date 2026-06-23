@@ -276,6 +276,17 @@ fn register_defaults_inner(
     // config step.
     nmp_nip50::register_search_scopes(app);
 
+    // ── NIP-50 input-scope recognizers (#1804, S7) ────────────────────────
+    //
+    // Register the three NIP-50 `InputScopeRecognizer`s (profiles / notes /
+    // longform) into the shared input-scope registry so the input-intent
+    // resolver (`nmp_app_intent_classify`) can produce `TextQuery` candidates
+    // for free-text input with no app-level wiring call. Wired here alongside
+    // the FTS scope registration in the always-on block (search is not a social
+    // preference; free-text user-input classification is generic transport
+    // infrastructure). `nmp-core` names no NIP-50 noun (D0).
+    nmp_nip50::register_input_scopes(app);
+
     // ── Social-feature defaults (toggleable) ─────────────────────────────
 
     if social {
@@ -283,6 +294,15 @@ fn register_defaults_inner(
         nmp_nip02::register_follow_actions(app);
         // NIP-25: public kind:7 reactions and kind:5 unreact deletion.
         nmp_nip25::register_actions(app);
+        // NIP-29 group input-scope recognizer (#1804, S7).
+        //
+        // Register the `nip29.groups` `InputScopeRecognizer` so the
+        // input-intent resolver can classify NIP-29 URI form
+        // (`host'local-id`) and `naddr` references that point to a group.
+        // The recognizer is pure/IO-free (claim-detect only; no HTTP, no
+        // relay round-trip). NIP-29 is a social/group feature, so it belongs
+        // in this block rather than the always-on substrate tier.
+        nmp_nip29::register_input_scopes(app);
         // WOT bootstrap reconciler (PushInterest/WithdrawInterest book-keeping
         // for the active account; kernel ships zero WOT nouns — D0).
         handles.wot = nmp_wot::register_runtime(app);

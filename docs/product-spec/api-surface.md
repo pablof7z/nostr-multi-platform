@@ -183,12 +183,30 @@ Doctrine:
 
 #### Input intent and search
 
-Raw user text is resolved before it becomes an action. The framework-level
-input resolver runs generic parsing first, then dispatches to namespaced scopes
-registered by composed modules. Direct references reuse `OpenUri`/`resolve_ref`;
-NIP-05 produces an async lookup; protocol crates such as `nmp-nip29` own their
-domain targets; only text queries call the search module. Apps choose registered
-scopes and presentation, but they do not duplicate parsing or relay routing.
+Raw user text is resolved before it becomes an action. The framework-level input
+resolver (`nmp_intent::classify`) runs generic parsing first — pure, sync, and
+IO-free — then dispatches to namespaced scopes registered by composed modules via
+`InputScopeRegistrar` (a separate registry from `SearchScopeRegistrar`; seam name
+`"input_scope"`; yielding-default on duplicate scope id; no `linkme`/`inventory`).
+
+Frozen precedence in `classify()`:
+1. Secret reject — nsec / nostr:nsec / ncryptsec → `Rejection(SecretLike)` with **zero** copy of the input.
+2. NIP-19/21 ref → routed via `resolve_open_uri` under the synthetic `nostr.ref` scope; if the ref's entity class is excluded by the app's allowed scopes → `Rejection(DisallowedScope)`.
+3. Relay URL (ws:// / wss://) → `InputIntentTarget::RelayUrl`.
+4. NIP-05 shape (`name@domain`) — shape-only pure parse, **no HTTP** inside `classify`.
+5. Registered recognizers — snapshot from `InputScopeRegistry`; first match wins.
+6. Free text → `InputIntentTarget::TextQuery` (opaque serialized `nmp_nip50::SearchRequest`).
+7. Refusals — `DisallowedScope` / `UnregisteredScope`.
+
+All IO (NIP-05 HTTP, search REQs) happens only in the dispatch layer, not inside
+`classify`. NIP-05 resolution is implemented in `nmp-nip05` as a `ProtocolCommand`
+(async thread-spawn + blocking ureq, result delivered via `RefNamespace::Profile`
+resolve-ref seam). `CacheOnly` is **not** a `SearchTargets` variant; cache-only
+behavior is implicit when relay resolution produces an empty set.
+
+Apps choose registered scopes and presentation; they do not duplicate parsing or
+relay routing. See `docs/design/intent-routing/types.md` §3.5 for the full type
+surface and `crates/nmp-ffi/src/app_config_intent.rs` for the FFI setter.
 
 ### 6.4 AppUpdate
 

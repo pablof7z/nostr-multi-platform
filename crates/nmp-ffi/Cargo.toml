@@ -21,7 +21,11 @@ crate-type = ["staticlib", "rlib"]
 # consumers see no change. Disable with `default-features = false` to keep
 # the dependency graph (mainly nmp-core) at its wasm-clean slice.
 default = ["native"]
-native = ["nmp-core/native"]
+# #1804: the NIP-05 reverse-lookup HTTP round-trip in `nmp-nip05` is gated
+# behind its own `native` feature (mirrors nmp-nip57's LNURL fetcher). Wire it
+# into nmp-ffi's `native` so `nmp_app_intent_dispatch` enqueues a real fetcher
+# on a `Nip05` candidate in the default native build.
+native = ["nmp-core/native", "nmp-nip05/native"]
 # Optional NIP-46 broker adapter. App composition crates that export the
 # bunker/nostrconnect C symbols enable this; protocol crates that depend on
 # `NmpApp` for registration keep the broker graph out of their default build.
@@ -83,6 +87,14 @@ nmp-nip18 = { path = "../nmp-nip18" }
 # edges are acyclic (neither NIP crate names nmp-ffi).
 nmp-nip50 = { path = "../nmp-nip50" }
 nmp-nip51 = { path = "../nmp-nip51" }
+# #1804 input-intent resolver: `nmp-intent` owns the pure `classify` orchestrator
+# (noun-free recognizer snapshot in, classification out); `nmp-nip05` owns the
+# NIP-05 reverse-lookup `ProtocolCommand` the dispatch lane enqueues on a
+# `Nip05` candidate. The `NmpApp` actor handle (and the registered recognizer
+# snapshot) live here, so the `nmp_app_intent_*` C-ABI lands in nmp-ffi — the
+# same composition-root role as `nmp_app_search_*`. Both edges are acyclic.
+nmp-intent = { path = "../nmp-intent" }
+nmp-nip05 = { path = "../nmp-nip05" }
 nmp-signer-broker = { path = "../nmp-signer-broker", optional = true }
 nmp-signer-iface = { path = "../nmp-signer-iface", optional = true }
 nmp-signers = { path = "../nmp-signers", optional = true }

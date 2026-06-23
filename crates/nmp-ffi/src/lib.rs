@@ -31,6 +31,7 @@ mod active_account_handle_tests;
 mod action;
 mod app_config_hooks;
 mod app_config_search; // #1811: `register_search_scope` (impl NmpApp; LOC ceiling).
+mod app_config_intent; // #1804: `register_input_scope` (impl NmpApp; LOC ceiling).
 mod app_config_substrate;
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpApp` extracted here (LOC ceiling).
 mod capability;
@@ -67,6 +68,11 @@ mod lifecycle;
 // under the LOC ceiling; the `#[no_mangle]` symbol name is ABI-stable across
 // the split (same precedent as `publish.rs` ← `identity.rs`).
 mod nip19_ffi;
+// #1804 — input-intent resolver C-ABI (`nmp_app_intent_classify` /
+// `nmp_app_intent_dispatch`): classify a one-box / paste / search input via the
+// pure `nmp_intent::classify`, then (dispatch) route the top candidate to its
+// existing seam (open-uri / search / NIP-05 reverse lookup).
+mod intent_ffi;
 // Issue #1554 — stateless NIP-21 / bare NIP-19 decode-to-wire helper.
 // Decode-only: no actor command, no view mutation, no app-specific policy.
 mod nip21_ffi;
@@ -849,6 +855,15 @@ pub struct NmpApp {
     /// kernel store (`apply_to_kernel`), so the SAME registry the registration
     /// path mutated drives the store's index.
     search_scope_registry: Arc<nmp_core::substrate::SearchScopeRegistry>,
+    /// #1804 — shared crate-registered input-scope recognizer registry.
+    /// Per-protocol / app crates register an
+    /// [`nmp_core::substrate::InputScopeRecognizer`] through
+    /// [`Self::register_input_scope`]; the input-intent resolver FFI reads a
+    /// [`nmp_core::substrate::InputScopeRegistry::recognizers`] snapshot from
+    /// this same handle to drive the pure `nmp_intent::classify` pass. Read on
+    /// the FFI thread, never threaded through the actor (classify is pure / sync
+    /// / IO-free; all IO happens in the dispatch layer).
+    input_scope_registry: Arc<nmp_core::substrate::InputScopeRegistry>,
     /// V-40 — shared [`nmp_core::substrate::DmInboxRelayLookup`] slot. The
     /// per-app crate (today `nmp-nip17::register_actions`) writes a
     /// concrete `DmRelayCache` here via
@@ -1168,6 +1183,14 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let search_scope_registry: Arc<nmp_core::substrate::SearchScopeRegistry> =
         Arc::new(nmp_core::substrate::SearchScopeRegistry::new());
     let actor_search_scope_registry = Arc::clone(&search_scope_registry);
+    // #1804 — crate-registered input-scope recognizer registry. Per-protocol /
+    // app crates register an `InputScopeRecognizer` through
+    // `NmpApp::register_input_scope` which mutates THIS registry; the
+    // input-intent resolver FFI reads a recognizers() snapshot from the same
+    // handle to drive `nmp_intent::classify`. Not threaded through the actor
+    // (classify is pure / IO-free).
+    let input_scope_registry: Arc<nmp_core::substrate::InputScopeRegistry> =
+        Arc::new(nmp_core::substrate::InputScopeRegistry::new());
     // V-40 — substrate `DmInboxRelayLookup` slot. The per-app crate
     // (today: `nmp-nip17::register_actions`) installs the concrete
     // `DmRelayCache` here via [`NmpApp::set_dm_inbox_relay_lookup`];
@@ -1476,6 +1499,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // #1811 — crate-registered FTS scope registry (shared handle; compiled
         // + installed into the kernel store at actor construction).
         search_scope_registry,
+        // #1804 — crate-registered input-scope recognizer registry (shared
+        // handle read by the input-intent resolver FFI; not actor-threaded).
+        input_scope_registry,
         dm_inbox_relays_slot,
         // ADR-0057 PR 2 — the `NmpApp`'s clone of the substrate `ProfileLookup`
         // slot. Mirrors the dm_inbox_relays_slot wiring.

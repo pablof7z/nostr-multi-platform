@@ -74,6 +74,9 @@ mod routing_trace;
 // SearchIndexSpec + SearchScopeProvider; compiled into nmp-store's noun-free
 // CompiledIndexSpec at composition time).
 pub mod search;
+// #1804 — input-intent recognizer substrate (noun-free InputScopeRecognizer +
+// InputScopeRegistry; orchestrator + generic parsers live in the nmp-intent crate).
+pub mod intent;
 mod view;
 
 pub use action::{
@@ -92,6 +95,13 @@ pub use blocked_relays::{empty_blocked_relay_lookup, BlockedRelayLookup, EmptyBl
 pub use search::{
     CacheSearchMode, SearchIndexSpec, SearchPrivacyPolicy, SearchScopeDisposition,
     SearchScopeProvider, SearchScopeRegistrar, SearchScopeRegistry,
+};
+// #1804 — input-intent recognizer substrate surface.
+pub use intent::{
+    InputIntentCandidate, InputIntentClassification, InputIntentRejection, InputIntentRequest,
+    InputIntentTarget, InputScopeDisposition, InputScopeId, InputScopeRecognizer,
+    InputScopeRegistrar, InputScopeRegistry, ResolvedInput, ResolvedInputKind, TextSearchTargets,
+    INPUT_SCOPE_LEDGER_SEAM,
 };
 pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};
 pub use bounded::{BoundedMessageMap, BoundedRing, MAX_PROJECTION_MESSAGES};

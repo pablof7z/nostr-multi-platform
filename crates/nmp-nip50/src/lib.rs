@@ -10,6 +10,7 @@
 //! such as NIP-29 groups are classified before search and routed through their
 //! existing seams; only free-text search requests enter `SearchRequest`.
 
+mod input_recognizers;
 mod projection;
 mod request;
 mod scopes;
@@ -29,6 +30,9 @@ pub use projection::{
 pub use request::{
     SearchRequest, SearchScope, SearchTargets, DEFAULT_MAX_SEARCH_HITS, HARD_MAX_SEARCH_HITS,
     KIND_LONG_FORM,
+};
+pub use input_recognizers::{
+    register_input_scopes, LongFormInputRecognizer, NotesInputRecognizer, ProfilesInputRecognizer,
 };
 pub use scopes::{
     register_search_scopes, LongFormSearchScope, NoteSearchScope, ProfileSearchScope,
