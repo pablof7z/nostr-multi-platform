@@ -181,6 +181,64 @@ impl super::KernelReducer {
     pub fn set_content_parser(&mut self, parser: Arc<dyn crate::substrate::ContentParser>) {
         self.kernel.set_content_parser(parser);
     }
+
+    /// Install the publish outbox resolver on the wrapped kernel.
+    ///
+    /// The wasm composition root calls this after `Start` to swap the kernel's
+    /// default `NoopOutboxResolver` (which resolves zero relay targets) for a
+    /// real resolver that returns the configured relay URLs as write targets.
+    /// Without this, every `PublishTarget::Auto` resolves to no relays and
+    /// events are silently dropped.
+    pub fn set_publish_resolver(
+        &mut self,
+        resolver: Arc<dyn crate::publish::OutboxResolver>,
+    ) {
+        self.kernel.set_publish_resolver(resolver);
+    }
+
+    /// Publish a pre-signed event through the kernel's publish engine (#1008).
+    ///
+    /// The wasm `dispatch_bytes` execute arm calls this for
+    /// `ActorCommand::PublishSignedEvent` — the one `ActorCommand` variant a
+    /// wasm context can handle inline (the event is already signed; no
+    /// BeginSign round-trip is needed). Returns the outbound frames the relay
+    /// pool must send.
+    ///
+    /// D6 — total: a malformed event / empty target / no-targets resolver
+    /// verdict surfaces as a kernel toast + `RecentFailure` row in the publish
+    /// engine, never a panic.
+    pub fn publish_pre_signed(
+        &mut self,
+        raw: crate::store::RawEvent,
+        target: crate::publish::PublishTarget,
+        correlation_id: Option<String>,
+    ) -> Vec<crate::relay::OutboundMessage> {
+        use crate::substrate::SignedEvent;
+        // Reconstruct the `SignedEvent` shape the kernel publish path expects.
+        // `p_tags` drives the recipient-inbox fanout in `OutboxResolver::resolve`
+        // (#1008 WasmOutboxResolver honours this by filtering the `#p` list).
+        let p_tags: Vec<String> = raw
+            .tags
+            .iter()
+            .filter(|tag| tag.first().map(|s| s == "p").unwrap_or(false))
+            .filter_map(|tag| tag.get(1).cloned())
+            .collect();
+        let signed = SignedEvent {
+            id: raw.id.clone(),
+            sig: raw.sig.clone(),
+            unsigned: crate::substrate::UnsignedEvent {
+                pubkey: raw.pubkey.clone(),
+                kind: raw.kind,
+                tags: raw.tags.clone(),
+                content: raw.content.clone(),
+                created_at: raw.created_at,
+            },
+        };
+        let outbound = self
+            .kernel
+            .publish_signed_to_with_correlation(&signed, &p_tags, target, correlation_id);
+        self.kernel.partition_auth_paused(outbound)
+    }
 }
 
 #[cfg(any(test, feature = "test-support"))]

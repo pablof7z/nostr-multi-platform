@@ -150,10 +150,10 @@ pub fn setup_chirp_web_feeds(runtime: &mut WasmRuntime) -> ChirpWebFeedSetup {
     // write-path `CapabilityFailure`. `nmp_nip02::register_actions` wires the
     // NIP-02 follow verbs (`nmp.follow` / `nmp.unfollow` / `nmp.follow_many`)
     // AND, transitively, the NIP-25 reaction verbs (`nmp.nip25.react` /
-    // `nmp.nip25.unreact`) via `nmp_nip25::register_actions`. The terminal write (execute →
-    // ActorCommand → kind:N publish) still requires the #1008 OutboxResolver the
-    // web preview does not yet wire, so a validated write surfaces the honest
-    // `publish_not_supported_in_web_preview` token — never a silent accept.
+    // `nmp.nip25.unreact`) via `nmp_nip25::register_actions`. The terminal write
+    // (execute → ActorCommand → kind:N publish) routes through the
+    // `WasmOutboxResolver` wired at `Start` (#1008) — publish is live, not
+    // disabled.
     nmp_nip02::register_actions(runtime);
 
     let reducer = runtime.reducer_handle();

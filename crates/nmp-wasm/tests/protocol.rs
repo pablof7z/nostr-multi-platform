@@ -227,8 +227,16 @@ fn typed_write_without_active_account_returns_signer_not_installed() {
     }
 }
 
+/// After #1008: `nmp.publish` dispatches through the typed registry with a real
+/// `WasmOutboxResolver`. A raw opaque payload (`b"opaque"`) reaches
+/// `PublishModule::decode_payload`, which rejects it as malformed — NOT the
+/// old "publish disabled in web preview" token that guarded a missing
+/// OutboxResolver. This test is the positive proof that #1008 is wired:
+/// - The `signer_not_installed` gate clears (account is seeded).
+/// - The old PUBLISH_NAMESPACE short-circuit skip is GONE.
+/// - The payload reaches the typed registry and fails at decode.
 #[test]
-fn typed_write_after_set_identity_returns_publish_disabled_token() {
+fn typed_write_after_set_identity_fails_at_decode_after_1008() {
     let mut runtime = WasmRuntime::new();
 
     // Seed the active identity (NO persistent signer is installed — ADR-0064
@@ -253,26 +261,31 @@ fn typed_write_after_set_identity_returns_publish_disabled_token() {
         other => panic!("expected ActionAccepted, got {other:?}"),
     }
 
-    // Now the same typed write surfaces the *second* honest state: an account
-    // is active but publishing is disabled in the web preview (#1202/#1008).
-    // Hosts distinguish "you need to sign in" (`signer_not_installed`) from
-    // "publishing is disabled" by pattern-matching the one canonical prefix.
+    // After #1008: a non-FlatBuffers payload for `nmp.publish` surfaces a
+    // decode rejection, NOT the old publish-disabled token. The PUBLISH_NAMESPACE
+    // skip and `publish_not_supported_in_web_preview` token are removed.
     let events = runtime
         .handle(dispatch_bytes_request("pub-1", "nmp.publish", b"opaque"))
         .unwrap();
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
             assert_eq!(failure.capability, "nmp.publish");
+            // Must NOT be the old pre-#1008 disable token.
             assert!(
-                failure
-                    .reason
-                    .starts_with("publish_not_supported_in_web_preview"),
-                "expected the canonical publish-disabled token, got: {}",
+                !failure.reason.starts_with("publish_not_supported_in_web_preview"),
+                "after #1008 the old publish-disabled token must be gone, got: {}",
                 failure.reason
             );
             assert!(
                 !failure.reason.starts_with("publish_path_not_wired"),
                 "legacy publish_path_not_wired token must be gone, got: {}",
+                failure.reason
+            );
+            // Payload reached typed registry and failed at FlatBuffers decode.
+            assert!(
+                failure.reason.contains("malformed") || failure.reason.contains("file identifier")
+                    || failure.reason.contains("decode") || failure.reason.contains("invalid"),
+                "expected a decode-rejection reason after #1008; got: {}",
                 failure.reason
             );
         }

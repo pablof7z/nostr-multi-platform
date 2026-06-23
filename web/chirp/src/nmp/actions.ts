@@ -1,8 +1,28 @@
-import { encodeDispatchEnvelope, type ChirpAction, type WorkerRequest } from "@nmp/runtime-web";
+import { GeneratedActionBuilders, type ChirpAction, type WorkerRequest } from "@nmp/runtime-web";
 
+/** An app-level write command routed through `client.dispatchCommand()`.
+ *
+ * After #1008, typed-write commands (publish, follow, react, etc.) carry a
+ * `buildDispatchBytes` factory instead of a JSON payload. When present, the
+ * client generates a `correlationId`, calls the factory with it, and sends the
+ * result as `WorkerRequest::DispatchBytes` with FlatBuffers payload — bypassing
+ * the JSON encode/decode path. Commands that don't carry `buildDispatchBytes`
+ * (kernel ops, view ops, wallet ops) route through the legacy JSON `dispatch`
+ * arm as before.
+ *
+ * `buildDispatchBytes(correlationId)` returns the FULL `DispatchEnvelope`
+ * bytes as built by `GeneratedActionBuilders`. The client owns the
+ * `correlationId` generation and passes it to the builder at dispatch time. */
 export type RuntimeCommand = {
   actionType: string;
   payload: unknown;
+  /** Typed FlatBuffers write factory (#1008 / ADR-0064). When present, the
+   *  client generates a `correlationId`, calls this factory to get the
+   *  finished `DispatchEnvelope` bytes, and sends them as
+   *  `WorkerRequest::DispatchBytes`. `dispatchBytes` factories are set by
+   *  the typed-write command builders (`publishProfileCommand`,
+   *  `followCommand`, `reactCommand`, `unfollowCommand`). */
+  buildDispatchBytes?: (correlationId: string) => Uint8Array;
 };
 
 export function publishNoteAction(content: string, replyToId: string | null = null): ChirpAction {
@@ -13,94 +33,83 @@ export function publishNoteAction(content: string, replyToId: string | null = nu
   };
 }
 
-// ── ADR-0064 typed write lowering (#1743 Cut A) ──────────────────────────────
+// ── ADR-0064 typed write lowering (#1008 / #1743 Cut A) ─────────────────────
 //
 // A Chirp app-level write (`ChirpAction`) crosses the wasm boundary through the
-// ONE typed `dispatch_bytes` doorway carrying a `DispatchEnvelope` — identical
-// in shape to the native FFI seam. The `action_namespace` is a GENERATED
-// discriminant; no human spells it at a call site. This lowering is the only
-// place those namespace strings live, mirroring the native `ActionModule`
-// registry keys. There is NO wasm-only write enum (the hand-rolled `app_action`
-// envelope + `AppAction` enum were deleted in #1743 Cut A).
+// ONE typed `dispatch_bytes` doorway carrying a FlatBuffers `DispatchEnvelope`
+// — identical in shape to the native FFI seam. After #1008, the payload is a
+// proper FlatBuffers buffer built by `GeneratedActionBuilders`, NOT a JSON-
+// encoded string. The JSON encoding path is removed (#1008 AC #3): every
+// `TYPED_WRITE_NAMESPACE` action MUST use the generated builder.
+//
+// The `action_namespace` is a GENERATED discriminant embedded in the builder
+// output — no human spells it at a call site. This file is the only lowering
+// seam; the hand-rolled `app_action` envelope + `AppAction` enum were deleted
+// in #1743 Cut A.
 
-/** A write command lowered to the open transport: a generated `action_namespace`
- *  discriminant plus an opaque per-crate payload. */
-interface DispatchParts {
-  actionNamespace: string;
-  payload: unknown;
-}
-
-const utf8Encoder = new TextEncoder();
-
-/** Lower a `ChirpAction` to its generated `action_namespace` + opaque payload. */
-function chirpActionToDispatchParts(action: ChirpAction): DispatchParts {
+/** Build the `dispatch_bytes` worker request for a Chirp `ChirpAction`: lower it
+ *  to the correct `GeneratedActionBuilders` call, returning a
+ *  `WorkerRequest::DispatchBytes` carrying a proper FlatBuffers envelope.
+ *
+ *  After #1008 the payload is encoded via generated FlatBuffers builders (NOT
+ *  JSON.stringify). Each `ChirpAction` variant maps 1:1 to its builder. */
+export function chirpActionRequest(action: ChirpAction, correlationId: string): WorkerRequest {
+  let bytes: Uint8Array;
   switch (action.action) {
     case "publish_note":
       // NIP-10 reply-tag construction belongs to the host (#906): a kind:1 note
       // lowers to the engine-generic `PublishRaw`. `reply_to_id` is resolved by
       // the publish path, not forwarded into the envelope.
-      return {
-        actionNamespace: "nmp.publish",
-        payload: { PublishRaw: { kind: 1, tags: [], content: action.content, target: "Auto" } },
-      };
+      bytes = GeneratedActionBuilders.publishRaw(correlationId, 1, [], action.content);
+      break;
     case "react":
-      return {
-        actionNamespace: "nmp.nip25.react",
-        payload: { target_event_id: action.target_event_id, reaction: action.reaction ?? "+" },
-      };
+      bytes = GeneratedActionBuilders.react(
+        correlationId,
+        action.target_event_id,
+        action.reaction ?? "+",
+        null,
+      );
+      break;
     case "follow":
-      return { actionNamespace: "nmp.follow", payload: { pubkey: action.pubkey } };
+      bytes = GeneratedActionBuilders.follow(correlationId, action.pubkey);
+      break;
     case "unfollow":
-      return { actionNamespace: "nmp.unfollow", payload: { pubkey: action.pubkey } };
+      bytes = GeneratedActionBuilders.unfollow(correlationId, action.pubkey);
+      break;
   }
-}
-
-/** The app-level write namespaces that ride the typed `dispatch_bytes` doorway
- *  (ADR-0064 / #1743 Cut A "those modules" — the registry actions given typed
- *  payloads in migration step 2). A `RuntimeCommand` whose `actionType` is in
- *  this set is an app-level signed write and MUST cross the typed envelope, not
- *  the generic JSON `dispatch` arm — there is no parallel app-write doorway.
- *  Everything else (`nmp.kernel.*`, `nmp.view.*`, `nmp.wallet.*`, and the
- *  not-yet-migrated NIP crates `nmp.nip17.*` / `nmp.nip29.*`) stays on JSON
- *  dispatch until its own migration stage (ADR-0064 §Migration step 6). */
-export const TYPED_WRITE_NAMESPACES: ReadonlySet<string> = new Set([
-  "nmp.publish",
-  "nmp.nip25.react",
-  "nmp.follow",
-  "nmp.unfollow",
-]);
-
-/** Build the `dispatch_bytes` worker request for an app-level write: encode the
- *  opaque payload and wrap it with the generated `actionNamespace` in a typed
- *  `DispatchEnvelope` keyed by `correlationId`. The single envelope-building
- *  seam shared by `dispatchChirp` and the typed arm of `dispatchCommand`. */
-export function typedWriteRequest(
-  actionNamespace: string,
-  payload: unknown,
-  correlationId: string,
-): WorkerRequest {
-  const payloadBytes = utf8Encoder.encode(JSON.stringify(payload));
-  const bytes = encodeDispatchEnvelope(correlationId, actionNamespace, payloadBytes);
   return { type: "dispatch_bytes", bytes };
 }
 
-/** Build the `dispatch_bytes` worker request for a Chirp `ChirpAction`: lower it
- *  to (namespace, payload), then wrap in a typed `DispatchEnvelope`. */
-export function chirpActionRequest(action: ChirpAction, correlationId: string): WorkerRequest {
-  const { actionNamespace, payload } = chirpActionToDispatchParts(action);
-  return typedWriteRequest(actionNamespace, payload, correlationId);
-}
-
 export function publishProfileCommand(fields: Record<string, string>): RuntimeCommand {
-  return command("nmp.publish", { PublishProfile: { fields } });
+  // #1008: typed-write command — builds FlatBuffers envelope via generated builder.
+  const entries = Object.entries(fields) as Array<[string, string]>;
+  return {
+    actionType: "nmp.publish",
+    payload: { PublishProfile: { fields } },
+    buildDispatchBytes: (correlationId) =>
+      GeneratedActionBuilders.publishProfile(correlationId, entries),
+  };
 }
 
 export function reactCommand(targetEventId: string, reaction = "+"): RuntimeCommand {
-  return command("nmp.nip25.react", { target_event_id: targetEventId, reaction });
+  // #1008: typed-write command.
+  return {
+    actionType: "nmp.nip25.react",
+    payload: { target_event_id: targetEventId, reaction },
+    buildDispatchBytes: (correlationId) =>
+      GeneratedActionBuilders.react(correlationId, targetEventId, reaction, null),
+  };
 }
 
 export function followCommand(pubkey: string, following: boolean): RuntimeCommand {
-  return command(following ? "nmp.follow" : "nmp.unfollow", { pubkey });
+  // #1008: typed-write command.
+  const ns = following ? "nmp.follow" : "nmp.unfollow";
+  const builder = following ? GeneratedActionBuilders.follow : GeneratedActionBuilders.unfollow;
+  return {
+    actionType: ns,
+    payload: { pubkey },
+    buildDispatchBytes: (correlationId) => builder(correlationId, pubkey),
+  };
 }
 
 export function openProfileCommand(pubkey: string): RuntimeCommand {

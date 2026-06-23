@@ -31,11 +31,13 @@ mod runtime;
 // it is `cfg(target_arch = "wasm32")`-gated, with a native no-op shim so call
 // sites stay shim-free.
 mod dispatch_routing;
-// Honest write-path disable token (`publish_not_supported_in_web_preview`).
-// ADR-0064 §5 removed the wasm `Arc<dyn Signer>.await`-inside-publish path; a
-// signed wasm write is the ADR-0050 capability round-trip (`BeginSign` →
-// `SignRequest` → `DeliverSignerResponse`). Always-compiled — the reason string
-// is needed on the native `runtime.rs`/`dispatch.rs` write-path failure arms.
+// `WasmOutboxResolver` (#1008) — concrete OutboxResolver that resolves
+// `PublishTarget::Auto` to the configured relay URLs, replacing the default
+// `NoopOutboxResolver`. ADR-0064 §5: the wasm signer is the `BeginSign` →
+// `SignRequest` → `DeliverSignerResponse` capability round-trip; there is no
+// `Arc<dyn Signer>` slot. Always-compiled — the resolver and the
+// `signer_not_installed` / `use_dispatch_bytes` reason strings are used on
+// both wasm32 and native test paths.
 mod publish_path;
 mod signer_slot;
 mod snapshot;

@@ -13,7 +13,7 @@ import {
   type WorkerRequest,
   type ChirpAction,
 } from "@nmp/runtime-web";
-import { chirpActionRequest, typedWriteRequest, TYPED_WRITE_NAMESPACES, type RuntimeCommand } from "./actions";
+import { chirpActionRequest, type RuntimeCommand } from "./actions";
 import { chirpStartRelays } from "../chirpConfig";
 import { fulfilSignRequestViaExtension } from "./signBroker";
 import {
@@ -329,19 +329,28 @@ class WorkerNmpClient extends BaseClient {
     });
   }
 
-  // ADR-0064 / #1743: app-level signed writes (TYPED_WRITE_NAMESPACES) cross the
-  // typed `dispatch_bytes` doorway (correlation_id lives INSIDE the envelope) — no
-  // parallel app-write path. Everything else rides the generic JSON `dispatch` arm.
+  // ADR-0064 / #1008: app-level signed writes ride the typed `dispatch_bytes`
+  // doorway (FlatBuffers envelope, not JSON); everything else rides the generic
+  // JSON `dispatch` arm. Typed-write commands carry `buildDispatchBytes`; the
+  // client generates the correlationId here and passes it to the factory.
   async dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot> {
     await this.helloReady;
     const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
-    if (TYPED_WRITE_NAMESPACES.has(actionType)) {
-      return this.request(typedWriteRequest(actionType, payload, correlationId), correlationId);
-    }
     return this.request(
       { type: "dispatch", action_type: actionType, payload, correlation_id: correlationId },
       correlationId,
     );
+  }
+
+  override async dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    if (command.buildDispatchBytes) {
+      // Typed-write command (#1008): build FlatBuffers bytes now that we have a correlationId.
+      const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
+      const bytes = command.buildDispatchBytes(correlationId);
+      return this.request({ type: "dispatch_bytes", bytes }, correlationId);
+    }
+    return this.dispatch(command.actionType, command.payload);
   }
 
   async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {
@@ -436,17 +445,24 @@ class InProcessNmpClient extends BaseClient {
   }
 
   async dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot> {
-    // Same typed-write routing as WorkerNmpClient.dispatch, sent synchronously.
+    // Non-typed-write (kernel ops, view ops, wallet ops) ride the JSON `dispatch` arm.
     const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
-    if (TYPED_WRITE_NAMESPACES.has(actionType)) {
-      return this.send(typedWriteRequest(actionType, payload, correlationId));
-    }
     return this.send({
       type: "dispatch",
       action_type: actionType,
       payload,
       correlation_id: correlationId,
     });
+  }
+
+  override async dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot> {
+    if (command.buildDispatchBytes) {
+      // Typed-write command (#1008): build FlatBuffers bytes with our correlationId.
+      const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
+      const bytes = command.buildDispatchBytes(correlationId);
+      return this.send({ type: "dispatch_bytes", bytes });
+    }
+    return this.dispatch(command.actionType, command.payload);
   }
 
   async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {

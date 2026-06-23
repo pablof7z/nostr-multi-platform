@@ -183,18 +183,23 @@ fn ref_dispatch_fails_closed_on_unknown_liveness_discriminant() {
 fn write_path_unavailable_reason_distinguishes_signer_states() {
     // No active account → "sign in to publish".
     assert!(write_path_unavailable_reason(false).starts_with("signer_not_installed"));
-    // Account seeded but the web preview has no outbox resolver: the single
-    // canonical disable token (ADR-0064 §5 removed the persistent signer slot;
-    // the discriminator is the active account, not an `Arc<dyn Signer>`). A
-    // host pattern-matches exactly ONE "publishing disabled" prefix.
+    // Account seeded but the action arrived on the JSON dispatch path rather
+    // than the typed `dispatch_bytes` doorway (#1008 / ADR-0064). App-level
+    // writes MUST cross the binary envelope. The reason token signals this to
+    // the host. Legacy tokens (`publish_not_supported_in_web_preview`,
+    // `publish_path_not_wired`) are gone.
     let reason = write_path_unavailable_reason(true);
     assert!(
-        reason.starts_with("publish_not_supported_in_web_preview"),
-        "account-seeded disable branch must emit the canonical token; got: {reason}"
+        reason.starts_with("use_dispatch_bytes"),
+        "account-seeded JSON-dispatch fallthrough must emit use_dispatch_bytes token; got: {reason}"
+    );
+    assert!(
+        !reason.starts_with("publish_not_supported_in_web_preview"),
+        "legacy publish_not_supported_in_web_preview token must be gone; got: {reason}"
     );
     assert!(
         !reason.starts_with("publish_path_not_wired"),
-        "the legacy `publish_path_not_wired` token must be gone; got: {reason}"
+        "legacy publish_path_not_wired token must be gone; got: {reason}"
     );
 }
 
