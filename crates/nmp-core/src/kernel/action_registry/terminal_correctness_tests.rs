@@ -129,9 +129,8 @@ fn panic_after_enqueue_reports_enqueued_true() {
         ) -> Result<(), ActionRejection> {
             Ok(())
         }
-        fn is_async_completing() -> bool {
-            true
-        } // doctrine-allow: D12 — test module; the enqueued command (asserted via `seen`) carries the terminal, not a stage recorded in this file
+        #[rustfmt::skip]
+        fn is_async_completing() -> bool { true } // doctrine-allow: D12 — test module; the enqueued command (asserted via `seen`) carries the terminal, not a stage recorded in this file
         fn execute(
             &self,
             _action: Self::Action,
