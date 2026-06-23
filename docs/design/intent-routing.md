@@ -3,12 +3,15 @@
 > **Status:** ADR accepted; substrate/search pieces are partially implemented.
 > **ADR:** `docs/decisions/0020-intent-classed-routing-and-search.md`.
 > **Date:** 2026-05-18 (search reconciled higher-order, 2026-06-22).
-> **Scope:** Core/planner own only the generic `InterestShape.search`
-> wire-filter field + generic blocked-relay subtraction + (for Draft/Wiki)
-> the `EventClass` class-routing lane. ALL NIP-50 search orchestration
-> (entrypoint, relay selection from kind:10007, cache scan, ranking, dedup,
-> result projection) is higher-order in `nmp-nip50`. There is no
-> `EventClass::Search`.
+> **Scope:** Core/planner own the generic search/index **seams** —
+> `InterestShape.search` wire-filter field, generic blocked-relay subtraction,
+> the noun-free `substrate::search` registry (`SearchScopeRegistrar` /
+> `SearchScopeProvider` / `SearchScopeRegistry` / cache-serve hook), and the
+> account-config self-kind bootstrap including kind:10007 — plus (for
+> Draft/Wiki) the `EventClass` class-routing lane. ALL NIP-50 search
+> orchestration (entrypoint, relay selection from kind:10007, cache scan,
+> ranking, dedup, result projection) is higher-order in `nmp-nip50`. There is
+> no `EventClass::Search`.
 
 This document is split into focused sub-files to stay under the 500 LOC ceiling (`AGENTS.md`).
 
