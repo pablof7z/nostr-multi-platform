@@ -1,18 +1,16 @@
 //! Android JNI wrappers for the Rust-owned action seam.
 //!
 //! The bridge parses no action vocabulary. Kotlin supplies a namespace and
-//! JSON body, Rust validates/executes through `nmp_app_dispatch_action`, and
-//! terminal stage cleanup goes back through `nmp_app_ack_action_stage`.
+//! JSON body; Rust encodes the typed payload and dispatches through the byte
+//! doorway (`nmp_app_dispatch_action_bytes`). Terminal stage cleanup goes back
+//! through `nmp_app_ack_action_stage`.
 
 use jni::objects::{JClass, JString};
 use jni::sys::{jlong, jstring};
 use jni::JNIEnv;
 
 use nmp_app_chirp::{action_spec_for_intent_json, dispatch_action_bytes_for};
-use nmp_ffi::{
-    nmp_app_ack_action_stage, nmp_app_cancel_action, nmp_app_dispatch_action, nmp_app_retry_publish,
-    nmp_free_string,
-};
+use nmp_ffi::{nmp_app_ack_action_stage, nmp_app_cancel_action, nmp_app_retry_publish};
 use serde_json::json;
 
 use crate::{jstring_to_cstring, session_arc};
@@ -29,10 +27,16 @@ fn json_string(env: JNIEnv, value: &str) -> jstring {
         .unwrap_or(std::ptr::null_mut())
 }
 
-/// Dispatch a named action through the action registry.
+/// Dispatch a named action through the typed byte doorway (ADR-0064 / Cut-B,
+/// #1756).
+///
+/// Kotlin supplies `namespace` and `body_json` (the canonical serde action
+/// body). Rust encodes the typed `ActionPayload` bytes via
+/// `dispatch_action_bytes_for` and dispatches them through
+/// `nmp_app_dispatch_action_bytes`. No JSON crosses the FFI to the kernel.
 ///
 /// Returns the Rust JSON envelope as a JNI string:
-/// * `{"correlation_id":"<32-hex>"}` — accepted and enqueued.
+/// * `{"correlation_id":"<id>"}` — accepted and enqueued.
 /// * `{"error":"<message>"}` — rejected before execution.
 ///
 /// D6: null handle or malformed JNI arguments collapse to `"{}"`; Kotlin
@@ -43,7 +47,7 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
     _class: JClass,
     handle: jlong,
     namespace: JString,
-    action_json: JString,
+    body_json: JString,
 ) -> jstring {
     let Some(s) = session_arc(handle) else {
         return json_string(env, "{}");
@@ -51,24 +55,17 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeDispatchAction(
     let Some(namespace) = jstring_to_cstring(&mut env, &namespace) else {
         return json_string(env, "{}");
     };
-    let Some(action_json) = jstring_to_cstring(&mut env, &action_json) else {
+    let Some(body_json) = jstring_to_cstring(&mut env, &body_json) else {
         return json_string(env, "{}");
     };
+    let namespace = namespace.to_string_lossy();
+    let body_json = body_json.to_string_lossy();
 
-    let Some(result_ptr) =
-        s.with_app(|app| nmp_app_dispatch_action(app, namespace.as_ptr(), action_json.as_ptr()))
+    let Some(result) = s.with_app(|app| dispatch_action_bytes_for(app, &namespace, &body_json))
     else {
         return json_string(env, "{}");
     };
-    if result_ptr.is_null() {
-        return json_string(env, "{}");
-    }
-
-    let result = unsafe { std::ffi::CStr::from_ptr(result_ptr) }
-        .to_string_lossy()
-        .into_owned();
-    nmp_free_string(result_ptr);
-    json_string(env, &result)
+    json_string(env, &dispatch_result_json(result))
 }
 
 /// Convert raw Chirp user intent into a typed action and dispatch it through

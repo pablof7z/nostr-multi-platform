@@ -132,7 +132,7 @@ int64_t nmp_app_active_following_count(void *app);
 //
 // The per-verb `nmp_app_react` / `nmp_app_follow` / `nmp_app_unfollow`
 // symbols were deleted: the three social verbs are D0 app nouns and now
-// route through the generic `nmp_app_dispatch_action` path under the
+// route through `nmp_app_chirp_dispatch_action_bytes` under the
 // `nmp.nip25.react` / `nmp.follow` / `nmp.unfollow` namespaces, which
 // `nmp-app-template` registers from `nmp_app_chirp_register`.
 // make_active=1: sign in and set as the active account (normal sign-in).
@@ -214,9 +214,9 @@ char *nmp_nip21_decode_uri(const char *input);
 //   * `nmp_app_publish_signed_event_to` [event_json, relays_json]
 //   * `nmp_app_publish_unsigned_event` [unsigned_json]
 //
-// Every user / app-authored publish now goes through the single
-// `nmp_app_dispatch_action` door under the `"nmp.publish"` namespace
-// (see the action seam below). What stays here is the *control plane* —
+// Every user / app-authored publish now goes through the typed byte doorway
+// (`nmp_app_chirp_dispatch_action_bytes` for the `"nmp.publish"` namespace;
+// see the action seam below). What stays here is the *control plane* —
 // retry addresses an already-queued publish handle; cancel (S7/#1754,
 // replacing the deleted `nmp_app_cancel_publish` handle symbol) addresses the
 // operation `correlation_id` — the kernel reverse-resolves the publish handle
@@ -243,10 +243,12 @@ uint64_t nmp_app_register_event_observer(void *app, void *context, NmpEventObser
 void nmp_app_unregister_event_observer(void *app, uint64_t id);
 
 // #1607: nmp_app_wallet_{connect,disconnect,pay_invoice} deleted.
-// iOS callers use nmp_app_dispatch_action with the wallet action namespaces:
-//   nmp_app_dispatch_action(app, "nmp.wallet.connect",    "{\"Connect\":{\"uri\":\"…\"}}")
-//   nmp_app_dispatch_action(app, "nmp.wallet.disconnect", "\"Disconnect\"")
-//   nmp_app_dispatch_action(app, "nmp.wallet.pay_invoice","{\"PayInvoice\":{\"bolt11\":\"…\",\"amount_msats\":null}}")
+// iOS callers use nmp_app_chirp_dispatch_action_bytes with the wallet action
+// namespaces (ADR-0064 / Cut-B #1756 — the JSON nmp_app_dispatch_action
+// doorway has been deleted; use nmp_app_chirp_dispatch_action_bytes instead):
+//   nmp_app_chirp_dispatch_action_bytes(app, "nmp.wallet.connect",    "{\"Connect\":{\"uri\":\"…\"}}")
+//   nmp_app_chirp_dispatch_action_bytes(app, "nmp.wallet.disconnect", "\"Disconnect\"")
+//   nmp_app_chirp_dispatch_action_bytes(app, "nmp.wallet.pay_invoice","{\"PayInvoice\":{\"bolt11\":\"…\",\"amount_msats\":null}}")
 // The bolt11 double-tap guard now lives in WalletPayInvoiceModule (nmp-nip47).
 
 // T118 / G3 — iOS scenePhase → kernel lifecycle bridge. ChirpApp observes
@@ -303,30 +305,21 @@ uint8_t nmp_app_is_alive(void *app);
 // non-NULL app/request_json (D6).
 //
 // (PR-F: the `nmp_app_publish_unsigned_event` symbol was deleted — every
-// user / app-authored publish now reaches the kernel through
-// `nmp_app_dispatch_action` under the `"nmp.publish"` namespace instead.
-// The action JSON carries the same `UnsignedEvent` shape the deleted
-// symbol used to take, plus the registry-minted `correlation_id` in the
-// dispatch return value so a host can correlate the eventual
-// `last_error_toast` / `action_results` outcome.)
+// user / app-authored publish now reaches the kernel through the typed byte
+// doorway (`nmp_app_chirp_dispatch_action_bytes` for Chirp;
+// `nmp_app_dispatch_action_bytes` for raw envelope callers) under the
+// `"nmp.publish"` namespace. The JSON `nmp_app_dispatch_action` doorway was
+// also deleted at ADR-0064 / Cut-B (#1756).)
 //
 // `nmp_app_open_uri` opens whatever a `nostr:` URI (or bare NIP-19 entity)
 // points at.  Fire-and-forget (D6): null/invalid input is a silent no-op.
 //
-// `nmp_app_dispatch_action` is the single namespace-keyed entry point for the
-// `ActionModule` family (M6).  The caller names the action namespace (e.g.
-// `"nmp.publish"`) and passes the action as JSON; the returned heap-allocated
-// JSON string is `{"correlation_id":"<32-hex>"}` on accept or `{"error":"…"}`
-// on rejection, and MUST be freed via `nmp_free_string`.  D6: never NULL
-// for a non-NULL app.  SCOPE — this validates the action, assigns a
-// correlation id, AND executes it: after `ActionRegistry::start` validates
-// the action and mints the id, the dispatch path drives `M::execute` which
-// enqueues the appropriate `ActorCommand` (the actor thread re-verifies any
-// signed envelope, then routes through the publish engine / protocol-command
-// loop). A returned `{"correlation_id":"…"}` therefore means the action was
-// *accepted and enqueued for execution*; per-relay outcomes still surface
-// asynchronously through the snapshot path / `action_results`. The durable
-// action ledger is a separate M6 follow-up.
+// `nmp_app_dispatch_action_bytes` is the sole namespace-keyed entry point for
+// the `ActionModule` family (M6) after ADR-0064 / Cut-B (#1756). The caller
+// passes a typed `DispatchEnvelope` (built by the Chirp-specific helpers
+// below or by the gallery's `nmp_app_gallery_dispatch_action_bytes`). Returns
+// the heap-allocated `{"correlation_id":"<id>"}` or `{"error":"…"}` envelope;
+// MUST be freed via `nmp_free_string`. D6: never NULL for a non-NULL app.
 //
 // Host action-namespace registration (ADR-0027) is Rust-only: a host calls
 // `NmpApp::register_action::<M>()` with a typed `ActionModule` impl whose
@@ -340,7 +333,7 @@ uint8_t nmp_app_is_alive(void *app);
 // Chirp's NIP-29/Marmot app surfaces on top.
 //
 // `nmp_app_register_action_result_observer` is the PUSH-side counterpart to
-// the snapshot-projection (pull) output seam.  After `nmp_app_dispatch_action`
+// the snapshot-projection (pull) output seam.  After `nmp_app_dispatch_action_bytes`
 // accepts an action and its executor returns success, the registered
 // `observer` callback is invoked with a NUL-terminated JSON C string
 // `{"correlation_id":"<hex>","result_json":<value>}`.  This is an "action
@@ -358,21 +351,18 @@ uint8_t nmp_app_is_alive(void *app);
 typedef char *(*NmpCapabilityCallback)(void *context, const char *request_json);
 void nmp_app_set_capability_callback(void *app, void *context, NmpCapabilityCallback callback);
 char *nmp_app_dispatch_capability(void *app, const char *request_json);
-char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
-// ADR-0064 / S4 (#1752) — the typed-FlatBuffers BYTE doorway, the twin of
-// `nmp_app_dispatch_action`. Instead of `(namespace, action_json)`, the caller
-// passes the bytes of an open `DispatchEnvelope` (correlation_id + GENERATED
-// `action_namespace` + schema_version + opaque per-crate payload). The
-// generated host builders (Swift/Kotlin `client.publishNote(...)` etc.) stamp
-// the namespace + typed payload into the envelope so the host NEVER
-// hand-assembles FlatBuffers or spells a namespace string. Returns the same
-// heap-allocated `{"correlation_id":"<32-hex>"}` (accepted+enqueued) or
-// `{"error":"…"}` JSON shape, which MUST be freed via `nmp_free_string`. Lands
-// ADDITIVELY beside the JSON doorway (the JSON path is retired later at Cut B,
-// not now). Fail-closed (D6): a null `app`, a null `ptr`, an oversize /
-// malformed / wrong-identifier / wrong-schema-version / namespace-less
-// envelope, or an unknown namespace all return `{"error":…}` — never NULL for a
-// non-NULL app, never a panic across the ABI.
+// ADR-0064 / Cut-B (#1756) — the typed-FlatBuffers BYTE doorway (sole
+// remaining dispatch entry point; the JSON `nmp_app_dispatch_action` doorway
+// was deleted). The caller passes the bytes of an open `DispatchEnvelope`
+// (correlation_id + action_namespace + schema_version + opaque per-crate
+// payload). The Chirp-specific helpers `nmp_app_chirp_dispatch_intent_bytes`
+// and `nmp_app_chirp_dispatch_action_bytes` (below) build this envelope in
+// Rust so the shell never hand-assembles FlatBuffers. Returns the same
+// heap-allocated `{"correlation_id":"<id>"}` (accepted+enqueued) or
+// `{"error":"…"}` JSON shape, which MUST be freed via `nmp_free_string`.
+// Fail-closed (D6): a null `app`, a null `ptr`, an oversize / malformed /
+// wrong-identifier / wrong-schema-version / namespace-less envelope, or an
+// unknown namespace all return `{"error":…}` — never NULL for a non-NULL app.
 char *nmp_app_dispatch_action_bytes(void *app, const uint8_t *ptr, uintptr_t len);
 void nmp_app_load_older_feed(void *app, const char *feed_key);
 typedef void (*NmpActionResultObserver)(const char *result_json);
@@ -481,8 +471,9 @@ char *nmp_app_composition_report(void *app);
 // Release a Rust-heap C string returned by ANY NMP FFI function. Null-safe.
 // This is the ONLY correct freer — the host's free(3) must NOT be used.
 void nmp_free_string(char *ptr);
-// PR-F deleted `nmp_app_publish_unsigned_event` — use
-// `nmp_app_dispatch_action(app, "nmp.publish", action_json)` instead.
+// PR-F deleted `nmp_app_publish_unsigned_event`; ADR-0064 / Cut-B (#1756)
+// deleted `nmp_app_dispatch_action` — use
+// `nmp_app_chirp_dispatch_action_bytes(app, "nmp.publish", action_json)` instead.
 void nmp_app_open_uri(void *app, const char *uri);
 
 // ── NIP-46 signer broker (Stage 4) ───────────────────────────────────────
@@ -719,7 +710,7 @@ void nmp_app_chirp_register_follow_list(void *app, const char *active_pubkey_or_
 //    `keyring_service_id` is the app-scoped keyring namespace for the Marmot
 //    MLS DB encryption key (e.g. "com.example.marmot"). Returns an opaque
 //    handle, or NULL on any failure (D6).
-// 2. Mutating ops: `nmp_app_dispatch_action("nmp.marmot", action_json)`.
+// 2. Mutating ops: `nmp_app_chirp_dispatch_action_bytes(app, "nmp.marmot", action_json)`.
 //    Results arrive through the next push snapshot frame.
 // 3. `nmp_marmot_unregister(handle)` BEFORE `nmp_app_free(app)`.
 //

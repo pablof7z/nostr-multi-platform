@@ -77,7 +77,69 @@ pub mod showcase;
 #[allow(unused_imports)]
 pub use nmp_ffi::*;
 
-use std::ffi::{c_char, c_void, CString};
+use std::ffi::{c_char, c_void, CStr, CString};
+
+/// Dispatch a gallery action through the typed byte doorway (ADR-0064 / Cut-B,
+/// #1756).
+///
+/// The iOS shell passes `namespace` (the action's HOST namespace, e.g.
+/// `nmp.publish`) and `body_json` (the canonical serde action body). This
+/// function encodes the typed `ActionPayload` bytes via
+/// [`dispatch_bytes::dispatch_action_bytes_for`] and dispatches them through
+/// `nmp_app_dispatch_action_bytes`. No JSON crosses the FFI to the kernel.
+///
+/// Returns a heap-allocated JSON envelope string the caller MUST free via
+/// `nmp_free_string`:
+/// * `{"correlation_id":"<id>"}` — accepted and enqueued.
+/// * `{"error":"<message>"}` — unknown namespace, malformed body, or kernel
+///   rejection.
+///
+/// D6: a null `app`, null/empty `namespace`, or null `body_json` returns an
+/// `{"error":"…"}` envelope, never NULL or a crash.
+///
+/// # Safety
+/// `app` must be a valid pointer from `nmp_app_new` (or null). `namespace`
+/// and `body_json` must be valid UTF-8 NUL-terminated C strings, or null.
+#[cfg(feature = "native")]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+#[no_mangle]
+pub extern "C" fn nmp_app_gallery_dispatch_action_bytes(
+    app: *mut nmp_ffi::NmpApp,
+    namespace: *const c_char,
+    body_json: *const c_char,
+) -> *mut c_char {
+    let namespace = if namespace.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(namespace) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    let body_json = if body_json.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(body_json) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    let result = dispatch_bytes::dispatch_action_bytes_for(app, &namespace, &body_json);
+    let envelope = match result {
+        Ok(correlation_id) => format!(r#"{{"correlation_id":{}}}"#, json_escape(&correlation_id)),
+        Err(error) => format!(r#"{{"error":{}}}"#, json_escape(&error)),
+    };
+    CString::new(envelope)
+        .unwrap_or_else(|_| {
+            CString::new(r#"{"error":"dispatch result encoding failed"}"#).unwrap_or_default()
+        })
+        .into_raw()
+}
+
+/// JSON-escape a string (adds surrounding quotes + backslash escapes).
+/// Falls back to `""` on failure (D6: failures are data, never panics).
+#[cfg(feature = "native")]
+fn json_escape(s: &str) -> String {
+    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
+}
 
 /// Install the canonical NMP composition into `app`.
 ///

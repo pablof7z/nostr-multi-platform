@@ -116,9 +116,15 @@ class KernelBridge {
     }
 
     /**
-     * Dispatch a named action through the action registry (JSON doorway).
-     * Returns `Accepted(correlation_id)` or `Failure(message)` on reject / null
-     * handle / malformed envelope. `nmp.marmot.*` (no byte encoder yet) uses this.
+     * Dispatch a named action through the typed byte doorway (ADR-0064 / Cut-B
+     * #1756). Rust encodes the verbatim [actionJson] body into typed FlatBuffers
+     * bytes for [namespace] and dispatches through
+     * `nmp_app_dispatch_action_bytes`. Returns `Accepted(correlation_id)` on
+     * accept or `Failure(message)` on rejection / null handle.
+     *
+     * Note: `nmp.marmot` returns `Failure("no typed payload encoder…")` until
+     * nmp-marmot migrates to a typed FlatBuffers payload (#1782). Marmot writes
+     * are fail-closed (the error surfaces on `action_stages`) but never a crash.
      */
     fun dispatchAction(namespace: String, actionJson: String): DispatchResult =
         if (handle != 0L) DispatchResult.parse(nativeDispatchAction(handle, namespace, actionJson))
