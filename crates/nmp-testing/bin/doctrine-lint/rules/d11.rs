@@ -65,11 +65,32 @@
 
 pub const ID: &str = "D11";
 
-/// Banned `ActorCommand::*` substrings that must not appear inside an
+/// Banned `ActorCommand::*` patterns that must not appear inside an
 /// `extern "C" fn nmp_app_*` body (outside the whitelist).
-const BANNED_VARIANTS: &[&str] = &[
-    "ActorCommand::PublishSignedEvent",
-    "ActorCommand::PublishUnsignedEvent",
+///
+/// Each entry is `(match_substr, display_name)`. `match_substr` is the
+/// literal substring searched in the source line; `display_name` is the
+/// token emitted in the diagnostic message (for stable test assertions
+/// and readable output independent of the sub-enum nesting depth).
+///
+/// After the ADR-0065 sub-enum collapse the on-disk tokens are
+/// `ActorCommand::Publish(PublishCommand::SignedEvent {` and
+/// `ActorCommand::Publish(PublishCommand::UnsignedEvent` / `UnsignedEventToRelays`
+/// — the old flat variants are gone. The display names are kept stable so
+/// that existing diagnostic-string assertions do not need changing.
+const BANNED_VARIANTS: &[(&str, &str)] = &[
+    (
+        "ActorCommand::Publish(PublishCommand::SignedEvent",
+        "ActorCommand::PublishSignedEvent",
+    ),
+    (
+        "ActorCommand::PublishUnsignedEvent",
+        "ActorCommand::PublishUnsignedEvent",
+    ),
+    (
+        "ActorCommand::Publish(PublishCommand::UnsignedEvent",
+        "ActorCommand::PublishUnsignedEvent",
+    ),
 ];
 
 /// Whitelisted `nmp_app_*` symbol names whose bodies are not scanned. Per
@@ -109,15 +130,15 @@ pub fn check(
     if !in_nmp_app_extern_fn {
         return hits;
     }
-    for variant in BANNED_VARIANTS {
-        if let Some(rel) = line.find(variant) {
+    for (pattern, display) in BANNED_VARIANTS {
+        if let Some(rel) = line.find(pattern) {
             hits.push((
                 rel + 1, // 1-indexed columns for clippy compatibility
                 format!(
                     "`{}` inside an `extern \"C\" fn nmp_app_*` body violates D11 — \
                      bespoke event-producing FFI was deleted in PR-F; route through \
                      `nmp_app_dispatch_action(\"nmp.publish\", ...)` instead",
-                    variant
+                    display
                 ),
                 "remove the bespoke FFI symbol; let host callers dispatch through the \
                  generic action seam (see `crates/nmp-core/src/substrate/action.rs` \
