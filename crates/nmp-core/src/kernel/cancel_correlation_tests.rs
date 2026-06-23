@@ -265,3 +265,35 @@ fn cancel_records_terminal_even_when_store_delete_fails() {
         "the in-flight row is still removed even though the durable delete failed"
     );
 }
+
+/// S10 (#1757) G2 kernel gate — `action_lifecycle.recent_terminal` carries a
+/// `"cancelled"` entry under the dispatch `correlation_id` after `cancel_publish`.
+/// Closes the chain from the FFI-level `send_cmd_count` probe in
+/// `nmp-ffi/src/action/s10_gates_tests.rs`: that probe proves the FFI enqueues
+/// the command; this proves the kernel records the terminal.
+#[test]
+fn s10_gate_cancel_action_lifecycle_shows_cancelled_under_dispatch_correlation_id() {
+    let author = "cf".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1, WRITE_R2]);
+    let signed = fake_signed("d0".repeat(32).as_str(), &author, 1, "s10-g2-cancel-terminal");
+    let corr_id = "s10-g2-corr-7b2e".to_string();
+    let _ = kernel.run_publish_engine_at(
+        &signed,
+        &[],
+        crate::publish::PublishTarget::Auto,
+        Some(corr_id.clone()),
+        0,
+    );
+    kernel.cancel_publish(&corr_id);
+    let snap: serde_json::Value =
+        serde_json::from_str(&kernel.make_update_json_for_test(true)).unwrap();
+    let recent = snap["projections"]["action_lifecycle"]["recent_terminal"]
+        .as_array()
+        .expect("recent_terminal present after cancel");
+    let row = recent
+        .iter()
+        .find(|r| r["correlation_id"] == corr_id.as_str())
+        .expect("S10 G2: recent_terminal must be keyed on the dispatch correlation_id");
+    assert_eq!(row["stage"], "cancelled", "S10 G2: stage must be `cancelled`");
+}
