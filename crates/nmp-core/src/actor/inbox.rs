@@ -28,7 +28,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, SendError, Sender, TryRecvErro
 
 #[cfg(feature = "native")]
 use super::fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
-use super::ActorCommand;
+use super::{ActorCommand, LifecycleCommand};
 #[cfg(feature = "native")]
 use nmp_network::pool::PoolEvent;
 
@@ -153,7 +153,7 @@ impl CommandSender {
                 if let ActorMail::Command(cmd) = mail {
                     CommandSendError(cmd)
                 } else {
-                    CommandSendError(ActorCommand::Shutdown)
+                    CommandSendError(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
                 }
             })
     }

@@ -34,9 +34,10 @@ pub mod http;
 use std::io::Read;
 
 use nmp_core::substrate::{
-    build_record_action_failure, build_record_action_success, build_sign_event_for_account,
+    build_sign_event_for_account,
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
 };
+use nmp_core::{ActionLedgerCommand, ActorCommand};
 use sha2::{Digest, Sha256};
 
 use crate::auth;
@@ -200,9 +201,11 @@ fn spawn_put_worker(
 
         match aggregate(&sha256_hex, size, &content_type, &per_server) {
             Ok(result_json) => {
-                let _ = worker_tx.send(build_record_action_success(
-                    correlation_id,
-                    Some(result_json),
+                let _ = worker_tx.send(ActorCommand::ActionLedger(
+                    ActionLedgerCommand::RecordSuccess {
+                        correlation_id,
+                        result_json: Some(result_json),
+                    },
                 ));
             }
             Err(reason) => {
@@ -300,7 +303,10 @@ fn aggregate(
 
 /// Record a terminal `RecordActionFailure` so the host spinner clears (D6).
 fn fail(worker_tx: &nmp_core::CommandSender, correlation_id: String, reason: String) {
-    let _ = worker_tx.send(build_record_action_failure(correlation_id, reason));
+    let _ = worker_tx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
+        correlation_id,
+        reason,
+    }));
 }
 
 /// Stream a file through SHA-256, returning `(lowercase-hex digest, size)`.

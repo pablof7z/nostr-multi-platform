@@ -11,7 +11,7 @@
 //! is invoked — never a silent `let _ = send(..)`.
 
 use super::*;
-use nmp_core::ActorMail;
+use nmp_core::{ActionLedgerCommand, ActorCommand, ActorMail, PublishCommand};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 /// A signed kind:13 seal for the wrap step, signed with a real test key so
@@ -96,14 +96,14 @@ fn wrap_and_publish_enqueues_publish_on_live_inbox() {
     let cmds = drain(&rx);
     assert!(
         cmds.iter()
-            .any(|c| matches!(c, ActorCommand::PublishSignedEvent { .. })),
+            .any(|c| matches!(c, ActorCommand::Publish(PublishCommand::SignedEvent { .. }))),
         "live inbox must receive the gift-wrap publish: {cmds:?}"
     );
     // No failure terminal on the happy path.
     assert!(
         !cmds
             .iter()
-            .any(|c| matches!(c, ActorCommand::RecordActionFailure { .. })),
+            .any(|c| matches!(c, ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { .. }))),
         "happy path must not record a failure: {cmds:?}"
     );
 }
@@ -135,14 +135,14 @@ fn wrap_and_publish_rejects_seal_with_bad_signature() {
     assert!(
         !cmds
             .iter()
-            .any(|c| matches!(c, ActorCommand::PublishSignedEvent { .. })),
+            .any(|c| matches!(c, ActorCommand::Publish(PublishCommand::SignedEvent { .. }))),
         "a seal failing verify must not be gift-wrapped+published: {cmds:?}"
     );
     // The action must resolve Failed (single-terminal fail-loud contract).
     assert!(
         cmds.iter().any(|c| matches!(
             c,
-            ActorCommand::RecordActionFailure { correlation_id, .. } if correlation_id == "corr-bad-sig"
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) if correlation_id == "corr-bad-sig"
         )),
         "a verify failure must record the action failure: {cmds:?}"
     );
@@ -214,7 +214,7 @@ fn report_envelope_failure_records_action_on_live_inbox() {
     assert!(
         cmds.iter().any(|c| matches!(
             c,
-            ActorCommand::RecordActionFailure { correlation_id, .. } if correlation_id == "corr-1"
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) if correlation_id == "corr-1"
         )),
         "must record the action failure so the spinner resolves: {cmds:?}"
     );

@@ -9,7 +9,7 @@
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorCommand, PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -178,7 +178,7 @@ mod tests {
 
     fn metadata_tags(cmds: &[ActorCommand]) -> &[Vec<String>] {
         match &cmds[1] {
-            ActorCommand::PublishUnsignedEventToRelays { event, .. } => &event.tags,
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => &event.tags,
             other => panic!("expected kind:9002 publish, got {other:?}"),
         }
     }
@@ -199,12 +199,12 @@ mod tests {
         );
 
         match &cmds[0] {
-            ActorCommand::PublishUnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
                 ..
-            } => {
+            }) => {
                 assert_eq!(event.kind, KIND_CREATE_GROUP);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.content, "");
@@ -218,12 +218,12 @@ mod tests {
         }
 
         match &cmds[1] {
-            ActorCommand::PublishUnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
                 ..
-            } => {
+            }) => {
                 assert_eq!(event.kind, KIND_EDIT_METADATA);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
                 assert!(event

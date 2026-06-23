@@ -7,11 +7,10 @@
 
 use nmp_core::publish::PublishTarget;
 use nmp_core::substrate::{
-    build_nip44_encrypt_for_account, build_record_action_failure, build_sign_event_for_account,
+    build_nip44_encrypt_for_account, build_sign_event_for_account,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
-use nmp_core::actor::ActorCommand;
-use nmp_core::{CommandSender};
+use nmp_core::{ActionLedgerCommand, ActorCommand, CommandSender, PublishCommand};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::{JsonUtil, PublicKey, Timestamp};
 
@@ -215,11 +214,11 @@ fn wrap_and_publish(
     // (re-signing would destroy the unlinkability gift-wrap provides).
     let correlation_id_for_send_err = correlation_id.clone();
     if worker_tx
-        .send(ActorCommand::PublishSignedEvent {
+        .send(ActorCommand::Publish(PublishCommand::SignedEvent {
             raw: nostr_event_to_raw(&envelope),
             target: PublishTarget::Explicit { relays },
             correlation_id,
-        })
+        }))
         .is_err()
     {
         // D6 fail-loud: the publish command never landed, so the action would
@@ -279,7 +278,10 @@ pub(super) fn report_envelope_failure(
     let fallback = token.fallback_prose().to_string();
     let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
     if let Some(id) = correlation_id.clone() {
-        let _ = worker_tx.send(build_record_action_failure(id, fallback));
+        let _ = worker_tx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
+            correlation_id: id,
+            reason: fallback,
+        }));
     }
 }
 

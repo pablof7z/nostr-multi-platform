@@ -10,6 +10,12 @@
 //!
 //! Extracted from `dispatch.rs` to keep `mod.rs` under the LOC ceiling.
 //! No behaviour change — all logic is verbatim from the original file.
+//!
+//! ADR-0065 — the `dispatch_publish` / `dispatch_contacts` /
+//! `dispatch_relay` / `dispatch_action_ledger` functions below match the
+//! `PublishCommand` / `ContactsCommand` / `RelayCommand` /
+//! `ActionLedgerCommand` sub-enums and route each verb to its existing
+//! handler.
 
 use crate::actor::commands;
 use crate::actor::pending_sign::ParkedSignerOps;
@@ -17,6 +23,9 @@ use crate::actor::relay_mgmt::{
     ensure_relay_worker, shutdown_relay_worker,
 };
 use crate::actor::relay_reconnect::reconnect_relays;
+use crate::actor::{
+    ActionLedgerCommand, ContactsCommand, PublishCommand, RelayCommand,
+};
 use crate::relay::OutboundMessage;
 
 use super::helpers::maybe_publish_relay_list_after_edit;
@@ -457,4 +466,73 @@ pub(super) fn ack_action_stage(
     ctx.kernel.ack_action_stage(&correlation_id);
     maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     Some(Vec::new())
+}
+
+// ── ADR-0065 family dispatchers ────────────────────────────────────────────
+
+/// `PublishCommand` family dispatch.
+pub(super) fn dispatch_publish(
+    cmd: PublishCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        PublishCommand::RawEvent { kind, tags, content, target, signer_pubkey, correlation_id } =>
+            publish_raw_event(kind, tags, content, target, signer_pubkey, correlation_id, ctx),
+        PublishCommand::Profile { fields, correlation_id } =>
+            publish_profile(fields, correlation_id, ctx),
+        PublishCommand::UnsignedEvent { event: unsigned, correlation_id, signer_pubkey } =>
+            publish_unsigned_event(unsigned, correlation_id, signer_pubkey, ctx),
+        PublishCommand::UnsignedEventToRelays { event, relays, correlation_id, signer_pubkey } =>
+            publish_unsigned_event_to_relays(event, relays, correlation_id, signer_pubkey, ctx),
+        PublishCommand::SignedEvent { raw, target, correlation_id } =>
+            publish_signed_event(raw, target, correlation_id, ctx),
+        PublishCommand::RetryPublish { handle } => retry_publish(handle, ctx),
+        PublishCommand::CancelPublish { correlation_id } => cancel_publish(correlation_id, ctx),
+    }
+}
+
+/// `ContactsCommand` family dispatch.
+pub(super) fn dispatch_contacts(
+    cmd: ContactsCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        ContactsCommand::Follow { pubkey, correlation_id } =>
+            follow_or_unfollow(pubkey, true, correlation_id, ctx),
+        ContactsCommand::Unfollow { pubkey, correlation_id } =>
+            follow_or_unfollow(pubkey, false, correlation_id, ctx),
+        ContactsCommand::FollowMany { pubkeys, correlation_id } =>
+            follow_many(pubkeys, correlation_id, ctx),
+        ContactsCommand::DeclareActiveFollowsFeed { acquisition_kinds } =>
+            declare_active_follows_feed(acquisition_kinds, ctx),
+        ContactsCommand::ClearActiveFollowsFeed => clear_active_follows_feed(ctx),
+    }
+}
+
+/// `RelayCommand` family dispatch.
+pub(super) fn dispatch_relay(
+    cmd: RelayCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        RelayCommand::AddRelay { url, role } => add_relay(url, role, ctx),
+        RelayCommand::RemoveRelay { url } => remove_relay(url, ctx),
+        RelayCommand::ReconnectRelays => reconnect_relays_cmd(ctx),
+        RelayCommand::SetRelayInfo { relay_url, doc_json } =>
+            set_relay_info(relay_url, doc_json, ctx),
+    }
+}
+
+/// `ActionLedgerCommand` family dispatch.
+pub(super) fn dispatch_action_ledger(
+    cmd: ActionLedgerCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        ActionLedgerCommand::Ack(correlation_id) => ack_action_stage(correlation_id, ctx),
+        ActionLedgerCommand::RecordFailure { correlation_id, reason } =>
+            record_action_failure(correlation_id, reason, ctx),
+        ActionLedgerCommand::RecordSuccess { correlation_id, result_json } =>
+            record_action_success(correlation_id, result_json, ctx),
+    }
 }

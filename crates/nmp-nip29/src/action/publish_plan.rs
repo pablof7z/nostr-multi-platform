@@ -107,14 +107,14 @@ impl PublishPlan {
     /// # Errors
     ///
     /// Returns a string error if `pin_to` is `None` (no relay pin set).
-    pub fn into_actor_command(self, correlation_id: Option<String>) -> Result<nmp_core::actor::ActorCommand, String> {
+    pub fn into_actor_command(self, correlation_id: Option<String>) -> Result<nmp_core::ActorCommand, String> {
         use nmp_signer_iface::UnsignedEvent;
-        use nmp_core::actor::ActorCommand;
+        use nmp_core::{ActorCommand, PublishCommand};
         let relay = self
             .pin_to
             .ok_or_else(|| "publish plan has no relay pin".to_string())?
             .relay_url;
-        Ok(ActorCommand::PublishUnsignedEventToRelays {
+        Ok(ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
             event: UnsignedEvent {
                 pubkey: String::new(),
                 kind: self.kind,
@@ -126,7 +126,7 @@ impl PublishPlan {
             correlation_id,
             // NIP-29 group actions always sign with the active account.
             signer_pubkey: None,
-        })
+        }))
     }
 }
 
@@ -190,10 +190,10 @@ mod tests {
 
     #[test]
     fn into_actor_command_publishes_host_pinned_unsigned_event() {
-        use nmp_core::actor::ActorCommand;
+        use nmp_core::{ActorCommand, PublishCommand};
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
         match p.into_actor_command(None).expect("pinned plan converts") {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, .. } => {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, relays, correlation_id, .. }) => {
                 // Pinned to EXACTLY the group's host relay — never the
                 // author's NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://h.example.com".to_string()]);
@@ -210,13 +210,13 @@ mod tests {
 
     #[test]
     fn into_actor_command_threads_correlation_id() {
-        use nmp_core::actor::ActorCommand;
+        use nmp_core::{ActorCommand, PublishCommand};
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
         match p
             .into_actor_command(Some("test-correlation-id".to_string()))
             .expect("pinned plan converts")
         {
-            ActorCommand::PublishUnsignedEventToRelays { correlation_id, .. } => {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { correlation_id, .. }) => {
                 assert_eq!(correlation_id.as_deref(), Some("test-correlation-id"));
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),

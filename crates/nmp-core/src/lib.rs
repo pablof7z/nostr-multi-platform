@@ -300,7 +300,13 @@ pub mod typed_projections {
 // so protocol crates that consume the port through
 // `ProtocolCommandContext::sign_event_for_account` (e.g. `nmp-nip57`'s zap
 // command) can name it — chiefly in tests that drive the continuation directly.
-pub use actor::{CipherContinuation, SignContinuation, SignerSource};
+pub use actor::{
+    ActorCommand, ActionLedgerCommand, CipherContinuation, ContactsCommand, IdentityCommand,
+    InterestsCommand, LifecycleCommand, PublishCommand, RelayCommand, RefsCommand, SignCommand,
+    SignContinuation, SignerSource,
+};
+#[cfg(any(test, feature = "test-support"))]
+pub use actor::TestSupportCommand;
 // ADR-0050 §D3a — the unified actor-inbox transport seam. `CommandSender` is
 // the single command-send handle passed to relay-connected hooks, DM inbox
 // chains, and similar substrate seams that post commands from worker threads.
@@ -580,7 +586,9 @@ pub mod testing {
                 VerifiedEvent::try_from_raw(raw).ok()
             })
             .collect();
-        tx.send(ActorCommand::IngestPreVerifiedEvents(events))
+        tx.send(ActorCommand::TestSupport(
+            crate::actor::TestSupportCommand::IngestPreVerifiedEvents(events),
+        ))
     }
 
     /// Send a [`ActorCommand::Barrier`] and block until the actor acknowledges
@@ -594,7 +602,9 @@ pub mod testing {
     /// `true` the actor's state reflects all prior commands.
     pub fn wait_barrier(tx: &crate::CommandSender, timeout: std::time::Duration) -> bool {
         let (ack_tx, ack_rx) = mpsc::sync_channel(1);
-        if tx.send(ActorCommand::Barrier { ack: ack_tx }).is_err() {
+        if tx.send(ActorCommand::TestSupport(
+            crate::actor::TestSupportCommand::Barrier { ack: ack_tx },
+        )).is_err() {
             return false;
         }
         ack_rx.recv_timeout(timeout).is_ok()

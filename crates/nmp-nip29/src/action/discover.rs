@@ -16,10 +16,10 @@
 //! same relay is idempotent at the kernel level (same id replaces).
 
 use nmp_core::substrate::{
-    build_record_action_success, ActionContext, ActionModule, ActionPayload,
+    ActionContext, ActionModule, ActionPayload,
     ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
+use nmp_core::{ActionLedgerCommand, ActorCommand, InterestsCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::interest::relay_discovery_interest;
@@ -72,13 +72,16 @@ impl ActionModule for DiscoverGroupsAction {
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         let interest = relay_discovery_interest(&action.relay_url);
-        send(ActorCommand::PushInterest(interest));
+        send(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
         // `discover_groups` is a subscription-only action: there is no event
         // published and no async worker, so the "success" surface is instantaneous
         // (the interest has been pushed to the lifecycle). Without a terminal
         // `RecordActionSuccess` the host's `dispatch_action` spinner waits forever
         // on `action_results`. Mirror the NIP-57 zap worker's success leg.
-        send(build_record_action_success(correlation_id.to_string(), None));
+        send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
+            correlation_id: correlation_id.to_string(),
+            result_json: None,
+        }));
         Ok(())
     }
 }
@@ -109,7 +112,7 @@ mod tests {
             "expected PushInterest followed by RecordActionSuccess, got {cmds:?}"
         );
         match &cmds[0] {
-            ActorCommand::PushInterest(interest) => {
+            ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
                 assert_eq!(
                     interest.shape.relay_pin.as_deref(),
                     Some("wss://groups.example.com")
@@ -123,7 +126,7 @@ mod tests {
         }
         // Terminal `Accepted` stage is what closes the host spinner.
         match &cmds[1] {
-            ActorCommand::RecordActionSuccess { correlation_id, .. } => {
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess { correlation_id, .. }) => {
                 assert_eq!(correlation_id, "test-cid");
             }
             other => panic!("expected RecordActionSuccess, got {other:?}"),

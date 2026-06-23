@@ -7,7 +7,7 @@
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorCommand, PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -213,12 +213,12 @@ mod tests {
             .expect("share executes");
 
         match captured.into_inner().pop().expect("command emitted") {
-            ActorCommand::PublishUnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
                 ..
-            } => {
+            }) => {
                 assert_eq!(event.kind, KIND_DISCUSSION_OR_ARTIFACT);
                 assert_eq!(relays, vec!["wss://groups.example.com"]);
                 assert!(event.tags.iter().any(|t| t == &["h", "room"]));
@@ -245,12 +245,12 @@ mod tests {
             .expect("repost executes");
 
         match captured.into_inner().pop().expect("command emitted") {
-            ActorCommand::PublishUnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
                 ..
-            } => {
+            }) => {
                 assert_eq!(event.kind, REPOST_KIND);
                 assert_eq!(relays, vec!["wss://groups.example.com"]);
                 assert!(event.tags.iter().any(|t| t == &["h", "room"]));

@@ -9,7 +9,7 @@ use nmp_core::substrate::{
     ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorCommand, PublishCommand};
 use nmp_kinds::KIND_NIP22_COMMENT;
 use serde::{Deserialize, Serialize};
 
@@ -88,7 +88,7 @@ impl ProtocolCommand for PostCommentCommand {
     ) -> Result<(), ProtocolCommandError> {
         let (tags, content) = comment_event(&self.action)
             .map_err(|err| ProtocolCommandError::new(format!("post_comment: {err}")))?;
-        ctx.send(ActorCommand::PublishUnsignedEvent {
+        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event: UnsignedEvent {
                 pubkey: String::new(),
                 kind: KIND_NIP22_COMMENT,
@@ -98,7 +98,7 @@ impl ProtocolCommand for PostCommentCommand {
             },
             correlation_id: Some(self.correlation_id),
             signer_pubkey: None,
-        });
+        }));
         Ok(())
     }
 }

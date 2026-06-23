@@ -17,7 +17,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_core::substrate::RelayConnectedHook;
-use nmp_core::CommandSender;
+use nmp_core::{ActorCommand, CommandSender, RelayCommand};
 
 use crate::fetch::fetch_relay_info_blocking;
 
@@ -98,7 +98,10 @@ impl RelayConnectedHook for Nip11FetchHook {
         std::thread::spawn(move || {
             if let Ok(doc) = fetch_relay_info_blocking(&url) {
                 if let Some(doc_json) = doc.to_json() {
-                    command_sender.set_relay_info(url, doc_json);
+                    let _ = command_sender.send(ActorCommand::Relay(RelayCommand::SetRelayInfo {
+                        relay_url: url,
+                        doc_json,
+                    }));
                 }
             }
         });

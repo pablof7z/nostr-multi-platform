@@ -44,8 +44,7 @@
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::actor::ActorCommand;
-use nmp_core::{canonical_relay_url};
+use nmp_core::{canonical_relay_url, ActorCommand, PublishCommand};
 use nmp_kinds::KIND_DM_RELAY_LIST;
 use serde::{Deserialize, Serialize};
 
@@ -178,12 +177,12 @@ impl ActionModule for PublishDmRelayListAction {
         // `dispatch_action` can be cleared with a terminal verdict. Without
         // this the dispatch arm never records `ActionStage::Requested` and
         // the spinner hangs forever.
-        send(ActorCommand::PublishUnsignedEvent {
+        send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id: Some(correlation_id.to_string()),
             // The kind:10050 DM-relay list signs with the active account.
             signer_pubkey: None,
-        });
+        }));
         Ok(())
     }
 }
@@ -410,7 +409,7 @@ mod tests {
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEvent { event, correlation_id, .. } => {
+            ActorCommand::Publish(PublishCommand::UnsignedEvent { event, correlation_id, .. }) => {
                 assert_eq!(event.kind, 10050, "DM relay list must emit kind:10050");
                 assert_eq!(correlation_id.as_deref(), Some("test-cid"),
                     "correlation_id must thread through so the host spinner closes");

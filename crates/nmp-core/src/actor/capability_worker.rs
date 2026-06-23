@@ -142,10 +142,12 @@ fn run_worker(
         // Re-enter the actor with the result. The actor's dispatch arm
         // confirms the account still exists before applying. A
         // disconnected sender (post-Shutdown) is a benign no-op (D6).
-        let _ = command_tx.send(super::ActorCommand::CapabilityResultReady {
-            account_id: item.account_id,
-            result_json,
-        });
+        let _ = command_tx.send(super::ActorCommand::Identity(
+            super::IdentityCommand::CapabilityResultReady {
+                account_id: item.account_id,
+                result_json,
+            },
+        ));
     }
 }
 
@@ -319,7 +321,9 @@ mod tests {
                 .expect("CapabilityResultReady not received in time"),
         );
         match cmd {
-            super::super::ActorCommand::CapabilityResultReady { account_id, .. } => {
+            super::super::ActorCommand::Identity(
+                super::super::IdentityCommand::CapabilityResultReady { account_id, .. },
+            ) => {
                 assert_eq!(account_id, "acct-1");
             }
             other => panic!("unexpected command: {other:?}"),
@@ -368,7 +372,9 @@ mod tests {
         let correlation_ids: Vec<String> = [r1, r2]
             .into_iter()
             .map(|cmd| {
-                let super::super::ActorCommand::CapabilityResultReady { result_json, .. } = cmd
+                let super::super::ActorCommand::Identity(
+                    super::super::IdentityCommand::CapabilityResultReady { result_json, .. },
+                ) = cmd
                 else {
                     panic!("expected CapabilityResultReady");
                 };
@@ -427,7 +433,9 @@ mod tests {
                 .expect("timed-out item result not received"),
         );
         match cmd {
-            super::super::ActorCommand::CapabilityResultReady { result_json, account_id } => {
+            super::super::ActorCommand::Identity(
+                super::super::IdentityCommand::CapabilityResultReady { result_json, account_id },
+            ) => {
                 assert_eq!(account_id, "acct-timeout");
                 // The result should be an error envelope (capability-op-timed-out).
                 let v: serde_json::Value = serde_json::from_str(&result_json).unwrap();

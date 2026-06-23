@@ -1,17 +1,22 @@
-//! Lifecycle command dispatch arms: `Start`, `Stop`, `Reset`, `Shutdown`.
+//! Lifecycle command dispatch arms: `Start`, `Stop`, `Reset`, `Shutdown` +
+//! `LifecycleEvent` + `MarkChangedSinceEmit`.
 //!
 //! Extracted from `dispatch/mod.rs` to keep it under the 500-LOC ceiling.
 //! No behaviour change — all logic is verbatim from the original file.
+//!
+//! ADR-0065 — the `dispatch` function below matches the `LifecycleCommand`
+//! sub-enum and routes each verb to its existing handler.
 
 use std::sync::Arc;
 
 use crate::actor::relay_mgmt::{close_relays, spawn_missing_relays};
 use crate::actor::session_persistence;
-use crate::actor::tick::emit_now;
+use crate::actor::tick::{clamp_emit_hz_logged, emit_now, maybe_emit_after_dispatch};
+use crate::kernel::LifecyclePhase;
 use crate::relay::OutboundMessage;
 
 use super::helpers::update_local_key_slots;
-use super::ActorContext;
+use super::{commands, ActorContext, LifecycleCommand};
 
 /// Dispatch `ActorCommand::Start`.
 pub(super) fn start(
@@ -236,4 +241,36 @@ pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> 
         );
     }
     Some(Vec::new())
+}
+
+/// ADR-0065 — `LifecycleCommand` family dispatch. Matches the sub-enum and
+/// routes each verb to its existing handler. `Configure` / `LifecycleEvent` /
+/// `MarkChangedSinceEmit` are small enough to inline.
+pub(super) fn dispatch(
+    cmd: LifecycleCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        LifecycleCommand::Start { visible_limit, emit_hz: requested_hz, initial_relays } =>
+            start(visible_limit, requested_hz, initial_relays, ctx),
+        LifecycleCommand::Configure { visible_limit, emit_hz: requested_hz } => {
+            *ctx.emit_hz = clamp_emit_hz_logged(ctx.kernel, requested_hz, "Configure");
+            ctx.kernel.set_visible_limit(visible_limit);
+            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
+        LifecycleCommand::LifecycleEvent(phase) => {
+            commands::handle_lifecycle_event(ctx.kernel, ctx.lifecycle_observer, phase);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
+        LifecycleCommand::MarkChangedSinceEmit => {
+            ctx.kernel.mark_changed_since_emit();
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(Vec::new())
+        }
+        LifecycleCommand::Stop => stop(ctx),
+        LifecycleCommand::Reset => reset(ctx),
+        LifecycleCommand::Shutdown => shutdown(ctx),
+    }
 }

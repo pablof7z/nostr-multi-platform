@@ -67,11 +67,11 @@ fn react_protocol_publishes_kind7_via_one_door() {
             .expect("execute succeeds");
     });
     match run_one_protocol(cmd) {
-        ActorCommand::PublishUnsignedEvent {
+        ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id,
             signer_pubkey,
-        } => {
+        }) => {
             assert_eq!(event.kind, KIND_REACTION);
             assert_eq!(event.created_at, 0);
             assert_eq!(event.pubkey, "");
@@ -100,11 +100,11 @@ fn unreact_protocol_publishes_kind5_deletion() {
             .expect("execute succeeds");
     });
     match run_one_protocol(cmd) {
-        ActorCommand::PublishUnsignedEvent {
+        ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id,
             signer_pubkey,
-        } => {
+        }) => {
             assert_eq!(event.kind, KIND_REACTION_DELETE);
             assert_eq!(
                 event.tags,

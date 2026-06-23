@@ -3,7 +3,7 @@
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorCommand, PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::previous_tag_prefix;
@@ -145,7 +145,6 @@ mod tests {
 
     #[test]
     fn execute_emits_host_pinned_kind9_publish_command() {
-        use nmp_core::actor::ActorCommand;
         use std::cell::RefCell;
 
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
@@ -161,12 +160,12 @@ mod tests {
             "executor must send exactly one command, got {cmds:?}"
         );
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
                 ..
-            } => {
+            }) => {
                 assert_eq!(event.kind, KIND_CHAT_MESSAGE, "must emit kind:9");
                 assert_eq!(
                     relays,

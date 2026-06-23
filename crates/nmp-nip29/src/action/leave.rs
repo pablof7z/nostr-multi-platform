@@ -16,7 +16,7 @@
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorCommand, PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -107,12 +107,12 @@ mod tests {
             "leave executor must send exactly one command, got {cmds:?}"
         );
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
                 ..
-            } => {
+            }) => {
                 // Pinned to EXACTLY the host relay — never the NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.kind, KIND_LEAVE_REQUEST);
@@ -143,7 +143,7 @@ mod tests {
         })
         .expect("well-formed");
         let event = match cmds.into_iter().next().expect("one command") {
-            ActorCommand::PublishUnsignedEventToRelays { event, .. } => event,
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => event,
             other => panic!("expected publish, got {other:?}"),
         };
         assert_eq!(event.content, "moving on");
