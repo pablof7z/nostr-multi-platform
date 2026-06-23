@@ -19,25 +19,28 @@ import SwiftUI
 /// prior plan), and `.onDisappear` closes it.
 struct SearchSheet: View {
     @EnvironmentObject private var model: KernelModel
+    @EnvironmentObject private var router: ChirpRouter
     @Environment(\.dismiss) private var dismiss
     @StateObject private var controller = SearchController()
 
     @State private var query = ""
     @State private var scope: SearchScope = .people
 
-    /// The result-scope toggle. `People` maps to NIP-50 `scope: "Users"`
-    /// (kind:0 profiles); `Notes` maps to `scope: {"Kinds":[1]}` (kind:1 notes).
+    /// The free-text scope toggle. `People` requests the `nip50.profiles` input
+    /// scope (kind:0); `Notes` requests `nip50.notes` (kind:1). This selects only
+    /// the FREE-TEXT search class — paste-to-navigate (`nostr.ref`) and NIP-05
+    /// always work regardless of the toggle, because the resolver claims those
+    /// structural classes before any free-text scope.
     private enum SearchScope: String, CaseIterable, Identifiable {
         case people = "People"
         case notes = "Notes"
         var id: String { rawValue }
 
-        /// The serde value the Rust `SearchScope` enum accepts: a bare string
-        /// `"Users"`, or the externally-tagged `{"Kinds":[1]}` object.
-        var jsonValue: Any {
+        /// The requested free-text input scope handed to the intent resolver.
+        var intentScope: IntentScope {
             switch self {
-            case .people: return "Users"
-            case .notes: return ["Kinds": [1]]
+            case .people: return .nip50Profiles
+            case .notes: return .nip50Notes
             }
         }
     }
@@ -46,6 +49,7 @@ struct SearchSheet: View {
         NavigationStack {
             VStack(spacing: 0) {
                 scopePicker
+                noticeBanner
                 resultsList
             }
             .background(ChirpColor.bg.ignoresSafeArea())
@@ -59,10 +63,19 @@ struct SearchSheet: View {
             .searchable(
                 text: $query,
                 placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search Nostr"
+                prompt: "npub, note, name@domain, or search\u{2026}"
             )
-            .onSubmit(of: .search) { runSearch() }
-            .onChange(of: scope) { if controller.submittedQuery != nil { runSearch() } }
+            // Bech32 entities (`npub…`/`note…`/`nsec…`) and NIP-05 identifiers are
+            // case-sensitive: the keyboard MUST NOT auto-capitalize or
+            // auto-correct, or a pasted/typed `nsec` becomes `Nsec` and slips the
+            // secret check. This is a presentation concern, not classification —
+            // the resolver still owns every decision.
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .onSubmit(of: .search) { submit() }
+            .onChange(of: query) { controller.clearNotice() }
+            .onChange(of: scope) { if controller.submittedQuery != nil { submit() } }
+            .onChange(of: controller.pendingNavigation) { navigateIfNeeded() }
             .onAppear { controller.bind(to: model) }
             .onDisappear { controller.close() }
         }
@@ -77,6 +90,27 @@ struct SearchSheet: View {
         .pickerStyle(.segmented)
         .padding(.horizontal, ChirpSpace.l)
         .padding(.vertical, ChirpSpace.s)
+    }
+
+    // ── Omnibox notice ─────────────────────────────────────────────────────────
+
+    /// A safe, non-echoing status line for non-search outcomes (NIP-05 lookup in
+    /// flight, secret-key refusal, unsupported target). Never shows the raw
+    /// input.
+    @ViewBuilder
+    private var noticeBanner: some View {
+        if let notice = controller.omniboxNotice {
+            HStack(spacing: ChirpSpace.s) {
+                Image(systemName: "info.circle")
+                Text(notice)
+                    .font(ChirpFont.callout)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(ChirpColor.textSecondary)
+            .padding(.horizontal, ChirpSpace.l)
+            .padding(.vertical, ChirpSpace.s)
+            .accessibilityIdentifier("omnibox-notice")
+        }
     }
 
     // ── Results ───────────────────────────────────────────────────────────────
@@ -116,8 +150,29 @@ struct SearchSheet: View {
 
     // ── Dispatch ──────────────────────────────────────────────────────────────
 
-    private func runSearch() {
-        controller.runSearch(query: query, scopeJSON: scope.jsonValue)
+    /// Route the submitted input through the intent resolver (omnibox). The
+    /// controller classifies via NMP and either enters the search results state,
+    /// publishes a navigation request, or sets a notice. ZERO classification
+    /// logic here.
+    private func submit() {
+        controller.submitOmnibox(input: query, textScope: scope.intentScope)
+    }
+
+    /// Consume a pending navigation request from the controller (set when the
+    /// resolver classified the input as a direct ref) and push the matching
+    /// `ChirpRoute`, then dismiss the sheet. The typed target → route mapping is
+    /// the only step here; the decode was done in Rust.
+    private func navigateIfNeeded() {
+        guard let target = controller.pendingNavigation else { return }
+        controller.pendingNavigation = nil
+        let route: ChirpRoute
+        switch target {
+        case .profile(let pubkey): route = .profile(pubkey: pubkey)
+        case .address(let pubkey): route = .profile(pubkey: pubkey)
+        case .event(let eventID): route = .thread(eventID: eventID)
+        }
+        dismiss()
+        router.push(route)
     }
 }
 
