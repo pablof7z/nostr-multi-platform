@@ -259,8 +259,8 @@ pub(super) fn dispatch_command(
             cmd_interests::ensure_interest(identity, interest, ctx),
         ActorCommand::DropInterestOwner(identity) =>
             cmd_interests::drop_interest_owner(identity, ctx),
-        ActorCommand::RegisterPullCursor { cursor_id, consumer_id, scope, mode, after_seq, limits } =>
-            cmd_interests::register_pull_cursor(cursor_id, consumer_id, scope, mode, after_seq, limits, ctx),
+        ActorCommand::OpenPullCursor { handle, spec } =>
+            cmd_interests::open_pull_cursor(handle, spec, ctx),
         ActorCommand::AdvancePullCursor { cursor_id, after_seq } =>
             cmd_interests::advance_pull_cursor(cursor_id, after_seq, ctx),
         ActorCommand::UnregisterPullCursor { cursor_id } =>

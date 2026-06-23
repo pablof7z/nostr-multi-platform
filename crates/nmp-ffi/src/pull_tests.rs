@@ -9,7 +9,9 @@
 
 use super::{nmp_mirror_free_bytes, nmp_mirror_pull_page, NmpMirrorBytes};
 use crate::{app_ref, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start};
-use nmp_core::{ActorCommand, PullCursorMode, PullLimits, PullScope};
+use nmp_core::{
+    ActorCommand, PullConsumerId, PullCursorMode, PullCursorSpec, PullLimits, PullScope,
+};
 use nostr::prelude::*;
 use std::ffi::c_void;
 use std::num::NonZeroUsize;
@@ -183,11 +185,22 @@ fn decode(bytes: &NmpMirrorBytes) -> Decoded {
     }
 }
 
-fn register_global_cursor(app: *mut crate::NmpApp, cursor_id: u64, after_seq: u64) {
-    let app = app_ref(app).expect("app");
-    app.send_cmd(ActorCommand::RegisterPullCursor {
-        cursor_id,
-        consumer_id: "test-mirror".into(),
+/// Allocate a cursor handle from the app's registry and send OpenPullCursor.
+/// Returns the raw cursor id so callers can pass it to `nmp_mirror_pull_page`.
+fn register_global_cursor(app: *mut crate::NmpApp, after_seq: u64) -> u64 {
+    let app_ref = app_ref(app).expect("app");
+    // Allocate the handle under a brief registry write lock — the canonical
+    // allocation path (hosts never mint raw cursor ids).
+    let handle = {
+        let slot = app_ref.pull_cursor_registry_handle();
+        let guard = slot.lock().expect("registry slot lock");
+        let registry_arc = guard.as_ref().expect("registry not yet published");
+        let mut reg = registry_arc.write().expect("registry write lock");
+        reg.alloc_handle()
+    };
+    let cursor_id = handle.id().0;
+    let spec = PullCursorSpec {
+        consumer_id: PullConsumerId("test-mirror".into()),
         scope: PullScope::GlobalLog,
         mode: PullCursorMode::GapAllowed,
         after_seq,
@@ -195,7 +208,9 @@ fn register_global_cursor(app: *mut crate::NmpApp, cursor_id: u64, after_seq: u6
             max_entries: NonZeroUsize::new(256).unwrap(),
             max_scan_entries: NonZeroUsize::new(256).unwrap(),
         },
-    });
+    };
+    app_ref.send_cmd(ActorCommand::OpenPullCursor { handle, spec });
+    cursor_id
 }
 
 #[test]
@@ -247,14 +262,31 @@ fn page_decodes_with_entries_and_cap_clamps() {
     nmp_app_start(app, 256, 4);
 
     // Register first (FIFO before the ingests below), then ingest two events.
-    register_global_cursor(app, 42, 0);
+    // The registry must be available before alloc_handle (actor publishes it on
+    // start). Poll briefly until the slot is populated.
+    let cursor_id = {
+        let mut cid = None;
+        let app_ref = app_ref(app).expect("app");
+        for _ in 0..50 {
+            let slot = app_ref.pull_cursor_registry_handle();
+            let guard = slot.lock().expect("registry slot lock");
+            if guard.is_some() {
+                drop(guard);
+                cid = Some(register_global_cursor(app, 0));
+                break;
+            }
+            drop(guard);
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        cid.expect("registry never published")
+    };
     let (id1, json1) = signed_note("pull one", 1_700_100_000);
     let (id2, json2) = signed_note("pull two", 1_700_100_001);
     inject_and_wait(app, &id1, &json1, &rx);
     inject_and_wait(app, &id2, &json2, &rx);
 
     // Full drain: both entries, has_more=false.
-    let bytes = nmp_mirror_pull_page(app, 42, 256, 1 << 20);
+    let bytes = nmp_mirror_pull_page(app, cursor_id, 256, 1 << 20);
     let d = decode(&bytes);
     nmp_mirror_free_bytes(bytes);
     match d {
@@ -277,7 +309,7 @@ fn page_decodes_with_entries_and_cap_clamps() {
 
     // Cap clamp: max_entries=1 yields exactly one entry, has_more=true,
     // next_after_seq=1 (the first row's seq).
-    let bytes = nmp_mirror_pull_page(app, 42, 1, 1 << 20);
+    let bytes = nmp_mirror_pull_page(app, cursor_id, 1, 1 << 20);
     let d = decode(&bytes);
     nmp_mirror_free_bytes(bytes);
     match d {

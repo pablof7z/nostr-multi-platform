@@ -1159,31 +1159,31 @@ pub enum ActorCommand {
     /// Detach one owner from a logical interest registered through
     /// [`EnsureInterest`](Self::EnsureInterest).
     DropInterestOwner(crate::subs::SubIdentity),
-    /// ADR-0058 §10, step 3a — register (or replace-by-id) a pull cursor in the
-    /// non-durable cursor registry. Fire-and-forget. The host mints `cursor_id`
-    /// (`0` is invalid). Arms an immediate pull wake when `after_seq` is behind
-    /// the store head. A *new* registration past `MAX_PULL_CURSORS` is a loud
-    /// no-op (logged, never panics).
-    RegisterPullCursor {
-        cursor_id: u64,
-        consumer_id: String,
-        scope: crate::kernel::pull::PullScope,
-        mode: crate::kernel::pull_cursor::PullCursorMode,
-        after_seq: u64,
-        limits: crate::kernel::pull::PullLimits,
+    /// ADR-0058 §10, step 3a — open (or replace-by-handle) a pull cursor in the
+    /// non-durable cursor registry. Fire-and-forget.
+    ///
+    /// `handle` is allocated by [`crate::kernel::pull_cursor::PullCursorRegistry::alloc_handle`]
+    /// **before** this command is dispatched — the host never constructs raw
+    /// cursor ids. The kernel validates the handle (id 0 is a loud no-op) and
+    /// stores the registration. Arms an immediate pull wake when `after_seq` is
+    /// behind the store head. A *new* registration past `MAX_PULL_CURSORS` is a
+    /// loud no-op (logged, never panics).
+    OpenPullCursor {
+        handle: crate::kernel::pull_cursor::PullCursorHandle,
+        spec: crate::kernel::pull_cursor::PullCursorSpec,
     },
     /// ADR-0058 §10, step 3a — monotonically advance a registered cursor's
     /// `after_seq` (`max(old, new)`). Fire-and-forget. Re-arms an immediate
     /// pull wake when the cursor is still behind the store head. Unknown id is
     /// a no-op.
     AdvancePullCursor {
-        cursor_id: u64,
+        cursor_id: crate::kernel::pull_cursor::PullCursorId,
         after_seq: u64,
     },
     /// ADR-0058 §10, step 3a — remove a cursor's registry row AND any pending
     /// pull wake entry. Fire-and-forget.
     UnregisterPullCursor {
-        cursor_id: u64,
+        cursor_id: crate::kernel::pull_cursor::PullCursorId,
     },
     /// M2 (ADR-0042) — the generic FFI-facing feed-subscription front door that
     /// replaced the bespoke `OpenAuthor` / `OpenThread` / `OpenFirehoseTag`
