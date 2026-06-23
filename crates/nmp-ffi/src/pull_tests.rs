@@ -1,4 +1,4 @@
-//! ADR-0058 §3 (step 3b) — `nmp_app_pull_page` C-ABI tests.
+//! ADR-0058 §3 (step 3b) — `nmp_mirror_pull_page` C-ABI tests.
 //!
 //! Covers the load-bearing boundary contracts: a null app and an unknown cursor
 //! return a serialized `Error` (never a panic/null deref), Page and Gap decode
@@ -7,7 +7,7 @@
 //! so it proves the FFI reads the live kernel store under the documented lock
 //! order.
 
-use super::{nmp_app_pull_page, nmp_free_bytes, NmpOwnedBytes};
+use super::{nmp_mirror_free_bytes, nmp_mirror_pull_page, NmpMirrorBytes};
 use crate::{app_ref, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start};
 use nmp_core::{ActorCommand, PullCursorMode, PullLimits, PullScope};
 use nostr::prelude::*;
@@ -133,7 +133,7 @@ enum Decoded {
     Error(u32),
 }
 
-fn decode(bytes: &NmpOwnedBytes) -> Decoded {
+fn decode(bytes: &NmpMirrorBytes) -> Decoded {
     // SAFETY: test reads the buffer the call just produced.
     let slice = unsafe { std::slice::from_raw_parts(bytes.ptr, bytes.len) };
     let mut r = Reader::new(slice);
@@ -160,9 +160,19 @@ fn decode(bytes: &NmpOwnedBytes) -> Decoded {
                 }
                 let _ = r.lp(); // source_relay
                 let _ = r.u64(); // received_at_ms
-                entries.push(DecodedEntry { seq, op_tag, event_id_hex, has_raw });
+                entries.push(DecodedEntry {
+                    seq,
+                    op_tag,
+                    event_id_hex,
+                    has_raw,
+                });
             }
-            Decoded::Page { next_after_seq, latest_seq, has_more, entries }
+            Decoded::Page {
+                next_after_seq,
+                latest_seq,
+                has_more,
+                entries,
+            }
         }
         1 => Decoded::Gap {
             requested_after_seq: r.u64(),
@@ -190,12 +200,12 @@ fn register_global_cursor(app: *mut crate::NmpApp, cursor_id: u64, after_seq: u6
 
 #[test]
 fn null_app_returns_serialized_error_not_panic() {
-    let bytes = nmp_app_pull_page(std::ptr::null(), 1, 256, 1 << 20);
+    let bytes = nmp_mirror_pull_page(std::ptr::null(), 1, 256, 1 << 20);
     match decode(&bytes) {
         Decoded::Error(code) => assert_eq!(code, super::error::NULL_APP),
         other => panic!("expected Error(NULL_APP), got {other:?}"),
     }
-    nmp_free_bytes(bytes);
+    nmp_mirror_free_bytes(bytes);
 }
 
 #[test]
@@ -210,9 +220,9 @@ fn unknown_cursor_returns_serialized_error() {
     // but holds no row). Poll briefly so the registry slot is published first.
     let mut decoded = None;
     for _ in 0..50 {
-        let bytes = nmp_app_pull_page(app, 999, 256, 1 << 20);
+        let bytes = nmp_mirror_pull_page(app, 999, 256, 1 << 20);
         let d = decode(&bytes);
-        nmp_free_bytes(bytes);
+        nmp_mirror_free_bytes(bytes);
         if let Decoded::Error(code) = d {
             if code == super::error::UNKNOWN_CURSOR {
                 decoded = Some(code);
@@ -244,11 +254,16 @@ fn page_decodes_with_entries_and_cap_clamps() {
     inject_and_wait(app, &id2, &json2, &rx);
 
     // Full drain: both entries, has_more=false.
-    let bytes = nmp_app_pull_page(app, 42, 256, 1 << 20);
+    let bytes = nmp_mirror_pull_page(app, 42, 256, 1 << 20);
     let d = decode(&bytes);
-    nmp_free_bytes(bytes);
+    nmp_mirror_free_bytes(bytes);
     match d {
-        Decoded::Page { entries, has_more, latest_seq, .. } => {
+        Decoded::Page {
+            entries,
+            has_more,
+            latest_seq,
+            ..
+        } => {
             assert_eq!(entries.len(), 2, "both ingested events delivered");
             assert!(!has_more, "fully drained → has_more=false");
             assert_eq!(latest_seq, 2, "store head at seq 2");
@@ -262,11 +277,16 @@ fn page_decodes_with_entries_and_cap_clamps() {
 
     // Cap clamp: max_entries=1 yields exactly one entry, has_more=true,
     // next_after_seq=1 (the first row's seq).
-    let bytes = nmp_app_pull_page(app, 42, 1, 1 << 20);
+    let bytes = nmp_mirror_pull_page(app, 42, 1, 1 << 20);
     let d = decode(&bytes);
-    nmp_free_bytes(bytes);
+    nmp_mirror_free_bytes(bytes);
     match d {
-        Decoded::Page { entries, has_more, next_after_seq, .. } => {
+        Decoded::Page {
+            entries,
+            has_more,
+            next_after_seq,
+            ..
+        } => {
             assert_eq!(entries.len(), 1, "max_entries=1 clamps the page");
             assert!(has_more, "more remains → has_more=true");
             assert_eq!(next_after_seq, 1, "cursor advanced to first row seq");
@@ -280,7 +300,11 @@ fn page_decodes_with_entries_and_cap_clamps() {
 
 #[test]
 fn free_bytes_null_is_no_op() {
-    nmp_free_bytes(NmpOwnedBytes { ptr: std::ptr::null_mut(), len: 0, cap: 0 });
+    nmp_mirror_free_bytes(NmpMirrorBytes {
+        ptr: std::ptr::null_mut(),
+        len: 0,
+        cap: 0,
+    });
 }
 
 #[test]
@@ -288,12 +312,12 @@ fn gap_and_error_encode_as_distinct_variants() {
     // Direct encoder coverage: Gap and Error are distinct from Page.
     let gap = super::encode_gap(3, 9);
     assert_eq!(gap[0], super::variant::GAP);
-    let err = NmpOwnedBytes::error(super::error::STORE_UNAVAILABLE);
+    let err = NmpMirrorBytes::error(super::error::STORE_UNAVAILABLE);
     match decode(&err) {
         Decoded::Error(c) => assert_eq!(c, super::error::STORE_UNAVAILABLE),
         other => panic!("expected Error, got {other:?}"),
     }
-    nmp_free_bytes(err);
+    nmp_mirror_free_bytes(err);
 }
 
 /// Hard cap: a first row whose raw event alone exceeds the byte cap cannot be
@@ -319,7 +343,15 @@ fn first_row_raw_over_cap_is_hard_error() {
         source_relay: None,
         received_at_ms: 0,
     };
-    let page = PullPage { entries: vec![entry], next_after_seq: 1, latest_seq: 1, has_more: false };
+    let page = PullPage {
+        entries: vec![entry],
+        next_after_seq: 1,
+        latest_seq: 1,
+        has_more: false,
+    };
     // Cap of 100 bytes is far below the ~5 KiB serialized raw ⇒ hard error.
-    assert_eq!(super::encode_page(page, 100), Err(super::error::RAW_TOO_LARGE));
+    assert_eq!(
+        super::encode_page(page, 100),
+        Err(super::error::RAW_TOO_LARGE)
+    );
 }

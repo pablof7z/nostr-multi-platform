@@ -107,7 +107,7 @@ a runtime guard:
   mutate-and-be-ignored. It returns `NmpConfigStatus_AlreadyStarted` on C/JNI
   surfaces (or the Rust enum on internal setters) and records
   `Disposition::DroppedLateWiring` in the composition ledger.
-- Hosts pull the existing `nmp_app_composition_report` diagnostic to inspect the
+- Hosts pull `nmp_app_debug_info(app, domain=1)` (composition-report domain) to inspect the
   rejected seam/key. This keeps the signal on the ADR-0049 composition surface
   instead of adding a second diagnostic channel.
 - `nmp_app_set_storage_path` specifically returns a nonzero status so Swift,

@@ -63,20 +63,11 @@ void nmp_app_search_close(void *app, const char *session_id);
 // two-call size-probe). The bytes match the snapshot frame's N50S sidecar.
 int nmp_app_search_snapshot(void *app, const char *session_id,
                             uint8_t *out_buf, uintptr_t cap);
-// Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted per
-// `consumer_id`; the kernel fetches the event over the OneshotApi (single-
-// writer interest registration — D4) when not yet in the store, and surfaces
-// it in `snapshot.projections.claimed_events` keyed by `primary_id` (event-id
-// hex for `nevent`/`note`; `"kind:pubkey:d"` for `naddr`). FFI-clean (D6):
-// null/invalid arguments are silent no-ops, never panics. D8: forwards to the
-// actor; no polling, no sync wait.
-// F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
-// gate; it only has an effect for `naddr` (addressable / replaceable) URIs and
-// is a silent no-op for immutable `nevent`/`note` URIs. Pass `1` when the user
-// explicitly navigated to / opened this article/event or pulled to refresh;
-// pass `0` for background claims.
-void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id, int force);
-void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
+// #1726: nmp_app_claim_event / nmp_app_release_event DELETED.
+// Callers migrate to nmp_app_resolve_ref(namespace=1/*event*/, key=event-id-hex,
+// shape=2/*event.embed*/, liveness=0/*CacheOk*/) and nmp_app_release_ref
+// (namespace=1, key, consumer_id). To decode a `nostr:` URI to an event key,
+// call nmp_nip21_decode_uri first and extract the event_id from the JSON result.
 // ADR-0063 Lane D — unified, origin-blind reference-resolution entry points.
 // Generalize the former per-kind profile claim + nmp_app_claim_event behind one
 // seam. ADR-0063 Lane H deleted the old per-kind profile claim_/release_ symbols;
@@ -118,13 +109,9 @@ char *nmp_app_open_feed(void *app, const char *params_json);
 // app / malformed handle / already-closed session is a harmless no-op (D6).
 void nmp_app_close_feed(void *app, const char *handle_json);
 
-// Live "following count" read for the host profile header — the number of
-// distinct hex-valid `p` tags in the active account's latest kind:3, read
-// synchronously from the kernel's published store (read-your-writes, ADR-0057).
-// Returns >= 0 when a kind:3 exists (0 for an explicit empty list), or -1 when
-// there is no active account / no kind:3 yet / a lock is poisoned. Hosts render
-// -1 as 0; the value is kept distinct so callers can tell "no list yet" apart.
-int64_t nmp_app_active_following_count(void *app);
+// #1726: nmp_app_active_following_count DELETED (sync sentinel read).
+// Follow count is in the nmp.follow_list typed projection: read follows.len()
+// from projections["nmp.follow_list"].follows on the next snapshot frame.
 
 // T66a — identity / publish / multi-account / relay-edit. None return a
 // value; outcomes (incl. validation failures) arrive via the snapshot's
@@ -191,13 +178,6 @@ void nmp_app_chirp_close_home_feed(void *app);
 // the caller MUST free via nmp_free_string.  D6: a null/invalid input or
 // any encode failure degrades to a copy of the raw input, never NULL.
 char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
-
-// (#1671 Lane E) — removed a stale DUPLICATE declaration of
-// `nmp_app_active_following_count` that returned `int32_t` here; the canonical
-// declaration (returning `int64_t`, matching the Rust
-// `nmp_app_active_following_count -> i64` in `following_count.rs`) is above.
-// The two conflicting prototypes broke the bridging-header precompile for every
-// iOS build on this branch; this keeps the single correct `int64_t` form.
 
 // Stateless NIP-21 / bare NIP-19 decode helper. Accepts `nostr:` URIs and bare
 // bech32 profile/event/address entities, returning bounded JSON:
@@ -441,60 +421,21 @@ void nmp_app_consume_all_builtin_projections(void *app);
 //  -1  — null `app` pointer (D6 silent guard)
 int nmp_app_declare_incremental_apply(void *app);
 
-// ── V-51 phase 2 — routing-trace snapshot accessor ───────────────────────
+// ── #1726 — unified diagnostic pull accessor ──────────────────────────────
 //
-// Return a heap-owned NUL-terminated JSON snapshot of the kernel's recent
-// routing decisions (the bounded ring-buffer projection
-// `RoutingTraceProjection`). The caller MUST release the returned pointer
-// via `nmp_free_string`.
+// `nmp_app_debug_info(app, domain)` replaces the deleted pair
+// `nmp_app_recent_routing_decisions` / `nmp_app_composition_report`.
+// The caller MUST release the returned pointer via `nmp_free_string`.
 //
-// Payload shape (stable, schema-versioned — schema_version=1):
+// `domain`:
+//   0 — routing trace (schema_version, capacity, publishes, subscriptions)
+//   1 — composition report (schema_version, count, records)
+//   2 — merged: {"routing":{...},"composition":{...}}
+//   other — empty JSON object `{}` (D6 silent no-op)
 //
-//   {
-//     "schema_version": 1,
-//     "capacity": 64,
-//     "publishes":     [ { at_ms, kind, author, event_id_short,
-//                          explicit_targets_set,
-//                          urls: [ {url, lanes: [...]} ] } ],
-//     "subscriptions": [ { at_ms, interest_id, kinds, authors_count,
-//                          explicit_targets_set,
-//                          urls: [...] } ]
-//   }
-//
-// Each `lanes[]` entry is a `{ "kind": "Nip65", "direction": "Write" }`-
-// style object whose discriminant matches the chirp-repl pretty-printer's
-// grammar (`Nip65/Write`, `ClassRouted/<class>/<via>`, etc.) — the JSON
-// and the human-readable form never drift.
-//
-// D6: never returns NULL for a non-NULL app — a kernel that hasn't yet
-// constructed its projection, a poisoned slot, or a serialisation failure
-// all collapse to a well-formed empty-rings payload
-// (`{"schema_version":1,"capacity":0,"publishes":[],"subscriptions":[]}`).
-// A NULL `app` is also handled — returns the same empty-rings payload.
-char *nmp_app_recent_routing_decisions(void *app);
-
-// ADR-0049 Part 2 — composition report (the explain-the-composition surface,
-// NMP's analog of Spring Boot's ConditionEvaluationReport). Returns a heap-owned
-// NUL-terminated JSON snapshot of the composition ledger: every host-init
-// registration decision (action modules, ingest parsers, snapshot projections,
-// the last-writer-wins wiring slots) and its disposition.
-//
-// Payload shape (stable, schema-versioned):
-//   { "schema_version": 1, "count": N, "records": [
-//       { "seam": "action_registry", "key": "nmp.nip02.follow",
-//         "provider": "nmp_nip02::FollowModule", "disposition": "Installed" },
-//       { "seam": "action_registry", "key": "nmp.publish",
-//         "provider": "app::MyPublish", "disposition": "ReplacedPrevious",
-//         "replaced": "nmp_core::publish::PublishModule" } ] }
-//
-// `disposition` is one of "Installed", "ReplacedPrevious", "YieldedToExisting",
-// "DroppedLateWiring". `replaced` is present only for the replaced/yielded cases.
-//
-// The caller MUST release the returned pointer via nmp_free_string.
-// D6: never returns NULL for a non-NULL app — a serialisation failure collapses
-// to a well-formed empty document (`{"schema_version":1,"count":0,"records":[]}`).
-// A NULL `app` is also handled — returns the same empty document.
-char *nmp_app_composition_report(void *app);
+// D6: never returns NULL — a null app, unavailable projection, or
+// serialization failure all collapse to a well-formed empty payload.
+char *nmp_app_debug_info(void *app, int domain);
 
 // Release a Rust-heap C string returned by ANY NMP FFI function. Null-safe.
 // This is the ONLY correct freer — the host's free(3) must NOT be used.
@@ -774,15 +715,19 @@ void nmp_marmot_unregister(void *handle);
 
 // ADR-0058 §3 (step 3b) — synchronous read-only pull-page surface.
 //
-// Owned heap buffer returned by `nmp_app_pull_page`. The page/gap/error result
+// Owned heap buffer returned by `nmp_mirror_pull_page`. The page/gap/error result
 // is binary (it carries raw event JSON and may contain NUL bytes), so it is not
-// a C string. Release it EXACTLY once via `nmp_free_bytes` — the buffer belongs
-// to the Rust allocator; mixing with the host `free(3)` is undefined behaviour.
-typedef struct NmpOwnedBytes {
+// a C string. Release it EXACTLY once via `nmp_mirror_free_bytes` — the buffer
+// belongs to the Rust allocator; mixing with the host `free(3)` is undefined
+// behaviour.
+//
+// Renamed NmpOwnedBytes → NmpMirrorBytes (#1726) to gate raw history behind the
+// nmp_mirror_* family and make the ownership discipline explicit.
+typedef struct NmpMirrorBytes {
     uint8_t *ptr;
     uintptr_t len;
     uintptr_t cap;
-} NmpOwnedBytes;
+} NmpMirrorBytes;
 
 // Synchronously drain one page of the kernel ingest log for a registered pull
 // cursor. `max_entries` is clamped to [1, 512]; cumulative raw bytes are bounded
@@ -790,13 +735,14 @@ typedef struct NmpOwnedBytes {
 // store returns a serialized Error variant — never NULL, never a panic (D6).
 // The result encoding (Page / Gap / Error) is documented in
 // `crates/nmp-ffi/src/pull.rs`.
-struct NmpOwnedBytes nmp_app_pull_page(const void *app,
-                                       uint64_t cursor_id,
-                                       uint32_t max_entries,
-                                       uint32_t max_total_raw_bytes);
+// Renamed nmp_app_pull_page → nmp_mirror_pull_page (#1726).
+struct NmpMirrorBytes nmp_mirror_pull_page(const void *app,
+                                           uint64_t cursor_id,
+                                           uint32_t max_entries,
+                                           uint32_t max_total_raw_bytes);
 
-// Release a buffer returned by `nmp_app_pull_page`. Passing a NULL `ptr` is a
-// no-op (D6).
-void nmp_free_bytes(struct NmpOwnedBytes bytes);
+// Release a buffer returned by `nmp_mirror_pull_page`. Passing a NULL `ptr` is a
+// no-op (D6). Renamed nmp_free_bytes → nmp_mirror_free_bytes (#1726).
+void nmp_mirror_free_bytes(struct NmpMirrorBytes bytes);
 
 #endif

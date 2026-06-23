@@ -294,8 +294,11 @@ impl DrivenApp {
     /// Read the kernel's recent routing-decisions ledger as parsed JSON. Used by
     /// the privacy + outbox-routing oracles to inspect `publishes[]` targets
     /// (kind / urls) and `subscriptions[]` without scraping the churning store.
+    ///
+    /// #1726: migrated from the deleted `nmp_app_recent_routing_decisions` to
+    /// `nmp_app_debug_info(app, 0)` (domain 0 = routing trace).
     pub fn routing_decisions(&self) -> Option<serde_json::Value> {
-        let ptr = nmp_ffi::nmp_app_recent_routing_decisions(self.app);
+        let ptr = nmp_ffi::nmp_app_debug_info(self.app, 0);
         if ptr.is_null() {
             return None;
         }

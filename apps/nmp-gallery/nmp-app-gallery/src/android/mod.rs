@@ -18,12 +18,15 @@ use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
+// #1726: nmp_app_claim_event / nmp_app_release_event removed from C ABI.
+// nativeClaimEvent / nativeReleaseEvent now decode the nostr: URI and route to
+// nmp_app_resolve_ref(namespace=1/event) / nmp_app_release_ref.
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_claim_event, nmp_app_deliver_external_signer_response,
-    nmp_app_new, nmp_app_release_event,
-    nmp_app_release_ref, nmp_app_resolve_ref, nmp_app_set_capability_callback,
-    nmp_app_set_update_callback, nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
-    nmp_external_signer_init,
+    nmp_app_add_relay, nmp_app_deliver_external_signer_response,
+    nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
+    nmp_app_set_capability_callback, nmp_app_set_update_callback,
+    nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
+    nmp_external_signer_init, nmp_free_string, nmp_nip21_decode_uri,
 };
 
 use crate::dispatch_bytes::dispatch_action_bytes_for;
@@ -227,6 +230,48 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseRef
     nmp_app_release_ref(s.app, namespace, key.as_ptr(), consumer_id.as_ptr());
 }
 
+/// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the canonical
+/// event key the kernel resolver expects:
+///   - nevent / note  → the hex event_id
+///   - naddr          → the canonical coordinate string "kind:pubkey:identifier"
+/// Returns `None` on any failure (non-event URI, decode error) so callers
+/// silently no-op (D6).
+fn event_key_from_uri(uri: &std::ffi::CStr) -> Option<std::ffi::CString> {
+    // SAFETY: nmp_nip21_decode_uri returns a heap-allocated NUL-terminated
+    // JSON string (or a well-formed error JSON).
+    let raw = unsafe { nmp_nip21_decode_uri(uri.as_ptr()) };
+    if raw.is_null() {
+        return None;
+    }
+    // SAFETY: non-null raw is a valid CStr from nmp_nip21_decode_uri.
+    let s = unsafe { std::ffi::CStr::from_ptr(raw) }
+        .to_str()
+        .ok()
+        .map(str::to_owned);
+    // SAFETY: raw is freed exactly once here.
+    unsafe { nmp_free_string(raw) };
+    let s = s?;
+    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+    if !v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) {
+        return None;
+    }
+    let key = match v.get("target").and_then(|t| t.as_str()) {
+        Some("event") => v.get("event_id").and_then(|e| e.as_str())?.to_owned(),
+        Some("address") => {
+            let kind = v.get("kind").and_then(|k| k.as_u64())?;
+            let pubkey = v.get("pubkey").and_then(|p| p.as_str())?;
+            let identifier = v.get("identifier").and_then(|i| i.as_str())?;
+            format!("{kind}:{pubkey}:{identifier}")
+        }
+        _ => return None,
+    };
+    std::ffi::CString::new(key).ok()
+}
+
+/// #1726 — Demand-driven embedded-event claim. Decodes the `nostr:` URI in
+/// Rust and forwards to `nmp_app_resolve_ref(namespace=1/event, shape=2/embed,
+/// liveness=0/CacheOk)`. The deleted `nmp_app_claim_event` is NOT used.
+/// D6: bad handles / non-event URIs / decode errors are silent no-ops.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimEvent(
     mut env: JNIEnv,
@@ -236,12 +281,23 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimEvent
     consumer_id: JString,
 ) {
     let Some(s) = session_ref(handle) else { return };
-    let Some(uri) = jstring_to_cstring(&mut env, &uri) else { return };
+    let Some(uri_cstr) = jstring_to_cstring(&mut env, &uri) else { return };
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else { return };
-    // F-TTL — Android JNI claim is a background/auto-claim → force = 0.
-    nmp_app_claim_event(s.app, uri.as_ptr(), consumer_id.as_ptr(), 0);
+    let Some(event_key) = event_key_from_uri(&uri_cstr) else { return };
+    nmp_app_resolve_ref(
+        s.app,
+        1, // namespace = event
+        event_key.as_ptr(),
+        consumer_id.as_ptr(),
+        2, // shape = event.embed
+        0, // liveness = CacheOk (background/auto-claim)
+    );
 }
 
+/// #1726 — Release a previously-claimed embedded event. Decodes the `nostr:`
+/// URI in Rust and forwards to `nmp_app_release_ref(namespace=1/event)`.
+/// The deleted `nmp_app_release_event` is NOT used.
+/// D6: bad handles / non-event URIs / decode errors are silent no-ops.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEvent(
     mut env: JNIEnv,
@@ -251,9 +307,10 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEve
     consumer_id: JString,
 ) {
     let Some(s) = session_ref(handle) else { return };
-    let Some(uri) = jstring_to_cstring(&mut env, &uri) else { return };
+    let Some(uri_cstr) = jstring_to_cstring(&mut env, &uri) else { return };
     let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else { return };
-    nmp_app_release_event(s.app, uri.as_ptr(), consumer_id.as_ptr());
+    let Some(event_key) = event_key_from_uri(&uri_cstr) else { return };
+    nmp_app_release_ref(s.app, 1 /*event*/, event_key.as_ptr(), consumer_id.as_ptr());
 }
 
 /// Register (or clear) the JNI push listener for kernel update frames

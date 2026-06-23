@@ -263,7 +263,7 @@ Registration order matters for last-writer-wins slots, but ADR-0049 made the
 canonical defaults *yield* to app registrations: an app registering under a
 default namespace before or after `register_defaults` wins. App-over-app
 namespace collisions remain a bug and are recorded in the composition ledger
-(`nmp_app_composition_report`).
+(`nmp_app_debug_info(app, domain=1)` — composition-report domain; domain=0 for routing trace, domain=2 for both merged).
 
 ## Anti-patterns
 

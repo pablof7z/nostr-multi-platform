@@ -151,34 +151,61 @@ final class GalleryKernelHandle {
 
     // ── Event claim / release ────────────────────────────────────────────
 
-    /// Claim an embedded event by `nostr:` URI (ADR-0034 / M16). Refcounted
-    /// per `consumerID`. The kernel fetches the event via the OneshotApi
-    /// (single-writer interest registration — D4) when not yet in the local
-    /// store, and surfaces it in the snapshot's
-    /// `projections.claimed_events[primary_id]` map.
-    ///
-    /// Fire-and-forget at the FFI boundary (D6 — silent no-op on null/empty
-    /// arguments; the actor owns all error handling).
-    /// F-TTL — `force` controls the lazy re-verification gate; it only affects
-    /// `naddr` (addressable / replaceable) URIs and is a silent no-op for
-    /// immutable `nevent`/`note` URIs. Pass `true` only on explicit user
-    /// navigation / pull-to-refresh; default `false` for background claims.
+    // #1726: claimEvent / releaseEvent DELETED (nmp_app_claim_event /
+    // nmp_app_release_event removed from C ABI). The gallery now decodes the
+    // nostr: URI via nmp_nip21_decode_uri and routes to nmp_app_resolve_ref /
+    // nmp_app_release_ref (namespace=1/event).
+
+    /// #1726 — Decode a `nostr:` URI and resolve the embedded event via the
+    /// unified ref-resolution seam (nmp_app_resolve_ref, namespace=1/event).
+    /// Supersedes the deleted `claimEvent(uri:…)`.
     func claimEvent(uri: String, consumerID: String, force: Bool = false) {
-        uri.withCString { uriPtr in
+        guard let eventId = decodeEventKey(from: uri) else { return }
+        let liveness: Int32 = force ? 1 : 0
+        eventId.withCString { keyPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_claim_event(raw, uriPtr, cidPtr, force ? 1 : 0)
+                nmp_app_resolve_ref(raw, 1 /*event*/, keyPtr, cidPtr,
+                                   2 /*event.embed*/, liveness)
             }
         }
     }
 
-    /// Release a previously-claimed embedded event. Mirrors `releaseProfile`:
-    /// decrements the per-consumer refcount; the kernel drops the row when
-    /// the refcount hits zero.
+    /// #1726 — Release a previously-claimed event ref.
+    /// Supersedes the deleted `releaseEvent(uri:…)`.
     func releaseEvent(uri: String, consumerID: String) {
-        uri.withCString { uriPtr in
+        guard let eventId = decodeEventKey(from: uri) else { return }
+        eventId.withCString { keyPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_release_event(raw, uriPtr, cidPtr)
+                nmp_app_release_ref(raw, 1 /*event*/, keyPtr, cidPtr)
             }
+        }
+    }
+
+    /// Decode a `nostr:` URI to the canonical event key expected by the kernel:
+    ///   - nevent / note  → hex event_id
+    ///   - naddr          → canonical coordinate "kind:pubkey:identifier"
+    /// Returns nil on decode failure or a non-event URI (D6: silent no-op).
+    private func decodeEventKey(from uri: String) -> String? {
+        guard let jsonStr = uri.withCString({ ptr -> String? in
+            guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
+            defer { nmp_free_string(cResult) }
+            return String(cString: cResult)
+        }) else { return nil }
+        guard let jsonData = jsonStr.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let ok = obj["ok"] as? Bool, ok
+        else { return nil }
+        switch obj["target"] as? String {
+        case "event":
+            return obj["event_id"] as? String
+        case "address":
+            guard let kind = obj["kind"] as? UInt32,
+                  let pubkey = obj["pubkey"] as? String,
+                  let identifier = obj["identifier"] as? String
+            else { return nil }
+            return "\(kind):\(pubkey):\(identifier)"
+        default:
+            return nil
         }
     }
 

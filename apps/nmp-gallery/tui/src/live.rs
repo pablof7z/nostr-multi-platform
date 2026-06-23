@@ -10,7 +10,7 @@
 //! 1. Renderer encounters an `EventRef(uri)` token.
 //! 2. `NostrContentView` calls `sink.claim(uri, consumer_id)` via the
 //!    `EventClaimSink` host bridge.
-//! 3. `LiveKernelSink::claim` forwards to `nmp_app_claim_event` — the
+//! 3. `LiveKernelSink::claim` forwards to `nmp_app_resolve_ref` (namespace=1/event) — the
 //!    kernel registers a `OneshotApi` interest (D4 single writer), short-
 //!    circuits on cache hit, or compiles a wire REQ on cache miss.
 //! 4. The event arrives (cache or relay), gets surfaced in the typed
@@ -172,8 +172,8 @@ struct UpdateBridge {
 
 /// `EventClaimSink` impl wrapping a live kernel's app pointer. The
 /// renderer-triggered claim path (`NostrContentView::claim_sink`) calls
-/// this on each render frame; `claim` forwards to `nmp_app_claim_event`,
-/// `release` to `nmp_app_release_event`. `Send + Sync` because every FFI
+/// this on each render frame; `claim` forwards to `nmp_app_resolve_ref` (namespace=1/event),
+/// `release` to `nmp_app_release_ref`. `Send + Sync` because every FFI
 /// symbol forwards to the actor's command channel — the pointer is just
 /// an opaque key.
 pub struct LiveKernelSink {
@@ -222,22 +222,72 @@ impl LiveKernelSink {
     // hydration uses component-owned `resolve_profile` above.
 }
 
+/// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the canonical
+/// event key the kernel resolver expects:
+///   - nevent / note  → hex event_id
+///   - naddr          → canonical coordinate "kind:pubkey:identifier"
+/// Returns `None` on decode failure or non-event/address target (D6: silent
+/// no-op). Used by `LiveKernelSink` migrating from deleted `nmp_app_claim_event`.
+fn event_key_from_uri(uri: &str) -> Option<CString> {
+    let uri_c = CString::new(uri).ok()?;
+    // SAFETY: nmp_nip21_decode_uri returns a heap-allocated NUL-terminated
+    // JSON string; nmp_free_string frees it exactly once.
+    let raw = unsafe { nmp_ffi::nmp_nip21_decode_uri(uri_c.as_ptr()) };
+    if raw.is_null() {
+        return None;
+    }
+    let s = unsafe { std::ffi::CStr::from_ptr(raw) }
+        .to_str()
+        .ok()
+        .map(str::to_owned);
+    unsafe { nmp_ffi::nmp_free_string(raw) };
+    let s = s?;
+    let v: serde_json::Value = serde_json::from_str(&s).ok()?;
+    if !v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) {
+        return None;
+    }
+    let key = match v.get("target").and_then(|t| t.as_str()) {
+        Some("event") => v.get("event_id").and_then(|e| e.as_str())?.to_owned(),
+        Some("address") => {
+            let kind = v.get("kind").and_then(|k| k.as_u64())?;
+            let pubkey = v.get("pubkey").and_then(|p| p.as_str())?;
+            let identifier = v.get("identifier").and_then(|i| i.as_str())?;
+            format!("{kind}:{pubkey}:{identifier}")
+        }
+        _ => return None,
+    };
+    CString::new(key).ok()
+}
+
+// #1726: migrated from the deleted nmp_app_claim_event / nmp_app_release_event
+// to nmp_app_resolve_ref(namespace=1/event) / nmp_app_release_ref.
 impl EventClaimSink for LiveKernelSink {
     fn claim(&self, uri: &str, consumer_id: &str) {
-        let Ok(uri_c) = CString::new(uri) else { return };
+        let Some(event_key) = event_key_from_uri(uri) else {
+            return;
+        };
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        // F-TTL — embed sink claims on render → force = 0 (background path).
-        nmp_ffi::nmp_app_claim_event(self.app, uri_c.as_ptr(), cid.as_ptr(), 0);
+        // F-TTL — embed sink claims on render → liveness = 0 (CacheOk / background).
+        nmp_ffi::nmp_app_resolve_ref(
+            self.app,
+            1, // namespace = event
+            event_key.as_ptr(),
+            cid.as_ptr(),
+            2, // shape = event.embed
+            0, // liveness = CacheOk
+        );
     }
 
     fn release(&self, uri: &str, consumer_id: &str) {
-        let Ok(uri_c) = CString::new(uri) else { return };
+        let Some(event_key) = event_key_from_uri(uri) else {
+            return;
+        };
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        nmp_ffi::nmp_app_release_event(self.app, uri_c.as_ptr(), cid.as_ptr());
+        nmp_ffi::nmp_app_release_ref(self.app, 1 /*event*/, event_key.as_ptr(), cid.as_ptr());
     }
 }
 
