@@ -297,7 +297,8 @@ impl TopicArticlesAction {
 /// Call this from your app's composition root (alongside
 /// [`nmp_defaults::register_defaults`]) before `nmp_app_start`.
 pub fn register_topic_articles_actions(app: &mut impl ActionRegistrar) {
-    let _ = app.register_action(TopicArticlesModule);
+    app.register_action(TopicArticlesModule)
+        .expect("duplicate registration: nmp-defaults TopicArticlesModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error
 }
 
 #[cfg(test)]
