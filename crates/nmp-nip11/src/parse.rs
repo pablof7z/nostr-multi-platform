@@ -2,17 +2,26 @@
 //!
 //! The wire shape is a single JSON object with all fields optional (NIP-11):
 //! `name`, `description`, `icon`, `pubkey`, `contact`, `software`, `version`,
-//! `supported_nips` (array of numbers), and a nested `limitation` object. We
-//! parse tolerantly: unknown fields are ignored, missing fields become `None`,
-//! and a body that is not a JSON object is an error (the caller records the
-//! relay as having no document).
+//! `supported_nips` (array of numbers), a nested `limitation` object, and
+//! arbitrary NIP-specific capability objects (e.g. `nip29`). We parse
+//! tolerantly: unknown fields are ignored, missing fields become `None`, and
+//! a body that is not a JSON object is an error (the caller records the relay
+//! as having no document).
 //!
 //! Output is the substrate-generic [`RelayInfoDoc`] so the parsed shape flows
 //! straight into the kernel's diagnostics surface without any nmp-nip11 type
 //! crossing the actor seam.
 
+use std::collections::BTreeMap;
+
 use nmp_core::substrate::RelayInfoDoc;
 use serde::Deserialize;
+
+/// The key a relay's NIP-11 `nip29.subgroups` capability is filed under in
+/// [`RelayInfoDoc::feature_flags`] (nips PR #2319). Authored here — in the
+/// Layer-4 NIP-11 crate — not in `nmp-core`, so the substrate stays free of
+/// NIP nouns (D0).
+pub const NIP29_SUBGROUPS_FLAG: &str = "nip29.subgroups";
 
 /// The raw NIP-11 wire object. Every field optional; `supported_nips` is parsed
 /// leniently as floats-then-truncated so a relay emitting `1.0` still maps to
@@ -30,6 +39,10 @@ struct WireDoc {
     supported_nips: Vec<serde_json::Value>,
     #[serde(default)]
     limitation: WireLimitation,
+    /// NIP-29 subgroups capability (nips PR #2319). Unknown keys inside the
+    /// object are dropped by serde's default behaviour.
+    #[serde(default)]
+    nip29: WireNip29,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -37,6 +50,14 @@ struct WireLimitation {
     payment_required: Option<bool>,
     auth_required: Option<bool>,
     restricted_writes: Option<bool>,
+}
+
+/// The NIP-11 `nip29` capability object (nips PR #2319). Only the
+/// `subgroups` boolean is read; unknown keys are ignored.
+#[derive(Debug, Default, Deserialize)]
+struct WireNip29 {
+    #[serde(default)]
+    subgroups: Option<bool>,
 }
 
 /// Parse a NIP-11 document body into a [`RelayInfoDoc`] tagged with `relay_url`.
@@ -57,6 +78,15 @@ pub fn parse_relay_info(relay_url: &str, body: &[u8]) -> Result<RelayInfoDoc, St
         .filter_map(value_to_nip)
         .collect();
 
+    // NIP-specific capability booleans → the substrate-generic `feature_flags`
+    // carrier. The key string ("nip29.subgroups") is authored here, not in
+    // nmp-core, so D0 holds. Only `Some(true)` is recorded; `None`/`false`
+    // mean the relay does not advertise the capability.
+    let mut feature_flags = BTreeMap::new();
+    if wire.nip29.subgroups == Some(true) {
+        feature_flags.insert(NIP29_SUBGROUPS_FLAG.to_string(), true);
+    }
+
     Ok(RelayInfoDoc {
         url: relay_url.to_string(),
         name: non_empty(wire.name),
@@ -70,6 +100,7 @@ pub fn parse_relay_info(relay_url: &str, body: &[u8]) -> Result<RelayInfoDoc, St
         limitation_payment_required: wire.limitation.payment_required,
         limitation_auth_required: wire.limitation.auth_required,
         limitation_restricted_writes: wire.limitation.restricted_writes,
+        feature_flags,
     })
 }
 
@@ -178,5 +209,42 @@ mod tests {
     fn non_object_body_is_an_error() {
         assert!(parse_relay_info("wss://r", b"not json").is_err());
         assert!(parse_relay_info("wss://r", b"[1,2,3]").is_err());
+    }
+
+    #[test]
+    fn nip29_subgroups_true_is_recorded_as_a_feature_flag() {
+        // nips PR #2319: a relay advertises subgroup support via
+        // `{"nip29": {"subgroups": true}}` in its NIP-11 doc.
+        let body = br#"{"supported_nips": [29], "nip29": {"subgroups": true}}"#;
+        let doc = parse_relay_info("wss://r", body).expect("parse");
+        assert_eq!(
+            doc.feature_flags.get("nip29.subgroups"),
+            Some(&true),
+            "nip29.subgroups=true must be filed under feature_flags"
+        );
+    }
+
+    #[test]
+    fn nip29_subgroups_false_or_absent_is_not_recorded() {
+        // Explicitly false: not a capability the relay advertises.
+        let body = br#"{"nip29": {"subgroups": false}}"#;
+        let doc = parse_relay_info("wss://r", body).expect("parse");
+        assert!(
+            !doc.feature_flags.contains_key("nip29.subgroups"),
+            "subgroups=false must not be recorded as an advertised capability"
+        );
+        // Absent entirely.
+        let doc = parse_relay_info("wss://r", b"{}").expect("parse");
+        assert!(doc.feature_flags.is_empty());
+    }
+
+    #[test]
+    fn unknown_keys_in_the_nip29_object_are_ignored() {
+        let body = br#"{"nip29": {"subgroups": true, "future_field": 7}}"#;
+        let doc = parse_relay_info("wss://r", body).expect("parse");
+        assert_eq!(doc.feature_flags.get("nip29.subgroups"), Some(&true));
+        // Only the known boolean is filed; the unknown key never reaches
+        // `feature_flags`.
+        assert_eq!(doc.feature_flags.len(), 1);
     }
 }

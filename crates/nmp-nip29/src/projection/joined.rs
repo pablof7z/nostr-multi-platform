@@ -12,6 +12,7 @@ use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::RelayUrl;
+use crate::kinds::tags::{child_tag_values, parent_tag_value};
 use crate::kinds::{d_tag_value, KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS, KIND_GROUP_METADATA};
 
 /// One group the active pubkey belongs to on a host relay.
@@ -28,6 +29,17 @@ pub struct JoinedGroup {
     pub open: bool,
     pub is_member: bool,
     pub is_admin: bool,
+    /// NIP-29 subgroups (#2319): the `["parent", <id>]` tag value on the
+    /// latest 39000. `None` (absent/empty) = root group. NOTE:
+    /// `joined_groups_for_host` subscribes to 39001/39002 only, so this
+    /// populates only when a 39000 also arrives via relay provenance. A
+    /// host wanting the full tree on joined groups layers a discovery
+    /// interest on the same relay (out of scope for this field).
+    pub parent: Option<String>,
+    /// NIP-29 subgroups: ordered `["child", <id>]` tag values on the latest
+    /// 39000. Empty until a 39000 carrying `child` tags arrives (same
+    /// provenance caveat as `parent`).
+    pub children: Vec<String>,
 }
 
 /// Snapshot for the `"nmp.nip29.joined_groups"` typed sidecar.
@@ -158,6 +170,10 @@ fn apply_event_to_row(row: &mut JoinedGroup, kind: u32, tags: &[Vec<String>], ac
             row.about = single_tag_value(tags, "about");
             row.public = !has_marker_tag(tags, "private");
             row.open = !has_marker_tag(tags, "closed");
+            row.parent = parent_tag_value(tags).map(str::to_string);
+            row.children = child_tag_values(tags)
+                .map(|v| v.iter().map(|s| s.to_string()).collect())
+                .unwrap_or_default();
         }
         KIND_GROUP_ADMINS => {
             row.admin_count = count_p_tags(tags);

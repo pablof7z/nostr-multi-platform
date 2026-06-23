@@ -1,0 +1,37 @@
+namespace nmp.nip29;
+
+// ADR-0064 / S9 (#1747) — typed FlatBuffers payload for the
+// `nmp.nip29.set_parent` `ActionModule` (publishes a kind:9002 edit-metadata
+// that adopts a NIP-29 group under a parent or detaches it to a root, per
+// nips PR #2319).
+//
+// The OPAQUE `DispatchEnvelope.payload` for that namespace; the registry
+// adapter decodes against THIS schema, gating `schema_version` BEFORE
+// `start()` (fail-closed on mismatch). WRITE-direction action payload.
+//
+// Self-contained (no `include`); the `GroupRef` sub-table is declared inline
+// so each action schema generates an independent `_generated.rs` module.
+// Regenerate the checked-in Rust bindings only with the workspace
+// FlatBuffers pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/set_parent_action.fbs
+
+// NIP-29 group identity (`{host_relay_url, local_id}`). Non-emptiness /
+// charset / self-reference validation stays in `start()`; this is a pure
+// shape decode.
+table GroupRef {
+  host_relay_url:string (required);
+  local_id:string (required);
+}
+
+table SetParentPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  group:GroupRef (required);
+  // The parent's in-relay local id. Absent (or empty) detaches the group to
+  // a root; present adopts it under that parent.
+  parent:string;
+}
+
+file_identifier "N29S";
+root_type SetParentPayload;

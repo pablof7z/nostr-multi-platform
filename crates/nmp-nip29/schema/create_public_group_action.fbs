@@ -44,6 +44,9 @@ table CreatePublicGroupPayload {
   // Scalars default to 0 (Public / Open) when absent.
   visibility:GroupVisibility;
   access:GroupAccess;
+  // NIP-29 subgroups (nips PR #2319): optional parent local id. Absent (or
+  // empty) creates a root group. Self-reference is rejected in `start()`.
+  parent:string;
 }
 
 file_identifier "N29P";

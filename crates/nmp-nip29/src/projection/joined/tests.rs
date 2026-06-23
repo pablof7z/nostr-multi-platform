@@ -1,5 +1,5 @@
 use super::*;
-use crate::kinds::KIND_PUT_USER;
+use crate::kinds::{KIND_GROUP_METADATA, KIND_PUT_USER};
 
 fn event(id: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> KernelEvent {
     KernelEvent {
@@ -118,4 +118,51 @@ fn equal_timestamp_tie_breaks_by_descending_event_id() {
     ));
 
     assert_eq!(proj.snapshot().groups.len(), 1);
+}
+
+// ── NIP-29 subgroups (#2319) ─────────────────────────────────────────────────
+
+#[test]
+fn kind39000_folds_parent_and_children_into_joined_row() {
+    let active = "a".repeat(64);
+    let proj = JoinedGroupsProjection::new_for_host(&active, "wss://h");
+    // The active pubkey is a member (39002) AND the group carries parent/child.
+    proj.on_kernel_event(&event(
+        "members",
+        KIND_GROUP_MEMBERS,
+        100,
+        vec![d("nostr"), p(&active)],
+    ));
+    proj.on_kernel_event(&event(
+        "meta",
+        KIND_GROUP_METADATA,
+        100,
+        vec![
+            d("nostr"),
+            vec!["name".into(), "Nostr".into()],
+            vec!["parent".into(), "tech".into()],
+            vec!["child".into(), "nip29".into()],
+        ],
+    ));
+
+    let g = &proj.snapshot().groups[0];
+    assert_eq!(g.group_id, "nostr");
+    assert_eq!(g.parent.as_deref(), Some("tech"));
+    assert_eq!(g.children, vec!["nip29"]);
+    assert!(g.is_member);
+}
+
+#[test]
+fn joined_row_defaults_to_root_when_no_39000() {
+    let active = "a".repeat(64);
+    let proj = JoinedGroupsProjection::new_for_host(&active, "wss://h");
+    proj.on_kernel_event(&event(
+        "members",
+        KIND_GROUP_MEMBERS,
+        100,
+        vec![d("room"), p(&active)],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert!(g.parent.is_none(), "no 39000 -> root default");
+    assert!(g.children.is_empty());
 }

@@ -52,6 +52,7 @@ use nmp_core::KernelEventObserver;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::RelayUrl;
+use crate::kinds::tags::{child_tag_values, parent_tag_value};
 use crate::kinds::{d_tag_value, KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS, KIND_GROUP_METADATA};
 
 /// One discovered group, ready for a host shell to render.
@@ -92,6 +93,16 @@ pub struct DiscoveredGroup {
     /// `true` iff the latest 39000 lacks a `["closed"]` tag. Defaults to
     /// `true` (open) when no 39000 has arrived.
     pub open: bool,
+    /// NIP-29 subgroups (nips PR #2319): the `["parent", <id>]` tag value on
+    /// the latest 39000, pointing at this group's parent's `d` identifier.
+    /// `None` (absent or empty) means this is a root group. The tree is
+    /// scoped to the single host relay this projection is built for.
+    pub parent: Option<String>,
+    /// NIP-29 subgroups: the ordered `["child", <id>]` tag values on the
+    /// latest 39000 — the parent's children list, in tag order. Empty until a
+    /// 39000 carrying `child` tags arrives. The relay maintains this list as
+    /// children are adopted/detached; clients render the hierarchy from it.
+    pub children: Vec<String>,
 }
 
 /// The serialised read-model a discovery screen consumes.
@@ -258,6 +269,14 @@ fn apply_event_to_row(row: &mut DiscoveredGroup, kind: u32, tags: &[Vec<String>]
             // Highlighter convention: absence of `private` defaults to public.
             row.public = !has_marker_tag(tags, "private");
             row.open = !has_marker_tag(tags, "closed");
+            // NIP-29 subgroups (#2319): `parent` is a single tag (at-most-one
+            // per the spec); an empty value normalises to None (root).
+            row.parent = parent_tag_value(tags).map(str::to_string);
+            // Children preserve tag order (the spec models the list as
+            // ordered; relay appends new children, parent admin reorders).
+            row.children = child_tag_values(tags)
+                .map(|v| v.iter().map(|s| s.to_string()).collect())
+                .unwrap_or_default();
         }
         KIND_GROUP_ADMINS => {
             row.admin_count = count_p_tags(tags);

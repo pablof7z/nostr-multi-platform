@@ -35,6 +35,8 @@ pub mod nmp {
             pub const VT_ADMIN_COUNT: ::flatbuffers::VOffsetT = 16;
             pub const VT_PUBLIC: ::flatbuffers::VOffsetT = 18;
             pub const VT_OPEN: ::flatbuffers::VOffsetT = 20;
+            pub const VT_PARENT: ::flatbuffers::VOffsetT = 22;
+            pub const VT_CHILDREN: ::flatbuffers::VOffsetT = 24;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -51,6 +53,12 @@ pub mod nmp {
                 args: &'args DiscoveredGroupArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<DiscoveredGroup<'bldr>> {
                 let mut builder = DiscoveredGroupBuilder::new(_fbb);
+                if let Some(x) = args.children {
+                    builder.add_children(x);
+                }
+                if let Some(x) = args.parent {
+                    builder.add_parent(x);
+                }
                 builder.add_admin_count(args.admin_count);
                 builder.add_member_count(args.member_count);
                 if let Some(x) = args.about {
@@ -175,6 +183,32 @@ pub mod nmp {
                         .unwrap()
                 }
             }
+            #[inline]
+            pub fn parent(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DiscoveredGroup::VT_PARENT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn children(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DiscoveredGroup::VT_CHILDREN, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for DiscoveredGroup<'_> {
@@ -213,6 +247,14 @@ pub mod nmp {
                     .visit_field::<u32>("admin_count", Self::VT_ADMIN_COUNT, false)?
                     .visit_field::<bool>("public", Self::VT_PUBLIC, false)?
                     .visit_field::<bool>("open", Self::VT_OPEN, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "parent",
+                        Self::VT_PARENT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("children", Self::VT_CHILDREN, false)?
                     .finish();
                 Ok(())
             }
@@ -227,6 +269,12 @@ pub mod nmp {
             pub admin_count: u32,
             pub public: bool,
             pub open: bool,
+            pub parent: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub children: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
         }
         impl<'a> Default for DiscoveredGroupArgs<'a> {
             #[inline]
@@ -241,6 +289,8 @@ pub mod nmp {
                     admin_count: 0,
                     public: false,
                     open: false,
+                    parent: None,
+                    children: None,
                 }
             }
         }
@@ -309,6 +359,25 @@ pub mod nmp {
                     .push_slot::<bool>(DiscoveredGroup::VT_OPEN, open, false);
             }
             #[inline]
+            pub fn add_parent(&mut self, parent: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroup::VT_PARENT,
+                    parent,
+                );
+            }
+            #[inline]
+            pub fn add_children(
+                &mut self,
+                children: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroup::VT_CHILDREN,
+                    children,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> DiscoveredGroupBuilder<'a, 'b, A> {
@@ -337,6 +406,8 @@ pub mod nmp {
                 ds.field("admin_count", &self.admin_count());
                 ds.field("public", &self.public());
                 ds.field("open", &self.open());
+                ds.field("parent", &self.parent());
+                ds.field("children", &self.children());
                 ds.finish()
             }
         }
@@ -394,7 +465,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION, Some(1))
+                        .get::<u32>(DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION, Some(2))
                         .unwrap()
                 }
             }
@@ -460,7 +531,7 @@ pub mod nmp {
             #[inline]
             fn default() -> Self {
                 DiscoveredGroupsSnapshotArgs {
-                    schema_version: 1,
+                    schema_version: 2,
                     host_relay_url: None,
                     groups: None,
                 }
@@ -477,7 +548,7 @@ pub mod nmp {
                 self.fbb_.push_slot::<u32>(
                     DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION,
                     schema_version,
-                    1,
+                    2,
                 );
             }
             #[inline]

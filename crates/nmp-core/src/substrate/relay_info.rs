@@ -23,7 +23,13 @@
 //!
 //! `supported_nips` is `Vec<u32>` (protocol numbers, not nouns). The
 //! `limitation_*` booleans surface the cheap, widely-set fields of the NIP-11
-//! `limitation` block.
+//! `limitation` block. `feature_flags` is a generic open-ended carrier for
+//! NIP-specific capability booleans a relay advertises (e.g. NIP-29 subgroup
+//! support via `nip29.subgroups`); the key strings are authored in the owning
+//! Layer-4 protocol crate, never named here, so D0 (no NIP nouns in
+//! `nmp-core`) holds.
+
+use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -63,6 +69,13 @@ pub struct RelayInfoDoc {
     /// `limitation.restricted_writes` — writes are restricted to allow-listed
     /// authors.
     pub limitation_restricted_writes: Option<bool>,
+    /// NIP-specific capability booleans a relay advertises in its NIP-11 doc
+    /// (e.g. `nip29.subgroups`). Substrate-generic: the key strings are
+    /// authored in the owning Layer-4 protocol crate (e.g. `nmp-nip11`
+    /// fills `"nip29.subgroups"` from the NIP-11 `nip29` object), never
+    /// named here, so D0 (no NIP nouns in `nmp-core`) holds. Empty when the
+    /// document advertises none.
+    pub feature_flags: BTreeMap<String, bool>,
 }
 
 impl RelayInfoDoc {
@@ -102,6 +115,12 @@ mod tests {
 
     #[test]
     fn json_round_trips() {
+        // The key strings a Layer-4 protocol crate files under `feature_flags`
+        // (e.g. the NIP-29 subgroups capability) are authored THERE, not here —
+        // D0 forbids NIP nouns in `nmp-core`. This test uses a generic
+        // placeholder key so the substrate round-trip stays noun-free.
+        let mut feature_flags = BTreeMap::new();
+        feature_flags.insert("example.feature".to_string(), true);
         let doc = RelayInfoDoc {
             url: "wss://relay.example".to_string(),
             name: Some("Example Relay".to_string()),
@@ -115,6 +134,7 @@ mod tests {
             limitation_payment_required: Some(false),
             limitation_auth_required: Some(true),
             limitation_restricted_writes: None,
+            feature_flags,
         };
         let json = doc.to_json().expect("serialise");
         let back = RelayInfoDoc::from_json(&json).expect("parse");

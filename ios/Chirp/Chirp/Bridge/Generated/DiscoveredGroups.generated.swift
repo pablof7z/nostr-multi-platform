@@ -29,6 +29,8 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
     case adminCount = 16
     case public_ = 18
     case open_ = 20
+    case parent = 22
+    case children = 24
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -47,7 +49,10 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
   public var adminCount: UInt32 { let o = _accessor.offset(VTOFFSET.adminCount.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var public_: Bool { let o = _accessor.offset(VTOFFSET.public_.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var open_: Bool { let o = _accessor.offset(VTOFFSET.open_.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public static func startDiscoveredGroup(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 9) }
+  public var parent: String? { let o = _accessor.offset(VTOFFSET.parent.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var parentSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.parent.v) }
+  public var children: FlatbufferVector<String?> { return _accessor.vector(at: VTOFFSET.children.v, byteSize: 4) }
+  public static func startDiscoveredGroup(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 11) }
   public static func add(groupId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: groupId, at: VTOFFSET.groupId.p) }
   public static func add(hostRelayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: hostRelayUrl, at: VTOFFSET.hostRelayUrl.p) }
   public static func add(name: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: name, at: VTOFFSET.name.p) }
@@ -59,6 +64,8 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
    at: VTOFFSET.public_.p) }
   public static func add(open_: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: open_, def: false,
    at: VTOFFSET.open_.p) }
+  public static func add(parent: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: parent, at: VTOFFSET.parent.p) }
+  public static func addVectorOf(children: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: children, at: VTOFFSET.children.p) }
   public static func endDiscoveredGroup(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createDiscoveredGroup(
     _ fbb: inout FlatBufferBuilder,
@@ -70,7 +77,9 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
     memberCount: UInt32 = 0,
     adminCount: UInt32 = 0,
     public_: Bool = false,
-    open_: Bool = false
+    open_: Bool = false,
+    parentOffset parent: Offset = Offset(),
+    childrenVectorOffset children: Offset = Offset()
   ) -> Offset {
     let __start = nmp_nip29_DiscoveredGroup.startDiscoveredGroup(&fbb)
     nmp_nip29_DiscoveredGroup.add(groupId: groupId, &fbb)
@@ -82,6 +91,8 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
     nmp_nip29_DiscoveredGroup.add(adminCount: adminCount, &fbb)
     nmp_nip29_DiscoveredGroup.add(public_: public_, &fbb)
     nmp_nip29_DiscoveredGroup.add(open_: open_, &fbb)
+    nmp_nip29_DiscoveredGroup.add(parent: parent, &fbb)
+    nmp_nip29_DiscoveredGroup.addVectorOf(children: children, &fbb)
     return nmp_nip29_DiscoveredGroup.endDiscoveredGroup(&fbb, start: __start)
   }
 
@@ -96,6 +107,8 @@ public struct nmp_nip29_DiscoveredGroup: FlatBufferTable, FlatbuffersVectorIniti
     try _v.visit(field: VTOFFSET.adminCount.p, fieldName: "adminCount", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.public_.p, fieldName: "public_", required: false, type: Bool.self)
     try _v.visit(field: VTOFFSET.open_.p, fieldName: "open_", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.parent.p, fieldName: "parent", required: false, type: ForwardOffset<String>.self)
+    try _v.visit(field: VTOFFSET.children.p, fieldName: "children", required: false, type: ForwardOffset<Vector<ForwardOffset<String>, String>>.self)
     _v.finish()
   }
 }
@@ -119,18 +132,18 @@ public struct nmp_nip29_DiscoveredGroupsSnapshot: FlatBufferTable, FlatbuffersVe
     var p: VOffset { self.rawValue }
   }
 
-  public var schemaVersion: UInt32 { let o = _accessor.offset(VTOFFSET.schemaVersion.v); return o == 0 ? 1 : _accessor.readBuffer(of: UInt32.self, at: o) }
+  public var schemaVersion: UInt32 { let o = _accessor.offset(VTOFFSET.schemaVersion.v); return o == 0 ? 2 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var hostRelayUrl: String? { let o = _accessor.offset(VTOFFSET.hostRelayUrl.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var hostRelayUrlSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.hostRelayUrl.v) }
   public var groups: FlatbufferVector<nmp_nip29_DiscoveredGroup> { return _accessor.vector(at: VTOFFSET.groups.v, byteSize: 4) }
   public static func startDiscoveredGroupsSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 3) }
-  public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 1, at: VTOFFSET.schemaVersion.p) }
+  public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 2, at: VTOFFSET.schemaVersion.p) }
   public static func add(hostRelayUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: hostRelayUrl, at: VTOFFSET.hostRelayUrl.p) }
   public static func addVectorOf(groups: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: groups, at: VTOFFSET.groups.p) }
   public static func endDiscoveredGroupsSnapshot(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createDiscoveredGroupsSnapshot(
     _ fbb: inout FlatBufferBuilder,
-    schemaVersion: UInt32 = 1,
+    schemaVersion: UInt32 = 2,
     hostRelayUrlOffset hostRelayUrl: Offset = Offset(),
     groupsVectorOffset groups: Offset = Offset()
   ) -> Offset {

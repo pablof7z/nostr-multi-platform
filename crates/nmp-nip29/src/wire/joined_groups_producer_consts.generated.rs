@@ -10,4 +10,4 @@ pub const JOINED_GROUPS_SCHEMA_ID: &str = "nmp.nip29.joined_groups";
 /// FlatBuffers file identifier embedded in every buffer this module emits.
 pub const JOINED_GROUPS_FILE_IDENTIFIER: &[u8; 4] = b"NJGS";
 /// Wire schema version. Bump on any breaking change to this projection's `.fbs`.
-pub const JOINED_GROUPS_SCHEMA_VERSION: u32 = 1;
+pub const JOINED_GROUPS_SCHEMA_VERSION: u32 = 2;

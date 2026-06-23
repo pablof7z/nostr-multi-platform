@@ -329,7 +329,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         schema_id: "nmp.nip29.discovered_groups",
         file_identifier: "NDGS",
         // nmp-nip29 wire/discovered_groups_fb::DISCOVERED_GROUPS_SCHEMA_VERSION
-        version: 1,
+        version: 2,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,
@@ -356,7 +356,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         schema_id: "nmp.nip29.joined_groups",
         file_identifier: "NJGS",
         // nmp-nip29 wire/joined_groups_fb::JOINED_GROUPS_SCHEMA_VERSION
-        version: 1,
+        version: 2,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,

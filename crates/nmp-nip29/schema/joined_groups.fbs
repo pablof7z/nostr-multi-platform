@@ -16,10 +16,16 @@ table JoinedGroup {
   open:bool;
   is_member:bool;
   is_admin:bool;
+  // NIP-29 subgroups (nips PR #2319): `["parent", <id>]` on the latest 39000.
+  // Absent/empty == root. Populated only when a 39000 arrives (the
+  // joined-groups interest subscribes to 39001/39002 by default).
+  parent:string;
+  // NIP-29 subgroups: ordered `["child", <id>]` values on the latest 39000.
+  children:[string];
 }
 
 table JoinedGroupsSnapshot {
-  schema_version:uint32 = 1;
+  schema_version:uint32 = 2;
   active_pubkey:string;
   groups:[JoinedGroup];
 }

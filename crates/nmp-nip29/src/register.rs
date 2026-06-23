@@ -61,7 +61,7 @@ unsafe impl Sync for GroupDiscoveryHandle {}
 use crate::action::{
     CreateInviteAction, CreatePublicGroupAction, DiscoverGroupsAction, JoinGroupAction,
     LeaveGroupAction, PostChatMessageAction, PutUserAction, ReactInGroupAction,
-    RepostInGroupAction, ShareEventInGroupAction,
+    RepostInGroupAction, SetParentAction, ShareEventInGroupAction,
 };
 use crate::group_id::GroupId;
 use crate::projection::{
@@ -337,6 +337,7 @@ pub fn wire_group_defaults(app: &impl SnapshotProjectionRegistrar) {
 /// - `nmp.nip29.leave`
 /// - `nmp.nip29.put_user`
 /// - `nmp.nip29.create_invite`
+/// - `nmp.nip29.set_parent` (NIP-29 subgroups, nips PR #2319)
 ///
 /// Must be called before `nmp_app_start` — the registry is write-locked
 /// after the actor loop starts.
@@ -360,5 +361,6 @@ pub fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), Registrati
     app.register_action(LeaveGroupAction)?;
     app.register_action(PutUserAction)?;
     app.register_action(CreateInviteAction)?;
+    app.register_action(SetParentAction)?;
     Ok(())
 }

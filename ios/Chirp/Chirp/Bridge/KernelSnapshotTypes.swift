@@ -101,6 +101,15 @@ struct DiscoveredGroup: Decodable, Identifiable, Equatable {
     let adminCount: UInt32
     let `public`: Bool
     let open: Bool
+    /// NIP-29 subgroups (nips PR #2319): the `["parent", <id>]` tag value on
+    /// the latest kind:39000 — the parent's in-relay id. `nil` (absent/empty)
+    /// means this is a root group. The hierarchy is scoped to this snapshot's
+    /// single host relay.
+    let parent: String?
+    /// NIP-29 subgroups: the ordered `["child", <id>]` tag values on the
+    /// latest kind:39000 — this group's children in tag order. Empty when no
+    /// children are declared.
+    let children: [String]
 
     var id: String { "\(hostRelayUrl)|\(groupId)" }
 }

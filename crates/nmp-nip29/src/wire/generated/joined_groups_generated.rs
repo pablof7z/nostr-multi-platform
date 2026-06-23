@@ -37,6 +37,8 @@ pub mod nmp {
             pub const VT_OPEN: ::flatbuffers::VOffsetT = 20;
             pub const VT_IS_MEMBER: ::flatbuffers::VOffsetT = 22;
             pub const VT_IS_ADMIN: ::flatbuffers::VOffsetT = 24;
+            pub const VT_PARENT: ::flatbuffers::VOffsetT = 26;
+            pub const VT_CHILDREN: ::flatbuffers::VOffsetT = 28;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -53,6 +55,12 @@ pub mod nmp {
                 args: &'args JoinedGroupArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<JoinedGroup<'bldr>> {
                 let mut builder = JoinedGroupBuilder::new(_fbb);
+                if let Some(x) = args.children {
+                    builder.add_children(x);
+                }
+                if let Some(x) = args.parent {
+                    builder.add_parent(x);
+                }
                 builder.add_admin_count(args.admin_count);
                 builder.add_member_count(args.member_count);
                 if let Some(x) = args.about {
@@ -195,6 +203,30 @@ pub mod nmp {
                         .unwrap()
                 }
             }
+            #[inline]
+            pub fn parent(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_PARENT, None)
+                }
+            }
+            #[inline]
+            pub fn children(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(JoinedGroup::VT_CHILDREN, None)
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for JoinedGroup<'_> {
@@ -235,6 +267,14 @@ pub mod nmp {
                     .visit_field::<bool>("open", Self::VT_OPEN, false)?
                     .visit_field::<bool>("is_member", Self::VT_IS_MEMBER, false)?
                     .visit_field::<bool>("is_admin", Self::VT_IS_ADMIN, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "parent",
+                        Self::VT_PARENT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("children", Self::VT_CHILDREN, false)?
                     .finish();
                 Ok(())
             }
@@ -251,6 +291,12 @@ pub mod nmp {
             pub open: bool,
             pub is_member: bool,
             pub is_admin: bool,
+            pub parent: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub children: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
         }
         impl<'a> Default for JoinedGroupArgs<'a> {
             #[inline]
@@ -267,6 +313,8 @@ pub mod nmp {
                     open: false,
                     is_member: false,
                     is_admin: false,
+                    parent: None,
+                    children: None,
                 }
             }
         }
@@ -341,6 +389,25 @@ pub mod nmp {
                     .push_slot::<bool>(JoinedGroup::VT_IS_ADMIN, is_admin, false);
             }
             #[inline]
+            pub fn add_parent(&mut self, parent: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    JoinedGroup::VT_PARENT,
+                    parent,
+                );
+            }
+            #[inline]
+            pub fn add_children(
+                &mut self,
+                children: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    JoinedGroup::VT_CHILDREN,
+                    children,
+                );
+            }
+            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> JoinedGroupBuilder<'a, 'b, A> {
@@ -371,6 +438,8 @@ pub mod nmp {
                 ds.field("open", &self.open());
                 ds.field("is_member", &self.is_member());
                 ds.field("is_admin", &self.is_admin());
+                ds.field("parent", &self.parent());
+                ds.field("children", &self.children());
                 ds.finish()
             }
         }
@@ -428,7 +497,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(JoinedGroupsSnapshot::VT_SCHEMA_VERSION, Some(1))
+                        .get::<u32>(JoinedGroupsSnapshot::VT_SCHEMA_VERSION, Some(2))
                         .unwrap()
                 }
             }
@@ -493,7 +562,7 @@ pub mod nmp {
             #[inline]
             fn default() -> Self {
                 JoinedGroupsSnapshotArgs {
-                    schema_version: 1,
+                    schema_version: 2,
                     active_pubkey: None,
                     groups: None,
                 }
@@ -510,7 +579,7 @@ pub mod nmp {
                 self.fbb_.push_slot::<u32>(
                     JoinedGroupsSnapshot::VT_SCHEMA_VERSION,
                     schema_version,
-                    1,
+                    2,
                 );
             }
             #[inline]

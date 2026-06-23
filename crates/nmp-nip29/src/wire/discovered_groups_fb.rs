@@ -102,6 +102,15 @@ fn encode_group<'a>(
     let name = group.name.as_ref().map(|s| fbb.create_string(s));
     let picture = group.picture.as_ref().map(|s| fbb.create_string(s));
     let about = group.about.as_ref().map(|s| fbb.create_string(s));
+    // NIP-29 subgroups (#2319): `parent` is a bare string (absent == root);
+    // `children` is a vector of strings (absent == empty).
+    let parent = group.parent.as_ref().map(|s| fbb.create_string(s));
+    let children = if group.children.is_empty() {
+        None
+    } else {
+        let offsets: Vec<_> = group.children.iter().map(|s| fbb.create_string(s)).collect();
+        Some(fbb.create_vector(&offsets))
+    };
 
     fb::DiscoveredGroup::create(
         fbb,
@@ -115,6 +124,8 @@ fn encode_group<'a>(
             admin_count: group.admin_count,
             public: group.public,
             open: group.open,
+            parent,
+            children,
         },
     )
 }
@@ -152,6 +163,10 @@ pub fn decode_discovered_groups_snapshot(bytes: &[u8]) -> Result<DiscoveredGroup
 }
 
 fn decode_group(group: fb::DiscoveredGroup<'_>) -> Result<DiscoveredGroup, String> {
+    let children = group
+        .children()
+        .map(|v| v.iter().map(str::to_string).collect())
+        .unwrap_or_default();
     Ok(DiscoveredGroup {
         group_id: str_field(group.group_id(), "DiscoveredGroup.group_id")?,
         host_relay_url: str_field(group.host_relay_url(), "DiscoveredGroup.host_relay_url")?,
@@ -162,6 +177,8 @@ fn decode_group(group: fb::DiscoveredGroup<'_>) -> Result<DiscoveredGroup, Strin
         admin_count: group.admin_count(),
         public: group.public(),
         open: group.open(),
+        parent: group.parent().map(str::to_string),
+        children,
     })
 }
 

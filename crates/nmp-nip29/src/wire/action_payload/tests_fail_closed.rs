@@ -5,7 +5,7 @@
 use crate::action::{
     CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupEventTarget,
     GroupVisibility, JoinGroupInput, LeaveGroupInput, PostChatMessageInput, PutUserInput,
-    ReactInGroupInput, RepostInGroupInput, ShareEventInGroupInput,
+    ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
 };
 use crate::group_id::GroupId;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
@@ -56,6 +56,10 @@ fn malformed_buffers_are_rejected_for_every_payload() {
     ));
     assert!(matches!(
         DiscoverGroupsInput::decode(b"junk"),
+        Err(ActionPayloadDecodeError::Malformed { .. })
+    ));
+    assert!(matches!(
+        SetParentInput::decode(b"junk"),
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
 }
@@ -137,6 +141,7 @@ fn wrong_file_identifier_is_rejected_for_every_payload() {
             picture: None,
             visibility: GroupVisibility::Public,
             access: GroupAccess::Open,
+            parent: None,
         }
     );
     assert_wrong_fid_rejected!(
@@ -183,6 +188,13 @@ fn wrong_file_identifier_is_rejected_for_every_payload() {
         DiscoverGroupsInput,
         DiscoverGroupsInput {
             relay_url: "wss://groups.example.com".to_string()
+        }
+    );
+    assert_wrong_fid_rejected!(
+        SetParentInput,
+        SetParentInput {
+            group: group(),
+            parent: None,
         }
     );
 }
@@ -281,6 +293,7 @@ fn wrong_schema_version_is_rejected_for_every_payload() {
             picture: None,
             visibility: GroupVisibility::Public,
             access: GroupAccess::Open,
+            parent: None,
         }
     );
     assert_bad_version!(
@@ -327,6 +340,13 @@ fn wrong_schema_version_is_rejected_for_every_payload() {
         DiscoverGroupsInput,
         DiscoverGroupsInput {
             relay_url: "wss://groups.example.com".to_string()
+        }
+    );
+    assert_bad_version!(
+        SetParentInput,
+        SetParentInput {
+            group: group(),
+            parent: None,
         }
     );
 }

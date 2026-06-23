@@ -205,7 +205,7 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         let envelope = TypedProjectionEnvelope(
             key: TypedDiscoveredGroupsDecoder.key,
             schemaId: TypedDiscoveredGroupsDecoder.schemaId,
-            schemaVersion: 1,
+            schemaVersion: 2,
             fileIdentifier: TypedDiscoveredGroupsDecoder.fileIdentifier,
             payload: buildDiscoveredGroups())
 
@@ -216,7 +216,7 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertEqual(snap.hostRelayUrl, "wss://typed-groups.example")
         XCTAssertEqual(snap.groups.count, 2)
 
-        // Row 0: all metadata present.
+        // Row 0: all metadata present, incl. NIP-29 subgroup tags (#2319).
         let full = snap.groups[0]
         XCTAssertEqual(full.groupId, "typed-group-full")
         XCTAssertEqual(full.hostRelayUrl, "wss://typed-groups.example")
@@ -227,13 +227,17 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertEqual(full.adminCount, 3)
         XCTAssertTrue(full.public)
         XCTAssertTrue(full.open)
+        XCTAssertEqual(full.parent, "tech")
+        XCTAssertEqual(full.children, ["nostr", "bitcoin"])
         // Shell-derived display helpers (computed properties in DiscoveredGroup extension)
         XCTAssertEqual(full.displayName, "Typed Full")    // name present → use name
         XCTAssertEqual(full.initials, "TY")               // first 2 of "Typed Full" uppercased
         XCTAssertEqual(full.subtitle, "# Public · Open · 42 members")
 
-        // Row 1: optional tag-derived `name`/`picture`/`about` ABSENT. The glue
-        // must preserve nil (NOT `?? ""`), byte-identical to the JSON `null`.
+        // Row 1: optional tag-derived `name`/`picture`/`about`/`parent` ABSENT.
+        // The glue must preserve nil (NOT `?? ""`), byte-identical to the JSON
+        // `null`; `children` must be empty (not nil) since the row has no
+        // declared children.
         let bare = snap.groups[1]
         XCTAssertEqual(bare.groupId, "typed-group-bare")
         XCTAssertNil(bare.name)
@@ -242,6 +246,8 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         XCTAssertEqual(bare.memberCount, 0)
         XCTAssertFalse(bare.public)
         XCTAssertFalse(bare.open)
+        XCTAssertNil(bare.parent)
+        XCTAssertEqual(bare.children, [])
         // Shell-derived: fallback to groupId since name is nil
         XCTAssertEqual(bare.displayName, "typed-group-bare")
         XCTAssertEqual(bare.initials, "TY")               // first 2 of "typed-group-bare"
@@ -330,12 +336,17 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
     private func buildDiscoveredGroups() -> Data {
         var fbb = FlatBufferBuilder(initialSize: 512)
 
-        // Row 0 — all optional metadata present.
+        // Row 0 — all optional metadata present, incl. NIP-29 subgroup tags.
         let fullId = fbb.create(string: "typed-group-full")
         let fullHost = fbb.create(string: "wss://typed-groups.example")
         let fullName = fbb.create(string: "Typed Full")
         let fullPic = fbb.create(string: "https://typed/pic.png")
         let fullAbout = fbb.create(string: "typed about")
+        let fullParent = fbb.create(string: "tech")
+        let fullChildren = fbb.createVector(ofOffsets: [
+            fbb.create(string: "nostr"),
+            fbb.create(string: "bitcoin"),
+        ])
         let full = nmp_nip29_DiscoveredGroup.createDiscoveredGroup(
             &fbb,
             groupIdOffset: fullId,
@@ -346,7 +357,9 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
             memberCount: 42,
             adminCount: 3,
             public_: true,
-            open_: true)
+            open_: true,
+            parentOffset: fullParent,
+            childrenVectorOffset: fullChildren)
 
         // Row 1 — optional `name`/`picture`/`about` absent (offsets left default
         // → wire string absent → decoder yields nil, parity with JSON `null`).

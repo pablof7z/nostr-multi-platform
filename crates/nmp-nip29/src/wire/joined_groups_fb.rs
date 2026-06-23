@@ -57,6 +57,13 @@ fn encode_group<'a>(
     let name = group.name.as_ref().map(|s| fbb.create_string(s));
     let picture = group.picture.as_ref().map(|s| fbb.create_string(s));
     let about = group.about.as_ref().map(|s| fbb.create_string(s));
+    let parent = group.parent.as_ref().map(|s| fbb.create_string(s));
+    let children = if group.children.is_empty() {
+        None
+    } else {
+        let offsets: Vec<_> = group.children.iter().map(|s| fbb.create_string(s)).collect();
+        Some(fbb.create_vector(&offsets))
+    };
 
     fb::JoinedGroup::create(
         fbb,
@@ -72,6 +79,8 @@ fn encode_group<'a>(
             open: group.open,
             is_member: group.is_member,
             is_admin: group.is_admin,
+            parent,
+            children,
         },
     )
 }
@@ -99,6 +108,10 @@ pub fn decode_joined_groups_snapshot(bytes: &[u8]) -> Result<JoinedGroupsSnapsho
 }
 
 fn decode_group(group: fb::JoinedGroup<'_>) -> Result<JoinedGroup, String> {
+    let children = group
+        .children()
+        .map(|v| v.iter().map(str::to_string).collect())
+        .unwrap_or_default();
     Ok(JoinedGroup {
         group_id: str_field(group.group_id(), "JoinedGroup.group_id")?,
         host_relay_url: str_field(group.host_relay_url(), "JoinedGroup.host_relay_url")?,
@@ -111,6 +124,8 @@ fn decode_group(group: fb::JoinedGroup<'_>) -> Result<JoinedGroup, String> {
         open: group.open(),
         is_member: group.is_member(),
         is_admin: group.is_admin(),
+        parent: group.parent().map(str::to_string),
+        children,
     })
 }
 
