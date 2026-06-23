@@ -189,6 +189,105 @@ impl NmpApp {
         self.send_cmd(ActorCommand::RemoveAccount { identity_id });
     }
 
+    /// Sign an event draft and park the result in `signed_events`.
+    /// Typed wrapper for [`ActorCommand::SignEventForReturn`].
+    pub(crate) fn sign_event_for_return(
+        &self,
+        account_pubkey: String,
+        unsigned_json: String,
+        correlation_id: String,
+    ) {
+        self.send_cmd(ActorCommand::SignEventForReturn {
+            account_pubkey,
+            unsigned_json,
+            correlation_id,
+        });
+    }
+
+    /// Create a new account through the actor-owned identity reducer.
+    /// Typed wrapper for [`ActorCommand::CreateAccount`].
+    pub(crate) fn create_account(
+        &self,
+        profile: std::collections::HashMap<String, String>,
+        relays: Vec<(String, String)>,
+        initial_follows: Vec<String>,
+        mls: bool,
+        make_active: bool,
+    ) {
+        self.send_cmd(ActorCommand::CreateAccount {
+            profile,
+            relays,
+            initial_follows,
+            mls,
+            make_active,
+        });
+    }
+
+    /// Switch the active account. Typed wrapper for [`ActorCommand::SwitchActive`].
+    pub(crate) fn switch_active(&self, identity_id: String) {
+        self.send_cmd(ActorCommand::SwitchActive { identity_id });
+    }
+
+    /// Add a relay to the active account's relay list.
+    /// Typed wrapper for [`ActorCommand::AddRelay`].
+    pub(crate) fn add_relay(&self, url: String, role: String) {
+        self.send_cmd(ActorCommand::AddRelay { url, role });
+    }
+
+    /// Remove a relay from the active account's relay list.
+    /// Typed wrapper for [`ActorCommand::RemoveRelay`].
+    pub(crate) fn remove_relay(&self, url: String) {
+        self.send_cmd(ActorCommand::RemoveRelay { url });
+    }
+
+    /// Retry a failed publish, addressed by its handle.
+    /// Typed wrapper for [`ActorCommand::RetryPublish`].
+    pub(crate) fn retry_publish(&self, handle: String) {
+        self.send_cmd(ActorCommand::RetryPublish { handle });
+    }
+
+    /// Cancel an in-flight operation by its `correlation_id`.
+    /// Typed wrapper for [`ActorCommand::CancelPublish`].
+    pub(crate) fn cancel_publish(&self, correlation_id: String) {
+        self.send_cmd(ActorCommand::CancelPublish { correlation_id });
+    }
+
+    /// Resolve a ref (profile or event) in the kernel's ref resolver.
+    /// Typed wrapper for [`ActorCommand::ResolveRef`].
+    pub(crate) fn resolve_ref(
+        &self,
+        namespace: nmp_core::RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: nmp_core::RefShape,
+        liveness: nmp_core::RefLiveness,
+    ) {
+        self.send_cmd(ActorCommand::ResolveRef {
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force: false,
+            hints: Vec::new(),
+        });
+    }
+
+    /// Release a ref previously registered via [`Self::resolve_ref`].
+    /// Typed wrapper for [`ActorCommand::ReleaseRef`].
+    pub(crate) fn release_ref(
+        &self,
+        namespace: nmp_core::RefNamespace,
+        key: String,
+        consumer_id: String,
+    ) {
+        self.send_cmd(ActorCommand::ReleaseRef {
+            namespace,
+            key,
+            consumer_id,
+        });
+    }
+
     // `remove_account_forgetting_keyring` lives in `keyring_forget.rs` (kept
     // out of this file to respect its LOC ceiling — the D6 fail-loud body is
     // larger than the one-liner it replaced).

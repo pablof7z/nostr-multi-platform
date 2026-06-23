@@ -13,7 +13,6 @@
 //! Swift bridge sees a flat C ABI regardless of the Rust module split.
 
 use super::{app_ref, c_optional_string_argument, c_string_argument, NmpApp};
-use nmp_core::ActorCommand;
 use std::ffi::{c_char, CString};
 
 /// Mint a unique correlation id for a `SignEventForReturn` round-trip.
@@ -72,11 +71,7 @@ pub extern "C" fn nmp_app_sign_event_for_return(
     if let Some(app) = app_ref(app) {
         let account_pubkey = c_string_argument(account_pubkey_hex).unwrap_or_default();
         let unsigned_json = c_string_argument(unsigned_json).unwrap_or_default();
-        app.send_cmd(ActorCommand::SignEventForReturn {
-            account_pubkey,
-            unsigned_json,
-            correlation_id: correlation_id.clone(),
-        });
+        app.sign_event_for_return(account_pubkey, unsigned_json, correlation_id.clone());
     }
     // The id is plain hex — no interior NUL — so `CString::new` cannot fail in
     // practice; the empty-string fallback keeps the boundary panic-free (D6).
@@ -129,10 +124,7 @@ pub extern "C" fn nmp_app_register_agent_nsec(app: *mut NmpApp, secret: *const c
     let Some(secret) = c_string_argument(secret).map(zeroize::Zeroizing::new) else {
         return;
     };
-    app.send_cmd(ActorCommand::AddSigner {
-        source: nmp_core::SignerSource::AppManagedLocalNsec(secret),
-        make_active: false,
-    });
+    app.add_signer(nmp_core::SignerSource::AppManagedLocalNsec(secret), false);
 }
 
 /// Connect a NIP-46 bunker signer.
@@ -153,10 +145,7 @@ pub extern "C" fn nmp_app_signin_bunker(app: *mut NmpApp, uri: *const c_char, ma
     let Some(uri) = c_string_argument(uri) else {
         return;
     };
-    app.send_cmd(ActorCommand::AddSigner {
-        source: nmp_core::SignerSource::BunkerUri(uri),
-        make_active: make_active != 0,
-    });
+    app.add_signer(nmp_core::SignerSource::BunkerUri(uri), make_active != 0);
 }
 
 /// Create a new account (generate keypair, publish kind:0 + kind:10002).
@@ -199,17 +188,11 @@ pub extern "C" fn nmp_app_create_new_account(
     };
 
     app.set_pending_mls_autopublish(mls);
-    app.send_cmd(ActorCommand::CreateAccount {
-        profile,
-        relays,
-        // Generic create-account auto-follows nobody. Auto-follow is operator
-        // policy that lives in the leaf app, not in framework FFI (#1493). A
-        // Chirp-owned wrapper (`nmp_app_chirp_create_new_account`) injects
-        // Chirp's seed follows via `create_new_account_with_initial_follows`.
-        initial_follows: Vec::new(),
-        mls,
-        make_active: make_active != 0,
-    });
+    // Generic create-account auto-follows nobody. Auto-follow is operator
+    // policy that lives in the leaf app, not in framework FFI (#1493). A
+    // Chirp-owned wrapper (`nmp_app_chirp_create_new_account`) injects
+    // Chirp's seed follows via `create_new_account_with_initial_follows`.
+    app.create_account(profile, relays, Vec::new(), mls, make_active != 0);
 }
 
 /// Shared create-account dispatch with an explicit, app-supplied initial
@@ -258,13 +241,7 @@ pub fn create_new_account_with_initial_follows(
     };
 
     app.set_pending_mls_autopublish(mls);
-    app.send_cmd(ActorCommand::CreateAccount {
-        profile,
-        relays,
-        initial_follows: follows,
-        mls,
-        make_active: make_active != 0,
-    });
+    app.create_account(profile, relays, follows, mls, make_active != 0);
     true
 }
 
@@ -276,7 +253,7 @@ pub extern "C" fn nmp_app_switch_active(app: *mut NmpApp, identity_id: *const c_
     let Some(identity_id) = c_string_argument(identity_id) else {
         return;
     };
-    app.send_cmd(ActorCommand::SwitchActive { identity_id });
+    app.switch_active(identity_id);
 }
 
 #[no_mangle]
@@ -287,7 +264,7 @@ pub extern "C" fn nmp_app_remove_account(app: *mut NmpApp, identity_id: *const c
     let Some(identity_id) = c_string_argument(identity_id) else {
         return;
     };
-    app.send_cmd(ActorCommand::RemoveAccount { identity_id });
+    app.remove_account(identity_id);
 }
 
 // `nmp_app_react`, `nmp_app_follow`, `nmp_app_unfollow` were per-verb C
@@ -310,7 +287,7 @@ pub extern "C" fn nmp_app_add_relay(app: *mut NmpApp, url: *const c_char, role: 
         return;
     };
     let role = c_optional_string_argument(role).unwrap_or_else(|| "both".to_string());
-    app.send_cmd(ActorCommand::AddRelay { url, role });
+    app.add_relay(url, role);
 }
 
 #[no_mangle]
@@ -321,7 +298,7 @@ pub extern "C" fn nmp_app_remove_relay(app: *mut NmpApp, url: *const c_char) {
     let Some(url) = c_string_argument(url) else {
         return;
     };
-    app.send_cmd(ActorCommand::RemoveRelay { url });
+    app.remove_relay(url);
 }
 
 // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): `nmp_app_open_timeline` deleted.
