@@ -36,15 +36,6 @@ pub(in crate::kernel) struct StoreQueryPlan {
     /// `true` when the shape has authors (enabling the aggregate-window
     /// `since` floor in timeline-bound serves).
     pub timeline_bound: bool,
-    /// `true` when every query in the plan carries an `until` cursor that can
-    /// be used for cursor-paged continuation (`AuthorKind`, `AuthorsKind`,
-    /// `KindTime`, `KindDtag`). `false` for tag-target index queries
-    /// (`Etag`, `Ptag`) which have no time-bounded pagination.
-    pub has_until_cursor: bool,
-    /// `true` when the floor probe can use an index-level time bound.
-    /// `false` for pure `Etag`/`Ptag` shapes where only visitor-level
-    /// enforcement is possible (no `until` in the index key).
-    pub floor_probe_allowed: bool,
 }
 
 /// The reason a shape cannot be compiled to a store query plan.
@@ -64,6 +55,9 @@ pub(in crate::kernel) enum UnsupportedShapeReason {
     MultiValueTag,
     /// Tag key is not `"e"` or `"p"` — not yet mapped (post-v1 follow-up).
     UnrecognizedTagKey,
+    /// Tag key is `"e"` or `"p"` but the hex value failed to decode — not a
+    /// valid 32-byte pubkey/event-id.
+    TagTargetHexDecodeFailure,
     /// Author hex string(s) all failed to decode — no valid pubkey bytes.
     AuthorHexDecodeFailure,
 }
@@ -159,8 +153,6 @@ pub(in crate::kernel) fn compile_store_query_plan(
         return Ok(StoreQueryPlan {
             queries,
             timeline_bound: !shape.authors.is_empty(),
-            has_until_cursor: true,
-            floor_probe_allowed: true,
         });
     }
 
@@ -195,8 +187,6 @@ pub(in crate::kernel) fn compile_store_query_plan(
                 return Ok(StoreQueryPlan {
                     queries: vec![StoreQuery::Etag { target, kinds }],
                     timeline_bound: false,
-                    has_until_cursor: false,
-                    floor_probe_allowed: false,
                 });
             }
         } else if tag_key == "p" {
@@ -207,15 +197,14 @@ pub(in crate::kernel) fn compile_store_query_plan(
                 return Ok(StoreQueryPlan {
                     queries: vec![StoreQuery::Ptag { target, kinds }],
                     timeline_bound: false,
-                    has_until_cursor: false,
-                    floor_probe_allowed: false,
                 });
             }
         } else {
             return Err(UnsupportedShapeReason::UnrecognizedTagKey);
         }
-        // hex decode failed for "e" or "p" tag — treat as not covered.
-        return Err(UnsupportedShapeReason::UnrecognizedTagKey);
+        // hex decode failed for "e" or "p" tag — key was recognized but
+        // the value is not a valid 32-byte hex string.
+        return Err(UnsupportedShapeReason::TagTargetHexDecodeFailure);
     }
 
     // ── E1: author+kind or KindTime (no tags, no addresses) ─────────────────
@@ -237,8 +226,6 @@ pub(in crate::kernel) fn compile_store_query_plan(
                 until: shape.until,
             }],
             timeline_bound: false,
-            has_until_cursor: true,
-            floor_probe_allowed: true,
         });
     }
 
@@ -262,8 +249,6 @@ pub(in crate::kernel) fn compile_store_query_plan(
                 until: shape.until,
             }],
             timeline_bound: true,
-            has_until_cursor: true,
-            floor_probe_allowed: true,
         }),
         // Multi-author shape (#1497 follow-feed collapse) → ONE `AuthorsKind`
         // scan over the combined author set, newest-first. Replaces the prior
@@ -277,8 +262,6 @@ pub(in crate::kernel) fn compile_store_query_plan(
                 until: shape.until,
             }],
             timeline_bound: true,
-            has_until_cursor: true,
-            floor_probe_allowed: true,
         }),
     }
 }
