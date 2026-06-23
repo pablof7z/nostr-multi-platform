@@ -93,9 +93,17 @@ pub(crate) mod cache_serve;
 // ADR-0058 §10, step 2 — kernel pull service over GlobalLog + InterestShape.
 pub(crate) mod pull;
 // ADR-0058 §10, step 3a — non-durable pull-cursor registry + actor commands.
-pub(crate) mod pull_cursor;
+// `pub` so kernel_ports can re-export `PullCursorRegistrySlot` as part of the
+// KernelPorts facade (#1721 slice 1).
+pub mod pull_cursor;
 // ADR-0058 §4, step 3b — pull-cursor wake sidecar codec (`nmp.pull.wake`).
 pub(crate) mod pull_wake;
+/// ADR-0054 §X — KernelPorts facade with typed port newtypes. #1721 slice 1.
+/// Provides structured newtype wrappers for kernel capabilities (PublishPort,
+/// SignerPort, InterestPort, RelayLifecyclePort, ProtocolDispatchPort,
+/// IdentityPort, FollowPort, ReferencePort, PullCursorPort, UiPort). Pure
+/// additive; zero caller migration in this slice.
+pub mod kernel_ports;
 // ADR-0058 §10, step 3a — single actor-owned store-wakeup subsystem
 // (generalizes the #1520 cache-serve wakeup; carries the pull wake arm too).
 #[cfg(test)]
@@ -571,6 +579,11 @@ pub use relay_projection::new_app_relay_slot;
 // `ActorCommand::LifecycleEvent`).
 pub use lifecycle::LifecyclePhase;
 pub(crate) use lifecycle::LifecycleTransition;
+// ADR-0054 §X — KernelPorts facade. #1721 slice 1.
+pub use kernel_ports::{
+    FollowPort, IdentityPort, InterestPort, ProtocolDispatchPort, PullCursorPort, ReferencePort,
+    RelayLifecyclePort, SignerPort, UiPort, PublishPort,
+};
 // D0: NIP-47 NWC is an app noun. `WalletStatus` no longer lives in the kernel
 // — it moved to the wallet command runtime (`actor::commands::wallet`) and is
 // surfaced via the `projections["wallet"]` snapshot projection, NOT a typed
