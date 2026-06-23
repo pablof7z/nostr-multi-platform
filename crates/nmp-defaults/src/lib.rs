@@ -297,6 +297,15 @@ fn register_defaults_inner(
         // NIP-25: public kind:7 reactions and kind:5 unreact deletion.
         // Uses the typed descriptor (#1724 criterion 6).
         nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
+        // NIP-29 group input-scope recognizer (#1804, S7).
+        //
+        // Register the `nip29.groups` `InputScopeRecognizer` so the
+        // input-intent resolver can classify NIP-29 URI form
+        // (`host'local-id`) and `naddr` references that point to a group.
+        // The recognizer is pure/IO-free (claim-detect only; no HTTP, no
+        // relay round-trip). NIP-29 is a social/group feature, so it belongs
+        // in this block rather than the always-on substrate tier.
+        nmp_nip29::register_input_scopes(app);
         // WOT bootstrap reconciler (PushInterest/WithdrawInterest book-keeping
         // for the active account; kernel ships zero WOT nouns — D0).
         handles.wot = nmp_wot::register_runtime(app);
