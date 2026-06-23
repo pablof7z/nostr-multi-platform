@@ -485,10 +485,9 @@ pub use clock::MonotonicSecondClock;
 // so these two names are unconditional; the heavier `ActionExecuteFailure` /
 // `ActionFailureKind` surface stays native-only (the wasm path reads only the
 // `start_bytes` `ActionRejection`, never the execute taxonomy).
-pub use action_registry::{default_registry, ActionRegistry};
+pub use action_registry::{default_registry, ActionRegistry, RegistrationError};
 #[cfg(feature = "native")]
 pub use action_registry::{ActionExecuteFailure, ActionFailureKind};
-pub use action_registry::RegistrationError;
 pub use composition_ledger::{
     CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
 };
