@@ -77,13 +77,14 @@ When a `claim_replaceable(kind, pubkey, d_tag?)` call finds `now > check_again_a
   - `force == true` treats the stored `check_again_after` as `0` → always enqueues a re-verification
 - `get_check_again_after(&key)` on the `EventStore` handle (test introspection)
 
-**FFI (public, for apps):** force-refresh is a `force` argument on the existing
-claim functions — there is no standalone refresh symbol.
+**FFI (public, for apps):** force-refresh is a `force` argument on profile claims; event references use `nmp_app_resolve_ref` with a `shape` selector instead — there is no standalone refresh symbol.
 - `void nmp_app_claim_profile(NmpApp* app, const char* pubkey, const char* consumer_id, int force)`
-- `void nmp_app_claim_event(NmpApp* app, const char* uri, const char* consumer_id, int force)`
-  - `force != 0` → forces immediate re-verification of the cached replaceable identity
-  - Pass `1` when the user explicitly opens / navigates to the entity or pulls to refresh; pass `0` for background / `.onAppear` claims
-  - For `claim_event`, `force` only affects `naddr` (addressable) URIs; it is a silent no-op for immutable `nevent`/`note` URIs
+  - `force != 0` → forces immediate re-verification of the cached kind:0 profile
+  - Pass `1` when the user explicitly opens / navigates to a profile or pulls to refresh; pass `0` for background / `.onAppear` claims
+- `void nmp_app_resolve_ref(NmpApp* app, int namespace, const char* key, const char* consumer_id, int shape, int liveness)` (namespace=1 for events)
+  - `key` is a lowercase 64-hex event-id, `"kind:pubkey:d"` naddr coordinate, or `"i:<external-id>"` NIP-73 ref — **not** a `nostr:` URI
+  - `shape`: `2`=event.embed, `3`=event.raw
+  - For cached `naddr` (addressable) identities the TTL gate runs automatically; for immutable event-id keys there is no TTL record
 
 ## Doctrine
 
@@ -106,15 +107,13 @@ Complies with all D-series constraints:
 ## FFI ABI stability
 
 F-TTL adds **no new C-ABI symbol**. Force-refresh is a trailing `force: int`
-argument on the two existing claim functions, so the per-verb surface stays
-frozen:
+argument on `nmp_app_claim_profile`. The event-ref entry point is the unified
+`nmp_app_resolve_ref(namespace=1, key, consumer_id, shape, liveness)`:
 
 - `nmp_app_claim_profile(app, pubkey, consumer_id, force)` → cached kind:0 → `claim_replaceable(0, pubkey, None, force)`
-- `nmp_app_claim_event(app, uri, consumer_id, force)` → cached `naddr` → `claim_replaceable(kind, pubkey, Some(d_tag), force)`
+- `nmp_app_resolve_ref(app, 1, key, consumer_id, shape, liveness)` → cached `naddr` coordinate → `claim_replaceable(kind, pubkey, Some(d_tag), false)` (TTL gate runs automatically)
 
-Modifying a function signature is invisible to the name-based ffi-drift /
-surface-freeze gates; `NmpCore.h` is updated to the 4-arg form. The earlier
-`nmp_app_refresh_replaceable` symbol was removed. See
+The earlier `nmp_app_claim_event` and `nmp_app_refresh_replaceable` symbols were removed. `nmp_app_resolve_ref` is the unified replacement (ADR-0063 Lane D). See
 [ADR-0016 — F-TTL FFI surface](../decisions/0016-f-ttl-ffi-surface.md) for the
 decision that superseded the standalone-symbol approach.
 

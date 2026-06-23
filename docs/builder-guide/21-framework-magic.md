@@ -144,9 +144,9 @@ The kernel automatically tracks when replaceable events (kind:0 profiles, kind:1
 **API surface:**
 
 - **Rust (kernel-internal):** `Kernel::claim_replaceable(kind, pubkey, d_tag?, force)` — re-fetch if the TTL has elapsed, or unconditionally when `force == true`
-- **FFI (app-facing):** force-refresh is a parameter on the two claim functions, **not** a standalone symbol:
-  - `nmp_app_claim_profile(app, pubkey, consumer_id, force: int)` — kind:0 profile
-  - `nmp_app_claim_event(app, uri, consumer_id, force: int)` — `naddr` addressable identities (a no-op for immutable `nevent`/`note` URIs, which carry no TTL record)
+- **FFI (app-facing):** force-refresh is a parameter on profile claims; event-ref resolution uses the unified `nmp_app_resolve_ref` — **not** a standalone symbol:
+  - `nmp_app_claim_profile(app, pubkey, consumer_id, force: int)` — kind:0 profile; `force != 0` bypasses the TTL gate
+  - `nmp_app_resolve_ref(app, namespace: int, key, consumer_id, shape: int, liveness: int)` — namespace=1 for events; `key` is a 64-hex event-id, `"kind:pubkey:d"` naddr coordinate, or `"i:<external-id>"` NIP-73 ref (not a `nostr:` URI); `shape`: 2=embed, 3=raw; TTL gate runs automatically for addressable keys and is a no-op for immutable event-ids
   - Swift mirrors expose `force: Bool = false` (e.g. `claimProfile(pubkey:consumerID:force:)`), so background callers pass nothing.
 - **Customization:** `NmpAppBuilder::with_replaceable_ttl_config(ReplaceableTtlConfig { per_kind, default })`
 

@@ -245,9 +245,9 @@ Returns a JSON string (`schema_version: 1`) of the kernel's recent routing
 decisions ring buffer. Pull-only — call on demand (e.g. debug inspector);
 not pushed on every snapshot tick. Always returns a well-formed document;
 empty rings render as `{"schema_version":1,"capacity":0,"publishes":[],
-"subscriptions":[]}` (D6). Mirrors the iOS FFI symbol
-`nmp_app_recent_routing_decisions` so a single routing-inspector renderer can
-work across both surfaces.
+"subscriptions":[]}` (D6). The equivalent iOS FFI surface is
+`nmp_app_debug_info(app, domain=0)` (routing-decisions domain), so a single
+routing-inspector renderer can work across both surfaces.
 
 ---
 

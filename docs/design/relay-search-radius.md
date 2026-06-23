@@ -5,7 +5,7 @@ Implementation anchors live in `crates/nmp-core/src/kernel/claim_expansion*.rs`,
 `crates/nmp-core/src/kernel/relay_score*.rs`, and the
 `relay_search_radius_*` integration tests in `crates/nmp-testing/tests/`.
 
-**Scope**: The OneshotApi event-fetch path that backs `nmp_app_claim_event(uri)` (the renderer's "I have a `nostr:` URI, get me the event" entry point). All other OneshotApi shapes (profile claims, thread hydration) are explicitly out-of-scope for this iteration — see §11.
+**Scope**: The OneshotApi event-fetch path that backs `nmp_app_resolve_ref(namespace=1, key, …)` (the renderer's "I have an event key, get me the event" entry point; `key` is a 64-hex event-id, `"kind:pubkey:d"` naddr coordinate, or `"i:<external-id>"` NIP-73 ref — not a `nostr:` URI). All other OneshotApi shapes (profile claims, thread hydration) are explicitly out-of-scope for this iteration — see §11.
 
 **Doctrines**: D0 (substrate purity in `nmp-core`), D4 (`InterestRegistry` is the single writer), D6 (no panics across FFI), D8 (no polling — every score update is edge-triggered).
 
@@ -16,8 +16,8 @@ review notes are temporal artifacts and must not be committed as reference docs.
 
 ## 1. Problem statement
 
-When the renderer triggers `nmp_app_claim_event(uri)` for an embedded event
-(e.g. a `nostr:naddr1…` article in note content), the warm request path starts
+When the renderer triggers `nmp_app_resolve_ref(namespace=1, key, …)` for an embedded event
+(e.g. the naddr coordinate of a `nostr:naddr1…` article in note content), the warm request path starts
 with:
 
 1. The configured `app_relays` (operator-pinned, additive — protected against selector pruning in [`680666a0`](https://github.com/pablof7z/nostr-multi-platform/commit/680666a0)).
@@ -41,7 +41,7 @@ The user has no recovery path short of an operator manually adding another relay
 
 ### Goals (in scope for this feature)
 
-- **G1.** Resolve `nmp_app_claim_event` for an event whose author published to ≥1 relay we can reach, even if that relay is not in our app_relays and not in the selector's `max_per_user` picks.
+- **G1.** Resolve `nmp_app_resolve_ref(namespace=1, …)` for an event whose author published to ≥1 relay we can reach, even if that relay is not in our app_relays and not in the selector's `max_per_user` picks.
 - **G2.** Learn over time which `(author, relay)` pairs actually deliver events, so steady-state claims still hit the right relays first (no perpetual expansion cost).
 - **G3.** Survive kernel restart: scores reload from durable storage and bias the next session's Phase 1 choices.
 - **G4.** Stay D0/D4/D6/D8-clean. The score table is generic `(Pubkey, RelayUrl, Score)` — no protocol noun — and the kernel actor is the single writer.
@@ -90,7 +90,7 @@ Claim arrives → Phase 1 (warm) → [event found?] → done
 
 ### 4.1 Phase 1 — warm REQ
 
-**Trigger**: A new OneshotApi event-fetch request lands (`nmp_app_claim_event` path; specifically the shape is `InterestShape { event_ids: {…} }` or `InterestShape { authors: {…}, kinds: {…}, d_tags: {…} }` for addressable events). The triggering call site is `Kernel::pending_view_requests` → planner compile cycle.
+**Trigger**: A new OneshotApi event-fetch request lands (`nmp_app_resolve_ref(namespace=1, …)` path; specifically the shape is `InterestShape { event_ids: {…} }` or `InterestShape { authors: {…}, kinds: {…}, d_tags: {…} }` for addressable events). The triggering call site is `Kernel::pending_view_requests` → planner compile cycle.
 
 **Relay set**: union of
 
