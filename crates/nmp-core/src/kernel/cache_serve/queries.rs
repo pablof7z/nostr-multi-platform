@@ -26,10 +26,52 @@ use super::super::hex_to_pubkey_bytes;
 use crate::planner::InterestShape;
 use crate::store::StoreQuery;
 
-/// Map an `InterestShape` to the `StoreQuery` variants this seam covers.
+// ─── StoreQueryPlan ──────────────────────────────────────────────────────────
+
+/// The compiled output of [`compile_store_query_plan`]: queries to run plus
+/// structural metadata derived from the shape at compile time.
+pub(in crate::kernel) struct StoreQueryPlan {
+    /// `StoreQuery` variants to run against the store, in order.
+    pub queries: Vec<StoreQuery>,
+    /// `true` when the shape has authors (enabling the aggregate-window
+    /// `since` floor in timeline-bound serves).
+    pub timeline_bound: bool,
+    /// `true` when every query in the plan carries an `until` cursor that can
+    /// be used for cursor-paged continuation (`AuthorKind`, `AuthorsKind`,
+    /// `KindTime`, `KindDtag`). `false` for tag-target index queries
+    /// (`Etag`, `Ptag`) which have no time-bounded pagination.
+    pub has_until_cursor: bool,
+    /// `true` when the floor probe can use an index-level time bound.
+    /// `false` for pure `Etag`/`Ptag` shapes where only visitor-level
+    /// enforcement is possible (no `until` in the index key).
+    pub floor_probe_allowed: bool,
+}
+
+/// The reason a shape cannot be compiled to a store query plan.
 ///
-/// Returns an empty vec when the shape has no mapping (not covered by any
-/// engineering increment). Shapes not covered are marked served immediately
+/// Each variant names the tracked exception documented in the
+/// `shape_to_store_queries` doc comment (ADR-0045 §3).
+pub(in crate::kernel) enum UnsupportedShapeReason {
+    /// `kinds` is empty — wildcard scan, unbounded.
+    WildcardKinds,
+    /// `search` is set — full-text path, not a structural `StoreQuery`.
+    SearchShape,
+    /// `event_ids` is non-empty — pointer-loader covers these on ingest.
+    EventIdsOnly,
+    /// More than one tag key — set-intersection not supported by single index.
+    MultiKeyTags,
+    /// Exactly one tag key but multiple values — single-value index only.
+    MultiValueTag,
+    /// Tag key is not `"e"` or `"p"` — not yet mapped (post-v1 follow-up).
+    UnrecognizedTagKey,
+    /// Author hex string(s) all failed to decode — no valid pubkey bytes.
+    AuthorHexDecodeFailure,
+}
+
+/// Compile an `InterestShape` into a [`StoreQueryPlan`].
+///
+/// Returns `Err(UnsupportedShapeReason)` when the shape has no structural
+/// `StoreQuery` mapping. Shapes not covered are marked served immediately
 /// at enqueue time (no retry, no queue entry) — see `enqueue_cache_serve`
 /// in `cache_serve/mod.rs`.
 ///
@@ -52,7 +94,7 @@ use crate::store::StoreQuery;
 ///
 /// ## Intentionally uncovered (tracked)
 ///
-/// The following shapes return an empty vec — they are **not** accidental gaps
+/// The following shapes return `Err` — they are **not** accidental gaps
 /// but deliberate exceptions documented here for auditors:
 ///
 /// - **Empty kinds (wildcard):** no safe bounded index — a kinds-wildcard scan
@@ -65,7 +107,7 @@ use crate::store::StoreQuery;
 ///   ADR-0045 E1–E3; relay serves. Tracked as post-v1 follow-up; deliberately
 ///   out of scope, not a bug.
 /// - **Text / full-text search candidates:** shapes with `search` set always
-///   return empty from THIS function — full-text matching has no `StoreQuery`
+///   return `Err` from THIS function — full-text matching has no `StoreQuery`
 ///   variant (its index is the tokenized inverted index, not a structural
 ///   `idx_*` scan). Such a shape is NOT necessarily relay-only, though: when a
 ///   cache search scope is registered for the shape's kinds, cache-serve routes
@@ -78,21 +120,23 @@ use crate::store::StoreQuery;
 ///
 /// See `issue_1517_every_scope_shape_has_a_plan_or_tracked_exception` in
 /// `cache_serve_budget_tests` for the contract guard.
-pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<StoreQuery> {
+pub(in crate::kernel) fn compile_store_query_plan(
+    shape: &InterestShape,
+) -> Result<StoreQueryPlan, UnsupportedShapeReason> {
     // Search-bearing shapes have no STRUCTURAL `StoreQuery`: full-text matching
     // is the tokenized inverted index, served separately by
     // `Kernel::try_cache_serve_search` (#1811) before this function runs. Do NOT
     // degrade a search+kind shape into KindTime/AuthorKind local replay here —
     // that would serve non-search results. (Cache-coverage vs. relay-only for a
     // search shape is decided by scope registration in the `search` module, not
-    // by this empty vec.)
+    // by this Err.)
     if shape.search.is_some() {
-        return Vec::new();
+        return Err(UnsupportedShapeReason::SearchShape);
     }
 
     // Wildcard kinds: not covered (too broad, no safe bounded index).
     if shape.kinds.is_empty() {
-        return Vec::new();
+        return Err(UnsupportedShapeReason::WildcardKinds);
     }
 
     // ── E3: address-pointer (NaddrCoord → KindDtag) ─────────────────────────
@@ -112,7 +156,12 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
                 }
             })
             .collect();
-        return queries;
+        return Ok(StoreQueryPlan {
+            queries,
+            timeline_bound: !shape.authors.is_empty(),
+            has_until_cursor: true,
+            floor_probe_allowed: true,
+        });
     }
 
     // ── E2/E3: tag-filtered shapes (exactly one tag key with one value) ──────
@@ -123,36 +172,50 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
     // single scan — those shapes stay uncovered and relay delivers in full per
     // the original E1 watermark refusal).
     if !shape.tags.is_empty() {
-        if shape.tags.len() == 1 {
-            // let-else (queries.rs:156 idiom): a non-empty single-entry BTreeMap
-            // always yields one entry; treat absence as "not covered".
-            let Some((tag_key, values)) = shape.tags.iter().next() else {
-                return Vec::new();
-            };
-            if values.len() == 1 {
-                let Some(target_hex) = values.iter().next() else {
-                    return Vec::new();
-                };
-                let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
-
-                if tag_key == "e" {
-                    // ── E3: #e tag → Etag (thread replies) ──────────────────
-                    if let Some(target) = hex_to_pubkey_bytes(target_hex) {
-                        // EventId and PubKey are both [u8; 32] — same decode.
-                        return vec![StoreQuery::Etag { target, kinds }];
-                    }
-                } else if tag_key == "p" {
-                    // ── E2/E3: #p tag → Ptag ────────────────────────────────
-                    // E2: kind:1059 only → DM inbox gift-wrap serve.
-                    // E3: other kinds (including mixed) → mention inbox serve.
-                    if let Some(target) = hex_to_pubkey_bytes(target_hex) {
-                        return vec![StoreQuery::Ptag { target, kinds }];
-                    }
-                }
-            }
+        if shape.tags.len() > 1 {
+            return Err(UnsupportedShapeReason::MultiKeyTags);
         }
-        // Multi-key, multi-value, or unrecognized key: not covered.
-        return Vec::new();
+        // let-else (queries.rs idiom): a non-empty single-entry BTreeMap
+        // always yields one entry; treat absence as "not covered".
+        let Some((tag_key, values)) = shape.tags.iter().next() else {
+            return Err(UnsupportedShapeReason::MultiKeyTags);
+        };
+        if values.len() != 1 {
+            return Err(UnsupportedShapeReason::MultiValueTag);
+        }
+        let Some(target_hex) = values.iter().next() else {
+            return Err(UnsupportedShapeReason::MultiValueTag);
+        };
+        let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
+
+        if tag_key == "e" {
+            // ── E3: #e tag → Etag (thread replies) ──────────────────
+            if let Some(target) = hex_to_pubkey_bytes(target_hex) {
+                // EventId and PubKey are both [u8; 32] — same decode.
+                return Ok(StoreQueryPlan {
+                    queries: vec![StoreQuery::Etag { target, kinds }],
+                    timeline_bound: false,
+                    has_until_cursor: false,
+                    floor_probe_allowed: false,
+                });
+            }
+        } else if tag_key == "p" {
+            // ── E2/E3: #p tag → Ptag ────────────────────────────────
+            // E2: kind:1059 only → DM inbox gift-wrap serve.
+            // E3: other kinds (including mixed) → mention inbox serve.
+            if let Some(target) = hex_to_pubkey_bytes(target_hex) {
+                return Ok(StoreQueryPlan {
+                    queries: vec![StoreQuery::Ptag { target, kinds }],
+                    timeline_bound: false,
+                    has_until_cursor: false,
+                    floor_probe_allowed: false,
+                });
+            }
+        } else {
+            return Err(UnsupportedShapeReason::UnrecognizedTagKey);
+        }
+        // hex decode failed for "e" or "p" tag — treat as not covered.
+        return Err(UnsupportedShapeReason::UnrecognizedTagKey);
     }
 
     // ── E1: author+kind or KindTime (no tags, no addresses) ─────────────────
@@ -160,18 +223,23 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
     // one event per id, and the pointer-load path already retrieves them on
     // ingest. There is no gain from replaying them.
     if !shape.event_ids.is_empty() {
-        return Vec::new();
+        return Err(UnsupportedShapeReason::EventIdsOnly);
     }
 
     let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
 
     if shape.authors.is_empty() {
         // KindTime — global / hashtag feed (0 authors + ≥1 kind).
-        return vec![StoreQuery::KindTime {
-            kinds,
-            since: shape.since,
-            until: shape.until,
-        }];
+        return Ok(StoreQueryPlan {
+            queries: vec![StoreQuery::KindTime {
+                kinds,
+                since: shape.since,
+                until: shape.until,
+            }],
+            timeline_bound: false,
+            has_until_cursor: true,
+            floor_probe_allowed: true,
+        });
     }
 
     // Decode the author hexes once; skip any that fail to parse. A slice
@@ -184,24 +252,46 @@ pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<St
 
     match decoded.as_slice() {
         // Every author hex failed to decode → not covered.
-        [] => Vec::new(),
+        [] => Err(UnsupportedShapeReason::AuthorHexDecodeFailure),
         // Single author → `AuthorKind` (the dedicated single-author index path).
-        [author] => vec![StoreQuery::AuthorKind {
-            author: *author,
-            kinds,
-            since: shape.since,
-            until: shape.until,
-        }],
+        [author] => Ok(StoreQueryPlan {
+            queries: vec![StoreQuery::AuthorKind {
+                author: *author,
+                kinds,
+                since: shape.since,
+                until: shape.until,
+            }],
+            timeline_bound: true,
+            has_until_cursor: true,
+            floor_probe_allowed: true,
+        }),
         // Multi-author shape (#1497 follow-feed collapse) → ONE `AuthorsKind`
         // scan over the combined author set, newest-first. Replaces the prior
         // per-author `AuthorKind` fan-out so a 300–500-follow cold start serves
         // via a single multi-author query, not one per author.
-        _ => vec![StoreQuery::AuthorsKind {
-            authors: decoded.iter().copied().collect(),
-            kinds,
-            since: shape.since,
-            until: shape.until,
-        }],
+        _ => Ok(StoreQueryPlan {
+            queries: vec![StoreQuery::AuthorsKind {
+                authors: decoded.iter().copied().collect(),
+                kinds,
+                since: shape.since,
+                until: shape.until,
+            }],
+            timeline_bound: true,
+            has_until_cursor: true,
+            floor_probe_allowed: true,
+        }),
+    }
+}
+
+/// Map an `InterestShape` to the `StoreQuery` variants this seam covers.
+///
+/// Returns an empty vec when the shape has no mapping (not covered by any
+/// engineering increment). This is a thin wrapper over
+/// [`compile_store_query_plan`] for callers that only need the query list.
+pub(in crate::kernel) fn shape_to_store_queries(shape: &InterestShape) -> Vec<StoreQuery> {
+    match compile_store_query_plan(shape) {
+        Ok(plan) => plan.queries,
+        Err(_) => Vec::new(),
     }
 }
 

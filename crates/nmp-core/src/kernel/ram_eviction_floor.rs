@@ -18,7 +18,7 @@
 //!
 //! ## K3 Stage C — single shape→query mapping (ADR-0056 §3)
 //!
-//! [`pin_shape_events_below_floor`] reads the SAME `shape_to_store_queries`
+//! [`pin_shape_events_below_floor`] reads the SAME [`compile_store_query_plan`]
 //! mapping cache-serve reads (iterating the mapping and applying the `<= floor`
 //! bound). There is one shape→`StoreQuery` mapping, not a hand-synced copy, so
 //! the pin scan can never miss a shape (or timestamp) the serve mapping covers.
@@ -79,7 +79,7 @@ pub(super) enum PinScanOutcome {
 ///
 /// ## K3 Stage C — single shape→query mapping (ADR-0056 §3)
 ///
-/// Derives its queries from the SAME [`shape_to_store_queries`] mapping
+/// Derives its queries from the SAME [`compile_store_query_plan`] mapping
 /// `shape_floor` (and the live `watermark_fn`) read, then pins every match at or
 /// below `floor`. Queries that carry an `until` cursor (`AuthorKind`,
 /// `KindDtag`) push the `<= floor` bound into the index scan; cursor-less
@@ -90,7 +90,7 @@ pub(super) enum PinScanOutcome {
 ///
 /// Before Stage C this was a hand-rolled THIRD copy of the shape→`StoreQuery`
 /// mapping kept "in lockstep" with `shape_floor` by comment; routing it through
-/// `shape_to_store_queries` removes that drift hazard.
+/// `compile_store_query_plan` removes that drift hazard.
 ///
 /// ## Scan budget (#1348 — D8 fix)
 ///
@@ -108,7 +108,7 @@ pub(super) fn pin_shape_events_below_floor(
     pins: &mut HashSet<crate::store::EventId>,
     max_events: usize,
 ) -> PinScanOutcome {
-    use super::super::cache_serve::{query_since_mut, query_until_mut, shape_to_store_queries};
+    use super::super::cache_serve::{compile_store_query_plan, query_since_mut, query_until_mut};
 
     let mut remaining = max_events;
 
@@ -144,14 +144,17 @@ pub(super) fn pin_shape_events_below_floor(
         }
     };
 
-    for mut q in shape_to_store_queries(shape) {
+    let Ok(plan) = compile_store_query_plan(shape) else {
+        return PinScanOutcome::Complete;
+    };
+    for mut q in plan.queries {
         // Zero-author global feed: never floored (skip; defensive — the caller
         // only reaches here for shapes `shape_floor` returned `Some` for).
         if matches!(q, StoreQuery::KindTime { .. }) {
             continue;
         }
         // Clear `since` BEFORE applying the `<= floor` bound, exactly mirroring
-        // `shape_floor`'s probe normalization above. `shape_to_store_queries`
+        // `shape_floor`'s probe normalization above. `compile_store_query_plan`
         // embeds `shape.since`; a shape with `shape.since = Some(T)` where
         // `T > floor` would otherwise run an inverted range
         // `{ since: Some(T), until: Some(floor) }` → the store returns ZERO

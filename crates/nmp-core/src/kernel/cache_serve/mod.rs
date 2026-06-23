@@ -99,9 +99,10 @@ pub(super) mod search;
 pub(super) mod wakeup;
 
 pub(in crate::kernel) use queries::{
-    completion_key_for_interest, query_since_mut, query_until_mut,
+    compile_store_query_plan, completion_key_for_interest, query_since_mut, query_until_mut,
     shape_to_store_queries,
 };
+pub(in crate::kernel) use queries::{StoreQueryPlan, UnsupportedShapeReason};
 
 use super::Kernel;
 use crate::planner::InterestShape;
@@ -324,14 +325,13 @@ impl Kernel {
             return;
         }
 
-        let queries = shape_to_store_queries(shape);
-        if queries.is_empty() {
+        let Ok(plan) = compile_store_query_plan(shape) else {
             // Shape not covered — mark served so we don't re-derive.
             self.served_interest_shapes.insert(completion_key);
             return;
-        }
+        };
 
-        let timeline_bound = !shape.authors.is_empty()
+        let timeline_bound = plan.timeline_bound
             && shape
                 .authors
                 .iter()
@@ -339,7 +339,7 @@ impl Kernel {
 
         self.pending_cache_serves.push_back(PendingCacheServe {
             completion_key,
-            queries,
+            queries: plan.queries,
             query_idx: 0,
             remaining_depth: self.serve_depth_for_shape(shape),
             timeline_bound,

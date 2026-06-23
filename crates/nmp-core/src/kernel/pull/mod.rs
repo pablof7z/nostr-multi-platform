@@ -24,7 +24,7 @@ use crate::store::{EventStore, PullPage, ScanLogResult, StoreError};
 use crate::store::{LogOp, StoreLogEntry};
 use predicate::raw_matches_shape;
 
-use super::cache_serve::queries::shape_to_store_queries;
+use super::cache_serve::queries::compile_store_query_plan;
 
 // ─── Public types ─────────────────────────────────────────────────────────────
 
@@ -113,10 +113,10 @@ pub fn pull_page_over(
 
         PullScope::InterestShape(shape) => {
             // Step 1: compile the shape — reject unsupported shapes.
-            let queries = shape_to_store_queries(&shape);
-            if queries.is_empty() {
+            let Ok(plan) = compile_store_query_plan(&shape) else {
                 return Err(PullError::UnsupportedInterestShape);
-            }
+            };
+            let queries = plan.queries;
 
             // Step 2: scan the global log up to the scan budget.
             let scan_result =
