@@ -155,6 +155,19 @@ path = "crates/nmp-nip51"
 name = "nmp-nip57"
 path = "crates/nmp-nip57"
 
+# nmp-nip05 (#1804): reverse NIP-05 (name@domain → pubkey) lookup. Higher-order
+# protocol crate consumed by the input-intent resolver. Public.
+[[public_crates]]
+name = "nmp-nip05"
+path = "crates/nmp-nip05"
+
+# nmp-intent (#1804): framework input-intent resolver (classify/dispatch raw
+# input → refs/NIP-05/relay/scoped-search). Higher-order crate above nmp-core,
+# consumable by apps. Public.
+[[public_crates]]
+name = "nmp-intent"
+path = "crates/nmp-intent"
+
 [[public_crates]]
 name = "nmp-nip68"
 path = "crates/nmp-nip68"
