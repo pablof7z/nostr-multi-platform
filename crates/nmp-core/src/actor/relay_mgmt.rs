@@ -42,7 +42,7 @@ use nmp_network::pool::{Pool, WireFrame};
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 
-use super::{RelayConnectionKind, RelayControl};
+use super::relay_control::{RelayConnectionKind, RelayControl};
 
 /// True when at least one URL on **every** lane has reported `Connected`.
 ///
