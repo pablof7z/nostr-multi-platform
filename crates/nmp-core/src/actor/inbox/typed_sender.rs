@@ -9,7 +9,8 @@
 //! is a silent no-op, identical to the callers' prior pattern of
 //! `let _ = sender.send(ActorCommand::…)`).
 
-use super::{ActorCommand, CommandSender};
+use crate::actor::ActorCommand;
+use super::CommandSender;
 
 impl CommandSender {
     /// Push a [`crate::planner::LogicalInterest`] into the subscription registry.
