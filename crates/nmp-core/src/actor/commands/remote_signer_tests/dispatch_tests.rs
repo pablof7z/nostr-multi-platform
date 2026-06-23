@@ -96,6 +96,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             ingest_dispatcher: Arc::new(std::sync::RwLock::new(
                 crate::substrate::EventIngestDispatcher::new(),
             )),
+            search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
             dm_inbox_relays: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_dm_inbox_relay_lookup(),
             )),
