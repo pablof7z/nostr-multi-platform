@@ -16,7 +16,12 @@
 //!    protocol-noun-free: the store never inspects what the text *means*.
 //! 4. **Drop short tokens** — tokens under [`MIN_TOKEN_BYTES`] bytes are dropped
 //!    (cuts single-letter / stop-noise without a language-specific stopword list).
-//! 5. **Cap token count** — at most [`MAX_TOKENS_PER_DOC`] tokens are kept per
+//! 5. **Cap token byte-length** — tokens longer than [`MAX_TOKEN_BYTES`] bytes are
+//!    truncated (at a UTF-8 char boundary). This runs in the SHARED tokenizer so
+//!    index-time and remove-time agree on the exact stored token, keeps every
+//!    postings key inside LMDB's key-size budget, and guarantees the doc-term
+//!    codec's `u16` length field can never overflow/truncate (D8, #1882/#6).
+//! 6. **Cap token count** — at most [`MAX_TOKENS_PER_DOC`] tokens are kept per
 //!    call, bounding index growth for a pathological document (D8).
 //!
 //! Matching is **token + prefix** (NOT substring, NOT stemming): a query token
@@ -38,6 +43,17 @@ pub const MIN_TOKEN_BYTES: usize = 2;
 /// Hard cap on tokens produced per document (D8 — bound index growth on a
 /// pathological body). Excess tokens beyond this count are discarded.
 pub const MAX_TOKENS_PER_DOC: usize = 256;
+
+/// Hard cap on a single token's byte length. A token longer than this is
+/// truncated (at a UTF-8 char boundary) by the shared tokenizer, so:
+///   * index-time and remove-time produce the *same* stored token (removal reads
+///     back the persisted doc-terms, so the two MUST agree — #1882/#6);
+///   * the LMDB postings key (`4 + token + 41` bytes) stays well under LMDB's
+///     ~511-byte max-key limit;
+///   * the doc-term codec's `u16` length field can never overflow/truncate.
+/// 128 bytes comfortably holds long handles / URL-like words while leaving a wide
+/// margin below `u16::MAX`.
+pub const MAX_TOKEN_BYTES: usize = 128;
 
 /// Normalize and split `text` into indexable tokens.
 ///
@@ -71,10 +87,28 @@ pub fn tokenize(text: &str) -> Vec<String> {
 #[inline]
 fn push_token(out: &mut Vec<String>, cur: &mut String) {
     if cur.len() >= MIN_TOKEN_BYTES {
-        out.push(std::mem::take(cur));
+        let mut tok = std::mem::take(cur);
+        if tok.len() > MAX_TOKEN_BYTES {
+            truncate_to_char_boundary(&mut tok, MAX_TOKEN_BYTES);
+        }
+        out.push(tok);
     } else {
         cur.clear();
     }
+}
+
+/// Truncate `s` to at most `max_bytes` bytes, never splitting a UTF-8 character
+/// (backs up to the nearest char boundary at or below `max_bytes`).
+#[inline]
+fn truncate_to_char_boundary(s: &mut String, max_bytes: usize) {
+    if s.len() <= max_bytes {
+        return;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    s.truncate(end);
 }
 
 /// Tokenize a query string into its `(exact_terms, prefix_term)` parts.
@@ -120,6 +154,31 @@ mod tests {
     fn nfkc_folds_fullwidth() {
         // Full-width "ＡＢＣ" → "abc" after NFKC + lowercase.
         assert_eq!(tokenize("ＡＢＣ"), vec!["abc"]);
+    }
+
+    #[test]
+    fn caps_token_byte_length() {
+        // A pathologically long alphanumeric run is truncated to MAX_TOKEN_BYTES,
+        // never beyond — so the u16 doc-term length field can never overflow and
+        // index-time/remove-time see the identical stored token.
+        let long = "a".repeat(100_000);
+        let toks = tokenize(&long);
+        assert_eq!(toks.len(), 1);
+        assert_eq!(toks[0].len(), MAX_TOKEN_BYTES);
+        assert!(toks[0].len() <= u16::MAX as usize);
+    }
+
+    #[test]
+    fn caps_token_byte_length_on_char_boundary() {
+        // Multi-byte chars: truncation must land on a UTF-8 boundary (≤ cap),
+        // never split a codepoint (which would panic / corrupt the token).
+        let long = "é".repeat(100); // each 'é' is 2 bytes → 200 bytes
+        let toks = tokenize(&long);
+        assert_eq!(toks.len(), 1);
+        assert!(toks[0].len() <= MAX_TOKEN_BYTES);
+        // Even bytes only (2-byte chars) → exactly the cap here.
+        assert_eq!(toks[0].len() % 2, 0);
+        assert!(toks[0].chars().all(|c| c == 'é'));
     }
 
     #[test]

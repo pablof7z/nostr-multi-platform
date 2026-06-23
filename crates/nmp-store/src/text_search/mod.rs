@@ -23,8 +23,8 @@ pub mod tokenizer;
 pub mod types;
 
 pub use tokenizer::{
-    is_prefix_match, split_query_terms, tokenize, MAX_TOKENS_PER_DOC, MIN_TOKEN_BYTES,
-    TOKENIZER_VERSION,
+    is_prefix_match, split_query_terms, tokenize, MAX_TOKENS_PER_DOC, MAX_TOKEN_BYTES,
+    MIN_TOKEN_BYTES, TOKENIZER_VERSION,
 };
 pub use types::{
     CompiledIndexSpec, ExtractFn, SearchDocumentKey, SearchField, SearchScopeId, SearchScore,

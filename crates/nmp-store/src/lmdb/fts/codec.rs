@@ -117,6 +117,16 @@ pub(super) fn encode_doc_terms(entries: &[(u32, String)]) -> Vec<u8> {
     for (scope_disc, token) in entries {
         out.extend_from_slice(&scope_disc.to_be_bytes());
         let tb = token.as_bytes();
+        // The shared tokenizer caps every token at MAX_TOKEN_BYTES (well under
+        // u16::MAX), so this `as u16` can never overflow/truncate — which would
+        // make remove-time decode a different token length than index-time wrote
+        // and leave stale postings (#1882/#6). Assert the invariant in debug.
+        debug_assert!(
+            tb.len() <= crate::text_search::MAX_TOKEN_BYTES,
+            "doc-term token exceeds MAX_TOKEN_BYTES ({} > {}); tokenizer must cap before encode",
+            tb.len(),
+            crate::text_search::MAX_TOKEN_BYTES,
+        );
         out.extend_from_slice(&(tb.len() as u16).to_be_bytes());
         out.extend_from_slice(tb);
     }
