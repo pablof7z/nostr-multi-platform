@@ -10,8 +10,8 @@ use nmp_network::pool::Pool;
 use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
+use super::relay_control::{RelayConnectionKind, RelayControl};
 use super::relay_mgmt::shutdown_relay_worker;
-use super::{RelayConnectionKind, RelayControl};
 
 pub(super) const TEMPORARY_RELAY_IDLE_GRACE: Duration = Duration::from_secs(60);
 
