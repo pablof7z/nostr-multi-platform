@@ -222,9 +222,12 @@ impl LiveKernelSink {
     // hydration uses component-owned `resolve_profile` above.
 }
 
-/// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the event-id
-/// hex key as a `CString`, or `None` on decode failure / non-event target.
-/// Used by `LiveKernelSink` to migrate from the deleted `nmp_app_claim_event`.
+/// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the canonical
+/// event key the kernel resolver expects:
+///   - nevent / note  → hex event_id
+///   - naddr          → canonical coordinate "kind:pubkey:identifier"
+/// Returns `None` on decode failure or non-event/address target (D6: silent
+/// no-op). Used by `LiveKernelSink` migrating from deleted `nmp_app_claim_event`.
 fn event_key_from_uri(uri: &str) -> Option<CString> {
     let uri_c = CString::new(uri).ok()?;
     // SAFETY: nmp_nip21_decode_uri returns a heap-allocated NUL-terminated
@@ -243,8 +246,17 @@ fn event_key_from_uri(uri: &str) -> Option<CString> {
     if !v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) {
         return None;
     }
-    let event_id = v.get("event_id").and_then(|e| e.as_str())?;
-    CString::new(event_id).ok()
+    let key = match v.get("target").and_then(|t| t.as_str()) {
+        Some("event") => v.get("event_id").and_then(|e| e.as_str())?.to_owned(),
+        Some("address") => {
+            let kind = v.get("kind").and_then(|k| k.as_u64())?;
+            let pubkey = v.get("pubkey").and_then(|p| p.as_str())?;
+            let identifier = v.get("identifier").and_then(|i| i.as_str())?;
+            format!("{kind}:{pubkey}:{identifier}")
+        }
+        _ => return None,
+    };
+    CString::new(key).ok()
 }
 
 // #1726: migrated from the deleted nmp_app_claim_event / nmp_app_release_event

@@ -23,8 +23,12 @@ use nmp_ffi::{nmp_app_release_ref, nmp_app_resolve_ref, nmp_nip21_decode_uri};
 
 use crate::{jstring_to_cstring, session_arc};
 
-/// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the event-id
-/// hex key, or `None` on any failure (invalid URI, not an event target, etc.).
+/// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the canonical
+/// event key the kernel resolver expects:
+///   - nevent / note  → the hex event_id
+///   - naddr          → the canonical coordinate string "kind:pubkey:identifier"
+/// Returns `None` on any failure (invalid URI, not an event/address target, etc.)
+/// so callers silently no-op (D6).
 fn event_key_from_uri(uri: &std::ffi::CStr) -> Option<std::ffi::CString> {
     // SAFETY: nmp_nip21_decode_uri is a pure C-ABI function that returns a
     // heap-allocated NUL-terminated JSON string (or a well-formed error JSON).
@@ -47,8 +51,17 @@ fn event_key_from_uri(uri: &std::ffi::CStr) -> Option<std::ffi::CString> {
     if !ok {
         return None;
     }
-    let event_id = v.get("event_id").and_then(|e| e.as_str())?;
-    std::ffi::CString::new(event_id).ok()
+    let key = match v.get("target").and_then(|t| t.as_str()) {
+        Some("event") => v.get("event_id").and_then(|e| e.as_str())?.to_owned(),
+        Some("address") => {
+            let kind = v.get("kind").and_then(|k| k.as_u64())?;
+            let pubkey = v.get("pubkey").and_then(|p| p.as_str())?;
+            let identifier = v.get("identifier").and_then(|i| i.as_str())?;
+            format!("{kind}:{pubkey}:{identifier}")
+        }
+        _ => return None,
+    };
+    std::ffi::CString::new(key).ok()
 }
 
 /// Demand-driven embedded-event claim (#984 / T180 / ADR-0034 / #1726).

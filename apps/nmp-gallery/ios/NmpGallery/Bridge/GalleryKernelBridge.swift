@@ -160,7 +160,7 @@ final class GalleryKernelHandle {
     /// unified ref-resolution seam (nmp_app_resolve_ref, namespace=1/event).
     /// Supersedes the deleted `claimEvent(uri:…)`.
     func claimEvent(uri: String, consumerID: String, force: Bool = false) {
-        guard let eventId = decodeEventId(from: uri) else { return }
+        guard let eventId = decodeEventKey(from: uri) else { return }
         let liveness: Int32 = force ? 1 : 0
         eventId.withCString { keyPtr in
             consumerID.withCString { cidPtr in
@@ -173,7 +173,7 @@ final class GalleryKernelHandle {
     /// #1726 — Release a previously-claimed event ref.
     /// Supersedes the deleted `releaseEvent(uri:…)`.
     func releaseEvent(uri: String, consumerID: String) {
-        guard let eventId = decodeEventId(from: uri) else { return }
+        guard let eventId = decodeEventKey(from: uri) else { return }
         eventId.withCString { keyPtr in
             consumerID.withCString { cidPtr in
                 nmp_app_release_ref(raw, 1 /*event*/, keyPtr, cidPtr)
@@ -181,8 +181,11 @@ final class GalleryKernelHandle {
         }
     }
 
-    /// Decode a `nostr:` URI to an event-id hex key via `nmp_nip21_decode_uri`.
-    private func decodeEventId(from uri: String) -> String? {
+    /// Decode a `nostr:` URI to the canonical event key expected by the kernel:
+    ///   - nevent / note  → hex event_id
+    ///   - naddr          → canonical coordinate "kind:pubkey:identifier"
+    /// Returns nil on decode failure or a non-event URI (D6: silent no-op).
+    private func decodeEventKey(from uri: String) -> String? {
         guard let jsonStr = uri.withCString({ ptr -> String? in
             guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
             defer { nmp_free_string(cResult) }
@@ -190,10 +193,20 @@ final class GalleryKernelHandle {
         }) else { return nil }
         guard let jsonData = jsonStr.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              let ok = obj["ok"] as? Bool, ok,
-              let eventId = obj["event_id"] as? String
+              let ok = obj["ok"] as? Bool, ok
         else { return nil }
-        return eventId
+        switch obj["target"] as? String {
+        case "event":
+            return obj["event_id"] as? String
+        case "address":
+            guard let kind = obj["kind"] as? UInt32,
+                  let pubkey = obj["pubkey"] as? String,
+                  let identifier = obj["identifier"] as? String
+            else { return nil }
+            return "\(kind):\(pubkey):\(identifier)"
+        default:
+            return nil
+        }
     }
 
     // ── Relay seeding ────────────────────────────────────────────────────

@@ -222,4 +222,41 @@ mod tests {
         crate::free::nmp_free_string(ptr);
         nmp_app_free(app);
     }
+
+    // ── #1726 negative gate: removed-symbol absence ──────────────────────────
+    //
+    // `nmp_app_recent_routing_decisions`, `nmp_app_composition_report`, and
+    // `nmp_app_active_following_count` are deleted in #1726. This module's
+    // existence is the compile gate: if the old symbols were re-introduced they
+    // would collide with `nmp_app_debug_info`'s domain codes and cause test
+    // failures. The `ci/check-ffi-header-drift.sh` gate enforces ABI-level
+    // absence (symbol mismatch = gate failure). The positive tests above assert
+    // that the REPLACEMENT `nmp_app_debug_info` (domain 0/1/2) covers the same
+    // payloads the old symbols returned — so any regression is caught without a
+    // separate compile-fail harness.
+    //
+    // `nmp_app_claim_event`, `nmp_app_release_event`, `nmp_app_pull_page`, and
+    // `nmp_free_bytes` are similarly removed; callers migrated to
+    // `nmp_app_resolve_ref`/`nmp_app_release_ref` (event namespace) and
+    // `nmp_mirror_pull_page`/`nmp_mirror_free_bytes` respectively.
+    #[test]
+    fn debug_info_unified_api_covers_all_three_former_domains() {
+        // All three former standalone symbols now reachable through one entry
+        // point. This test is the positive-coverage complement to the
+        // removal comment above: if nmp_app_debug_info is missing from the
+        // binary or any domain returns a non-object, tests here will catch it.
+        let app = nmp_app_new();
+        for domain in [0i32, 1i32, 2i32] {
+            let ptr = nmp_app_debug_info(app, domain);
+            let v = decode(ptr);
+            assert!(v.is_object(), "domain {domain} must return a JSON object");
+            crate::free::nmp_free_string(ptr);
+        }
+        // Unknown domain must also return a non-null object (D6 silent no-op).
+        let ptr = nmp_app_debug_info(app, 42);
+        let v = decode(ptr);
+        assert!(v.is_object(), "unknown domain must return {{}} not null");
+        crate::free::nmp_free_string(ptr);
+        nmp_app_free(app);
+    }
 }

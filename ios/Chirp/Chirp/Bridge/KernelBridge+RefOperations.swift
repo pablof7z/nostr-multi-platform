@@ -53,43 +53,52 @@ extension KernelHandle {
     // To decode a `nostr:` URI to an event key, call nmp_nip21_decode_uri and
     // extract the event_id field from the JSON result, then pass it as `key`.
 
-    /// #1726 — Decode a `nostr:` URI and resolve the embedded event ref via the
-    /// unified ref-resolution seam. Supersedes the deleted `claimEvent(uri:…)`.
-    ///
-    /// The URI is decoded via `nmp_nip21_decode_uri`; on success the extracted
-    /// event key is forwarded to `resolveRef(namespace: .event, …)`. On decode
-    /// failure (or if the URI does not resolve to an event) this is a silent
-    /// no-op (D6).
-    func claimEventUri(uri: String, consumerID: String, force: Bool = false) {
-        // Decode the nostr: URI to extract the event key.
+    // #1726 — nostr: URI → canonical event key helper.
+    // Returns the raw key the kernel resolver expects:
+    //   - nevent / note  → the hex event_id
+    //   - naddr          → the canonical coordinate string "kind:pubkey:identifier"
+    // Returns nil on any decode failure (D6: silent no-op).
+    private func eventKeyFromUri(_ uri: String) -> String? {
         guard let jsonStr = uri.withCString({ ptr -> String? in
             guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
             defer { nmp_free_string(cResult) }
             return String(cString: cResult)
-        }) else { return }
+        }) else { return nil }
         guard let jsonData = jsonStr.data(using: .utf8),
               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              let ok = obj["ok"] as? Bool, ok,
-              let eventId = obj["event_id"] as? String
-        else { return }
+              let ok = obj["ok"] as? Bool, ok
+        else { return nil }
+        switch obj["target"] as? String {
+        case "event":
+            return obj["event_id"] as? String
+        case "address":
+            guard let kind = obj["kind"] as? UInt32,
+                  let pubkey = obj["pubkey"] as? String,
+                  let identifier = obj["identifier"] as? String
+            else { return nil }
+            return "\(kind):\(pubkey):\(identifier)"
+        default:
+            return nil
+        }
+    }
+
+    /// #1726 — Decode a `nostr:` URI and resolve the embedded event ref via the
+    /// unified ref-resolution seam. Supersedes the deleted `claimEvent(uri:…)`.
+    ///
+    /// Handles `nevent`/`note` URIs (hex event_id key) and `naddr` URIs
+    /// (canonical `kind:pubkey:identifier` coordinate key). On decode failure or
+    /// a non-event URI this is a silent no-op (D6).
+    func claimEventUri(uri: String, consumerID: String, force: Bool = false) {
+        guard let key = eventKeyFromUri(uri) else { return }
         // Use CacheOk (0) for background, Live (1) for explicit navigation.
         let liveness: RefLiveness = force ? .live : .cacheOk
-        resolveRef(namespace: .event, key: eventId, consumerID: consumerID,
+        resolveRef(namespace: .event, key: key, consumerID: consumerID,
                    shape: .eventEmbed, liveness: liveness)
     }
 
     /// #1726 — Release a previously-claimed event ref (mirror of `claimEventUri`).
     func releaseEventUri(uri: String, consumerID: String) {
-        guard let jsonStr = uri.withCString({ ptr -> String? in
-            guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
-            defer { nmp_free_string(cResult) }
-            return String(cString: cResult)
-        }) else { return }
-        guard let jsonData = jsonStr.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              let ok = obj["ok"] as? Bool, ok,
-              let eventId = obj["event_id"] as? String
-        else { return }
-        releaseRef(namespace: .event, key: eventId, consumerID: consumerID)
+        guard let key = eventKeyFromUri(uri) else { return }
+        releaseRef(namespace: .event, key: key, consumerID: consumerID)
     }
 }

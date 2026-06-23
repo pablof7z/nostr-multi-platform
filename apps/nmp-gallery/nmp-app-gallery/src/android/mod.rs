@@ -230,8 +230,12 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseRef
     nmp_app_release_ref(s.app, namespace, key.as_ptr(), consumer_id.as_ptr());
 }
 
-/// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the event-id
-/// hex key as a `CString`, or `None` on any failure.
+/// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the canonical
+/// event key the kernel resolver expects:
+///   - nevent / note  → the hex event_id
+///   - naddr          → the canonical coordinate string "kind:pubkey:identifier"
+/// Returns `None` on any failure (non-event URI, decode error) so callers
+/// silently no-op (D6).
 fn event_key_from_uri(uri: &std::ffi::CStr) -> Option<std::ffi::CString> {
     // SAFETY: nmp_nip21_decode_uri returns a heap-allocated NUL-terminated
     // JSON string (or a well-formed error JSON).
@@ -251,8 +255,17 @@ fn event_key_from_uri(uri: &std::ffi::CStr) -> Option<std::ffi::CString> {
     if !v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) {
         return None;
     }
-    let event_id = v.get("event_id").and_then(|e| e.as_str())?;
-    std::ffi::CString::new(event_id).ok()
+    let key = match v.get("target").and_then(|t| t.as_str()) {
+        Some("event") => v.get("event_id").and_then(|e| e.as_str())?.to_owned(),
+        Some("address") => {
+            let kind = v.get("kind").and_then(|k| k.as_u64())?;
+            let pubkey = v.get("pubkey").and_then(|p| p.as_str())?;
+            let identifier = v.get("identifier").and_then(|i| i.as_str())?;
+            format!("{kind}:{pubkey}:{identifier}")
+        }
+        _ => return None,
+    };
+    std::ffi::CString::new(key).ok()
 }
 
 /// #1726 — Demand-driven embedded-event claim. Decodes the `nostr:` URI in
