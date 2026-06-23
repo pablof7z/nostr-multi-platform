@@ -162,6 +162,38 @@ impl NmpWasmRuntime {
         serialize_events_to_js(&control_events)
     }
 
+    /// Process a binary `dispatch_bytes` request (#1008 / ADR-0064).
+    ///
+    /// Receives the raw `Uint8Array` of a finished `DispatchEnvelope` FlatBuffers
+    /// root directly — avoids the `JSON.stringify(Uint8Array) → {}` corruption
+    /// that occurs on the `handle_json` path (a `Uint8Array` serialises as an
+    /// empty object in JSON, not a number array). The JS host calls this method
+    /// for `dispatch_bytes` requests instead of routing through `handle_json`.
+    ///
+    /// Returns the same JSON-serialised `WorkerEvent[]` as `handle_json` (control
+    /// events only; `UpdateBytes` frames are drained through the snapshot callback).
+    ///
+    /// # D6 — fail closed
+    ///
+    /// A malformed envelope is returned as a data-shaped `[{ type: "error",
+    /// code: "dispatch_envelope_rejected", ... }]` — never as a Promise rejection.
+    #[wasm_bindgen]
+    pub fn handle_dispatch_bytes(&mut self, bytes: &[u8]) -> Result<JsValue, JsValue> {
+        let events = self.runtime.dispatch_bytes(bytes);
+        // Route UpdateBytes through the callback channel; collect control events.
+        let callback_handle = self.runtime.snapshot_callback_handle().clone();
+        let mut control_events: Vec<WorkerEvent> = Vec::with_capacity(events.len());
+        for event in events {
+            match event {
+                WorkerEvent::UpdateBytes { bytes } => {
+                    push_bytes_if_callback(&callback_handle, &bytes);
+                }
+                other => control_events.push(other),
+            }
+        }
+        serialize_events_to_js(&control_events)
+    }
+
     /// Install (or clear) the JS callback the runtime invokes whenever a
     /// relay-driven kernel mutation produces a fresh snapshot.
     ///

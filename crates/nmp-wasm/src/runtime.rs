@@ -318,6 +318,18 @@ impl WasmRuntime {
                 .collect(),
         );
 
+        // #1008 — install the real OutboxResolver so publish actions reach the
+        // wire. The resolver returns the configured relay URLs as
+        // `LocalConfigRelay` targets, replacing the default
+        // `NoopOutboxResolver` that resolved zero targets for every
+        // `PublishTarget::Auto` and silently dropped every publish.
+        {
+            let relay_urls: Vec<String> =
+                relay_bootstrap.iter().map(|e| e.url.clone()).collect();
+            let resolver = crate::publish_path::build_wasm_outbox_resolver(relay_urls);
+            self.reducer.borrow_mut().set_publish_resolver(resolver);
+        }
+
         {
             let mut meta = self.meta.borrow_mut();
             meta.started = true;

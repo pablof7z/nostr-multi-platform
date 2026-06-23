@@ -1,75 +1,96 @@
-//! Honest write-path disable token for the wasm runtime.
+//! Wasm publish path helpers.
 //!
-//! **Publishing is disabled in the web preview build** (see `#1202`/`#1008`):
-//! every app-level write surfaces a `publish_not_supported_in_web_preview`
-//! `CapabilityFailure` because the wasm composition root has no real
-//! `OutboxResolver` wired. Without that gate the wasm kernel's
-//! `NoopOutboxResolver` default would resolve zero relays
-//! (`PublishTarget::Auto` → `NoTargets`) and silently swallow every publish:
-//! the host would receive `ActionAccepted` but no event would reach the wire.
-//! That "works-but-wrong" state violates the zero-tolerance rule
-//! (AGENTS.md §zero-debt) and aim.md's "make it nearly impossible to build a
-//! broken app" goal.
+//! # `WasmOutboxResolver` (#1008)
 //!
-//! ADR-0064 §5 removed the wasm `Arc<dyn Signer>.await`-inside-the-publish-flow
-//! path (`publish_app_action` / `start_publish_app_action` /
-//! `dispatch_app_action_async`): a signed wasm write is the ADR-0050 capability
-//! round-trip (`BeginSign` → `SignRequest` → `DeliverSignerResponse`), driven by
-//! pure message re-entry. The reducer never awaits the world (D7/D8). The full
-//! wasm publish composition root is deferred to the post-v1 web milestone
-//! (#1008); until then this single token is the only honest answer.
+//! A concrete [`nmp_core::publish::OutboxResolver`] for the wasm composition
+//! root. Returns the runtime's configured relay URLs as
+//! [`nmp_core::publish::RelaySelectionReason::LocalConfigRelay`] targets,
+//! replacing the kernel's default `NoopOutboxResolver` that resolved zero
+//! relay targets for every `PublishTarget::Auto` and silently dropped every
+//! publish.
+//!
+//! Wired by [`crate::runtime::WasmRuntime`]'s `start()` arm after
+//! `set_configured_relays` runs; the resolver holds the same URL list the
+//! relay pool uses to dial WebSockets.
+//!
+//! # Safety — `Send + Sync`
+//!
+//! [`OutboxResolver`] requires `Send + Sync`. On wasm32 ALL types are trivially
+//! `Send + Sync` (single-threaded JS environment; there are no threads). The
+//! explicit `unsafe impl` satisfies the trait bound on non-wasm32 CI targets
+//! (where Rust's stricter thread-safety analysis would otherwise reject the
+//! `Vec<String>` interior mutability we don't actually need here — the relay
+//! URL list is populated once at `Start` and never mutated afterwards).
 
-/// Stable error-code prefix returned when any app-level write action is
-/// dispatched while the wasm composition root does not wire a real
-/// `OutboxResolver`.
+use std::sync::Arc;
+
+use nmp_core::publish::{OutboxResolver, PublishTarget, RelaySelectionReason, ResolvedRelay};
+use nmp_core::substrate::BlockedRelaySet;
+
+/// Wasm composition-root outbox resolver — returns the runtime's configured
+/// relay URLs as `LocalConfigRelay` write targets (#1008).
 ///
-/// The wasm kernel starts with `NoopOutboxResolver` as its default: every
-/// `publish_signed_event` call would resolve zero targets for
-/// `PublishTarget::Auto` → `PublishEngineError::NoTargets` → silent drop with
-/// `ActionAccepted` returned to the host. That is a silent always-fail, which
-/// the zero-debt rule forbids (AGENTS.md §zero-debt; aim.md §honesty).
-///
-/// The host should pattern-match this prefix to surface a banner such as
-/// "Publishing is not available in this web preview" and disable compose
-/// controls until the real composition root ships in #1008.
-pub(crate) fn publish_not_supported_in_web_preview_reason(action_type: &str) -> String {
-    format!(
-        "publish_not_supported_in_web_preview: action {action_type:?} cannot be published \
-         from the web preview build. The wasm runtime has no outbox resolver wired \
-         (NoopOutboxResolver resolves zero relay targets), so every publish would be \
-         silently dropped. The full wasm composition root with a real OutboxResolver \
-         is deferred to the post-v1 web milestone (#1008). Disable compose controls \
-         and surface an honest 'not available in this preview' state to the user."
-    )
+/// Constructed from the `relay_bootstrap` URL list the host passes on `Start`,
+/// and installed on the kernel via
+/// [`nmp_core::KernelReducer::set_publish_resolver`] before the first relay
+/// connection. Production wasm32 always has a resolver; the old
+/// `NoopOutboxResolver` default is replaced in-place.
+pub(crate) struct WasmOutboxResolver {
+    relay_urls: Vec<String>,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// Safety: wasm32 is single-threaded; Rc<RefCell<...>> never crosses threads.
+// Explicit `unsafe impl` required because the `OutboxResolver: Send + Sync`
+// trait bound is checked on non-wasm32 CI targets even though the value is
+// never actually sent across threads.
+unsafe impl Send for WasmOutboxResolver {}
+unsafe impl Sync for WasmOutboxResolver {}
 
-    /// Pin the `publish_not_supported_in_web_preview` prefix so JS host
-    /// pattern-matching is stable across refactors (#1202 regression guard).
-    ///
-    /// The gate fires for every app-level write while the wasm runtime has no
-    /// real `OutboxResolver` wired. JS hosts must pattern-match this prefix to
-    /// surface an honest "not available in this preview" state; any refactor
-    /// that changes the prefix breaks that contract.
-    #[test]
-    fn publish_not_supported_in_web_preview_reason_has_stable_prefix() {
-        let reason = publish_not_supported_in_web_preview_reason("nmp.publish");
-        assert!(
-            reason.starts_with("publish_not_supported_in_web_preview:"),
-            "prefix must be 'publish_not_supported_in_web_preview:'; got: {reason:?}"
-        );
-        assert!(
-            reason.contains("nmp.publish"),
-            "reason must echo the action type so the host can log it; got: {reason:?}"
-        );
-        // Verify the prefix is stable regardless of the action variant.
-        let reason2 = publish_not_supported_in_web_preview_reason("nmp.nip25.react");
-        assert!(
-            reason2.starts_with("publish_not_supported_in_web_preview:"),
-            "prefix must be consistent across action types; got: {reason2:?}"
-        );
+impl WasmOutboxResolver {
+    /// Build a resolver from a list of relay URLs.
+    pub(crate) fn new(relay_urls: Vec<String>) -> Self {
+        Self { relay_urls }
     }
+}
+
+impl OutboxResolver for WasmOutboxResolver {
+    fn resolve(
+        &self,
+        _author_pubkey: &str,
+        _p_tags: &[String],
+        target: &PublishTarget,
+        _kind: u32,
+        blocked: &BlockedRelaySet,
+    ) -> Vec<ResolvedRelay> {
+        if let PublishTarget::Explicit { relays } = target {
+            return relays
+                .iter()
+                .filter(|url| !blocked.contains(*url))
+                .map(|url| ResolvedRelay {
+                    url: url.clone(),
+                    reason: RelaySelectionReason::Explicit,
+                })
+                .collect();
+        }
+        // `Auto` target → return all configured relay URLs as local-config
+        // write targets (the closest equivalent to NIP-65 author-write for a
+        // wasm32 context that hasn't loaded the user's kind:10002 yet).
+        self.relay_urls
+            .iter()
+            .filter(|url| !blocked.contains(*url))
+            .map(|url| ResolvedRelay {
+                url: url.clone(),
+                reason: RelaySelectionReason::LocalConfigRelay,
+            })
+            .collect()
+    }
+}
+
+/// Build a shared `WasmOutboxResolver` suitable for installing on the kernel.
+///
+/// Called from `WasmRuntime::start()` after the relay bootstrap list is
+/// finalised. Wraps the relay URL list in an `Arc` so the kernel's publish
+/// engine can hold a reference without cloning all the strings again.
+pub(crate) fn build_wasm_outbox_resolver(relay_urls: Vec<String>) -> Arc<dyn OutboxResolver> {
+    Arc::new(WasmOutboxResolver::new(relay_urls))
 }

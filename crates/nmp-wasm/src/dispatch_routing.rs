@@ -182,18 +182,18 @@ fn ref_liveness_from_int(value: u32) -> Option<RefLiveness> {
     }
 }
 
-/// Single-source reason string for app-level writes that cannot complete on
-/// the wasm runtime. Distinguishes the two honest failure modes by whether the
-/// kernel has an **active account** seeded (`set_active_account`, via the
-/// `SetIdentity` identity request — ADR-0064 §5 removed the persistent signer
-/// slot, so the discriminator is the account, not an `Arc<dyn Signer>`):
+/// Single-source reason string for app-level writes that arrive on the legacy
+/// JSON `WorkerRequest::Dispatch` path rather than the correct binary
+/// `WorkerRequest::DispatchBytes` doorway.
+///
+/// The two honest failure modes:
 ///
 /// - **No active account.** The host hasn't sent `SetIdentity` yet — the user has
 ///   not signed in. Banner: "sign in to publish".
-/// - **Account seeded but publishing disabled in the web preview.** The web
-///   preview build has no real `OutboxResolver` wired (#1202/#1008), so
-///   app-level writes are disabled — surface the single canonical disable token
-///   (`publish_not_supported_in_web_preview`).
+/// - **Account seeded but wrong transport.** App-level writes (publish, follow,
+///   react, etc.) MUST cross the binary `dispatch_bytes` doorway (#1008 /
+///   ADR-0064). A write arriving on the JSON `dispatch` path is rejected at the
+///   routing layer — it never reaches the typed registry.
 ///
 /// Both strings start with a stable underscore-snake-case prefix the JS host
 /// can pattern-match without parsing the full reason text.
@@ -204,7 +204,12 @@ pub(crate) fn write_path_unavailable_reason(has_active_account: bool) -> String 
                 before dispatching app-level writes."
             .to_string();
     }
-    crate::publish_path::publish_not_supported_in_web_preview_reason("nmp.publish")
+    // The JSON `dispatch` path is not a write doorway (#1008 / ADR-0064).
+    // App-level writes must use `WorkerRequest::DispatchBytes` (binary envelope).
+    "use_dispatch_bytes: app-level writes (publish, follow, react, etc.) must cross \
+     the typed `dispatch_bytes` doorway (WorkerRequest::DispatchBytes), not the JSON \
+     `dispatch` path. Build a DispatchEnvelope via encodeDispatchEnvelope()."
+        .to_string()
 }
 
 /// Reason string for non-app-action capability completions that cannot be

@@ -10,6 +10,12 @@ type SnapshotCallback = (bytes: Uint8Array) => void;
 
 type NmpWasmRuntime = {
   handle_json(request: string): unknown;
+  /** Binary write doorway (#1008 / ADR-0064): receives the raw `Uint8Array` of
+   *  a `DispatchEnvelope` FlatBuffers root directly, bypassing the
+   *  `JSON.stringify(Uint8Array) → {}` corruption that occurs on `handle_json`.
+   *  Added alongside `handle_json` so the bridge can detect whether the loaded
+   *  module supports the binary path and fall back gracefully. */
+  handle_dispatch_bytes?(bytes: Uint8Array): unknown;
   set_snapshot_callback?(callback: SnapshotCallback | null): void;
 };
 
@@ -73,6 +79,18 @@ export class WasmBridge {
 
   handle(request: WorkerRequest): WorkerEvent[] {
     try {
+      // #1008 / ADR-0064 — binary write doorway: route `dispatch_bytes`
+      // through `handle_dispatch_bytes` (if available) to avoid the
+      // `JSON.stringify(Uint8Array) → {}` corruption that zeros the bytes
+      // on the generic `handle_json` path. The `bytes` field is a `Uint8Array`
+      // from the structured-clone message; `JSON.stringify` cannot round-trip
+      // typed arrays, so only the direct binary path preserves the payload.
+      if (
+        request.type === "dispatch_bytes" &&
+        typeof this.runtime.handle_dispatch_bytes === "function"
+      ) {
+        return decodeWorkerEvents(this.runtime.handle_dispatch_bytes(request.bytes));
+      }
       return decodeWorkerEvents(this.runtime.handle_json(JSON.stringify(request)));
     } catch (error) {
       return [

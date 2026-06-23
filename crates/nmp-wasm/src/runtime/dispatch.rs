@@ -11,6 +11,8 @@
 //! private methods of the runtime — the file boundary is a size-management
 //! seam, not an API boundary.
 
+use nmp_core::ActorCommand;
+
 use crate::dispatch_routing::{
     execute_ref_dispatch, kernel_action_from_dispatch, ref_dispatch_from_action,
     write_path_unavailable_reason,
@@ -19,14 +21,6 @@ use crate::protocol::{ActionDispatch, CapabilityFailure, WorkerEvent};
 use nmp_core::dispatch_envelope::{decode_dispatch_envelope, DecodedDispatch};
 use nmp_core::substrate::ActionContext;
 use nmp_core::KernelUpdate;
-
-/// The kernel publish namespace. Publishing stays honestly-disabled on the web
-/// preview until the composition root wires a real `OutboxResolver` (#1008), so
-/// the byte doorway never runs `start_bytes` for it — the typed decode would
-/// validate, but the terminal write has nowhere to go. Routing it through the
-/// honest write-path reason keeps the host's "not available in this preview"
-/// banner accurate.
-const PUBLISH_NAMESPACE: &str = "nmp.publish";
 
 use super::{WasmRuntime, WasmRuntimeError};
 
@@ -83,9 +77,7 @@ impl WasmRuntime {
     /// tripwire mismatch, oversize, missing routing fields) surfaces as a
     /// data-shaped `WorkerEvent::Error` with the RAW reason (D6) — never a panic,
     /// never a silent accept. On success it routes by `action_namespace` behind
-    /// the existing one doorway, carrying the OPAQUE payload verbatim. The typed
-    /// per-crate payload decode is S3's job (#1751); this method never peeks
-    /// inside `payload`.
+    /// the existing one doorway, carrying the OPAQUE payload verbatim.
     pub fn dispatch_bytes(&mut self, bytes: &[u8]) -> Vec<WorkerEvent> {
         let decoded = match decode_dispatch_envelope(bytes) {
             Ok(decoded) => decoded,
@@ -106,42 +98,24 @@ impl WasmRuntime {
     /// Route a gate-passed [`DecodedDispatch`] by `action_namespace` behind the
     /// one doorway.
     ///
-    /// ADR-0064 / S3 (#1751) — the typed twin of the native FFI
-    /// `crates/nmp-ffi/src/action/bytes.rs::dispatch_action_bytes`: the OPAQUE
-    /// per-crate payload is routed into the registry's typed
-    /// [`ActionRegistry::start_bytes`](nmp_core::ActionRegistry::start_bytes),
-    /// which runs the per-crate `decode_payload` + the fail-closed
-    /// `schema_version` gate + the module's `start()` validation BEFORE anything
-    /// else. A registered non-publish namespace (NIP-02 follow/unfollow/
-    /// follow_many, NIP-25 react/unreact — whatever the composition root wired)
-    /// therefore DECODES its typed FlatBuffers payload and reaches `start()`,
-    /// instead of returning the generic envelope-level `CapabilityFailure`.
+    /// ADR-0064 / S3 (#1751) / #1008 — the typed twin of the native FFI
+    /// `crates/nmp-ffi/src/action/bytes.rs::dispatch_action_bytes`. After
+    /// `start_bytes` validates the typed payload and `start()` accepts it,
+    /// `execute_bytes` is called with a wasm-aware `send` closure that handles
+    /// each `ActorCommand` variant:
     ///
-    /// Two honest boundaries remain, and both surface as data-shaped
-    /// `CapabilityFailure` (fail-closed, never a silent accept — D6 / zero-debt):
+    /// * **`PublishSignedEvent`** — routes directly to the kernel publish engine
+    ///   via [`nmp_core::KernelReducer::publish_pre_signed`]. The
+    ///   `WasmOutboxResolver` wired at `Start` (#1008) provides the write relay
+    ///   set. Returns `ActionAccepted + UpdateBytes`.
     ///
-    /// * **No signer / unknown namespace / typed-decode or `start()` rejection.**
-    ///   No active account → the `signer_not_installed` reason (checked first,
-    ///   before the registry is touched). An unknown namespace, a payload that
-    ///   fails the `schema_version` gate, or a `start()` rejection → the RAW
-    ///   rejection text from `start_bytes` (the module never ran, or rejected).
-    /// * **Validated, but the terminal write needs #1008.** Even after the
-    ///   typed payload validates, the module's `execute()` enqueues an
-    ///   `ActorCommand` (e.g. `Follow`) that the native actor turns into a kind:3
-    ///   publish via an `OutboxResolver`. The wasm preview has no actor and no
-    ///   real `OutboxResolver` (the kernel default `NoopOutboxResolver` resolves
-    ///   zero targets → silent drop), so the terminal write stays
-    ///   honestly-disabled behind the same `publish_not_supported_in_web_preview`
-    ///   token publish uses. Wiring that resolver is #1008 — the separate
-    ///   prerequisite for the web write path actually reaching the wire. We do
-    ///   NOT call `execute_bytes` here: doing so with a dropping send-sink would
-    ///   ACK an action that never reaches the wire (a silent always-fail the
-    ///   zero-debt rule forbids).
+    /// * **`PublishRawEvent` / `PublishProfile`** — needs the `BeginSign`
+    ///   capability round-trip. Builds unsigned JSON, parks a sign op via
+    ///   [`nmp_core::KernelReducer::begin_sign_roundtrip`], and returns
+    ///   `WorkerEvent::SignRequest` for the main-thread broker.
     ///
-    /// Publishing (`nmp.publish`) skips `start_bytes` entirely — its terminal
-    /// write has the same #1008 dependency and there is no extra typed-decode to
-    /// exercise here that the kernel `PublishModule` doesn't already gate, so it
-    /// short-circuits to the honest write-path reason.
+    /// Fail-closed for no-signer (no active account) and unknown namespace /
+    /// decode / `start()` rejection paths.
     fn route_decoded_dispatch(&mut self, decoded: DecodedDispatch) -> Vec<WorkerEvent> {
         let DecodedDispatch {
             correlation_id,
@@ -159,53 +133,212 @@ impl WasmRuntime {
             })];
         }
 
-        // Publishing stays honestly-disabled pending the #1008 OutboxResolver.
-        if action_namespace == PUBLISH_NAMESPACE {
-            return vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-                capability: action_namespace,
-                correlation_id,
-                reason: write_path_unavailable_reason(true),
-            })];
-        }
-
-        // S3 — route the opaque payload into the typed registry doorway. This is
-        // the VALIDATION gate: `start_bytes` runs the per-crate `decode_payload`
-        // + the fail-closed `schema_version` gate + the module's `start()`. An
-        // unknown namespace, a not-typed-capable module, a decode/version trip,
-        // or a `start()` rejection all surface as a data-shaped
-        // `CapabilityFailure` carrying the RAW reason (the module never ran).
+        // S3 — route the opaque payload into the typed registry doorway.
+        // `start_bytes` runs per-crate `decode_payload` + fail-closed
+        // `schema_version` gate + `start()`. Unknown namespace, not-typed-capable
+        // module, decode/version trip, or `start()` rejection surface as
+        // data-shaped `CapabilityFailure` (the module never ran).
         let now_ms = wall_clock_ms();
         let mut ctx = ActionContext {};
         match self
             .action_registry
             .start_bytes(&mut ctx, now_ms, &action_namespace, &payload)
         {
-            Ok(_validated) => {
-                // The typed payload decoded and `start()` validated it — the S3
-                // doorway crossed. The terminal write (execute → ActorCommand →
-                // kind:N publish) still needs the #1008 OutboxResolver/actor the
-                // wasm preview does not wire, so the write stays honestly-disabled
-                // behind the same publish-not-supported token rather than being
-                // ACKed and silently dropped.
-                vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-                    capability: action_namespace,
-                    correlation_id,
-                    reason: write_path_unavailable_reason(true),
-                })]
-            }
             Err(rejection) => vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
                 capability: action_namespace,
                 correlation_id,
                 reason: rejection_reason(rejection),
             })],
+            Ok(_action_id) => {
+                // Typed payload validated. Now execute: collect ActorCommands
+                // and route each through the wasm-aware handler.
+                let commands = std::rc::Rc::new(std::cell::RefCell::new(
+                    Vec::<ActorCommand>::new(),
+                ));
+                let commands_clone = std::rc::Rc::clone(&commands);
+                let exec_result = self.action_registry.execute_bytes(
+                    &action_namespace,
+                    &payload,
+                    &correlation_id,
+                    &move |cmd| commands_clone.borrow_mut().push(cmd),
+                );
+                if let Err(failure) = exec_result {
+                    return vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
+                        capability: action_namespace,
+                        correlation_id,
+                        reason: failure.message,
+                    })];
+                }
+                let collected = std::rc::Rc::try_unwrap(commands)
+                    .expect("no other Rc holders after execute_bytes returns")
+                    .into_inner();
+                self.execute_actor_commands(collected, &action_namespace, correlation_id)
+            }
         }
+    }
+
+    /// Route collected [`ActorCommand`]s from a validated typed dispatch to
+    /// the wasm-aware publish handlers.
+    ///
+    /// Called only after `start_bytes` + `execute_bytes` have both succeeded.
+    /// Returns `ActionAccepted + UpdateBytes` for synchronous pre-signed paths,
+    /// or `SignRequest + UpdateBytes` for the async signing path.
+    fn execute_actor_commands(
+        &mut self,
+        commands: Vec<ActorCommand>,
+        action_namespace: &str,
+        correlation_id: String,
+    ) -> Vec<WorkerEvent> {
+        let mut events: Vec<WorkerEvent> = Vec::new();
+        for cmd in commands {
+            match cmd {
+                // Pre-signed event: route through the kernel publish engine.
+                // The `WasmOutboxResolver` (#1008) provides the write relay set.
+                ActorCommand::PublishSignedEvent { raw, target, correlation_id: cid } => {
+                    let outbound = self
+                        .reducer
+                        .borrow_mut()
+                        .publish_pre_signed(raw, target, cid);
+                    self.fan_outbound(outbound);
+                    events.push(WorkerEvent::ActionAccepted {
+                        action_type: action_namespace.to_string(),
+                        correlation_id: correlation_id.clone(),
+                    });
+                    events.push(self.snapshot_event());
+                }
+                // Unsigned event (arbitrary kind): build the unsigned JSON and
+                // start the BeginSign round-trip. The main-thread broker calls
+                // `window.nostr.signEvent` and re-enters with
+                // `DeliverSignerResponse`; from there `deliver_signer_response`
+                // emits `SignCompleted` and the host publishes via a follow-up
+                // `PublishSignedEvent` dispatch or by noting the signed JSON.
+                ActorCommand::PublishRawEvent {
+                    kind,
+                    tags,
+                    content,
+                    target: _,
+                    signer_pubkey: _,
+                    correlation_id: cid,
+                } => {
+                    let account_pubkey = match self.reducer.borrow().active_account_pubkey() {
+                        Some(pk) => pk,
+                        None => {
+                            events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
+                                capability: action_namespace.to_string(),
+                                correlation_id: correlation_id.clone(),
+                                reason: write_path_unavailable_reason(false),
+                            }));
+                            continue;
+                        }
+                    };
+                    let created_at = wall_clock_ms() / 1000;
+                    let unsigned_json = serde_json::json!({
+                        "pubkey": account_pubkey,
+                        "kind": kind,
+                        "tags": tags,
+                        "content": content,
+                        "created_at": created_at,
+                    })
+                    .to_string();
+                    match self
+                        .reducer
+                        .borrow_mut()
+                        .begin_sign_roundtrip(account_pubkey, &unsigned_json)
+                    {
+                        Ok(req) => {
+                            events.push(WorkerEvent::SignRequest {
+                                correlation_id: req.correlation_id,
+                                account_pubkey: req.account_pubkey,
+                                unsigned_json: req.unsigned_json,
+                            });
+                        }
+                        Err(reason) => {
+                            events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
+                                capability: action_namespace.to_string(),
+                                correlation_id: cid.unwrap_or(correlation_id.clone()),
+                                reason,
+                            }));
+                        }
+                    }
+                }
+                // Profile (kind:0): build the kind:0 content JSON and start the
+                // BeginSign round-trip, same as PublishRawEvent above.
+                ActorCommand::PublishProfile { fields, correlation_id: cid } => {
+                    let account_pubkey = match self.reducer.borrow().active_account_pubkey() {
+                        Some(pk) => pk,
+                        None => {
+                            events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
+                                capability: action_namespace.to_string(),
+                                correlation_id: correlation_id.clone(),
+                                reason: write_path_unavailable_reason(false),
+                            }));
+                            continue;
+                        }
+                    };
+                    let content =
+                        serde_json::to_string(&fields).unwrap_or_else(|_| "{}".to_string());
+                    let created_at = wall_clock_ms() / 1000;
+                    let unsigned_json = serde_json::json!({
+                        "pubkey": account_pubkey,
+                        "kind": 0u32,
+                        "tags": serde_json::Value::Array(vec![]),
+                        "content": content,
+                        "created_at": created_at,
+                    })
+                    .to_string();
+                    match self
+                        .reducer
+                        .borrow_mut()
+                        .begin_sign_roundtrip(account_pubkey, &unsigned_json)
+                    {
+                        Ok(req) => {
+                            events.push(WorkerEvent::SignRequest {
+                                correlation_id: req.correlation_id,
+                                account_pubkey: req.account_pubkey,
+                                unsigned_json: req.unsigned_json,
+                            });
+                        }
+                        Err(reason) => {
+                            events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
+                                capability: action_namespace.to_string(),
+                                correlation_id: cid.unwrap_or(correlation_id.clone()),
+                                reason,
+                            }));
+                        }
+                    }
+                }
+                // Any other ActorCommand variant: the wasm runtime has no
+                // actor thread to handle it. Surface a CapabilityFailure so
+                // the host sees an honest "not handled" signal rather than a
+                // silent drop.
+                other => {
+                    events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
+                        capability: action_namespace.to_string(),
+                        correlation_id: correlation_id.clone(),
+                        reason: format!(
+                            "wasm_actor_command_unhandled: ActorCommand variant {:?} is not \
+                             handled by the wasm runtime — it requires the native actor thread.",
+                            std::mem::discriminant(&other)
+                        ),
+                    }));
+                }
+            }
+        }
+        // If no commands were emitted (a module with side-effects only),
+        // return a plain ActionAccepted + snapshot.
+        if events.is_empty() {
+            return self.accepted_with_snapshot(
+                action_namespace.to_string(),
+                correlation_id,
+            );
+        }
+        events
     }
 
     /// Whether the kernel has an active account seeded (via `SetIdentity` /
     /// `set_active_account`). The two honest write-unavailability states key on
     /// this instead of a persistent signer slot (removed in #1743 Cut A,
-    /// ADR-0064 §5): no account → `signer_not_installed`; account seeded but the
-    /// web preview has no outbox resolver → `publish_not_supported_in_web_preview`.
+    /// ADR-0064 §5): no account → `signer_not_installed`.
     fn has_active_account(&self) -> bool {
         self.reducer.borrow().active_account_pubkey().is_some()
     }
@@ -252,14 +385,8 @@ impl WasmRuntime {
                 correlation_id: action.correlation_id,
             }]);
         }
-        // #1740 step 8: the raw feed-verb dispatch arm (`nmp.kernel.open_interest`
-        // / `close_interest` and `nmp.feed.declare_active_follows` /
-        // `clear_active_follows`) is DELETED — those public action strings are
-        // retired. The wasm reducer's `open_interest` / `declare_active_follows_feed`
-        // methods remain as INTERNAL composition glue (the web app's feed setup
-        // drives them directly through the `WasmRuntime` Rust facade, not through a
-        // host action string). There is no public wasm `open_feed` doorway yet (the
-        // session registry + perspective compiler are native-only — see #1740).
+        // #1740 step 8: the raw feed-verb dispatch arm is DELETED (see
+        // dispatch_routing.rs comment for full rationale).
         //
         // Kernel-namespace actions (`nmp.kernel.start`, `open_uri`, etc.) map
         // to `KernelAction` variants and run through `KernelReducer::reduce`.

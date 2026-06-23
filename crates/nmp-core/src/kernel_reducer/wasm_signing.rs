@@ -40,12 +40,15 @@
 //! rejects a mismatch — a mid-flight account switch cannot deliver a signature
 //! from a different key into the originating request (ADR-0050 §D5 pinning).
 //!
-//! # Behind the honest-disable gate (web publish stays disabled, #1008)
+//! # Round-trip completion and publish
 //!
 //! S6 wires the *signing round-trip mechanism only*. The completion continuation
-//! records the signed event into an observable sink — it does **not** publish
-//! (web publish is blocked on #1008). The host reads the completion to confirm
-//! the round-trip worked; it must not treat it as "published".
+//! records the signed event into an observable sink. After #1008 the wasm runtime
+//! handles `PublishRawEvent` / `PublishProfile` actor commands by calling
+//! `begin_sign_roundtrip`, and the signed result is delivered here — the host
+//! then dispatches a `PublishSignedEvent` command (or the future S6b continuation
+//! publishes inline). The host reads the `SignRoundTripOutcome` to confirm the
+//! signing step completed.
 
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -90,7 +93,8 @@ pub(crate) struct SignRoundTripState {
     senders: HashMap<String, mpsc::Sender<Result<SignedEvent, SignerError>>>,
     /// Observable completion sink. The continuation pushes the outcome here so a
     /// host (and the no-polling oracle test) can confirm the round-trip
-    /// completed — WITHOUT publishing (honest-disable gate, #1008).
+    /// completed. After #1008 the wasm runtime publishes via a follow-up
+    /// `PublishSignedEvent` dispatch after reading this completion.
     completions: SharedCompletions,
 }
 
@@ -243,8 +247,9 @@ impl super::KernelReducer {
         let cid_for_continuation = correlation_id.clone();
         let completions = std::sync::Arc::clone(&self.sign_roundtrip.completions);
         let continuation = SignContinuation::new(move |outcome| {
-            // Account-pinning enforcement + honest-disable terminal: record the
-            // completion; do NOT publish (web publish blocked on #1008).
+            // Account-pinning enforcement: verify author matches the request's
+            // pinned pubkey (ADR-0050 §D5), then record the signed event JSON
+            // in the completion sink for the host to dispatch `PublishSignedEvent`.
             let recorded = match outcome {
                 Ok(signed) => {
                     if signed.unsigned.pubkey != pin {
@@ -349,8 +354,9 @@ impl super::KernelReducer {
     fn drive_sign_roundtrip(&mut self) {
         // The wasm round-trip parks only `SignContinuation` sinks, which settle
         // in-drain (no `Publish` / `Auth` obligations); the returned batch's
-        // obligation vecs are therefore always empty. We ignore them rather than
-        // route relay frames (web publish is disabled — #1008).
+        // obligation vecs are therefore always empty. The actual relay-publish
+        // happens via a follow-up `PublishSignedEvent` dispatch from the host
+        // after reading the completion sink (#1008).
         let _batch = self.sign_roundtrip.parked.drive(&mut self.kernel);
     }
 
@@ -386,9 +392,9 @@ impl super::KernelReducer {
     }
 
     /// #1753 S6 — drain and return the recorded round-trip completions. The host
-    /// reads these to confirm the signing mechanism worked (NOT that anything
-    /// was published — honest-disable gate, #1008). Drains so each completion is
-    /// observed once.
+    /// reads these to confirm the signing mechanism worked and dispatches a
+    /// follow-up `PublishSignedEvent` to complete the publish (#1008). Drains
+    /// so each completion is observed once.
     #[must_use]
     pub fn take_sign_completions(&mut self) -> Vec<SignRoundTripCompletion> {
         match self.sign_roundtrip.completions.lock() {

@@ -185,11 +185,13 @@ mod typed_decode {
         }
     }
 
-    /// Load-bearing S3 test: a typed payload dispatched through the wasm
+    /// Load-bearing S3 test (#1008): a typed payload dispatched through the wasm
     /// `dispatch_bytes` doorway for a REGISTERED non-publish namespace DECODES
-    /// per-crate and REACHES the module's `start()` — proving the opaque payload
-    /// is now routed into `start_bytes`, not swallowed by the generic
-    /// envelope-level `CapabilityFailure`.
+    /// per-crate, REACHES the module's `start()`, and EXECUTES — returning
+    /// `ActionAccepted + UpdateBytes` for a module whose `execute()` emits no
+    /// `ActorCommand`s (side-effect-only module). This proves the full
+    /// start_bytes + execute_bytes path runs, NOT the generic envelope-level
+    /// `CapabilityFailure`.
     #[test]
     fn typed_payload_decodes_and_reaches_start_not_capability_failure() {
         let started = Arc::new(AtomicBool::new(false));
@@ -215,28 +217,18 @@ mod typed_decode {
             started.load(Ordering::SeqCst),
             "typed payload must DECODE + reach the module's start(); got {events:?}"
         );
-        // And the reason is NOT the generic "unknown namespace" envelope-level
-        // failure — the namespace decoded + validated. The terminal write stays
-        // honestly-disabled pending the #1008 OutboxResolver (publish token).
+        // ProbeModule::execute() emits no ActorCommands → the empty-commands
+        // arm returns ActionAccepted + UpdateBytes (not a CapabilityFailure).
+        // This is the #1008 outcome: the typed dispatch path runs to completion
+        // instead of short-circuiting with a "not yet wired" token.
         match &events[..] {
-            [WorkerEvent::CapabilityFailure(CapabilityFailure {
-                capability,
-                correlation_id,
-                reason,
-            })] => {
-                assert_eq!(capability, PROBE_NAMESPACE);
+            [WorkerEvent::ActionAccepted { action_type, correlation_id }, WorkerEvent::UpdateBytes { .. }] => {
+                assert_eq!(action_type, PROBE_NAMESPACE);
                 assert_eq!(correlation_id, "corr-typed");
-                assert!(
-                    reason.starts_with("publish_not_supported_in_web_preview"),
-                    "validated typed write must surface the honest #1008 \
-                     write-path token, not a decode/unknown rejection; got: {reason}"
-                );
-                assert!(
-                    !reason.contains("unknown action namespace"),
-                    "namespace decoded + validated — must NOT be 'unknown'; got: {reason}"
-                );
             }
-            other => panic!("expected one CapabilityFailure; got {other:?}"),
+            other => panic!(
+                "expected [ActionAccepted, UpdateBytes] for side-effect-only module; got {other:?}"
+            ),
         }
     }
 
@@ -299,18 +291,20 @@ mod typed_decode {
         }
     }
 
-    /// Publish stays honestly-disabled: `nmp.publish` short-circuits to the
-    /// #1008 write-path token WITHOUT touching the typed registry (its terminal
-    /// write needs the OutboxResolver, the separate prerequisite).
+    /// After #1008: `nmp.publish` now routes through the typed registry and
+    /// `WasmOutboxResolver` is wired in. A non-FlatBuffers payload (like the
+    /// `PROBE_PAYLOAD` marker bytes) reaches `PublishModule::decode_payload`
+    /// which rejects it as malformed — NOT the old "outbox resolver not wired"
+    /// token. This proves the publish short-circuit skip is GONE.
     #[test]
-    fn publish_stays_honestly_disabled_pending_outbox_resolver() {
+    fn publish_malformed_payload_fails_closed_at_decode_after_1008() {
         let mut runtime = WasmRuntime::new();
         seed_account(&mut runtime);
         let bytes = envelope(
             "nmp.publish",
             "corr-pub",
             DISPATCH_ENVELOPE_SCHEMA_VERSION,
-            PROBE_PAYLOAD,
+            PROBE_PAYLOAD, // not a valid FlatBuffers PublishAction payload
         );
         let events = runtime.dispatch_bytes(&bytes);
         match &events[..] {
@@ -320,12 +314,18 @@ mod typed_decode {
                 ..
             })] => {
                 assert_eq!(capability, "nmp.publish");
+                // Decode rejection — not the old publish-disabled token.
                 assert!(
-                    reason.starts_with("publish_not_supported_in_web_preview"),
-                    "publish must surface the #1008 write-path token; got: {reason}"
+                    !reason.starts_with("publish_not_supported_in_web_preview"),
+                    "after #1008 the old disable token must be gone; got: {reason}"
+                );
+                assert!(
+                    reason.contains("malformed") || reason.contains("file identifier")
+                        || reason.contains("decode") || reason.contains("invalid"),
+                    "malformed payload must surface a decode rejection reason; got: {reason}"
                 );
             }
-            other => panic!("expected publish CapabilityFailure; got {other:?}"),
+            other => panic!("expected publish decode CapabilityFailure; got {other:?}"),
         }
     }
 }
