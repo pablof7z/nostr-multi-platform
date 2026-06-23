@@ -42,10 +42,12 @@ use crate::substrate::{
     ActionContext, ActionId, ActionModule, ActionRegistrar, ActionRejection, ActionResult,
 };
 
+mod action_id;
 mod erased;
 mod failure;
 mod typed_dispatch;
 
+use action_id::new_action_id;
 use erased::{ActionModuleAdapter, ErasedActionModule};
 pub use failure::{ActionExecuteFailure, ActionFailureKind, RegistrationError};
 
@@ -465,24 +467,6 @@ impl ActionRegistrar for ActionRegistry {
     fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
         self.register_default(module)
     }
-}
-
-/// Generate a unique 32-hex-char action correlation id.
-///
-/// Combines the caller-supplied wall-clock millisecond stamp (`now_ms`, read
-/// at the FFI system boundary by `ffi/action.rs`) with a process-lifetime
-/// atomic counter so two ids minted at the same instant still differ. This is
-/// a correlation handle, not a security token — no cryptographic randomness
-/// is required (the M6 ledger may swap in a UUID later without touching
-/// callers). The clock is injected rather than read here so tests can pin the
-/// leading hex word for deterministic id assertions.
-fn new_action_id(now_ms: u64) -> ActionId {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-    // 64-bit now_ms + 64-bit sequence → 32 hex. The sequence guarantees
-    // uniqueness within a single millisecond.
-    format!("{now_ms:016x}{seq:016x}")
 }
 
 /// Build the registry the kernel ships with.
