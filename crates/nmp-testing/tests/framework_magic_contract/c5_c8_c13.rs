@@ -255,20 +255,19 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_core::nip19::encode_note;
     use nmp_store::RawEvent;
     use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
     use nmp_core::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
-    use nmp_core::{
-        decode_snapshot_typed_projections, decode_update_frame, UpdateEnvelope,
-    };
+    use nmp_core::{decode_snapshot_typed_projections, decode_update_frame, UpdateEnvelope};
     use std::time::Duration;
 
     let (tx, rx) = spawn_actor();
 
     // Start the actor with a visible limit that will include our injected event.
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 100,
         emit_hz: 0,
         initial_relays: Vec::new(),
-    })
+    }))
     .expect("send Start");
 
     // Build a kind:1 event with a fixed author pubkey (no kind:0 will arrive).
@@ -288,18 +287,18 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     let verified = VerifiedEvent::from_raw_unchecked(raw);
     // The diag-firehose-stress path pushes the event directly into self.events
     // regardless of timeline_authors, so it is visible to claimed_events.
-    tx.send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
+    tx.send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(vec![verified])))
         .expect("send IngestPreVerifiedEvents");
 
     // V-112 (ADR-0042): OpenAuthor deleted. Use ClaimEvent to surface the
     // event in the `claimed_events` typed sidecar for C13 observation.
     // D5: claimed_events carries the entry only after a ClaimEvent dispatch.
     let note_uri = format!("nostr:{}", encode_note(event_id).expect("valid note uri"));
-    tx.send(ActorCommand::ClaimEvent {
+    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
         uri: note_uri.clone(),
         consumer_id: "c13-test".to_string(),
         force: false,
-    })
+    }))
     .expect("send ClaimEvent");
 
     // Drain envelopes until we find a `Snapshot` carrying our event in the
@@ -354,5 +353,5 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
         "author_picture_url must be None before kind:0 arrives (aim.md §2)"
     );
 
-    tx.send(ActorCommand::Shutdown).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
 }

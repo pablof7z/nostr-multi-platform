@@ -18,7 +18,7 @@
 pub extern "C" fn nmp_app_retry_publish(_app: *mut NmpApp, _handle: *const c_char) {
     // The real body uses `RetryPublish`; the fixture jams the banned
     // variant here just to prove the whitelist works.
-    let _ = ActorCommand::PublishSignedEvent { raw: r, relays: v, correlation_id: c };
+    let _ = ActorCommand::Publish(PublishCommand::SignedEvent { raw: r, relays: v, correlation_id: c });
 }
 
 // (1) Wrapped whitelisted signature — exemption flows through the wrapped
@@ -34,16 +34,16 @@ pub extern "C" fn nmp_app_cancel_action(
 // `kernel::action_registry` shape (the GOOD path: dispatch_action's
 // executor builds a `PublishSignedEvent`).
 pub fn route_publish_action() {
-    let _ = ActorCommand::PublishSignedEvent { raw: r, relays: v, correlation_id: c };
+    let _ = ActorCommand::Publish(PublishCommand::SignedEvent { raw: r, relays: v, correlation_id: c });
 }
 
 // (3) Different FFI prefix — out of D11 scope (the rule is the door for
 // the `nmp_app_*` FFI surface only).
 pub extern "C" fn nmp_signer_broker_internal_hypothetical(_app: *mut SomeType) {
-    let _ = ActorCommand::PublishSignedEvent { raw: r, relays: v, correlation_id: c };
+    let _ = ActorCommand::Publish(PublishCommand::SignedEvent { raw: r, relays: v, correlation_id: c });
 }
 
 // (4) Per-line escape hatch — explicit opt-out on the offending body line.
 pub extern "C" fn nmp_app_exempt_via_allow(_app: *mut NmpApp) {
-    let _ = ActorCommand::PublishSignedEvent { raw: r, relays: v, correlation_id: c }; // doctrine-allow: D11 — fixture exemption proof
+    let _ = ActorCommand::Publish(PublishCommand::SignedEvent { raw: r, relays: v, correlation_id: c }); // doctrine-allow: D11 — fixture exemption proof
 }

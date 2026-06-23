@@ -14,6 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use nmp_core::actor::PublishCommand;
 use crate::group_id::{GroupId, RelayUrl};
 
 /// Routing pin: a single relay URL the publish must target exclusively.
@@ -114,7 +115,7 @@ impl PublishPlan {
             .pin_to
             .ok_or_else(|| "publish plan has no relay pin".to_string())?
             .relay_url;
-        Ok(ActorCommand::PublishUnsignedEventToRelays {
+        Ok(ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
             event: UnsignedEvent {
                 pubkey: String::new(),
                 kind: self.kind,
@@ -126,7 +127,7 @@ impl PublishPlan {
             correlation_id,
             // NIP-29 group actions always sign with the active account.
             signer_pubkey: None,
-        })
+        }))
     }
 }
 
@@ -193,7 +194,7 @@ mod tests {
         use nmp_core::actor::ActorCommand;
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
         match p.into_actor_command(None).expect("pinned plan converts") {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, .. } => {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, relays, correlation_id, .. }) => {
                 // Pinned to EXACTLY the group's host relay — never the
                 // author's NIP-65 outbox.
                 assert_eq!(relays, vec!["wss://h.example.com".to_string()]);
@@ -216,7 +217,7 @@ mod tests {
             .into_actor_command(Some("test-correlation-id".to_string()))
             .expect("pinned plan converts")
         {
-            ActorCommand::PublishUnsignedEventToRelays { correlation_id, .. } => {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { correlation_id, .. }) => {
                 assert_eq!(correlation_id.as_deref(), Some("test-correlation-id"));
             }
             other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),

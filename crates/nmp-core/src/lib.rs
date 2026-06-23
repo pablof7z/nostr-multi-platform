@@ -419,6 +419,7 @@ pub mod __ffi_internal {
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub mod testing {
     pub use crate::actor::{run_actor, ActorCommand};
+    pub use crate::actor::TestSupportCommand;
     pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED, PROCESS_STORE_LRU_EVICTED};
     pub use crate::store::{RawEvent, VerifiedEvent}; // ADR-0055 churn
 
@@ -435,7 +436,7 @@ pub mod testing {
     /// Returns a command sender and an update receiver.  The caller drives the
     /// actor by sending [`ActorCommand`] values and reads FlatBuffers update
     /// frames from the update channel.  Dropping the sender or sending
-    /// [`ActorCommand::Shutdown`] stops the actor thread.
+    /// [`ActorCommand::Lifecycle(LifecycleCommand::Shutdown)`] stops the actor thread.
     pub fn spawn_actor() -> (
         crate::CommandSender,
         mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
@@ -470,6 +471,7 @@ pub mod testing {
         mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
     ) {
         use crate::actor::{run_actor_with_observers, ActorChannels, ActorConfigSources, ActorRuntimeSlots};
+use crate::actor::{LifecycleCommand, TestSupportCommand};
         use crate::slots::new_storage_path_slot;
         use std::sync::{atomic::AtomicU64, Arc, Mutex};
 
@@ -580,7 +582,7 @@ pub mod testing {
                 VerifiedEvent::try_from_raw(raw).ok()
             })
             .collect();
-        tx.send(ActorCommand::IngestPreVerifiedEvents(events))
+        tx.send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
     }
 
     /// Send a [`ActorCommand::Barrier`] and block until the actor acknowledges
@@ -594,7 +596,7 @@ pub mod testing {
     /// `true` the actor's state reflects all prior commands.
     pub fn wait_barrier(tx: &crate::CommandSender, timeout: std::time::Duration) -> bool {
         let (ack_tx, ack_rx) = mpsc::sync_channel(1);
-        if tx.send(ActorCommand::Barrier { ack: ack_tx }).is_err() {
+        if tx.send(ActorCommand::TestSupport(TestSupportCommand::Barrier { ack: ack_tx })).is_err() {
             return false;
         }
         ack_rx.recv_timeout(timeout).is_ok()

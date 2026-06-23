@@ -14,6 +14,7 @@
 use nostr::PublicKey;
 use serde_json::{json, Value};
 
+use nmp_core::actor::ActionLedgerCommand;
 use super::payload::{LastOpError, PendingOpRow};
 use super::pending::{PendingOp, PendingOpsStore, RetryOutcome, StoreResult};
 use super::state::{op_tag_of, InnerHandle};
@@ -166,10 +167,10 @@ impl InnerHandle<'_> {
             }
             let cmd = if ok == Some(true) {
                 // `dispatch()` already cleared the error banner on success.
-                nmp_core::actor::ActorCommand::RecordActionSuccess {
+                nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
                     correlation_id: outcome.correlation_id,
                     result_json: None,
-                }
+                })
             } else {
                 let reason = result
                     .get("error")
@@ -187,10 +188,10 @@ impl InnerHandle<'_> {
                     outcome.correlation_id.clone(),
                     now_secs,
                 );
-                nmp_core::actor::ActorCommand::RecordActionFailure {
+                nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
                     correlation_id: outcome.correlation_id,
                     reason,
-                }
+                })
             };
             self.push_actor_command(cmd);
         }
@@ -216,10 +217,10 @@ impl InnerHandle<'_> {
                 op.correlation_id.clone(),
                 now_secs,
             );
-            self.push_actor_command(nmp_core::actor::ActorCommand::RecordActionFailure {
+            self.push_actor_command(nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
                 correlation_id: op.correlation_id,
                 reason: "key_package_unavailable".to_string(),
-            });
+            }));
         }
     }
 
@@ -263,12 +264,12 @@ impl InnerHandle<'_> {
         #[cfg(test)]
         {
             match &cmd {
-                nmp_core::actor::ActorCommand::RecordActionSuccess { correlation_id, .. } => {
+                nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess { correlation_id, .. }) => {
                     self.inner
                         .captured_commands
                         .push(("success", correlation_id.clone()));
                 }
-                nmp_core::actor::ActorCommand::RecordActionFailure { correlation_id, .. } => {
+                nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) => {
                     self.inner
                         .captured_commands
                         .push(("failure", correlation_id.clone()));

@@ -31,7 +31,7 @@
 //!
 //! The host's `ProjectionCache` does `removeAll()` whenever the frame's
 //! `session_id` OR `snapshot_epoch` changes. A producer's emission state lives
-//! OUTSIDE the kernel, so it SURVIVES a kernel rebuild (`ActorCommand::Reset`)
+//! OUTSIDE the kernel, so it SURVIVES a kernel rebuild (`ActorCommand::Lifecycle(LifecycleCommand::Reset)`)
 //! and an account switch. If the producer kept omitting after the host cleared
 //! its cache, the host would have NO projection entry → a frozen, blank UI.
 //!
@@ -48,7 +48,7 @@ use std::sync::Arc;
 /// The frame-level identity the host resets its projection cache on.
 ///
 /// `session_id` = `TimingMilestones::started_unix_ms` (changes on every kernel
-/// rebuild, including `ActorCommand::Reset`); `snapshot_epoch` =
+/// rebuild, including `ActorCommand::Lifecycle(LifecycleCommand::Reset)`); `snapshot_epoch` =
 /// `ProjectionRevTracker::epoch` (bumped on account-switch / schema-change).
 /// The kernel publishes both each tick via `Kernel::publish_frame_identity`; the
 /// producer closure reads them lock-free from shared `Arc<AtomicU64>` handles.

@@ -552,7 +552,7 @@ pub(crate) struct Metrics {
     pub(super) max_event_to_emit_ms: u128,
     pub(super) max_events_per_update: u64,
     /// T114b — `resolve_ref` drops on per-pubkey `MAX_CLAIMS_PER_PUBKEY`
-    /// overflow. Kernel-lifetime counter; resets on `ActorCommand::Reset`
+    /// overflow. Kernel-lifetime counter; resets on `ActorCommand::Lifecycle(LifecycleCommand::Reset)`
     /// (the cap is a per-kernel D8 invariant, not a process metric).
     pub(super) claim_drops_total: u64,
     /// Microseconds spent in `make_update` on the PREVIOUS tick (one-tick lag,

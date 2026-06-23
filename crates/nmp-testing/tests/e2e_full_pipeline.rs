@@ -41,6 +41,8 @@ pub const GATE_M8: &str = "M8";
 #[allow(dead_code)]
 const PER_TEST_TIMEOUT_SECS: u64 = 5;
 
+use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand, TestSupportCommand};
+
 // ---------------------------------------------------------------------------
 // Test 1 — cold_open_profile_view_full_pipeline
 // ---------------------------------------------------------------------------
@@ -72,7 +74,7 @@ fn cold_open_profile_view_full_pipeline() {
     const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
     let (tx, rx) = spawn_actor();
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 100,
         emit_hz: 0,
         // A test relay so the publish engine has a target for PublishProfile.
@@ -80,14 +82,14 @@ fn cold_open_profile_view_full_pipeline() {
         // nothing, returns Err, and record_local_publish_intent is never called —
         // leaving the profile projection in the "Waiting for kind:0" placeholder.
         initial_relays: vec![("wss://relay.test".to_string(), "both".to_string())],
-    })
+    }))
     .expect("send Start");
 
     // Step 1: Sign in — establishes active account (alice) with local key.
-    tx.send(ActorCommand::AddSigner {
+    tx.send(ActorCommand::Identity(IdentityCommand::AddSigner {
         source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
         make_active: true,
-    })
+    }))
     .expect("send AddSigner");
 
     // Step 2: Publish alice's profile.
@@ -100,14 +102,14 @@ fn cold_open_profile_view_full_pipeline() {
         "display_name".to_string(),
         serde_json::Value::String("Alice".to_string()),
     );
-    tx.send(ActorCommand::PublishProfile {
+    tx.send(ActorCommand::Publish(PublishCommand::Profile {
         fields,
         correlation_id: None,
-    })
+    }))
     .expect("send PublishProfile");
 
     // Step 3: Force emit so we don't wait for the ticker.
-    tx.send(ActorCommand::MarkChangedSinceEmit)
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit))
         .expect("send MarkChangedSinceEmit");
 
     // Drain snapshots until the typed `profile` sidecar carries
@@ -143,7 +145,7 @@ fn cold_open_profile_view_full_pipeline() {
         last_profile
     );
 
-    tx.send(ActorCommand::Shutdown).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
 }
 
 // ---------------------------------------------------------------------------
@@ -606,11 +608,11 @@ fn monotonic_rev_under_concurrent_dispatch() {
 
     let (tx, rx) = spawn_actor();
     // emit_hz = 60 so the actor ticks frequently.
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 500,
         emit_hz: 60,
         initial_relays: Vec::new(),
-    })
+    }))
     .expect("send Start");
 
     // Use a fixed author pubkey so all events land in the same timeline slot.
@@ -634,7 +636,7 @@ fn monotonic_rev_under_concurrent_dispatch() {
                     sig: "a".repeat(128),
                 };
                 let verified = VerifiedEvent::from_raw_unchecked(raw);
-                tx.send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
+                tx.send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(vec![verified])))
                     .ok();
             })
         })
@@ -750,33 +752,33 @@ fn publish_raw_signer_pubkey_unregistered_fails_closed() {
     let unregistered_pubkey_hex = "d".repeat(64);
 
     let (tx, rx) = spawn_actor();
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 100,
         emit_hz: 0,
         // The Auto resolver needs at least one configured relay or it
         // short-circuits to NoTargets before the sign step runs.
         initial_relays: vec![("wss://relay.test".to_string(), "both".to_string())],
-    })
+    }))
     .expect("send Start");
 
     // Active account: alice. Under the legacy hardcoded `None`, alice would have
     // signed and no error toast would ever appear.
-    tx.send(ActorCommand::AddSigner {
+    tx.send(ActorCommand::Identity(IdentityCommand::AddSigner {
         source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(ALICE_NSEC.to_string())),
         make_active: true,
-    })
+    }))
     .expect("send AddSigner alice");
 
-    tx.send(ActorCommand::PublishRawEvent {
+    tx.send(ActorCommand::Publish(PublishCommand::RawEvent {
         kind: 30023,
         tags: Vec::new(),
         content: "should fail — unknown signer".to_string(),
         target: PublishTarget::Auto,
         signer_pubkey: Some(unregistered_pubkey_hex.clone()),
         correlation_id: None,
-    })
+    }))
     .expect("send PublishRawEvent (unregistered signer)");
-    tx.send(ActorCommand::MarkChangedSinceEmit)
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit))
         .expect("send MarkChangedSinceEmit");
 
     assert!(
@@ -786,7 +788,7 @@ fn publish_raw_signer_pubkey_unregistered_fails_closed() {
          None would have signed with the active account and raised no toast)"
     );
 
-    tx.send(ActorCommand::Shutdown).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
 }
 
 // Test 8 — a REGISTERED agent key signs even with NO active account.
@@ -814,26 +816,26 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
     let bob_pubkey_hex = bob_keys.public_key().to_hex();
 
     let (tx, rx) = spawn_actor();
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 100,
         emit_hz: 0,
         initial_relays: Vec::new(),
-    })
+    }))
     .expect("send Start");
 
     // Agent key only: bob. Crucially, no active sign-in follows — there is no
     // active account, so the legacy `None` path would fail closed with
     // "no active account".
-    tx.send(ActorCommand::AddSigner {
+    tx.send(ActorCommand::Identity(IdentityCommand::AddSigner {
         source: nmp_core::SignerSource::AppManagedLocalNsec(zeroize::Zeroizing::new(bob_nsec)),
         make_active: false,
-    })
+    }))
     .expect("send AddSigner bob");
 
     // `Explicit` target exercises the second changed dispatch call site
     // (`publish_unsigned_event_to_relays`). A stub relay URL is a valid target;
     // we only assert on the sign step, not on relay delivery.
-    tx.send(ActorCommand::PublishRawEvent {
+    tx.send(ActorCommand::Publish(PublishCommand::RawEvent {
         kind: 30023,
         tags: Vec::new(),
         content: "agent-authored note".to_string(),
@@ -842,9 +844,9 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
         },
         signer_pubkey: Some(bob_pubkey_hex.clone()),
         correlation_id: None,
-    })
+    }))
     .expect("send PublishRawEvent (registered agent signer, no active account)");
-    tx.send(ActorCommand::MarkChangedSinceEmit)
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit))
         .expect("send MarkChangedSinceEmit");
 
     // The selector must let bob sign WITHOUT an active account: the
@@ -857,5 +859,5 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
          signer_pubkey selects that key"
     );
 
-    tx.send(ActorCommand::Shutdown).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
 }

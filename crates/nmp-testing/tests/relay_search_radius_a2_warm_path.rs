@@ -36,6 +36,7 @@ use common::wire_log::{
     event_rx_for_author, req_emit_relays_for_phase, score_updates, StderrCapture,
 };
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -97,11 +98,11 @@ fn a2_warm_path_second_claim_uses_scored_relay() {
 
     // ── (2) Boot the actor ───────────────────────────────────────────────────
     let (tx, rx) = spawn_actor();
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
         initial_relays: Vec::new(),
-    })
+    }))
     .expect("A2: actor Start send");
 
     // ── (3) Wait for relay connection ────────────────────────────────────────
@@ -109,7 +110,7 @@ fn a2_warm_path_second_claim_uses_scored_relay() {
     let connected =
         drain_until_or_timeout(&rx, connect_deadline, |frame| relay_is_connected(frame));
     if !connected {
-        let _ = tx.send(ActorCommand::Shutdown);
+        let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
         let lines = cap.collect();
         eprintln!(
             "A2 SKIP: no relay connected within {:?}. Captured {} stderr lines.",
@@ -120,11 +121,11 @@ fn a2_warm_path_second_claim_uses_scored_relay() {
     }
 
     // ── (4) Prime: first claim for GIGI_NADDR_PRIME ──────────────────────────
-    tx.send(ActorCommand::ClaimEvent {
+    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
         uri: GIGI_NADDR_PRIME.to_string(),
         consumer_id: "a2-prime".to_string(),
         force: false,
-    })
+    }))
     .expect("A2: prime ClaimEvent send");
 
     let prime_deadline = Instant::now() + Duration::from_millis(PRIME_BUDGET_MS);
@@ -132,18 +133,18 @@ fn a2_warm_path_second_claim_uses_scored_relay() {
     std::thread::sleep(Duration::from_millis(200));
 
     // Release the first claim so the second claim sees a fresh interest slot.
-    let _ = tx.send(ActorCommand::ReleaseEvent {
+    let _ = tx.send(ActorCommand::Refs(RefsCommand::ReleaseEvent {
         uri: GIGI_NADDR_PRIME.to_string(),
         consumer_id: "a2-prime".to_string(),
-    });
+    }));
     std::thread::sleep(Duration::from_millis(50));
 
     // ── (5) Second claim: different Gigi article ─────────────────────────────
-    tx.send(ActorCommand::ClaimEvent {
+    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
         uri: GIGI_NADDR_SECOND.to_string(),
         consumer_id: "a2-second".to_string(),
         force: false,
-    })
+    }))
     .expect("A2: second ClaimEvent send");
 
     let second_deadline = Instant::now() + Duration::from_millis(SECOND_CLAIM_BUDGET_MS);
@@ -151,7 +152,7 @@ fn a2_warm_path_second_claim_uses_scored_relay() {
     std::thread::sleep(Duration::from_millis(200));
 
     // ── (6) Shut down and collect ────────────────────────────────────────────
-    let _ = tx.send(ActorCommand::Shutdown);
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     drop(rx);
     std::thread::sleep(Duration::from_millis(100));
     let lines = cap.collect();

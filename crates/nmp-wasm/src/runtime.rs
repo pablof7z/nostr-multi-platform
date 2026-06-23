@@ -22,9 +22,7 @@ use std::fmt;
 use std::rc::Rc;
 
 use nmp_core::substrate::{ActionModule, ActionRegistrar};
-use nmp_core::{
-    default_registry, ActionRegistry, KernelAction, KernelReducer, KernelUpdate, OutboundMessage,
-};
+use nmp_core::{default_registry, ActionRegistry, KernelAction, KernelReducer, KernelUpdate, OutboundMessage};
 
 #[cfg(target_arch = "wasm32")]
 use crate::relay_pool;

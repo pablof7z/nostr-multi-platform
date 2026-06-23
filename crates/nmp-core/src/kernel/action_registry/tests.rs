@@ -1,4 +1,5 @@
 use super::*;
+use crate::actor::{ActorCommand, PublishCommand};
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
 fn ctx() -> ActionContext {
@@ -176,13 +177,13 @@ fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
         "executor must emit exactly one ActorCommand; got {cmds:?}"
     );
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishRawEvent {
+        ActorCommand::Publish(PublishCommand::RawEvent {
             kind,
             content,
             target,
             correlation_id,
             ..
-        } => {
+        }) => {
             assert_eq!(kind, 1);
             assert_eq!(content, "hello");
             assert_eq!(
@@ -240,11 +241,11 @@ fn publish_signed_executor_sends_publish_signed_event_command() {
         "executor must emit exactly one ActorCommand; got {cmds:?}"
     );
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishSignedEvent {
+        ActorCommand::Publish(PublishCommand::SignedEvent {
             target,
             correlation_id,
             raw,
-        } => {
+        }) => {
             assert_eq!(target, crate::publish::PublishTarget::Auto);
             assert_ne!(
                 correlation_id.as_deref(),
@@ -327,10 +328,10 @@ fn publish_profile_executor_threads_correlation_id_onto_actor_command() {
         "executor must emit exactly one ActorCommand; got {cmds:?}"
     );
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishProfile {
+        ActorCommand::Publish(PublishCommand::Profile {
             fields,
             correlation_id,
-        } => {
+        }) => {
             assert_eq!(
                 fields.get("name").and_then(|v| v.as_str()),
                 Some("Alice"),

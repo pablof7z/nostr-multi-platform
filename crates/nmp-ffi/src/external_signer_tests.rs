@@ -10,6 +10,7 @@
 
 use super::*;
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{IdentityCommand};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -109,7 +110,7 @@ fn signin_loop_resolves_add_signer_and_sign_round_trip() {
     //    permission batch (Rust decides what to ask for — D2).
     driver.signin(Some("com.greenart7c3.nostrsigner".to_string()));
     match rx.try_recv().expect("state command sent") {
-        ActorCommand::Nip55SignerStateChanged { state, .. } => {
+        ActorCommand::Identity(IdentityCommand::Nip55SignerStateChanged { state, .. }) => {
             assert_eq!(state, "awaiting_approval");
         }
         other => panic!("expected Nip55SignerStateChanged, got {other:?}"),
@@ -137,10 +138,10 @@ fn signin_loop_resolves_add_signer_and_sign_round_trip() {
     driver.deliver(&serde_json::to_string(&reply).unwrap());
 
     let handle = match rx.try_recv().expect("AddSigner sent") {
-        ActorCommand::AddSigner {
+        ActorCommand::Identity(IdentityCommand::AddSigner {
             source: nmp_core::SignerSource::RemoteHandle(handle),
             make_active,
-        } => {
+        }) => {
             assert!(make_active);
             handle
         }
@@ -150,7 +151,7 @@ fn signin_loop_resolves_add_signer_and_sign_round_trip() {
     assert_eq!(handle.pubkey_hex(), keys.public_key().to_hex());
     assert_eq!(handle.op_timeout(), Duration::from_secs(90));
     match rx.try_recv().expect("ready state sent") {
-        ActorCommand::Nip55SignerStateChanged { state, .. } => assert_eq!(state, "ready"),
+        ActorCommand::Identity(IdentityCommand::Nip55SignerStateChanged { state, .. }) => assert_eq!(state, "ready"),
         other => panic!("expected ready state, got {other:?}"),
     }
 
@@ -193,7 +194,7 @@ fn signin_loop_resolves_add_signer_and_sign_round_trip() {
     // same `deliver_to_remote_signers` → `deliver_response` path the kernel
     // runs).
     match rx.try_recv().expect("DeliverSignerResponse command sent") {
-        ActorCommand::DeliverSignerResponse { response_json } => {
+        ActorCommand::Identity(IdentityCommand::DeliverSignerResponse { response_json }) => {
             handle.deliver_response(&response_json);
         }
         other => panic!("expected DeliverSignerResponse, got {other:?}"),
@@ -242,7 +243,7 @@ fn rejected_connect_reports_failed_state() {
     driver.deliver(&serde_json::to_string(&reply).unwrap());
 
     match rx.try_recv().expect("failed state sent") {
-        ActorCommand::Nip55SignerStateChanged { state, reason } => {
+        ActorCommand::Identity(IdentityCommand::Nip55SignerStateChanged { state, reason }) => {
             assert_eq!(state, "failed");
             assert_eq!(reason.as_deref(), Some("user cancelled"));
         }
@@ -301,10 +302,10 @@ fn restore_reconstructs_signer_without_interaction() {
     driver.restore(&payload.to_string());
 
     match rx.try_recv().expect("AddSigner sent") {
-        ActorCommand::AddSigner {
+        ActorCommand::Identity(IdentityCommand::AddSigner {
             source: nmp_core::SignerSource::RemoteHandle(handle),
             make_active,
-        } => {
+        }) => {
             assert!(make_active);
             assert_eq!(handle.signer_kind(), "nip55");
             assert_eq!(handle.pubkey_hex(), keys.public_key().to_hex());

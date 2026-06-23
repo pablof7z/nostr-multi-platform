@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::actor::ActorCommand;
+use crate::actor::{PublishCommand};
 use crate::publish::policy::{
     classify_publish_behavior, target_is_explicit_nonempty, validate_publish_routing,
 };
@@ -275,18 +276,18 @@ impl ActionModule for PublishModule {
     ) -> Result<(), String> {
         match action {
             PublishAction::Publish { event, target, .. } => {
-                send(ActorCommand::PublishSignedEvent {
+                send(ActorCommand::Publish(PublishCommand::SignedEvent {
                     raw: publish_signed_event_to_raw(event),
                     target,
                     correlation_id: Some(correlation_id.to_string()),
-                });
+                }));
                 Ok(())
             }
             PublishAction::PublishProfile { fields } => {
-                send(ActorCommand::PublishProfile {
+                send(ActorCommand::Publish(PublishCommand::Profile {
                     fields,
                     correlation_id: Some(correlation_id.to_string()),
-                });
+                }));
                 Ok(())
             }
             PublishAction::PublishRaw {
@@ -296,14 +297,14 @@ impl ActionModule for PublishModule {
                 target,
                 signer_pubkey,
             } => {
-                send(ActorCommand::PublishRawEvent {
+                send(ActorCommand::Publish(PublishCommand::RawEvent {
                     kind,
                     tags,
                     content,
                     target,
                     signer_pubkey,
                     correlation_id: Some(correlation_id.to_string()),
-                });
+                }));
                 Ok(())
             }
         }

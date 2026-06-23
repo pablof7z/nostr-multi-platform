@@ -97,8 +97,8 @@
 //! and make Auto-routing unrepresentable for kind:1059. It is the gold
 //! standard. The blocker is the FFI seam: the kernel's
 //! `nmp_app_publish_signed_event_to` C-ABI symbol takes a JSON relay list,
-//! not a typed enum, and the `ActorCommand::PublishSignedEvent { raw,
-//! relays, correlation_id }` actor variant is kind-agnostic on purpose
+//! not a typed enum, and the `ActorCommand::Publish(PublishCommand::SignedEvent { raw,
+//! relays, correlation_id })` actor variant is kind-agnostic on purpose
 //! (D0 — the kernel does not branch on app-layer / NIP kind nouns). Adding
 //! a parallel `PublishSignedPrivate` command + parallel FFI symbol is the
 //! refactor variant (a) demands; that is multi-PR work. PR-K ships

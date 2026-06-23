@@ -10,6 +10,7 @@
 //! a double terminal (#1676 BUG-A).
 
 use super::*;
+use crate::actor::ActionLedgerCommand;
 use std::cell::Cell;
 
 /// A no-executor namespace fails with [`ActionFailureKind::NoExecutor`] — a
@@ -135,10 +136,10 @@ fn panic_after_enqueue_reports_enqueued_true() {
             correlation_id: &str,
             send: &dyn Fn(crate::actor::ActorCommand),
         ) -> Result<(), String> {
-            send(crate::actor::ActorCommand::RecordActionSuccess {
+            send(crate::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
                 correlation_id: correlation_id.to_string(),
                 result_json: None,
-            });
+            }));
             panic!("crashed after sending");
         }
     }

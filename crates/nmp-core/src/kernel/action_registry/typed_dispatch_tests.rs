@@ -4,6 +4,7 @@
 //! (bad schema_version / not-typed-capable / unknown namespace → REJECTED).
 
 use super::*;
+use crate::actor::PublishCommand;
 use crate::publish::{PublishAction, PublishTarget};
 use crate::substrate::{ActionContext, ActionPayload, SignedEvent, UnsignedEvent};
 
@@ -143,7 +144,7 @@ fn execute_bytes_publish_signed_sends_publish_signed_event_command() {
     let cmds = sent.into_inner();
     assert_eq!(cmds.len(), 1, "exactly one ActorCommand enqueued");
     match &cmds[0] {
-        ActorCommand::PublishSignedEvent { correlation_id, .. } => {
+        ActorCommand::Publish(PublishCommand::SignedEvent { correlation_id, .. }) => {
             assert_eq!(correlation_id.as_deref(), Some("corr-typed-1"));
         }
         other => panic!("expected PublishSignedEvent, got {other:?}"),

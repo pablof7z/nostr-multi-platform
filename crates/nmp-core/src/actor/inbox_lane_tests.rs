@@ -12,6 +12,7 @@ use super::inbox::{
     ActorMail, CommandSender, Inbox, LoopStep, MailScheduler,
 };
 use super::ActorCommand;
+use super::{LifecycleCommand};
 use nmp_network::pool::PoolEvent;
 use std::sync::mpsc::channel;
 use std::thread;
@@ -46,12 +47,12 @@ fn command_send_wakes_a_blocked_inbox() {
     // Give the waiter a beat to reach the blocking recv, then send.
     thread::sleep(Duration::from_millis(50));
     sender
-        .send(ActorCommand::Shutdown)
+        .send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
         .expect("inbox still open");
 
     let (elapsed, step) = waiter.join().expect("waiter thread");
     assert!(
-        matches!(step, Ok(ActorMail::Command(ActorCommand::Shutdown))),
+        matches!(step, Ok(ActorMail::Command(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)))),
         "expected the sent command to be received"
     );
     assert!(
@@ -73,9 +74,9 @@ fn commands_are_served_before_relay_mail() {
     // Interleave: relay, command, relay, command. Keep `tx` alive so the
     // drain sees `Empty` (not `Disconnected`) once the queue is consumed.
     tx.send(ActorMail::Relay(pool_event())).unwrap();
-    tx.send(ActorMail::Command(ActorCommand::Shutdown)).unwrap();
+    tx.send(ActorMail::Command(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))).unwrap();
     tx.send(ActorMail::Relay(pool_event())).unwrap();
-    tx.send(ActorMail::Command(ActorCommand::Shutdown)).unwrap();
+    tx.send(ActorMail::Command(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))).unwrap();
 
     let result = scheduler.drain_command_lane(&inbox, None);
     assert!(!result.disconnected, "inbox open during drain");
@@ -116,7 +117,7 @@ fn command_burst_yields_to_relay_at_budget() {
     // One relay event, then a command flood larger than the budget.
     tx.send(ActorMail::Relay(pool_event())).unwrap();
     for _ in 0..(COMMAND_DRAIN_BUDGET + 10) {
-        tx.send(ActorMail::Command(ActorCommand::Shutdown)).unwrap();
+        tx.send(ActorMail::Command(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))).unwrap();
     }
 
     let result = scheduler.drain_command_lane(&inbox, None);
@@ -180,7 +181,7 @@ fn closed_inbox_send_returns_the_command() {
     let sender = CommandSender::new(tx);
     drop(rx);
     let err = sender
-        .send(ActorCommand::Shutdown)
+        .send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
         .expect_err("send on closed inbox must error");
-    assert!(matches!(err.0, ActorCommand::Shutdown));
+    assert!(matches!(err.0, ActorCommand::Lifecycle(LifecycleCommand::Shutdown)));
 }

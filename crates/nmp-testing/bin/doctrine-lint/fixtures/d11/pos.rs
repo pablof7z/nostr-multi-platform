@@ -10,11 +10,11 @@
 pub extern "C" fn nmp_app_publish_legacy_signed(_app: *mut NmpApp, _event_json: *const c_char) {
     // D11 fires here: a new `nmp_app_*` FFI body sending
     // `ActorCommand::PublishSignedEvent` re-opens the door PR-F deleted.
-    let _ = ActorCommand::PublishSignedEvent {
+    let _ = ActorCommand::Publish(PublishCommand::SignedEvent {
         raw: r,
         relays: v,
         correlation_id: c,
-    };
+    });
 }
 
 // Wrapped multi-line signature — same offence, different opener shape.

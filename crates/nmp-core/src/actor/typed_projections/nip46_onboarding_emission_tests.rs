@@ -19,6 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use super::nip46_onboarding_typed;
 use crate::actor::commands::{new_bunker_handshake_slot, BunkerHandshakeDto, BunkerHandshakeSlot};
+use crate::actor::{LifecycleCommand};
 use crate::projection_emission::{FrameIdentity, TypedProjectionEmissionState};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -155,7 +156,7 @@ fn nip46_onboarding_b2_multiple_idle_ticks_omit() {
 
 // ── Group C: freeze guard ─────────────────────────────────────────────────────
 
-/// C.1 — THE FREEZE TEST for `nip46_onboarding`. `ActorCommand::Reset` rebuilds
+/// C.1 — THE FREEZE TEST for `nip46_onboarding`. `ActorCommand::Lifecycle(LifecycleCommand::Reset)` rebuilds
 /// the kernel → new `session_id`, but the producer emission state SURVIVES. The
 /// slot content is unchanged so the typed payload is BYTE-IDENTICAL. The host
 /// cache reset (new session_id → removeAll) means an omit here would leave the

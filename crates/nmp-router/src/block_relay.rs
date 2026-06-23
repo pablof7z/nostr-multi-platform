@@ -64,6 +64,7 @@ use nmp_core::substrate::{
 };
 use nmp_signer_iface::UnsignedEvent;
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{PublishCommand};
 use nmp_kinds::KIND_BLOCKED_RELAYS;
 use serde::{Deserialize, Serialize};
 
@@ -228,11 +229,11 @@ impl ActionModule for BlockRelayAction {
         // account signs (`signer_pubkey: None`). The correlation id threads
         // through so the publish engine reports it in `action_results` and
         // the host spinner that fired on `dispatch_action` can be cleared.
-        send(ActorCommand::PublishUnsignedEvent {
+        send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id: Some(correlation_id.to_string()),
             signer_pubkey: None,
-        });
+        }));
         Ok(())
     }
 }
@@ -325,11 +326,11 @@ impl ActionModule for UnblockRelayAction {
         // An empty `new_set` is intentional: republish a kind:10006 with zero
         // tags to signal "I cleared my blocked list" (see module-level docs).
         let event = build_blocked_relay_list_event(&new_set);
-        send(ActorCommand::PublishUnsignedEvent {
+        send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id: Some(correlation_id.to_string()),
             signer_pubkey: None,
-        });
+        }));
         Ok(())
     }
 }

@@ -51,6 +51,7 @@ use crate::substrate::protocol::{
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
 };
 use crate::actor::ActorCommand;
+use crate::actor::{ActionLedgerCommand};
 
 /// One-shot dispatch of a host-owned op to the per-app
 /// [`HostOpHandler`](crate::substrate::HostOpHandler).
@@ -142,20 +143,20 @@ impl ProtocolCommand for HostOpCommand {
             // Deferred path owns the terminal write; nothing to record now.
         } else if flag("ok") {
             // Host-op success carries no structured result body (D0).
-            ctx.send(ActorCommand::RecordActionSuccess {
+            ctx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
                 correlation_id,
                 result_json: None,
-            });
+            }));
         } else {
             let reason = result
                 .get("error")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("host op failed without an error message")
                 .to_string();
-            ctx.send(ActorCommand::RecordActionFailure {
+            ctx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
                 correlation_id,
                 reason,
-            });
+            }));
         }
         Ok(())
     }
@@ -259,10 +260,10 @@ mod tests {
         let cmds = sink.into_inner();
         assert_eq!(cmds.len(), 1, "expected exactly one terminal command");
         match &cmds[0] {
-            ActorCommand::RecordActionSuccess {
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
                 correlation_id,
                 result_json,
-            } => {
+            }) => {
                 assert_eq!(correlation_id, "corr-1");
                 assert!(result_json.is_none(), "host-op success carries no body");
             }
@@ -283,10 +284,10 @@ mod tests {
         let cmds = sink.into_inner();
         assert_eq!(cmds.len(), 1);
         match &cmds[0] {
-            ActorCommand::RecordActionFailure {
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
                 correlation_id,
                 reason,
-            } => {
+            }) => {
                 assert_eq!(correlation_id, "corr-1");
                 assert_eq!(reason, "host op handler panicked");
             }
@@ -302,7 +303,7 @@ mod tests {
         let cmds = sink.into_inner();
         assert_eq!(cmds.len(), 1);
         match &cmds[0] {
-            ActorCommand::RecordActionFailure { reason, .. } => {
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { reason, .. }) => {
                 assert_eq!(reason, "no host op handler installed");
             }
             other => panic!("expected RecordActionFailure, got {other:?}"),
@@ -324,7 +325,7 @@ mod tests {
         let sink = RefCell::new(Vec::new());
         run(&access, &sink);
         match &sink.into_inner()[0] {
-            ActorCommand::RecordActionFailure { reason, .. } => {
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { reason, .. }) => {
                 assert_eq!(reason, "key_package_unavailable");
             }
             other => panic!("expected RecordActionFailure, got {other:?}"),

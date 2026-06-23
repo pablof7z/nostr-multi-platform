@@ -9,8 +9,9 @@
 use std::sync::Arc;
 
 use nmp_core::__ffi_internal::{register_rust_observer, register_rust_observer_muted};
-use nmp_core::actor::ActorCommand;
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
+use nmp_core::actor::{ActorCommand};
+use nmp_core::actor::{InterestsCommand};
 
 use crate::app_struct::NmpApp;
 
@@ -49,11 +50,11 @@ impl NmpApp {
     /// D6: a malformed filter is a no-op (the caller should validate first via
     /// `InterestShape::from_filter_json` and surface a toast if needed).
     pub fn open_interest(&self, filter_json: String, consumer_id: String, scope: u32) {
-        self.send_cmd(ActorCommand::OpenInterest {
+        self.send_cmd(ActorCommand::Interests(InterestsCommand::OpenInterest {
             filter_json,
             consumer_id,
             scope,
-        });
+        }));
     }
 
     /// Detach one owner from an interest registered via [`Self::open_interest`].
@@ -66,12 +67,12 @@ impl NmpApp {
     /// so the reconstructed `InterestShape` hash lands on the same registry
     /// slot. D6: a close of a non-existent slot is harmless.
     pub fn close_interest(&self, filter_json: String, consumer_id: String, scope: u32) {
-        self.send_cmd(ActorCommand::CloseInterest {
+        self.send_cmd(ActorCommand::Interests(InterestsCommand::CloseInterest {
             filter_json,
             consumer_id,
             scope,
             relay_pin: None,
-        });
+        }));
     }
 
     /// Register a **transient** feed surface — a feed whose snapshot key must
@@ -176,7 +177,7 @@ impl NmpApp {
             // D6: invalid filter is a no-op.
             return;
         }
-        self.send_cmd(ActorCommand::OpenObservedInterest {
+        self.send_cmd(ActorCommand::Interests(InterestsCommand::OpenObservedInterest {
             filter_json: filter_json.to_string(),
             consumer_id: consumer_id.to_string(),
             scope,
@@ -184,7 +185,7 @@ impl NmpApp {
             observer_id,
             replay_shapes,
             replay_limit,
-        });
+        }));
     }
 
     /// Send a relay-pinned `CloseInterest` matching a
@@ -198,12 +199,12 @@ impl NmpApp {
         scope: u32,
         relay_pin: Option<String>,
     ) {
-        self.send_cmd(ActorCommand::CloseInterest {
+        self.send_cmd(ActorCommand::Interests(InterestsCommand::CloseInterest {
             filter_json: filter_json.to_string(),
             consumer_id: consumer_id.to_string(),
             scope,
             relay_pin,
-        });
+        }));
     }
 
     /// Tear down a feed registered through [`Self::register_feed_with_observer`].

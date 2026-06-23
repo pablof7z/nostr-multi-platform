@@ -8,7 +8,7 @@
 //!   kernel, binding the shared `Arc<Mutex<…>>` so the kernel can fan out
 //!   events without crossing FFI on each one.
 //! - `take_event_observers_handle_for_reset` — preserves the slot across
-//!   `ActorCommand::Reset` so existing per-app crate registrations stay
+//!   `ActorCommand::Lifecycle(LifecycleCommand::Reset)` so existing per-app crate registrations stay
 //!   alive (same survival pattern as `queue_depth_handle`).
 //! - `notify_event_observers` — fan-out entry called after every
 //!   observer-visible `EventStore::insert` returning `Inserted | Replaced`.
@@ -21,6 +21,7 @@
 
 use super::Kernel;
 use crate::actor::KernelEventObserverId;
+use crate::actor::{LifecycleCommand};
 use crate::actor::KernelEventObserverSlot;
 use crate::substrate::KernelEvent;
 

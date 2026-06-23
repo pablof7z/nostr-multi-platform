@@ -27,7 +27,7 @@ fn flags_publishsignedevent_in_new_nmp_app_extern_fn() {
         "#[no_mangle]",
         "pub extern \"C\" fn nmp_app_legacy_publish_door(app: *mut NmpApp) {",
         "    let raw = todo!();",
-        "    app.send_cmd(ActorCommand::PublishSignedEvent { raw, relays: Vec::new(), correlation_id: None });",
+        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays: Vec::new(), correlation_id: None }));",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -82,7 +82,7 @@ fn whitelists_retry_publish_body() {
     let lines = [
         "#[no_mangle]",
         "pub extern \"C\" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char) {",
-        "    app.send_cmd(ActorCommand::PublishSignedEvent { /* impossible today, exempted */ });",
+        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { /* impossible today, exempted */ }));",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -112,7 +112,7 @@ fn does_not_fire_in_non_ffi_helper() {
     // regular Rust fn, not `extern "C" fn nmp_app_*`. D11 must not fire.
     let lines = [
         "pub(crate) fn execute(action: PublishAction) {",
-        "    send(ActorCommand::PublishSignedEvent { raw, relays, correlation_id });",
+        "    send(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -130,7 +130,7 @@ fn does_not_fire_for_extern_fn_outside_nmp_app_prefix() {
     // surface, not every `extern "C"` symbol in the workspace.
     let lines = [
         "pub extern \"C\" fn nmp_signer_broker_init(app: *mut c_void) {",
-        "    let _ = ActorCommand::PublishSignedEvent { /* hypothetical */ };",
+        "    let _ = ActorCommand::Publish(PublishCommand::SignedEvent { /* hypothetical */ });",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -144,7 +144,7 @@ fn handles_nested_braces_in_body() {
     let lines = [
         "pub extern \"C\" fn nmp_app_bad(app: *mut NmpApp) {",
         "    let payload = SomeStruct { a: 1, b: 2 };",
-        "    app.send_cmd(ActorCommand::PublishSignedEvent { raw, relays, correlation_id });",
+        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
         "}",
         "// outside the function — must NOT fire here",
         "pub fn unrelated() { let _ = ActorCommand::PublishSignedEvent; }",
@@ -234,7 +234,7 @@ fn wrapped_signature_promotes_on_brace_line() {
         "    app: *mut NmpApp,",
         "    profile_json: *const c_char,",
         ") {",
-        "    app.send_cmd(ActorCommand::PublishSignedEvent { raw, relays, correlation_id });",
+        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
         "}",
     ];
     let hits = run_tracker(&lines);

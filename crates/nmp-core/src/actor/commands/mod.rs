@@ -25,18 +25,18 @@
 //! is purely to host the `Box<dyn RemoteSignerHandle>` once the broker has
 //! completed the handshake:
 //!
-//! - `ActorCommand::AddSigner { source: SignerSource::BunkerUri(uri), .. }` —
+//! - `ActorCommand::Identity(IdentityCommand::AddSigner { source: SignerSource::BunkerUri(uri), .. })` —
 //!   actor shape-validates the URI and seeds the identity runtime's
 //!   bunker-handshake slot with `"connecting"`. The broker then drives the real
 //!   handshake on its own relay client. D0: NIP-46 remote signing is an app
 //!   noun, so handshake state is NOT a typed `KernelSnapshot` field — it is
 //!   surfaced through the built-in `"bunker_handshake"` snapshot projection.
-//! - `ActorCommand::BunkerHandshakeProgress { stage, code, message }` — the adapter
+//! - `ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress { stage, code, message })` — the adapter
 //!   pushes broker progress (`"connecting"` → `"awaiting_pubkey"` →
 //!   `"ready"` / `"failed"`); the actor reflects it into the
 //!   bunker-handshake slot the
 //!   `"bunker_handshake"` projection reads.
-//! - `ActorCommand::AddSigner { source: SignerSource::RemoteHandle(handle), .. }`
+//! - `ActorCommand::Identity(IdentityCommand::AddSigner { source: SignerSource::RemoteHandle(handle), .. })`
 //!   — once the handshake completes (the broker has the user's pubkey from
 //!   `get_public_key`), it hands the fully-initialized handle to the actor. The
 //!   actor inserts it into `IdentityRuntime.remote_signers`, applies the

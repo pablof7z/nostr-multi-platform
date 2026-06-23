@@ -1,4 +1,5 @@
 use super::*;
+use nmp_core::actor::PublishCommand;
 use std::cell::RefCell;
 
 fn group() -> GroupId {
@@ -35,12 +36,12 @@ fn put_user_emits_host_pinned_kind_9000_with_role_on_p_tag() {
     let cmds = capture_put(put_input());
     assert_eq!(cmds.len(), 1);
     match &cmds[0] {
-        ActorCommand::PublishUnsignedEventToRelays {
+        ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
             event,
             relays,
             correlation_id,
             ..
-        } => {
+        }) => {
             assert_eq!(event.kind, KIND_PUT_USER);
             assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
             assert_eq!(correlation_id.as_deref(), Some("cid-admin"));
@@ -72,7 +73,7 @@ fn create_invite_fans_out_at_ten_codes_per_event() {
     let code_counts: Vec<usize> = cmds
         .iter()
         .map(|cmd| match cmd {
-            ActorCommand::PublishUnsignedEventToRelays { event, relays, .. } => {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, relays, .. }) => {
                 assert_eq!(event.kind, KIND_CREATE_INVITE);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
                 event

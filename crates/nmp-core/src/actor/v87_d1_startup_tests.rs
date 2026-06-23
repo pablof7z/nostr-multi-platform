@@ -41,6 +41,7 @@ mod tests {
     use std::time::Duration;
 
     use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
+use crate::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
     use crate::update_envelope::{decode_snapshot_envelope, SnapshotEnvelope};
 
@@ -143,11 +144,11 @@ mod tests {
 
         // Send Start — zero relays are configured (no `AddRelay` beforehand).
         cmd_tx
-            .send(ActorCommand::Start {
+            .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
                 visible_limit: DEFAULT_VISIBLE_LIMIT,
                 emit_hz: 30,
                 initial_relays: Vec::new(),
-            })
+            }))
             .expect("send Start");
 
         // The actor must emit a snapshot with `running=true` within 500 ms
@@ -165,7 +166,7 @@ mod tests {
         );
 
         // Graceful shutdown.
-        let _ = cmd_tx.send(ActorCommand::Shutdown);
+        let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     }
 
     // ─── V-87 combined: no deadlock on snapshot-first host ───────────────────
@@ -209,11 +210,11 @@ mod tests {
 
         // ── Step 2: host sends Start after observing the pre-flight frame ────
         cmd_tx
-            .send(ActorCommand::Start {
+            .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
                 visible_limit: DEFAULT_VISIBLE_LIMIT,
                 emit_hz: 30,
                 initial_relays: Vec::new(),
-            })
+            }))
             .expect("send Start after pre-flight");
 
         // ── Step 3: simulate the iOS host's `guard update.rev > rev` guard ───
@@ -258,7 +259,7 @@ mod tests {
              preflight_rev={preflight_rev} (guard passes) but running is not true"
         );
 
-        let _ = cmd_tx.send(ActorCommand::Shutdown);
+        let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     }
 
     // ─── #628: seeded-store offline render ───────────────────────────────────
@@ -308,16 +309,16 @@ mod tests {
         };
         let verified = VerifiedEvent::from_raw_unchecked(raw);
         cmd_tx
-            .send(ActorCommand::IngestPreVerifiedEvents(vec![verified]))
+            .send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(vec![verified])))
             .expect("seed store");
 
         // Start with ZERO relays — no connectivity at all.
         cmd_tx
-            .send(ActorCommand::Start {
+            .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
                 visible_limit: 100,
                 emit_hz: 30,
                 initial_relays: Vec::new(),
-            })
+            }))
             .expect("send Start with zero relays");
 
         // Claim the seeded event so it surfaces in the `claimed_events` typed
@@ -326,11 +327,11 @@ mod tests {
         // local content — no relay fetch is needed or possible (zero relays).
         let note_uri = format!("nostr:{}", encode_note(event_id).expect("valid note uri"));
         cmd_tx
-            .send(ActorCommand::ClaimEvent {
+            .send(ActorCommand::Refs(RefsCommand::ClaimEvent {
                 uri: note_uri,
                 consumer_id: "v628-test".to_string(),
                 force: false,
-            })
+            }))
             .expect("claim seeded event");
 
         // Within the existing 500 ms D1 budget, a running=true snapshot whose
@@ -377,7 +378,7 @@ mod tests {
              is produced from local-store content alone)"
         );
 
-        let _ = cmd_tx.send(ActorCommand::Shutdown);
+        let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     }
 
     // ─── #600: emit-before-dial ordering guard ───────────────────────────────
@@ -422,11 +423,11 @@ mod tests {
         // Start with exactly ONE configured relay (role "both" → Content
         // bootstrap lane). This is the only relay `spawn_missing_relays` dials.
         cmd_tx
-            .send(ActorCommand::Start {
+            .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
                 visible_limit: DEFAULT_VISIBLE_LIMIT,
                 emit_hz: 30,
                 initial_relays: vec![(configured_url.to_string(), "both".to_string())],
-            })
+            }))
             .expect("send Start with one configured relay");
 
         // Helper: does this frame's relay_statuses show the configured relay as
@@ -478,6 +479,6 @@ mod tests {
             frames.len()
         );
 
-        let _ = cmd_tx.send(ActorCommand::Shutdown);
+        let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     }
 }

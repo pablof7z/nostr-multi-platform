@@ -277,7 +277,7 @@ fn c5_monotonic_rev_keeps_reorder_guard_correct() {
 }
 
 /// C.6 — Freeze guard, session_id axis (THE FREEZE TEST).
-/// `ActorCommand::Reset` rebuilds the kernel → new `session_id`, but the
+/// `ActorCommand::Lifecycle(LifecycleCommand::Reset)` rebuilds the kernel → new `session_id`, but the
 /// producer's `TypedProjectionEmissionState` SURVIVES, so the next tick may
 /// encode BYTE-IDENTICAL bytes. The host cache reset (new session_id →
 /// removeAll) means an omit here would leave the host with NO projection entry.

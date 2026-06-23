@@ -32,11 +32,11 @@ fn published_event(action: PostCommentAction) -> UnsignedEvent {
             .expect("execute succeeds");
     });
     match run_one_protocol(cmd) {
-        ActorCommand::PublishUnsignedEvent {
+        ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id,
             signer_pubkey,
-        } => {
+        }) => {
             assert_eq!(event.kind, KIND_COMMENT);
             assert_eq!(event.created_at, 0);
             assert_eq!(event.pubkey, "");

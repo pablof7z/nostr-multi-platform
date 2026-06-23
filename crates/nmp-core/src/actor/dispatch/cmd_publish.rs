@@ -18,14 +18,12 @@
 //! handler.
 
 use crate::actor::commands;
+use crate::actor::{ActionLedgerCommand, ContactsCommand, PublishCommand, RelayCommand};
 use crate::actor::pending_sign::ParkedSignerOps;
 use crate::actor::relay_mgmt::{
     ensure_relay_worker, shutdown_relay_worker,
 };
 use crate::actor::relay_reconnect::reconnect_relays;
-use crate::actor::{
-    ActionLedgerCommand, ContactsCommand, PublishCommand, RelayCommand,
-};
 use crate::relay::OutboundMessage;
 
 use super::helpers::maybe_publish_relay_list_after_edit;
@@ -367,7 +365,7 @@ pub(super) fn remove_relay(
     Some(outbound)
 }
 
-/// Dispatch `ActorCommand::ReconnectRelays`.
+/// Dispatch `ActorCommand::Relay(RelayCommand::ReconnectRelays)`.
 pub(super) fn reconnect_relays_cmd(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     // #1689: kernel-driven "reconnect all". Fail-closed — a no-op before
@@ -391,7 +389,7 @@ pub(super) fn declare_active_follows_feed(
     Some(outbound)
 }
 
-/// Dispatch `ActorCommand::ClearActiveFollowsFeed`.
+/// Dispatch `ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed)`.
 pub(super) fn clear_active_follows_feed(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     let outbound = commands::clear_active_follows_feed(ctx.identity, ctx.kernel);

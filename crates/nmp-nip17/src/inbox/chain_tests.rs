@@ -15,8 +15,9 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::IngestParser;
-use nmp_core::actor::ActorCommand;
 use nmp_core::{ActorMail, CommandSender};
+use nmp_core::actor::{ActorCommand};
+use nmp_core::actor::{SignCommand};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 
@@ -60,12 +61,12 @@ fn drive_decrypts(rx: &Receiver<ActorMail>, decryptor: &Decryptor) -> usize {
             continue; // ignore any non-command mail (no relay mail in tests).
         };
         match cmd {
-            ActorCommand::Nip44DecryptForAccount {
+            ActorCommand::Sign(SignCommand::Nip44DecryptForAccount {
                 peer_pubkey,
                 ciphertext,
                 continuation,
                 ..
-            } => {
+            }) => {
                 processed += 1;
                 continuation.call(decryptor.decrypt(&peer_pubkey, &ciphertext));
             }

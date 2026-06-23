@@ -288,8 +288,9 @@ fn invalid_primary_kinds_fail_closed_before_the_compiler_runs() {
 /// trip the final assertion.
 #[test]
 fn teardown_runs_notify_last_after_removals_and_interest_clear() {
-    use nmp_core::actor::ActorCommand;
     use nmp_core::{ActorMail, CommandSender};
+use nmp_core::actor::{ActorCommand};
+use nmp_core::actor::{ContactsCommand, LifecycleCommand};
 
     let app = nmp_app_new();
     {
@@ -364,7 +365,7 @@ fn teardown_runs_notify_last_after_removals_and_interest_clear() {
             })
             .collect();
         assert!(
-            matches!(cmds.as_slice(), [ActorCommand::ClearActiveFollowsFeed, ActorCommand::MarkChangedSinceEmit]),
+            matches!(cmds.as_slice(), [ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed), ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit)]),
             "ClearActiveFollowsFeed must be sent BEFORE the final MarkChangedSinceEmit, got {cmds:?}"
         );
     }

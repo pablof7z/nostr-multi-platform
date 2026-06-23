@@ -86,7 +86,7 @@ pub(super) fn start(
     Some(outbound)
 }
 
-/// Dispatch `ActorCommand::Stop`.
+/// Dispatch `ActorCommand::Lifecycle(LifecycleCommand::Stop)`.
 pub(super) fn stop(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
     *ctx.running = false;
     *ctx.startup_sent = false;
@@ -104,7 +104,7 @@ pub(super) fn stop(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
     Some(Vec::new())
 }
 
-/// Dispatch `ActorCommand::Shutdown` — signals the actor loop to exit.
+/// Dispatch `ActorCommand::Lifecycle(LifecycleCommand::Shutdown)` — signals the actor loop to exit.
 pub(super) fn shutdown(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
     close_relays(
         ctx.relay_controls,
@@ -117,7 +117,7 @@ pub(super) fn shutdown(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage
     None
 }
 
-/// Dispatch `ActorCommand::Reset`.
+/// Dispatch `ActorCommand::Lifecycle(LifecycleCommand::Reset)`.
 ///
 /// Wipes the kernel state, preserves shared `Arc` handles so the host's
 /// FFI surface keeps working across the state wipe, and re-starts relay

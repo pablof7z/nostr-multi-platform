@@ -12,8 +12,8 @@
 //! event-producing C symbol is a bypass: a new
 //! `#[no_mangle] extern "C" fn nmp_app_publish_*(...)` is a regression even
 //! before its body is inspected. A new `#[no_mangle] extern "C" fn
-//! nmp_app_<verb>(...)` whose body sends `ActorCommand::PublishSignedEvent {
-//! ... }` or `ActorCommand::PublishUnsignedEvent(...)` is also a bypass.
+//! nmp_app_<verb>(...)` whose body sends `ActorCommand::Publish(PublishCommand::SignedEvent {
+//! ... })` or `ActorCommand::PublishUnsignedEvent(...)` is also a bypass.
 //!
 //! Note: D11 is a *doorway-bypass* check, not a symbol-count freeze. New
 //! non-event-producing C symbols (lifecycle, capability sockets, observers)
