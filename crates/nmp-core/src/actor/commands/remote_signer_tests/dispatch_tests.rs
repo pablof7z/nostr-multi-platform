@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! End-to-end dispatch tests that drive `ActorCommand` variants through the
 //! spawned `run_actor` / `run_actor_with_observers` loop so the dispatch arms
 //! are exercised (not just the command-handler functions they wrap).

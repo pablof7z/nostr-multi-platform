@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! Tests for signer registration, handshake progress, sign routing, and
 //! the `ctx.active_account_pubkey()` accessor.
 

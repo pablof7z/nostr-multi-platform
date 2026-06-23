@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! Tests for the `RemoteSignerHandle` NIP-44 seam (ADR-0026).
 //!
 //! The actor reaches NIP-44 through the same trait it uses for `sign()`.

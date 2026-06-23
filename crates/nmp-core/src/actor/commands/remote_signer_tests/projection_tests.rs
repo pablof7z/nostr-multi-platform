@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! Tests for typed sidecar projections: `bunker_handshake`, `nip46_onboarding`,
 //! and `signer_state` (ADR-0048 D6).
 //!

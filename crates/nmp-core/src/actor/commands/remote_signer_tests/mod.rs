@@ -1,3 +1,4 @@
+#![cfg(test)]
 //! Stage 3 of NIP-46 wiring: actor-side `RemoteSignerHandle` plumbing.
 //!
 //! These tests drive the new command handlers + dispatch arms with a stub
@@ -27,6 +28,9 @@ use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::remote_signer::RemoteSignerHandle;
 use crate::substrate::{SignedEvent, UnsignedEvent};
+
+mod helpers_tests;
+pub(super) use helpers_tests::{fresh, stub_signer};
 
 mod account_tests;
 mod dispatch_tests;
@@ -151,20 +155,3 @@ impl RemoteSignerHandle for StubRemoteSigner {
     }
 }
 
-pub(super) fn fresh() -> (IdentityRuntime, Kernel) {
-    (
-        IdentityRuntime::new(
-            new_bunker_handshake_slot(),
-            crate::actor::new_signer_state_slot(),
-        ),
-        Kernel::new(DEFAULT_VISIBLE_LIMIT),
-    )
-}
-
-pub(super) fn stub_signer() -> (Box<StubRemoteSigner>, Arc<AtomicU32>) {
-    let sk = SecretKey::from_bech32(TEST_NSEC).expect("valid nsec");
-    let keys = Keys::new(sk);
-    let stub = StubRemoteSigner::new(keys);
-    let count = stub.sign_count_handle();
-    (Box::new(stub), count)
-}
