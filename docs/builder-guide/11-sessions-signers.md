@@ -1,4 +1,4 @@
-# 11 — Sessions + signers + identity scopes (`nmp-signers`)
+# 11 — Sessions, signers, and identity storage
 
 *Status: SHIPS · Audience: both*
 
@@ -8,18 +8,29 @@
 > [14 — relay manager](14-relay-manager.md). When you see "M8" in the
 > orchestration log it covers both; here we mean only the account side.
 
-## Why signers live outside the kernel
+## Identity ownership boundary
 
-Per doctrine **D0**, `nmp-core` carries no identity material. Signers,
-account state, and the bunker parser ship in the `nmp-signers` crate
-(`crates/nmp-signers/src/lib.rs:1-37`). The kernel only knows the
-scope kind via `IdentityScopeKind`
-(`crates/nmp-core/src/substrate/identity.rs`); the concrete signer
-backends are policy + capability bridges, not substrate. Rationale:
-`docs/decisions/0015-m6-signer-design.md`.
+Per doctrine **D4**, the actor is the single writer for account and signer
+facts: active account, signer kind, app-managed signer roster, remote signer
+payloads, and the account projection. Per **D7**, native shells only execute
+capabilities such as Keychain/Keystore reads and writes; they do not own a
+parallel session cache, active-account pointer, signer-kind record, retry
+policy, or restore decision.
 
-`nmp-signers` supplies the signer implementations the kernel composes;
-the kernel never imports a secret key, an `nsec`, or a `bunker://` URL.
+Local nsecs inevitably cross the FFI boundary when a user imports one, and
+local-key accounts live in the actor-local identity runtime. That is allowed
+only through explicit secret-bearing doorways such as `nmp_app_signin_nsec`,
+`nmp_app_register_agent_nsec`, account-lifecycle import, and the
+`KeyringCapability` restore path. Every Rust-side copy must be wrapped in
+`Zeroizing` as soon as it is materialized, and normal snapshots, action
+history, logs, projection payloads, and debug surfaces must never contain raw
+nsecs or bearer tokens.
+
+Remote signers follow the same ownership rule without local key material:
+NIP-46/NIP-55 restore stores opaque signer payloads through the keyring
+capability, then hands those payloads back to the Rust-owned restore hooks.
+Native launches UI/OS affordances and returns raw approval or failure facts;
+Rust decides whether the signer is active, usable, limited, or unavailable.
 
 ## The `Signer` trait
 
@@ -61,6 +72,45 @@ Every backend's `pubkey()` is sync because construction is gated: NIP-46
 caches the remote user pubkey after the first handshake
 (`nip46/mod.rs:23-24`), NIP-07 cannot exist without a cached pubkey
 (`nip07.rs:42-45`) — there is **no panic path** (D6).
+
+## Session storage and restore
+
+`crates/nmp-core/src/actor/session_persistence.rs` owns the current session
+persistence policy. It writes only the minimum restore facts through
+`KeyringCapability`:
+
+- active account id: `nmp.identity.active.id`;
+- active signer kind: `nmp.identity.active.kind`;
+- local nsec: `nmp.identity.local_nsec.<pubkey>`;
+- remote signer payload: `nmp.identity.remote_payload.<pubkey>`;
+- app-managed local signer roster and per-signer nsecs.
+
+The startup flow is deliberately ordered:
+
+1. The host registers a keyring capability handler before any start/restore
+   path that can read secure storage.
+2. `Start` calls `restore_active_session` on the actor thread before the first
+   snapshot. This cold-start read chain is synchronous by ADR-0040 because it
+   runs once, before UI frames exist, and each read continuation decides the
+   next restore step.
+3. App-managed local signers restore first. They are signable by explicit
+   pubkey but hidden from account projections and never become active.
+4. The actor recalls the active signer kind and active account id. A miss
+   means no restored active account; stale active pointers are forgotten.
+5. A local signer restore recalls the local nsec, wraps it in `Zeroizing`, and
+   routes through `AddSigner { LocalNsec, make_active: true }`.
+6. A remote signer restore recalls the opaque payload and invokes the installed
+   NIP-46 or NIP-55 restore hook. The actor stores signer state as data, not as
+   an exception.
+7. After a successful restore or active-account change, keyring writes go
+   through the serialized capability worker. The actor never lets native retry,
+   reorder, or reinterpret keyring outcomes.
+
+For new lifecycle work, ADR-0059 is the target shape: `CreateLocal` and
+`ImportLocal` explicitly request `persist: KeyringRequired { account_id }`
+when secure storage must gate account activation and bootstrap publish. Until
+that ABI lands, builders should use the current sign-in and restore symbols
+without introducing an app-side session store.
 
 ## `AccountManager` — synchronous active-switch
 
@@ -155,6 +205,30 @@ uploads, hides them from account projections, and rejects `SwitchActive` for
 their pubkeys. `nmp_app_signin_nsec(make_active=0)` remains a visible secondary
 account import, not the hidden app-managed path.
 
+## Builder checklist
+
+For each app shell:
+
+1. Register the native keyring capability before `nmp_app_start` or any
+   app-specific identity restore wrapper. iOS/TUI/desktop use
+   `nmp_app_set_capability_callback`; Android uses
+   `nativeSetCapabilityHandler` before `nativeIdentityRestore`.
+2. Keep the native handler mechanical: store, retrieve, delete, and report raw
+   `KeyringResult` facts. Do not store signer kind, active account, relays,
+   retries, onboarding state, or "logged in" policy in native secure storage.
+3. Import user keys through `nmp_app_signin_nsec`, `nmp_app_signin_bunker`,
+   `nmp_app_signin_nip55`, or the account-lifecycle ABI once available.
+   Import app-owned automation keys through `nmp_app_register_agent_nsec`.
+4. Let the actor restore sessions on startup. Do not read an nsec in Swift,
+   Kotlin, or desktop code and then decide locally whether to show onboarding
+   or switch accounts.
+5. Render account and signer state from snapshots/projections. A locked,
+   missing, or unavailable signer may gate writes, but it must not blank cached
+   read content.
+6. Test the cold-start path: sign in, terminate the process, relaunch with the
+   same keyring handler registered, and assert the account projection and write
+   path recover without a native session cache.
+
 ## `parse_bunker_uri` worked example
 
 `crates/nmp-signers/src/bunker/parser.rs:95-174`. Pure function, fuzz
@@ -210,9 +284,13 @@ to upgrade to a fully-connected `Nip46Signer`.
 5. **Re-handshaking NIP-46/NIP-07 on every `pubkey()`.** The pubkey is
    cached at construction; `pubkey()` is sync and free. Treating it as
    async is an API misuse.
+6. **App-side session restore.** Storing active pubkey, signer kind, or nsec in
+   app code and replaying it on launch creates a second writer. Wire the
+   keyring capability and let the actor restore.
 
 ## See also
 
 - [10 — Outbox routing (NIP-65)](10-outbox-routing.md)
 - [12 — Publishing + the publish engine](12-publish-and-ledger.md)
 - [16 — Capabilities (D7)](16-capabilities.md)
+- [ADR-0059 — Account lifecycle is separate from bootstrap publish](../decisions/0059-account-lifecycle-bootstrap-policy.md)
