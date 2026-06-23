@@ -18,6 +18,7 @@
 use std::time::{Duration, Instant};
 
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::{ActionLedgerCommand, IdentityCommand, LifecycleCommand, PublishCommand};
 use nmp_core::typed_projections::{
     decode_action_results, decode_publish_queue, ACTION_RESULTS_FILE_IDENTIFIER,
     ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION, PUBLISH_QUEUE_FILE_IDENTIFIER,
@@ -40,19 +41,19 @@ fn external_consumer_decodes_publish_queue_and_action_results_via_public_api() {
 
     // Start with a configured relay so the publish engine has a routing target
     // and records a `publish_queue` entry (mirrors the e2e pipeline harness).
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 100,
         emit_hz: 30,
         initial_relays: vec![("wss://relay.test".to_string(), "both".to_string())],
-    })
+    }))
     .expect("send Start");
 
     // Sign in with a local key — establishes the active account that signs and
     // enqueues the publish below.
-    tx.send(ActorCommand::AddSigner {
+    tx.send(ActorCommand::Identity(IdentityCommand::AddSigner {
         source: SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
         make_active: true,
-    })
+    }))
     .expect("send AddSigner");
 
     // Publish a kind:1 event with an explicit correlation id. The correlation id
@@ -74,24 +75,24 @@ fn external_consumer_decodes_publish_queue_and_action_results_via_public_api() {
         content: "public-typed-decode proof".to_string(),
         created_at: 1_700_002_000,
     };
-    tx.send(ActorCommand::PublishUnsignedEvent {
+    tx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
         event: unsigned,
         correlation_id: Some("proof-corr-1".to_string()),
         signer_pubkey: None,
-    })
+    }))
     .expect("send PublishUnsignedEvent");
 
     // Record a terminal action result for our correlation id. This is the
     // deterministic, relay-independent way to populate the drain-on-emit
     // `action_results` sidecar: the actor folds it into a terminal verdict the
     // SAME tick (no live relay echo required).
-    tx.send(ActorCommand::RecordActionSuccess {
+    tx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
         correlation_id: "proof-corr-1".to_string(),
         result_json: None,
-    })
+    }))
     .expect("send RecordActionSuccess");
 
-    tx.send(ActorCommand::MarkChangedSinceEmit)
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit))
         .expect("send MarkChangedSinceEmit");
 
     // Drain frames via the PUBLIC `decode_snapshot_typed_projections`,
@@ -190,7 +191,7 @@ fn external_consumer_decodes_publish_queue_and_action_results_via_public_api() {
     );
 
     // Clean shutdown of the actor thread.
-    let _ = tx.send(ActorCommand::Shutdown);
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 }
 
 /// A malformed payload must surface an `Err` (D6: no panic at the decode

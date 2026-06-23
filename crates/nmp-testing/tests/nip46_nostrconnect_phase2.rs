@@ -43,7 +43,7 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::{ActorMail, CommandSender};
+use nmp_core::{ActorMail, CommandSender, IdentityCommand};
 use nostr::Keys;
 
 use crate::common::broker_adapter::broker_for_actor;
@@ -121,14 +121,14 @@ fn nostrconnect_wrong_secret_fails_handshake() {
             None => break,
         };
         match actor_rx.recv_timeout(remaining.min(Duration::from_millis(200))) {
-            Ok(ActorMail::Command(ActorCommand::BunkerHandshakeProgress { stage, .. })) if stage == "failed" => {
+            Ok(ActorMail::Command(ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress { stage, .. }))) if stage == "failed" => {
                 saw_failed = true;
                 break;
             }
-            Ok(ActorMail::Command(ActorCommand::AddSigner {
+            Ok(ActorMail::Command(ActorCommand::Identity(IdentityCommand::AddSigner {
                 source: nmp_core::SignerSource::RemoteHandle(_),
                 ..
-            })) => {
+            }))) => {
                 saw_add_remote = true;
                 break;
             }
@@ -157,13 +157,13 @@ fn wait_for_add_remote_signer(
     loop {
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;
         match actor_rx.recv_timeout(remaining) {
-            Ok(ActorMail::Command(ActorCommand::AddSigner {
+            Ok(ActorMail::Command(ActorCommand::Identity(IdentityCommand::AddSigner {
                 source: nmp_core::SignerSource::RemoteHandle(handle),
                 ..
-            })) => return Some(handle),
-            Ok(ActorMail::Command(ActorCommand::BunkerHandshakeProgress {
+            }))) => return Some(handle),
+            Ok(ActorMail::Command(ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress {
                 stage, message, ..
-            })) => {
+            }))) => {
                 if stage == "failed" {
                     panic!("nostrconnect handshake failed: {stage}: {message:?}");
                 }

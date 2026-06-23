@@ -51,7 +51,7 @@ use nmp_core::typed_projections::{
     ACTIVE_ACCOUNT_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_ID,
 };
 use nmp_core::actor::ActorCommand;
-use nmp_core::{decode_snapshot_typed_projections, ActorMail, CommandSender};
+use nmp_core::{decode_snapshot_typed_projections, ActorMail, CommandSender, IdentityCommand, LifecycleCommand, PublishCommand};
 use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::SignerError;
 use nostr::{Event, Keys};
@@ -109,7 +109,7 @@ fn bunker_sign_event_round_trip_on_the_wire() {
     let pump_handle = std::sync::Arc::clone(&handle);
     std::thread::spawn(move || {
         while let Ok(mail) = actor_rx.recv() {
-            if let ActorMail::Command(ActorCommand::DeliverSignerResponse { response_json }) =
+            if let ActorMail::Command(ActorCommand::Identity(IdentityCommand::DeliverSignerResponse { response_json })) =
                 mail
             {
                 pump_handle.deliver_response(&response_json);
@@ -184,7 +184,7 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
 
     use nmp_core::testing::run_actor;
     use nmp_core::actor::ActorCommand;
-    use nmp_core::{ActorMail, CommandSender};
+    use nmp_core::{ActorMail, CommandSender, IdentityCommand, LifecycleCommand, PublishCommand};
 
     let bunker_keys = Keys::generate();
     let user_keys = Keys::generate();
@@ -205,11 +205,11 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     let actor_handle = std::thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
     cmd_tx
-        .send(ActorCommand::Start {
+        .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
             visible_limit: 50,
             emit_hz: 30,
             initial_relays: Vec::new(),
-        })
+        }))
         .expect("send Start");
 
     // Wire the broker through the same event-to-actor-command translation
@@ -243,11 +243,11 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
         created_at: 1_700_001_000,
     };
     cmd_tx
-        .send(ActorCommand::PublishUnsignedEvent {
+        .send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event: unsigned,
             correlation_id: None,
             signer_pubkey: None,
-        })
+        }))
         .expect("send PublishUnsignedEvent");
 
     // Wait for a snapshot whose publish_queue has a kind:1 entry.
@@ -301,7 +301,7 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
 
     // Tear down.
     broker.cancel();
-    let _ = cmd_tx.send(ActorCommand::Shutdown);
+    let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     let _ = actor_handle.join();
 }
 
@@ -315,13 +315,13 @@ fn wait_for_add_remote_signer(
     loop {
         let remaining = deadline.checked_duration_since(std::time::Instant::now())?;
         match actor_rx.recv_timeout(remaining) {
-            Ok(ActorMail::Command(ActorCommand::AddSigner {
+            Ok(ActorMail::Command(ActorCommand::Identity(IdentityCommand::AddSigner {
                 source: nmp_core::SignerSource::RemoteHandle(handle),
                 ..
-            })) => return Some(handle),
-            Ok(ActorMail::Command(ActorCommand::BunkerHandshakeProgress {
+            }))) => return Some(handle),
+            Ok(ActorMail::Command(ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress {
                 stage, message, ..
-            })) => {
+            }))) => {
                 if stage == "failed" {
                     panic!("bunker handshake failed: {stage}: {message:?}");
                 }

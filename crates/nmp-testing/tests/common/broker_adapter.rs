@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::{CommandSender};
+use nmp_core::{CommandSender, IdentityCommand};
 use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, UnsignedEvent};
 use nmp_signer_broker::{BrokerEvent, BunkerBroker};
 use nmp_signer_iface::SignerOp;
@@ -23,7 +23,7 @@ pub fn broker_for_actor(tx: CommandSender) -> Arc<BunkerBroker> {
         let _ = tx.send(actor_command_from_event(event));
     }));
     broker.set_completion_sink(Arc::new(move |response_json: String| {
-        let _ = sink_tx.send(ActorCommand::DeliverSignerResponse { response_json });
+        let _ = sink_tx.send(ActorCommand::Identity(IdentityCommand::DeliverSignerResponse { response_json }));
     }));
     broker
 }
@@ -34,20 +34,20 @@ fn actor_command_from_event(event: BrokerEvent) -> ActorCommand {
             stage,
             code,
             message,
-        } => ActorCommand::BunkerHandshakeProgress {
+        } => ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress {
             stage,
             code,
             message,
-        },
-        BrokerEvent::SignerReady { signer } => ActorCommand::AddSigner {
+        }),
+        BrokerEvent::SignerReady { signer } => ActorCommand::Identity(IdentityCommand::AddSigner {
             source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcRemoteSigner(signer))),
             make_active: true,
-        },
+        }),
         // V-14 step b: relay-layer connection state. Routes through the actor
         // (D4 — actor is sole writer of the `bunker_connection_state` slot),
         // mirroring the production translation in nmp-ffi/src/signer_broker.rs.
         BrokerEvent::ConnectionStateChanged { state, reason } => {
-            ActorCommand::BunkerConnectionStateChanged { state, reason }
+            ActorCommand::Identity(IdentityCommand::BunkerConnectionStateChanged { state, reason })
         }
     }
 }

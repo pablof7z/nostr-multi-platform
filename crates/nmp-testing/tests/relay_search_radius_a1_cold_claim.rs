@@ -35,6 +35,7 @@ mod common;
 
 use common::wire_log::{event_rx_for_author, req_emit_relays_for_phase, StderrCapture};
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -110,11 +111,11 @@ fn a1_cold_claim_gigi_article_delivers_event_rx() {
 
     // ── (2) Boot the actor (no explicit AddRelay → bootstrap fallbacks used) ──
     let (tx, rx) = spawn_actor();
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
         initial_relays: Vec::new(),
-    })
+    }))
     .expect("A1: actor Start send");
 
     // ── (3) Wait for at least one relay to connect ───────────────────────────
@@ -122,7 +123,7 @@ fn a1_cold_claim_gigi_article_delivers_event_rx() {
     let connected =
         drain_until_or_timeout(&rx, connect_deadline, |frame| relay_is_connected(frame));
     if !connected {
-        let _ = tx.send(ActorCommand::Shutdown);
+        let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
         let lines = cap.collect();
         eprintln!(
             "A1 SKIP: no relay connected within {:?}. Captured {} stderr lines.",
@@ -134,11 +135,11 @@ fn a1_cold_claim_gigi_article_delivers_event_rx() {
 
     // ── (4) Issue the cold claim ──────────────────────────────────────────────
     let claim_start = Instant::now();
-    tx.send(ActorCommand::ClaimEvent {
+    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
         uri: GIGI_NADDR_A1.to_string(),
         consumer_id: "a1-test".to_string(),
         force: false,
-    })
+    }))
     .expect("A1: ClaimEvent send");
 
     // ── (5) Drain frames for the full claim budget ───────────────────────────

@@ -31,6 +31,7 @@
 
 use nmp_core::decode_snapshot_envelope;
 use nmp_core::testing::ActorCommand;
+use nmp_core::{LifecycleCommand, PublishCommand};
 use nmp_nip01::Note;
 use std::time::Duration;
 
@@ -65,14 +66,14 @@ fn builder_output_plugs_directly_into_publish_unsigned_event_command() {
     let unsigned = Note::new("plug-in-test")
         .build("placeholder-pk", 1_700_000_200)
         .expect("note builder");
-    let cmd = ActorCommand::PublishUnsignedEvent {
+    let cmd = ActorCommand::Publish(PublishCommand::UnsignedEvent {
         event: unsigned,
         correlation_id: None,
         signer_pubkey: None,
-    };
+    });
     // Confirm the variant carries the kind through unchanged — extracting
     // by pattern-match also doubles as a compile-time shape lock.
-    if let ActorCommand::PublishUnsignedEvent { event: u, .. } = cmd {
+    if let ActorCommand::Publish(PublishCommand::UnsignedEvent { event: u, .. }) = cmd {
         assert_eq!(u.kind, 1);
     } else {
         panic!("expected PublishUnsignedEvent variant");
@@ -149,11 +150,11 @@ fn show_toast_command_surfaces_message_in_snapshot() {
     use nmp_core::testing::{spawn_actor, wait_barrier};
 
     let (tx, rx) = spawn_actor();
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 64,
         emit_hz: 60,
         initial_relays: Vec::new(),
-    })
+    }))
     .unwrap();
 
     // V-105: send a Barrier immediately after `Start` and wait for the ack.
@@ -181,5 +182,5 @@ fn show_toast_command_surfaces_message_in_snapshot() {
         "ShowToast must cause the message to appear in the kernel snapshot"
     );
 
-    let _ = tx.send(ActorCommand::Shutdown);
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 }

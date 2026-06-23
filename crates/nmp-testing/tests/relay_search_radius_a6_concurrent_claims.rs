@@ -36,6 +36,7 @@ mod common;
 
 use common::wire_log::{req_emit_relays_for_phase, score_updates, StderrCapture};
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -96,11 +97,11 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
 
     // ── (2) Boot the actor ───────────────────────────────────────────────────
     let (tx, rx) = spawn_actor();
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
         initial_relays: Vec::new(),
-    })
+    }))
     .expect("A6: Start send");
 
     // ── (3) Wait for relay connection ────────────────────────────────────────
@@ -108,7 +109,7 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
     let connected =
         drain_until_or_timeout(&rx, connect_deadline, |frame| relay_is_connected(frame));
     if !connected {
-        let _ = tx.send(ActorCommand::Shutdown);
+        let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
         let lines = cap.collect();
         eprintln!(
             "A6 SKIP: no relay connected within {:?}. Captured {} stderr lines.",
@@ -119,11 +120,11 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
     }
 
     // ── (4) Claim A — prime the score map ────────────────────────────────────
-    tx.send(ActorCommand::ClaimEvent {
+    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
         uri: GIGI_NADDR_A.to_string(),
         consumer_id: "a6-claim-a".to_string(),
         force: false,
-    })
+    }))
     .expect("A6: ClaimEvent A send");
 
     let a_deadline = Instant::now() + Duration::from_millis(CLAIM_A_BUDGET_MS);
@@ -132,21 +133,21 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
     std::thread::sleep(Duration::from_millis(100));
 
     // Release claim A so the interest slot is freed before claim B.
-    let _ = tx.send(ActorCommand::ReleaseEvent {
+    let _ = tx.send(ActorCommand::Refs(RefsCommand::ReleaseEvent {
         uri: GIGI_NADDR_A.to_string(),
         consumer_id: "a6-claim-a".to_string(),
-    });
+    }));
     std::thread::sleep(Duration::from_millis(50));
 
     // ── (5) Claim B — must see claim A's score delta in phase1 ───────────────
     // Claim B registers AFTER claim A's scoring frame has been written.
     // The D4 single-writer model guarantees that the next compile pass
     // (triggered by claim B's ViewOpened) reads the updated score map.
-    tx.send(ActorCommand::ClaimEvent {
+    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
         uri: GIGI_NADDR_B.to_string(),
         consumer_id: "a6-claim-b".to_string(),
         force: false,
-    })
+    }))
     .expect("A6: ClaimEvent B send");
 
     let b_deadline = Instant::now() + Duration::from_millis(CLAIM_B_BUDGET_MS);
@@ -154,7 +155,7 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
     std::thread::sleep(Duration::from_millis(200));
 
     // ── (6) Shut down and collect ────────────────────────────────────────────
-    let _ = tx.send(ActorCommand::Shutdown);
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     drop(rx);
     std::thread::sleep(Duration::from_millis(100));
     let lines = cap.collect();

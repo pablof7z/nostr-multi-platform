@@ -3,6 +3,7 @@
 
 use super::*;
 use nmp_core::actor::ActorCommand;
+use nmp_core::InterestsCommand;
 use crate::interest::KIND_MUTE_LIST;
 use nmp_planner::InterestLifecycle;
 use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};
@@ -106,7 +107,7 @@ fn bunker_only_account_activates_wot_bootstrap() {
         rx.recv()
             .expect("bunker account must still push WOT bootstrap"),
     );
-    let ActorCommand::PushInterest(interest) = cmd else {
+    let ActorCommand::Interests(InterestsCommand::PushInterest(interest)) = cmd else {
         panic!("expected PushInterest for a bunker-only account");
     };
     assert_eq!(interest.id, active_follow_graph_interest_id());
@@ -123,7 +124,7 @@ fn active_kind3_pushes_large_one_shot_wot_interest() {
     runtime.on_kernel_event(&contact_event(&active, 1_052));
 
     let cmd = unwrap_mail(rx.recv().expect("wot bootstrap command"));
-    let ActorCommand::PushInterest(interest) = cmd else {
+    let ActorCommand::Interests(InterestsCommand::PushInterest(interest)) = cmd else {
         panic!("expected PushInterest");
     };
     assert_eq!(interest.id, active_follow_graph_interest_id());
@@ -157,7 +158,7 @@ fn account_switch_snapshot_withdraws_previous_bootstrap() {
     let _ = runtime.snapshot_typed();
 
     let cmd = unwrap_mail(rx.recv().expect("withdraw command"));
-    let ActorCommand::WithdrawInterest(id) = cmd else {
+    let ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) = cmd else {
         panic!("expected WithdrawInterest");
     };
     assert_eq!(id, active_follow_graph_interest_id());

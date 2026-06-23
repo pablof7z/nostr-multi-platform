@@ -38,6 +38,7 @@ use common::wire_log::{
     event_rx_for_author, req_emit_relays_for_phase, score_updates, StderrCapture,
 };
 use nmp_core::testing::{spawn_actor_with_storage_path, ActorCommand};
+use nmp_core::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tempfile::tempdir;
@@ -131,18 +132,18 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
     let s1_cap = StderrCapture::start();
 
     let (tx1, rx1) = spawn_actor_with_storage_path(store_path);
-    tx1.send(ActorCommand::Start {
+    tx1.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
         initial_relays: Vec::new(),
-    })
+    }))
     .expect("A3 S1: Start send");
 
     let connect_deadline = Instant::now() + CONNECT_BUDGET;
     let connected =
         drain_until_or_timeout(&rx1, connect_deadline, |frame| relay_is_connected(frame));
     if !connected {
-        let _ = tx1.send(ActorCommand::Shutdown);
+        let _ = tx1.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
         let lines = s1_cap.collect();
         eprintln!(
             "A3 SKIP: S1 no relay connected within {:?}. Captured {} stderr lines.",
@@ -152,18 +153,18 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
         return;
     }
 
-    tx1.send(ActorCommand::ClaimEvent {
+    tx1.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
         uri: GIGI_NADDR_S1.to_string(),
         consumer_id: "a3-s1".to_string(),
         force: false,
-    })
+    }))
     .expect("A3 S1: ClaimEvent send");
 
     let claim_deadline = Instant::now() + Duration::from_millis(SESSION_BUDGET_MS);
     drain_until_or_timeout(&rx1, claim_deadline, |_| false);
     std::thread::sleep(Duration::from_millis(300)); // allow score flush
 
-    let _ = tx1.send(ActorCommand::Shutdown);
+    let _ = tx1.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     drop(rx1);
     drop(tx1);
     std::thread::sleep(Duration::from_millis(200));
@@ -204,18 +205,18 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
     let s2_cap = StderrCapture::start();
 
     let (tx2, rx2) = spawn_actor_with_storage_path(store_path);
-    tx2.send(ActorCommand::Start {
+    tx2.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
         initial_relays: Vec::new(),
-    })
+    }))
     .expect("A3 S2: Start send");
 
     let connect_deadline2 = Instant::now() + CONNECT_BUDGET;
     let connected2 =
         drain_until_or_timeout(&rx2, connect_deadline2, |frame| relay_is_connected(frame));
     if !connected2 {
-        let _ = tx2.send(ActorCommand::Shutdown);
+        let _ = tx2.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
         let lines = s2_cap.collect();
         eprintln!(
             "A3 SKIP: S2 no relay connected within {:?}. Captured {} stderr lines.",
@@ -225,18 +226,18 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
         return;
     }
 
-    tx2.send(ActorCommand::ClaimEvent {
+    tx2.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
         uri: GIGI_NADDR_S2.to_string(),
         consumer_id: "a3-s2".to_string(),
         force: false,
-    })
+    }))
     .expect("A3 S2: ClaimEvent send");
 
     let s2_claim_deadline = Instant::now() + Duration::from_millis(SESSION_BUDGET_MS);
     drain_until_or_timeout(&rx2, s2_claim_deadline, |_| false);
     std::thread::sleep(Duration::from_millis(200));
 
-    let _ = tx2.send(ActorCommand::Shutdown);
+    let _ = tx2.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     drop(rx2);
     drop(tx2);
     std::thread::sleep(Duration::from_millis(100));
