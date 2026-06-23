@@ -13,13 +13,13 @@ use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use nmp_blossom::{parse_upload_completion, completion_url_sha256};
+use nmp_blossom::{completion_url_sha256, parse_upload_completion};
 use nmp_core::decode_snapshot_typed_projections;
-use nmp_core::typed_projections::{
-    decode_action_results, ACTION_RESULTS_SCHEMA_ID,
-};
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::substrate::ActionPayload as _;
+use nmp_core::typed_projections::{decode_action_results, ACTION_RESULTS_SCHEMA_ID};
 use nmp_ffi::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
+    nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
     nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
 };
 
@@ -36,7 +36,7 @@ extern "C" fn capture_frame(_ctx: *mut c_void, ptr: *const u8, len: usize) {
     if let Some(slot) = FRAME_TX.get() {
         if let Ok(guard) = slot.lock() {
             if let Some(tx) = guard.as_ref() {
-                let _ = tx.send(bytes);
+                let _ = tx.send(bytes); // doctrine-allow: D6 — fire-and-forget frame relay; missed frame causes timeout, not silent success
             }
         }
     }
@@ -83,8 +83,7 @@ fn wait_for_upload_terminal(
         let Some(result_str) = row.result else {
             return Err(());
         };
-        let result: serde_json::Value =
-            serde_json::from_str(&result_str).map_err(|_| ())?;
+        let result: serde_json::Value = serde_json::from_str(&result_str).map_err(|_| ())?;
         return Ok(result);
     }
 }
@@ -97,23 +96,38 @@ fn spawn_mock_blossom(descriptor_json: &'static str) -> String {
     thread::spawn(move || {
         if let Ok((mut stream, _)) = listener.accept() {
             let mut buf = vec![0u8; 8192];
-            let _ = stream.read(&mut buf);
+            stream.read(&mut buf).expect("mock server: read request");
             let resp = format!(
                 "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\n\r\n{descriptor_json}",
                 descriptor_json.len()
             );
-            let _ = stream.write_all(resp.as_bytes());
-            let _ = stream.flush();
+            stream
+                .write_all(resp.as_bytes())
+                .expect("mock server: write response");
+            stream.flush().expect("mock server: flush response");
         }
     });
     url
 }
 
 fn dispatch(app: *mut NmpApp, body: &str) -> serde_json::Value {
-    let ns = CString::new("nmp.blossom.upload").unwrap();
-    let b = CString::new(body).unwrap();
-    let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), b.as_ptr());
-    assert!(!ptr.is_null());
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let input: nmp_blossom::UploadInput =
+        serde_json::from_str(body).expect("valid UploadInput JSON");
+    let payload = input.encode();
+    let ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let correlation_id = format!("blossom-it-{}-{}", std::process::id(), ts);
+    let envelope = encode_dispatch_envelope(
+        &correlation_id,
+        "nmp.blossom.upload",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        &payload,
+    );
+    let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
+    assert!(!ptr.is_null(), "dispatch_action_bytes must not return null");
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
     nmp_free_string(ptr);
     serde_json::from_str(&out).unwrap()
@@ -132,7 +146,8 @@ fn upload_terminal_surfaces_url_and_sha256_in_action_results() {
     let descriptor_static: &'static str = Box::leak(descriptor.into_boxed_str());
     let server = spawn_mock_blossom(descriptor_static);
 
-    let path = std::env::temp_dir().join(format!("nmp-blossom-completion-{}.bin", std::process::id()));
+    let path =
+        std::env::temp_dir().join(format!("nmp-blossom-completion-{}.bin", std::process::id()));
     std::fs::write(&path, b"hello").unwrap();
 
     let app = nmp_app_new();
@@ -166,6 +181,6 @@ fn upload_terminal_surfaces_url_and_sha256_in_action_results() {
     assert_eq!(url, expected_url, "terminal carries server url");
 
     uninstall_frame_capture();
-    let _ = std::fs::remove_file(&path);
+    let _ = std::fs::remove_file(&path); // doctrine-allow: D6 — teardown only; file may already be gone
     nmp_app_free(app);
 }

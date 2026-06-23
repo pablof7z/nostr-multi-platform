@@ -1,7 +1,7 @@
 //! Host-facing upload completion carrier — parse the `action_results` terminal.
 //!
-//! Blossom uploads are async-completing: `nmp_app_dispatch_action` returns a
-//! `correlation_id` immediately; the blob descriptor (`url` + `sha256`, …)
+//! Blossom uploads are async-completing: `nmp_app_dispatch_action_bytes` returns
+//! a `correlation_id` immediately; the blob descriptor (`url` + `sha256`, …)
 //! surfaces on a **later** snapshot tick in the kernel-owned `action_results`
 //! projection (ADR-0043 Decision 4). This is the canonical completion path —
 //! **not** `register_action_result_observer`, which fires only when the action
@@ -9,7 +9,8 @@
 //!
 //! # Host contract
 //!
-//! 1. Dispatch `nmp.blossom.upload` and retain the returned `correlation_id`.
+//! 1. Dispatch `nmp.blossom.upload` via `nmp_app_dispatch_action_bytes` and
+//!    retain the returned `correlation_id`.
 //! 2. On each update tick, drain `projections["action_results"]` (or the typed
 //!    `action_results` / `KARS` sidecar).
 //! 3. Find the row whose `correlation_id` matches; when `status == "published"`,
@@ -65,8 +66,7 @@ pub fn parse_upload_completion(result: &serde_json::Value) -> Result<UploadCompl
             .ok_or_else(|| "multi-server result requires servers[]".to_string())?
             .iter()
             .map(|entry| {
-                serde_json::from_value(entry.clone())
-                    .map_err(|e| format!("servers[] entry: {e}"))
+                serde_json::from_value(entry.clone()).map_err(|e| format!("servers[] entry: {e}"))
             })
             .collect::<Result<Vec<_>, _>>()?;
         return Ok(UploadCompletion::Multi {
@@ -88,7 +88,9 @@ pub fn parse_upload_completion(result: &serde_json::Value) -> Result<UploadCompl
 pub fn completion_url_sha256(completion: &UploadCompletion) -> (String, String) {
     match completion {
         UploadCompletion::Single(d) => (d.url.clone(), d.sha256.clone()),
-        UploadCompletion::Multi { sha256, servers, .. } => {
+        UploadCompletion::Multi {
+            sha256, servers, ..
+        } => {
             let url = servers
                 .iter()
                 .find(|s| s.ok)
