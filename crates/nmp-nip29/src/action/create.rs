@@ -15,12 +15,13 @@ use serde::{Deserialize, Serialize};
 use crate::group_id::GroupId;
 use crate::kinds::{KIND_CREATE_GROUP, KIND_EDIT_METADATA};
 
+use super::metadata_tags::metadata_edit_tags;
 use super::publish_plan::PublishPlan;
 
 /// Whether the group is publicly listed or unlisted (private).
 /// Serialises as `"public"` / `"private"` in JSON and as the corresponding
 /// NIP-29 tag on the kind:9002 metadata event.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GroupVisibility {
     #[default]
@@ -31,7 +32,7 @@ pub enum GroupVisibility {
 /// Whether the group is open (anyone may join) or closed (invite-only).
 /// Serialises as `"open"` / `"closed"` in JSON and as the corresponding
 /// NIP-29 tag on the kind:9002 metadata event.
-#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum GroupAccess {
     #[default]
@@ -57,6 +58,14 @@ pub struct CreatePublicGroupInput {
     /// Defaults to `Open`.
     #[serde(default)]
     pub access: GroupAccess,
+    /// NIP-29 subgroups (nips PR #2319): optional `parent` local id. When
+    /// `Some` and non-empty, the kind:9002 metadata edit carries
+    /// `["parent", <id>]` so the relay adopts the new group under that
+    /// parent. `None` (default) creates a root group. The value MUST NOT
+    /// equal the group's own `local_id` (self-reference); `start()`
+    /// rejects that client-side.
+    #[serde(default)]
+    pub parent: Option<String>,
 }
 
 fn create_group_plan(action: &CreatePublicGroupInput) -> PublishPlan {
@@ -69,36 +78,19 @@ fn create_group_plan(action: &CreatePublicGroupInput) -> PublishPlan {
 }
 
 fn metadata_plan(action: &CreatePublicGroupInput) -> PublishPlan {
-    let mut tags = vec![
-        vec!["h".into(), action.group.local_id.clone()],
-        vec!["name".into(), action.name.trim().to_string()],
-    ];
-    if let Some(about) = action
-        .about
-        .as_ref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
-        tags.push(vec!["about".into(), about.to_string()]);
-    }
-    if let Some(picture) = action
-        .picture
-        .as_ref()
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-    {
-        tags.push(vec!["picture".into(), picture.to_string()]);
-    }
-    let visibility_tag = match action.visibility {
-        GroupVisibility::Public => "public",
-        GroupVisibility::Private => "private",
-    };
-    tags.push(vec![visibility_tag.into()]);
-    let access_tag = match action.access {
-        GroupAccess::Open => "open",
-        GroupAccess::Closed => "closed",
-    };
-    tags.push(vec![access_tag.into()]);
+    // Single canonical 9002 tag builder (metadata_tags.rs) — shared with the
+    // `SetParent` action so there is one code path for kind:9002 authoring
+    // (AGENTS.md "no fragmentation"). Create passes every field; SetParent
+    // passes only `parent`.
+    let tags = metadata_edit_tags(
+        &action.group.local_id,
+        Some(&action.name),
+        action.about.as_deref(),
+        action.picture.as_deref(),
+        Some(action.visibility),
+        Some(action.access),
+        action.parent.as_deref(),
+    );
     PublishPlan::pinned(&action.group, KIND_EDIT_METADATA, "", tags)
 }
 
@@ -135,6 +127,11 @@ impl ActionModule for CreatePublicGroupAction {
                 "group name must not be empty".into(),
             ));
         }
+        // NIP-29 subgroups (#2319): client-side self-reference guard. The
+        // spec says relays MUST reject a self-referential parent (a cycle);
+        // fail early so the publish planner never sends a doomed 9002.
+        super::metadata_tags::validate_parent(action.parent.as_deref(), &action.group.local_id)
+            .map_err(ActionRejection::Invalid)?;
         create_group_plan(&action)
             .validate_no_unpinned_h()
             .map_err(|_| ActionRejection::Invalid("missing host pin for group create".into()))?;
@@ -412,5 +409,62 @@ mod tests {
         let roundtripped: CreatePublicGroupInput = serde_json::from_str(&json).unwrap();
         assert_eq!(roundtripped.visibility, GroupVisibility::Private);
         assert_eq!(roundtripped.access, GroupAccess::Closed);
+    }
+
+    // ── NIP-29 subgroups (#2319): `parent` on create ────────────────────────
+
+    #[test]
+    fn parent_some_emits_parent_tag_on_metadata_9002() {
+        let action = CreatePublicGroupInput {
+            parent: Some("tech".to_string()),
+            ..input()
+        };
+        let cmds = run_execute(action).expect("executes");
+        let tags = metadata_tags(&cmds);
+        assert!(
+            tags.iter().any(|t| t == &vec!["parent".to_string(), "tech".to_string()]),
+            "expected [\"parent\", \"tech\"] on the 9002, got {tags:?}"
+        );
+    }
+
+    #[test]
+    fn parent_none_omits_parent_tag() {
+        let action = CreatePublicGroupInput {
+            parent: None,
+            ..input()
+        };
+        let cmds = run_execute(action).expect("executes");
+        let tags = metadata_tags(&cmds);
+        assert!(
+            !tags.iter().any(|t| t.first() == Some(&"parent".to_string())),
+            "must not emit a parent tag when None, got {tags:?}"
+        );
+    }
+
+    #[test]
+    fn parent_equal_to_local_id_is_rejected_as_self_reference() {
+        let mut ctx = ActionContext::default();
+        let action = CreatePublicGroupInput {
+            group: GroupId::new("wss://groups.example.com", "rust-nostr"),
+            name: "Rust Nostr".to_string(),
+            parent: Some("rust-nostr".to_string()),
+            ..Default::default()
+        };
+        assert!(matches!(
+            CreatePublicGroupAction.start(&mut ctx, action),
+            Err(ActionRejection::Invalid(_))
+        ));
+    }
+
+    #[test]
+    fn parent_defaults_to_none_in_json() {
+        let json = concat!(
+            "{",
+            "\"group\":{\"host_relay_url\":\"wss://groups.example.com\",\"local_id\":\"room\"},",
+            "\"name\":\"Test Room\"",
+            "}"
+        );
+        let parsed: CreatePublicGroupInput = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.parent, None);
     }
 }

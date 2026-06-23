@@ -137,6 +137,7 @@ fn wrong_file_identifier_is_rejected_for_every_payload() {
             picture: None,
             visibility: GroupVisibility::Public,
             access: GroupAccess::Open,
+            parent: None,
         }
     );
     assert_wrong_fid_rejected!(
@@ -281,6 +282,7 @@ fn wrong_schema_version_is_rejected_for_every_payload() {
             picture: None,
             visibility: GroupVisibility::Public,
             access: GroupAccess::Open,
+            parent: None,
         }
     );
     assert_bad_version!(

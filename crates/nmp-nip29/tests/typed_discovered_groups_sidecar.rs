@@ -147,3 +147,78 @@ fn discovered_groups_typed_sidecar_reflects_superseding() {
 
     teardown(app);
 }
+
+/// NIP-29 subgroups (nips PR #2319): `["parent", _]` and `["child", _]` tags on
+/// a kind:39000 travel through the typed `NDGS` sidecar, preserving the parent
+/// pointer and the ordered child list so a host can render the hierarchy.
+#[test]
+fn discovered_groups_typed_sidecar_carries_subgroup_tags() {
+    let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+    let app = boot();
+
+    let _handle = open_group_discovery(unsafe { &*app }, HOST.to_string());
+
+    // Parent "tech" with two children, and the child "nostr" pointing back at
+    // "tech" — mirrors the spec's tree example.
+    let parent = VerifiedEvent::from_raw_unchecked(raw_event(
+        &"5".repeat(64),
+        &"f".repeat(64),
+        39000,
+        100,
+        vec![
+            vec!["d".into(), "tech".into()],
+            vec!["name".into(), "Tech".into()],
+            vec!["child".into(), "nostr".into()],
+            vec!["child".into(), "bitcoin".into()],
+        ],
+        "",
+    ));
+    let child = VerifiedEvent::from_raw_unchecked(raw_event(
+        &"6".repeat(64),
+        &"f".repeat(64),
+        39000,
+        101,
+        vec![
+            vec!["d".into(), "nostr".into()],
+            vec!["name".into(), "Nostr".into()],
+            vec!["parent".into(), "tech".into()],
+        ],
+        "",
+    ));
+    inject(app, vec![parent, child]);
+
+    let entry = wait_for_typed("nmp.nip29.discovered_groups", |t| {
+        decode_discovered_groups_snapshot(&t.payload)
+            .map(|s| s.groups.iter().any(|g| g.group_id == "nostr" && g.parent.as_deref() == Some("tech")))
+            .unwrap_or(false)
+    })
+    .expect("typed sidecar must carry the subgroup parent within 3 s");
+
+    let snapshot = decode_discovered_groups_snapshot(&entry.payload).expect("NDGS decode");
+    let tech = snapshot
+        .groups
+        .iter()
+        .find(|g| g.group_id == "tech")
+        .expect("parent group present");
+    assert!(
+        tech.parent.is_none(),
+        "tech is a root group — no parent tag"
+    );
+    assert_eq!(
+        tech.children,
+        vec!["nostr".to_string(), "bitcoin".to_string()],
+        "child list preserves tag order through the typed sidecar"
+    );
+    let nostr = snapshot
+        .groups
+        .iter()
+        .find(|g| g.group_id == "nostr")
+        .expect("child group present");
+    assert_eq!(nostr.parent.as_deref(), Some("tech"));
+    assert!(
+        nostr.children.is_empty(),
+        "nostr has no children declared in this snapshot"
+    );
+
+    teardown(app);
+}

@@ -15,6 +15,7 @@
 //! - `join` — `JoinGroup` (kind:9021, user-management request).
 //! - `leave` — `LeaveGroup` (kind:9022, user-management request).
 //! - `admin` — `PutUser` (kind:9000) and `CreateInvite` (kind:9009).
+//! - `set_parent` — `SetParent` (kind:9002 edit-metadata, NIP-29 subgroups #2319).
 //!
 //! NIP-29 ships public group creation, relay-group chat, discovery, join, and
 //! the ADR-0060 admin subset (`9000` / `9009`) in v1. The other moderation
@@ -28,7 +29,9 @@ mod discover;
 mod group_event;
 mod join;
 mod leave;
+mod metadata_tags;
 mod publish_plan;
+mod set_parent;
 
 pub use admin::{
     CreateInviteAction, CreateInviteInput, PutUserAction, PutUserInput, MAX_CODES_PER_INVITE_EVENT,
@@ -44,3 +47,4 @@ pub use group_event::{
 pub use join::{JoinGroupAction, JoinGroupInput};
 pub use leave::{LeaveGroupAction, LeaveGroupInput};
 pub use publish_plan::{PublishPlan, PublishPlanError, RelayPin};
+pub use set_parent::{SetParentAction, SetParentInput};

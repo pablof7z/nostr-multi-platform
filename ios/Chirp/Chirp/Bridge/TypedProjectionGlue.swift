@@ -301,7 +301,12 @@ enum TypedProjectionGlue {
                     memberCount: row.memberCount,
                     adminCount: row.adminCount,
                     public: row.public_,
-                    open: row.open_
+                    open: row.open_,
+                    // NIP-29 subgroups (#2319): `parent` is a bare string
+                    // (absent → nil == root); `children` is a vector of
+                    // strings (absent → empty).
+                    parent: row.parent,
+                    children: row.children.map { $0 ?? "" } ?? []
                 )
             }
         )

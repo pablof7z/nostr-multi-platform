@@ -138,6 +138,7 @@ fn create() -> CreatePublicGroupInput {
         picture: None,
         visibility: GroupVisibility::Public,
         access: GroupAccess::Open,
+        parent: None,
     }
 }
 fn share() -> ShareEventInGroupInput {

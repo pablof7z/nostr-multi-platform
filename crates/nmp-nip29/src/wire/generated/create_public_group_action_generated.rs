@@ -2,751 +2,597 @@
 // @generated
 extern crate alloc;
 
+
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-    #[allow(unused_imports, dead_code)]
-    pub mod nip_29 {
+#[allow(unused_imports, dead_code)]
+pub mod nip_29 {
 
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MIN_GROUP_VISIBILITY: i8 = 0;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MAX_GROUP_VISIBILITY: i8 = 1;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_GROUP_VISIBILITY: [GroupVisibility; 2] =
-            [GroupVisibility::Public, GroupVisibility::Private];
 
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-        #[repr(transparent)]
-        pub struct GroupVisibility(pub i8);
-        #[allow(non_upper_case_globals)]
-        impl GroupVisibility {
-            pub const Public: Self = Self(0);
-            pub const Private: Self = Self(1);
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_GROUP_VISIBILITY: i8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_GROUP_VISIBILITY: i8 = 1;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_GROUP_VISIBILITY: [GroupVisibility; 2] = [
+  GroupVisibility::Public,
+  GroupVisibility::Private,
+];
 
-            pub const ENUM_MIN: i8 = 0;
-            pub const ENUM_MAX: i8 = 1;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::Public, Self::Private];
-            /// Returns the variant's name or "" if unknown.
-            pub fn variant_name(self) -> Option<&'static str> {
-                match self {
-                    Self::Public => Some("Public"),
-                    Self::Private => Some("Private"),
-                    _ => None,
-                }
-            }
-        }
-        impl ::core::fmt::Debug for GroupVisibility {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                if let Some(name) = self.variant_name() {
-                    f.write_str(name)
-                } else {
-                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-                }
-            }
-        }
-        impl<'a> ::flatbuffers::Follow<'a> for GroupVisibility {
-            type Inner = Self;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
-                Self(b)
-            }
-        }
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct GroupVisibility(pub i8);
+#[allow(non_upper_case_globals)]
+impl GroupVisibility {
+  pub const Public: Self = Self(0);
+  pub const Private: Self = Self(1);
 
-        impl ::flatbuffers::Push for GroupVisibility {
-            type Output = GroupVisibility;
-            #[inline]
-            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
-            }
-        }
+  pub const ENUM_MIN: i8 = 0;
+  pub const ENUM_MAX: i8 = 1;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::Public,
+    Self::Private,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::Public => Some("Public"),
+      Self::Private => Some("Private"),
+      _ => None,
+    }
+  }
+}
+impl ::core::fmt::Debug for GroupVisibility {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> ::flatbuffers::Follow<'a> for GroupVisibility {
+  type Inner = Self;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+    Self(b)
+  }
+}
 
-        impl ::flatbuffers::EndianScalar for GroupVisibility {
-            type Scalar = i8;
-            #[inline]
-            fn to_little_endian(self) -> i8 {
-                self.0.to_le()
-            }
-            #[inline]
-            #[allow(clippy::wrong_self_convention)]
-            fn from_little_endian(v: i8) -> Self {
-                let b = i8::from_le(v);
-                Self(b)
-            }
-        }
+impl ::flatbuffers::Push for GroupVisibility {
+    type Output = GroupVisibility;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+    }
+}
 
-        impl<'a> ::flatbuffers::Verifiable for GroupVisibility {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                i8::run_verifier(v, pos)
-            }
-        }
+impl ::flatbuffers::EndianScalar for GroupVisibility {
+  type Scalar = i8;
+  #[inline]
+  fn to_little_endian(self) -> i8 {
+    self.0.to_le()
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(v: i8) -> Self {
+    let b = i8::from_le(v);
+    Self(b)
+  }
+}
 
-        impl ::flatbuffers::SimpleToVerifyInSlice for GroupVisibility {}
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MIN_GROUP_ACCESS: i8 = 0;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        pub const ENUM_MAX_GROUP_ACCESS: i8 = 1;
-        #[deprecated(
-            since = "2.0.0",
-            note = "Use associated constants instead. This will no longer be generated in 2021."
-        )]
-        #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_GROUP_ACCESS: [GroupAccess; 2] =
-            [GroupAccess::Open, GroupAccess::Closed];
+impl<'a> ::flatbuffers::Verifiable for GroupVisibility {
+  #[inline]
+  fn run_verifier(
+    v: &mut ::flatbuffers::Verifier, pos: usize
+  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+    i8::run_verifier(v, pos)
+  }
+}
 
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-        #[repr(transparent)]
-        pub struct GroupAccess(pub i8);
-        #[allow(non_upper_case_globals)]
-        impl GroupAccess {
-            pub const Open: Self = Self(0);
-            pub const Closed: Self = Self(1);
+impl ::flatbuffers::SimpleToVerifyInSlice for GroupVisibility {}
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_GROUP_ACCESS: i8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_GROUP_ACCESS: i8 = 1;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_GROUP_ACCESS: [GroupAccess; 2] = [
+  GroupAccess::Open,
+  GroupAccess::Closed,
+];
 
-            pub const ENUM_MIN: i8 = 0;
-            pub const ENUM_MAX: i8 = 1;
-            pub const ENUM_VALUES: &'static [Self] = &[Self::Open, Self::Closed];
-            /// Returns the variant's name or "" if unknown.
-            pub fn variant_name(self) -> Option<&'static str> {
-                match self {
-                    Self::Open => Some("Open"),
-                    Self::Closed => Some("Closed"),
-                    _ => None,
-                }
-            }
-        }
-        impl ::core::fmt::Debug for GroupAccess {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-                if let Some(name) = self.variant_name() {
-                    f.write_str(name)
-                } else {
-                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-                }
-            }
-        }
-        impl<'a> ::flatbuffers::Follow<'a> for GroupAccess {
-            type Inner = Self;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
-                Self(b)
-            }
-        }
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct GroupAccess(pub i8);
+#[allow(non_upper_case_globals)]
+impl GroupAccess {
+  pub const Open: Self = Self(0);
+  pub const Closed: Self = Self(1);
 
-        impl ::flatbuffers::Push for GroupAccess {
-            type Output = GroupAccess;
-            #[inline]
-            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-                unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
-            }
-        }
+  pub const ENUM_MIN: i8 = 0;
+  pub const ENUM_MAX: i8 = 1;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::Open,
+    Self::Closed,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::Open => Some("Open"),
+      Self::Closed => Some("Closed"),
+      _ => None,
+    }
+  }
+}
+impl ::core::fmt::Debug for GroupAccess {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> ::flatbuffers::Follow<'a> for GroupAccess {
+  type Inner = Self;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe { ::flatbuffers::read_scalar_at::<i8>(buf, loc) };
+    Self(b)
+  }
+}
 
-        impl ::flatbuffers::EndianScalar for GroupAccess {
-            type Scalar = i8;
-            #[inline]
-            fn to_little_endian(self) -> i8 {
-                self.0.to_le()
-            }
-            #[inline]
-            #[allow(clippy::wrong_self_convention)]
-            fn from_little_endian(v: i8) -> Self {
-                let b = i8::from_le(v);
-                Self(b)
-            }
-        }
+impl ::flatbuffers::Push for GroupAccess {
+    type Output = GroupAccess;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        unsafe { ::flatbuffers::emplace_scalar::<i8>(dst, self.0) };
+    }
+}
 
-        impl<'a> ::flatbuffers::Verifiable for GroupAccess {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                i8::run_verifier(v, pos)
-            }
-        }
+impl ::flatbuffers::EndianScalar for GroupAccess {
+  type Scalar = i8;
+  #[inline]
+  fn to_little_endian(self) -> i8 {
+    self.0.to_le()
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(v: i8) -> Self {
+    let b = i8::from_le(v);
+    Self(b)
+  }
+}
 
-        impl ::flatbuffers::SimpleToVerifyInSlice for GroupAccess {}
-        pub enum GroupRefOffset {}
-        #[derive(Copy, Clone, PartialEq)]
+impl<'a> ::flatbuffers::Verifiable for GroupAccess {
+  #[inline]
+  fn run_verifier(
+    v: &mut ::flatbuffers::Verifier, pos: usize
+  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+    i8::run_verifier(v, pos)
+  }
+}
 
-        pub struct GroupRef<'a> {
-            pub _tab: ::flatbuffers::Table<'a>,
-        }
+impl ::flatbuffers::SimpleToVerifyInSlice for GroupAccess {}
+pub enum GroupRefOffset {}
+#[derive(Copy, Clone, PartialEq)]
 
-        impl<'a> ::flatbuffers::Follow<'a> for GroupRef<'a> {
-            type Inner = GroupRef<'a>;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                Self {
-                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
-                }
-            }
-        }
+pub struct GroupRef<'a> {
+  pub _tab: ::flatbuffers::Table<'a>,
+}
 
-        impl<'a> GroupRef<'a> {
-            pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 4;
-            pub const VT_LOCAL_ID: ::flatbuffers::VOffsetT = 6;
+impl<'a> ::flatbuffers::Follow<'a> for GroupRef<'a> {
+  type Inner = GroupRef<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
+  }
+}
 
-            #[inline]
-            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                GroupRef { _tab: table }
-            }
-            #[allow(unused_mut)]
-            pub fn create<
-                'bldr: 'args,
-                'args: 'mut_bldr,
-                'mut_bldr,
-                A: ::flatbuffers::Allocator + 'bldr,
-            >(
-                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args GroupRefArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<GroupRef<'bldr>> {
-                let mut builder = GroupRefBuilder::new(_fbb);
-                if let Some(x) = args.local_id {
-                    builder.add_local_id(x);
-                }
-                if let Some(x) = args.host_relay_url {
-                    builder.add_host_relay_url(x);
-                }
-                builder.finish()
-            }
+impl<'a> GroupRef<'a> {
+  pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 4;
+  pub const VT_LOCAL_ID: ::flatbuffers::VOffsetT = 6;
 
-            #[inline]
-            pub fn host_relay_url(&self) -> &'a str {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
-                            GroupRef::VT_HOST_RELAY_URL,
-                            None,
-                        )
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn local_id(&self) -> &'a str {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GroupRef::VT_LOCAL_ID, None)
-                        .unwrap()
-                }
-            }
-        }
+  #[inline]
+  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+    GroupRef { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args GroupRefArgs<'args>
+  ) -> ::flatbuffers::WIPOffset<GroupRef<'bldr>> {
+    let mut builder = GroupRefBuilder::new(_fbb);
+    if let Some(x) = args.local_id { builder.add_local_id(x); }
+    if let Some(x) = args.host_relay_url { builder.add_host_relay_url(x); }
+    builder.finish()
+  }
 
-        impl ::flatbuffers::Verifiable for GroupRef<'_> {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                v.visit_table(pos)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "host_relay_url",
-                        Self::VT_HOST_RELAY_URL,
-                        true,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "local_id",
-                        Self::VT_LOCAL_ID,
-                        true,
-                    )?
-                    .finish();
-                Ok(())
-            }
-        }
-        pub struct GroupRefArgs<'a> {
-            pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub local_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-        }
-        impl<'a> Default for GroupRefArgs<'a> {
-            #[inline]
-            fn default() -> Self {
-                GroupRefArgs {
-                    host_relay_url: None, // required field
-                    local_id: None,       // required field
-                }
-            }
-        }
 
-        pub struct GroupRefBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-        }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GroupRefBuilder<'a, 'b, A> {
-            #[inline]
-            pub fn add_host_relay_url(
-                &mut self,
-                host_relay_url: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    GroupRef::VT_HOST_RELAY_URL,
-                    host_relay_url,
-                );
-            }
-            #[inline]
-            pub fn add_local_id(&mut self, local_id: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    GroupRef::VT_LOCAL_ID,
-                    local_id,
-                );
-            }
-            #[inline]
-            pub fn new(
-                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> GroupRefBuilder<'a, 'b, A> {
-                let start = _fbb.start_table();
-                GroupRefBuilder {
-                    fbb_: _fbb,
-                    start_: start,
-                }
-            }
-            #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<GroupRef<'a>> {
-                let o = self.fbb_.end_table(self.start_);
-                self.fbb_
-                    .required(o, GroupRef::VT_HOST_RELAY_URL, "host_relay_url");
-                self.fbb_.required(o, GroupRef::VT_LOCAL_ID, "local_id");
-                ::flatbuffers::WIPOffset::new(o.value())
-            }
-        }
+  #[inline]
+  pub fn host_relay_url(&self) -> &'a str {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(GroupRef::VT_HOST_RELAY_URL, None).unwrap()}
+  }
+  #[inline]
+  pub fn local_id(&self) -> &'a str {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(GroupRef::VT_LOCAL_ID, None).unwrap()}
+  }
+}
 
-        impl ::core::fmt::Debug for GroupRef<'_> {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("GroupRef");
-                ds.field("host_relay_url", &self.host_relay_url());
-                ds.field("local_id", &self.local_id());
-                ds.finish()
-            }
-        }
-        pub enum CreatePublicGroupPayloadOffset {}
-        #[derive(Copy, Clone, PartialEq)]
+impl ::flatbuffers::Verifiable for GroupRef<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut ::flatbuffers::Verifier, pos: usize
+  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+    v.visit_table(pos)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("host_relay_url", Self::VT_HOST_RELAY_URL, true)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("local_id", Self::VT_LOCAL_ID, true)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct GroupRefArgs<'a> {
+    pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub local_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+}
+impl<'a> Default for GroupRefArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    GroupRefArgs {
+      host_relay_url: None, // required field
+      local_id: None, // required field
+    }
+  }
+}
 
-        pub struct CreatePublicGroupPayload<'a> {
-            pub _tab: ::flatbuffers::Table<'a>,
-        }
+pub struct GroupRefBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GroupRefBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_host_relay_url(&mut self, host_relay_url: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(GroupRef::VT_HOST_RELAY_URL, host_relay_url);
+  }
+  #[inline]
+  pub fn add_local_id(&mut self, local_id: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(GroupRef::VT_LOCAL_ID, local_id);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> GroupRefBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    GroupRefBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> ::flatbuffers::WIPOffset<GroupRef<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    self.fbb_.required(o, GroupRef::VT_HOST_RELAY_URL,"host_relay_url");
+    self.fbb_.required(o, GroupRef::VT_LOCAL_ID,"local_id");
+    ::flatbuffers::WIPOffset::new(o.value())
+  }
+}
 
-        impl<'a> ::flatbuffers::Follow<'a> for CreatePublicGroupPayload<'a> {
-            type Inner = CreatePublicGroupPayload<'a>;
-            #[inline]
-            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-                Self {
-                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
-                }
-            }
-        }
+impl ::core::fmt::Debug for GroupRef<'_> {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+    let mut ds = f.debug_struct("GroupRef");
+      ds.field("host_relay_url", &self.host_relay_url());
+      ds.field("local_id", &self.local_id());
+      ds.finish()
+  }
+}
+pub enum CreatePublicGroupPayloadOffset {}
+#[derive(Copy, Clone, PartialEq)]
 
-        impl<'a> CreatePublicGroupPayload<'a> {
-            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-            pub const VT_GROUP: ::flatbuffers::VOffsetT = 6;
-            pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
-            pub const VT_ABOUT: ::flatbuffers::VOffsetT = 10;
-            pub const VT_PICTURE: ::flatbuffers::VOffsetT = 12;
-            pub const VT_VISIBILITY: ::flatbuffers::VOffsetT = 14;
-            pub const VT_ACCESS: ::flatbuffers::VOffsetT = 16;
+pub struct CreatePublicGroupPayload<'a> {
+  pub _tab: ::flatbuffers::Table<'a>,
+}
 
-            #[inline]
-            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                CreatePublicGroupPayload { _tab: table }
-            }
-            #[allow(unused_mut)]
-            pub fn create<
-                'bldr: 'args,
-                'args: 'mut_bldr,
-                'mut_bldr,
-                A: ::flatbuffers::Allocator + 'bldr,
-            >(
-                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args CreatePublicGroupPayloadArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'bldr>> {
-                let mut builder = CreatePublicGroupPayloadBuilder::new(_fbb);
-                if let Some(x) = args.picture {
-                    builder.add_picture(x);
-                }
-                if let Some(x) = args.about {
-                    builder.add_about(x);
-                }
-                if let Some(x) = args.name {
-                    builder.add_name(x);
-                }
-                if let Some(x) = args.group {
-                    builder.add_group(x);
-                }
-                builder.add_schema_version(args.schema_version);
-                builder.add_access(args.access);
-                builder.add_visibility(args.visibility);
-                builder.finish()
-            }
+impl<'a> ::flatbuffers::Follow<'a> for CreatePublicGroupPayload<'a> {
+  type Inner = CreatePublicGroupPayload<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
+  }
+}
 
-            #[inline]
-            pub fn schema_version(&self) -> u32 {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<u32>(CreatePublicGroupPayload::VT_SCHEMA_VERSION, Some(0))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn group(&self) -> GroupRef<'a> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<GroupRef>>(
-                            CreatePublicGroupPayload::VT_GROUP,
-                            None,
-                        )
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn name(&self) -> &'a str {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
-                            CreatePublicGroupPayload::VT_NAME,
-                            None,
-                        )
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn about(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        CreatePublicGroupPayload::VT_ABOUT,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn picture(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        CreatePublicGroupPayload::VT_PICTURE,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn visibility(&self) -> GroupVisibility {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<GroupVisibility>(
-                            CreatePublicGroupPayload::VT_VISIBILITY,
-                            Some(GroupVisibility::Public),
-                        )
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn access(&self) -> GroupAccess {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<GroupAccess>(
-                            CreatePublicGroupPayload::VT_ACCESS,
-                            Some(GroupAccess::Open),
-                        )
-                        .unwrap()
-                }
-            }
-        }
+impl<'a> CreatePublicGroupPayload<'a> {
+  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+  pub const VT_GROUP: ::flatbuffers::VOffsetT = 6;
+  pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
+  pub const VT_ABOUT: ::flatbuffers::VOffsetT = 10;
+  pub const VT_PICTURE: ::flatbuffers::VOffsetT = 12;
+  pub const VT_VISIBILITY: ::flatbuffers::VOffsetT = 14;
+  pub const VT_ACCESS: ::flatbuffers::VOffsetT = 16;
+  pub const VT_PARENT: ::flatbuffers::VOffsetT = 18;
 
-        impl ::flatbuffers::Verifiable for CreatePublicGroupPayload<'_> {
-            #[inline]
-            fn run_verifier(
-                v: &mut ::flatbuffers::Verifier,
-                pos: usize,
-            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-                v.visit_table(pos)?
-                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<GroupRef>>(
-                        "group",
-                        Self::VT_GROUP,
-                        true,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "name",
-                        Self::VT_NAME,
-                        true,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "about",
-                        Self::VT_ABOUT,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "picture",
-                        Self::VT_PICTURE,
-                        false,
-                    )?
-                    .visit_field::<GroupVisibility>("visibility", Self::VT_VISIBILITY, false)?
-                    .visit_field::<GroupAccess>("access", Self::VT_ACCESS, false)?
-                    .finish();
-                Ok(())
-            }
-        }
-        pub struct CreatePublicGroupPayloadArgs<'a> {
-            pub schema_version: u32,
-            pub group: Option<::flatbuffers::WIPOffset<GroupRef<'a>>>,
-            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub about: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub picture: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub visibility: GroupVisibility,
-            pub access: GroupAccess,
-        }
-        impl<'a> Default for CreatePublicGroupPayloadArgs<'a> {
-            #[inline]
-            fn default() -> Self {
-                CreatePublicGroupPayloadArgs {
-                    schema_version: 0,
-                    group: None, // required field
-                    name: None,  // required field
-                    about: None,
-                    picture: None,
-                    visibility: GroupVisibility::Public,
-                    access: GroupAccess::Open,
-                }
-            }
-        }
+  #[inline]
+  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+    CreatePublicGroupPayload { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args CreatePublicGroupPayloadArgs<'args>
+  ) -> ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'bldr>> {
+    let mut builder = CreatePublicGroupPayloadBuilder::new(_fbb);
+    if let Some(x) = args.parent { builder.add_parent(x); }
+    if let Some(x) = args.picture { builder.add_picture(x); }
+    if let Some(x) = args.about { builder.add_about(x); }
+    if let Some(x) = args.name { builder.add_name(x); }
+    if let Some(x) = args.group { builder.add_group(x); }
+    builder.add_schema_version(args.schema_version);
+    builder.add_access(args.access);
+    builder.add_visibility(args.visibility);
+    builder.finish()
+  }
 
-        pub struct CreatePublicGroupPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-        }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CreatePublicGroupPayloadBuilder<'a, 'b, A> {
-            #[inline]
-            pub fn add_schema_version(&mut self, schema_version: u32) {
-                self.fbb_.push_slot::<u32>(
-                    CreatePublicGroupPayload::VT_SCHEMA_VERSION,
-                    schema_version,
-                    0,
-                );
-            }
-            #[inline]
-            pub fn add_group(&mut self, group: ::flatbuffers::WIPOffset<GroupRef<'b>>) {
-                self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<GroupRef>>(
-                        CreatePublicGroupPayload::VT_GROUP,
-                        group,
-                    );
-            }
-            #[inline]
-            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    CreatePublicGroupPayload::VT_NAME,
-                    name,
-                );
-            }
-            #[inline]
-            pub fn add_about(&mut self, about: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    CreatePublicGroupPayload::VT_ABOUT,
-                    about,
-                );
-            }
-            #[inline]
-            pub fn add_picture(&mut self, picture: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    CreatePublicGroupPayload::VT_PICTURE,
-                    picture,
-                );
-            }
-            #[inline]
-            pub fn add_visibility(&mut self, visibility: GroupVisibility) {
-                self.fbb_.push_slot::<GroupVisibility>(
-                    CreatePublicGroupPayload::VT_VISIBILITY,
-                    visibility,
-                    GroupVisibility::Public,
-                );
-            }
-            #[inline]
-            pub fn add_access(&mut self, access: GroupAccess) {
-                self.fbb_.push_slot::<GroupAccess>(
-                    CreatePublicGroupPayload::VT_ACCESS,
-                    access,
-                    GroupAccess::Open,
-                );
-            }
-            #[inline]
-            pub fn new(
-                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> CreatePublicGroupPayloadBuilder<'a, 'b, A> {
-                let start = _fbb.start_table();
-                CreatePublicGroupPayloadBuilder {
-                    fbb_: _fbb,
-                    start_: start,
-                }
-            }
-            #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'a>> {
-                let o = self.fbb_.end_table(self.start_);
-                self.fbb_
-                    .required(o, CreatePublicGroupPayload::VT_GROUP, "group");
-                self.fbb_
-                    .required(o, CreatePublicGroupPayload::VT_NAME, "name");
-                ::flatbuffers::WIPOffset::new(o.value())
-            }
-        }
 
-        impl ::core::fmt::Debug for CreatePublicGroupPayload<'_> {
-            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("CreatePublicGroupPayload");
-                ds.field("schema_version", &self.schema_version());
-                ds.field("group", &self.group());
-                ds.field("name", &self.name());
-                ds.field("about", &self.about());
-                ds.field("picture", &self.picture());
-                ds.field("visibility", &self.visibility());
-                ds.field("access", &self.access());
-                ds.finish()
-            }
-        }
-        #[inline]
-        /// Verifies that a buffer of bytes contains a `CreatePublicGroupPayload`
-        /// and returns it.
-        /// Note that verification is still experimental and may not
-        /// catch every error, or be maximally performant. For the
-        /// previous, unchecked, behavior use
-        /// `root_as_create_public_group_payload_unchecked`.
-        pub fn root_as_create_public_group_payload(
-            buf: &[u8],
-        ) -> Result<CreatePublicGroupPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root::<CreatePublicGroupPayload>(buf)
-        }
-        #[inline]
-        /// Verifies that a buffer of bytes contains a size prefixed
-        /// `CreatePublicGroupPayload` and returns it.
-        /// Note that verification is still experimental and may not
-        /// catch every error, or be maximally performant. For the
-        /// previous, unchecked, behavior use
-        /// `size_prefixed_root_as_create_public_group_payload_unchecked`.
-        pub fn size_prefixed_root_as_create_public_group_payload(
-            buf: &[u8],
-        ) -> Result<CreatePublicGroupPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root::<CreatePublicGroupPayload>(buf)
-        }
-        #[inline]
-        /// Verifies, with the given options, that a buffer of bytes
-        /// contains a `CreatePublicGroupPayload` and returns it.
-        /// Note that verification is still experimental and may not
-        /// catch every error, or be maximally performant. For the
-        /// previous, unchecked, behavior use
-        /// `root_as_create_public_group_payload_unchecked`.
-        pub fn root_as_create_public_group_payload_with_opts<'b, 'o>(
-            opts: &'o ::flatbuffers::VerifierOptions,
-            buf: &'b [u8],
-        ) -> Result<CreatePublicGroupPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root_with_opts::<CreatePublicGroupPayload<'b>>(opts, buf)
-        }
-        #[inline]
-        /// Verifies, with the given verifier options, that a buffer of
-        /// bytes contains a size prefixed `CreatePublicGroupPayload` and returns
-        /// it. Note that verification is still experimental and may not
-        /// catch every error, or be maximally performant. For the
-        /// previous, unchecked, behavior use
-        /// `root_as_create_public_group_payload_unchecked`.
-        pub fn size_prefixed_root_as_create_public_group_payload_with_opts<'b, 'o>(
-            opts: &'o ::flatbuffers::VerifierOptions,
-            buf: &'b [u8],
-        ) -> Result<CreatePublicGroupPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root_with_opts::<CreatePublicGroupPayload<'b>>(opts, buf)
-        }
-        #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a CreatePublicGroupPayload and returns it.
-        /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid `CreatePublicGroupPayload`.
-        pub unsafe fn root_as_create_public_group_payload_unchecked(
-            buf: &[u8],
-        ) -> CreatePublicGroupPayload<'_> {
-            unsafe { ::flatbuffers::root_unchecked::<CreatePublicGroupPayload>(buf) }
-        }
-        #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a size prefixed CreatePublicGroupPayload and returns it.
-        /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid size prefixed `CreatePublicGroupPayload`.
-        pub unsafe fn size_prefixed_root_as_create_public_group_payload_unchecked(
-            buf: &[u8],
-        ) -> CreatePublicGroupPayload<'_> {
-            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<CreatePublicGroupPayload>(buf) }
-        }
-        pub const CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER: &str = "N29P";
+  #[inline]
+  pub fn schema_version(&self) -> u32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<u32>(CreatePublicGroupPayload::VT_SCHEMA_VERSION, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn group(&self) -> GroupRef<'a> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<GroupRef>>(CreatePublicGroupPayload::VT_GROUP, None).unwrap()}
+  }
+  #[inline]
+  pub fn name(&self) -> &'a str {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(CreatePublicGroupPayload::VT_NAME, None).unwrap()}
+  }
+  #[inline]
+  pub fn about(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(CreatePublicGroupPayload::VT_ABOUT, None)}
+  }
+  #[inline]
+  pub fn picture(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(CreatePublicGroupPayload::VT_PICTURE, None)}
+  }
+  #[inline]
+  pub fn visibility(&self) -> GroupVisibility {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<GroupVisibility>(CreatePublicGroupPayload::VT_VISIBILITY, Some(GroupVisibility::Public)).unwrap()}
+  }
+  #[inline]
+  pub fn access(&self) -> GroupAccess {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<GroupAccess>(CreatePublicGroupPayload::VT_ACCESS, Some(GroupAccess::Open)).unwrap()}
+  }
+  #[inline]
+  pub fn parent(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(CreatePublicGroupPayload::VT_PARENT, None)}
+  }
+}
 
-        #[inline]
-        pub fn create_public_group_payload_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER, false)
-        }
+impl ::flatbuffers::Verifiable for CreatePublicGroupPayload<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut ::flatbuffers::Verifier, pos: usize
+  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+    v.visit_table(pos)?
+     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<GroupRef>>("group", Self::VT_GROUP, true)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, true)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("about", Self::VT_ABOUT, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("picture", Self::VT_PICTURE, false)?
+     .visit_field::<GroupVisibility>("visibility", Self::VT_VISIBILITY, false)?
+     .visit_field::<GroupAccess>("access", Self::VT_ACCESS, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("parent", Self::VT_PARENT, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct CreatePublicGroupPayloadArgs<'a> {
+    pub schema_version: u32,
+    pub group: Option<::flatbuffers::WIPOffset<GroupRef<'a>>>,
+    pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub about: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub picture: Option<::flatbuffers::WIPOffset<&'a str>>,
+    pub visibility: GroupVisibility,
+    pub access: GroupAccess,
+    pub parent: Option<::flatbuffers::WIPOffset<&'a str>>,
+}
+impl<'a> Default for CreatePublicGroupPayloadArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    CreatePublicGroupPayloadArgs {
+      schema_version: 0,
+      group: None, // required field
+      name: None, // required field
+      about: None,
+      picture: None,
+      visibility: GroupVisibility::Public,
+      access: GroupAccess::Open,
+      parent: None,
+    }
+  }
+}
 
-        #[inline]
-        pub fn create_public_group_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER, true)
-        }
+pub struct CreatePublicGroupPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> CreatePublicGroupPayloadBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_schema_version(&mut self, schema_version: u32) {
+    self.fbb_.push_slot::<u32>(CreatePublicGroupPayload::VT_SCHEMA_VERSION, schema_version, 0);
+  }
+  #[inline]
+  pub fn add_group(&mut self, group: ::flatbuffers::WIPOffset<GroupRef<'b >>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<GroupRef>>(CreatePublicGroupPayload::VT_GROUP, group);
+  }
+  #[inline]
+  pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreatePublicGroupPayload::VT_NAME, name);
+  }
+  #[inline]
+  pub fn add_about(&mut self, about: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreatePublicGroupPayload::VT_ABOUT, about);
+  }
+  #[inline]
+  pub fn add_picture(&mut self, picture: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreatePublicGroupPayload::VT_PICTURE, picture);
+  }
+  #[inline]
+  pub fn add_visibility(&mut self, visibility: GroupVisibility) {
+    self.fbb_.push_slot::<GroupVisibility>(CreatePublicGroupPayload::VT_VISIBILITY, visibility, GroupVisibility::Public);
+  }
+  #[inline]
+  pub fn add_access(&mut self, access: GroupAccess) {
+    self.fbb_.push_slot::<GroupAccess>(CreatePublicGroupPayload::VT_ACCESS, access, GroupAccess::Open);
+  }
+  #[inline]
+  pub fn add_parent(&mut self, parent: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(CreatePublicGroupPayload::VT_PARENT, parent);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> CreatePublicGroupPayloadBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    CreatePublicGroupPayloadBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    self.fbb_.required(o, CreatePublicGroupPayload::VT_GROUP,"group");
+    self.fbb_.required(o, CreatePublicGroupPayload::VT_NAME,"name");
+    ::flatbuffers::WIPOffset::new(o.value())
+  }
+}
 
-        #[inline]
-        pub fn finish_create_public_group_payload_buffer<
-            'a,
-            'b,
-            A: ::flatbuffers::Allocator + 'a,
-        >(
-            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'a>>,
-        ) {
-            fbb.finish(root, Some(CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER));
-        }
+impl ::core::fmt::Debug for CreatePublicGroupPayload<'_> {
+  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+    let mut ds = f.debug_struct("CreatePublicGroupPayload");
+      ds.field("schema_version", &self.schema_version());
+      ds.field("group", &self.group());
+      ds.field("name", &self.name());
+      ds.field("about", &self.about());
+      ds.field("picture", &self.picture());
+      ds.field("visibility", &self.visibility());
+      ds.field("access", &self.access());
+      ds.field("parent", &self.parent());
+      ds.finish()
+  }
+}
+#[inline]
+/// Verifies that a buffer of bytes contains a `CreatePublicGroupPayload`
+/// and returns it.
+/// Note that verification is still experimental and may not
+/// catch every error, or be maximally performant. For the
+/// previous, unchecked, behavior use
+/// `root_as_create_public_group_payload_unchecked`.
+pub fn root_as_create_public_group_payload(buf: &[u8]) -> Result<CreatePublicGroupPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+  ::flatbuffers::root::<CreatePublicGroupPayload>(buf)
+}
+#[inline]
+/// Verifies that a buffer of bytes contains a size prefixed
+/// `CreatePublicGroupPayload` and returns it.
+/// Note that verification is still experimental and may not
+/// catch every error, or be maximally performant. For the
+/// previous, unchecked, behavior use
+/// `size_prefixed_root_as_create_public_group_payload_unchecked`.
+pub fn size_prefixed_root_as_create_public_group_payload(buf: &[u8]) -> Result<CreatePublicGroupPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+  ::flatbuffers::size_prefixed_root::<CreatePublicGroupPayload>(buf)
+}
+#[inline]
+/// Verifies, with the given options, that a buffer of bytes
+/// contains a `CreatePublicGroupPayload` and returns it.
+/// Note that verification is still experimental and may not
+/// catch every error, or be maximally performant. For the
+/// previous, unchecked, behavior use
+/// `root_as_create_public_group_payload_unchecked`.
+pub fn root_as_create_public_group_payload_with_opts<'b, 'o>(
+  opts: &'o ::flatbuffers::VerifierOptions,
+  buf: &'b [u8],
+) -> Result<CreatePublicGroupPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+  ::flatbuffers::root_with_opts::<CreatePublicGroupPayload<'b>>(opts, buf)
+}
+#[inline]
+/// Verifies, with the given verifier options, that a buffer of
+/// bytes contains a size prefixed `CreatePublicGroupPayload` and returns
+/// it. Note that verification is still experimental and may not
+/// catch every error, or be maximally performant. For the
+/// previous, unchecked, behavior use
+/// `root_as_create_public_group_payload_unchecked`.
+pub fn size_prefixed_root_as_create_public_group_payload_with_opts<'b, 'o>(
+  opts: &'o ::flatbuffers::VerifierOptions,
+  buf: &'b [u8],
+) -> Result<CreatePublicGroupPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+  ::flatbuffers::size_prefixed_root_with_opts::<CreatePublicGroupPayload<'b>>(opts, buf)
+}
+#[inline]
+/// Assumes, without verification, that a buffer of bytes contains a CreatePublicGroupPayload and returns it.
+/// # Safety
+/// Callers must trust the given bytes do indeed contain a valid `CreatePublicGroupPayload`.
+pub unsafe fn root_as_create_public_group_payload_unchecked(buf: &[u8]) -> CreatePublicGroupPayload<'_> {
+  unsafe { ::flatbuffers::root_unchecked::<CreatePublicGroupPayload>(buf) }
+}
+#[inline]
+/// Assumes, without verification, that a buffer of bytes contains a size prefixed CreatePublicGroupPayload and returns it.
+/// # Safety
+/// Callers must trust the given bytes do indeed contain a valid size prefixed `CreatePublicGroupPayload`.
+pub unsafe fn size_prefixed_root_as_create_public_group_payload_unchecked(buf: &[u8]) -> CreatePublicGroupPayload<'_> {
+  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<CreatePublicGroupPayload>(buf) }
+}
+pub const CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER: &str = "N29P";
 
-        #[inline]
-        pub fn finish_size_prefixed_create_public_group_payload_buffer<
-            'a,
-            'b,
-            A: ::flatbuffers::Allocator + 'a,
-        >(
-            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'a>>,
-        ) {
-            fbb.finish_size_prefixed(root, Some(CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER));
-        }
-    } // pub mod nip29
-} // pub mod nmp
+#[inline]
+pub fn create_public_group_payload_buffer_has_identifier(buf: &[u8]) -> bool {
+  ::flatbuffers::buffer_has_identifier(buf, CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER, false)
+}
+
+#[inline]
+pub fn create_public_group_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+  ::flatbuffers::buffer_has_identifier(buf, CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER, true)
+}
+
+#[inline]
+pub fn finish_create_public_group_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+    root: ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'a>>) {
+  fbb.finish(root, Some(CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER));
+}
+
+#[inline]
+pub fn finish_size_prefixed_create_public_group_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<CreatePublicGroupPayload<'a>>) {
+  fbb.finish_size_prefixed(root, Some(CREATE_PUBLIC_GROUP_PAYLOAD_IDENTIFIER));
+}
+}  // pub mod nip29
+}  // pub mod nmp
+

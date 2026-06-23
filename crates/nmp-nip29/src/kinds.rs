@@ -139,6 +139,43 @@ pub fn h_tag_value(tags: &[Vec<String>]) -> Option<&str> {
         .map(|t| t[1].as_str())
 }
 
+/// NIP-29 subgroups tag helpers (nips PR #2319). The `parent` and `child`
+/// tag names live on `kind:39000` (group metadata); these accessors are
+/// shared by every read-side projection that folds 39000 so the
+/// parent/children extraction has one canonical implementation.
+pub mod tags {
+    /// Pull the `["parent", <id>]` tag value from `tags`. Per the spec a
+    /// 39000 carries at most one `parent` tag; the first wins. An empty
+    /// value (`["parent"]` or `["parent", ""]`) normalises to `None`
+    /// (absent == root group).
+    #[must_use]
+    pub fn parent_tag_value(tags: &[Vec<String>]) -> Option<&str> {
+        tags.iter()
+            .find(|t| t.len() >= 2 && t[0] == "parent")
+            .map(|t| t[1].as_str())
+            .filter(|s| !s.is_empty())
+    }
+
+    /// The ordered `["child", <id>]` tag values from `tags`, preserving tag
+    /// order (the spec models the parent's child list as ordered). Returns
+    /// `None` when no `child` tag is present so callers can distinguish
+    /// "no children declared" from "an empty list"; both fold to an empty
+    /// `Vec` for the projection row.
+    #[must_use]
+    pub fn child_tag_values(tags: &[Vec<String>]) -> Option<Vec<&str>> {
+        let children: Vec<&str> = tags
+            .iter()
+            .filter(|t| t.len() >= 2 && t[0] == "child")
+            .map(|t| t[1].as_str())
+            .collect();
+        if children.is_empty() {
+            None
+        } else {
+            Some(children)
+        }
+    }
+}
+
 /// Pull the `d` tag value (parameterized-replaceable key for 39000–39003).
 #[must_use] 
 pub fn d_tag_value(tags: &[Vec<String>]) -> Option<&str> {

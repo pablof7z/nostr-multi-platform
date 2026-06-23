@@ -318,3 +318,150 @@ fn outer_map_is_bounded_against_adversarial_d_tag_spam() {
         MAX_PROJECTION_MESSAGES,
     );
 }
+
+// ── NIP-29 subgroups (nips PR #2319) ────────────────────────────────────────
+
+#[test]
+fn kind39000_parent_tag_populates_parent() {
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "meta",
+        KIND_GROUP_METADATA,
+        100,
+        vec![
+            d_tag("nostr"),
+            vec!["name".into(), "Nostr".into()],
+            vec!["parent".into(), "tech".into()],
+        ],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert_eq!(g.parent.as_deref(), Some("tech"));
+    assert!(g.children.is_empty());
+}
+
+#[test]
+fn absent_parent_means_root() {
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "meta",
+        KIND_GROUP_METADATA,
+        100,
+        vec![d_tag("tech"), vec!["name".into(), "Tech".into()]],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert!(g.parent.is_none(), "no parent tag -> root");
+}
+
+#[test]
+fn empty_parent_value_normalises_to_root() {
+    // The spec: `["parent", ""]` or `["parent"]` is equivalent to absent.
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "meta",
+        KIND_GROUP_METADATA,
+        100,
+        vec![
+            d_tag("orphan"),
+            vec!["name".into(), "Orphan".into()],
+            vec!["parent".into(), "".into()],
+        ],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert!(g.parent.is_none(), "empty parent value -> root");
+}
+
+#[test]
+fn child_tags_preserve_order() {
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "meta",
+        KIND_GROUP_METADATA,
+        100,
+        vec![
+            d_tag("tech"),
+            vec!["name".into(), "Tech".into()],
+            vec!["child".into(), "nostr".into()],
+            vec!["child".into(), "bitcoin".into()],
+            vec!["child".into(), "lightning".into()],
+        ],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert_eq!(g.children, vec!["nostr", "bitcoin", "lightning"]);
+    assert!(g.parent.is_none());
+}
+
+#[test]
+fn parent_and_children_both_present() {
+    // A sub-subgroup pattern: "nostr" is both a child of "tech" and a parent
+    // of "nip29" — mirrors the spec's example tree.
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "meta",
+        KIND_GROUP_METADATA,
+        100,
+        vec![
+            d_tag("nostr"),
+            vec!["name".into(), "Nostr".into()],
+            vec!["parent".into(), "tech".into()],
+            vec!["child".into(), "nip29".into()],
+        ],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert_eq!(g.parent.as_deref(), Some("tech"));
+    assert_eq!(g.children, vec!["nip29"]);
+}
+
+#[test]
+fn newer_39000_updates_parent_and_children() {
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "old",
+        KIND_GROUP_METADATA,
+        100,
+        vec![
+            d_tag("nostr"),
+            vec!["name".into(), "Nostr".into()],
+            vec!["parent".into(), "tech".into()],
+        ],
+    ));
+    // Re-parent: "nostr" moves from "tech" to "social".
+    proj.on_kernel_event(&event(
+        "new",
+        KIND_GROUP_METADATA,
+        200,
+        vec![
+            d_tag("nostr"),
+            vec!["name".into(), "Nostr".into()],
+            vec!["parent".into(), "social".into()],
+            vec!["child".into(), "nip29".into()],
+        ],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert_eq!(g.parent.as_deref(), Some("social"), "newer 39000 wins");
+    assert_eq!(g.children, vec!["nip29"]);
+}
+
+#[test]
+fn detaching_to_root_clears_parent() {
+    // The lifecycle example: an admin promotes "nostr" to root by sending a
+    // 9002 with no parent; the relay emits a 39000 without a parent tag.
+    let proj = DiscoveredGroupsProjection::new(HOST);
+    proj.on_kernel_event(&event(
+        "with-parent",
+        KIND_GROUP_METADATA,
+        100,
+        vec![
+            d_tag("nostr"),
+            vec!["name".into(), "Nostr".into()],
+            vec!["parent".into(), "social".into()],
+        ],
+    ));
+    proj.on_kernel_event(&event(
+        "promoted",
+        KIND_GROUP_METADATA,
+        200,
+        vec![d_tag("nostr"), vec!["name".into(), "Nostr".into()]],
+    ));
+    let g = &proj.snapshot().groups[0];
+    assert!(g.parent.is_none(), "newer 39000 without parent -> root");
+}

@@ -47,13 +47,19 @@ table DiscoveredGroup {
   admin_count:uint32;       // cardinality of `["p", _]` on latest 39001
   public:bool;              // false iff latest 39000 carried `["private"]`
   open:bool;                // false iff latest 39000 carried `["closed"]`
+  // NIP-29 subgroups (nips PR #2319): the `["parent", <id>]` tag value on the
+  // latest 39000. Absent (or empty) == root group.
+  parent:string;
+  // NIP-29 subgroups: the ordered `["child", <id>]` tag values on the latest
+  // 39000 — the parent's children list in tag order. Absent == empty.
+  children:[string];
 }
 
 // The serialised discovery read model. `groups` is ordered alphabetically by
 // `group_id`. `host_relay_url` is surfaced at the top (every row's
 // `host_relay_url` equals it — single-relay scoped).
 table DiscoveredGroupsSnapshot {
-  schema_version:uint32 = 1;   // mirrors DISCOVERED_GROUPS_SCHEMA_VERSION
+  schema_version:uint32 = 2;   // mirrors DISCOVERED_GROUPS_SCHEMA_VERSION
   host_relay_url:string;
   groups:[DiscoveredGroup];
 }

@@ -5,7 +5,7 @@
 use crate::action::{
     CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupEventTarget,
     GroupVisibility, JoinGroupInput, LeaveGroupInput, PostChatMessageInput, PutUserInput,
-    ReactInGroupInput, RepostInGroupInput, ShareEventInGroupInput,
+    ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
 };
 use crate::group_id::GroupId;
 use nmp_core::substrate::{ActionPayload, ActionPayloadDecodeError};
@@ -134,6 +134,7 @@ fn create_round_trips_all_fields() {
         picture: Some("https://x/p.png".to_string()),
         visibility: GroupVisibility::Private,
         access: GroupAccess::Closed,
+        parent: Some("tech".to_string()),
     };
     assert_eq!(
         CreatePublicGroupInput::decode(&action.encode()).expect("decodes"),
@@ -150,12 +151,14 @@ fn create_defaults_and_presence() {
         picture: Some(String::new()),
         visibility: GroupVisibility::Public,
         access: GroupAccess::Open,
+        parent: None,
     };
     let d = CreatePublicGroupInput::decode(&action.encode()).expect("decodes");
     assert!(d.about.is_none());
     assert_eq!(d.picture.as_deref(), Some(""));
     assert_eq!(d.visibility, GroupVisibility::Public);
     assert_eq!(d.access, GroupAccess::Open);
+    assert!(d.parent.is_none());
 }
 
 // --- react_in_group ----------------------------------------------------------
@@ -350,4 +353,42 @@ fn discover_groups_wss_and_ws_schemes_survive_round_trip() {
         let decoded = DiscoverGroupsInput::decode(&action.encode()).expect("decodes");
         assert_eq!(&decoded.relay_url, url);
     }
+}
+
+// --- set_parent (NIP-29 subgroups, nips PR #2319) ────────────────────────────
+
+#[test]
+fn set_parent_round_trips_adopt() {
+    let action = SetParentInput {
+        group: group(),
+        parent: Some("tech".to_string()),
+    };
+    let decoded = SetParentInput::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded, action);
+    assert_eq!(decoded.parent.as_deref(), Some("tech"));
+}
+
+#[test]
+fn set_parent_round_trips_detach() {
+    // `parent: None` detaches to root — absent on the wire.
+    let action = SetParentInput {
+        group: group(),
+        parent: None,
+    };
+    let decoded = SetParentInput::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded, action);
+    assert!(decoded.parent.is_none());
+}
+
+#[test]
+fn set_parent_present_empty_string_is_preserved() {
+    // present-empty vs absent distinction: `Some("")` is a present (if
+    // empty) parent; the wire codec preserves it so `start()`'s trim guard
+    // sees the caller's intent.
+    let action = SetParentInput {
+        group: group(),
+        parent: Some(String::new()),
+    };
+    let decoded = SetParentInput::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded.parent.as_deref(), Some(""));
 }

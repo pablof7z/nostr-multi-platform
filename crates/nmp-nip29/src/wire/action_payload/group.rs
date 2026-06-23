@@ -204,6 +204,8 @@ impl ActionPayload for CreatePublicGroupInput {
         let name = fbb.create_string(&self.name);
         let about = self.about.as_ref().map(|s| fbb.create_string(s));
         let picture = self.picture.as_ref().map(|s| fbb.create_string(s));
+        // NIP-29 subgroups (#2319): optional parent local id on create.
+        let parent = self.parent.as_ref().map(|s| fbb.create_string(s));
         let payload = create_fb::CreatePublicGroupPayload::create(
             &mut fbb,
             &create_fb::CreatePublicGroupPayloadArgs {
@@ -214,6 +216,7 @@ impl ActionPayload for CreatePublicGroupInput {
                 picture,
                 visibility: encode_visibility(&self.visibility),
                 access: encode_access(&self.access),
+                parent,
             },
         );
         create_fb::finish_create_public_group_payload_buffer(&mut fbb, payload);
@@ -235,6 +238,7 @@ impl ActionPayload for CreatePublicGroupInput {
             picture: root.picture().map(str::to_string),
             visibility: decode_visibility(root.visibility()),
             access: decode_access(root.access()),
+            parent: root.parent().map(str::to_string),
         })
     }
 }
