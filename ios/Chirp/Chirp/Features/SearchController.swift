@@ -29,6 +29,19 @@ final class SearchController: ObservableObject {
     /// empty-state copy ("prompt" vs "no matches"). `nil` ⇒ nothing submitted.
     @Published private(set) var submittedQuery: String?
 
+    /// A navigation request produced by the omnibox when the resolver classified
+    /// the input as a direct reference (`npub`/`note`/`nevent`/`naddr`). The view
+    /// observes this and pushes the matching `ChirpRoute`, then clears it. `nil`
+    /// ⇒ no pending navigation. Carries only the typed decoded target — the
+    /// view maps it onto a route (no parsing).
+    @Published var pendingNavigation: DecodedRefTarget?
+
+    /// A short, non-echoing status line the omnibox shows for non-search
+    /// outcomes (a NIP-05 lookup in flight, a secret-key refusal, an
+    /// unsupported target). `nil` ⇒ nothing to show. NEVER contains the raw
+    /// input — a secret is never echoed.
+    @Published private(set) var omniboxNotice: String?
+
     /// Stable per-controller session id. Keys the kernel's
     /// `nmp.nip50.search.<id>` sidecar + the matching `closeSearch`.
     private let sessionID = "chirp.search.\(UUID().uuidString)"
@@ -69,6 +82,73 @@ final class SearchController: ObservableObject {
         // Pull immediately in case a cache-FTS hit is already available this tick.
         refresh()
     }
+
+    /// OMNIBOX submit — route one untyped input through the input-intent
+    /// resolver (#1804) and act on the typed outcome. THIN SHELL: all
+    /// classification lives in Rust; this method only switches on the decoded
+    /// variant and drives the matching presentation/navigation.
+    ///
+    /// * `TextQuery`  → the kernel already opened the search session under this
+    ///   controller's `sessionID` (we pass it to dispatch), so we just enter the
+    ///   results state and let the reactive `N50S` pull surface hits.
+    /// * `DirectRef`  → decode the URI to its typed target and publish a
+    ///   navigation request for the view to push.
+    /// * `Nip05`      → the kernel kicked off the async reverse lookup; show a
+    ///   "looking up" notice (the profile resolves through normal projections).
+    /// * `RelayUrl` / `Registered` → not actionable in a microblog; show a
+    ///   graceful "not supported" notice.
+    /// * Rejections   → a safe inline notice; a secret-key input is refused with
+    ///   NO echo of the typed text.
+    func submitOmnibox(input: String, textScope: IntentScope) {
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let kernel else { return }
+        omniboxNotice = nil
+        // `nostr.ref` is always requested so paste-to-navigate works regardless
+        // of the free-text scope toggle. Only the SELECTED free-text scope is
+        // requested, so the resolver's top free-text candidate is the one the
+        // user chose (the classifier orders text candidates by recognizer
+        // registration, not by request order — requesting a single text scope is
+        // the clean way to pick it without any Swift-side reordering).
+        let scopes: [IntentScope] = [.nostrRef, textScope]
+        guard let outcome = kernel.dispatchIntent(input: trimmed, scopes: scopes, sessionID: sessionID) else {
+            omniboxNotice = "Couldn't process that input."
+            return
+        }
+        switch outcome {
+        case .dispatched(.textQuery):
+            // Kernel opened the search under our session; enter results state.
+            submittedQuery = trimmed
+            hits = []
+            refresh()
+        case .dispatched(.directRef(let uri)):
+            submittedQuery = nil
+            if let target = kernel.decodeRefTarget(uri: uri) {
+                pendingNavigation = target
+            } else {
+                omniboxNotice = "Couldn't open that reference."
+            }
+        case .dispatched(.nip05(let identifier)):
+            submittedQuery = nil
+            omniboxNotice = "Looking up \(identifier)\u{2026}"
+        case .dispatched(.relayURL), .dispatched(.registered):
+            submittedQuery = nil
+            omniboxNotice = "That kind of link isn't supported here."
+        case .rejection(.secretLike):
+            submittedQuery = nil
+            // SECURITY: never echo the input — a secret key is refused silently
+            // by value.
+            omniboxNotice = "Secret keys aren't accepted."
+        case .rejection(.unparseable):
+            submittedQuery = nil
+            omniboxNotice = "Couldn't recognize that input."
+        case .rejection(.disallowedScope), .rejection(.unregisteredScope):
+            submittedQuery = nil
+            omniboxNotice = "That isn't searchable here."
+        }
+    }
+
+    /// Clear the omnibox notice (e.g. when the query field changes).
+    func clearNotice() { omniboxNotice = nil }
 
     /// Close the session (idempotent). Call from the sheet's `.onDisappear`.
     func close() {
