@@ -12,7 +12,7 @@
 //!   pubkey-set DATA / `#t` tag terms — no app closure crosses the seam) that
 //!   gates which roots ENTER the feed (#1740 step 3); and
 //! * a set of INTERNAL acquisition interests (NIP-01 filter JSON), registered
-//!   via [`nmp_core::ActorCommand::OpenInterest`] under the session's projection
+//!   via [`nmp_core::actor::ActorCommand::OpenInterest`] under the session's projection
 //!   key as `consumer_id` and withdrawn symmetrically on close.
 //!
 //! The session registers under the caller's UNIQUE [`nmp_feed::ProjectionKey`]
