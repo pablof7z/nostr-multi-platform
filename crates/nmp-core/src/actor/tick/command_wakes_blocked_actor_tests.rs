@@ -71,7 +71,7 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
     // `recv_timeout` when we send the wake command.
     loop {
         match upd_rx.recv_timeout(Duration::from_millis(400)) {
-            Ok(_) => continue, // still flushing startup frames
+            Ok(_) => continue,                             // still flushing startup frames
             Err(mpsc::RecvTimeoutError::Timeout) => break, // quiet → actor idle
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 panic!("actor exited before reaching idle wait")

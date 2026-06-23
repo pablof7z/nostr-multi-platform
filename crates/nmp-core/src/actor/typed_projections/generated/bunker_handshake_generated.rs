@@ -2,346 +2,453 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod kernel {
+    #[allow(unused_imports, dead_code)]
+    pub mod kernel {
 
+        pub enum BunkerHandshakeOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum BunkerHandshakeOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct BunkerHandshake<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct BunkerHandshake<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for BunkerHandshake<'a> {
+            type Inner = BunkerHandshake<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for BunkerHandshake<'a> {
-  type Inner = BunkerHandshake<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> BunkerHandshake<'a> {
+            pub const VT_STAGE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HAS_MESSAGE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 8;
+            pub const VT_IS_IDLE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_IS_IN_FLIGHT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_IS_FAILED: ::flatbuffers::VOffsetT = 14;
+            pub const VT_IS_TERMINAL_SUCCESS: ::flatbuffers::VOffsetT = 16;
+            pub const VT_CAN_CANCEL: ::flatbuffers::VOffsetT = 18;
+            pub const VT_HAS_PROGRESS_CODE: ::flatbuffers::VOffsetT = 20;
+            pub const VT_PROGRESS_CODE: ::flatbuffers::VOffsetT = 22;
 
-impl<'a> BunkerHandshake<'a> {
-  pub const VT_STAGE: ::flatbuffers::VOffsetT = 4;
-  pub const VT_HAS_MESSAGE: ::flatbuffers::VOffsetT = 6;
-  pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 8;
-  pub const VT_IS_IDLE: ::flatbuffers::VOffsetT = 10;
-  pub const VT_IS_IN_FLIGHT: ::flatbuffers::VOffsetT = 12;
-  pub const VT_IS_FAILED: ::flatbuffers::VOffsetT = 14;
-  pub const VT_IS_TERMINAL_SUCCESS: ::flatbuffers::VOffsetT = 16;
-  pub const VT_CAN_CANCEL: ::flatbuffers::VOffsetT = 18;
-  pub const VT_HAS_PROGRESS_CODE: ::flatbuffers::VOffsetT = 20;
-  pub const VT_PROGRESS_CODE: ::flatbuffers::VOffsetT = 22;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                BunkerHandshake { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args BunkerHandshakeArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<BunkerHandshake<'bldr>> {
+                let mut builder = BunkerHandshakeBuilder::new(_fbb);
+                if let Some(x) = args.progress_code {
+                    builder.add_progress_code(x);
+                }
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                if let Some(x) = args.stage {
+                    builder.add_stage(x);
+                }
+                builder.add_has_progress_code(args.has_progress_code);
+                builder.add_can_cancel(args.can_cancel);
+                builder.add_is_terminal_success(args.is_terminal_success);
+                builder.add_is_failed(args.is_failed);
+                builder.add_is_in_flight(args.is_in_flight);
+                builder.add_is_idle(args.is_idle);
+                builder.add_has_message(args.has_message);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    BunkerHandshake { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args BunkerHandshakeArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<BunkerHandshake<'bldr>> {
-    let mut builder = BunkerHandshakeBuilder::new(_fbb);
-    if let Some(x) = args.progress_code { builder.add_progress_code(x); }
-    if let Some(x) = args.message { builder.add_message(x); }
-    if let Some(x) = args.stage { builder.add_stage(x); }
-    builder.add_has_progress_code(args.has_progress_code);
-    builder.add_can_cancel(args.can_cancel);
-    builder.add_is_terminal_success(args.is_terminal_success);
-    builder.add_is_failed(args.is_failed);
-    builder.add_is_in_flight(args.is_in_flight);
-    builder.add_is_idle(args.is_idle);
-    builder.add_has_message(args.has_message);
-    builder.finish()
-  }
+            #[inline]
+            pub fn stage(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        BunkerHandshake::VT_STAGE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_message(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerHandshake::VT_HAS_MESSAGE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        BunkerHandshake::VT_MESSAGE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn is_idle(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerHandshake::VT_IS_IDLE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_in_flight(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerHandshake::VT_IS_IN_FLIGHT, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_failed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerHandshake::VT_IS_FAILED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_terminal_success(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerHandshake::VT_IS_TERMINAL_SUCCESS, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn can_cancel(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerHandshake::VT_CAN_CANCEL, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn has_progress_code(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(BunkerHandshake::VT_HAS_PROGRESS_CODE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn progress_code(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        BunkerHandshake::VT_PROGRESS_CODE,
+                        None,
+                    )
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for BunkerHandshake<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "stage",
+                        Self::VT_STAGE,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_message", Self::VT_HAS_MESSAGE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "message",
+                        Self::VT_MESSAGE,
+                        false,
+                    )?
+                    .visit_field::<bool>("is_idle", Self::VT_IS_IDLE, false)?
+                    .visit_field::<bool>("is_in_flight", Self::VT_IS_IN_FLIGHT, false)?
+                    .visit_field::<bool>("is_failed", Self::VT_IS_FAILED, false)?
+                    .visit_field::<bool>(
+                        "is_terminal_success",
+                        Self::VT_IS_TERMINAL_SUCCESS,
+                        false,
+                    )?
+                    .visit_field::<bool>("can_cancel", Self::VT_CAN_CANCEL, false)?
+                    .visit_field::<bool>("has_progress_code", Self::VT_HAS_PROGRESS_CODE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "progress_code",
+                        Self::VT_PROGRESS_CODE,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct BunkerHandshakeArgs<'a> {
+            pub stage: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_message: bool,
+            pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub is_idle: bool,
+            pub is_in_flight: bool,
+            pub is_failed: bool,
+            pub is_terminal_success: bool,
+            pub can_cancel: bool,
+            pub has_progress_code: bool,
+            pub progress_code: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for BunkerHandshakeArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                BunkerHandshakeArgs {
+                    stage: None,
+                    has_message: false,
+                    message: None,
+                    is_idle: false,
+                    is_in_flight: false,
+                    is_failed: false,
+                    is_terminal_success: false,
+                    can_cancel: false,
+                    has_progress_code: false,
+                    progress_code: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn stage(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(BunkerHandshake::VT_STAGE, None)}
-  }
-  #[inline]
-  pub fn has_message(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerHandshake::VT_HAS_MESSAGE, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn message(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(BunkerHandshake::VT_MESSAGE, None)}
-  }
-  #[inline]
-  pub fn is_idle(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerHandshake::VT_IS_IDLE, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_in_flight(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerHandshake::VT_IS_IN_FLIGHT, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_failed(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerHandshake::VT_IS_FAILED, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_terminal_success(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerHandshake::VT_IS_TERMINAL_SUCCESS, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn can_cancel(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerHandshake::VT_CAN_CANCEL, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn has_progress_code(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(BunkerHandshake::VT_HAS_PROGRESS_CODE, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn progress_code(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(BunkerHandshake::VT_PROGRESS_CODE, None)}
-  }
-}
+        pub struct BunkerHandshakeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BunkerHandshakeBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_stage(&mut self, stage: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    BunkerHandshake::VT_STAGE,
+                    stage,
+                );
+            }
+            #[inline]
+            pub fn add_has_message(&mut self, has_message: bool) {
+                self.fbb_
+                    .push_slot::<bool>(BunkerHandshake::VT_HAS_MESSAGE, has_message, false);
+            }
+            #[inline]
+            pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    BunkerHandshake::VT_MESSAGE,
+                    message,
+                );
+            }
+            #[inline]
+            pub fn add_is_idle(&mut self, is_idle: bool) {
+                self.fbb_
+                    .push_slot::<bool>(BunkerHandshake::VT_IS_IDLE, is_idle, false);
+            }
+            #[inline]
+            pub fn add_is_in_flight(&mut self, is_in_flight: bool) {
+                self.fbb_
+                    .push_slot::<bool>(BunkerHandshake::VT_IS_IN_FLIGHT, is_in_flight, false);
+            }
+            #[inline]
+            pub fn add_is_failed(&mut self, is_failed: bool) {
+                self.fbb_
+                    .push_slot::<bool>(BunkerHandshake::VT_IS_FAILED, is_failed, false);
+            }
+            #[inline]
+            pub fn add_is_terminal_success(&mut self, is_terminal_success: bool) {
+                self.fbb_.push_slot::<bool>(
+                    BunkerHandshake::VT_IS_TERMINAL_SUCCESS,
+                    is_terminal_success,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_can_cancel(&mut self, can_cancel: bool) {
+                self.fbb_
+                    .push_slot::<bool>(BunkerHandshake::VT_CAN_CANCEL, can_cancel, false);
+            }
+            #[inline]
+            pub fn add_has_progress_code(&mut self, has_progress_code: bool) {
+                self.fbb_.push_slot::<bool>(
+                    BunkerHandshake::VT_HAS_PROGRESS_CODE,
+                    has_progress_code,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_progress_code(&mut self, progress_code: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    BunkerHandshake::VT_PROGRESS_CODE,
+                    progress_code,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> BunkerHandshakeBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                BunkerHandshakeBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<BunkerHandshake<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for BunkerHandshake<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("stage", Self::VT_STAGE, false)?
-     .visit_field::<bool>("has_message", Self::VT_HAS_MESSAGE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
-     .visit_field::<bool>("is_idle", Self::VT_IS_IDLE, false)?
-     .visit_field::<bool>("is_in_flight", Self::VT_IS_IN_FLIGHT, false)?
-     .visit_field::<bool>("is_failed", Self::VT_IS_FAILED, false)?
-     .visit_field::<bool>("is_terminal_success", Self::VT_IS_TERMINAL_SUCCESS, false)?
-     .visit_field::<bool>("can_cancel", Self::VT_CAN_CANCEL, false)?
-     .visit_field::<bool>("has_progress_code", Self::VT_HAS_PROGRESS_CODE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("progress_code", Self::VT_PROGRESS_CODE, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct BunkerHandshakeArgs<'a> {
-    pub stage: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_message: bool,
-    pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub is_idle: bool,
-    pub is_in_flight: bool,
-    pub is_failed: bool,
-    pub is_terminal_success: bool,
-    pub can_cancel: bool,
-    pub has_progress_code: bool,
-    pub progress_code: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for BunkerHandshakeArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    BunkerHandshakeArgs {
-      stage: None,
-      has_message: false,
-      message: None,
-      is_idle: false,
-      is_in_flight: false,
-      is_failed: false,
-      is_terminal_success: false,
-      can_cancel: false,
-      has_progress_code: false,
-      progress_code: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for BunkerHandshake<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("BunkerHandshake");
+                ds.field("stage", &self.stage());
+                ds.field("has_message", &self.has_message());
+                ds.field("message", &self.message());
+                ds.field("is_idle", &self.is_idle());
+                ds.field("is_in_flight", &self.is_in_flight());
+                ds.field("is_failed", &self.is_failed());
+                ds.field("is_terminal_success", &self.is_terminal_success());
+                ds.field("can_cancel", &self.can_cancel());
+                ds.field("has_progress_code", &self.has_progress_code());
+                ds.field("progress_code", &self.progress_code());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `BunkerHandshake`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_bunker_handshake_unchecked`.
+        pub fn root_as_bunker_handshake(
+            buf: &[u8],
+        ) -> Result<BunkerHandshake<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<BunkerHandshake>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `BunkerHandshake` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_bunker_handshake_unchecked`.
+        pub fn size_prefixed_root_as_bunker_handshake(
+            buf: &[u8],
+        ) -> Result<BunkerHandshake<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<BunkerHandshake>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `BunkerHandshake` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_bunker_handshake_unchecked`.
+        pub fn root_as_bunker_handshake_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<BunkerHandshake<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<BunkerHandshake<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `BunkerHandshake` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_bunker_handshake_unchecked`.
+        pub fn size_prefixed_root_as_bunker_handshake_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<BunkerHandshake<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<BunkerHandshake<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a BunkerHandshake and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `BunkerHandshake`.
+        pub unsafe fn root_as_bunker_handshake_unchecked(buf: &[u8]) -> BunkerHandshake<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<BunkerHandshake>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed BunkerHandshake and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `BunkerHandshake`.
+        pub unsafe fn size_prefixed_root_as_bunker_handshake_unchecked(
+            buf: &[u8],
+        ) -> BunkerHandshake<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<BunkerHandshake>(buf) }
+        }
+        pub const BUNKER_HANDSHAKE_IDENTIFIER: &str = "KBHS";
 
-pub struct BunkerHandshakeBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> BunkerHandshakeBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_stage(&mut self, stage: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(BunkerHandshake::VT_STAGE, stage);
-  }
-  #[inline]
-  pub fn add_has_message(&mut self, has_message: bool) {
-    self.fbb_.push_slot::<bool>(BunkerHandshake::VT_HAS_MESSAGE, has_message, false);
-  }
-  #[inline]
-  pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(BunkerHandshake::VT_MESSAGE, message);
-  }
-  #[inline]
-  pub fn add_is_idle(&mut self, is_idle: bool) {
-    self.fbb_.push_slot::<bool>(BunkerHandshake::VT_IS_IDLE, is_idle, false);
-  }
-  #[inline]
-  pub fn add_is_in_flight(&mut self, is_in_flight: bool) {
-    self.fbb_.push_slot::<bool>(BunkerHandshake::VT_IS_IN_FLIGHT, is_in_flight, false);
-  }
-  #[inline]
-  pub fn add_is_failed(&mut self, is_failed: bool) {
-    self.fbb_.push_slot::<bool>(BunkerHandshake::VT_IS_FAILED, is_failed, false);
-  }
-  #[inline]
-  pub fn add_is_terminal_success(&mut self, is_terminal_success: bool) {
-    self.fbb_.push_slot::<bool>(BunkerHandshake::VT_IS_TERMINAL_SUCCESS, is_terminal_success, false);
-  }
-  #[inline]
-  pub fn add_can_cancel(&mut self, can_cancel: bool) {
-    self.fbb_.push_slot::<bool>(BunkerHandshake::VT_CAN_CANCEL, can_cancel, false);
-  }
-  #[inline]
-  pub fn add_has_progress_code(&mut self, has_progress_code: bool) {
-    self.fbb_.push_slot::<bool>(BunkerHandshake::VT_HAS_PROGRESS_CODE, has_progress_code, false);
-  }
-  #[inline]
-  pub fn add_progress_code(&mut self, progress_code: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(BunkerHandshake::VT_PROGRESS_CODE, progress_code);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> BunkerHandshakeBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    BunkerHandshakeBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<BunkerHandshake<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn bunker_handshake_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, BUNKER_HANDSHAKE_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for BunkerHandshake<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("BunkerHandshake");
-      ds.field("stage", &self.stage());
-      ds.field("has_message", &self.has_message());
-      ds.field("message", &self.message());
-      ds.field("is_idle", &self.is_idle());
-      ds.field("is_in_flight", &self.is_in_flight());
-      ds.field("is_failed", &self.is_failed());
-      ds.field("is_terminal_success", &self.is_terminal_success());
-      ds.field("can_cancel", &self.can_cancel());
-      ds.field("has_progress_code", &self.has_progress_code());
-      ds.field("progress_code", &self.progress_code());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `BunkerHandshake`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_bunker_handshake_unchecked`.
-pub fn root_as_bunker_handshake(buf: &[u8]) -> Result<BunkerHandshake<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<BunkerHandshake>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `BunkerHandshake` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_bunker_handshake_unchecked`.
-pub fn size_prefixed_root_as_bunker_handshake(buf: &[u8]) -> Result<BunkerHandshake<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<BunkerHandshake>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `BunkerHandshake` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_bunker_handshake_unchecked`.
-pub fn root_as_bunker_handshake_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<BunkerHandshake<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<BunkerHandshake<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `BunkerHandshake` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_bunker_handshake_unchecked`.
-pub fn size_prefixed_root_as_bunker_handshake_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<BunkerHandshake<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<BunkerHandshake<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a BunkerHandshake and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `BunkerHandshake`.
-pub unsafe fn root_as_bunker_handshake_unchecked(buf: &[u8]) -> BunkerHandshake<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<BunkerHandshake>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed BunkerHandshake and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `BunkerHandshake`.
-pub unsafe fn size_prefixed_root_as_bunker_handshake_unchecked(buf: &[u8]) -> BunkerHandshake<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<BunkerHandshake>(buf) }
-}
-pub const BUNKER_HANDSHAKE_IDENTIFIER: &str = "KBHS";
+        #[inline]
+        pub fn bunker_handshake_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, BUNKER_HANDSHAKE_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn bunker_handshake_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, BUNKER_HANDSHAKE_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_bunker_handshake_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<BunkerHandshake<'a>>,
+        ) {
+            fbb.finish(root, Some(BUNKER_HANDSHAKE_IDENTIFIER));
+        }
 
-#[inline]
-pub fn bunker_handshake_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, BUNKER_HANDSHAKE_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_bunker_handshake_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<BunkerHandshake<'a>>) {
-  fbb.finish(root, Some(BUNKER_HANDSHAKE_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_bunker_handshake_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<BunkerHandshake<'a>>) {
-  fbb.finish_size_prefixed(root, Some(BUNKER_HANDSHAKE_IDENTIFIER));
-}
-}  // pub mod kernel
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_bunker_handshake_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<BunkerHandshake<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(BUNKER_HANDSHAKE_IDENTIFIER));
+        }
+    } // pub mod kernel
+} // pub mod nmp

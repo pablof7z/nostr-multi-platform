@@ -50,11 +50,11 @@ pub(super) fn withdraw_interest(
         .lifecycle_mut()
         .registry_mut()
         .drop_slot_by_key(key);
-    ctx.kernel.lifecycle_mut().enqueue_trigger(
-        crate::subs::CompileTrigger::InvalidateCompile {
+    ctx.kernel
+        .lifecycle_mut()
+        .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
             reason: crate::subs::InvalidateReason::External("withdraw-interest".to_string()),
-        },
-    );
+        });
     Some(Vec::new())
 }
 
@@ -90,9 +90,7 @@ pub(super) fn drop_interest_owner(
     if removed {
         ctx.kernel.lifecycle_mut().enqueue_trigger(
             crate::subs::CompileTrigger::InvalidateCompile {
-                reason: crate::subs::InvalidateReason::External(
-                    "drop-interest-owner".to_string(),
-                ),
+                reason: crate::subs::InvalidateReason::External("drop-interest-owner".to_string()),
             },
         );
     }
@@ -142,8 +140,7 @@ pub(super) fn open_interest(
     // ensure_sub + CompileTrigger body as the `EnsureInterest` arm.
     // D6: a malformed filter is a silent no-op (the FFI shim already
     // surfaced a toast before sending — see `nmp_app_open_interest`).
-    if let Some((identity, interest)) =
-        build_open_interest(&filter_json, &consumer_id, scope, None)
+    if let Some((identity, interest)) = build_open_interest(&filter_json, &consumer_id, scope, None)
     {
         let _ = ctx.kernel.open_interest_sub(identity, interest);
     }
@@ -237,11 +234,8 @@ pub(super) fn ingest_pre_verified_events_for_sub_id(
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     for verified in events {
-        ctx.kernel.ingest_pre_verified_event(
-            crate::relay::RelayRole::Content,
-            &sub_id,
-            verified,
-        );
+        ctx.kernel
+            .ingest_pre_verified_event(crate::relay::RelayRole::Content, &sub_id, verified);
     }
     ctx.kernel.sort_timeline_deferred();
     maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -269,24 +263,46 @@ pub(super) fn dispatch(
     match cmd {
         InterestsCommand::PushInterest(interest) => push_interest(interest, ctx),
         InterestsCommand::WithdrawInterest(id) => withdraw_interest(id, ctx),
-        InterestsCommand::EnsureInterest { identity, interest } =>
-            ensure_interest(identity, interest, ctx),
+        InterestsCommand::EnsureInterest { identity, interest } => {
+            ensure_interest(identity, interest, ctx)
+        }
         InterestsCommand::DropInterestOwner(identity) => drop_interest_owner(identity, ctx),
         InterestsCommand::OpenPullCursor { handle, spec } => open_pull_cursor(handle, spec, ctx),
-        InterestsCommand::AdvancePullCursor { cursor_id, after_seq } =>
-            advance_pull_cursor(cursor_id, after_seq, ctx),
-        InterestsCommand::UnregisterPullCursor { cursor_id } =>
-            unregister_pull_cursor(cursor_id, ctx),
-        InterestsCommand::OpenInterest { filter_json, consumer_id, scope } =>
-            open_interest(filter_json, consumer_id, scope, ctx),
+        InterestsCommand::AdvancePullCursor {
+            cursor_id,
+            after_seq,
+        } => advance_pull_cursor(cursor_id, after_seq, ctx),
+        InterestsCommand::UnregisterPullCursor { cursor_id } => {
+            unregister_pull_cursor(cursor_id, ctx)
+        }
+        InterestsCommand::OpenInterest {
+            filter_json,
+            consumer_id,
+            scope,
+        } => open_interest(filter_json, consumer_id, scope, ctx),
         InterestsCommand::OpenObservedInterest {
-            filter_json, consumer_id, scope, relay_pin,
-            observer_id, replay_shapes, replay_limit,
+            filter_json,
+            consumer_id,
+            scope,
+            relay_pin,
+            observer_id,
+            replay_shapes,
+            replay_limit,
         } => open_observed_interest(
-            filter_json, consumer_id, scope, relay_pin,
-            observer_id, replay_shapes, replay_limit, ctx,
+            filter_json,
+            consumer_id,
+            scope,
+            relay_pin,
+            observer_id,
+            replay_shapes,
+            replay_limit,
+            ctx,
         ),
-        InterestsCommand::CloseInterest { filter_json, consumer_id, scope, relay_pin } =>
-            close_interest(filter_json, consumer_id, scope, relay_pin, ctx),
+        InterestsCommand::CloseInterest {
+            filter_json,
+            consumer_id,
+            scope,
+            relay_pin,
+        } => close_interest(filter_json, consumer_id, scope, relay_pin, ctx),
     }
 }

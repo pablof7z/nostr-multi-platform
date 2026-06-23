@@ -33,9 +33,8 @@
 
 use std::fmt;
 
+use crate::actor::{ActionLedgerCommand, ActorCommand, InterestsCommand, PublishCommand};
 use crate::relay::OutboundMessage;
-use crate::actor::ActorCommand;
-use crate::actor::{ActionLedgerCommand, InterestsCommand, PublishCommand};
 
 #[path = "protocol/command_error.rs"]
 mod command_error;

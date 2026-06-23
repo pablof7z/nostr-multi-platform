@@ -6,8 +6,8 @@
 //! ceiling). Split out of `tick.rs` to keep that file within its LOC ceiling.
 
 use super::{clamp_emit_hz, EMIT_HZ_MAX};
+use crate::actor::LifecycleCommand;
 use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
-use crate::actor::{LifecycleCommand};
 use crate::update_envelope::UpdateFrameBytes;
 use std::sync::mpsc;
 use std::thread;
@@ -19,7 +19,10 @@ use std::time::Duration;
 fn clamp_emit_hz_passthrough_at_ceiling() {
     let (hz, clamped) = clamp_emit_hz(EMIT_HZ_MAX);
     assert_eq!(hz, EMIT_HZ_MAX);
-    assert!(!clamped, "value equal to ceiling must not be flagged as clamped");
+    assert!(
+        !clamped,
+        "value equal to ceiling must not be flagged as clamped"
+    );
 
     let (hz_low, clamped_low) = clamp_emit_hz(4);
     assert_eq!(hz_low, 4);

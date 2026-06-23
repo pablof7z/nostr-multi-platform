@@ -92,7 +92,11 @@ fn start_publish_action_returns_minted_correlation_id_not_event_id() {
         id, event_id,
         "the correlation_id must NOT be the event id — identity is not output data"
     );
-    assert_eq!(id.len(), 32, "minted correlation_id is 32-hex, not the 64-hex event id");
+    assert_eq!(
+        id.len(),
+        32,
+        "minted correlation_id is 32-hex, not the 64-hex event id"
+    );
     assert!(
         id.chars().all(|c| c.is_ascii_hexdigit()),
         "minted correlation_id should be hex: {id}"
@@ -446,11 +450,15 @@ fn panicking_validator_is_rejected_not_unwound() {
     impl ActionModule for PanickingStartModule {
         const NAMESPACE: &'static str = "host.boom_start"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
-        fn start(&self, _ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
+        fn start(
+            &self,
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
             panic!("buggy module validator");
         }
         fn execute(
-        &self,
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -488,11 +496,15 @@ fn panicking_executor_returns_err_not_unwound() {
     impl ActionModule for PanickingExecuteModule {
         const NAMESPACE: &'static str = "host.boom"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
-        fn start(&self, _ctx: &mut ActionContext, _action: Self::Action) -> Result<(), ActionRejection> {
+        fn start(
+            &self,
+            _ctx: &mut ActionContext,
+            _action: Self::Action,
+        ) -> Result<(), ActionRejection> {
             Ok(())
         }
         fn execute(
-        &self,
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -571,7 +583,7 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: &'static str = "nmp.test.adr0049.ns";
         fn execute(
-        &self,
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -585,7 +597,7 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: &'static str = "nmp.test.adr0049.ns";
         fn execute(
-        &self,
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -601,7 +613,7 @@ mod adr_0049_yield {
         type Action = serde_json::Value;
         const NAMESPACE: &'static str = "nmp.test.adr0049.other";
         fn execute(
-        &self,
+            &self,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -709,5 +721,4 @@ mod adr_0049_yield {
         assert!(registry.contains("nmp.test.adr0049.ns"));
         assert!(registry.contains("nmp.test.adr0049.other"));
     }
-
 }

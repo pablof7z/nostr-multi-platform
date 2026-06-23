@@ -13,7 +13,7 @@ use std::sync::Mutex;
 
 use super::*;
 use crate::actor::ActorCommand;
-use crate::actor::{InterestsCommand};
+use crate::actor::InterestsCommand;
 use crate::planner::{InterestId, InterestLifecycle};
 use crate::substrate::{ActionContext, ActionModule, ActionRejection};
 
@@ -21,10 +21,11 @@ use crate::substrate::{ActionContext, ActionModule, ActionRejection};
 
 fn capture_commands(action: BrowseRelayAction) -> Vec<ActorCommand> {
     let captured = Mutex::new(Vec::new());
-    BrowseRelayModule.execute(action, "test-corr", &|cmd| {
-        captured.lock().unwrap().push(cmd);
-    })
-    .expect("execute must not fail for valid actions");
+    BrowseRelayModule
+        .execute(action, "test-corr", &|cmd| {
+            captured.lock().unwrap().push(cmd);
+        })
+        .expect("execute must not fail for valid actions");
     captured.into_inner().unwrap()
 }
 

@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 
 use super::nip46_onboarding_typed;
 use crate::actor::commands::{new_bunker_handshake_slot, BunkerHandshakeDto, BunkerHandshakeSlot};
-use crate::actor::{LifecycleCommand};
+use crate::actor::LifecycleCommand;
 use crate::projection_emission::{FrameIdentity, TypedProjectionEmissionState};
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -70,7 +70,9 @@ fn tick(
 #[test]
 fn nip46_onboarding_a1_first_tick_always_emits() {
     let slot = new_bunker_handshake_slot(); // idle
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -83,7 +85,9 @@ fn nip46_onboarding_a1_first_tick_always_emits() {
 #[test]
 fn nip46_onboarding_a2_stage_transition_emits() {
     let slot = new_bunker_handshake_slot();
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -100,7 +104,9 @@ fn nip46_onboarding_a2_stage_transition_emits() {
 fn nip46_onboarding_a3_return_to_idle_emits() {
     let slot = new_bunker_handshake_slot();
     set_stage(&slot, "connecting", None);
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -118,7 +124,9 @@ fn nip46_onboarding_a3_return_to_idle_emits() {
 fn nip46_onboarding_b1_idle_tick_omits() {
     let slot = new_bunker_handshake_slot();
     set_stage(&slot, "connecting", Some("wss://relay.example"));
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -136,7 +144,9 @@ fn nip46_onboarding_b1_idle_tick_omits() {
 #[test]
 fn nip46_onboarding_b2_multiple_idle_ticks_omit() {
     let slot = new_bunker_handshake_slot(); // idle, stable
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -169,7 +179,9 @@ fn nip46_onboarding_b2_multiple_idle_ticks_omit() {
 fn nip46_onboarding_c1_freeze_guard_session_id_change_forces_baseline() {
     let slot = new_bunker_handshake_slot();
     set_stage(&slot, "connecting", Some("wss://relay.example"));
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
@@ -198,15 +210,14 @@ fn nip46_onboarding_c1_freeze_guard_session_id_change_forces_baseline() {
 #[test]
 fn nip46_onboarding_c2_freeze_guard_epoch_change_identical_bytes_forces_baseline() {
     let slot = new_bunker_handshake_slot(); // idle
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_on())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_on(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 
     tick(&slot, &state, &sid, &epoch); // idle baseline
-    assert!(
-        tick(&slot, &state, &sid, &epoch).is_none(),
-        "idle omits"
-    );
+    assert!(tick(&slot, &state, &sid, &epoch).is_none(), "idle omits");
 
     // Account switch: epoch bumps; the new account is also idle (same bytes).
     epoch.store(1, Ordering::Release);
@@ -225,7 +236,9 @@ fn nip46_onboarding_c2_freeze_guard_epoch_change_identical_bytes_forces_baseline
 fn nip46_onboarding_d1_capability_off_always_emits() {
     let slot = new_bunker_handshake_slot();
     set_stage(&slot, "connecting", Some("wss://relay.example"));
-    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(capability_off())));
+    let state = Arc::new(Mutex::new(TypedProjectionEmissionState::new(
+        capability_off(),
+    )));
     let sid = Arc::new(AtomicU64::new(1_000));
     let epoch = Arc::new(AtomicU64::new(0));
 

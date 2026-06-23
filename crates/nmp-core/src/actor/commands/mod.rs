@@ -95,8 +95,8 @@ pub(super) mod identity_command;
 pub(super) mod interests_command;
 pub(super) mod lifecycle_command;
 pub(super) mod publish_command;
-pub(super) mod relay_command;
 pub(super) mod refs_command;
+pub(super) mod relay_command;
 pub(super) mod sign_command;
 #[cfg(any(test, feature = "test-support"))]
 pub(super) mod test_support_command;
@@ -243,9 +243,8 @@ pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEvent
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
-    clear_active_follows_feed, declare_active_follows_feed, follow, follow_many,
-    publish_profile, publish_signed_event, publish_unsigned_event,
-    publish_unsigned_event_to_relays,
+    clear_active_follows_feed, declare_active_follows_feed, follow, follow_many, publish_profile,
+    publish_signed_event, publish_unsigned_event, publish_unsigned_event_to_relays,
 };
 // V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
 // LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`

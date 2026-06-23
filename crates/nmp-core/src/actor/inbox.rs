@@ -29,7 +29,7 @@ use std::sync::mpsc::{Receiver, RecvTimeoutError, SendError, Sender, TryRecvErro
 #[cfg(feature = "native")]
 use super::fairness::{CommandDrain, COMMAND_DRAIN_BUDGET};
 use super::ActorCommand;
-use super::{LifecycleCommand};
+use super::LifecycleCommand;
 #[cfg(feature = "native")]
 use nmp_network::pool::PoolEvent;
 
@@ -435,7 +435,11 @@ impl MailScheduler {
     /// `wait` is `Duration::ZERO` when more backlog work remains (the caller
     /// passes a zero wait so a full backlog keeps draining promptly without ever
     /// skipping the `recv_timeout` call), otherwise the computed compute-wait.
-    pub(super) fn next_after_drain(&mut self, inbox: &Inbox, wait: std::time::Duration) -> LoopStep {
+    pub(super) fn next_after_drain(
+        &mut self,
+        inbox: &Inbox,
+        wait: std::time::Duration,
+    ) -> LoopStep {
         match inbox.recv_timeout(wait) {
             Ok(ActorMail::Command(cmd)) => LoopStep::Command(cmd),
             Ok(ActorMail::Relay(event)) => LoopStep::Relay(event),

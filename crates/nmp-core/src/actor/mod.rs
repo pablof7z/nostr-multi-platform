@@ -327,12 +327,12 @@ pub use relay_roles::nostrconnect_relay_url;
 // are re-exported here so existing `use crate::actor::ActorCommand` /
 // `use crate::SignerSource` paths keep working.
 mod actor_command;
-pub use actor_command::{
-    ActionLedgerCommand, ActorCommand, ContactsCommand, IdentityCommand, InterestsCommand,
-    LifecycleCommand, PublishCommand, RelayCommand, RefsCommand, SignCommand,
-};
 #[cfg(any(test, feature = "test-support"))]
 pub use actor_command::TestSupportCommand;
+pub use actor_command::{
+    ActionLedgerCommand, ActorCommand, ContactsCommand, IdentityCommand, InterestsCommand,
+    LifecycleCommand, PublishCommand, RefsCommand, RelayCommand, SignCommand,
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // V-01 Phase 1c: the actor runtime — per-URL relay handles, the public

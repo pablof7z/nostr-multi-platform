@@ -143,8 +143,7 @@ pub(super) fn last_published_event_json(
         .rev()
         .find(|m| m.text.starts_with("[\"EVENT\""))
         .expect("at least one EVENT frame");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&frame.text).expect("EVENT frame is JSON");
+    let parsed: serde_json::Value = serde_json::from_str(&frame.text).expect("EVENT frame is JSON");
     parsed
         .as_array()
         .and_then(|arr| arr.get(1).cloned())
@@ -188,10 +187,7 @@ pub(super) fn seed_contact_list(kernel: &mut Kernel, author: &str, follows: &[&s
 
 /// Produce a genuine flat NIP-01 JSON for a real signed event over `id`'s
 /// active keys (kind:30023 article — generic, kind-agnostic).
-pub(super) fn signed_nip01_json(
-    id: &IdentityRuntime,
-    content: &str,
-) -> (String, String, String) {
+pub(super) fn signed_nip01_json(id: &IdentityRuntime, content: &str) -> (String, String, String) {
     let unsigned = crate::substrate::UnsignedEvent {
         pubkey: String::new(), // ignored by signer
         kind: 30023,
@@ -257,12 +253,12 @@ pub(super) fn signed_kind_1059_raw(id: &IdentityRuntime) -> crate::store::RawEve
 
 // ── sub-module declarations ───────────────────────────────────────────────────
 
+mod follow_relay_profile;
 mod identity_account;
-mod publish_unsigned;
 mod publish_signed;
 mod publish_signed_d10;
+mod publish_unsigned;
 mod publish_unsigned_to;
-mod follow_relay_profile;
 mod snapshot_lifecycle;
 
 // Issue #1246 kind:3 full-edit follow tests — separate sibling file so each

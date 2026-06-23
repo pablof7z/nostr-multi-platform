@@ -4,10 +4,10 @@
 //! The actor reaches NIP-44 through the same trait it uses for `sign()`.
 //! These tests pin the new methods on the trait object via `StubRemoteSigner`.
 
-use nostr::{Keys, SecretKey};
 use nostr::nips::nip19::FromBech32;
+use nostr::{Keys, SecretKey};
 
-use super::{StubRemoteSigner, TEST_NSEC, stub_signer};
+use super::{stub_signer, StubRemoteSigner, TEST_NSEC};
 use crate::remote_signer::RemoteSignerHandle;
 
 // ──────────────────────────────────────────────────────────────────────────

@@ -418,8 +418,7 @@ pub mod __ffi_internal {
 /// thread to spawn and no harness handlers to drive.
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub mod testing {
-    pub use crate::actor::{run_actor, ActorCommand};
-    pub use crate::actor::TestSupportCommand;
+    pub use crate::actor::{run_actor, ActorCommand, TestSupportCommand};
     pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED, PROCESS_STORE_LRU_EVICTED};
     pub use crate::store::{RawEvent, VerifiedEvent}; // ADR-0055 churn
 
@@ -471,7 +470,6 @@ pub mod testing {
         mpsc::Receiver<crate::update_envelope::UpdateFrameBytes>,
     ) {
         use crate::actor::{run_actor_with_observers, ActorChannels, ActorConfigSources, ActorRuntimeSlots};
-use crate::actor::{LifecycleCommand, TestSupportCommand};
         use crate::slots::new_storage_path_slot;
         use std::sync::{atomic::AtomicU64, Arc, Mutex};
 

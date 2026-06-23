@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use super::{
     new_bunker_handshake_slot, new_capability_callback_slot, new_event_observer_slot,
-    new_lifecycle_observer_slot, new_signer_state_slot, ActorChannels,
-    ActorConfigSources, ActorMail, ActorRuntimeSlots, CommandSender, LifecycleObserverSlot,
+    new_lifecycle_observer_slot, new_signer_state_slot, ActorChannels, ActorConfigSources,
+    ActorMail, ActorRuntimeSlots, CommandSender, LifecycleObserverSlot,
 };
 
 /// Backwards-compatible entry point: spawn the actor without a lifecycle

@@ -32,8 +32,8 @@ use nostr::{EventBuilder, Keys, SecretKey, Timestamp};
 use super::commands::{self, IdentityRuntime};
 use super::pending_sign::{resolve_parked_op, ParkedOpSink};
 use super::signer_port_test_harness::dispatch_one;
+use super::SignCommand;
 use super::{ActorCommand, SignContinuation};
-use super::{SignCommand};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::remote_signer::RemoteSignerHandle;
@@ -159,7 +159,6 @@ impl RemoteSignerHandle for PendingRemoteSigner {
 
     fn deliver_response(&self, _response_json: &str) {}
 }
-
 
 fn fresh_identity() -> IdentityRuntime {
     IdentityRuntime::new(
@@ -395,7 +394,10 @@ fn bunker_backend_parks_then_drain_invokes_continuation_with_signed_event() {
     // First drain tick resolves it: the SAME continuation runs, now from the
     // idle-loop drain (not inline) — the worker code path is identical.
     let drained = resolve_parked_op(&mut parked[0], &mut kernel);
-    assert!(!drained.keep, "a resolved op is dropped from the parked queue");
+    assert!(
+        !drained.keep,
+        "a resolved op is dropped from the parked queue"
+    );
 
     let outcome = captured
         .lock()
@@ -516,10 +518,8 @@ fn sign_event_for_return_named_roster_key_keeps_its_own_budget() {
 
     // Active account: a 5s-budget bunker (NIP-46-style). Pending sign so any
     // accidental routing-through-active would park with the 5s deadline.
-    let active = PendingRemoteSigner::with_op_timeout(
-        Keys::generate(),
-        std::time::Duration::from_secs(5),
-    );
+    let active =
+        PendingRemoteSigner::with_op_timeout(Keys::generate(), std::time::Duration::from_secs(5));
     commands::add_signer(
         &mut identity,
         &mut kernel,
@@ -529,10 +529,8 @@ fn sign_event_for_return_named_roster_key_keeps_its_own_budget() {
     );
 
     // A SECOND, non-active roster key: a 90s-budget signer (NIP-55-style).
-    let named = PendingRemoteSigner::with_op_timeout(
-        Keys::generate(),
-        std::time::Duration::from_secs(90),
-    );
+    let named =
+        PendingRemoteSigner::with_op_timeout(Keys::generate(), std::time::Duration::from_secs(90));
     let named_pk = named.pubkey_hex();
     commands::add_signer(
         &mut identity,

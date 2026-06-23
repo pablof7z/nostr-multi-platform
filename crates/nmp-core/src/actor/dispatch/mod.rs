@@ -37,13 +37,13 @@ use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
 use super::pending_sign::ParkedSignerOps;
 use super::signer_port_dispatch;
 use super::tick::maybe_emit_after_dispatch;
-use super::{
-    ActionLedgerCommand, ActorCommand, ActorConfig, ContactsCommand, IdentityCommand,
-    InterestsCommand, LifecycleCommand, PublishCommand, RelayCommand, RefsCommand, RelayControl,
-    SignCommand,
-};
 #[cfg(any(test, feature = "test-support"))]
 use super::TestSupportCommand;
+use super::{
+    ActionLedgerCommand, ActorCommand, ActorConfig, ContactsCommand, IdentityCommand,
+    InterestsCommand, LifecycleCommand, PublishCommand, RefsCommand, RelayCommand, RelayControl,
+    SignCommand,
+};
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
 
@@ -140,12 +140,12 @@ pub(super) fn dispatch_command(
         ActorCommand::Lifecycle(cmd) => cmd_lifecycle::dispatch(cmd, ctx),
         ActorCommand::Identity(cmd) => cmd_identity::dispatch(cmd, ctx),
         ActorCommand::Sign(cmd) => dispatch_sign(cmd, ctx),
-        ActorCommand::Publish(cmd) => cmd_publish::dispatch_publish(cmd, ctx),
-        ActorCommand::Contacts(cmd) => cmd_publish::dispatch_contacts(cmd, ctx),
-        ActorCommand::Relay(cmd) => cmd_publish::dispatch_relay(cmd, ctx),
+        ActorCommand::Publish(cmd) => dispatch_publish(cmd, ctx),
+        ActorCommand::Contacts(cmd) => dispatch_contacts(cmd, ctx),
+        ActorCommand::Relay(cmd) => dispatch_relay(cmd, ctx),
         ActorCommand::Refs(cmd) => dispatch_refs(cmd, ctx),
         ActorCommand::Interests(cmd) => cmd_interests::dispatch(cmd, ctx),
-        ActorCommand::ActionLedger(cmd) => cmd_publish::dispatch_action_ledger(cmd, ctx),
+        ActorCommand::ActionLedger(cmd) => dispatch_action_ledger(cmd, ctx),
         ActorCommand::Protocol(cmd) => cmd_protocol::protocol(cmd, ctx),
         ActorCommand::Kernel(action) => {
             let _ = dispatch_kernel_action(ctx.kernel, action);
@@ -176,17 +176,38 @@ fn dispatch_sign(cmd: SignCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<Out
             account_pubkey,
             unsigned_json,
             correlation_id,
-        } => cmd_identity::sign_event_for_return(account_pubkey, unsigned_json, correlation_id, ctx),
-        SignCommand::EventForAccount { unsigned, signer_pubkey, continuation } =>
-            signer_port_dispatch::sign_for_account(ctx, &unsigned, signer_pubkey, continuation),
-        SignCommand::Nip44EncryptForAccount { peer_pubkey, plaintext, signer_pubkey, continuation } =>
-            signer_port_dispatch::nip44_encrypt_for_account(
-                ctx, &peer_pubkey, &plaintext, signer_pubkey, continuation,
-            ),
-        SignCommand::Nip44DecryptForAccount { peer_pubkey, ciphertext, signer_pubkey, continuation } =>
-            signer_port_dispatch::nip44_decrypt_for_account(
-                ctx, &peer_pubkey, &ciphertext, signer_pubkey, continuation,
-            ),
+        } => {
+            cmd_identity::sign_event_for_return(account_pubkey, unsigned_json, correlation_id, ctx)
+        }
+        SignCommand::EventForAccount {
+            unsigned,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::sign_for_account(ctx, &unsigned, signer_pubkey, continuation),
+        SignCommand::Nip44EncryptForAccount {
+            peer_pubkey,
+            plaintext,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::nip44_encrypt_for_account(
+            ctx,
+            &peer_pubkey,
+            &plaintext,
+            signer_pubkey,
+            continuation,
+        ),
+        SignCommand::Nip44DecryptForAccount {
+            peer_pubkey,
+            ciphertext,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::nip44_decrypt_for_account(
+            ctx,
+            &peer_pubkey,
+            &ciphertext,
+            signer_pubkey,
+            continuation,
+        ),
     }
 }
 
@@ -194,8 +215,14 @@ fn dispatch_sign(cmd: SignCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<Out
 /// `claim_event` / `release_event` / `resolve_ref` / `release_ref` one-liners.
 fn dispatch_refs(cmd: RefsCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
     match cmd {
-        RefsCommand::ClaimEvent { uri, consumer_id, force } => {
-            let outbound = ctx.kernel.claim_event(uri, consumer_id, ctx.relays_ready, force);
+        RefsCommand::ClaimEvent {
+            uri,
+            consumer_id,
+            force,
+        } => {
+            let outbound = ctx
+                .kernel
+                .claim_event(uri, consumer_id, ctx.relays_ready, force);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
@@ -204,14 +231,26 @@ fn dispatch_refs(cmd: RefsCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<Out
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        RefsCommand::Resolve { namespace, key, consumer_id, shape, liveness, force, hints } => {
-            let outbound = ctx.kernel.resolve_ref(
-                namespace, key, consumer_id, shape, liveness, force, hints,
-            );
+        RefsCommand::Resolve {
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            hints,
+        } => {
+            let outbound =
+                ctx.kernel
+                    .resolve_ref(namespace, key, consumer_id, shape, liveness, force, hints);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
-        RefsCommand::Release { namespace, key, consumer_id } => {
+        RefsCommand::Release {
+            namespace,
+            key,
+            consumer_id,
+        } => {
             let outbound = ctx.kernel.release_ref(namespace, &key, &consumer_id);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
@@ -227,10 +266,14 @@ fn dispatch_test_support(
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     match cmd {
-        TestSupportCommand::IngestPreVerifiedEvents(events) =>
-            cmd_interests::ingest_pre_verified_events(events, ctx),
-        TestSupportCommand::IngestPreVerifiedEventsForSubId { sub_id, events, ack } =>
-            cmd_interests::ingest_pre_verified_events_for_sub_id(sub_id, events, ack, ctx),
+        TestSupportCommand::IngestPreVerifiedEvents(events) => {
+            cmd_interests::ingest_pre_verified_events(events, ctx)
+        }
+        TestSupportCommand::IngestPreVerifiedEventsForSubId {
+            sub_id,
+            events,
+            ack,
+        } => cmd_interests::ingest_pre_verified_events_for_sub_id(sub_id, events, ack, ctx),
         TestSupportCommand::TriggerGcStep { ack } => cmd_interests::trigger_gc_step(ack, ctx),
         TestSupportCommand::Barrier { ack } => {
             let _ = ack.send(());
@@ -239,9 +282,118 @@ fn dispatch_test_support(
     }
 }
 
-// Silence unused-import warnings for family types whose only use is the
-// re-export chain (`pub use` in `actor_command.rs`). The dispatch *handlers*
-// in `cmd_*.rs` name these types directly; this top-level module only matches
-// on them. `#[allow(unused_imports)]` keeps the import list self-documenting.
-#[allow(unused_imports)]
-use super::commands::handle_lifecycle_event as _handle_lifecycle_event_marker;
+// ── ADR-0065 family dispatchers (Publish / Contacts / Relay / ActionLedger) ─
+// Moved here from cmd_publish.rs to keep that file under the 500-LOC ceiling.
+
+/// `PublishCommand` family dispatch.
+fn dispatch_publish(
+    cmd: PublishCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        PublishCommand::RawEvent {
+            kind,
+            tags,
+            content,
+            target,
+            signer_pubkey,
+            correlation_id,
+        } => cmd_publish::publish_raw_event(
+            kind,
+            tags,
+            content,
+            target,
+            signer_pubkey,
+            correlation_id,
+            ctx,
+        ),
+        PublishCommand::Profile {
+            fields,
+            correlation_id,
+        } => cmd_publish::publish_profile(fields, correlation_id, ctx),
+        PublishCommand::UnsignedEvent {
+            event: unsigned,
+            correlation_id,
+            signer_pubkey,
+        } => cmd_publish::publish_unsigned_event(unsigned, correlation_id, signer_pubkey, ctx),
+        PublishCommand::UnsignedEventToRelays {
+            event,
+            relays,
+            correlation_id,
+            signer_pubkey,
+        } => cmd_publish::publish_unsigned_event_to_relays(
+            event,
+            relays,
+            correlation_id,
+            signer_pubkey,
+            ctx,
+        ),
+        PublishCommand::SignedEvent {
+            raw,
+            target,
+            correlation_id,
+        } => cmd_publish::publish_signed_event(raw, target, correlation_id, ctx),
+        PublishCommand::RetryPublish { handle } => cmd_publish::retry_publish(handle, ctx),
+        PublishCommand::CancelPublish { correlation_id } => {
+            cmd_publish::cancel_publish(correlation_id, ctx)
+        }
+    }
+}
+
+/// `ContactsCommand` family dispatch.
+fn dispatch_contacts(
+    cmd: ContactsCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        ContactsCommand::Follow {
+            pubkey,
+            correlation_id,
+        } => cmd_publish::follow_or_unfollow(pubkey, true, correlation_id, ctx),
+        ContactsCommand::Unfollow {
+            pubkey,
+            correlation_id,
+        } => cmd_publish::follow_or_unfollow(pubkey, false, correlation_id, ctx),
+        ContactsCommand::FollowMany {
+            pubkeys,
+            correlation_id,
+        } => cmd_publish::follow_many(pubkeys, correlation_id, ctx),
+        ContactsCommand::DeclareActiveFollowsFeed { acquisition_kinds } => {
+            cmd_publish::declare_active_follows_feed(acquisition_kinds, ctx)
+        }
+        ContactsCommand::ClearActiveFollowsFeed => cmd_publish::clear_active_follows_feed(ctx),
+    }
+}
+
+/// `RelayCommand` family dispatch.
+fn dispatch_relay(cmd: RelayCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        RelayCommand::AddRelay { url, role } => cmd_publish::add_relay(url, role, ctx),
+        RelayCommand::RemoveRelay { url } => cmd_publish::remove_relay(url, ctx),
+        RelayCommand::ReconnectRelays => cmd_publish::reconnect_relays_cmd(ctx),
+        RelayCommand::SetRelayInfo {
+            relay_url,
+            doc_json,
+        } => cmd_publish::set_relay_info(relay_url, doc_json, ctx),
+    }
+}
+
+/// `ActionLedgerCommand` family dispatch.
+fn dispatch_action_ledger(
+    cmd: ActionLedgerCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        ActionLedgerCommand::Ack(correlation_id) => {
+            cmd_publish::ack_action_stage(correlation_id, ctx)
+        }
+        ActionLedgerCommand::RecordFailure {
+            correlation_id,
+            reason,
+        } => cmd_publish::record_action_failure(correlation_id, reason, ctx),
+        ActionLedgerCommand::RecordSuccess {
+            correlation_id,
+            result_json,
+        } => cmd_publish::record_action_success(correlation_id, result_json, ctx),
+    }
+}

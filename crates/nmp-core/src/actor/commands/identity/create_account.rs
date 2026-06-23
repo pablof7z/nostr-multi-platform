@@ -7,7 +7,7 @@ use nostr::Keys;
 
 use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{AppRelay, Kernel};
-use crate::relay::{OutboundMessage, canonical_relay_url};
+use crate::relay::{canonical_relay_url, OutboundMessage};
 use crate::substrate::UnsignedEvent;
 use crate::util::sort_dedup;
 

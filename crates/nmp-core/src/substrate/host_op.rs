@@ -47,11 +47,9 @@
 //! in `Requested` and records nothing — the handler later sends its own
 //! `RecordAction*` command (callback-driven, no polling, D8-safe).
 
-use crate::substrate::protocol::{
-    ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
-};
+use crate::actor::ActionLedgerCommand;
 use crate::actor::ActorCommand;
-use crate::actor::{ActionLedgerCommand};
+use crate::substrate::protocol::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
 
 /// One-shot dispatch of a host-owned op to the per-app
 /// [`HostOpHandler`](crate::substrate::HostOpHandler).
@@ -143,20 +141,24 @@ impl ProtocolCommand for HostOpCommand {
             // Deferred path owns the terminal write; nothing to record now.
         } else if flag("ok") {
             // Host-op success carries no structured result body (D0).
-            ctx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
-                correlation_id,
-                result_json: None,
-            }));
+            ctx.send(ActorCommand::ActionLedger(
+                ActionLedgerCommand::RecordSuccess {
+                    correlation_id,
+                    result_json: None,
+                },
+            ));
         } else {
             let reason = result
                 .get("error")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("host op failed without an error message")
                 .to_string();
-            ctx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
-                correlation_id,
-                reason,
-            }));
+            ctx.send(ActorCommand::ActionLedger(
+                ActionLedgerCommand::RecordFailure {
+                    correlation_id,
+                    reason,
+                },
+            ));
         }
         Ok(())
     }
@@ -189,8 +191,7 @@ mod tests {
         static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
         static WALLET: crate::substrate::NoopWalletKernelAccess =
             crate::substrate::NoopWalletKernelAccess;
-        static ZAP: crate::substrate::NoopZapProfileLookup =
-            crate::substrate::NoopZapProfileLookup;
+        static ZAP: crate::substrate::NoopZapProfileLookup = crate::substrate::NoopZapProfileLookup;
         static DMS: crate::substrate::EmptyDmInboxRelayLookup =
             crate::substrate::EmptyDmInboxRelayLookup;
         let (command_sender, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();

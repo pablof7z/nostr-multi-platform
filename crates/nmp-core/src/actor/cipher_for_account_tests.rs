@@ -129,7 +129,10 @@ impl RemoteSignerHandle for RecordingSigner {
         SignerOp::err(SignerError::Backend("unused".into()))
     }
     fn deliver_response(&self, response_json: &str) {
-        self.delivered.lock().unwrap().push(response_json.to_string());
+        self.delivered
+            .lock()
+            .unwrap()
+            .push(response_json.to_string());
     }
 }
 
@@ -172,7 +175,10 @@ fn local_account_nip44_encrypt_decrypt_round_trips_through_the_port() {
         &mut id_alice,
         &mut kernel,
     );
-    assert!(parked.is_empty(), "a local encrypt resolves Ready — no park");
+    assert!(
+        parked.is_empty(),
+        "a local encrypt resolves Ready — no park"
+    );
     let ciphertext = enc_captured
         .lock()
         .unwrap()
@@ -202,7 +208,10 @@ fn local_account_nip44_encrypt_decrypt_round_trips_through_the_port() {
         &mut id_bob,
         &mut kernel,
     );
-    assert!(parked.is_empty(), "a local decrypt resolves Ready — no park");
+    assert!(
+        parked.is_empty(),
+        "a local decrypt resolves Ready — no park"
+    );
     let plaintext = dec_captured
         .lock()
         .unwrap()
@@ -270,7 +279,10 @@ fn bunker_account_nip44_encrypt_parks_then_drain_invokes_continuation() {
         .unwrap()
         .take()
         .expect("continuation runs from the drain once the broker responds");
-    assert_eq!(got.expect("bunker encrypt succeeds"), "ciphertext-from-bunker");
+    assert_eq!(
+        got.expect("bunker encrypt succeeds"),
+        "ciphertext-from-bunker"
+    );
 }
 
 // ── Oracle 3 — §D4 named-account budget regression ──────────────────────────
@@ -377,7 +389,10 @@ fn deliver_signer_response_fans_out_to_every_remote_handle() {
         &mut identity,
         &mut kernel,
     );
-    assert!(parked.is_empty(), "DeliverSignerResponse parks nothing itself");
+    assert!(
+        parked.is_empty(),
+        "DeliverSignerResponse parks nothing itself"
+    );
 
     // Both registered remote handles received the exact body (each drops a
     // non-matching correlation id internally — the trait contract).

@@ -19,8 +19,8 @@ pub use super::commands::identity_command::IdentityCommand;
 pub use super::commands::interests_command::InterestsCommand;
 pub use super::commands::lifecycle_command::LifecycleCommand;
 pub use super::commands::publish_command::PublishCommand;
-pub use super::commands::relay_command::RelayCommand;
 pub use super::commands::refs_command::RefsCommand;
+pub use super::commands::relay_command::RelayCommand;
 pub use super::commands::sign_command::SignCommand;
 #[cfg(any(test, feature = "test-support"))]
 pub use super::commands::test_support_command::TestSupportCommand;
@@ -75,9 +75,7 @@ pub enum ActorCommand {
     /// sender, not a kernel reference). The actor thread receives this command
     /// and routes it to `kernel.set_last_error_toast` so the error becomes
     /// observable state, never a silent no-op.
-    ShowToast {
-        message: String,
-    },
+    ShowToast { message: String },
     /// D6 + issue #1682 — surface a structured error [`UiToken`] from an
     /// off-actor worker thread (e.g. the NIP-17 gift-wrap publish
     /// continuation), which holds only a `CommandSender`, not a kernel
@@ -85,9 +83,7 @@ pub enum ActorCommand {
     /// writing both the machine `code` (`last_error_category`) and the
     /// English fallback prose (`last_error_toast`) so the shell can render
     /// localized prose.
-    ShowErrorToken {
-        token: crate::ui_token::UiToken,
-    },
+    ShowErrorToken { token: crate::ui_token::UiToken },
     /// Test-support-only actor verbs (cfg-gated). See [`TestSupportCommand`].
     #[cfg(any(test, feature = "test-support"))]
     TestSupport(TestSupportCommand),

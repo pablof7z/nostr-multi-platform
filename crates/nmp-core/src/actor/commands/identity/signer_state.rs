@@ -81,11 +81,7 @@ pub(crate) fn bunker_handshake_progress(
 ///
 /// Called by [`add_signer`]'s [`crate::actor::SignerSource::BunkerUri`] arm
 /// (which has already stashed `make_active` in `pending_bunker_make_active`).
-pub(super) fn start_bunker_handshake(
-    identity: &IdentityRuntime,
-    kernel: &mut Kernel,
-    uri: &str,
-) {
+pub(super) fn start_bunker_handshake(identity: &IdentityRuntime, kernel: &mut Kernel, uri: &str) {
     // Stage 3 of NIP-46 wiring: actor exposes handshake-progress snapshot.
     // Stage 4 of NIP-46 wiring: actor delegates the handshake to the broker
     // hook installed in this app's per-app `bunker_hook` slot (ADR-0052 §D3 —

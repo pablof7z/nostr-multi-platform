@@ -147,7 +147,10 @@ mod tests {
             },
             deadline: Instant::now() - Duration::from_millis(1),
         };
-        assert!(overdue.timed_out(), "a past-deadline publish op is timed out");
+        assert!(
+            overdue.timed_out(),
+            "a past-deadline publish op is timed out"
+        );
     }
 
     // ── SignedEventsProjection sink (was `PendingSignReturn::new`) ────────
@@ -157,8 +160,11 @@ mod tests {
     #[test]
     fn signed_events_projection_sink_shape() {
         let (tx, rx) = mpsc::channel::<Result<SignedEvent, SignerError>>();
-        let parked =
-            ParkedOp::signed_events_projection(SignerOp::Pending(rx), "corr-1".to_string(), fresh_deadline());
+        let parked = ParkedOp::signed_events_projection(
+            SignerOp::Pending(rx),
+            "corr-1".to_string(),
+            fresh_deadline(),
+        );
         assert!(
             matches!(
                 &parked.sink,

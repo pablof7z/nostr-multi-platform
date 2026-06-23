@@ -195,10 +195,19 @@ fn remote_auth_round_trip_authenticates_via_signer_port() {
     // write uses. A remote signer parks (Pending).
     let mut op = sign_with_account_nonblocking(&identity, &signer_pk, &req.unsigned)
         .expect("remote sign op");
-    assert!(op.poll().is_none(), "remote signer parks before broker responds");
+    assert!(
+        op.poll().is_none(),
+        "remote signer parks before broker responds"
+    );
     assert_eq!(sign_count.load(Ordering::Relaxed), 1);
     let deadline = identity.sign_deadline_for(Some(&signer_pk));
-    let mut parked = ParkedOp::auth(op, req.role, req.relay_url.clone(), req.challenge.clone(), deadline);
+    let mut parked = ParkedOp::auth(
+        op,
+        req.role,
+        req.relay_url.clone(),
+        req.challenge.clone(),
+        deadline,
+    );
 
     // Drain BEFORE the broker responds: still pending, no obligation.
     let outcome = resolve_parked_op(&mut parked, &mut kernel);
@@ -228,7 +237,9 @@ fn remote_auth_round_trip_authenticates_via_signer_port() {
     let outcome = resolve_parked_op(&mut parked, &mut kernel);
     assert!(!outcome.keep, "resolved — drop the parked op");
     assert!(outcome.changed, "kernel state changed");
-    let obligation = outcome.auth.expect("an auth obligation re-entered the loop");
+    let obligation = outcome
+        .auth
+        .expect("an auth obligation re-entered the loop");
     let frames = match obligation {
         AuthObligation::Dispatch {
             role,
@@ -246,6 +257,12 @@ fn remote_auth_round_trip_authenticates_via_signer_port() {
     );
     assert_eq!(frames.len(), 1, "one outbound AUTH frame");
     assert_eq!(frames[0].relay_url, RELAY_URL);
-    assert!(frames[0].text.contains("\"AUTH\""), "outbound is a CLIENT-AUTH frame");
-    assert!(frames[0].text.contains(&signed.id), "outbound carries the signed event id");
+    assert!(
+        frames[0].text.contains("\"AUTH\""),
+        "outbound is a CLIENT-AUTH frame"
+    );
+    assert!(
+        frames[0].text.contains(&signed.id),
+        "outbound carries the signed event id"
+    );
 }

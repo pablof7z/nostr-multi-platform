@@ -32,8 +32,7 @@ pub(crate) fn nip44_encrypt_nonblocking(
         return Ok(handle.nip44_encrypt(peer_pubkey, plaintext));
     }
     let keys = local.ok_or_else(|| no_account_error(signer_pubkey))?;
-    let peer =
-        PublicKey::from_hex(peer_pubkey).map_err(|e| format!("invalid peer pubkey: {e}"))?;
+    let peer = PublicKey::from_hex(peer_pubkey).map_err(|e| format!("invalid peer pubkey: {e}"))?;
     match nostr::nips::nip44::encrypt(
         keys.secret_key(),
         &peer,
@@ -60,8 +59,7 @@ pub(crate) fn nip44_decrypt_nonblocking(
         return Ok(handle.nip44_decrypt(peer_pubkey, ciphertext));
     }
     let keys = local.ok_or_else(|| no_account_error(signer_pubkey))?;
-    let peer =
-        PublicKey::from_hex(peer_pubkey).map_err(|e| format!("invalid peer pubkey: {e}"))?;
+    let peer = PublicKey::from_hex(peer_pubkey).map_err(|e| format!("invalid peer pubkey: {e}"))?;
     match nostr::nips::nip44::decrypt(keys.secret_key(), &peer, ciphertext) {
         Ok(plaintext) => Ok(SignerOp::ok(plaintext)),
         Err(e) => Ok(SignerOp::err(SignerError::Backend(format!(

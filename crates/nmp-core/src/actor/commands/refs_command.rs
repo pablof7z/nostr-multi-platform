@@ -26,10 +26,7 @@ pub enum RefsCommand {
     /// pair). On the last consumer's release the `event_claims[primary_id]`
     /// row is removed and `event_claim_requested` is cleared so a re-claim can
     /// re-fetch.
-    ReleaseEvent {
-        uri: String,
-        consumer_id: String,
-    },
+    ReleaseEvent { uri: String, consumer_id: String },
     /// ADR-0063 Lane D/H — unified, origin-blind reference-resolution seam.
     ///
     /// Generalizes the legacy `ClaimEvent` + `ClaimProfile` into one variant.

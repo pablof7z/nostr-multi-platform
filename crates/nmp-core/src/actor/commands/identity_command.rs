@@ -24,7 +24,8 @@ pub enum IdentityCommand {
     /// split. D0: the `RemoteHandle` arm's `Box<dyn RemoteSignerHandle>`
     /// concrete type lives in `nmp-signers`; `nmp-core` sees only the trait
     /// object.
-    #[allow(dead_code)] // live cross-crate constructors in nmp-ffi — per-crate lint false positive
+    #[allow(dead_code)]
+    // live cross-crate constructors in nmp-ffi — per-crate lint false positive
     AddSigner {
         source: SignerSource,
         make_active: bool,
@@ -49,14 +50,10 @@ pub enum IdentityCommand {
     },
     /// T66a identity — switch the active account (synchronous re-bind +
     /// timeline retarget, mirrors `AccountManager::switch_active` semantics).
-    SwitchActive {
-        identity_id: String,
-    },
+    SwitchActive { identity_id: String },
     /// T66a identity — remove an account; clears the active slot if it was
     /// the active one.
-    RemoveAccount {
-        identity_id: String,
-    },
+    RemoveAccount { identity_id: String },
     /// Broker adapter → actor: progress event for the bunker handshake UI.
     /// Actor stores the latest into a kernel snapshot field; the adapter is
     /// the sole writer. Stage `"idle"` clears the projection.

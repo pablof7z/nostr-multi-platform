@@ -12,14 +12,9 @@
 #[derive(Debug)]
 pub enum RelayCommand {
     /// T66a relay edit — add a relay row (role: `read` | `write` | `both`).
-    AddRelay {
-        url: String,
-        role: String,
-    },
+    AddRelay { url: String, role: String },
     /// T66a relay edit — remove a relay row.
-    RemoveRelay {
-        url: String,
-    },
+    RemoveRelay { url: String },
     /// Kernel-side "reconnect all" (#1689): re-dial every disconnected/errored
     /// relay worker in the pool. Host apps drive it after a network change /
     /// app-foreground so the kernel stays the sole driver of transport. See

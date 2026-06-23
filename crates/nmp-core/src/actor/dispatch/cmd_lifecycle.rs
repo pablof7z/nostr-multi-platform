@@ -251,9 +251,15 @@ pub(super) fn dispatch(
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     match cmd {
-        LifecycleCommand::Start { visible_limit, emit_hz: requested_hz, initial_relays } =>
-            start(visible_limit, requested_hz, initial_relays, ctx),
-        LifecycleCommand::Configure { visible_limit, emit_hz: requested_hz } => {
+        LifecycleCommand::Start {
+            visible_limit,
+            emit_hz: requested_hz,
+            initial_relays,
+        } => start(visible_limit, requested_hz, initial_relays, ctx),
+        LifecycleCommand::Configure {
+            visible_limit,
+            emit_hz: requested_hz,
+        } => {
             *ctx.emit_hz = clamp_emit_hz_logged(ctx.kernel, requested_hz, "Configure");
             ctx.kernel.set_visible_limit(visible_limit);
             emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);

@@ -52,21 +52,18 @@ pub(super) fn sign_event_for_return(
         maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
         return Some(Vec::new());
     };
-    let unsigned = match build_unsigned_for_return(
-        &unsigned_json,
-        &signer_pubkey,
-        ctx.kernel.now_secs(),
-    ) {
-        Ok(unsigned) => unsigned,
-        Err(reason) => {
-            ctx.kernel.record_signed_event_return(
-                &correlation_id,
-                Err(format!("invalid unsigned_json: {reason}")),
-            );
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            return Some(Vec::new());
-        }
-    };
+    let unsigned =
+        match build_unsigned_for_return(&unsigned_json, &signer_pubkey, ctx.kernel.now_secs()) {
+            Ok(unsigned) => unsigned,
+            Err(reason) => {
+                ctx.kernel.record_signed_event_return(
+                    &correlation_id,
+                    Err(format!("invalid unsigned_json: {reason}")),
+                );
+                maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+                return Some(Vec::new());
+            }
+        };
     // Non-blocking sign (D8): a local key resolves on the spot; a
     // NIP-46 bunker returns `Pending` and is parked below.
     let sign_result = if account_pubkey.is_empty() {
@@ -81,10 +78,8 @@ pub(super) fn sign_event_for_return(
         }
         Ok(mut op) => match op.poll() {
             Some(Ok(signed)) => {
-                ctx.kernel.record_signed_event_return(
-                    &correlation_id,
-                    Ok(signed_event_to_json(&signed)),
-                );
+                ctx.kernel
+                    .record_signed_event_return(&correlation_id, Ok(signed_event_to_json(&signed)));
             }
             Some(Err(e)) => {
                 ctx.kernel
@@ -275,9 +270,7 @@ pub(super) fn capability_result_ready(
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     if !ctx.identity.contains_account(&account_id) {
-        tracing::trace!(
-            "CapabilityResultReady: dropped result for removed account {account_id}"
-        );
+        tracing::trace!("CapabilityResultReady: dropped result for removed account {account_id}");
         return Some(Vec::new());
     }
     // Decode the outer CapabilityEnvelope and check the inner
@@ -285,10 +278,9 @@ pub(super) fn capability_result_ready(
     // the user sees "keychain write failed" rather than a silent
     // secret-not-persisted bug. Success results are no-ops (the
     // write is already done on the Keychain).
-    let decoded =
-        serde_json::from_str::<crate::substrate::CapabilityEnvelope>(&result_json)
-            .ok()
-            .map(|env| crate::substrate::KeyringIdentityWiring::decode_result(&env));
+    let decoded = serde_json::from_str::<crate::substrate::CapabilityEnvelope>(&result_json)
+        .ok()
+        .map(|env| crate::substrate::KeyringIdentityWiring::decode_result(&env));
     if let Some(result) = decoded {
         use crate::substrate::KeyringStatus;
         match result.status {
@@ -309,12 +301,7 @@ pub(super) fn capability_result_ready(
                     .with_subject(account_id.to_string())
                     .with_detail(format!("{:?}", result.status)),
                 );
-                maybe_emit_after_dispatch(
-                    ctx.kernel,
-                    *ctx.running,
-                    ctx.update_tx,
-                    ctx.last_emit,
-                );
+                maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             }
         }
     }
@@ -328,24 +315,38 @@ pub(super) fn dispatch(
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     match cmd {
-        IdentityCommand::AddSigner { source, make_active } =>
-            add_signer(source, make_active, ctx),
-        IdentityCommand::CreateAccount { profile, relays, initial_follows, mls, make_active } =>
-            create_account(profile, relays, initial_follows, mls, make_active, ctx),
+        IdentityCommand::AddSigner {
+            source,
+            make_active,
+        } => add_signer(source, make_active, ctx),
+        IdentityCommand::CreateAccount {
+            profile,
+            relays,
+            initial_follows,
+            mls,
+            make_active,
+        } => create_account(profile, relays, initial_follows, mls, make_active, ctx),
         IdentityCommand::SwitchActive { identity_id } => switch_active(identity_id, ctx),
         IdentityCommand::RemoveAccount { identity_id } => remove_account(identity_id, ctx),
-        IdentityCommand::BunkerHandshakeProgress { stage, code, message } =>
-            bunker_handshake_progress(stage, code, message, ctx),
-        IdentityCommand::BunkerConnectionStateChanged { state, reason } =>
-            bunker_connection_state_changed(state, reason, ctx),
-        IdentityCommand::Nip55SignerStateChanged { state, reason } =>
-            nip55_signer_state_changed(state, reason, ctx),
+        IdentityCommand::BunkerHandshakeProgress {
+            stage,
+            code,
+            message,
+        } => bunker_handshake_progress(stage, code, message, ctx),
+        IdentityCommand::BunkerConnectionStateChanged { state, reason } => {
+            bunker_connection_state_changed(state, reason, ctx)
+        }
+        IdentityCommand::Nip55SignerStateChanged { state, reason } => {
+            nip55_signer_state_changed(state, reason, ctx)
+        }
         IdentityCommand::DeliverSignerResponse { response_json } => {
             use crate::actor::signer_port_dispatch;
             signer_port_dispatch::deliver_signer_response(ctx, &response_json)
         }
         #[cfg(feature = "native")]
-        IdentityCommand::CapabilityResultReady { account_id, result_json } =>
-            capability_result_ready(account_id, result_json, ctx),
+        IdentityCommand::CapabilityResultReady {
+            account_id,
+            result_json,
+        } => capability_result_ready(account_id, result_json, ctx),
     }
 }

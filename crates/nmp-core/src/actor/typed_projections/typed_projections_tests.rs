@@ -7,8 +7,8 @@
 //! counterpart is present, and is absent otherwise.
 
 use super::{
-    bunker_handshake_typed, decode_bunker_handshake, decode_nip46_onboarding,
-    decode_signer_state, nip46_onboarding_typed, signer_state_typed,
+    bunker_handshake_typed, decode_bunker_handshake, decode_nip46_onboarding, decode_signer_state,
+    nip46_onboarding_typed, signer_state_typed,
 };
 use crate::actor::commands::{new_bunker_handshake_slot, BunkerHandshakeDto, BunkerHandshakeSlot};
 
@@ -115,7 +115,10 @@ fn nip46_onboarding_stage_kind_wire_token_matches_serde() {
     // The wire token is derived through serde, so it matches the exact
     // snake_case string the JSON projection emits.
     assert_eq!(decoded.stage_kind.as_deref(), Some("awaiting_pubkey"));
-    assert_eq!(decoded.progress_message.as_deref(), Some("approve on bunker"));
+    assert_eq!(
+        decoded.progress_message.as_deref(),
+        Some("approve on bunker")
+    );
     assert!(decoded.is_in_flight);
     assert!(decoded.can_cancel);
 }

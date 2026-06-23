@@ -269,8 +269,7 @@ fn publish_signed_event_to_explicit_relays_still_rejects_tampered_sig() {
 
     let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
     let raw: crate::store::RawEvent = serde_json::from_str(&bad_json).unwrap();
-    let outbound =
-        publish_signed_event(&mut kernel, raw, PublishTarget::Explicit { relays }, None);
+    let outbound = publish_signed_event(&mut kernel, raw, PublishTarget::Explicit { relays }, None);
 
     assert!(
         outbound.is_empty(),

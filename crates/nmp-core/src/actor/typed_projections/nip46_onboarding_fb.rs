@@ -95,7 +95,10 @@ pub(crate) fn encode_nip46_onboarding(model: &Nip46OnboardingModel) -> Vec<u8> {
     let signer_apps = fbb.create_vector(&app_offsets);
     let stage_kind = model.stage_kind.as_ref().map(|v| fbb.create_string(v));
     let progress_code = model.progress_code.as_ref().map(|v| fbb.create_string(v));
-    let progress_message = model.progress_message.as_ref().map(|v| fbb.create_string(v));
+    let progress_message = model
+        .progress_message
+        .as_ref()
+        .map(|v| fbb.create_string(v));
     let root = fb::Nip46Onboarding::create(
         &mut fbb,
         &fb::Nip46OnboardingArgs {

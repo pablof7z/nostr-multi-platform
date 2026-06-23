@@ -199,8 +199,14 @@ mod tests {
 
         // ONE drive call — message-triggered, not a poll loop.
         let batch = queue.drive(&mut kernel);
-        assert!(batch.changed, "the resolved op changed kernel-observable state");
-        assert!(queue.is_empty(), "the resolved op is dropped from the queue");
+        assert!(
+            batch.changed,
+            "the resolved op changed kernel-observable state"
+        );
+        assert!(
+            queue.is_empty(),
+            "the resolved op is dropped from the queue"
+        );
         let got = captured.lock().unwrap().take().expect("continuation ran");
         assert_eq!(got.expect("Ok").unsigned.content, "queue test");
     }
@@ -223,6 +229,9 @@ mod tests {
         assert!(batch.changed);
         assert!(queue.is_empty(), "a timed-out op is dropped");
         let got = captured.lock().unwrap().take().expect("continuation ran");
-        assert!(got.is_err(), "a timed-out sign resolves the continuation with Err");
+        assert!(
+            got.is_err(),
+            "a timed-out sign resolves the continuation with Err"
+        );
     }
 }

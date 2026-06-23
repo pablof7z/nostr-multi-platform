@@ -41,7 +41,7 @@ mod tests {
     use std::time::Duration;
 
     use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
-use crate::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
+    use crate::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
     use crate::update_envelope::{decode_snapshot_envelope, SnapshotEnvelope};
 
@@ -283,9 +283,9 @@ use crate::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
     /// the seeded event id.
     #[test]
     fn v628_seeded_store_renders_offline_with_zero_relays() {
-        use crate::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
         use crate::nip19::encode_note;
         use crate::store::{RawEvent, VerifiedEvent};
+        use crate::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
         use crate::update_envelope::decode_snapshot_typed_projections;
 
         let (cmd_tx, upd_rx) = spawn_actor();
@@ -309,7 +309,9 @@ use crate::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
         };
         let verified = VerifiedEvent::from_raw_unchecked(raw);
         cmd_tx
-            .send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(vec![verified])))
+            .send(ActorCommand::TestSupport(
+                TestSupportCommand::IngestPreVerifiedEvents(vec![verified]),
+            ))
             .expect("seed store");
 
         // Start with ZERO relays — no connectivity at all.
@@ -468,9 +470,7 @@ use crate::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
         // "connecting", proving spawn_missing_relays actually dialed it. If it
         // never connects in any frame, the ordering assertion above would be
         // meaningless (no dial ever happened).
-        let dial_observed = frames
-            .iter()
-            .any(|s| connecting_state(s) == Some(true));
+        let dial_observed = frames.iter().any(|s| connecting_state(s) == Some(true));
         assert!(
             dial_observed,
             "#600: spawn_missing_relays must dial the one configured relay — \

@@ -1,6 +1,6 @@
 use super::*;
+use crate::actor::PublishCommand;
 use crate::substrate::UnsignedEvent;
-use crate::actor::{PublishCommand};
 
 fn ctx() -> ActionContext {
     ActionContext::default()

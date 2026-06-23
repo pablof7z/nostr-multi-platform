@@ -139,11 +139,13 @@ fn snapshot_carries_nip46_onboarding_projection() {
         .unwrap();
 
     cmd_tx
-        .send(ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress {
-            stage: "connecting".to_string(),
-            code: None,
-            message: Some("dialing relay".to_string()),
-        }))
+        .send(ActorCommand::Identity(
+            IdentityCommand::BunkerHandshakeProgress {
+                stage: "connecting".to_string(),
+                code: None,
+                message: Some("dialing relay".to_string()),
+            },
+        ))
         .unwrap();
 
     thread::sleep(Duration::from_millis(300));
@@ -210,11 +212,13 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
         }))
         .unwrap();
     cmd_tx
-        .send(ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress {
-            stage: "ready".to_string(),
-            code: None,
-            message: None,
-        }))
+        .send(ActorCommand::Identity(
+            IdentityCommand::BunkerHandshakeProgress {
+                stage: "ready".to_string(),
+                code: None,
+                message: None,
+            },
+        ))
         .unwrap();
 
     // Let the actor drain both commands and emit at least one snapshot.

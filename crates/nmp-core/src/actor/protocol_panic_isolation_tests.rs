@@ -16,11 +16,11 @@
 //! FAIL-BEFORE: with the bare `cmd.run` these tests would unwind through
 //! `dispatch_command` and abort the test thread (a failed test, not a pass).
 
+use crate::actor::ActorCommand;
+use crate::actor::LifecycleCommand;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
-use crate::actor::ActorCommand;
-use crate::actor::{LifecycleCommand};
 
 use super::commands::{self, IdentityRuntime};
 use super::signer_port_test_harness::dispatch_one;

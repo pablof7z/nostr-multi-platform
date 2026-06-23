@@ -8,8 +8,8 @@
 
 use std::sync::{atomic::AtomicU32, Arc};
 
-use nostr::{Keys, SecretKey};
 use nostr::nips::nip19::FromBech32;
+use nostr::{Keys, SecretKey};
 
 use crate::actor::commands::identity::IdentityRuntime;
 use crate::kernel::Kernel;

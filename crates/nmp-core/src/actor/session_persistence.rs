@@ -27,14 +27,14 @@
 //! also calls `persist_current_active_session` after restore — that call now
 //! goes through the enqueue path, so the tail-write is also off-actor.
 
-use crate::capability_socket::{CapabilityCallbackSlot, dispatch_capability};
+use crate::capability_socket::{dispatch_capability, CapabilityCallbackSlot};
 use crate::kernel::Kernel;
 use crate::relay::OutboundMessage;
 use crate::substrate::{
     CapabilityEnvelope, KeyringIdentityWiring, KeyringResult, KeyringStatus, MALFORMED_RESULT,
 };
 
-use super::capability_worker::{CapabilityWorkSender, make_work_item};
+use super::capability_worker::{make_work_item, CapabilityWorkSender};
 use super::commands::{self, IdentityRuntime};
 
 const ACTIVE_ACCOUNT_ID: &str = "nmp.identity.active.id";

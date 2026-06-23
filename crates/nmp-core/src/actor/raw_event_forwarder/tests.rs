@@ -9,10 +9,10 @@ use std::sync::{Arc, Mutex};
 use crate::actor::raw_event_forwarder::register_raw_event_forward_policies;
 use crate::kernel::Kernel;
 use crate::store::RawEvent;
+use crate::substrate::external_event_sink::{SignedEventFrame, SinkDestination};
 use crate::substrate::{
     ExternalEventSinkDispatcher, ExternalEventSinkPolicy, RawEventForwardTarget,
 };
-use crate::substrate::external_event_sink::{SignedEventFrame, SinkDestination};
 use crate::{KindFilter, RelayRole};
 
 // ─── Capture helpers ──────────────────────────────────────────────────────────
@@ -104,7 +104,10 @@ fn dispatcher_accepts_frames_from_capture_policy() {
     assert_eq!(frames.len(), 1, "expected exactly one frame delivered");
     let f = &frames[0];
     assert_eq!(f.raw.kind, 0);
-    assert!(f.canonical_json.contains("\"kind\":0"), "canonical_json should contain kind:0");
+    assert!(
+        f.canonical_json.contains("\"kind\":0"),
+        "canonical_json should contain kind:0"
+    );
     assert_eq!(f.source_relay.as_deref(), Some("wss://relay/"));
 }
 
@@ -126,11 +129,7 @@ fn register_policies_installs_dispatcher_policies() {
     let dispatcher = ExternalEventSinkDispatcher::new();
     let kernel = Kernel::new(crate::relay::DEFAULT_VISIBLE_LIMIT);
 
-    register_raw_event_forward_policies(
-        &kernel,
-        &dispatcher,
-        &sink_policy_slot,
-    );
+    register_raw_event_forward_policies(&kernel, &dispatcher, &sink_policy_slot);
 
     // The dispatcher handles kind:0 via its policy list.
     assert!(

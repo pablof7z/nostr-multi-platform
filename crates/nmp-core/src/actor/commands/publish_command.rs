@@ -140,9 +140,7 @@ pub enum PublishCommand {
         correlation_id: Option<String>,
     },
     /// User intent from the outbox UI: retry a still-pending publish now.
-    RetryPublish {
-        handle: String,
-    },
+    RetryPublish { handle: String },
     /// User intent from the outbox UI: cancel a still-pending publish,
     /// addressed by the operation's `correlation_id` (S7, #1754). The kernel's
     /// cancel-by-id doorway reverse-resolves the publish handle from the
@@ -150,7 +148,5 @@ pub enum PublishCommand {
     /// `Cancelled` terminal under this ORIGINAL `correlation_id` (PD-036). A
     /// raw publish handle is also accepted (the index self-maps it) so
     /// internal callers that only know the handle still resolve.
-    CancelPublish {
-        correlation_id: String,
-    },
+    CancelPublish { correlation_id: String },
 }

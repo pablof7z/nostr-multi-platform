@@ -32,8 +32,8 @@
 //! (before the final notify); these prove what that command DOES.
 
 use super::*;
+use crate::actor::ContactsCommand;
 use crate::kernel::Kernel;
-use crate::actor::{ContactsCommand};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::WireFrame;
 

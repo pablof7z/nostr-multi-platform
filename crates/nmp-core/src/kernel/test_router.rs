@@ -32,8 +32,8 @@
 use std::sync::Arc;
 
 use super::Kernel;
+use crate::actor::LifecycleCommand;
 use crate::planner::{HintSource, LogicalInterest};
-use crate::actor::{LifecycleCommand};
 use crate::substrate::{
     AppRelayMode, Direction, OutboxRouter, RoutedRelaySet, RoutingContext, RoutingError,
     RoutingSource, UnsignedEvent, UserConfiguredCategory,

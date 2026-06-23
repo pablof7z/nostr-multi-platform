@@ -149,7 +149,7 @@ mod command_wakes_blocked_actor_tests;
 #[cfg(test)]
 mod tests {
     use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
-use crate::actor::{IdentityCommand, LifecycleCommand, RefsCommand};
+    use crate::actor::{IdentityCommand, LifecycleCommand, RefsCommand};
     use crate::app::KernelAction;
     use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
     use crate::kernel::Kernel;
@@ -339,7 +339,10 @@ use crate::actor::{IdentityCommand, LifecycleCommand, RefsCommand};
                 match root.kind() {
                     k if k == fb::FrameKind::Snapshot => snapshots += 1,
                     k if k == fb::FrameKind::Panic => {
-                        let msg = root.panic().map(|p| p.msg().to_string()).unwrap_or_default();
+                        let msg = root
+                            .panic()
+                            .map(|p| p.msg().to_string())
+                            .unwrap_or_default();
                         panic!("unexpected actor-death frame on the channel: {msg}")
                     }
                     _ => {}
@@ -439,11 +442,15 @@ use crate::actor::{IdentityCommand, LifecycleCommand, RefsCommand};
                 continue; // panic frame — already checked above
             }
             if let Ok(typed) = decode_snapshot_typed_projections(&frame) {
-                let active_entry = typed
-                    .iter()
-                    .find(|p| p.key == crate::kernel::public_typed_projections::ACTIVE_ACCOUNT_SCHEMA_ID);
+                let active_entry = typed.iter().find(|p| {
+                    p.key == crate::kernel::public_typed_projections::ACTIVE_ACCOUNT_SCHEMA_ID
+                });
                 if let Some(entry) = active_entry {
-                    if let Ok(model) = crate::kernel::public_typed_projections::decode_active_account(&entry.payload) {
+                    if let Ok(model) =
+                        crate::kernel::public_typed_projections::decode_active_account(
+                            &entry.payload,
+                        )
+                    {
                         if model.pubkey.is_some() {
                             found_active = true;
                         }
