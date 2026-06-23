@@ -132,7 +132,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.capability_ports.dm_inbox_relays_slot.lock() {
+        if let Ok(mut slot) = self.composition.dm_inbox_relays_slot.lock() {
             self.record_slot_decision("dm_inbox_relay_lookup", "dm_inbox_relay_lookup", true);
             *slot = lookup;
             NmpConfigStatus::Ok
@@ -160,7 +160,7 @@ impl NmpApp {
         {
             return status;
         }
-        if let Ok(mut slot) = self.capability_ports.profile_lookup_slot.lock() {
+        if let Ok(mut slot) = self.composition.profile_lookup_slot.lock() {
             self.record_slot_decision("profile_lookup", "profile_lookup", true);
             *slot = lookup;
             NmpConfigStatus::Ok
@@ -185,7 +185,7 @@ impl NmpApp {
     /// composition runs). D6: a poisoned slot lock clones the stale inner value.
     #[must_use]
     pub fn contacts_lookup(&self) -> std::sync::Arc<dyn nmp_core::substrate::ContactsLookup> {
-        if let Ok(slot) = self.capability_ports.contacts_lookup_slot.lock() {
+        if let Ok(slot) = self.composition.contacts_lookup_slot.lock() {
             std::sync::Arc::clone(&*slot)
         } else {
             nmp_core::substrate::empty_contacts_lookup()
@@ -211,7 +211,7 @@ impl NmpApp {
         {
             return status;
         }
-        if let Ok(mut slot) = self.capability_ports.contacts_lookup_slot.lock() {
+        if let Ok(mut slot) = self.composition.contacts_lookup_slot.lock() {
             self.record_slot_decision("contacts_lookup", "contacts_lookup", true);
             *slot = lookup;
             NmpConfigStatus::Ok
@@ -243,7 +243,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.capability_ports.blocked_relays_slot.lock() {
+        if let Ok(mut slot) = self.composition.blocked_relays_slot.lock() {
             self.record_slot_decision("blocked_relay_lookup", "blocked_relay_lookup", true);
             *slot = lookup;
             NmpConfigStatus::Ok
@@ -280,7 +280,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.capability_ports.mailbox_cache_reader.lock() {
+        if let Ok(mut slot) = self.composition.mailbox_cache_reader.lock() {
             self.record_slot_decision(
                 "mailbox_cache_reader",
                 "mailbox_cache_reader",
@@ -301,7 +301,7 @@ impl NmpApp {
     pub(crate) fn mailbox_cache_reader(
         &self,
     ) -> Option<std::sync::Arc<dyn nmp_core::substrate::MailboxCache>> {
-        self.capability_ports
+        self.composition
             .mailbox_cache_reader
             .lock()
             .ok()

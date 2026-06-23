@@ -21,8 +21,9 @@ use crate::app_struct::SearchRelaySourceSlot;
 
 // ── CompositionConfig ─────────────────────────────────────────────────────────
 
-/// Immutable pre-start configuration slots — set once before `nmp_app_start`,
-/// consumed (snapshotted) by the actor when it starts.
+/// Immutable pre-start configuration — set once before `nmp_app_start`.
+/// Includes both snapshotted scalar config AND pre-start registered Arc lookup
+/// handles shared with the actor.
 ///
 /// Access path on `NmpApp`: `self.composition.<field>`.
 pub(crate) struct CompositionConfig {
@@ -59,15 +60,6 @@ pub(crate) struct CompositionConfig {
     /// list. Snapshotted by the actor in `ActorConfigSources` at start; a late
     /// write after `nmp_app_start` has no effect.
     pub(crate) bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
-}
-
-// ── CapabilityPorts ───────────────────────────────────────────────────────────
-
-/// Pluggable substrate lookup/dispatch handles installed by composition,
-/// shared with the actor.
-///
-/// Access path on `NmpApp`: `self.capability_ports.<field>`.
-pub(crate) struct CapabilityPorts {
     /// V-40 — shared [`nmp_core::substrate::DmInboxRelayLookup`] slot.
     pub(crate) dm_inbox_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::DmInboxRelayLookup>>>,
     /// ADR-0057 PR 2 — shared [`nmp_core::substrate::ProfileLookup`] slot.
@@ -76,19 +68,29 @@ pub(crate) struct CapabilityPorts {
     pub(crate) contacts_lookup_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::ContactsLookup>>>,
     /// Substrate [`nmp_core::substrate::BlockedRelayLookup`] slot.
     pub(crate) blocked_relays_slot: Arc<Mutex<Arc<dyn nmp_core::substrate::BlockedRelayLookup>>>,
-    /// V-40 — shared [`nmp_core::substrate::EventIngestDispatcher`] slot.
-    pub(crate) ingest_dispatcher_slot:
-        Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>>,
+    /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the
+    /// `nmp_app_encode_profile` NIP-19 identity encoder.
+    pub(crate) mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,
     /// #1811 — shared crate-registered FTS scope registry.
     pub(crate) search_scope_registry: Arc<nmp_core::substrate::SearchScopeRegistry>,
     /// #1804 — shared crate-registered input-scope recognizer registry.
     pub(crate) input_scope_registry: Arc<nmp_core::substrate::InputScopeRegistry>,
+}
+
+// ── CapabilityPorts ───────────────────────────────────────────────────────────
+
+/// Live substrate handles that can be refreshed after `nmp_app_start`. These
+/// are `ActorRuntimeSlots` or mutex-wrapped slots writable by post-start FFI
+/// calls.
+///
+/// Access path on `NmpApp`: `self.capability_ports.<field>`.
+pub(crate) struct CapabilityPorts {
+    /// V-40 — shared [`nmp_core::substrate::EventIngestDispatcher`] slot.
+    pub(crate) ingest_dispatcher_slot:
+        Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>>,
     /// NIP-50 higher-order search relay source (kind:10007 read seam +
     /// app-default fallback).
     pub(crate) search_relay_source: SearchRelaySourceSlot,
-    /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the
-    /// `nmp_app_encode_profile` NIP-19 identity encoder.
-    pub(crate) mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,
     /// ADR-0052 §D3 — per-app bunker-URI hook slot. Lives here (not in
     /// `CompositionConfig`) because it is a live `ActorRuntimeSlot` that
     /// `nmp_signer_broker_init` can refresh after start.
