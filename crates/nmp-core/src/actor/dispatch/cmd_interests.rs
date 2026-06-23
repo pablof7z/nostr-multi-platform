@@ -95,47 +95,32 @@ pub(super) fn drop_interest_owner(
     Some(Vec::new())
 }
 
-/// Dispatch `ActorCommand::RegisterPullCursor`.
-pub(super) fn register_pull_cursor(
-    cursor_id: u64,
-    consumer_id: String,
-    scope: crate::kernel::pull::PullScope,
-    mode: crate::kernel::pull_cursor::PullCursorMode,
-    after_seq: u64,
-    limits: crate::kernel::pull::PullLimits,
+/// Dispatch `ActorCommand::OpenPullCursor`.
+pub(super) fn open_pull_cursor(
+    handle: crate::kernel::pull_cursor::PullCursorHandle,
+    spec: crate::kernel::pull_cursor::PullCursorSpec,
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    ctx.kernel.register_pull_cursor(
-        crate::kernel::pull_cursor::PullCursorId(cursor_id),
-        consumer_id,
-        scope,
-        mode,
-        after_seq,
-        limits,
-    );
+    ctx.kernel.open_pull_cursor(handle, spec);
     Some(Vec::new())
 }
 
 /// Dispatch `ActorCommand::AdvancePullCursor`.
 pub(super) fn advance_pull_cursor(
-    cursor_id: u64,
+    cursor_id: crate::kernel::pull_cursor::PullCursorId,
     after_seq: u64,
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    ctx.kernel.advance_pull_cursor(
-        crate::kernel::pull_cursor::PullCursorId(cursor_id),
-        after_seq,
-    );
+    ctx.kernel.advance_pull_cursor(cursor_id, after_seq);
     Some(Vec::new())
 }
 
 /// Dispatch `ActorCommand::UnregisterPullCursor`.
 pub(super) fn unregister_pull_cursor(
-    cursor_id: u64,
+    cursor_id: crate::kernel::pull_cursor::PullCursorId,
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    ctx.kernel
-        .unregister_pull_cursor(crate::kernel::pull_cursor::PullCursorId(cursor_id));
+    ctx.kernel.unregister_pull_cursor(cursor_id);
     Some(Vec::new())
 }
 

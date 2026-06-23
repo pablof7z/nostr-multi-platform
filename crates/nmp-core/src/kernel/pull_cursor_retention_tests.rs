@@ -18,7 +18,9 @@
 use std::num::NonZeroUsize;
 
 use super::pull::{PullLimits, PullScope};
-use super::pull_cursor::{PullCursorId, PullCursorMode};
+use super::pull_cursor::{
+    PullConsumerId, PullCursorHandle, PullCursorId, PullCursorMode, PullCursorSpec,
+};
 use super::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::ingest_log::DEFAULT_LOG_MAX_ENTRIES;
@@ -100,15 +102,15 @@ fn register_protected_pins_floor_and_unregister_releases() {
 
     // Register a Protected cursor at after_seq=0 → publishes a claim pinning
     // the floor to 0. The next append would normally advance the floor to 1.
-    k.register_pull_cursor(
-        PullCursorId(1),
-        "mirror".to_string(),
-        PullScope::GlobalLog,
-        PullCursorMode::Protected {
-            max_lag_entries: u64::MAX,
+    k.open_pull_cursor(
+        PullCursorHandle::from_raw(1),
+        PullCursorSpec {
+            consumer_id: PullConsumerId("mirror".to_string()),
+            scope: PullScope::GlobalLog,
+            mode: PullCursorMode::Protected { max_lag_entries: u64::MAX },
+            after_seq: 0,
+            limits: limits(),
         },
-        0,
-        limits(),
     );
     insert_n(&k, &mut ctr, 1); // latest = MAX + 1
     assert!(
@@ -139,15 +141,15 @@ fn advance_protected_moves_pin_forward() {
 
     insert_n(&k, &mut ctr, DEFAULT_LOG_MAX_ENTRIES); // latest == MAX, floor 0
 
-    k.register_pull_cursor(
-        PullCursorId(7),
-        "mirror".to_string(),
-        PullScope::GlobalLog,
-        PullCursorMode::Protected {
-            max_lag_entries: u64::MAX,
+    k.open_pull_cursor(
+        PullCursorHandle::from_raw(7),
+        PullCursorSpec {
+            consumer_id: PullConsumerId("mirror".to_string()),
+            scope: PullScope::GlobalLog,
+            mode: PullCursorMode::Protected { max_lag_entries: u64::MAX },
+            after_seq: 0,
+            limits: limits(),
         },
-        0,
-        limits(),
     );
     insert_n(&k, &mut ctr, 1); // latest = MAX + 1, pinned at 0
     assert!(floor_is_zero_seq1_available(&k), "pinned at after_seq=0");

@@ -8,7 +8,10 @@
 use std::num::NonZeroUsize;
 
 use super::pull::{PullLimits, PullScope};
-use super::pull_cursor::{PullCursorId, PullCursorMode, MAX_PULL_CURSORS};
+use super::pull_cursor::{
+    PullConsumerId, PullCursorHandle, PullCursorId, PullCursorMode, PullCursorSpec,
+    MAX_PULL_CURSORS,
+};
 use super::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
@@ -51,14 +54,15 @@ fn limits() -> PullLimits {
 }
 
 fn register(k: &mut Kernel, id: u64, after_seq: u64) {
-    k.register_pull_cursor(
-        PullCursorId(id),
-        format!("consumer-{id}"),
-        PullScope::GlobalLog,
-        PullCursorMode::GapAllowed,
+    let handle = PullCursorHandle::from_raw(id);
+    let spec = PullCursorSpec {
+        consumer_id: PullConsumerId(format!("consumer-{id}")),
+        scope: PullScope::GlobalLog,
+        mode: PullCursorMode::GapAllowed,
         after_seq,
-        limits(),
-    );
+        limits: limits(),
+    };
+    k.open_pull_cursor(handle, spec);
 }
 
 fn pull_wake(k: &Kernel, id: u64) -> Option<u64> {
@@ -254,14 +258,16 @@ fn max_pull_cursors_cap_is_loud_noop() {
     assert_eq!(registry_len(&k), MAX_PULL_CURSORS, "new cursor past cap must not register");
     assert!(!registry_has(&k, over), "the over-cap cursor must be absent");
 
-    // Replace-by-id of an EXISTING cursor is always allowed (does not grow).
-    k.register_pull_cursor(
-        PullCursorId(1),
-        "replaced".to_string(),
-        PullScope::GlobalLog,
-        PullCursorMode::GapAllowed,
-        0,
-        limits(),
+    // Replace-by-handle of an EXISTING cursor is always allowed (does not grow).
+    k.open_pull_cursor(
+        PullCursorHandle::from_raw(1),
+        PullCursorSpec {
+            consumer_id: PullConsumerId("replaced".to_string()),
+            scope: PullScope::GlobalLog,
+            mode: PullCursorMode::GapAllowed,
+            after_seq: 0,
+            limits: limits(),
+        },
     );
     assert_eq!(registry_len(&k), MAX_PULL_CURSORS, "replace-by-id must not change the count");
     assert!(registry_has(&k, 1), "the replaced cursor must still be present");

@@ -1,25 +1,21 @@
 //! Pull-cursor registry — ADR-0058 §10, step 3a.
 //!
-//! A non-durable, actor-written registry of registered pull cursors. The
-//! consumer-persisted `after_seq` is the durable source of truth; this registry
-//! is rebuilt by the host re-registering its cursors after a restart.
+//! Non-durable registry of pull cursors.  Single writer: the actor thread via
+//! `OpenPullCursor` / `AdvancePullCursor` / `UnregisterPullCursor` dispatch arms.
+//! Shared behind `Arc<RwLock<…>>` so the FFI `pull_page` read path can snapshot
+//! a registration without an actor round-trip.
 //!
-//! ## Ownership / threading
+//! ## Cursor-id allocation — hosts never mint raw ids
 //!
-//! The registry lives behind a [`PullCursorRegistrySlot`] (`Arc<RwLock<…>>`) so
-//! a future read-only FFI `pull_page` (step 3b) can snapshot a registration on
-//! another thread without an actor round-trip. In step 3a the **only** writer is
-//! the actor thread via the three fire-and-forget [`crate::actor::ActorCommand`]
-//! dispatch arms (`RegisterPullCursor` / `AdvancePullCursor` /
-//! `UnregisterPullCursor`).
+//! [`PullCursorRegistry::alloc_handle`] is the single allocation point. The FFI
+//! layer calls it under a brief write lock before dispatching
+//! [`crate::actor::ActorCommand::OpenPullCursor`]; the actor validates and stores
+//! the row; the host stores the returned [`PullCursorHandle`].
 //!
-//! ## Wake interplay (the level-triggered contract)
+//! ## Wake interplay
 //!
-//! Register and advance both **arm an immediate wake** (an entry in
-//! `StoreWakeups.pull`) whenever the cursor's `after_seq` is behind
-//! `latest_ingest_seq` — so a consumer that registers/advances while data is
-//! already waiting is woken on the next update frame instead of polling.
-//! Unregister removes the registry row **and** any pending wake entry.
+//! Register and advance arm an immediate wake whenever `after_seq <
+//! latest_ingest_seq`. Unregister removes the row and any pending wake entry.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
@@ -31,12 +27,140 @@ use super::Kernel;
 /// Registrations past the cap (for a *new* `cursor_id`) are loud no-ops.
 pub const MAX_PULL_CURSORS: usize = 128;
 
-/// Opaque cursor handle. `0` is invalid (never armed, never stored).
+// ─── Identifier types ────────────────────────────────────────────────────────
+
+/// Internal cursor id.  `0` is reserved/invalid (never armed, never stored).
 ///
-/// The host (or the step-3b FFI wrapper) mints the id before sending the
-/// fire-and-forget register command — no actor round-trip allocates it.
+/// Allocated only by [`PullCursorRegistry::alloc_handle`] — external code
+/// should hold a [`PullCursorHandle`] instead of constructing this directly.
+/// The inner `u64` remains `pub` only for the FlatBuffers wire codec and FFI
+/// read paths that must serialise the id.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct PullCursorId(pub u64);
+
+/// Opaque handle returned to the caller by
+/// [`PullCursorRegistry::alloc_handle`].
+///
+/// Hosts store this value and pass it to `AdvancePullCursor` /
+/// `UnregisterPullCursor`.  The inner [`PullCursorId`] is accessible only via
+/// [`id()`](PullCursorHandle::id) to prevent accidental raw-integer casting at
+/// call sites.
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+pub struct PullCursorHandle(PullCursorId);
+
+impl PullCursorHandle {
+    /// The underlying registry id — for use by the actor dispatch seam and the
+    /// FFI `pull_page` reader.
+    #[must_use]
+    pub fn id(self) -> PullCursorId {
+        self.0
+    }
+
+    /// Construct a handle from a raw id — available only in test / test-support
+    /// builds. Production code must use
+    /// [`PullCursorRegistry::alloc_handle`] instead.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn from_raw(id: u64) -> Self {
+        PullCursorHandle(PullCursorId(id))
+    }
+}
+
+/// Typed consumer identity — replaces the raw `String` that previously appeared
+/// in [`PullCursorRegistration`] and `ActorCommand::OpenPullCursor`.
+///
+/// The kernel treats the value as an opaque tag; it is carried through the
+/// registry for step-4 (retention claims) and diagnostics.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PullConsumerId(pub String);
+
+impl std::fmt::Display for PullConsumerId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl From<&str> for PullConsumerId {
+    fn from(s: &str) -> Self {
+        PullConsumerId(s.to_owned())
+    }
+}
+
+impl From<String> for PullConsumerId {
+    fn from(s: String) -> Self {
+        PullConsumerId(s)
+    }
+}
+
+// ─── Validation error ────────────────────────────────────────────────────────
+
+/// Error returned when a [`PullCursorSpec`] is structurally invalid.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InvalidCursorSpec {
+    /// `limits.max_entries` exceeds `limits.max_scan_entries`.
+    ///
+    /// Every page would be capped by `max_entries` before `max_scan_entries`
+    /// rows are visited, making the scan budget unreachable.
+    LimitsOutOfOrder {
+        max_entries: usize,
+        max_scan_entries: usize,
+    },
+}
+
+impl std::fmt::Display for InvalidCursorSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InvalidCursorSpec::LimitsOutOfOrder { max_entries, max_scan_entries } => write!(
+                f,
+                "PullCursorSpec: max_entries ({max_entries}) > max_scan_entries \
+                 ({max_scan_entries}); max_entries must be ≤ max_scan_entries"
+            ),
+        }
+    }
+}
+
+// ─── PullCursorSpec ──────────────────────────────────────────────────────────
+
+/// Everything the host provides when opening a new pull cursor — **without** a
+/// cursor id.
+///
+/// Pass this to [`PullCursorRegistry::alloc_handle`] (via the FFI entry point)
+/// to obtain an opaque [`PullCursorHandle`]; then dispatch
+/// [`crate::actor::ActorCommand::OpenPullCursor`] carrying both.  The kernel
+/// validates the id (0 is rejected) and stores the registration.
+#[derive(Clone, Debug)]
+pub struct PullCursorSpec {
+    pub consumer_id: PullConsumerId,
+    pub scope: PullScope,
+    pub mode: PullCursorMode,
+    /// Start the cursor at this sequence position (exclusive).
+    /// `0` starts from the beginning of the log.
+    pub after_seq: u64,
+    pub limits: PullLimits,
+}
+
+impl PullCursorSpec {
+    /// Validate the spec's limits, returning `Err` when they are contradictory.
+    ///
+    /// Currently enforces `max_entries ≤ max_scan_entries`.
+    ///
+    /// # Errors
+    /// Returns [`InvalidCursorSpec::LimitsOutOfOrder`] when
+    /// `max_entries > max_scan_entries`.
+    pub fn validate(&self) -> Result<(), InvalidCursorSpec> {
+        let me = self.limits.max_entries.get();
+        let ms = self.limits.max_scan_entries.get();
+        if me > ms {
+            return Err(InvalidCursorSpec::LimitsOutOfOrder {
+                max_entries: me,
+                max_scan_entries: ms,
+            });
+        }
+        Ok(())
+    }
+}
+
+// ─── PullCursorMode ──────────────────────────────────────────────────────────
 
 /// Retention disposition for a registered cursor (ADR §6). The advanced
 /// `Protected` floor-pin behavior lands in step-4; step-3a only carries the
@@ -51,6 +175,8 @@ pub enum PullCursorMode {
     Protected { max_lag_entries: u64 },
 }
 
+// ─── PullCursorRegistration ──────────────────────────────────────────────────
+
 /// One registered cursor row. Cloned out under the registry read-lock by the
 /// (step-3b) FFI `pull_page` path; written only on the actor thread.
 ///
@@ -62,26 +188,49 @@ pub enum PullCursorMode {
 #[derive(Clone, Debug)]
 pub struct PullCursorRegistration {
     pub cursor_id: PullCursorId,
-    pub consumer_id: String,
+    pub consumer_id: PullConsumerId,
     pub scope: PullScope,
     pub mode: PullCursorMode,
     pub after_seq: u64,
     pub limits: PullLimits,
 }
 
+// ─── PullCursorRegistry ──────────────────────────────────────────────────────
+
 /// Actor-written, FFI-read-only registry of pull cursors.
-#[derive(Default)]
+/// Owns the monotonic cursor-id counter; [`alloc_handle`](Self::alloc_handle)
+/// is the only allocation point.
 pub struct PullCursorRegistry {
     by_id: BTreeMap<PullCursorId, PullCursorRegistration>,
+    /// Monotonic counter. Starts at 1; 0 is the sentinel "invalid".
+    next_cursor_id: u64,
 }
 
-/// Shared handle to the registry. Single writer (actor); many readers (FFI).
+impl Default for PullCursorRegistry {
+    fn default() -> Self {
+        Self { by_id: BTreeMap::new(), next_cursor_id: 1 }
+    }
+}
+
+/// Shared handle to the registry. Single writer (actor) for registrations;
+/// brief write lock held by FFI for [`alloc_handle`](PullCursorRegistry::alloc_handle).
 pub type PullCursorRegistrySlot = Arc<RwLock<PullCursorRegistry>>;
 
 impl PullCursorRegistry {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Allocate a fresh [`PullCursorHandle`] (the only id-minting point).
+    /// Call this under a brief write lock before dispatching
+    /// [`crate::actor::ActorCommand::OpenPullCursor`].
+    #[must_use]
+    pub fn alloc_handle(&mut self) -> PullCursorHandle {
+        let id = self.next_cursor_id;
+        // wrapping_add + max(1) keeps the counter non-zero after u64::MAX.
+        self.next_cursor_id = self.next_cursor_id.wrapping_add(1).max(1);
+        PullCursorHandle(PullCursorId(id))
     }
 
     /// Number of currently-registered cursors.
@@ -128,6 +277,8 @@ impl PullCursorRegistry {
             .collect()
     }
 }
+
+// ─── Kernel methods ──────────────────────────────────────────────────────────
 
 // The three command methods + their wake helper are live via the actor
 // dispatch loop in default/native builds; that loop is feature-gated out of the
@@ -176,24 +327,22 @@ impl Kernel {
         self.store.replace_log_retention_claims(&claims);
     }
 
-    /// Register (or replace) a pull cursor — `ActorCommand::RegisterPullCursor`.
+    /// Open (or replace) a pull cursor — `ActorCommand::OpenPullCursor`.
+    ///
+    /// The caller obtains `handle` from
+    /// [`PullCursorRegistry::alloc_handle`] before dispatching the command;
+    /// the kernel validates it here (id 0 is invalid) and stores the row.
     ///
     /// Replace-by-`cursor_id` is always allowed (it does not grow the set). A
     /// *new* registration past `MAX_PULL_CURSORS` is a loud no-op (log, never
     /// panic). Arms an immediate wake when `after_seq < latest_ingest_seq`.
-    pub(crate) fn register_pull_cursor(
-        &mut self,
-        cursor_id: PullCursorId,
-        consumer_id: String,
-        scope: PullScope,
-        mode: PullCursorMode,
-        after_seq: u64,
-        limits: PullLimits,
-    ) {
+    pub(crate) fn open_pull_cursor(&mut self, handle: PullCursorHandle, spec: PullCursorSpec) {
+        let cursor_id = handle.id();
         if cursor_id.0 == 0 {
-            tracing::warn!("RegisterPullCursor ignored: cursor_id 0 is invalid");
+            tracing::warn!("OpenPullCursor ignored: cursor_id 0 is invalid");
             return;
         }
+        let after_seq = spec.after_seq;
         {
             let registry = Arc::clone(&self.pull_cursor_registry);
             let mut reg = registry.write().expect("pull cursor registry poisoned");
@@ -202,7 +351,7 @@ impl Kernel {
                 tracing::warn!(
                     cursor_id = cursor_id.0,
                     max = MAX_PULL_CURSORS,
-                    "RegisterPullCursor ignored: MAX_PULL_CURSORS reached (loud no-op)"
+                    "OpenPullCursor ignored: MAX_PULL_CURSORS reached (loud no-op)"
                 );
                 return;
             }
@@ -210,11 +359,11 @@ impl Kernel {
                 cursor_id,
                 PullCursorRegistration {
                     cursor_id,
-                    consumer_id,
-                    scope,
-                    mode,
+                    consumer_id: spec.consumer_id,
+                    scope: spec.scope,
+                    mode: spec.mode,
                     after_seq,
-                    limits,
+                    limits: spec.limits,
                 },
             );
         }
@@ -286,5 +435,64 @@ impl Kernel {
             let entry = self.store_wakeups.pull.entry(id).or_insert(0);
             *entry = (*entry).max(latest);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroUsize;
+
+    use super::*;
+    use crate::kernel::pull::{PullLimits, PullScope};
+
+    fn limits(max_entries: usize, max_scan: usize) -> PullLimits {
+        PullLimits {
+            max_entries: NonZeroUsize::new(max_entries).unwrap(),
+            max_scan_entries: NonZeroUsize::new(max_scan).unwrap(),
+        }
+    }
+
+    fn spec(max_entries: usize, max_scan: usize) -> PullCursorSpec {
+        PullCursorSpec {
+            consumer_id: PullConsumerId("test".into()),
+            scope: PullScope::GlobalLog,
+            mode: PullCursorMode::GapAllowed,
+            after_seq: 0,
+            limits: limits(max_entries, max_scan),
+        }
+    }
+
+    #[test]
+    fn validate_ok_when_entries_le_scan() {
+        assert!(spec(64, 256).validate().is_ok());
+        assert!(spec(256, 256).validate().is_ok(), "equal is valid");
+    }
+
+    #[test]
+    fn validate_err_when_entries_gt_scan() {
+        let err = spec(257, 256).validate().unwrap_err();
+        assert_eq!(
+            err,
+            InvalidCursorSpec::LimitsOutOfOrder { max_entries: 257, max_scan_entries: 256 }
+        );
+    }
+
+    #[test]
+    fn alloc_handle_yields_sequential_nonzero_ids() {
+        let mut reg = PullCursorRegistry::new();
+        let h1 = reg.alloc_handle();
+        let h2 = reg.alloc_handle();
+        assert_ne!(h1, h2, "each alloc yields a distinct handle");
+        assert_ne!(h1.id().0, 0, "id 0 is never allocated");
+        assert_ne!(h2.id().0, 0);
+        assert!(h2.id().0 > h1.id().0, "ids are strictly increasing");
+    }
+
+    #[test]
+    fn pull_consumer_id_display_and_from() {
+        let id = PullConsumerId::from("mirror");
+        assert_eq!(id.to_string(), "mirror");
+        let id2: PullConsumerId = "feed".to_string().into();
+        assert_eq!(id2.0, "feed");
     }
 }
