@@ -393,7 +393,14 @@ pub extern "C" fn nmp_app_search_snapshot(
 /// so the NIP-50 bounded-query validation + `max_hits` cap apply (a host cannot
 /// bypass them by hand-crafting JSON). Returns `None` on malformed JSON or a
 /// query that fails validation.
-fn parse_search_request(json: &str) -> Option<SearchRequest> {
+///
+/// `pub(crate)` so the #1804 input-intent dispatch lane
+/// ([`crate::intent_ffi`]) re-validates a `TextQuery` candidate's opaque
+/// `request_json` through the same NIP-50 bounded-query constructor before
+/// opening a search session — a `TextQuery` produced by `nmp_intent::classify`
+/// must not bypass the cap any more than a hand-crafted `nmp_app_search_open`
+/// payload can.
+pub(crate) fn parse_search_request(json: &str) -> Option<SearchRequest> {
     #[derive(serde::Deserialize)]
     struct Dto {
         query: String,

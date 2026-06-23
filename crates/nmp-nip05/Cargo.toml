@@ -19,6 +19,11 @@ native = ["dep:ureq"]
 nmp-core = { path = "../nmp-core", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# Canonical pubkey validation/normalization for the `names[name]` value
+# (mirrors the nmp-nip57 LNURL fetcher's `nostr::PublicKey::from_hex`
+# re-canonicalization — never a hand-rolled hex check). Always-compiled: the
+# `pubkey_from_names` parse is pure and wasm-safe.
+nostr = { workspace = true }
 # LUD/NIP-05 `.well-known/nostr.json` GET — blocking, mirrors the nmp-nip57
 # LNURL fetcher's `ureq` round-trip. Optional behind `native`.
 ureq = { version = "2", optional = true, default-features = false, features = ["tls", "json"] }

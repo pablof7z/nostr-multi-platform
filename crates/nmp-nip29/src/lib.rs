@@ -39,6 +39,7 @@
 pub mod action;
 pub mod cache;
 pub mod group_id;
+pub mod input_scope;
 pub mod interest;
 pub mod kinds;
 pub mod projection;
@@ -53,6 +54,10 @@ pub use projection::{
     GroupChatProjection, GroupChatSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
     GroupEventRow, GroupEventsProjection, GroupEventsSnapshot, JoinedGroup, JoinedGroupsProjection,
     JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
+};
+pub use input_scope::{
+    register_input_scopes, GroupIdentPayload, GroupInputScopeRecognizer,
+    GROUP_INPUT_SCOPE_LABEL,
 };
 pub use register::register_actions;
 pub use search::{

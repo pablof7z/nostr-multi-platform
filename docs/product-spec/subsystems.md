@@ -173,7 +173,7 @@ The ledger is general, not relay-only. It can represent local optimistic commit,
 | Contacts | `pubkey` | parsed kind-3 follow list, with per-followee metadata |
 | Mailboxes | `pubkey` | parsed kind-10002 |
 | Mutes | `pubkey` | parsed kind-10000 |
-| Input intent | raw string, registered scopes | direct reference, NIP-05 lookup, crate-owned target/search candidate, text query, or log-safe rejection |
+| Input intent | raw string, `Vec<InputScopeId>`, `TextSearchTargets` | `InputIntentClassification`: `Candidates(Vec<InputIntentCandidate>)` or `Rejection(InputIntentRejection)`; secret inputs (nsec/ncryptsec) are rejected with zero echo; `CacheOnly` is implicit via empty relay resolution, not a variant |
 | Search | `query`, scope | cache-first hits plus relay NIP-50 hits via user/default search relays; protocol semantics owned by the search module |
 | Blossom servers | `pubkey` | parsed kind-10063 |
 | Timeline | `filter` (kind, authors, hashtags, time window) | sorted slice with pagination cursor |

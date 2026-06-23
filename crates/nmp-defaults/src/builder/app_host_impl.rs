@@ -15,9 +15,9 @@ use std::sync::Arc;
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
     EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
-    KernelReaderRegistrar, RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar, SearchScopeRegistrar,
-    SnapshotProjectionRegistrar,
+    InputScopeRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_ffi::NmpApp;
 
@@ -160,6 +160,18 @@ impl<S> SearchScopeRegistrar for NmpAppBuilder<S> {
     ) {
         let app: &NmpApp = unsafe { &*self.app };
         app.register_search_scope(provider);
+    }
+}
+
+impl<S> InputScopeRegistrar for NmpAppBuilder<S> {
+    fn register_input_scope(
+        &self,
+        recognizer: Arc<dyn nmp_core::substrate::InputScopeRecognizer>,
+    ) {
+        let app: &NmpApp = unsafe { &*self.app };
+        // Delegate to the inherent `NmpApp::register_input_scope` (ledger +
+        // yielding-default dup policy in `app_config_intent.rs`).
+        NmpApp::register_input_scope(app, recognizer);
     }
 }
 

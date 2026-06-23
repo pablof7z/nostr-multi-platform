@@ -4562,6 +4562,7 @@ dependencies = [
  "nmp-nip18",
  "nmp-nip22",
  "nmp-nip25",
+ "nmp-nip29",
  "nmp-nip47",
  "nmp-nip50",
  "nmp-nip51",
@@ -4610,6 +4611,8 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-feed",
+ "nmp-intent",
+ "nmp-nip05",
  "nmp-nip18",
  "nmp-nip50",
  "nmp-nip51",
@@ -4742,6 +4745,7 @@ name = "nmp-nip05"
 version = "0.8.0"
 dependencies = [
  "nmp-core",
+ "nostr",
  "serde",
  "serde_json",
  "ureq",

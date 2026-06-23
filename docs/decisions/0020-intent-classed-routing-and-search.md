@@ -4,6 +4,16 @@
 > bounded `InterestShape.search` field all shipped
 > (`crates/nmp-core/src/substrate/routing.rs`,
 > `crates/nmp-core/src/substrate/view.rs:54`).
+> **Decision 15 (input-intent resolver) — implemented** (`feat/input-intent-resolver-1804`,
+> commit `956f79f0`): noun-free `InputScopeRegistrar` + `InputScopeRegistry` in
+> `nmp-core::substrate::intent`; orchestrator crate `nmp-intent` (`classify()` pure/sync);
+> NIP-05 reverse-lookup crate `nmp-nip05` (async `ResolveNip05Command`);
+> `NmpApp::input_scope_registry` field + `app_config_intent.rs` FFI setter.
+> `classify()` precedence is frozen: (1) secret-reject (nsec/ncryptsec, no echo),
+> (2) NIP-19/21 ref via `resolve_open_uri`, (3) relay URL, (4) NIP-05 shape (pure parse,
+> no HTTP), (5) registered recognizers, (6) free-text → `nmp_nip50::SearchRequest`,
+> (7) refusals. `CacheOnly` is implicit (empty relay resolution → FTS-only), NOT a
+> `SearchTargets` variant. See `docs/design/intent-routing/types.md` §3.5.
 > **Companion:** `docs/architecture/crate-boundaries.md` §3.1 (routing lanes),
 > §5 (routing contract), §8 (protocol-crate ownership).
 > **Depends on:** ADR-0021 (relay roles — Indexer + AppRelay). ADR-0021

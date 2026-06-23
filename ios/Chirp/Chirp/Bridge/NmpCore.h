@@ -206,6 +206,34 @@ char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
 // The returned string is never NULL and MUST be freed via nmp_free_string.
 char *nmp_nip21_decode_uri(const char *input);
 
+// ── Input-intent resolver (#1804) ────────────────────────────────────────────
+// One untyped input string (one-box / paste / search field) is classified into
+// exactly one of: a NIP-19/21 direct ref, a relay URL, a NIP-05-shaped
+// identifier, a registered recognizer's target, or a free-text NIP-50 search —
+// or refused (secret-like / unparseable / unregistered-scope / disallowed-scope).
+//
+// `nmp_app_intent_classify` is STATELESS / sync / side-effect-free: it reads the
+// app's registered recognizer snapshot and runs the pure classifier. No kernel
+// mutation, no network. `request_json` is an InputIntentRequest:
+//   {"input":"jb55@jb55.com",
+//    "scopes":[{"namespace":"nip50","name":"profiles"}],
+//    "text_targets":"UserPreferred"}
+// Returns {"ok":true,"classification":{...}} (a Candidates list or a single
+// Rejection), or {"ok":false,"error":"…"} on a bad argument. A SecretLike
+// rejection NEVER echoes the input. The returned string is never NULL and MUST
+// be freed via nmp_free_string.
+char *nmp_app_intent_classify(void *app, const char *request_json);
+
+// `nmp_app_intent_dispatch` classifies `request_json`, then routes the TOP
+// candidate to its seam: DirectRef → open-uri; TextQuery → a search session
+// keyed by `session_id`; Nip05 → the NIP-05 reverse-lookup worker (HTTP →
+// profile resolve-ref). RelayUrl / Registered have no in-FFI seam and are
+// returned to the host to route. Returns {"ok":true,"dispatched":<candidate>}
+// or {"ok":true,"rejection":<rejection>}. The returned string is never NULL and
+// MUST be freed via nmp_free_string.
+char *nmp_app_intent_dispatch(void *app, const char *request_json,
+                              const char *session_id);
+
 // ── Publish lifecycle (control plane only) ───────────────────────────────
 //
 // PR-F (one door per capability) DELETED the bespoke event-producing

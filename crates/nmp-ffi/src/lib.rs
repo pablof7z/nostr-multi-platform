@@ -68,6 +68,11 @@ mod lifecycle;
 // under the LOC ceiling; the `#[no_mangle]` symbol name is ABI-stable across
 // the split (same precedent as `publish.rs` ← `identity.rs`).
 mod nip19_ffi;
+// #1804 — input-intent resolver C-ABI (`nmp_app_intent_classify` /
+// `nmp_app_intent_dispatch`): classify a one-box / paste / search input via the
+// pure `nmp_intent::classify`, then (dispatch) route the top candidate to its
+// existing seam (open-uri / search / NIP-05 reverse lookup).
+mod intent_ffi;
 // Issue #1554 — stateless NIP-21 / bare NIP-19 decode-to-wire helper.
 // Decode-only: no actor command, no view mutation, no app-specific policy.
 mod nip21_ffi;

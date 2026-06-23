@@ -178,7 +178,202 @@ rollout is an audit pass to verify no existing call site relies on
 NIP-65-only behavior for an event the new `EventClass::from_kind`
 would classify away from `Other`.
 
-### 3.5 Search FFI surface
+### 3.5 Input-intent type surface
+
+> **Implementation note (commit `956f79f0`, `feat/input-intent-resolver-1804`).**
+> All types below live in `nmp-core::substrate::intent` and are re-exported from
+> `nmp_core::substrate::*`. The module is noun-free (D0: doctrine-lint 0 findings).
+> The orchestrator lives in `crates/nmp-intent`. NIP-05 reverse lookup lives in
+> `crates/nmp-nip05`. The FFI setter is `crates/nmp-ffi/src/app_config_intent.rs`.
+
+The input-intent resolver is the single framework front door for raw user-entered
+text. It classifies before it dispatches — references, relay URLs, and NIP-05
+identifiers are routed to their existing loaders; only free text reaches the
+NIP-50 search surface (§3.6 below).
+
+#### Scope identity
+
+```rust
+// nmp-core::substrate::intent::id
+pub struct InputScopeId {
+    pub namespace: String,
+    pub name: String,
+}
+impl InputScopeId {
+    pub fn new(namespace: impl Into<String>, name: impl Into<String>) -> Self;
+    pub fn label(&self) -> String;                     // "namespace.name"
+    pub const NOSTR_REF_NAMESPACE: &'static str = "nostr";
+    pub const NOSTR_REF_NAME:      &'static str = "ref";
+    pub fn nostr_ref() -> Self;                        // synthetic always-allowed "nostr.ref"
+}
+```
+
+`InputScopeId` uses owned strings (not a hashed discriminant like `SearchScopeId`);
+equality is `(namespace, name)` pair equality. The synthetic `nostr.ref` scope id is
+always-allowed and covers all NIP-19/21 direct references.
+
+#### Resolved input (for recognizers)
+
+```rust
+// nmp-core::substrate::intent::recognizer
+pub enum TextSearchTargets {
+    UserPreferred,
+    AppDefault,
+    Explicit(Vec<String>),       // noun-free mirror of nmp_nip50::SearchTargets
+}
+
+pub enum ResolvedInputKind {
+    Reference   { uri: String, entity_class: String },  // "profile" | "event" | "address"
+    RelayUrl    { url: String },
+    Nip05Shape  { identifier: String },
+    FreeText    { text: String },
+}
+
+pub struct ResolvedInput {
+    pub raw: String,
+    pub kind: ResolvedInputKind,
+}
+```
+
+#### Classification output
+
+```rust
+// nmp-core::substrate::intent::target
+pub struct InputIntentRequest {
+    pub input: String,
+    pub scopes: Vec<InputScopeId>,
+    pub text_targets: TextSearchTargets,
+}
+
+pub enum InputIntentTarget {
+    DirectRef  { uri: String },
+    Nip05      { identifier: String },
+    RelayUrl   { url: String },
+    TextQuery  { request_json: String },    // opaque serialized nmp_nip50::SearchRequest
+    Registered { payload_json: String },    // opaque recognizer payload
+}
+
+pub struct InputIntentCandidate {
+    pub scope:  InputScopeId,
+    pub target: InputIntentTarget,
+}
+
+pub enum InputIntentRejection {
+    SecretLike,                               // carries NO copy of the input — never logged
+    Unparseable,
+    UnregisteredScope { scope: InputScopeId },
+    DisallowedScope   { scope: InputScopeId },
+}
+
+pub enum InputIntentClassification {
+    Candidates(Vec<InputIntentCandidate>),
+    Rejection(InputIntentRejection),
+}
+```
+
+Key invariants:
+- `SecretLike` is returned for `nsec`, `nostr:nsec`, and `ncryptsec` inputs and
+  carries **zero** copy of the input — it is never logged, stored, or echoed.
+- A valid reference whose entity class is excluded by the app's requested scopes →
+  `Rejection(DisallowedScope)` (not silently dropped).
+- `CacheOnly` is **not** a `SearchTargets` / `TextSearchTargets` variant. Cache-only
+  behavior is implicit: when relay resolution produces an empty set (no kind:10007
+  list, no app-default, or `Explicit([])`) the search fanout is skipped and only
+  cache results are returned. Apps that want typeahead-only search pass
+  `TextSearchTargets::Explicit(vec![])`.
+
+#### Recognizer trait
+
+```rust
+pub trait InputScopeRecognizer: Send + Sync {
+    fn scope(&self) -> InputScopeId;
+    /// Pure/sync/IO-free — runs inside `classify()`.
+    fn recognize(&self, input: &ResolvedInput) -> Option<InputIntentTarget>;
+    /// Pure/sync/IO-free — called for free-text inputs.
+    fn text_candidate(&self, free_text: &str, targets: &TextSearchTargets) -> Option<InputIntentTarget>;
+}
+```
+
+#### Registrar + registry
+
+```rust
+// nmp-core::substrate::intent::registry
+pub const INPUT_SCOPE_LEDGER_SEAM: &str = "input_scope";
+
+pub trait InputScopeRegistrar {
+    fn register_input_scope(&self, recognizer: Arc<dyn InputScopeRecognizer>);
+}
+
+pub enum InputScopeDisposition { Installed, YieldedToExisting }
+
+pub struct InputScopeRegistry { /* Mutex<Vec<Arc<dyn InputScopeRecognizer>>> */ }
+impl InputScopeRegistry {
+    pub fn new() -> Self;
+    pub fn register(&self, r: Arc<dyn InputScopeRecognizer>) -> InputScopeDisposition;
+    pub fn recognizers(&self) -> Vec<Arc<dyn InputScopeRecognizer>>;
+    pub fn len(&self) -> usize;
+    pub fn is_empty(&self) -> bool;
+}
+impl InputScopeRegistrar for InputScopeRegistry { /* yielding-default on dup scope id */ }
+```
+
+`InputScopeRegistrar` is added to the `AppHost` super-trait + blanket impl
+(`crates/nmp-core/src/substrate/app_host/mod.rs`), following the same pattern as
+`SearchScopeRegistrar`. The registrar is separate from `SearchScopeRegistrar`; they
+share the namespaced-label vocabulary and composition-ledger seam style but are
+distinct registry instances with distinct seam names (`"input_scope"` vs
+`"search_scope"`). No `linkme`/`inventory` implicit activation.
+
+#### Orchestrator (`nmp-intent`)
+
+```rust
+// crates/nmp-intent/src/lib.rs
+#[must_use]
+pub fn classify(
+    req: &InputIntentRequest,
+    recognizers: &[Arc<dyn nmp_core::substrate::InputScopeRecognizer>],
+) -> InputIntentClassification
+```
+
+Pure/sync/IO-free. Frozen precedence:
+
+1. Secret reject — `Nip19Entity::Nsec` or `nostr:nsec` / `ncryptsec` prefix → `Rejection(SecretLike)`.
+2. NIP-19/21 ref — via `resolve_open_uri`; `nostr.ref` synthetic scope; if ref's
+   entity class not in allowed scopes → `Rejection(DisallowedScope)`.
+3. Relay URL — `ws://` / `wss://` normalised → `InputIntentTarget::RelayUrl`.
+4. NIP-05 shape — `name@domain` shape (pure parse, **no HTTP**) → `InputIntentTarget::Nip05`.
+5. Registered recognizers — snapshot from registry, first match wins.
+6. Free-text → `InputIntentTarget::TextQuery` via `nmp_nip50::SearchRequest` JSON.
+7. Refusals — `DisallowedScope` / `UnregisteredScope` when no scope matches.
+
+#### NIP-05 crate (`nmp-nip05`)
+
+NIP-05 HTTP resolution is IO and lives outside `classify()`:
+
+```rust
+// crates/nmp-nip05/src/parse.rs (pure)
+pub fn parse_nip05(identifier: &str) -> Option<(String, String)>   // (name, domain)
+
+// crates/nmp-nip05/src/lib.rs (IO layer)
+pub struct ResolveNip05Command {
+    pub name: String,
+    pub domain: String,
+    pub correlation_id: Option<String>,
+}
+impl nmp_core::substrate::ProtocolCommand for ResolveNip05Command {
+    fn run(self: Box<Self>, ctx: &mut ProtocolCommandContext<'_>)
+        -> Result<(), ProtocolCommandError>;
+    // Spawns a thread → blocking ureq HTTP GET /.well-known/nostr.json?name=<name>
+    // → resolved pubkey → ActorCommand landing via RefNamespace::Profile resolve-ref seam.
+}
+```
+
+Mirrors the `nmp-nip57::FetchLnurlInvoice` ProtocolCommand pattern. HTTP is
+blocked behind the `native` Cargo feature (mirroring `nmp-nip57`). The resolved
+pubkey is delivered back to the actor via the existing
+`nmp_app_resolve_ref(RefNamespace::Profile)` seam, not through a new surface.
+
+### 3.6 Search FFI surface
 
 **This surface lives in `nmp-nip50` (higher-order crate), not in `nmp-core`.**
 The core substrate contributes only the `InterestShape.search` wire-filter field.
@@ -269,7 +464,7 @@ pub fn open_search(query: SearchQuery) -> SearchResultView
 
 ADR-0020 decision 15 defines registered input scopes; only free text becomes `SearchQuery`.
 
-### 3.6 Kernel-init defaults
+### 3.7 Kernel-init defaults
 
 ```rust
 pub struct DefaultRelayLists {

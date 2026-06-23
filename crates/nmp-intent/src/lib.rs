@@ -60,7 +60,5 @@ pub fn classify(
     req: &InputIntentRequest,
     recognizers: &[Arc<dyn InputScopeRecognizer>],
 ) -> InputIntentClassification {
-    // S1 fills the orchestration body against the frozen contract.
-    let _ = (req, recognizers);
-    todo!("S1: input-intent orchestrator body (#1804)")
+    classifier::classify_impl(req, recognizers)
 }
