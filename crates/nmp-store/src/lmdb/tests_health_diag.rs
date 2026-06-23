@@ -15,9 +15,13 @@
 
 use heed::MdbError;
 
+use std::fs::OpenOptions;
+use std::io::{Seek, SeekFrom, Write};
+
 use super::open::open_impl_with_limits;
 use super::open_error::classify_heed_err;
 use super::test_fixtures::{signed_event, verified};
+use super::LmdbEventStore;
 use crate::types::StoreError;
 use crate::EventStore;
 
@@ -38,14 +42,24 @@ fn classifier_map_full() {
     let e = heed::Error::Mdb(MdbError::MapFull);
     let r = classify_heed_err(e, 65536, 10);
     assert!(
-        matches!(r, StoreError::MapFull { map_size_bytes: 65536 }),
+        matches!(
+            r,
+            StoreError::MapFull {
+                map_size_bytes: 65536
+            }
+        ),
         "expected MapFull{{map_size_bytes:65536}}, got {r:?}"
     );
 }
 
 #[test]
 fn classifier_corrupted() {
-    let cases = [MdbError::Corrupted, MdbError::Panic, MdbError::Invalid, MdbError::PageNotFound];
+    let cases = [
+        MdbError::Corrupted,
+        MdbError::Panic,
+        MdbError::Invalid,
+        MdbError::PageNotFound,
+    ];
     for mdb in cases {
         let e = heed::Error::Mdb(mdb);
         let r = classify_heed_err(e, 1024, 4);
@@ -71,9 +85,13 @@ fn classifier_display_no_sensitive_data() {
     // Display strings must not contain file-system paths or sensitive tokens.
     let cases: &[StoreError] = &[
         StoreError::ReaderExhaustion { max_readers: 126 },
-        StoreError::MapFull { map_size_bytes: 1024 },
+        StoreError::MapFull {
+            map_size_bytes: 1024,
+        },
         StoreError::CorruptEnv("lmdb environment corrupted or invalid".into()),
-        StoreError::VersionMismatch { detail: "lmdb binary version mismatch".into() },
+        StoreError::VersionMismatch {
+            detail: "lmdb binary version mismatch".into(),
+        },
     ];
     for err in cases {
         let msg = err.to_string();
@@ -111,12 +129,12 @@ fn classifier_display_no_sensitive_data() {
 fn insert_until_map_full() {
     // Fixed map size with NO auto-grow: exceeding it must raise MDB_MAP_FULL.
     const MAP_SIZE_BYTES: usize = 1024 * 1024; // 1 MiB
-    // Each event's `content` is this many bytes; the stored event (full JSON +
-    // index entries) is strictly larger, so this is a conservative lower bound
-    // on the bytes every insert commits to the map.
+                                               // Each event's `content` is this many bytes; the stored event (full JSON +
+                                               // index entries) is strictly larger, so this is a conservative lower bound
+                                               // on the bytes every insert commits to the map.
     const PER_EVENT_PAYLOAD_BYTES: usize = 4096; // 4 KiB
-    // Generous cap that still guarantees the trigger; the loop breaks early once
-    // MapFull is seen, so this only bounds the worst case.
+                                                 // Generous cap that still guarantees the trigger; the loop breaks early once
+                                                 // MapFull is seen, so this only bounds the worst case.
     const LOOP_CAP: u64 = 512;
     // Compile-time proof that cumulative payload exceeds the map size, so
     // map-full is guaranteed on any page size: 512 * 4096 = 2 MiB > 1 MiB.
@@ -126,8 +144,7 @@ fn insert_until_map_full() {
     );
 
     let dir = tempfile::tempdir().expect("tempdir");
-    let store = open_impl_with_limits(dir.path(), MAP_SIZE_BYTES, 126)
-        .expect("open with tiny map");
+    let store = open_impl_with_limits(dir.path(), MAP_SIZE_BYTES, 126).expect("open with tiny map");
 
     let content = "x".repeat(PER_EVENT_PAYLOAD_BYTES);
     let relay: String = "wss://test.relay/".into();
@@ -139,8 +156,7 @@ fn insert_until_map_full() {
             Ok(_) => {}
             Err(StoreError::MapFull { map_size_bytes }) => {
                 assert_eq!(
-                    map_size_bytes,
-                    MAP_SIZE_BYTES as u64,
+                    map_size_bytes, MAP_SIZE_BYTES as u64,
                     "MapFull carries wrong map_size_bytes"
                 );
                 map_full_seen = true;
@@ -185,5 +201,75 @@ fn reader_exhaustion() {
     assert!(
         matches!(classified, StoreError::ReaderExhaustion { max_readers: 1 }),
         "expected ReaderExhaustion{{max_readers:1}}, got {classified:?}"
+    );
+}
+
+// ─── corrupt-env integration test ─────────────────────────────────────────────
+
+/// Zero out the first 16 bytes of `path` (the LMDB meta-page magic + version
+/// header), syncing to disk so the next open observes the corruption.
+///
+/// Corrupting only the header causes `mdb_env_open()` to return `MDB_INVALID`
+/// at header-read time, before any B-tree traversal. Zeroing larger regions
+/// triggers an internal `assert('root > 1')` in `mdb_page_search()` which
+/// calls `abort()` (SIGABRT) rather than returning an error code, killing the
+/// test process before Rust can surface `StoreError::CorruptEnv`.
+fn corrupt_leading_bytes(path: &std::path::Path) -> std::io::Result<()> {
+    let mut f = OpenOptions::new().write(true).open(path)?;
+    f.seek(SeekFrom::Start(0))?;
+    f.write_all(&[0u8; 16])?;
+    f.sync_all()?;
+    Ok(())
+}
+
+/// Open a real store, insert one signed event, drop the store, corrupt the
+/// `data.mdb` file on disk, then reopen and assert the reopen returns
+/// `StoreError::CorruptEnv(_)` without leaking the on-disk path in the
+/// `Display` string.
+#[test]
+fn reopen_corrupt_data_mdb_returns_corrupt_env_without_path_leak() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let relay: String = "wss://test.relay/".into();
+
+    {
+        let store = open_impl_with_limits(dir.path(), super::open::MAP_SIZE, 126)
+            .expect("open with safe limits");
+        let raw = signed_event(1, 1_000_000, "hello", None);
+        store
+            .insert(verified(raw), &relay, 1_000_000_000)
+            .expect("insert one event");
+        // Force heed to evict this env from its global OPENED_ENV cache so the
+        // second open() below gets a fresh mdb_env_open() call (D6: closing is
+        // infallible). Without this, heed's Arc-cached env is returned and the
+        // corruption written to disk is never observed.
+        let closing = store.inner_for_test().env.clone().prepare_for_closing();
+        drop(store);
+        closing.wait();
+    }
+
+    let data_path = dir.path().join("data.mdb");
+    assert!(data_path.exists(), "data.mdb should exist after open");
+
+    corrupt_leading_bytes(&data_path).expect("corrupt data.mdb");
+
+    let err = match LmdbEventStore::open(dir.path()) {
+        Ok(_) => panic!("expected CorruptEnv on reopen, got Ok"),
+        Err(e) => e,
+    };
+    assert!(
+        matches!(err, StoreError::CorruptEnv(_)),
+        "expected StoreError::CorruptEnv(_), got {err:?}"
+    );
+
+    let msg = err.to_string();
+    let dir_str = dir.path().display().to_string();
+    let data_str = data_path.display().to_string();
+    assert!(
+        !msg.contains(&dir_str),
+        "Display leaked directory path: {msg}"
+    );
+    assert!(
+        !msg.contains(&data_str),
+        "Display leaked data.mdb path: {msg}"
     );
 }
