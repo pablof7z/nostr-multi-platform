@@ -187,18 +187,14 @@ pub extern "C" fn nmp_app_create_new_account(
         if let Ok(p) = serde_json::from_str(&profile_json) {
             p
         } else {
-            app.send_cmd(ActorCommand::ShowToast {
-                message: "Failed to decode profile JSON".to_string(),
-            });
+            app.show_toast("Failed to decode profile JSON".to_string());
             return;
         };
 
     let relays: Vec<(String, String)> = if let Ok(r) = serde_json::from_str(&relays_json) {
         r
     } else {
-        app.send_cmd(ActorCommand::ShowToast {
-            message: "Failed to decode relays JSON".to_string(),
-        });
+        app.show_toast("Failed to decode relays JSON".to_string());
         return;
     };
 
@@ -250,18 +246,14 @@ pub fn create_new_account_with_initial_follows(
         if let Ok(p) = serde_json::from_str(&profile_json) {
             p
         } else {
-            app.send_cmd(ActorCommand::ShowToast {
-                message: "Failed to decode profile JSON".to_string(),
-            });
+            app.show_toast("Failed to decode profile JSON".to_string());
             return false;
         };
 
     let relays: Vec<(String, String)> = if let Ok(r) = serde_json::from_str(&relays_json) {
         r
     } else {
-        app.send_cmd(ActorCommand::ShowToast {
-            message: "Failed to decode relays JSON".to_string(),
-        });
+        app.show_toast("Failed to decode relays JSON".to_string());
         return false;
     };
 

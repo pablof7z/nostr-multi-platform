@@ -13,7 +13,6 @@
 //! of the Rust module split.
 
 use super::{app_ref, c_string_argument, NmpApp};
-use nmp_core::ActorCommand;
 use std::ffi::c_char;
 
 /// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
@@ -33,7 +32,7 @@ use std::ffi::c_char;
 ///   `1` = Global (account-agnostic, e.g. a hashtag firehose).
 ///
 /// FFI-clean (D6): a null argument is a silent no-op; a non-object
-/// `filter_json` surfaces a diagnostic toast (via `ActorCommand::ShowToast`)
+/// `filter_json` surfaces a diagnostic toast (via `NmpApp::show_toast`)
 /// rather than a panic. D8: forwards to the actor; no polling, no sync wait.
 #[no_mangle]
 pub extern "C" fn nmp_app_open_interest(
@@ -56,17 +55,11 @@ pub extern "C" fn nmp_app_open_interest(
     // treats `None` as a no-op, but surfacing the error here gives the host a
     // visible signal that its filter string was rejected.
     if nmp_planner::InterestShape::from_filter_json(&filter_json).is_none() {
-        app.send_cmd(ActorCommand::ShowToast {
-            message: "open_interest: malformed filter JSON".to_string(),
-        });
+        app.show_toast("open_interest: malformed filter JSON".to_string());
         return;
     }
 
-    app.send_cmd(ActorCommand::OpenInterest {
-        filter_json,
-        consumer_id,
-        scope,
-    });
+    app.open_interest(filter_json, consumer_id, scope);
 }
 
 /// M2 (ADR-0042) — detach one owner from a feed interest registered via
@@ -92,12 +85,7 @@ pub extern "C" fn nmp_app_close_interest(
         return;
     };
 
-    app.send_cmd(ActorCommand::CloseInterest {
-        filter_json,
-        consumer_id,
-        scope,
-        relay_pin: None,
-    });
+    app.close_interest(filter_json, consumer_id, scope);
 }
 
 /// Open whatever a `nostr:` URI (or bare NIP-19 entity) points at (T95/T80).
@@ -113,9 +101,7 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
         return;
     };
 
-    app.send_cmd(ActorCommand::Kernel(nmp_core::KernelAction::OpenUri {
-        uri,
-    }));
+    app.open_uri(uri);
 }
 
 // #1726: `nmp_app_claim_event` and `nmp_app_release_event` C-ABI symbols
@@ -193,9 +179,9 @@ pub fn declare_active_follows_feed(app: *mut NmpApp, primary_kinds_json: *const 
     let primary_kinds = match parse_primary_kinds_json(&kinds_str) {
         Some(set) => set,
         None => {
-            app.send_cmd(nmp_core::ActorCommand::ShowToast {
-                message: "declare_active_follows_feed: malformed primary kinds JSON".to_string(),
-            });
+            app.show_toast(
+                "declare_active_follows_feed: malformed primary kinds JSON".to_string(),
+            );
             return;
         }
     };

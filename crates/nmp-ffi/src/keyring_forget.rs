@@ -7,7 +7,6 @@
 
 use super::NmpApp;
 use nmp_core::substrate::KeyringStatus;
-use nmp_core::ActorCommand;
 
 impl NmpApp {
     /// Forget the app-scoped local secret and remove the identity through the
@@ -41,12 +40,10 @@ impl NmpApp {
                 // Do NOT remove the account: the secret is still in the
                 // keychain. Surface the failure so the host can retry rather
                 // than silently orphaning the nsec.
-                self.send_cmd(ActorCommand::ShowToast {
-                    message: format!(
-                        "could not forget the stored key for this account ({account_id}); \
-                         account kept to avoid leaving the key behind"
-                    ),
-                });
+                self.show_toast(format!(
+                    "could not forget the stored key for this account ({account_id}); \
+                     account kept to avoid leaving the key behind"
+                ));
             }
         }
         status
