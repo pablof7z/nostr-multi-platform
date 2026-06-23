@@ -1,4 +1,5 @@
 use super::*;
+use crate::actor::LifecycleCommand;
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug)]
@@ -24,7 +25,7 @@ impl ProtocolCommand for ChainingCommand {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
-        ctx.send(ActorCommand::Shutdown);
+        ctx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
         Ok(())
     }
 }
@@ -232,9 +233,9 @@ fn full_constructor_threads_capabilities() {
 
     // Worker-side sender clone reaches the matching receiver.
     let cloned = ctx.command_sender_clone();
-    cloned.send(ActorCommand::Shutdown).expect("send");
+    cloned.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).expect("send");
     match rx.recv().unwrap() {
-        crate::actor::ActorMail::Command(ActorCommand::Shutdown) => (),
+        crate::actor::ActorMail::Command(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)) => (),
         other => panic!("expected Shutdown, got {other:?}"),
     }
 }
@@ -244,5 +245,5 @@ fn with_send_only_provides_disconnected_sender() {
     let send = |_: ActorCommand| {};
     let ctx = ProtocolCommandContext::with_send_only(&send);
     let cloned = ctx.command_sender_clone();
-    assert!(cloned.send(ActorCommand::Shutdown).is_err());
+    assert!(cloned.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).is_err());
 }

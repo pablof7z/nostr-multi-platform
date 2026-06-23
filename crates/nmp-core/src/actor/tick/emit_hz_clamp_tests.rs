@@ -6,7 +6,7 @@
 //! ceiling). Split out of `tick.rs` to keep that file within its LOC ceiling.
 
 use super::{clamp_emit_hz, EMIT_HZ_MAX};
-use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
+use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender, LifecycleCommand};
 use crate::update_envelope::UpdateFrameBytes;
 use std::sync::mpsc;
 use std::thread;
@@ -58,15 +58,15 @@ fn high_emit_hz_is_clamped_to_ceiling_end_to_end() {
 
     // Request an absurdly high rate (100× the ceiling).
     cmd_tx
-        .send(ActorCommand::Start {
+        .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
             visible_limit: 50,
             emit_hz: 10_000,
             initial_relays: Vec::new(),
-        })
+        }))
         .unwrap();
 
     thread::sleep(Duration::from_millis(200));
-    let _ = cmd_tx.send(ActorCommand::Shutdown);
+    let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 
     let mut frame_count = 0usize;
     while upd_rx.try_recv().is_ok() {

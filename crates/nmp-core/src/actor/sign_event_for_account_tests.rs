@@ -32,7 +32,7 @@ use nostr::{EventBuilder, Keys, SecretKey, Timestamp};
 use super::commands::{self, IdentityRuntime};
 use super::pending_sign::{resolve_parked_op, ParkedOpSink};
 use super::signer_port_test_harness::dispatch_one;
-use super::{ActorCommand, SignContinuation};
+use super::{ActorCommand, SignCommand, SignContinuation};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::remote_signer::RemoteSignerHandle;
@@ -203,11 +203,11 @@ fn local_backend_invokes_continuation_inline_with_valid_signed_event() {
     let unsigned = draft_unsigned(&active_pk);
 
     let parked = dispatch_one(
-        ActorCommand::SignEventForAccount {
+        ActorCommand::Sign(SignCommand::EventForAccount {
             unsigned: unsigned.clone(),
             signer_pubkey: None, // active account
             continuation,
-        },
+        }),
         &mut identity,
         &mut kernel,
     );
@@ -262,11 +262,11 @@ fn local_backend_named_pubkey_signs_with_account() {
 
     let (captured, continuation) = capture_continuation();
     let parked = dispatch_one(
-        ActorCommand::SignEventForAccount {
+        ActorCommand::Sign(SignCommand::EventForAccount {
             unsigned: draft_unsigned(&pk),
             signer_pubkey: Some(pk.clone()), // NAMED roster key, not active-default
             continuation,
-        },
+        }),
         &mut identity,
         &mut kernel,
     );
@@ -303,11 +303,11 @@ fn named_pubkey_with_no_signer_invokes_continuation_with_err() {
 
     let (captured, continuation) = capture_continuation();
     let parked = dispatch_one(
-        ActorCommand::SignEventForAccount {
+        ActorCommand::Sign(SignCommand::EventForAccount {
             unsigned: draft_unsigned(&unknown),
             signer_pubkey: Some(unknown),
             continuation,
-        },
+        }),
         &mut identity,
         &mut kernel,
     );
@@ -352,11 +352,11 @@ fn bunker_backend_parks_then_drain_invokes_continuation_with_signed_event() {
     let unsigned = draft_unsigned(&stub_pk);
 
     let mut parked = dispatch_one(
-        ActorCommand::SignEventForAccount {
+        ActorCommand::Sign(SignCommand::EventForAccount {
             unsigned: unsigned.clone(),
             signer_pubkey: None,
             continuation,
-        },
+        }),
         &mut identity,
         &mut kernel,
     );
@@ -434,11 +434,11 @@ fn bunker_backend_error_invokes_continuation_with_err_so_terminal_resolves() {
 
     let (captured, continuation) = capture_continuation();
     let mut parked = dispatch_one(
-        ActorCommand::SignEventForAccount {
+        ActorCommand::Sign(SignCommand::EventForAccount {
             unsigned: draft_unsigned(&stub_pk),
             signer_pubkey: None,
             continuation,
-        },
+        }),
         &mut identity,
         &mut kernel,
     );
@@ -480,11 +480,11 @@ fn no_account_invokes_continuation_with_err_immediately() {
 
     let (captured, continuation) = capture_continuation();
     let parked = dispatch_one(
-        ActorCommand::SignEventForAccount {
+        ActorCommand::Sign(SignCommand::EventForAccount {
             unsigned: draft_unsigned(""),
             signer_pubkey: None,
             continuation,
-        },
+        }),
         &mut identity,
         &mut kernel,
     );
@@ -544,11 +544,11 @@ fn sign_event_for_return_named_roster_key_keeps_its_own_budget() {
     // Sign-and-return with the NAMED key while the 5s account is active.
     let before = std::time::Instant::now();
     let parked = dispatch_one(
-        ActorCommand::SignEventForReturn {
+        ActorCommand::Sign(SignCommand::EventForReturn {
             account_pubkey: named_pk,
             unsigned_json: r#"{"kind":24242,"content":"auth","tags":[]}"#.to_string(),
             correlation_id: "corr-named-budget".to_string(),
-        },
+        }),
         &mut identity,
         &mut kernel,
     );

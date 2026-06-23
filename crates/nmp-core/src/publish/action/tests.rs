@@ -278,12 +278,12 @@ fn execute_publish_profile_emits_publish_profile_command() {
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishProfile {
+        ActorCommand::Publish(PublishCommand::Profile {
             fields,
             correlation_id,
-        } => {
+        }) => {
             assert_eq!(
-                fields.get("display_name").and_then(|v| v.as_str()),
+                fields.get("display_name").and_then(|v: &serde_json::Value| v.as_str()),
                 Some("Alice"),
             );
             assert_eq!(correlation_id.as_deref(), Some("test-cid"));
@@ -304,14 +304,14 @@ fn execute_publish_raw_emits_publish_raw_event_command() {
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishRawEvent {
+        ActorCommand::Publish(PublishCommand::RawEvent {
             kind,
             content,
             target,
             signer_pubkey,
             correlation_id,
             ..
-        } => {
+        }) => {
             assert_eq!(kind, 30023);
             assert_eq!(content, "body");
             assert_eq!(target, PublishTarget::Auto);
@@ -342,7 +342,7 @@ fn execute_publish_raw_threads_signer_pubkey_onto_actor_command() {
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishRawEvent { signer_pubkey, .. } => {
+        ActorCommand::Publish(PublishCommand::RawEvent { signer_pubkey, .. }) => {
             assert_eq!(
                 signer_pubkey,
                 Some(agent_pk),
@@ -400,11 +400,11 @@ fn execute_publish_signed_event_emits_publish_signed_event_command() {
     let cmds = run_execute(action).expect("execute must succeed");
     assert_eq!(cmds.len(), 1, "must emit exactly one command");
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishSignedEvent {
+        ActorCommand::Publish(PublishCommand::SignedEvent {
             raw,
             target,
             correlation_id,
-        } => {
+        }) => {
             assert_eq!(raw.kind, 1);
             assert_eq!(target, PublishTarget::Auto);
             assert_eq!(correlation_id.as_deref(), Some("test-cid"));

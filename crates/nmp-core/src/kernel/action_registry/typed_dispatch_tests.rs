@@ -122,7 +122,7 @@ fn start_bytes_presigned_publish_mints_id_not_event_id() {
 
 #[test]
 fn execute_bytes_publish_signed_sends_publish_signed_event_command() {
-    use crate::actor::ActorCommand;
+    use crate::actor::{ActorCommand, PublishCommand};
     use std::cell::RefCell;
 
     let registry = default_registry();
@@ -143,7 +143,7 @@ fn execute_bytes_publish_signed_sends_publish_signed_event_command() {
     let cmds = sent.into_inner();
     assert_eq!(cmds.len(), 1, "exactly one ActorCommand enqueued");
     match &cmds[0] {
-        ActorCommand::PublishSignedEvent { correlation_id, .. } => {
+        ActorCommand::Publish(PublishCommand::SignedEvent { correlation_id, .. }) => {
             assert_eq!(correlation_id.as_deref(), Some("corr-typed-1"));
         }
         other => panic!("expected PublishSignedEvent, got {other:?}"),

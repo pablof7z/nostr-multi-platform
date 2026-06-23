@@ -23,7 +23,7 @@ use nostr::{Keys, SecretKey};
 use super::commands::{self, IdentityRuntime};
 use super::pending_sign::{resolve_parked_op, ParkedOpSink};
 use super::signer_port_test_harness::dispatch_one;
-use super::{ActorCommand, CipherContinuation};
+use super::{ActorCommand, CipherContinuation, IdentityCommand, SignCommand};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::remote_signer::RemoteSignerHandle;
@@ -162,12 +162,12 @@ fn local_account_nip44_encrypt_decrypt_round_trips_through_the_port() {
     // Alice encrypts "hello bob" to Bob through the port.
     let (enc_captured, enc_cont) = capture_cipher();
     let parked = dispatch_one(
-        ActorCommand::Nip44EncryptForAccount {
+        ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
             peer_pubkey: bob_pk.clone(),
             plaintext: "hello bob".to_string(),
             signer_pubkey: None,
             continuation: enc_cont,
-        },
+        }),
         &mut id_alice,
         &mut kernel,
     );
@@ -192,12 +192,12 @@ fn local_account_nip44_encrypt_decrypt_round_trips_through_the_port() {
     );
     let (dec_captured, dec_cont) = capture_cipher();
     let parked = dispatch_one(
-        ActorCommand::Nip44DecryptForAccount {
+        ActorCommand::Sign(SignCommand::Nip44DecryptForAccount {
             peer_pubkey: alice_pk,
             ciphertext,
             signer_pubkey: None,
             continuation: dec_cont,
-        },
+        }),
         &mut id_bob,
         &mut kernel,
     );
@@ -230,12 +230,12 @@ fn bunker_account_nip44_encrypt_parks_then_drain_invokes_continuation() {
 
     let (captured, continuation) = capture_cipher();
     let mut parked = dispatch_one(
-        ActorCommand::Nip44EncryptForAccount {
+        ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
             peer_pubkey: Keys::generate().public_key().to_hex(),
             plaintext: "secret".to_string(),
             signer_pubkey: None,
             continuation,
-        },
+        }),
         &mut identity,
         &mut kernel,
     );
@@ -310,12 +310,12 @@ fn named_roster_key_keeps_its_own_budget_not_the_active_accounts() {
     let (_captured, continuation) = capture_cipher();
     let before = std::time::Instant::now();
     let parked = dispatch_one(
-        ActorCommand::Nip44EncryptForAccount {
+        ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
             peer_pubkey: Keys::generate().public_key().to_hex(),
             plaintext: "x".to_string(),
             signer_pubkey: Some(named_pk),
             continuation,
-        },
+        }),
         &mut identity,
         &mut kernel,
     );
@@ -370,9 +370,9 @@ fn deliver_signer_response_fans_out_to_every_remote_handle() {
 
     let body = r#"{"id":"req-1","result":"signed-event-json"}"#.to_string();
     let parked = dispatch_one(
-        ActorCommand::DeliverSignerResponse {
+        ActorCommand::Identity(IdentityCommand::DeliverSignerResponse {
             response_json: body.clone(),
-        },
+        }),
         &mut identity,
         &mut kernel,
     );

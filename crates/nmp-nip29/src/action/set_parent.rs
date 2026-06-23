@@ -17,7 +17,7 @@
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ActorCommand, PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -118,7 +118,7 @@ mod tests {
 
     fn tags(cmds: &[ActorCommand]) -> &[Vec<String>] {
         match &cmds[0] {
-            ActorCommand::PublishUnsignedEventToRelays { event, .. } => &event.tags,
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => &event.tags,
             other => panic!("expected kind:9002 publish, got {other:?}"),
         }
     }
@@ -132,9 +132,9 @@ mod tests {
         let cmds = run_execute(action).expect("executes");
         assert_eq!(cmds.len(), 1);
         match &cmds[0] {
-            ActorCommand::PublishUnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
                 event, relays, correlation_id, ..
-            } => {
+            }) => {
                 assert_eq!(event.kind, KIND_EDIT_METADATA);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(correlation_id.as_deref(), Some("cid-sp"));

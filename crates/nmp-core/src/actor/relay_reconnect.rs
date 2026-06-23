@@ -119,7 +119,7 @@ mod tests {
 
     use crate::actor::commands::{self, IdentityRuntime};
     use crate::actor::signer_port_test_harness::dispatch_one_with_relays;
-    use crate::actor::ActorCommand;
+    use crate::actor::{ActorCommand, RelayCommand};
 
     fn fresh_identity() -> IdentityRuntime {
         IdentityRuntime::new(
@@ -181,7 +181,7 @@ mod tests {
         let mut identity = fresh_identity();
 
         dispatch_one_with_relays(
-            ActorCommand::ReconnectRelays,
+            ActorCommand::Relay(RelayCommand::ReconnectRelays),
             &mut identity,
             &mut kernel,
             &pool,
@@ -210,7 +210,7 @@ mod tests {
         let mut identity = fresh_identity();
 
         dispatch_one_with_relays(
-            ActorCommand::ReconnectRelays,
+            ActorCommand::Relay(RelayCommand::ReconnectRelays),
             &mut identity,
             &mut kernel,
             &pool,

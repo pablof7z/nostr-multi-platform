@@ -36,7 +36,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use nmp_store::{RawEvent, VerifiedEvent};
-use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ActorCommand, TestSupportCommand};
 use nmp_ffi::{
     nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
     nmp_app_start, nmp_free_string,
@@ -82,7 +82,7 @@ fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
     let app_ref = unsafe { &*app };
     app_ref
         .actor_sender()
-        .send(ActorCommand::IngestPreVerifiedEvents(events))
+        .send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
         .expect("actor command channel must be open");
 }
 

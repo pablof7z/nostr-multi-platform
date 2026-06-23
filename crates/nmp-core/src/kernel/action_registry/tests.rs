@@ -155,7 +155,7 @@ fn json_not_matching_action_shape_is_rejected() {
 /// `execute()`, capturing the `ActorCommand` it sends.
 #[test]
 fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
-    use crate::actor::ActorCommand;
+    use crate::actor::{ActorCommand, PublishCommand};
     use std::cell::RefCell;
 
     let registry = default_registry();
@@ -176,13 +176,13 @@ fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
         "executor must emit exactly one ActorCommand; got {cmds:?}"
     );
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishRawEvent {
+        ActorCommand::Publish(PublishCommand::RawEvent {
             kind,
             content,
             target,
             correlation_id,
             ..
-        } => {
+        }) => {
             assert_eq!(kind, 1);
             assert_eq!(content, "hello");
             assert_eq!(
@@ -209,7 +209,7 @@ fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
 /// spinner.
 #[test]
 fn publish_signed_executor_sends_publish_signed_event_command() {
-    use crate::actor::ActorCommand;
+    use crate::actor::{ActorCommand, PublishCommand};
     use std::cell::RefCell;
 
     let registry = default_registry();
@@ -240,11 +240,11 @@ fn publish_signed_executor_sends_publish_signed_event_command() {
         "executor must emit exactly one ActorCommand; got {cmds:?}"
     );
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishSignedEvent {
+        ActorCommand::Publish(PublishCommand::SignedEvent {
             target,
             correlation_id,
             raw,
-        } => {
+        }) => {
             assert_eq!(target, crate::publish::PublishTarget::Auto);
             assert_ne!(
                 correlation_id.as_deref(),
@@ -305,7 +305,7 @@ fn start_publish_profile_action_with_non_string_field_is_rejected() {
 /// the real `default_registry()` executor closure via `execute()`.
 #[test]
 fn publish_profile_executor_threads_correlation_id_onto_actor_command() {
-    use crate::actor::ActorCommand;
+    use crate::actor::{ActorCommand, PublishCommand};
     use std::cell::RefCell;
 
     let registry = default_registry();
@@ -327,17 +327,17 @@ fn publish_profile_executor_threads_correlation_id_onto_actor_command() {
         "executor must emit exactly one ActorCommand; got {cmds:?}"
     );
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishProfile {
+        ActorCommand::Publish(PublishCommand::Profile {
             fields,
             correlation_id,
-        } => {
+        }) => {
             assert_eq!(
-                fields.get("name").and_then(|v| v.as_str()),
+                fields.get("name").and_then(|v: &serde_json::Value| v.as_str()),
                 Some("Alice"),
                 "the profile fields must be carried through verbatim"
             );
             assert_eq!(
-                fields.get("picture").and_then(|v| v.as_str()),
+                fields.get("picture").and_then(|v: &serde_json::Value| v.as_str()),
                 Some("https://x/y.png")
             );
             assert_eq!(
