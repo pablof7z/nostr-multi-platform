@@ -10,7 +10,7 @@ use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use nmp_nip51::{active_mute_list_interest, active_mute_list_interest_id};
 use nostr::Keys;
 

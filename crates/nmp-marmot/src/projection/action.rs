@@ -62,7 +62,7 @@
 //! dispatch — irrelevant next to the actual MLS / SQLite work.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 /// Namespace under which the [`MarmotActionModule`] registers in the
@@ -305,7 +305,7 @@ mod tests {
     /// `Debug` output (the struct derives `Debug` over both fields).
     #[test]
     fn execute_emits_one_protocol_host_op_command_with_correlation_id() {
-        use nmp_core::ActorCommand;
+        use nmp_core::actor::ActorCommand;
         use std::cell::RefCell;
 
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());

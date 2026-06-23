@@ -11,7 +11,8 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar};
-use nmp_core::{ActorCommand, KernelEventObserver};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{KernelEventObserver};
 use nmp_nip51::{active_mute_list_interest, active_mute_list_interest_id, MuteListProjection};
 
 /// Wire the NIP-51 mute-list observer into `app` and return the

@@ -109,7 +109,7 @@ mod typed_decode {
     use nmp_core::substrate::{
         ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
     };
-    use nmp_core::ActorCommand;
+    use nmp_core::actor::ActorCommand;
     use serde::{Deserialize, Serialize};
 
     const PROBE_NAMESPACE: &str = "nmp.test.typed_probe";

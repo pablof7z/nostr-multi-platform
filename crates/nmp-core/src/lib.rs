@@ -1,4 +1,4 @@
-mod actor;
+pub mod actor;
 mod app;
 pub mod bunker_hook;
 pub mod external_signer_hook;
@@ -300,7 +300,7 @@ pub mod typed_projections {
 // so protocol crates that consume the port through
 // `ProtocolCommandContext::sign_event_for_account` (e.g. `nmp-nip57`'s zap
 // command) can name it — chiefly in tests that drive the continuation directly.
-pub use actor::{ActorCommand, CipherContinuation, SignContinuation, SignerSource};
+pub use actor::{CipherContinuation, SignContinuation, SignerSource};
 // ADR-0050 §D3a — the unified actor-inbox transport seam. `CommandSender` is
 // the single command-send handle passed to relay-connected hooks, DM inbox
 // chains, and similar substrate seams that post commands from worker threads.

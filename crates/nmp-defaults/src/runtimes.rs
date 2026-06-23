@@ -46,7 +46,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::substrate::{
     HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar, SnapshotProjectionRegistrar,
 };
-use nmp_core::{read_eligible_relay_urls, ActorCommand, AppRelaySlot};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{read_eligible_relay_urls, AppRelaySlot};
 use nmp_nip17::{
     active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
     DmRuntimeEffect, DmRuntimeState,

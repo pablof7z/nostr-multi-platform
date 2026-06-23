@@ -19,7 +19,7 @@
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
-use crate::ActorCommand;
+use crate::actor::ActorCommand;
 
 use super::commands::{self, IdentityRuntime};
 use super::signer_port_test_harness::dispatch_one;

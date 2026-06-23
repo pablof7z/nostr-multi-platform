@@ -11,7 +11,7 @@
 //!
 //! This module is host-agnostic protocol orchestration — no I/O, no clocks,
 //! no key access, no FFI. The host shell (e.g. `apps/chirp`) owns the
-//! [`ActorCommand`](nmp_core::ActorCommand) translation, the snapshot
+//! [`ActorCommand`](nmp_core::actor::ActorCommand) translation, the snapshot
 //! projection wiring, and the lock that owns `DmRuntimeState` across ticks.
 //! This crate just decides *what should happen* given the inputs.
 

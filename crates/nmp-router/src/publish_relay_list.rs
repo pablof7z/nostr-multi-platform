@@ -71,7 +71,8 @@ use nmp_core::substrate::{
     ActionRejection,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::{canonical_relay_url, ActorCommand};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{canonical_relay_url};
 use serde::{de, Deserialize, Deserializer, Serialize};
 
 /// Per-relay role marker for a NIP-65 entry.

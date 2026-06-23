@@ -17,7 +17,7 @@
 use super::*;
 use crate::{nmp_app_free, nmp_app_new, nmp_app_start};
 use std::ffi::c_void;
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use nostr::prelude::*;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Mutex, OnceLock};

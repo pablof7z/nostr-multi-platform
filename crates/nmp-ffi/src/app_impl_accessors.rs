@@ -22,7 +22,8 @@ use nmp_core::slots::{
     event_by_id_from_store, ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot,
     PullCursorRegistryHandleSlot,
 };
-use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{KernelEventObserver, KernelEventObserverId};
 use zeroize::Zeroizing;
 
 use crate::app_struct::NmpApp;

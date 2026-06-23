@@ -19,7 +19,7 @@
 //!   `native` feature.
 
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 
 pub mod parse;
 

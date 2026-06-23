@@ -24,7 +24,8 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
-use nmp_core::{ActorCommand, ActorMail, CommandSender};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorMail, CommandSender};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::IngestParser;
 use nmp_ffi::{

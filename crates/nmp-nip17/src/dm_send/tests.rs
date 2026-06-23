@@ -18,7 +18,8 @@ use nmp_core::substrate::{
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent as SubstrateUnsignedEvent};
 use nmp_core::publish::PublishTarget;
-use nmp_core::{ActorCommand, ActorMail, CommandSender};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorMail, CommandSender};
 use nostr::nips::nip44::{self, Version as Nip44Version};
 use nostr::JsonUtil;
 use std::cell::RefCell;

@@ -2,7 +2,7 @@
 //! switching, and the typed-snapshot sidecar (Wave A, ADR-0037).
 
 use super::*;
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use crate::interest::KIND_MUTE_LIST;
 use nmp_planner::InterestLifecycle;
 use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};

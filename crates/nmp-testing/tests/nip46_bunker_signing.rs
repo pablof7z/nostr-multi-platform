@@ -50,7 +50,8 @@ use nmp_core::typed_projections::{
     decode_accounts, decode_active_account, decode_publish_queue, ACCOUNTS_SCHEMA_ID,
     ACTIVE_ACCOUNT_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_ID,
 };
-use nmp_core::{decode_snapshot_typed_projections, ActorCommand, ActorMail, CommandSender};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{decode_snapshot_typed_projections, ActorMail, CommandSender};
 use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::SignerError;
 use nostr::{Event, Keys};
@@ -182,7 +183,8 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     use std::sync::mpsc;
 
     use nmp_core::testing::run_actor;
-    use nmp_core::{ActorCommand, ActorMail, CommandSender};
+    use nmp_core::actor::ActorCommand;
+    use nmp_core::{ActorMail, CommandSender};
 
     let bunker_keys = Keys::generate();
     let user_keys = Keys::generate();

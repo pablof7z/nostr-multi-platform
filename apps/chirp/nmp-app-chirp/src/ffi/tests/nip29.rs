@@ -4,7 +4,7 @@
 //! sibling `nip29_registration` module to keep each file under the 500-LOC cap.
 
 use nmp_core::substrate::ActionModule;
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 use nmp_nip29::action::{
     CreatePublicGroupAction, DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction,

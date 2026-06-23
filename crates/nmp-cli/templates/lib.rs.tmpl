@@ -194,9 +194,9 @@ impl ActionModule for EntryActionModule {
         &self,
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
-        // Scaffold placeholder: send an ActorCommand via `send(...)` to
+        // Scaffold placeholder: send an nmp_core::actor::ActorCommand via `send(...)` to
         // drive the actor. Host state can be captured in the closure passed
         // to `NmpApp::register_snapshot_projection` on the output side.
         Ok(())

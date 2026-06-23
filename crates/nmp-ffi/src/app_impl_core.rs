@@ -9,7 +9,7 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 
 use crate::app_struct::NmpApp;
 

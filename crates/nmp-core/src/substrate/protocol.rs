@@ -34,7 +34,7 @@
 use std::fmt;
 
 use crate::relay::OutboundMessage;
-use crate::ActorCommand;
+use crate::actor::ActorCommand;
 
 #[path = "protocol/command_error.rs"]
 mod command_error;

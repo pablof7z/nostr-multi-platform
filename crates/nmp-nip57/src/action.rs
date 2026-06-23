@@ -35,7 +35,7 @@
 //! `SignedEvent` ever crosses the port).
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::build::ZapRequest;

@@ -44,7 +44,8 @@
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::{canonical_relay_url, ActorCommand};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{canonical_relay_url};
 use nmp_kinds::KIND_DM_RELAY_LIST;
 use serde::{Deserialize, Serialize};
 
@@ -395,7 +396,7 @@ mod tests {
     #[test]
     fn execute_emits_publish_unsigned_event_for_kind10050() {
         use nmp_core::substrate::ActionModule;
-        use nmp_core::ActorCommand;
+        use nmp_core::actor::ActorCommand;
         use std::cell::RefCell;
 
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());

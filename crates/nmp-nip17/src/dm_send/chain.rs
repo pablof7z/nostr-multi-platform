@@ -10,7 +10,8 @@ use nmp_core::substrate::{
     build_nip44_encrypt_for_account, build_record_action_failure, build_sign_event_for_account,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
-use nmp_core::{ActorCommand, CommandSender};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{CommandSender};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
 use nostr::{JsonUtil, PublicKey, Timestamp};
 

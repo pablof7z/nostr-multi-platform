@@ -24,7 +24,7 @@
 //! as the NIP-29 actions do.
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::{build_dm_rumor, DmInput, SendGiftWrappedDmCommand};
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn execute_emits_protocol_send_gift_wrapped_dm_with_correct_fields() {
-        use nmp_core::ActorCommand;
+        use nmp_core::actor::ActorCommand;
         use std::cell::RefCell;
 
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());

@@ -21,7 +21,7 @@
 //! actor loop exactly as it would any other follow-up command. This keeps the
 //! port pure data-in / command-out and replay-safe (AGENTS.md effects rule).
 
-use crate::ActorCommand;
+use crate::actor::ActorCommand;
 
 /// A request to pay a single BOLT-11 invoice.
 ///
