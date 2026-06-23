@@ -346,8 +346,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             host_op_handler,
             relay_text_interceptor,
             relay_connected_hook,
-            bunker_hook,
-            external_signer_hook,
             kernel_clock,
             external_event_sink_policy,
             routing_substrate,
@@ -364,6 +362,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             input_scope_registry,
             search_relay_source: new_search_relay_source_slot(),
             mailbox_cache_reader: Mutex::new(None),
+            bunker_hook,
+            external_signer_hook,
         },
         read_handles: ReadHandles {
             event_store_handle,

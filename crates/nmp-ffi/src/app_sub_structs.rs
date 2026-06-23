@@ -3,7 +3,8 @@
 //!
 //! Three private groupings:
 //! - [`CompositionConfig`] — immutable pre-start slots consumed by the actor.
-//! - [`CapabilityPorts`]   — pluggable substrate handles shared with the actor.
+//! - [`CapabilityPorts`]   — pluggable substrate handles shared with the actor,
+//!   including live `ActorRuntimeSlots` that can be refreshed after start.
 //! - [`ReadHandles`]       — handles published back by the actor after kernel
 //!   construction.
 
@@ -46,10 +47,6 @@ pub(crate) struct CompositionConfig {
     pub(crate) relay_text_interceptor: nmp_core::substrate::RelayTextInterceptorSlot,
     /// ADR-0051 — relay-connected hook slot.
     pub(crate) relay_connected_hook: nmp_core::substrate::RelayConnectedHookSlot,
-    /// ADR-0052 §D3 — per-app bunker-URI hook slot.
-    pub(crate) bunker_hook: nmp_core::BunkerHookSlot,
-    /// ADR-0052 §D3 — per-app NIP-55 restore hook slot.
-    pub(crate) external_signer_hook: nmp_core::ExternalSignerHookSlot,
     /// Test-support kernel-clock injection slot.
     pub(crate) kernel_clock: nmp_core::slots::KernelClockSlot,
     /// External event sink policy factory slot.
@@ -92,6 +89,14 @@ pub(crate) struct CapabilityPorts {
     /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the
     /// `nmp_app_encode_profile` NIP-19 identity encoder.
     pub(crate) mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,
+    /// ADR-0052 §D3 — per-app bunker-URI hook slot. Lives here (not in
+    /// `CompositionConfig`) because it is a live `ActorRuntimeSlot` that
+    /// `nmp_signer_broker_init` can refresh after start.
+    pub(crate) bunker_hook: nmp_core::BunkerHookSlot,
+    /// ADR-0052 §D3 — per-app NIP-55 restore hook slot. Lives here (not in
+    /// `CompositionConfig`) because `nmp_external_signer_init` can refresh it
+    /// after start.
+    pub(crate) external_signer_hook: nmp_core::ExternalSignerHookSlot,
 }
 
 // ── ReadHandles ───────────────────────────────────────────────────────────────
