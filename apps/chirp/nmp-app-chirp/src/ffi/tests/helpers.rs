@@ -7,7 +7,7 @@
 use std::cell::RefCell;
 
 use nmp_core::substrate::ActionModule;
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use nmp_ffi::NmpApp;
 
 use super::super::{nmp_app_chirp_register, ChirpHandle, NmpRegisterStatus};

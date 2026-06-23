@@ -173,7 +173,7 @@ impl nmp_core::substrate::ActionModule for JsonOnlyAppModule {
         &self,
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         Ok(())
     }
