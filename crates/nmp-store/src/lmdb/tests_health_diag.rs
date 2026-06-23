@@ -238,6 +238,13 @@ fn reopen_corrupt_data_mdb_returns_corrupt_env_without_path_leak() {
         store
             .insert(verified(raw), &relay, 1_000_000_000)
             .expect("insert one event");
+        // Force heed to evict this env from its global OPENED_ENV cache so the
+        // second open() below gets a fresh mdb_env_open() call (D6: closing is
+        // infallible). Without this, heed's Arc-cached env is returned and the
+        // corruption written to disk is never observed.
+        let closing = store.inner_for_test().env.clone().prepare_for_closing();
+        drop(store);
+        closing.wait();
     }
 
     let data_path = dir.path().join("data.mdb");
