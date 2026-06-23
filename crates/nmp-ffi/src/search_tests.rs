@@ -2,10 +2,13 @@
 
 use super::*;
 use crate::{nmp_app_free, nmp_app_new};
+use nmp_core::substrate::SearchScopeRegistry;
 use nmp_nip50::{
-    decode_search_results_snapshot, install_search_relay_source, SearchRelaySource, SearchScope,
-    SearchTargets,
+    decode_search_results_snapshot, install_search_relay_source, SearchHitSource, SearchRelaySource,
+    SearchScope, SearchTargets,
 };
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
+use std::collections::BTreeSet;
 use std::ffi::CString;
 
 /// A registered `SearchRelaySource` lets `open_search` resolve `UserPreferred`
@@ -178,6 +181,148 @@ fn open_search_without_source_is_cache_only_not_a_crash() {
     let key = app_ref.open_search(request, "s3");
     assert_eq!(key, "nmp.nip50.search.s3");
     assert!(app_ref.search_snapshot_bytes("s3").is_some());
+    nmp_app_free(app);
+}
+
+// ===========================================================================
+// #1882 — cache hits are search-text-filtered + `Cache`-provenanced
+// ===========================================================================
+
+const NOTE_KIND: u32 = 1;
+
+fn note_id(byte: u8) -> String {
+    format!("{byte:02x}").repeat(32)
+}
+
+fn raw_note(id_byte: u8, content: &str, created_at: u64) -> RawEvent {
+    RawEvent {
+        id: note_id(id_byte),
+        pubkey: "01".repeat(32),
+        created_at,
+        kind: NOTE_KIND,
+        tags: vec![],
+        content: content.to_string(),
+        sig: "a".repeat(128),
+    }
+}
+
+/// Publish a `MemEventStore` into the app's kernel store slot, with the NIP-50
+/// FTS scopes installed through the real `register_search_scopes` path (exactly
+/// what `register_defaults` wires) and `events` inserted + indexed. This is the
+/// store `open_search`'s cache scan reads via `text_search_visit`.
+fn publish_store_with_notes(app: &NmpApp, events: &[(u8, &str, u64)]) {
+    let registry = SearchScopeRegistry::new();
+    nmp_nip50::register_search_scopes(&registry);
+    let store = MemEventStore::new();
+    registry.install_into(&store);
+    for (id_byte, content, created_at) in events {
+        store
+            .insert(
+                VerifiedEvent::from_raw_unchecked(raw_note(*id_byte, content, *created_at)),
+                &"wss://cache/".to_string(),
+                *created_at,
+            )
+            .expect("insert indexed note");
+    }
+    *app.event_store_handle().lock().expect("store slot") = Some(Arc::new(store));
+}
+
+/// A kind:1 cache-only search request (no relay source installed → cache-only).
+fn note_request(query: &str) -> SearchRequest {
+    SearchRequest::new(
+        query,
+        SearchScope::Kinds(BTreeSet::from([NOTE_KIND])),
+        SearchTargets::AppDefault,
+        Some(50),
+    )
+    .expect("request")
+}
+
+fn decoded_hits(app: &NmpApp, session: &str) -> Vec<nmp_nip50::SearchHit> {
+    let bytes = app.search_snapshot_bytes(session).expect("sidecar bytes");
+    decode_search_results_snapshot(&bytes).expect("decode N50S").hits
+}
+
+/// #1882 regression — the production `open_search` must NOT return cached events
+/// that fail the search-TEXT filter. Before the fix, cache hits flowed through
+/// the generic observed-interest replay, whose structural gate
+/// (`InterestShape::matches_event_with_id`) checks kind + time only — so an
+/// unrelated note of the right kind was returned, mislabelled `Relay("")`.
+#[test]
+fn open_search_excludes_cached_events_that_do_not_match_the_query_text() {
+    let app = nmp_app_new();
+    // SAFETY: `nmp_app_new` never returns null.
+    let app_ref = unsafe { &*app };
+    publish_store_with_notes(
+        app_ref,
+        &[
+            (1, "hello nostr world", 100),
+            (2, "totally unrelated cooking recipe", 101),
+            (3, "another nostr thought", 102),
+        ],
+    );
+
+    app_ref.open_search(note_request("nostr"), "cache");
+    let hits = decoded_hits(app_ref, "cache");
+
+    let ids: BTreeSet<String> = hits.iter().map(|h| h.id.clone()).collect();
+    assert_eq!(
+        ids,
+        BTreeSet::from([note_id(1), note_id(3)]),
+        "only the notes whose text matches 'nostr' are returned; the unrelated note (id 2) is excluded"
+    );
+    // Every cache hit is provenanced `Cache`, never the `Relay(\"\")` the old
+    // unfiltered replay produced.
+    for hit in &hits {
+        assert_eq!(hit.source, SearchHitSource::Cache, "cache hits are Cache-provenanced");
+    }
+
+    nmp_app_free(app);
+}
+
+/// #1882 regression — a cached event whose content matches the query IS returned
+/// as a `Cache` hit (the FTS path is genuinely wired, not just suppressed).
+#[test]
+fn open_search_returns_text_matching_cache_hit_tagged_cache() {
+    let app = nmp_app_new();
+    // SAFETY: `nmp_app_new` never returns null.
+    let app_ref = unsafe { &*app };
+    publish_store_with_notes(app_ref, &[(7, "satoshi nakamoto wrote nostr", 200)]);
+
+    app_ref.open_search(note_request("satoshi"), "match");
+    let hits = decoded_hits(app_ref, "match");
+
+    assert_eq!(hits.len(), 1, "the matching cached note is returned");
+    assert_eq!(hits[0].id, note_id(7));
+    assert_eq!(hits[0].source, SearchHitSource::Cache);
+    assert_eq!(hits[0].content, "satoshi nakamoto wrote nostr");
+
+    nmp_app_free(app);
+}
+
+/// #1882 — cache↔relay first-arrival dedupe. The cache scan runs synchronously
+/// at open, so a cached match keeps its `Cache` tag even when a later relay echo
+/// would re-deliver the same id (the projection's first-arrival-wins dedupe is
+/// owned + exhaustively tested in `nmp-nip50/src/projection_tests.rs`; here we
+/// assert the FFI open path preserves the `Cache` provenance end-to-end through
+/// the N50S snapshot). A bare app with no published store is relay-only.
+#[test]
+fn open_search_cache_only_never_emits_a_relay_provenance() {
+    let app = nmp_app_new();
+    // SAFETY: `nmp_app_new` never returns null.
+    let app_ref = unsafe { &*app };
+    publish_store_with_notes(app_ref, &[(1, "nostr cache first", 100)]);
+
+    // No relay source → cache-only fan-out. The sole hit must be Cache.
+    app_ref.open_search(note_request("nostr"), "dedupe");
+    let hits = decoded_hits(app_ref, "dedupe");
+    assert_eq!(hits.len(), 1);
+    assert_eq!(
+        hits[0].source,
+        SearchHitSource::Cache,
+        "the synchronous cache hit wins first-arrival; no Relay(\"\") provenance leaks in"
+    );
+
     nmp_app_free(app);
 }
 
