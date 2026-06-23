@@ -83,6 +83,23 @@ mod lifecycle;
 mod publish;
 #[cfg(feature = "native")]
 mod relays;
+
+// ADR-0065 — `ActorCommand` sub-enum families. Each sub-enum groups cohesive
+// command verbs under one top-level `ActorCommand` variant. The dispatch arm
+// matches the family first, then the verb (see `actor/dispatch/mod.rs`).
+// Always-compiled (no `native` gate): the command *types* are pure data, even
+// if the dispatch *handlers* run on the native actor runtime.
+pub(super) mod action_ledger_command;
+pub(super) mod contacts_command;
+pub(super) mod identity_command;
+pub(super) mod interests_command;
+pub(super) mod lifecycle_command;
+pub(super) mod publish_command;
+pub(super) mod relay_command;
+pub(super) mod refs_command;
+pub(super) mod sign_command;
+#[cfg(any(test, feature = "test-support"))]
+pub(super) mod test_support_command;
 // V-41 — `zap` + `zap_lnurl` moved to
 // `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` (a `ProtocolCommand`
 // dispatched via `ActorCommand::Protocol`). D0: `nmp-core` carries no
