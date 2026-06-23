@@ -50,7 +50,7 @@
 use crate::substrate::protocol::{
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
 };
-use crate::ActorCommand;
+use crate::actor::ActorCommand;
 
 /// One-shot dispatch of a host-owned op to the per-app
 /// [`HostOpHandler`](crate::substrate::HostOpHandler).

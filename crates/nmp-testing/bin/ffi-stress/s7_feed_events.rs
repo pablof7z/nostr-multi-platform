@@ -11,7 +11,7 @@
 //! `nmp-core`); `VerifiedEvent::from_raw_unchecked` is the test-support bypass.
 
 use nmp_store::{RawEvent, VerifiedEvent};
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use nmp_ffi::NmpApp;
 
 /// 64-hex viewer pubkey (the active account; self-inclusion makes it a "follow"

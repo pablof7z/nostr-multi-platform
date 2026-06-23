@@ -11,7 +11,7 @@
 //! private methods of the runtime — the file boundary is a size-management
 //! seam, not an API boundary.
 
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 
 use crate::dispatch_routing::{
     execute_ref_dispatch, kernel_action_from_dispatch, ref_dispatch_from_action,

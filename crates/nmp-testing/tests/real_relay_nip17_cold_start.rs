@@ -30,7 +30,8 @@ use std::time::{Duration, Instant};
 
 use std::sync::mpsc::{channel, Receiver};
 
-use nmp_core::{ActorCommand, ActorMail, CommandSender};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorMail, CommandSender};
 use nmp_nip17::DmInboxProjection;
 use nmp_nip59::{gift_wrap_local, KIND_GIFT_WRAP};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;

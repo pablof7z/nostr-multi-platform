@@ -66,14 +66,14 @@ impl nmp_core::substrate::ActionModule for TestHostOpModule {
         &self,
         action: Self::Action,
         correlation_id: &str,
-        send: &dyn Fn(nmp_core::ActorCommand),
+        send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         let action_json = serde_json::to_string(&action).map_err(|e| e.to_string())?;
         // ADR-0052 §D4 (K2 rung 5.4): host-op dispatch flows through the single
         // `Protocol` write seam as `HostOpCommand` (the bespoke `DispatchHostOp`
         // arm was deleted). The handler still lives in the per-app
         // `HostOpHandlerSlot` set via `NmpApp::set_host_op_handler`.
-        send(nmp_core::ActorCommand::Protocol(Box::new(
+        send(nmp_core::actor::ActorCommand::Protocol(Box::new(
             nmp_core::substrate::host_op_command(action_json, correlation_id.to_string()),
         )));
         Ok(())

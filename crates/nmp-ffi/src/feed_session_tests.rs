@@ -288,7 +288,8 @@ fn invalid_primary_kinds_fail_closed_before_the_compiler_runs() {
 /// trip the final assertion.
 #[test]
 fn teardown_runs_notify_last_after_removals_and_interest_clear() {
-    use nmp_core::{ActorCommand, ActorMail, CommandSender};
+    use nmp_core::actor::ActorCommand;
+    use nmp_core::{ActorMail, CommandSender};
 
     let app = nmp_app_new();
     {

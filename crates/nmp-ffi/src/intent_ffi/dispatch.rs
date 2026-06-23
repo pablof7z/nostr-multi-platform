@@ -17,7 +17,7 @@ use crate::{app_ref, c_string_argument, NmpApp};
 use nmp_core::substrate::{
     InputIntentCandidate, InputIntentClassification, InputIntentRejection, InputIntentTarget,
 };
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use serde::Serialize;
 
 use super::classify_request;

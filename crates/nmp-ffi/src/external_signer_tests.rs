@@ -9,7 +9,7 @@
 //! sign round-trips through the SAME transport and verifies end to end.
 
 use super::*;
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use std::sync::mpsc;
 use std::time::Duration;
 

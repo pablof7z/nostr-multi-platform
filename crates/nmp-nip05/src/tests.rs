@@ -11,7 +11,8 @@ use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext};
-use nmp_core::{ActorCommand, ActorMail};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorMail};
 
 use crate::ResolveNip05Command;
 

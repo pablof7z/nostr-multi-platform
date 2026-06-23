@@ -10,7 +10,7 @@
 //! `build_record_action_failure`) cover the action-terminal commands so
 //! worker threads no longer name `ActorCommand` directly.
 
-use crate::ActorCommand;
+use crate::actor::ActorCommand;
 
 /// Build an [`ActorCommand::SignEventForAccount`] (ADR-0043 Decision 2) — the
 /// generic, backend-transparent sign-account port.

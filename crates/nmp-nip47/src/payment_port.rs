@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{PaymentIntent, PaymentPort};
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 
 use crate::protocol::WalletPayInvoiceCommand;
 use crate::runtime::WalletRuntimeHandle;

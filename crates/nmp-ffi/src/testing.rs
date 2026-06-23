@@ -12,7 +12,7 @@
 #![cfg(any(test, feature = "test-support"))]
 
 use super::{app_ref, NmpApp};
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 use std::ffi::{c_char, CStr};
 
 /// Inject `count` pre-verified kind-1 events into the kernel timeline via

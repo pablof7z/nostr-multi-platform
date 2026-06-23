@@ -35,10 +35,10 @@ impl ActionModule for EnqueueThenPanicModule {
         &self,
         _action: Self::Action,
         correlation_id: &str,
-        send: &dyn Fn(nmp_core::ActorCommand),
+        send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         // Enqueue the real terminal-bearing command, then panic.
-        send(nmp_core::ActorCommand::RecordActionSuccess {
+        send(nmp_core::actor::ActorCommand::RecordActionSuccess {
             correlation_id: correlation_id.to_string(),
             result_json: None,
         });

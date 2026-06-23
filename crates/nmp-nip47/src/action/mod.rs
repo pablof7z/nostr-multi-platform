@@ -40,7 +40,7 @@ use serde::{Deserialize, Serialize};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::ActorCommand;
+use nmp_core::actor::ActorCommand;
 
 use crate::protocol::WalletPayInvoiceCommand;
 use crate::runtime::WalletRuntimeHandle;

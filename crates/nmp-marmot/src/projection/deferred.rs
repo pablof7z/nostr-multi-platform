@@ -166,7 +166,7 @@ impl InnerHandle<'_> {
             }
             let cmd = if ok == Some(true) {
                 // `dispatch()` already cleared the error banner on success.
-                nmp_core::ActorCommand::RecordActionSuccess {
+                nmp_core::actor::ActorCommand::RecordActionSuccess {
                     correlation_id: outcome.correlation_id,
                     result_json: None,
                 }
@@ -187,7 +187,7 @@ impl InnerHandle<'_> {
                     outcome.correlation_id.clone(),
                     now_secs,
                 );
-                nmp_core::ActorCommand::RecordActionFailure {
+                nmp_core::actor::ActorCommand::RecordActionFailure {
                     correlation_id: outcome.correlation_id,
                     reason,
                 }
@@ -216,7 +216,7 @@ impl InnerHandle<'_> {
                 op.correlation_id.clone(),
                 now_secs,
             );
-            self.push_actor_command(nmp_core::ActorCommand::RecordActionFailure {
+            self.push_actor_command(nmp_core::actor::ActorCommand::RecordActionFailure {
                 correlation_id: op.correlation_id,
                 reason: "key_package_unavailable".to_string(),
             });
@@ -246,14 +246,14 @@ impl InnerHandle<'_> {
         self.inner.last_op_error = None;
     }
 
-    /// Send an [`nmp_core::ActorCommand`] back into the actor's own command
+    /// Send an [`nmp_core::actor::ActorCommand`] back into the actor's own command
     /// channel. Used to record deferred terminal verdicts from within the
     /// ingest path (which runs on the actor thread). D8-safe because the
     /// underlying `mpsc::Sender::send` is non-blocking for an unbounded
     /// channel; the actor drains it on the next iteration.
     ///
     /// No-op when `app` is null (the test projection — no actor channel).
-    pub(crate) fn push_actor_command(&mut self, cmd: nmp_core::ActorCommand) {
+    pub(crate) fn push_actor_command(&mut self, cmd: nmp_core::actor::ActorCommand) {
         // Test capture seam: record a lightweight `(verdict, correlation_id)`
         // projection of the command stream so unit tests can assert EXACTLY
         // ONE terminal verdict per correlation_id without a live `NmpApp`.
@@ -263,12 +263,12 @@ impl InnerHandle<'_> {
         #[cfg(test)]
         {
             match &cmd {
-                nmp_core::ActorCommand::RecordActionSuccess { correlation_id, .. } => {
+                nmp_core::actor::ActorCommand::RecordActionSuccess { correlation_id, .. } => {
                     self.inner
                         .captured_commands
                         .push(("success", correlation_id.clone()));
                 }
-                nmp_core::ActorCommand::RecordActionFailure { correlation_id, .. } => {
+                nmp_core::actor::ActorCommand::RecordActionFailure { correlation_id, .. } => {
                     self.inner
                         .captured_commands
                         .push(("failure", correlation_id.clone()));

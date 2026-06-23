@@ -31,7 +31,7 @@ impl nmp_core::substrate::ActionModule for TestCodedRejectModule {
         &self,
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         Ok(())
     }
@@ -111,7 +111,7 @@ impl nmp_core::substrate::ActionModule for TestCodedRejectBytesModule {
         &self,
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         Ok(())
     }

@@ -92,7 +92,7 @@ pub use bytes::nmp_app_dispatch_action_bytes;
 /// an unknown `correlation_id` is a silent no-op (D6 — never a crash).
 ///
 /// THREADING: dispatch is non-blocking — this only enqueues
-/// [`nmp_core::ActorCommand::AckActionStage`] on the actor channel
+/// [`nmp_core::actor::ActorCommand::AckActionStage`] on the actor channel
 /// (D8 — no actor round-trip on the FFI thread). The kernel drops the entry
 /// when the actor dequeues the command and the next snapshot tick emits
 /// without it.
@@ -112,7 +112,7 @@ pub extern "C" fn nmp_app_ack_action_stage(app: *mut NmpApp, correlation_id: *co
     if cid.is_empty() {
         return;
     }
-    app.send_cmd(nmp_core::ActorCommand::AckActionStage(cid));
+    app.send_cmd(nmp_core::actor::ActorCommand::AckActionStage(cid));
 }
 
 /// Host-supplied action result observer callback.
@@ -320,7 +320,7 @@ fn finish_dispatch(
             format!(r#"{{"correlation_id":{}}}"#, json_string(correlation_id))
         }
         Err(failure) => {
-            app.send_cmd(nmp_core::ActorCommand::RecordActionFailure {
+            app.send_cmd(nmp_core::actor::ActorCommand::RecordActionFailure {
                 correlation_id: correlation_id.to_string(),
                 reason: failure.message.clone(),
             });

@@ -21,7 +21,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::substrate::{
     ActionRegistrar, EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar,
 };
-use nmp_core::{ActorCommand, KernelEventObserver};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{KernelEventObserver};
 use nmp_nip51::{
     active_bookmark_list_interest, active_bookmark_list_interest_id, BookmarkListProjection,
 };

@@ -273,7 +273,7 @@ impl nmp_core::substrate::ActionModule for TestGreetingModule {
         &self,
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         greeting_flag().store(true, Ordering::SeqCst);
         Ok(())
@@ -296,7 +296,7 @@ impl nmp_core::substrate::ActionModule for TestFailingModule {
         &self,
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         Err("host rejected the action".to_string())
     }
@@ -319,7 +319,7 @@ impl nmp_core::substrate::ActionModule for TestTodoModule {
         &self,
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         Ok(())
     }
@@ -344,7 +344,7 @@ impl nmp_core::substrate::ActionModule for TestTodoRejectModule {
         &self,
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         Ok(())
     }
@@ -367,7 +367,7 @@ impl nmp_core::substrate::ActionModule for TestPanicModule {
         &self,
         _action: Self::Action,
         _correlation_id: &str,
-        _send: &dyn Fn(nmp_core::ActorCommand),
+        _send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         panic!("buggy executor")
     }

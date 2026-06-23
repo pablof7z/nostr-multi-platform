@@ -42,7 +42,8 @@ mod common;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use nmp_core::{ActorCommand, ActorMail, CommandSender};
+use nmp_core::actor::ActorCommand;
+use nmp_core::{ActorMail, CommandSender};
 use nostr::Keys;
 
 use crate::common::broker_adapter::broker_for_actor;
