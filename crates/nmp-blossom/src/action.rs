@@ -5,8 +5,10 @@
 //! (D8 — no hashing / HTTP on the dispatch path). The protocol command owns the
 //! full Build → Sign → Transport pipeline (see [`crate::upload`]).
 //!
-//! App-facing contract: dispatch `nmp.blossom.upload`, read the blob descriptor
-//! from `action_results[correlation_id].result`. No HTTP, base64, header
+//! App-facing contract: dispatch `nmp.blossom.upload`, retain the returned
+//! `correlation_id`, and read the blob descriptor from
+//! `action_results[correlation_id].result` on a later snapshot tick (the
+//! canonical terminal — see [`crate::result`]). No HTTP, base64, header
 //! construction, or sign-for-return in app code.
 
 use nmp_core::substrate::{
