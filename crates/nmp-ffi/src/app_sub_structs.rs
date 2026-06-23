@@ -58,6 +58,10 @@ pub(crate) struct CompositionConfig {
     pub(crate) routing_substrate: RoutingSubstrateSlot,
     /// Spec §271 (2026-05-25) — per-app substrate-publish-resolver factory slot.
     pub(crate) publish_resolver: PublishResolverSlot,
+    /// Per-app override for the active-account bootstrap Tailing self-kinds
+    /// list. Snapshotted by the actor in `ActorConfigSources` at start; a late
+    /// write after `nmp_app_start` has no effect.
+    pub(crate) bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
 }
 
 // ── CapabilityPorts ───────────────────────────────────────────────────────────
@@ -88,8 +92,6 @@ pub(crate) struct CapabilityPorts {
     /// H4 — read-only [`nmp_core::substrate::MailboxCache`] handle used by the
     /// `nmp_app_encode_profile` NIP-19 identity encoder.
     pub(crate) mailbox_cache_reader: Mutex<Option<Arc<dyn nmp_core::substrate::MailboxCache>>>,
-    /// Per-app override for the active-account bootstrap Tailing self-kinds list.
-    pub(crate) bootstrap_self_kinds: Arc<Mutex<Option<Vec<u64>>>>,
 }
 
 // ── ReadHandles ───────────────────────────────────────────────────────────────

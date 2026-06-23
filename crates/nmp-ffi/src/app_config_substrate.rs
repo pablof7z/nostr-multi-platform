@@ -326,7 +326,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.capability_ports.bootstrap_self_kinds.lock() {
+        if let Ok(mut slot) = self.composition.bootstrap_self_kinds.lock() {
             self.record_slot_decision(
                 "bootstrap_self_kinds",
                 "bootstrap_self_kinds",

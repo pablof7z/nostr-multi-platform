@@ -352,6 +352,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             external_event_sink_policy,
             routing_substrate,
             publish_resolver,
+            bootstrap_self_kinds,
         },
         capability_ports: CapabilityPorts {
             dm_inbox_relays_slot,
@@ -363,7 +364,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             input_scope_registry,
             search_relay_source: new_search_relay_source_slot(),
             mailbox_cache_reader: Mutex::new(None),
-            bootstrap_self_kinds,
         },
         read_handles: ReadHandles {
             event_store_handle,
