@@ -10,7 +10,7 @@ use super::super::StoredEvent;
 /// This is a display-layer extractor owned by the kernel so the Swift
 /// thin-shell does not have to parse Nostr event JSON in the view layer
 /// (aim.md §6.9, Chirp thin-shell rule).
-#[cfg(test)] // called from timeline_item (test-only) and inline tests
+#[cfg(test)] // called from inline repost_inner_tests
 pub(super) fn parse_repost_inner(raw: &str) -> (Option<String>, Option<String>) {
     let trimmed = raw.trim();
     if !trimmed.starts_with('{') {

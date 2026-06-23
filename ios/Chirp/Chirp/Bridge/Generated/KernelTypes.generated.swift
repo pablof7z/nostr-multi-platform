@@ -152,42 +152,6 @@ public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
     public var id: String { value }
 }
 
-// MARK: - TimelineItem
-// Source: nmp_core::kernel::types::TimelineItem
-public struct TimelineItem: Decodable, Equatable, RenderIdentifiable, Identifiable, Hashable, Sendable {
-    public let authorDisplayName: String?
-    public let authorLnurl: String?
-    public let authorPictureUrl: String?
-    public let authorPubkey: String
-    public let content: String
-    public let contentPreview: String
-    public let createdAt: UInt64
-    public let id: String
-    public let isRepost: Bool
-    public let kind: UInt32
-    public let navTargetId: String
-    public let relayCount: UInt32
-    public let relayProvenance: [String]
-    public let repostInnerContent: String
-
-    public func rendersIdentically(_ other: Self) -> Bool {
-        self.id == other.id
-            && self.authorPubkey == other.authorPubkey
-            && self.authorDisplayName == other.authorDisplayName
-            && self.authorPictureUrl == other.authorPictureUrl
-            && self.authorLnurl == other.authorLnurl
-            && self.content == other.content
-            && self.contentPreview == other.contentPreview
-            && self.createdAt == other.createdAt
-            && self.isRepost == other.isRepost
-            && self.kind == other.kind
-            && self.navTargetId == other.navTargetId
-            && self.repostInnerContent == other.repostInnerContent
-            && self.relayCount == other.relayCount
-            && self.relayProvenance == other.relayProvenance
-    }
-}
-
 // MARK: - SnapshotProjections
 // Source: crates/nmp-codegen/src/swift_projections_registry.rs (Stage 2 registry)
 //
