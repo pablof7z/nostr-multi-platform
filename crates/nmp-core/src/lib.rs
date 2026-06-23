@@ -196,10 +196,8 @@ pub use kernel::{
 pub use kernel::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 pub use kernel::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7 (#1671)
 pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0058
-pub use kernel::pull_cursor::{
-    InvalidCursorSpec, PullConsumerId, PullCursorHandle, PullCursorId, PullCursorMode,
-    PullCursorRegistry, PullCursorSpec,
-};
+pub use kernel::pull_cursor::{InvalidCursorSpec, PullConsumerId, PullCursorHandle};
+pub use kernel::pull_cursor::{PullCursorId, PullCursorMode, PullCursorRegistry, PullCursorSpec};
 pub use kernel::pull_wake::{decode_pull_wake_batch, PullWakeRow, PULL_WAKE_KEY};
 // ADR-0049 — the composition ledger (explain-the-composition surface) and its
 // record types. Re-exported at the crate root so `nmp-ffi` (the C-ABI host) and
@@ -323,7 +321,6 @@ pub use actor::ActorMail;
 // V-38: the `nmp_app_wallet_*` FFI symbols moved to `nmp-ffi::wallet` as
 // thin shims routing through `nmp.wallet.{connect,disconnect,pay_invoice}`
 // (dispatch_action). The actual wallet runtime lives in `crates/nmp-nip47`.
-
 // T118 / G3 — lifecycle observer wire-shape exposed for integration tests
 // (the `LifecycleObserverFn` is a plain `extern "C" fn` shape) and the
 // phase-code constants the observer must interpret. The actor module is
