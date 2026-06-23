@@ -488,15 +488,12 @@ pub fn default_registry() -> ActionRegistry {
 #[cfg(test)]
 #[path = "action_registry/tests.rs"]
 mod tests;
-
 #[cfg(test)]
 #[path = "action_registry/terminal_correctness_tests.rs"]
 mod terminal_correctness_tests;
-
 #[cfg(test)]
 #[path = "action_registry/typed_dispatch_tests.rs"]
 mod typed_dispatch_tests;
-
 #[cfg(test)]
 #[path = "action_registry/registration_error_tests.rs"]
 mod registration_error_tests;
