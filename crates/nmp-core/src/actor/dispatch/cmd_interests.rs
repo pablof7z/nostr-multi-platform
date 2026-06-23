@@ -1,7 +1,7 @@
 //! Interest, pull-cursor, and test-support dispatch arms.
 //!
 //! Covers: `PushInterest`, `WithdrawInterest`, `EnsureInterest`,
-//! `DropInterestOwner`, `RegisterPullCursor`, `AdvancePullCursor`,
+//! `DropInterestOwner`, `OpenPullCursor`, `AdvancePullCursor`,
 //! `UnregisterPullCursor`, `OpenInterest`, `OpenObservedInterest`,
 //! `CloseInterest`, and the `#[cfg(test)]` ingest/GC arms.
 //!

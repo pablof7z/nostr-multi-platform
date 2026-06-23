@@ -74,7 +74,7 @@ pub type EventStoreSlot = Arc<Mutex<Option<Arc<dyn crate::store::EventStore>>>>;
 /// Follows the [`EventStoreSlot`] **publish-back** pattern: the registry is
 /// kernel-owned (a fresh `Arc<RwLock<PullCursorRegistry>>` is minted per kernel,
 /// so `Reset` requires a re-publish). The actor is the sole writer of the inner
-/// registry (the three `RegisterPullCursor` / `AdvancePullCursor` /
+/// registry (the three `OpenPullCursor` / `AdvancePullCursor` /
 /// `UnregisterPullCursor` command arms); the synchronous FFI `pull_page` path
 /// reads through this slot, read-locks the registry to snapshot a registration,
 /// then releases before touching the store. Substrate-generic: a cursor id and a
