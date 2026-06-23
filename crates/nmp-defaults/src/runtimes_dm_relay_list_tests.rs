@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::actor::ActorCommand;
-use nmp_core::{AppRelayList};
+use nmp_core::{AppRelayList, InterestsCommand};
 use nmp_nip17::{active_giftwrap_inbox_interest_id, DmRuntimeState};
 use nostr::Keys;
 
@@ -80,7 +80,7 @@ fn bunker_only_account_activates_dm_relay_list_runtime() {
     let pushed_inbox = cmds.iter().any(|cmd| {
         matches!(
             cmd,
-            ActorCommand::PushInterest(interest)
+            ActorCommand::Interests(InterestsCommand::PushInterest(interest))
                 if interest.id == active_giftwrap_inbox_interest_id()
         )
     });
@@ -99,7 +99,7 @@ fn no_account_enqueues_no_inbox_interest() {
     assert!(
         !cmds.iter().any(|cmd| matches!(
             cmd,
-            ActorCommand::PushInterest(interest)
+            ActorCommand::Interests(InterestsCommand::PushInterest(interest))
                 if interest.id == active_giftwrap_inbox_interest_id()
         )),
         "no signed-in account must not push an inbox interest; got {cmds:?}"
@@ -131,7 +131,7 @@ fn reconciliation_fires_from_tick_observer_not_from_projection_read() {
     let pushed = cmds_after_tick.iter().any(|cmd| {
         matches!(
             cmd,
-            ActorCommand::PushInterest(interest)
+            ActorCommand::Interests(InterestsCommand::PushInterest(interest))
                 if interest.id == active_giftwrap_inbox_interest_id()
         )
     });
@@ -147,7 +147,7 @@ fn reconciliation_fires_from_tick_observer_not_from_projection_read() {
     let pushed_again = cmds_second_tick.iter().any(|cmd| {
         matches!(
             cmd,
-            ActorCommand::PushInterest(interest)
+            ActorCommand::Interests(InterestsCommand::PushInterest(interest))
                 if interest.id == active_giftwrap_inbox_interest_id()
         )
     });

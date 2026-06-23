@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::actor::ActorCommand;
+use nmp_core::InterestsCommand;
 use nmp_nip51::active_bookmark_list_interest_id;
 use nmp_planner::{InterestLifecycle, InterestScope};
 use nostr::Keys;
@@ -147,7 +148,7 @@ fn bunker_only_account_activates_bookmark_list_interest() {
 
 fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
     match cmd {
-        ActorCommand::PushInterest(interest) => {
+        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
             // The id is pubkey-invariant, so checking it alone doesn't prove
             // the correct pubkey was embedded. Assert the full interest shape:
             // authors, kind, lifecycle, and scope — so a stale or hardcoded
@@ -189,7 +190,7 @@ fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
 
 fn assert_withdraw(cmd: &ActorCommand) {
     match cmd {
-        ActorCommand::WithdrawInterest(id) => {
+        ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) => {
             assert_eq!(
                 *id,
                 active_bookmark_list_interest_id(),
