@@ -53,6 +53,7 @@ mod cmd_interests;
 mod cmd_lifecycle;
 mod cmd_protocol;
 mod cmd_publish;
+mod cmd_publish_family;
 mod helpers;
 mod relay_events;
 // Debt C — capability adapters for `ProtocolCommandContext`.
@@ -140,12 +141,12 @@ pub(super) fn dispatch_command(
         ActorCommand::Lifecycle(cmd) => cmd_lifecycle::dispatch(cmd, ctx),
         ActorCommand::Identity(cmd) => cmd_identity::dispatch(cmd, ctx),
         ActorCommand::Sign(cmd) => dispatch_sign(cmd, ctx),
-        ActorCommand::Publish(cmd) => cmd_publish::dispatch_publish(cmd, ctx),
-        ActorCommand::Contacts(cmd) => cmd_publish::dispatch_contacts(cmd, ctx),
-        ActorCommand::Relay(cmd) => cmd_publish::dispatch_relay(cmd, ctx),
+        ActorCommand::Publish(cmd) => cmd_publish_family::dispatch_publish(cmd, ctx),
+        ActorCommand::Contacts(cmd) => cmd_publish_family::dispatch_contacts(cmd, ctx),
+        ActorCommand::Relay(cmd) => cmd_publish_family::dispatch_relay(cmd, ctx),
         ActorCommand::Refs(cmd) => dispatch_refs(cmd, ctx),
         ActorCommand::Interests(cmd) => cmd_interests::dispatch(cmd, ctx),
-        ActorCommand::ActionLedger(cmd) => cmd_publish::dispatch_action_ledger(cmd, ctx),
+        ActorCommand::ActionLedger(cmd) => cmd_publish_family::dispatch_action_ledger(cmd, ctx),
         ActorCommand::Protocol(cmd) => cmd_protocol::protocol(cmd, ctx),
         ActorCommand::Kernel(action) => {
             let _ = dispatch_kernel_action(ctx.kernel, action);
