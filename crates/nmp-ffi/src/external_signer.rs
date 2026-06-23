@@ -32,7 +32,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::{dispatch_capability, CapabilityCallbackSlot};
 use nmp_core::substrate::{CapabilityEnvelope, CapabilityRequest};
-use nmp_core::{ActorCommand, ExternalSignerHookRequest};
+use nmp_core::ExternalSignerHookRequest;
 use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, UnsignedEvent};
 use nmp_signer_iface::{
     ExternalSignerRequest, ExternalSignerResponse, ExternalSignerTransport, SignerError, SignerOp,
@@ -130,10 +130,7 @@ impl Nip55Driver {
     }
 
     fn set_signer_state(&self, state: &str, reason: Option<String>) {
-        let _ = self.tx.send(ActorCommand::Nip55SignerStateChanged {
-            state: state.to_string(),
-            reason,
-        });
+        self.tx.nip55_signer_state_changed(state.to_string(), reason);
     }
 
     /// Begin the first-connect `get_public_key` round-trip (ADR-0048 D2).
@@ -196,9 +193,7 @@ impl Nip55Driver {
         // `deliver_external_response`; unknown correlation ids are dropped (D6).
         // The connect/handshake path above is unchanged — it still completes on
         // the bridge thread via the `AddSigner { RemoteHandle }` re-entry.
-        let _ = self.tx.send(ActorCommand::DeliverSignerResponse {
-            response_json: response_json.to_string(),
-        });
+        self.tx.deliver_signer_response(response_json.to_string());
     }
 
     fn complete_connect(&self, connect: Nip55Connect, response: &ExternalSignerResponse) {
@@ -210,10 +205,10 @@ impl Nip55Driver {
                 if let Ok(mut signers) = self.signers.lock() {
                     signers.push(Arc::clone(&signer));
                 }
-                let _ = self.tx.send(ActorCommand::AddSigner {
-                    source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(signer))),
-                    make_active: true,
-                });
+                self.tx.add_signer(
+                    nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(signer))),
+                    true,
+                );
                 self.set_signer_state("ready", None);
             }
             Err(SignerError::Rejected(reason)) => {
@@ -253,10 +248,10 @@ impl Nip55Driver {
                 if let Ok(mut signers) = self.signers.lock() {
                     signers.push(Arc::clone(&signer));
                 }
-                let _ = self.tx.send(ActorCommand::AddSigner {
-                    source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(signer))),
-                    make_active: true,
-                });
+                self.tx.add_signer(
+                    nmp_core::SignerSource::RemoteHandle(Box::new(ArcNip55Signer(signer))),
+                    true,
+                );
                 self.set_signer_state("ready", None);
             }
             Err(e) => {

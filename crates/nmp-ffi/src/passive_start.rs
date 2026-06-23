@@ -2,8 +2,6 @@ use std::sync::atomic::Ordering;
 use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::ActorCommand;
-
 use super::NmpApp;
 
 pub(crate) type ActorStarter = Box<dyn FnOnce() -> JoinHandle<()> + Send + 'static>;
@@ -60,9 +58,9 @@ impl Drop for NmpApp {
         if let Ok(mut inner) = self.update_callback.inner.lock() {
             inner.registration = None;
         }
-        // Route through `send_cmd` so the G-S4 queue-depth counter stays
-        // consistent: the actor decrements it as it dequeues `Shutdown`.
-        self.send_cmd(ActorCommand::Shutdown);
+        // Route through `shutdown_actor` (→ `send_cmd`) so the G-S4 queue-depth
+        // counter stays consistent: the actor decrements it as it dequeues `Shutdown`.
+        self.shutdown_actor();
         if let Ok(mut starter) = self.actor_starter.lock() {
             starter.take();
         }
