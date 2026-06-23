@@ -74,7 +74,8 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    PaymentIntent, PaymentPort, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
+    build_record_action_failure, PaymentIntent, PaymentPort, ProtocolCommand,
+    ProtocolCommandContext, ProtocolCommandError,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_core::ActorCommand;
@@ -156,10 +157,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                         message: reason.to_string(),
                     });
                     if let Some(cid) = correlation_id {
-                        ctx.send(ActorCommand::RecordActionFailure {
-                            correlation_id: cid,
-                            reason: reason.to_string(),
-                        });
+                        ctx.record_action_failure(cid, reason.to_string());
                     }
                     return Ok(());
                 }
@@ -194,10 +192,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                 message: format!("Zap failed: {reason}"),
             });
             if let Some(cid) = correlation_id {
-                ctx.send(ActorCommand::RecordActionFailure {
-                    correlation_id: cid,
-                    reason,
-                });
+                ctx.record_action_failure(cid, reason);
             }
             return Ok(());
         }
@@ -234,10 +229,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                     let msg = format!("Zap failed: {reason}");
                     let _ = worker_tx.send(ActorCommand::ShowToast { message: msg });
                     if let Some(cid) = correlation_id {
-                        let _ = worker_tx.send(ActorCommand::RecordActionFailure {
-                            correlation_id: cid,
-                            reason,
-                        });
+                        let _ = worker_tx.send(build_record_action_failure(cid, reason));
                     }
                     return;
                 }
@@ -249,10 +241,7 @@ impl ProtocolCommand for FetchLnurlInvoiceCommand {
                     let msg = format!("Zap failed: {reason}");
                     let _ = worker_tx.send(ActorCommand::ShowToast { message: msg });
                     if let Some(cid) = correlation_id {
-                        let _ = worker_tx.send(ActorCommand::RecordActionFailure {
-                            correlation_id: cid,
-                            reason,
-                        });
+                        let _ = worker_tx.send(build_record_action_failure(cid, reason));
                     }
                     return;
                 }
@@ -308,10 +297,7 @@ fn spawn_lnurl_worker(
                             message: format!("Zap failed: {reason}"),
                         });
                         if let Some(cid) = correlation_id {
-                            let _ = worker_tx.send(ActorCommand::RecordActionFailure {
-                                correlation_id: cid,
-                                reason,
-                            });
+                            let _ = worker_tx.send(build_record_action_failure(cid, reason));
                         }
                         return;
                     }
@@ -328,10 +314,7 @@ fn spawn_lnurl_worker(
                         message: reason.clone(),
                     });
                     if let Some(cid) = correlation_id {
-                        let _ = worker_tx.send(ActorCommand::RecordActionFailure {
-                            correlation_id: cid,
-                            reason,
-                        });
+                        let _ = worker_tx.send(build_record_action_failure(cid, reason));
                     }
                 }
             },
@@ -340,10 +323,7 @@ fn spawn_lnurl_worker(
                     message: format!("Zap failed: {reason}"),
                 });
                 if let Some(cid) = correlation_id {
-                    let _ = worker_tx.send(ActorCommand::RecordActionFailure {
-                        correlation_id: cid,
-                        reason,
-                    });
+                    let _ = worker_tx.send(build_record_action_failure(cid, reason));
                 }
             }
         }

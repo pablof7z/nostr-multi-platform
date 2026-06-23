@@ -6,7 +6,9 @@
 //! `dm_send.rs` to keep that file within its LOC ceiling.
 
 use nmp_core::publish::PublishTarget;
-use nmp_core::substrate::{build_nip44_encrypt_for_account, build_sign_event_for_account};
+use nmp_core::substrate::{
+    build_nip44_encrypt_for_account, build_record_action_failure, build_sign_event_for_account,
+};
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_core::{ActorCommand, CommandSender};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
@@ -276,10 +278,7 @@ pub(super) fn report_envelope_failure(
     let fallback = token.fallback_prose().to_string();
     let _ = worker_tx.send(ActorCommand::ShowErrorToken { token });
     if let Some(id) = correlation_id.clone() {
-        let _ = worker_tx.send(ActorCommand::RecordActionFailure {
-            correlation_id: id,
-            reason: fallback,
-        });
+        let _ = worker_tx.send(build_record_action_failure(id, fallback));
     }
 }
 

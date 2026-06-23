@@ -16,7 +16,8 @@
 //! same relay is idempotent at the kernel level (same id replaces).
 
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+    build_record_action_success, ActionContext, ActionModule, ActionPayload,
+    ActionPayloadDecodeError, ActionRejection,
 };
 use nmp_core::ActorCommand;
 use serde::{Deserialize, Serialize};
@@ -77,10 +78,7 @@ impl ActionModule for DiscoverGroupsAction {
         // (the interest has been pushed to the lifecycle). Without a terminal
         // `RecordActionSuccess` the host's `dispatch_action` spinner waits forever
         // on `action_results`. Mirror the NIP-57 zap worker's success leg.
-        send(ActorCommand::RecordActionSuccess {
-            correlation_id: correlation_id.to_string(),
-            result_json: None,
-        });
+        send(build_record_action_success(correlation_id.to_string(), None));
         Ok(())
     }
 }
