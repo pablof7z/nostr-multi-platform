@@ -65,6 +65,13 @@ struct SearchSheet: View {
                 placement: .navigationBarDrawer(displayMode: .always),
                 prompt: "npub, note, name@domain, or search\u{2026}"
             )
+            // Bech32 entities (`npub…`/`note…`/`nsec…`) and NIP-05 identifiers are
+            // case-sensitive: the keyboard MUST NOT auto-capitalize or
+            // auto-correct, or a pasted/typed `nsec` becomes `Nsec` and slips the
+            // secret check. This is a presentation concern, not classification —
+            // the resolver still owns every decision.
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
             .onSubmit(of: .search) { submit() }
             .onChange(of: query) { controller.clearNotice() }
             .onChange(of: scope) { if controller.submittedQuery != nil { submit() } }
