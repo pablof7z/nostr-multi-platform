@@ -295,6 +295,7 @@ fn start_rejects_input_that_produces_zero_canonical_tags() {
 #[test]
 fn execute_emits_kind10002_publish_unsigned_event_command() {
     use nmp_core::actor::ActorCommand;
+    use nmp_core::PublishCommand;
     use std::cell::RefCell;
 
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
@@ -312,11 +313,11 @@ fn execute_emits_kind10002_publish_unsigned_event_command() {
         "executor must send exactly one command, got {cmds:?}"
     );
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishUnsignedEvent {
+        ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id,
             ..
-        } => {
+        }) => {
             assert_eq!(event.kind, 10002, "relay list must emit kind:10002");
             assert_eq!(
                 correlation_id.as_deref(),

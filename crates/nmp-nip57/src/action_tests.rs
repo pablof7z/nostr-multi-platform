@@ -278,10 +278,10 @@ fn execute_records_failure_when_zap_request_build_fails() {
     };
     let cmds = run_execute(input).expect("build failure should settle through action failure");
     assert_eq!(cmds.len(), 1, "expected one terminal command, got {cmds:?}");
-    let ActorCommand::RecordActionFailure {
+    let ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
         correlation_id,
         reason,
-    } = &cmds[0]
+    }) = &cmds[0]
     else {
         panic!("expected RecordActionFailure, got {:?}", cmds[0]);
     };

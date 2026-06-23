@@ -1,5 +1,6 @@
 use super::*;
 use nmp_core::actor::ActorCommand;
+use nmp_core::PublishCommand;
 use std::cell::RefCell;
 
 fn cache_with(pubkey: &str, urls: &[&str]) -> Arc<InMemoryBlockedRelayCache> {
@@ -191,11 +192,11 @@ fn block_execute_emits_publish_unsigned_event_command() {
     let cmds = captured.into_inner();
     assert_eq!(cmds.len(), 1);
     match cmds.into_iter().next().unwrap() {
-        ActorCommand::PublishUnsignedEvent {
+        ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id,
             ..
-        } => {
+        }) => {
             assert_eq!(event.kind, KIND_BLOCKED_RELAYS, "must emit kind:10006");
             assert_eq!(
                 correlation_id.as_deref(),
@@ -220,7 +221,7 @@ fn block_execute_adds_url_to_existing_set() {
         .execute(input, "cid", &|cmd| captured.borrow_mut().push(cmd))
         .unwrap();
     let cmds = captured.into_inner();
-    let ActorCommand::PublishUnsignedEvent { event, .. } = cmds.into_iter().next().unwrap()
+    let ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) = cmds.into_iter().next().unwrap()
     else {
         panic!("expected PublishUnsignedEvent");
     };
@@ -248,7 +249,7 @@ fn block_execute_threads_correlation_id() {
     action
         .execute(input, "my-spinner-id", &|cmd| captured.borrow_mut().push(cmd))
         .unwrap();
-    let ActorCommand::PublishUnsignedEvent { correlation_id, .. } =
+    let ActorCommand::Publish(PublishCommand::UnsignedEvent { correlation_id, .. }) =
         captured.into_inner().into_iter().next().unwrap()
     else {
         panic!("expected PublishUnsignedEvent");
@@ -314,7 +315,7 @@ fn unblock_execute_removes_url_from_set() {
     action
         .execute(input, "cid", &|cmd| captured.borrow_mut().push(cmd))
         .unwrap();
-    let ActorCommand::PublishUnsignedEvent { event, .. } =
+    let ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) =
         captured.into_inner().into_iter().next().unwrap()
     else {
         panic!("expected PublishUnsignedEvent");
@@ -345,7 +346,7 @@ fn unblock_last_entry_publishes_empty_kind_10006() {
     action
         .execute(input, "cid", &|cmd| captured.borrow_mut().push(cmd))
         .unwrap();
-    let ActorCommand::PublishUnsignedEvent { event, .. } =
+    let ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) =
         captured.into_inner().into_iter().next().unwrap()
     else {
         panic!("expected PublishUnsignedEvent");
@@ -369,7 +370,7 @@ fn unblock_execute_threads_correlation_id() {
     action
         .execute(input, "spinner-99", &|cmd| captured.borrow_mut().push(cmd))
         .unwrap();
-    let ActorCommand::PublishUnsignedEvent { correlation_id, .. } =
+    let ActorCommand::Publish(PublishCommand::UnsignedEvent { correlation_id, .. }) =
         captured.into_inner().into_iter().next().unwrap()
     else {
         panic!("expected PublishUnsignedEvent");

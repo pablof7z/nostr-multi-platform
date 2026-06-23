@@ -348,7 +348,7 @@ pub fn typed_projection_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::ActorCommand;
+    use nmp_core::{ActorCommand, ContactsCommand};
     use std::cell::RefCell;
 
     // ----- namespaces ------------------------------------------------------
@@ -406,10 +406,10 @@ mod tests {
                 .expect("execute must not fail");
         });
         match cmd {
-            ActorCommand::Follow {
+            ActorCommand::Contacts(ContactsCommand::Follow {
                 pubkey,
                 correlation_id,
-            } => {
+            }) => {
                 assert_eq!(pubkey, "deadbeef");
                 assert_eq!(
                     correlation_id.as_deref(),
@@ -436,10 +436,10 @@ mod tests {
                 .expect("execute must not fail");
         });
         match cmd {
-            ActorCommand::Unfollow {
+            ActorCommand::Contacts(ContactsCommand::Unfollow {
                 pubkey,
                 correlation_id,
-            } => {
+            }) => {
                 assert_eq!(pubkey, "cafebabe");
                 assert_eq!(correlation_id.as_deref(), Some("test-cid-unfollow"));
             }

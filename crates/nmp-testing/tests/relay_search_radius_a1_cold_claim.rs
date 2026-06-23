@@ -151,7 +151,7 @@ fn a1_cold_claim_gigi_article_delivers_event_rx() {
     let elapsed_ms = claim_start.elapsed().as_millis();
 
     // ── (6) Shut down the actor and collect captured output ──────────────────
-    let _ = tx.send(ActorCommand::Shutdown);
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     drop(rx);
     std::thread::sleep(Duration::from_millis(100));
 

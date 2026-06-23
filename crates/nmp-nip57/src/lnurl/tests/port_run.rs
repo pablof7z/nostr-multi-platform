@@ -5,6 +5,7 @@
 //! closed. Backend-transparent resolution is proven in nmp-core.
 
 use super::*;
+use nmp_core::SignCommand;
 use std::sync::Mutex;
 
 /// Drive `run()` with a captured send sink + recordable stage tracker.
@@ -59,7 +60,7 @@ fn run_and_capture_port(correlation_id: Option<String>) -> PortCapture {
     let mut sends = sink.sends.into_inner().unwrap();
     assert_eq!(sends.len(), 1, "run must emit exactly one SignEventForAccount: {sends:?}");
     let (signer_pubkey, unsigned, continuation) = match sends.remove(0) {
-        ActorCommand::SignEventForAccount { signer_pubkey, unsigned, continuation } => (signer_pubkey, unsigned, continuation),
+        ActorCommand::Sign(SignCommand::EventForAccount { signer_pubkey, unsigned, continuation }) => (signer_pubkey, unsigned, continuation),
         other => panic!("expected SignEventForAccount, got {other:?}"),
     };
     PortCapture { signer_pubkey, unsigned, continuation, stages: stages.0.into_inner().unwrap(), worker_rx }
@@ -114,7 +115,7 @@ fn continuation_err_fails_closed_with_toast_and_failure() {
         other => panic!("expected ShowToast, got {other:?}"),
     }
     match &sends[1] {
-        ActorCommand::RecordActionFailure { correlation_id, .. } => {
+        ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) => {
             assert_eq!(correlation_id, "cid-none");
         }
         other => panic!("expected RecordActionFailure, got {other:?}"),
@@ -177,7 +178,7 @@ fn continuation_ok_spawns_worker_carrying_signed_event() {
             .expect("RecordActionFailure must follow when correlation_id is present"),
     );
     match second {
-        ActorCommand::RecordActionFailure { correlation_id, .. } => {
+        ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) => {
             assert_eq!(correlation_id, "cid-ok");
         }
         other => panic!("expected RecordActionFailure, got {other:?}"),

@@ -263,12 +263,12 @@ impl InnerHandle<'_> {
         #[cfg(test)]
         {
             match &cmd {
-                nmp_core::actor::ActorCommand::RecordActionSuccess { correlation_id, .. } => {
+                nmp_core::actor::ActorCommand::ActionLedger(nmp_core::ActionLedgerCommand::RecordSuccess { correlation_id, .. }) => {
                     self.inner
                         .captured_commands
                         .push(("success", correlation_id.clone()));
                 }
-                nmp_core::actor::ActorCommand::RecordActionFailure { correlation_id, .. } => {
+                nmp_core::actor::ActorCommand::ActionLedger(nmp_core::ActionLedgerCommand::RecordFailure { correlation_id, .. }) => {
                     self.inner
                         .captured_commands
                         .push(("failure", correlation_id.clone()));
