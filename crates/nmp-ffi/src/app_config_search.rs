@@ -30,7 +30,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        let disposition = self.search_scope_registry.register(provider);
+        let disposition = self.composition.search_scope_registry.register(provider);
         // ADR-0049 Part 2 — record the install/yield decision in the
         // "search_scope" ledger seam.
         let ledger_disposition = match disposition {

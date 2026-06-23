@@ -99,19 +99,19 @@ impl NmpApp {
     /// form, or `None` when no local account is active.
     #[must_use]
     pub fn mls_local_nsec(&self) -> Option<Zeroizing<String>> {
-        self.mls_local_nsec.lock().ok()?.clone()
+        self.read_handles.mls_local_nsec.lock().ok()?.clone()
     }
 
     /// Clone of the active-local-`nostr::Keys` slot — substrate-generic.
     #[must_use]
     pub fn active_local_keys(&self) -> ActiveLocalKeysSlot {
-        Arc::clone(&self.active_local_keys)
+        Arc::clone(&self.read_handles.active_local_keys)
     }
 
     /// V-82 — clone of the kernel's active-account hex-pubkey slot (`Arc`).
     #[must_use]
     pub fn active_account_handle(&self) -> ActiveAccountSlot {
-        Arc::clone(&self.active_account_handle)
+        Arc::clone(&self.read_handles.active_account_handle)
     }
 
     /// Register a Rust-side callback for active-account changes.
@@ -130,13 +130,13 @@ impl NmpApp {
     /// V-83 — clone of the kernel's `EventStore` publish-back slot (`Arc`).
     #[must_use]
     pub fn event_store_handle(&self) -> EventStoreSlot {
-        Arc::clone(&self.event_store_handle)
+        Arc::clone(&self.read_handles.event_store_handle)
     }
 
     /// ADR-0058 step 3b — clone of the kernel's pull-cursor registry handle slot.
     #[must_use]
     pub fn pull_cursor_registry_handle(&self) -> PullCursorRegistryHandleSlot {
-        Arc::clone(&self.pull_cursor_registry)
+        Arc::clone(&self.read_handles.pull_cursor_registry)
     }
 
     /// #1740 step 2 — clone the actor command sender.
@@ -151,7 +151,7 @@ impl NmpApp {
     /// V-83 — synchronous event-by-id read against the kernel's event store.
     #[must_use]
     pub fn event_by_id(&self, id: &str) -> Option<nmp_core::substrate::KernelEvent> {
-        event_by_id_from_store(&self.event_store_handle, id)
+        event_by_id_from_store(&self.read_handles.event_store_handle, id)
     }
 
     /// V-51 phase 4 — clone of the kernel's [`RoutingTraceProjection`]
@@ -161,7 +161,7 @@ impl NmpApp {
     /// constructed the kernel.
     #[must_use]
     pub fn routing_trace(&self) -> Option<Arc<nmp_core::RoutingTraceProjection>> {
-        self.routing_trace.lock().ok()?.clone()
+        self.read_handles.routing_trace.lock().ok()?.clone()
     }
 
     /// Clone of the actor command sender. Used by Rust-side runtime

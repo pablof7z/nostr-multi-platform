@@ -91,6 +91,7 @@ pub extern "C" fn nmp_app_start(
 
     // Read the pre-start initial relay configuration.
     let initial_relays = app
+        .composition
         .initial_relays_for_start
         .lock()
         .map(|g| g.clone())

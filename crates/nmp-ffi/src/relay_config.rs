@@ -22,7 +22,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut guard) = self.initial_relays_for_start.lock() {
+        if let Ok(mut guard) = self.composition.initial_relays_for_start.lock() {
             self.record_slot_decision(
                 "initial_relays_for_start",
                 "initial_relays_for_start",
@@ -59,7 +59,8 @@ impl NmpApp {
                 return Some(url);
             }
         }
-        self.nostrconnect_bootstrap_relay
+        self.composition
+            .nostrconnect_bootstrap_relay
             .lock()
             .ok()
             .and_then(|guard| guard.clone())
@@ -73,7 +74,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut guard) = self.nostrconnect_bootstrap_relay.lock() {
+        if let Ok(mut guard) = self.composition.nostrconnect_bootstrap_relay.lock() {
             // ADR-0049 Part 2 — record the last-writer-wins decision for this
             // slot (Installed / ReplacedPrevious / DroppedLateWiring).
             self.record_slot_decision(
@@ -94,7 +95,8 @@ impl NmpApp {
     /// (NOT percent-encoded) comma-joined NIP-46 perm list.
     #[must_use]
     pub fn nostrconnect_perms(&self) -> Option<String> {
-        self.nostrconnect_perms
+        self.composition
+            .nostrconnect_perms
             .lock()
             .ok()
             .and_then(|guard| guard.clone())
@@ -108,7 +110,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut guard) = self.nostrconnect_perms.lock() {
+        if let Ok(mut guard) = self.composition.nostrconnect_perms.lock() {
             // ADR-0049 Part 2 — record the last-writer-wins decision for this
             // slot (Installed / ReplacedPrevious / DroppedLateWiring).
             self.record_slot_decision("nostrconnect_perms", "nostrconnect_perms", guard.is_some());

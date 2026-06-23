@@ -29,7 +29,7 @@ impl NmpApp {
         {
             return status;
         }
-        if let Ok(mut slot) = self.coverage_hook.lock() {
+        if let Ok(mut slot) = self.composition.coverage_hook.lock() {
             // ADR-0049 Part 2 — record before overwriting so `had_previous`
             // reflects the pre-write state of this last-writer-wins slot.
             self.record_slot_decision("coverage_hook", "coverage_hook", slot.is_some());
@@ -56,7 +56,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.req_frame_interceptor.lock() {
+        if let Ok(mut slot) = self.composition.req_frame_interceptor.lock() {
             self.record_slot_decision(
                 "req_frame_interceptor",
                 "req_frame_interceptor",
@@ -109,7 +109,7 @@ impl NmpApp {
         {
             return status;
         }
-        if let Ok(mut slot) = self.host_op_handler.lock() {
+        if let Ok(mut slot) = self.composition.host_op_handler.lock() {
             self.record_slot_decision("host_op_handler", "host_op_handler", slot.is_some());
             *slot = Some(handler);
             NmpConfigStatus::Ok
@@ -137,7 +137,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.relay_text_interceptor.lock() {
+        if let Ok(mut slot) = self.composition.relay_text_interceptor.lock() {
             self.record_slot_decision(
                 "relay_text_interceptor",
                 "relay_text_interceptor",
@@ -168,7 +168,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.relay_text_interceptor.lock() {
+        if let Ok(mut slot) = self.composition.relay_text_interceptor.lock() {
             self.record_slot_decision(
                 "relay_text_interceptor",
                 "relay_text_interceptor",
@@ -195,7 +195,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut hooks) = self.relay_connected_hook.lock() {
+        if let Ok(mut hooks) = self.composition.relay_connected_hook.lock() {
             self.record_slot_decision(
                 "relay_connected_hook",
                 "relay_connected_hook",

@@ -8,7 +8,11 @@ impl NmpApp {
     /// The configured LMDB storage path, if one was set before actor start.
     #[must_use]
     pub fn storage_path_for_start(&self) -> Option<String> {
-        self.storage_path.lock().ok().and_then(|g| g.clone())
+        self.composition
+            .storage_path
+            .lock()
+            .ok()
+            .and_then(|g| g.clone())
     }
 }
 
@@ -31,7 +35,7 @@ pub extern "C" fn nmp_app_set_storage_path(app: *mut NmpApp, path: *const c_char
         return status.code();
     }
     let resolved = c_optional_string_argument(path);
-    let Ok(mut slot) = app.storage_path.lock() else {
+    let Ok(mut slot) = app.composition.storage_path.lock() else {
         return NmpConfigStatus::Unavailable.code();
     };
     app.record_slot_decision("storage_path", "storage_path", slot.is_some());

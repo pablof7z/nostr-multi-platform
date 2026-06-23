@@ -80,6 +80,7 @@ mod testing_sync;
 mod signer_ports_test_support;
 
 // ── Split submodules ──────────────────────────────────────────────────────
+mod app_sub_structs;
 mod app_struct;
 mod app_ctor;
 mod app_impl_core;
