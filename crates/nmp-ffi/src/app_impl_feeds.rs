@@ -281,7 +281,7 @@ impl NmpApp {
         use nmp_store::{PullPage, ScanLogResult};
         use std::num::NonZeroUsize;
 
-        let slot = Arc::clone(&self.event_store_handle);
+        let slot = Arc::clone(&self.read_handles.event_store_handle);
         let max_entries =
             NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE).unwrap_or(NonZeroUsize::MIN);
         let max_scan = NonZeroUsize::new(nmp_feed::DEFAULT_PULL_PAGE_SIZE.saturating_mul(8))

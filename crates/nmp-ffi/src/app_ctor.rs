@@ -6,28 +6,28 @@ use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use crate::passive_start::{prestart_snapshot_frame, ActorStarter};
 use nmp_core::__ffi_internal::{
-    default_registry, new_app_relay_slot, new_bunker_handshake_slot,
-    new_capability_callback_slot, new_event_observer_slot, new_lifecycle_observer_slot,
-    new_signer_state_slot, new_snapshot_projection_slot, run_actor_with_observers,
-    ActorChannels, ActorConfigSources, ActorRuntimeSlots,
+    default_registry, new_app_relay_slot, new_bunker_handshake_slot, new_capability_callback_slot,
+    new_event_observer_slot, new_lifecycle_observer_slot, new_signer_state_slot,
+    new_snapshot_projection_slot, run_actor_with_observers, ActorChannels, ActorConfigSources,
+    ActorRuntimeSlots,
 };
 use nmp_core::slots::{
     new_active_account_slot, new_active_local_keys_slot, new_event_store_slot,
     new_external_event_sink_policy_slot, new_mls_local_nsec_slot,
-    new_nostrconnect_bootstrap_relay_slot, new_nostrconnect_perms_slot,
-    new_publish_resolver_slot, new_pull_cursor_registry_handle_slot,
-    new_routing_substrate_slot, new_routing_trace_slot, new_singleton_event_observer_id_slot,
-    new_storage_path_slot,
+    new_nostrconnect_bootstrap_relay_slot, new_nostrconnect_perms_slot, new_publish_resolver_slot,
+    new_pull_cursor_registry_handle_slot, new_routing_substrate_slot, new_routing_trace_slot,
+    new_singleton_event_observer_id_slot, new_storage_path_slot,
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
-use crate::passive_start::{prestart_snapshot_frame, ActorStarter};
 
 use crate::app_struct::{
     new_identity_change_observer_slot, new_search_relay_source_slot, new_update_callback_slot,
     notify_identity_change_observers, NmpApp,
 };
+use crate::app_sub_structs::{CapabilityPorts, CompositionConfig, ReadHandles};
 
 #[no_mangle]
 pub extern "C" fn nmp_app_new() -> *mut NmpApp {
@@ -136,8 +136,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_req_frame_interceptor = Arc::clone(&req_frame_interceptor);
     // Substrate-generic host-op handler slot.
     let host_op_handler = nmp_core::substrate::new_host_op_handler_slot();
-    let actor_host_op_handler =
-        nmp_core::substrate::HostOpHandlerSlot::clone(&host_op_handler);
+    let actor_host_op_handler = nmp_core::substrate::HostOpHandlerSlot::clone(&host_op_handler);
     // V-40 — substrate `EventIngestDispatcher` slot.
     let ingest_dispatcher_slot: Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>> =
         Arc::new(std::sync::RwLock::new(
@@ -307,20 +306,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         event_observers,
         singleton_event_observer_id,
         configured_relays,
-        initial_relays_for_start: Mutex::new(Vec::new()),
-        nostrconnect_bootstrap_relay,
-        nostrconnect_perms,
-        mls_local_nsec,
-        active_local_keys,
-        active_account_handle,
-        event_store_handle,
-        pull_cursor_registry,
-        storage_path,
-        routing_trace,
-        routing_substrate,
-        publish_resolver,
-        kernel_clock,
-        external_event_sink_policy,
         pending_mls_autopublish,
         actor_starter: Mutex::new(Some(actor_starter)),
         startup_update_tx: Mutex::new(Some(startup_update_tx)),
@@ -344,30 +329,50 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         send_cmd_count: AtomicU64::new(0),
         #[cfg(test)]
         last_cmd_tag: std::sync::Mutex::new(None),
-        coverage_hook,
-        req_frame_interceptor,
-        host_op_handler,
-        relay_text_interceptor,
-        relay_connected_hook,
-        bunker_hook,
-        external_signer_hook,
         #[cfg(feature = "signer-broker")]
         signer_broker: Arc::new(Mutex::new(None)),
         #[cfg(feature = "external-signer")]
         external_signer_driver: Arc::new(Mutex::new(None)),
-        ingest_dispatcher_slot,
-        search_scope_registry,
-        input_scope_registry,
-        dm_inbox_relays_slot,
-        profile_lookup_slot,
-        contacts_lookup_slot,
-        blocked_relays_slot,
-        bootstrap_self_kinds,
-        mailbox_cache_reader: Mutex::new(None),
-        search_relay_source: new_search_relay_source_slot(),
         search_sessions: Mutex::new(std::collections::HashMap::new()),
         #[cfg(any(test, feature = "test-support"))]
         gc_budget_ceiling,
+        composition: CompositionConfig {
+            storage_path,
+            nostrconnect_bootstrap_relay,
+            nostrconnect_perms,
+            initial_relays_for_start: Mutex::new(Vec::new()),
+            coverage_hook,
+            req_frame_interceptor,
+            host_op_handler,
+            relay_text_interceptor,
+            relay_connected_hook,
+            bunker_hook,
+            external_signer_hook,
+            kernel_clock,
+            external_event_sink_policy,
+            routing_substrate,
+            publish_resolver,
+        },
+        capability_ports: CapabilityPorts {
+            dm_inbox_relays_slot,
+            profile_lookup_slot,
+            contacts_lookup_slot,
+            blocked_relays_slot,
+            ingest_dispatcher_slot,
+            search_scope_registry,
+            input_scope_registry,
+            search_relay_source: new_search_relay_source_slot(),
+            mailbox_cache_reader: Mutex::new(None),
+            bootstrap_self_kinds,
+        },
+        read_handles: ReadHandles {
+            event_store_handle,
+            pull_cursor_registry,
+            routing_trace,
+            active_account_handle,
+            active_local_keys,
+            mls_local_nsec,
+        },
     };
     // D0 — the built-in `"bunker_handshake"` projection is registered inside
     // `run_actor_with_observers` (at the actor wiring site), not here.

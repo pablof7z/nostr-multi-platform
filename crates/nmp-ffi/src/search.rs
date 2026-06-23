@@ -118,7 +118,7 @@ impl NmpApp {
     /// forwards here; `open_search` reads it back. Last-writer-wins; a poisoned
     /// slot is a silent no-op (D6).
     pub fn install_preferred_relay_source(&self, source: Arc<dyn PreferredRelaySource>) {
-        if let Ok(mut slot) = self.search_relay_source.lock() {
+        if let Ok(mut slot) = self.capability_ports.search_relay_source.lock() {
             *slot = Some(source);
         }
     }
@@ -129,6 +129,7 @@ impl NmpApp {
     /// list). De-duplicated, first-seen order. Empty when no source installed.
     fn resolve_search_relays(&self, targets: &SearchTargets) -> Vec<String> {
         let (primary, fallback) = self
+            .capability_ports
             .search_relay_source
             .lock()
             .ok()
@@ -197,7 +198,13 @@ impl NmpApp {
         // synchronous here, so it always precedes the async relay echoes below —
         // the projection's first-arrival-wins dedupe keeps the `Cache` tag on an
         // event the relay later re-delivers.
-        if let Some(store) = self.event_store_handle.lock().ok().and_then(|slot| slot.clone()) {
+        if let Some(store) = self
+            .read_handles
+            .event_store_handle
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+        {
             if let Ok(mut proj) = projection.lock() {
                 let _ = proj.ingest_cache_from_store(store.as_ref());
             }
@@ -229,7 +236,8 @@ impl NmpApp {
         // replay gate that ignores the query text (#1882).
         let observer_id = register_rust_observer_muted(
             &self.event_observers,
-            Arc::new(SearchObserver(Arc::clone(&projection))) as Arc<dyn nmp_core::KernelEventObserver>,
+            Arc::new(SearchObserver(Arc::clone(&projection)))
+                as Arc<dyn nmp_core::KernelEventObserver>,
         );
 
         // One relay-pinned observed interest per resolved relay.
@@ -319,9 +327,12 @@ impl NmpApp {
             .lock()
             .ok()
             .and_then(|sessions| {
-                sessions
-                    .get(session_id)
-                    .map(|s| s.relay_closes.iter().map(|(_, _, relay)| relay.clone()).collect())
+                sessions.get(session_id).map(|s| {
+                    s.relay_closes
+                        .iter()
+                        .map(|(_, _, relay)| relay.clone())
+                        .collect()
+                })
             })
             .unwrap_or_default()
     }

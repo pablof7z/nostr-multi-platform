@@ -30,7 +30,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+        if let Ok(mut d) = self.capability_ports.ingest_dispatcher_slot.write() {
             // ADR-0049 Part 2 — record the parser registration. This is an
             // additive seam (multiple parsers per kind coexist), so a pre-start
             // call is always `Installed`. Post-start calls return
@@ -64,7 +64,7 @@ impl NmpApp {
         slot_key: &'static str,
         parser: std::sync::Arc<dyn nmp_core::substrate::IngestParser>,
     ) -> Option<std::sync::Arc<dyn nmp_core::substrate::IngestParser>> {
-        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+        if let Ok(mut d) = self.capability_ports.ingest_dispatcher_slot.write() {
             d.replace_kind_parser(kind, slot_key, parser)
         } else {
             None
@@ -80,7 +80,7 @@ impl NmpApp {
     /// lifecycle-managed slot without installing a replacement.
     /// D6 — a poisoned dispatcher lock is a silent no-op.
     pub fn unregister_ingest_parser(&self, kind: u32, slot_key: &'static str) {
-        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+        if let Ok(mut d) = self.capability_ports.ingest_dispatcher_slot.write() {
             d.remove_kind_parser_slot(kind, slot_key);
         }
     }
@@ -96,7 +96,7 @@ impl NmpApp {
         slot_key: &'static str,
         parser: std::sync::Arc<dyn nmp_core::substrate::IngestParser>,
     ) -> Option<std::sync::Arc<dyn nmp_core::substrate::IngestParser>> {
-        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+        if let Ok(mut d) = self.capability_ports.ingest_dispatcher_slot.write() {
             d.replace_range_parser(range, slot_key, parser)
         } else {
             None
@@ -106,7 +106,7 @@ impl NmpApp {
     /// Remove the range-parser registered under `slot_key`, if any.
     /// D6 — a poisoned dispatcher lock is a silent no-op.
     pub fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
-        if let Ok(mut d) = self.ingest_dispatcher_slot.write() {
+        if let Ok(mut d) = self.capability_ports.ingest_dispatcher_slot.write() {
             d.remove_range_parser_slot(slot_key);
         }
     }
@@ -132,7 +132,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.dm_inbox_relays_slot.lock() {
+        if let Ok(mut slot) = self.capability_ports.dm_inbox_relays_slot.lock() {
             self.record_slot_decision("dm_inbox_relay_lookup", "dm_inbox_relay_lookup", true);
             *slot = lookup;
             NmpConfigStatus::Ok
@@ -160,7 +160,7 @@ impl NmpApp {
         {
             return status;
         }
-        if let Ok(mut slot) = self.profile_lookup_slot.lock() {
+        if let Ok(mut slot) = self.capability_ports.profile_lookup_slot.lock() {
             self.record_slot_decision("profile_lookup", "profile_lookup", true);
             *slot = lookup;
             NmpConfigStatus::Ok
@@ -185,7 +185,7 @@ impl NmpApp {
     /// composition runs). D6: a poisoned slot lock clones the stale inner value.
     #[must_use]
     pub fn contacts_lookup(&self) -> std::sync::Arc<dyn nmp_core::substrate::ContactsLookup> {
-        if let Ok(slot) = self.contacts_lookup_slot.lock() {
+        if let Ok(slot) = self.capability_ports.contacts_lookup_slot.lock() {
             std::sync::Arc::clone(&*slot)
         } else {
             nmp_core::substrate::empty_contacts_lookup()
@@ -211,7 +211,7 @@ impl NmpApp {
         {
             return status;
         }
-        if let Ok(mut slot) = self.contacts_lookup_slot.lock() {
+        if let Ok(mut slot) = self.capability_ports.contacts_lookup_slot.lock() {
             self.record_slot_decision("contacts_lookup", "contacts_lookup", true);
             *slot = lookup;
             NmpConfigStatus::Ok
@@ -243,7 +243,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.blocked_relays_slot.lock() {
+        if let Ok(mut slot) = self.capability_ports.blocked_relays_slot.lock() {
             self.record_slot_decision("blocked_relay_lookup", "blocked_relay_lookup", true);
             *slot = lookup;
             NmpConfigStatus::Ok
@@ -280,7 +280,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.mailbox_cache_reader.lock() {
+        if let Ok(mut slot) = self.capability_ports.mailbox_cache_reader.lock() {
             self.record_slot_decision(
                 "mailbox_cache_reader",
                 "mailbox_cache_reader",
@@ -301,7 +301,8 @@ impl NmpApp {
     pub(crate) fn mailbox_cache_reader(
         &self,
     ) -> Option<std::sync::Arc<dyn nmp_core::substrate::MailboxCache>> {
-        self.mailbox_cache_reader
+        self.capability_ports
+            .mailbox_cache_reader
             .lock()
             .ok()
             .and_then(|slot| slot.clone())
@@ -325,7 +326,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.bootstrap_self_kinds.lock() {
+        if let Ok(mut slot) = self.capability_ports.bootstrap_self_kinds.lock() {
             self.record_slot_decision(
                 "bootstrap_self_kinds",
                 "bootstrap_self_kinds",
@@ -379,7 +380,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.routing_substrate.lock() {
+        if let Ok(mut slot) = self.composition.routing_substrate.lock() {
             // ADR-0049 Part 2 — record the last-writer-wins decision.
             self.record_slot_decision("routing_substrate", "routing_substrate", slot.is_some());
             *slot = Some(std::sync::Arc::new(factory));
@@ -433,7 +434,7 @@ impl NmpApp {
         {
             return status;
         }
-        if let Ok(mut slot) = self.publish_resolver.lock() {
+        if let Ok(mut slot) = self.composition.publish_resolver.lock() {
             self.record_slot_decision("publish_resolver", "publish_resolver", slot.is_some());
             *slot = Some(std::sync::Arc::new(factory));
             NmpConfigStatus::Ok
@@ -452,7 +453,7 @@ impl NmpApp {
     /// this (the slot stays `None`; the kernel keeps its `SystemClock`).
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_kernel_clock_for_test(&self, clock: std::sync::Arc<nmp_core::MonotonicSecondClock>) {
-        if let Ok(mut slot) = self.kernel_clock.lock() {
+        if let Ok(mut slot) = self.composition.kernel_clock.lock() {
             *slot = Some(nmp_core::slots::erase_kernel_clock(clock));
         }
     }
@@ -477,7 +478,7 @@ impl NmpApp {
         ) {
             return status;
         }
-        if let Ok(mut slot) = self.external_event_sink_policy.lock() {
+        if let Ok(mut slot) = self.composition.external_event_sink_policy.lock() {
             self.record_slot_decision(
                 "external_event_sink_policy",
                 "external_event_sink_policy",

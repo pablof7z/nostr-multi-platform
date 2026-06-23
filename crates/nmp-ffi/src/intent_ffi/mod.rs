@@ -117,7 +117,7 @@ pub(crate) fn classify_request(
     let request_json = c_string_argument(request_json).ok_or("invalid-input")?;
     let request: InputIntentRequest =
         serde_json::from_str(&request_json).map_err(|_| "unparseable-request")?;
-    let recognizers = app.input_scope_registry.recognizers();
+    let recognizers = app.capability_ports.input_scope_registry.recognizers();
     Ok(nmp_intent::classify(&request, &recognizers))
 }
 

@@ -4,8 +4,8 @@ use super::*;
 use crate::{nmp_app_free, nmp_app_new};
 use nmp_core::substrate::SearchScopeRegistry;
 use nmp_nip50::{
-    decode_search_results_snapshot, install_search_relay_source, SearchHitSource, SearchRelaySource,
-    SearchScope, SearchTargets,
+    decode_search_results_snapshot, install_search_relay_source, SearchHitSource,
+    SearchRelaySource, SearchScope, SearchTargets,
 };
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use std::collections::BTreeSet;
@@ -37,10 +37,9 @@ fn parse_search_request_runs_nip50_validation() {
     assert_eq!(req.max_hits, 10);
 
     // Whitespace-only query fails the bounded-query validation.
-    assert!(parse_search_request(
-        r#"{"query":"   ","scope":"Users","targets":"AppDefault"}"#
-    )
-    .is_none());
+    assert!(
+        parse_search_request(r#"{"query":"   ","scope":"Users","targets":"AppDefault"}"#).is_none()
+    );
 
     // Malformed JSON.
     assert!(parse_search_request("not json").is_none());
@@ -59,10 +58,13 @@ fn open_search_registers_typed_sidecar_under_session_key() {
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null.
     let app_ref = unsafe { &*app };
-    install_search_relay_source(app_ref, Arc::new(StubSource {
-        preferred: vec!["wss://search.nos.lol/".to_string()],
-        default: Vec::new(),
-    }));
+    install_search_relay_source(
+        app_ref,
+        Arc::new(StubSource {
+            preferred: vec!["wss://search.nos.lol/".to_string()],
+            default: Vec::new(),
+        }),
+    );
 
     let request = SearchRequest::new(
         "nostr",
@@ -92,14 +94,21 @@ fn close_search_tears_down_the_projection() {
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null.
     let app_ref = unsafe { &*app };
-    install_search_relay_source(app_ref, Arc::new(StubSource {
-        preferred: vec!["wss://search.nos.lol/".to_string()],
-        default: Vec::new(),
-    }));
+    install_search_relay_source(
+        app_ref,
+        Arc::new(StubSource {
+            preferred: vec!["wss://search.nos.lol/".to_string()],
+            default: Vec::new(),
+        }),
+    );
 
-    let request =
-        SearchRequest::new("nostr", SearchScope::Users, SearchTargets::UserPreferred, None)
-            .expect("request");
+    let request = SearchRequest::new(
+        "nostr",
+        SearchScope::Users,
+        SearchTargets::UserPreferred,
+        None,
+    )
+    .expect("request");
     app_ref.open_search(request, "s2");
     assert!(app_ref
         .registered_typed_projection_keys()
@@ -137,9 +146,13 @@ fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
             default: vec!["wss://app-default.example/".to_string()],
         }),
     );
-    let request =
-        SearchRequest::new("nostr", SearchScope::Users, SearchTargets::UserPreferred, Some(10))
-            .expect("request");
+    let request = SearchRequest::new(
+        "nostr",
+        SearchScope::Users,
+        SearchTargets::UserPreferred,
+        Some(10),
+    )
+    .expect("request");
     app_ref.open_search(request, "user");
     assert_eq!(
         app_ref.search_session_relays("user"),
@@ -155,9 +168,13 @@ fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
             default: vec!["wss://app-default.example/".to_string()],
         }),
     );
-    let req2 =
-        SearchRequest::new("nostr", SearchScope::Users, SearchTargets::UserPreferred, Some(10))
-            .expect("request");
+    let req2 = SearchRequest::new(
+        "nostr",
+        SearchScope::Users,
+        SearchTargets::UserPreferred,
+        Some(10),
+    )
+    .expect("request");
     app_ref.open_search(req2, "fallback");
     assert_eq!(
         app_ref.search_session_relays("fallback"),
@@ -175,9 +192,13 @@ fn open_search_without_source_is_cache_only_not_a_crash() {
     let app_ref = unsafe { &*app };
     // No source registered → UserPreferred resolves to empty (no relay fan-out)
     // but the projection + sidecar still register (cache-only search).
-    let request =
-        SearchRequest::new("nostr", SearchScope::Users, SearchTargets::UserPreferred, None)
-            .expect("request");
+    let request = SearchRequest::new(
+        "nostr",
+        SearchScope::Users,
+        SearchTargets::UserPreferred,
+        None,
+    )
+    .expect("request");
     let key = app_ref.open_search(request, "s3");
     assert_eq!(key, "nmp.nip50.search.s3");
     assert!(app_ref.search_snapshot_bytes("s3").is_some());
@@ -240,7 +261,9 @@ fn note_request(query: &str) -> SearchRequest {
 
 fn decoded_hits(app: &NmpApp, session: &str) -> Vec<nmp_nip50::SearchHit> {
     let bytes = app.search_snapshot_bytes(session).expect("sidecar bytes");
-    decode_search_results_snapshot(&bytes).expect("decode N50S").hits
+    decode_search_results_snapshot(&bytes)
+        .expect("decode N50S")
+        .hits
 }
 
 /// #1882 regression — the production `open_search` must NOT return cached events
@@ -274,7 +297,11 @@ fn open_search_excludes_cached_events_that_do_not_match_the_query_text() {
     // Every cache hit is provenanced `Cache`, never the `Relay(\"\")` the old
     // unfiltered replay produced.
     for hit in &hits {
-        assert_eq!(hit.source, SearchHitSource::Cache, "cache hits are Cache-provenanced");
+        assert_eq!(
+            hit.source,
+            SearchHitSource::Cache,
+            "cache hits are Cache-provenanced"
+        );
     }
 
     nmp_app_free(app);

@@ -18,14 +18,14 @@ impl NmpApp {
     /// `nmp_signer_broker_init`. Replaces the deleted `register_bunker_hook`
     /// process-global write.
     pub(crate) fn install_bunker_hook(&self, hook: nmp_core::BunkerHookFn) {
-        nmp_core::install_bunker_hook(&self.bunker_hook, hook);
+        nmp_core::install_bunker_hook(&self.composition.bunker_hook, hook);
     }
 
     /// ADR-0052 §D3 — install the per-app NIP-55 external-signer restore hook.
     /// Called by `nmp_external_signer_init`. Replaces the deleted
     /// `register_external_signer_hook` process-global write.
     pub(crate) fn install_external_signer_hook(&self, hook: nmp_core::ExternalSignerHookFn) {
-        nmp_core::install_external_signer_hook(&self.external_signer_hook, hook);
+        nmp_core::install_external_signer_hook(&self.composition.external_signer_hook, hook);
     }
 
     /// ADR-0052 §D3 — test-support: invoke this app's bunker connect hook
@@ -33,7 +33,10 @@ impl NmpApp {
     /// actor's `start_bunker_handshake` read without the wire.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn invoke_bunker_connect_hook_for_test(&self, uri: &str) -> bool {
-        nmp_core::bunker_hook::invoke_bunker_connect_hook_for_test(&self.bunker_hook, uri)
+        nmp_core::bunker_hook::invoke_bunker_connect_hook_for_test(
+            &self.composition.bunker_hook,
+            uri,
+        )
     }
 
     /// ADR-0052 §D3 — test-support: invoke this app's NIP-55 restore hook
@@ -41,7 +44,7 @@ impl NmpApp {
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn invoke_external_signer_restore_hook_for_test(&self, payload_json: &str) -> bool {
         nmp_core::external_signer_hook::invoke_external_signer_restore_hook_for_test(
-            &self.external_signer_hook,
+            &self.composition.external_signer_hook,
             payload_json,
         )
     }
@@ -99,7 +102,9 @@ impl NmpApp {
     /// ADR-0052 §D3 — read the per-app NIP-55 driver handle (signin / deliver
     /// symbols). `None` before `nmp_external_signer_init`.
     #[cfg(feature = "external-signer")]
-    pub(crate) fn external_signer_driver(&self) -> Option<Arc<crate::external_signer::Nip55Driver>> {
+    pub(crate) fn external_signer_driver(
+        &self,
+    ) -> Option<Arc<crate::external_signer::Nip55Driver>> {
         self.external_signer_driver
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
