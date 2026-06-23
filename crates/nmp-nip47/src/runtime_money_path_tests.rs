@@ -10,6 +10,7 @@
 
 use super::*;
 use crate::status::new_wallet_status_slot;
+use super::heartbeat::sync_wallet_status;
 
 fn make_connection_ready() -> WalletConnection {
     WalletConnection {

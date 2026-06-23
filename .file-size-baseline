@@ -75,7 +75,6 @@ crates/nmp-network/src/relay_worker/mod.rs	508
 crates/nmp-network/src/relay_worker/tests.rs	864
 crates/nmp-nip01/src/timeline_projection.rs	577
 crates/nmp-nip17/src/dm_send/tests.rs	822
-crates/nmp-nip47/src/runtime.rs	1246
 crates/nmp-nip57/src/decode.rs	500
 crates/nmp-nip57/src/lnurl/mod.rs	665
 crates/nmp-nip57/src/lnurl/tests.rs	819

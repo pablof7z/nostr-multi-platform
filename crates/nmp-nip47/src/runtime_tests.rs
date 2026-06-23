@@ -6,6 +6,11 @@
 
     use super::*;
     use crate::status::new_wallet_status_slot;
+    use serde_json::json;
+    use crate::payment_store::{PaymentRecord, PaymentState};
+    use crate::reconcile::correct_unresolved_record;
+    use super::runtime_utils::encode_frame;
+    use super::disconnect::wallet_disconnect_inner;
 
     // ── V-63: encode-before-register ─────────────────────────────────────────
 
