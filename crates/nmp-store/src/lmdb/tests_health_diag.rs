@@ -15,9 +15,13 @@
 
 use heed::MdbError;
 
+use std::fs::OpenOptions;
+use std::io::{Seek, SeekFrom, Write};
+
 use super::open::open_impl_with_limits;
 use super::open_error::classify_heed_err;
 use super::test_fixtures::{signed_event, verified};
+use super::LmdbEventStore;
 use crate::types::StoreError;
 use crate::EventStore;
 
@@ -185,5 +189,64 @@ fn reader_exhaustion() {
     assert!(
         matches!(classified, StoreError::ReaderExhaustion { max_readers: 1 }),
         "expected ReaderExhaustion{{max_readers:1}}, got {classified:?}"
+    );
+}
+
+// ─── corrupt-env integration test ─────────────────────────────────────────────
+
+/// Deterministically zero out the first up to 64 KiB of `path`, syncing to
+/// disk so the next open observes the corruption. Uses stdlib only.
+fn corrupt_leading_bytes(path: &std::path::Path) -> std::io::Result<()> {
+    let len = std::fs::metadata(path)?.len() as usize;
+    let zero_len = len.min(64 * 1024);
+    let mut f = OpenOptions::new().read(true).write(true).open(path)?;
+    f.seek(SeekFrom::Start(0))?;
+    f.write_all(&vec![0u8; zero_len])?;
+    f.sync_all()?;
+    Ok(())
+}
+
+/// Open a real store, insert one signed event, drop the store, corrupt the
+/// `data.mdb` file on disk, then reopen and assert the reopen returns
+/// `StoreError::CorruptEnv(_)` without leaking the on-disk path in the
+/// `Display` string.
+#[test]
+fn reopen_corrupt_data_mdb_returns_corrupt_env_without_path_leak() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let relay: String = "wss://test.relay/".into();
+
+    {
+        let store = open_impl_with_limits(dir.path(), super::open::MAP_SIZE, 126)
+            .expect("open with safe limits");
+        let raw = signed_event(1, 1_000_000, "hello", None);
+        store
+            .insert(verified(raw), &relay, 1_000_000_000)
+            .expect("insert one event");
+    }
+
+    let data_path = dir.path().join("data.mdb");
+    assert!(data_path.exists(), "data.mdb should exist after open");
+
+    corrupt_leading_bytes(&data_path).expect("corrupt data.mdb");
+
+    let err = match LmdbEventStore::open(dir.path()) {
+        Ok(_) => panic!("expected CorruptEnv on reopen, got Ok"),
+        Err(e) => e,
+    };
+    assert!(
+        matches!(err, StoreError::CorruptEnv(_)),
+        "expected StoreError::CorruptEnv(_), got {err:?}"
+    );
+
+    let msg = err.to_string();
+    let dir_str = dir.path().display().to_string();
+    let data_str = data_path.display().to_string();
+    assert!(
+        !msg.contains(&dir_str),
+        "Display leaked directory path: {msg}"
+    );
+    assert!(
+        !msg.contains(&data_str),
+        "Display leaked data.mdb path: {msg}"
     );
 }
