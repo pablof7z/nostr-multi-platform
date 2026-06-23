@@ -6,9 +6,9 @@ use nmp_core::ActorCommand;
 
 use super::NmpApp;
 
-pub(super) type ActorStarter = Box<dyn FnOnce() -> JoinHandle<()> + Send + 'static>;
+pub(crate) type ActorStarter = Box<dyn FnOnce() -> JoinHandle<()> + Send + 'static>;
 
-pub(super) fn prestart_snapshot_frame(actor_queue_depth: u32) -> nmp_core::UpdateFrameBytes {
+pub(crate) fn prestart_snapshot_frame(actor_queue_depth: u32) -> nmp_core::UpdateFrameBytes {
     let last_tick_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
@@ -28,7 +28,7 @@ pub(super) fn prestart_snapshot_frame(actor_queue_depth: u32) -> nmp_core::Updat
 }
 
 impl NmpApp {
-    pub(super) fn spawn_actor_if_needed(&self) {
+    pub(crate) fn spawn_actor_if_needed(&self) {
         let Some(starter) = self.actor_starter.lock().ok().and_then(|mut g| g.take()) else {
             return;
         };
@@ -41,7 +41,7 @@ impl NmpApp {
         }
     }
 
-    pub(super) fn emit_passive_prestart_snapshot(&self) {
+    pub(crate) fn emit_passive_prestart_snapshot(&self) {
         let depth = self
             .queue_depth
             .load(Ordering::Relaxed)

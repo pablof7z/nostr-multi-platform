@@ -145,17 +145,20 @@ fi
 # future `const char *`/length regression fails in CI even though the symbol
 # name stays unchanged.
 check_update_callback_abi() {
-    local rust_ffi="${REPO_ROOT}/crates/nmp-ffi/src/lib.rs"
-    local rust_normalized
-    rust_normalized="$(perl -0pe 's/\s+/ /g' "${rust_ffi}")"
-    case "${rust_normalized}" in
+    # The UpdateCallback type and nmp_app_set_update_callback may live in
+    # different files under crates/nmp-ffi/src/ (split in the ffi-lib-split
+    # refactor). Search all .rs files under that directory.
+    local rust_ffi_dir="${REPO_ROOT}/crates/nmp-ffi/src"
+    local rust_combined
+    rust_combined="$(find "${rust_ffi_dir}" -name '*.rs' -type f | sort | xargs perl -0pe 's/\s+/ /g')"
+    case "${rust_combined}" in
         *'type UpdateCallback = extern "C" fn(*mut c_void, *const u8, usize);'*) ;;
         *)
             echo "FFI DRIFT — Rust UpdateCallback must be (*mut c_void, *const u8, usize)" >&2
             return 1
             ;;
     esac
-    case "${rust_normalized}" in
+    case "${rust_combined}" in
         *'pub extern "C" fn nmp_app_set_update_callback( app: *mut NmpApp, context: *mut c_void, callback: Option<UpdateCallback>, )'*) ;;
         *)
             echo "FFI DRIFT — Rust nmp_app_set_update_callback signature drifted" >&2

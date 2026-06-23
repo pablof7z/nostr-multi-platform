@@ -268,8 +268,11 @@ impl NmpApp {
 }
 
 impl nmp_core::substrate::ActionRegistrar for NmpApp {
-    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
-        NmpApp::register_action(self, module);
+    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), nmp_core::substrate::RegistrationError> {
+        self.action_registry.register(module)
     }
 
     /// ADR-0049 Part 1 — override the trait default so the canonical NMP

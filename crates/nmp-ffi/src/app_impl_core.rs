@@ -95,8 +95,11 @@ impl NmpApp {
     /// 5.2: takes the module **value** so a stateful module (e.g. one owning
     /// an `Arc<WalletRuntimeHandle>`) carries its deps, captured at
     /// composition time, instead of reaching a process-global.
-    pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
-        self.action_registry.register(module);
+    pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), nmp_core::substrate::RegistrationError> {
+        self.action_registry.register(module)
     }
 
     /// Register a typed action module as a **yielding default** (ADR-0049
@@ -159,5 +162,4 @@ impl NmpApp {
     pub fn take_pending_mls_autopublish(&self) -> bool {
         self.pending_mls_autopublish.swap(false, Ordering::AcqRel)
     }
-
 }
