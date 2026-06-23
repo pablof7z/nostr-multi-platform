@@ -63,6 +63,10 @@ impl SnapshotProjectionRegistrar for NmpApp {
     ) {
         NmpApp::frame_identity_handles(self)
     }
+
+    fn remove_snapshot_projection(&self, key: &str) {
+        NmpApp::remove_snapshot_projection(self, key);
+    }
 }
 
 impl CoverageHookRegistrar for NmpApp {

@@ -42,12 +42,14 @@ use crate::substrate::{
     ActionContext, ActionId, ActionModule, ActionRegistrar, ActionRejection, ActionResult,
 };
 
+mod action_id;
 mod erased;
 mod failure;
 mod typed_dispatch;
 
+use action_id::new_action_id;
 use erased::{ActionModuleAdapter, ErasedActionModule};
-pub use failure::{ActionExecuteFailure, ActionFailureKind};
+pub use failure::{ActionExecuteFailure, ActionFailureKind, RegistrationError};
 
 /// Per-namespace provenance: did the live entry come from a yielding default
 /// or from an explicit app registration? (ADR-0049 Part 1.)
@@ -159,24 +161,31 @@ impl ActionRegistry {
     ///
     /// ADR-0052 rung 5.2: takes the module **value** so a stateful module
     /// stores its captured dependencies in the registry.
-    pub fn register<M: ActionModule + 'static>(&mut self, module: M) {
+    ///
+    /// Returns `Ok(())` on success. Returns `Err(`[`RegistrationError`]`)` when
+    /// the namespace is ALREADY held by another **app** registration — an
+    /// app-over-app collision (ADR-0049). The new module still replaces the old
+    /// (last-writer-wins for release resilience, D6 — no panic across the
+    /// C-ABI); the error is returned so the caller can surface it in BOTH dev
+    /// AND release builds (#1724). Overriding a yielding default is legal and
+    /// does NOT return an error.
+    pub fn register<M: ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), RegistrationError> {
         let provider = std::any::type_name::<M>();
         let prior = self.provenance.get(M::NAMESPACE).copied();
-        let disposition = match prior {
-            None => Disposition::Installed,
-            Some((Provenance::Default, _)) => Disposition::ReplacedPrevious,
+        let (disposition, collision) = match prior {
+            None => (Disposition::Installed, None),
+            Some((Provenance::Default, _)) => (Disposition::ReplacedPrevious, None),
             Some((Provenance::App, prev_provider)) => {
-                // App-over-app collision: loud in dev/test, soft in release.
-                debug_assert!(
-                    false,
-                    "action namespace '{}' already registered by app provider '{}'; \
-                     a second app registration ('{}') is a composition collision \
-                     (ADR-0049). Two app modules must not claim the same namespace.",
-                    M::NAMESPACE,
-                    prev_provider,
-                    provider,
-                );
-                Disposition::ReplacedPrevious
+                // App-over-app collision: structured error in both dev and release.
+                let err = RegistrationError {
+                    namespace: M::NAMESPACE,
+                    prior_provider: prev_provider,
+                    new_provider: provider,
+                };
+                (Disposition::ReplacedPrevious, Some(err))
             }
         };
         let replaced = prior.map(|(_, prev_provider)| prev_provider.to_string());
@@ -196,6 +205,11 @@ impl ActionRegistry {
                 disposition,
                 replaced,
             );
+        }
+
+        match collision {
+            Some(err) => Err(err),
+            None => Ok(()),
         }
     }
 
@@ -443,31 +457,16 @@ impl ActionRegistry {
 }
 
 impl ActionRegistrar for ActionRegistry {
-    fn register_action<M: ActionModule + 'static>(&mut self, module: M) {
-        self.register(module);
+    fn register_action<M: ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), RegistrationError> {
+        self.register(module)
     }
 
     fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
         self.register_default(module)
     }
-}
-
-/// Generate a unique 32-hex-char action correlation id.
-///
-/// Combines the caller-supplied wall-clock millisecond stamp (`now_ms`, read
-/// at the FFI system boundary by `ffi/action.rs`) with a process-lifetime
-/// atomic counter so two ids minted at the same instant still differ. This is
-/// a correlation handle, not a security token — no cryptographic randomness
-/// is required (the M6 ledger may swap in a UUID later without touching
-/// callers). The clock is injected rather than read here so tests can pin the
-/// leading hex word for deterministic id assertions.
-fn new_action_id(now_ms: u64) -> ActionId {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-    // 64-bit now_ms + 64-bit sequence → 32 hex. The sequence guarantees
-    // uniqueness within a single millisecond.
-    format!("{now_ms:016x}{seq:016x}")
 }
 
 /// Build the registry the kernel ships with.
@@ -480,18 +479,21 @@ fn new_action_id(now_ms: u64) -> ActionId {
 /// module lives in `nmp-nip47` and the host crate registers it from there.
 pub fn default_registry() -> ActionRegistry {
     let mut registry = ActionRegistry::new();
-    registry.register(crate::publish::PublishModule);
+    // `PublishModule` is the only built-in — no collision is possible, so the
+    // Result is always Ok. `let _ =` suppresses the must-use warning (#1724).
+    let _ = registry.register(crate::publish::PublishModule);
     registry
 }
 
 #[cfg(test)]
 #[path = "action_registry/tests.rs"]
 mod tests;
-
 #[cfg(test)]
 #[path = "action_registry/terminal_correctness_tests.rs"]
 mod terminal_correctness_tests;
-
 #[cfg(test)]
 #[path = "action_registry/typed_dispatch_tests.rs"]
 mod typed_dispatch_tests;
+#[cfg(test)]
+#[path = "action_registry/registration_error_tests.rs"]
+mod registration_error_tests;

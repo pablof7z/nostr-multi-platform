@@ -103,7 +103,9 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{AppHost, EventObserverRegistrar, SnapshotProjectionRegistrar};
+use nmp_core::substrate::{
+    register_observer_projection, AppHost, EventObserverRegistrar, SnapshotProjectionRegistrar,
+};
 
 pub mod action_payloads;
 pub mod builder;
@@ -293,7 +295,8 @@ fn register_defaults_inner(
         // NIP-02: kind:3 follow/unfollow.
         nmp_nip02::register_follow_actions(app);
         // NIP-25: public kind:7 reactions and kind:5 unreact deletion.
-        nmp_nip25::register_actions(app);
+        // Uses the typed descriptor (#1724 criterion 6).
+        nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
         // NIP-29 group input-scope recognizer (#1804, S7).
         //
         // Register the `nip29.groups` `InputScopeRecognizer` so the
@@ -430,14 +433,13 @@ pub fn register_longform_projection(
     use nmp_core::KernelEventObserver;
 
     let projection = Arc::new(LongformProjection::new());
-    let observer_id =
-        app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
-    // A zero id means the observer slot was poisoned — soft-fail (D6): skip the
-    // snapshot registration too so we never publish a perpetually-empty key.
-    if observer_id == nmp_core::KernelEventObserverId(0) {
-        return;
-    }
-    app.register_typed_snapshot_projection(nmp_content::LONGFORM_PROJECTION_KEY, move || {
-        Some(projection.typed_projection())
-    });
+    // register_observer_projection handles the D6 slot-poisoned guard (#1724 criterion 3):
+    // if the observer slot is poisoned it returns None and skips the projection registration.
+    let projection_for_closure = Arc::clone(&projection);
+    register_observer_projection(
+        app,
+        Arc::clone(&projection) as Arc<dyn KernelEventObserver>,
+        nmp_content::LONGFORM_PROJECTION_KEY,
+        move || Some(projection_for_closure.typed_projection()),
+    );
 }

@@ -79,14 +79,15 @@ pub mod search;
 pub mod intent;
 mod view;
 
+pub use action::ProtocolDescriptor;
 pub use action::{
     ActionContext, ActionId, ActionModule, ActionPayload, ActionPayloadDecodeError,
-    ActionRegistrar, ActionRejection, ActionResult,
+    ActionRegistrar, ActionRejection, ActionResult, RegistrationError,
 };
 pub use app_host::{
-    AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
-    EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
-    IngestParserRegistrar, KernelReaderRegistrar, PreferredRelaySource,
+    register_observer_projection, AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar,
+    DmInboxRelayRegistrar, EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IncrementalApplyError, IngestParserRegistrar, KernelReaderRegistrar, PreferredRelaySource,
     RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
     RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
 };

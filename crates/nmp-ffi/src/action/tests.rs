@@ -387,7 +387,7 @@ fn host_registered_executor_dispatches_successfully() {
     // SAFETY: `nmp_app_new` never returns null; the pointer is valid
     // until `nmp_app_free` below, and no other reference aliases it here.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action(TestGreetingModule);
+    let _ = app_mut.register_action(TestGreetingModule);
 
     // `test_execute_action` drives the registry's `execute` path
     // directly — `dispatch_action`'s `start()` validation runs through
@@ -412,7 +412,7 @@ fn host_registered_executor_propagates_error() {
     let app = nmp_app_new();
     // SAFETY: see `host_registered_executor_dispatches_successfully`.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action(TestFailingModule);
+    let _ = app_mut.register_action(TestFailingModule);
 
     let err = app_mut
         .test_execute_action("test.failing", "{}")
@@ -429,7 +429,7 @@ fn unregistered_namespace_after_host_registration_still_errs() {
     let app = nmp_app_new();
     // SAFETY: see `host_registered_executor_dispatches_successfully`.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action(TestGreetingModule);
+    let _ = app_mut.register_action(TestGreetingModule);
 
     let err = app_mut
         .test_execute_action("test.unregistered", "{}")
@@ -454,7 +454,7 @@ fn host_registered_module_and_executor_enables_dispatch_action() {
     // SAFETY: `nmp_app_new` never returns null; the pointer is valid
     // until `nmp_app_free` below, and no other reference aliases it here.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action(TestTodoModule);
+    let _ = app_mut.register_action(TestTodoModule);
 
     // Now `dispatch_action` should succeed end-to-end.
     let out = dispatch_action_json(
@@ -479,7 +479,7 @@ fn host_registered_module_can_reject_action() {
     let app = nmp_app_new();
     // SAFETY: see `host_registered_module_and_executor_enables_dispatch_action`.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action(TestTodoRejectModule);
+    let _ = app_mut.register_action(TestTodoRejectModule);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.todo_reject", "{}");
     let parsed: serde_json::Value = serde_json::from_str(&out).unwrap();
@@ -648,7 +648,7 @@ fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
     // panicked")`. The new dispatch path must then (a) still include the
     // minted correlation_id in the envelope and (b) enqueue a
     // `RecordActionFailure` on the actor channel.
-    app_mut.register_action(TestPanicModule);
+    let _ = app_mut.register_action(TestPanicModule);
 
     // Snapshot the monotone send counter before dispatch. Unlike
     // `queue_depth` (which the actor drains concurrently), `send_cmd_count`

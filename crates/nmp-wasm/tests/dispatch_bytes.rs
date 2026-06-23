@@ -198,7 +198,7 @@ mod typed_decode {
         let mut runtime = WasmRuntime::new();
         // The composition root registers per-NIP modules; here the test plays
         // that role via the same public `register_action` seam.
-        runtime.register_action(ProbeModule {
+        let _ = runtime.register_action(ProbeModule {
             started: Arc::clone(&started),
         });
         // An active account is required (fail-closed: no signer → no write).
@@ -239,7 +239,7 @@ mod typed_decode {
     fn malformed_typed_payload_fails_closed_at_decode() {
         let started = Arc::new(AtomicBool::new(false));
         let mut runtime = WasmRuntime::new();
-        runtime.register_action(ProbeModule {
+        let _ = runtime.register_action(ProbeModule {
             started: Arc::clone(&started),
         });
         seed_account(&mut runtime);

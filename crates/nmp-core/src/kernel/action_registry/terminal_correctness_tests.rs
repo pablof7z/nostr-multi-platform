@@ -57,7 +57,7 @@ fn sync_err_executor_is_tagged_sync_error_not_panic() {
     }
 
     let mut registry = ActionRegistry::new();
-    registry.register(RefusingModule);
+    let _ = registry.register(RefusingModule);
     let err = registry
         .execute("host.refuse", "null", "corr-id", &|_cmd| {})
         .expect_err("a refusing executor must return Err");
@@ -100,7 +100,7 @@ fn panic_before_enqueue_is_tagged_panic_and_not_enqueued() {
     }
 
     let mut registry = ActionRegistry::new();
-    registry.register(PanicFirstModule);
+    let _ = registry.register(PanicFirstModule);
     let err = registry
         .execute("host.panic_first", "null", "corr-id", &|_cmd| {})
         .expect_err("a panicking executor returns Err, not unwind");
@@ -144,7 +144,7 @@ fn panic_after_enqueue_reports_enqueued_true() {
     }
 
     let mut registry = ActionRegistry::new();
-    registry.register(EnqueueThenPanicModule);
+    let _ = registry.register(EnqueueThenPanicModule);
     let seen = Cell::new(0u32);
     let err = registry
         .execute("host.enqueue_then_panic", "null", "corr-id", &|_cmd| {

@@ -13,12 +13,12 @@
 use std::sync::Arc;
 
 use nmp_core::__ffi_internal::ActionRegistry;
-use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection, ActionRegistrar};
+use nmp_core::substrate::{ActionContext, ActionPayload, ActionRegistrar, ActionRejection};
+use nmp_router::publish_relay_list::{RelayListEntry, RelayMarker};
 use nmp_router::{
     BlockRelayAction, BlockRelayInput, InMemoryBlockedRelayCache, PublishRelayListAction,
     PublishRelayListInput, UnblockRelayAction, UnblockRelayInput,
 };
-use nmp_router::publish_relay_list::{RelayListEntry, RelayMarker};
 
 const PUBKEY: &str = "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899";
 
@@ -38,13 +38,18 @@ fn assert_version_trip(err: ActionRejection) {
 fn start_bytes_rejects_wrong_schema_version_for_block_relay() {
     let cache = Arc::new(InMemoryBlockedRelayCache::new());
     let mut registry = ActionRegistry::new();
-    registry.register_action(BlockRelayAction::new(cache));
+    let _ = registry.register_action(BlockRelayAction::new(cache));
 
     // Encode a good payload, then corrupt its schema_version slot via a hand
     // build with version 999.
     let bad = build_bad_block_payload();
     let err = registry
-        .start_bytes(&mut ActionContext::default(), 1_700_000_000_000, "nmp.nip51.block_relay", &bad)
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            "nmp.nip51.block_relay",
+            &bad,
+        )
         .expect_err("a wrong schema_version must be rejected before start() (fail closed)");
     assert_version_trip(err);
 }
@@ -53,7 +58,7 @@ fn start_bytes_rejects_wrong_schema_version_for_block_relay() {
 fn start_bytes_accepts_good_block_relay_payload() {
     let cache = Arc::new(InMemoryBlockedRelayCache::new());
     let mut registry = ActionRegistry::new();
-    registry.register_action(BlockRelayAction::new(cache));
+    let _ = registry.register_action(BlockRelayAction::new(cache));
 
     let action = BlockRelayInput {
         url: "wss://relay.example".to_string(),
@@ -76,7 +81,7 @@ fn start_bytes_accepts_good_block_relay_payload() {
 fn start_bytes_rejects_wrong_schema_version_for_unblock_relay() {
     let cache = Arc::new(InMemoryBlockedRelayCache::new());
     let mut registry = ActionRegistry::new();
-    registry.register_action(UnblockRelayAction::new(cache));
+    let _ = registry.register_action(UnblockRelayAction::new(cache));
 
     let bad = build_bad_unblock_payload();
     let err = registry
@@ -97,7 +102,7 @@ fn start_bytes_accepts_good_unblock_relay_payload() {
     let cache = Arc::new(InMemoryBlockedRelayCache::new());
     cache.upsert(PUBKEY.to_string(), vec!["wss://relay.example".to_string()]);
     let mut registry = ActionRegistry::new();
-    registry.register_action(UnblockRelayAction::new(cache));
+    let _ = registry.register_action(UnblockRelayAction::new(cache));
 
     let action = UnblockRelayInput {
         url: "wss://relay.example".to_string(),
@@ -119,7 +124,7 @@ fn start_bytes_accepts_good_unblock_relay_payload() {
 #[test]
 fn start_bytes_rejects_wrong_schema_version_for_publish_relay_list() {
     let mut registry = ActionRegistry::new();
-    registry.register_action(PublishRelayListAction);
+    let _ = registry.register_action(PublishRelayListAction);
 
     let bad = build_bad_publish_payload();
     let err = registry
@@ -136,7 +141,7 @@ fn start_bytes_rejects_wrong_schema_version_for_publish_relay_list() {
 #[test]
 fn start_bytes_accepts_good_publish_relay_list_payload() {
     let mut registry = ActionRegistry::new();
-    registry.register_action(PublishRelayListAction);
+    let _ = registry.register_action(PublishRelayListAction);
 
     let action = PublishRelayListInput {
         relays: vec![RelayListEntry {

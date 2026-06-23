@@ -185,9 +185,12 @@ pub fn register_wallet(
     // 3. Action modules — exposed under `nmp.wallet.{connect,disconnect,
     //    pay_invoice}`. ADR-0052 rung 5.2: each module VALUE owns a clone of
     //    the per-app handle (no process-global install).
-    app.register_action(WalletConnectModule::new(Arc::clone(&handle)));
-    app.register_action(WalletDisconnectModule::new(Arc::clone(&handle)));
-    app.register_action(WalletPayInvoiceModule::new(Arc::clone(&handle)));
+    app.register_action(WalletConnectModule::new(Arc::clone(&handle)))
+        .expect("duplicate registration: nmp-nip47 WalletConnectModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error (duplicate wiring), not a runtime failure
+    app.register_action(WalletDisconnectModule::new(Arc::clone(&handle)))
+        .expect("duplicate registration: nmp-nip47 WalletDisconnectModule"); // doctrine-allow: D6 — startup-only call; see above
+    app.register_action(WalletPayInvoiceModule::new(Arc::clone(&handle)))
+        .expect("duplicate registration: nmp-nip47 WalletPayInvoiceModule"); // doctrine-allow: D6 — startup-only call; see above
 
     // 4. Substrate-generic relay-text interceptor — the actor calls this for
     //    every inbound text frame.

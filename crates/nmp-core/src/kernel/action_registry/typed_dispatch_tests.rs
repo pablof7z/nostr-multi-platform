@@ -218,7 +218,7 @@ fn start_bytes_rejects_not_typed_capable_module() {
     // cannot implement ActionPayload) is rejected by the typed doorway — it does
     // NOT silently fall back to JSON.
     let mut registry = ActionRegistry::new();
-    registry.register(JsonOnlyModule);
+    let _ = registry.register(JsonOnlyModule);
     let err = registry
         .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.test.json_only", b"anything")
         .expect_err("a non-typed-capable module must reject typed bytes");
@@ -275,8 +275,8 @@ fn default_registry_has_no_untyped_namespaces() {
 #[test]
 fn untyped_namespaces_flags_a_json_only_module() {
     let mut registry = ActionRegistry::new();
-    registry.register(crate::publish::PublishModule); // typed — must NOT be flagged
-    registry.register(JsonOnlyModule); // JSON-only — MUST be flagged
+    let _ = registry.register(crate::publish::PublishModule); // typed — must NOT be flagged
+    let _ = registry.register(JsonOnlyModule); // JSON-only — MUST be flagged
     assert_eq!(
         registry.untyped_namespaces(),
         vec!["nmp.test.json_only".to_string()],
@@ -290,7 +290,7 @@ fn untyped_namespaces_flags_a_json_only_module() {
 #[test]
 fn untyped_namespaces_does_not_flag_the_typed_publish_module() {
     let mut registry = ActionRegistry::new();
-    registry.register(crate::publish::PublishModule);
+    let _ = registry.register(crate::publish::PublishModule);
     assert!(
         registry.untyped_namespaces().is_empty(),
         "the typed `nmp.publish` module must be recognised as typed-capable"

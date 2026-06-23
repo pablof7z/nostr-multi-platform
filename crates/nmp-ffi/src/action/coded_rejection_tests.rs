@@ -46,7 +46,7 @@ fn coded_rejection_includes_code_field_in_ffi_json() {
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null; pointer is valid until `nmp_app_free` below.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action(TestCodedRejectModule);
+    let _ = app_mut.register_action(TestCodedRejectModule);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.coded_reject", "{}");
     let parsed: serde_json::Value =
@@ -136,7 +136,7 @@ fn coded_rejection_byte_doorway_includes_code_field() {
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null; pointer is valid until `nmp_app_free` below.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action(TestCodedRejectBytesModule);
+    let _ = app_mut.register_action(TestCodedRejectBytesModule);
 
     // Build a well-formed DispatchEnvelope for the bytes namespace. The payload
     // bytes are a minimal non-empty slice — `decode_payload` ignores the content

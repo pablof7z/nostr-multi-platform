@@ -36,9 +36,9 @@ fn snapshot_carries_nip46_onboarding_projection() {
     // signer-app table + pre-computed flags. This end-to-end test drives
     // a `BunkerHandshakeProgress` through the actor and asserts both
     // projections appear in the emitted snapshot.
+    use std::sync::atomic::AtomicU64;
     use std::sync::mpsc;
     use std::sync::Arc;
-    use std::sync::atomic::AtomicU64;
     use std::thread;
     use std::time::Duration;
 
@@ -84,7 +84,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             active_account: crate::slots::new_active_account_slot(),
             event_store: crate::slots::new_event_store_slot(),
             pull_cursor_registry: crate::slots::new_pull_cursor_registry_handle_slot(),
-            external_event_sink_dispatcher: crate::substrate::new_external_event_sink_dispatcher_slot(),
+            external_event_sink_dispatcher:
+                crate::substrate::new_external_event_sink_dispatcher_slot(),
         };
         let config = ActorConfigSources {
             storage_path: Arc::new(std::sync::Mutex::new(None)),
@@ -96,6 +97,7 @@ fn snapshot_carries_nip46_onboarding_projection() {
             ingest_dispatcher: Arc::new(std::sync::RwLock::new(
                 crate::substrate::EventIngestDispatcher::new(),
             )),
+            search_scope_registry: Arc::new(crate::substrate::SearchScopeRegistry::new()),
             dm_inbox_relays: Arc::new(std::sync::Mutex::new(
                 crate::substrate::empty_dm_inbox_relay_lookup(),
             )),

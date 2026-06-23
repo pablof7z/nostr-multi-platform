@@ -126,7 +126,7 @@ fn gate_flags_a_json_only_module_registered_on_a_real_app() {
     );
 
     // Introduce the forbidden JSON-only shim.
-    app_mut.register_action(JsonOnlyAppModule);
+    let _ = app_mut.register_action(JsonOnlyAppModule);
 
     let after = app_mut.untyped_action_namespaces();
     assert!(

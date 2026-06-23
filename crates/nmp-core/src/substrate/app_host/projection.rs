@@ -143,6 +143,14 @@ pub trait SnapshotProjectionRegistrar {
         std::sync::Arc<std::sync::atomic::AtomicU64>,
     );
 
+    /// Remove the typed snapshot projection registered under `key`, if any.
+    ///
+    /// Used by lifecycle-managed projection sessions (e.g. group-discovery
+    /// teardown in NIP-29) to clear a key so no stale row is emitted after the
+    /// session ends. Idempotent — an unknown key is a silent no-op. A poisoned
+    /// registry lock is a silent no-op (D6).
+    fn remove_snapshot_projection(&self, key: &str);
+
     /// ADR-0053 — declare the static set of **Tier-2 built-in projection keys**
     /// this host consumes (the union of every projection any of the app's screens
     /// can read, known at app build time).
