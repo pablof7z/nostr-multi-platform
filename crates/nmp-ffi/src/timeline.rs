@@ -33,7 +33,7 @@ use std::ffi::c_char;
 ///   `1` = Global (account-agnostic, e.g. a hashtag firehose).
 ///
 /// FFI-clean (D6): a null argument is a silent no-op; a non-object
-/// `filter_json` surfaces a diagnostic toast (via `ActorCommand::ShowToast`)
+/// `filter_json` surfaces a diagnostic toast (via `NmpApp::show_toast`)
 /// rather than a panic. D8: forwards to the actor; no polling, no sync wait.
 #[no_mangle]
 pub extern "C" fn nmp_app_open_interest(
