@@ -520,15 +520,7 @@ pub(crate) use types::LogicalInterestStatus as LogicalInterestStatusForCodegen;
 pub(crate) use types::Metrics as MetricsForCodegen;
 #[cfg(feature = "codegen-schema")]
 pub(crate) use types::RelayStatus as RelayStatusForCodegen;
-// V6 Stage 3 — `TimelineItem` joins the Stage 1 alias set. Same E0252 reason
-// as the four pilot types above: `mod types` is private to `kernel`, so the
-// only way to reach `TimelineItem` from `crate::codegen_schema` is through
-// this re-export, and the `as ForCodegen` rename sidesteps a collision with
-// the plain `use types::{... TimelineItem ...}` at the bottom of the imports
-// block in this file.
 pub use identity_state::{read_eligible_relay_urls, AppRelay};
-#[cfg(feature = "codegen-schema")]
-pub(crate) use types::TimelineItem as TimelineItemForCodegen;
 #[cfg(feature = "codegen-schema")]
 pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen;
 // Host-extensible snapshot output — reachable from the `ffi` module for the
@@ -599,11 +591,6 @@ use std::sync::atomic::AtomicU64;
 // transport layer (`crate::update_envelope::encode_snapshot_with_envelope`) can
 // name `&KernelSnapshot` to populate the typed Tier-3 `SnapshotFrame` fields.
 pub(crate) use types::KernelSnapshot;
-// TimelineItem is only constructed in tests (timeline_item()) and referenced
-// by the codegen-schema alias above. Bring it into scope for test builds so
-// `update/views.rs` (which is also #[cfg(test)]-gated) can name it.
-#[cfg(test)]
-use types::TimelineItem;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
     Metrics, NoticeEntry, OutboxSummarySnapshot, ProfileCard,

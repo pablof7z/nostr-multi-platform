@@ -1,7 +1,7 @@
 //! Pure data types shared across kernel sub-modules.
 //!
 //! Holds all struct/enum definitions with no behaviour of their own: `StoredEvent`,
-//! Profile, `TimelineItem`, `ProfileCard`, view payloads, relay health/status, wire
+//! Profile, `ProfileCard`, view payloads, relay health/status, wire
 //! subscription state, counters, and the `AuthorRelayList` cache entry.
 
 use std::collections::VecDeque;
@@ -35,81 +35,6 @@ pub(super) struct StoredEvent {
 // longer names the kind:0 wire format (D0).
 
 // ── Timeline and view payloads ────────────────────────────────────────────────
-
-/// A single item in a timeline or thread view.
-///
-/// Carries raw protocol data only (aim.md §2 — NMP is a data framework;
-/// projection and snapshot code sends raw pubkeys as hex, timestamps as
-/// Unix seconds, and surfaces kind:0-derived fields as `Option<String>`
-/// — `None` when no kind:0 has arrived). Presentation layers own all
-/// formatting decisions (bech32 encoding, abbreviation, avatar
-/// initials/tint, relative-time labels, placeholder/identicon strategy
-/// for the missing-picture case).
-// V6 Stage 3 — Swift `TimelineItem` Decodable codegen. Widened from
-// `pub(super)` to `pub(crate)` so the feature-gated
-// `pub(crate) use ... as TimelineItemForCodegen` re-export in
-// `kernel/mod.rs` can lift the type out of `kernel`'s parent-module
-// visibility ceiling and reach `crate::codegen_schema::dump_pilot_schemas`.
-// Crate-private encapsulation is preserved — `TimelineItem` is still
-// invisible outside `nmp-core` (no `pub use` further up). Mirrors the
-// Stage 1 pattern used for `RelayStatus`, `Metrics`,
-// `WireSubscriptionStatus`, and `LogicalInterestStatus`.
-// Only constructed in tests and referenced by the codegen-schema feature.
-#[allow(dead_code)]
-#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
-#[cfg_attr(feature = "codegen-schema", derive(schemars::JsonSchema))]
-pub(crate) struct TimelineItem {
-    pub(super) id: String,
-    /// Author Nostr pubkey, hex (64 chars). Presentation layer formats
-    /// for display.
-    pub(super) author_pubkey: String,
-    /// Author picture URL from kind:0. `None` when no kind:0 has arrived
-    /// or the metadata carries no `picture` field — presentation layer
-    /// chooses a placeholder/identicon strategy.
-    pub(super) author_picture_url: Option<String>,
-    /// NIP-57 lightning address (`lud16`) or LNURL (`lud06`) from the
-    /// author's kind:0 metadata. `None` when the author has no lightning
-    /// address or their kind:0 hasn't arrived yet. Pre-extracted so the
-    /// shell zap button doesn't need to cross-reference a separate profile
-    /// lookup — thin-shell rule, Rust decides zapability.
-    pub(super) author_lnurl: Option<String>,
-    /// Author display name from kind:0, if the kernel has it cached.
-    /// `None` when no kind:0 has arrived yet — the presentation layer
-    /// formats `author_pubkey` as a short hex abbreviation in that case.
-    /// Baked directly into the timeline item so the renderer has the name
-    /// without a separate profile-claim lifecycle.
-    pub(super) author_display_name: Option<String>,
-    /// Nostr event kind (e.g. 1 = note, 6 = repost, 7 = reaction). Carried so
-    /// the shell can render kind-conditional UI (badges, navigation targets)
-    /// without re-parsing the raw event JSON in `content`. D1 / thin-shell:
-    /// the kind is the authoritative protocol signal — never inferred from
-    /// content shape in native code.
-    pub(super) kind: u32,
-    pub(super) content: String,
-    pub(super) content_preview: String,
-    /// Event `created_at` (Unix seconds). Presentation layer formats for
-    /// display (aim.md §2).
-    pub(super) created_at: u64,
-    pub(super) relay_count: u32,
-    pub(super) relay_provenance: Vec<String>,
-    /// `true` when `kind == 6` (NIP-18 repost). Thin-shell: the view layer
-    /// flips the "Repost" badge and re-routes thread navigation on this bool;
-    /// it MUST NOT switch on `kind` itself (re-parsing protocol semantics in
-    /// the UI is exactly the violation aim.md §6.9 forbids).
-    pub(super) is_repost: bool,
-    /// Event id the shell should route to when the row is tapped. For a
-    /// kind:1 note this is `id`; for a kind:6 repost it is the inner kind:1's
-    /// id when the embedded NIP-18 JSON is well-formed, falling back to `id`
-    /// when it is missing or malformed (D1: best-effort). The shell binds
-    /// this verbatim — no `?? id` fallback, no JSON parsing in Swift.
-    pub(super) nav_target_id: String,
-    /// Inner-note text the shell renders inside a kind:6 repost cell. For a
-    /// kind:1 note this is `""` (the cell uses `content` directly); for a
-    /// kind:6 it is the inner event's `content` field when the embedded JSON
-    /// parses, falling back to `""` when it is missing or malformed (D1). The
-    /// shell uses this string verbatim — no JSON parsing, no `?? ""` fallback.
-    pub(super) repost_inner_content: String,
-}
 
 /// Profile summary card.
 ///
