@@ -84,13 +84,14 @@ void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
 void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
 
-// ── Generic action dispatch (phase 2 / write surface) ────────────────────
+// ── Generic action dispatch (phase 2 / ADR-0064 Cut-B #1756) ────────────
 
-// Single namespace-keyed entry point for the M6 `ActionModule` family. The
-// gallery uses it (phase 2) for the showcase "publish a note" page. Returns a
-// heap-allocated JSON envelope (`{"correlation_id":"<32-hex>"}` or
+// Typed byte doorway for gallery writes. Rust encodes `body_json` into the
+// typed `ActionPayload` FlatBuffers bytes for `namespace` and dispatches
+// through `nmp_app_dispatch_action_bytes`. No JSON crosses the FFI to the
+// kernel. Returns a heap-allocated JSON envelope (`{"correlation_id":"<id>"}` or
 // `{"error":"…"}`) the caller MUST free via `nmp_free_string`.
-char *nmp_app_dispatch_action(void *app, const char *namespace, const char *action_json);
+char *nmp_app_gallery_dispatch_action_bytes(void *app, const char *namespace, const char *body_json);
 
 // ── Showcase sign-in (phase 2) ───────────────────────────────────────────
 

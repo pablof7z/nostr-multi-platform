@@ -40,8 +40,8 @@ use nmp_app_chirp::{
     nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus,
 };
 use nmp_ffi::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_new,
-    nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
+    nmp_app_free, nmp_app_new,
+    nmp_app_signin_nsec, nmp_app_start, NmpApp,
 };
 use nostr::{Keys, SecretKey, ToBech32};
 
@@ -69,8 +69,10 @@ fn build_chirp_app() -> (*mut NmpApp, *mut ChirpHandle) {
 /// Dispatch `nmp.wallet.connect` for `app` against a wallet whose service
 /// pubkey is `wallet_pubkey_hex`, pointed at a (never-dialed) relay URL.
 ///
-/// #1607: uses `nmp_app_dispatch_action("nmp.wallet.connect", …)` directly
-/// — the deleted `nmp_app_wallet_connect` bespoke symbol is gone (D11).
+/// ADR-0064 / Cut-B (#1756): uses the typed byte doorway
+/// (`nmp_app_chirp::dispatch_bytes::dispatch_action_bytes_for`) — the
+/// deleted JSON doorway (`nmp_app_dispatch_action`) and the deleted bespoke
+/// `nmp_app_wallet_connect` symbol (D11) are both gone.
 fn connect_wallet(app: *mut NmpApp, wallet_pubkey_hex: &str) {
     // A throwaway client secret — only its syntactic validity matters; the
     // relay is never dialed in this test, so no handshake occurs.
@@ -84,14 +86,14 @@ fn connect_wallet(app: *mut NmpApp, wallet_pubkey_hex: &str) {
         "Connect": { "uri": uri }
     }))
     .expect("connect action JSON must serialize");
-    let ns = CString::new("nmp.wallet.connect").expect("namespace NUL-free");
-    let body = CString::new(action_json).expect("action_json NUL-free");
-    let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
-    if !ptr.is_null() {
-        // SAFETY: nmp_app_dispatch_action returns a heap-allocated NUL-terminated
-        // C string that must be freed with nmp_free_string.
-        nmp_free_string(ptr);
-    }
+    // Result is Ok(correlation_id) or Err(message); we don't wait for the
+    // action terminal here — the projection-poll loop in
+    // `projected_wallet_pubkey` is the synchronisation point.
+    let _ = nmp_app_chirp::dispatch_bytes::dispatch_action_bytes_for(
+        app,
+        "nmp.wallet.connect",
+        &action_json,
+    );
 }
 
 /// The connected wallet pubkey reported by an app's `"wallet"` projection,

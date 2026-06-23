@@ -146,12 +146,19 @@ mod signer_ports_test_support;
 // `allow(unused_imports)`: in-crate `tests` modules reach these symbols by
 // their `super::` / module path, so the facade re-export is only consumed by
 // out-of-crate clients; keeps `cargo test -p nmp-core --lib` clean.
+// ADR-0064 / Cut-B (#1756): `nmp_app_dispatch_action` (JSON doorway) deleted;
+// `nmp_app_dispatch_action_bytes` is the sole remaining dispatch entry point.
 #[cfg(feature = "native")]
 #[allow(unused_imports)]
 pub use action::{
-    nmp_app_ack_action_stage, nmp_app_dispatch_action, nmp_app_dispatch_action_bytes,
+    nmp_app_ack_action_stage, nmp_app_dispatch_action_bytes,
     nmp_app_register_action_result_observer,
 };
+// Test-support shim: re-export the deleted JSON doorway for integration tests
+// in sibling crates that have not yet been migrated to the typed byte path.
+// Never compiled into production binaries (only under test-support feature).
+#[cfg(feature = "test-support")]
+pub use action::nmp_app_dispatch_action;
 #[cfg(feature = "native")]
 pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};
 #[cfg(feature = "native")]
@@ -690,7 +697,7 @@ pub struct NmpApp {
     actor: Mutex<Option<JoinHandle<()>>>,
     update_listener: Mutex<Option<JoinHandle<()>>>,
     /// M6 — namespace-keyed action-dispatch registry backing
-    /// [`action::nmp_app_dispatch_action`]. Holds only stateless ZST module
+    /// [`action::nmp_app_dispatch_action_bytes`]. Holds only stateless ZST module
     /// adapters, so it is `Send + Sync` and is queried directly on the FFI
     /// thread (no actor round-trip): registered modules' `start` methods are
     /// pure validators. The `Kernel`-side wiring (execution + the durable
@@ -1587,7 +1594,7 @@ impl NmpApp {
     /// / `register_action_executor` closure seam has been deleted).
     ///
     /// Registration MUST happen during host init — before `nmp_app_start`
-    /// and before any [`action::nmp_app_dispatch_action`] call. ADR-0052 rung
+    /// and before any [`action::nmp_app_dispatch_action_bytes`] call. ADR-0052 rung
     /// 5.2: takes the module **value** so a stateful module (e.g. one owning
     /// an `Arc<WalletRuntimeHandle>`) carries its deps, captured at
     /// composition time, instead of reaching a process-global.
@@ -1880,7 +1887,7 @@ impl NmpApp {
     /// Register a host-supplied action-result observer — the *push*
     /// counterpart to [`Self::register_snapshot_projection`]'s pull seam.
     ///
-    /// After [`action::nmp_app_dispatch_action`] accepts an action and its
+    /// After [`action::nmp_app_dispatch_action_bytes`] accepts an action and its
     /// executor returns `Ok`, the observer is handed a
     /// [`nmp_core::substrate::ActionResult`] carrying the action's
     /// `correlation_id`. This is an "action accepted and enqueued" signal,

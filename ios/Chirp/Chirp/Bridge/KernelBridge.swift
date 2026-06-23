@@ -627,21 +627,22 @@ final class KernelHandle {
         return DispatchResult.parse(envelope: envelope)
     }
 
-    /// Dispatch a verbatim `(namespace, bodyJson)` pair through the JSON action
-    /// doorway `nmp_app_dispatch_action`. The shell does NOT pick the namespace
-    /// or build the body — Rust authored both (aim.md §2 #4: writes flow through
-    /// registered ActionModules, the shell binds blindly). `bodyJson` is passed
-    /// straight through without re-serialisation.
+    /// Dispatch a verbatim `(namespace, bodyJson)` pair through the Chirp byte
+    /// doorway `nmp_app_chirp_dispatch_action_bytes` (ADR-0064 / Cut-B #1756).
+    /// The shell does NOT pick the namespace or build the body — Rust authored
+    /// both (aim.md §2 #4: writes flow through registered ActionModules, the
+    /// shell binds blindly). `bodyJson` is passed straight through without
+    /// re-serialisation; Rust encodes the typed payload bytes.
     ///
-    /// This path is retained for the not-yet-typed `nmp.marmot` namespace, which
-    /// has no byte-doorway encoder (`MarmotBridge` is the sole caller; #1782
-    /// leaves it on JSON pending the Marmot typed-action work). Typed namespaces
-    /// route through `dispatchRawActionBytes` / the intent doorway instead.
+    /// Note: `nmp.marmot` (MarmotBridge sole caller) returns
+    /// `{"error":"no typed payload encoder…"}` until `nmp-marmot` migrates to
+    /// a typed FlatBuffers payload (#1782). Marmot writes are fail-closed
+    /// (the error surfaces on `action_stages`) but never a crash (D6).
     @discardableResult
     func dispatchRawAction(namespace: String, bodyJson: String) -> DispatchResult {
         let envelope: String? = bodyJson.withCString { jsonPtr in
             namespace.withCString { nsPtr in
-                guard let ptr = nmp_app_dispatch_action(raw, nsPtr, jsonPtr) else {
+                guard let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) else {
                     return nil
                 }
                 defer { nmp_free_string(ptr) }

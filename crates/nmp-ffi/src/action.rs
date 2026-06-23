@@ -1,17 +1,20 @@
-//! FFI action-dispatch entry point.
+//! FFI action-dispatch entry points.
 //!
-//! [`nmp_app_dispatch_action`] is the single, namespace-keyed entry point
-//! for the `substrate::ActionModule` family. Instead of one bespoke C symbol
-//! per verb (`nmp_app_publish_note`, `nmp_app_react`, `nmp_app_follow`, …),
-//! a caller names the action namespace and passes the action as JSON; the
-//! [`nmp_core::__ffi_internal::ActionRegistry`] looks up the module and validates it.
+//! The sole outward-facing C-ABI entry point is
+//! [`nmp_app_dispatch_action_bytes`] (ADR-0064 / Cut-B, #1756) — a typed
+//! byte doorway that accepts a host-minted `correlation_id`, the action's
+//! HOST namespace, and a typed [`ActionPayload`](nmp_core::substrate::ActionPayload)
+//! FlatBuffers payload wrapped in an open
+//! [`DispatchEnvelope`](nmp_core::dispatch_envelope). The former JSON doorway
+//! (`nmp_app_dispatch_action`) has been deleted; all callers have been migrated
+//! to the typed byte path.
 //!
 //! # Scope (M6 — execution wiring)
 //!
 //! This entry point performs **action validation, correlation-id assignment,
-//! AND execution**. After [`nmp_core::__ffi_internal::ActionRegistry::start`] validates
-//! the action and mints a correlation id, the dispatch path drives the
-//! action through the actor:
+//! AND execution**. After [`nmp_core::__ffi_internal::ActionRegistry::start_bytes`]
+//! validates the action and records the host-supplied correlation id, the
+//! dispatch path drives the action through the actor:
 //!
 //! * For `nmp.publish` / [`PublishAction::Publish`], the validated signed
 //!   event is converted to a [`nmp_store::RawEvent`] and handed to the
@@ -39,17 +42,17 @@
 //!
 //! The registry lives on [`NmpApp`], not on the actor-thread-owned
 //! `Kernel` (`Kernel` is `!Send`). Registered modules are stateless ZST
-//! adapters, so `start()` is a pure validator and is sound to call directly
-//! on the FFI thread. Execution itself does NOT run on the FFI thread (D8 —
-//! no blocking here): dispatch only *sends* an `ActorCommand` down the
-//! existing channel; the actor loop signs/publishes (D4).
+//! adapters, so `start_bytes()` is a pure validator and is sound to call
+//! directly on the FFI thread. Execution itself does NOT run on the FFI
+//! thread (D8 — no blocking here): dispatch only *sends* an `ActorCommand`
+//! down the existing channel; the actor loop signs/publishes (D4).
 //!
 //! # Doctrine
 //!
 //! * **D6** — nothing crosses this boundary as an exception. A null `app`,
-//!   missing/invalid arguments, an unknown namespace, or malformed action
-//!   JSON all come back as a populated `{"error":"…"}` JSON object. A
-//!   non-null `app` never yields a NULL return.
+//!   missing/invalid arguments, an unknown namespace, or a malformed payload
+//!   all come back as a populated `{"error":"…"}` JSON object. A non-null
+//!   `app` never yields a NULL return.
 //! * **D4** — the FFI thread never signs or publishes. It hands a
 //!   pre-signed event to the actor; the actor verifies + publishes.
 //! * **D8** — the FFI thread never blocks. Dispatch is a non-blocking
@@ -58,7 +61,9 @@
 use std::ffi::{c_char, CString};
 
 use super::{app_ref, c_string_argument, NmpApp};
-use nmp_core::substrate::{ActionContext, ActionRejection, ActionResult};
+use nmp_core::substrate::{ActionRejection, ActionResult};
+#[cfg(any(test, feature = "test-support"))]
+use nmp_core::substrate::ActionContext;
 
 // ADR-0064 / S4 (#1752) — the native byte doorway lives in this sibling so
 // `action.rs` stays under its hand-authored LOC ceiling (AGENTS.md / V-12). It
@@ -73,45 +78,6 @@ mod bytes;
 // is unaffected by this re-export (the C/Swift ABI is unchanged).
 pub use bytes::nmp_app_dispatch_action_bytes;
 
-/// Dispatch a named action through the action registry.
-///
-/// Returns a freshly heap-allocated, NUL-terminated JSON C string the caller
-/// MUST release via [`super::free::nmp_free_string`]
-/// (`nmp_free_string`):
-///
-/// * `{"correlation_id":"<32-hex>"}` — the action was accepted, assigned a
-///   correlation id, and (for `nmp.publish` `Publish`) enqueued with the
-///   actor for execution. See the module docs for the per-namespace
-///   execution contract.
-/// * `{"error":"<message>"}` — the action was rejected (null app, invalid
-///   arguments, unknown namespace, malformed/wrong-shape JSON).
-///
-/// D6: never returns NULL for a non-null `app`; every failure is data.
-///
-/// # Safety
-/// `app` must be a valid non-null pointer from [`super::nmp_app_new`], or
-/// null (a null `app` yields an error JSON, never a crash). `namespace` and
-/// `action_json` must be valid UTF-8 NUL-terminated C strings, or null
-/// (null/invalid are treated as empty and rejected).
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-#[no_mangle]
-pub extern "C" fn nmp_app_dispatch_action(
-    app: *mut NmpApp,
-    namespace: *const c_char,
-    action_json: *const c_char,
-) -> *mut c_char {
-    let result = dispatch_action_json(
-        app_ref(app),
-        c_string_argument(namespace).as_deref().unwrap_or(""),
-        c_string_argument(action_json).as_deref().unwrap_or(""),
-    );
-    // JSON never contains an interior NUL; the `c"{}"` literal fallback is
-    // NUL-checked at compile time, so there is no runtime panic path (D6).
-    CString::new(result)
-        .unwrap_or_else(|_| c"{}".to_owned())
-        .into_raw()
-}
-
 /// Host acknowledgement of a `correlation_id` in the `action_stages`
 /// snapshot mirror.
 ///
@@ -121,8 +87,8 @@ pub extern "C" fn nmp_app_dispatch_action(
 /// host's UI has reacted to the terminal stage (`Accepted` / `Failed`) it
 /// passes the `correlation_id` here to drop the entry from the projection.
 ///
-/// `correlation_id` is the 32-hex operation-id the host received from
-/// `nmp_app_dispatch_action`. A null `app`, a null/empty `correlation_id`, or
+/// `correlation_id` is the operation-id the host received from
+/// `nmp_app_dispatch_action_bytes`. A null `app`, a null/empty `correlation_id`, or
 /// an unknown `correlation_id` is a silent no-op (D6 — never a crash).
 ///
 /// THREADING: dispatch is non-blocking — this only enqueues
@@ -168,7 +134,7 @@ pub type NmpActionResultObserver = unsafe extern "C" fn(*const c_char);
 /// registry — the *push* counterpart to the snapshot-projection (pull)
 /// output seam.
 ///
-/// After [`nmp_app_dispatch_action`] validates an action and its executor
+/// After [`nmp_app_dispatch_action_bytes`] validates an action and its executor
 /// returns `Ok`, the registry hands the observer a JSON string
 /// `{"correlation_id":"<hex>","result_json":<value>}`. For built-in
 /// (fire-and-forget) executors `result_json` is `null`; the signal means the
@@ -230,10 +196,12 @@ pub extern "C" fn nmp_app_register_action_result_observer(
     });
 }
 
-/// Pure (FFI-free) core of [`nmp_app_dispatch_action`]: validate the action
-/// against the registry, drive its execution through the actor, and return
-/// the JSON result string. Split out so the unit tests can exercise the
-/// dispatch logic without raw pointers.
+/// Pure (FFI-free) core of the (now-deleted) `nmp_app_dispatch_action`:
+/// validate the action against the registry, drive its execution through the
+/// actor, and return the JSON result string. Retained as a test utility so
+/// existing unit tests that exercise the JSON dispatch logic do not need to
+/// be rewritten for the byte doorway (ADR-0064 / Cut-B, #1756).
+#[cfg(any(test, feature = "test-support"))]
 pub(super) fn dispatch_action_json(
     app: Option<&NmpApp>,
     namespace: &str,
@@ -267,8 +235,55 @@ pub(super) fn dispatch_action_json(
     }
 }
 
-/// Shared post-mint outcome handling for BOTH the JSON ([`dispatch_action_json`])
-/// and byte ([`dispatch_action_bytes`]) doorways.
+/// Test-only C-ABI compatibility shim for the deleted `nmp_app_dispatch_action`
+/// JSON doorway. Wraps [`dispatch_action_json`] with the original C signature so
+/// that integration tests in sibling crates (`nmp-nip02`, `nmp-defaults`,
+/// `nmp-blossom`, `nmp-marmot`, `nmp-testing`) can continue to call it without
+/// migration until each crate's typed path is ready.
+///
+/// ADR-0064 / Cut-B (#1756): the production symbol is deleted; this shim exists
+/// exclusively under `test-support` and is never emitted in a release binary.
+///
+/// # Safety
+/// `app` may be null (D6: returns `{"error":"…"}` envelope). If non-null it
+/// must be a valid live `NmpApp`. `namespace` and `action_json` must be valid
+/// NUL-terminated UTF-8 C strings.
+#[cfg(feature = "test-support")]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub fn nmp_app_dispatch_action(
+    app: *mut NmpApp,
+    namespace: *const std::ffi::c_char,
+    action_json: *const std::ffi::c_char,
+) -> *mut std::ffi::c_char {
+    let namespace = if namespace.is_null() {
+        String::new()
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(namespace) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    let action_json = if action_json.is_null() {
+        String::new()
+    } else {
+        unsafe { std::ffi::CStr::from_ptr(action_json) }
+            .to_string_lossy()
+            .into_owned()
+    };
+    let app_ref = if app.is_null() {
+        None
+    } else {
+        Some(unsafe { &*app })
+    };
+    let result = dispatch_action_json(app_ref, &namespace, &action_json);
+    std::ffi::CString::new(result)
+        .unwrap_or_else(|_| {
+            std::ffi::CString::new(r#"{"error":"dispatch result encoding failed"}"#).unwrap_or_default()
+        })
+        .into_raw()
+}
+
+/// Shared post-mint outcome handling for the byte ([`bytes::nmp_app_dispatch_action_bytes`])
+/// doorway and the test-only JSON helper ([`dispatch_action_json`]).
 ///
 /// `start()`/`start_bytes()` already minted `correlation_id`; this turns the
 /// execute outcome into the JSON result and preserves the one-terminal-per-
@@ -323,6 +338,7 @@ fn finish_dispatch(
 /// to the host. It is forwarded to the executor so an `ActorCommand` whose
 /// terminal verdict must carry this id (the `PublishRaw` path) can be built
 /// with it.
+#[cfg(any(test, feature = "test-support"))]
 fn execute_action(
     app: &NmpApp,
     namespace: &str,

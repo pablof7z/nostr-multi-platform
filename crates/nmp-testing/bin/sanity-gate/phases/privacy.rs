@@ -154,38 +154,29 @@ fn giftwrap_no_public_republish(report: &mut SanityReport, phase: &str, args: &A
         "reply_to": serde_json::Value::Null,
     })
     .to_string();
-    let ns = std::ffi::CString::new("nmp.nip17.send").unwrap();
-    let body_c = std::ffi::CString::new(body).unwrap();
-    let ret = nmp_ffi::nmp_app_dispatch_action(app.raw(), ns.as_ptr(), body_c.as_ptr());
-    let dispatch_result = if ret.is_null() {
-        None
-    } else {
-        let parsed = unsafe { std::ffi::CStr::from_ptr(ret) }
-            .to_str()
-            .ok()
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok());
-        nmp_ffi::nmp_free_string(ret);
-        parsed
-    };
-    let Some(correlation_id) = dispatch_result
-        .as_ref()
-        .and_then(|v| v.get("correlation_id"))
-        .and_then(|v| v.as_str())
-        .map(str::to_string)
-    else {
-        report.push(GateRow::unmeasured(
-            "privacy-giftwrap-no-public-republish",
-            phase,
-            "nmp.nip17.send action dispatch",
-            "dispatch return correlation_id",
-            "accepted action with a correlation id",
-            Verdict::Blocked,
-            &format!(
-                "nmp.nip17.send did not return a correlation_id; dispatch_result={dispatch_result:?} \
-                 — cannot wait for action_results before reading the routing ledger"
-            ),
-        ));
-        return;
+    // ADR-0064 / Cut-B (#1756): use typed byte doorway; no JSON crosses the
+    // FFI to the kernel.
+    let correlation_id = match nmp_app_chirp::dispatch_bytes::dispatch_action_bytes_for(
+        app.raw(),
+        "nmp.nip17.send",
+        &body,
+    ) {
+        Ok(id) => id,
+        Err(err) => {
+            report.push(GateRow::unmeasured(
+                "privacy-giftwrap-no-public-republish",
+                phase,
+                "nmp.nip17.send action dispatch",
+                "dispatch return correlation_id",
+                "accepted action with a correlation id",
+                Verdict::Blocked,
+                &format!(
+                    "nmp.nip17.send did not return a correlation_id; err={err:?} \
+                     — cannot wait for action_results before reading the routing ledger"
+                ),
+            ));
+            return;
+        }
     };
 
     if !app.wait_for_action_terminal(&correlation_id, Duration::from_secs(8)) {
