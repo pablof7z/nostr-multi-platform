@@ -358,11 +358,11 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             mailbox_cache_reader: Mutex::new(None),
             search_scope_registry,
             input_scope_registry,
+            bunker_hook,
         },
         capability_ports: CapabilityPorts {
             ingest_dispatcher_slot,
             search_relay_source: new_search_relay_source_slot(),
-            bunker_hook,
             external_signer_hook,
         },
         read_handles: ReadHandles {

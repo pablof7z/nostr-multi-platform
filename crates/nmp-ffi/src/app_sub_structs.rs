@@ -3,8 +3,10 @@
 //!
 //! Three private groupings:
 //! - [`CompositionConfig`] — immutable pre-start slots consumed by the actor.
-//! - [`CapabilityPorts`]   — pluggable substrate handles shared with the actor,
-//!   including live `ActorRuntimeSlots` that can be refreshed after start.
+//! - [`CapabilityPorts`]   — pluggable substrate handles (exactly 3 fields:
+//!   `ingest_dispatcher_slot`, `search_relay_source`, `external_signer_hook`)
+//!   that are live `ActorRuntimeSlots` or mutex-wrapped slots writable by
+//!   post-start FFI calls.
 //! - [`ReadHandles`]       — handles published back by the actor after kernel
 //!   construction.
 
@@ -75,13 +77,22 @@ pub(crate) struct CompositionConfig {
     pub(crate) search_scope_registry: Arc<nmp_core::substrate::SearchScopeRegistry>,
     /// #1804 — shared crate-registered input-scope recognizer registry.
     pub(crate) input_scope_registry: Arc<nmp_core::substrate::InputScopeRegistry>,
+    /// ADR-0052 §D3 — per-app bunker-URI hook slot. Belongs here (not in
+    /// `CapabilityPorts`) because `nmp_signer_broker_init` guards it with
+    /// `ensure_prestart_config` — it cannot be refreshed after start.
+    pub(crate) bunker_hook: nmp_core::BunkerHookSlot,
 }
 
 // ── CapabilityPorts ───────────────────────────────────────────────────────────
 
 /// Live substrate handles that can be refreshed after `nmp_app_start`. These
 /// are `ActorRuntimeSlots` or mutex-wrapped slots writable by post-start FFI
-/// calls.
+/// calls. Exactly 3 fields: `ingest_dispatcher_slot`, `search_relay_source`,
+/// `external_signer_hook`.
+///
+/// Note: `bunker_hook` is NOT here — it lives in [`CompositionConfig`] because
+/// `nmp_signer_broker_init` guards it with `ensure_prestart_config` (pre-start
+/// only).
 ///
 /// Access path on `NmpApp`: `self.capability_ports.<field>`.
 pub(crate) struct CapabilityPorts {
@@ -91,10 +102,6 @@ pub(crate) struct CapabilityPorts {
     /// NIP-50 higher-order search relay source (kind:10007 read seam +
     /// app-default fallback).
     pub(crate) search_relay_source: SearchRelaySourceSlot,
-    /// ADR-0052 §D3 — per-app bunker-URI hook slot. Lives here (not in
-    /// `CompositionConfig`) because it is a live `ActorRuntimeSlot` that
-    /// `nmp_signer_broker_init` can refresh after start.
-    pub(crate) bunker_hook: nmp_core::BunkerHookSlot,
     /// ADR-0052 §D3 — per-app NIP-55 restore hook slot. Lives here (not in
     /// `CompositionConfig`) because `nmp_external_signer_init` can refresh it
     /// after start.
