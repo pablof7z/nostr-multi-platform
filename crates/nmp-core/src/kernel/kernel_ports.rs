@@ -5,7 +5,7 @@
 //! that makes the kernel's dependency injections type-safe and explicit at
 //! the call site (D14).
 //!
-//! **Design:** This is PURE ADDITIVE — all 8 ports coexist with the existing
+//! **Design:** This is PURE ADDITIVE — all 10 ports coexist with the existing
 //! kernel fields. Callers migrate from raw `Arc<dyn X>` to typed
 //! `pub struct Port(pub Arc<...>)` newtypes in slice 2+. No breaking changes
 //! in this slice; all ports are re-exported from `kernel::mod.rs` in the
@@ -138,7 +138,7 @@ impl Default for ReferencePort {
 /// Actor-written via dispatch arms; FFI-read-only (snapshots a registration
 /// on another thread). Rebuilt at restart from consumer-persisted state.
 #[derive(Clone)]
-pub struct PullCursorPort(pub Arc<PullCursorRegistrySlot>);
+pub struct PullCursorPort(pub PullCursorRegistrySlot);
 
 /// UI diagnostics capability port.
 ///
