@@ -9,8 +9,8 @@
 
 use super::{nmp_mirror_free_bytes, nmp_mirror_pull_page, NmpMirrorBytes};
 use crate::{app_ref, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start};
-use nmp_core::actor::ActorCommand;
-use nmp_core::{PullConsumerId, PullCursorMode, PullCursorSpec, PullLimits, PullScope};
+use nmp_core::actor::{ActorCommand, InterestsCommand};
+use nmp_core::{PullCursorMode, PullLimits, PullScope};
 use nostr::prelude::*;
 use std::ffi::c_void;
 use std::num::NonZeroUsize;
@@ -198,8 +198,9 @@ fn register_global_cursor(app: *mut crate::NmpApp, after_seq: u64) -> u64 {
         reg.alloc_handle()
     };
     let cursor_id = handle.id().0;
-    let spec = PullCursorSpec {
-        consumer_id: PullConsumerId("test-mirror".into()),
+    app_ref.send_cmd(ActorCommand::Interests(InterestsCommand::RegisterPullCursor {
+        cursor_id,
+        consumer_id: "test-mirror".to_string(),
         scope: PullScope::GlobalLog,
         mode: PullCursorMode::GapAllowed,
         after_seq,
@@ -207,8 +208,7 @@ fn register_global_cursor(app: *mut crate::NmpApp, after_seq: u64) -> u64 {
             max_entries: NonZeroUsize::new(256).unwrap(),
             max_scan_entries: NonZeroUsize::new(256).unwrap(),
         },
-    };
-    app_ref.send_cmd(ActorCommand::OpenPullCursor { handle, spec });
+    }));
     cursor_id
 }
 

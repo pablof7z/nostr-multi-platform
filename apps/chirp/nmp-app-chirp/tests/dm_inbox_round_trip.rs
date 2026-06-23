@@ -24,7 +24,7 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
 use nmp_app_chirp::ffi::nmp_app_chirp_register_dm_inbox;
-use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ActorCommand, SignCommand};
 use nmp_core::{ActorMail, CommandSender};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::IngestParser;
@@ -67,12 +67,12 @@ fn aux_projection(pubkey: &PublicKey) -> (DmInboxProjection, Receiver<ActorMail>
 /// arm; each continuation enqueues the next chain step).
 fn drive_local_decrypts(rx: &Receiver<ActorMail>, keys: &Keys) {
     while let Ok(mail) = rx.try_recv() {
-        let ActorMail::Command(ActorCommand::Nip44DecryptForAccount {
+        let ActorMail::Command(ActorCommand::Sign(SignCommand::Nip44DecryptForAccount {
             peer_pubkey,
             ciphertext,
             continuation,
             ..
-        }) = mail
+        })) = mail
         else {
             continue;
         };

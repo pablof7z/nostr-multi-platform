@@ -41,7 +41,7 @@ fn register_app(app: *mut nmp_ffi::NmpApp) -> *mut ChirpHandle {
     handle
 }
 use nmp_store::{RawEvent, VerifiedEvent};
-use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ActorCommand, TestSupportCommand};
 use nmp_ffi::{nmp_app_free, nmp_app_load_older_feed, nmp_app_new, nmp_app_start};
 use nmp_nip01::DEFAULT_TIMELINE_WINDOW_LIMIT;
 
@@ -73,7 +73,7 @@ fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
     // — caller passes the same handle they got from `nmp_app_new`.
     let app_ref = unsafe { &*app };
     let tx = app_ref.actor_sender();
-    tx.send(ActorCommand::IngestPreVerifiedEvents(events))
+    tx.send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
         .expect("actor command channel open");
 }
 
