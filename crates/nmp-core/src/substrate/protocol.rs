@@ -1,65 +1,34 @@
 //! `ProtocolCommand` — the write-path substrate seam.
 //!
-//! Defined by `docs/architecture/crate-boundaries.md` §4.1. Step 1.b of the
-//! 12-step migration: pure addition + one new [`crate::ActorCommand`] variant
-//! (`Protocol(Box<dyn ProtocolCommand>)`). Step 4 (V-41) added the kernel +
-//! identity accessors the NIP-57 LNURL fetcher needs; V-39+V-40 (NIP-17 DM
-//! stack) added the local-keys snapshot, DM-inbox relay lookup, and D6 error
-//! surface; ADR-0050 §D5 replaced the `SignerForSeal` resolver with
-//! `active_account_pubkey` (the gift-wrap chain signs through the actor port).
+//! Defined by `docs/architecture/crate-boundaries.md` §4.1 (step 1.b).
+//! NIP crates implement [`ProtocolCommand`] and dispatch through
+//! [`crate::ActorCommand::Protocol`]; the actor's dispatch arm calls
+//! [`ProtocolCommand::run`] with a [`ProtocolCommandContext`] that exposes
+//! every operation available to the command body.
 //!
-//! ## Debt C — capability traits replace a 12-arg closure bundle
+//! ## Capability traits (Debt C)
 //!
-//! Pre-Debt C the dispatch arm threaded 12 individual closures into
-//! [`ProtocolCommandContext::new`]. The follow-up (V-41 + V-39+V-40 + V-08
-//! bunker DM) reduced it to 6 typed capability traits plus 2 channel sinks
-//! (`send`, `command_sender`), then a collapse pass folded those 8 positional
-//! args into one named-field [`ProtocolCommandContextParts`] struct so the
-//! constructor takes one arg. D11 still holds: one public production
-//! constructor, [`ProtocolCommandContext::new`]; the test-only
-//! [`ProtocolCommandContext::with_send_only`] is gated behind
+//! [`ProtocolCommandContextParts`] bundles six typed capability traits so the
+//! constructor takes one named-field struct instead of positional args:
+//! [`KernelClock`] (D7 wall-clock), [`LocalSignerAccess`] (local key +
+//! active-pubkey), [`DmInboxLookup`] (kind:10050 relays), [`ErrorSurface`]
+//! (D6 toast/failure), [`ActionStageTracker`] (`Requested` stage write),
+//! [`RecipientRelayLookup`] (V-07 NIP-65 outbox via the kernel router).
+//! D11: one public production constructor ([`ProtocolCommandContext::new`]);
+//! the test-only `with_send_only` ctor is gated behind
 //! `cfg(any(test, feature = "test-support"))`.
 //!
-//! Capability traits bundled by the parts struct:
+//! ## Why not expose `ActorContext`
 //!
-//! - [`KernelClock`] — D7 wall-clock seam.
-//! - [`LocalSignerAccess`] — local `nostr::Keys` snapshot + backend-transparent
-//!   `active_account_pubkey` (the gift-wrap chain's account-pinning source).
-//! - [`DmInboxLookup`] — kind:10050 DM-inbox relay reads (concrete cache
-//!   lives in `nmp-nip17`).
-//! - [`ErrorSurface`] — D6 `last_error_toast` + `Failed` action-stage
-//!   recorder. Fired on every early-exit branch.
-//! - [`ActionStageTracker`] — `Requested` stage write.
-//! - [`RecipientRelayLookup`] — V-07 NIP-57 LNURL `relays` tag injection;
-//!   kernel adapter wraps `outbox_router.route_publish` with a synthetic
-//!   publish-direction `UnsignedEvent` (recipient NIP-65 write set, with
-//!   router lane-7/lane-6 cold-start fallback).
-//!
-//! NIP commands call `ctx.clock().now_secs()`, `ctx.signers().active_account_pubkey()`,
-//! `ctx.dms().dm_inbox_relays(pk)`, `ctx.recipients().recipient_publish_relays(pk, kind)`,
-//! etc. — trait names tell every reader which surface a given call belongs to.
-//!
-//! Routing accessors (`author_write_relays`, `bootstrap_discovery_relays`)
-//! were removed in the Debt-A overlap: NIP commands that need a recipient
-//! relay set MUST go through `RecipientRelayLookup` (which drives the
-//! kernel's `OutboxRouter`).
-//!
-//! ## Why a wrapper context (`ProtocolCommandContext`) and not `ActorContext`
-//!
-//! [`crate::actor::dispatch::ActorContext`] is intentionally `pub(super)` —
-//! exposing it would publish ~18 fields of kernel internals to every NIP
-//! crate. Instead the dispatch arm constructs a public
-//! [`ProtocolCommandContext`] that exposes only what the trait needs.
-//! NIP crates never name `Kernel` / `IdentityRuntime` / `ActorContext` —
-//! every operation a `ProtocolCommand::run` body can perform is a method
-//! on `ProtocolCommandContext`.
+//! [`crate::actor::dispatch::ActorContext`] is `pub(super)` — it would leak
+//! ~18 kernel-internal fields. [`ProtocolCommandContext`] is the narrow public
+//! surface: NIP crates never name `Kernel` / `IdentityRuntime` / `ActorContext`.
 //!
 //! ## D15 catch_unwind discipline
 //!
-//! Every accessor that fires a capability method is wrapped in
-//! [`std::panic::catch_unwind`] so a panicking host-side adapter cannot
-//! unwind the calling `ProtocolCommand::run` frame. Read accessors fall
-//! back to safe defaults on panic (empty `Vec`, `None`, 0);
+//! Every capability accessor is wrapped in [`std::panic::catch_unwind`] so a
+//! panicking host adapter cannot unwind the calling `run` frame. Read accessors
+//! fall back to safe defaults (empty `Vec`, `None`, 0);
 //! [`send`](ProtocolCommandContext::send)'s drop-on-panic is benign.
 
 use std::fmt;
@@ -98,32 +67,19 @@ pub use capabilities::{
 pub struct ProtocolCommandContextParts<'a> {
     /// Re-enter the actor loop. Called from [`ProtocolCommandContext::send`].
     pub send: &'a dyn Fn(ActorCommand),
-    /// Owned actor-command sender clone the command's `run` body can hand
-    /// to a spawned worker thread (the LNURL fetcher pattern). A
-    /// [`CommandSender`](crate::actor::CommandSender) — sends through it now
-    /// wake the actor (ADR-0050 §D3a).
+    /// Owned sender clone for handing to a spawned worker (ADR-0050 §D3a).
     pub command_sender: crate::actor::CommandSender,
-    /// D7 wall-clock seam.
     pub clock: &'a dyn KernelClock,
-    /// Active-account local signing material + active-pubkey accessor.
     pub signers: &'a dyn LocalSignerAccess,
-    /// NIP-17 kind:10050 DM-inbox relay reads.
     pub dms: &'a dyn DmInboxLookup,
-    /// D6 toast + failure-record surface.
     pub errors: &'a dyn ErrorSurface,
-    /// `Requested` action-stage write surface.
     pub stages: &'a dyn ActionStageTracker,
-    /// V-07 recipient-relay router wrapper.
     pub recipients: &'a dyn RecipientRelayLookup,
-    /// ADR-0052 §D4 — the per-app host-op handler accessor. Read by the
-    /// `HostOpCommand` in [`crate::substrate::host_op`]; the noop singleton is
-    /// installed for every other command (they never call it).
+    /// ADR-0052 §D4 host-op handler; noop singleton for all other commands.
     pub host_op_handler: &'a dyn HostOpHandlerAccess,
-    /// ADR-0052 §D5 — the narrow wallet kernel-mutation surface (replaces the
-    /// deleted `kernel_mut()`). Only the NIP-47 wallet commands drive it.
+    /// ADR-0052 §D5 narrow wallet-mutation surface (NIP-47 only).
     pub wallet_kernel: &'a dyn WalletKernelAccess,
-    /// ADR-0052 §D5 — the zap-only cached-profile read (replaces the deleted
-    /// generic `lnurl_for_pubkey`). Only the NIP-57 zap command reads it.
+    /// ADR-0052 §D5 zap-only cached-profile read (NIP-57 only).
     pub zap_profiles: &'a dyn ZapProfileLookup,
 }
 
@@ -499,6 +455,63 @@ impl<'a> ProtocolCommandContext<'a> {
     pub fn zap_profiles(&self) -> &dyn ZapProfileLookup {
         self.zap_profiles
     }
+
+    // ── #1721 slice 3a — typed dispatch ports ──────────────────────────────
+    // Thin wrappers so `ProtocolCommand::run` bodies never name `ActorCommand`
+    // directly. Each delegates to `self.send(...)` (D15 isolation already there).
+
+    /// Re-enter the actor loop via `ActorCommand::Protocol`.
+    pub fn dispatch_protocol(&self, cmd: Box<dyn ProtocolCommand>) {
+        self.send(ActorCommand::Protocol(cmd));
+    }
+
+    /// Publish unsigned via NIP-65 outbox (`ActorCommand::PublishUnsignedEvent`).
+    /// `correlation_id` threads the action id; `signer_pubkey` overrides the
+    /// active account when `Some(hex)`.
+    pub fn publish_unsigned(
+        &self,
+        event: crate::substrate::UnsignedEvent,
+        correlation_id: Option<String>,
+        signer_pubkey: Option<String>,
+    ) {
+        self.send(ActorCommand::PublishUnsignedEvent {
+            event,
+            correlation_id,
+            signer_pubkey,
+        });
+    }
+
+    /// Publish unsigned to an explicit relay set, bypassing NIP-65 outbox
+    /// (`ActorCommand::PublishUnsignedEventToRelays`).
+    pub fn publish_unsigned_to_relays(
+        &self,
+        event: crate::substrate::UnsignedEvent,
+        relays: Vec<crate::publish::RelayUrl>,
+        correlation_id: Option<String>,
+        signer_pubkey: Option<String>,
+    ) {
+        self.send(ActorCommand::PublishUnsignedEventToRelays {
+            event,
+            relays,
+            correlation_id,
+            signer_pubkey,
+        });
+    }
+
+    /// Record a terminal `Accepted` stage (`ActorCommand::RecordActionSuccess`).
+    /// `result_json` is the optional Decision-4 structured return payload.
+    pub fn record_action_success(&self, correlation_id: String, result_json: Option<String>) {
+        self.send(ActorCommand::RecordActionSuccess {
+            correlation_id,
+            result_json,
+        });
+    }
+
+    /// Push a [`LogicalInterest`](crate::planner::LogicalInterest) via
+    /// `ActorCommand::PushInterest`. Re-push with the same id is idempotent.
+    pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
+        self.send(ActorCommand::PushInterest(interest));
+    }
 }
 
 /// Open-seam command dispatched as [`ActorCommand::Protocol`].
@@ -517,6 +530,7 @@ pub trait ProtocolCommand: Send + fmt::Debug + 'static {
 mod builders;
 pub use builders::{
     build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
+    build_record_action_failure, build_record_action_success,
 };
 
 #[cfg(test)]

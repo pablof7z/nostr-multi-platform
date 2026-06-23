@@ -136,6 +136,7 @@ pub use placeholder::{picture_placeholder, Placeholder};
 pub use host_op::{host_op_command, HostOpCommand};
 pub use protocol::{
     build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
+    build_record_action_failure, build_record_action_success,
     ActionStageTracker, DmInboxLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
     LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess,
     NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess,

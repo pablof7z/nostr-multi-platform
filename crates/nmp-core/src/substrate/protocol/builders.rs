@@ -1,13 +1,14 @@
-//! Free `build_*` constructors for the backend-transparent signer-port commands
-//! (`SignEventForAccount` / `Nip44EncryptForAccount`).
+//! Free `build_*` constructors for `ActorCommand` variants used by spawned
+//! worker threads that hold a [`CommandSender`](crate::actor::CommandSender)
+//! via
+//! [`ProtocolCommandContext::command_sender_clone`](super::ProtocolCommandContext::command_sender_clone)
+//! instead of the actor-thread `ctx`.
 //!
-//! These let a spawned worker thread — which holds only a
-//! [`CommandSender`](crate::actor::CommandSender) via
-//! [`ProtocolCommandContext::command_sender_clone`](super::ProtocolCommandContext::command_sender_clone),
-//! not the actor-thread `ctx` — construct a port command and `send` it itself.
-//! Extracted from `protocol.rs` to keep that file within its LOC budget; the
-//! `ProtocolCommandContext` helper methods (`sign_event_for_account`,
-//! `nip44_encrypt_for_account`) delegate here.
+//! The signer-port constructors (`build_sign_event_for_account`,
+//! `build_nip44_{en,de}crypt_for_account`) are the originals; the
+//! #1721 slice-3a additions (`build_record_action_success`,
+//! `build_record_action_failure`) cover the action-terminal commands so
+//! worker threads no longer name `ActorCommand` directly.
 
 use crate::ActorCommand;
 
@@ -82,5 +83,41 @@ pub fn build_nip44_decrypt_for_account(
         ciphertext,
         signer_pubkey,
         continuation: crate::actor::CipherContinuation::new(continuation),
+    }
+}
+
+// ── #1721 slice 3a ────────────────────────────────────────────────────────
+
+/// Build an [`ActorCommand::RecordActionSuccess`] for use by a spawned worker
+/// thread that holds a [`CommandSender`](crate::actor::CommandSender) but not
+/// the actor-thread `ctx`.
+///
+/// Worker threads that are on the actor thread should call
+/// [`ProtocolCommandContext::record_action_success`](super::ProtocolCommandContext::record_action_success)
+/// instead.
+///
+/// `result_json` is the optional Decision-4 structured return payload
+/// (`None` for actions with no return value).
+pub fn build_record_action_success(
+    correlation_id: String,
+    result_json: Option<String>,
+) -> ActorCommand {
+    ActorCommand::RecordActionSuccess {
+        correlation_id,
+        result_json,
+    }
+}
+
+/// Build an [`ActorCommand::RecordActionFailure`] for use by a spawned worker
+/// thread that holds a [`CommandSender`](crate::actor::CommandSender) but not
+/// the actor-thread `ctx`.
+///
+/// Worker threads that are on the actor thread should call
+/// [`ProtocolCommandContext::record_action_failure`](super::ProtocolCommandContext::record_action_failure)
+/// instead.
+pub fn build_record_action_failure(correlation_id: String, reason: String) -> ActorCommand {
+    ActorCommand::RecordActionFailure {
+        correlation_id,
+        reason,
     }
 }
