@@ -22,16 +22,28 @@
 //! 3. **Fan-out** — `nmp_nip50::search_relay_plan` builds one relay-pinned
 //!    `InterestShape` per resolved relay; each is opened via
 //!    [`NmpApp::open_observed_interest_pinned`], which routes it to exactly that
-//!    relay (the planner's relay-pin lane), replays the read-cache to the
-//!    observer, and activates it. The router's blocked-relay subtractive
-//!    post-pass still applies, so a pinned-but-blocked relay is dropped by the
-//!    same generic mechanism that guards every interest.
+//!    relay (the planner's relay-pin lane) and activates the observer. The
+//!    router's blocked-relay subtractive post-pass still applies, so a
+//!    pinned-but-blocked relay is dropped by the same generic mechanism that
+//!    guards every interest. This lane is the LIVE relay-hit seam only — it
+//!    opens with NO read-cache replay (empty `replay_shapes`).
 //!
-//! The cache-scan baseline runs through the same observer: the kernel's
-//! read-cache replay (`open_observed_interest_pinned`) feeds locally-stored
-//! events to the projection, which substring-filters them
-//! (`ingest_cache_event` via the observer's structural gate). The #1811
-//! inverted index is explicitly out of scope; this is the linear-scan baseline.
+//! Cache and live relay hits arrive through two distinct seams:
+//!
+//! - **Cache** — at open time `open_search` runs one bounded
+//!   [`nmp_nip50::SearchResultsProjection::ingest_cache_from_store`] over the
+//!   request's scope, a search-TEXT-filtered scan through the store's NIP-50
+//!   full-text index (`EventStore::text_search_visit`, #1827). Matches are
+//!   tagged [`nmp_nip50::SearchHitSource::Cache`]. A cached event that does NOT
+//!   match the query text is never returned (#1882). This deliberately does NOT
+//!   go through the generic observed-interest replay, whose structural gate
+//!   (`InterestShape::matches_event_with_id`) filters by kind + time only and
+//!   would surface unrelated cached events mislabelled `Relay("")`.
+//! - **Live relay** — the per-relay pinned interests fan a NIP-50 `REQ` out and
+//!   their results arrive event-by-event through the muted→active kernel
+//!   observer, tagged `Relay(url)`. First arrival wins on a duplicate id, so a
+//!   cache hit (ingested synchronously at open) keeps its `Cache` tag when the
+//!   relay later echoes the same event.
 //!
 //! ## D6
 //!
@@ -142,11 +154,17 @@ impl NmpApp {
     /// Open a NIP-50 search session — the reusable Rust API `hl` calls directly.
     ///
     /// `request` is the validated [`SearchRequest`]; `session_id` keys the
-    /// session for teardown and the snapshot projection. Resolves relays from
-    /// the installed [`PreferredRelaySource`] (empty when none is installed →
-    /// cache-only search), registers the result projection + typed `N50S`
-    /// sidecar under `nmp.nip50.search.<session_id>`, and opens one relay-pinned
-    /// observed interest per resolved relay.
+    /// session for teardown and the snapshot projection. Registers the result
+    /// projection + typed `N50S` sidecar under `nmp.nip50.search.<session_id>`,
+    /// populates it with search-text-filtered CACHE hits from the store's NIP-50
+    /// FTS index ([`SearchResultsProjection::ingest_cache_from_store`], tagged
+    /// `Cache`), then resolves relays from the installed [`PreferredRelaySource`]
+    /// (empty when none is installed → cache-only search) and opens one
+    /// relay-pinned LIVE observed interest per resolved relay (tagged
+    /// `Relay(url)`). Cache hits depend on the NIP-50 search scopes being
+    /// registered (`nmp_nip50::register_search_scopes`, wired by
+    /// `nmp_defaults::register_defaults`); a bare app that registers none gets an
+    /// empty cache scan (`Unsupported`) and is relay-only.
     ///
     /// Re-opening the same `session_id` first tears the prior session down
     /// (idempotent at the registry level). Returns the snapshot projection key
@@ -163,6 +181,27 @@ impl NmpApp {
         // KernelEventObserver (live relay-hit ingest) AND read by the typed
         // sidecar closure, while keeping the projection's single-writer model.
         let projection = Arc::new(Mutex::new(SearchResultsProjection::new(request.clone())));
+
+        // #1882 — CACHE hits come from the store's NIP-50 full-text index, NOT
+        // the generic observed-interest replay below. The replay's structural
+        // gate (`InterestShape::matches_event_with_id`) filters by kind + time
+        // only — it does NOT evaluate the search text — so routing cached events
+        // through it would surface every kind-matching cached event regardless
+        // of whether it matches the query, mislabelled `Relay("")`. Instead we
+        // run one bounded `text_search_visit` over the request's scope at open
+        // time (the #1827 inverted index), which tags each genuine text match
+        // `SearchHitSource::Cache`. A cached event that does NOT match the query
+        // text is never ingested. The store is the kernel-owned handle published
+        // into `event_store_handle` after kernel construction; `None` (pre-start
+        // or poisoned) degrades to a cache-empty open (D6). Cache ingest is
+        // synchronous here, so it always precedes the async relay echoes below —
+        // the projection's first-arrival-wins dedupe keeps the `Cache` tag on an
+        // event the relay later re-delivers.
+        if let Some(store) = self.event_store_handle.lock().ok().and_then(|slot| slot.clone()) {
+            if let Ok(mut proj) = projection.lock() {
+                let _ = proj.ingest_cache_from_store(store.as_ref());
+            }
+        }
 
         // Typed N50S sidecar reading the projection snapshot every tick.
         {
@@ -183,8 +222,11 @@ impl NmpApp {
         }
 
         // Register the projection (via the `&self` observer adapter) as a MUTED
-        // observer; each pinned open below replays the read-cache to it and
-        // activates it (idempotent activation).
+        // observer; each pinned open below activates it (idempotent activation)
+        // so LIVE relay events fan out to it. The generic read-cache replay is
+        // deliberately suppressed (empty `replay_shapes` below) — cache hits are
+        // served by the search-filtered FTS scan above, never by the structural
+        // replay gate that ignores the query text (#1882).
         let observer_id = register_rust_observer_muted(
             &self.event_observers,
             Arc::new(SearchObserver(Arc::clone(&projection))) as Arc<dyn nmp_core::KernelEventObserver>,
@@ -199,14 +241,19 @@ impl NmpApp {
             // pin travels as the explicit `Some(relay)` argument below.
             let filter_json = nmp_core::subs::filter_json_for(&pinned.shape);
             let consumer = search_consumer(session_id, &pinned.relay);
-            let replay_shapes = vec![pinned.shape.clone()];
+            // #1882 — open the LIVE relay subscription + activate the observer,
+            // but pass NO `replay_shapes`: the kernel skips the read-cache replay
+            // entirely (`replay_read_cache_to_observer` is a no-op on an empty
+            // shape set), so unfiltered cached events never reach the search
+            // projection. Cache is served above by the FTS scan; this lane is
+            // purely the live relay-hit seam (tagged `Relay(url)` by the observer).
             self.open_observed_interest_pinned(
                 &filter_json,
                 &consumer,
                 SCOPE_GLOBAL,
                 Some(pinned.relay.clone()),
                 observer_id,
-                replay_shapes,
+                Vec::new(),
                 DEFAULT_FEED_WINDOW_LIMIT,
             );
             relay_closes.push((filter_json, consumer, pinned.relay));
