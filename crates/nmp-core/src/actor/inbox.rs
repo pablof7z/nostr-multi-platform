@@ -159,6 +159,12 @@ impl CommandSender {
     }
 }
 
+// Typed dispatch methods extracted to keep inbox.rs under the 500 LOC
+// hard cap (AGENTS.md). Implements `CommandSender` typed convenience
+// methods that callers use instead of constructing `ActorCommand` variants
+// directly (#1721 slice 3b-iii).
+mod typed_sender;
+
 /// The actor's receiving end of the inbox — the loop's single blocking point.
 #[cfg(feature = "native")]
 pub(super) struct Inbox {

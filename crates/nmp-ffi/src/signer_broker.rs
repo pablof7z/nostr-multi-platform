@@ -9,7 +9,7 @@ use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use std::sync::Arc;
 
-use nmp_core::{ActorCommand, BunkerHookRequest};
+use nmp_core::BunkerHookRequest;
 use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, UnsignedEvent};
 use nmp_signer_broker::{percent_encode_query_value, BrokerEvent, BunkerBroker};
 use nmp_signer_iface::SignerOp;
@@ -55,7 +55,7 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) -> u32 {
         // remote handles. D0: the broker sees only this opaque `Fn(String)`.
         let sink_tx = tx.clone();
         broker.set_completion_sink(Arc::new(move |response_json: String| {
-            let _ = sink_tx.send(ActorCommand::DeliverSignerResponse { response_json });
+            sink_tx.deliver_signer_response(response_json);
         }));
         broker
     });
@@ -74,33 +74,28 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) -> u32 {
 }
 
 fn handle_broker_event(tx: &nmp_core::CommandSender, event: BrokerEvent) {
-    let cmd = match event {
+    match event {
         BrokerEvent::Progress {
             stage,
             code,
             message,
-        } => ActorCommand::BunkerHandshakeProgress {
-            stage,
-            code,
-            message,
-        },
+        } => tx.bunker_handshake_progress(stage, code, message),
         // The broker completed a NIP-46 handshake. Route the resolved signer
         // back through the unified `AddSigner` command. The broker adapter
         // cannot see the `make_active` flag the originating `BunkerUri` command
         // stashed in the actor's `IdentityRuntime`; it requests activation, and
         // the actor reconciles that with the stashed value (taking either
         // signal, and always activating when no account is active).
-        BrokerEvent::SignerReady { signer } => ActorCommand::AddSigner {
-            source: nmp_core::SignerSource::RemoteHandle(Box::new(ArcRemoteSigner(signer))),
-            make_active: true,
-        },
+        BrokerEvent::SignerReady { signer } => tx.add_signer(
+            nmp_core::SignerSource::RemoteHandle(Box::new(ArcRemoteSigner(signer))),
+            true,
+        ),
         // V-14 step b: relay-layer connection state. Routes through the actor
         // (D4 — actor is sole writer of the `bunker_connection_state` slot).
         BrokerEvent::ConnectionStateChanged { state, reason } => {
-            ActorCommand::BunkerConnectionStateChanged { state, reason }
+            tx.bunker_connection_state_changed(state, reason);
         }
-    };
-    let _ = tx.send(cmd);
+    }
 }
 
 /// Cancel an in-flight bunker handshake, if any. Idempotent and null-safe.

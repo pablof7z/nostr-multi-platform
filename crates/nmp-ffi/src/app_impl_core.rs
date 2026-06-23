@@ -226,4 +226,20 @@ impl NmpApp {
     pub(crate) fn reset(&self) {
         self.send_cmd(ActorCommand::Reset);
     }
+
+    /// Report an app-lifecycle phase transition to the actor (T118 / G3).
+    ///
+    /// Typed wrapper for [`ActorCommand::LifecycleEvent`]. Used by the
+    /// lifecycle FFI symbols so they do not construct `ActorCommand` directly.
+    pub(crate) fn lifecycle_event(&self, phase: nmp_core::__ffi_internal::LifecyclePhase) {
+        self.send_cmd(ActorCommand::LifecycleEvent(phase));
+    }
+
+    /// Request clean actor shutdown.
+    ///
+    /// Typed wrapper for [`ActorCommand::Shutdown`]; used by `Drop` so the
+    /// impl does not construct `ActorCommand` directly.
+    pub(crate) fn shutdown_actor(&self) {
+        self.send_cmd(ActorCommand::Shutdown);
+    }
 }

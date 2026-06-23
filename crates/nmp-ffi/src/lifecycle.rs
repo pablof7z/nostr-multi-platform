@@ -34,7 +34,6 @@ use super::{app_ref, NmpApp};
 use nmp_core::__ffi_internal::{
     LifecycleObserverFn, LifecycleObserverRegistration, LifecyclePhase,
 };
-use nmp_core::ActorCommand;
 use std::ffi::c_void;
 
 /// Report iOS `scenePhase == .active` (or platform equivalent). Fire-and-
@@ -46,7 +45,7 @@ pub extern "C" fn nmp_app_lifecycle_foreground(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.send_cmd(ActorCommand::LifecycleEvent(LifecyclePhase::Foreground));
+    app.lifecycle_event(LifecyclePhase::Foreground);
 }
 
 /// Report iOS `scenePhase == .background` (or platform equivalent). Symmetric
@@ -66,7 +65,7 @@ pub extern "C" fn nmp_app_lifecycle_background(app: *mut NmpApp) {
     let Some(app) = app_ref(app) else {
         return;
     };
-    app.send_cmd(ActorCommand::LifecycleEvent(LifecyclePhase::Background));
+    app.lifecycle_event(LifecyclePhase::Background);
 }
 
 /// Register a native handler that fires on meaningful phase transitions.
@@ -328,7 +327,6 @@ mod tests {
     /// internal accessor and joining out-of-band before `free`.
     #[test]
     fn is_alive_returns_zero_after_actor_shutdown() {
-        use nmp_core::ActorCommand;
         let _g = SERIAL.lock().unwrap();
         let app = nmp_app_new();
         nmp_app_start(app, 256, 4);
@@ -336,7 +334,7 @@ mod tests {
         // (mirrors what `Drop` does, but without joining yet).
         // SAFETY: `app` is a live pointer from `nmp_app_new` above.
         let app_ref = unsafe { &*app };
-        let _ = app_ref.actor_sender().send(ActorCommand::Shutdown);
+        app_ref.actor_sender().shutdown();
         // Spin briefly waiting for the actor to dequeue and exit. The
         // command channel is `recv()`-blocked so the dequeue is immediate
         // once the message lands; a short timeout absorbs scheduling

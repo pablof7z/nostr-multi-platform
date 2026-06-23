@@ -7,7 +7,7 @@ use nmp_core::substrate::{
     register_observer_projection, EventObserverRegistrar, HostCapabilities, KernelEvent,
     SnapshotProjectionRegistrar,
 };
-use nmp_core::{ActorCommand, KernelEventObserver};
+use nmp_core::KernelEventObserver;
 use serde::Serialize;
 
 use crate::interest::{
@@ -275,13 +275,11 @@ impl WotBootstrapRuntime {
     }
 
     fn push_bootstrap(&self, interest: LogicalInterest) {
-        let _ = self.tx.send(ActorCommand::PushInterest(interest));
+        self.tx.push_interest(interest);
     }
 
     fn withdraw_bootstrap(&self) {
-        let _ = self.tx.send(ActorCommand::WithdrawInterest(
-            active_follow_graph_interest_id(),
-        ));
+        self.tx.withdraw_interest(active_follow_graph_interest_id());
     }
 }
 

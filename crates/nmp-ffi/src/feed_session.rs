@@ -33,7 +33,7 @@ use crate::NmpApp;
 use nmp_core::__ffi_internal::{
     unregister_observer, KernelEventObserverSlot, SnapshotProjectionSlot,
 };
-use nmp_core::{ActorCommand, CommandSender, KernelEventObserverId};
+use nmp_core::{CommandSender, KernelEventObserverId};
 use nmp_feed::{
     FeedHandle, FeedParams, FeedRegistrySlot, FeedSessionBuild, FeedSessionId, ProjectionKey,
     TeardownAction,
@@ -217,7 +217,7 @@ impl FeedTeardown {
     pub fn mark_changed(&self) -> TeardownAction {
         let sender = self.sender.clone();
         Box::new(move || {
-            let _ = sender.send(ActorCommand::MarkChangedSinceEmit);
+            sender.mark_changed_since_emit();
         })
     }
 
@@ -242,7 +242,7 @@ impl FeedTeardown {
     pub fn clear_active_follows(&self) -> TeardownAction {
         let sender = self.sender.clone();
         Box::new(move || {
-            let _ = sender.send(ActorCommand::ClearActiveFollowsFeed);
+            sender.clear_active_follows_feed();
         })
     }
 
@@ -273,12 +273,7 @@ impl FeedTeardown {
         let filter_json = filter_json.into();
         let consumer_id = consumer_id.into();
         Box::new(move || {
-            let _ = sender.send(ActorCommand::CloseInterest {
-                filter_json,
-                consumer_id,
-                scope,
-                relay_pin: None,
-            });
+            sender.close_interest(filter_json, consumer_id, scope);
         })
     }
 }
