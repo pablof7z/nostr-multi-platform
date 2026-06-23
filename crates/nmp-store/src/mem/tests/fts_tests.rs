@@ -205,6 +205,80 @@ fn no_index_installed_is_unsupported() {
 }
 
 #[test]
+fn budget_exhaustion_never_yields_and_false_positive() {
+    // #1882/#2: when the prefix scan exhausts the doc-scan budget, the result must
+    // still pass the exact-token AND filter — a Partial result is NEVER a superset
+    // of the true matches. Corpus: the NEWEST "common" docs lack "alpha"; the older
+    // ones have both. With a budget that stops the prefix scan inside the non-alpha
+    // run, the buggy early-return would emit those non-alpha docs.
+    let store = store_with_index();
+    // 4 newest docs: "common" only (no "alpha").
+    for (i, at) in [200u64, 201, 202, 203].into_iter().enumerate() {
+        insert(&store, make_event(0x10 + i as u8, "common", at), at * 1_000);
+    }
+    // 4 older docs: "common alpha" (both tokens).
+    for (i, at) in [100u64, 101, 102, 103].into_iter().enumerate() {
+        insert(&store, make_event(0x20 + i as u8, "common alpha", at), at * 1_000);
+    }
+    let mut q = query("alpha common"); // exact=["alpha"], prefix="common"
+    q.budget = TextSearchBudget { max_docs_scanned: 6, max_matches: 1_000 };
+    let (hits, status) = run(&store, &q);
+    assert_eq!(
+        status,
+        TextSearchStatus::Partial { budget_exhausted: true },
+        "prefix scan exhausted the budget"
+    );
+    // Newest-first the scan collects 203,202,201,200 (no alpha) then 103,102; the
+    // AND filter drops the four non-alpha docs, leaving only the two alpha docs.
+    let times: Vec<u64> = hits.iter().map(|h| h.created_at).collect();
+    assert_eq!(times, vec![103, 102], "only docs that actually contain 'alpha' survive");
+    assert!(
+        hits.iter().all(|h| h.created_at < 200),
+        "no doc missing the required exact token is ever returned"
+    );
+}
+
+#[test]
+fn common_exact_term_bounded_by_candidate_set() {
+    // #1882/#3 (D8): the exact-term AND is filtered against the already-collected
+    // (bounded) candidate set, NOT by materializing the exact term's full posting
+    // list. A common exact term over a large corpus with a RARE prefix therefore
+    // neither blows the scan budget nor changes the (correct, small) result.
+    let store = store_with_index();
+    for (i, at) in (0..20u64).enumerate() {
+        insert(&store, make_event(0x30 + i as u8, "common", 100 + at), (100 + at) * 1_000);
+    }
+    for (i, at) in [200u64, 201, 202].into_iter().enumerate() {
+        insert(&store, make_event(0x50 + i as u8, "common rareword", at), at * 1_000);
+    }
+    let mut q = query("common rare"); // exact=["common"], prefix="rare"
+    // Budget (5) is far smaller than the 23 "common" postings: a correct,
+    // candidate-bounded AND completes; an unbounded exact scan would not.
+    q.budget = TextSearchBudget { max_docs_scanned: 5, max_matches: 1_000 };
+    let (hits, status) = run(&store, &q);
+    assert_eq!(status, TextSearchStatus::Complete, "only the 3 rare-prefix postings are scanned");
+    let times: Vec<u64> = hits.iter().map(|h| h.created_at).collect();
+    assert_eq!(times, vec![202, 201, 200], "AND with the common term keeps exactly the 3 candidates");
+}
+
+#[test]
+fn overlong_token_cleanup_no_stale_postings() {
+    // #1882/#6: an over-cap token is truncated identically at index and remove
+    // time (shared tokenizer), so delete leaves NO stale posting. Mem stores full
+    // tokens for cleanup; this is the parity twin of the LMDB codec guard.
+    let store = store_with_index();
+    let long = "z".repeat(70_000); // >> MAX_TOKEN_BYTES → capped to 128 at index time
+    let ev = make_event(0x70, &long, 100);
+    let id = ev.id_bytes().unwrap();
+    insert(&store, ev, 100_000);
+    assert_eq!(run(&store, &query("zzzz")).0.len(), 1, "capped long token is searchable by prefix");
+
+    store.delete_by_filter(DeleteFilter::ByIds(vec![id])).unwrap();
+    let (hits, _) = run(&store, &query("zzzz"));
+    assert!(hits.is_empty(), "no stale posting survives delete of an over-cap token");
+}
+
+#[test]
 fn budget_exhausted_reports_partial() {
     let store = store_with_index();
     for i in 0..20u8 {

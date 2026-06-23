@@ -73,9 +73,13 @@ fn collect_candidates(
     docs_scanned: &mut usize,
 ) -> Candidates {
     // 1. Prefix term → union of docs under every token starting with `prefix`.
-    //    BTreeMap range from the prefix gives us only the matching tokens.
+    //    BTreeMap range from the prefix gives us only the matching tokens. The
+    //    scan is bounded by `budget.max_docs_scanned`; on exhaustion we DON'T
+    //    early-return the raw prefix docs — we fall through to the AND filter so a
+    //    Partial result is never a superset of the true matches (#1882/#2).
     let mut prefix_docs: BTreeSet<SearchDocumentKey> = BTreeSet::new();
-    for (tok, set) in index.postings.range(prefix.to_string()..) {
+    let mut budget_exhausted = false;
+    'scan: for (tok, set) in index.postings.range(prefix.to_string()..) {
         if !is_prefix_match(tok, prefix) {
             break; // sorted: first non-prefix token ends the range
         }
@@ -83,26 +87,40 @@ fn collect_candidates(
             prefix_docs.insert(*doc);
             *docs_scanned += 1;
             if *docs_scanned >= query.budget.max_docs_scanned {
-                return Candidates::BudgetExhausted(order_docs(index, prefix_docs, query));
+                budget_exhausted = true;
+                break 'scan;
             }
         }
     }
 
-    // 2. AND with each exact term's doc set.
+    // 2. AND with each exact term. We filter the ALREADY-collected (bounded)
+    //    candidate set by a membership check against each exact term's posting set
+    //    — keyed by the doc's own rev — instead of materializing the (potentially
+    //    unbounded) posting set into an intermediate collection (#1882/#3, D8).
     let mut acc = prefix_docs;
     for term in exact_terms {
         let Some(set) = index.postings.get(term) else {
             // An exact term with no postings → no results possible.
-            return Candidates::Set(Vec::new());
+            acc.clear();
+            break;
         };
-        let term_docs: BTreeSet<SearchDocumentKey> = set.iter().map(|(_, d)| *d).collect();
-        acc = acc.intersection(&term_docs).copied().collect();
+        acc.retain(|doc| match index.doc_meta.get(doc) {
+            // A posting for `doc` under `term` is keyed by the doc's single
+            // rev_created_at, so membership is an exact O(log n) probe.
+            Some((_kind, created_at)) => set.contains(&(super::rev_created_at(*created_at), *doc)),
+            None => false,
+        });
         if acc.is_empty() {
-            return Candidates::Set(Vec::new());
+            break;
         }
     }
 
-    Candidates::Set(order_docs(index, acc, query))
+    let ordered = order_docs(index, acc, query);
+    if budget_exhausted {
+        Candidates::BudgetExhausted(ordered)
+    } else {
+        Candidates::Set(ordered)
+    }
 }
 
 /// Materialize a doc set into a newest-first `(rev_created_at, doc)` vec,

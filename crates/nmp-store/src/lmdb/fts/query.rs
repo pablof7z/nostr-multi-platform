@@ -17,10 +17,10 @@
 
 #![cfg(feature = "lmdb-backend")]
 
-use std::collections::BTreeSet;
+use std::collections::HashMap;
 use std::ops::{Bound, ControlFlow};
 
-use super::codec::{postings_decode_tail, postings_prefix_bounds, postings_token_bounds};
+use super::codec::{postings_decode_tail, postings_key, postings_prefix_bounds};
 use super::term_doc_frequency;
 use crate::lmdb::Inner;
 use crate::text_search::tokenizer::{is_prefix_match, split_query_terms};
@@ -81,13 +81,16 @@ fn collect_candidates(
 ) -> Result<(Vec<(u64, SearchDocumentKey)>, bool), StoreError> {
     // 1. Prefix term → union of docs under every token in this scope starting
     //    with `prefix`. We track the BEST (smallest rev = newest) per doc so the
-    //    hit's created_at is the document's own, deterministically.
-    let mut prefix_docs: std::collections::HashMap<SearchDocumentKey, u64> =
-        std::collections::HashMap::new();
+    //    hit's created_at is the document's own, deterministically. The scan is
+    //    bounded by `budget.max_docs_scanned`; on exhaustion we DON'T early-return
+    //    the raw prefix docs — we fall through to the AND filter below so a
+    //    Partial result is never a superset of the true matches (#1882/#2).
+    let mut prefix_docs: HashMap<SearchDocumentKey, u64> = HashMap::new();
+    let mut budget_exhausted = false;
     let (lo, hi) = postings_prefix_bounds(query.scope, prefix);
     let range = (Bound::Included(lo.as_slice()), Bound::Excluded(hi.as_slice()));
     let prefix_disc_len = 4 + prefix.len();
-    for entry in inner
+    'scan: for entry in inner
         .fts_postings
         .range(txn, &range)
         .map_err(|e| StoreError::Io(format!("fts prefix range: {e}")))?
@@ -116,17 +119,22 @@ fn collect_candidates(
                 .or_insert(rev);
             *docs_scanned += 1;
             if *docs_scanned >= query.budget.max_docs_scanned {
-                let out = prefix_docs.into_iter().map(|(d, r)| (r, d)).collect();
-                return Ok((out, true));
+                budget_exhausted = true;
+                break 'scan;
             }
         }
     }
 
     if prefix_docs.is_empty() {
-        return Ok((Vec::new(), false));
+        return Ok((Vec::new(), budget_exhausted));
     }
 
-    // 2. AND with each exact term, RAREST-FIRST so the set shrinks fastest.
+    // 2. AND with each exact term, RAREST-FIRST so the candidate set shrinks
+    //    fastest. We filter the ALREADY-collected (bounded) candidate set via a
+    //    point look-up per surviving candidate — one `get` keyed by the doc's own
+    //    rev — instead of materializing the exact term's (potentially unbounded)
+    //    posting list (#1882/#3, D8). Each posting key for a given doc shares that
+    //    doc's single rev_created_at, so the point look-up is exact.
     let mut ordered_terms: Vec<(u64, &String)> = Vec::with_capacity(exact_terms.len());
     for t in exact_terms {
         let df = term_doc_frequency(inner, txn, query.scope, t)?;
@@ -134,48 +142,32 @@ fn collect_candidates(
     }
     ordered_terms.sort_by_key(|(df, _)| *df);
 
-    let mut acc: BTreeSet<SearchDocumentKey> = prefix_docs.keys().copied().collect();
     for (df, term) in ordered_terms {
         if df == u64::MAX {
             // No postings for this exact term → no results possible.
-            return Ok((Vec::new(), false));
+            return Ok((Vec::new(), budget_exhausted));
         }
-        let term_docs = exact_term_docs(inner, txn, query.scope, term)?;
-        acc.retain(|d| term_docs.contains(d));
-        if acc.is_empty() {
-            return Ok((Vec::new(), false));
+        let mut kept: HashMap<SearchDocumentKey, u64> = HashMap::with_capacity(prefix_docs.len());
+        for (doc, rev) in prefix_docs {
+            let key = postings_key(query.scope, term, rev, &doc.0);
+            let present = inner
+                .fts_postings
+                .get(txn, &key)
+                .map_err(|e| StoreError::Io(format!("fts and-filter get: {e}")))?
+                .is_some();
+            if present {
+                kept.insert(doc, rev);
+            }
+        }
+        prefix_docs = kept;
+        if prefix_docs.is_empty() {
+            return Ok((Vec::new(), budget_exhausted));
         }
     }
 
-    // Materialize survivors with their best (newest) rev from the prefix pass.
-    let out: Vec<(u64, SearchDocumentKey)> = acc
-        .into_iter()
-        .map(|doc| (prefix_docs[&doc], doc))
-        .collect();
-    Ok((out, false))
-}
-
-/// All docs holding an EXACT token (point range scan over its posting list).
-fn exact_term_docs(
-    inner: &Inner,
-    txn: &heed::RoTxn,
-    scope: crate::text_search::SearchScopeId,
-    token: &str,
-) -> Result<BTreeSet<SearchDocumentKey>, StoreError> {
-    let (lo, hi) = postings_token_bounds(scope, token);
-    let range = (Bound::Included(lo.as_slice()), Bound::Excluded(hi.as_slice()));
-    let mut out = BTreeSet::new();
-    for entry in inner
-        .fts_postings
-        .range(txn, &range)
-        .map_err(|e| StoreError::Io(format!("fts exact range: {e}")))?
-    {
-        let (k, _) = entry.map_err(|e| StoreError::Io(format!("fts exact step: {e}")))?;
-        if let Some((_rev, doc)) = postings_decode_tail(k, token.len()) {
-            out.insert(SearchDocumentKey(doc));
-        }
-    }
-    Ok(out)
+    // Materialize survivors with their own (newest) rev from the prefix pass.
+    let out: Vec<(u64, SearchDocumentKey)> = prefix_docs.into_iter().map(|(d, r)| (r, d)).collect();
+    Ok((out, budget_exhausted))
 }
 
 /// Locate the token byte length in a postings key: the bytes between offset 4

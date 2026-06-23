@@ -28,6 +28,10 @@ use crate::{EventStore, LmdbEventStore};
 
 use super::test_fixtures::{open_tmp, signed_event, signed_event_with_keys, verified};
 
+// #1882 — cache-FTS budget/bound/token-length defect regression tests (split out
+// to keep this file under the 500-LOC ceiling). Reuses the helpers below.
+mod defects_1882;
+
 const TEST_KIND: u32 = 1;
 const TEST_LABEL: &str = "test.note";
 const RELAY: &str = "wss://r.example.com";
