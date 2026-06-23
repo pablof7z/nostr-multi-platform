@@ -459,7 +459,7 @@ fn panicking_validator_is_rejected_not_unwound() {
     }
 
     let mut registry = ActionRegistry::new();
-    registry.register(PanickingStartModule);
+    let _ = registry.register(PanickingStartModule);
     let err = registry
         .start(&mut ctx(), 1_700_000_000_000, "host.boom_start", "null")
         .expect_err("a panicking validator must be rejected, not unwound");
@@ -501,7 +501,7 @@ fn panicking_executor_returns_err_not_unwound() {
     }
 
     let mut registry = ActionRegistry::new();
-    registry.register(PanickingExecuteModule);
+    let _ = registry.register(PanickingExecuteModule);
     let err = registry
         .execute("host.boom", "null", "corr-id", &|_cmd| {})
         .expect_err("a panicking executor must return Err, not unwind");
@@ -616,7 +616,7 @@ mod adr_0049_yield {
             registry.register_default(DefaultModule),
             "first default install returns true"
         );
-        registry.register(AppModule);
+        let _ = registry.register(AppModule);
         assert!(registry.contains("nmp.test.adr0049.ns"));
     }
 
@@ -624,7 +624,7 @@ mod adr_0049_yield {
     fn app_then_default_app_wins() {
         // App registers first; the later default must YIELD.
         let mut registry = ActionRegistry::new();
-        registry.register(AppModule);
+        let _ = registry.register(AppModule);
         let installed = registry.register_default(DefaultModule);
         assert!(
             !installed,
@@ -648,7 +648,7 @@ mod adr_0049_yield {
         let ledger = Arc::new(CompositionLedger::new());
         let mut registry = ActionRegistry::new().with_composition_ledger(Arc::clone(&ledger));
 
-        registry.register(AppModule);
+        let _ = registry.register(AppModule);
         assert!(!registry.register_default(DefaultModule));
 
         let records = ledger.records();
@@ -678,7 +678,7 @@ mod adr_0049_yield {
         let mut registry = ActionRegistry::new().with_composition_ledger(Arc::clone(&ledger));
 
         registry.register_default(DefaultModule);
-        registry.register(AppModule);
+        let _ = registry.register(AppModule);
 
         let records = ledger.records();
         assert_eq!(records.len(), 2);
@@ -698,8 +698,8 @@ mod adr_0049_yield {
     fn distinct_namespaces_both_install_no_collision() {
         let ledger = Arc::new(CompositionLedger::new());
         let mut registry = ActionRegistry::new().with_composition_ledger(Arc::clone(&ledger));
-        registry.register(AppModule);
-        registry.register(OtherAppModule);
+        let _ = registry.register(AppModule);
+        let _ = registry.register(OtherAppModule);
         let records = ledger.records();
         assert_eq!(records.len(), 2);
         assert!(records
@@ -709,22 +709,39 @@ mod adr_0049_yield {
         assert!(registry.contains("nmp.test.adr0049.other"));
     }
 
-    // App-over-app collision behaviour: in dev/test builds (`debug_assertions`
-    // on) a second app registration under the same namespace fires a
-    // `debug_assert!` and panics. In release the same path is a soft
-    // last-writer-wins (ReplacedPrevious).
+    // App-over-app collision behaviour (#1724): `register` now returns a
+    // structured `RegistrationError` in BOTH dev AND release — no longer a
+    // `debug_assert!` that silently disappears in production. The new module
+    // still wins (last-writer-wins for release resilience, D6).
     #[test]
-    #[cfg(debug_assertions)]
-    #[should_panic(expected = "composition collision")]
-    fn app_over_app_collision_panics_in_dev() {
+    fn app_over_app_collision_returns_structured_error() {
         let mut registry = ActionRegistry::new();
-        registry.register(AppModule);
-        registry.register(OtherAppModuleSameNs);
+        assert!(
+            registry.register(AppModule).is_ok(),
+            "first registration must succeed"
+        );
+        let err = registry
+            .register(OtherAppModuleSameNs)
+            .expect_err("second app registration on same namespace must return RegistrationError");
+        assert_eq!(err.namespace, "nmp.test.adr0049.ns");
+        assert!(
+            err.prior_provider.contains("AppModule"),
+            "prior_provider should name AppModule, got: {}",
+            err.prior_provider
+        );
+        assert!(
+            err.new_provider.contains("OtherAppModuleSameNs"),
+            "new_provider should name OtherAppModuleSameNs, got: {}",
+            err.new_provider
+        );
+        // Last-writer-wins (D6 — no panic across the C-ABI):
+        assert!(
+            registry.contains("nmp.test.adr0049.ns"),
+            "namespace still present after collision"
+        );
     }
 
-    #[cfg(debug_assertions)]
     struct OtherAppModuleSameNs;
-    #[cfg(debug_assertions)]
     impl ActionModule for OtherAppModuleSameNs {
         type Action = serde_json::Value;
         const NAMESPACE: &'static str = "nmp.test.adr0049.ns";

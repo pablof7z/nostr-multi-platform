@@ -53,6 +53,17 @@ use nmp_core::kinds::KIND_CHAT_MESSAGE;
 use nmp_core::substrate::{ActionRegistrar, DmInboxRelayRegistrar, IngestParserRegistrar};
 use nmp_signer_iface::UnsignedEvent;
 
+/// Ingest-parser slot key for the NIP-17 DM inbox kind:1059 parser (#1724).
+///
+/// Used with [`nmp_core::substrate::IngestParserRegistrar::replace_ingest_parser`]
+/// to register (or replace on account switch) the [`inbox::DmInboxProjection`]
+/// ingest parser. The slot key is a typed constant — not a bare string literal —
+/// so every call site references the same name and a typo is a compile error.
+///
+/// Distinct from the Marmot slot key (`nmp_marmot::MARMOT_INGEST_SLOT`) so both
+/// parsers coexist safely on kind:1059.
+pub const DM_INBOX_INGEST_SLOT: &str = "nip17.dm_inbox";
+
 pub mod action;
 pub mod dm_relay_cache;
 pub mod dm_relay_list;

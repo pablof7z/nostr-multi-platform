@@ -1649,7 +1649,16 @@ impl NmpApp {
     /// an `Arc<WalletRuntimeHandle>`) carries its deps, captured at
     /// composition time, instead of reaching a process-global.
     pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
-        self.action_registry.register(module);
+        // Structured error on duplicate registration (#1724): log in BOTH dev
+        // and release so a composition collision is never silently swallowed.
+        if let Err(e) = self.action_registry.register(module) {
+            tracing::error!(
+                namespace = e.namespace,
+                prior_provider = e.prior_provider,
+                new_provider = e.new_provider,
+                "action namespace collision (ADR-0049): {e}"
+            );
+        }
     }
 
     /// Register a typed action module as a **yielding default** (ADR-0049

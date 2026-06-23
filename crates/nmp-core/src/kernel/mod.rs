@@ -488,6 +488,7 @@ pub use clock::MonotonicSecondClock;
 pub use action_registry::{default_registry, ActionRegistry};
 #[cfg(feature = "native")]
 pub use action_registry::{ActionExecuteFailure, ActionFailureKind};
+pub use action_registry::RegistrationError;
 pub use composition_ledger::{
     CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
 };

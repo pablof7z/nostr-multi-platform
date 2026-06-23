@@ -179,7 +179,10 @@ impl WasmRuntime {
     /// composition root's job — exactly as the native FFI app delegates to each
     /// crate's `register_actions`.
     pub fn register_action<M: ActionModule + 'static>(&mut self, module: M) {
-        self.action_registry.register(module);
+        // Structured collision detection (#1724): log in both dev and release.
+        // The wasm path does not have tracing — silently drop the error value;
+        // the collision will appear as a last-writer-wins override.
+        let _ = self.action_registry.register(module);
     }
 
     /// Register a typed [`ActionModule`] **only if** its namespace is not

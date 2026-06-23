@@ -4,9 +4,10 @@ use std::sync::{Arc, Mutex};
 use nmp_planner::LogicalInterest;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{
-    EventObserverRegistrar, HostCapabilities, KernelEvent, SnapshotProjectionRegistrar,
+    register_observer_projection, EventObserverRegistrar, HostCapabilities, KernelEvent,
+    SnapshotProjectionRegistrar,
 };
-use nmp_core::{ActorCommand, KernelEventObserver, KernelEventObserverId};
+use nmp_core::{ActorCommand, KernelEventObserver};
 use serde::Serialize;
 
 use crate::interest::{
@@ -29,19 +30,17 @@ pub fn register_runtime(
         app.active_pubkey(),
         app.actor_sender(),
     ));
-    let observer_id =
-        app.register_event_observer(Arc::clone(&runtime) as Arc<dyn KernelEventObserver>);
-    if observer_id == KernelEventObserverId(0) {
-        return None;
-    }
+    // register_observer_projection handles the observer-slot-poisoned guard (#1724 criterion 3).
+    let projection_runtime = Arc::clone(&runtime);
+    let observer_id = register_observer_projection(
+        app,
+        Arc::clone(&runtime) as Arc<dyn KernelEventObserver>,
+        "nmp.wot.bootstrap",
+        move || projection_runtime.snapshot_typed(),
+    )?;
     if let Some(previous) = app.swap_singleton_event_observer(Some(observer_id)) {
         app.unregister_event_observer(previous);
     }
-    // Typed FlatBuffers sidecar (ADR-0037).
-    let projection_runtime = Arc::clone(&runtime);
-    app.register_typed_snapshot_projection("nmp.wot.bootstrap", move || {
-        projection_runtime.snapshot_typed()
-    });
     Some(runtime)
 }
 

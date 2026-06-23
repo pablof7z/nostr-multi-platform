@@ -47,7 +47,7 @@ mod failure;
 mod typed_dispatch;
 
 use erased::{ActionModuleAdapter, ErasedActionModule};
-pub use failure::{ActionExecuteFailure, ActionFailureKind};
+pub use failure::{ActionExecuteFailure, ActionFailureKind, RegistrationError};
 
 /// Per-namespace provenance: did the live entry come from a yielding default
 /// or from an explicit app registration? (ADR-0049 Part 1.)
@@ -159,24 +159,31 @@ impl ActionRegistry {
     ///
     /// ADR-0052 rung 5.2: takes the module **value** so a stateful module
     /// stores its captured dependencies in the registry.
-    pub fn register<M: ActionModule + 'static>(&mut self, module: M) {
+    ///
+    /// Returns `Ok(())` on success. Returns `Err(`[`RegistrationError`]`)` when
+    /// the namespace is ALREADY held by another **app** registration — an
+    /// app-over-app collision (ADR-0049). The new module still replaces the old
+    /// (last-writer-wins for release resilience, D6 — no panic across the
+    /// C-ABI); the error is returned so the caller can surface it in BOTH dev
+    /// AND release builds (#1724). Overriding a yielding default is legal and
+    /// does NOT return an error.
+    pub fn register<M: ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), RegistrationError> {
         let provider = std::any::type_name::<M>();
         let prior = self.provenance.get(M::NAMESPACE).copied();
-        let disposition = match prior {
-            None => Disposition::Installed,
-            Some((Provenance::Default, _)) => Disposition::ReplacedPrevious,
+        let (disposition, collision) = match prior {
+            None => (Disposition::Installed, None),
+            Some((Provenance::Default, _)) => (Disposition::ReplacedPrevious, None),
             Some((Provenance::App, prev_provider)) => {
-                // App-over-app collision: loud in dev/test, soft in release.
-                debug_assert!(
-                    false,
-                    "action namespace '{}' already registered by app provider '{}'; \
-                     a second app registration ('{}') is a composition collision \
-                     (ADR-0049). Two app modules must not claim the same namespace.",
-                    M::NAMESPACE,
-                    prev_provider,
-                    provider,
-                );
-                Disposition::ReplacedPrevious
+                // App-over-app collision: structured error in both dev and release.
+                let err = RegistrationError {
+                    namespace: M::NAMESPACE,
+                    prior_provider: prev_provider,
+                    new_provider: provider,
+                };
+                (Disposition::ReplacedPrevious, Some(err))
             }
         };
         let replaced = prior.map(|(_, prev_provider)| prev_provider.to_string());
@@ -196,6 +203,11 @@ impl ActionRegistry {
                 disposition,
                 replaced,
             );
+        }
+
+        match collision {
+            Some(err) => Err(err),
+            None => Ok(()),
         }
     }
 
@@ -444,7 +456,11 @@ impl ActionRegistry {
 
 impl ActionRegistrar for ActionRegistry {
     fn register_action<M: ActionModule + 'static>(&mut self, module: M) {
-        self.register(module);
+        // Silently ignore the Result at the trait boundary: the trait contract
+        // is void return. Callers that want the structured error use
+        // `ActionRegistry::register` directly. The error is not lost in
+        // production — `NmpApp::register_action` logs it via `tracing::error!`.
+        let _ = self.register(module);
     }
 
     fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
@@ -480,7 +496,9 @@ fn new_action_id(now_ms: u64) -> ActionId {
 /// module lives in `nmp-nip47` and the host crate registers it from there.
 pub fn default_registry() -> ActionRegistry {
     let mut registry = ActionRegistry::new();
-    registry.register(crate::publish::PublishModule);
+    // `PublishModule` is the only built-in — no collision is possible, so the
+    // Result is always Ok. `let _ =` suppresses the must-use warning (#1724).
+    let _ = registry.register(crate::publish::PublishModule);
     registry
 }
 

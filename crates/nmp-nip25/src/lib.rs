@@ -12,7 +12,7 @@ mod projection;
 mod wire;
 
 pub use action::{
-    register_actions, PublishReactionCommand, ReactAction, ReactModule, UnreactAction,
-    UnreactModule, UnreactReactionCommand, KIND_REACTION, KIND_REACTION_DELETE,
+    register_actions, Nip25Descriptor, PublishReactionCommand, ReactAction, ReactModule,
+    UnreactAction, UnreactModule, UnreactReactionCommand, KIND_REACTION, KIND_REACTION_DELETE,
 };
 pub use projection::{ReactionEntry, ReactionProjection, ReactionSnapshot, ViewerReactionState};

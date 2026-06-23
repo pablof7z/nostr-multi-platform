@@ -260,6 +260,32 @@ pub trait ActionRegistrar {
     }
 }
 
+/// Typed descriptor that a protocol crate exposes to declare its action-module
+/// contributions (#1724 criterion 5 / 6).
+///
+/// Each protocol crate implements this for a zero-cost unit struct:
+///
+/// ```ignore
+/// pub struct Nip25Descriptor;
+/// impl ProtocolDescriptor for Nip25Descriptor {
+///     fn register_actions(&self, app: &mut impl ActionRegistrar) {
+///         app.register_default_action(ReactModule);
+///         app.register_default_action(UnreactModule);
+///     }
+/// }
+/// ```
+///
+/// `nmp-defaults::register_defaults_inner` then composes descriptors rather
+/// than calling ad-hoc `register_actions` free functions, giving the composition
+/// root a single, typed, inspectable list of protocol contributions (criterion 6).
+pub trait ProtocolDescriptor {
+    /// Register this protocol's action modules against `app`.
+    ///
+    /// Implementors call `app.register_default_action(M)` for yielding defaults
+    /// or `app.register_action(M)` for explicit app-path registrations.
+    fn register_actions(&self, app: &mut impl ActionRegistrar);
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ActionRejection {
     Invalid(String),

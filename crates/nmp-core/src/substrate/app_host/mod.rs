@@ -30,6 +30,7 @@ use crate::publish::OutboxResolver;
 use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
 use crate::subs::PlanCoverageHook;
+use crate::update_envelope::TypedProjectionData;
 use crate::{
     AppRelaySlot, KernelEventObserver, KernelEventObserverId,
 };
@@ -349,6 +350,53 @@ pub trait PreferredRelaySource: Send + Sync {
     /// The fallback relay list (e.g. the app default) used when `primary()` is
     /// empty. Empty when the app declared none.
     fn fallback(&self) -> Vec<String>;
+}
+
+/// Register a [`KernelEventObserver`] AND a typed snapshot projection in one
+/// call — the common `register_event_observer + register_typed_snapshot_projection`
+/// pair used by runtime crates (#1724 observer boilerplate helper).
+///
+/// This is a free function (not a trait method) because it requires BOTH
+/// [`EventObserverRegistrar`] AND [`SnapshotProjectionRegistrar`] without
+/// changing either trait.
+///
+/// # Semantics
+///
+/// 1. Registers `observer` as an event observer. Returns `None` (and skips the
+///    projection) when the observer slot is poisoned (D6 — zero id guard,
+///    matching the pattern in `nmp_wot::register_runtime` and
+///    `nmp_defaults::register_longform_projection`).
+/// 2. On success, registers `projection_fn` as the typed snapshot projection
+///    under `key` and returns the assigned [`KernelEventObserverId`].
+///
+/// # Usage
+///
+/// ```ignore
+/// use nmp_core::substrate::register_observer_projection;
+/// let id = register_observer_projection(
+///     app,
+///     Arc::clone(&my_runtime) as Arc<dyn KernelEventObserver>,
+///     "nmp.my_crate.key",
+///     move || my_runtime.snapshot_typed(),
+/// );
+/// ```
+pub fn register_observer_projection<K, F>(
+    app: &(impl EventObserverRegistrar + SnapshotProjectionRegistrar),
+    observer: Arc<dyn KernelEventObserver>,
+    key: K,
+    projection_fn: F,
+) -> Option<KernelEventObserverId>
+where
+    K: Into<String>,
+    F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
+{
+    let id = app.register_event_observer(observer);
+    if id == KernelEventObserverId(0) {
+        // Observer slot poisoned — skip the projection too (D6).
+        return None;
+    }
+    app.register_typed_snapshot_projection(key, projection_fn);
+    Some(id)
 }
 
 /// Host surface needed by reusable NMP **composition roots**.

@@ -19,6 +19,7 @@
 
 use std::sync::Arc;
 
+use nmp_core::substrate::ActionRegistrar;
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
 use nmp_ffi::NmpApp;
 
@@ -300,9 +301,13 @@ pub fn wire_group_defaults(app: &NmpApp) {
 /// - `nmp.nip29.create_invite`
 ///
 /// Must be called before `nmp_app_start` — the registry is write-locked
-/// after the actor loop starts. Requires `&mut NmpApp` because registration
-/// writes into the app's shared action registry.
-pub fn register_actions(app: &mut NmpApp) {
+/// after the actor loop starts.
+///
+/// Takes `&mut impl ActionRegistrar` rather than `&mut NmpApp` (D0 fix,
+/// #1724): a pure-protocol crate must not name the FFI host type. The
+/// concrete `NmpApp` implements `ActionRegistrar`; the caller upcasts it
+/// via the trait, keeping this crate NIP-layer-only (D0 §3).
+pub fn register_actions(app: &mut impl ActionRegistrar) {
     app.register_action(PostChatMessageAction);
     app.register_action(ReactInGroupAction);
     app.register_action(ShareEventInGroupAction);

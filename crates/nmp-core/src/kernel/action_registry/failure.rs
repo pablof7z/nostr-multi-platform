@@ -1,7 +1,44 @@
-//! Failure taxonomy for [`super::ActionRegistry::execute`] (#1676 BUG-B).
+//! Failure taxonomy for [`super::ActionRegistry`] errors.
 //!
 //! Extracted from `action_registry.rs` to keep that orchestrator file under the
 //! 500-LOC hand-authored ceiling (AGENTS.md / V-12).
+//!
+//! Contains two failure types:
+//! * [`RegistrationError`] — structured duplicate-namespace error returned by
+//!   [`super::ActionRegistry::register`] (#1724).
+//! * [`ActionExecuteFailure`] — failure taxonomy for
+//!   [`super::ActionRegistry::execute`] (#1676 BUG-B).
+
+/// Structured error returned when an app-over-app namespace collision is
+/// detected at registration time (#1724).
+///
+/// Replaces the `debug_assert!` in [`super::ActionRegistry::register`] so the
+/// collision is a structured, inspectable error in BOTH dev AND release builds,
+/// not a dev-only assertion that silently last-writes in production.
+///
+/// The caller decides how to surface this: `nmp-ffi`'s `NmpApp::register_action`
+/// logs it via `tracing::error!`; a test harness can `assert!(result.is_ok())`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RegistrationError {
+    /// The namespace both registrations claimed.
+    pub namespace: &'static str,
+    /// Type name of the module that was already registered (first writer).
+    pub prior_provider: &'static str,
+    /// Type name of the module that triggered the collision (second writer).
+    pub new_provider: &'static str,
+}
+
+impl core::fmt::Display for RegistrationError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(
+            f,
+            "action namespace '{}' already registered by '{}'; \
+             a second app registration ('{}') is a composition collision \
+             (ADR-0049). Two app modules must not claim the same namespace.",
+            self.namespace, self.prior_provider, self.new_provider
+        )
+    }
+}
 
 /// Why a synchronous [`super::ActionRegistry::execute`] leg did not cleanly
 /// accept-and-enqueue an action — the failure taxonomy (#1676 BUG-B).

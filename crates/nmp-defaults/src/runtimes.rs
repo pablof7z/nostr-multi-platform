@@ -155,14 +155,14 @@ fn register_inbox_projection(
     ));
 
     // Register as IngestParser for kind:1059 (NIP-59 gift-wrap), under the
-    // "nip17.dm_inbox" slot key. Slot-keyed replace ensures only the prior DM
-    // inbox parser is evicted on account switch — Marmot's "marmot" slot parser
-    // (registered in PR-2 of the raw-tap retirement ladder) is untouched.
+    // typed DM_INBOX_INGEST_SLOT key (#1724). Slot-keyed replace ensures only the
+    // prior DM inbox parser is evicted on account switch — Marmot's
+    // MARMOT_INGEST_SLOT parser is untouched.
     // The kind literal is 1059 per NIP-59; nmp-defaults is a composition crate
     // entitled to name NIP kind numbers directly.
     app.replace_ingest_parser(
         1059_u32, // kind:1059 — NIP-59 gift-wrap
-        "nip17.dm_inbox",
+        nmp_nip17::DM_INBOX_INGEST_SLOT,
         Arc::clone(&projection) as Arc<dyn nmp_core::substrate::IngestParser>,
     );
 
