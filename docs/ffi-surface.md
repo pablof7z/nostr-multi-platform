@@ -163,8 +163,8 @@ There is no dedicated F-TTL symbol. The two claim functions carry a trailing `fo
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
 | `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Refcount a kind:0 profile claim via the registry chokepoint. When the profile is cached, run the TTL freshness gate: re-verify only if `check_again_after` has elapsed (`force == 0`) or unconditionally (`force != 0`, profile screen / pull-to-refresh). `liveness`: `0` = CacheOk (feed avatars — OneShot fetch on miss, no live sub), non-zero = Live (profile screen — Tailing kind:0 sub, reactive edits). | Chirp (avatars: force=0/liveness=0; profile screen: liveness=1) | non-hex pubkey → early return | n/a |
-| `nmp_app_claim_event` | `(app, uri: *const c_char, consumer_id: *const c_char, force: int)` | Refcount a `nostr:` URI claim. For cached `naddr` (addressable) identities, run the TTL gate as above; for immutable `nevent`/`note` URIs `force` is a silent no-op (no TTL record). | Chirp embed sink (force=0) | unparseable URI → early return | n/a |
-| `nmp_app_release_event` | `(app, uri: *const c_char, consumer_id: *const c_char)` | Release a previously claimed `nostr:` URI. Kernel decrements the per-consumer refcount and drops the row when no consumers remain. | Chirp embed sink | invalid args → early return | n/a |
+| `nmp_app_resolve_ref` (namespace=1/event) | `(app, namespace: int, key: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Refcount a `nostr:` URI claim (namespace=1). For cached `naddr` (addressable) identities, run the TTL gate as above; for immutable `nevent`/`note` URIs `force` is a silent no-op (no TTL record). | Chirp embed sink (force=0) | unparseable URI → early return | n/a |
+| `nmp_app_release_ref` (namespace=1/event) | `(app, namespace: int, key: *const c_char, consumer_id: *const c_char)` | Release a previously claimed `nostr:` URI (namespace=1). Kernel decrements the per-consumer refcount and drops the row when no consumers remain. | Chirp embed sink | invalid args → early return | n/a |
 
 **Note:** force-refresh replaces the removed `nmp_app_refresh_replaceable` symbol (ADR-0041). `force != 0` is semantically "treat `check_again_after` as 0 for this claim", driving an immediate re-verification REQ. TTL management is otherwise transparent: the framework auto-re-verifies after kind-specific timeouts (default: kind:0 = 1h, kind:10002 = 6h).
 
@@ -300,8 +300,8 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_open_uri` | PASS | PASS | |
 | `nmp_app_claim_profile` | PASS | PASS | |
 | `nmp_app_release_profile` | PASS | PASS | |
-| `nmp_app_claim_event` | PASS | PASS | |
-| `nmp_app_release_event` | PASS | PASS | |
+| `nmp_app_resolve_ref` (namespace=1/event) | PASS | PASS | #1726 — replaces deleted `nmp_app_claim_event` |
+| `nmp_app_release_ref` (namespace=1/event) | PASS | PASS | #1726 — replaces deleted `nmp_app_release_event` |
 | `nmp_app_wallet_connect` | PASS | PASS | |
 | `nmp_app_wallet_disconnect` | PASS | PASS | |
 | `nmp_app_wallet_pay_invoice` | PASS | PASS | |

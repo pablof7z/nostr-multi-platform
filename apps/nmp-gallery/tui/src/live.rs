@@ -10,7 +10,7 @@
 //! 1. Renderer encounters an `EventRef(uri)` token.
 //! 2. `NostrContentView` calls `sink.claim(uri, consumer_id)` via the
 //!    `EventClaimSink` host bridge.
-//! 3. `LiveKernelSink::claim` forwards to `nmp_app_claim_event` — the
+//! 3. `LiveKernelSink::claim` forwards to `nmp_app_resolve_ref` (namespace=1/event) — the
 //!    kernel registers a `OneshotApi` interest (D4 single writer), short-
 //!    circuits on cache hit, or compiles a wire REQ on cache miss.
 //! 4. The event arrives (cache or relay), gets surfaced in the typed
@@ -172,8 +172,8 @@ struct UpdateBridge {
 
 /// `EventClaimSink` impl wrapping a live kernel's app pointer. The
 /// renderer-triggered claim path (`NostrContentView::claim_sink`) calls
-/// this on each render frame; `claim` forwards to `nmp_app_claim_event`,
-/// `release` to `nmp_app_release_event`. `Send + Sync` because every FFI
+/// this on each render frame; `claim` forwards to `nmp_app_resolve_ref` (namespace=1/event),
+/// `release` to `nmp_app_release_ref`. `Send + Sync` because every FFI
 /// symbol forwards to the actor's command channel — the pointer is just
 /// an opaque key.
 pub struct LiveKernelSink {
@@ -263,8 +263,12 @@ fn event_key_from_uri(uri: &str) -> Option<CString> {
 // to nmp_app_resolve_ref(namespace=1/event) / nmp_app_release_ref.
 impl EventClaimSink for LiveKernelSink {
     fn claim(&self, uri: &str, consumer_id: &str) {
-        let Some(event_key) = event_key_from_uri(uri) else { return };
-        let Ok(cid) = CString::new(consumer_id) else { return };
+        let Some(event_key) = event_key_from_uri(uri) else {
+            return;
+        };
+        let Ok(cid) = CString::new(consumer_id) else {
+            return;
+        };
         // F-TTL — embed sink claims on render → liveness = 0 (CacheOk / background).
         nmp_ffi::nmp_app_resolve_ref(
             self.app,
@@ -277,8 +281,12 @@ impl EventClaimSink for LiveKernelSink {
     }
 
     fn release(&self, uri: &str, consumer_id: &str) {
-        let Some(event_key) = event_key_from_uri(uri) else { return };
-        let Ok(cid) = CString::new(consumer_id) else { return };
+        let Some(event_key) = event_key_from_uri(uri) else {
+            return;
+        };
+        let Ok(cid) = CString::new(consumer_id) else {
+            return;
+        };
         nmp_ffi::nmp_app_release_ref(self.app, 1 /*event*/, event_key.as_ptr(), cid.as_ptr());
     }
 }

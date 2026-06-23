@@ -37,7 +37,7 @@ canonical contract, in order:
    glue belongs with the first in-repo consumer (not here — `hl` is
    out-of-tree).
 
-3. **Drain** by calling `nmp_app_pull_page` (synchronous, read-only) until
+3. **Drain** by calling `nmp_mirror_pull_page` (synchronous, read-only) until
    `has_more == false` or a budget is exhausted. Each `PullPage` carries
    `next_after_seq / latest_seq / has_more`.
 

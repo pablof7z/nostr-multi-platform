@@ -43,8 +43,8 @@
 
 use std::num::NonZeroUsize;
 
-use nmp_store::{EventStore, LogOp, ScanLogResult, StoreLogEntry};
 use nmp_core::{pull_page_over, PullCursorId, PullError, PullLimits};
+use nmp_store::{EventStore, LogOp, ScanLogResult, StoreLogEntry};
 
 use crate::NmpApp;
 
@@ -285,10 +285,7 @@ fn encode_gap(requested_after_seq: u64, first_available_seq: u64) -> Vec<u8> {
 /// seq so they redeliver next call). If the FIRST row's raw event alone exceeds
 /// the cap it cannot be represented within the promised bound, so this returns
 /// `Err(error::RAW_TOO_LARGE)` rather than silently overshooting (D5).
-fn encode_page(
-    page: nmp_store::PullPage,
-    raw_byte_cap: usize,
-) -> Result<Vec<u8>, u32> {
+fn encode_page(page: nmp_store::PullPage, raw_byte_cap: usize) -> Result<Vec<u8>, u32> {
     let latest_seq = page.latest_seq;
     let store_next_after_seq = page.next_after_seq;
     let original_count = page.entries.len();
@@ -297,7 +294,10 @@ fn encode_page(
     let mut kept: Vec<(StoreLogEntry, Option<Vec<u8>>)> = Vec::new();
     let mut raw_total: usize = 0;
     for entry in page.entries {
-        let json = entry.raw_event.as_ref().and_then(|r| serde_json::to_vec(r).ok());
+        let json = entry
+            .raw_event
+            .as_ref()
+            .and_then(|r| serde_json::to_vec(r).ok());
         let raw_len = json.as_ref().map_or(0, Vec::len);
         if kept.is_empty() {
             // First row: a raw event that alone overflows the cap cannot fit ⇒

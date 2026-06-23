@@ -132,7 +132,12 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeReleaseEvent(
         return;
     };
     s.with_app(|app| {
-        nmp_app_release_ref(app, 1 /*event*/, event_key.as_ptr(), consumer_id.as_ptr());
+        nmp_app_release_ref(
+            app,
+            1, /*event*/
+            event_key.as_ptr(),
+            consumer_id.as_ptr(),
+        );
     });
 }
 
