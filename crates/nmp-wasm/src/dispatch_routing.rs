@@ -28,10 +28,12 @@
 //!
 //! 4. Stable, host-pattern-matchable reason strings for the two
 //!    write-unavailability states the wasm runtime can honestly report
-//!    (`signer_not_installed`, and the single canonical
-//!    `publish_not_supported_in_web_preview` disable token shared with the
-//!    async path) plus the capability-completion failure reason
-//!    (`browser_actor_driver_missing`).
+//!    (`signer_not_installed` — no active account; `use_dispatch_bytes` —
+//!    write arrived on the JSON path rather than the typed binary doorway)
+//!    plus the capability-completion failure reason
+//!    (`browser_actor_driver_missing`). The pre-#1008
+//!    `publish_not_supported_in_web_preview` disable token is retired —
+//!    publish routing is live via `WasmOutboxResolver`.
 //!
 //! Split out of `runtime.rs` so the file stays under the 500-LOC ceiling and
 //! the routing table has a single owner that codegen / kernel-namespace

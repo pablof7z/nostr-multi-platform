@@ -85,11 +85,16 @@ export class WasmBridge {
       // on the generic `handle_json` path. The `bytes` field is a `Uint8Array`
       // from the structured-clone message; `JSON.stringify` cannot round-trip
       // typed arrays, so only the direct binary path preserves the payload.
-      if (
-        request.type === "dispatch_bytes" &&
-        typeof this.runtime.handle_dispatch_bytes === "function"
-      ) {
-        return decodeWorkerEvents(this.runtime.handle_dispatch_bytes(request.bytes));
+      if (request.type === "dispatch_bytes") {
+        if (typeof this.runtime.handle_dispatch_bytes === "function") {
+          return decodeWorkerEvents(this.runtime.handle_dispatch_bytes(request.bytes));
+        } else {
+          // fail-closed: no JSON fallback for typed writes — JSON.stringify
+          // cannot round-trip Uint8Array (serialises to `{}`), so falling
+          // through to handle_json would silently corrupt the payload.
+          console.error("[NMP] handle_dispatch_bytes not available — bridge not initialized");
+          throw new Error("dispatch_bytes called before bridge initialization");
+        }
       }
       return decodeWorkerEvents(this.runtime.handle_json(JSON.stringify(request)));
     } catch (error) {

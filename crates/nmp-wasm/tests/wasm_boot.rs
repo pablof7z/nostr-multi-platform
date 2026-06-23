@@ -144,29 +144,34 @@ fn wasm_runtime_boots_without_panicking() {
     );
 }
 
-/// #1202/#1008 regression guard — a typed wasm write MUST surface an explicit
-/// `publish_not_supported_in_web_preview` `CapabilityFailure` instead of
-/// silently swallowing the event.
+/// #1008 routing guard — a typed wasm write MUST enter the typed decode path
+/// (NOT silently swallow the event, and NOT emit the old pre-#1008
+/// `publish_not_supported_in_web_preview` disable token).
 ///
-/// Before #1202 the publish path called `publish_signed_event` on a kernel
-/// whose `NoopOutboxResolver` resolved zero relay targets (`PublishTarget::Auto`
-/// → `NoTargets`), then returned `ActionAccepted` — the host had no way to know
-/// the event was never sent. This test asserts the honest-disable contract:
-/// a write over the typed `DispatchBytes` doorway (the ONLY wasm write path
-/// after #1743 Cut A) must resolve to a `CapabilityFailure` with the
-/// `publish_not_supported_in_web_preview:` prefix while the real composition
-/// root is pending (#1008).
+/// Before #1008 the wasm publish path was entirely disabled: every
+/// `nmp.publish` write over `DispatchBytes` was intercepted before reaching
+/// the `PublishModule` and returned a `CapabilityFailure` with the
+/// `publish_not_supported_in_web_preview:` token. That hard-disable is now
+/// REMOVED (#1008). The `PublishModule` is live in the default action registry
+/// and the `WasmOutboxResolver` provides relay targets after `Start`.
 ///
-/// The native variant of this guard is the
-/// `publish_not_supported_in_web_preview_reason_has_stable_prefix` unit test in
-/// `publish_path.rs`, plus the `typed_write_after_set_identity_*` test in
-/// `protocol.rs`.
+/// This test sends a structurally invalid publish payload (opaque bytes that
+/// will fail FlatBuffers decode) to prove:
+/// 1. The action REACHES the typed dispatch router (i.e. `publish_not_supported_in_web_preview`
+///    is gone — no early-exit before the module runs).
+/// 2. The response is a `CapabilityFailure` from the DECODE stage, not a
+///    silent `ActionAccepted` (no #1202 regression where NoopOutboxResolver
+///    dropped events silently).
+///
+/// The native variant of this guard is
+/// `write_path_unavailable_reason_distinguishes_signer_states` in
+/// `dispatch_routing_tests.rs` (which asserts the legacy token is absent).
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen_test]
-fn typed_write_surfaces_honest_disable_not_action_accepted() {
+fn typed_write_routes_through_publish_module_not_legacy_disable() {
     // Seed the active identity so the gate cannot be attributed to a missing
-    // account (we want to reach the honest-disable gate, not the
-    // `signer_not_installed` gate). ADR-0064 §5: no persistent signer.
+    // account (we want to reach the typed-decode gate, not `signer_not_installed`).
+    // ADR-0064 §5: no persistent signer.
     let mut runtime = WasmRuntime::new();
     runtime
         .handle(WorkerRequest::SetIdentity(SetIdentity {
@@ -177,9 +182,10 @@ fn typed_write_surfaces_honest_disable_not_action_accepted() {
         }))
         .expect("SetIdentity must succeed");
 
-    // Drive a typed write through the one binary doorway — the path that would
-    // hit NoopOutboxResolver → NoTargets → silent ActionAccepted (the #1202 bug)
-    // once publishing is wired.
+    // Drive a typed write through the one binary doorway with an intentionally
+    // invalid payload (opaque bytes). After #1008 this reaches `PublishModule`
+    // which rejects the malformed FlatBuffers payload with a decode error —
+    // proving the old early-exit disable path is gone.
     let bytes = encode_dispatch_envelope(
         "pub-wasm-1",
         "nmp.publish",
@@ -196,23 +202,33 @@ fn typed_write_surfaces_honest_disable_not_action_accepted() {
                 capability, "nmp.publish",
                 "CapabilityFailure must carry the decoded namespace; got: {capability:?}"
             );
+            // After #1008 the old disable token is GONE. The failure must come
+            // from the typed decode stage (malformed payload), not the pre-#1008
+            // early-exit guard.
             assert!(
-                reason.starts_with("publish_not_supported_in_web_preview:"),
-                "typed write must surface 'publish_not_supported_in_web_preview:' prefix, \
-                 NOT 'action_accepted' or any silent-success indicator; got: {reason:?}"
+                !reason.starts_with("publish_not_supported_in_web_preview"),
+                "#1008 regression: old 'publish_not_supported_in_web_preview' disable token \
+                 must be gone — publish routing is now active; got: {reason:?}"
             );
+            assert!(
+                !reason.starts_with("publish_path_not_wired"),
+                "#1008 regression: stale 'publish_path_not_wired' disable token must be gone; \
+                 got: {reason:?}"
+            );
+            // The action reached the typed decode path: reason comes from the
+            // module's decode/validation stage (e.g. malformed FlatBuffers).
+            // We don't assert the exact string — that is an implementation
+            // detail of PublishModule — but it must not be a silent accept.
         }
         WorkerEvent::ActionAccepted { .. } => {
             panic!(
-                "#1202 regression: typed write returned ActionAccepted but the event \
-                 was silently dropped (NoopOutboxResolver → NoTargets). The honest-disable \
-                 gate must return CapabilityFailure before any publish_signed_event call."
+                "#1202 regression: typed write with malformed payload returned ActionAccepted. \
+                 A decode failure must surface as CapabilityFailure, never silent-accept."
             );
         }
         other => {
             panic!(
-                "expected CapabilityFailure with publish_not_supported_in_web_preview prefix, \
-                 got: {other:?}"
+                "expected CapabilityFailure from typed decode stage, got: {other:?}"
             );
         }
     }
