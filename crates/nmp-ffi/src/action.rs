@@ -425,3 +425,7 @@ mod terminal_correctness_tests;
 #[cfg(test)]
 #[path = "action/coded_rejection_tests.rs"]
 mod coded_rejection_tests;
+
+#[cfg(test)]
+#[path = "action/s10_gates_tests.rs"]
+mod s10_gates_tests;

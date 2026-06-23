@@ -197,3 +197,150 @@ mod resolve_no_snapshot_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod s10_nip07_event_driven_tests {
+    //! S10 (#1757) G4 — NIP-07 signer response resumes the reducer
+    //! synchronously (event-driven), NOT via timer / tick / poll (D8).
+    //!
+    //! The wasm NIP-07 round-trip is:
+    //!   1. `BeginSign` parks a sign op and emits `SignRequest`.
+    //!   2. Main thread calls `window.nostr.signEvent`, gets `signed_json`.
+    //!   3. Main thread posts `DeliverSignerResponse` back to the worker.
+    //!   4. The worker's `handle(DeliverSignerResponse)` call returns
+    //!      `[SignCompleted { … }]` IN THAT SAME CALL — no tick required.
+    //!
+    //! This test is LOAD-BEARING: if `deliver_signer_response` were changed
+    //! to store the response and only resolve it on the next `tick()`, the
+    //! returned events from `handle(DeliverSignerResponse)` would be empty
+    //! (no `SignCompleted`), and the assertion `has_sign_completed` would fail.
+
+    use super::super::WasmRuntime;
+    use crate::protocol::{BeginSign, DeliverSignerResponse, SetIdentity, WorkerEvent, WorkerRequest};
+
+    const ACCOUNT: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+
+    /// A minimal unsigned-event JSON that `begin_sign_roundtrip` accepts.
+    fn unsigned_json() -> String {
+        serde_json::json!({
+            "pubkey": ACCOUNT,
+            "kind": 1,
+            "tags": [],
+            "content": "s10 nip07 event-driven probe",
+            "created_at": 1_700_000_000u64,
+        })
+        .to_string()
+    }
+
+    /// A flat-NIP-01 signed event JSON that `deliver_signed_response` accepts.
+    fn signed_json() -> String {
+        serde_json::json!({
+            "id": "aa".repeat(32),
+            "pubkey": ACCOUNT,
+            "created_at": 1_700_000_000u64,
+            "kind": 1,
+            "tags": [],
+            "content": "s10 nip07 event-driven probe",
+            "sig": "bb".repeat(64),
+        })
+        .to_string()
+    }
+
+    fn has_sign_completed(events: &[WorkerEvent]) -> bool {
+        events.iter().any(|e| matches!(e, WorkerEvent::SignCompleted { .. }))
+    }
+
+    fn has_sign_request(events: &[WorkerEvent]) -> bool {
+        events.iter().any(|e| matches!(e, WorkerEvent::SignRequest { .. }))
+    }
+
+    fn sign_request_correlation_id(events: &[WorkerEvent]) -> Option<String> {
+        events.iter().find_map(|e| {
+            if let WorkerEvent::SignRequest { correlation_id, .. } = e {
+                Some(correlation_id.clone())
+            } else {
+                None
+            }
+        })
+    }
+
+    /// S10 G4: `DeliverSignerResponse` resumes the reducer in the SAME
+    /// `handle` call — no `tick_for_test`, no `sleep`, no poll loop between
+    /// `BeginSign` and the `SignCompleted` event.
+    ///
+    /// Proof structure:
+    ///   Step 1: `handle(BeginSign)` → `[SignRequest { correlation_id }]`
+    ///   Step 2: `handle(DeliverSignerResponse { … })` → `[SignCompleted { … }]`
+    ///
+    /// The critical assertion is that step 2 returns `SignCompleted` WITHOUT
+    /// any intermediate `tick_for_test()` call. If the implementation ever
+    /// changed to defer completion to the next tick, step 2 would return `[]`
+    /// and the `has_sign_completed` assertion would trip.
+    #[test]
+    fn deliver_signer_response_completes_synchronously_without_tick() {
+        let mut runtime = WasmRuntime::new();
+
+        // Seed the kernel with an active account so `begin_sign_roundtrip`
+        // can validate the account-pinning contract.
+        runtime
+            .handle(WorkerRequest::SetIdentity(SetIdentity {
+                kind: "nip07".to_string(),
+                pubkey_hex: ACCOUNT.to_string(),
+                correlation_id: "s10-set-id".to_string(),
+            }))
+            .expect("set_identity must succeed");
+
+        // Step 1: begin the sign round-trip.
+        let begin_events = runtime
+            .handle(WorkerRequest::BeginSign(BeginSign {
+                account_pubkey: ACCOUNT.to_string(),
+                unsigned_json: unsigned_json(),
+            }))
+            .expect("begin_sign must succeed");
+
+        assert!(
+            has_sign_request(&begin_events),
+            "BeginSign must emit a SignRequest immediately; got: {begin_events:?}"
+        );
+
+        // Extract the correlation_id the broker uses to match the response.
+        let corr_id = sign_request_correlation_id(&begin_events)
+            .expect("SignRequest must carry a correlation_id");
+
+        // ── NO tick_for_test() call here — that is the assertion ──
+        // The test explicitly does NOT call `runtime.tick_for_test()` between
+        // BeginSign and DeliverSignerResponse. If completion required a tick
+        // the next step would return an empty event list.
+
+        // Step 2: deliver the signer response — must complete synchronously.
+        let deliver_events = runtime
+            .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
+                correlation_id: corr_id.clone(),
+                signed_json: Some(signed_json()),
+                error: None,
+            }))
+            .expect("deliver_signer_response must not error");
+
+        assert!(
+            has_sign_completed(&deliver_events),
+            "S10 G4: DeliverSignerResponse must return SignCompleted in the \
+             SAME handle call (event-driven, no tick/sleep). \
+             If this trips, the reducer deferred completion to a timer or poll. \
+             Got events: {deliver_events:?}"
+        );
+
+        // Belt-and-suspenders: the SignCompleted must carry the matching corr_id.
+        let completed_corr = deliver_events.iter().find_map(|e| {
+            if let WorkerEvent::SignCompleted { correlation_id, .. } = e {
+                Some(correlation_id.clone())
+            } else {
+                None
+            }
+        });
+        assert_eq!(
+            completed_corr.as_deref(),
+            Some(corr_id.as_str()),
+            "SignCompleted correlation_id must match the BeginSign round-trip id"
+        );
+    }
+}

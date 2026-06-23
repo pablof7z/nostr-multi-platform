@@ -785,6 +785,15 @@ pub struct NmpApp {
     /// Only compiled in `#[cfg(test)]`; zero overhead in production builds.
     #[cfg(test)]
     send_cmd_count: AtomicU64,
+    /// Test-only last-command-variant tag — records the discriminant name of the
+    /// most recently sent `ActorCommand` as a `'static str`. Unlike
+    /// `send_cmd_count` (which only proves *something* was sent), this lets a
+    /// test assert that the SPECIFIC variant that was expected was actually
+    /// enqueued (e.g. `CancelPublish` vs. `RetryPublish`).
+    ///
+    /// Only compiled in `#[cfg(test)]`; zero overhead in production builds.
+    #[cfg(test)]
+    last_cmd_tag: std::sync::Mutex<Option<&'static str>>,
     /// D2 coverage-gate hook slot. Set by the per-app crate (`nmp-app-chirp`)
     /// via [`Self::set_coverage_hook`] before `nmp_app_start`. Actor startup
     /// snapshots it into immutable config, installs it on the
@@ -1468,6 +1477,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         // the `cfg(test)` field is present from construction.
         #[cfg(test)]
         send_cmd_count: AtomicU64::new(0),
+        #[cfg(test)]
+        last_cmd_tag: std::sync::Mutex::new(None),
         // D2 — the `NmpApp`'s clone of the coverage-gate hook slot. Written
         // by the per-app crate via [`NmpApp::set_coverage_hook`] before
         // `nmp_app_start`; actor startup snapshots it into config and
@@ -1575,6 +1586,19 @@ impl NmpApp {
         // (the TOCTOU race that made `queue_depth` unreliable for that use).
         #[cfg(test)]
         self.send_cmd_count.fetch_add(1, Ordering::Relaxed);
+        // Test-only last-variant tag: records which `ActorCommand` was most
+        // recently sent, so tests can assert the SPECIFIC variant (e.g.
+        // `CancelPublish`, not just "some command") without inspecting the actor's
+        // internal state. Only the discriminant names needed by existing tests are
+        // listed; the `_` arm covers all others.
+        #[cfg(test)]
+        if let Ok(mut tag) = self.last_cmd_tag.lock() {
+            *tag = Some(match &cmd {
+                ActorCommand::CancelPublish { .. } => "CancelPublish",
+                ActorCommand::RetryPublish { .. } => "RetryPublish",
+                _ => "_other",
+            });
+        }
         let _ = self.tx.send(cmd);
     }
 
