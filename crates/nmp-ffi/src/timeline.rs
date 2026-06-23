@@ -56,17 +56,11 @@ pub extern "C" fn nmp_app_open_interest(
     // treats `None` as a no-op, but surfacing the error here gives the host a
     // visible signal that its filter string was rejected.
     if nmp_planner::InterestShape::from_filter_json(&filter_json).is_none() {
-        app.send_cmd(ActorCommand::ShowToast {
-            message: "open_interest: malformed filter JSON".to_string(),
-        });
+        app.show_toast("open_interest: malformed filter JSON".to_string());
         return;
     }
 
-    app.send_cmd(ActorCommand::OpenInterest {
-        filter_json,
-        consumer_id,
-        scope,
-    });
+    app.open_interest(filter_json, consumer_id, scope);
 }
 
 /// M2 (ADR-0042) — detach one owner from a feed interest registered via
@@ -92,12 +86,7 @@ pub extern "C" fn nmp_app_close_interest(
         return;
     };
 
-    app.send_cmd(ActorCommand::CloseInterest {
-        filter_json,
-        consumer_id,
-        scope,
-        relay_pin: None,
-    });
+    app.close_interest(filter_json, consumer_id, scope);
 }
 
 /// Open whatever a `nostr:` URI (or bare NIP-19 entity) points at (T95/T80).
@@ -193,9 +182,9 @@ pub fn declare_active_follows_feed(app: *mut NmpApp, primary_kinds_json: *const 
     let primary_kinds = match parse_primary_kinds_json(&kinds_str) {
         Some(set) => set,
         None => {
-            app.send_cmd(nmp_core::ActorCommand::ShowToast {
-                message: "declare_active_follows_feed: malformed primary kinds JSON".to_string(),
-            });
+            app.show_toast(
+                "declare_active_follows_feed: malformed primary kinds JSON".to_string(),
+            );
             return;
         }
     };

@@ -1,9 +1,10 @@
 //! Core `impl NmpApp` methods — extracted from `lib.rs` to keep each file
 //! under the 500-LOC ceiling (AGENTS.md file-size rule).
 //!
-//! Covers: `send_cmd`, `declare_active_follows_feed`,
-//! `clear_active_follows_feed`, action-registry methods, composition-ledger
-//! helpers, `set_pending_mls_autopublish`, `take_pending_mls_autopublish`.
+//! Covers: `send_cmd`, `show_toast`, `mark_changed_since_emit`,
+//! `declare_active_follows_feed`, `clear_active_follows_feed`,
+//! action-registry methods, composition-ledger helpers,
+//! `set_pending_mls_autopublish`, `take_pending_mls_autopublish`.
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -52,6 +53,23 @@ impl NmpApp {
         let _ = self.tx.send(cmd);
     }
 
+    /// Surface a user-visible toast message (D6: best-effort delivery).
+    ///
+    /// Typed wrapper for [`ActorCommand::ShowToast`]. Callers inside `nmp-ffi`
+    /// must use this method instead of constructing the raw command directly.
+    pub(crate) fn show_toast(&self, message: String) {
+        self.send_cmd(ActorCommand::ShowToast { message });
+    }
+
+    /// Mark the kernel dirty so host-registered snapshot projections re-emit.
+    ///
+    /// Typed wrapper for [`ActorCommand::MarkChangedSinceEmit`]. Used when
+    /// reusable NMP extension state changes outside a typed kernel field (e.g.
+    /// a registered feed viewport expanding older rows).
+    pub(crate) fn mark_changed_since_emit(&self) {
+        self.send_cmd(ActorCommand::MarkChangedSinceEmit);
+    }
+
     /// Declare a feed of app-owned primary kinds from the active account's
     /// reactive follows perspective.
     ///
@@ -65,11 +83,10 @@ impl NmpApp {
         let acquisition_kinds = match nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds) {
             Ok(kinds) => kinds,
             Err(_) => {
-                self.send_cmd(ActorCommand::ShowToast {
-                    message:
-                        "declare_active_follows_feed: primary kinds must not include repost wrappers or the delete kind"
-                            .to_string(),
-                });
+                self.show_toast(
+                    "declare_active_follows_feed: primary kinds must not include repost wrappers or the delete kind"
+                        .to_string(),
+                );
                 return false;
             }
         };

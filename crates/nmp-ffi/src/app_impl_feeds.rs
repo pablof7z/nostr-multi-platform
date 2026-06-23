@@ -1,7 +1,8 @@
 //! Feed-management `impl NmpApp` methods — extracted from `lib.rs` to keep
 //! each file under the 500-LOC ceiling (AGENTS.md file-size rule).
 //!
-//! Covers: `register_feed`, `load_older_feed`, `register_feed_with_observer`,
+//! Covers: `register_feed`, `load_older_feed`, `open_interest`,
+//! `close_interest`, `register_feed_with_observer`,
 //! `open_observed_interest`, `open_observed_interest_pinned`,
 //! `close_interest_pinned`, `unregister_feed`.
 
@@ -30,9 +31,46 @@ impl NmpApp {
     pub fn load_older_feed(&self, key: &str) -> bool {
         let changed = self.feed_registry.load_older(key);
         if changed {
-            self.send_cmd(ActorCommand::MarkChangedSinceEmit);
+            self.mark_changed_since_emit();
         }
         changed
+    }
+
+    /// Register (or attach an owner to) a generic tailing feed interest.
+    ///
+    /// Typed wrapper for [`ActorCommand::OpenInterest`]. The caller supplies a
+    /// verbatim NIP-01 REQ filter JSON; the kernel parses it into an
+    /// `InterestShape` and refcounts by `(filter, consumer_id, scope)`.
+    ///
+    /// * `scope` — `0` = `ActiveAccount` (re-route on account switch),
+    ///   `1` = `Global` (account-agnostic).
+    ///
+    /// D6: a malformed filter is a no-op (the caller should validate first via
+    /// `InterestShape::from_filter_json` and surface a toast if needed).
+    pub fn open_interest(&self, filter_json: String, consumer_id: String, scope: u32) {
+        self.send_cmd(ActorCommand::OpenInterest {
+            filter_json,
+            consumer_id,
+            scope,
+        });
+    }
+
+    /// Detach one owner from an interest registered via [`Self::open_interest`].
+    ///
+    /// Typed wrapper for [`ActorCommand::CloseInterest`] with `relay_pin: None`
+    /// (the normal outbox-routed path). For relay-pinned closes use
+    /// [`Self::close_interest_pinned`].
+    ///
+    /// The `(filter_json, consumer_id, scope)` triple MUST match the open call
+    /// so the reconstructed `InterestShape` hash lands on the same registry
+    /// slot. D6: a close of a non-existent slot is harmless.
+    pub fn close_interest(&self, filter_json: String, consumer_id: String, scope: u32) {
+        self.send_cmd(ActorCommand::CloseInterest {
+            filter_json,
+            consumer_id,
+            scope,
+            relay_pin: None,
+        });
     }
 
     /// Register a **transient** feed surface — a feed whose snapshot key must
@@ -213,7 +251,7 @@ impl NmpApp {
             self.unregister_event_observer(observer_id);
         }
         if removed_any {
-            self.send_cmd(ActorCommand::MarkChangedSinceEmit);
+            self.mark_changed_since_emit();
         }
         removed_any
     }
@@ -230,7 +268,7 @@ impl NmpApp {
             .map(|mut registry| registry.remove(key))
             .unwrap_or(false);
         if removed {
-            self.send_cmd(ActorCommand::MarkChangedSinceEmit);
+            self.mark_changed_since_emit();
         }
     }
 
