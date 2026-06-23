@@ -48,24 +48,48 @@ extension KernelHandle {
         }
     }
 
-    /// F-TTL — `force` controls the lazy re-verification gate; it only has an
-    /// effect for `naddr` (addressable / replaceable) URIs and is a silent
-    /// no-op for immutable `nevent`/`note` URIs. Pass `true` only when the
-    /// user explicitly navigated to / opened this article/event or pulled to
-    /// refresh; default `false` is the background path.
-    func claimEvent(uri: String, consumerID: String, force: Bool = false) {
-        uri.withCString { uriPtr in
-            consumerID.withCString { cidPtr in
-                nmp_app_claim_event(raw, uriPtr, cidPtr, force ? 1 : 0)
-            }
-        }
+    // #1726: claimEvent / releaseEvent DELETED.
+    // Use resolveRef(namespace: .event, key: decodedEventId, ...) instead.
+    // To decode a `nostr:` URI to an event key, call nmp_nip21_decode_uri and
+    // extract the event_id field from the JSON result, then pass it as `key`.
+
+    /// #1726 — Decode a `nostr:` URI and resolve the embedded event ref via the
+    /// unified ref-resolution seam. Supersedes the deleted `claimEvent(uri:…)`.
+    ///
+    /// The URI is decoded via `nmp_nip21_decode_uri`; on success the extracted
+    /// event key is forwarded to `resolveRef(namespace: .event, …)`. On decode
+    /// failure (or if the URI does not resolve to an event) this is a silent
+    /// no-op (D6).
+    func claimEventUri(uri: String, consumerID: String, force: Bool = false) {
+        // Decode the nostr: URI to extract the event key.
+        guard let jsonStr = uri.withCString({ ptr -> String? in
+            guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
+            defer { nmp_free_string(cResult) }
+            return String(cString: cResult)
+        }) else { return }
+        guard let jsonData = jsonStr.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let ok = obj["ok"] as? Bool, ok,
+              let eventId = obj["event_id"] as? String
+        else { return }
+        // Use CacheOk (0) for background, Live (1) for explicit navigation.
+        let liveness: RefLiveness = force ? .live : .cacheOk
+        resolveRef(namespace: .event, key: eventId, consumerID: consumerID,
+                   shape: .eventEmbed, liveness: liveness)
     }
 
-    func releaseEvent(uri: String, consumerID: String) {
-        uri.withCString { uriPtr in
-            consumerID.withCString { cidPtr in
-                nmp_app_release_event(raw, uriPtr, cidPtr)
-            }
-        }
+    /// #1726 — Release a previously-claimed event ref (mirror of `claimEventUri`).
+    func releaseEventUri(uri: String, consumerID: String) {
+        guard let jsonStr = uri.withCString({ ptr -> String? in
+            guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
+            defer { nmp_free_string(cResult) }
+            return String(cString: cResult)
+        }) else { return }
+        guard let jsonData = jsonStr.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+              let ok = obj["ok"] as? Bool, ok,
+              let eventId = obj["event_id"] as? String
+        else { return }
+        releaseRef(namespace: .event, key: eventId, consumerID: consumerID)
     }
 }

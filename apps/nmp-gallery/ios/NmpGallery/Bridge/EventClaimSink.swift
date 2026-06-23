@@ -17,6 +17,8 @@ final class KernelEventClaimSink: EventClaimSinkProtocol, @unchecked Sendable {
         self.kernel = kernel
     }
 
+    // #1726: routed through the updated claimEvent/releaseEvent which now
+    // decode the nostr: URI and forward to nmp_app_resolve_ref / nmp_app_release_ref.
     func claim(uri: String, consumerId: String) {
         kernel.claimEvent(uri: uri, consumerID: consumerId)
     }

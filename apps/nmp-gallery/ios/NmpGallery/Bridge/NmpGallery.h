@@ -58,19 +58,10 @@ void nmp_app_release_ref(void *app, int namespace, const char *key,
 
 // ── Event claim / release (kind-dispatch embed) ──────────────────────────
 
-// Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted per
-// `consumer_id`; the kernel fetches the event over the OneshotApi
-// (single-writer interest registration — D4) when not yet in the store, and
-// surfaces it in `snapshot.projections.claimed_events` keyed by `primary_id`
-// (event-id hex for `nevent`/`note`; `"kind:pubkey:d"` for `naddr`).
-// FFI-clean (D6): null/invalid arguments are silent no-ops, never panics.
-// D8: forwards to the actor; no polling, no sync wait.
-// F-TTL — `force` (treated as `force != 0`) controls the lazy re-verification
-// gate; it only affects `naddr` (addressable / replaceable) URIs and is a
-// silent no-op for immutable `nevent`/`note` URIs. Pass `1` on explicit user
-// navigation / pull-to-refresh; pass `0` for background claims.
-void nmp_app_claim_event(void *app, const char *uri, const char *consumer_id, int force);
-void nmp_app_release_event(void *app, const char *uri, const char *consumer_id);
+// #1726: nmp_app_claim_event / nmp_app_release_event DELETED.
+// Callers decode the nostr: URI via nmp_nip21_decode_uri and then route to
+// nmp_app_resolve_ref(namespace=1/*event*/, key=event-id-hex, shape=2/*embed*/,
+// liveness=0/*CacheOk*/) and nmp_app_release_ref(namespace=1, key, consumer_id).
 
 // ── Relay management ─────────────────────────────────────────────────────
 
@@ -142,6 +133,16 @@ void nmp_app_gallery_ref_profile_store_free(struct GalleryRefProfileStore *store
 // NULL for a NULL store, malformed frames, or decode failures.
 char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefProfileStore *store,
                                                       const uint8_t *bytes, uintptr_t len);
+
+// ── Stateless NIP-21 / NIP-19 decode ────────────────────────────────────
+//
+// Decode a `nostr:` URI or bare bech32 entity. Returns bounded JSON:
+//   {"ok":true,"target":"event","event_id":"<hex>", ...}
+// or {"ok":false,"error":"..."}.
+// The returned string is never NULL and MUST be freed via nmp_free_string.
+// Used by the gallery event-claim path to extract the event key from a URI
+// before calling nmp_app_resolve_ref (see the deleted nmp_app_claim_event note).
+char *nmp_nip21_decode_uri(const char *input);
 
 // ── Heap-string release ──────────────────────────────────────────────────
 

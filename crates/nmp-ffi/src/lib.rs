@@ -36,7 +36,12 @@ mod app_config_substrate;
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpApp` extracted here (LOC ceiling).
 mod capability;
 mod declared_projections; // ADR-0053/E4: `impl NmpApp` consumed-projection-intent methods (LOC ceiling).
-mod following_count; // `nmp_app_active_following_count` — live kind:3 follow-count read for profile headers.
+// `nmp_app_active_following_count` deleted (#1726): follow count is in the
+// `nmp.follow_list` typed projection (`follows.len()`). Callers that
+// previously read this sync sentinel should read `follows.len()` from the
+// `nmp.follow_list` projection instead.
+// #1726 — unified diagnostic pull accessor (domain 0=routing, 1=composition, 2=merged).
+mod debug_info;
 
 // Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
 // by any NMP FFI function must be freed via `nmp_free_string`.
@@ -92,14 +97,9 @@ mod incremental_apply;
 // transport + first-connect flow + actor re-entry).
 #[cfg(feature = "external-signer")]
 mod external_signer;
-// V-51 phase 2 — routing-trace FFI snapshot accessor
-// (`nmp_app_recent_routing_decisions`). Pull-only diagnostic surface; not
-// folded into the snapshot tick.
-mod routing_trace;
-// ADR-0049 Part 2 — composition-report pull accessor
-// (`nmp_app_composition_report`). Pull-only diagnostic surface; not folded into
-// the snapshot tick.
-mod composition_report;
+// #1726: `mod routing_trace` and `mod composition_report` deleted.
+// Callers use `nmp_app_debug_info(app, domain)` instead (domain 0 = routing,
+// 1 = composition, 2 = merged). No compat shims kept.
 // ADR-0063 Lane D — unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI
 // symbols. Generalizes the former per-kind profile claim + claim_event behind one
 // origin-blind seam. Lane H deleted the per-kind profile claim/release symbols;
@@ -217,17 +217,16 @@ pub use nip21_ffi::nmp_nip21_decode_uri;
 // them).
 #[cfg(feature = "native")]
 pub use publish::{nmp_app_cancel_action, nmp_app_retry_publish};
-// V-51 phase 2 — routing-trace JSON accessor. Pull-only; the returned
-// pointer is heap-owned and must be freed via `nmp_free_string`.
-pub use composition_report::nmp_app_composition_report;
+// #1726 — unified diagnostic pull accessor (routing/composition/merged).
+// Replaces the deleted `nmp_app_recent_routing_decisions` and
+// `nmp_app_composition_report` symbols. No compat shims kept.
+#[cfg(feature = "native")]
+pub use debug_info::nmp_app_debug_info;
 #[cfg(feature = "external-signer")]
 pub use external_signer::{
     nmp_app_deliver_external_signer_response, nmp_app_signin_nip55, nmp_external_signer_init,
 };
 pub use prestart_config::NmpConfigStatus;
-#[cfg(feature = "native")]
-#[allow(unused_imports)]
-pub use routing_trace::nmp_app_recent_routing_decisions;
 #[cfg(feature = "signer-broker")]
 pub use signer_broker::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,
@@ -240,7 +239,7 @@ pub use snapshot::{
 };
 #[cfg(feature = "native")]
 pub use storage::nmp_app_set_storage_path;
-pub use following_count::nmp_app_active_following_count;
+// `nmp_app_active_following_count` deleted (#1726). See comment near `debug_info` mod.
 #[cfg(feature = "native")]
 pub use timeline::{
     // V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_close_author,
@@ -251,17 +250,18 @@ pub use timeline::{
     // #1740 step 8: `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
     // C-ABI shims DELETED. `declare_active_follows_feed` / `clear_active_follows_feed`
     // stay as INTERNAL composition glue (home-feed wiring), not app-facing C ABI.
+    // #1726: `nmp_app_claim_event` / `nmp_app_release_event` C-ABI symbols DELETED.
+    // Callers migrate to `nmp_app_resolve_ref(namespace=1/event)` / `nmp_app_release_ref`.
     clear_active_follows_feed,
     declare_active_follows_feed,
-    nmp_app_claim_event,
     nmp_app_close_interest,
     nmp_app_open_interest,
     nmp_app_open_uri,
-    nmp_app_release_event,
 };
 // ADR-0063 Lane D — unified ref-resolution C-ABI entry points. Lane H deleted the
 // per-kind profile claim/release symbols; these are the sole profile-resolution
-// surface (the event claim/release URI front-door is retained alongside them).
+// surface. #1726 deleted nmp_app_claim_event / nmp_app_release_event; event refs
+// now resolve exclusively through resolve_ref(namespace=1).
 #[cfg(feature = "native")]
 pub use resolve_ref::{nmp_app_release_ref, nmp_app_resolve_ref};
 
@@ -627,7 +627,7 @@ pub struct NmpApp {
     /// ADR-0058 step 3b — the kernel's pull-cursor registry handle, published
     /// back by the actor right after kernel construction (and re-published on
     /// `Reset`), same publish-back contract as `event_store_handle`. The
-    /// synchronous [`nmp_app_pull_page`](crate::pull::nmp_app_pull_page) read
+    /// synchronous [`nmp_mirror_pull_page`](crate::pull::nmp_mirror_pull_page) read
     /// path snapshots a `PullCursorRegistration` through this slot before
     /// touching the store. `None` before `nmp_app_start`.
     pull_cursor_registry: PullCursorRegistryHandleSlot,
@@ -2302,7 +2302,7 @@ impl NmpApp {
     ///
     /// Returns the SAME `Arc<Mutex<Option<PullCursorRegistrySlot>>>` the actor
     /// publishes the kernel's registry into after construction (and re-publishes
-    /// on `Reset`). The synchronous [`crate::pull::nmp_app_pull_page`] path reads
+    /// on `Reset`). The synchronous [`crate::pull::nmp_mirror_pull_page`] path reads
     /// through it. `None` inside the slot until the actor builds the kernel.
     #[must_use]
     pub fn pull_cursor_registry_handle(&self) -> PullCursorRegistryHandleSlot {
@@ -2379,7 +2379,7 @@ impl NmpApp {
     /// kernel's published [`EventStore`](nmp_store::EventStore) directly
     /// via [`nmp_core::pull_page_over`]. This is **not** a new C-ABI symbol and
     /// **not** a projection accessor: it reads the raw ingest log exactly as the
-    /// existing [`crate::pull::nmp_app_pull_page`] door does (ADR-0039 §6.1
+    /// existing [`crate::pull::nmp_mirror_pull_page`] door does (ADR-0039 §6.1
     /// preserved — no host projection-pull accessor is added). The composition
     /// root hands this to `PullFeedController`; the host never sees it.
     ///

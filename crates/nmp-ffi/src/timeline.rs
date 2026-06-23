@@ -14,7 +14,7 @@
 
 use super::{app_ref, c_string_argument, NmpApp};
 use nmp_core::ActorCommand;
-use std::ffi::{c_char, c_int};
+use std::ffi::c_char;
 
 /// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
 /// interest. The generic replacement for `nmp_app_open_author` /
@@ -118,69 +118,12 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
     }));
 }
 
-/// Claim an embedded event by `nostr:` URI (T180 / ADR-0034). Refcounted
-/// per `consumer_id`; the kernel fetches the event over the OneshotApi
-/// (single-writer interest registration — D4) when not yet in the store,
-/// and surfaces it in snapshot `projections.claimed_events` keyed by
-/// `primary_id` (event-id hex for `nevent`/`note`; `"kind:pubkey:d"` for
-/// `naddr`). FFI-clean (D6): a null/invalid argument is a silent no-op,
-/// never a panic. D8: forwards to the actor; no polling, no sync wait.
-///
-/// F-TTL — `force` (`c_int`, treated as `force != 0`) controls the lazy
-/// re-verification gate. It only has an effect for `naddr` (addressable /
-/// replaceable) URIs; for immutable `nevent`/`note` URIs it is a silent
-/// no-op (those events carry no TTL record). Pass `1` when the user
-/// explicitly navigated to / opened this article/event, or pulled to
-/// refresh; pass `0` for background claims. Replaces the removed
-/// `nmp_app_refresh_replaceable` symbol — no new C-ABI symbol is added.
-#[no_mangle]
-pub extern "C" fn nmp_app_claim_event(
-    app: *mut NmpApp,
-    uri: *const c_char,
-    consumer_id: *const c_char,
-    force: c_int,
-) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(uri) = c_string_argument(uri) else {
-        return;
-    };
-    let Some(consumer_id) = c_string_argument(consumer_id) else {
-        return;
-    };
-
-    app.send_cmd(ActorCommand::ClaimEvent {
-        uri,
-        consumer_id,
-        force: force != 0,
-    });
-}
-
-/// Release a previously-claimed embedded event (T180 / ADR-0034). Decrements
-/// the per-consumer refcount in the
-/// kernel's `event_claims` table; the kernel drops the row when the set
-/// is empty. The OneshotApi interest itself is released EOSE-driven via
-/// the existing `complete_unknown_oneshot` path. FFI-clean (D6): a null
-/// or invalid argument is a silent no-op. D8: forwards to the actor.
-#[no_mangle]
-pub extern "C" fn nmp_app_release_event(
-    app: *mut NmpApp,
-    uri: *const c_char,
-    consumer_id: *const c_char,
-) {
-    let Some(app) = app_ref(app) else {
-        return;
-    };
-    let Some(uri) = c_string_argument(uri) else {
-        return;
-    };
-    let Some(consumer_id) = c_string_argument(consumer_id) else {
-        return;
-    };
-
-    app.send_cmd(ActorCommand::ReleaseEvent { uri, consumer_id });
-}
+// #1726: `nmp_app_claim_event` and `nmp_app_release_event` C-ABI symbols
+// DELETED (no compat shims). Callers migrate to:
+//   nmp_app_resolve_ref(app, 1/*event*/, key, consumer_id, 2/*embed*/, 0/*cache_ok*/)
+//   nmp_app_release_ref(app, 1/*event*/, key, consumer_id)
+// The `key` is the event-id hex (for nevent/note) or `"kind:pubkey:d"` (for naddr).
+// To decode a `nostr:` URI to an event key, call `nmp_nip21_decode_uri` first.
 
 // V-68 / V-112 (ADR-0042): nmp_app_close_author / nmp_app_close_thread deleted.
 // Apps use their per-app seam (nmp_app_chirp_close_author_feed etc.) which

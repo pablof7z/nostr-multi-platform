@@ -1,6 +1,6 @@
 //! ADR-0058 §3 (step 3b) — synchronous, read-only FFI pull-page surface.
 //!
-//! [`nmp_app_pull_page`] is the C-ABI door a host (a nostrdb mirror, or a feed's
+//! [`nmp_mirror_pull_page`] is the C-ABI door a host (a nostrdb mirror, or a feed's
 //! "give me more" cursor) uses to drain the kernel's raw ingest log. It is a
 //! **read-only** call — it never dispatches an actor command, never mutates the
 //! registry, never invokes a callback — so it does not cross the fire-and-forget
@@ -24,8 +24,8 @@
 //! ## Result wire format (FFI-local, little-endian)
 //!
 //! The page/gap/error result is binary (it carries raw event JSON, which may
-//! contain any byte), returned as owned [`NmpOwnedBytes`] the host frees with
-//! [`nmp_free_bytes`]:
+//! contain any byte), returned as owned [`NmpMirrorBytes`] the host frees with
+//! [`nmp_mirror_free_bytes`]:
 //!
 //! ```text
 //! result      := u8 variant
@@ -91,13 +91,16 @@ mod op {
     pub const DELETED: u8 = 2;
 }
 
-/// Owned heap buffer handed across the C-ABI for a pull-page result.
+/// Owned heap buffer handed across the C-ABI for a mirror pull-page result.
 ///
 /// The page/gap result is binary FlatBuffers-adjacent data that may contain NUL
 /// bytes, so it cannot be a C string. The host MUST return this to Rust via
-/// [`nmp_free_bytes`] exactly once; the buffer belongs to the Rust allocator.
+/// [`nmp_mirror_free_bytes`] exactly once; the buffer belongs to the Rust allocator.
+///
+/// Renamed from `NmpMirrorBytes` → `NmpMirrorBytes` (#1726) to gate raw history
+/// behind the `nmp_mirror_*` family and make the ownership discipline explicit.
 #[repr(C)]
-pub struct NmpOwnedBytes {
+pub struct NmpMirrorBytes {
     /// Pointer to `len` bytes (null only for the empty buffer).
     pub ptr: *mut u8,
     /// Number of valid bytes.
@@ -106,7 +109,7 @@ pub struct NmpOwnedBytes {
     pub cap: usize,
 }
 
-impl NmpOwnedBytes {
+impl NmpMirrorBytes {
     fn from_vec(mut v: Vec<u8>) -> Self {
         let ptr = v.as_mut_ptr();
         let len = v.len();
@@ -125,7 +128,7 @@ impl NmpOwnedBytes {
 
 /// Synchronously drain one page of the kernel ingest log for a registered cursor.
 ///
-/// Returns serialized [`NmpOwnedBytes`] (Page / Gap / Error — see the module wire
+/// Returns serialized [`NmpMirrorBytes`] (Page / Gap / Error — see the module wire
 /// format). `max_entries` is clamped to `[1, MAX_PULL_PAGE_ENTRIES]` and further
 /// bounded by the cursor's registered `limits.max_entries`; cumulative raw bytes
 /// are bounded by `min(max_total_raw_bytes, MAX_PULL_PAGE_RAW_BYTES)` (with at
@@ -134,18 +137,18 @@ impl NmpOwnedBytes {
 /// Null app / unknown cursor / unavailable store all return a serialized `Error`
 /// — never a panic or null deref (D6).
 #[no_mangle]
-pub extern "C" fn nmp_app_pull_page(
+pub extern "C" fn nmp_mirror_pull_page(
     app: *const NmpApp,
     cursor_id: u64,
     max_entries: u32,
     max_total_raw_bytes: u32,
-) -> NmpOwnedBytes {
+) -> NmpMirrorBytes {
     // A panic must NEVER unwind across the C-ABI (UB). Catch it and return a
     // serialized `Error::PANIC` instead (matches the FFI pattern in lib.rs).
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         pull_page_impl(app, cursor_id, max_entries, max_total_raw_bytes)
     }))
-    .unwrap_or_else(|_| NmpOwnedBytes::error(error::PANIC))
+    .unwrap_or_else(|_| NmpMirrorBytes::error(error::PANIC))
 }
 
 fn pull_page_impl(
@@ -153,9 +156,9 @@ fn pull_page_impl(
     cursor_id: u64,
     max_entries: u32,
     max_total_raw_bytes: u32,
-) -> NmpOwnedBytes {
+) -> NmpMirrorBytes {
     if app.is_null() {
-        return NmpOwnedBytes::error(error::NULL_APP);
+        return NmpMirrorBytes::error(error::NULL_APP);
     }
     // SAFETY: `app` is non-null and, by C-ABI contract, a valid `NmpApp`
     // produced by `nmp_app_new`. This is a read-only borrow.
@@ -166,19 +169,19 @@ fn pull_page_impl(
         let handle_slot = app.pull_cursor_registry_handle();
         let registry = {
             let Ok(guard) = handle_slot.lock() else {
-                return NmpOwnedBytes::error(error::REGISTRY_UNAVAILABLE);
+                return NmpMirrorBytes::error(error::REGISTRY_UNAVAILABLE);
             };
             match guard.as_ref() {
                 Some(reg) => reg.clone(),
-                None => return NmpOwnedBytes::error(error::REGISTRY_UNAVAILABLE),
+                None => return NmpMirrorBytes::error(error::REGISTRY_UNAVAILABLE),
             }
         }; // outer Mutex released here
         let Ok(reg) = registry.read() else {
-            return NmpOwnedBytes::error(error::REGISTRY_UNAVAILABLE);
+            return NmpMirrorBytes::error(error::REGISTRY_UNAVAILABLE);
         };
         match reg.get(&PullCursorId(cursor_id)) {
             Some(r) => r,
-            None => return NmpOwnedBytes::error(error::UNKNOWN_CURSOR),
+            None => return NmpMirrorBytes::error(error::UNKNOWN_CURSOR),
         }
     }; // registry read-lock released here
 
@@ -186,11 +189,11 @@ fn pull_page_impl(
     let store: std::sync::Arc<dyn EventStore> = {
         let slot = app.event_store_handle();
         let Ok(guard) = slot.lock() else {
-            return NmpOwnedBytes::error(error::STORE_UNAVAILABLE);
+            return NmpMirrorBytes::error(error::STORE_UNAVAILABLE);
         };
         match guard.as_ref() {
             Some(s) => std::sync::Arc::clone(s),
-            None => return NmpOwnedBytes::error(error::STORE_UNAVAILABLE),
+            None => return NmpMirrorBytes::error(error::STORE_UNAVAILABLE),
         }
     }; // event-store slot lock released here
 
@@ -218,28 +221,28 @@ fn pull_page_impl(
     let raw_byte_cap = max_total_raw_bytes.min(MAX_PULL_PAGE_RAW_BYTES) as usize;
     match result {
         Ok(ScanLogResult::Page(page)) => match encode_page(page, raw_byte_cap) {
-            Ok(bytes) => NmpOwnedBytes::from_vec(bytes),
-            Err(code) => NmpOwnedBytes::error(code),
+            Ok(bytes) => NmpMirrorBytes::from_vec(bytes),
+            Err(code) => NmpMirrorBytes::error(code),
         },
         Ok(ScanLogResult::Gap(gap)) => {
-            NmpOwnedBytes::from_vec(encode_gap(gap.requested_after_seq, gap.first_available_seq))
+            NmpMirrorBytes::from_vec(encode_gap(gap.requested_after_seq, gap.first_available_seq))
         }
-        Err(PullError::UnsupportedInterestShape) => NmpOwnedBytes::error(error::UNSUPPORTED_SCOPE),
-        Err(PullError::InvalidLimits) => NmpOwnedBytes::error(error::INVALID_LIMITS),
-        Err(PullError::Store(_)) => NmpOwnedBytes::error(error::STORE_ERROR),
+        Err(PullError::UnsupportedInterestShape) => NmpMirrorBytes::error(error::UNSUPPORTED_SCOPE),
+        Err(PullError::InvalidLimits) => NmpMirrorBytes::error(error::INVALID_LIMITS),
+        Err(PullError::Store(_)) => NmpMirrorBytes::error(error::STORE_ERROR),
     }
 }
 
-/// Release a buffer returned by [`nmp_app_pull_page`].
+/// Release a buffer returned by [`nmp_mirror_pull_page`].
 ///
-/// MUST be called exactly once for every returned [`NmpOwnedBytes`]. A null
+/// MUST be called exactly once for every returned [`NmpMirrorBytes`]. A null
 /// pointer (the empty buffer) is a no-op (D6).
 #[no_mangle]
-pub extern "C" fn nmp_free_bytes(bytes: NmpOwnedBytes) {
+pub extern "C" fn nmp_mirror_free_bytes(bytes: NmpMirrorBytes) {
     if bytes.ptr.is_null() {
         return;
     }
-    // SAFETY: `bytes` was produced by `NmpOwnedBytes::from_vec` (ptr/len/cap of
+    // SAFETY: `bytes` was produced by `NmpMirrorBytes::from_vec` (ptr/len/cap of
     // a leaked `Vec<u8>`) and is freed exactly once per the ownership contract.
     unsafe {
         drop(Vec::from_raw_parts(bytes.ptr, bytes.len, bytes.cap));
