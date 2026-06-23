@@ -1648,16 +1648,24 @@ impl NmpApp {
     /// 5.2: takes the module **value** so a stateful module (e.g. one owning
     /// an `Arc<WalletRuntimeHandle>`) carries its deps, captured at
     /// composition time, instead of reaching a process-global.
-    pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
+    pub fn register_action<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), nmp_core::__ffi_internal::RegistrationError> {
         // Structured error on duplicate registration (#1724): log in BOTH dev
-        // and release so a composition collision is never silently swallowed.
-        if let Err(e) = self.action_registry.register(module) {
-            tracing::error!(
-                namespace = e.namespace,
-                prior_provider = e.prior_provider,
-                new_provider = e.new_provider,
-                "action namespace collision (ADR-0049): {e}"
-            );
+        // and release so a composition collision is never silently swallowed,
+        // then return the error so trait-boundary callers can observe it.
+        match self.action_registry.register(module) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                tracing::error!(
+                    namespace = e.namespace,
+                    prior_provider = e.prior_provider,
+                    new_provider = e.new_provider,
+                    "action namespace collision (ADR-0049): {e}"
+                );
+                Err(e)
+            }
         }
     }
 
@@ -2530,8 +2538,11 @@ impl NmpApp {
 }
 
 impl nmp_core::substrate::ActionRegistrar for NmpApp {
-    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(&mut self, module: M) {
-        NmpApp::register_action(self, module);
+    fn register_action<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), nmp_core::substrate::RegistrationError> {
+        NmpApp::register_action(self, module)
     }
 
     /// ADR-0049 Part 1 — override the trait default so the canonical NMP

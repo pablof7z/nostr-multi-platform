@@ -32,9 +32,9 @@ const NOW_MS: u64 = 1_700_000_000_000;
 /// `start_bytes` paths never touch.
 fn registry_with_wallet_actions() -> ActionRegistry {
     let mut registry = ActionRegistry::new();
-    registry.register_action(WalletConnectModule::new(new_wallet_runtime_handle()));
-    registry.register_action(WalletDisconnectModule::new(new_wallet_runtime_handle()));
-    registry.register_action(WalletPayInvoiceModule::new(new_wallet_runtime_handle()));
+    let _ = registry.register_action(WalletConnectModule::new(new_wallet_runtime_handle()));
+    let _ = registry.register_action(WalletDisconnectModule::new(new_wallet_runtime_handle()));
+    let _ = registry.register_action(WalletPayInvoiceModule::new(new_wallet_runtime_handle()));
     registry
 }
 

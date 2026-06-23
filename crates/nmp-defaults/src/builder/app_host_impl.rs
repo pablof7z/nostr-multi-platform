@@ -76,6 +76,11 @@ impl<S> SnapshotProjectionRegistrar for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.frame_identity_handles()
     }
+
+    fn remove_snapshot_projection(&self, key: &str) {
+        let app: &NmpApp = unsafe { &*self.app };
+        NmpApp::remove_snapshot_projection(app, key);
+    }
 }
 
 impl<S> CoverageHookRegistrar for NmpAppBuilder<S> {

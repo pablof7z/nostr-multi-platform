@@ -130,7 +130,7 @@ fn dispatch_host_op_routes_action_json_to_installed_handler() {
     // production order is: host init wires both the handler AND the
     // module before any `nmp_app_dispatch_action` arrives.
     app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
-    app_mut.register_action(TestHostOpModule);
+    let _ = app_mut.register_action(TestHostOpModule);
     nmp_app_start(app, 256, 4);
 
     let out = dispatch_action_json(
@@ -208,7 +208,7 @@ fn dispatch_host_op_without_handler_still_returns_correlation_id() {
     // arm itself records the Failed terminal; the FFI return is still
     // a normal `correlation_id` envelope because `start()` and the
     // `execute()` enqueue both succeed.
-    app_mut.register_action(TestHostOpModule);
+    let _ = app_mut.register_action(TestHostOpModule);
     nmp_app_start(app, 256, 4);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
@@ -246,7 +246,7 @@ fn dispatch_host_op_routes_handler_failure_through_terminal_path() {
     // SAFETY: see the happy-path test.
     let app_mut = unsafe { &mut *app };
     app_mut.set_host_op_handler(handler as Arc<dyn nmp_core::substrate::HostOpHandler>);
-    app_mut.register_action(TestHostOpModule);
+    let _ = app_mut.register_action(TestHostOpModule);
     nmp_app_start(app, 256, 4);
 
     let out = dispatch_action_json(Some(&*app_mut), "test.host_op", r#"{"op":"ping"}"#);
@@ -311,7 +311,7 @@ fn host_op_panicking_handler_is_isolated_and_actor_survives() {
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free`.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action(TestHostOpModule);
+    let _ = app_mut.register_action(TestHostOpModule);
 
     // 1) Install the PANICKING handler and dispatch — the handler runs and
     //    explodes on the actor thread.

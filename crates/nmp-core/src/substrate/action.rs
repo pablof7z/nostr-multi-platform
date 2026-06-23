@@ -48,6 +48,8 @@
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+pub use crate::kernel::RegistrationError;
+
 pub type ActionId = String;
 
 #[derive(Clone, Debug, Default)]
@@ -232,11 +234,20 @@ pub trait ActionRegistrar {
     /// namespace (ADR-0049 Part 1). This is the path app-specific verbs
     /// (Chirp's NIP-29, wallet, …) use.
     ///
+    /// Returns `Ok(())` on success and `Err(`[`RegistrationError`]`)` when the
+    /// namespace is already claimed by another **app** registration
+    /// (an app-over-app collision, ADR-0049). The new module still replaces the
+    /// old (last-writer-wins for release resilience, D6); the error is returned
+    /// so the caller can surface it in both dev AND release builds (#1724).
+    ///
     /// Takes the module **value** (ADR-0052 rung 5.2): a stateful module
     /// (e.g. a wallet module owning an `Arc<WalletRuntimeHandle>`) carries
     /// its dependencies, captured by the host at composition time. Stateless
     /// modules pass a unit-shaped value (`register_action(PublishModule)`).
-    fn register_action<M: ActionModule + 'static>(&mut self, module: M);
+    fn register_action<M: ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), RegistrationError>;
 
     /// Register `M` as a **yielding default** under `M::NAMESPACE` — install it
     /// ONLY if the namespace is unclaimed; otherwise yield to the existing
@@ -249,13 +260,15 @@ pub trait ActionRegistrar {
     /// register through THIS path so an app may pre-empt any of them.
     ///
     /// Default impl: delegate to [`Self::register_action`] and report `true`.
-    /// This keeps non-recording / test [`ActionRegistrar`] impls valid without
-    /// re-implementing yielding semantics; the real entry-or-insert behaviour
-    /// lives in the kernel's `ActionRegistry` override.
+    /// Collisions are silently swallowed (`let _ =`) because a default yielding
+    /// to a prior default is not a composition error. This keeps non-recording /
+    /// test [`ActionRegistrar`] impls valid without re-implementing yielding
+    /// semantics; the real entry-or-insert behaviour lives in the kernel's
+    /// `ActionRegistry` override.
     ///
     /// Takes the module **value** (ADR-0052 rung 5.2), as [`Self::register_action`].
     fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
-        self.register_action(module);
+        let _ = self.register_action(module);
         true
     }
 }

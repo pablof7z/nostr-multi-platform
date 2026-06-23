@@ -297,7 +297,7 @@ impl TopicArticlesAction {
 /// Call this from your app's composition root (alongside
 /// [`nmp_defaults::register_defaults`]) before `nmp_app_start`.
 pub fn register_topic_articles_actions(app: &mut impl ActionRegistrar) {
-    app.register_action(TopicArticlesModule);
+    let _ = app.register_action(TopicArticlesModule);
 }
 
 #[cfg(test)]

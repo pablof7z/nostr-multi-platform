@@ -78,9 +78,13 @@ impl RoutingTraceObserver for NoopRoutingTraceObserver {
 }
 
 impl ActionRegistrar for GateSpy {
-    fn register_action<M: ActionModule + 'static>(&mut self, _module: M) {
+    fn register_action<M: ActionModule + 'static>(
+        &mut self,
+        _module: M,
+    ) -> Result<(), nmp_core::substrate::RegistrationError> {
         // Substrate wires `nmp.nip65.publish_relay_list` here — capture-free
         // no-op; this test asserts on the coverage gate, not actions.
+        Ok(())
     }
 }
 

@@ -136,7 +136,7 @@ pub fn visible_note_relations_identity(event_id: &str, consumer_id: &str) -> Sub
 }
 
 pub fn register_visible_note_relation_actions(app: &mut impl ActionRegistrar) {
-    app.register_action(VisibleNoteRelationsModule);
+    let _ = app.register_action(VisibleNoteRelationsModule);
 }
 
 fn is_hex64(value: &str) -> bool {

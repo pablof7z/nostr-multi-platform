@@ -23,8 +23,8 @@ fn registry_with_nip17() -> nmp_core::__ffi_internal::ActionRegistry {
     use nmp_core::__ffi_internal::ActionRegistry;
     use nmp_core::substrate::ActionRegistrar;
     let mut registry = ActionRegistry::new();
-    registry.register_action(nmp_nip17::action::SendDmAction);
-    registry.register_action(nmp_nip17::dm_relay_list::PublishDmRelayListAction);
+    let _ = registry.register_action(nmp_nip17::action::SendDmAction);
+    let _ = registry.register_action(nmp_nip17::dm_relay_list::PublishDmRelayListAction);
     registry
 }
 

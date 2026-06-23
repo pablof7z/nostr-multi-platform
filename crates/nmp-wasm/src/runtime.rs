@@ -178,11 +178,13 @@ impl WasmRuntime {
     /// depend on the NIP crates (D0 / layering), so registration is the
     /// composition root's job — exactly as the native FFI app delegates to each
     /// crate's `register_actions`.
-    pub fn register_action<M: ActionModule + 'static>(&mut self, module: M) {
-        // Structured collision detection (#1724): log in both dev and release.
-        // The wasm path does not have tracing — silently drop the error value;
-        // the collision will appear as a last-writer-wins override.
-        let _ = self.action_registry.register(module);
+    pub fn register_action<M: ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), nmp_core::substrate::RegistrationError> {
+        // Structured collision detection (#1724): the wasm path has no tracing;
+        // propagate the Result so trait-boundary callers can observe it.
+        self.action_registry.register(module)
     }
 
     /// Register a typed [`ActionModule`] **only if** its namespace is not
@@ -499,8 +501,11 @@ impl fmt::Display for WasmRuntimeError {
 /// straight into the runtime's typed action registry — the wasm twin of the
 /// `impl ActionRegistrar for NmpApp` the native FFI app provides.
 impl ActionRegistrar for WasmRuntime {
-    fn register_action<M: ActionModule + 'static>(&mut self, module: M) {
-        WasmRuntime::register_action(self, module);
+    fn register_action<M: ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), nmp_core::substrate::RegistrationError> {
+        WasmRuntime::register_action(self, module)
     }
 
     fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {

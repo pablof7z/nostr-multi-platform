@@ -170,15 +170,6 @@ impl ProtocolDescriptor for Nip25Descriptor {
     }
 }
 
-/// Free-function wrapper around [`Nip25Descriptor`] for call sites that
-/// do not yet use the typed descriptor pattern.
-///
-/// New code should prefer constructing [`Nip25Descriptor`] and calling
-/// `ProtocolDescriptor::register_actions` directly.
-pub fn register_actions(app: &mut impl ActionRegistrar) {
-    Nip25Descriptor.register_actions(app);
-}
-
 fn validate_react(action: &ReactAction) -> Result<(), ActionRejection> {
     if !is_hex64(&action.target_event_id) {
         return Err(ActionRejection::Invalid(

@@ -455,12 +455,11 @@ impl ActionRegistry {
 }
 
 impl ActionRegistrar for ActionRegistry {
-    fn register_action<M: ActionModule + 'static>(&mut self, module: M) {
-        // Silently ignore the Result at the trait boundary: the trait contract
-        // is void return. Callers that want the structured error use
-        // `ActionRegistry::register` directly. The error is not lost in
-        // production — `NmpApp::register_action` logs it via `tracing::error!`.
-        let _ = self.register(module);
+    fn register_action<M: ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), RegistrationError> {
+        self.register(module)
     }
 
     fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {

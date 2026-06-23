@@ -82,7 +82,7 @@ mod view;
 pub use action::ProtocolDescriptor;
 pub use action::{
     ActionContext, ActionId, ActionModule, ActionPayload, ActionPayloadDecodeError,
-    ActionRegistrar, ActionRejection, ActionResult,
+    ActionRegistrar, ActionRejection, ActionResult, RegistrationError,
 };
 pub use app_host::{
     register_observer_projection, AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar,

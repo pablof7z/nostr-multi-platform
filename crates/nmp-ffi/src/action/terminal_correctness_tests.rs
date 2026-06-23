@@ -51,7 +51,7 @@ fn async_completing_executor_enqueue_then_panic_suppresses_failure_fanin() {
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null; valid until `nmp_app_free`.
     let app_mut = unsafe { &mut *app };
-    app_mut.register_action(EnqueueThenPanicModule);
+    let _ = app_mut.register_action(EnqueueThenPanicModule);
 
     // The monotone send counter only ever increments, so reading it after the
     // synchronous `dispatch_action_json` returns is race-free.

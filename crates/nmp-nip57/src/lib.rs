@@ -74,7 +74,7 @@ pub fn register_zap_with_payment_port(
     app: &mut impl nmp_core::substrate::ActionRegistrar,
     payment_port: std::sync::Arc<dyn nmp_core::substrate::PaymentPort>,
 ) {
-    app.register_action(ZapAction::with_payment_port(payment_port));
+    let _ = app.register_action(ZapAction::with_payment_port(payment_port));
 }
 
 // `nmp-nip57` exposes `ZapsView` as a plain public type whose `open` /

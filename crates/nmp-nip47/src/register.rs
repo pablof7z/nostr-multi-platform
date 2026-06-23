@@ -185,9 +185,9 @@ pub fn register_wallet(
     // 3. Action modules — exposed under `nmp.wallet.{connect,disconnect,
     //    pay_invoice}`. ADR-0052 rung 5.2: each module VALUE owns a clone of
     //    the per-app handle (no process-global install).
-    app.register_action(WalletConnectModule::new(Arc::clone(&handle)));
-    app.register_action(WalletDisconnectModule::new(Arc::clone(&handle)));
-    app.register_action(WalletPayInvoiceModule::new(Arc::clone(&handle)));
+    let _ = app.register_action(WalletConnectModule::new(Arc::clone(&handle)));
+    let _ = app.register_action(WalletDisconnectModule::new(Arc::clone(&handle)));
+    let _ = app.register_action(WalletPayInvoiceModule::new(Arc::clone(&handle)));
 
     // 4. Substrate-generic relay-text interceptor — the actor calls this for
     //    every inbound text frame.

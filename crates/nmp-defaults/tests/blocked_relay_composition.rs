@@ -34,7 +34,12 @@ struct CompositionSpy {
 }
 
 impl ActionRegistrar for CompositionSpy {
-    fn register_action<M: ActionModule + 'static>(&mut self, _module: M) {}
+    fn register_action<M: ActionModule + 'static>(
+        &mut self,
+        _module: M,
+    ) -> Result<(), nmp_core::substrate::RegistrationError> {
+        Ok(())
+    }
 }
 
 impl BlockedRelayLookupRegistrar for CompositionSpy {

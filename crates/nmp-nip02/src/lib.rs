@@ -161,11 +161,11 @@ pub fn register_follow_actions(app: &mut impl ActionRegistrar) {
 /// `nmp_nip02::register_actions` to wire the full public social bundle.
 ///
 /// New composition code should call [`register_follow_actions`] and
-/// `nmp_nip25::register_actions` explicitly so NIP-25 remains the visible
-/// owner of public reactions.
+/// `nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app)`
+/// explicitly so NIP-25 remains the visible owner of public reactions.
 pub fn register_actions(app: &mut impl ActionRegistrar) {
     register_follow_actions(app);
-    nmp_nip25::register_actions(app);
+    nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
 }
 
 /// Wire the NIP-02 follow-list read runtime into `app`.
