@@ -28,6 +28,10 @@ pub mod parse;
 // `parse_nip05` stays always-compiled for the pure classifier pass.
 #[cfg(feature = "native")]
 mod http;
+// SSRF host guard for the `.well-known/nostr.json` fetch (#1882). Native-only —
+// it does blocking DNS resolution and is only reached from the native worker.
+#[cfg(feature = "native")]
+mod host_guard;
 
 pub use parse::parse_nip05;
 
@@ -80,6 +84,31 @@ impl ProtocolCommand for ResolveNip05Command {
                 domain,
                 correlation_id,
             } = *self;
+            // Re-validate the shape through the canonical `parse_nip05` before
+            // doing anything else. The fields are public and may have been
+            // constructed directly (bypassing the classifier), so a caller could
+            // smuggle an illegal local-part / malformed domain straight into the
+            // URL builder. `parse_nip05` lowercases the domain and enforces the
+            // local-part charset; on rejection we fail closed (#1882). Pure — no
+            // IO, safe on the actor thread.
+            let validated = parse_nip05(&format!("{name}@{domain}"));
+            let (name, domain) = match validated {
+                Some(parts) => parts,
+                None => {
+                    let message =
+                        format!("NIP-05 lookup rejected `{name}@{domain}`: not a valid identifier");
+                    ctx.send(ActorCommand::ShowToast {
+                        message: message.clone(),
+                    });
+                    if let Some(cid) = correlation_id {
+                        ctx.send(ActorCommand::RecordActionFailure {
+                            correlation_id: cid,
+                            reason: message,
+                        });
+                    }
+                    return Ok(());
+                }
+            };
             // D8 — never block the actor thread. Hand the worker an owned
             // `CommandSender` clone (cheap atomic ref-count bump) and SPAWN the
             // blocking HTTP off the actor loop (the nmp-nip57 LNURL pattern).

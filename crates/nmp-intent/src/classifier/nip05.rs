@@ -1,52 +1,24 @@
-//! Rung 4 — NIP-05 SHAPE detection (issue #1804).
+//! Rung 4 — NIP-05 SHAPE detection (issue #1804, unified in #1882).
 //!
 //! Recognizes a `name@domain` / `_@domain` identifier by SHAPE only — no HTTP,
 //! no `.well-known/nostr.json` fetch (that is the dispatch layer's job). Pure.
+//!
+//! The shape decision DEFERS to the canonical [`nmp_nip05::parse_nip05`] so the
+//! classifier's accept set is *exactly* the resolver's accept set. Previously
+//! this rung hand-rolled its own (looser) shape check that accepted uppercase
+//! local parts which `parse_nip05` rejects — so a classified NIP-05 candidate
+//! could silently no-op on dispatch. Deferring to the single canonical parser
+//! makes the two agree by construction (#1882): every identifier this rung
+//! labels `Nip05` is guaranteed to be accepted by `parse_nip05`.
 //!
 //! Deliberately conservative: a false negative just falls through to free-text
 //! search; a false positive would mis-route a query to a reverse-lookup fetch.
 
 /// SHAPE-only NIP-05 detection. Returns the canonical identifier (the trimmed
-/// input) when the shape matches, else `None`. No IO.
+/// input) when [`nmp_nip05::parse_nip05`] accepts it, else `None`. No IO.
 pub(super) fn nip05_shape(input: &str) -> Option<String> {
-    let (local, domain) = input.split_once('@')?;
-    if local.is_empty() || domain.is_empty() {
-        return None;
-    }
-    if !local.chars().all(is_nip05_local_char) {
-        return None;
-    }
-    if !is_domain_shape(domain) {
-        return None;
-    }
-    Some(input.to_string())
-}
-
-/// NIP-05 local-part charset (`a-z A-Z 0-9 - _ .`). The `_` root identifier is a
-/// single-char local part and passes here.
-fn is_nip05_local_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')
-}
-
-/// A domain shape: at least two dot-separated labels, each a valid DNS label,
-/// and a final label (TLD) of ≥2 ASCII letters. SHAPE only.
-fn is_domain_shape(domain: &str) -> bool {
-    let labels: Vec<&str> = domain.split('.').collect();
-    if labels.len() < 2 {
-        return false;
-    }
-    if labels.iter().any(|l| !is_domain_label(l)) {
-        return false;
-    }
-    let tld = labels[labels.len() - 1];
-    tld.len() >= 2 && tld.chars().all(|c| c.is_ascii_alphabetic())
-}
-
-/// One DNS label: non-empty, ASCII alphanumeric with internal (non-edge)
-/// hyphens.
-fn is_domain_label(label: &str) -> bool {
-    if label.is_empty() || label.starts_with('-') || label.ends_with('-') {
-        return false;
-    }
-    label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+    // Defer to the canonical parser. We keep the original (trimmed) identifier
+    // string as the target payload — the dispatch layer re-parses it with the
+    // same `parse_nip05`, so an identifier accepted here is accepted there.
+    nmp_nip05::parse_nip05(input).map(|_| input.to_string())
 }

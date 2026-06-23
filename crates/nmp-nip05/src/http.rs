@@ -8,6 +8,8 @@
 
 use std::io::Read;
 
+use crate::host_guard::assert_host_is_public;
+
 /// Total budget for the single `.well-known/nostr.json` GET. Conservative —
 /// keeps a stuck domain from accumulating worker threads even though each
 /// thread is independent of the actor loop.
@@ -35,6 +37,12 @@ const NIP05_MAX_RESPONSE_BYTES: usize = 100 * 1024;
 ///   pubkey. The reason is human-readable for the diagnostic toast; it never
 ///   echoes the response body verbatim.
 pub(crate) fn resolve_nip05_pubkey_blocking(name: &str, domain: &str) -> Result<String, String> {
+    // SSRF guard — reject IP-literal hosts and hosts that resolve to a
+    // non-public address (loopback / private / link-local / unique-local /
+    // CGNAT) BEFORE the fetch, so a NIP-05 identifier can't be used to probe
+    // internal services. Runs here (on the blocking worker, not the actor
+    // thread) because DNS resolution is itself blocking IO (D8).
+    assert_host_is_public(domain)?;
     // Build the URL from the validated parts. `name` is restricted to the
     // NIP-05 local-part charset (`a-z0-9-_.`) by `parse_nip05`, so it needs no
     // percent-encoding; `domain` is a validated host. A literal `_` (the
@@ -71,6 +79,12 @@ pub(crate) fn pubkey_from_names(
 fn http_get_json(url: &str) -> Result<serde_json::Value, String> {
     let agent = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(NIP05_HTTP_TIMEOUT_SECS))
+        // SSRF guard — DO NOT follow redirects. The host was vetted by
+        // `assert_host_is_public`; a `3xx` could otherwise bounce the request to
+        // an un-vetted (internal) host. With `redirects(0)` ureq returns the
+        // `3xx` verbatim, which the `status() != 200` check below turns into a
+        // bounded error rather than a silent follow.
+        .redirects(0)
         .build();
     let response = agent
         .get(url)
