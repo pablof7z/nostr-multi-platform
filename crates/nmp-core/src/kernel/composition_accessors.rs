@@ -90,22 +90,19 @@ impl Kernel {
         std::mem::take(&mut self.pending_backoff_hints)
     }
 
-    /// Snapshot all 10 typed capability ports from this kernel instance.
+    /// Snapshot 9 typed capability ports from this kernel instance.
     ///
     /// Each field clones the same shared `Arc` the kernel holds internally —
     /// no data is copied. The resulting `KernelPorts` is `Clone + Send` and
     /// may be stored or passed to worker threads.
     ///
-    /// `SignerPort` is populated with a no-op placeholder: the kernel stores
-    /// signers per-relay (not as a single kernel-wide `AuthSignerFn`). Slice 3+
-    /// caller migration will thread the correct per-relay signer through.
+    /// **`signer` is absent by design.** The kernel stores signers per-relay;
+    /// a typed `SignerPort` field will be added in slice 3 once that shape is
+    /// settled. Constructing a stub here would violate the accessor invariant
+    /// (the port would look usable but silently fail on every call).
     pub fn ports(&self) -> kernel_ports::KernelPorts {
-        let no_op_signer: AuthSignerFn = Arc::new(|_unsigned| {
-            Err("SignerPort: no kernel-wide signer configured (per-relay signers only)".to_string())
-        });
         kernel_ports::KernelPorts {
             publish: kernel_ports::PublishPort(Arc::clone(&self.publish_store)),
-            signer: kernel_ports::SignerPort(no_op_signer),
             interest: kernel_ports::InterestPort::new(),
             relay_lifecycle: kernel_ports::RelayLifecyclePort(Arc::clone(&self.outbox_router)),
             protocol_dispatch: kernel_ports::ProtocolDispatchPort(Arc::clone(

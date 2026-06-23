@@ -14,7 +14,6 @@
 //! ## Port List
 //!
 //! - **PublishPort**: `Arc<dyn crate::publish::PublishStore>` — durable publish state.
-//! - **SignerPort**: `AuthSignerFn` (Arc<dyn Fn>) — signing capability.
 //! - **InterestPort**: Placeholder for interest/planner capability (future).
 //! - **RelayLifecyclePort**: `Arc<dyn OutboxRouter>` — relay routing decisions.
 //! - **ProtocolDispatchPort**: `Arc<RwLock<EventIngestDispatcher>>` — ingest parser registry.
@@ -23,6 +22,10 @@
 //! - **ReferencePort**: Reference-tracking capability (future).
 //! - **PullCursorPort**: `Arc<PullCursorRegistrySlot>` — pull-cursor registry.
 //! - **UiPort**: `Arc<RoutingTraceProjection>` — diagnostics projection.
+//!
+//! **SignerPort is intentionally absent.** The kernel stores signers per-relay
+//! (not as a single kernel-wide `AuthSignerFn`). A typed `SignerPort` field
+//! will be added in slice 3 once the correct per-relay-signer shape is known.
 
 use std::sync::Arc;
 
@@ -31,7 +34,7 @@ use crate::substrate::{ContactsLookup, EventIngestDispatcher, OutboxRouter};
 
 use super::pull_cursor::PullCursorRegistrySlot;
 use super::routing_trace::RoutingTraceProjection;
-use super::{ActiveAccountSlot, AuthSignerFn};
+use super::ActiveAccountSlot;
 
 /// Publish-state capability port.
 ///
@@ -40,14 +43,6 @@ use super::{ActiveAccountSlot, AuthSignerFn};
 /// kernels sharing the same store to prove resume-from-store semantics.
 #[derive(Clone)]
 pub struct PublishPort(pub Arc<dyn PublishStore>);
-
-/// Signing capability port.
-///
-/// Holds the `AuthSignerFn` callback for remote signing operations. Injected
-/// at composition time. May be replaced per-identity via account switching.
-/// The type itself is already `Arc<dyn Fn>`, so the port is a newtype wrapper.
-#[derive(Clone)]
-pub struct SignerPort(pub AuthSignerFn);
 
 /// Interest/subscription capability port.
 ///
@@ -149,15 +144,17 @@ pub struct PullCursorPort(pub PullCursorRegistrySlot);
 #[derive(Clone)]
 pub struct UiPort(pub Arc<RoutingTraceProjection>);
 
-/// Facade grouping all 10 typed capability ports for a constructed Kernel.
+/// Facade grouping 9 typed capability ports for a constructed Kernel.
 ///
 /// Returned by `Kernel::ports()`. Cloneable; each clone holds the same
 /// shared Arcs as the kernel itself. Callers can store a snapshot or pass
 /// it into worker threads (e.g. `ProtocolCommandContext` in a future slice).
+///
+/// **`signer` is absent by design.** The kernel stores signers per-relay;
+/// a typed `SignerPort` will be added in slice 3 once that shape is settled.
 #[derive(Clone)]
 pub struct KernelPorts {
     pub publish: PublishPort,
-    pub signer: SignerPort,
     pub interest: InterestPort,
     pub relay_lifecycle: RelayLifecyclePort,
     pub protocol_dispatch: ProtocolDispatchPort,
