@@ -89,4 +89,30 @@ impl Kernel {
     pub(crate) fn take_backoff_hints(&mut self) -> Vec<(String, BackoffHint)> {
         std::mem::take(&mut self.pending_backoff_hints)
     }
+
+    /// Snapshot 9 typed capability ports from this kernel instance.
+    ///
+    /// Each field clones the same shared `Arc` the kernel holds internally —
+    /// no data is copied. The resulting `KernelPorts` is `Clone + Send` and
+    /// may be stored or passed to worker threads.
+    ///
+    /// **`signer` is absent by design.** The kernel stores signers per-relay;
+    /// a typed `SignerPort` field will be added in slice 3 once that shape is
+    /// settled. Constructing a stub here would violate the accessor invariant
+    /// (the port would look usable but silently fail on every call).
+    pub fn ports(&self) -> kernel_ports::KernelPorts {
+        kernel_ports::KernelPorts {
+            publish: kernel_ports::PublishPort(Arc::clone(&self.publish_store)),
+            interest: kernel_ports::InterestPort::new(),
+            relay_lifecycle: kernel_ports::RelayLifecyclePort(Arc::clone(&self.outbox_router)),
+            protocol_dispatch: kernel_ports::ProtocolDispatchPort(Arc::clone(
+                &self.ingest_dispatcher,
+            )),
+            identity: kernel_ports::IdentityPort(Arc::new(Arc::clone(&self.active_account_handle))),
+            follow: kernel_ports::FollowPort(Arc::clone(&self.contacts_lookup)),
+            reference: kernel_ports::ReferencePort::new(),
+            pull_cursor: kernel_ports::PullCursorPort(Arc::clone(&self.pull_cursor_registry)),
+            ui: kernel_ports::UiPort(Arc::clone(&self.routing_trace)),
+        }
+    }
 }

@@ -252,7 +252,7 @@ pub use kernel::routing_trace_dto::{projection_to_json, ROUTING_TRACE_SCHEMA_VER
 // `web_sys::MessageEvent` / `CloseEvent` through the
 // `nmp-wasm::relay_pool::build_handlers` callback bag.
 // Substrate-grade (D0): no app/protocol nouns.
-pub use kernel::{RelayFrame, kernel_ports::{FollowPort, IdentityPort, InterestPort, ProtocolDispatchPort, PublishPort, PullCursorPort, ReferencePort, RelayLifecyclePort, SignerPort, UiPort}};
+pub use kernel::{RelayFrame, kernel_ports::{FollowPort, IdentityPort, InterestPort, KernelPorts, ProtocolDispatchPort, PublishPort, PullCursorPort, ReferencePort, RelayLifecyclePort, UiPort}};
 pub use kernel_reducer::{KernelReducer, SignRoundTripCompletion, SignRoundTripOutcome, SignRoundTripRequest}; // #1753 S6 wasm signing DTOs
 pub use relay::canonical_relay_url;
 // V-01 Stage 3 — the per-frame outbound type (`role`, `relay_url`, `text`) the
