@@ -2,9 +2,14 @@
 //!
 //! A Layer-4 protocol crate, structurally identical to `nmp-nip57`: it owns the
 //! full Build → Sign → Transport pipeline for a Blossom upload and exposes it
-//! as a single typed action. Apps dispatch `nmp.blossom.upload` and read a blob
-//! descriptor from the `action_results[correlation_id].result` projection — no
-//! HTTP, base64, header construction, or sign-for-return in app code.
+//! as a single typed action. Apps dispatch `nmp.blossom.upload`, retain the
+//! returned `correlation_id`, and read the blob descriptor (`url`, `sha256`, …)
+//! from the `action_results[correlation_id].result` projection on a later tick —
+//! the canonical completion carrier (ADR-0043 Decision 4, issue #1648). Use
+//! [`parse_upload_completion`] to decode the terminal `result` body. Do **not**
+//! use `register_action_result_observer` for completion — that push channel
+//! fires on accept/enqueue only. No HTTP, base64, header construction, or
+//! sign-for-return in app code.
 //!
 //! - **`auth`** — pure kind:24242 authorization builder (5-minute TTL) + the
 //!   `Authorization: Nostr <base64>` header value. No I/O.
@@ -22,6 +27,7 @@
 pub mod action;
 pub mod auth;
 pub mod kinds;
+pub mod result;
 pub mod upload;
 // ADR-0064 / S9 (#1747) — typed FlatBuffers payload codec (`ActionPayload`
 // impl for `UploadInput`).
@@ -30,6 +36,9 @@ mod wire;
 pub use action::{UploadAction, UploadInput};
 pub use auth::{authorization_header_value, build_upload_auth, AUTH_TTL_SECS};
 pub use kinds::KIND_BLOSSOM_AUTH;
+pub use result::{
+    completion_url_sha256, parse_upload_completion, ServerUploadOutcome, UploadCompletion,
+};
 pub use upload::http::BlobDescriptor;
 pub use upload::BlossomUploadCommand;
 
