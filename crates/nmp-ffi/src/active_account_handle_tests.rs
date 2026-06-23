@@ -11,6 +11,8 @@
 use super::*;
 use crate::{nmp_app_free, nmp_app_new, nmp_app_start};
 use nostr::prelude::*;
+use std::ffi::c_void;
+use std::sync::Arc;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;

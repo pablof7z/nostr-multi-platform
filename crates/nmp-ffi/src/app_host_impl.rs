@@ -20,6 +20,7 @@ use nmp_core::substrate::{
     InputScopeRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
     SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
+use nmp_core::{KernelEventObserver, KernelEventObserverId};
 
 use super::*;
 
