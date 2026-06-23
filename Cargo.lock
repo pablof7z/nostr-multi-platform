@@ -4664,6 +4664,7 @@ name = "nmp-intent"
 version = "0.8.0"
 dependencies = [
  "nmp-core",
+ "nmp-nip05",
  "nmp-nip50",
  "serde",
  "serde_json",

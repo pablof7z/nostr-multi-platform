@@ -15,5 +15,10 @@ nmp-core = { path = "../nmp-core" }
 # into the opaque `InputIntentTarget::TextQuery { request_json }` so nmp-core
 # stays noun-free.
 nmp-nip50 = { path = "../nmp-nip50" }
+# NIP-05 canonical shape parser. The classifier's NIP-05 rung DEFERS to
+# `parse_nip05` (default features — pure shape only, no `native` HTTP) so its
+# accept set is identical to the dispatch-layer resolver's (#1882: no silent
+# no-op). Mirrors the nmp-nip50 dependency above.
+nmp-nip05 = { path = "../nmp-nip05" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
