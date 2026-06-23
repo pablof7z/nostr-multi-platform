@@ -89,4 +89,33 @@ impl Kernel {
     pub(crate) fn take_backoff_hints(&mut self) -> Vec<(String, BackoffHint)> {
         std::mem::take(&mut self.pending_backoff_hints)
     }
+
+    /// Snapshot all 10 typed capability ports from this kernel instance.
+    ///
+    /// Each field clones the same shared `Arc` the kernel holds internally —
+    /// no data is copied. The resulting `KernelPorts` is `Clone + Send` and
+    /// may be stored or passed to worker threads.
+    ///
+    /// `SignerPort` is populated with a no-op placeholder: the kernel stores
+    /// signers per-relay (not as a single kernel-wide `AuthSignerFn`). Slice 3+
+    /// caller migration will thread the correct per-relay signer through.
+    pub fn ports(&self) -> kernel_ports::KernelPorts {
+        let no_op_signer: AuthSignerFn = Arc::new(|_unsigned| {
+            Err("SignerPort: no kernel-wide signer configured (per-relay signers only)".to_string())
+        });
+        kernel_ports::KernelPorts {
+            publish: kernel_ports::PublishPort(Arc::clone(&self.publish_store)),
+            signer: kernel_ports::SignerPort(no_op_signer),
+            interest: kernel_ports::InterestPort::new(),
+            relay_lifecycle: kernel_ports::RelayLifecyclePort(Arc::clone(&self.outbox_router)),
+            protocol_dispatch: kernel_ports::ProtocolDispatchPort(Arc::clone(
+                &self.ingest_dispatcher,
+            )),
+            identity: kernel_ports::IdentityPort(Arc::new(Arc::clone(&self.active_account_handle))),
+            follow: kernel_ports::FollowPort(Arc::clone(&self.contacts_lookup)),
+            reference: kernel_ports::ReferencePort::new(),
+            pull_cursor: kernel_ports::PullCursorPort(Arc::clone(&self.pull_cursor_registry)),
+            ui: kernel_ports::UiPort(Arc::clone(&self.routing_trace)),
+        }
+    }
 }

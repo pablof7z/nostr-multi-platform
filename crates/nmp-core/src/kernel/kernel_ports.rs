@@ -148,3 +148,22 @@ pub struct PullCursorPort(pub PullCursorRegistrySlot);
 /// `recent_routing_decisions` snapshot field.
 #[derive(Clone)]
 pub struct UiPort(pub Arc<RoutingTraceProjection>);
+
+/// Facade grouping all 10 typed capability ports for a constructed Kernel.
+///
+/// Returned by `Kernel::ports()`. Cloneable; each clone holds the same
+/// shared Arcs as the kernel itself. Callers can store a snapshot or pass
+/// it into worker threads (e.g. `ProtocolCommandContext` in a future slice).
+#[derive(Clone)]
+pub struct KernelPorts {
+    pub publish: PublishPort,
+    pub signer: SignerPort,
+    pub interest: InterestPort,
+    pub relay_lifecycle: RelayLifecyclePort,
+    pub protocol_dispatch: ProtocolDispatchPort,
+    pub identity: IdentityPort,
+    pub follow: FollowPort,
+    pub reference: ReferencePort,
+    pub pull_cursor: PullCursorPort,
+    pub ui: UiPort,
+}
