@@ -34,7 +34,13 @@ use unicode_normalization::UnicodeNormalization;
 /// previously-written index disagree with freshly-tokenized query text. The
 /// LMDB backend (Phase 2) persists this alongside its postings so a mismatch
 /// triggers a rebuild rather than silently returning wrong hits.
-pub const TOKENIZER_VERSION: u32 = 1;
+///
+/// History:
+///   * 1 — initial NFKC + lowercase + alnum-split + min-length + token-count cap.
+///   * 2 — added the [`MAX_TOKEN_BYTES`] per-token byte-length cap (#1882/#6).
+///         A persisted v1 index may hold uncapped (or, under the old codec bug,
+///         corrupt) token rows, so the version bump rebuilds it on next open.
+pub const TOKENIZER_VERSION: u32 = 2;
 
 /// Tokens shorter than this many **bytes** are dropped. Two bytes admits short
 /// CJK tokens and 2-letter handles while cutting single-character noise.
