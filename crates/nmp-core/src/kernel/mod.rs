@@ -93,9 +93,13 @@ pub(crate) mod cache_serve;
 // ADR-0058 §10, step 2 — kernel pull service over GlobalLog + InterestShape.
 pub(crate) mod pull;
 // ADR-0058 §10, step 3a — non-durable pull-cursor registry + actor commands.
-pub(crate) mod pull_cursor;
+// `pub` so kernel_ports can re-export `PullCursorRegistrySlot` as part of the
+// KernelPorts facade (#1721 slice 1).
+pub mod pull_cursor;
 // ADR-0058 §4, step 3b — pull-cursor wake sidecar codec (`nmp.pull.wake`).
 pub(crate) mod pull_wake;
+/// ADR-0054 §X — KernelPorts facade: 10 typed port newtypes (#1721 slice 1).
+pub mod kernel_ports;
 // ADR-0058 §10, step 3a — single actor-owned store-wakeup subsystem
 // (generalizes the #1520 cache-serve wakeup; carries the pull wake arm too).
 #[cfg(test)]
