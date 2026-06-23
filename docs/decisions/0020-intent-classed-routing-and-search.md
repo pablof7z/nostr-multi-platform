@@ -24,17 +24,25 @@
 > resident classifier driven by event kind and NIP-51 lists, plus a
 > per-author dimension for publisher-keyed classes.
 
-> **Ownership split (Issue #1561).** `nmp-planner` / `nmp-core` own only the
-> generic wire-filter and routing substrate: the bounded `InterestShape.search`
-> field, filter serialization, merge equality, and generic blocked-relay
-> subtraction. NIP-50 query semantics, app-facing search actions/views, result
-> ranking, relay selection from kind:10007, and search-hit projection live in
-> the owning search module (`nmp-nip50`). NIP-51 kind:10007 relay-list parsing
-> lives in `nmp-nip51` (`SearchRelayListProjection`). There is no
-> `nmp-core::search` module and no search routing class: any "search lives in
-> the kernel" reading of the decisions below means only the generic
-> `InterestShape.search` wire-filter field, never protocol-specific search
-> behavior or relay-selection policy.
+> **Ownership split (Issue #1561).** `nmp-planner` / `nmp-core` own the
+> generic search/index **seams**: the bounded `InterestShape.search`
+> wire-filter field, filter serialization, merge equality, generic
+> blocked-relay subtraction, the `substrate::search` module
+> (`SearchScopeRegistrar` / `SearchScopeProvider` / `SearchScopeRegistry` —
+> a noun-free registry that protocol crates populate at composition time;
+> the kernel compiles providers into `nmp-store::CompiledIndexSpec` and
+> installs them via the cache-serve hook), and the account-config self-kind
+> bootstrap including kind:10007 in `SELF_KINDS_TAILING`
+> (`crates/nmp-core/src/kernel/requests/startup.rs`). NIP-50 query semantics,
+> app-facing search actions/views, result ranking, relay selection from
+> kind:10007, and search-hit projection live in the owning search module
+> (`nmp-nip50`). NIP-51 kind:10007 relay-list parsing lives in `nmp-nip51`
+> (`SearchRelayListProjection`). There is **no** `EventClass::Search` variant
+> and no search *routing class*: search routes purely via the generic
+> `InterestShape.search` wire-filter field. The noun-free `substrate::search`
+> registry seam and the kind:10007 account-config bootstrap are the extent of
+> search logic that lives in core — no NIP-50 query semantics or relay-selection
+> policy reside there.
 > **Input-intent amendment (2026-06-22).** User-entered text is not
 > automatically a NIP-50 search. A framework-owned input resolver first
 > classifies raw strings through generic parsers and namespaced scopes

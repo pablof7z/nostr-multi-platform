@@ -106,12 +106,29 @@ rules. This retired five drifting copies (#967). The type/authority owner is
 action bodies, or app-specific nouns. If an existing protocol-shaped exception
 remains, it belongs in a GitHub issue with a code citation and removal path.
 
-NIP-50 search follows the same split: core/planner may carry the generic
-bounded `search` wire-filter field, filter serialization, merge equality,
-diagnostics, and cache-coverage refusal. Query semantics, app-facing search
-actions/views, ranking, and result projection belong to an owning search
-crate/module such as `nmp-nip50`. NIP-51 kind:10007 relay-list facts belong to
-`nmp-nip51`, not to the generic router.
+NIP-50 search follows the same split. `nmp-core` owns the generic search/index
+**seams**: the bounded `InterestShape.search` wire-filter field, filter
+serialization, merge equality, diagnostics, cache-coverage refusal, the
+`substrate::search` module (`SearchScopeRegistrar` / `SearchScopeProvider` /
+`SearchScopeRegistry`) that protocol crates populate at composition time and
+the kernel compiles into `nmp-store::CompiledIndexSpec` (the cache-serve hook),
+and the account-config self-kind bootstrap including kind:10007 in
+`SELF_KINDS_TAILING` (`crates/nmp-core/src/kernel/requests/startup.rs`).
+`nmp-core` does **not** own NIP-50 query semantics, relay-selection policy,
+result ranking, domain target classes, or result projection — those belong to
+`nmp-nip50`. NIP-51 kind:10007 relay-list parsing belongs to `nmp-nip51`
+(`SearchRelayListProjection`). There is no `EventClass::Search` variant.
+
+> **Label-vocabulary drift (known, minor).** The scope labels `nip50.profiles`,
+> `nip50.notes`, and `nip50.longform` are defined as named constants in
+> `crates/nmp-nip50/src/scopes.rs` (`SCOPE_LABEL_PROFILES`,
+> `SCOPE_LABEL_NOTES`, `SCOPE_LABEL_LONGFORM`) but the name parts
+> (`"profiles"`, `"notes"`, `"longform"`) are re-hardcoded as bare string
+> literals in `crates/nmp-intent/src/classifier/text.rs` rather than imported
+> from those constants. Centralising the name-part constants (or importing the
+> existing ones via the `nmp-nip50` dep that `nmp-intent` already carries) is a
+> follow-up cleanup; it is not a correctness bug but is a known small duplication
+> to eliminate before the scope set grows.
 
 ---
 
