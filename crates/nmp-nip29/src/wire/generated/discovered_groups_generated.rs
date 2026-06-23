@@ -2,493 +2,705 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_29 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_29 {
 
+        pub enum DiscoveredGroupOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum DiscoveredGroupOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct DiscoveredGroup<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct DiscoveredGroup<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for DiscoveredGroup<'a> {
+            type Inner = DiscoveredGroup<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for DiscoveredGroup<'a> {
-  type Inner = DiscoveredGroup<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> DiscoveredGroup<'a> {
+            pub const VT_GROUP_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PICTURE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ABOUT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_MEMBER_COUNT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_ADMIN_COUNT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_PUBLIC: ::flatbuffers::VOffsetT = 18;
+            pub const VT_OPEN: ::flatbuffers::VOffsetT = 20;
+            pub const VT_PARENT: ::flatbuffers::VOffsetT = 22;
+            pub const VT_CHILDREN: ::flatbuffers::VOffsetT = 24;
 
-impl<'a> DiscoveredGroup<'a> {
-  pub const VT_GROUP_ID: ::flatbuffers::VOffsetT = 4;
-  pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 6;
-  pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
-  pub const VT_PICTURE: ::flatbuffers::VOffsetT = 10;
-  pub const VT_ABOUT: ::flatbuffers::VOffsetT = 12;
-  pub const VT_MEMBER_COUNT: ::flatbuffers::VOffsetT = 14;
-  pub const VT_ADMIN_COUNT: ::flatbuffers::VOffsetT = 16;
-  pub const VT_PUBLIC: ::flatbuffers::VOffsetT = 18;
-  pub const VT_OPEN: ::flatbuffers::VOffsetT = 20;
-  pub const VT_PARENT: ::flatbuffers::VOffsetT = 22;
-  pub const VT_CHILDREN: ::flatbuffers::VOffsetT = 24;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DiscoveredGroup { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DiscoveredGroupArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DiscoveredGroup<'bldr>> {
+                let mut builder = DiscoveredGroupBuilder::new(_fbb);
+                if let Some(x) = args.children {
+                    builder.add_children(x);
+                }
+                if let Some(x) = args.parent {
+                    builder.add_parent(x);
+                }
+                builder.add_admin_count(args.admin_count);
+                builder.add_member_count(args.member_count);
+                if let Some(x) = args.about {
+                    builder.add_about(x);
+                }
+                if let Some(x) = args.picture {
+                    builder.add_picture(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.host_relay_url {
+                    builder.add_host_relay_url(x);
+                }
+                if let Some(x) = args.group_id {
+                    builder.add_group_id(x);
+                }
+                builder.add_open(args.open);
+                builder.add_public(args.public);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    DiscoveredGroup { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args DiscoveredGroupArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<DiscoveredGroup<'bldr>> {
-    let mut builder = DiscoveredGroupBuilder::new(_fbb);
-    if let Some(x) = args.children { builder.add_children(x); }
-    if let Some(x) = args.parent { builder.add_parent(x); }
-    builder.add_admin_count(args.admin_count);
-    builder.add_member_count(args.member_count);
-    if let Some(x) = args.about { builder.add_about(x); }
-    if let Some(x) = args.picture { builder.add_picture(x); }
-    if let Some(x) = args.name { builder.add_name(x); }
-    if let Some(x) = args.host_relay_url { builder.add_host_relay_url(x); }
-    if let Some(x) = args.group_id { builder.add_group_id(x); }
-    builder.add_open(args.open);
-    builder.add_public(args.public);
-    builder.finish()
-  }
+            #[inline]
+            pub fn group_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DiscoveredGroup::VT_GROUP_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn host_relay_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DiscoveredGroup::VT_HOST_RELAY_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(DiscoveredGroup::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn picture(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DiscoveredGroup::VT_PICTURE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn about(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DiscoveredGroup::VT_ABOUT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn member_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(DiscoveredGroup::VT_MEMBER_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn admin_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(DiscoveredGroup::VT_ADMIN_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn public(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(DiscoveredGroup::VT_PUBLIC, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn open(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(DiscoveredGroup::VT_OPEN, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn parent(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DiscoveredGroup::VT_PARENT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn children(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DiscoveredGroup::VT_CHILDREN, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for DiscoveredGroup<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "group_id",
+                        Self::VT_GROUP_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "host_relay_url",
+                        Self::VT_HOST_RELAY_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "name",
+                        Self::VT_NAME,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "picture",
+                        Self::VT_PICTURE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "about",
+                        Self::VT_ABOUT,
+                        false,
+                    )?
+                    .visit_field::<u32>("member_count", Self::VT_MEMBER_COUNT, false)?
+                    .visit_field::<u32>("admin_count", Self::VT_ADMIN_COUNT, false)?
+                    .visit_field::<bool>("public", Self::VT_PUBLIC, false)?
+                    .visit_field::<bool>("open", Self::VT_OPEN, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "parent",
+                        Self::VT_PARENT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("children", Self::VT_CHILDREN, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DiscoveredGroupArgs<'a> {
+            pub group_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub picture: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub about: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub member_count: u32,
+            pub admin_count: u32,
+            pub public: bool,
+            pub open: bool,
+            pub parent: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub children: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for DiscoveredGroupArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DiscoveredGroupArgs {
+                    group_id: None,
+                    host_relay_url: None,
+                    name: None,
+                    picture: None,
+                    about: None,
+                    member_count: 0,
+                    admin_count: 0,
+                    public: false,
+                    open: false,
+                    parent: None,
+                    children: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn group_id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DiscoveredGroup::VT_GROUP_ID, None)}
-  }
-  #[inline]
-  pub fn host_relay_url(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DiscoveredGroup::VT_HOST_RELAY_URL, None)}
-  }
-  #[inline]
-  pub fn name(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DiscoveredGroup::VT_NAME, None)}
-  }
-  #[inline]
-  pub fn picture(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DiscoveredGroup::VT_PICTURE, None)}
-  }
-  #[inline]
-  pub fn about(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DiscoveredGroup::VT_ABOUT, None)}
-  }
-  #[inline]
-  pub fn member_count(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(DiscoveredGroup::VT_MEMBER_COUNT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn admin_count(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(DiscoveredGroup::VT_ADMIN_COUNT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn public(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(DiscoveredGroup::VT_PUBLIC, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn open(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(DiscoveredGroup::VT_OPEN, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn parent(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DiscoveredGroup::VT_PARENT, None)}
-  }
-  #[inline]
-  pub fn children(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(DiscoveredGroup::VT_CHILDREN, None)}
-  }
-}
+        pub struct DiscoveredGroupBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiscoveredGroupBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_group_id(&mut self, group_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroup::VT_GROUP_ID,
+                    group_id,
+                );
+            }
+            #[inline]
+            pub fn add_host_relay_url(
+                &mut self,
+                host_relay_url: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroup::VT_HOST_RELAY_URL,
+                    host_relay_url,
+                );
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroup::VT_NAME,
+                    name,
+                );
+            }
+            #[inline]
+            pub fn add_picture(&mut self, picture: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroup::VT_PICTURE,
+                    picture,
+                );
+            }
+            #[inline]
+            pub fn add_about(&mut self, about: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroup::VT_ABOUT,
+                    about,
+                );
+            }
+            #[inline]
+            pub fn add_member_count(&mut self, member_count: u32) {
+                self.fbb_
+                    .push_slot::<u32>(DiscoveredGroup::VT_MEMBER_COUNT, member_count, 0);
+            }
+            #[inline]
+            pub fn add_admin_count(&mut self, admin_count: u32) {
+                self.fbb_
+                    .push_slot::<u32>(DiscoveredGroup::VT_ADMIN_COUNT, admin_count, 0);
+            }
+            #[inline]
+            pub fn add_public(&mut self, public: bool) {
+                self.fbb_
+                    .push_slot::<bool>(DiscoveredGroup::VT_PUBLIC, public, false);
+            }
+            #[inline]
+            pub fn add_open(&mut self, open: bool) {
+                self.fbb_
+                    .push_slot::<bool>(DiscoveredGroup::VT_OPEN, open, false);
+            }
+            #[inline]
+            pub fn add_parent(&mut self, parent: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroup::VT_PARENT,
+                    parent,
+                );
+            }
+            #[inline]
+            pub fn add_children(
+                &mut self,
+                children: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroup::VT_CHILDREN,
+                    children,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> DiscoveredGroupBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DiscoveredGroupBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DiscoveredGroup<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for DiscoveredGroup<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("group_id", Self::VT_GROUP_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("host_relay_url", Self::VT_HOST_RELAY_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("picture", Self::VT_PICTURE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("about", Self::VT_ABOUT, false)?
-     .visit_field::<u32>("member_count", Self::VT_MEMBER_COUNT, false)?
-     .visit_field::<u32>("admin_count", Self::VT_ADMIN_COUNT, false)?
-     .visit_field::<bool>("public", Self::VT_PUBLIC, false)?
-     .visit_field::<bool>("open", Self::VT_OPEN, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("parent", Self::VT_PARENT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("children", Self::VT_CHILDREN, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct DiscoveredGroupArgs<'a> {
-    pub group_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub picture: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub about: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub member_count: u32,
-    pub admin_count: u32,
-    pub public: bool,
-    pub open: bool,
-    pub parent: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub children: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for DiscoveredGroupArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    DiscoveredGroupArgs {
-      group_id: None,
-      host_relay_url: None,
-      name: None,
-      picture: None,
-      about: None,
-      member_count: 0,
-      admin_count: 0,
-      public: false,
-      open: false,
-      parent: None,
-      children: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for DiscoveredGroup<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DiscoveredGroup");
+                ds.field("group_id", &self.group_id());
+                ds.field("host_relay_url", &self.host_relay_url());
+                ds.field("name", &self.name());
+                ds.field("picture", &self.picture());
+                ds.field("about", &self.about());
+                ds.field("member_count", &self.member_count());
+                ds.field("admin_count", &self.admin_count());
+                ds.field("public", &self.public());
+                ds.field("open", &self.open());
+                ds.field("parent", &self.parent());
+                ds.field("children", &self.children());
+                ds.finish()
+            }
+        }
+        pub enum DiscoveredGroupsSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub struct DiscoveredGroupBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiscoveredGroupBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_group_id(&mut self, group_id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DiscoveredGroup::VT_GROUP_ID, group_id);
-  }
-  #[inline]
-  pub fn add_host_relay_url(&mut self, host_relay_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DiscoveredGroup::VT_HOST_RELAY_URL, host_relay_url);
-  }
-  #[inline]
-  pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DiscoveredGroup::VT_NAME, name);
-  }
-  #[inline]
-  pub fn add_picture(&mut self, picture: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DiscoveredGroup::VT_PICTURE, picture);
-  }
-  #[inline]
-  pub fn add_about(&mut self, about: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DiscoveredGroup::VT_ABOUT, about);
-  }
-  #[inline]
-  pub fn add_member_count(&mut self, member_count: u32) {
-    self.fbb_.push_slot::<u32>(DiscoveredGroup::VT_MEMBER_COUNT, member_count, 0);
-  }
-  #[inline]
-  pub fn add_admin_count(&mut self, admin_count: u32) {
-    self.fbb_.push_slot::<u32>(DiscoveredGroup::VT_ADMIN_COUNT, admin_count, 0);
-  }
-  #[inline]
-  pub fn add_public(&mut self, public: bool) {
-    self.fbb_.push_slot::<bool>(DiscoveredGroup::VT_PUBLIC, public, false);
-  }
-  #[inline]
-  pub fn add_open(&mut self, open: bool) {
-    self.fbb_.push_slot::<bool>(DiscoveredGroup::VT_OPEN, open, false);
-  }
-  #[inline]
-  pub fn add_parent(&mut self, parent: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DiscoveredGroup::VT_PARENT, parent);
-  }
-  #[inline]
-  pub fn add_children(&mut self, children: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DiscoveredGroup::VT_CHILDREN, children);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiscoveredGroupBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    DiscoveredGroupBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<DiscoveredGroup<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        pub struct DiscoveredGroupsSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl ::core::fmt::Debug for DiscoveredGroup<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("DiscoveredGroup");
-      ds.field("group_id", &self.group_id());
-      ds.field("host_relay_url", &self.host_relay_url());
-      ds.field("name", &self.name());
-      ds.field("picture", &self.picture());
-      ds.field("about", &self.about());
-      ds.field("member_count", &self.member_count());
-      ds.field("admin_count", &self.admin_count());
-      ds.field("public", &self.public());
-      ds.field("open", &self.open());
-      ds.field("parent", &self.parent());
-      ds.field("children", &self.children());
-      ds.finish()
-  }
-}
-pub enum DiscoveredGroupsSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> ::flatbuffers::Follow<'a> for DiscoveredGroupsSnapshot<'a> {
+            type Inner = DiscoveredGroupsSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-pub struct DiscoveredGroupsSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> DiscoveredGroupsSnapshot<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_GROUPS: ::flatbuffers::VOffsetT = 8;
 
-impl<'a> ::flatbuffers::Follow<'a> for DiscoveredGroupsSnapshot<'a> {
-  type Inner = DiscoveredGroupsSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DiscoveredGroupsSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DiscoveredGroupsSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DiscoveredGroupsSnapshot<'bldr>> {
+                let mut builder = DiscoveredGroupsSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.groups {
+                    builder.add_groups(x);
+                }
+                if let Some(x) = args.host_relay_url {
+                    builder.add_host_relay_url(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                builder.finish()
+            }
 
-impl<'a> DiscoveredGroupsSnapshot<'a> {
-  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-  pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 6;
-  pub const VT_GROUPS: ::flatbuffers::VOffsetT = 8;
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION, Some(2))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn host_relay_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DiscoveredGroupsSnapshot::VT_HOST_RELAY_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn groups(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DiscoveredGroup<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DiscoveredGroup>>,
+                    >>(DiscoveredGroupsSnapshot::VT_GROUPS, None)
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    DiscoveredGroupsSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args DiscoveredGroupsSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<DiscoveredGroupsSnapshot<'bldr>> {
-    let mut builder = DiscoveredGroupsSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.groups { builder.add_groups(x); }
-    if let Some(x) = args.host_relay_url { builder.add_host_relay_url(x); }
-    builder.add_schema_version(args.schema_version);
-    builder.finish()
-  }
+        impl ::flatbuffers::Verifiable for DiscoveredGroupsSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "host_relay_url",
+                        Self::VT_HOST_RELAY_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<DiscoveredGroup>>,
+                    >>("groups", Self::VT_GROUPS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DiscoveredGroupsSnapshotArgs<'a> {
+            pub schema_version: u32,
+            pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub groups: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DiscoveredGroup<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for DiscoveredGroupsSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DiscoveredGroupsSnapshotArgs {
+                    schema_version: 2,
+                    host_relay_url: None,
+                    groups: None,
+                }
+            }
+        }
 
+        pub struct DiscoveredGroupsSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiscoveredGroupsSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_.push_slot::<u32>(
+                    DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION,
+                    schema_version,
+                    2,
+                );
+            }
+            #[inline]
+            pub fn add_host_relay_url(
+                &mut self,
+                host_relay_url: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroupsSnapshot::VT_HOST_RELAY_URL,
+                    host_relay_url,
+                );
+            }
+            #[inline]
+            pub fn add_groups(
+                &mut self,
+                groups: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<DiscoveredGroup<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DiscoveredGroupsSnapshot::VT_GROUPS,
+                    groups,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> DiscoveredGroupsSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DiscoveredGroupsSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DiscoveredGroupsSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-  #[inline]
-  pub fn schema_version(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION, Some(2)).unwrap()}
-  }
-  #[inline]
-  pub fn host_relay_url(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DiscoveredGroupsSnapshot::VT_HOST_RELAY_URL, None)}
-  }
-  #[inline]
-  pub fn groups(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DiscoveredGroup<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DiscoveredGroup>>>>(DiscoveredGroupsSnapshot::VT_GROUPS, None)}
-  }
-}
+        impl ::core::fmt::Debug for DiscoveredGroupsSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DiscoveredGroupsSnapshot");
+                ds.field("schema_version", &self.schema_version());
+                ds.field("host_relay_url", &self.host_relay_url());
+                ds.field("groups", &self.groups());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `DiscoveredGroupsSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_discovered_groups_snapshot_unchecked`.
+        pub fn root_as_discovered_groups_snapshot(
+            buf: &[u8],
+        ) -> Result<DiscoveredGroupsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<DiscoveredGroupsSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `DiscoveredGroupsSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_discovered_groups_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_discovered_groups_snapshot(
+            buf: &[u8],
+        ) -> Result<DiscoveredGroupsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<DiscoveredGroupsSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `DiscoveredGroupsSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_discovered_groups_snapshot_unchecked`.
+        pub fn root_as_discovered_groups_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<DiscoveredGroupsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<DiscoveredGroupsSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `DiscoveredGroupsSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_discovered_groups_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_discovered_groups_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<DiscoveredGroupsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<DiscoveredGroupsSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a DiscoveredGroupsSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `DiscoveredGroupsSnapshot`.
+        pub unsafe fn root_as_discovered_groups_snapshot_unchecked(
+            buf: &[u8],
+        ) -> DiscoveredGroupsSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<DiscoveredGroupsSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed DiscoveredGroupsSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `DiscoveredGroupsSnapshot`.
+        pub unsafe fn size_prefixed_root_as_discovered_groups_snapshot_unchecked(
+            buf: &[u8],
+        ) -> DiscoveredGroupsSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<DiscoveredGroupsSnapshot>(buf) }
+        }
+        pub const DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER: &str = "NDGS";
 
-impl ::flatbuffers::Verifiable for DiscoveredGroupsSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("host_relay_url", Self::VT_HOST_RELAY_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<DiscoveredGroup>>>>("groups", Self::VT_GROUPS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct DiscoveredGroupsSnapshotArgs<'a> {
-    pub schema_version: u32,
-    pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub groups: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<DiscoveredGroup<'a>>>>>,
-}
-impl<'a> Default for DiscoveredGroupsSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    DiscoveredGroupsSnapshotArgs {
-      schema_version: 2,
-      host_relay_url: None,
-      groups: None,
-    }
-  }
-}
+        #[inline]
+        pub fn discovered_groups_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER, false)
+        }
 
-pub struct DiscoveredGroupsSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DiscoveredGroupsSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(DiscoveredGroupsSnapshot::VT_SCHEMA_VERSION, schema_version, 2);
-  }
-  #[inline]
-  pub fn add_host_relay_url(&mut self, host_relay_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DiscoveredGroupsSnapshot::VT_HOST_RELAY_URL, host_relay_url);
-  }
-  #[inline]
-  pub fn add_groups(&mut self, groups: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<DiscoveredGroup<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DiscoveredGroupsSnapshot::VT_GROUPS, groups);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DiscoveredGroupsSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    DiscoveredGroupsSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<DiscoveredGroupsSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn discovered_groups_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER, true)
+        }
 
-impl ::core::fmt::Debug for DiscoveredGroupsSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("DiscoveredGroupsSnapshot");
-      ds.field("schema_version", &self.schema_version());
-      ds.field("host_relay_url", &self.host_relay_url());
-      ds.field("groups", &self.groups());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `DiscoveredGroupsSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_discovered_groups_snapshot_unchecked`.
-pub fn root_as_discovered_groups_snapshot(buf: &[u8]) -> Result<DiscoveredGroupsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<DiscoveredGroupsSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `DiscoveredGroupsSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_discovered_groups_snapshot_unchecked`.
-pub fn size_prefixed_root_as_discovered_groups_snapshot(buf: &[u8]) -> Result<DiscoveredGroupsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<DiscoveredGroupsSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `DiscoveredGroupsSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_discovered_groups_snapshot_unchecked`.
-pub fn root_as_discovered_groups_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<DiscoveredGroupsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<DiscoveredGroupsSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `DiscoveredGroupsSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_discovered_groups_snapshot_unchecked`.
-pub fn size_prefixed_root_as_discovered_groups_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<DiscoveredGroupsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<DiscoveredGroupsSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a DiscoveredGroupsSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `DiscoveredGroupsSnapshot`.
-pub unsafe fn root_as_discovered_groups_snapshot_unchecked(buf: &[u8]) -> DiscoveredGroupsSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<DiscoveredGroupsSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed DiscoveredGroupsSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `DiscoveredGroupsSnapshot`.
-pub unsafe fn size_prefixed_root_as_discovered_groups_snapshot_unchecked(buf: &[u8]) -> DiscoveredGroupsSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<DiscoveredGroupsSnapshot>(buf) }
-}
-pub const DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER: &str = "NDGS";
+        #[inline]
+        pub fn finish_discovered_groups_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<DiscoveredGroupsSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn discovered_groups_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER, false)
-}
-
-#[inline]
-pub fn discovered_groups_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_discovered_groups_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<DiscoveredGroupsSnapshot<'a>>) {
-  fbb.finish(root, Some(DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_discovered_groups_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<DiscoveredGroupsSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod nip29
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_discovered_groups_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<DiscoveredGroupsSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(DISCOVERED_GROUPS_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod nip29
+} // pub mod nmp

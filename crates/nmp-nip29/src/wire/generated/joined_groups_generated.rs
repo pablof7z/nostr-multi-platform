@@ -2,527 +2,729 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_29 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_29 {
 
+        pub enum JoinedGroupOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum JoinedGroupOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct JoinedGroup<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct JoinedGroup<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for JoinedGroup<'a> {
+            type Inner = JoinedGroup<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for JoinedGroup<'a> {
-  type Inner = JoinedGroup<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> JoinedGroup<'a> {
+            pub const VT_GROUP_ID: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
+            pub const VT_PICTURE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_ABOUT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_MEMBER_COUNT: ::flatbuffers::VOffsetT = 14;
+            pub const VT_ADMIN_COUNT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_PUBLIC: ::flatbuffers::VOffsetT = 18;
+            pub const VT_OPEN: ::flatbuffers::VOffsetT = 20;
+            pub const VT_IS_MEMBER: ::flatbuffers::VOffsetT = 22;
+            pub const VT_IS_ADMIN: ::flatbuffers::VOffsetT = 24;
+            pub const VT_PARENT: ::flatbuffers::VOffsetT = 26;
+            pub const VT_CHILDREN: ::flatbuffers::VOffsetT = 28;
 
-impl<'a> JoinedGroup<'a> {
-  pub const VT_GROUP_ID: ::flatbuffers::VOffsetT = 4;
-  pub const VT_HOST_RELAY_URL: ::flatbuffers::VOffsetT = 6;
-  pub const VT_NAME: ::flatbuffers::VOffsetT = 8;
-  pub const VT_PICTURE: ::flatbuffers::VOffsetT = 10;
-  pub const VT_ABOUT: ::flatbuffers::VOffsetT = 12;
-  pub const VT_MEMBER_COUNT: ::flatbuffers::VOffsetT = 14;
-  pub const VT_ADMIN_COUNT: ::flatbuffers::VOffsetT = 16;
-  pub const VT_PUBLIC: ::flatbuffers::VOffsetT = 18;
-  pub const VT_OPEN: ::flatbuffers::VOffsetT = 20;
-  pub const VT_IS_MEMBER: ::flatbuffers::VOffsetT = 22;
-  pub const VT_IS_ADMIN: ::flatbuffers::VOffsetT = 24;
-  pub const VT_PARENT: ::flatbuffers::VOffsetT = 26;
-  pub const VT_CHILDREN: ::flatbuffers::VOffsetT = 28;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                JoinedGroup { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args JoinedGroupArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<JoinedGroup<'bldr>> {
+                let mut builder = JoinedGroupBuilder::new(_fbb);
+                if let Some(x) = args.children {
+                    builder.add_children(x);
+                }
+                if let Some(x) = args.parent {
+                    builder.add_parent(x);
+                }
+                builder.add_admin_count(args.admin_count);
+                builder.add_member_count(args.member_count);
+                if let Some(x) = args.about {
+                    builder.add_about(x);
+                }
+                if let Some(x) = args.picture {
+                    builder.add_picture(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.host_relay_url {
+                    builder.add_host_relay_url(x);
+                }
+                if let Some(x) = args.group_id {
+                    builder.add_group_id(x);
+                }
+                builder.add_is_admin(args.is_admin);
+                builder.add_is_member(args.is_member);
+                builder.add_open(args.open);
+                builder.add_public(args.public);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    JoinedGroup { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args JoinedGroupArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<JoinedGroup<'bldr>> {
-    let mut builder = JoinedGroupBuilder::new(_fbb);
-    if let Some(x) = args.children { builder.add_children(x); }
-    if let Some(x) = args.parent { builder.add_parent(x); }
-    builder.add_admin_count(args.admin_count);
-    builder.add_member_count(args.member_count);
-    if let Some(x) = args.about { builder.add_about(x); }
-    if let Some(x) = args.picture { builder.add_picture(x); }
-    if let Some(x) = args.name { builder.add_name(x); }
-    if let Some(x) = args.host_relay_url { builder.add_host_relay_url(x); }
-    if let Some(x) = args.group_id { builder.add_group_id(x); }
-    builder.add_is_admin(args.is_admin);
-    builder.add_is_member(args.is_member);
-    builder.add_open(args.open);
-    builder.add_public(args.public);
-    builder.finish()
-  }
+            #[inline]
+            pub fn group_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_GROUP_ID, None)
+                }
+            }
+            #[inline]
+            pub fn host_relay_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        JoinedGroup::VT_HOST_RELAY_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn picture(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_PICTURE, None)
+                }
+            }
+            #[inline]
+            pub fn about(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_ABOUT, None)
+                }
+            }
+            #[inline]
+            pub fn member_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(JoinedGroup::VT_MEMBER_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn admin_count(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(JoinedGroup::VT_ADMIN_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn public(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(JoinedGroup::VT_PUBLIC, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn open(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(JoinedGroup::VT_OPEN, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_member(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(JoinedGroup::VT_IS_MEMBER, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_admin(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(JoinedGroup::VT_IS_ADMIN, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn parent(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_PARENT, None)
+                }
+            }
+            #[inline]
+            pub fn children(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(JoinedGroup::VT_CHILDREN, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for JoinedGroup<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "group_id",
+                        Self::VT_GROUP_ID,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "host_relay_url",
+                        Self::VT_HOST_RELAY_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "name",
+                        Self::VT_NAME,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "picture",
+                        Self::VT_PICTURE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "about",
+                        Self::VT_ABOUT,
+                        false,
+                    )?
+                    .visit_field::<u32>("member_count", Self::VT_MEMBER_COUNT, false)?
+                    .visit_field::<u32>("admin_count", Self::VT_ADMIN_COUNT, false)?
+                    .visit_field::<bool>("public", Self::VT_PUBLIC, false)?
+                    .visit_field::<bool>("open", Self::VT_OPEN, false)?
+                    .visit_field::<bool>("is_member", Self::VT_IS_MEMBER, false)?
+                    .visit_field::<bool>("is_admin", Self::VT_IS_ADMIN, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "parent",
+                        Self::VT_PARENT,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("children", Self::VT_CHILDREN, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct JoinedGroupArgs<'a> {
+            pub group_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub picture: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub about: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub member_count: u32,
+            pub admin_count: u32,
+            pub public: bool,
+            pub open: bool,
+            pub is_member: bool,
+            pub is_admin: bool,
+            pub parent: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub children: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for JoinedGroupArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                JoinedGroupArgs {
+                    group_id: None,
+                    host_relay_url: None,
+                    name: None,
+                    picture: None,
+                    about: None,
+                    member_count: 0,
+                    admin_count: 0,
+                    public: false,
+                    open: false,
+                    is_member: false,
+                    is_admin: false,
+                    parent: None,
+                    children: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn group_id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_GROUP_ID, None)}
-  }
-  #[inline]
-  pub fn host_relay_url(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_HOST_RELAY_URL, None)}
-  }
-  #[inline]
-  pub fn name(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_NAME, None)}
-  }
-  #[inline]
-  pub fn picture(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_PICTURE, None)}
-  }
-  #[inline]
-  pub fn about(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_ABOUT, None)}
-  }
-  #[inline]
-  pub fn member_count(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(JoinedGroup::VT_MEMBER_COUNT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn admin_count(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(JoinedGroup::VT_ADMIN_COUNT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn public(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(JoinedGroup::VT_PUBLIC, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn open(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(JoinedGroup::VT_OPEN, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_member(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(JoinedGroup::VT_IS_MEMBER, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_admin(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(JoinedGroup::VT_IS_ADMIN, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn parent(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroup::VT_PARENT, None)}
-  }
-  #[inline]
-  pub fn children(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(JoinedGroup::VT_CHILDREN, None)}
-  }
-}
+        pub struct JoinedGroupBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> JoinedGroupBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_group_id(&mut self, group_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    JoinedGroup::VT_GROUP_ID,
+                    group_id,
+                );
+            }
+            #[inline]
+            pub fn add_host_relay_url(
+                &mut self,
+                host_relay_url: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    JoinedGroup::VT_HOST_RELAY_URL,
+                    host_relay_url,
+                );
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroup::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_picture(&mut self, picture: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    JoinedGroup::VT_PICTURE,
+                    picture,
+                );
+            }
+            #[inline]
+            pub fn add_about(&mut self, about: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroup::VT_ABOUT, about);
+            }
+            #[inline]
+            pub fn add_member_count(&mut self, member_count: u32) {
+                self.fbb_
+                    .push_slot::<u32>(JoinedGroup::VT_MEMBER_COUNT, member_count, 0);
+            }
+            #[inline]
+            pub fn add_admin_count(&mut self, admin_count: u32) {
+                self.fbb_
+                    .push_slot::<u32>(JoinedGroup::VT_ADMIN_COUNT, admin_count, 0);
+            }
+            #[inline]
+            pub fn add_public(&mut self, public: bool) {
+                self.fbb_
+                    .push_slot::<bool>(JoinedGroup::VT_PUBLIC, public, false);
+            }
+            #[inline]
+            pub fn add_open(&mut self, open: bool) {
+                self.fbb_
+                    .push_slot::<bool>(JoinedGroup::VT_OPEN, open, false);
+            }
+            #[inline]
+            pub fn add_is_member(&mut self, is_member: bool) {
+                self.fbb_
+                    .push_slot::<bool>(JoinedGroup::VT_IS_MEMBER, is_member, false);
+            }
+            #[inline]
+            pub fn add_is_admin(&mut self, is_admin: bool) {
+                self.fbb_
+                    .push_slot::<bool>(JoinedGroup::VT_IS_ADMIN, is_admin, false);
+            }
+            #[inline]
+            pub fn add_parent(&mut self, parent: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    JoinedGroup::VT_PARENT,
+                    parent,
+                );
+            }
+            #[inline]
+            pub fn add_children(
+                &mut self,
+                children: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    JoinedGroup::VT_CHILDREN,
+                    children,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> JoinedGroupBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                JoinedGroupBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<JoinedGroup<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for JoinedGroup<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("group_id", Self::VT_GROUP_ID, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("host_relay_url", Self::VT_HOST_RELAY_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("picture", Self::VT_PICTURE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("about", Self::VT_ABOUT, false)?
-     .visit_field::<u32>("member_count", Self::VT_MEMBER_COUNT, false)?
-     .visit_field::<u32>("admin_count", Self::VT_ADMIN_COUNT, false)?
-     .visit_field::<bool>("public", Self::VT_PUBLIC, false)?
-     .visit_field::<bool>("open", Self::VT_OPEN, false)?
-     .visit_field::<bool>("is_member", Self::VT_IS_MEMBER, false)?
-     .visit_field::<bool>("is_admin", Self::VT_IS_ADMIN, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("parent", Self::VT_PARENT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("children", Self::VT_CHILDREN, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct JoinedGroupArgs<'a> {
-    pub group_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub host_relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub picture: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub about: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub member_count: u32,
-    pub admin_count: u32,
-    pub public: bool,
-    pub open: bool,
-    pub is_member: bool,
-    pub is_admin: bool,
-    pub parent: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub children: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for JoinedGroupArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    JoinedGroupArgs {
-      group_id: None,
-      host_relay_url: None,
-      name: None,
-      picture: None,
-      about: None,
-      member_count: 0,
-      admin_count: 0,
-      public: false,
-      open: false,
-      is_member: false,
-      is_admin: false,
-      parent: None,
-      children: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for JoinedGroup<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("JoinedGroup");
+                ds.field("group_id", &self.group_id());
+                ds.field("host_relay_url", &self.host_relay_url());
+                ds.field("name", &self.name());
+                ds.field("picture", &self.picture());
+                ds.field("about", &self.about());
+                ds.field("member_count", &self.member_count());
+                ds.field("admin_count", &self.admin_count());
+                ds.field("public", &self.public());
+                ds.field("open", &self.open());
+                ds.field("is_member", &self.is_member());
+                ds.field("is_admin", &self.is_admin());
+                ds.field("parent", &self.parent());
+                ds.field("children", &self.children());
+                ds.finish()
+            }
+        }
+        pub enum JoinedGroupsSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub struct JoinedGroupBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> JoinedGroupBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_group_id(&mut self, group_id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroup::VT_GROUP_ID, group_id);
-  }
-  #[inline]
-  pub fn add_host_relay_url(&mut self, host_relay_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroup::VT_HOST_RELAY_URL, host_relay_url);
-  }
-  #[inline]
-  pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroup::VT_NAME, name);
-  }
-  #[inline]
-  pub fn add_picture(&mut self, picture: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroup::VT_PICTURE, picture);
-  }
-  #[inline]
-  pub fn add_about(&mut self, about: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroup::VT_ABOUT, about);
-  }
-  #[inline]
-  pub fn add_member_count(&mut self, member_count: u32) {
-    self.fbb_.push_slot::<u32>(JoinedGroup::VT_MEMBER_COUNT, member_count, 0);
-  }
-  #[inline]
-  pub fn add_admin_count(&mut self, admin_count: u32) {
-    self.fbb_.push_slot::<u32>(JoinedGroup::VT_ADMIN_COUNT, admin_count, 0);
-  }
-  #[inline]
-  pub fn add_public(&mut self, public: bool) {
-    self.fbb_.push_slot::<bool>(JoinedGroup::VT_PUBLIC, public, false);
-  }
-  #[inline]
-  pub fn add_open(&mut self, open: bool) {
-    self.fbb_.push_slot::<bool>(JoinedGroup::VT_OPEN, open, false);
-  }
-  #[inline]
-  pub fn add_is_member(&mut self, is_member: bool) {
-    self.fbb_.push_slot::<bool>(JoinedGroup::VT_IS_MEMBER, is_member, false);
-  }
-  #[inline]
-  pub fn add_is_admin(&mut self, is_admin: bool) {
-    self.fbb_.push_slot::<bool>(JoinedGroup::VT_IS_ADMIN, is_admin, false);
-  }
-  #[inline]
-  pub fn add_parent(&mut self, parent: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroup::VT_PARENT, parent);
-  }
-  #[inline]
-  pub fn add_children(&mut self, children: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroup::VT_CHILDREN, children);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> JoinedGroupBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    JoinedGroupBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<JoinedGroup<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        pub struct JoinedGroupsSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl ::core::fmt::Debug for JoinedGroup<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("JoinedGroup");
-      ds.field("group_id", &self.group_id());
-      ds.field("host_relay_url", &self.host_relay_url());
-      ds.field("name", &self.name());
-      ds.field("picture", &self.picture());
-      ds.field("about", &self.about());
-      ds.field("member_count", &self.member_count());
-      ds.field("admin_count", &self.admin_count());
-      ds.field("public", &self.public());
-      ds.field("open", &self.open());
-      ds.field("is_member", &self.is_member());
-      ds.field("is_admin", &self.is_admin());
-      ds.field("parent", &self.parent());
-      ds.field("children", &self.children());
-      ds.finish()
-  }
-}
-pub enum JoinedGroupsSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> ::flatbuffers::Follow<'a> for JoinedGroupsSnapshot<'a> {
+            type Inner = JoinedGroupsSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-pub struct JoinedGroupsSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> JoinedGroupsSnapshot<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_GROUPS: ::flatbuffers::VOffsetT = 8;
 
-impl<'a> ::flatbuffers::Follow<'a> for JoinedGroupsSnapshot<'a> {
-  type Inner = JoinedGroupsSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                JoinedGroupsSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args JoinedGroupsSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<JoinedGroupsSnapshot<'bldr>> {
+                let mut builder = JoinedGroupsSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.groups {
+                    builder.add_groups(x);
+                }
+                if let Some(x) = args.active_pubkey {
+                    builder.add_active_pubkey(x);
+                }
+                builder.add_schema_version(args.schema_version);
+                builder.finish()
+            }
 
-impl<'a> JoinedGroupsSnapshot<'a> {
-  pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-  pub const VT_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 6;
-  pub const VT_GROUPS: ::flatbuffers::VOffsetT = 8;
+            #[inline]
+            pub fn schema_version(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(JoinedGroupsSnapshot::VT_SCHEMA_VERSION, Some(2))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn active_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        JoinedGroupsSnapshot::VT_ACTIVE_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn groups(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<JoinedGroup<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<JoinedGroup>>,
+                    >>(JoinedGroupsSnapshot::VT_GROUPS, None)
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    JoinedGroupsSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args JoinedGroupsSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<JoinedGroupsSnapshot<'bldr>> {
-    let mut builder = JoinedGroupsSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.groups { builder.add_groups(x); }
-    if let Some(x) = args.active_pubkey { builder.add_active_pubkey(x); }
-    builder.add_schema_version(args.schema_version);
-    builder.finish()
-  }
+        impl ::flatbuffers::Verifiable for JoinedGroupsSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "active_pubkey",
+                        Self::VT_ACTIVE_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<JoinedGroup>>,
+                    >>("groups", Self::VT_GROUPS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct JoinedGroupsSnapshotArgs<'a> {
+            pub schema_version: u32,
+            pub active_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub groups: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<JoinedGroup<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for JoinedGroupsSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                JoinedGroupsSnapshotArgs {
+                    schema_version: 2,
+                    active_pubkey: None,
+                    groups: None,
+                }
+            }
+        }
 
+        pub struct JoinedGroupsSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> JoinedGroupsSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_schema_version(&mut self, schema_version: u32) {
+                self.fbb_.push_slot::<u32>(
+                    JoinedGroupsSnapshot::VT_SCHEMA_VERSION,
+                    schema_version,
+                    2,
+                );
+            }
+            #[inline]
+            pub fn add_active_pubkey(&mut self, active_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    JoinedGroupsSnapshot::VT_ACTIVE_PUBKEY,
+                    active_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_groups(
+                &mut self,
+                groups: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<JoinedGroup<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    JoinedGroupsSnapshot::VT_GROUPS,
+                    groups,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> JoinedGroupsSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                JoinedGroupsSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<JoinedGroupsSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-  #[inline]
-  pub fn schema_version(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(JoinedGroupsSnapshot::VT_SCHEMA_VERSION, Some(2)).unwrap()}
-  }
-  #[inline]
-  pub fn active_pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(JoinedGroupsSnapshot::VT_ACTIVE_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn groups(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<JoinedGroup<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<JoinedGroup>>>>(JoinedGroupsSnapshot::VT_GROUPS, None)}
-  }
-}
+        impl ::core::fmt::Debug for JoinedGroupsSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("JoinedGroupsSnapshot");
+                ds.field("schema_version", &self.schema_version());
+                ds.field("active_pubkey", &self.active_pubkey());
+                ds.field("groups", &self.groups());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `JoinedGroupsSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_joined_groups_snapshot_unchecked`.
+        pub fn root_as_joined_groups_snapshot(
+            buf: &[u8],
+        ) -> Result<JoinedGroupsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<JoinedGroupsSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `JoinedGroupsSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_joined_groups_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_joined_groups_snapshot(
+            buf: &[u8],
+        ) -> Result<JoinedGroupsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<JoinedGroupsSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `JoinedGroupsSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_joined_groups_snapshot_unchecked`.
+        pub fn root_as_joined_groups_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<JoinedGroupsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<JoinedGroupsSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `JoinedGroupsSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_joined_groups_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_joined_groups_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<JoinedGroupsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<JoinedGroupsSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a JoinedGroupsSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `JoinedGroupsSnapshot`.
+        pub unsafe fn root_as_joined_groups_snapshot_unchecked(
+            buf: &[u8],
+        ) -> JoinedGroupsSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<JoinedGroupsSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed JoinedGroupsSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `JoinedGroupsSnapshot`.
+        pub unsafe fn size_prefixed_root_as_joined_groups_snapshot_unchecked(
+            buf: &[u8],
+        ) -> JoinedGroupsSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<JoinedGroupsSnapshot>(buf) }
+        }
+        pub const JOINED_GROUPS_SNAPSHOT_IDENTIFIER: &str = "NJGS";
 
-impl ::flatbuffers::Verifiable for JoinedGroupsSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("active_pubkey", Self::VT_ACTIVE_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<JoinedGroup>>>>("groups", Self::VT_GROUPS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct JoinedGroupsSnapshotArgs<'a> {
-    pub schema_version: u32,
-    pub active_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub groups: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<JoinedGroup<'a>>>>>,
-}
-impl<'a> Default for JoinedGroupsSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    JoinedGroupsSnapshotArgs {
-      schema_version: 2,
-      active_pubkey: None,
-      groups: None,
-    }
-  }
-}
+        #[inline]
+        pub fn joined_groups_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, JOINED_GROUPS_SNAPSHOT_IDENTIFIER, false)
+        }
 
-pub struct JoinedGroupsSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> JoinedGroupsSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_schema_version(&mut self, schema_version: u32) {
-    self.fbb_.push_slot::<u32>(JoinedGroupsSnapshot::VT_SCHEMA_VERSION, schema_version, 2);
-  }
-  #[inline]
-  pub fn add_active_pubkey(&mut self, active_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroupsSnapshot::VT_ACTIVE_PUBKEY, active_pubkey);
-  }
-  #[inline]
-  pub fn add_groups(&mut self, groups: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<JoinedGroup<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(JoinedGroupsSnapshot::VT_GROUPS, groups);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> JoinedGroupsSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    JoinedGroupsSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<JoinedGroupsSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn joined_groups_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, JOINED_GROUPS_SNAPSHOT_IDENTIFIER, true)
+        }
 
-impl ::core::fmt::Debug for JoinedGroupsSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("JoinedGroupsSnapshot");
-      ds.field("schema_version", &self.schema_version());
-      ds.field("active_pubkey", &self.active_pubkey());
-      ds.field("groups", &self.groups());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `JoinedGroupsSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_joined_groups_snapshot_unchecked`.
-pub fn root_as_joined_groups_snapshot(buf: &[u8]) -> Result<JoinedGroupsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<JoinedGroupsSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `JoinedGroupsSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_joined_groups_snapshot_unchecked`.
-pub fn size_prefixed_root_as_joined_groups_snapshot(buf: &[u8]) -> Result<JoinedGroupsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<JoinedGroupsSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `JoinedGroupsSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_joined_groups_snapshot_unchecked`.
-pub fn root_as_joined_groups_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<JoinedGroupsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<JoinedGroupsSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `JoinedGroupsSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_joined_groups_snapshot_unchecked`.
-pub fn size_prefixed_root_as_joined_groups_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<JoinedGroupsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<JoinedGroupsSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a JoinedGroupsSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `JoinedGroupsSnapshot`.
-pub unsafe fn root_as_joined_groups_snapshot_unchecked(buf: &[u8]) -> JoinedGroupsSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<JoinedGroupsSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed JoinedGroupsSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `JoinedGroupsSnapshot`.
-pub unsafe fn size_prefixed_root_as_joined_groups_snapshot_unchecked(buf: &[u8]) -> JoinedGroupsSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<JoinedGroupsSnapshot>(buf) }
-}
-pub const JOINED_GROUPS_SNAPSHOT_IDENTIFIER: &str = "NJGS";
+        #[inline]
+        pub fn finish_joined_groups_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<JoinedGroupsSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(JOINED_GROUPS_SNAPSHOT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn joined_groups_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, JOINED_GROUPS_SNAPSHOT_IDENTIFIER, false)
-}
-
-#[inline]
-pub fn joined_groups_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, JOINED_GROUPS_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_joined_groups_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<JoinedGroupsSnapshot<'a>>) {
-  fbb.finish(root, Some(JOINED_GROUPS_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_joined_groups_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<JoinedGroupsSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(JOINED_GROUPS_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod nip29
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_joined_groups_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<JoinedGroupsSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(JOINED_GROUPS_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod nip29
+} // pub mod nmp
