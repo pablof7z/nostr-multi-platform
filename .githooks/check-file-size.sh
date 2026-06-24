@@ -19,7 +19,7 @@
 #                      (anti-cheat on baseline raises).
 #   --dry-run          Report violations but exit 0 (used by smoke tests).
 #   --baseline-file F  Read hard-cap baseline from F instead of .file-size-baseline.
-#                      Used by smoke tests.
+#                      Used by smoke tests. Ratchet integrity checks this file.
 #   --force-include F  Always include path F even if it matches .file-size-ignore.
 #                      May be repeated. Used by smoke tests to exercise the fixture.
 #
@@ -121,6 +121,9 @@ collect_files_to_tmp() {
 declare -a IGNORE_PATTERNS=()
 declare -a BASELINE_PATHS=()
 declare -a BASELINE_LOCS=()
+declare -a CURRENT_BASELINE_PATHS=()
+declare -a CURRENT_BASELINE_LOCS=()
+declare -a CURRENT_BASELINE_REASONS=()
 
 if [[ -f "$IGNORE_FILE" ]]; then
     while IFS= read -r line; do
@@ -130,16 +133,32 @@ if [[ -f "$IGNORE_FILE" ]]; then
     done < "$IGNORE_FILE"
 fi
 
-# ── Load hard-cap baseline ───────────────────────────────────────────────────
-# Format: <relative path><TAB><LOC>. Blank/comment lines are ignored.
-# In ref-diff CI mode, read the baseline from FROM_REF so a PR cannot make an
-# over-limit file larger by raising the baseline in the same change.
-load_baseline_from_stream() {
+# ── Load hard-cap baselines ──────────────────────────────────────────────────
+# Format: <relative path><TAB><LOC>[<TAB>staged:<issue-or-reason>].
+# Blank/comment lines are ignored.
+#
+# The trusted baseline blocks expansions. In ref-diff CI mode it comes from the
+# PR base so a PR cannot make an over-limit file larger by raising the baseline
+# in the same change.
+load_trusted_baseline_from_stream() {
     while IFS=$'\t' read -r rel loc _rest; do
         [[ -z "${rel// /}" || "${rel:0:1}" == "#" ]] && continue
         [[ "$loc" =~ ^[0-9]+$ ]] || continue
         BASELINE_PATHS+=("$rel")
         BASELINE_LOCS+=("$loc")
+    done
+}
+
+# The current baseline is the checkout's self-consistency contract. It may be
+# lower than the trusted baseline in a PR that shrinks a file and ratchets the
+# entry in the same change.
+load_current_baseline_from_stream() {
+    while IFS=$'\t' read -r rel loc reason _rest; do
+        [[ -z "${rel// /}" || "${rel:0:1}" == "#" ]] && continue
+        [[ "$loc" =~ ^[0-9]+$ ]] || continue
+        CURRENT_BASELINE_PATHS+=("$rel")
+        CURRENT_BASELINE_LOCS+=("$loc")
+        CURRENT_BASELINE_REASONS+=("$reason")
     done
 }
 
@@ -161,12 +180,16 @@ load_baseline_from_stream() {
 BASELINE_SOURCE_REF="${BASELINE_REF:-$FROM_REF}"
 if [[ -n "$BASELINE_SOURCE_REF" && -z "$BASELINE_FILE_OVERRIDE" ]]; then
     if git -C "$REPO_ROOT" cat-file -e "$BASELINE_SOURCE_REF:.file-size-baseline" 2>/dev/null; then
-        load_baseline_from_stream < <(git -C "$REPO_ROOT" show "$BASELINE_SOURCE_REF:.file-size-baseline")
+        load_trusted_baseline_from_stream < <(git -C "$REPO_ROOT" show "$BASELINE_SOURCE_REF:.file-size-baseline")
     elif [[ -f "$BASELINE_FILE" ]]; then
-        load_baseline_from_stream < "$BASELINE_FILE"
+        load_trusted_baseline_from_stream < "$BASELINE_FILE"
     fi
 elif [[ -f "$BASELINE_FILE" ]]; then
-    load_baseline_from_stream < "$BASELINE_FILE"
+    load_trusted_baseline_from_stream < "$BASELINE_FILE"
+fi
+
+if [[ -f "$BASELINE_FILE" ]]; then
+    load_current_baseline_from_stream < "$BASELINE_FILE"
 fi
 
 baseline_loc_for() {
@@ -212,10 +235,16 @@ is_checked_file() {
     esac
 }
 
+has_staged_baseline_reason() {
+    local reason="$1"
+    [[ "$reason" == staged:* && -n "${reason#staged:}" ]]
+}
+
 # ── Main check loop ───────────────────────────────────────────────────────────
 WARNINGS=0
 FAILURES=0
 BASELINED=0
+STAGED_BASELINE=0
 
 # Materialise the file list into a temp file.  Using a plain process
 # substitution `< <(collect_files)` would silently swallow errors from inside
@@ -254,18 +283,58 @@ while IFS= read -r rel_path; do
     fi
 done < "$_FILES_TMP"
 
+# Ratchet integrity for the current baseline file. This deliberately scans only
+# baseline entries, not every generated/vendor artifact, and honors the same
+# ignore file plus --force-include fixture override as the main gate.
+for idx in "${!CURRENT_BASELINE_PATHS[@]}"; do
+    rel_path="${CURRENT_BASELINE_PATHS[$idx]}"
+    baseline="${CURRENT_BASELINE_LOCS[$idx]}"
+    reason="${CURRENT_BASELINE_REASONS[$idx]}"
+
+    is_checked_file "$rel_path" || continue
+    is_ignored "$rel_path" && continue
+
+    abs_path="$REPO_ROOT/$rel_path"
+    if [[ ! -f "$abs_path" ]]; then
+        echo "STALE baseline entry for missing file (baseline $baseline): $rel_path" >&2
+        FAILURES=$((FAILURES + 1))
+        continue
+    fi
+
+    loc=$(wc -l < "$abs_path")
+    if [[ $loc -lt $HARD_LOC ]]; then
+        echo "STALE baseline entry below hard cap ($loc LOC < $HARD_LOC, baseline $baseline): $rel_path" >&2
+        FAILURES=$((FAILURES + 1))
+    elif [[ $baseline -gt $loc ]]; then
+        if has_staged_baseline_reason "$reason"; then
+            echo "STAGED baseline ratchet debt ($loc LOC, baseline $baseline, $reason): $rel_path" >&2
+            STAGED_BASELINE=$((STAGED_BASELINE + 1))
+        else
+            echo "STALE baseline entry above current LOC ($loc LOC, baseline $baseline): $rel_path" >&2
+            FAILURES=$((FAILURES + 1))
+        fi
+    fi
+done
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 if [[ $FAILURES -gt 0 ]]; then
     echo "" >&2
     echo "file-size gate: $FAILURES hard-cap violation(s) detected." >&2
     echo "  Split file(s) into cohesive submodules (AGENTS.md: 500 LOC hard ceiling)." >&2
     echo "  Legacy hard-cap debt must not exceed .file-size-baseline." >&2
+    echo "  Delete retired baseline entries; lower stale entries or add staged:<issue>." >&2
     echo "  Exempt generated/output files via .file-size-ignore." >&2
     if [[ $DRY_RUN -eq 1 ]]; then
         echo "  (--dry-run: exiting 0)" >&2
         exit 0
     fi
     exit 1
+fi
+
+if [[ $STAGED_BASELINE -gt 0 ]]; then
+    echo "" >&2
+    echo "file-size gate: $STAGED_BASELINE staged baseline ratchet item(s)." >&2
+    echo "  Keep staged reasons tied to an owning issue and remove them when split work lands." >&2
 fi
 
 if [[ $BASELINED -gt 0 ]]; then
