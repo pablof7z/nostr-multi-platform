@@ -8,8 +8,7 @@
 
 use crate::kernel::clock::FixedClock;
 use crate::kernel::projection_rev::ProjectionPresence;
-use crate::kernel::{Kernel, NostrEvent};
-use crate::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
+use crate::kernel::{EventShape, Kernel, NostrEvent, RefLiveness, RefNamespace, RefShape};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
@@ -109,30 +108,6 @@ fn ingest(kernel: &mut Kernel, role: RelayRole, sub_id: &str, ev: &NostrEvent) {
     kernel.handle_event(role, "wss://relay.test/", sub_id, &value);
 }
 
-/// `nostr:naddr…` URI for a kind:30023 article.
-fn naddr_uri(kind: u32, author: &str, d_tag: &str) -> String {
-    let bech = encode_naddr(&NaddrData {
-        identifier: d_tag.to_string(),
-        pubkey: author.to_string(),
-        kind,
-        relays: vec![],
-    })
-    .expect("encode_naddr");
-    format!("nostr:{bech}")
-}
-
-/// `nostr:nevent…` URI for a note.
-fn nevent_uri(event_id: &str, kind: Option<u32>, author: Option<&str>) -> String {
-    let bech = encode_nevent(&NeventData {
-        event_id: event_id.to_string(),
-        relays: vec![],
-        author: author.map(str::to_string),
-        kind,
-    })
-    .expect("encode_nevent");
-    format!("nostr:{bech}")
-}
-
 /// Drive one real emit. In `cfg(test)` builds this runs the oracle and panics on
 /// any violation — so simply calling it is a completeness assertion.
 fn emit(kernel: &mut Kernel) {
@@ -153,7 +128,9 @@ fn live_state(kernel: &Kernel, key: &str) -> (u64, ProjectionPresence) {
 fn emitted_state(kernel: &Kernel, key: &str) -> (u64, ProjectionPresence) {
     let s = kernel
         .last_emitted_projection_state(key)
-        .unwrap_or_else(|| panic!("no last-emit manifest state for key '{key}' — call emit() first"));
+        .unwrap_or_else(|| {
+            panic!("no last-emit manifest state for key '{key}' — call emit() first")
+        });
     (s.rev, s.presence)
 }
 
@@ -174,8 +151,16 @@ fn s1_fresh_longform_claim_store_ingest_bumps_claimed_events_rev() {
     let (mut kernel, _) = kernel_at(1_000);
 
     // Claim by coord BEFORE the article exists (the common cold-claim case).
-    let uri = naddr_uri(30023, &author, d_tag);
-    let _ = kernel.claim_event(uri, "view-1".to_string(), true, false);
+    let coord_key = format!("30023:{author}:{d_tag}");
+    let _ = kernel.resolve_ref(
+        RefNamespace::Event,
+        coord_key,
+        "view-1".to_string(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
 
     // Baseline emit so the manifest has a recorded last-emit for claimed_events.
     emit(&mut kernel);
@@ -216,8 +201,15 @@ fn s2_profile_update_after_claim_does_not_bump_claimed_events() {
     // non-empty for this author).
     let (note, note_id) = signed_note(&keys, "hi", 1_700_000_000);
     ingest(&mut kernel, RelayRole::Content, "n-sub", &note);
-    let uri = nevent_uri(&note_id, Some(1), Some(&author));
-    let _ = kernel.claim_event(uri, "view-2".to_string(), true, false);
+    let _ = kernel.resolve_ref(
+        RefNamespace::Event,
+        note_id,
+        "view-2".to_string(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
 
     emit(&mut kernel);
     let (ce_before, _) = live_state(&kernel, "claimed_events");
@@ -313,8 +305,8 @@ fn s3_bite_stably_empty_drain_does_not_advance_rev() {
 /// before expiry must NOT advance the rev. Real lifecycle + clock + emit.
 #[test]
 fn s4_action_lifecycle_ttl_expiry_bumps_rev_only_on_expiry() {
-    use crate::kernel::action_stages::ActionStage;
     use crate::kernel::action_ledger::RECENT_TERMINAL_TTL_MS;
+    use crate::kernel::action_stages::ActionStage;
 
     let base_secs = 4_000u64;
     let (mut kernel, base) = kernel_at(base_secs);

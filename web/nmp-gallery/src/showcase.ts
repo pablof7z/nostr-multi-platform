@@ -16,14 +16,17 @@ export const SHOWCASE_PUBKEY: string = references.profile.pubkey_hex;
 export const SHOWCASE_NOTE = {
   uri: references.note.uri,
   primaryId: references.note.primary_id,
+  relayHints: references.note.relay_hints,
 };
 export const SHOWCASE_ARTICLE = {
   uri: references.article.uri,
   primaryId: references.article.primary_id,
+  relayHints: references.article.relay_hints,
 };
 export const SHOWCASE_HIGHLIGHT = {
   uri: references.highlight.uri,
   primaryId: references.highlight.primary_id,
+  relayHints: references.highlight.relay_hints,
 };
 
 // Content relays where the showcase EVENTS actually live. Both the note's

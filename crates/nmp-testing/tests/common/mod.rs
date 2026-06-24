@@ -9,6 +9,8 @@
 //!   lines (W9 relay-search-radius acceptance tests).
 //! - `stub_relay` — TCP stub relay that drops connections after a configurable
 //!   delay (A5 mid-claim unreachable test).
+//! - `ref_commands` — helpers that decode test `nostr:` URI fixtures before
+//!   sending the raw-key `RefsCommand::Resolve` / `Release` seam.
 //!
 //! cargo treats `tests/common/mod.rs` as a non-test source file even when
 //! sibling files are integration tests.
@@ -18,5 +20,6 @@
 pub mod broker_adapter;
 pub mod mock_bunker_relay;
 pub mod mock_nostrconnect_signer;
+pub mod ref_commands;
 pub mod stub_relay;
 pub mod wire_log;

@@ -10,9 +10,10 @@
 //! 1. Renderer encounters an `EventRef(uri)` token.
 //! 2. `NostrContentView` calls `sink.claim(uri, consumer_id)` via the
 //!    `EventClaimSink` host bridge.
-//! 3. `LiveKernelSink::claim` forwards to `nmp_app_resolve_ref` (namespace=1/event) — the
-//!    kernel registers a `OneshotApi` interest (D4 single writer), short-
-//!    circuits on cache hit, or compiles a wire REQ on cache miss.
+//! 3. `LiveKernelSink::claim` forwards the raw event key plus decoded URI
+//!    metadata to `nmp_app_resolve_ref_with_metadata` (namespace=1/event) — the
+//!    kernel registers a `OneshotApi` interest (D4 single writer), short-circuits
+//!    on cache hit, or compiles a wire REQ on cache miss.
 //! 4. The event arrives (cache or relay), gets surfaced in the typed
 //!    `claimed_events` sidecar, the gallery's snapshot thread sends a
 //!    `GalleryEvent::Snapshot` to the main loop,
@@ -25,15 +26,15 @@
 
 use std::{
     collections::BTreeMap,
-    ffi::{c_void, CString},
+    ffi::{CString, c_void},
     os::raw::c_int,
     sync::mpsc::{Receiver, Sender},
     time::Duration,
 };
 
 use nmp_content::EventClaimSink;
-use nmp_core::refs::{RefProfileStore, REFS_PROFILE_KEY};
-use nmp_core::typed_projections::{ClaimedEventsModel, ProfileCardModel, CLAIMED_EVENTS_SCHEMA_ID};
+use nmp_core::refs::{REFS_PROFILE_KEY, RefProfileStore};
+use nmp_core::typed_projections::{CLAIMED_EVENTS_SCHEMA_ID, ClaimedEventsModel, ProfileCardModel};
 
 use crate::data::showcase_pubkey;
 
@@ -222,17 +223,20 @@ impl LiveKernelSink {
     // hydration uses component-owned `resolve_profile` above.
 }
 
+struct EventRefFromUri {
+    key: CString,
+    metadata_json: CString,
+}
+
 /// Decode a `nostr:` URI via `nmp_nip21_decode_uri` and return the canonical
-/// event key the kernel resolver expects:
+/// raw event key plus metadata the kernel resolver expects:
 ///   - nevent / note  → hex event_id
 ///   - naddr          → canonical coordinate "kind:pubkey:identifier"
 /// Returns `None` on decode failure or non-event/address target (D6: silent
-/// no-op). Used by `LiveKernelSink` migrating from deleted `nmp_app_claim_event`.
-fn event_key_from_uri(uri: &str) -> Option<CString> {
+/// no-op). Used by `LiveKernelSink` before it calls the raw-key ref seam.
+fn event_ref_from_uri(uri: &str) -> Option<EventRefFromUri> {
     let uri_c = CString::new(uri).ok()?;
-    // SAFETY: nmp_nip21_decode_uri returns a heap-allocated NUL-terminated
-    // JSON string; nmp_free_string frees it exactly once.
-    let raw = unsafe { nmp_ffi::nmp_nip21_decode_uri(uri_c.as_ptr()) };
+    let raw = nmp_ffi::nmp_nip21_decode_uri(uri_c.as_ptr());
     if raw.is_null() {
         return None;
     }
@@ -240,7 +244,7 @@ fn event_key_from_uri(uri: &str) -> Option<CString> {
         .to_str()
         .ok()
         .map(str::to_owned);
-    unsafe { nmp_ffi::nmp_free_string(raw) };
+    nmp_ffi::nmp_free_string(raw);
     let s = s?;
     let v: serde_json::Value = serde_json::from_str(&s).ok()?;
     if !v.get("ok").and_then(|b| b.as_bool()).unwrap_or(false) {
@@ -256,38 +260,60 @@ fn event_key_from_uri(uri: &str) -> Option<CString> {
         }
         _ => return None,
     };
-    CString::new(key).ok()
+    let relays: Vec<String> = v
+        .get("relays")
+        .and_then(|r| r.as_array())?
+        .iter()
+        .map(|relay| relay.as_str().map(str::to_owned))
+        .collect::<Option<_>>()?;
+    let mut metadata = serde_json::json!({ "hints": relays });
+    if let Some(author) = v.get("author").and_then(|a| a.as_str()) {
+        metadata["author"] = serde_json::Value::String(author.to_string());
+    }
+    if let Some(kind) = v.get("kind").and_then(|k| k.as_u64()) {
+        metadata["kind"] = serde_json::Value::Number(kind.into());
+    }
+    Some(EventRefFromUri {
+        key: CString::new(key).ok()?,
+        metadata_json: CString::new(metadata.to_string()).ok()?,
+    })
 }
 
-// #1726: migrated from the deleted nmp_app_claim_event / nmp_app_release_event
-// to nmp_app_resolve_ref(namespace=1/event) / nmp_app_release_ref.
+// App-owned URI adapter over the raw-key resolve_ref / release_ref seams.
+// nmp_app_release_ref.
 impl EventClaimSink for LiveKernelSink {
     fn claim(&self, uri: &str, consumer_id: &str) {
-        let Some(event_key) = event_key_from_uri(uri) else {
+        let Some(event_ref) = event_ref_from_uri(uri) else {
             return;
         };
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
         // F-TTL — embed sink claims on render → liveness = 0 (CacheOk / background).
-        nmp_ffi::nmp_app_resolve_ref(
+        nmp_ffi::nmp_app_resolve_ref_with_metadata(
             self.app,
             1, // namespace = event
-            event_key.as_ptr(),
+            event_ref.key.as_ptr(),
             cid.as_ptr(),
             2, // shape = event.embed
             0, // liveness = CacheOk
+            event_ref.metadata_json.as_ptr(),
         );
     }
 
     fn release(&self, uri: &str, consumer_id: &str) {
-        let Some(event_key) = event_key_from_uri(uri) else {
+        let Some(event_ref) = event_ref_from_uri(uri) else {
             return;
         };
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        nmp_ffi::nmp_app_release_ref(self.app, 1 /*event*/, event_key.as_ptr(), cid.as_ptr());
+        nmp_ffi::nmp_app_release_ref(
+            self.app,
+            1, /*event*/
+            event_ref.key.as_ptr(),
+            cid.as_ptr(),
+        );
     }
 }
 

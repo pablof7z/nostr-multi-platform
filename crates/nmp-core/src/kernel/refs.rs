@@ -1,6 +1,6 @@
 //! ADR-0063 — the kernel-owned `RefResolver` reference-resolution primitive.
 //!
-//! `claim_profile` + `claim_event` were already two instances of one shape:
+//! Profile and event refs are two instances of one shape:
 //! refcounted consumer ownership → kernel-owned fetch/routing/cache policy
 //! (`register_interest` / `OneshotApi`) → a push-updating keyed projection →
 //! release. This module NAMES that primitive. It does not invent a new machine;
@@ -21,9 +21,7 @@
 //! So the namespace markers ([`ProfileNs`] / [`EventNs`]) are **zero-sized**: the
 //! [`RefResolver`] trait captures the shared *contract* (the closed shape type,
 //! the namespace discriminant, the resolve/release entry points) while the kernel
-//! owns the state and the seam (`resolve_ref`) dispatches with a `match`. This is
-//! exactly how the existing `claim_*` methods already work (`impl Kernel` bodies),
-//! made uniform — not a new indirection layer.
+//! owns the state and the seam (`resolve_ref`) dispatches with a `match`.
 //!
 //! ## Closed, typed surface (ADR-0063 D2/D3/D4 — NOT a stringly registry)
 //!
@@ -172,6 +170,32 @@ impl From<RefLiveness> for ProfileLiveness {
     }
 }
 
+/// Optional caller-supplied metadata for a raw-key ref resolve.
+///
+/// This is NOT a URI front door. App-owned URI adapters decode `nostr:` /
+/// NIP-19 values before crossing the boundary, then pass the raw key plus this
+/// metadata so relay TLVs and nevent author TLVs keep the behavior the deleted
+/// URI adapter had.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RefResolveMetadata {
+    /// Relay hints decoded by the caller from NIP-19/NIP-21 TLVs.
+    pub hints: Vec<String>,
+    /// Optional event author decoded from a nevent author TLV. Ignored for
+    /// profile refs and superseded by coordinate-derived authors for naddr keys.
+    pub event_author: Option<String>,
+}
+
+impl RefResolveMetadata {
+    /// Metadata carrying only relay hints.
+    #[must_use]
+    pub fn from_hints(hints: Vec<String>) -> Self {
+        Self {
+            hints,
+            event_author: None,
+        }
+    }
+}
+
 /// The shared contract both reference resolvers implement.
 ///
 /// Enum-dispatched through [`Kernel::resolve_ref`] (see module docs for why this
@@ -241,8 +265,7 @@ impl RefResolver for EventNs {
     ) -> Vec<OutboundMessage> {
         // Origin-blind seam: readiness is a kernel-owned transport fact
         // (`any_relay_connected`), not a caller-supplied flag (the ADR seam has
-        // no `can_send`). The legacy `claim_event` scaffold still threads its
-        // caller's flag for byte-identical behaviour during the migration.
+        // no `can_send`).
         let can_send = kernel.any_relay_connected();
         kernel.resolve_event_ref(key, consumer_id, shape, liveness, force, can_send, hints)
     }
@@ -269,6 +292,31 @@ impl Kernel {
         force: bool,
         hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
+        self.resolve_ref_with_metadata(
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            RefResolveMetadata::from_hints(hints),
+        )
+    }
+
+    /// Same raw-key resolver with caller-supplied metadata from an app-owned URI
+    /// adapter. The metadata does not create a second resolution door: the key is
+    /// still raw, shape/namespace are still checked here, and dispatch still
+    /// lands in the namespace-owned resolver body.
+    pub(crate) fn resolve_ref_with_metadata(
+        &mut self,
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+        force: bool,
+        metadata: RefResolveMetadata,
+    ) -> Vec<OutboundMessage> {
         if shape.namespace() != namespace {
             self.log(format!(
                 "resolve_ref: shape namespace {:?} != requested {namespace:?} — ignoring",
@@ -278,9 +326,21 @@ impl Kernel {
         }
         match shape {
             RefShape::Profile(s) => {
-                ProfileNs::resolve(self, key, consumer_id, s, liveness, force, hints)
+                ProfileNs::resolve(self, key, consumer_id, s, liveness, force, metadata.hints)
             }
-            RefShape::Event(s) => EventNs::resolve(self, key, consumer_id, s, liveness, force, hints),
+            RefShape::Event(s) => {
+                let can_send = self.any_relay_connected();
+                self.resolve_event_ref_with_metadata(
+                    key,
+                    consumer_id,
+                    s,
+                    liveness,
+                    force,
+                    can_send,
+                    metadata.event_author,
+                    metadata.hints,
+                )
+            }
         }
     }
 
@@ -314,19 +374,13 @@ impl Kernel {
     /// once no consumer holds the key.
     pub(crate) fn ref_demanded_profile_shape(&self, key: &str) -> Option<ProfileShape> {
         let consumers = self.ref_profile_shapes.get(key)?;
-        consumers
-            .values()
-            .copied()
-            .reduce(|acc, s| acc.widen(s))
+        consumers.values().copied().reduce(|acc, s| acc.widen(s))
     }
 
     /// The widest `event` shape any currently-live consumer of `key` demanded.
     /// Folds the widen lattice over the per-consumer shapes (HIGH 4).
     pub(crate) fn ref_demanded_event_shape(&self, key: &str) -> Option<EventShape> {
         let consumers = self.ref_event_shapes.get(key)?;
-        consumers
-            .values()
-            .copied()
-            .reduce(|acc, s| acc.widen(s))
+        consumers.values().copied().reduce(|acc, s| acc.widen(s))
     }
 }

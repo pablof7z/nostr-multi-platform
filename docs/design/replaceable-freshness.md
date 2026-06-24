@@ -113,7 +113,8 @@ argument on `nmp_app_claim_profile`. The event-ref entry point is the unified
 - `nmp_app_claim_profile(app, pubkey, consumer_id, force)` → cached kind:0 → `claim_replaceable(0, pubkey, None, force)`
 - `nmp_app_resolve_ref(app, 1, key, consumer_id, shape, liveness)` → cached `naddr` coordinate → `claim_replaceable(kind, pubkey, Some(d_tag), false)` (TTL gate runs automatically)
 
-The earlier `nmp_app_claim_event` and `nmp_app_refresh_replaceable` symbols were removed. `nmp_app_resolve_ref` is the unified replacement (ADR-0063 Lane D). See
+The earlier standalone event-claim and replaceable-refresh symbols were removed.
+`nmp_app_resolve_ref` is the unified replacement (ADR-0063 Lane D). See
 [ADR-0016 — F-TTL FFI surface](../decisions/0016-f-ttl-ffi-surface.md) for the
 decision that superseded the standalone-symbol approach.
 

@@ -419,9 +419,9 @@ class KernelBridge {
     private external fun nativeIsAlive(handle: Long): Boolean
     private external fun nativeSetUpdateListener(handle: Long, listener: KernelUpdateListener)
     private external fun nativeClearUpdateListener(handle: Long)
-    // Ref claim/release — `internal` so the cohesive ref-resolution wrappers live
-    // in the sibling KernelBridgeRefs.kt without inflating this file past the LOC ceiling.
-    // ADR-0063 Lane H: nativeClaimProfile / nativeReleaseProfile deleted.
+    // Ref resolution — `internal` so the cohesive wrappers live in the sibling
+    // KernelBridgeRefs.kt without inflating this file past the LOC ceiling. Event URI
+    // JNI functions below are app-local adapters over `resolve_ref` / `release_ref`.
     internal external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
     internal external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
     internal external fun nativeResolveRef(

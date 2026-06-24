@@ -13,8 +13,8 @@
   removal), the `SnapshotRegistry` change-gate mechanism (`ChangeGate`, a *separate*
   per-tick re-serialization optimization this composes with). Established
   consumer-side declaration precedents this generalises: relay `push_interest` /
-  interest lattice, profile claims (`claim_profile`), event claims (`claim_event`),
-  and dynamic feed registration (`register_feed_with_observer`).
+  interest lattice, unified ref resolution (`resolve_ref` / `release_ref`), and
+  dynamic feed registration (`register_feed_with_observer`).
 - **Scope:** WHICH projection keys are serialized into each pushed `SnapshotFrame`.
   NOT their content (owned by each projection's producer), NOT their decode path
   (owned by each shell), NOT per-tick change-diffing (a separate future optimization).
@@ -79,11 +79,9 @@ honours today**:
 
 - **relay `push_interest` / the interest lattice** — the host declares a static set of
   relay filters; the kernel coalesces and serves only those.
-- **profile claims** (`claim_profile(pubkey, consumer)`, `KernelBridge.swift:177`) — a
-  host component declares "I consume this pubkey's profile"; the kernel owns the fetch
-  policy and surfaces it under `claimed_profiles`.
-- **event claims** (`claim_event(...)`, `KernelBridge.swift:200`) — same shape for
-  `claimed_events`.
+- **unified ref resolution** (`resolve_ref(...)`) — a host component declares "I
+  consume this profile or event ref"; the kernel owns the fetch policy and
+  surfaces it under `refs.profile` / `refs.event`.
 - **dynamic feed keys** (`register_feed_with_observer`) — a host declares "I consume a
   feed under key K".
 

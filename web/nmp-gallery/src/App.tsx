@@ -80,9 +80,9 @@ export default function App(): JSX.Element {
   // or we exhaust the budget. Idempotent and self-stopping.
   let claimStarted = false;
   const claimTargets = [
-    { uri: SHOWCASE_NOTE.uri, id: SHOWCASE_NOTE.primaryId, consumer: "gallery-note" },
-    { uri: SHOWCASE_ARTICLE.uri, id: SHOWCASE_ARTICLE.primaryId, consumer: "gallery-article" },
-    { uri: SHOWCASE_HIGHLIGHT.uri, id: SHOWCASE_HIGHLIGHT.primaryId, consumer: "gallery-highlight" },
+    { id: SHOWCASE_NOTE.primaryId, hints: SHOWCASE_NOTE.relayHints, consumer: "gallery-note" },
+    { id: SHOWCASE_ARTICLE.primaryId, hints: SHOWCASE_ARTICLE.relayHints, consumer: "gallery-article" },
+    { id: SHOWCASE_HIGHLIGHT.primaryId, hints: SHOWCASE_HIGHLIGHT.relayHints, consumer: "gallery-highlight" },
   ];
   createEffect(() => {
     if (!runtime.anyContentConnected() || claimStarted) return;
@@ -98,17 +98,17 @@ export default function App(): JSX.Element {
       for (const t of claimTargets) {
         if (runtime.claimedEvent(t.id)) continue;
         allResolved = false;
-        // claim_event dedupes ("already requested → no fetch"), so a first REQ
+        // resolve_ref dedupes ("already requested → no fetch"), so a first REQ
         // dropped because its hint relay wasn't connected yet would never retry.
         // Release (drops the last consumer → clears the requested state) then
-        // re-claim to force a FRESH REQ once more relays are connected.
+        // resolve again to force a FRESH REQ once more relays are connected.
         const claimedAt = lastClaimAt.get(t.id);
         if (claimedAt === undefined) {
-          runtime.claimEvent(t.uri, t.consumer);
+          runtime.claimEvent(t.id, t.consumer, t.hints);
           lastClaimAt.set(t.id, attempt);
         } else if (attempt - claimedAt >= RECLAIM_AFTER) {
-          runtime.releaseEvent(t.uri, t.consumer);
-          runtime.claimEvent(t.uri, t.consumer);
+          runtime.releaseEvent(t.id, t.consumer);
+          runtime.claimEvent(t.id, t.consumer, t.hints);
           lastClaimAt.set(t.id, attempt);
         }
       }

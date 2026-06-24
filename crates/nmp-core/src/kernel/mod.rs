@@ -64,6 +64,7 @@ pub mod wallet_access;
 #[cfg(all(test, feature = "native"))] mod coverage_ledger_d2_journey_tests;
 #[cfg(test)] mod eose_ok_notice_ingest_tests;
 #[cfg(test)] mod event_claim_tests;
+#[cfg(test)] mod event_claim_hint_tests;
 #[cfg(any(test, feature = "test-support"))] mod interest_install_cache_serve_support;
 #[cfg(test)] mod interest_install_cache_serve_tests;
 pub(crate) mod event_claim_released; // V-59 rung 1 — event-claim released observer ring.
@@ -120,7 +121,9 @@ mod replay;
 mod requests;
 pub use requests::ProfileLiveness;
 pub(crate) mod refs; // ADR-0063 (#1671) — kernel RefResolver.
-pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+pub use refs::{
+    EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape,
+};
 mod ref_row_source;
 mod feed_author_refs;
 #[cfg(test)] mod refs_tests;
@@ -361,7 +364,7 @@ pub struct Kernel {
     event_claim_released_observers: Vec<Arc<dyn event_claim_released::EventClaimReleasedObserver>>,
     /// Cold-start parking queue for event refs awaiting a relay connection.
     pub(in crate::kernel) pending_event_claims: Vec<requests::PendingEventClaim>,
-    /// Counter for `claim_event` drops due to `MAX_EVENT_CLAIMS_PER_KEY`.
+    /// Counter for event-ref drops due to `MAX_EVENT_CLAIMS_PER_KEY`.
     event_claim_drops_total: u64,
     timeline_requested: bool,
     contacts_deadline: Option<Instant>,
@@ -478,4 +481,3 @@ pub struct Kernel {
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
-

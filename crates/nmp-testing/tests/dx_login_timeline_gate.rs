@@ -46,7 +46,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use nmp_example_login_timeline::harness::{contact_list, note, reply, run_demo, DemoApp, DEMO_NSEC};
+use nmp_example_login_timeline::harness::{
+    contact_list, note, reply, run_demo, DemoApp, DEMO_NSEC,
+};
 use nostr::Keys;
 
 // `NmpApp` spins process-global actor / listener threads; serialize the
@@ -122,7 +124,7 @@ fn g1_g2_login_renders_row_then_live_update_adds_row() {
 /// admits every root it observes; the follow gate for root admission is the
 /// kernel's ingest-layer relevance filter (the active account's
 /// `timeline_authors`), and a non-followed root only reaches the engine at all
-/// via explicit `claim_event` hydration when a FOLLOWED reply references it
+/// via explicit event-ref hydration when a FOLLOWED reply references it
 /// (see `docs/perf/op-centric-feed-architecture.md` §B and the engine's
 /// `crates/nmp-feed/src/root_indexed/engine/ingest.rs::ingest_root`).
 ///
@@ -163,9 +165,10 @@ fn g3_follow_set_is_load_bearing_for_attribution() {
 
     // Wait until the root card carries the followed-author attribution.
     let rows = demo.rows_when(Duration::from_secs(5), |rows| {
-        rows.iter()
-            .any(|r| r.author_pubkey == root_author.public_key().to_hex()
-                && !r.attribution_pubkeys.is_empty())
+        rows.iter().any(|r| {
+            r.author_pubkey == root_author.public_key().to_hex()
+                && !r.attribution_pubkeys.is_empty()
+        })
     });
 
     let root_row = rows
@@ -203,8 +206,10 @@ fn g3_follow_set_is_load_bearing_for_attribution() {
     // card. (Belt-and-suspenders against a regression that rendered dropped
     // replies as standalone rows.)
     assert!(
-        !rows.iter().any(|r| r.author_pubkey == stranger.public_key().to_hex()
-            || r.content.contains("I am not followed")),
+        !rows
+            .iter()
+            .any(|r| r.author_pubkey == stranger.public_key().to_hex()
+                || r.content.contains("I am not followed")),
         "G3 DX GAP: a NON-followed reply surfaced as its own timeline row — the \
          follow set is not gating the engine. Rendered rows: {:?}",
         rows.iter()

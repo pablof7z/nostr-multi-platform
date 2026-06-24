@@ -29,9 +29,9 @@
 //! - **Fictional event id**: a 64-hex string that will never match any event on
 //!   any public relay, forcing Phase-1 to EOSE-with-no-match and advance to
 //!   Phase-2.
-//! - **nevent URI with stub as relay hint**: the stub URL is embedded in the
-//!   nevent TLV's relay list.  Phase-2 drains `PendingClaim.candidate_queue`
-//!   (seeded from `uri_relay_hints`) → REQ sent to the stub.
+//! - **event ref with stub as relay hint**: the stub URL is supplied as a
+//!   raw-key hint. Phase-2 drains `PendingClaim.candidate_queue`
+//!   (seeded from relay hints) → REQ sent to the stub.
 //! - **Stub alive ≥ 3000 ms**: the stub must stay alive until Phase-2's REQ
 //!   arrives (~1500 ms for Phase-1 budget + connection overhead).  After the
 //!   REQ arrives the stub drops, triggering the failure score.
@@ -48,11 +48,12 @@
 #[path = "common/mod.rs"]
 mod common;
 
+use common::ref_commands::resolve_event_embed;
 use common::stub_relay::StubRelay;
 use common::wire_log::{req_emit_relays_for_phase, score_updates, StderrCapture};
+use nmp_core::actor::LifecycleCommand;
 use nmp_core::nip19::{encode_nevent, NeventData};
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -176,12 +177,11 @@ fn a5_mid_claim_stub_relay_drop_records_failure_delta() {
 
     // ── (6) Issue the claim ──────────────────────────────────────────────────
     let claim_start = Instant::now();
-    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-        uri: nevent_uri,
-        consumer_id: "a5-test".to_string(),
-        force: false,
-    }))
-    .expect("A5: ClaimEvent send");
+    tx.send(ActorCommand::Refs(resolve_event_embed(
+        &nevent_uri,
+        "a5-test",
+    )))
+    .expect("A5: event ref resolve send");
 
     let test_deadline = Instant::now() + Duration::from_millis(TEST_BUDGET_MS);
     drain_until_or_timeout(&rx, test_deadline, |_| false);

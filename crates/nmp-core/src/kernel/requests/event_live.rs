@@ -196,10 +196,9 @@ impl Kernel {
     /// Drain the cold-start parking queue. Called from `pending_view_requests`
     /// once at least one relay is connected (`can_send = true`). Mirrors
     /// `pending_profile_claim_requests` semantics: replays each parked CANONICAL
-    /// [`PendingEventClaim`] target through the raw resolver body
-    /// (`resolve_event_ref_inner`, NOT the legacy URI front door), so a raw key
-    /// parked while cold actually resolves (the Lane D coverage-hole fix); the
-    /// body skips any that are already resolved or already in-flight.
+    /// [`PendingEventClaim`] target through the raw resolver body, so a raw key
+    /// parked while cold actually resolves; the body skips any that are already
+    /// resolved or already in-flight.
     ///
     /// Defensive (D4 / lifecycle): a parked claim whose consumer has since
     /// RELEASED its ref (`event_claims[primary_id]` no longer holds it) must NOT
@@ -228,11 +227,11 @@ impl Kernel {
                     continue;
                 }
             }
-            // Replay the parked target's OWN shape / liveness / force / author /
-            // relay-hints through the canonical raw body (D) — `can_send = true`
-            // now that a relay is connected. (The parked `force` is preserved
-            // verbatim so the original caller's freshness intent survives the
-            // cold-start delay.)
+            // Replay the parked target's OWN shape / liveness / force /
+            // URI-decoded metadata through the canonical raw body (D) —
+            // `can_send = true` now that a relay is connected. (The parked
+            // `force` is preserved verbatim so the original caller's freshness
+            // intent survives the cold-start delay.)
             out.extend(self.resolve_event_ref_inner(
                 claim.key,
                 claim.consumer_id,
@@ -240,7 +239,7 @@ impl Kernel {
                 claim.liveness,
                 claim.force,
                 true,
-                claim.author,
+                claim.event_author,
                 claim.relay_hints,
             ));
         }

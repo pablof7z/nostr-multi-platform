@@ -5,7 +5,7 @@
 //! Profile `resolve_ref` / `release_ref` do not build kind:0 REQ frames
 //! directly. Each resolve registers a `LogicalInterest { kinds:[0],
 //! authors:[P], limit:None }` through the [`crate::subs::InterestRegistry`]
-//! (the same single-writer chokepoint the follow feed and `claim_event` use),
+//! (the same single-writer chokepoint the follow feed and event refs use),
 //! so a resolved profile inherits, for free:
 //!
 //! * **D3 implicit kind:10002 discovery** — `recompile_and_diff` auto-emits a
@@ -25,7 +25,7 @@
 //!   author maximum).
 //! * **`interest.hints`** — nprofile/nevent NIP-19 relay TLVs seed the claim
 //!   so a stranger whose kind:10002 is on no indexer still resolves from the
-//!   embedded hint relay (parity with `claim_event`).
+//!   embedded hint relay (parity with event refs).
 //!
 //! Deleted alongside this migration: `profile_claim_request`,
 //! `pending_profile_claim_requests`, the `ProfileRequestState` machine, and
@@ -193,10 +193,14 @@ impl Kernel {
             self.changed_since_emit = true;
             // ADR-0055 Rung 1: bump profile_claims_ver. (the `refs.profile` projection
             // derives from `profile_claims`, untouched by the registry migration.)
-            self.projection_rev_tracker.source_versions.bump_profile_claims();
+            self.projection_rev_tracker
+                .source_versions
+                .bump_profile_claims();
             // ADR-0063 Lane B (D6a) — bump THIS pubkey's per-key rev (resolve site 1
             // of 3). The row appears / re-asserts; only this key's row need cross FFI.
-            self.projection_rev_tracker.source_versions.bump_profile_row(&pubkey);
+            self.projection_rev_tracker
+                .source_versions
+                .bump_profile_row(&pubkey);
         }
 
         // F-TTL — a profile is a kind:0 replaceable identity. When it is already
@@ -394,7 +398,9 @@ impl Kernel {
         let mutated = actually_removed || shape_narrowed || liveness_downgraded;
         if mutated {
             self.changed_since_emit = true;
-            self.projection_rev_tracker.source_versions.bump_profile_claims();
+            self.projection_rev_tracker
+                .source_versions
+                .bump_profile_claims();
         }
         // ADR-0063 Lane B (D6a) — per-key rev. On a full teardown the row is gone:
         // `clear_profile_row` bumps it to the final post-clear rev and immediately
@@ -411,7 +417,9 @@ impl Kernel {
             // downstream row-delta emitter (Lane A) is out of this branch's scope,
             // so it is dropped here and the rev entry is already gone.
         } else if mutated {
-            self.projection_rev_tracker.source_versions.bump_profile_row(pubkey);
+            self.projection_rev_tracker
+                .source_versions
+                .bump_profile_row(pubkey);
         }
         self.log(format!(
             "release profile {} consumer {} ref {}",

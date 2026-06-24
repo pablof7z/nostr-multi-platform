@@ -11,9 +11,10 @@ private let ehLog = Logger(subsystem: "org.nmp.gallery", category: "EmbedHost")
 /// The renderer (`NostrContentView` / `EmbeddedEvent`) is frontend-driven
 /// (ADR-0034 / M16): it walks a content tree, encounters an `EventRef(uri)`,
 /// and the `EmbeddedEvent` view fires `sink.claim(uri, consumerId)` via
-/// `EventClaimSinkProtocol`. The host (`KernelEventClaimSink`) forwards to
-/// `nmp_app_claim_event`. The kernel registers a `OneshotApi` interest,
-/// fetches via relays (or cache-hits), and surfaces the resolved event in
+/// `EventClaimSinkProtocol`. The host (`KernelEventClaimSink`) decodes the
+/// URI and forwards the raw event key through `resolve_ref`. The kernel
+/// registers a `OneshotApi` interest, fetches via relays (or cache-hits),
+/// and surfaces the resolved event in
 /// `snapshot.projections.claimed_events[primary_id]`. `nmp-ffi` then
 /// kind-dispatches each entry via `nmp_content::resolve_embed_projection`
 /// and emits the pre-resolved `EmbeddedEventEnvelope` map under

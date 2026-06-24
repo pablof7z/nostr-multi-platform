@@ -33,9 +33,10 @@
 #[path = "common/mod.rs"]
 mod common;
 
+use common::ref_commands::resolve_event_embed;
 use common::wire_log::{event_rx_for_author, req_emit_relays_for_phase, StderrCapture};
+use nmp_core::actor::LifecycleCommand;
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -135,12 +136,11 @@ fn a1_cold_claim_gigi_article_delivers_event_rx() {
 
     // ── (4) Issue the cold claim ──────────────────────────────────────────────
     let claim_start = Instant::now();
-    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-        uri: GIGI_NADDR_A1.to_string(),
-        consumer_id: "a1-test".to_string(),
-        force: false,
-    }))
-    .expect("A1: ClaimEvent send");
+    tx.send(ActorCommand::Refs(resolve_event_embed(
+        GIGI_NADDR_A1,
+        "a1-test",
+    )))
+    .expect("A1: event ref resolve send");
 
     // ── (5) Drain frames for the full claim budget ───────────────────────────
     let claim_deadline = Instant::now() + Duration::from_millis(CLAIM_BUDGET_MS);

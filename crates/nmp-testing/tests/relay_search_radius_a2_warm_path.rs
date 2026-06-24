@@ -32,11 +32,12 @@
 #[path = "common/mod.rs"]
 mod common;
 
+use common::ref_commands::{release_event_ref, resolve_event_embed};
 use common::wire_log::{
     event_rx_for_author, req_emit_relays_for_phase, score_updates, StderrCapture,
 };
+use nmp_core::actor::LifecycleCommand;
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -121,31 +122,29 @@ fn a2_warm_path_second_claim_uses_scored_relay() {
     }
 
     // ── (4) Prime: first claim for GIGI_NADDR_PRIME ──────────────────────────
-    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-        uri: GIGI_NADDR_PRIME.to_string(),
-        consumer_id: "a2-prime".to_string(),
-        force: false,
-    }))
-    .expect("A2: prime ClaimEvent send");
+    tx.send(ActorCommand::Refs(resolve_event_embed(
+        GIGI_NADDR_PRIME,
+        "a2-prime",
+    )))
+    .expect("A2: prime event ref resolve send");
 
     let prime_deadline = Instant::now() + Duration::from_millis(PRIME_BUDGET_MS);
     drain_until_or_timeout(&rx, prime_deadline, |_| false);
     std::thread::sleep(Duration::from_millis(200));
 
     // Release the first claim so the second claim sees a fresh interest slot.
-    let _ = tx.send(ActorCommand::Refs(RefsCommand::ReleaseEvent {
-        uri: GIGI_NADDR_PRIME.to_string(),
-        consumer_id: "a2-prime".to_string(),
-    }));
+    let _ = tx.send(ActorCommand::Refs(release_event_ref(
+        GIGI_NADDR_PRIME,
+        "a2-prime",
+    )));
     std::thread::sleep(Duration::from_millis(50));
 
     // ── (5) Second claim: different Gigi article ─────────────────────────────
-    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-        uri: GIGI_NADDR_SECOND.to_string(),
-        consumer_id: "a2-second".to_string(),
-        force: false,
-    }))
-    .expect("A2: second ClaimEvent send");
+    tx.send(ActorCommand::Refs(resolve_event_embed(
+        GIGI_NADDR_SECOND,
+        "a2-second",
+    )))
+    .expect("A2: second event ref resolve send");
 
     let second_deadline = Instant::now() + Duration::from_millis(SECOND_CLAIM_BUDGET_MS);
     drain_until_or_timeout(&rx, second_deadline, |_| false);

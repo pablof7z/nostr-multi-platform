@@ -102,6 +102,31 @@ impl Kernel {
             .map(|c| c.interest_id.clone())
     }
 
+    /// Wire a synthetic sub id to an existing pending claim. Test seam for unit
+    /// tests that exercise [`Kernel::on_claim_outcome_hit`] without constructing
+    /// full planner `WireFrame`s.
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn test_register_claim_sub_id(
+        &mut self,
+        primary_id: &str,
+        relay_url: &str,
+        sub_id: &str,
+    ) {
+        let Some(claim) = self
+            .pending_claims
+            .values_mut()
+            .find(|c| c.primary_id == primary_id)
+        else {
+            return;
+        };
+        let canonical = crate::relay::CanonicalRelayUrl::parse_or_raw(relay_url).into_string();
+        claim
+            .in_flight_attempts
+            .insert((canonical, sub_id.to_string()));
+        self.claim_sub_index
+            .insert(sub_id.to_string(), claim.interest_id.clone());
+    }
+
     /// Returns the attempted relay set for a claim. Test seam.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn test_claim_attempted(&self, primary_id: &str) -> BTreeSet<String> {

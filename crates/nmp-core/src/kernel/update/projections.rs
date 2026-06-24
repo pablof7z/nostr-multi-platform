@@ -58,28 +58,26 @@ impl Kernel {
         // `action_results` — drain-on-emit. Always drain (keeps the source
         // bounded); capture only when declared (ADR-0053).
         let action_results = self.take_action_results_projection();
-        self.captured_action_results =
-            (declared.permits("action_results") && !action_results.is_null())
-                .then(|| action_results);
+        self.captured_action_results = (declared.permits("action_results")
+            && !action_results.is_null())
+        .then(|| action_results);
 
         // `signed_events` — drain-on-emit. Same pattern.
         let signed_events = self.take_signed_events_projection();
         self.captured_signed_events =
-            (declared.permits("signed_events") && !signed_events.is_null())
-                .then(|| signed_events);
+            (declared.permits("signed_events") && !signed_events.is_null()).then(|| signed_events);
 
         // `action_stages` — copy (TTL mirror). TTL sweep + Cleared machine MUST
         // run each tick; capture only when declared.
         let action_stages = self.action_stages_projection();
         self.captured_action_stages =
-            (declared.permits("action_stages") && !action_stages.is_null())
-                .then(|| action_stages);
+            (declared.permits("action_stages") && !action_stages.is_null()).then(|| action_stages);
 
         // `action_lifecycle` — copy (TTL mirror). Same pattern.
         let action_lifecycle = self.action_lifecycle_projection();
-        self.captured_action_lifecycle =
-            (declared.permits("action_lifecycle") && !action_lifecycle.is_null())
-                .then(|| action_lifecycle);
+        self.captured_action_lifecycle = (declared.permits("action_lifecycle")
+            && !action_lifecycle.is_null())
+        .then(|| action_lifecycle);
 
         // `relay_diagnostics` — unconditional snapshot once declared.
         // ADR-0053: the whole roll-up is skipped when undeclared.
@@ -228,7 +226,7 @@ impl Kernel {
             if let Some(stored) = self.lookup_for_primary_id(key) {
                 // Parse raw content → NFCT bytes via the injected content-parser
                 // seam (no-op by default; web composition installs an
-                // nmp-content-backed parser so claim_event renders the
+                // nmp-content-backed parser so event refs render the
                 // kernel-parsed content tree).
                 let content_tree_bytes = self.content_parser.parse_to_nfct_bytes(
                     &stored.content,
@@ -244,5 +242,4 @@ impl Kernel {
         }
         claimed_events
     }
-
 }

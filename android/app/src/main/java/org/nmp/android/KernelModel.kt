@@ -282,7 +282,8 @@ class KernelModel : ViewModel() {
     fun refEvent(primaryId: String): ClaimedEventDto? = keyedRefCache.event(primaryId)
 
     /**
-     * Demand-driven embedded-event fetch claim (#984): the UI is rendering an
+     * App-local URI adapter for demand-driven embedded-event fetches (#984):
+     * the UI is rendering an
      * out-of-feed `EventRef` [uri] under [consumerId]; the kernel resolves it
      * and ships the typed projection in the next `NEMB` sidecar
      * (`projections.claimedEventEmbeds`). Compose DisposableEffect → claim.

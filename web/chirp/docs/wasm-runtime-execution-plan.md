@@ -68,7 +68,7 @@ already deferred `poll_claim_expansion` parity because "`std::time::Instant`
 | REQ open | `kernel/mod.rs:2701` (`insert_wire_sub` → `opened_at`) | every wire subscription |
 | Relay connected | `kernel/relay_transport.rs:169`; `kernel/requests/relay_lifecycle.rs:50` | every `handle_relay_connected` |
 | Inbound frame | `kernel/ingest/mod.rs:371` (EVENT counters/timing), `:184` (EOSE) | every relay EVENT/EOSE |
-| Claims | `kernel/requests/event.rs:288` (`register_claim_expansion(…, std::time::Instant::now())`) | every `claim_event` dispatch (already wired in `crates/nmp-wasm/src/runtime.rs:391-427`) |
+| Event refs | `kernel/requests/event.rs` (`register_claim_expansion`) | every event `resolve_ref` dispatch through the wasm ref router |
 | Diagnostics | `kernel/relay_diagnostics.rs:240` | `nmp.kernel.diagnostics` dispatch |
 | Contact feed | `kernel/ingest/timeline.rs:227`, `:312`, `:336` | the exact code paths PR-3/PR-4 light up |
 

@@ -10,9 +10,9 @@
 //! shared lifecycle/dedup/rev tests live in `refs_tests_profile.rs`.
 
 use super::nostr::NostrEvent;
-use super::refs::{EventShape, RefLiveness, RefNamespace, RefShape};
+use super::refs::{EventShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
 use super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT, RelayRole};
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()
@@ -39,7 +39,11 @@ fn signed_addressable(keys: &::nostr::Keys, kind: u32, d_tag: &str, ts: u64) -> 
         pubkey: ev.pubkey.to_hex(),
         created_at: ev.created_at.as_secs(),
         kind: ev.kind.as_u16() as u32,
-        tags: ev.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+        tags: ev
+            .tags
+            .iter()
+            .map(|t: &::nostr::Tag| t.as_slice().to_vec())
+            .collect(),
         content: ev.content.clone(),
         sig: ev.sig.to_string(),
     }
@@ -69,6 +73,41 @@ impl Kernel {
 // ─── per-key rev: event ingest site ──────────────────────────────────────────
 
 #[test]
+fn event_id_metadata_resolve_preserves_nevent_author_and_relay_hints() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected(RelayRole::Content);
+    let event_id = hex64("e");
+    let author = hex64("a");
+    let relay = "wss://metadata-hint.test".to_string();
+
+    kernel.resolve_ref_with_metadata(
+        RefNamespace::Event,
+        event_id.clone(),
+        "embed".into(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        false,
+        RefResolveMetadata {
+            hints: vec![relay.clone()],
+            event_author: Some(author.clone()),
+        },
+    );
+
+    let interest_id = kernel
+        .test_claim_interest_id(&event_id)
+        .expect("metadata resolve must register claim expansion");
+    let claim = kernel
+        .pending_claims
+        .get(&interest_id)
+        .expect("claim expansion row must exist");
+    assert_eq!(claim.author.as_deref(), Some(author.as_str()));
+    assert!(
+        claim.candidate_queue.contains(&relay),
+        "relay TLV must seed the claim-expansion candidate queue"
+    );
+}
+
+#[test]
 fn per_key_rev_advances_on_event_ingest_for_claimed_coord() {
     let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connected(RelayRole::Content);
@@ -93,7 +132,12 @@ fn per_key_rev_advances_on_event_ingest_for_claimed_coord() {
     // A freshly persisted, signed kind:30023 matching the claimed coord bumps
     // its row through the production `verify_and_persist` chokepoint.
     let article = signed_addressable(&keys, kind, d_tag, 1_700_000_000);
-    kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.example/", "refs-test", article);
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://relay.example/",
+        "refs-test",
+        article,
+    );
     let after = kernel.ref_row_rev(RefNamespace::Event, &primary_id);
     assert!(
         after > before,

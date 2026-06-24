@@ -356,7 +356,7 @@ impl Kernel {
     /// Each due [`crate::store::ReplaceableKey`] becomes a `OneShot + Global`
     /// `LogicalInterest { kinds:[k], authors:[pk], #d?, limit:None }` registered
     /// via [`crate::subs::OneshotApi::request`] — the SAME single-registration
-    /// path `claim_event` / `resolve_ref` use. This is what the pre-migration
+    /// path `resolve_ref` uses. This is what the pre-migration
     /// bespoke `req_for_relay` build could not give a reverify: by flowing
     /// through `recompile_and_diff`, a reverify of a stale replaceable for an
     /// author whose kind:10002 is uncached now triggers the D3 kind:10002 probe
@@ -407,7 +407,8 @@ impl Kernel {
             // Unified front-door path: prepare + register_interest (EnsureAbsent
             // = register-if-absent, so same-shape reverifies share one slot).
             let (_token, interest_id, identity, interest) =
-                self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
+                self.oneshot
+                    .prepare(InterestScope::Global, shape, Vec::new());
             self.register_interest(
                 &[crate::kernel::cache_serve::InterestRegistration {
                     identity,

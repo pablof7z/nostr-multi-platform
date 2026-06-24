@@ -88,8 +88,8 @@ public struct EmbeddedEvent: View {
 
 /// Protocol mirror of `nmp_content::EventClaimSink`. The renderer fires
 /// `claim(uri:consumerId:)` when an embed enters the view tree and the
-/// matching `release(...)` when it leaves. Implementations forward to the
-/// kernel's `nmp_app_claim_event` / `nmp_app_release_event` FFI symbols.
+/// matching `release(...)` when it leaves. Implementations are app-owned URI
+/// adapters that decode to the raw event key and call the unified ref FFI.
 ///
 /// `Sendable` because the gallery's concrete impl is the kernel actor's
 /// command channel — every method is fire-and-forget across threads.

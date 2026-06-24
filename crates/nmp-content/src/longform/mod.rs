@@ -44,7 +44,7 @@
 //! subscribed to. The two shapes apps need both arrive on this one stream:
 //!
 //! * **article feed** — events from an open `topic_articles` (`#t`) interest.
-//! * **open document** — events fetched by a `claim_event(naddr)` claim.
+//! * **open document** — events fetched by an event `resolve_ref` claim.
 //!
 //! There is no unbounded kind:30023 history here; the snapshot only ever holds
 //! the articles whose subscriptions are (or were) open this session.
@@ -74,13 +74,13 @@ use nmp_core::{KernelEventObserver, TypedProjectionData};
 use serde::{Deserialize, Serialize};
 
 use crate::context::RenderContext;
-use crate::embed_projection::{resolve_embed_projection, ArticleProjection, EmbedKindProjection};
+use crate::embed_projection::{ArticleProjection, EmbedKindProjection, resolve_embed_projection};
 use crate::wire::longform_fb;
 
 mod feed;
 pub use feed::{
-    longform_acquisition_kinds, longform_feed_predicate, LongformFeed, LongformFeedEntry,
-    LongformFeedPredicate, LongformRepostAttribution,
+    LongformFeed, LongformFeedEntry, LongformFeedPredicate, LongformRepostAttribution,
+    longform_acquisition_kinds, longform_feed_predicate,
 };
 
 /// NIP-23 long-form article kind.

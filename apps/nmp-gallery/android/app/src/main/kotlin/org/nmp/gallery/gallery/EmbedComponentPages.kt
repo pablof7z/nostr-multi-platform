@@ -293,7 +293,7 @@ private fun NoteEmbedPage(
             quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents) },
         )
         Text(
-            "nevent1… URIs resolve via the same `claim_event` path. The default short-note renderer paints author + content inline between the surrounding prose.",
+            "nevent1… URIs resolve through the app-owned URI adapter and unified ref path. The default short-note renderer paints author + content inline between the surrounding prose.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

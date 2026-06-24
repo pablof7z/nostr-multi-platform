@@ -1,6 +1,7 @@
 use super::*;
 use crate::app::VIEW_PROFILE;
-use crate::nip19::{encode_nevent, encode_npub, NeventData};
+use crate::kernel::{EventShape, RefLiveness, RefNamespace, RefShape};
+use crate::nip19::encode_npub;
 use std::collections::BTreeSet;
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -190,23 +191,12 @@ fn tick_drains_pending_view_requests_on_idle() {
 // They are deliberately fail-first: they FAIL without the lifecycle-drain
 // extension to `tick()` and the `changed_since_emit` accessor.
 
-fn nevent_uri_for_test(event_id: &str) -> String {
-    let bech = encode_nevent(&NeventData {
-        event_id: event_id.to_string(),
-        relays: vec![],
-        author: None,
-        kind: Some(1),
-    })
-    .expect("encode_nevent must succeed for well-formed test data");
-    format!("nostr:{bech}")
-}
-
 #[test]
-fn tick_drains_lifecycle_outbound_after_claim_event() {
+fn tick_drains_lifecycle_outbound_after_event_ref_resolve() {
     // Regression guard for PR-2: `tick()` must drain the subscription
     // lifecycle outbound, not only the publish-engine retry queue.
     //
-    // `claim_event` enqueues a `CompileTrigger::ViewOpened` and returns
+    // `resolve_ref` enqueues a `CompileTrigger::ViewOpened` and returns
     // `Vec::new()` — the REQ frame only materialises through a lifecycle
     // drain. Before the PR-2 fix, `tick()` called only
     // `tick_publish_engine_for_now` and the trigger silently sat until the
@@ -218,7 +208,7 @@ fn tick_drains_lifecycle_outbound_after_claim_event() {
     //      planner has a lane to compile REQs against.
     //   2. Connect the relay — this drains startup triggers (empty on a
     //      fresh kernel).
-    //   3. Call `claim_event` with `can_send = true` — this enqueues a
+    //   3. Resolve an event ref — this enqueues a
     //      fresh `CompileTrigger::ViewOpened` but returns `Vec::new()`.
     //   4. Assert `tick()` returns a non-empty outbound containing a REQ.
     let mut r = KernelReducer::new();
@@ -228,20 +218,25 @@ fn tick_drains_lifecycle_outbound_after_claim_event() {
     let startup = r.handle_relay_connected(RelayRole::Content, RELAY, false);
     let _ = startup; // may be empty or carry startup REQs; we don't assert here
 
-    // Step 3: claim an event (enqueues CompileTrigger, returns empty).
+    // Step 3: resolve an event ref (enqueues CompileTrigger, returns empty).
     let event_id = "a".repeat(64);
-    let uri = nevent_uri_for_test(&event_id);
-    let direct = r.claim_event(uri, "chirp-web-embed-tick-test".to_string(), true, false);
+    let direct = r.resolve_ref(
+        RefNamespace::Event,
+        event_id,
+        "chirp-web-embed-tick-test".to_string(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+    );
     assert!(
         direct.is_empty(),
-        "claim_event must return empty (REQ flows via lifecycle drain, not direct return)"
+        "resolve_ref must return empty (REQ flows via lifecycle drain, not direct return)"
     );
 
     // Step 4: tick must drain the trigger and emit the REQ.
     let tick_out = r.tick();
     assert!(
         !tick_out.is_empty(),
-        "tick() must drain the lifecycle trigger enqueued by claim_event and emit a REQ; \
+        "tick() must drain the lifecycle trigger enqueued by resolve_ref and emit a REQ; \
          got empty outbound — lifecycle drain is missing from tick()"
     );
 }

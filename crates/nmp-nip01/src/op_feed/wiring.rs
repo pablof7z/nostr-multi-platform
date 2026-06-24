@@ -38,8 +38,7 @@
 //! counts, media, or previews. Missing roots remain buffered until they arrive
 //! through the normal kernel event stream; e-tag-only reposts render as target
 //! placeholders until the target arrives. UI components that need secondary
-//! data mount their own `claim_event` / profile / count dependency at render
-//! time.
+//! data mount their own event-ref / profile / count dependency at render time.
 //!
 //! # D-doctrine
 //!
@@ -52,10 +51,10 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_core::KernelEventObserver;
+use nmp_core::substrate::{KernelEvent, SuppressionLookup};
 use nmp_feed::{
-    admit_all_roots, CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed,
+    CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed, admit_all_roots,
 };
 
 use super::attribution::Nip10ReplyAttribution;

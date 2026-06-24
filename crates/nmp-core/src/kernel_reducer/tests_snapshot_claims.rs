@@ -21,7 +21,7 @@
 // that the wasm32 runtime uses to push typed-projection snapshots to JS.
 
 use super::*;
-use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
+use crate::kernel::refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -175,7 +175,10 @@ fn resolve_profile_on_fresh_reducer_parks_returns_empty() {
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
     // any_relay_connected is false on a fresh reducer — assert the gate.
-    assert!(!r.any_relay_connected(), "fresh reducer: no relay connected");
+    assert!(
+        !r.any_relay_connected(),
+        "fresh reducer: no relay connected"
+    );
     let out = r.resolve_ref(
         RefNamespace::Profile,
         PK.to_string(),
@@ -224,25 +227,30 @@ fn release_profile_is_total_no_panic() {
 }
 
 #[test]
-fn claim_event_malformed_uri_is_total_no_panic() {
-    // D6: a garbled nostr URI must be silently dropped, not a panic.
+fn resolve_event_ref_malformed_key_is_total_no_panic() {
+    // D6: a malformed raw event key must be silently dropped, not a panic.
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
-    let out = r.claim_event(
-        "not-a-nostr-uri".to_string(),
+    let out = r.resolve_ref(
+        RefNamespace::Event,
+        "not-a-raw-event-key".to_string(),
         "chirp-web-embed-1".to_string(),
-        false,
-        false,
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
     );
-    assert!(out.is_empty(), "malformed URI must produce no outbound");
+    assert!(out.is_empty(), "malformed key must produce no outbound");
 }
 
 #[test]
-fn release_event_malformed_uri_is_total_no_panic() {
-    // D6 symmetry: release with a garbage URI must not panic.
+fn release_event_ref_malformed_key_is_total_no_panic() {
+    // D6 symmetry: release with a garbage key must not panic.
     let mut r = KernelReducer::new();
     let _ = r.reduce(KernelAction::Start);
-    let out = r.release_event("not-a-nostr-uri", "chirp-web-embed-1");
+    let out = r.release_ref(
+        RefNamespace::Event,
+        "not-a-raw-event-key",
+        "chirp-web-embed-1",
+    );
     assert!(out.is_empty());
 }
 
@@ -281,12 +289,12 @@ fn make_update_frame_bumps_rev_monotonically() {
         "make_update_frame must return a non-empty frame"
     );
 
-    let env0 = crate::decode_snapshot_envelope(&bytes0)
-        .expect("first frame must decode without error");
+    let env0 =
+        crate::decode_snapshot_envelope(&bytes0).expect("first frame must decode without error");
 
     let bytes1 = r.make_update_frame(false);
-    let env1 = crate::decode_snapshot_envelope(&bytes1)
-        .expect("second frame must decode without error");
+    let env1 =
+        crate::decode_snapshot_envelope(&bytes1).expect("second frame must decode without error");
 
     assert!(
         env1.rev > env0.rev,
@@ -304,16 +312,12 @@ fn set_configured_relays_surfaces_in_update_frame() {
     use crate::typed_projections::{decode_configured_relays, CONFIGURED_RELAYS_SCHEMA_ID};
 
     let mut r = KernelReducer::new();
-    r.set_configured_relays(vec![(
-        "wss://relay.test".to_string(),
-        "both".to_string(),
-    )]);
+    r.set_configured_relays(vec![("wss://relay.test".to_string(), "both".to_string())]);
 
     let bytes = r.make_update_frame(true);
 
     // Tier-3 relay_statuses
-    let env = crate::decode_snapshot_envelope(&bytes)
-        .expect("frame must decode");
+    let env = crate::decode_snapshot_envelope(&bytes).expect("frame must decode");
     assert!(
         env.relay_statuses
             .iter()
@@ -323,14 +327,14 @@ fn set_configured_relays_surfaces_in_update_frame() {
     );
 
     // Tier-2 configured_relays sidecar
-    let projections = crate::decode_snapshot_typed_projections(&bytes)
-        .expect("typed projections must decode");
+    let projections =
+        crate::decode_snapshot_typed_projections(&bytes).expect("typed projections must decode");
     let cr_entry = projections
         .iter()
         .find(|p| p.schema_id == CONFIGURED_RELAYS_SCHEMA_ID)
         .expect("configured_relays sidecar must be present");
-    let model = decode_configured_relays(&cr_entry.payload)
-        .expect("configured_relays payload must decode");
+    let model =
+        decode_configured_relays(&cr_entry.payload).expect("configured_relays payload must decode");
     assert!(
         model.relays.iter().any(|row| row.url == "wss://relay.test"),
         "configured_relays sidecar must contain the configured URL; got: {:?}",

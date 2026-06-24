@@ -15,11 +15,8 @@
 //!   that external id with a `["i", <external-id>]` filter. Never replaceable, so
 //!   it resolves one-shot like an immutable event-id (no `Live` tailing slot).
 //!
-//! This is NOT a `nostr:`/NIP-21 URI. A host passing the documented raw key must
-//! resolve; the only URI front door is the legacy `claim_event` scaffold
-//! (requests/event.rs), which decodes the URI into the SAME canonical
-//! [`EventTarget`] before calling the one shared resolver body. One body, two
-//! front doors — no duplicate resolver logic (single-path doctrine).
+//! This is NOT a `nostr:`/NIP-21 URI. A host that starts from a URI must decode
+//! it before calling the documented raw-key resolver seam.
 //!
 //! D6 — a malformed key parses to `None`; the resolver body then no-ops (no
 //! claim, no discovery REQ, no panic). Tests in `refs_tests_key.rs` assert each
@@ -53,18 +50,16 @@ pub(in crate::kernel) struct EventTarget {
 }
 
 /// A cold-start-parked event claim. Stores the CANONICAL pending target — the
-/// raw key plus the shape / liveness / force / author / relay-hints the resolver
+/// raw key plus the shape / liveness / force / URI-decoded metadata the resolver
 /// body needs — so the drain (`pending_event_claim_requests`) replays the raw
-/// resolver body, NOT the legacy URI front door. Without the canonical form a
-/// raw-key claim parked while cold could only be replayed through the URI
-/// parser, which fails on a raw key (the original Lane D coverage hole).
+/// resolver body.
 pub(in crate::kernel) struct PendingEventClaim {
     pub key: String,
     pub consumer_id: String,
     pub shape: EventShape,
     pub liveness: RefLiveness,
     pub force: bool,
-    pub author: Option<String>,
+    pub event_author: Option<String>,
     pub relay_hints: Vec<String>,
 }
 

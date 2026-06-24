@@ -213,10 +213,10 @@ impl KernelReducer {
     /// The wasm32 driver calls this from explicit event/deadline wakes so
     /// transient publish failures recover on kernel-declared deadlines without
     /// a fixed polling interval, `CompileTrigger::ViewOpened` events enqueued
-    /// by `claim_event` / `resolve_ref` compile into REQ frames after the
-    /// triggering event, and Phase-1 claims are checked only when a runtime wake
-    /// is already justified (closes the W6 gap tracked in issue #1143 without
-    /// restoring a browser cadence).
+    /// by `resolve_ref` compile into REQ frames after the triggering event,
+    /// and Phase-1 claims are checked only when a runtime wake is already
+    /// justified (closes the W6 gap tracked in issue #1143 without restoring a
+    /// browser cadence).
     ///
     /// `pending_view_requests()` is placed first (before the lifecycle drain)
     /// to preserve the native M1-CLOSE-before-M2-REQ ordering: any pending
@@ -279,12 +279,11 @@ impl KernelReducer {
     // ─── F-CR-00 component-owned claim seam ─────────────────────────────────
     //
     // Wasm consumers (chirp-web components) have no ActorCommand channel —
-    // they drive the kernel through `KernelReducer` directly. These four
-    // methods expose the same `Kernel::resolve_ref` / `release_ref` /
-    // `claim_event` / `release_event` surface the actor uses on native, so
-    // web components can self-claim profiles and events on mount/unmount the
-    // same way iOS (`chirp-avatar.<uuid>`) and Android (`note-author-<eventId>`)
-    // do.
+    // they drive the kernel through `KernelReducer` directly. These methods
+    // expose the same `Kernel::resolve_ref` / `release_ref` surface the actor
+    // uses on native, so web components can self-claim profiles and events on
+    // mount/unmount the same way iOS (`chirp-avatar.<uuid>`) and Android
+    // (`note-author-<eventId>`) do.
     //
     // Post-processing mirrors `publish_signed_event`: the outbound the kernel
     // returns is run through `partition_auth_paused` before delivery to the
@@ -302,33 +301,6 @@ impl KernelReducer {
     // ADR-0063 Lane H: claim_profile / release_profile deleted.
     // Use resolve_profile_ref / release_profile_ref directly (or the
     // KernelReducer::resolve_ref / release_ref if a public surface is needed).
-
-    /// Refcount a consumer's interest in the event identified by `uri`
-    /// (a `nostr:nevent1…` / `nostr:note1…` / `nostr:naddr1…` URI). On the
-    /// cold-claim transition registers a `OneShot + Global` lifecycle interest
-    /// and enqueues a `CompileTrigger::ViewOpened` so the planner compiles a
-    /// REQ. Returns any immediately-sendable `OutboundMessage`(s).
-    ///
-    /// Malformed URIs are silently dropped (D6: no panic, no `Result`).
-    pub fn claim_event(
-        &mut self,
-        uri: String,
-        consumer_id: String,
-        can_send: bool,
-        force: bool,
-    ) -> Vec<OutboundMessage> {
-        let outbound = self.kernel.claim_event(uri, consumer_id, can_send, force);
-        self.kernel.partition_auth_paused(outbound)
-    }
-
-    /// Drop a consumer's refcounted interest in the event identified by `uri`.
-    /// Returns an empty vec (release never emits wire frames).
-    ///
-    /// Malformed URIs are silently dropped (D6).
-    pub fn release_event(&mut self, uri: &str, consumer_id: &str) -> Vec<OutboundMessage> {
-        let outbound = self.kernel.release_event(uri, consumer_id);
-        self.kernel.partition_auth_paused(outbound)
-    }
 
     /// `claim_send_gate` equivalent for the wasm dispatch path — returns
     /// `true` as soon as any relay lane has reported `Connected`.

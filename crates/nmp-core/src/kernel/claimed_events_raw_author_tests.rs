@@ -1,5 +1,4 @@
 use super::*;
-use crate::nip19::{encode_nevent, NeventData};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::store::{RawEvent, VerifiedEvent};
 
@@ -11,17 +10,6 @@ fn hex64(prefix: &str) -> String {
         s.push('0');
     }
     s.chars().take(64).collect()
-}
-
-fn nevent_uri(event_id: &str, kind: Option<u32>, author: Option<&str>) -> String {
-    let bech = encode_nevent(&NeventData {
-        event_id: event_id.to_string(),
-        relays: vec![],
-        author: author.map(str::to_string),
-        kind,
-    })
-    .expect("encode_nevent");
-    format!("nostr:{bech}")
 }
 
 fn inject_note(kernel: &mut Kernel, id: &str, author: &str, content: &str) {
@@ -63,8 +51,15 @@ fn claimed_events_carries_raw_author_pubkey_without_profile_enrichment() {
         sig: "a".repeat(128),
     });
 
-    let uri = nevent_uri(&id, Some(1), Some(TEST_AUTHOR_HEX));
-    let _ = kernel.claim_event(uri, "view-0".to_string(), true, false);
+    let _ = kernel.resolve_ref(
+        RefNamespace::Event,
+        id.clone(),
+        "view-0".to_string(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
 
     let snapshot = kernel.make_update_value_for_test(true);
     let entry = &snapshot["projections"]["claimed_events"][&id];

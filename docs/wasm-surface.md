@@ -56,7 +56,7 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 6–30.
 Two routing paths serve these `action_type` values:
 
 - **Kernel-namespaced actions** (`nmp.kernel.start` through `nmp.kernel.close_view`): `kernel_action_from_dispatch` maps them to `KernelAction` variants, then `KernelReducer::reduce` processes them. Source: `crates/nmp-wasm/src/dispatch_routing.rs` lines 148–176.
-- **Claim/release actions** (`nmp.kernel.claim_*` / `nmp.kernel.release_*`): `claim_dispatch_from_action` parses the payload and routes to dedicated `KernelReducer` methods (`claim_profile`, `release_profile`, etc.) — not through `reduce`. Source: `crates/nmp-wasm/src/dispatch_routing.rs` lines 62–86.
+- **Reference-resolution actions** (`nmp.kernel.resolve_ref` / `nmp.kernel.release_ref`): `ref_dispatch_from_action` parses the raw-key payload and routes to `KernelReducer` reference methods — not through `reduce`. Event URI decoding is host/app-owned before this seam; callers may pass decoded relay TLVs as `payload.hints`.
 
 | `action_type` | `KernelAction` | Notes |
 |---|---|---|
@@ -66,10 +66,8 @@ Two routing paths serve these `action_type` values:
 | `"nmp.kernel.open_uri"` | `KernelAction::OpenUri { uri }` | `payload.uri: String` |
 | `"nmp.kernel.open_view"` | `KernelAction::OpenView { namespace, key }` | `payload.namespace: String`, `payload.key: String` |
 | `"nmp.kernel.close_view"` | `KernelAction::CloseView { namespace, key }` | `payload.namespace: String`, `payload.key: String` |
-| `"nmp.kernel.claim_profile"` | (claim registry, not KernelAction) | `payload.pubkey: String`, `payload.consumer_id: String` |
-| `"nmp.kernel.release_profile"` | (claim registry) | `payload.pubkey: String`, `payload.consumer_id: String` |
-| `"nmp.kernel.claim_event"` | (claim registry) | `payload.uri: String`, `payload.consumer_id: String` |
-| `"nmp.kernel.release_event"` | (claim registry) | `payload.uri: String`, `payload.consumer_id: String` |
+| `"nmp.kernel.resolve_ref"` | (ref resolver, not KernelAction) | `payload.namespace: 0|1`, `payload.key: String`, `payload.consumer_id: String`, `payload.shape: u32`, `payload.liveness: 0|1`, optional `payload.hints: String[]` |
+| `"nmp.kernel.release_ref"` | (ref resolver) | `payload.namespace: 0|1`, `payload.key: String`, `payload.consumer_id: String` |
 
 Any other `action_type` returns `CapabilityFailure` with `write_path_unavailable_reason`
 (§3 degraded vocabulary).

@@ -8,7 +8,7 @@ use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_store
 use crate::substrate::ProfileView;
 
 impl Kernel {
-    /// Look up the `StoredEvent` that resolves a `claim_event`
+    /// Look up the `StoredEvent` that resolves an event-ref
     /// `primary_id`. Hex-64 keys (event id form) index `self.events`
     /// directly; coordinate keys (`kind:pubkey:d_tag`) scan
     /// `self.events.values()` for the matching addressable triple;

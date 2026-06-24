@@ -76,9 +76,10 @@ until the target arrives through normal event ingest. The outer maps are
 ## Secondary Data Boundary
 
 Firm rule (D0 + D11): the feed engine acquires events only through the
-`KernelEventObserver` ingest path. It does not emit `claim_event`, observe
-`event_claim_released`, call `release_claim_expansion`, translate pointers into
-`nostr:` URIs, or otherwise turn a rendered edge into a new acquisition request.
+`KernelEventObserver` ingest path. It does not emit event-ref resolve commands,
+observe claim-release internals, call `release_claim_expansion`, translate
+pointers into `nostr:` URIs, or otherwise turn a rendered edge into a new
+acquisition request.
 
 Why: a feed is a bounded indexing and viewport machine. Missing targets,
 profiles, ancestors, relation counts, previews, and other secondary data are

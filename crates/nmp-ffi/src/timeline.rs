@@ -12,7 +12,7 @@
 //! `#[no_mangle] extern "C"` so the Swift bridge sees a flat C ABI regardless
 //! of the Rust module split.
 
-use super::{app_ref, c_string_argument, NmpApp};
+use super::{NmpApp, app_ref, c_string_argument};
 use std::ffi::c_char;
 
 /// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
@@ -104,8 +104,7 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
     app.open_uri(uri);
 }
 
-// #1726: `nmp_app_claim_event` and `nmp_app_release_event` C-ABI symbols
-// DELETED (no compat shims). Callers migrate to:
+// Event URI front doors are removed (no compat shims). Callers use:
 //   nmp_app_resolve_ref(app, 1/*event*/, key, consumer_id, 2/*embed*/, 0/*cache_ok*/)
 //   nmp_app_release_ref(app, 1/*event*/, key, consumer_id)
 // The `key` is the event-id hex (for nevent/note) or `"kind:pubkey:d"` (for naddr).
@@ -142,7 +141,7 @@ pub(crate) fn parse_primary_kinds_json(s: &str) -> Option<std::collections::BTre
             Some(k) if !nmp_nip18::is_repost_kind(k) && k != nmp_nip18::KIND_DELETE => {
                 set.insert(k);
             }
-            None => return None, // first invalid element → bail
+            None => return None,    // first invalid element → bail
             Some(_) => return None, // repost wrappers / delete kind are derived, not primary
         }
     }
@@ -179,9 +178,7 @@ pub fn declare_active_follows_feed(app: *mut NmpApp, primary_kinds_json: *const 
     let primary_kinds = match parse_primary_kinds_json(&kinds_str) {
         Some(set) => set,
         None => {
-            app.show_toast(
-                "declare_active_follows_feed: malformed primary kinds JSON".to_string(),
-            );
+            app.show_toast("declare_active_follows_feed: malformed primary kinds JSON".to_string());
             return;
         }
     };

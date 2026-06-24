@@ -8,12 +8,12 @@
 //!
 //! Design: `docs/design/framework-magic/`
 
+use nmp_core::subs::{
+    AccountId, CompileTrigger, InvalidateReason, RelayAuthState, SubscriptionLifecycle, WireFrame,
+};
 use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot,
-};
-use nmp_core::subs::{
-    AccountId, CompileTrigger, InvalidateReason, RelayAuthState, SubscriptionLifecycle, WireFrame,
 };
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX};
 
@@ -247,17 +247,19 @@ fn c8_subscriptions_coalesce_and_buffer() {
 ///
 /// Design: `docs/product-spec/doctrine.md` §D1, ADR-0017,
 ///         `docs/design/0001-ffi-update-channel-envelope.md` (T103).
-/// V-112 (ADR-0042): Updated to use `ClaimEvent` + `claimed_events` typed
+/// V-112 (ADR-0042): Updated to use event ref resolution + `claimed_events` typed
 /// projection instead of the deleted `OpenAuthor` + `author_view` sidecar.
 /// C13 property remains the same: `author_picture_url` is None before kind:0.
 #[test]
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
-    use nmp_core::nip19::encode_note;
-    use nmp_store::RawEvent;
+    use nmp_core::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
     use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
     use nmp_core::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
-    use nmp_core::{decode_snapshot_typed_projections, decode_update_frame, UpdateEnvelope};
+    use nmp_core::{
+        decode_snapshot_typed_projections, decode_update_frame, EventShape, RefLiveness,
+        RefNamespace, RefShape, UpdateEnvelope,
+    };
+    use nmp_store::RawEvent;
     use std::time::Duration;
 
     let (tx, rx) = spawn_actor();
@@ -287,19 +289,24 @@ use nmp_core::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
     let verified = VerifiedEvent::from_raw_unchecked(raw);
     // The diag-firehose-stress path pushes the event directly into self.events
     // regardless of timeline_authors, so it is visible to claimed_events.
-    tx.send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(vec![verified])))
-        .expect("send IngestPreVerifiedEvents");
+    tx.send(ActorCommand::TestSupport(
+        TestSupportCommand::IngestPreVerifiedEvents(vec![verified]),
+    ))
+    .expect("send IngestPreVerifiedEvents");
 
-    // V-112 (ADR-0042): OpenAuthor deleted. Use ClaimEvent to surface the
+    // V-112 (ADR-0042): OpenAuthor deleted. Use event ref resolution to surface the
     // event in the `claimed_events` typed sidecar for C13 observation.
-    // D5: claimed_events carries the entry only after a ClaimEvent dispatch.
-    let note_uri = format!("nostr:{}", encode_note(event_id).expect("valid note uri"));
-    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-        uri: note_uri.clone(),
+    // D5: claimed_events carries the entry only after a Resolve dispatch.
+    tx.send(ActorCommand::Refs(RefsCommand::Resolve {
+        namespace: RefNamespace::Event,
+        key: event_id.to_string(),
         consumer_id: "c13-test".to_string(),
+        shape: RefShape::Event(EventShape::Embed),
+        liveness: RefLiveness::CacheOk,
         force: false,
+        hints: Vec::new(),
     }))
-    .expect("send ClaimEvent");
+    .expect("send event ref resolve");
 
     // Drain envelopes until we find a `Snapshot` carrying our event in the
     // typed `claimed_events` sidecar. Every frame on the channel is a FlatBuffers
@@ -328,8 +335,11 @@ use nmp_core::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
                         .find(|t| t.key == CLAIMED_EVENTS_SCHEMA_ID)
                         .and_then(|t| decode_claimed_events(&t.payload).ok());
                     if let Some(model) = model {
-                        if let Some(row) =
-                            model.entries.into_iter().find(|(k, _)| k == event_id).map(|(_, v)| v)
+                        if let Some(row) = model
+                            .entries
+                            .into_iter()
+                            .find(|(k, _)| k == event_id)
+                            .map(|(_, v)| v)
                         {
                             found = Some(row);
                             break;
@@ -353,5 +363,6 @@ use nmp_core::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
         "author_picture_url must be None before kind:0 arrives (aim.md §2)"
     );
 
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
+        .ok();
 }

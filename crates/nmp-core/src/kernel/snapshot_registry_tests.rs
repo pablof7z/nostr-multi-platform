@@ -58,7 +58,7 @@ fn no_host_projection_leaves_only_the_builtin_projections() {
             "active_account",
             // generic claimed-event projection (F-CR-06 / ADR-0034):
             // primary_id -> ClaimedEventDto for every event a renderer
-            // has called `claim_event` on and that has since arrived in
+            // has resolved through the event-ref seam and that has since arrived in
             // the read-cache. Always present (empty `{}` is the no-claim
             // steady state) so a host that pre-allocates the map slot
             // never sees an absent key.

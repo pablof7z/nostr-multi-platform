@@ -53,15 +53,21 @@ void nmp_app_stop(void *app);
 // D8: fire-and-forget; the actor processes commands asynchronously.
 void nmp_app_resolve_ref(void *app, int namespace, const char *key,
                          const char *consumer_id, int shape, int liveness);
+void nmp_app_resolve_ref_with_metadata(void *app, int namespace,
+                                       const char *key,
+                                       const char *consumer_id, int shape,
+                                       int liveness,
+                                       const char *metadata_json);
 void nmp_app_release_ref(void *app, int namespace, const char *key,
                          const char *consumer_id);
 
 // ── Event claim / release (kind-dispatch embed) ──────────────────────────
 
-// #1726: nmp_app_claim_event / nmp_app_release_event DELETED.
-// Callers decode the nostr: URI via nmp_nip21_decode_uri and then route to
-// nmp_app_resolve_ref(namespace=1/*event*/, key=event-id-hex, shape=2/*embed*/,
-// liveness=0/*CacheOk*/) and nmp_app_release_ref(namespace=1, key, consumer_id).
+// Event URI front doors are removed. Callers decode the nostr: URI via
+// nmp_nip21_decode_uri and then route to
+// nmp_app_resolve_ref_with_metadata(namespace=1/*event*/, key=event-id-hex,
+// shape=2/*embed*/, liveness=0/*CacheOk*/, metadata_json) and
+// nmp_app_release_ref(namespace=1, key, consumer_id).
 
 // ── Relay management ─────────────────────────────────────────────────────
 
@@ -140,8 +146,8 @@ char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefProfileSt
 //   {"ok":true,"target":"event","event_id":"<hex>", ...}
 // or {"ok":false,"error":"..."}.
 // The returned string is never NULL and MUST be freed via nmp_free_string.
-// Used by the gallery event-claim path to extract the event key from a URI
-// before calling nmp_app_resolve_ref (see the deleted nmp_app_claim_event note).
+// Used by app-owned URI adapters to extract the event key before calling
+// nmp_app_resolve_ref.
 char *nmp_nip21_decode_uri(const char *input);
 
 // Stateless content tokenizer. Returns {"ok":true,"tree":ContentTreeWire}

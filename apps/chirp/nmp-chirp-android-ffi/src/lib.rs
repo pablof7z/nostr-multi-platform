@@ -245,10 +245,8 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeStop(
     }
 }
 
-// The demand-driven profile/event claim JNI wrappers
-// (`nativeClaimProfile`/`nativeReleaseProfile`/`nativeClaimEvent`/
-// `nativeReleaseEvent`) live in `claims.rs` to keep this file under the
-// AGENTS.md size cap (#984 split).
+// The app-local profile/event JNI adapters live in `claims.rs` to keep this
+// file under the AGENTS.md size cap (#984 split).
 
 /// Encode a hex pubkey as a NIP-19 display identifier (`nprofile1…` or
 /// `npub1…`). Wraps the existing `nmp_app_encode_profile` C-ABI symbol —

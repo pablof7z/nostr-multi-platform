@@ -1,10 +1,11 @@
 //! ADR-0063 Lane D — unified `resolve_ref` / `release_ref` C-ABI surface.
 //!
-//! Generalizes the former per-kind profile claim + `nmp_app_claim_event` behind
-//! one origin-blind entry point. ADR-0063 Lane H deleted the per-kind profile
-//! `claim_*` / `release_*` symbols; profiles now resolve exclusively through
-//! `nmp_app_resolve_ref`. `nmp_app_claim_event` / `nmp_app_release_event` are
-//! retained (event claims keep their dedicated URI front-door).
+//! Generalizes the former per-kind profile/event claim entry points behind one
+//! origin-blind entry point. ADR-0063 Lane H deleted the per-kind profile
+//! `claim_*` / `release_*` symbols; #1946 deleted the event URI front doors.
+//! Profiles and events now resolve through raw-key `resolve_ref`; app-owned URI
+//! adapters use `nmp_app_resolve_ref_with_metadata` when decoded relay/author
+//! TLVs need to cross the same raw-key seam.
 //!
 //! ## Integer encoding
 //!
@@ -60,9 +61,10 @@
 //! An invalid key (wrong case, wrong length, non-decimal kind, missing segment,
 //! empty external id) is a silent no-op at the kernel's resolver body (D6).
 
-use super::{app_ref, c_string_argument, NmpApp};
+use super::{NmpApp, app_ref, c_string_argument};
 use nmp_core::__ffi_internal::is_hex_pubkey;
-use nmp_core::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+use nmp_core::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
+use serde_json::Value;
 use std::ffi::{c_char, c_int};
 
 /// Decode the `namespace` FFI integer into a [`RefNamespace`].
@@ -95,6 +97,52 @@ fn decode_shape(shape: c_int) -> Option<RefShape> {
         3 => Some(RefShape::Event(EventShape::Raw)),
         _ => None,
     }
+}
+
+fn decode_metadata(metadata_json: *const c_char) -> Option<RefResolveMetadata> {
+    if metadata_json.is_null() {
+        return Some(RefResolveMetadata::default());
+    }
+    let raw = c_string_argument(metadata_json)?;
+    let value: Value = serde_json::from_str(&raw).ok()?;
+    let object = value.as_object()?;
+
+    let hints = match object.get("hints") {
+        None => Vec::new(),
+        Some(Value::Array(items)) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                out.push(item.as_str()?.to_string());
+            }
+            out
+        }
+        Some(_) => return None,
+    };
+
+    let event_author = match object.get("event_author").or_else(|| object.get("author")) {
+        None | Some(Value::Null) => None,
+        Some(Value::String(author)) if is_hex_pubkey(author) => Some(author.clone()),
+        Some(Value::String(_)) => return None,
+        Some(_) => return None,
+    };
+
+    // The deleted URI front door ignored nevent kind TLV for event-id fetches
+    // because the raw event-id filter is already exact. Accept and validate the
+    // field here so app-owned adapters can pass the decoded URI metadata object
+    // unchanged, but keep behavior identical.
+    if let Some(kind) = object.get("event_kind").or_else(|| object.get("kind")) {
+        let Some(kind) = kind.as_u64() else {
+            return None;
+        };
+        if u32::try_from(kind).is_err() {
+            return None;
+        }
+    }
+
+    Some(RefResolveMetadata {
+        hints,
+        event_author,
+    })
 }
 
 /// ADR-0063 Lane D — unified, origin-blind reference-resolution entry point.
@@ -156,13 +204,58 @@ pub extern "C" fn nmp_app_resolve_ref(
     app.resolve_ref(ns, key, consumer_id, shape_val, liveness_val);
 }
 
+/// ADR-0063 raw-key reference resolution with caller-decoded metadata.
+///
+/// `metadata_json` is optional JSON:
+/// `{ "hints": ["wss://..."], "author": "<hex pubkey>", "kind": 1 }`.
+/// It is for app-owned URI adapters that decode `nostr:` / NIP-19 values before
+/// crossing the FFI boundary. The key is still raw and never a URI.
+///
+/// D6: malformed metadata is a silent no-op for the whole resolve; null metadata
+/// is equivalent to `{}`.
+#[no_mangle]
+pub extern "C" fn nmp_app_resolve_ref_with_metadata(
+    app: *mut NmpApp,
+    namespace: c_int,
+    key: *const c_char,
+    consumer_id: *const c_char,
+    shape: c_int,
+    liveness: c_int,
+    metadata_json: *const c_char,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(ns) = decode_namespace(namespace) else {
+        return;
+    };
+    let Some(key) = c_string_argument(key) else {
+        return;
+    };
+    let Some(consumer_id) = c_string_argument(consumer_id) else {
+        return;
+    };
+    let Some(shape_val) = decode_shape(shape) else {
+        return;
+    };
+    if ns == RefNamespace::Profile && !is_hex_pubkey(&key) {
+        return;
+    }
+    let Some(metadata) = decode_metadata(metadata_json) else {
+        return;
+    };
+
+    let liveness_val = RefLiveness::from_ffi(liveness);
+
+    app.resolve_ref_with_metadata(ns, key, consumer_id, shape_val, liveness_val, metadata);
+}
+
 /// ADR-0063 Lane D — release a reference previously registered via
 /// [`nmp_app_resolve_ref`].
 ///
 /// Decrements the refcount for `consumer_id`'s stake in `(namespace, key)`.
 /// The resolver slot is torn down when the last consumer releases (the same
-/// release contract the former per-kind profile release and `nmp_app_release_event`
-/// use).
+/// release contract the former per-kind profile/event releases used).
 ///
 /// **`namespace`** — `0` = profile, `1` = event (must match the `resolve_ref` call).
 /// **`key`** — same key that was passed to `nmp_app_resolve_ref`.

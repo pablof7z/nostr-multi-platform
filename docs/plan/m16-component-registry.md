@@ -36,9 +36,9 @@ to become correct over time.
   while visible, release them when gone, observe Rust-produced projection
   updates, and redraw through the native mechanism for their platform.
 - **One app integration:** the app wires a registry host/projection adapter once
-  at the shell boundary. Individual screens do not manually call
-  `claim_profile`, `release_profile`, `claim_event`, or equivalent lifecycle
-  APIs just because they placed a component on screen.
+  at the shell boundary. Individual screens do not manually call per-component
+  claim/release or equivalent lifecycle APIs just because they placed a component
+  on screen.
 - **Rust-owned truth:** NMP owns relay choice, fetch policy, cache mutation,
   dedupe, tombstones, profile/embed resolution, and derived display strings.
   Native components may emit lifecycle intents and render projection snapshots;

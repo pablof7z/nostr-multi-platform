@@ -4,9 +4,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use super::event_claim_released::EventClaimReleasedObserver;
-use super::Kernel;
-use crate::nip19::{encode_nevent, NeventData};
-use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use super::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
+use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::subs::WireFrame;
 
 fn hex64(prefix: &str) -> String {
@@ -15,17 +14,6 @@ fn hex64(prefix: &str) -> String {
         s.push('0');
     }
     s.chars().take(64).collect()
-}
-
-fn nevent_uri(event_id: &str) -> String {
-    let bech = encode_nevent(&NeventData {
-        event_id: event_id.to_string(),
-        relays: vec![],
-        author: None,
-        kind: Some(1),
-    })
-    .expect("encode_nevent");
-    format!("nostr:{bech}")
 }
 
 /// Simulate a relay's EOSE-no-match for a claim sub the way the production
@@ -53,10 +41,18 @@ fn poll_to_terminal_miss(kernel: &mut Kernel) {
 
 /// Drive a claim through to the wired state, then return the planner-assigned
 /// `sub_id` so the test can simulate EOSE for it. Mirrors the production
-/// claim_event → planner-frame bridge wiring.
+/// event-ref resolve → planner-frame bridge wiring.
 fn claim_and_wire(kernel: &mut Kernel, id: &str, relay_url: &str) -> String {
-    let uri = nevent_uri(id);
-    let _ = kernel.claim_event(uri, "view-0".to_string(), true, false);
+    kernel.relay_connected(RelayRole::Content);
+    let _ = kernel.resolve_ref(
+        RefNamespace::Event,
+        id.to_string(),
+        "view-0".to_string(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
 
     // The claim registered a oneshot + a pending claim. Read the real
     // interest_id and bridge a WireFrame::Req so the planner-frame bridge

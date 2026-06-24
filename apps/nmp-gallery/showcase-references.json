@@ -7,6 +7,9 @@
   },
   "article": {
     "uri": "nostr:naddr1qq28g6r9945kuar9wfhx2apdd3jkvapdd4jszrthwden5te0dehhxtnvdakqygrwg6zz9hahfftnsup23q3mnv5pdz46hpj4l2ktdpfu6rhpthhwjvpsgqqqw4rsyw0s85",
+    "relay_hints": [
+      "wss://nos.lol"
+    ],
     "primary_id": "30023:6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93:the-internet-left-me",
     "kind": 30023,
     "label": "Gigi long-form article",
@@ -14,12 +17,18 @@
   },
   "note": {
     "uri": "nostr:nevent1qqszwmtf6mfdeq6g62st0fnjg4grjzwutfq967awvx5zfhpzfcga0pqpp4mhxue69uhkummn9ekx7mqzyrafsj7hmweg9ur7zmn6apajdg48hxuskujx53rhrux0ttjcqx84y79seh4",
+    "relay_hints": [
+      "wss://nos.lol"
+    ],
     "primary_id": "276d69d6d2dc8348d2a0b7a67245503909dc5a405d7bae61a824dc224e11d784",
     "kind": 1,
     "label": "pablof7z kind:1 note"
   },
   "highlight": {
     "uri": "nostr:nevent1qqsyldvu8s4pwha9vqqvur0ht4d2gj0e7u3kmguv9hpf0thuk5prjwspp4mhxue69uhkummn9ekx7mqzyrafsj7hmweg9ur7zmn6apajdg48hxuskujx53rhrux0ttjcqx84yqg5mhg",
+    "relay_hints": [
+      "wss://nos.lol"
+    ],
     "primary_id": "4fb59c3c2a175fa56000ce0df75d5aa449f9f7236da38c2dc297aefcb502393a",
     "kind": 9802,
     "label": "pablof7z kind:9802 highlight"

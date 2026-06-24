@@ -42,6 +42,7 @@ mod tests {
 
     use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
     use crate::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
+    use crate::kernel::{EventShape, RefLiveness, RefNamespace, RefShape};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
     use crate::update_envelope::{decode_snapshot_envelope, SnapshotEnvelope};
 
@@ -270,7 +271,7 @@ mod tests {
     /// alone."
     ///
     /// This test seeds a known event into the actor's local store
-    /// (`IngestPreVerifiedEvents`) and claims it (`ClaimEvent`) BEFORE the
+    /// (`IngestPreVerifiedEvents`) and resolves it (`RefsCommand::Resolve`) BEFORE the
     /// `running=true` snapshot is observed, with `initial_relays` EMPTY — zero
     /// connectivity. Within the same 500 ms budget the other D1 tests use, the
     /// actor must emit a `running=true` snapshot whose typed `claimed_events`
@@ -283,7 +284,6 @@ mod tests {
     /// the seeded event id.
     #[test]
     fn v628_seeded_store_renders_offline_with_zero_relays() {
-        use crate::nip19::encode_note;
         use crate::store::{RawEvent, VerifiedEvent};
         use crate::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
         use crate::update_envelope::decode_snapshot_typed_projections;
@@ -324,15 +324,18 @@ mod tests {
             .expect("send Start with zero relays");
 
         // Claim the seeded event so it surfaces in the `claimed_events` typed
-        // sidecar (D5: claimed_events carries the entry only after a ClaimEvent
+        // sidecar (D5: claimed_events carries the entry only after a Resolve
         // dispatch). The store already holds the event, so this resolves from
         // local content — no relay fetch is needed or possible (zero relays).
-        let note_uri = format!("nostr:{}", encode_note(event_id).expect("valid note uri"));
         cmd_tx
-            .send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-                uri: note_uri,
+            .send(ActorCommand::Refs(RefsCommand::Resolve {
+                namespace: RefNamespace::Event,
+                key: event_id.to_string(),
                 consumer_id: "v628-test".to_string(),
+                shape: RefShape::Event(EventShape::Embed),
+                liveness: RefLiveness::CacheOk,
                 force: false,
+                hints: Vec::new(),
             }))
             .expect("claim seeded event");
 

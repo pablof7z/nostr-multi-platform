@@ -28,9 +28,24 @@ impl KernelReducer {
         shape: RefShape,
         liveness: RefLiveness,
     ) -> Vec<OutboundMessage> {
+        self.resolve_ref_with_hints(namespace, key, consumer_id, shape, liveness, Vec::new())
+    }
+
+    /// Same unified resolver with caller-supplied relay hints. Used by the
+    /// wasm dispatch surface after the app decodes NIP-19 relay TLVs at its
+    /// own boundary.
+    pub fn resolve_ref_with_hints(
+        &mut self,
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+        hints: Vec<String>,
+    ) -> Vec<OutboundMessage> {
         let outbound =
             self.kernel
-                .resolve_ref(namespace, key, consumer_id, shape, liveness, false, Vec::new());
+                .resolve_ref(namespace, key, consumer_id, shape, liveness, false, hints);
         self.kernel.partition_auth_paused(outbound)
     }
 
