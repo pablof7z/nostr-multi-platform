@@ -235,6 +235,34 @@ fn add_component_installs_compose_content_kind_registry() {
 }
 
 #[test]
+fn add_component_installs_compose_content_kind_9802() {
+    let tmp = TempDir::new("compose-kind-9802");
+
+    let out = nmp(
+        tmp.path(),
+        &["add", "component", "compose/content-kind-9802"],
+    );
+    assert!(
+        out.status.success(),
+        "nmp add component compose/content-kind-9802 failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrHighlightCard.kt")
+        .exists());
+    assert!(tmp
+        .path()
+        .join("Components/NostrContent/NostrKindRegistry.kt")
+        .exists());
+
+    let lock = fs::read_to_string(tmp.path().join("nmp.components.lock")).unwrap();
+    assert!(lock.contains("id = \"compose/content-kind-9802\""));
+    assert!(lock.contains("id = \"compose/content-kind-registry\""));
+}
+
+#[test]
 fn add_component_installs_content_view_with_transitive_deps() {
     let tmp = TempDir::new("content-view");
 
@@ -394,4 +422,3 @@ fn add_component_keeps_content_minimal_installable() {
         "content-core must appear before content-minimal in the lock — got core@{core_pos}, minimal@{minimal_pos}\n{lock}"
     );
 }
-

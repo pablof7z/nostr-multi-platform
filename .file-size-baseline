@@ -78,3 +78,4 @@ ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift	877
 ios/Chirp/ChirpTests/OpFeedDecoderTests.swift	506
 web/chirp/docs/ux-design.md	974
 web/chirp/docs/wasm-mvp-build-plan.md	588
+web/registry/public/registry.json	1221

@@ -96,6 +96,17 @@ target = "Components/NostrContent/NostrArticleCard.kt"
 role = "source"
 
 [[components]]
+id = "compose/content-kind-9802"
+version = "0.1.0"
+target = "compose"
+description = "Highlight (NIP-84, kind:9802) embed renderer — pull-quote, optional context line, source footer."
+dependencies = ["compose/content-kind-registry"]
+[[components.files]]
+source = "compose/content-kind-9802/NostrHighlightCard.kt"
+target = "Components/NostrContent/NostrHighlightCard.kt"
+role = "source"
+
+[[components]]
 id = "compose/content-kind-0"
 version = "0.1.0"
 target = "compose"
