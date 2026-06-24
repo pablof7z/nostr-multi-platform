@@ -32,6 +32,7 @@ use std::process::Command;
 mod authority_rule_tests; // D26 protocol-authority gate smoke tests — sibling module.
 mod d27_rule_tests; // D27 projection display-helper ban smoke tests — sibling module.
 mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
+mod file_size_gate_tests; // File-size baseline ratchet smoke tests — sibling module.
 mod no_raw_tap_rule_tests; // no_raw_tap step-5 native-sink fixture tests — sibling module.
 mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
 mod tests_a6; // A6 schema-less snapshot-projection lane smoke tests — sibling module.
