@@ -2,6 +2,7 @@ use std::env;
 
 mod cli;
 mod cli_action_builders;
+mod cli_action_contract;
 mod cli_builtin;
 
 fn main() {
@@ -47,6 +48,9 @@ fn run() -> Result<(), String> {
         // builders that construct the `DispatchEnvelope` bytes for the native
         // byte doorway. No stdin.
         "action-builders" => cli_action_builders::run_gen_action_builders(args, &h),
+        // #1939 — generated compact Markdown view of ACTION_CONTRACT for PR
+        // review. Prints to stdout unless `--out <path>` is provided.
+        "action-contract-report" => cli_action_contract::run_gen_action_contract_report(args, &h),
         // ADR-0053 / Workstream-E4 — generated `KERNEL_BUILTIN_PROJECTION_KEYS`
         // Rust const for `nmp-core`. Writes
         // `crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs`
@@ -86,6 +90,7 @@ fn help() -> String {
      nmp gen projection-cache  --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen keyed-ref-cache   --platform swift|kotlin --out <path> [--check]\n  \
      nmp gen action-builders   --platform swift|kotlin|ts --out <path> [--check]\n  \
+     nmp gen action-contract-report [--out <path>]\n  \
      nmp gen builtin-keys      [--out <path>] [--check]\n  \
      nmp gen builtin-deps      [--out <path>] [--check]\n  \
      nmp gen presence-keys     [--out <path>] [--check]\n  \

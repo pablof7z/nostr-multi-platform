@@ -10,8 +10,10 @@
 //!
 //! ## Structure (mirrors the projection-cache / typed-decoder codegen)
 //!
-//! - [`registry`] — the single source of truth: one [`ActionBuilder`] per write
-//!   namespace + its FlatBuffers payload field schema.
+//! - [`crate::action_contract`] — the neutral identity contract for each
+//!   default typed action namespace/schema/file-id/tier.
+//! - [`registry`] — builder-specific host API shape: one [`ActionBuilder`] per
+//!   generated flat-table method plus payload field order.
 //! - [`swift`] / [`kotlin`] / [`ts`] — the per-platform emitters;
 //!   byte-deterministic so the `--check` drift gate can lock the output.
 //!

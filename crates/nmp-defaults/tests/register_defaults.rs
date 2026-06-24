@@ -11,25 +11,6 @@ use std::ffi::{CStr, CString};
 
 use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_free_string};
 
-/// All action namespaces [`nmp_defaults::register_defaults`] is
-/// contracted to register.
-const EXPECTED_NAMESPACES: &[&str] = &[
-    // NIP-02 — substrate-level social graph (follow / unfollow / react).
-    "nmp.follow",
-    "nmp.unfollow",
-    "nmp.nip25.react",
-    // NIP-17 — DM send + DM-relay-list publish.
-    "nmp.nip17.send",
-    "nmp.nip17.publish_relay_list",
-    // NIP-57 — lightning zap.
-    "nmp.nip57.zap",
-    // NIP-65 — relay-list publish (absorbed into nmp-router).
-    "nmp.nip65.publish_relay_list",
-    // NIP-51 — global bookmark list read-modify-write builders.
-    "nmp.nip51.add_bookmark",
-    "nmp.nip51.remove_bookmark",
-];
-
 #[test]
 fn register_defaults_wires_every_canonical_namespace() {
     let app = nmp_app_new();
@@ -38,7 +19,7 @@ fn register_defaults_wires_every_canonical_namespace() {
     // SAFETY: `app` is a valid non-null pointer fresh from `nmp_app_new`.
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
-    for ns in EXPECTED_NAMESPACES {
+    for ns in nmp_codegen::canonical_default_action_namespaces() {
         let result = dispatch(app, ns, "{}");
         let parsed: serde_json::Value =
             serde_json::from_str(&result).expect("dispatch returned non-JSON");
@@ -213,23 +194,6 @@ fn register_defaults_zap_subscription_is_no_longer_a_projection_key() {
 // Tier split (`register_substrate`) + config struct (`register_defaults_with`)
 // ───────────────────────────────────────────────────────────────────────
 
-/// The action namespaces that belong to the SUBSTRATE tier — the routing
-/// crate's own relay-list publish action. `register_substrate` alone must wire
-/// this (routing is broken without the kind:10002 publish path).
-const SUBSTRATE_NAMESPACES: &[&str] = &["nmp.nip65.publish_relay_list"];
-
-/// The action namespaces that belong to the SOCIAL tier — `register_substrate`
-/// alone must NOT wire any of these (they are preferences, not correctness).
-const SOCIAL_NAMESPACES: &[&str] = &[
-    "nmp.follow",
-    "nmp.unfollow",
-    "nmp.nip25.react",
-    "nmp.nip25.unreact",
-    "nmp.nip17.send",
-    "nmp.nip17.publish_relay_list",
-    "nmp.nip57.zap",
-];
-
 /// `register_substrate` alone yields a **routable but social-free** composition:
 /// the substrate relay-list action dispatches, but NONE of the social action
 /// bundles do. This is the `MinimalPlugins`-analog floor a non-social external
@@ -247,7 +211,7 @@ fn register_substrate_is_routable_but_social_free() {
     );
 
     // Substrate action(s) ARE wired (anything other than unknown-namespace).
-    for ns in SUBSTRATE_NAMESPACES {
+    for ns in nmp_codegen::substrate_action_namespaces() {
         assert!(
             is_registered(app, ns),
             "substrate namespace `{ns}` must be wired by `register_substrate`"
@@ -255,7 +219,11 @@ fn register_substrate_is_routable_but_social_free() {
     }
 
     // Social actions are NOT wired — the discriminating half of the proof.
-    for ns in SOCIAL_NAMESPACES {
+    for ns in nmp_codegen::social_action_namespaces()
+        .into_iter()
+        .chain(nmp_codegen::dm_action_namespaces())
+        .chain(nmp_codegen::zap_action_namespaces())
+    {
         assert!(
             !is_registered(app, ns),
             "social namespace `{ns}` must NOT be wired by `register_substrate` alone \
@@ -294,7 +262,7 @@ fn register_defaults_with_default_equals_register_defaults() {
 
     // Every canonical action namespace registers in BOTH (and the bogus one in
     // neither). Substrate + social.
-    for ns in EXPECTED_NAMESPACES {
+    for ns in nmp_codegen::canonical_default_action_namespaces() {
         assert_eq!(
             is_registered(app_ref, ns),
             is_registered(app_cfg, ns),
