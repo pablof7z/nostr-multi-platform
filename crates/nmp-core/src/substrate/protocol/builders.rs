@@ -18,16 +18,16 @@ use crate::actor::{ActionLedgerCommand, SignCommand};
 ///
 /// The actor's dispatch arm signs (active account when `signer_pubkey` is
 /// `None`, else the named roster key) and invokes `continuation` with the
-/// resolved [`crate::substrate::SignedEvent`] or an error string — inline for a
+/// resolved [`nmp_signer_iface::SignedEvent`] or an error string — inline for a
 /// local key, from the idle-loop drain for a parked NIP-46 bunker. The caller
 /// cannot tell which.
 ///
 /// The continuation runs on the actor thread; it must only enqueue further work
 /// (D8) and never receives raw key bytes (D13).
 pub fn build_sign_event_for_account(
-    unsigned: crate::substrate::UnsignedEvent,
+    unsigned: nmp_signer_iface::UnsignedEvent,
     signer_pubkey: Option<String>,
-    continuation: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
+    continuation: impl FnOnce(Result<nmp_signer_iface::SignedEvent, String>) + Send + 'static,
 ) -> ActorCommand {
     ActorCommand::Sign(SignCommand::EventForAccount {
         unsigned,

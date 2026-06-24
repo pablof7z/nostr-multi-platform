@@ -12,7 +12,7 @@ use crate::kernel::publish_engine::OkFramePayload;
 use crate::kernel::Kernel;
 use crate::publish::PublishStore;
 use crate::store::{RawEvent, VerifiedEvent};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// T117 test relay URLs — two explicit write relays declared in kind:10002
 /// (replaces the old `FALLBACK_R1/R2` indexer-fallback constants; these are

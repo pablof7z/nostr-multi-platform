@@ -68,8 +68,9 @@ use crate::planner::{
 };
 use crate::substrate::{
     BlockedRelaySet, DmInboxRelayLookup, MailboxCache as SubstrateMailboxCache, RoutingContext,
-    SessionKeySet, UnsignedEvent,
+    SessionKeySet,
 };
+use nmp_signer_iface::UnsignedEvent;
 use crate::util::sort_dedup;
 
 impl Kernel {

@@ -25,7 +25,7 @@
 use crate::kernel::{AppRelay, Kernel};
 use crate::kinds::KIND_RELAY_LIST;
 use crate::relay::canonical_relay_url;
-use crate::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 
 // V-57 P2 (2026-05-27) — the relay-list kind constant lives in the
 // workspace-canonical [`crate::kinds`] registry. The wire-shape contract

@@ -3,7 +3,8 @@
 
 use super::*;
 use crate::publish::action::{PublishAction, PublishTarget};
-use crate::substrate::{ActionPayload, ActionPayloadDecodeError, SignedEvent, UnsignedEvent};
+use crate::substrate::{ActionPayload, ActionPayloadDecodeError};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn fixture_signed_event() -> SignedEvent {
     SignedEvent {

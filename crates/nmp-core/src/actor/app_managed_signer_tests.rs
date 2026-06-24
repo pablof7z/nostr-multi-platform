@@ -50,7 +50,7 @@ fn app_managed_local_signer_is_hidden_signable_and_not_switchable() {
         .last_error_toast_snapshot()
         .is_some_and(|toast| toast.contains("app-managed")));
 
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: "ignored-by-signer".into(),
         kind: 1,
         tags: Vec::new(),

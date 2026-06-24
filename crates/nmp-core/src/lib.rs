@@ -145,8 +145,6 @@ pub use transport::dispatch_envelope;
 // kernel no longer depends on `nmp-nwc`, and `nmp-core` no longer has a
 // `wallet` Cargo feature. See `docs/architecture/crate-boundaries.md`
 // §5 step 7 for the migration brief.
-pub(crate) mod remote_signer; // public re-export deleted (#1772) — use `nmp_signer_iface::RemoteSignerHandle`
-pub(crate) use remote_signer::RemoteSignerHandle;
 // Deterministic 64-bit hash helper — internal path for nmp-core.
 // External callers must depend on `nmp-planner` directly and use
 // `nmp_planner::stable_hash::stable_hash64` (#1608, compat facade deleted).

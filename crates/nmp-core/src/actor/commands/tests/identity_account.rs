@@ -284,7 +284,7 @@ fn create_account_next_note_routes_via_local_relay_rows_before_relay_echo() {
         true,
     );
 
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(), // ignored by signer; filled from active account
         kind: 1,
         tags: Vec::new(),

@@ -8,7 +8,7 @@
 //! async sign boundary so no `RefCell` borrow lives across an await point.
 
 use crate::relay::OutboundMessage;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 impl super::KernelReducer {
     /// V-01 Stage 3c — public publish-from-signed-event surface for non-actor

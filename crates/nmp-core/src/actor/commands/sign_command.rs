@@ -65,7 +65,7 @@ pub enum SignCommand {
     EventForAccount {
         /// The unsigned event to sign. `created_at` should already be stamped
         /// by the caller from the kernel clock (D7).
-        unsigned: crate::substrate::UnsignedEvent,
+        unsigned: nmp_signer_iface::UnsignedEvent,
         /// `None` = active account; `Some(hex)` = a named roster key.
         signer_pubkey: Option<String>,
         /// Invoked with the resolved sign outcome — inline (local) or from the

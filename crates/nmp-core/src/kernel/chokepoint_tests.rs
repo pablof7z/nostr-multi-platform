@@ -13,7 +13,8 @@ use super::*;
 use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
 use crate::publish::PublishTarget;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::substrate::{KernelEvent, SignedEvent, UnsignedEvent};
+use crate::substrate::KernelEvent;
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 

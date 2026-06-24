@@ -48,13 +48,12 @@
 use std::sync::mpsc;
 
 use js_sys::{Array, Function, Object, Promise, Reflect};
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, SignerError, UnsignedEvent};
 use nostr::PublicKey;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::{spawn_local, JsFuture};
 
 use super::super::SignerOp;
-use super::SignerError;
 
 pub(super) fn sign_with_extension(
     cached_pubkey: PublicKey,

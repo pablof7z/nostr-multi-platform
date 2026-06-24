@@ -3,7 +3,7 @@
 use nmp_signer_iface::SignerOp;
 use nostr::{EventBuilder, Kind, Tag, Timestamp};
 
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 use super::runtime::IdentityRuntime;
 

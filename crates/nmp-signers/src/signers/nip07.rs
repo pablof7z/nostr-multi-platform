@@ -24,11 +24,11 @@
 //! other failure mode is a structured [`SignerError`] the caller maps to
 //! `toast: Option<String>` at the FFI boundary.
 
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, SignerError, UnsignedEvent};
 use nostr::PublicKey;
 
 use super::payload::{Nip07Payload, SignerPayload};
-use super::traits::{Nip04, Nip44, Signer, SignerBackend, SignerError};
+use super::traits::{Nip04, Nip44, Signer, SignerBackend};
 use super::SignerOp;
 
 /// Browser-extension NIP-07 signer.

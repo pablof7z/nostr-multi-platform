@@ -6,13 +6,13 @@
 //! cached `PublicKey`, and reconstructs a transient `nostr::SecretKey` for the
 //! duration of each individual crypto operation.
 
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, SignerError, UnsignedEvent};
 use nostr::nips::{nip04, nip44};
 use nostr::{EventBuilder, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 use zeroize::{Zeroize, Zeroizing};
 
 use super::payload::{LocalKeyMaterial, LocalPayload, SignerPayload};
-use super::traits::{Nip04, Nip44, Signer, SignerBackend, SignerError};
+use super::traits::{Nip04, Nip44, Signer, SignerBackend};
 use super::SignerOp;
 
 /// In-memory secret key signer.

@@ -32,10 +32,5 @@ pub use nip07::wasm::sign_event_via_extension;
 pub use payload::{
     LocalKeyMaterial, LocalPayload, Nip07Payload, Nip46Payload, Nip55Payload, SignerPayload,
 };
-pub use traits::{Nip04, Nip44, Signer, SignerBackend, SignerError};
-
-// `SignerOp`, `Nip46Rpc`, and `Nip46Transport` are defined in the leaf
-// `nmp_signer_iface` crate so `nmp-core` can refer to them without violating
-// doctrine **D0**.  Re-exported here so existing downstream paths
-// (`nmp_signers::signers::SignerOp`, etc.) keep resolving.
-pub use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerOp};
+pub use traits::{Nip04, Nip44, Signer, SignerBackend};
+pub use nmp_signer_iface::SignerOp;

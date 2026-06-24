@@ -14,7 +14,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::publish::PublishTarget;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 use serde::Serialize;
 
 /// Shared slot for the currently active account pubkey.

@@ -30,11 +30,9 @@
 use std::str::FromStr;
 use std::sync::mpsc;
 
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, SignerError, SignerOp, UnsignedEvent};
 use nostr::secp256k1::schnorr::Signature;
 use nostr::{Event, EventId, Kind, PublicKey, Tag, Timestamp};
-
-use crate::signers::{SignerError, SignerOp};
 
 /// Map the raw NIP-46 RPC response (`String`) into a `SignedEvent` thunk.
 ///

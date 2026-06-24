@@ -29,10 +29,11 @@ pub use identity::{
     AccountError, AccountManager, ActiveChangeEvent, ActiveChangeObserver, IdentityId,
 };
 pub use signers::{
-    LocalKeySigner, Nip04, Nip44, Nip46Rpc, Nip46Signer, Nip46SignerHandle, Nip46Transport,
-    Nip07Signer, Nip55Connect, Nip55Signer, Nip55Payload, Signer, SignerBackend, SignerError,
-    SignerOp, SignerPayload,
+    LocalKeySigner, Nip04, Nip44, Nip46Signer, Nip46SignerHandle,
+    Nip07Signer, Nip55Connect, Nip55Signer, Nip55Payload, Signer, SignerBackend,
+    SignerPayload,
 };
+pub use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError, SignerOp};
 
 // V-01 Stage 3c — async sign-via-extension entrypoint, gated on wasm32 + the
 // `wasm` Cargo feature (matches the path's own gating in `signers/nip07.rs`).

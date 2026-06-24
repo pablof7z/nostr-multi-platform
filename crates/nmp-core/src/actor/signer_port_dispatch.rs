@@ -52,7 +52,7 @@ pub(super) fn dispatch_cipher_op(
 /// the NAMED account's per-op deadline (ADR-0050 §D4).
 pub(super) fn sign_for_account(
     ctx: &mut ActorContext,
-    unsigned: &crate::substrate::UnsignedEvent,
+    unsigned: &nmp_signer_iface::UnsignedEvent,
     signer_pubkey: Option<String>,
     continuation: super::SignContinuation,
 ) -> Option<Vec<OutboundMessage>> {

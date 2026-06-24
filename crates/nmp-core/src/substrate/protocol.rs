@@ -246,9 +246,9 @@ impl<'a> ProtocolCommandContext<'a> {
     /// bodies that still hold the `ctx` on the actor thread.
     pub fn sign_event_for_account(
         &self,
-        unsigned: crate::substrate::UnsignedEvent,
+        unsigned: nmp_signer_iface::UnsignedEvent,
         signer_pubkey: Option<String>,
-        continuation: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
+        continuation: impl FnOnce(Result<nmp_signer_iface::SignedEvent, String>) + Send + 'static,
     ) {
         self.send(build_sign_event_for_account(
             unsigned,
@@ -470,7 +470,7 @@ impl<'a> ProtocolCommandContext<'a> {
     /// active account when `Some(hex)`.
     pub fn publish_unsigned(
         &self,
-        event: crate::substrate::UnsignedEvent,
+        event: nmp_signer_iface::UnsignedEvent,
         correlation_id: Option<String>,
         signer_pubkey: Option<String>,
     ) {
@@ -485,7 +485,7 @@ impl<'a> ProtocolCommandContext<'a> {
     /// (`ActorCommand::PublishUnsignedEventToRelays`).
     pub fn publish_unsigned_to_relays(
         &self,
-        event: crate::substrate::UnsignedEvent,
+        event: nmp_signer_iface::UnsignedEvent,
         relays: Vec<crate::publish::RelayUrl>,
         correlation_id: Option<String>,
         signer_pubkey: Option<String>,

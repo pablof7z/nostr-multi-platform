@@ -29,11 +29,11 @@ use serde_json::json;
 
 use super::commands::{self, sign_with_account_nonblocking, IdentityRuntime};
 use super::pending_sign::{resolve_parked_op, AuthObligation, ParkedOp, ParkedOpSink};
+use nmp_signer_iface::RemoteSignerHandle;
 use crate::kernel::{Kernel, RelayFrame};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
-use crate::remote_signer::RemoteSignerHandle;
 use crate::subs::RelayAuthState;
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 const RELAY_URL: &str = "wss://auth.example";

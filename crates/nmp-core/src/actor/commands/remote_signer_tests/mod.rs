@@ -24,10 +24,10 @@ use nostr::{EventBuilder, Keys, SecretKey, Timestamp};
 
 use super::*;
 use crate::actor::commands::identity::{sign_active_nonblocking, IdentityRuntime};
+use nmp_signer_iface::RemoteSignerHandle;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::remote_signer::RemoteSignerHandle;
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 mod helpers_tests;
 pub(super) use helpers_tests::{fresh, stub_signer};

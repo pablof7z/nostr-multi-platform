@@ -35,7 +35,7 @@ pub struct PendingAuthSign {
     /// binding).
     pub relay_url: String,
     /// The unsigned kind:22242 the remote signer must sign as-is.
-    pub unsigned: crate::substrate::UnsignedEvent,
+    pub unsigned: nmp_signer_iface::UnsignedEvent,
     /// The verbatim challenge — re-validated against the signed event on
     /// re-entry (`validate_signed_for`).
     pub challenge: String,

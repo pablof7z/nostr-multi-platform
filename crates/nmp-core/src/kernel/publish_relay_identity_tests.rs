@@ -5,7 +5,7 @@ use crate::kernel::Kernel;
 use crate::publish::PublishTarget;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const RAW_NIP65_RELAY: &str = "wss://Relay.Ex/";
 const CANONICAL_RELAY: &str = "wss://relay.ex";

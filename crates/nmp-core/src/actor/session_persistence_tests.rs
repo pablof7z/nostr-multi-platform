@@ -245,7 +245,7 @@ fn restores_app_managed_local_signer_without_projecting_account() {
     assert!(restored_identity.contains_account(&expected));
     assert!(restored_identity.active_pubkey().is_none());
     assert!(restored_kernel.account_snapshot().0.is_empty());
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
         kind: 1,
         tags: Vec::new(),

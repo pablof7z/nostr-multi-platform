@@ -14,11 +14,11 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_signer_iface::UnsignedEvent;
-use nmp_signers::signers::{Nip46Rpc, Nip46Transport, Nip07Payload};
 use nmp_signers::{
     AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner, Nip07Signer,
-    Nip46SignerHandle, Signer, SignerError,
+    Nip46Rpc, Nip46SignerHandle, Nip46Transport, Signer, SignerError,
 };
+use nmp_signers::signers::Nip07Payload;
 
 const SAMPLE_PK: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 

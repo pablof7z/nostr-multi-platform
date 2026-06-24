@@ -23,7 +23,7 @@ use crate::publish::traits::{
     StaticOutbox,
 };
 use crate::publish::TerminalOutcome;
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// Drain the engine's single terminal stream and collect the per-relay
 /// [`TerminalOutcome`]s carried on `PublishQueueTerminal::Settled` payloads — the

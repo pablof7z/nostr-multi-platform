@@ -8,7 +8,7 @@ use crate::publish::state::RetryPolicy;
 use crate::publish::traits::{
     InMemoryPublishStore, NoopSigner, QueueDispatcher, RelayDispatcher, StaticOutbox,
 };
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn signed_event(id: &str, author: &str, kind: u32) -> SignedEvent {
     SignedEvent {

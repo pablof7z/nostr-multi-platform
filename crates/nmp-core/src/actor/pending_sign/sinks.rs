@@ -32,7 +32,7 @@
 //! key bytes.
 
 use crate::publish::PublishTarget;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 use nmp_signer_iface::SignerOp;
 // D20 / #1753: the parked-op path is now wasm-reachable (the wasm `KernelReducer`
 // parks sign ops here). The deadline type routes through the `crate::time` shim

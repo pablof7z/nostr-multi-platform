@@ -70,7 +70,7 @@ mod tests {
     use super::sinks::{ParkedOp, ParkedOpSink};
     use crate::actor::{CipherContinuation, SignContinuation};
     use crate::publish::PublishTarget;
-    use crate::substrate::{SignedEvent, UnsignedEvent};
+    use nmp_signer_iface::{SignedEvent, UnsignedEvent};
     use crate::time::Instant;
     use nmp_signer_iface::{SignerError, SignerOp, PENDING_SIGN_TIMEOUT};
     use std::sync::mpsc;

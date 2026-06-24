@@ -5,7 +5,7 @@
 
 use super::Kernel;
 use crate::store::RawEvent;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 impl Kernel {
     /// Single well-formedness gate for an **externally-supplied** signed event

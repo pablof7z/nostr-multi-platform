@@ -21,7 +21,7 @@
 
 use super::{is_hex_pubkey, Kernel, OutboundMessage};
 use crate::publish::PublishTarget;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 impl Kernel {
     /// Publish a signed event through the publish engine (T117).

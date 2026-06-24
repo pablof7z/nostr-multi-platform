@@ -34,12 +34,12 @@ use std::collections::HashMap;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, SignerError, UnsignedEvent};
 use nostr::{Keys, PublicKey, SecretKey};
 use zeroize::Zeroizing;
 
 use super::payload::{Nip46Payload, SignerPayload};
-use super::traits::{Nip04, Nip44, Signer, SignerBackend, SignerError};
+use super::traits::{Nip04, Nip44, Signer, SignerBackend};
 use super::SignerOp;
 use crate::bunker::{parse_bunker_uri, BunkerParseError, BunkerUri};
 

@@ -22,7 +22,7 @@
 
 use super::*;
 use crate::kernel::refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 const RELAY: &str = "wss://relay.example";

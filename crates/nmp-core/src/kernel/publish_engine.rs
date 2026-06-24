@@ -47,7 +47,7 @@ use crate::publish::{
     PublishTarget, QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy,
 };
 use crate::relay::{OutboundMessage, RelayRole};
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 use super::publish_engine_wire::{describe_engine_error, split_ok_message};
 use super::Kernel;

@@ -23,7 +23,7 @@ use super::*;
 use crate::publish::{InMemoryPublishStore, PerRelayState, PublishRecord, PublishStore};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use std::sync::Arc;
 
 // 64-char hex pubkeys / ids — the kernel's `is_hex_pubkey` / `is_hex_id`

@@ -70,7 +70,7 @@ pub enum PublishCommand {
     /// for callers that are not action-dispatched (e.g. direct `NmpApp::` Rust
     /// API calls, conformance tests).
     UnsignedEvent {
-        event: crate::substrate::UnsignedEvent,
+        event: nmp_signer_iface::UnsignedEvent,
         correlation_id: Option<String>,
         /// When `Some(pubkey)`, the actor signs with the account whose pubkey
         /// matches — looked up across BOTH local keys and remote signers —
@@ -97,7 +97,7 @@ pub enum PublishCommand {
     /// active identity at sign time; the caller's `event.pubkey` is ignored.
     /// Empty or malformed `relays` fail closed in the publish handler.
     UnsignedEventToRelays {
-        event: crate::substrate::UnsignedEvent,
+        event: nmp_signer_iface::UnsignedEvent,
         relays: Vec<crate::publish::RelayUrl>,
         /// Registry-minted `correlation_id` from `dispatch_action`, when this
         /// command originates from an `ActionModule::execute` call. Threading
