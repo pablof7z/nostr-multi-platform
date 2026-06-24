@@ -527,7 +527,6 @@ fn bootstrap_lane_close(connected_relays: &mut HashSet<RelayRole>, kernel: &mut 
         // caller to enumerate sockets it is discarding anyway — T105).
         kernel.relay_closed_all(role);
     }
-    // Cold-start bootstrap seeds will be respawned from configured_relays on the next Start cycle.
 }
 
 #[cfg(test)]

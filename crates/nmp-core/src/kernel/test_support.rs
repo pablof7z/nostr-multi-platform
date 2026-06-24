@@ -1,9 +1,7 @@
 //! Test-support helpers for the kernel.
 //!
-//! All items in this file are gated on `cfg(any(test, feature = "test-support"))`.
-//! They provide fast, signature-verification-free injection paths that let
-//! unit tests and the firehose/FFI stress harnesses exercise the same ingest
-//! hot-paths as production code without needing real secp256k1 keys.
+//! Test-only injection paths for production ingest hot-paths without real
+//! secp256k1 signatures.
 //!
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
