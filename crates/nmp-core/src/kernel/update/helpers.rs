@@ -38,7 +38,7 @@ pub(super) fn is_hex64_lower(s: &str) -> bool {
     s.len() == 64 && s.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
 }
 
-pub(super) fn hex64_to_bytes32(s: &str) -> Option<[u8; 32]> {
+pub(in crate::kernel) fn hex64_to_bytes32(s: &str) -> Option<[u8; 32]> {
     if !is_hex64_lower(s) {
         return None;
     }

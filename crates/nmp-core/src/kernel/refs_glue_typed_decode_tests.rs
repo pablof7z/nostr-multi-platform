@@ -180,6 +180,8 @@ fn refs_event_row_typed_decode_single_entry() {
     let keys = ::nostr::Keys::generate();
     let note = signed_note(&keys, "lane c event row", 1_700_000_500);
     let note_id = note.id.clone();
+    let note_sig = note.sig.clone();
+    let author_hex = keys.public_key().to_hex();
 
     kernel.resolve_ref(
         RefNamespace::Event,
@@ -197,11 +199,73 @@ fn refs_event_row_typed_decode_single_entry() {
         .expect("event row decodes as a ClaimedEvents buffer (typed, not raw)");
 
     // The single-entry contract the host `refRowEvent` glue relies on.
-    assert_eq!(model.entries.len(), 1, "refs.event row carries exactly one entry");
+    assert_eq!(
+        model.entries.len(),
+        1,
+        "refs.event row carries exactly one entry"
+    );
     let (key, row) = &model.entries[0];
     assert_eq!(key, &note_id);
     assert_eq!(row.id, note_id);
-    assert_eq!(row.author_pubkey, keys.public_key().to_hex());
+    assert_eq!(row.author_pubkey, author_hex);
     assert_eq!(row.content, "lane c event row");
     assert_eq!(row.kind, 1);
+    let signed_json = row
+        .signed_event_json
+        .as_ref()
+        .expect("event.raw row includes canonical signed event JSON");
+    let signed: serde_json::Value =
+        serde_json::from_str(signed_json).expect("signed event JSON parses");
+    assert_eq!(
+        signed.get("id").and_then(|v| v.as_str()),
+        Some(note_id.as_str())
+    );
+    assert_eq!(
+        signed.get("pubkey").and_then(|v| v.as_str()),
+        Some(author_hex.as_str())
+    );
+    assert_eq!(
+        signed.get("content").and_then(|v| v.as_str()),
+        Some("lane c event row")
+    );
+    assert_eq!(
+        signed.get("sig").and_then(|v| v.as_str()),
+        Some(note_sig.as_str())
+    );
+}
+
+/// EVENT: the light `event.embed` row stays render-focused and does not carry
+/// the canonical signed event JSON. Consumers must explicitly demand
+/// `event.raw` for the signed NIP-01 object.
+#[test]
+fn refs_event_embed_omits_signed_event_json() {
+    let mut kernel = Kernel::new_for_test(DEFAULT_VISIBLE_LIMIT);
+    kernel.relay_connected(RelayRole::Content);
+
+    let keys = ::nostr::Keys::generate();
+    let note = signed_note(&keys, "lane c embed row", 1_700_000_501);
+    let note_id = note.id.clone();
+
+    kernel.resolve_ref(
+        RefNamespace::Event,
+        note_id.clone(),
+        "embed-1".into(),
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        false,
+        Vec::new(),
+    );
+    kernel.ingest_timeline_event(RelayRole::Content, "wss://relay.example/", "sub", note);
+
+    let payloads = baseline_payloads(&kernel, "event");
+    let model = decode_claimed_events(payloads.get(&note_id).expect("event row present"))
+        .expect("event row decodes as a ClaimedEvents buffer");
+    assert_eq!(model.entries.len(), 1);
+    let row = &model.entries[0].1;
+    assert_eq!(row.id, note_id);
+    assert_eq!(row.content, "lane c embed row");
+    assert_eq!(
+        row.signed_event_json, None,
+        "event.embed must not carry the heavier signed JSON payload"
+    );
 }

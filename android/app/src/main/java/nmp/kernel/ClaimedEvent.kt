@@ -141,6 +141,22 @@ class ClaimedEvent : Table() {
         }
     val contentTreeBytesAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(26, 1)
     fun contentTreeBytesInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 26, 1)
+    val hasSignedEventJson : Boolean
+        get() {
+            val o = __offset(28)
+            return if(o != 0) 0.toByte() != bb.get(o + bb_pos) else false
+        }
+    val signedEventJson : String?
+        get() {
+            val o = __offset(30)
+            return if (o != 0) {
+                __string(o + bb_pos)
+            } else {
+                null
+            }
+        }
+    val signedEventJsonAsByteBuffer : ByteBuffer get() = __vector_as_bytebuffer(30, 1)
+    fun signedEventJsonInByteBuffer(_bb: ByteBuffer) : ByteBuffer = __vector_in_bytebuffer(_bb, 30, 1)
     companion object {
         fun validateVersion() = Constants.FLATBUFFERS_25_2_10()
         fun getRootAsClaimedEvent(_bb: ByteBuffer): ClaimedEvent = getRootAsClaimedEvent(_bb, ClaimedEvent())
@@ -148,9 +164,10 @@ class ClaimedEvent : Table() {
             _bb.order(ByteOrder.LITTLE_ENDIAN)
             return (obj.__assign(_bb.getInt(_bb.position()) + _bb.position(), _bb))
         }
-        fun createClaimedEvent(builder: FlatBufferBuilder, primaryIdOffset: Int, idOffset: Int, authorPubkeyOffset: Int, hasAuthorDisplayName: Boolean, authorDisplayNameOffset: Int, hasAuthorPictureUrl: Boolean, authorPictureUrlOffset: Int, kind: UInt, createdAt: ULong, tagsOffset: Int, contentOffset: Int, contentTreeBytesOffset: Int) : Int {
-            builder.startTable(12)
+        fun createClaimedEvent(builder: FlatBufferBuilder, primaryIdOffset: Int, idOffset: Int, authorPubkeyOffset: Int, hasAuthorDisplayName: Boolean, authorDisplayNameOffset: Int, hasAuthorPictureUrl: Boolean, authorPictureUrlOffset: Int, kind: UInt, createdAt: ULong, tagsOffset: Int, contentOffset: Int, contentTreeBytesOffset: Int, hasSignedEventJson: Boolean, signedEventJsonOffset: Int) : Int {
+            builder.startTable(14)
             addCreatedAt(builder, createdAt)
+            addSignedEventJson(builder, signedEventJsonOffset)
             addContentTreeBytes(builder, contentTreeBytesOffset)
             addContent(builder, contentOffset)
             addTags(builder, tagsOffset)
@@ -160,11 +177,12 @@ class ClaimedEvent : Table() {
             addAuthorPubkey(builder, authorPubkeyOffset)
             addId(builder, idOffset)
             addPrimaryId(builder, primaryIdOffset)
+            addHasSignedEventJson(builder, hasSignedEventJson)
             addHasAuthorPictureUrl(builder, hasAuthorPictureUrl)
             addHasAuthorDisplayName(builder, hasAuthorDisplayName)
             return endClaimedEvent(builder)
         }
-        fun startClaimedEvent(builder: FlatBufferBuilder) = builder.startTable(12)
+        fun startClaimedEvent(builder: FlatBufferBuilder) = builder.startTable(14)
         fun addPrimaryId(builder: FlatBufferBuilder, primaryId: Int) = builder.addOffset(0, primaryId, 0)
         fun addId(builder: FlatBufferBuilder, id: Int) = builder.addOffset(1, id, 0)
         fun addAuthorPubkey(builder: FlatBufferBuilder, authorPubkey: Int) = builder.addOffset(2, authorPubkey, 0)
@@ -194,6 +212,8 @@ class ClaimedEvent : Table() {
             return builder.endVector()
         }
         fun startContentTreeBytesVector(builder: FlatBufferBuilder, numElems: Int) = builder.startVector(1, numElems, 1)
+        fun addHasSignedEventJson(builder: FlatBufferBuilder, hasSignedEventJson: Boolean) = builder.addBoolean(12, hasSignedEventJson, false)
+        fun addSignedEventJson(builder: FlatBufferBuilder, signedEventJson: Int) = builder.addOffset(13, signedEventJson, 0)
         fun endClaimedEvent(builder: FlatBufferBuilder) : Int {
             val o = builder.endTable()
             return o

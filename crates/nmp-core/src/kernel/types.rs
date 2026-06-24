@@ -737,6 +737,12 @@ pub(crate) struct ClaimedEventDto {
     /// Parsed NFCT bytes for the typed KCEV sidecar; skipped from legacy JSON.
     #[serde(skip)]
     pub(super) content_tree_bytes: Vec<u8>,
+    /// Canonical signed NIP-01 event JSON, including `sig`.
+    ///
+    /// Populated only for the generic `refs.event` Raw shape; legacy
+    /// `claimed_events` has no shape context and omits this field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) signed_event_json: Option<String>,
 }
 
 impl ClaimedEventDto {
@@ -758,11 +764,17 @@ impl ClaimedEventDto {
             tags: e.tags.clone(),
             content: e.content.clone(),
             content_tree_bytes: Vec::new(),
+            signed_event_json: None,
         }
     }
 
     pub(super) fn with_content_tree(mut self, content_tree_bytes: Vec<u8>) -> Self {
         self.content_tree_bytes = content_tree_bytes;
+        self
+    }
+
+    pub(super) fn with_signed_event_json(mut self, signed_event_json: Option<String>) -> Self {
+        self.signed_event_json = signed_event_json;
         self
     }
 }

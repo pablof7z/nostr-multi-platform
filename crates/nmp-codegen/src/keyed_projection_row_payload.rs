@@ -98,7 +98,6 @@ pub struct KeyedProjectionEntry {
     pub row_payload: RefRowPayload,
 }
 
-
 /// The keyed reference projections (ADR-0063 / #1671). Ship `profile` + `event`
 /// only (issue #1671 scope limit — no speculative namespaces).
 pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
@@ -137,7 +136,8 @@ pub const KEYED_PROJECTIONS: &[KeyedProjectionEntry] = &[
         // with EXACTLY ONE entry (`Kernel::ref_event_row_payload` →
         // `encode_claimed_events`); accessor unwraps it to `ClaimedEventDto?` via
         // the Lane-C `refRowEvent` glue. `event.embed` omits the content-tree
-        // bytes, `event.raw` carries them — both decode through the same reader.
+        // bytes and signed-event JSON, `event.raw` carries both — all through
+        // the same generic reader.
         row_payload: RefRowPayload {
             row_file_identifier: "KCEV",
             swift_reader_type: "nmp_kernel_ClaimedEventsSnapshot",

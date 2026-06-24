@@ -60,6 +60,9 @@ pub struct ClaimedEventRow {
     /// Serialized NFCT `ContentTreeWire` bytes of the parsed content (empty when
     /// the kernel's content-parser seam is not installed).
     pub content_tree_bytes: Vec<u8>,
+    /// Canonical signed NIP-01 event JSON, including `sig`. Present only for
+    /// `refs.event` rows demanded as `EventShape::Raw`.
+    pub signed_event_json: Option<String>,
 }
 
 /// The `"claimed_events"` read model — the `primary_id -> ClaimedEventDto` map
@@ -90,8 +93,9 @@ fn create_claimed_event<'a>(
         .as_ref()
         .map(|v| fbb.create_string(v));
     let content = fbb.create_string(&row.content);
-    let content_tree_bytes = (!row.content_tree_bytes.is_empty())
-        .then(|| fbb.create_vector(&row.content_tree_bytes));
+    let content_tree_bytes =
+        (!row.content_tree_bytes.is_empty()).then(|| fbb.create_vector(&row.content_tree_bytes));
+    let signed_event_json = row.signed_event_json.as_ref().map(|v| fbb.create_string(v));
 
     // `tags: Vec<Vec<String>>` → `[TagRow]`, each `TagRow` wrapping one inner
     // `[string]`. Inner string offsets must be created before the TagRow.
@@ -127,6 +131,8 @@ fn create_claimed_event<'a>(
             tags: Some(tags),
             content: Some(content),
             content_tree_bytes,
+            has_signed_event_json: row.signed_event_json.is_some(),
+            signed_event_json,
         },
     )
 }
@@ -198,6 +204,9 @@ fn claimed_event_from_fb(row: fb::ClaimedEvent<'_>) -> ClaimedEventRow {
             .content_tree_bytes()
             .map(|v| v.bytes().to_vec())
             .unwrap_or_default(),
+        signed_event_json: row
+            .has_signed_event_json()
+            .then(|| row.signed_event_json().unwrap_or_default().to_string()),
     }
 }
 

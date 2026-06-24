@@ -228,6 +228,7 @@ mod tests {
             ],
             content: "Long-form article body.".to_string(),
             content_tree_bytes: Vec::new(),
+            signed_event_json: None,
         };
         (primary, row)
     }
@@ -245,6 +246,7 @@ mod tests {
             tags: vec![],
             content: "Relay-backed pablof7z note.".to_string(),
             content_tree_bytes: Vec::new(),
+            signed_event_json: None,
         };
         (primary, row)
     }
@@ -262,6 +264,7 @@ mod tests {
             tags: vec![vec!["r".to_string(), "https://pablof7z.com".to_string()]],
             content: "Vibe-coding is what brought me back to programming.".to_string(),
             content_tree_bytes: Vec::new(),
+            signed_event_json: None,
         };
         (primary, row)
     }
@@ -339,6 +342,7 @@ mod tests {
             tags: vec![],
             content: String::new(),
             content_tree_bytes: Vec::new(),
+            signed_event_json: None,
         };
         let snap = snapshot_with(vec![(primary, row)]);
 

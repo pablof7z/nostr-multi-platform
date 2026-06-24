@@ -35,7 +35,8 @@ use super::refs::{EventShape, ProfileShape, RefNamespace};
 use super::typed_projections::{
     encode_claimed_events, encode_profile, ClaimedEventRow, ClaimedEventsModel, ProfileCardModel,
 };
-use super::types::ClaimedEventDto;
+use super::types::{ClaimedEventDto, StoredEvent};
+use super::update::helpers::hex64_to_bytes32;
 use super::Kernel;
 use crate::refs::RefRowRevSource;
 
@@ -55,6 +56,12 @@ fn namespace_from_wire(namespace: &str) -> Option<RefNamespace> {
 }
 
 impl Kernel {
+    fn signed_event_json_for_ref_row(&self, stored: &StoredEvent) -> Option<String> {
+        let id = hex64_to_bytes32(&stored.id)?;
+        let stored = self.store.peek_by_id(&id).ok().flatten()?;
+        serde_json::to_string(stored.raw.as_ref()).ok()
+    }
+
     /// Build the typed `refs.profile` row payload for `key` at the demanded
     /// profile shape. Reads the SAME `profile_card_for` accessor the `refs.profile`
     /// projection reads, then narrows the encoded card to the
@@ -126,8 +133,12 @@ impl Kernel {
         } else {
             Vec::new()
         };
-        let dto: ClaimedEventDto =
-            ClaimedEventDto::from_stored(key.to_string(), &stored).with_content_tree(content_tree_bytes);
+        let signed_event_json = matches!(shape, EventShape::Raw)
+            .then(|| self.signed_event_json_for_ref_row(&stored))
+            .flatten();
+        let dto: ClaimedEventDto = ClaimedEventDto::from_stored(key.to_string(), &stored)
+            .with_content_tree(content_tree_bytes)
+            .with_signed_event_json(signed_event_json);
         let model = ClaimedEventsModel {
             entries: vec![(
                 key.to_string(),
@@ -142,6 +153,7 @@ impl Kernel {
                     tags: dto.tags.clone(),
                     content: dto.content.clone(),
                     content_tree_bytes: dto.content_tree_bytes.clone(),
+                    signed_event_json: dto.signed_event_json.clone(),
                 },
             )],
         };

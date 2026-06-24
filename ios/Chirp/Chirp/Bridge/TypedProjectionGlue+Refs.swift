@@ -37,7 +37,8 @@ extension TypedProjectionGlue {
             kind: Int(event.kind),
             createdAt: Int(event.createdAt),
             content: event.content ?? "",
-            tags: event.tags.map { row in row.values.map { $0 ?? "" } }
+            tags: event.tags.map { row in row.values.map { $0 ?? "" } },
+            signedEventJson: event.hasSignedEventJson ? (event.signedEventJson ?? "") : nil
         )
     }
 }

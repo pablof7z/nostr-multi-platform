@@ -306,7 +306,7 @@ final class KeyedRefCacheTests: XCTestCase {
     /// The kernel's `ref_event_row_payload` ALWAYS encodes EXACTLY ONE entry per
     /// `refs.event` row; this helper can forge 0, 1, or 2+ entries to prove the
     /// glue's single-entry contract.
-    private func makeEventRowPayload(entryKeys: [String]) -> [UInt8] {
+    private func makeEventRowPayload(entryKeys: [String], signedEventJson: String? = nil) -> [UInt8] {
         var fbb = FlatBufferBuilder()
         var entryOffsets: [Offset] = []
         for key in entryKeys {
@@ -314,6 +314,7 @@ final class KeyedRefCacheTests: XCTestCase {
             let authorOff = fbb.create(string: "author-\(key)")
             let contentOff = fbb.create(string: "content-\(key)")
             let primaryOff = fbb.create(string: key)
+            let signedJsonOff = signedEventJson.map { fbb.create(string: $0) } ?? Offset()
             let eventOff = nmp_kernel_ClaimedEvent.createClaimedEvent(
                 &fbb,
                 primaryIdOffset: primaryOff,
@@ -321,7 +322,9 @@ final class KeyedRefCacheTests: XCTestCase {
                 authorPubkeyOffset: authorOff,
                 kind: 1,
                 createdAt: 100,
-                contentOffset: contentOff)
+                contentOffset: contentOff,
+                hasSignedEventJson: signedEventJson != nil,
+                signedEventJsonOffset: signedJsonOff)
             let keyOff = fbb.create(string: key)
             entryOffsets.append(
                 nmp_kernel_ClaimedEventEntry.createClaimedEventEntry(
@@ -343,7 +346,9 @@ final class KeyedRefCacheTests: XCTestCase {
             projectionKey: event,
             payload: makeBatch(
                 namespace: "event", baseline: true,
-                rows: [Row(key: "evt1", rev: 1, state: .changed, payload: makeEventRowPayload(entryKeys: ["evt1"]))]),
+                rows: [Row(key: "evt1", rev: 1, state: .changed, payload: makeEventRowPayload(
+                    entryKeys: ["evt1"],
+                    signedEventJson: #"{"id":"evt1","sig":"signed"}"#))]),
             sessionId: 1, snapshotEpoch: 0)
         XCTAssertEqual(changed, ["evt1"])
         XCTAssertFalse(cache.needsResync, "a valid single-entry KCEV row commits cleanly")
@@ -351,6 +356,7 @@ final class KeyedRefCacheTests: XCTestCase {
         XCTAssertEqual(dto?.id, "evt1")
         XCTAssertEqual(dto?.authorPubkey, "author-evt1")
         XCTAssertEqual(dto?.content, "content-evt1")
+        XCTAssertEqual(dto?.signedEventJson, #"{"id":"evt1","sig":"signed"}"#)
     }
 
     /// BLOCKING (codex): a MULTI-entry KCEV row violates the kernel's exactly-one

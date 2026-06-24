@@ -112,8 +112,20 @@ contentTreeBytesArray():Uint8Array|null {
   return offset ? new Uint8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
 }
 
+hasSignedEventJson():boolean {
+  const offset = this.bb!.__offset(this.bb_pos, 28);
+  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
+}
+
+signedEventJson():string|null
+signedEventJson(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
+signedEventJson(optionalEncoding?:any):string|Uint8Array|null {
+  const offset = this.bb!.__offset(this.bb_pos, 30);
+  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
+}
+
 static startClaimedEvent(builder:flatbuffers.Builder) {
-  builder.startObject(12);
+  builder.startObject(14);
 }
 
 static addPrimaryId(builder:flatbuffers.Builder, primaryIdOffset:flatbuffers.Offset) {
@@ -188,12 +200,20 @@ static startContentTreeBytesVector(builder:flatbuffers.Builder, numElems:number)
   builder.startVector(1, numElems, 1);
 }
 
+static addHasSignedEventJson(builder:flatbuffers.Builder, hasSignedEventJson:boolean) {
+  builder.addFieldInt8(12, +hasSignedEventJson, +false);
+}
+
+static addSignedEventJson(builder:flatbuffers.Builder, signedEventJsonOffset:flatbuffers.Offset) {
+  builder.addFieldOffset(13, signedEventJsonOffset, 0);
+}
+
 static endClaimedEvent(builder:flatbuffers.Builder):flatbuffers.Offset {
   const offset = builder.endObject();
   return offset;
 }
 
-static createClaimedEvent(builder:flatbuffers.Builder, primaryIdOffset:flatbuffers.Offset, idOffset:flatbuffers.Offset, authorPubkeyOffset:flatbuffers.Offset, hasAuthorDisplayName:boolean, authorDisplayNameOffset:flatbuffers.Offset, hasAuthorPictureUrl:boolean, authorPictureUrlOffset:flatbuffers.Offset, kind:number, createdAt:bigint, tagsOffset:flatbuffers.Offset, contentOffset:flatbuffers.Offset, contentTreeBytesOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createClaimedEvent(builder:flatbuffers.Builder, primaryIdOffset:flatbuffers.Offset, idOffset:flatbuffers.Offset, authorPubkeyOffset:flatbuffers.Offset, hasAuthorDisplayName:boolean, authorDisplayNameOffset:flatbuffers.Offset, hasAuthorPictureUrl:boolean, authorPictureUrlOffset:flatbuffers.Offset, kind:number, createdAt:bigint, tagsOffset:flatbuffers.Offset, contentOffset:flatbuffers.Offset, contentTreeBytesOffset:flatbuffers.Offset, hasSignedEventJson:boolean, signedEventJsonOffset:flatbuffers.Offset):flatbuffers.Offset {
   ClaimedEvent.startClaimedEvent(builder);
   ClaimedEvent.addPrimaryId(builder, primaryIdOffset);
   ClaimedEvent.addId(builder, idOffset);
@@ -207,6 +227,8 @@ static createClaimedEvent(builder:flatbuffers.Builder, primaryIdOffset:flatbuffe
   ClaimedEvent.addTags(builder, tagsOffset);
   ClaimedEvent.addContent(builder, contentOffset);
   ClaimedEvent.addContentTreeBytes(builder, contentTreeBytesOffset);
+  ClaimedEvent.addHasSignedEventJson(builder, hasSignedEventJson);
+  ClaimedEvent.addSignedEventJson(builder, signedEventJsonOffset);
   return ClaimedEvent.endClaimedEvent(builder);
 }
 }

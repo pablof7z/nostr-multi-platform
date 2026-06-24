@@ -29,8 +29,11 @@ namespace nmp.kernel;
 // D0: a claimed-events map carries raw protocol event data (kind / tags /
 // content) but `kind` rides as an opaque `uint` and no kind-dependent branching
 // happens in the buffer — it is a generic content-resolution view, not a
-// protocol-specific projection, so it is kernel-owned and typed here. D6: the
-// decoder returns `Err(String)` on malformed input, never panics.
+// protocol-specific projection, so it is kernel-owned and typed here. A
+// refs.event `event.raw` row additionally carries canonical signed NIP-01 event
+// JSON serialized from the store-owned RawEvent; per-protocol projections must
+// not invent `raw_json` fields. D6: the decoder returns `Err(String)` on
+// malformed input, never panics.
 //
 // Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
 // pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
@@ -72,6 +75,11 @@ table ClaimedEvent {
   // the kernel's content-parser seam is installed (web hosts). Empty/absent on
   // native (which parses via nmp-content directly) — fall back to `content`.
   content_tree_bytes:[ubyte];
+  // Canonical signed NIP-01 event JSON, including `sig`. Present only for the
+  // generic refs.event `event.raw` row shape; `event.embed` and the legacy
+  // whole-map claimed_events projection omit it.
+  has_signed_event_json:bool;
+  signed_event_json:string;
 }
 
 // One `primary_id -> ClaimedEvent` map entry. Entries are sorted by `key`
