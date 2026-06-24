@@ -18,7 +18,7 @@
 //!
 //! Live-relay facts (verified the day this was written, via nak):
 //!   * `wss://nostr.wine`     — NIP-50 (paid writes; READS work unauthenticated).
-//!   * `wss://relay.nostr.band` — NIP-50 (free; the `NMP_BUILTIN_SEARCH_RELAY`).
+//!   * `wss://relay.nostr.band` — NIP-50 (free; useful for manual validation).
 //!   * `wss://nos.lol`        — NO NIP-50 (CLOSED "unrecognised filter item:
 //!                              search"); used here as the kind:10002/10007 host.
 //!   * `wss://search.nos.lol` — DEAD (NXDOMAIN).

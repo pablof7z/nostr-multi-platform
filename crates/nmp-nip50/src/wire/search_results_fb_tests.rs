@@ -13,8 +13,8 @@ fn sample() -> SearchResultsSnapshot {
                 created_at: 200,
                 content: "hello nostr".to_string(),
                 tags: vec![vec!["t".to_string(), "nostr".to_string()]],
-                relay_provenance: vec!["wss://search.nos.lol/".to_string()],
-                source: SearchHitSource::Relay("wss://search.nos.lol/".to_string()),
+                relay_provenance: vec!["wss://search-relay.example/".to_string()],
+                source: SearchHitSource::Relay("wss://search-relay.example/".to_string()),
             },
             SearchHit {
                 id: "e2".to_string(),
@@ -57,6 +57,9 @@ fn empty_snapshot_round_trips() {
 fn cache_vs_relay_provenance_is_preserved() {
     let snap = sample();
     let decoded = decode_search_results_snapshot(&encode_search_results_snapshot(&snap)).unwrap();
-    assert_eq!(decoded.hits[0].source, SearchHitSource::Relay("wss://search.nos.lol/".to_string()));
+    assert_eq!(
+        decoded.hits[0].source,
+        SearchHitSource::Relay("wss://search-relay.example/".to_string())
+    );
     assert_eq!(decoded.hits[1].source, SearchHitSource::Cache);
 }

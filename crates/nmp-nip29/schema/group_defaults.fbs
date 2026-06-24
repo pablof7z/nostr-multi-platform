@@ -12,10 +12,10 @@ namespace nmp.nip29;
 // can read typed accessors instead of JSON reflection. An un-updated host falls
 // back to the generic `Value` subtree (the permanent fallback from ADR-0037).
 //
-// Issue #626: this projection moves the NIP-29 public-group default relay URL
-// out of the iOS shell (a hardcoded Swift `@State` literal) into the framework.
-// The value is sourced from the crate-owned constant
-// `DEFAULT_PUBLIC_GROUP_RELAY_URL`; a host shell pre-fills its editable relay
+// Issue #626 moved the NIP-29 public-group suggested relay URL out of the iOS
+// shell. Issue #1924 made the concrete relay app/operator policy: the shared
+// crate emits an empty suggestion unless a leaf app supplies one through
+// `wire_group_defaults_with_relay`. A host shell pre-fills its editable relay
 // field from `suggested_relay_url` and the user may overwrite it.
 //
 // Raw data only (ADR-0032): `suggested_relay_url` is a raw relay URL string,
@@ -32,7 +32,7 @@ namespace nmp.nip29;
 // The serialised create-flow defaults read model.
 table GroupDefaultsSnapshot {
   schema_version:uint32 = 1;   // mirrors GROUP_DEFAULTS_SCHEMA_VERSION
-  suggested_relay_url:string;  // crate-owned default host relay URL (#626)
+  suggested_relay_url:string;  // app/operator-supplied suggested host relay URL
 }
 
 root_type GroupDefaultsSnapshot;

@@ -146,7 +146,7 @@ pub const DEFAULT_SELECT_MAX_PER_USER: usize = 2;
 /// 500 (not the kernel's conservative `DISCOVERY_BATCH = 50`): a 50-author
 /// batch turns a ~1000-follow cold start into ~20 separate REQs blasted at
 /// one indexer in a burst — exactly the pattern that triggers relay
-/// rate-limiting (observed: purplepag.es answering AUTH + CLOSED
+/// rate-limiting (observed: relays answering AUTH + CLOSED
 /// "rate limit exceeded"). 500 collapses the same cold start to ~2 REQs.
 /// Mainstream relays (damus, nos.lol, primal, strfry-based) accept
 /// author filters in the hundreds; a relay that truncates a large filter

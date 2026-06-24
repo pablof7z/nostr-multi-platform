@@ -110,10 +110,11 @@ struct KernelUpdateResult {
     let typedDiscoveredGroups: DiscoveredGroupsSnapshot?
     /// Typed `nmp.nip29.group_defaults` projection decode (`NGDF`, #626). `nil` ⇒
     /// generic `projections["nmp.nip29.group_defaults"]` JSON fallback. The
-    /// crate-owned suggested public-group relay URL; read typed-first through the
-    /// `groupDefaults` accessor and seeded into `NewGroupSheet`'s editable relay
-    /// field. The output-only producer registers once at app init, so a current
-    /// kernel emits this on every tick (nil only on an older build).
+    /// app/operator-owned suggested public-group relay URL; read typed-first
+    /// through the `groupDefaults` accessor and seeded into `NewGroupSheet`'s
+    /// editable relay field. The output-only producer registers once at app
+    /// init, so a current kernel emits this on every tick (nil only on an older
+    /// build).
     let typedGroupDefaults: GroupDefaultsSnapshot?
     /// Typed `profile` projection decode (`KPRF`). `nil` ⇒ generic
     /// `projections["profile"]` JSON fallback.

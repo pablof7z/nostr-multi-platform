@@ -92,10 +92,17 @@ pub extern "C" fn nmp_app_chirp_register(
     };
 
     // Inherit canonical NMP composition once and keep runtime handles the
-    // Chirp feed needs for app-level wiring.
+    // Chirp feed needs for app-level wiring. Shared NMP defaults intentionally
+    // carry no operator relay URLs; Chirp threads its app-owned search relay
+    // policy through this composition seam.
     let default_handles = nmp_defaults::register_defaults_with_handles(
         unsafe { &mut *app },
-        nmp_defaults::NmpDefaults::default(),
+        nmp_defaults::NmpDefaults {
+            search_defaults: nmp_defaults::SearchDefaults::with_default_relays(
+                nmp_chirp_config::chirp_default_search_relays(),
+            ),
+            ..Default::default()
+        },
     );
 
     // #1493 P9 — Chirp's `nostrconnect://` NIP-46 perm policy (leaf-app product
@@ -170,16 +177,19 @@ pub extern "C" fn nmp_app_chirp_register(
         });
     }
 
-    // #626: wire the crate-owned NIP-29 group-create defaults projection so the
-    // suggested public-group relay URL surfaces under `"nmp.nip29.group_defaults"`
-    // (typed `NGDF` sidecar + generic `Value` fallback) instead of being a
-    // hardcoded Swift `@State` literal in `NewGroupSheet`. Output-only: the
-    // projection observes no kernel events — its snapshot is a pure function of
-    // the `nmp-nip29` crate constant — so this is a one-time registration at app
-    // init, like the zaps projection above (NIP-29 group-create is a Chirp verb,
-    // not part of the canonical NMP composition, so it lives here, not in
-    // `register_defaults`).
-    nmp_nip29::register::wire_group_defaults(app_ref);
+    // #626: wire the NIP-29 group-create defaults projection so Chirp's
+    // app-owned suggested public-group relay URL surfaces under
+    // `"nmp.nip29.group_defaults"` (typed `NGDF` sidecar + generic `Value`
+    // fallback) instead of being a hardcoded Swift `@State` literal in
+    // `NewGroupSheet`. Output-only: the projection observes no kernel events,
+    // so this is a one-time registration at app init, like the zaps projection
+    // above. NIP-29 group-create is a Chirp verb, not part of the canonical NMP
+    // composition, so it lives here and its operator relay policy comes from
+    // `nmp-chirp-config`, not from `nmp-nip29`.
+    nmp_nip29::register::wire_group_defaults_with_relay(
+        app_ref,
+        nmp_chirp_config::chirp_public_group_relay_url(),
+    );
 
     // V-80 rung 7 — the product-visible cut-over. The home feed
     // (`"nmp.feed.home"`) is now produced by the OP-centric engine instead of

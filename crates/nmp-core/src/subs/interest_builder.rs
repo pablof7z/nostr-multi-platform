@@ -179,10 +179,11 @@ mod tests {
 
         // The pin lands on the shape verbatim.
         let (_id, interest) =
-            build_interest_pair(filter, "search-c", 1, Some("wss://search.nos.lol/")).unwrap();
+            build_interest_pair(filter, "search-c", 1, Some("wss://search-relay.example/"))
+                .unwrap();
         assert_eq!(
             interest.shape.relay_pin.as_deref(),
-            Some("wss://search.nos.lol/")
+            Some("wss://search-relay.example/")
         );
 
         // Same filter+consumer, two different pins → two distinct registry slots

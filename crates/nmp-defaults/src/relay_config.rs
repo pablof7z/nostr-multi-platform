@@ -70,10 +70,13 @@ mod tests {
         let dir = unique_temp_dir("roundtrip");
         let relays = vec![
             (
-                "wss://relay.primal.net".to_string(),
+                "wss://primary-relay.example".to_string(),
                 "both,indexer".to_string(),
             ),
-            ("wss://purplepag.es".to_string(), "indexer".to_string()),
+            (
+                "wss://indexer-relay.example".to_string(),
+                "indexer".to_string(),
+            ),
         ];
         save(&dir, &relays);
         let loaded = load(&dir).expect("sidecar loads after save");
