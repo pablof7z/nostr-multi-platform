@@ -13,7 +13,7 @@ impl Kernel {
     /// Wall-clock variant for the live ingest seam. Tests use the
     /// `tick_publish_engine(now_ms)` injection point directly.
     pub(crate) fn tick_publish_engine_for_now(&mut self) -> Vec<OutboundMessage> {
-        self.tick_publish_engine(now_epoch_ms())
+        self.tick_publish_engine(now_epoch_ms()) // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
     }
 
     /// Drive the publish engine's wall-clock retries. Called from
@@ -39,7 +39,7 @@ impl Kernel {
     /// in-flight publish for that relay is moved back to durable Pending by
     /// the engine; the actor will retry when a fresh Connected event arrives.
     pub(crate) fn mark_publish_relay_unavailable(&mut self, relay_url: &str) {
-        let now_ms = now_epoch_ms();
+        let now_ms = now_epoch_ms(); // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
         let engine_rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self
             .publish_engine
@@ -58,7 +58,7 @@ impl Kernel {
     /// outbound path, which also keeps relay-worker connection ownership in
     /// one place.
     pub(crate) fn mark_publish_relay_available(&mut self, relay_url: &str) -> Vec<OutboundMessage> {
-        let now_ms = now_epoch_ms();
+        let now_ms = now_epoch_ms(); // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
         let engine_rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self.publish_engine.mark_relay_available(relay_url, now_ms) {
             self.publish_engine
@@ -83,7 +83,7 @@ impl Kernel {
     /// engine emitted as it brought live relays back into `InFlight` from a
     /// `Pending` / due-`RelayError` state.
     pub(crate) fn resume_publish_engine(&mut self) -> Vec<OutboundMessage> {
-        let now_ms = now_epoch_ms();
+        let now_ms = now_epoch_ms(); // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
         let engine_rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self.publish_engine.resume_from_store(now_ms) {
             // D6: durable-resume failure surfaces as a snapshot failure row

@@ -232,7 +232,7 @@ impl Kernel {
     #[must_use]
     pub(crate) fn relay_info_is_fresh(&self, relay_url: &str, ttl: std::time::Duration) -> bool {
         self.transport_relays
-            .info_is_fresh(relay_url, Instant::now(), ttl)
+            .info_is_fresh(relay_url, Instant::now(), ttl) // doctrine-allow: D9 — cfg(test) relay-info freshness helper
     }
 
     /// ADR-0051 — read the cached relay-information document for `relay_url`.
@@ -257,7 +257,7 @@ impl Kernel {
     pub(super) fn mark_transport_connected(&mut self, role: RelayRole, relay_url: &str) {
         let entry = self.transport_relays.entry(role, relay_url);
         entry.connection = "connected".to_string();
-        entry.connected_at = Some(Instant::now());
+        entry.connected_at = Some(Instant::now()); // doctrine-allow: D9 — transport diagnostic elapsed-time marker; not replay policy
         entry.last_error = None;
         entry.error_category = None;
         entry.auth = "not_required".to_string();

@@ -14,7 +14,7 @@
 //!
 //! | sibling file              | rules covered                         |
 //! |---------------------------|---------------------------------------|
-//! | `tests_d0_to_d9.rs`       | D0, D6, D7, D8 (alloc+sleep), D9     |
+//! | `tests_d0_to_d9.rs`       | D0, D6, D7, D8, D9, action_namespace |
 //! | `tests_d10_d11_d12.rs`    | D10, D11, D12                         |
 //! | `tests_d13_d14_d15.rs`    | D13, D14, D15                         |
 //! | `tests_d16_workspace.rs`  | D16, --workspace-d8, end-to-end clean |
@@ -35,7 +35,7 @@ mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — siblin
 mod no_raw_tap_rule_tests; // no_raw_tap step-5 native-sink fixture tests — sibling module.
 mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
 mod tests_a6; // A6 schema-less snapshot-projection lane smoke tests — sibling module.
-mod tests_d0_to_d9; // D0, D6, D7, D8 (hot-path alloc + no-polling), D9 — sibling module.
+mod tests_d0_to_d9; // D0, D6, D7, D8, D9, action_namespace — sibling module.
 mod tests_d10_d11_d12; // D10, D11, D12 fixture smoke tests — sibling module.
 mod tests_d13_d14_d15; // D13, D14, D15 fixture smoke tests — sibling module.
 mod tests_d16_workspace; // D16, --workspace-d8, end-to-end clean — sibling module.

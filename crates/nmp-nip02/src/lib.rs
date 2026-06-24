@@ -32,9 +32,9 @@
 //!
 //! # D0 — namespace hygiene
 //!
-//! Both NIP-02 namespaces start with `nmp.` (the D9 lint rule for protocol
-//! crates). The action executors enqueue follow-list commands and the actor
-//! on its own thread builds + signs the kind:3 event (D7).
+//! Both NIP-02 namespaces start with `nmp.` (the action_namespace lint rule
+//! for protocol crates). The action executors enqueue follow-list commands and
+//! the actor on its own thread builds + signs the kind:3 event (D7).
 //!
 //! # D11 — single door
 //!
@@ -355,12 +355,12 @@ mod tests {
     // ----- namespaces ------------------------------------------------------
 
     #[test]
-    fn follow_namespace_matches_d9_substrate_shape() {
+    fn follow_namespace_matches_action_namespace_substrate_shape() {
         assert_eq!(FollowModule::NAMESPACE, "nmp.follow");
     }
 
     #[test]
-    fn unfollow_namespace_matches_d9_substrate_shape() {
+    fn unfollow_namespace_matches_action_namespace_substrate_shape() {
         assert_eq!(UnfollowModule::NAMESPACE, "nmp.unfollow");
     }
 

@@ -1,7 +1,7 @@
-//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20/D21/D23/D24/D25/D26/D27.
+//! Doctrine-lint — grep-based static analyzer enforcing D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D18/D19/D20/D21/D23/D24/D25/D26/D27 plus action_namespace.
 //!
 //! See `walker.rs` for the `#[cfg(test)]` module tracker, `allow.rs` for the
-//! per-line opt-out comment, and `rules/{d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d23,d24,d25,d26,d27}.rs` for
+//! per-line opt-out comment, and `rules/{d0,d6,d7,d8,d9,d10,d11,d12,d13,d14,d15,d16,d17,d18,d19,d20,d21,d23,d24,d25,d26,d27,action_namespace}.rs` for
 //! individual rule definitions. Brainstorm item #8 in
 //! `docs/perf/parallel-work-brainstorm-2026-05-18.md`.
 //!
@@ -68,11 +68,11 @@ use std::process::ExitCode;
 
 use cli::{parse_args, resolve_roots};
 use rules::{
-    d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d27, d6, d7, d8, d9,
-    no_raw_tap_reintroduction,
+    action_namespace, d0, d10, d11, d12, d13, d14, d15, d16, d17, d18, d19, d20, d21, d26, d27, d6,
+    d7, d8, d9, no_raw_tap_reintroduction,
 };
 use scope::{
-    d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
+    action_namespace_file_in_scope, d10_file_in_scope, d12_file_in_scope, d13_file_extra_in_scope,
     d14_file_in_scope, d15_file_in_scope, d16_file_in_scope, d17_file_in_scope, d19_file_in_scope,
     d20_file_in_scope, d21_file_in_scope, d26_active_local_keys_in_scope, d26_app_host_in_scope,
     d27_file_in_scope, d9_file_in_scope, is_doctrine_lint_source, is_nmp_testing_harness_bin,
@@ -168,11 +168,10 @@ fn main() -> ExitCode {
     let rules = if cfg.workspace_d8 {
         "D8 no-polling"
     } else {
-        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26/D27/no_raw_tap"
+        "A6/D0/D6/D7/D8/D9/D10/D11/D12/D13/D14/D15/D16/D17/D19/D20/D21/D23/D24/D25/D26/D27/action_namespace/no_raw_tap"
     };
     report::finish(roots.len(), rules, cfg.allow_findings, all_findings)
 }
-
 
 /// Scan one file, appending findings.
 ///
@@ -211,6 +210,7 @@ fn scan_one_file(
     // scanned when `--workspace-d8` is active (see `is_nmp_testing_harness_bin`).
     let d8_test_file = d6_test_file && !(workspace_d8 && is_nmp_testing_harness_bin(path));
     let no_raw_tap_in_scope = no_raw_tap_reintroduction::file_in_scope(path);
+    let action_namespace_in_scope = action_namespace_file_in_scope(path);
     let d7_in_scope = d7::file_in_scope(path);
     let d8_in_scope = d8::file_in_scope(path, d8_extra_scopes);
     let d9_in_scope = d9_file_in_scope(path, d9_extra_scopes);
@@ -265,8 +265,12 @@ fn scan_one_file(
     // (nmp-core projection paths, nmp-nip*, nmp-marmot).
     let d27_in_scope = d27_file_in_scope(path, d27_extra_scopes);
     // D23/D24/D25 — event-flow spine locks (wiring + state in event_flow_gates).
-    let ef_scope =
-        event_flow_gates::FileScope::resolve(path, d23_extra_scopes, d24_extra_scopes, d25_extra_scopes);
+    let ef_scope = event_flow_gates::FileScope::resolve(
+        path,
+        d23_extra_scopes,
+        d24_extra_scopes,
+        d25_extra_scopes,
+    );
     let mut ef_state = event_flow_gates::ScanState::default();
     let mut d6_state = d6::State::default();
     let mut d8_tracker = d8::HotPathTracker::default();
@@ -378,17 +382,35 @@ fn scan_one_file(
                 });
             }
         }
-        // D9 — protocol-crate action namespaces start with `nmp.`. Scope is
-        // every `crates/nmp-*/src/` tree EXCEPT `nmp-testing` (its own
-        // fixtures host intentional negative examples). Skipped in
-        // --workspace-d8 (no-polling sweep only).
-        if !workspace_d8 && d9_in_scope {
-            for (col, msg, suggested) in d9::check(sl.text, sl.is_comment) {
-                if allow::line_allows(sl.text, d9::ID) {
+        // D9 — kernel-owned time. Reducer/replay/kernel-policy paths use the
+        // injected kernel clock rather than direct wall-clock reads. Test-only
+        // files and #[cfg(test)] bodies are exempt. A production escape hatch
+        // must carry a reason (`// doctrine-allow: D9 — ...`).
+        if !workspace_d8 && d9_in_scope && !d6_test_file {
+            for (col, msg, suggested) in d9::check(sl.text, sl.is_comment, sl.in_test_cfg) {
+                if allow::line_allows_with_reason(sl.text, d9::ID) {
                     continue;
                 }
                 findings.push(report::Finding {
                     rule: d9::ID,
+                    path: path.to_path_buf(),
+                    line: sl.line_no,
+                    col,
+                    message: msg,
+                    suggested,
+                });
+            }
+        }
+        // action_namespace — protocol-crate action namespaces start with
+        // `nmp.`. This was historically misclassified as D9; it remains useful
+        // as its own non-doctrine-numbered lint.
+        if !workspace_d8 && action_namespace_in_scope && !d6_test_file && !sl.in_test_cfg {
+            for (col, msg, suggested) in action_namespace::check(sl.text, sl.is_comment) {
+                if allow::line_allows_with_reason(sl.text, action_namespace::ID) {
+                    continue;
+                }
+                findings.push(report::Finding {
+                    rule: action_namespace::ID,
                     path: path.to_path_buf(),
                     line: sl.line_no,
                     col,
@@ -713,7 +735,10 @@ fn scan_one_file(
         );
         // no_raw_tap — bans re-introduction of the deleted raw event tap. Workspace-wide;
         // test-only files / #[cfg(test)] bodies / --workspace-d8 sweeps are exempt.
-        if !workspace_d8 && no_raw_tap_in_scope && !d6_test_file && !sl.in_test_cfg
+        if !workspace_d8
+            && no_raw_tap_in_scope
+            && !d6_test_file
+            && !sl.in_test_cfg
             && !is_doctrine_lint_source(path)
         {
             for (col, msg, suggested) in no_raw_tap_reintroduction::check(

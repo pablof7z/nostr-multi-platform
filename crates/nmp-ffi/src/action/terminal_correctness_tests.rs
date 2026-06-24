@@ -21,7 +21,7 @@ use nmp_core::substrate::ActionModule;
 /// exact BUG-A shape (an async-completing executor that fails *after* sending).
 struct EnqueueThenPanicModule;
 impl ActionModule for EnqueueThenPanicModule {
-    const NAMESPACE: &'static str = "test.enqueue_then_panic"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+    const NAMESPACE: &'static str = "test.enqueue_then_panic"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
         &self,

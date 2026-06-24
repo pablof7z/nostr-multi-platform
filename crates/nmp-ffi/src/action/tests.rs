@@ -260,7 +260,7 @@ fn greeting_flag() -> Arc<AtomicBool> {
 
 struct TestGreetingModule;
 impl nmp_core::substrate::ActionModule for TestGreetingModule {
-    const NAMESPACE: &'static str = "test.greeting"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+    const NAMESPACE: &'static str = "test.greeting"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
         &self,
@@ -283,7 +283,7 @@ impl nmp_core::substrate::ActionModule for TestGreetingModule {
 /// Failing test module — always returns `Err` from `execute`.
 struct TestFailingModule;
 impl nmp_core::substrate::ActionModule for TestFailingModule {
-    const NAMESPACE: &'static str = "test.failing"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+    const NAMESPACE: &'static str = "test.failing"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
         &self,
@@ -306,7 +306,7 @@ impl nmp_core::substrate::ActionModule for TestFailingModule {
 /// dispatch-action end-to-end tests below.
 struct TestTodoModule;
 impl nmp_core::substrate::ActionModule for TestTodoModule {
-    const NAMESPACE: &'static str = "test.todo"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+    const NAMESPACE: &'static str = "test.todo"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
         &self,
@@ -329,7 +329,7 @@ impl nmp_core::substrate::ActionModule for TestTodoModule {
 /// returns `ActionRejection::Invalid`.
 struct TestTodoRejectModule;
 impl nmp_core::substrate::ActionModule for TestTodoRejectModule {
-    const NAMESPACE: &'static str = "test.todo_reject"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+    const NAMESPACE: &'static str = "test.todo_reject"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
         &self,
@@ -354,7 +354,7 @@ impl nmp_core::substrate::ActionModule for TestTodoRejectModule {
 /// `executor_failure_returns_correlation_id_and_enqueues_failed_terminal`.
 struct TestPanicModule;
 impl nmp_core::substrate::ActionModule for TestPanicModule {
-    const NAMESPACE: &'static str = "test.panic"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+    const NAMESPACE: &'static str = "test.panic"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
         &self,

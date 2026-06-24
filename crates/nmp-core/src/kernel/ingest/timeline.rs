@@ -299,7 +299,7 @@ impl Kernel {
     pub(in crate::kernel) fn maybe_open_timeline(&mut self) -> Vec<OutboundMessage> {
         if !self.timeline_requested && self.should_open_timeline() {
             self.timeline_requested = true;
-            self.timing.timeline_opened_at = Some(Instant::now());
+            self.timing.timeline_opened_at = Some(Instant::now()); // doctrine-allow: D9 — status diagnostic elapsed-time marker; not replay policy
             self.log(
                 "follow-feed open milestone reached — carried by M2 planner \
                  (drain_lifecycle_tick); M1 seed-timeline-* REQ retired (T140)"
@@ -328,6 +328,6 @@ impl Kernel {
         has_active_contacts
             || self
                 .contacts_deadline
-                .is_some_and(|deadline| Instant::now() >= deadline)
+                .is_some_and(|deadline| Instant::now() >= deadline) // doctrine-allow: D9 — residual kernel deadline policy tracked in #1952
     }
 }

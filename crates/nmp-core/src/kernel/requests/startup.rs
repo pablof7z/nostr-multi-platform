@@ -45,7 +45,7 @@ const SELF_KINDS_TAILING: &[u32] = &[0, 3, 10002, 10006, 10007];
 
 impl Kernel {
     pub(crate) fn startup_requests(&mut self) -> Vec<OutboundMessage> {
-        self.contacts_deadline = Some(Instant::now() + Duration::from_secs(3));
+        self.contacts_deadline = Some(Instant::now() + Duration::from_secs(3)); // doctrine-allow: D9 — residual kernel deadline policy tracked in #1952
         self.active_account_bootstrap_requests()
     }
 

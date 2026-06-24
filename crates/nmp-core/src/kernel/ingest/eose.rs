@@ -39,7 +39,7 @@ impl Kernel {
         let wire_key = (wire_key_url.clone(), sub_id.to_string());
         // `Some(since_floor)` iff the row existed (K3 Stage D1 reads it).
         let eose_row_floor: Option<Option<u64>> = self.wire.subs.get_mut(&wire_key).map(|sub| {
-            sub.eose_at = Some(Instant::now());
+            sub.eose_at = Some(Instant::now()); // doctrine-allow: D9 — relay diagnostic elapsed-time marker; not replay policy
             // T133: mark closed for the brief window before eviction below;
             // ingest readers (EVENT for an already-EOSE'd sub) see the row
             // absent. Keep-live stays "live".

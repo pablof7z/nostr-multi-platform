@@ -7,7 +7,7 @@ use super::*;
 impl Kernel {
     pub(crate) fn start(&mut self) {
         if self.timing.started_at.is_none() {
-            self.timing.started_at = Some(Instant::now());
+            self.timing.started_at = Some(Instant::now()); // doctrine-allow: D9 — status diagnostic elapsed-time marker; wall anchor uses now_ms below
             self.timing.started_unix_ms = Some(self.now_ms()); // D9 wall anchor
         }
         self.changed_since_emit = true;

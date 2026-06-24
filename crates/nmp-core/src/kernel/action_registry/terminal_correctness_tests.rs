@@ -38,7 +38,7 @@ fn unknown_namespace_execute_is_tagged_no_executor() {
 fn sync_err_executor_is_tagged_sync_error_not_panic() {
     struct RefusingModule;
     impl ActionModule for RefusingModule {
-        const NAMESPACE: &'static str = "host.refuse"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        const NAMESPACE: &'static str = "host.refuse"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
         fn start(
             &self,
@@ -81,7 +81,7 @@ fn sync_err_executor_is_tagged_sync_error_not_panic() {
 fn panic_before_enqueue_is_tagged_panic_and_not_enqueued() {
     struct PanicFirstModule;
     impl ActionModule for PanicFirstModule {
-        const NAMESPACE: &'static str = "host.panic_first"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        const NAMESPACE: &'static str = "host.panic_first"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
         fn start(
             &self,
@@ -120,7 +120,7 @@ fn panic_before_enqueue_is_tagged_panic_and_not_enqueued() {
 fn panic_after_enqueue_reports_enqueued_true() {
     struct EnqueueThenPanicModule;
     impl ActionModule for EnqueueThenPanicModule {
-        const NAMESPACE: &'static str = "host.enqueue_then_panic"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        const NAMESPACE: &'static str = "host.enqueue_then_panic"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
         fn start(
             &self,
