@@ -105,6 +105,24 @@ impl KernelReducer {
         dispatch_kernel_action(&mut self.kernel, action)
     }
 
+    /// Current wall-clock milliseconds via the reducer-owned kernel clock.
+    #[must_use]
+    pub fn now_ms(&self) -> u64 {
+        self.kernel.now_ms()
+    }
+
+    /// Current wall-clock seconds via the reducer-owned kernel clock.
+    #[must_use]
+    pub fn now_secs(&self) -> u64 {
+        self.kernel.now_secs()
+    }
+
+    /// Test-support clock injection for non-actor runtimes such as `nmp-wasm`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_clock_for_test(&mut self, clock: std::sync::Arc<dyn crate::Clock>) {
+        self.kernel.set_clock(clock);
+    }
+
     // ─── V-01 Stage 3 relay-lifecycle surface ────────────────────────────────
     //
     // These methods mirror the per-event arms of

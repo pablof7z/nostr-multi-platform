@@ -8,7 +8,7 @@
 //! brokered by the **main thread**:
 //!
 //! 1. The reducer (running on the worker, or wherever `KernelReducer` lives)
-//!    receives a sign request and calls [`KernelReducer::begin_sign_roundtrip`].
+//!    receives a sign request and calls [`KernelReducer::begin_sign_roundtrip_at`].
 //!    That **parks a sign op** in the shared [`ParkedSignerOps`] queue — the
 //!    SAME component the native actor loop owns — pins it to the active account,
 //!    and returns a [`SignRoundTripRequest`] the host posts to the main thread.
@@ -28,14 +28,14 @@
 //! because anything polled for it. This is the *same mechanism* the native
 //! NIP-46 broker uses (the broker resolves the op's channel out of band; the
 //! drain picks the value up with a single non-blocking `poll`), reusing the ONE
-//! `ParkedSignerOps::drive` driver. The only difference is the drive trigger:
+//! `ParkedSignerOps::drive_at` driver. The only difference is the drive trigger:
 //! the native idle tick vs. the wasm completion message. The
 //! [`crate::kernel_reducer::wasm_signing::no_polling_oracle_tests`] module
 //! proves completion happens via message re-entry rather than any poll/sleep.
 //!
 //! # Account-pinning
 //!
-//! [`begin_sign_roundtrip`] records the active account pubkey at park time. The
+//! [`begin_sign_roundtrip_at`] records the active account pubkey at park time. The
 //! continuation cross-checks the signed event's author against that pin and
 //! rejects a mismatch — a mid-flight account switch cannot deliver a signature
 //! from a different key into the originating request (ADR-0050 §D5 pinning).
@@ -45,7 +45,7 @@
 //! S6 wires the *signing round-trip mechanism only*. The completion continuation
 //! records the signed event into an observable sink. After #1008 the wasm runtime
 //! handles `PublishRawEvent` / `PublishProfile` actor commands by calling
-//! `begin_sign_roundtrip`, and the signed result is delivered here — the host
+//! `begin_sign_roundtrip_at`, and the signed result is delivered here — the host
 //! then dispatches a `PublishSignedEvent` command (or the future S6b continuation
 //! publishes inline). The host reads the `SignRoundTripOutcome` to confirm the
 //! signing step completed.
@@ -55,9 +55,9 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-// D20: `Instant::now()` PANICS on wasm32 under `std::time`. The wasm signing
-// round-trip runs on the wasm path, so the park deadline must come from the
-// `crate::time` shim (re-exports `std::time` on native, `web_time` on wasm32).
+// D20: the wasm signing round-trip runs on the wasm path, so the park deadline
+// type must come from the `crate::time` shim (re-exports `std::time` on native,
+// `web_time` on wasm32).
 use crate::time::Instant;
 
 use nmp_signer_iface::{SignerError, SignerOp};
@@ -80,7 +80,7 @@ const WASM_SIGN_OP_TIMEOUT: Duration = Duration::from_secs(60);
 type SharedCompletions = Arc<Mutex<Vec<SignRoundTripCompletion>>>;
 
 /// Per-`KernelReducer` wasm-signing state. Defaults to empty; only the
-/// `begin_sign_roundtrip` / `deliver_signed_response` seam touches it. Native
+/// `begin_sign_roundtrip_at` / `deliver_signed_response_at` seam touches it. Native
 /// reducers never call that seam, so this stays inert there.
 pub(crate) struct SignRoundTripState {
     /// The shared parked-op queue + drain driver (#1753). One `drive` call per
@@ -109,7 +109,7 @@ impl Default for SignRoundTripState {
 }
 
 /// The request a host posts to the main-thread broker after
-/// [`KernelReducer::begin_sign_roundtrip`]. The broker calls
+/// [`KernelReducer::begin_sign_roundtrip_at`]. The broker calls
 /// `window.nostr.signEvent(unsigned)` and posts the result back keyed on
 /// `correlation_id`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -220,10 +220,11 @@ impl super::KernelReducer {
     ///
     /// Total (D6): a malformed `unsigned_json` returns `Err(reason)` and parks
     /// nothing.
-    pub fn begin_sign_roundtrip(
+    pub fn begin_sign_roundtrip_at(
         &mut self,
         account_pubkey: String,
         unsigned_json: &str,
+        now: Instant,
     ) -> Result<SignRoundTripRequest, String> {
         let unsigned = parse_unsigned_flat_json(unsigned_json)?;
         // Re-serialize to the canonical flat wire shape the JS bridge expects.
@@ -272,7 +273,7 @@ impl super::KernelReducer {
             }
         });
 
-        let deadline = Instant::now() + WASM_SIGN_OP_TIMEOUT;
+        let deadline = now + WASM_SIGN_OP_TIMEOUT;
         self.sign_roundtrip
             .parked
             .push(ParkedOp::sign_continuation(SignerOp::Pending(rx), continuation, deadline));
@@ -287,6 +288,21 @@ impl super::KernelReducer {
         })
     }
 
+    /// Test-support convenience wrapper. Production callers pass the message
+    /// boundary timestamp explicitly through [`Self::begin_sign_roundtrip_at`].
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn begin_sign_roundtrip(
+        &mut self,
+        account_pubkey: String,
+        unsigned_json: &str,
+    ) -> Result<SignRoundTripRequest, String> {
+        self.begin_sign_roundtrip_at(
+            account_pubkey,
+            unsigned_json,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
     /// #1753 S6 — deliver a signed (or failed) response for a parked sign
     /// round-trip. THIS is the message re-entry: it hands the value to the
     /// parked op and **drives the shared queue exactly once, here, from the
@@ -295,15 +311,16 @@ impl super::KernelReducer {
     /// `signed_json` is the flat-NIP-01 signed event the main-thread broker got
     /// back from `window.nostr.signEvent`. Pass an `Err` shape by supplying a
     /// non-event string only if you intend a parse failure; signer-side errors
-    /// should be delivered through [`Self::fail_sign_roundtrip`] instead.
+    /// should be delivered through [`Self::fail_sign_roundtrip_at`] instead.
     ///
     /// Total (D6): an unknown correlation id is a no-op
     /// ([`SignRoundTripOutcome::Unknown`]); a malformed `signed_json` resolves
     /// the parked op with an error terminal.
-    pub fn deliver_signed_response(
+    pub fn deliver_signed_response_at(
         &mut self,
         correlation_id: &str,
         signed_json: &str,
+        now: Instant,
     ) -> SignRoundTripOutcome {
         let Some(tx) = self.sign_roundtrip.senders.remove(correlation_id) else {
             return SignRoundTripOutcome::Unknown {
@@ -324,19 +341,35 @@ impl super::KernelReducer {
         }
         // Drop our sender clone is unnecessary — `tx` is moved by `send`; the
         // original is the only one. The op's `rx` now has exactly one value.
-        self.drive_sign_roundtrip();
+        self.drive_sign_roundtrip_at(now);
 
         self.report_completion(correlation_id)
+    }
+
+    /// Test-support convenience wrapper. Production callers pass the message
+    /// boundary timestamp explicitly through [`Self::deliver_signed_response_at`].
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn deliver_signed_response(
+        &mut self,
+        correlation_id: &str,
+        signed_json: &str,
+    ) -> SignRoundTripOutcome {
+        self.deliver_signed_response_at(
+            correlation_id,
+            signed_json,
+            crate::kernel::test_support::test_support_now(),
+        )
     }
 
     /// #1753 S6 — fail a parked sign round-trip (e.g. the user rejected in the
     /// extension, or `window.nostr` was absent). Resolves the parked op with the
     /// supplied error terminal via the same single drive (D6 — nothing left
     /// dangling; D8 — message re-entry, no poll).
-    pub fn fail_sign_roundtrip(
+    pub fn fail_sign_roundtrip_at(
         &mut self,
         correlation_id: &str,
         reason: &str,
+        now: Instant,
     ) -> SignRoundTripOutcome {
         let Some(tx) = self.sign_roundtrip.senders.remove(correlation_id) else {
             return SignRoundTripOutcome::Unknown {
@@ -344,20 +377,35 @@ impl super::KernelReducer {
             };
         };
         let _ = tx.send(Err(SignerError::Backend(reason.to_string())));
-        self.drive_sign_roundtrip();
+        self.drive_sign_roundtrip_at(now);
         self.report_completion(correlation_id)
     }
 
+    /// Test-support convenience wrapper. Production callers pass the message
+    /// boundary timestamp explicitly through [`Self::fail_sign_roundtrip_at`].
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn fail_sign_roundtrip(
+        &mut self,
+        correlation_id: &str,
+        reason: &str,
+    ) -> SignRoundTripOutcome {
+        self.fail_sign_roundtrip_at(
+            correlation_id,
+            reason,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
     /// The ONE drive of the wasm round-trip queue. Called only from a
-    /// completion-message handler (`deliver_signed_response` /
-    /// `fail_sign_roundtrip`) — never on a timer, never in a loop (D8).
-    fn drive_sign_roundtrip(&mut self) {
+    /// completion-message handler (`deliver_signed_response_at` /
+    /// `fail_sign_roundtrip_at`) — never on a timer, never in a loop (D8).
+    fn drive_sign_roundtrip_at(&mut self, now: Instant) {
         // The wasm round-trip parks only `SignContinuation` sinks, which settle
         // in-drain (no `Publish` / `Auth` obligations); the returned batch's
         // obligation vecs are therefore always empty. The actual relay-publish
         // happens via a follow-up `PublishSignedEvent` dispatch from the host
         // after reading the completion sink (#1008).
-        let _batch = self.sign_roundtrip.parked.drive(&mut self.kernel);
+        let _batch = self.sign_roundtrip.parked.drive_at(&mut self.kernel, now);
     }
 
     /// Build the [`SignRoundTripOutcome`] for `correlation_id` from the most

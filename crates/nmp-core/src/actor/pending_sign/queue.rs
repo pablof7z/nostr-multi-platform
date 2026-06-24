@@ -2,7 +2,7 @@
 //! (ADR-0050 §D2; issue #1753 S6).
 //!
 //! Before #1753 the `Vec<ParkedOp>` lived as a bare local in the native actor
-//! loop, and the `retain_mut` that drives [`super::resolve_parked_op`] over it
+//! loop, and the `retain_mut` that drives the canonical parked-op drain over it
 //! was inlined there. That made the drain *driver* native-only: the wasm
 //! `KernelReducer` (which has no actor loop and no idle tick) had no way to own
 //! parked signer ops or run the same drain.
@@ -11,17 +11,17 @@
 //! drive — into a component that BOTH targets share:
 //!
 //! * **Native** (`actor/mod.rs`): the loop holds one `ParkedSignerOps`, pushes
-//!   parked ops into it from the dispatch arms, and calls [`ParkedSignerOps::drive`]
+//!   parked ops into it from the dispatch arms, and calls [`ParkedSignerOps::drive_at`]
 //!   once per idle tick. The collected [`PublishObligation`] / [`AuthObligation`]
 //!   are handed back to the loop, which owns relay routing exactly as before.
-//!   D8: `drive` polls each op with a non-blocking `SignerOp::poll`; the
+//!   D8: `drive_at` polls each op with a non-blocking `SignerOp::poll`; the
 //!   per-op deadline is the wall-clock timeout gate — never a sleep or a wait.
 //!
 //! * **Wasm** (`KernelReducer`, issue #1753): the reducer holds one
 //!   `ParkedSignerOps`. A NIP-07 sign verb emits a capability request and parks
 //!   a [`super::ParkedOp::sign_continuation`]; when the main-thread JS bridge
 //!   posts the signed bytes back as a `DeliverSignerResponse` message, the
-//!   reducer hands the value to the op (closing its channel) and calls `drive`
+//!   reducer hands the value to the op (closing its channel) and calls `drive_at`
 //!   **once, from that inbound-message handler** — pure message re-entry. There
 //!   is NO timer, NO poll loop, NO blocking `SignerOp::wait` anywhere in the
 //!   wasm completion path (D8): completion is noticed because the message
@@ -33,10 +33,10 @@
 //! copy. The only difference is *what drives the single drive call* — the native
 //! idle tick vs. the wasm inbound message.
 
-use super::drain::resolve_parked_op;
+use super::drain::resolve_parked_op_at;
 use super::sinks::{AuthObligation, ParkedOp, PublishObligation};
 
-/// The obligations a single [`ParkedSignerOps::drive`] pass collected for its
+/// The obligations a single [`ParkedSignerOps::drive_at`] pass collected for its
 /// caller to execute. The drain settles projection / continuation sinks against
 /// the kernel directly; the `Publish` and `Auth` sinks return routing
 /// obligations because relay routing is the caller's concern (the native loop
@@ -88,7 +88,7 @@ impl ParkedSignerOps {
     /// Consume the queue, yielding its parked ops. Test-only seam: the signer-
     /// port dispatch tests build a queue through `dispatch_one`, then resolve /
     /// assert against the raw ops (indexing `[0]`, calling `resolve_parked_op`
-    /// directly). Production drives through [`Self::drive`] instead.
+    /// directly). Production drives through [`Self::drive_at`] instead.
     #[cfg(test)]
     #[must_use]
     pub(crate) fn into_vec(self) -> Vec<ParkedOp> {
@@ -96,7 +96,7 @@ impl ParkedSignerOps {
     }
 
     /// The ONE canonical drain pass: `retain_mut` over the queue, resolving each
-    /// op against `kernel` via [`resolve_parked_op`] and collecting the routing
+    /// op against `kernel` via [`resolve_parked_op_at`] and collecting the routing
     /// obligations. Resolved / errored / timed-out ops are dropped; still-pending
     /// ops are kept. Returns the obligations the caller must execute.
     ///
@@ -104,12 +104,16 @@ impl ParkedSignerOps {
     /// message — one driver, two drive sites, no parallel copy. D8: every op is
     /// polled exactly once per call with a non-blocking `SignerOp::poll`; the
     /// deadline is the wall-clock gate.
-    pub(crate) fn drive(&mut self, kernel: &mut crate::kernel::Kernel) -> DrainBatch {
+    pub(crate) fn drive_at(
+        &mut self,
+        kernel: &mut crate::kernel::Kernel,
+        now: crate::time::Instant,
+    ) -> DrainBatch {
         let mut publish = Vec::new();
         let mut auth = Vec::new();
         let mut changed = false;
         self.ops.retain_mut(|parked| {
-            let outcome = resolve_parked_op(parked, kernel);
+            let outcome = resolve_parked_op_at(parked, kernel, now);
             if let Some(obligation) = outcome.publish {
                 publish.push(obligation);
             }
@@ -124,6 +128,13 @@ impl ParkedSignerOps {
             auth,
             changed,
         }
+    }
+
+    /// Test-support convenience wrapper. Production drive sites capture time at
+    /// the actor/runtime boundary and call [`Self::drive_at`].
+    #[cfg(test)]
+    pub(crate) fn drive(&mut self, kernel: &mut crate::kernel::Kernel) -> DrainBatch {
+        self.drive_at(kernel, crate::kernel::test_support::test_support_now())
     }
 }
 

@@ -394,11 +394,12 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
     // ── 11. Parked-op drive ───────────────────────────────────────────────
     // ADR-0050 §D2 — ONE `retain_mut` over ONE `Vec<ParkedOp>`.
     if !lc.parked_ops.is_empty() {
+        let parked_drive_now = Instant::now();
         let DrainBatch {
             publish: publish_obligations,
             auth: auth_obligations,
             changed: any_changed,
-        } = lc.parked_ops.drive(lc.kernel);
+        } = lc.parked_ops.drive_at(lc.kernel, parked_drive_now);
 
         // Execute NIP-42 AUTH obligations (re-enter after drain's &mut kernel borrow ended).
         crate::actor::auth_sign::run_auth_obligations(
