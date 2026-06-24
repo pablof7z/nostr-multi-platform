@@ -418,7 +418,7 @@ pub mod __ffi_internal {
 /// thread to spawn and no harness handlers to drive.
 #[cfg(all(any(test, feature = "test-support"), feature = "native"))]
 pub mod testing {
-    pub use crate::actor::{run_actor, ActorCommand, TestSupportCommand};
+    pub use crate::actor::{spawn_test_actor, ActorCommand, TestSupportCommand};
     pub use crate::kernel::{PROCESS_PROJECTIONS_CHANGED, PROCESS_PROJECTIONS_SERIALIZED, PROCESS_RAM_EVENTS_EVICTED, PROCESS_STORE_LRU_EVICTED};
     pub use crate::store::{RawEvent, VerifiedEvent}; // ADR-0055 churn
 
@@ -452,7 +452,7 @@ pub mod testing {
         // returned `command_tx` is the host's primary handle; this clone
         // serves only the actor's internal self-feedback path.
         let actor_command_tx_self = command_tx.clone();
-        thread::spawn(move || run_actor(command_rx, actor_command_tx_self, update_tx));
+        thread::spawn(move || spawn_test_actor(command_rx, actor_command_tx_self, update_tx));
         (command_tx, update_rx)
     }
 

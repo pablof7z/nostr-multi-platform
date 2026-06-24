@@ -23,7 +23,7 @@
 //! thing that can wake it before the cap. A regression to either property
 //! shows up as elapsed ≥ ~250 ms.
 
-use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
+use crate::actor::{spawn_test_actor, ActorCommand, ActorMail, CommandSender};
 use crate::actor::{LifecycleCommand, RefsCommand};
 use crate::transport::wire as fb;
 use crate::update_envelope::UpdateFrameBytes;
@@ -50,7 +50,7 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
     let cmd_tx = CommandSender::new(inbox_tx);
     let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
     let actor_self_tx = cmd_tx.clone();
-    thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
+    thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
 
     // Start the actor with a relay open. The URL is unroutable (TEST-NET-1,
     // RFC 5737) so the worker never connects and no relay frames ever flow —

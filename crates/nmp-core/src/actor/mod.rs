@@ -38,8 +38,8 @@ mod auth_sign;
 mod builtin_projections;
 #[cfg(feature = "native")]
 mod capability_worker;
-#[cfg(feature = "native")]
-mod compat;
+#[cfg(all(feature = "native", any(test, feature = "test-support")))]
+mod test_actor_spawn;
 #[cfg(feature = "native")]
 mod config;
 #[cfg(feature = "native")]
@@ -337,10 +337,7 @@ pub use actor_command::{
 // ─────────────────────────────────────────────────────────────────────────────
 
 #[cfg(all(feature = "native", any(test, feature = "test-support")))]
-pub use compat::run_actor;
-#[cfg(feature = "native")]
-#[allow(unused_imports)]
-pub use compat::run_actor_with_lifecycle_observer;
+pub use test_actor_spawn::spawn_test_actor;
 
 /// T118 / G3 + T146 — actor entry point that accepts BOTH the lifecycle
 /// observer slot and the kernel event observer slot. The FFI

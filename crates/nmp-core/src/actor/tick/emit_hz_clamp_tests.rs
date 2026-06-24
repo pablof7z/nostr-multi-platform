@@ -7,7 +7,7 @@
 
 use super::{clamp_emit_hz, EMIT_HZ_MAX};
 use crate::actor::LifecycleCommand;
-use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
+use crate::actor::{spawn_test_actor, ActorCommand, ActorMail, CommandSender};
 use crate::update_envelope::UpdateFrameBytes;
 use std::sync::mpsc;
 use std::thread;
@@ -58,7 +58,7 @@ fn high_emit_hz_is_clamped_to_ceiling_end_to_end() {
     let cmd_tx = CommandSender::new(inbox_tx);
     let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
     let actor_self_tx = cmd_tx.clone();
-    thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
+    thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
 
     // Request an absurdly high rate (100× the ceiling).
     cmd_tx

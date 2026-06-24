@@ -40,7 +40,7 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
-    use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
+    use crate::actor::{spawn_test_actor, ActorCommand, ActorMail, CommandSender};
     use crate::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
     use crate::kernel::{EventShape, RefLiveness, RefNamespace, RefShape};
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
@@ -56,7 +56,7 @@ mod tests {
         let cmd_tx = CommandSender::new(inbox_tx);
         let (upd_tx, upd_rx) = mpsc::channel::<crate::update_envelope::UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
-        thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
+        thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
         (cmd_tx, upd_rx)
     }
 
