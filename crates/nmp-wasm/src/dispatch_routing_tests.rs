@@ -15,6 +15,7 @@ fn ref_dispatch_routes_resolve_profile() {
         shape: 0,
         liveness: 0,
         hints: Vec::new(),
+        event_author: None,
         correlation_id: "x".to_string(),
     };
     assert_eq!(
@@ -25,7 +26,7 @@ fn ref_dispatch_routes_resolve_profile() {
             consumer_id: "chirp-web-author-1".to_string(),
             shape: RefShape::Profile(ProfileShape::Ref),
             liveness: RefLiveness::CacheOk,
-            hints: Vec::new(),
+            metadata: RefResolveMetadata::default(),
         })
     );
 }
@@ -39,6 +40,7 @@ fn ref_dispatch_routes_resolve_profile_card_live() {
         shape: 1,
         liveness: 1,
         hints: Vec::new(),
+        event_author: None,
         correlation_id: "x".to_string(),
     };
     assert_eq!(
@@ -49,7 +51,7 @@ fn ref_dispatch_routes_resolve_profile_card_live() {
             consumer_id: "screen".to_string(),
             shape: RefShape::Profile(ProfileShape::Card),
             liveness: RefLiveness::Live,
-            hints: Vec::new(),
+            metadata: RefResolveMetadata::default(),
         })
     );
 }
@@ -63,6 +65,7 @@ fn ref_dispatch_routes_resolve_event() {
         shape: 0,
         liveness: 0,
         hints: Vec::new(),
+        event_author: None,
         correlation_id: "x".to_string(),
     };
     assert_eq!(
@@ -73,7 +76,7 @@ fn ref_dispatch_routes_resolve_event() {
             consumer_id: "embed-1".to_string(),
             shape: RefShape::Event(EventShape::Embed),
             liveness: RefLiveness::CacheOk,
-            hints: Vec::new(),
+            metadata: RefResolveMetadata::default(),
         })
     );
 }
@@ -90,6 +93,7 @@ fn ref_dispatch_routes_resolve_event_with_hints() {
             "wss://relay.a.example".to_string(),
             "wss://relay.b.example".to_string(),
         ],
+        event_author: Some("ab".repeat(32)),
         correlation_id: "x".to_string(),
     };
     assert_eq!(
@@ -100,12 +104,30 @@ fn ref_dispatch_routes_resolve_event_with_hints() {
             consumer_id: "embed-1".to_string(),
             shape: RefShape::Event(EventShape::Embed),
             liveness: RefLiveness::CacheOk,
-            hints: vec![
-                "wss://relay.a.example".to_string(),
-                "wss://relay.b.example".to_string(),
-            ],
+            metadata: RefResolveMetadata {
+                hints: vec![
+                    "wss://relay.a.example".to_string(),
+                    "wss://relay.b.example".to_string(),
+                ],
+                event_author: Some("ab".repeat(32)),
+            },
         })
     );
+}
+
+#[test]
+fn ref_dispatch_fails_closed_on_invalid_event_author() {
+    let request = ResolveRef {
+        namespace: 1,
+        key: "deadbeef".to_string(),
+        consumer_id: "embed-1".to_string(),
+        shape: 0,
+        liveness: 0,
+        hints: Vec::new(),
+        event_author: Some("not-a-hex-pubkey".to_string()),
+        correlation_id: "x".to_string(),
+    };
+    assert!(ref_dispatch_from_resolve(&request).is_none());
 }
 
 #[test]
@@ -137,6 +159,7 @@ fn ref_dispatch_fails_closed_on_unknown_namespace_discriminant() {
         shape: 0,
         liveness: 0,
         hints: Vec::new(),
+        event_author: None,
         correlation_id: "x".to_string(),
     };
     assert!(ref_dispatch_from_resolve(&request).is_none());
@@ -153,6 +176,7 @@ fn ref_dispatch_fails_closed_on_unknown_shape_discriminant() {
         shape: 7,
         liveness: 0,
         hints: Vec::new(),
+        event_author: None,
         correlation_id: "x".to_string(),
     };
     assert!(ref_dispatch_from_resolve(&request).is_none());
@@ -168,6 +192,7 @@ fn ref_dispatch_fails_closed_on_unknown_liveness_discriminant() {
         shape: 0,
         liveness: 5,
         hints: Vec::new(),
+        event_author: None,
         correlation_id: "x".to_string(),
     };
     assert!(ref_dispatch_from_resolve(&request).is_none());

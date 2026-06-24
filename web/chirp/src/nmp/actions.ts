@@ -21,6 +21,7 @@ export type RuntimeCommand =
       shape: number;
       liveness: number;
       hints?: string[];
+      eventAuthor?: string;
     }
   | {
       kind: "release_ref";
@@ -256,6 +257,7 @@ export function resolveEventCommand(
   key: string,
   consumerId: string,
   hints: string[] = [],
+  eventAuthor?: string,
 ): RuntimeCommand {
   const command: RuntimeCommand = {
     kind: "resolve_ref",
@@ -267,6 +269,9 @@ export function resolveEventCommand(
   };
   if (hints.length > 0 && command.kind === "resolve_ref") {
     command.hints = hints;
+  }
+  if (eventAuthor && command.kind === "resolve_ref") {
+    command.eventAuthor = eventAuthor;
   }
   return command;
 }

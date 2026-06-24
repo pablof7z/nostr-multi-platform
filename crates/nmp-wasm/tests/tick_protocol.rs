@@ -90,6 +90,7 @@ fn resolve_profile_request(consumer_id: &str) -> WorkerRequest {
         shape: 0,
         liveness: 0,
         hints: Vec::new(),
+        event_author: None,
         correlation_id: format!("resolve-{consumer_id}"),
     })
 }
@@ -111,6 +112,7 @@ fn resolve_event_request(consumer_id: &str, event_id: &str) -> WorkerRequest {
         shape: 0,
         liveness: 0,
         hints: vec![RELAY_URL.to_string()],
+        event_author: None,
         correlation_id: format!("resolve-event-{consumer_id}"),
     })
 }

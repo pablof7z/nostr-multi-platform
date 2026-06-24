@@ -29,7 +29,8 @@
 //! additions touch directly.
 
 use nmp_core::{
-    EventShape, KernelReducer, OutboundMessage, ProfileShape, RefLiveness, RefNamespace, RefShape,
+    EventShape, KernelReducer, OutboundMessage, ProfileShape, RefLiveness, RefNamespace,
+    RefResolveMetadata, RefShape,
 };
 
 use crate::protocol::{ReleaseRef, ResolveRef};
@@ -57,7 +58,7 @@ pub(crate) enum RefDispatch {
         consumer_id: String,
         shape: RefShape,
         liveness: RefLiveness,
-        hints: Vec<String>,
+        metadata: RefResolveMetadata,
     },
     /// Unified raw-key release (`nmp.kernel.release_ref`).
     Release {
@@ -74,13 +75,23 @@ pub(crate) fn ref_dispatch_from_resolve(request: &ResolveRef) -> Option<RefDispa
     let namespace = ref_namespace_from_int(request.namespace)?;
     let shape = ref_shape_from_int(namespace, request.shape)?;
     let liveness = ref_liveness_from_int(request.liveness)?;
+    if request
+        .event_author
+        .as_deref()
+        .is_some_and(|author| !is_hex_pubkey(author))
+    {
+        return None;
+    }
     Some(RefDispatch::Resolve {
         namespace,
         key: request.key.clone(),
         consumer_id: request.consumer_id.clone(),
         shape,
         liveness,
-        hints: request.hints.clone(),
+        metadata: RefResolveMetadata {
+            hints: request.hints.clone(),
+            event_author: request.event_author.clone(),
+        },
     })
 }
 
@@ -128,6 +139,10 @@ fn ref_liveness_from_int(value: u32) -> Option<RefLiveness> {
         1 => Some(RefLiveness::Live),
         _ => None,
     }
+}
+
+fn is_hex_pubkey(value: &str) -> bool {
+    value.len() == 64 && value.as_bytes().iter().all(u8::is_ascii_hexdigit)
 }
 
 /// Single-source reason string for typed app-level writes attempted before the
@@ -188,8 +203,15 @@ pub(crate) fn execute_ref_dispatch(
             consumer_id,
             shape,
             liveness,
-            hints,
-        } => reducer.resolve_ref_with_hints(namespace, key, consumer_id, shape, liveness, hints),
+            metadata,
+        } => reducer.resolve_ref_with_metadata(
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            metadata,
+        ),
         RefDispatch::Release {
             namespace,
             key,

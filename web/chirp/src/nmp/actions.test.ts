@@ -67,6 +67,20 @@ describe("ADR-0063 resolve_ref/release_ref command builders", () => {
     });
   });
 
+  it("resolveEventCommand preserves optional event author metadata", () => {
+    const author = "ab".repeat(32);
+
+    expect(resolveEventCommand("eventidhex", "chirp-web-embed-eventid2", [], author)).toEqual({
+      kind: "resolve_ref",
+      namespace: REF_NS_EVENT,
+      key: "eventidhex",
+      consumerId: "chirp-web-embed-eventid2",
+      shape: REF_SHAPE_EVENT_EMBED,
+      liveness: REF_LIVENESS_CACHE_OK,
+      eventAuthor: author,
+    });
+  });
+
   it("releaseEventCommand produces the event-namespace release_ref wire shape", () => {
     expect(releaseEventCommand("eventidhex", "chirp-web-embed-eventid2")).toEqual({
       kind: "release_ref",

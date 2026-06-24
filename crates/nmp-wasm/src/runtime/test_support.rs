@@ -172,6 +172,7 @@ mod resolve_no_snapshot_tests {
             shape: 0,
             liveness: 0,
             hints: Vec::new(),
+            event_author: None,
             correlation_id: "resolve-no-snap".to_string(),
         })
     }

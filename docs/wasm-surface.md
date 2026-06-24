@@ -12,21 +12,27 @@ TypeScript renders snapshots and executes browser capabilities; Rust owns
 policy, routing, replay, Nostr protocol behaviour, and state transitions.
 
 All production functions are on the `NmpWasmRuntime` class. The wire protocol
-uses two channels:
+uses three channels:
 
 1. **JSON control channel** — `handle_json(request: string): string` (sync).
-   Accepts a JSON-serialised `WorkerRequest`; returns a JSON array of control
-   `WorkerEvent`s (all variants except `UpdateBytes`).
-2. **Binary snapshot channel** — `set_snapshot_callback(fn: Function | null)`.
+   Accepts JSON-serialised structured controls (`hello`, `start`,
+   `resolve_ref`, `release_ref`, `set_identity`, signing replies, `stop`);
+   returns a JSON array of control `WorkerEvent`s (all variants except
+   `UpdateBytes`).
+2. **Binary write channel** — `handle_dispatch_bytes(bytes: Uint8Array): string`
+   (sync). Accepts a finished `DispatchEnvelope` FlatBuffers root for
+   app-level writes. Browser hosts must use this method for `dispatch_bytes`
+   so the byte buffer is not corrupted by JSON serialisation.
+3. **Binary snapshot channel** — `set_snapshot_callback(fn: Function | null)`.
    Callback receives one `Uint8Array` argument (raw FlatBuffers `UpdateFrame`
    bytes) whenever a relay-driven kernel mutation produces a fresh snapshot.
    See §4.
 
-App-level **writes** ride the JSON control channel as a typed
-`WorkerRequest::DispatchBytes` carrying a `DispatchEnvelope` (ADR-0064 §1; §3
-below). There is no Promise write entrypoint and no wasm-only write enum: the
-former `dispatch_app_action_async` / `AppAction` / `"app_action"` envelope were
-deleted (#1743 Cut A). Signing is the ADR-0050 capability round-trip
+App-level **writes** ride the binary write channel as a typed
+`DispatchEnvelope` (ADR-0064 §1; §3 below). There is no Promise write
+entrypoint and no wasm-only write enum: the former `dispatch_app_action_async`
+/ `AppAction` / `"app_action"` envelope were deleted (#1743 Cut A). Signing is
+the ADR-0050 capability round-trip
 (`begin_sign` → `sign_request` → `deliver_signer_response`), driven by pure
 message re-entry — the reducer never awaits a persistent signer (D7/D8).
 
@@ -44,9 +50,9 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 6–30.
 | `"hello"` | `Hello(ClientHello)` | `app_id: String`, `platform: String`, `protocol_version: u16` | **Host convention:** send before `Start`. The runtime enforces no ordering — `Start` without a prior `Hello` succeeds (`runtime.rs:185-223`). Protocol version must be `1`; mismatch returns `WorkerEvent::Error` with `code = "protocol_mismatch"`. |
 | `"start"` | `Start(StartConfig)` | `app_id: String`, `relays: Vec<String>`, `relay_bootstrap: Vec<{url, role}>`, `database_name: String`, `correlation_id: String` | Starts the `KernelReducer`, spawns relay drivers (wasm32 only). Relay/bootstrap input is explicit host policy; the framework has no app-default fallback. |
 | `"stop"` | `Stop` | `correlation_id: String` | Closes relay drivers, stops the kernel. |
-| `"resolve_ref"` | `ResolveRef(ResolveRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `shape: u32`, `liveness: u32`, optional `hints: String[]`, `correlation_id: String` | ADR-0063 structured reference-resolution control. This is not an app-write doorway and cannot carry arbitrary action namespaces. Event refs may carry relay hints decoded by the app from NIP-19/NIP-21 TLVs. |
+| `"resolve_ref"` | `ResolveRef(ResolveRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `shape: u32`, `liveness: u32`, optional `hints: String[]`, optional `event_author: String`, `correlation_id: String` | ADR-0063 structured reference-resolution control. This is not an app-write doorway and cannot carry arbitrary action namespaces. Event refs may carry relay hints and nevent author metadata decoded by the app from NIP-19/NIP-21 TLVs. |
 | `"release_ref"` | `ReleaseRef(ReleaseRef)` | `namespace: u32`, `key: String`, `consumer_id: String`, `correlation_id: String` | ADR-0063 structured reference release. |
-| `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the SAME path the native FFI `nmp_app_dispatch_action_bytes` uses. There is no wasm-only write vocabulary. |
+| `"dispatch_bytes"` | `DispatchBytes(DispatchBytes)` | `bytes: Vec<u8>` | **ADR-0064 typed write doorway.** `bytes` are a finished `DispatchEnvelope` FlatBuffers root (file id `NMPD`) carrying `correlation_id` + generated `action_namespace` + opaque typed `payload`. Production browser hosts call `handle_dispatch_bytes(bytes)` for this request instead of JSON-stringifying the `bytes` field. Decoded through `nmp_core::dispatch_envelope::decode_dispatch_envelope` — the SAME path the native FFI `nmp_app_dispatch_action_bytes` uses. There is no wasm-only write vocabulary. |
 | `"capability_result"` | `CapabilityResult(CapabilityResult)` | `capability: String`, `correlation_id: String`, `payload: Value` | Browser-side capability completion. Returns `CapabilityFailure` with reason `browser_actor_driver_missing` — the native actor capability handler is not available on wasm. |
 | `"set_identity"` | `SetIdentity(SetIdentity)` | `kind: String`, `pubkey_hex: String`, `correlation_id: String` | Set the active identity. Only `kind = "nip07"` is wired. `pubkey_hex` is the result of `await window.nostr.getPublicKey()`. **No persistent signer is installed** (ADR-0064 §5): this only validates + canonicalizes the pubkey and seeds the kernel active account; signing is the `begin_sign` capability round-trip. |
 | `"begin_sign"` | `BeginSign(BeginSign)` | `account_pubkey: String`, `unsigned_json: String` | ADR-0050 sign capability round-trip. Parks a sign op and emits `sign_request` for the main-thread broker to fulfil via `window.nostr.signEvent`. Pure message re-entry (D8). |
@@ -113,12 +119,12 @@ Source: `apps/chirp/nmp-app-chirp-web/src/wasm_binding.rs`.
 handle_json(request: string): Result<JsValue, JsValue>
 ```
 
-Accepts a JSON-serialised `WorkerRequest`. Returns a JSON string (array of
-`WorkerEvent`s). `UpdateBytes` events are drained out of the array and pushed
-through the snapshot callback before `handle_json` returns. The host sees a
-single binary channel for snapshot frames regardless of whether they were
-produced by a relay-inbound frame or by a `Start`/`ResolveRef`/
-`ReleaseRef`/`DispatchBytes` request.
+Accepts a JSON-serialised structured-control `WorkerRequest`. Returns a JSON
+string (array of `WorkerEvent`s). `UpdateBytes` events are drained out of the
+array and pushed through the snapshot callback before `handle_json` returns.
+The host sees a single binary channel for snapshot frames regardless of
+whether they were produced by a relay-inbound frame or by a
+`Start`/`ResolveRef`/`ReleaseRef` request.
 
 **D6:** Returns `Err(JsValue)` for JSON deserialisation failure *and* for any
 `WasmRuntimeError` from `WasmRuntime::handle` — concretely: `InvalidConfig`
@@ -128,18 +134,33 @@ the pure reducer). All other runtime failures surface as `CapabilityFailure`
 inside the `Ok` result — never a `JsValue` rejection on anything the user can
 cause.
 
+### `handle_dispatch_bytes`
+
+Source: `apps/chirp/nmp-app-chirp-web/src/wasm_binding.rs`.
+
+```
+handle_dispatch_bytes(bytes: Uint8Array): Result<JsValue, JsValue>
+```
+
+Accepts the raw bytes of a finished `DispatchEnvelope` and returns the same
+JSON-serialised `WorkerEvent[]` shape as `handle_json`. `UpdateBytes` events are
+drained out of the array and routed through the snapshot callback before the
+method returns. `web/packages/runtime-web/src/wasmBridge.ts` routes
+`WorkerRequest::DispatchBytes` through this method and refuses to fall back to
+`handle_json`, because `JSON.stringify(Uint8Array)` corrupts the payload into an
+object shape.
+
 ### The typed write doorway — `DispatchBytes`
 
-App-level writes cross as `WorkerRequest::DispatchBytes { bytes }` where `bytes`
-are a finished `DispatchEnvelope` (ADR-0064 §1). The host builds the envelope
-through generated/typed builders (`web/packages/runtime-web/src/dispatchEnvelope.ts`
-→ `encodeDispatchEnvelope`; the Chirp `action_namespace` lowering lives in
-`web/chirp/src/nmp/actions.ts`). The `action_namespace` is a generated
-discriminant — no human spells it at a call site — and is identical to the
-native `ActionModule` registry key. The wasm runtime decodes the envelope
-(`runtime/dispatch.rs::dispatch_bytes`) and routes by namespace; the opaque
-payload is carried verbatim (the per-crate typed payload decode is the
-`ActionModule`'s job).
+App-level writes cross as raw `DispatchEnvelope` bytes (ADR-0064 §1). The host
+builds the envelope through generated/typed builders
+(`web/packages/runtime-web/src/dispatchEnvelope.ts` → `encodeDispatchEnvelope`;
+the Chirp `action_namespace` lowering lives in `web/chirp/src/nmp/actions.ts`).
+The `action_namespace` is a generated discriminant — no human spells it at a
+call site — and is identical to the native `ActionModule` registry key. The
+wasm runtime decodes the envelope (`runtime/dispatch.rs::dispatch_bytes`) and
+routes by namespace; the opaque payload is carried verbatim (the per-crate typed
+payload decode is the `ActionModule`'s job).
 
 A decode rejection (bad file identifier, schema_version tripwire mismatch,
 oversize, missing routing fields) fails CLOSED with a data-shaped
@@ -198,8 +219,9 @@ The callback fires on three triggers:
   then pushes a snapshot via the registered callback. Relay activity may arm a
   one-shot maintenance deadline, but follow-up wakes continue only when the
   reducer reports an explicit runtime deadline.
-- **Request-driven mutations:** `handle_json` drains `UpdateBytes` events from
-  the handle result and routes them through the callback before returning.
+- **Request-driven mutations:** `handle_json` and `handle_dispatch_bytes` drain
+  `UpdateBytes` events from the handle result and route them through the
+  callback before returning.
 
 In all cases the host receives snapshot frames on the same binary channel,
 regardless of whether the mutation originated from the network or a host

@@ -126,6 +126,11 @@ pub struct ResolveRef {
     /// event reference. Missing defaults to the bare-key path.
     #[serde(default)]
     pub hints: Vec<String>,
+    /// Optional event author decoded by the app boundary from a nevent author
+    /// TLV. Ignored for profile refs and address-coordinate event keys, where
+    /// the author is already part of the raw key.
+    #[serde(default)]
+    pub event_author: Option<String>,
     pub correlation_id: String,
 }
 

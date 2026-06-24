@@ -241,6 +241,7 @@ fn resolve_ref_round_trips_through_json() {
             assert_eq!(resolve.namespace, 0);
             assert_eq!(resolve.consumer_id, "chirp-web-author-1");
             assert!(resolve.hints.is_empty());
+            assert!(resolve.event_author.is_none());
             assert_eq!(resolve.correlation_id, "resolve-1");
         }
         other => panic!("expected ResolveRef, got {other:?}"),
@@ -249,6 +250,7 @@ fn resolve_ref_round_trips_through_json() {
 
 #[test]
 fn resolve_ref_preserves_relay_hints_through_json() {
+    let event_author = "ab".repeat(32);
     let request: WorkerRequest = serde_json::from_value(json!({
         "type": "resolve_ref",
         "namespace": 1,
@@ -257,6 +259,7 @@ fn resolve_ref_preserves_relay_hints_through_json() {
         "shape": 0,
         "liveness": 0,
         "hints": ["wss://relay.a.example", "wss://relay.b.example"],
+        "event_author": event_author,
         "correlation_id": "resolve-event-1",
     }))
     .unwrap();
@@ -270,6 +273,7 @@ fn resolve_ref_preserves_relay_hints_through_json() {
                     "wss://relay.b.example".to_string(),
                 ]
             );
+            assert_eq!(resolve.event_author, Some("ab".repeat(32)));
             assert_eq!(resolve.correlation_id, "resolve-event-1");
         }
         other => panic!("expected ResolveRef, got {other:?}"),
@@ -309,6 +313,7 @@ fn resolve_ref_routes_through_structured_control_message() {
             shape: 0,
             liveness: 0,
             hints: Vec::new(),
+            event_author: None,
             correlation_id: "resolve-1".to_string(),
         }))
         .unwrap();
@@ -334,6 +339,7 @@ fn invalid_resolve_ref_returns_data_failure() {
             shape: 0,
             liveness: 0,
             hints: Vec::new(),
+            event_author: None,
             correlation_id: "resolve-1".to_string(),
         }))
         .unwrap();

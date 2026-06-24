@@ -304,6 +304,7 @@ class WorkerNmpClient extends BaseClient {
             shape: command.shape,
             liveness: command.liveness,
             hints: command.hints ?? [],
+            event_author: command.eventAuthor ?? null,
             correlation_id: correlationId,
           },
           correlationId,
@@ -436,6 +437,7 @@ class InProcessNmpClient extends BaseClient {
           shape: command.shape,
           liveness: command.liveness,
           hints: command.hints ?? [],
+          event_author: command.eventAuthor ?? null,
           correlation_id: correlationId,
         });
       case "release_ref":
