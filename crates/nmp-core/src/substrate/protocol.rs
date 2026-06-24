@@ -488,44 +488,29 @@ impl<'a> ProtocolCommandContext<'a> {
         correlation_id: Option<String>,
         signer_pubkey: Option<String>,
     ) {
-        self.send(ActorCommand::Publish(
-            PublishCommand::UnsignedEventToRelays {
+        self.send(ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
             event,
             relays,
             correlation_id,
             signer_pubkey,
-            },
-        ));
+        }));
     }
 
     /// Record a terminal `Accepted` stage (`ActorCommand::RecordActionSuccess`).
     /// `result_json` is the optional Decision-4 structured return payload.
     pub fn record_action_success(&self, correlation_id: String, result_json: Option<String>) {
-        self.send(ActorCommand::ActionLedger(
-            ActionLedgerCommand::RecordSuccess {
+        self.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
             correlation_id,
             result_json,
-            },
-        ));
-    }
-
-    /// Attach one scoped owner to a [`LogicalInterest`](crate::planner::LogicalInterest).
-    pub fn ensure_interest(
-        &self,
-        identity: crate::subs::SubIdentity,
-        interest: crate::planner::LogicalInterest,
-    ) {
-        self.send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
-            identity,
-            interest,
         }));
     }
 
-    /// Detach one scoped owner from the subscription registry.
+    pub fn ensure_interest(&self, identity: crate::subs::SubIdentity, interest: crate::planner::LogicalInterest) {
+        self.send(ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }));
+    }
+
     pub fn drop_interest_owner(&self, identity: crate::subs::SubIdentity) {
-        self.send(ActorCommand::Interests(
-            InterestsCommand::DropInterestOwner(identity),
-        ));
+        self.send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)));
     }
 }
 
@@ -544,8 +529,8 @@ pub trait ProtocolCommand: Send + fmt::Debug + 'static {
 #[path = "protocol/builders.rs"]
 mod builders;
 pub use builders::{
-    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_record_action_failure,
-    build_record_action_success, build_sign_event_for_account,
+    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
+    build_record_action_failure, build_record_action_success,
 };
 
 #[cfg(test)]

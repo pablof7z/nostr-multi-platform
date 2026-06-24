@@ -443,10 +443,7 @@ pub(crate) fn register_with_keys(
     // id, account scope) is protocol policy — it lives in `nmp-marmot`, not in
     // this glue. The FFI only resolves the concrete pubkey and forwards.
     let pubkey_hex = keys.public_key().to_hex();
-    app_ref.ensure_interest(
-        crate::interest::giftwrap_inbox_identity(&pubkey_hex),
-        crate::interest::giftwrap_inbox_interest(&pubkey_hex),
-    );
+    app_ref.ensure_interest(crate::interest::giftwrap_inbox_identity(&pubkey_hex), crate::interest::giftwrap_inbox_interest(&pubkey_hex));
 
     // Post-restart live-receive fix (re-push per-group kind:445; see resubscribe.rs).
     projection.resubscribe_all_groups();

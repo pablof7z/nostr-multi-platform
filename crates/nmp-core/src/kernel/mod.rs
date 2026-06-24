@@ -67,6 +67,7 @@ pub mod wallet_access;
 #[cfg(test)] mod event_claim_hint_tests;
 #[cfg(any(test, feature = "test-support"))] mod interest_install_cache_serve_support;
 #[cfg(test)] mod interest_install_cache_serve_tests;
+#[cfg(test)] mod interest_install_profile_cache_serve_tests;
 pub(crate) mod event_claim_released; // V-59 rung 1 — event-claim released observer ring.
 #[cfg(test)] mod event_claim_released_tests;
 mod event_observer;
