@@ -43,9 +43,16 @@ pub(super) fn resolve_authors(
         return Err(not_supported("Authors-no-acquisition-kinds"));
     }
 
-    // EVENT-AWARE admission over the fixed author set (composes faithfully under
-    // set algebra, mirroring the `Tag` scope's `AdmitExpr::Tag`).
-    let admission: RootAdmission = AdmitExpr::Authors(authors.clone()).to_root_admission();
+    // EVENT-AWARE admission over the fixed author set AND compiled kinds. The
+    // acquisition filter carries the same kinds, but admission also has to gate
+    // cached/live rows delivered through other paths.
+    let admission: RootAdmission = {
+        let authors = authors.clone();
+        let kinds = kinds.clone();
+        Arc::new(move |event: &nmp_core::substrate::KernelEvent| {
+            authors.contains(&event.author) && kinds.contains(&event.kind)
+        })
+    };
     // Acquisition: the authors' primary-kind (+ compiler-derived wrapper) timeline.
     let interests = vec![(authors_filter(authors, kinds), 1u32)]; // Global scope
     let shape = InterestShape::timeline_for(authors.clone(), kinds.clone());
@@ -127,7 +134,11 @@ pub(super) fn resolve_referrer(
     let root_id = event_id.to_string();
     let admission: RootAdmission = {
         let id = root_id.clone();
+        let kinds = kinds.clone();
         Arc::new(move |event: &nmp_core::substrate::KernelEvent| {
+            if !kinds.contains(&event.kind) {
+                return false;
+            }
             if event.id == id {
                 return true;
             }
@@ -142,7 +153,7 @@ pub(super) fn resolve_referrer(
     // the root-by-id shape (so the root note itself is replayed into the store).
     let interests = vec![
         (referrer_filter(&root_id, kinds), 1u32), // Global scope for #e replies
-        (root_id_filter(&root_id), 1u32),         // Global scope for the root itself
+        (root_id_filter(&root_id, kinds), 1u32),  // Global scope for the root itself
     ];
 
     // Live shape: the #e-covered reply-tail shape (re-read on load_older).
@@ -175,6 +186,7 @@ fn referrer_live_shape(root_id: &str, kinds: &BTreeSet<u32>) -> Option<InterestS
     InterestShape::from_filter_json(&referrer_filter(root_id, kinds))
 }
 
-fn root_id_filter(root_id: &str) -> String {
-    serde_json::json!({ "ids": [root_id] }).to_string()
+fn root_id_filter(root_id: &str, kinds: &BTreeSet<u32>) -> String {
+    let kinds: Vec<&u32> = kinds.iter().collect();
+    serde_json::json!({ "ids": [root_id], "kinds": kinds }).to_string()
 }

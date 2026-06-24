@@ -305,14 +305,16 @@ Decision captured here for `aim.md` §7.2 and §7.3:
 
 The component-facing API on each platform is *not* `ViewId`-based. Per ADR-0005, generated wrappers (`useProfile(pubkey)`, `@Profile`, `rememberProfile(pubkey)`, etc.) expose a refcounted, domain-keyed surface that translates component mount/unmount into `OpenView`/`CloseView` dispatches and writes incoming payloads into typed domain-keyed dictionaries on the platform side. App developers think in domain concepts; the framework handles subscription lifecycle and refcounted sharing behind the wrapper.
 
-Dynamic FlatFeed-backed views, such as app-owned author and thread screens, are
-owned by the leaf app crate that registers them. Opening a screen installs a
-`FlatFeed`, its event observer, and a typed sidecar under a concrete key
-(`nmp.feed.author.<pubkey>` or `nmp.feed.thread.<event_id>`), then opens the
-matching `open_interest` for relay admission. Closing the screen unregisters
-that key and closes the interest. The unregister path emits a one-shot
-`Cleared` typed row so host caches drop the dynamic key immediately; the key is
-not part of the static Tier-2 projection manifest.
+Dynamic FlatFeed-backed views, such as author and thread screens, are declared
+through `nmp_app_open_feed`. The app passes `FeedParams` with
+`FeedRender::Flat`, `FeedScope::Authors` or `FeedScope::Referrer`, primary
+content kinds, and its concrete projection key (for example
+`nmp.feed.author.<pubkey>` or `nmp.feed.thread.<event_id>`). The feed compiler
+installs the flat feed, event observer, typed sidecar, acquisition interests,
+and cached replay under that key. Closing the screen passes the returned handle
+to `nmp_app_close_feed`; the teardown emits a one-shot `Cleared` typed row so
+host caches drop the dynamic key immediately. The key is not part of the static
+Tier-2 projection manifest.
 
 Feed declarations use primary content kinds and reactive perspectives: `[1]`
 from active-user follows, `[20]` from relay-set plus WoT admission, or any

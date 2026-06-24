@@ -29,6 +29,7 @@ use nmp_ffi::{FeedOpenError, NmpApp};
 use super::{read_active, register_op_feed_defaults};
 
 mod custom;
+mod flat_replay;
 mod resolve;
 mod resolve_static;
 mod session_engine;
@@ -90,6 +91,12 @@ pub fn compile_feed_params(
     // not support a custom admission gate (the home path is its own engine), so a
     // custom admission over `ActiveUserFollows` fails closed.
     if matches!(params.acquisition, FeedScope::ActiveUserFollows) {
+        if !matches!(params.render, nmp_feed::FeedRender::OpCentric) {
+            return not_supported_yet("active-user-follows-render");
+        }
+        if params.projection.0 != nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY {
+            return not_supported_yet("active-user-follows-projection");
+        }
         if !matches!(params.admission, FeedAdmission::All) {
             return not_supported_yet("custom-admission");
         }

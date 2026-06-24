@@ -366,6 +366,11 @@ fn build_flat_scope_session(
             ..Default::default()
         })
     });
+    let replayed_tail = app.load_older_feed(key);
+    let replayed_ids = super::flat_replay::replay_fixed_event_ids(app, &feed, &interests);
+    if replayed_ids && !replayed_tail {
+        (app.feed_teardown().mark_changed())();
+    }
 
     let sender = app.command_sender();
     let opened: Arc<Mutex<Vec<(String, u32)>>> = Arc::new(Mutex::new(Vec::new()));

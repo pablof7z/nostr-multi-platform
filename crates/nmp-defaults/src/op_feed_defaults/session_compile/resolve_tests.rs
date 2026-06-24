@@ -128,10 +128,14 @@ fn contact_list_predicate_admits_follows_rejects_strangers() {
 // ── Authors { authors } — static author-set timeline ─────────────────────
 
 fn note(author: &str) -> KernelEvent {
+    note_kind(author, 1)
+}
+
+fn note_kind(author: &str, kind: u32) -> KernelEvent {
     KernelEvent {
         id: EventId::from("2".repeat(64)),
         author: author.to_string(),
-        kind: 1,
+        kind,
         created_at: 100,
         tags: Vec::new(),
         content: "a note".to_string(),
@@ -159,6 +163,10 @@ fn authors_scope_admits_only_the_target_authors_rejects_others() {
     assert!(
         (resolved.admission)(&note(MEMBER)),
         "every target author's note is admitted"
+    );
+    assert!(
+        !(resolved.admission)(&note_kind(ALICE, 30_023)),
+        "a target author's non-primary kind is excluded"
     );
     assert!(
         !(resolved.admission)(&note(STRANGER)),
@@ -299,8 +307,8 @@ fn referrer_scope_opens_etag_tail_and_root_id_interests() {
     assert!(
         shapes
             .iter()
-            .any(|shape| shape.event_ids.contains("root123") && shape.kinds.is_empty()),
-        "root-by-id interest must be fixed at open"
+            .any(|shape| shape.event_ids.contains("root123") && shape.kinds == kinds),
+        "root-by-id interest must be kind-gated and fixed at open"
     );
 
     let live = (resolved.live_shape)().expect("live pull shape");
@@ -334,6 +342,40 @@ fn referrer_scope_admits_events_referencing_root_via_etag() {
     assert!(
         (resolved.admission)(&reply),
         "admission must admit events with #e referencing the root"
+    );
+}
+
+#[test]
+fn referrer_scope_rejects_non_primary_kind_root_and_etag_rows() {
+    let kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    let resolved = resolve_referrer("root123", &kinds).expect("valid referrer scope");
+
+    let wrong_kind_root = KernelEvent {
+        id: EventId::from("root123"),
+        author: "alice".to_string(),
+        kind: 30_023,
+        created_at: 100,
+        tags: Vec::new(),
+        content: "longform root".to_string(),
+        relay_provenance: Vec::new(),
+    };
+    let wrong_kind_reply = KernelEvent {
+        id: EventId::from("reply789"),
+        author: "bob".to_string(),
+        kind: 30_023,
+        created_at: 101,
+        tags: vec![vec!["e".to_string(), "root123".to_string()]],
+        content: "longform reply".to_string(),
+        relay_provenance: Vec::new(),
+    };
+
+    assert!(
+        !(resolved.admission)(&wrong_kind_root),
+        "root-by-id admission must still require the compiled kinds"
+    );
+    assert!(
+        !(resolved.admission)(&wrong_kind_reply),
+        "#e admission must reject events outside the compiled kinds"
     );
 }
 
