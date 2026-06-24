@@ -7,9 +7,9 @@ use crate::actor::tick::emit_now;
 use crate::relay::OutboundMessage;
 
 use super::substrate_adapters::{
-    ActionStageTrackerAdapter, ErrorSurfaceAdapter, HostOpHandlerAccessAdapter,
-    KernelClockAdapter, LocalSignerAccessAdapter, RecipientRelayLookupAdapter,
-    WalletKernelAccessAdapter, ZapProfileLookupAdapter,
+    ActionStageTrackerAdapter, ErrorSurfaceAdapter, HostOpHandlerAccessAdapter, KernelClockAdapter,
+    LocalSignerAccessAdapter, RecipientRelayLookupAdapter, WalletKernelAccessAdapter,
+    ZapProfileLookupAdapter,
 };
 use super::ActorContext;
 

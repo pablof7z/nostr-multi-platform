@@ -5,6 +5,7 @@
 
 use nmp_core::substrate::ActionModule;
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ActionLedgerCommand, InterestsCommand, PublishCommand};
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 use nmp_nip29::action::{
     CreatePublicGroupAction, DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction,
@@ -84,12 +85,12 @@ fn nip29_post_chat_message_executor_emits_host_pinned_publish_command() {
         .expect("post-chat-message executor must send at least one command");
 
     match cmd {
-        ActorCommand::PublishUnsignedEventToRelays {
+        ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
             event,
             relays,
             correlation_id,
             ..
-        } => {
+        }) => {
             // Pinned to EXACTLY the group's host relay — never the
             // author's NIP-65 outbox.
             assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
@@ -243,7 +244,7 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
     );
 
     match &cmds[0] {
-        ActorCommand::PushInterest(interest) => {
+        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
             // Pinned to the relay — Case E (the third routing lane).
             assert_eq!(
                 interest.shape.relay_pin.as_deref(),
@@ -268,7 +269,7 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
     // Terminal `RecordActionSuccess` is what closes the host spinner for
     // this subscription-only action.
     match &cmds[1] {
-        ActorCommand::RecordActionSuccess { correlation_id, .. } => {
+        ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess { correlation_id, .. }) => {
             assert_eq!(correlation_id, "test-cid");
         }
         other => panic!("expected RecordActionSuccess, got {other:?}"),
@@ -339,12 +340,12 @@ fn nip29_join_executor_emits_kind_9021_with_host_pin() {
         .next()
         .expect("join executor must send at least one command");
     match cmd {
-        ActorCommand::PublishUnsignedEventToRelays {
+        ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
             event,
             relays,
             correlation_id,
             ..
-        } => {
+        }) => {
             assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
             assert_eq!(event.kind, 9021);
             assert!(event

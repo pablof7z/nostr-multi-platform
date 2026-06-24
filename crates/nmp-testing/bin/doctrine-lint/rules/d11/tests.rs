@@ -27,7 +27,7 @@ fn flags_publishsignedevent_in_new_nmp_app_extern_fn() {
         "#[no_mangle]",
         "pub extern \"C\" fn nmp_app_legacy_publish_door(app: *mut NmpApp) {",
         "    let raw = todo!();",
-        "    app.send_cmd(ActorCommand::PublishSignedEvent { raw, relays: Vec::new(), correlation_id: None });",
+        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays: Vec::new(), correlation_id: None }));",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -82,7 +82,7 @@ fn whitelists_retry_publish_body() {
     let lines = [
         "#[no_mangle]",
         "pub extern \"C\" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char) {",
-        "    app.send_cmd(ActorCommand::PublishSignedEvent { /* impossible today, exempted */ });",
+        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { /* impossible today, exempted */ }));",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -112,7 +112,7 @@ fn does_not_fire_in_non_ffi_helper() {
     // regular Rust fn, not `extern "C" fn nmp_app_*`. D11 must not fire.
     let lines = [
         "pub(crate) fn execute(action: PublishAction) {",
-        "    send(ActorCommand::PublishSignedEvent { raw, relays, correlation_id });",
+        "    send(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -130,7 +130,7 @@ fn does_not_fire_for_extern_fn_outside_nmp_app_prefix() {
     // surface, not every `extern "C"` symbol in the workspace.
     let lines = [
         "pub extern \"C\" fn nmp_signer_broker_init(app: *mut c_void) {",
-        "    let _ = ActorCommand::PublishSignedEvent { /* hypothetical */ };",
+        "    let _ = ActorCommand::Publish(PublishCommand::SignedEvent { /* hypothetical */ });",
         "}",
     ];
     let hits = run_tracker(&lines);
@@ -144,7 +144,7 @@ fn handles_nested_braces_in_body() {
     let lines = [
         "pub extern \"C\" fn nmp_app_bad(app: *mut NmpApp) {",
         "    let payload = SomeStruct { a: 1, b: 2 };",
-        "    app.send_cmd(ActorCommand::PublishSignedEvent { raw, relays, correlation_id });",
+        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
         "}",
         "// outside the function — must NOT fire here",
         "pub fn unrelated() { let _ = ActorCommand::PublishSignedEvent; }",
@@ -172,6 +172,73 @@ fn ignores_comment_lines() {
     assert!(
         hits.is_empty(),
         "comment lines must be exempt; got {:?}",
+        hits
+    );
+}
+
+#[test]
+fn flags_bare_publishsignedevent_split_construction() {
+    // Regression guard for the split-construction bypass: a developer
+    // assigns `PublishCommand::SignedEvent { .. }` to a local on line A,
+    // then passes the local to `ActorCommand::Publish(cmd)` on line B.
+    // Neither line contains the full inline pattern
+    // `ActorCommand::Publish(PublishCommand::SignedEvent`; D11 must still
+    // fire on line A via the bare `PublishCommand::SignedEvent` entry.
+    let lines = [
+        "#[no_mangle]",
+        "pub extern \"C\" fn nmp_app_something(app: *mut NmpApp) {",
+        "    let cmd = PublishCommand::SignedEvent { event, relays: Vec::new(), correlation_id: None };",
+        "    app.send_cmd(ActorCommand::Publish(cmd));",
+        "}",
+    ];
+    let hits = run_tracker(&lines);
+    assert!(
+        !hits.is_empty(),
+        "bare PublishCommand::SignedEvent in FFI body must trip D11; got no hits"
+    );
+    assert!(
+        hits.iter().any(|(_, msg, _)| msg.contains("PublishSignedEvent")),
+        "at least one hit must name ActorCommand::PublishSignedEvent; got {:?}",
+        hits
+    );
+}
+
+#[test]
+fn flags_bare_publishunsignedevent_split_construction() {
+    // Same loophole for the unsigned variant.
+    let lines = [
+        "#[no_mangle]",
+        "pub extern \"C\" fn nmp_app_other(app: *mut NmpApp) {",
+        "    let cmd = PublishCommand::UnsignedEvent { event };",
+        "    app.send_cmd(ActorCommand::Publish(cmd));",
+        "}",
+    ];
+    let hits = run_tracker(&lines);
+    assert!(
+        !hits.is_empty(),
+        "bare PublishCommand::UnsignedEvent in FFI body must trip D11; got no hits"
+    );
+    assert!(
+        hits.iter().any(|(_, msg, _)| msg.contains("PublishUnsignedEvent")),
+        "at least one hit must name ActorCommand::PublishUnsignedEvent; got {:?}",
+        hits
+    );
+}
+
+#[test]
+fn split_construction_exempt_in_whitelisted_symbol() {
+    // The whitelist must suppress the new bare-variant entries too.
+    let lines = [
+        "#[no_mangle]",
+        "pub extern \"C\" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char) {",
+        "    let cmd = PublishCommand::SignedEvent { /* hypothetical */ };",
+        "    app.send_cmd(ActorCommand::Publish(cmd));",
+        "}",
+    ];
+    let hits = run_tracker(&lines);
+    assert!(
+        hits.is_empty(),
+        "whitelist must suppress bare-variant entries inside nmp_app_retry_publish; got {:?}",
         hits
     );
 }
@@ -234,7 +301,7 @@ fn wrapped_signature_promotes_on_brace_line() {
         "    app: *mut NmpApp,",
         "    profile_json: *const c_char,",
         ") {",
-        "    app.send_cmd(ActorCommand::PublishSignedEvent { raw, relays, correlation_id });",
+        "    app.send_cmd(ActorCommand::Publish(PublishCommand::SignedEvent { raw, relays, correlation_id }));",
         "}",
     ];
     let hits = run_tracker(&lines);

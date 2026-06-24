@@ -19,10 +19,10 @@ fn claim_sends_direct_and_repost_interests_for_topic_feed() {
     });
     assert_eq!(cmds.len(), 2);
 
-    let ActorCommand::EnsureInterest {
+    let ActorCommand::Interests(InterestsCommand::EnsureInterest {
         identity: direct_identity,
         interest: direct_interest,
-    } = &cmds[0]
+    }) = &cmds[0]
     else {
         panic!("expected EnsureInterest, got {:?}", cmds[0]);
     };
@@ -42,10 +42,10 @@ fn claim_sends_direct_and_repost_interests_for_topic_feed() {
     );
     assert!(direct_interest.is_indexer_discovery);
 
-    let ActorCommand::EnsureInterest {
+    let ActorCommand::Interests(InterestsCommand::EnsureInterest {
         identity: repost_identity,
         interest: repost_interest,
-    } = &cmds[1]
+    }) = &cmds[1]
     else {
         panic!("expected repost EnsureInterest, got {:?}", cmds[1]);
     };
@@ -80,11 +80,11 @@ fn release_drops_direct_and_repost_interest_owners() {
         consumer_id: CONSUMER.to_string(),
     });
     assert_eq!(cmds.len(), 2);
-    let ActorCommand::DropInterestOwner(direct_identity) = &cmds[0] else {
+    let ActorCommand::Interests(InterestsCommand::DropInterestOwner(direct_identity)) = &cmds[0] else {
         panic!("expected DropInterestOwner, got {:?}", cmds[0]);
     };
     assert_eq!(*direct_identity, topic_articles_identity(TOPIC, CONSUMER));
-    let ActorCommand::DropInterestOwner(repost_identity) = &cmds[1] else {
+    let ActorCommand::Interests(InterestsCommand::DropInterestOwner(repost_identity)) = &cmds[1] else {
         panic!("expected DropInterestOwner, got {:?}", cmds[1]);
     };
     assert_eq!(

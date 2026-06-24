@@ -11,8 +11,9 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar};
-use nmp_core::actor::ActorCommand;
 use nmp_core::{KernelEventObserver};
+use nmp_core::actor::{ActorCommand};
+use nmp_core::actor::{InterestsCommand};
 use nmp_nip51::{active_mute_list_interest, active_mute_list_interest_id, MuteListProjection};
 
 /// Wire the NIP-51 mute-list observer into `app` and return the
@@ -177,24 +178,24 @@ impl MuteRuntimeController {
             (Some(now), None) => {
                 let _ = self
                     .tx
-                    .send(ActorCommand::PushInterest(active_mute_list_interest(now)));
+                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_mute_list_interest(now))));
                 *last = Some(now.to_string());
             }
             // Account switch: withdraw old (by pubkey-invariant id), push new.
             (Some(now), Some(_prev)) => {
                 let _ = self
                     .tx
-                    .send(ActorCommand::WithdrawInterest(active_mute_list_interest_id()));
+                    .send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(active_mute_list_interest_id())));
                 let _ = self
                     .tx
-                    .send(ActorCommand::PushInterest(active_mute_list_interest(now)));
+                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_mute_list_interest(now))));
                 *last = Some(now.to_string());
             }
             // Logout: withdraw standing interest, clear slot.
             (None, Some(_)) => {
                 let _ = self
                     .tx
-                    .send(ActorCommand::WithdrawInterest(active_mute_list_interest_id()));
+                    .send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(active_mute_list_interest_id())));
                 *last = None;
             }
             // Cold start before sign-in: nothing to do.

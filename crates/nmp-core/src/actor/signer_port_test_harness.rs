@@ -102,8 +102,7 @@ pub(super) fn dispatch_one_with_relays(
     let event_store_slot = Arc::new(Mutex::new(None));
     let pull_cursor_registry_slot = crate::slots::new_pull_cursor_registry_handle_slot();
     let active_account_slot = crate::slots::new_active_account_slot();
-    let external_event_sink_dispatcher =
-        crate::substrate::ExternalEventSinkDispatcher::new();
+    let external_event_sink_dispatcher = crate::substrate::ExternalEventSinkDispatcher::new();
     let config = ActorConfigSources {
         storage_path: Arc::new(Mutex::new(None)),
         coverage_hook,

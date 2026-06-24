@@ -4,6 +4,7 @@
 //! (bad schema_version / not-typed-capable / unknown namespace → REJECTED).
 
 use super::*;
+use crate::actor::PublishCommand;
 use crate::publish::{PublishAction, PublishTarget};
 use crate::substrate::{ActionContext, ActionPayload, SignedEvent, UnsignedEvent};
 
@@ -73,14 +74,15 @@ fn dispatch_envelope_bytes_decode_and_route_into_start_bytes_end_to_end() {
     use std::cell::RefCell;
     let sent: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     registry
-        .execute_bytes(
-            &decoded.action_namespace,
-            &decoded.payload,
-            &id,
-            &|cmd| sent.borrow_mut().push(cmd),
-        )
+        .execute_bytes(&decoded.action_namespace, &decoded.payload, &id, &|cmd| {
+            sent.borrow_mut().push(cmd)
+        })
         .expect("S3 execute_bytes enqueues");
-    assert_eq!(sent.into_inner().len(), 1, "exactly one ActorCommand enqueued");
+    assert_eq!(
+        sent.into_inner().len(),
+        1,
+        "exactly one ActorCommand enqueued"
+    );
 }
 
 #[test]
@@ -114,7 +116,12 @@ fn start_bytes_presigned_publish_mints_id_not_event_id() {
         target: PublishTarget::Auto,
     };
     let id = registry
-        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.publish", &action.encode())
+        .start_bytes(
+            &mut ctx(),
+            1_700_000_000_000,
+            "nmp.publish",
+            &action.encode(),
+        )
         .expect("typed pre-signed publish accepted");
     assert_ne!(id, event_id, "correlation_id must not be the event id");
     assert_eq!(id.len(), 32);
@@ -133,17 +140,14 @@ fn execute_bytes_publish_signed_sends_publish_signed_event_command() {
     };
     let sent: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     registry
-        .execute_bytes(
-            "nmp.publish",
-            &action.encode(),
-            "corr-typed-1",
-            &|cmd| sent.borrow_mut().push(cmd),
-        )
+        .execute_bytes("nmp.publish", &action.encode(), "corr-typed-1", &|cmd| {
+            sent.borrow_mut().push(cmd)
+        })
         .expect("typed execute should enqueue the publish command");
     let cmds = sent.into_inner();
     assert_eq!(cmds.len(), 1, "exactly one ActorCommand enqueued");
     match &cmds[0] {
-        ActorCommand::PublishSignedEvent { correlation_id, .. } => {
+        ActorCommand::Publish(PublishCommand::SignedEvent { correlation_id, .. }) => {
             assert_eq!(correlation_id.as_deref(), Some("corr-typed-1"));
         }
         other => panic!("expected PublishSignedEvent, got {other:?}"),
@@ -179,7 +183,12 @@ fn bad_version_publish_payload() -> Vec<u8> {
 fn start_bytes_rejects_malformed_payload() {
     let registry = default_registry();
     let err = registry
-        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.publish", b"not a flatbuffer")
+        .start_bytes(
+            &mut ctx(),
+            1_700_000_000_000,
+            "nmp.publish",
+            b"not a flatbuffer",
+        )
         .expect_err("malformed payload must be rejected");
     assert!(matches!(err, ActionRejection::Invalid(_)));
 }
@@ -188,7 +197,12 @@ fn start_bytes_rejects_malformed_payload() {
 fn start_bytes_unknown_namespace_is_rejected() {
     let registry = default_registry();
     let err = registry
-        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.nope", b"\x00\x00\x00\x00")
+        .start_bytes(
+            &mut ctx(),
+            1_700_000_000_000,
+            "nmp.nope",
+            b"\x00\x00\x00\x00",
+        )
         .expect_err("unknown namespace rejected");
     match err {
         ActionRejection::Invalid(msg) => assert!(msg.contains("unknown action namespace")),
@@ -220,7 +234,12 @@ fn start_bytes_rejects_not_typed_capable_module() {
     let mut registry = ActionRegistry::new();
     let _ = registry.register(JsonOnlyModule);
     let err = registry
-        .start_bytes(&mut ctx(), 1_700_000_000_000, "nmp.test.json_only", b"anything")
+        .start_bytes(
+            &mut ctx(),
+            1_700_000_000_000,
+            "nmp.test.json_only",
+            b"anything",
+        )
         .expect_err("a non-typed-capable module must reject typed bytes");
     match err {
         ActionRejection::Invalid(msg) => assert!(

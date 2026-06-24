@@ -149,6 +149,7 @@ mod command_wakes_blocked_actor_tests;
 #[cfg(test)]
 mod tests {
     use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
+    use crate::actor::{IdentityCommand, LifecycleCommand, RefsCommand};
     use crate::app::KernelAction;
     use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
     use crate::kernel::Kernel;
@@ -198,7 +199,7 @@ mod tests {
         // Wait long enough for several idle-poll cycles without any commands.
         thread::sleep(Duration::from_millis(1_000));
 
-        let _ = cmd_tx.send(ActorCommand::Shutdown);
+        let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 
         let mut idle_count = 0_usize;
         while upd_rx.try_recv().is_ok() {
@@ -229,11 +230,11 @@ mod tests {
         thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
         cmd_tx
-            .send(ActorCommand::Start {
+            .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
                 visible_limit: 50,
                 emit_hz: 30,
                 initial_relays: Vec::new(),
-            })
+            }))
             .unwrap();
         cmd_tx
             .send(ActorCommand::Kernel(KernelAction::OpenView {
@@ -244,7 +245,7 @@ mod tests {
 
         // Let the actor process both commands and flush.
         thread::sleep(Duration::from_millis(300));
-        let _ = cmd_tx.send(ActorCommand::Shutdown);
+        let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 
         let mut snapshots = 0usize;
         while let Ok(frame) = upd_rx.try_recv() {
@@ -292,10 +293,10 @@ mod tests {
         // Configure (NOT Start) — running stays false. Then fire a flurry of
         // view commands. None of these should produce a snapshot frame.
         cmd_tx
-            .send(ActorCommand::Configure {
+            .send(ActorCommand::Lifecycle(LifecycleCommand::Configure {
                 visible_limit: 50,
                 emit_hz: 30,
-            })
+            }))
             .unwrap();
         let pk = "0".repeat(64);
         // V-68 / V-112 (ADR-0042): OpenAuthor / CloseAuthor deleted.
@@ -303,7 +304,7 @@ mod tests {
         // Dispatch resolve/release_ref to flood the queue (same fire-and-forget path).
         for i in 0..50u64 {
             cmd_tx
-                .send(ActorCommand::ResolveRef {
+                .send(ActorCommand::Refs(RefsCommand::Resolve {
                     namespace: crate::kernel::RefNamespace::Profile,
                     key: pk.clone(),
                     consumer_id: format!("test-consumer-{i}"),
@@ -313,20 +314,20 @@ mod tests {
                     liveness: crate::kernel::RefLiveness::CacheOk,
                     force: false,
                     hints: Vec::new(),
-                })
+                }))
                 .unwrap();
             cmd_tx
-                .send(ActorCommand::ReleaseRef {
+                .send(ActorCommand::Refs(RefsCommand::Release {
                     namespace: crate::kernel::RefNamespace::Profile,
                     key: pk.clone(),
                     consumer_id: format!("test-consumer-{i}"),
-                })
+                }))
                 .unwrap();
         }
         // The actor may be inside the 250 ms idle relay wait before it
         // checks the command channel, so wait past one full idle cycle.
         thread::sleep(Duration::from_millis(350));
-        let _ = cmd_tx.send(ActorCommand::Shutdown);
+        let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 
         let mut snapshots = 0usize;
         while let Ok(frame) = upd_rx.try_recv() {
@@ -338,7 +339,10 @@ mod tests {
                 match root.kind() {
                     k if k == fb::FrameKind::Snapshot => snapshots += 1,
                     k if k == fb::FrameKind::Panic => {
-                        let msg = root.panic().map(|p| p.msg().to_string()).unwrap_or_default();
+                        let msg = root
+                            .panic()
+                            .map(|p| p.msg().to_string())
+                            .unwrap_or_default();
                         panic!("unexpected actor-death frame on the channel: {msg}")
                     }
                     _ => {}
@@ -401,18 +405,18 @@ mod tests {
         thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
         cmd_tx
-            .send(ActorCommand::Start {
+            .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
                 visible_limit: 50,
                 emit_hz: 30,
                 initial_relays: Vec::new(),
-            })
+            }))
             .unwrap();
 
         // Wait for Start to process and emit initial snapshot.
         thread::sleep(Duration::from_millis(100));
 
         cmd_tx
-            .send(ActorCommand::CreateAccount {
+            .send(ActorCommand::Identity(IdentityCommand::CreateAccount {
                 profile: [("name".to_string(), "Test".to_string())]
                     .into_iter()
                     .collect(),
@@ -420,12 +424,12 @@ mod tests {
                 initial_follows: Vec::new(),
                 mls: false,
                 make_active: true,
-            })
+            }))
             .unwrap();
 
         // Wait for create_account to process and emit.
         thread::sleep(Duration::from_millis(500));
-        let _ = cmd_tx.send(ActorCommand::Shutdown);
+        let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 
         // Drain all snapshots and find the one with active_account set.
         // PR-B (#991/#979): `active_account` is now a Tier-2 built-in typed
@@ -438,11 +442,15 @@ mod tests {
                 continue; // panic frame — already checked above
             }
             if let Ok(typed) = decode_snapshot_typed_projections(&frame) {
-                let active_entry = typed
-                    .iter()
-                    .find(|p| p.key == crate::kernel::public_typed_projections::ACTIVE_ACCOUNT_SCHEMA_ID);
+                let active_entry = typed.iter().find(|p| {
+                    p.key == crate::kernel::public_typed_projections::ACTIVE_ACCOUNT_SCHEMA_ID
+                });
                 if let Some(entry) = active_entry {
-                    if let Ok(model) = crate::kernel::public_typed_projections::decode_active_account(&entry.payload) {
+                    if let Ok(model) =
+                        crate::kernel::public_typed_projections::decode_active_account(
+                            &entry.payload,
+                        )
+                    {
                         if model.pubkey.is_some() {
                             found_active = true;
                         }

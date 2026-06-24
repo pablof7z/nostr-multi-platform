@@ -33,8 +33,8 @@
 
 use std::fmt;
 
+use crate::actor::{ActionLedgerCommand, ActorCommand, InterestsCommand, PublishCommand};
 use crate::relay::OutboundMessage;
-use crate::actor::ActorCommand;
 
 #[path = "protocol/command_error.rs"]
 mod command_error;
@@ -474,11 +474,11 @@ impl<'a> ProtocolCommandContext<'a> {
         correlation_id: Option<String>,
         signer_pubkey: Option<String>,
     ) {
-        self.send(ActorCommand::PublishUnsignedEvent {
+        self.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event,
             correlation_id,
             signer_pubkey,
-        });
+        }));
     }
 
     /// Publish unsigned to an explicit relay set, bypassing NIP-65 outbox
@@ -490,27 +490,27 @@ impl<'a> ProtocolCommandContext<'a> {
         correlation_id: Option<String>,
         signer_pubkey: Option<String>,
     ) {
-        self.send(ActorCommand::PublishUnsignedEventToRelays {
+        self.send(ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
             event,
             relays,
             correlation_id,
             signer_pubkey,
-        });
+        }));
     }
 
     /// Record a terminal `Accepted` stage (`ActorCommand::RecordActionSuccess`).
     /// `result_json` is the optional Decision-4 structured return payload.
     pub fn record_action_success(&self, correlation_id: String, result_json: Option<String>) {
-        self.send(ActorCommand::RecordActionSuccess {
+        self.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
             correlation_id,
             result_json,
-        });
+        }));
     }
 
     /// Push a [`LogicalInterest`](crate::planner::LogicalInterest) via
     /// `ActorCommand::PushInterest`. Re-push with the same id is idempotent.
     pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
-        self.send(ActorCommand::PushInterest(interest));
+        self.send(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
     }
 }
 

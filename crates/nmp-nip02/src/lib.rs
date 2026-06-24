@@ -54,6 +54,7 @@ use nmp_core::substrate::{
     SnapshotProjectionRegistrar,
 };
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ContactsCommand, InterestsCommand};
 use serde::{Deserialize, Serialize};
 
 // The `ActionModule` impls for the three follow verbs (split out to keep this
@@ -190,8 +191,8 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 ///
 /// On initial call (with an active account) and on each subsequent account
 /// change, `register_follow_state_runtime` enqueues
-/// `ActorCommand::OpenInterest { filter_json: {"kinds":[3],"authors":[<pubkey>]},
-/// consumer_id: "nmp.nip02.follow_list", scope: 0 }`. The actor routes this
+/// `ActorCommand::Interests(InterestsCommand::OpenInterest { filter_json: {"kinds":[3],"authors":[<pubkey>]},
+/// consumer_id: "nmp.nip02.follow_list", scope: 0 })`. The actor routes this
 /// through `Kernel::register_interest`, which mutates the registry, enqueues a
 /// cache-serve for the active account's kind:3, and triggers a compile
 /// invalidation — the same front-door every other interest uses.
@@ -240,23 +241,23 @@ pub fn register_follow_state_runtime(
     let push_interest = {
         let tx = tx.clone();
         move |pubkey: &str| {
-            let _ = tx.send(ActorCommand::OpenInterest {
+            let _ = tx.send(ActorCommand::Interests(InterestsCommand::OpenInterest {
                 filter_json: format!(r#"{{"kinds":[3],"authors":["{pubkey}"]}}"#),
                 consumer_id: CONSUMER_ID.to_string(),
                 scope: 0, // ActiveAccount
-            });
+            }));
         }
     };
 
     let close_interest = {
         let tx = tx.clone();
         move |pubkey: &str| {
-            let _ = tx.send(ActorCommand::CloseInterest {
+            let _ = tx.send(ActorCommand::Interests(InterestsCommand::CloseInterest {
                 filter_json: format!(r#"{{"kinds":[3],"authors":["{pubkey}"]}}"#),
                 consumer_id: CONSUMER_ID.to_string(),
                 scope: 0,
                 relay_pin: None,
-            });
+            }));
         }
     };
 
@@ -406,10 +407,10 @@ mod tests {
                 .expect("execute must not fail");
         });
         match cmd {
-            ActorCommand::Follow {
+            ActorCommand::Contacts(ContactsCommand::Follow {
                 pubkey,
                 correlation_id,
-            } => {
+            }) => {
                 assert_eq!(pubkey, "deadbeef");
                 assert_eq!(
                     correlation_id.as_deref(),
@@ -436,10 +437,10 @@ mod tests {
                 .expect("execute must not fail");
         });
         match cmd {
-            ActorCommand::Unfollow {
+            ActorCommand::Contacts(ContactsCommand::Unfollow {
                 pubkey,
                 correlation_id,
-            } => {
+            }) => {
                 assert_eq!(pubkey, "cafebabe");
                 assert_eq!(correlation_id.as_deref(), Some("test-cid-unfollow"));
             }

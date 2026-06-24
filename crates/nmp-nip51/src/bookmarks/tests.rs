@@ -182,11 +182,11 @@ fn add_action_rejects_duplicate_and_publishes_append() {
         })
         .expect("execute add");
 
-    let ActorCommand::PublishUnsignedEvent {
+    let ActorCommand::Publish(PublishCommand::UnsignedEvent {
         event,
         correlation_id,
         signer_pubkey,
-    } = sent.lock().expect("sent").pop().expect("command")
+    }) = sent.lock().expect("sent").pop().expect("command")
     else {
         panic!("expected PublishUnsignedEvent");
     };
@@ -231,7 +231,7 @@ fn remove_action_rejects_absent_and_publishes_removal() {
         })
         .expect("execute remove");
 
-    let ActorCommand::PublishUnsignedEvent { event, .. } =
+    let ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) =
         sent.lock().expect("sent").pop().expect("command")
     else {
         panic!("expected PublishUnsignedEvent");

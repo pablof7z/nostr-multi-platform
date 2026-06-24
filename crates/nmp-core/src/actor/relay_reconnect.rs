@@ -1,4 +1,4 @@
-//! `ActorCommand::ReconnectRelays` transport half (#1689).
+//! `ActorCommand::Relay(RelayCommand::ReconnectRelays)` transport half (#1689).
 //!
 //! A kernel-driven "reconnect all": host apps (network-change, app-foreground,
 //! a Settings "Reconnect" button) drive it through the actor bus so the kernel
@@ -65,7 +65,7 @@ mod tests {
     use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
 
     /// #1689 — `reconnect_relays` re-dials a downed relay worker (the
-    /// load-bearing proof that `ActorCommand::ReconnectRelays` triggers a
+    /// load-bearing proof that `ActorCommand::Relay(RelayCommand::ReconnectRelays)` triggers a
     /// reconnect). Spawn a worker, `Pool::close` its slot (simulating a
     /// disconnect / permanent error), then assert `reconnect_relays` reopens it:
     /// the pool generation bumps, the slot id is stable, exactly one reopen is
@@ -99,7 +99,10 @@ mod tests {
         let reopened = reconnect_relays(&mut relay_controls, &pool, &mut kernel);
         assert_eq!(reopened, 1, "#1689: must re-dial the one downed socket");
 
-        let after = relay_controls.get(&key).expect("control still exists").handle;
+        let after = relay_controls
+            .get(&key)
+            .expect("control still exists")
+            .handle;
         assert_eq!(
             after.slot(),
             before.slot(),
@@ -120,6 +123,7 @@ mod tests {
     use crate::actor::commands::{self, IdentityRuntime};
     use crate::actor::signer_port_test_harness::dispatch_one_with_relays;
     use crate::actor::ActorCommand;
+    use crate::actor::RelayCommand;
 
     fn fresh_identity() -> IdentityRuntime {
         IdentityRuntime::new(
@@ -169,7 +173,7 @@ mod tests {
         )
     }
 
-    /// #1689 — the `ActorCommand::ReconnectRelays` DISPATCH ARM re-dials a downed
+    /// #1689 — the `ActorCommand::Relay(RelayCommand::ReconnectRelays)` DISPATCH ARM re-dials a downed
     /// relay. This proves the command is routed through the actor command bus
     /// (`dispatch_command`), not merely that the helper works: if the arm were
     /// removed or broken, the generation would not bump and this fails.
@@ -181,7 +185,7 @@ mod tests {
         let mut identity = fresh_identity();
 
         dispatch_one_with_relays(
-            ActorCommand::ReconnectRelays,
+            ActorCommand::Relay(RelayCommand::ReconnectRelays),
             &mut identity,
             &mut kernel,
             &pool,
@@ -192,7 +196,11 @@ mod tests {
         );
 
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let gen_after = relay_controls.get(&key).expect("control").handle.generation();
+        let gen_after = relay_controls
+            .get(&key)
+            .expect("control")
+            .handle
+            .generation();
         assert!(
             gen_after > gen_before,
             "#1689: dispatching ReconnectRelays must re-dial the downed socket \
@@ -210,7 +218,7 @@ mod tests {
         let mut identity = fresh_identity();
 
         dispatch_one_with_relays(
-            ActorCommand::ReconnectRelays,
+            ActorCommand::Relay(RelayCommand::ReconnectRelays),
             &mut identity,
             &mut kernel,
             &pool,
@@ -221,7 +229,11 @@ mod tests {
         );
 
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let gen_after = relay_controls.get(&key).expect("control").handle.generation();
+        let gen_after = relay_controls
+            .get(&key)
+            .expect("control")
+            .handle
+            .generation();
         assert_eq!(
             gen_after, gen_before,
             "#1689 fail-closed: ReconnectRelays before Start must not re-dial"

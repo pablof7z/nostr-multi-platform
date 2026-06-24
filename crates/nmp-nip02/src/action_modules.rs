@@ -13,6 +13,7 @@
 
 use nmp_core::substrate::{ActionModule, ActionPayload, ActionPayloadDecodeError};
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ContactsCommand};
 
 use crate::{FollowManyAction, FollowManyModule, FollowModule, PubkeyAction, UnfollowModule};
 
@@ -32,10 +33,10 @@ impl ActionModule for FollowModule {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(ActorCommand::Follow {
+        send(ActorCommand::Contacts(ContactsCommand::Follow {
             pubkey: action.pubkey,
             correlation_id: Some(correlation_id.to_string()),
-        });
+        }));
         Ok(())
     }
 }
@@ -56,10 +57,10 @@ impl ActionModule for UnfollowModule {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(ActorCommand::Unfollow {
+        send(ActorCommand::Contacts(ContactsCommand::Unfollow {
             pubkey: action.pubkey,
             correlation_id: Some(correlation_id.to_string()),
-        });
+        }));
         Ok(())
     }
 }
@@ -80,10 +81,10 @@ impl ActionModule for FollowManyModule {
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(ActorCommand::FollowMany {
+        send(ActorCommand::Contacts(ContactsCommand::FollowMany {
             pubkeys: action.pubkeys,
             correlation_id: Some(correlation_id.to_string()),
-        });
+        }));
         Ok(())
     }
 }

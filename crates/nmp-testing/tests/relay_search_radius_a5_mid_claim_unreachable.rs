@@ -52,6 +52,7 @@ use common::stub_relay::StubRelay;
 use common::wire_log::{req_emit_relays_for_phase, score_updates, StderrCapture};
 use nmp_core::nip19::{encode_nevent, NeventData};
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -151,11 +152,11 @@ fn a5_mid_claim_stub_relay_drop_records_failure_delta() {
 
     // ── (4) Boot the actor — no AddRelay; bootstrap Content relay only ────────
     let (tx, rx) = spawn_actor();
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
         initial_relays: Vec::new(),
-    })
+    }))
     .expect("A5: Start send");
 
     // ── (5) Wait for the bootstrap relay to connect ───────────────────────────
@@ -163,7 +164,7 @@ fn a5_mid_claim_stub_relay_drop_records_failure_delta() {
     let connected =
         drain_until_or_timeout(&rx, connect_deadline, |frame| relay_is_connected(frame));
     if !connected {
-        let _ = tx.send(ActorCommand::Shutdown);
+        let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
         let lines = cap.collect();
         eprintln!(
             "A5 SKIP: no relay connected within {:?}. Captured {} stderr lines.",
@@ -175,11 +176,11 @@ fn a5_mid_claim_stub_relay_drop_records_failure_delta() {
 
     // ── (6) Issue the claim ──────────────────────────────────────────────────
     let claim_start = Instant::now();
-    tx.send(ActorCommand::ClaimEvent {
+    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
         uri: nevent_uri,
         consumer_id: "a5-test".to_string(),
         force: false,
-    })
+    }))
     .expect("A5: ClaimEvent send");
 
     let test_deadline = Instant::now() + Duration::from_millis(TEST_BUDGET_MS);
@@ -189,7 +190,7 @@ fn a5_mid_claim_stub_relay_drop_records_failure_delta() {
     let elapsed_ms = claim_start.elapsed().as_millis();
 
     // ── (7) Shut down and collect ────────────────────────────────────────────
-    let _ = tx.send(ActorCommand::Shutdown);
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     drop(rx);
     std::thread::sleep(Duration::from_millis(100));
     let lines = cap.collect();

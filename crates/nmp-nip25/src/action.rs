@@ -5,6 +5,7 @@ use nmp_core::substrate::{
 };
 use nmp_signer_iface::UnsignedEvent;
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{PublishCommand};
 use serde::{Deserialize, Serialize};
 
 pub const KIND_REACTION: u32 = 7;
@@ -116,7 +117,7 @@ impl ProtocolCommand for PublishReactionCommand {
                 "react: malformed target event id",
             ));
         };
-        ctx.send(ActorCommand::PublishUnsignedEvent {
+        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event: UnsignedEvent {
                 pubkey: String::new(),
                 kind: KIND_REACTION,
@@ -126,7 +127,7 @@ impl ProtocolCommand for PublishReactionCommand {
             },
             correlation_id: Some(self.correlation_id),
             signer_pubkey: None,
-        });
+        }));
         Ok(())
     }
 }
@@ -136,7 +137,7 @@ impl ProtocolCommand for UnreactReactionCommand {
         self: Box<Self>,
         ctx: &mut ProtocolCommandContext<'_>,
     ) -> Result<(), ProtocolCommandError> {
-        ctx.send(ActorCommand::PublishUnsignedEvent {
+        ctx.send(ActorCommand::Publish(PublishCommand::UnsignedEvent {
             event: UnsignedEvent {
                 pubkey: String::new(),
                 kind: KIND_REACTION_DELETE,
@@ -146,7 +147,7 @@ impl ProtocolCommand for UnreactReactionCommand {
             },
             correlation_id: Some(self.correlation_id),
             signer_pubkey: None,
-        });
+        }));
         Ok(())
     }
 }

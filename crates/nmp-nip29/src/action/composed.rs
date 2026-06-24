@@ -8,6 +8,7 @@ use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -168,12 +169,12 @@ mod tests {
             "react executor must send exactly one command, got {cmds:?}"
         );
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
                 ..
-            } => {
+            }) => {
                 assert_eq!(event.kind, REACTION_KIND, "react must emit kind:7");
                 assert_eq!(
                     relays,

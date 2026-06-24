@@ -45,7 +45,7 @@ pub type RelayUrl = String;
 /// Production no longer hardcodes any relay: the app declares its initial
 /// relay set through `NmpAppBuilder::with_relay(s)` (or seeds it pre-start via
 /// `nmp_app_add_relay`), and that config is carried into the kernel through
-/// `ActorCommand::Start { initial_relays, .. }`. When nothing is configured the
+/// `ActorCommand::Lifecycle(LifecycleCommand::Start { initial_relays, .. })`. When nothing is configured the
 /// kernel returns an empty relay set and surfaces the `no_configured_relays`
 /// diagnostic — it never silently dials an unconsented relay (V-66).
 ///

@@ -24,6 +24,7 @@
 //! shows up as elapsed ≥ ~250 ms.
 
 use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
+use crate::actor::{LifecycleCommand, RefsCommand};
 use crate::transport::wire as fb;
 use crate::update_envelope::UpdateFrameBytes;
 use std::sync::mpsc;
@@ -57,11 +58,11 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
     // startup state stops changing. `running=true` is required so that a
     // subsequent view-command dispatch emits a snapshot.
     cmd_tx
-        .send(ActorCommand::Start {
+        .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
             visible_limit: 50,
             emit_hz: 30,
             initial_relays: vec![("ws://192.0.2.1:9".to_string(), "read".to_string())],
-        })
+        }))
         .expect("inbox open");
 
     // Drain the startup snapshots (pre-flight + Start + any settling frames)
@@ -70,7 +71,7 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
     // `recv_timeout` when we send the wake command.
     loop {
         match upd_rx.recv_timeout(Duration::from_millis(400)) {
-            Ok(_) => continue, // still flushing startup frames
+            Ok(_) => continue,                             // still flushing startup frames
             Err(mpsc::RecvTimeoutError::Timeout) => break, // quiet → actor idle
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 panic!("actor exited before reaching idle wait")
@@ -87,7 +88,7 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
     let start = Instant::now();
     // ADR-0063 Lane H: ClaimProfile deleted; use ResolveRef.
     cmd_tx
-        .send(ActorCommand::ResolveRef {
+        .send(ActorCommand::Refs(RefsCommand::Resolve {
             namespace: crate::kernel::RefNamespace::Profile,
             key: pk.clone(),
             consumer_id: "wake-test".to_string(),
@@ -95,7 +96,7 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
             liveness: crate::kernel::RefLiveness::CacheOk,
             force: false,
             hints: Vec::new(),
-        })
+        }))
         .expect("inbox open");
 
     let frame = upd_rx
@@ -114,5 +115,5 @@ fn command_wakes_a_relay_blocked_actor_under_the_idle_cap() {
          wake or the #1231 single-drain replay has regressed"
     );
 
-    let _ = cmd_tx.send(ActorCommand::Shutdown);
+    let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 }

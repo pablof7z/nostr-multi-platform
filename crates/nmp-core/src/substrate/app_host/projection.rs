@@ -4,6 +4,7 @@
 //! Split out of `app_host/mod.rs` (D6 work) to keep that file under the 500-LOC
 //! hard ceiling — this is the single largest narrow registration concern.
 
+use crate::actor::LifecycleCommand;
 use crate::update_envelope::TypedProjectionData;
 
 /// Error returned by [`SnapshotProjectionRegistrar::declare_incremental_apply`]
@@ -134,7 +135,7 @@ pub trait SnapshotProjectionRegistrar {
     /// cleared host cache (the R6-S1 freeze fix).
     ///
     /// `session_id` = `TimingMilestones::started_unix_ms` (changes on every
-    /// kernel rebuild including `ActorCommand::Reset`); `snapshot_epoch` =
+    /// kernel rebuild including `ActorCommand::Lifecycle(LifecycleCommand::Reset)`); `snapshot_epoch` =
     /// `ProjectionRevTracker::epoch` (account-switch / schema bump).
     fn frame_identity_handles(
         &self,

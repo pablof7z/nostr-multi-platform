@@ -64,6 +64,7 @@
 //! dropped (rate-limit backpressure, D6 best-effort). The first overflow
 //! per slot logs once so the condition is visible to ops.
 
+use crate::actor::LifecycleCommand;
 use crate::substrate::KernelEvent;
 use std::ffi::{c_char, c_void, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -202,7 +203,7 @@ pub(crate) fn new_event_observer_slot_headless() -> KernelEventObserverSlot {
 /// `Arc` to the `ObserverInner` is dropped (which drops `c_fanout_tx`, so
 /// `recv()` returns `Err`). The slot's `Arc` is shared by `NmpApp` and the
 /// kernel actor; both must drop before the drain thread joins — and across
-/// `ActorCommand::Reset` the same `Arc` survives, so the thread is never
+/// `ActorCommand::Lifecycle(LifecycleCommand::Reset)` the same `Arc` survives, so the thread is never
 /// respawned. The `JoinHandle` is detached: there is no synchronous point
 /// to join it, and on process teardown the dropped sender ends it cleanly.
 ///

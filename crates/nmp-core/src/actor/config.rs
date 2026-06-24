@@ -5,10 +5,10 @@ use std::sync::{Arc, Mutex, RwLock};
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel::Kernel;
 use crate::slots::{
-    ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, KernelClockSlot, MlsLocalNsecSlot,
-    ExternalEventSinkPolicyFactory, ExternalEventSinkPolicySlot,
-    PublishResolverFactory, PublishResolverSlot, PullCursorRegistryHandleSlot,
-    RoutingSubstrateFactory, RoutingSubstrateSlot, RoutingTraceSlot, StoragePathSlot,
+    ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, ExternalEventSinkPolicyFactory,
+    ExternalEventSinkPolicySlot, KernelClockSlot, MlsLocalNsecSlot, PublishResolverFactory,
+    PublishResolverSlot, PullCursorRegistryHandleSlot, RoutingSubstrateFactory,
+    RoutingSubstrateSlot, RoutingTraceSlot, StoragePathSlot,
 };
 use crate::subs::PlanCoverageHook;
 use crate::substrate::{

@@ -78,6 +78,7 @@ use nmp_core::substrate::ActionRegistrar;
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start, NmpApp};
 
 use crate::relay_config;
+use nmp_core::actor::{LifecycleCommand};
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpAppBuilder` child submodule (LOC ceiling).
 mod wallet; // `with_wallet` (NIP-47 wiring) — child submodule; see builder/wallet.rs.
 
@@ -566,7 +567,7 @@ impl NmpAppBuilder<RelaysDeclared> {
         };
 
         // Stage the initial relays BEFORE start so `nmp_app_start` carries them
-        // in `ActorCommand::Start { initial_relays }`. MUST precede the start.
+        // in `ActorCommand::Lifecycle(LifecycleCommand::Start { initial_relays })`. MUST precede the start.
         // SAFETY: `app` non-null; not yet started.
         unsafe { &*app }.set_initial_relays_for_start(initial_relays);
 

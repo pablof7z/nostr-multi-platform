@@ -9,11 +9,11 @@
 //!
 //! | File | Contents |
 //! |------|----------|
-//! | `mod.rs` | `ActorContext`, `build_open_interest`, thin `dispatch_command` delegator |
-//! | `cmd_lifecycle.rs` | `Start`, `Stop`, `Reset`, `Shutdown` arms |
-//! | `cmd_identity.rs` | AddSigner / CreateAccount / SwitchActive / … / SignEventForReturn |
-//! | `cmd_publish.rs` | Publish / follow / relay-mutation / action-record arms |
-//! | `cmd_interests.rs` | Interest, pull-cursor, and test-support ingest/GC arms |
+//! | `mod.rs` | `ActorContext`, `build_open_interest`, `dispatch_command` (family-level delegator) |
+//! | `cmd_lifecycle.rs` | `Lifecycle(LifecycleCommand)` arm |
+//! | `cmd_identity.rs` | `Identity(IdentityCommand)` arm |
+//! | `cmd_publish.rs` | `Publish` / `Contacts` / `Relay` / `ActionLedger` arms |
+//! | `cmd_interests.rs` | `Interests(InterestsCommand)` + `TestSupport` arms |
 //! | `cmd_protocol.rs` | `Protocol(cmd)` arm with catch-unwind + RefCell adapters |
 //! | `relay_events.rs` | `handle_relay_event` + `resolve_handle` |
 //! | `helpers.rs` | `update_local_key_slots`, `maybe_publish_relay_list_after_edit`, … |
@@ -37,7 +37,13 @@ use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
 use super::pending_sign::ParkedSignerOps;
 use super::signer_port_dispatch;
 use super::tick::maybe_emit_after_dispatch;
-use super::{ActorCommand, ActorConfig, RelayControl};
+#[cfg(any(test, feature = "test-support"))]
+use super::TestSupportCommand;
+use super::{
+    ActionLedgerCommand, ActorCommand, ActorConfig, ContactsCommand, IdentityCommand,
+    InterestsCommand, LifecycleCommand, PublishCommand, RefsCommand, RelayCommand, RelayControl,
+    SignCommand,
+};
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
 
@@ -76,10 +82,10 @@ pub(crate) fn build_open_interest(
 ///
 /// Replaces the 15+ explicit parameters that `dispatch_command` used to take.
 /// Constructed fresh per command in `run_actor_with_observers` and dropped
-/// immediately after dispatch, so every other call site in the actor loop
-/// keeps using the original locals untouched. The lifetime `'a` ties the
-/// struct to those stack-resident locals — no heap allocation, no ownership
-/// transfer, the actor loop still owns every field.
+/// immediately after dispatch, so every other call site in the actor loop keeps
+/// using the original locals untouched. The lifetime `'a` ties the struct to
+/// those stack-resident locals — no heap allocation, no ownership transfer,
+/// the actor loop still owns every field.
 pub(super) struct ActorContext<'a> {
     pub(super) kernel: &'a mut Kernel,
     pub(super) identity: &'a mut IdentityRuntime,
@@ -123,111 +129,24 @@ pub(super) struct ActorContext<'a> {
     pub(super) external_event_sink_dispatcher: &'a crate::substrate::ExternalEventSinkDispatcher,
 }
 
+/// Family-level dispatch delegator (ADR-0065). Matches the `ActorCommand`
+/// family first, then delegates to the per-family `dispatch` function in the
+/// matching `cmd_*.rs` sub-module.
 pub(super) fn dispatch_command(
     command: ActorCommand,
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     match command {
-        ActorCommand::Start {
-            visible_limit,
-            emit_hz: requested_hz,
-            initial_relays,
-        } => cmd_lifecycle::start(visible_limit, requested_hz, initial_relays, ctx),
-        ActorCommand::Configure {
-            visible_limit,
-            emit_hz: requested_hz,
-        } => {
-            use crate::actor::tick::{clamp_emit_hz_logged, emit_now};
-            *ctx.emit_hz = clamp_emit_hz_logged(ctx.kernel, requested_hz, "Configure");
-            ctx.kernel.set_visible_limit(visible_limit);
-            emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
-        }
-        ActorCommand::ClaimEvent { uri, consumer_id, force } => {
-            let outbound = ctx.kernel.claim_event(uri, consumer_id, ctx.relays_ready, force);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        ActorCommand::ReleaseEvent { uri, consumer_id } => {
-            let outbound = ctx.kernel.release_event(&uri, &consumer_id);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        ActorCommand::ResolveRef { namespace, key, consumer_id, shape, liveness, force, hints } => {
-            let outbound = ctx.kernel.resolve_ref(namespace, key, consumer_id, shape, liveness, force, hints);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        ActorCommand::ReleaseRef { namespace, key, consumer_id } => {
-            let outbound = ctx.kernel.release_ref(namespace, &key, &consumer_id);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        ActorCommand::SignEventForReturn { account_pubkey, unsigned_json, correlation_id } =>
-            cmd_identity::sign_event_for_return(account_pubkey, unsigned_json, correlation_id, ctx),
-        ActorCommand::SignEventForAccount { unsigned, signer_pubkey, continuation } =>
-            signer_port_dispatch::sign_for_account(ctx, &unsigned, signer_pubkey, continuation),
-        ActorCommand::Nip44EncryptForAccount { peer_pubkey, plaintext, signer_pubkey, continuation } =>
-            signer_port_dispatch::nip44_encrypt_for_account(ctx, &peer_pubkey, &plaintext, signer_pubkey, continuation),
-        ActorCommand::Nip44DecryptForAccount { peer_pubkey, ciphertext, signer_pubkey, continuation } =>
-            signer_port_dispatch::nip44_decrypt_for_account(ctx, &peer_pubkey, &ciphertext, signer_pubkey, continuation),
-        ActorCommand::DeliverSignerResponse { response_json } =>
-            signer_port_dispatch::deliver_signer_response(ctx, &response_json),
-        ActorCommand::AddSigner { source, make_active } =>
-            cmd_identity::add_signer(source, make_active, ctx),
-        ActorCommand::CreateAccount { profile, relays, initial_follows, mls, make_active } =>
-            cmd_identity::create_account(profile, relays, initial_follows, mls, make_active, ctx),
-        ActorCommand::SwitchActive { identity_id } =>
-            cmd_identity::switch_active(identity_id, ctx),
-        ActorCommand::RemoveAccount { identity_id } =>
-            cmd_identity::remove_account(identity_id, ctx),
-        ActorCommand::BunkerHandshakeProgress { stage, code, message } =>
-            cmd_identity::bunker_handshake_progress(stage, code, message, ctx),
-        ActorCommand::BunkerConnectionStateChanged { state, reason } =>
-            cmd_identity::bunker_connection_state_changed(state, reason, ctx),
-        ActorCommand::Nip55SignerStateChanged { state, reason } =>
-            cmd_identity::nip55_signer_state_changed(state, reason, ctx),
-        ActorCommand::PublishRawEvent { kind, tags, content, target, signer_pubkey, correlation_id } =>
-            cmd_publish::publish_raw_event(kind, tags, content, target, signer_pubkey, correlation_id, ctx),
-        ActorCommand::PublishProfile { fields, correlation_id } =>
-            cmd_publish::publish_profile(fields, correlation_id, ctx),
-        ActorCommand::PublishUnsignedEvent { event: unsigned, correlation_id, signer_pubkey } =>
-            cmd_publish::publish_unsigned_event(unsigned, correlation_id, signer_pubkey, ctx),
-        ActorCommand::PublishUnsignedEventToRelays { event, relays, correlation_id, signer_pubkey } =>
-            cmd_publish::publish_unsigned_event_to_relays(event, relays, correlation_id, signer_pubkey, ctx),
-        ActorCommand::PublishSignedEvent { raw, target, correlation_id } =>
-            cmd_publish::publish_signed_event(raw, target, correlation_id, ctx),
-        // V-39: SendGiftWrappedDm deleted — now routes through Protocol.
-        ActorCommand::RetryPublish { handle } =>
-            cmd_publish::retry_publish(handle, ctx),
-        ActorCommand::CancelPublish { correlation_id } =>
-            cmd_publish::cancel_publish(correlation_id, ctx),
-        ActorCommand::Follow { pubkey, correlation_id } =>
-            cmd_publish::follow_or_unfollow(pubkey, true, correlation_id, ctx),
-        ActorCommand::Unfollow { pubkey, correlation_id } =>
-            cmd_publish::follow_or_unfollow(pubkey, false, correlation_id, ctx),
-        ActorCommand::FollowMany { pubkeys, correlation_id } =>
-            cmd_publish::follow_many(pubkeys, correlation_id, ctx),
-        ActorCommand::AddRelay { url, role } => cmd_publish::add_relay(url, role, ctx),
-        ActorCommand::RemoveRelay { url } => cmd_publish::remove_relay(url, ctx),
-        ActorCommand::ReconnectRelays => cmd_publish::reconnect_relays_cmd(ctx),
-        ActorCommand::DeclareActiveFollowsFeed { acquisition_kinds } =>
-            cmd_publish::declare_active_follows_feed(acquisition_kinds, ctx),
-        ActorCommand::ClearActiveFollowsFeed => cmd_publish::clear_active_follows_feed(ctx),
-        // V-38/V-41: Wallet* and FetchLnurlInvoice deleted; route through Protocol.
-        ActorCommand::RecordActionFailure { correlation_id, reason } =>
-            cmd_publish::record_action_failure(correlation_id, reason, ctx),
-        ActorCommand::SetRelayInfo { relay_url, doc_json } =>
-            cmd_publish::set_relay_info(relay_url, doc_json, ctx),
-        ActorCommand::RecordActionSuccess { correlation_id, result_json } =>
-            cmd_publish::record_action_success(correlation_id, result_json, ctx),
-        ActorCommand::AckActionStage(correlation_id) =>
-            cmd_publish::ack_action_stage(correlation_id, ctx),
-        ActorCommand::LifecycleEvent(phase) => {
-            commands::handle_lifecycle_event(ctx.kernel, ctx.lifecycle_observer, phase);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(Vec::new())
-        }
+        ActorCommand::Lifecycle(cmd) => cmd_lifecycle::dispatch(cmd, ctx),
+        ActorCommand::Identity(cmd) => cmd_identity::dispatch(cmd, ctx),
+        ActorCommand::Sign(cmd) => dispatch_sign(cmd, ctx),
+        ActorCommand::Publish(cmd) => dispatch_publish(cmd, ctx),
+        ActorCommand::Contacts(cmd) => dispatch_contacts(cmd, ctx),
+        ActorCommand::Relay(cmd) => dispatch_relay(cmd, ctx),
+        ActorCommand::Refs(cmd) => dispatch_refs(cmd, ctx),
+        ActorCommand::Interests(cmd) => cmd_interests::dispatch(cmd, ctx),
+        ActorCommand::ActionLedger(cmd) => dispatch_action_ledger(cmd, ctx),
+        ActorCommand::Protocol(cmd) => cmd_protocol::protocol(cmd, ctx),
         ActorCommand::Kernel(action) => {
             let _ = dispatch_kernel_action(ctx.kernel, action);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -243,51 +162,238 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::MarkChangedSinceEmit => {
-            ctx.kernel.mark_changed_since_emit();
+        #[cfg(any(test, feature = "test-support"))]
+        ActorCommand::TestSupport(cmd) => dispatch_test_support(cmd, ctx),
+    }
+}
+
+/// ADR-0050 signer-session capability port dispatch (the `Sign` family).
+/// Routes through `signer_port_dispatch` — local keys resolve inline, remote
+/// signers park under the continuation sink.
+fn dispatch_sign(cmd: SignCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        SignCommand::EventForReturn {
+            account_pubkey,
+            unsigned_json,
+            correlation_id,
+        } => {
+            cmd_identity::sign_event_for_return(account_pubkey, unsigned_json, correlation_id, ctx)
+        }
+        SignCommand::EventForAccount {
+            unsigned,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::sign_for_account(ctx, &unsigned, signer_pubkey, continuation),
+        SignCommand::Nip44EncryptForAccount {
+            peer_pubkey,
+            plaintext,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::nip44_encrypt_for_account(
+            ctx,
+            &peer_pubkey,
+            &plaintext,
+            signer_pubkey,
+            continuation,
+        ),
+        SignCommand::Nip44DecryptForAccount {
+            peer_pubkey,
+            ciphertext,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::nip44_decrypt_for_account(
+            ctx,
+            &peer_pubkey,
+            &ciphertext,
+            signer_pubkey,
+            continuation,
+        ),
+    }
+}
+
+/// `Refs` family dispatch — thin delegators to the kernel's
+/// `claim_event` / `release_event` / `resolve_ref` / `release_ref` one-liners.
+fn dispatch_refs(cmd: RefsCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        RefsCommand::ClaimEvent {
+            uri,
+            consumer_id,
+            force,
+        } => {
+            let outbound = ctx
+                .kernel
+                .claim_event(uri, consumer_id, ctx.relays_ready, force);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
+        RefsCommand::ReleaseEvent { uri, consumer_id } => {
+            let outbound = ctx.kernel.release_event(&uri, &consumer_id);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
+        RefsCommand::Resolve {
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            hints,
+        } => {
+            let outbound =
+                ctx.kernel
+                    .resolve_ref(namespace, key, consumer_id, shape, liveness, force, hints);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
+        RefsCommand::Release {
+            namespace,
+            key,
+            consumer_id,
+        } => {
+            let outbound = ctx.kernel.release_ref(namespace, &key, &consumer_id);
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
+    }
+}
+
+/// `TestSupport` family dispatch (cfg-gated). Routes ingest/GC to
+/// `cmd_interests` and the barrier ack inline.
+#[cfg(any(test, feature = "test-support"))]
+fn dispatch_test_support(
+    cmd: TestSupportCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        TestSupportCommand::IngestPreVerifiedEvents(events) => {
+            cmd_interests::ingest_pre_verified_events(events, ctx)
+        }
+        TestSupportCommand::IngestPreVerifiedEventsForSubId {
+            sub_id,
+            events,
+            ack,
+        } => cmd_interests::ingest_pre_verified_events_for_sub_id(sub_id, events, ack, ctx),
+        TestSupportCommand::TriggerGcStep { ack } => cmd_interests::trigger_gc_step(ack, ctx),
+        TestSupportCommand::Barrier { ack } => {
+            let _ = ack.send(());
             Some(Vec::new())
         }
-        #[cfg(feature = "native")]
-        ActorCommand::CapabilityResultReady { account_id, result_json } =>
-            cmd_identity::capability_result_ready(account_id, result_json, ctx),
-        ActorCommand::Stop => cmd_lifecycle::stop(ctx),
-        ActorCommand::Reset => cmd_lifecycle::reset(ctx),
-        ActorCommand::PushInterest(interest) => cmd_interests::push_interest(interest, ctx),
-        ActorCommand::WithdrawInterest(id) => cmd_interests::withdraw_interest(id, ctx),
-        ActorCommand::EnsureInterest { identity, interest } =>
-            cmd_interests::ensure_interest(identity, interest, ctx),
-        ActorCommand::DropInterestOwner(identity) =>
-            cmd_interests::drop_interest_owner(identity, ctx),
-        ActorCommand::OpenPullCursor { handle, spec } =>
-            cmd_interests::open_pull_cursor(handle, spec, ctx),
-        ActorCommand::AdvancePullCursor { cursor_id, after_seq } =>
-            cmd_interests::advance_pull_cursor(cursor_id, after_seq, ctx),
-        ActorCommand::UnregisterPullCursor { cursor_id } =>
-            cmd_interests::unregister_pull_cursor(cursor_id, ctx),
-        ActorCommand::OpenInterest { filter_json, consumer_id, scope } =>
-            cmd_interests::open_interest(filter_json, consumer_id, scope, ctx),
-        ActorCommand::OpenObservedInterest {
-            filter_json, consumer_id, scope, relay_pin,
-            observer_id, replay_shapes, replay_limit,
-        } => cmd_interests::open_observed_interest(
-            filter_json, consumer_id, scope, relay_pin,
-            observer_id, replay_shapes, replay_limit, ctx,
+    }
+}
+
+// ── ADR-0065 family dispatchers (Publish / Contacts / Relay / ActionLedger) ─
+// Moved here from cmd_publish.rs to keep that file under the 500-LOC ceiling.
+
+/// `PublishCommand` family dispatch.
+fn dispatch_publish(
+    cmd: PublishCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        PublishCommand::RawEvent {
+            kind,
+            tags,
+            content,
+            target,
+            signer_pubkey,
+            correlation_id,
+        } => cmd_publish::publish_raw_event(
+            kind,
+            tags,
+            content,
+            target,
+            signer_pubkey,
+            correlation_id,
+            ctx,
         ),
-        ActorCommand::CloseInterest { filter_json, consumer_id, scope, relay_pin } =>
-            cmd_interests::close_interest(filter_json, consumer_id, scope, relay_pin, ctx),
-        #[cfg(any(test, feature = "test-support"))]
-        ActorCommand::Barrier { ack } => { let _ = ack.send(()); Some(Vec::new()) }
-        ActorCommand::Shutdown => cmd_lifecycle::shutdown(ctx),
-        ActorCommand::Protocol(cmd) => cmd_protocol::protocol(cmd, ctx),
-        #[cfg(any(test, feature = "test-support"))]
-        ActorCommand::IngestPreVerifiedEvents(events) =>
-            cmd_interests::ingest_pre_verified_events(events, ctx),
-        #[cfg(any(test, feature = "test-support"))]
-        ActorCommand::IngestPreVerifiedEventsForSubId { sub_id, events, ack } =>
-            cmd_interests::ingest_pre_verified_events_for_sub_id(sub_id, events, ack, ctx),
-        #[cfg(any(test, feature = "test-support"))]
-        ActorCommand::TriggerGcStep { ack } =>
-            cmd_interests::trigger_gc_step(ack, ctx),
+        PublishCommand::Profile {
+            fields,
+            correlation_id,
+        } => cmd_publish::publish_profile(fields, correlation_id, ctx),
+        PublishCommand::UnsignedEvent {
+            event: unsigned,
+            correlation_id,
+            signer_pubkey,
+        } => cmd_publish::publish_unsigned_event(unsigned, correlation_id, signer_pubkey, ctx),
+        PublishCommand::UnsignedEventToRelays {
+            event,
+            relays,
+            correlation_id,
+            signer_pubkey,
+        } => cmd_publish::publish_unsigned_event_to_relays(
+            event,
+            relays,
+            correlation_id,
+            signer_pubkey,
+            ctx,
+        ),
+        PublishCommand::SignedEvent {
+            raw,
+            target,
+            correlation_id,
+        } => cmd_publish::publish_signed_event(raw, target, correlation_id, ctx),
+        PublishCommand::RetryPublish { handle } => cmd_publish::retry_publish(handle, ctx),
+        PublishCommand::CancelPublish { correlation_id } => {
+            cmd_publish::cancel_publish(correlation_id, ctx)
+        }
+    }
+}
+
+/// `ContactsCommand` family dispatch.
+fn dispatch_contacts(
+    cmd: ContactsCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        ContactsCommand::Follow {
+            pubkey,
+            correlation_id,
+        } => cmd_publish::follow_or_unfollow(pubkey, true, correlation_id, ctx),
+        ContactsCommand::Unfollow {
+            pubkey,
+            correlation_id,
+        } => cmd_publish::follow_or_unfollow(pubkey, false, correlation_id, ctx),
+        ContactsCommand::FollowMany {
+            pubkeys,
+            correlation_id,
+        } => cmd_publish::follow_many(pubkeys, correlation_id, ctx),
+        ContactsCommand::DeclareActiveFollowsFeed { acquisition_kinds } => {
+            cmd_publish::declare_active_follows_feed(acquisition_kinds, ctx)
+        }
+        ContactsCommand::ClearActiveFollowsFeed => cmd_publish::clear_active_follows_feed(ctx),
+    }
+}
+
+/// `RelayCommand` family dispatch.
+fn dispatch_relay(cmd: RelayCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        RelayCommand::AddRelay { url, role } => cmd_publish::add_relay(url, role, ctx),
+        RelayCommand::RemoveRelay { url } => cmd_publish::remove_relay(url, ctx),
+        RelayCommand::ReconnectRelays => cmd_publish::reconnect_relays_cmd(ctx),
+        RelayCommand::SetRelayInfo {
+            relay_url,
+            doc_json,
+        } => cmd_publish::set_relay_info(relay_url, doc_json, ctx),
+    }
+}
+
+/// `ActionLedgerCommand` family dispatch.
+fn dispatch_action_ledger(
+    cmd: ActionLedgerCommand,
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    match cmd {
+        ActionLedgerCommand::Ack(correlation_id) => {
+            cmd_publish::ack_action_stage(correlation_id, ctx)
+        }
+        ActionLedgerCommand::RecordFailure {
+            correlation_id,
+            reason,
+        } => cmd_publish::record_action_failure(correlation_id, reason, ctx),
+        ActionLedgerCommand::RecordSuccess {
+            correlation_id,
+            result_json,
+        } => cmd_publish::record_action_success(correlation_id, result_json, ctx),
     }
 }

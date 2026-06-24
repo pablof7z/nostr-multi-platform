@@ -41,7 +41,7 @@ pub fn chirp_default_relay_urls() -> Vec<String> {
 /// This is Chirp PRODUCT policy, not NMP framework policy — NMP no longer
 /// hardcodes any default follow set (#1493). The Chirp create-account FFI
 /// wrapper (`nmp_app_chirp_create_new_account`) threads these into
-/// `ActorCommand::CreateAccount { initial_follows, .. }`, the same Rust-owned
+/// `ActorCommand::Identity(IdentityCommand::CreateAccount { initial_follows, .. })`, the same Rust-owned
 /// pattern the relay bootstrap uses — the seed pubkeys never transit the thin
 /// native shell.
 pub const CHIRP_DEFAULT_FOLLOWS: &[&str] = &[

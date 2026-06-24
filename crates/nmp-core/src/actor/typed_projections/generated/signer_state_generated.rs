@@ -2,329 +2,423 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod kernel {
+    #[allow(unused_imports, dead_code)]
+    pub mod kernel {
 
+        pub enum SignerStateOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum SignerStateOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct SignerState<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct SignerState<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for SignerState<'a> {
+            type Inner = SignerState<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for SignerState<'a> {
-  type Inner = SignerState<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> SignerState<'a> {
+            pub const VT_SIGNER_KIND: ::flatbuffers::VOffsetT = 4;
+            pub const VT_STATE: ::flatbuffers::VOffsetT = 6;
+            pub const VT_HAS_REASON: ::flatbuffers::VOffsetT = 8;
+            pub const VT_REASON: ::flatbuffers::VOffsetT = 10;
+            pub const VT_IS_READY: ::flatbuffers::VOffsetT = 12;
+            pub const VT_IS_AWAITING_APPROVAL: ::flatbuffers::VOffsetT = 14;
+            pub const VT_IS_RECONNECTING: ::flatbuffers::VOffsetT = 16;
+            pub const VT_IS_UNAVAILABLE: ::flatbuffers::VOffsetT = 18;
+            pub const VT_IS_FAILED: ::flatbuffers::VOffsetT = 20;
 
-impl<'a> SignerState<'a> {
-  pub const VT_SIGNER_KIND: ::flatbuffers::VOffsetT = 4;
-  pub const VT_STATE: ::flatbuffers::VOffsetT = 6;
-  pub const VT_HAS_REASON: ::flatbuffers::VOffsetT = 8;
-  pub const VT_REASON: ::flatbuffers::VOffsetT = 10;
-  pub const VT_IS_READY: ::flatbuffers::VOffsetT = 12;
-  pub const VT_IS_AWAITING_APPROVAL: ::flatbuffers::VOffsetT = 14;
-  pub const VT_IS_RECONNECTING: ::flatbuffers::VOffsetT = 16;
-  pub const VT_IS_UNAVAILABLE: ::flatbuffers::VOffsetT = 18;
-  pub const VT_IS_FAILED: ::flatbuffers::VOffsetT = 20;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                SignerState { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args SignerStateArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<SignerState<'bldr>> {
+                let mut builder = SignerStateBuilder::new(_fbb);
+                if let Some(x) = args.reason {
+                    builder.add_reason(x);
+                }
+                if let Some(x) = args.state {
+                    builder.add_state(x);
+                }
+                if let Some(x) = args.signer_kind {
+                    builder.add_signer_kind(x);
+                }
+                builder.add_is_failed(args.is_failed);
+                builder.add_is_unavailable(args.is_unavailable);
+                builder.add_is_reconnecting(args.is_reconnecting);
+                builder.add_is_awaiting_approval(args.is_awaiting_approval);
+                builder.add_is_ready(args.is_ready);
+                builder.add_has_reason(args.has_reason);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    SignerState { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args SignerStateArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<SignerState<'bldr>> {
-    let mut builder = SignerStateBuilder::new(_fbb);
-    if let Some(x) = args.reason { builder.add_reason(x); }
-    if let Some(x) = args.state { builder.add_state(x); }
-    if let Some(x) = args.signer_kind { builder.add_signer_kind(x); }
-    builder.add_is_failed(args.is_failed);
-    builder.add_is_unavailable(args.is_unavailable);
-    builder.add_is_reconnecting(args.is_reconnecting);
-    builder.add_is_awaiting_approval(args.is_awaiting_approval);
-    builder.add_is_ready(args.is_ready);
-    builder.add_has_reason(args.has_reason);
-    builder.finish()
-  }
+            #[inline]
+            pub fn signer_kind(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        SignerState::VT_SIGNER_KIND,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn state(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SignerState::VT_STATE, None)
+                }
+            }
+            #[inline]
+            pub fn has_reason(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SignerState::VT_HAS_REASON, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn reason(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(SignerState::VT_REASON, None)
+                }
+            }
+            #[inline]
+            pub fn is_ready(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SignerState::VT_IS_READY, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_awaiting_approval(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SignerState::VT_IS_AWAITING_APPROVAL, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_reconnecting(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SignerState::VT_IS_RECONNECTING, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_unavailable(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SignerState::VT_IS_UNAVAILABLE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_failed(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(SignerState::VT_IS_FAILED, Some(false))
+                        .unwrap()
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for SignerState<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "signer_kind",
+                        Self::VT_SIGNER_KIND,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "state",
+                        Self::VT_STATE,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_reason", Self::VT_HAS_REASON, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "reason",
+                        Self::VT_REASON,
+                        false,
+                    )?
+                    .visit_field::<bool>("is_ready", Self::VT_IS_READY, false)?
+                    .visit_field::<bool>(
+                        "is_awaiting_approval",
+                        Self::VT_IS_AWAITING_APPROVAL,
+                        false,
+                    )?
+                    .visit_field::<bool>("is_reconnecting", Self::VT_IS_RECONNECTING, false)?
+                    .visit_field::<bool>("is_unavailable", Self::VT_IS_UNAVAILABLE, false)?
+                    .visit_field::<bool>("is_failed", Self::VT_IS_FAILED, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct SignerStateArgs<'a> {
+            pub signer_kind: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_reason: bool,
+            pub reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub is_ready: bool,
+            pub is_awaiting_approval: bool,
+            pub is_reconnecting: bool,
+            pub is_unavailable: bool,
+            pub is_failed: bool,
+        }
+        impl<'a> Default for SignerStateArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                SignerStateArgs {
+                    signer_kind: None,
+                    state: None,
+                    has_reason: false,
+                    reason: None,
+                    is_ready: false,
+                    is_awaiting_approval: false,
+                    is_reconnecting: false,
+                    is_unavailable: false,
+                    is_failed: false,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn signer_kind(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SignerState::VT_SIGNER_KIND, None)}
-  }
-  #[inline]
-  pub fn state(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SignerState::VT_STATE, None)}
-  }
-  #[inline]
-  pub fn has_reason(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(SignerState::VT_HAS_REASON, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn reason(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(SignerState::VT_REASON, None)}
-  }
-  #[inline]
-  pub fn is_ready(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(SignerState::VT_IS_READY, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_awaiting_approval(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(SignerState::VT_IS_AWAITING_APPROVAL, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_reconnecting(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(SignerState::VT_IS_RECONNECTING, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_unavailable(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(SignerState::VT_IS_UNAVAILABLE, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_failed(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(SignerState::VT_IS_FAILED, Some(false)).unwrap()}
-  }
-}
+        pub struct SignerStateBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SignerStateBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_signer_kind(&mut self, signer_kind: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SignerState::VT_SIGNER_KIND,
+                    signer_kind,
+                );
+            }
+            #[inline]
+            pub fn add_state(&mut self, state: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(SignerState::VT_STATE, state);
+            }
+            #[inline]
+            pub fn add_has_reason(&mut self, has_reason: bool) {
+                self.fbb_
+                    .push_slot::<bool>(SignerState::VT_HAS_REASON, has_reason, false);
+            }
+            #[inline]
+            pub fn add_reason(&mut self, reason: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    SignerState::VT_REASON,
+                    reason,
+                );
+            }
+            #[inline]
+            pub fn add_is_ready(&mut self, is_ready: bool) {
+                self.fbb_
+                    .push_slot::<bool>(SignerState::VT_IS_READY, is_ready, false);
+            }
+            #[inline]
+            pub fn add_is_awaiting_approval(&mut self, is_awaiting_approval: bool) {
+                self.fbb_.push_slot::<bool>(
+                    SignerState::VT_IS_AWAITING_APPROVAL,
+                    is_awaiting_approval,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_is_reconnecting(&mut self, is_reconnecting: bool) {
+                self.fbb_.push_slot::<bool>(
+                    SignerState::VT_IS_RECONNECTING,
+                    is_reconnecting,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_is_unavailable(&mut self, is_unavailable: bool) {
+                self.fbb_
+                    .push_slot::<bool>(SignerState::VT_IS_UNAVAILABLE, is_unavailable, false);
+            }
+            #[inline]
+            pub fn add_is_failed(&mut self, is_failed: bool) {
+                self.fbb_
+                    .push_slot::<bool>(SignerState::VT_IS_FAILED, is_failed, false);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> SignerStateBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                SignerStateBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<SignerState<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for SignerState<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("signer_kind", Self::VT_SIGNER_KIND, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("state", Self::VT_STATE, false)?
-     .visit_field::<bool>("has_reason", Self::VT_HAS_REASON, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("reason", Self::VT_REASON, false)?
-     .visit_field::<bool>("is_ready", Self::VT_IS_READY, false)?
-     .visit_field::<bool>("is_awaiting_approval", Self::VT_IS_AWAITING_APPROVAL, false)?
-     .visit_field::<bool>("is_reconnecting", Self::VT_IS_RECONNECTING, false)?
-     .visit_field::<bool>("is_unavailable", Self::VT_IS_UNAVAILABLE, false)?
-     .visit_field::<bool>("is_failed", Self::VT_IS_FAILED, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct SignerStateArgs<'a> {
-    pub signer_kind: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub state: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_reason: bool,
-    pub reason: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub is_ready: bool,
-    pub is_awaiting_approval: bool,
-    pub is_reconnecting: bool,
-    pub is_unavailable: bool,
-    pub is_failed: bool,
-}
-impl<'a> Default for SignerStateArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    SignerStateArgs {
-      signer_kind: None,
-      state: None,
-      has_reason: false,
-      reason: None,
-      is_ready: false,
-      is_awaiting_approval: false,
-      is_reconnecting: false,
-      is_unavailable: false,
-      is_failed: false,
-    }
-  }
-}
+        impl ::core::fmt::Debug for SignerState<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("SignerState");
+                ds.field("signer_kind", &self.signer_kind());
+                ds.field("state", &self.state());
+                ds.field("has_reason", &self.has_reason());
+                ds.field("reason", &self.reason());
+                ds.field("is_ready", &self.is_ready());
+                ds.field("is_awaiting_approval", &self.is_awaiting_approval());
+                ds.field("is_reconnecting", &self.is_reconnecting());
+                ds.field("is_unavailable", &self.is_unavailable());
+                ds.field("is_failed", &self.is_failed());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `SignerState`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_signer_state_unchecked`.
+        pub fn root_as_signer_state(
+            buf: &[u8],
+        ) -> Result<SignerState<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<SignerState>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `SignerState` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_signer_state_unchecked`.
+        pub fn size_prefixed_root_as_signer_state(
+            buf: &[u8],
+        ) -> Result<SignerState<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<SignerState>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `SignerState` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_signer_state_unchecked`.
+        pub fn root_as_signer_state_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<SignerState<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<SignerState<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `SignerState` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_signer_state_unchecked`.
+        pub fn size_prefixed_root_as_signer_state_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<SignerState<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<SignerState<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a SignerState and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `SignerState`.
+        pub unsafe fn root_as_signer_state_unchecked(buf: &[u8]) -> SignerState<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<SignerState>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed SignerState and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `SignerState`.
+        pub unsafe fn size_prefixed_root_as_signer_state_unchecked(buf: &[u8]) -> SignerState<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<SignerState>(buf) }
+        }
+        pub const SIGNER_STATE_IDENTIFIER: &str = "KSST";
 
-pub struct SignerStateBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> SignerStateBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_signer_kind(&mut self, signer_kind: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SignerState::VT_SIGNER_KIND, signer_kind);
-  }
-  #[inline]
-  pub fn add_state(&mut self, state: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SignerState::VT_STATE, state);
-  }
-  #[inline]
-  pub fn add_has_reason(&mut self, has_reason: bool) {
-    self.fbb_.push_slot::<bool>(SignerState::VT_HAS_REASON, has_reason, false);
-  }
-  #[inline]
-  pub fn add_reason(&mut self, reason: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(SignerState::VT_REASON, reason);
-  }
-  #[inline]
-  pub fn add_is_ready(&mut self, is_ready: bool) {
-    self.fbb_.push_slot::<bool>(SignerState::VT_IS_READY, is_ready, false);
-  }
-  #[inline]
-  pub fn add_is_awaiting_approval(&mut self, is_awaiting_approval: bool) {
-    self.fbb_.push_slot::<bool>(SignerState::VT_IS_AWAITING_APPROVAL, is_awaiting_approval, false);
-  }
-  #[inline]
-  pub fn add_is_reconnecting(&mut self, is_reconnecting: bool) {
-    self.fbb_.push_slot::<bool>(SignerState::VT_IS_RECONNECTING, is_reconnecting, false);
-  }
-  #[inline]
-  pub fn add_is_unavailable(&mut self, is_unavailable: bool) {
-    self.fbb_.push_slot::<bool>(SignerState::VT_IS_UNAVAILABLE, is_unavailable, false);
-  }
-  #[inline]
-  pub fn add_is_failed(&mut self, is_failed: bool) {
-    self.fbb_.push_slot::<bool>(SignerState::VT_IS_FAILED, is_failed, false);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> SignerStateBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    SignerStateBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<SignerState<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn signer_state_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, SIGNER_STATE_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for SignerState<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("SignerState");
-      ds.field("signer_kind", &self.signer_kind());
-      ds.field("state", &self.state());
-      ds.field("has_reason", &self.has_reason());
-      ds.field("reason", &self.reason());
-      ds.field("is_ready", &self.is_ready());
-      ds.field("is_awaiting_approval", &self.is_awaiting_approval());
-      ds.field("is_reconnecting", &self.is_reconnecting());
-      ds.field("is_unavailable", &self.is_unavailable());
-      ds.field("is_failed", &self.is_failed());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `SignerState`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_signer_state_unchecked`.
-pub fn root_as_signer_state(buf: &[u8]) -> Result<SignerState<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<SignerState>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `SignerState` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_signer_state_unchecked`.
-pub fn size_prefixed_root_as_signer_state(buf: &[u8]) -> Result<SignerState<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<SignerState>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `SignerState` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_signer_state_unchecked`.
-pub fn root_as_signer_state_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<SignerState<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<SignerState<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `SignerState` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_signer_state_unchecked`.
-pub fn size_prefixed_root_as_signer_state_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<SignerState<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<SignerState<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a SignerState and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `SignerState`.
-pub unsafe fn root_as_signer_state_unchecked(buf: &[u8]) -> SignerState<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<SignerState>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed SignerState and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `SignerState`.
-pub unsafe fn size_prefixed_root_as_signer_state_unchecked(buf: &[u8]) -> SignerState<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<SignerState>(buf) }
-}
-pub const SIGNER_STATE_IDENTIFIER: &str = "KSST";
+        #[inline]
+        pub fn signer_state_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, SIGNER_STATE_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn signer_state_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, SIGNER_STATE_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_signer_state_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<SignerState<'a>>,
+        ) {
+            fbb.finish(root, Some(SIGNER_STATE_IDENTIFIER));
+        }
 
-#[inline]
-pub fn signer_state_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, SIGNER_STATE_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_signer_state_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<SignerState<'a>>) {
-  fbb.finish(root, Some(SIGNER_STATE_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_signer_state_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<SignerState<'a>>) {
-  fbb.finish_size_prefixed(root, Some(SIGNER_STATE_IDENTIFIER));
-}
-}  // pub mod kernel
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_signer_state_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<SignerState<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(SIGNER_STATE_IDENTIFIER));
+        }
+    } // pub mod kernel
+} // pub mod nmp

@@ -19,6 +19,7 @@ use crate::report::ScenarioMetrics;
 use crate::scenarios::{finish_scenario, gate_eq, gate_max, gate_min};
 use nmp_core::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use nmp_testing::harness_probe::recv_latest_until;
 use std::time::{Duration, Instant};
 
@@ -35,11 +36,11 @@ const SEED_PUBKEYS: &[&str] = &[
 pub(crate) fn profile_thrashing() -> Scenario {
     let wall_start = Instant::now();
     let (tx, rx) = spawn_actor();
-    let _ = tx.send(ActorCommand::Start {
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 80,
         emit_hz: 4,
         initial_relays: Vec::new(),
-    });
+    }));
 
     let connected = wait_connected(&rx);
 
@@ -78,7 +79,7 @@ pub(crate) fn profile_thrashing() -> Scenario {
                 let pubkey = SEED_PUBKEYS[slot % pool_size];
                 let consumer = format!("bench-{}", slot % 20);
 
-                let _ = tx.send(ActorCommand::ResolveRef {
+                let _ = tx.send(ActorCommand::Refs(RefsCommand::Resolve {
                     namespace: RefNamespace::Profile,
                     key: pubkey.to_string(),
                     consumer_id: consumer.clone(),
@@ -86,12 +87,12 @@ pub(crate) fn profile_thrashing() -> Scenario {
                     liveness: RefLiveness::CacheOk,
                     force: false,
                     hints: Vec::new(),
-                });
-                let _ = tx.send(ActorCommand::ReleaseRef {
+                }));
+                let _ = tx.send(ActorCommand::Refs(RefsCommand::Release {
                     namespace: RefNamespace::Profile,
                     key: pubkey.to_string(),
                     consumer_id: consumer,
-                });
+                }));
                 mount_count += 1;
                 dispatch_count += 2;
 
@@ -125,7 +126,7 @@ pub(crate) fn profile_thrashing() -> Scenario {
         usize::MAX
     };
 
-    let _ = tx.send(ActorCommand::Shutdown);
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 
     let total_ops = mount_count * 2;
 

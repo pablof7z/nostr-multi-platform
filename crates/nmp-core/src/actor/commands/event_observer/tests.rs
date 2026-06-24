@@ -206,7 +206,11 @@ fn notify_observer_by_id_reaches_muted_observer() {
     let id = register_rust_observer_muted(&slot, obs.clone());
     // Global fan-out must NOT reach it.
     notify_observers(&slot, &event());
-    assert_eq!(obs.0.load(Ordering::SeqCst), 0, "still muted after global notify");
+    assert_eq!(
+        obs.0.load(Ordering::SeqCst),
+        0,
+        "still muted after global notify"
+    );
     // Targeted delivery MUST reach it.
     let found = notify_observer_by_id(&slot, id, &event());
     assert!(found, "notify_observer_by_id must return true for known id");
@@ -229,7 +233,10 @@ fn activate_observer_joins_global_fanout() {
     assert_eq!(obs.0.load(Ordering::SeqCst), 0, "muted before activate");
     // Activate.
     let activated = activate_observer(&slot, id);
-    assert!(activated, "activate_observer must return true for a known muted id");
+    assert!(
+        activated,
+        "activate_observer must return true for a known muted id"
+    );
     // After activation: global fan-out reaches it.
     notify_observers(&slot, &event());
     notify_observers(&slot, &event());
@@ -254,8 +261,15 @@ fn unregister_removes_muted_observer() {
     unregister_observer(&slot, id);
     // Targeted delivery after unregister returns false.
     let found = notify_observer_by_id(&slot, id, &event());
-    assert!(!found, "notify_observer_by_id must return false for removed id");
-    assert_eq!(obs.0.load(Ordering::SeqCst), 1, "count must not change after unregister");
+    assert!(
+        !found,
+        "notify_observer_by_id must return false for removed id"
+    );
+    assert_eq!(
+        obs.0.load(Ordering::SeqCst),
+        1,
+        "count must not change after unregister"
+    );
 }
 
 /// A panicking targeted observer must be isolated — other observers are unaffected
@@ -273,7 +287,10 @@ fn panicking_targeted_observer_isolated() {
     let boom_id = register_rust_observer_muted(&slot, Arc::new(Boom));
     // Must not propagate the panic; returns true (registration found).
     let found = notify_observer_by_id(&slot, boom_id, &event());
-    assert!(found, "notify_observer_by_id returns true even when observer panics");
+    assert!(
+        found,
+        "notify_observer_by_id returns true even when observer panics"
+    );
 }
 
 #[test]

@@ -18,8 +18,9 @@ use nmp_core::substrate::{
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent as SubstrateUnsignedEvent};
 use nmp_core::publish::PublishTarget;
-use nmp_core::actor::ActorCommand;
 use nmp_core::{ActorMail, CommandSender};
+use nmp_core::actor::{ActorCommand};
+use nmp_core::actor::{ActionLedgerCommand, PublishCommand, SignCommand};
 use nostr::nips::nip44::{self, Version as Nip44Version};
 use nostr::JsonUtil;
 use std::cell::RefCell;
@@ -200,12 +201,12 @@ impl ChainDriver {
                 panic!("dm_send chain only sends commands");
             };
             match cmd {
-                ActorCommand::Nip44EncryptForAccount {
+                ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
                     peer_pubkey,
                     plaintext,
                     signer_pubkey,
                     continuation,
-                } => {
+                }) => {
                     self.pinned_signers.push(signer_pubkey);
                     let peer = nostr::PublicKey::parse(&peer_pubkey).expect("peer pubkey");
                     let ciphertext = nip44::encrypt(
@@ -217,11 +218,11 @@ impl ChainDriver {
                     .expect("seal encrypt");
                     continuation.call(Ok(ciphertext));
                 }
-                ActorCommand::SignEventForAccount {
+                ActorCommand::Sign(SignCommand::EventForAccount {
                     unsigned,
                     signer_pubkey,
                     continuation,
-                } => {
+                }) => {
                     self.pinned_signers.push(signer_pubkey);
                     let signed = self.sign_seal(&unsigned);
                     continuation.call(Ok(signed));
@@ -242,7 +243,7 @@ impl ChainDriver {
                 panic!("dm_send chain only sends commands");
             };
             match cmd {
-                ActorCommand::Nip44EncryptForAccount { continuation, .. } => {
+                ActorCommand::Sign(SignCommand::Nip44EncryptForAccount { continuation, .. }) => {
                     continuation.call(Err(reason.to_string()));
                 }
                 terminal => self.terminals.push(terminal),
@@ -255,11 +256,11 @@ impl ChainDriver {
         self.terminals
             .iter()
             .filter_map(|c| match c {
-                ActorCommand::PublishSignedEvent {
+                ActorCommand::Publish(PublishCommand::SignedEvent {
                     raw,
                     target,
                     correlation_id,
-                } => Some((raw, target, correlation_id)),
+                }) => Some((raw, target, correlation_id)),
                 _ => None,
             })
             .collect()
@@ -282,10 +283,10 @@ impl ChainDriver {
         self.terminals
             .iter()
             .filter_map(|c| match c {
-                ActorCommand::RecordActionFailure {
+                ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
                     correlation_id,
                     reason,
-                } => Some((correlation_id.as_str(), reason.as_str())),
+                }) => Some((correlation_id.as_str(), reason.as_str())),
                 _ => None,
             })
             .collect()
@@ -680,12 +681,12 @@ fn self_copy_failure_surfaces_toast_only_not_action_failure() {
     while let Ok(mail) = rx.recv_timeout(Duration::from_millis(200)) {
         let ActorMail::Command(cmd) = mail else { unreachable!() };
         match cmd {
-            ActorCommand::Nip44EncryptForAccount {
+            ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
                 peer_pubkey,
                 plaintext,
                 signer_pubkey,
                 continuation,
-            } => {
+            }) => {
                 driver.pinned_signers.push(signer_pubkey);
                 if recipient_done {
                     // This is the self-copy's encrypt — fail it.
@@ -702,16 +703,16 @@ fn self_copy_failure_surfaces_toast_only_not_action_failure() {
                     continuation.call(Ok(ct));
                 }
             }
-            ActorCommand::SignEventForAccount {
+            ActorCommand::Sign(SignCommand::EventForAccount {
                 unsigned,
                 signer_pubkey,
                 continuation,
-            } => {
+            }) => {
                 driver.pinned_signers.push(signer_pubkey);
                 let signed = driver.sign_seal(&unsigned);
                 continuation.call(Ok(signed));
             }
-            ActorCommand::PublishSignedEvent { .. } => {
+            ActorCommand::Publish(PublishCommand::SignedEvent { .. }) => {
                 // The recipient publish — record it and mark recipient done so
                 // the next encrypt (self-copy) is failed.
                 recipient_done = true;

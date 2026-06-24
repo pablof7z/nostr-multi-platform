@@ -38,10 +38,10 @@ impl ActionModule for EnqueueThenPanicModule {
         send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         // Enqueue the real terminal-bearing command, then panic.
-        send(nmp_core::actor::ActorCommand::RecordActionSuccess {
+        send(nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
             correlation_id: correlation_id.to_string(),
             result_json: None,
-        });
+        }));
         panic!("module panicked after enqueueing");
     }
 }

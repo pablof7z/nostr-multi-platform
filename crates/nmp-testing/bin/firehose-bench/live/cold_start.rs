@@ -14,6 +14,7 @@ use super::{drain, round2, visible_items, wait_connected, wait_update, Scenario}
 use crate::report::ScenarioMetrics;
 use crate::scenarios::{finish_scenario, gate_max};
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::actor::{LifecycleCommand};
 use std::time::{Duration, Instant};
 
 const FIRST_ITEM_GATE_MS: f64 = 800.0;
@@ -24,11 +25,11 @@ const FILLED_TIMEOUT: Duration = Duration::from_secs(60);
 pub(crate) fn cold_start() -> Scenario {
     let wall_start = Instant::now();
     let (tx, rx) = spawn_actor();
-    let _ = tx.send(ActorCommand::Start {
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 200,
         emit_hz: 4,
         initial_relays: Vec::new(),
-    });
+    }));
 
     let connected = wait_connected(&rx);
 
@@ -78,7 +79,7 @@ pub(crate) fn cold_start() -> Scenario {
         }
     }
 
-    let _ = tx.send(ActorCommand::Shutdown);
+    let _ = tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     let _ = drain(&rx);
 
     let first_ms = first_item_ms.unwrap_or(FIRST_ITEM_TIMEOUT.as_millis() as f64);

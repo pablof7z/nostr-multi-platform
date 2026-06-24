@@ -13,9 +13,7 @@
 //! the real content-tree / render-data shape without naming `nmp-content`.
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{
-    decode_snapshot_typed_projections, encode_snapshot_frame, SnapshotEnvelope, TypedProjectionData,
-};
+use nmp_core::{decode_snapshot_typed_projections, encode_snapshot_frame, SnapshotEnvelope, TypedProjectionData};
 use nmp_feed::{FeedCursor, FeedPage, RootCard, RootFeedSnapshot};
 use nmp_nip01::op_feed::{
     decode_op_feed_snapshot, encode_op_feed_snapshot, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER,

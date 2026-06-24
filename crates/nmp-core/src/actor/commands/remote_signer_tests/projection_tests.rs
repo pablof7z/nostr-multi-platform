@@ -7,10 +7,7 @@
 
 use std::sync::Arc;
 
-use super::{
-    super::*,
-    fresh, stub_signer,
-};
+use super::{super::*, fresh, stub_signer};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
@@ -157,7 +154,10 @@ fn signer_state_projection_reflects_transitions() {
         .expect("signer_state typed sidecar present after connected");
     let dto = crate::actor::typed_projections::decode_signer_state(&entry.payload)
         .expect("signer_state decodes");
-    assert_eq!(dto.state, "ready", "connected transition must surface as 'ready'");
+    assert_eq!(
+        dto.state, "ready",
+        "connected transition must surface as 'ready'"
+    );
     assert_eq!(
         dto.signer_kind, "nip46",
         "NIP-46 broker path must stamp signer_kind=nip46"
@@ -180,7 +180,10 @@ fn signer_state_projection_reflects_transitions() {
         .expect("signer_state typed sidecar present after reconnecting");
     let dto = crate::actor::typed_projections::decode_signer_state(&entry.payload)
         .expect("signer_state decodes");
-    assert_eq!(dto.state, "reconnecting", "relay flap must project reconnecting");
+    assert_eq!(
+        dto.state, "reconnecting",
+        "relay flap must project reconnecting"
+    );
     assert!(dto.is_reconnecting);
     assert_eq!(dto.reason.as_deref(), Some("connection reset by peer"));
 

@@ -1,8 +1,8 @@
 use nostr::nips::nip19::ToBech32;
 
 use super::commands::{
-    IdentityRuntime, add_signer, new_bunker_handshake_slot, new_signer_state_slot,
-    sign_with_account_nonblocking, switch_active,
+    add_signer, new_bunker_handshake_slot, new_signer_state_slot, sign_with_account_nonblocking,
+    switch_active, IdentityRuntime,
 };
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
@@ -46,11 +46,9 @@ fn app_managed_local_signer_is_hidden_signable_and_not_switchable() {
 
     switch_active(&mut identity, &mut kernel, &hidden_pubkey, false);
     assert_eq!(identity.active_pubkey(), Some(active));
-    assert!(
-        kernel
-            .last_error_toast_snapshot()
-            .is_some_and(|toast| toast.contains("app-managed"))
-    );
+    assert!(kernel
+        .last_error_toast_snapshot()
+        .is_some_and(|toast| toast.contains("app-managed")));
 
     let unsigned = crate::substrate::UnsignedEvent {
         pubkey: "ignored-by-signer".into(),

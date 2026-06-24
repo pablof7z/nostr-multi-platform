@@ -646,9 +646,7 @@ pub(crate) fn follow_many(
         if pk.len() != 64 || !crate::kernel::is_hex_pubkey(pk) {
             continue; // skip malformed entries
         }
-        if pk.as_str() == self_pk
-            || active_pubkey_hint.map_or(false, |h| h == pk.as_str())
-        {
+        if pk.as_str() == self_pk || active_pubkey_hint.map_or(false, |h| h == pk.as_str()) {
             continue; // skip self-follow
         }
         merged_tags = crate::tags::kind3_tags_after_add(&merged_tags, pk);

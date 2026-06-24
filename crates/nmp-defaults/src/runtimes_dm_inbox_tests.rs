@@ -14,8 +14,9 @@
 use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::actor::ActorCommand;
 use nmp_core::{ActorMail, CommandSender};
+use nmp_core::actor::{ActorCommand};
+use nmp_core::actor::{SignCommand};
 use nmp_nip17::DmInboxProjection;
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, Tag, Timestamp};
 
@@ -51,12 +52,12 @@ fn feed_dm(proj: &DmInboxProjection, rx: &Receiver<ActorMail>, receiver_keys: &K
 /// outer→seal→store chain to completion.
 fn drive_decrypts(rx: &Receiver<ActorMail>, keys: &Keys) {
     while let Ok(mail) = rx.try_recv() {
-        let ActorMail::Command(ActorCommand::Nip44DecryptForAccount {
+        let ActorMail::Command(ActorCommand::Sign(SignCommand::Nip44DecryptForAccount {
             peer_pubkey,
             ciphertext,
             continuation,
             ..
-        }) = mail
+        })) = mail
         else {
             continue;
         };

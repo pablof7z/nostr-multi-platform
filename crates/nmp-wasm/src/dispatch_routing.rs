@@ -39,10 +39,7 @@
 //! the routing table has a single owner that codegen / kernel-namespace
 //! additions touch directly.
 
-use nmp_core::{
-    EventShape, KernelAction, KernelReducer, OutboundMessage, ProfileShape, RefLiveness,
-    RefNamespace, RefShape,
-};
+use nmp_core::{EventShape, KernelAction, KernelReducer, OutboundMessage, ProfileShape, RefLiveness, RefNamespace, RefShape};
 use serde_json::Value;
 
 use crate::protocol::ActionDispatch;

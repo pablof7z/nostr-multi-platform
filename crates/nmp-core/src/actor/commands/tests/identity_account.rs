@@ -65,7 +65,7 @@ fn create_account_generates_fresh_active_key() {
 fn create_account_empty_relays_keeps_preconfigured_relays() {
     // New contract: `nmp-core` no longer owns a hardcoded onboarding default.
     // The app declares its relay set (via `NmpAppBuilder` /
-    // `ActorCommand::Start { initial_relays }`); `create_account` only
+    // `ActorCommand::Lifecycle(LifecycleCommand::Start { initial_relays })`); `create_account` only
     // overwrites `configured_relays` when the caller declares relays. With an
     // empty `relays` arg the kernel's pre-existing relay set is preserved.
     let (mut id, mut kernel) = fresh();

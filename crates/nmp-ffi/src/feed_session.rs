@@ -30,6 +30,7 @@
 //!   closures, releasing everything the open registered (no leak).
 
 use crate::NmpApp;
+use nmp_core::actor::{ContactsCommand, InterestsCommand};
 use nmp_core::__ffi_internal::{
     unregister_observer, KernelEventObserverSlot, SnapshotProjectionSlot,
 };
@@ -230,7 +231,7 @@ impl FeedTeardown {
     /// follow-feed acquisition kinds, which registers M2 follow-feed interests
     /// against the active account; revoking observers + unregistering the feed
     /// controller does NOT release those actor-owned interests — only
-    /// `ActorCommand::ClearActiveFollowsFeed` does (it drives
+    /// `ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed)` does (it drives
     /// `kernel.set_follow_feed_kinds(empty)` →
     /// `sync_follow_feed_interests(&[])`, withdrawing every follow-feed
     /// interest, resetting `timeline_authors`, and emitting the CLOSE diff on
@@ -252,7 +253,7 @@ impl FeedTeardown {
     /// This is the close-side of a non-default scope's acquisition (the
     /// perspective compiler's `ContactList` / `ListMembers` / `Wot` / `Tag` /
     /// set-algebra arms register their internal interests with
-    /// `ActorCommand::OpenInterest { filter_json, consumer_id, scope }`, the
+    /// `ActorCommand::Interests(InterestsCommand::OpenInterest { filter_json, consumer_id, scope })`, the
     /// `consumer_id` being the session's projection key). Closing the same
     /// triple detaches that owner; the kernel reconstructs the same registry
     /// slot from the `InterestShape` hash, so the `(filter_json, consumer_id,

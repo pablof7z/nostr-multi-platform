@@ -10,7 +10,7 @@
 //! the feed controller / revoking observers / removing the projection.
 //!
 //! The teardown-recipe fix wires `close_feed` to ALSO issue
-//! `ActorCommand::ClearActiveFollowsFeed`, which the actor dispatches to
+//! `ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed)`, which the actor dispatches to
 //! [`super::clear_active_follows_feed`] →
 //! `kernel.set_follow_feed_kinds(empty)`. THIS is the path that withdraws the
 //! follow-feed interests + clears the active-follows internal state.
@@ -32,6 +32,7 @@
 //! (before the final notify); these prove what that command DOES.
 
 use super::*;
+use crate::actor::ContactsCommand;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::WireFrame;
@@ -121,7 +122,7 @@ fn close_feed_clears_active_follows_interests_and_state() {
          declare + kind:3"
     );
 
-    // CLOSE: the EXACT handler `ActorCommand::ClearActiveFollowsFeed` dispatches
+    // CLOSE: the EXACT handler `ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed)` dispatches
     // — the command the fixed `close_feed` teardown recipe now issues.
     let _outbound = clear_active_follows_feed(&id, &mut kernel);
     let frames = kernel.drain_lifecycle_tick();

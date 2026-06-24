@@ -6,7 +6,7 @@
 //! `ActionModule::execute` is a *static* method whose only output is enqueuing
 //! `ActorCommand`s — by design, it has no access to per-app projection state.
 //! `PublishModule`'s executor encodes everything it needs into a typed
-//! `ActorCommand::PublishRawEvent { kind, tags, content, target, ... }` and the
+//! `ActorCommand::Publish(PublishCommand::RawEvent { kind, tags, content, target, ... })` and the
 //! actor's dispatch arm signs+publishes. That works because publish state lives
 //! in the kernel.
 //!

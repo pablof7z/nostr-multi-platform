@@ -46,6 +46,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::actor::ActorCommand;
+use crate::actor::InterestsCommand;
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
@@ -162,11 +163,15 @@ impl ActionModule for BrowseRelayModule {
                     lifecycle: lc,
                     is_indexer_discovery: false,
                 };
-                send(ActorCommand::PushInterest(interest));
+                send(ActorCommand::Interests(InterestsCommand::PushInterest(
+                    interest,
+                )));
                 Ok(())
             }
             BrowseRelayAction::Close { interest_id } => {
-                send(ActorCommand::WithdrawInterest(InterestId(interest_id)));
+                send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
+                    InterestId(interest_id),
+                )));
                 Ok(())
             }
         }

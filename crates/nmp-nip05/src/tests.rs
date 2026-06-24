@@ -11,8 +11,9 @@ use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext};
-use nmp_core::actor::ActorCommand;
 use nmp_core::{ActorMail};
+use nmp_core::actor::{ActorCommand};
+use nmp_core::actor::{ActionLedgerCommand};
 
 use crate::ResolveNip05Command;
 
@@ -71,10 +72,10 @@ fn failed_lookup_emits_diagnostic_toast_and_failure_record() {
     let second = drain_one(&rx, Duration::from_secs(2))
         .expect("a correlation_id must yield a RecordActionFailure");
     match second {
-        ActorCommand::RecordActionFailure {
+        ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
             correlation_id,
             reason,
-        } => {
+        }) => {
             assert_eq!(correlation_id, "corr-1");
             assert!(reason.contains("alice@nonexistent.invalid"));
         }

@@ -20,6 +20,7 @@
 
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ActionLedgerCommand, RefsCommand};
 
 pub mod parse;
 
@@ -101,10 +102,10 @@ impl ProtocolCommand for ResolveNip05Command {
                         message: message.clone(),
                     });
                     if let Some(cid) = correlation_id {
-                        ctx.send(ActorCommand::RecordActionFailure {
+                        ctx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
                             correlation_id: cid,
                             reason: message,
-                        });
+                        }));
                     }
                     return Ok(());
                 }
@@ -121,7 +122,7 @@ impl ProtocolCommand for ResolveNip05Command {
                         // fetches the kind:0 (store-first, OneShot on miss) and
                         // surfaces it in `refs.profile` keyed by the pubkey —
                         // identical to a `nmp_app_resolve_ref` profile claim.
-                        let _ = worker_tx.send(ActorCommand::ResolveRef {
+                        let _ = worker_tx.send(ActorCommand::Refs(RefsCommand::Resolve {
                             namespace: nmp_core::RefNamespace::Profile,
                             key: pubkey,
                             consumer_id: NIP05_RESOLVE_CONSUMER_ID.to_string(),
@@ -131,7 +132,7 @@ impl ProtocolCommand for ResolveNip05Command {
                             liveness: nmp_core::RefLiveness::CacheOk,
                             force: false,
                             hints: Vec::new(),
-                        });
+                        }));
                     }
                     Err(reason) => {
                         // D6 — surface the failure as observable state; never
@@ -142,10 +143,10 @@ impl ProtocolCommand for ResolveNip05Command {
                             message: message.clone(),
                         });
                         if let Some(cid) = correlation_id {
-                            let _ = worker_tx.send(ActorCommand::RecordActionFailure {
+                            let _ = worker_tx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
                                 correlation_id: cid,
                                 reason: message,
-                            });
+                            }));
                         }
                     }
                 }
@@ -168,10 +169,10 @@ impl ProtocolCommand for ResolveNip05Command {
                 message: message.clone(),
             });
             if let Some(cid) = correlation_id {
-                ctx.send(ActorCommand::RecordActionFailure {
+                ctx.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
                     correlation_id: cid,
                     reason: message,
-                });
+                }));
             }
             Ok(())
         }

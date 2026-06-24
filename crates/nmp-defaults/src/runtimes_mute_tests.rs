@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{InterestsCommand};
 use nmp_nip51::{active_mute_list_interest, active_mute_list_interest_id};
 use nostr::Keys;
 
@@ -147,7 +148,7 @@ fn bunker_only_account_activates_mute_list_interest() {
 
 fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
     match cmd {
-        ActorCommand::PushInterest(interest) => {
+        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
             assert_eq!(
                 interest.id,
                 active_mute_list_interest(pubkey).id,
@@ -160,7 +161,7 @@ fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
 
 fn assert_withdraw(cmd: &ActorCommand) {
     match cmd {
-        ActorCommand::WithdrawInterest(id) => {
+        ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) => {
             assert_eq!(
                 *id,
                 active_mute_list_interest_id(),

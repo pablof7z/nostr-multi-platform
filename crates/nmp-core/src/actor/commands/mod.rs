@@ -25,18 +25,18 @@
 //! is purely to host the `Box<dyn RemoteSignerHandle>` once the broker has
 //! completed the handshake:
 //!
-//! - `ActorCommand::AddSigner { source: SignerSource::BunkerUri(uri), .. }` —
+//! - `ActorCommand::Identity(IdentityCommand::AddSigner { source: SignerSource::BunkerUri(uri), .. })` —
 //!   actor shape-validates the URI and seeds the identity runtime's
 //!   bunker-handshake slot with `"connecting"`. The broker then drives the real
 //!   handshake on its own relay client. D0: NIP-46 remote signing is an app
 //!   noun, so handshake state is NOT a typed `KernelSnapshot` field — it is
 //!   surfaced through the built-in `"bunker_handshake"` snapshot projection.
-//! - `ActorCommand::BunkerHandshakeProgress { stage, code, message }` — the adapter
+//! - `ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress { stage, code, message })` — the adapter
 //!   pushes broker progress (`"connecting"` → `"awaiting_pubkey"` →
 //!   `"ready"` / `"failed"`); the actor reflects it into the
 //!   bunker-handshake slot the
 //!   `"bunker_handshake"` projection reads.
-//! - `ActorCommand::AddSigner { source: SignerSource::RemoteHandle(handle), .. }`
+//! - `ActorCommand::Identity(IdentityCommand::AddSigner { source: SignerSource::RemoteHandle(handle), .. })`
 //!   — once the handshake completes (the broker has the user's pubkey from
 //!   `get_public_key`), it hands the fully-initialized handle to the actor. The
 //!   actor inserts it into `IdentityRuntime.remote_signers`, applies the
@@ -83,6 +83,23 @@ mod lifecycle;
 mod publish;
 #[cfg(feature = "native")]
 mod relays;
+
+// ADR-0065 — `ActorCommand` sub-enum families. Each sub-enum groups cohesive
+// command verbs under one top-level `ActorCommand` variant. The dispatch arm
+// matches the family first, then the verb (see `actor/dispatch/mod.rs`).
+// Always-compiled (no `native` gate): the command *types* are pure data, even
+// if the dispatch *handlers* run on the native actor runtime.
+pub(super) mod action_ledger_command;
+pub(super) mod contacts_command;
+pub(super) mod identity_command;
+pub(super) mod interests_command;
+pub(super) mod lifecycle_command;
+pub(super) mod publish_command;
+pub(super) mod refs_command;
+pub(super) mod relay_command;
+pub(super) mod sign_command;
+#[cfg(any(test, feature = "test-support"))]
+pub(super) mod test_support_command;
 // V-41 — `zap` + `zap_lnurl` moved to
 // `nmp_nip57::lnurl::FetchLnurlInvoiceCommand` (a `ProtocolCommand`
 // dispatched via `ActorCommand::Protocol`). D0: `nmp-core` carries no
@@ -226,9 +243,8 @@ pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEvent
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
-    clear_active_follows_feed, declare_active_follows_feed, follow, follow_many,
-    publish_profile, publish_signed_event, publish_unsigned_event,
-    publish_unsigned_event_to_relays,
+    clear_active_follows_feed, declare_active_follows_feed, follow, follow_many, publish_profile,
+    publish_signed_event, publish_unsigned_event, publish_unsigned_event_to_relays,
 };
 // V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
 // LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`

@@ -11,6 +11,7 @@
 //! worker threads no longer name `ActorCommand` directly.
 
 use crate::actor::ActorCommand;
+use crate::actor::{ActionLedgerCommand, SignCommand};
 
 /// Build an [`ActorCommand::SignEventForAccount`] (ADR-0043 Decision 2) — the
 /// generic, backend-transparent sign-account port.
@@ -28,11 +29,11 @@ pub fn build_sign_event_for_account(
     signer_pubkey: Option<String>,
     continuation: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
 ) -> ActorCommand {
-    ActorCommand::SignEventForAccount {
+    ActorCommand::Sign(SignCommand::EventForAccount {
         unsigned,
         signer_pubkey,
         continuation: crate::actor::SignContinuation::new(continuation),
-    }
+    })
 }
 
 /// Build an [`ActorCommand::Nip44EncryptForAccount`] (ADR-0050 §D1) — the NIP-44
@@ -51,12 +52,12 @@ pub fn build_nip44_encrypt_for_account(
     signer_pubkey: Option<String>,
     continuation: impl FnOnce(Result<String, String>) + Send + 'static,
 ) -> ActorCommand {
-    ActorCommand::Nip44EncryptForAccount {
+    ActorCommand::Sign(SignCommand::Nip44EncryptForAccount {
         peer_pubkey,
         plaintext,
         signer_pubkey,
         continuation: crate::actor::CipherContinuation::new(continuation),
-    }
+    })
 }
 
 /// Build an [`ActorCommand::Nip44DecryptForAccount`] (ADR-0050 §D1) — the
@@ -78,12 +79,12 @@ pub fn build_nip44_decrypt_for_account(
     signer_pubkey: Option<String>,
     continuation: impl FnOnce(Result<String, String>) + Send + 'static,
 ) -> ActorCommand {
-    ActorCommand::Nip44DecryptForAccount {
+    ActorCommand::Sign(SignCommand::Nip44DecryptForAccount {
         peer_pubkey,
         ciphertext,
         signer_pubkey,
         continuation: crate::actor::CipherContinuation::new(continuation),
-    }
+    })
 }
 
 // ── #1721 slice 3a ────────────────────────────────────────────────────────
@@ -102,10 +103,10 @@ pub fn build_record_action_success(
     correlation_id: String,
     result_json: Option<String>,
 ) -> ActorCommand {
-    ActorCommand::RecordActionSuccess {
+    ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
         correlation_id,
         result_json,
-    }
+    })
 }
 
 /// Build an [`ActorCommand::RecordActionFailure`] for use by a spawned worker
@@ -116,8 +117,8 @@ pub fn build_record_action_success(
 /// [`ProtocolCommandContext::record_action_failure`](super::ProtocolCommandContext::record_action_failure)
 /// instead.
 pub fn build_record_action_failure(correlation_id: String, reason: String) -> ActorCommand {
-    ActorCommand::RecordActionFailure {
+    ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
         correlation_id,
         reason,
-    }
+    })
 }

@@ -183,7 +183,7 @@ fn claimed_event_embeds_b2_multiple_idle_ticks_omit() {
 
 // ── Group C: freeze guard ─────────────────────────────────────────────────────
 
-/// C.1 — THE FREEZE TEST for `claimed_event_embeds`. `ActorCommand::Reset`
+/// C.1 — THE FREEZE TEST for `claimed_event_embeds`. `ActorCommand::Lifecycle(LifecycleCommand::Reset)`
 /// rebuilds the kernel → new `session_id`, but the producer emission state
 /// SURVIVES. The slot content may encode to BYTE-IDENTICAL bytes. The host
 /// cache reset (new session_id → removeAll) means an omit here would leave the

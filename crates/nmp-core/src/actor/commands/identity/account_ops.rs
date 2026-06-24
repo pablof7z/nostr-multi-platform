@@ -4,8 +4,8 @@
 
 use std::sync::Arc;
 
-use nostr::Keys;
 use nostr::nips::nip19::ToBech32;
+use nostr::Keys;
 use nostr::PublicKey;
 
 use crate::kernel::{AccountSummary, Kernel};

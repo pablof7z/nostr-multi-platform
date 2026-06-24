@@ -10,6 +10,7 @@ use nmp_core::substrate::{
     ActionRejection, ViewDependencies,
 };
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{InterestsCommand};
 use nmp_planner::stable_hash::stable_hash64;
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use serde::{Deserialize, Serialize};
@@ -94,16 +95,16 @@ impl ActionModule for VisibleNoteRelationsModule {
             VisibleNoteRelationsAction::Claim {
                 event_id,
                 consumer_id,
-            } => send(ActorCommand::EnsureInterest {
+            } => send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
                 identity: visible_note_relations_identity(&event_id, &consumer_id),
                 interest: visible_note_relations_interest(&event_id),
-            }),
+            })),
             VisibleNoteRelationsAction::Release {
                 event_id,
                 consumer_id,
-            } => send(ActorCommand::DropInterestOwner(
+            } => send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(
                 visible_note_relations_identity(&event_id, &consumer_id),
-            )),
+            ))),
         }
         Ok(())
     }
@@ -181,7 +182,7 @@ mod tests {
         })
         .expect("claim action should enqueue");
         let mut cmds = rx.try_iter().collect::<Vec<_>>();
-        let ActorCommand::EnsureInterest { identity, interest } = &cmds[0] else {
+        let ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) = &cmds[0] else {
             panic!("expected EnsureInterest");
         };
         assert_eq!(*identity, visible_note_relations_identity(EVENT, "row"));
@@ -199,7 +200,7 @@ mod tests {
         cmds.extend(rx.try_iter());
         assert!(matches!(
             &cmds[1],
-            ActorCommand::DropInterestOwner(identity)
+            ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity))
                 if *identity == visible_note_relations_identity(EVENT, "row")
         ));
     }

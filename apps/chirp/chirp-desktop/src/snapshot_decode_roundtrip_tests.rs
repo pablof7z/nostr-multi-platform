@@ -10,6 +10,7 @@
 
 use super::decode_snapshot_typed;
 use nmp_core::testing::{spawn_actor, ActorCommand};
+use nmp_core::actor::{IdentityCommand, LifecycleCommand};
 use std::time::{Duration, Instant};
 
 /// A fixed nsec used only in tests (same key as nmp-testing's e2e pipeline).
@@ -20,20 +21,20 @@ const TEST_PUBKEY_HEX: &str = "7e7e9c42a91bfef19fa929e5fda1b72e0ebc1a4c1141673e2
 #[test]
 fn decode_snapshot_typed_round_trips_real_kernel_frame() {
     let (tx, rx) = spawn_actor();
-    tx.send(ActorCommand::Start {
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Start {
         visible_limit: 100,
         emit_hz: 0,
         initial_relays: vec![("wss://relay.test".to_string(), "both".to_string())],
-    })
+    }))
     .expect("send Start");
-    tx.send(ActorCommand::AddSigner {
+    tx.send(ActorCommand::Identity(IdentityCommand::AddSigner {
         source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(
             TEST_NSEC.to_string(),
         )),
         make_active: true,
-    })
+    }))
     .expect("send AddSigner");
-    tx.send(ActorCommand::MarkChangedSinceEmit).expect("send MarkChangedSinceEmit");
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit)).expect("send MarkChangedSinceEmit");
 
     // Drain real frames until the typed `accounts` sidecar surfaces the
     // signed-in account through the production decode path.
@@ -97,5 +98,5 @@ fn decode_snapshot_typed_round_trips_real_kernel_frame() {
         "no kind:0 was ingested — display_name must be None (honest placeholder)"
     );
 
-    tx.send(ActorCommand::Shutdown).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
 }

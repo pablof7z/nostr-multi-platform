@@ -20,6 +20,7 @@
 use super::commands::{self, IdentityRuntime};
 use super::dispatch::{dispatch_command, ActorContext};
 use super::ActorCommand;
+use super::IdentityCommand;
 use crate::actor::capability_worker::{spawn_capability_worker, CapabilityWorkSender};
 use crate::actor::{ActorConfigSources, ActorMail, CommandSender};
 use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
@@ -160,8 +161,7 @@ fn dispatch_capability_result(
     let event_store_slot = Arc::new(Mutex::new(None));
     let pull_cursor_registry_slot = crate::slots::new_pull_cursor_registry_handle_slot();
     let active_account_slot = crate::slots::new_active_account_slot();
-    let external_event_sink_dispatcher =
-        crate::substrate::ExternalEventSinkDispatcher::new();
+    let external_event_sink_dispatcher = crate::substrate::ExternalEventSinkDispatcher::new();
     let config = ActorConfigSources {
         storage_path: Arc::new(Mutex::new(None)),
         coverage_hook,
@@ -215,10 +215,10 @@ fn dispatch_capability_result(
     };
 
     dispatch_command(
-        ActorCommand::CapabilityResultReady {
+        ActorCommand::Identity(IdentityCommand::CapabilityResultReady {
             account_id: account_id.to_string(),
             result_json: result_json.to_string(),
-        },
+        }),
         &mut ctx,
     );
     ctx.kernel.last_error_toast_snapshot().cloned()

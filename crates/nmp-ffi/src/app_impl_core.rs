@@ -10,6 +10,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{ContactsCommand, LifecycleCommand, PublishCommand};
 
 use crate::app_struct::NmpApp;
 
@@ -45,8 +46,8 @@ impl NmpApp {
         #[cfg(test)]
         if let Ok(mut tag) = self.last_cmd_tag.lock() {
             *tag = Some(match &cmd {
-                ActorCommand::CancelPublish { .. } => "CancelPublish",
-                ActorCommand::RetryPublish { .. } => "RetryPublish",
+                ActorCommand::Publish(PublishCommand::CancelPublish { .. }) => "CancelPublish",
+                ActorCommand::Publish(PublishCommand::RetryPublish { .. }) => "RetryPublish",
                 _ => "_other",
             });
         }
@@ -63,11 +64,11 @@ impl NmpApp {
 
     /// Mark the kernel dirty so host-registered snapshot projections re-emit.
     ///
-    /// Typed wrapper for [`ActorCommand::MarkChangedSinceEmit`]. Used when
+    /// Typed wrapper for [`ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit)`]. Used when
     /// reusable NMP extension state changes outside a typed kernel field (e.g.
     /// a registered feed viewport expanding older rows).
     pub(crate) fn mark_changed_since_emit(&self) {
-        self.send_cmd(ActorCommand::MarkChangedSinceEmit);
+        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit));
     }
 
 
@@ -91,13 +92,13 @@ impl NmpApp {
                 return false;
             }
         };
-        self.send_cmd(ActorCommand::DeclareActiveFollowsFeed { acquisition_kinds });
+        self.send_cmd(ActorCommand::Contacts(ContactsCommand::DeclareActiveFollowsFeed { acquisition_kinds }));
         true
     }
 
     /// Clear the active-follows feed declaration.
     pub fn clear_active_follows_feed(&self) {
-        self.send_cmd(ActorCommand::ClearActiveFollowsFeed);
+        self.send_cmd(ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed));
     }
 
     /// Register a typed [`nmp_core::substrate::ActionModule`] `M` against the
@@ -201,30 +202,30 @@ impl NmpApp {
         emit_hz: u32,
         initial_relays: Vec<(String, String)>,
     ) {
-        self.send_cmd(ActorCommand::Start {
+        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::Start {
             visible_limit,
             emit_hz,
             initial_relays,
-        });
+        }));
     }
 
     /// Reconfigure the kernel's visible-limit and emit-hz without a full
     /// restart. Typed wrapper for [`ActorCommand::Configure`].
     pub(crate) fn configure(&self, visible_limit: usize, emit_hz: u32) {
-        self.send_cmd(ActorCommand::Configure {
+        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::Configure {
             visible_limit,
             emit_hz,
-        });
+        }));
     }
 
-    /// Signal the kernel to stop. Typed wrapper for [`ActorCommand::Stop`].
+    /// Signal the kernel to stop. Typed wrapper for [`ActorCommand::Lifecycle(LifecycleCommand::Stop)`].
     pub(crate) fn stop(&self) {
-        self.send_cmd(ActorCommand::Stop);
+        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::Stop));
     }
 
-    /// Signal the kernel to reset. Typed wrapper for [`ActorCommand::Reset`].
+    /// Signal the kernel to reset. Typed wrapper for [`ActorCommand::Lifecycle(LifecycleCommand::Reset)`].
     pub(crate) fn reset(&self) {
-        self.send_cmd(ActorCommand::Reset);
+        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::Reset));
     }
 
     /// Report an app-lifecycle phase transition to the actor (T118 / G3).
@@ -232,14 +233,14 @@ impl NmpApp {
     /// Typed wrapper for [`ActorCommand::LifecycleEvent`]. Used by the
     /// lifecycle FFI symbols so they do not construct `ActorCommand` directly.
     pub(crate) fn lifecycle_event(&self, phase: nmp_core::__ffi_internal::LifecyclePhase) {
-        self.send_cmd(ActorCommand::LifecycleEvent(phase));
+        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::LifecycleEvent(phase)));
     }
 
     /// Request clean actor shutdown.
     ///
-    /// Typed wrapper for [`ActorCommand::Shutdown`]; used by `Drop` so the
+    /// Typed wrapper for [`ActorCommand::Lifecycle(LifecycleCommand::Shutdown)`]; used by `Drop` so the
     /// impl does not construct `ActorCommand` directly.
     pub(crate) fn shutdown_actor(&self) {
-        self.send_cmd(ActorCommand::Shutdown);
+        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
     }
 }

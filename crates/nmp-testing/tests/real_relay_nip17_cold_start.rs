@@ -26,11 +26,11 @@
 
 use std::net::TcpStream;
 use std::sync::{Arc, Mutex, Once};
+use std::sync::mpsc::{channel, Receiver};
 use std::time::{Duration, Instant};
 
-use std::sync::mpsc::{channel, Receiver};
-
-use nmp_core::{actor::ActorCommand, ActorMail, CommandSender};
+use nmp_core::{ActorMail, CommandSender};
+use nmp_core::actor::{ActorCommand, SignCommand};
 use nmp_nip17::DmInboxProjection;
 use nmp_nip59::{gift_wrap_local, KIND_GIFT_WRAP};
 use nostr::nips::nip59::RANGE_RANDOM_TIMESTAMP_TWEAK;
@@ -396,12 +396,12 @@ fn run_cold_start_scenario(relay_url: &str) -> Result<bool, String> {
 /// chain step, so this walks the outer→seal→store unwrap to completion.
 fn drive_local_decrypts(rx: &Receiver<ActorMail>, keys: &Keys) {
     while let Ok(mail) = rx.try_recv() {
-        let ActorMail::Command(ActorCommand::Nip44DecryptForAccount {
+        let ActorMail::Command(ActorCommand::Sign(SignCommand::Nip44DecryptForAccount {
             peer_pubkey,
             ciphertext,
             continuation,
             ..
-        }) = mail
+        })) = mail
         else {
             continue;
         };

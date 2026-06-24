@@ -25,6 +25,7 @@
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::{build_dm_rumor, DmInput, SendGiftWrappedDmCommand};
@@ -95,7 +96,7 @@ impl ActionModule for SendDmAction {
         // signer + the recipient's kind:10050 list through the
         // `ProtocolCommandContext`, gift-wraps the rumor twice, and
         // dispatches each kind:1059 envelope back through
-        // `ctx.send(ActorCommand::PublishSignedEvent { ... })`. The
+        // `ctx.send(ActorCommand::Publish(PublishCommand::SignedEvent { ... }))`. The
         // `correlation_id` threads onto every follow-up so the publish
         // engine's terminal verdict clears the host's spinner.
         send(ActorCommand::Protocol(Box::new(SendGiftWrappedDmCommand {

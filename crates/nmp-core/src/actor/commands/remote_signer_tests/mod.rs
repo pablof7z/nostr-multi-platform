@@ -144,9 +144,9 @@ impl RemoteSignerHandle for StubRemoteSigner {
             }
         };
         SignerOp::Ready(
-            nostr::nips::nip44::decrypt(self.keys.secret_key(), &sender, ciphertext).map_err(
-                |e| nmp_signer_iface::SignerError::Backend(format!("stub nip44 decrypt: {e}")),
-            ),
+            nostr::nips::nip44::decrypt(self.keys.secret_key(), &sender, ciphertext).map_err(|e| {
+                nmp_signer_iface::SignerError::Backend(format!("stub nip44 decrypt: {e}"))
+            }),
         )
     }
 
@@ -154,4 +154,3 @@ impl RemoteSignerHandle for StubRemoteSigner {
         // Stub: no-op. NIP-46 inbound routing is the broker's job (Stage 4).
     }
 }
-

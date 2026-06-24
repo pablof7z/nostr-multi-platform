@@ -3,6 +3,7 @@
 //! spawned `run_actor` / `run_actor_with_observers` loop so the dispatch arms
 //! are exercised (not just the command-handler functions they wrap).
 
+use crate::actor::{IdentityCommand, LifecycleCommand};
 use crate::remote_signer::RemoteSignerHandle;
 
 use super::stub_signer;
@@ -130,23 +131,25 @@ fn snapshot_carries_nip46_onboarding_projection() {
     });
 
     cmd_tx
-        .send(ActorCommand::Start {
+        .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
             visible_limit: 50,
             emit_hz: 30,
             initial_relays: Vec::new(),
-        })
+        }))
         .unwrap();
 
     cmd_tx
-        .send(ActorCommand::BunkerHandshakeProgress {
-            stage: "connecting".to_string(),
-            code: None,
-            message: Some("dialing relay".to_string()),
-        })
+        .send(ActorCommand::Identity(
+            IdentityCommand::BunkerHandshakeProgress {
+                stage: "connecting".to_string(),
+                code: None,
+                message: Some("dialing relay".to_string()),
+            },
+        ))
         .unwrap();
 
     thread::sleep(Duration::from_millis(300));
-    let _ = cmd_tx.send(ActorCommand::Shutdown);
+    let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 
     // PR-B (#991/#979): payload is zeroed — read from the typed sidecar instead.
     let sidecars = last_typed_sidecars(&upd_rx);
@@ -193,32 +196,34 @@ fn dispatch_add_remote_signer_then_progress_surfaces_on_snapshot() {
     thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
 
     cmd_tx
-        .send(ActorCommand::Start {
+        .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
             visible_limit: 50,
             emit_hz: 30,
             initial_relays: Vec::new(),
-        })
+        }))
         .unwrap();
 
     let (handle, _count) = stub_signer();
     let pk = handle.pubkey_hex();
     cmd_tx
-        .send(ActorCommand::AddSigner {
+        .send(ActorCommand::Identity(IdentityCommand::AddSigner {
             source: crate::actor::SignerSource::RemoteHandle(handle),
             make_active: true,
-        })
+        }))
         .unwrap();
     cmd_tx
-        .send(ActorCommand::BunkerHandshakeProgress {
-            stage: "ready".to_string(),
-            code: None,
-            message: None,
-        })
+        .send(ActorCommand::Identity(
+            IdentityCommand::BunkerHandshakeProgress {
+                stage: "ready".to_string(),
+                code: None,
+                message: None,
+            },
+        ))
         .unwrap();
 
     // Let the actor drain both commands and emit at least one snapshot.
     thread::sleep(Duration::from_millis(300));
-    let _ = cmd_tx.send(ActorCommand::Shutdown);
+    let _ = cmd_tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown));
 
     // PR-B (#991/#979): payload zeroed — read from the typed sidecar instead.
     let sidecars = last_typed_sidecars(&upd_rx);

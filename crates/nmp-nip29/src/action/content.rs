@@ -4,6 +4,7 @@ use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
 use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::previous_tag_prefix;
@@ -161,12 +162,12 @@ mod tests {
             "executor must send exactly one command, got {cmds:?}"
         );
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::PublishUnsignedEventToRelays {
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
                 event,
                 relays,
                 correlation_id,
                 ..
-            } => {
+            }) => {
                 assert_eq!(event.kind, KIND_CHAT_MESSAGE, "must emit kind:9");
                 assert_eq!(
                     relays,

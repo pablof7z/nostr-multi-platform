@@ -16,8 +16,9 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_store::{RawEvent, VerifiedEvent};
-use nmp_core::actor::ActorCommand;
 use nmp_core::{decode_snapshot_typed_projections, TypedProjectionData};
+use nmp_core::actor::{ActorCommand};
+use nmp_core::actor::{TestSupportCommand};
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, NmpApp};
 
 /// NmpApp instances spawn global actor threads that do not cleanly isolate
@@ -74,7 +75,7 @@ pub fn inject(app: *mut NmpApp, events: Vec<VerifiedEvent>) {
     let app_ref = unsafe { &*app };
     app_ref
         .actor_sender()
-        .send(ActorCommand::IngestPreVerifiedEvents(events))
+        .send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
         .expect("actor command channel must be open");
 }
 

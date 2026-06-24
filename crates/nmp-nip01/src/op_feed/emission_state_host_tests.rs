@@ -227,7 +227,7 @@ fn c9_capability_flag_propagates_from_shared_atomic() {
     );
 }
 
-/// C.10 - THE FREEZE TEST (R6-S1 kill criterion). `ActorCommand::Reset` rebuilds
+/// C.10 - THE FREEZE TEST (R6-S1 kill criterion). `ActorCommand::Lifecycle(LifecycleCommand::Reset)` rebuilds
 /// the kernel -> new `session_id`, but the producer's `FeedEmissionState` and the
 /// engine `Arc` survive, so the next tick encodes byte-identical bytes. The host
 /// cache reset means an omit here would leave the host with no feed entry.

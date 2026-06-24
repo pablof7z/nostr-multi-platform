@@ -10,12 +10,16 @@
 //!
 //! Extracted from `dispatch.rs` to keep `mod.rs` under the LOC ceiling.
 //! No behaviour change — all logic is verbatim from the original file.
+//!
+//! ADR-0065 — the `dispatch_publish` / `dispatch_contacts` /
+//! `dispatch_relay` / `dispatch_action_ledger` functions below match the
+//! `PublishCommand` / `ContactsCommand` / `RelayCommand` /
+//! `ActionLedgerCommand` sub-enums and route each verb to its existing
+//! handler.
 
 use crate::actor::commands;
 use crate::actor::pending_sign::ParkedSignerOps;
-use crate::actor::relay_mgmt::{
-    ensure_relay_worker, shutdown_relay_worker,
-};
+use crate::actor::relay_mgmt::{ensure_relay_worker, shutdown_relay_worker};
 use crate::actor::relay_reconnect::reconnect_relays;
 use crate::relay::OutboundMessage;
 
@@ -358,7 +362,7 @@ pub(super) fn remove_relay(
     Some(outbound)
 }
 
-/// Dispatch `ActorCommand::ReconnectRelays`.
+/// Dispatch `ActorCommand::Relay(RelayCommand::ReconnectRelays)`.
 pub(super) fn reconnect_relays_cmd(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     // #1689: kernel-driven "reconnect all". Fail-closed — a no-op before
@@ -382,8 +386,10 @@ pub(super) fn declare_active_follows_feed(
     Some(outbound)
 }
 
-/// Dispatch `ActorCommand::ClearActiveFollowsFeed`.
-pub(super) fn clear_active_follows_feed(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
+/// Dispatch `ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed)`.
+pub(super) fn clear_active_follows_feed(
+    ctx: &mut ActorContext<'_>,
+) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     let outbound = commands::clear_active_follows_feed(ctx.identity, ctx.kernel);
     maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);

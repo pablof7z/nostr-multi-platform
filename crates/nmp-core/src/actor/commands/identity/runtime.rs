@@ -161,8 +161,7 @@ impl IdentityRuntime {
         // still takes `Box<dyn>` so the broker / nmp-signers contract is
         // unchanged; the actor converts on insertion (ADR-0026 Phase 2 — see
         // the `remote_signers` field doc on [`IdentityRuntime`]).
-        self.remote_signers
-            .insert(id.clone(), Arc::from(handle));
+        self.remote_signers.insert(id.clone(), Arc::from(handle));
         id
     }
 

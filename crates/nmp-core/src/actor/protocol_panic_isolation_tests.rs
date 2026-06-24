@@ -16,10 +16,11 @@
 //! FAIL-BEFORE: with the bare `cmd.run` these tests would unwind through
 //! `dispatch_command` and abort the test thread (a failed test, not a pass).
 
+use crate::actor::ActorCommand;
+use crate::actor::LifecycleCommand;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
-use crate::actor::ActorCommand;
 
 use super::commands::{self, IdentityRuntime};
 use super::signer_port_test_harness::dispatch_one;
@@ -66,7 +67,7 @@ fn protocol_command_panic_is_caught_whole_body() {
     // RefCell borrow taken inside the catch_unwind closure was released on
     // unwind, so no double-borrow panic on the next dispatch).
     let _parked2 = dispatch_one(
-        ActorCommand::MarkChangedSinceEmit,
+        ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit),
         &mut identity,
         &mut kernel,
     );

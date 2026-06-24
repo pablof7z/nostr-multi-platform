@@ -32,6 +32,7 @@
 use std::sync::Arc;
 
 use super::Kernel;
+use crate::actor::LifecycleCommand;
 use crate::planner::{HintSource, LogicalInterest};
 use crate::substrate::{
     AppRelayMode, Direction, OutboxRouter, RoutedRelaySet, RoutingContext, RoutingError,
@@ -265,7 +266,7 @@ impl Kernel {
         );
         // Seed the well-known test relays explicitly. Production no longer
         // hardcodes a relay fallback (the app declares its relay set through
-        // `NmpAppBuilder` / `ActorCommand::Start { initial_relays }`); the
+        // `NmpAppBuilder` / `ActorCommand::Lifecycle(LifecycleCommand::Start { initial_relays })`); the
         // routing-seam tests still need a deterministic cold-start relay set,
         // so the test constructor seeds it the same way an app would — via the
         // public `set_configured_relays` reducer — rather than relying on an

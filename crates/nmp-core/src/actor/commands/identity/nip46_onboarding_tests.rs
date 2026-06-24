@@ -23,9 +23,10 @@ fn idle_slot_yields_table_only_dto() {
     assert_eq!(schemes.last(), Some(&"nostrconnect://"));
     // The nostrconnect probe entry carries only raw tokens now — the brand name
     // is resolved shell-side from the generated signer catalog (#1712, D7/D27).
-    assert!(dto.signer_apps.iter().any(|a| {
-        a.scheme == "nostrconnect://" && a.signer_kind == "nip46"
-    }));
+    assert!(dto
+        .signer_apps
+        .iter()
+        .any(|a| { a.scheme == "nostrconnect://" && a.signer_kind == "nip46" }));
     assert_eq!(dto.stage_kind, None);
     assert_eq!(dto.progress_message, None);
     assert!(!dto.is_in_flight);

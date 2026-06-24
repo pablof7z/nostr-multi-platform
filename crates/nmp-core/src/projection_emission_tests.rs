@@ -110,7 +110,10 @@ fn a1_first_emission_is_always_full_emit() {
     let result = state.should_emit(p.clone(), id0());
     assert!(result.is_some(), "first emission must never be omitted");
     let (emitted_payload, rev) = result.unwrap();
-    assert_eq!(emitted_payload, p, "first emission must carry the full payload");
+    assert_eq!(
+        emitted_payload, p,
+        "first emission must carry the full payload"
+    );
     assert_eq!(rev, 1, "first emission rev must be 1");
     assert_eq!(state.current_rev(), 1);
 }
@@ -148,7 +151,10 @@ fn a4_account_switch_epoch_change_forces_baseline() {
     };
     let p2 = payload(0xBB, 512);
     let result = state.should_emit(p2.clone(), switched);
-    assert!(result.is_some(), "epoch change must force a baseline re-emit");
+    assert!(
+        result.is_some(),
+        "epoch change must force a baseline re-emit"
+    );
     let (emitted, rev) = result.unwrap();
     assert_eq!(emitted, p2);
     assert_eq!(rev, 1, "rev must reset to 1 after epoch change");
@@ -201,7 +207,10 @@ fn b3_back_to_same_value_omits() {
     state.should_emit(p1.clone(), id0());
     state.should_emit(p2.clone(), id0());
     // Now back to p2 (same as last emitted)
-    assert!(state.should_emit(p2, id0()).is_none(), "same-as-last must omit");
+    assert!(
+        state.should_emit(p2, id0()).is_none(),
+        "same-as-last must omit"
+    );
 }
 
 // ── Group C: host-coherence simulation + freeze guard ───────────────────────
@@ -249,8 +258,15 @@ fn c3_epoch_change_resets_host_cache_then_baseline() {
         snapshot_epoch: 1,
     };
     let r3 = state.should_emit(pb.clone(), switched);
-    assert!(r3.is_some(), "first tick after epoch change must be a baseline");
-    assert_eq!(r3.as_ref().unwrap().1, 1, "rev resets to 1 after epoch change");
+    assert!(
+        r3.is_some(),
+        "first tick after epoch change must be a baseline"
+    );
+    assert_eq!(
+        r3.as_ref().unwrap().1,
+        1,
+        "rev resets to 1 after epoch change"
+    );
     host.apply(r3, switched, &pb);
 }
 
@@ -277,7 +293,7 @@ fn c5_monotonic_rev_keeps_reorder_guard_correct() {
 }
 
 /// C.6 — Freeze guard, session_id axis (THE FREEZE TEST).
-/// `ActorCommand::Reset` rebuilds the kernel → new `session_id`, but the
+/// `ActorCommand::Lifecycle(LifecycleCommand::Reset)` rebuilds the kernel → new `session_id`, but the
 /// producer's `TypedProjectionEmissionState` SURVIVES, so the next tick may
 /// encode BYTE-IDENTICAL bytes. The host cache reset (new session_id →
 /// removeAll) means an omit here would leave the host with NO projection entry.
@@ -312,7 +328,11 @@ fn c6_freeze_guard_session_id_change_forces_baseline() {
         "FREEZE GUARD: byte-identical payload after a session_id change MUST \
          emit a baseline (host cache was reset), never omit"
     );
-    assert_eq!(post_reset.as_ref().unwrap().1, 1, "rev restarts at 1 post-Reset");
+    assert_eq!(
+        post_reset.as_ref().unwrap().1,
+        1,
+        "rev restarts at 1 post-Reset"
+    );
     host.apply(post_reset, post, &p);
 }
 
@@ -350,8 +370,14 @@ fn c8_capability_flag_propagates_from_shared_atomic() {
     let flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     let mut state = TypedProjectionEmissionState::new(Arc::clone(&flag));
     let p = payload(0xAB, 512);
-    assert!(state.should_emit(p.clone(), id0()).is_some(), "cap OFF emit 1");
-    assert!(state.should_emit(p.clone(), id0()).is_some(), "cap OFF emit 2");
+    assert!(
+        state.should_emit(p.clone(), id0()).is_some(),
+        "cap OFF emit 1"
+    );
+    assert!(
+        state.should_emit(p.clone(), id0()).is_some(),
+        "cap OFF emit 2"
+    );
     flag.store(true, Ordering::Release); // declare_incremental_apply
     assert!(
         state.should_emit(p.clone(), id0()).is_none(),

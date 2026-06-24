@@ -24,7 +24,14 @@ fn follow_publishes_kind3_with_p_tag() {
     let author = id.active_pubkey().unwrap();
     seed_contact_list(&mut kernel, &author, &[]);
     let target = "b".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
+    let outbound = follow(
+        &id,
+        &mut kernel,
+        &target,
+        true,
+        None,
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
+    );
     assert!(!outbound.is_empty());
     assert!(outbound[0].text.contains("\"kind\":3"));
     assert!(outbound[0].text.contains(&target));
@@ -40,7 +47,14 @@ fn follow_fails_closed_when_kind3_not_loaded() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let target = "b".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
+    let outbound = follow(
+        &id,
+        &mut kernel,
+        &target,
+        true,
+        None,
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
+    );
     assert!(
         outbound.is_empty(),
         "follow with an unloaded kind:3 must publish nothing (fail closed)"
@@ -88,14 +102,25 @@ fn follow_preserves_relay_hints_petnames_and_content_on_edit() {
     );
 
     let target = "b".repeat(64);
-    let outbound = follow(&id, &mut kernel, &target, true, None, &mut crate::actor::pending_sign::ParkedSignerOps::new());
+    let outbound = follow(
+        &id,
+        &mut kernel,
+        &target,
+        true,
+        None,
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
+    );
     assert!(!outbound.is_empty(), "follow must re-publish the kind:3");
     let event = last_published_event_json(&outbound);
     let tags = tags_of(&event);
 
     // Non-`p` tag preserved verbatim.
     assert!(
-        tags.contains(&vec!["r".to_string(), relay.to_string(), "read".to_string()]),
+        tags.contains(&vec![
+            "r".to_string(),
+            relay.to_string(),
+            "read".to_string()
+        ]),
         "non-`p` tag must survive the edit"
     );
     // Existing follow keeps relay hint + petname.
@@ -129,11 +154,22 @@ fn follow_many_creates_first_kind3_for_brand_new_account() {
     // harness defaults to `EmptyContactsLookup` (every list reports unknown), so
     // install the substrate test cache to exercise the real "contacts known"
     // signal `create_account` seeds.
-    kernel.set_contacts_lookup(std::sync::Arc::new(crate::substrate::TestContactsCache::new()));
+    kernel.set_contacts_lookup(std::sync::Arc::new(
+        crate::substrate::TestContactsCache::new(),
+    ));
 
     let profile = std::collections::HashMap::new();
     let relays = vec![("wss://onboard.relay/".to_string(), "both".to_string())];
-    create_account(&mut id, &mut kernel, false, &profile, &relays, &[], false, true);
+    create_account(
+        &mut id,
+        &mut kernel,
+        false,
+        &profile,
+        &relays,
+        &[],
+        false,
+        true,
+    );
     let author = id.active_pubkey().expect("new account pubkey");
     // Guarantee the outbox resolver routes the kind:3 publish to a write relay.
     kernel.seed_kind10002_for_test(&author, &["wss://onboard.relay/"]);
