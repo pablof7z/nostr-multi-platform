@@ -104,10 +104,10 @@ fn refs_profile_sidecar_populates_refs_profiles_across_frames() {
     let mut store = nmp_core::refs::RefProfileStore::new();
 
     // Frame 1: baseline resolves Alice.
-    let frame1 =
-        nmp_core::encode_snapshot_frame(&nmp_core::SnapshotEnvelope::default(), &[refs_sidecar(
-            true, 1, "Alice",
-        )]);
+    let frame1 = nmp_core::encode_snapshot_frame(
+        &nmp_core::SnapshotEnvelope::default(),
+        &[refs_sidecar(true, 1, "Alice")],
+    );
     let snap1 = decode_snapshot_typed(&frame1, &mut store).expect("frame 1 decodes");
     assert_eq!(
         snap1.refs_profiles[&alice].display_name.as_deref(),
@@ -116,10 +116,10 @@ fn refs_profile_sidecar_populates_refs_profiles_across_frames() {
     );
 
     // Frame 2: incremental (NOT a baseline) carrying only Alice's newer kind:0.
-    let frame2 =
-        nmp_core::encode_snapshot_frame(&nmp_core::SnapshotEnvelope::default(), &[refs_sidecar(
-            false, 2, "Alice v2",
-        )]);
+    let frame2 = nmp_core::encode_snapshot_frame(
+        &nmp_core::SnapshotEnvelope::default(),
+        &[refs_sidecar(false, 2, "Alice v2")],
+    );
     let snap2 = decode_snapshot_typed(&frame2, &mut store).expect("frame 2 decodes");
     assert_eq!(
         snap2.refs_profiles[&alice].display_name.as_deref(),

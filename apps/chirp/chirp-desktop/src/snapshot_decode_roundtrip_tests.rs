@@ -9,8 +9,8 @@
 //! (`encode_snapshot_with_envelope`), with no JSON payload on the wire.
 
 use super::decode_snapshot_typed;
-use nmp_core::testing::{spawn_actor, ActorCommand};
 use nmp_core::actor::{IdentityCommand, LifecycleCommand};
+use nmp_core::testing::{spawn_actor, ActorCommand};
 use std::time::{Duration, Instant};
 
 /// A fixed nsec used only in tests (same key as nmp-testing's e2e pipeline).
@@ -28,13 +28,14 @@ fn decode_snapshot_typed_round_trips_real_kernel_frame() {
     }))
     .expect("send Start");
     tx.send(ActorCommand::Identity(IdentityCommand::AddSigner {
-        source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(
-            TEST_NSEC.to_string(),
-        )),
+        source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
         make_active: true,
     }))
     .expect("send AddSigner");
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit)).expect("send MarkChangedSinceEmit");
+    tx.send(ActorCommand::Lifecycle(
+        LifecycleCommand::MarkChangedSinceEmit,
+    ))
+    .expect("send MarkChangedSinceEmit");
 
     // Drain real frames until the typed `accounts` sidecar surfaces the
     // signed-in account through the production decode path.
@@ -62,13 +63,22 @@ fn decode_snapshot_typed_round_trips_real_kernel_frame() {
     );
 
     // --- Tier-3 envelope fields ---
-    assert!(snapshot.rev > 0, "rev must round-trip off the typed envelope");
-    assert!(snapshot.running, "running must round-trip off the typed envelope");
+    assert!(
+        snapshot.rev > 0,
+        "rev must round-trip off the typed envelope"
+    );
+    assert!(
+        snapshot.running,
+        "running must round-trip off the typed envelope"
+    );
     // relay_statuses carries one row per RelayRole (role-aggregate rows may
     // have an empty relay_url when no relay fills that role); the
     // Start-configured relay must surface on at least one row.
     assert!(
-        snapshot.relay_statuses.iter().any(|r| r.relay_url == "wss://relay.test"),
+        snapshot
+            .relay_statuses
+            .iter()
+            .any(|r| r.relay_url == "wss://relay.test"),
         "the Start-configured relay must appear in relay_statuses: {:?}",
         snapshot.relay_statuses
     );
@@ -84,7 +94,10 @@ fn decode_snapshot_typed_round_trips_real_kernel_frame() {
         .iter()
         .find(|a| a.pubkey == TEST_PUBKEY_HEX)
         .expect("the signed-in account must appear in the accounts sidecar");
-    assert!(account.is_active, "the signed-in account must be flagged active");
+    assert!(
+        account.is_active,
+        "the signed-in account must be flagged active"
+    );
 
     // --- profile card (typed sidecar; placeholder until a kind:0 arrives) ---
     assert_eq!(
@@ -98,5 +111,6 @@ fn decode_snapshot_typed_round_trips_real_kernel_frame() {
         "no kind:0 was ingested — display_name must be None (honest placeholder)"
     );
 
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
+        .ok();
 }

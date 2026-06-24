@@ -70,8 +70,6 @@ pub struct PublishQueueEntryRow {
     pub event_id: String,
     /// Nostr event kind (opaque `uint` passthrough — no NIP semantics).
     pub kind: u32,
-    /// Pre-formatted human title for this row.
-    pub title: String,
     /// Number of relays this publish targets.
     pub target_relays: u32,
     /// Aggregate status string for the row.
@@ -127,14 +125,12 @@ pub(crate) fn encode_publish_queue(model: &PublishQueueModel) -> Vec<u8> {
             let relay_outcomes = fbb.create_vector(&outcome_offsets);
 
             let event_id = fbb.create_string(&entry.event_id);
-            let title = fbb.create_string(&entry.title);
             let status = fbb.create_string(&entry.status);
             fb::PublishQueueEntry::create(
                 &mut fbb,
                 &fb::PublishQueueEntryArgs {
                     event_id: Some(event_id),
                     kind: entry.kind,
-                    title: Some(title),
                     target_relays: entry.target_relays,
                     status: Some(status),
                     can_retry: entry.can_retry,
@@ -189,7 +185,6 @@ pub fn decode_publish_queue(bytes: &[u8]) -> Result<PublishQueueModel, String> {
             entries.push(PublishQueueEntryRow {
                 event_id: entry.event_id().unwrap_or_default().to_string(),
                 kind: entry.kind(),
-                title: entry.title().unwrap_or_default().to_string(),
                 target_relays: entry.target_relays(),
                 status: entry.status().unwrap_or_default().to_string(),
                 can_retry: entry.can_retry(),

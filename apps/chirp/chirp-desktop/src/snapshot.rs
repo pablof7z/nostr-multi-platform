@@ -118,8 +118,8 @@ impl ProfileCard {
     #[must_use]
     pub fn from_model(model: nmp_core::typed_projections::ProfileCardModel) -> Self {
         Self {
+            npub: nmp_core::display::to_npub(&model.pubkey),
             pubkey: model.pubkey,
-            npub: model.npub,
             display_name: model.display_name,
             name: model.name,
             raw_display_name: model.raw_display_name,

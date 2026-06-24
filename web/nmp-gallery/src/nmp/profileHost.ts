@@ -50,7 +50,7 @@ export type RelayStatusRow = {
   connection: string;
 };
 
-/** One resolved+enriched event from the kernel's `claimed_events` projection.
+/** One raw event from the kernel's `claimed_events` projection.
  *  `contentTree` is the kernel-parsed NFCT tree (`nmp-content` behind the
  *  content-parser seam); `content` is the raw NIP-01 string fallback. */
 export type ClaimedEventWire = {
@@ -61,10 +61,6 @@ export type ClaimedEventWire = {
   createdAt: number;
   /** Author pubkey (hex). */
   authorPubkey: string;
-  /** Author's resolved kind:0 display name, when the kernel enriched it. */
-  authorDisplayName?: string;
-  /** Author's resolved kind:0 picture URL, when the kernel enriched it. */
-  authorPictureUrl?: string;
   /** Raw event tags (array of tag rows). Embed cards read `title`/`image`/
    *  `summary`/`context`/source tags from here. */
   tags: string[][];
@@ -185,8 +181,6 @@ function decodeClaimedEvents(snapshot: SnapshotFrame): Map<string, ClaimedEventW
           content: ev.content() ?? "",
           createdAt: Number(ev.createdAt()),
           authorPubkey: ev.authorPubkey() ?? "",
-          authorDisplayName: ev.hasAuthorDisplayName() ? ev.authorDisplayName() ?? undefined : undefined,
-          authorPictureUrl: ev.hasAuthorPictureUrl() ? ev.authorPictureUrl() ?? undefined : undefined,
           tags,
         };
         const ctBytes = ev.contentTreeBytesArray();

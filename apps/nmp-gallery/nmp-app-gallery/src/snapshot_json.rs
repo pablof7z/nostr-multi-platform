@@ -143,8 +143,6 @@ fn claimed_event_row_json(row: &ClaimedEventRow) -> Value {
         "primary_id": row.primary_id,
         "id": row.id,
         "author_pubkey": row.author_pubkey,
-        "author_display_name": row.author_display_name,
-        "author_picture_url": row.author_picture_url,
         "kind": row.kind,
         "created_at": row.created_at,
         "tags": row.tags,
@@ -283,9 +281,10 @@ mod tests {
         );
 
         let mut store = RefProfileStore::new();
-        let value: Value =
-            serde_json::from_str(&snapshot_json_from_update_frame(&frame, &mut store).expect("decode"))
-                .expect("json");
+        let value: Value = serde_json::from_str(
+            &snapshot_json_from_update_frame(&frame, &mut store).expect("decode"),
+        )
+        .expect("json");
 
         assert_eq!(value["schema_version"], 1);
         assert_eq!(value["running"], true);
@@ -385,8 +384,7 @@ mod tests {
         )
         .expect("json");
         assert_eq!(
-            added["projections"][REFS_PROFILE_KEY][pubkey]["display_name"],
-            "Soon Gone",
+            added["projections"][REFS_PROFILE_KEY][pubkey]["display_name"], "Soon Gone",
             "row must be present after the baseline add"
         );
 

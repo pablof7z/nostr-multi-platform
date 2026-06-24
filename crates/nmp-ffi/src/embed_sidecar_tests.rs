@@ -23,8 +23,6 @@ fn make_claimed_event_row(
         primary_id: primary_id.to_string(),
         id: id.to_string(),
         author_pubkey: author.to_string(),
-        author_display_name: None,
-        author_picture_url: None,
         kind,
         created_at: 1710000000,
         tags,

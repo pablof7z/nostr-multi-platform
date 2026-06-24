@@ -240,11 +240,10 @@ pub mod nmp {
         impl<'a> PublishQueueEntry<'a> {
             pub const VT_EVENT_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_KIND: ::flatbuffers::VOffsetT = 6;
-            pub const VT_TITLE: ::flatbuffers::VOffsetT = 8;
-            pub const VT_TARGET_RELAYS: ::flatbuffers::VOffsetT = 10;
-            pub const VT_STATUS: ::flatbuffers::VOffsetT = 12;
-            pub const VT_CAN_RETRY: ::flatbuffers::VOffsetT = 14;
-            pub const VT_RELAY_OUTCOMES: ::flatbuffers::VOffsetT = 16;
+            pub const VT_TARGET_RELAYS: ::flatbuffers::VOffsetT = 8;
+            pub const VT_STATUS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CAN_RETRY: ::flatbuffers::VOffsetT = 12;
+            pub const VT_RELAY_OUTCOMES: ::flatbuffers::VOffsetT = 14;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -268,9 +267,6 @@ pub mod nmp {
                     builder.add_status(x);
                 }
                 builder.add_target_relays(args.target_relays);
-                if let Some(x) = args.title {
-                    builder.add_title(x);
-                }
                 builder.add_kind(args.kind);
                 if let Some(x) = args.event_id {
                     builder.add_event_id(x);
@@ -300,18 +296,6 @@ pub mod nmp {
                     self._tab
                         .get::<u32>(PublishQueueEntry::VT_KIND, Some(0))
                         .unwrap()
-                }
-            }
-            #[inline]
-            pub fn title(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        PublishQueueEntry::VT_TITLE,
-                        None,
-                    )
                 }
             }
             #[inline]
@@ -378,11 +362,6 @@ pub mod nmp {
                         false,
                     )?
                     .visit_field::<u32>("kind", Self::VT_KIND, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "title",
-                        Self::VT_TITLE,
-                        false,
-                    )?
                     .visit_field::<u32>("target_relays", Self::VT_TARGET_RELAYS, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "status",
@@ -400,7 +379,6 @@ pub mod nmp {
         pub struct PublishQueueEntryArgs<'a> {
             pub event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub kind: u32,
-            pub title: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub target_relays: u32,
             pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub can_retry: bool,
@@ -416,7 +394,6 @@ pub mod nmp {
                 PublishQueueEntryArgs {
                     event_id: None,
                     kind: 0,
-                    title: None,
                     target_relays: 0,
                     status: None,
                     can_retry: false,
@@ -441,13 +418,6 @@ pub mod nmp {
             pub fn add_kind(&mut self, kind: u32) {
                 self.fbb_
                     .push_slot::<u32>(PublishQueueEntry::VT_KIND, kind, 0);
-            }
-            #[inline]
-            pub fn add_title(&mut self, title: ::flatbuffers::WIPOffset<&'b str>) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PublishQueueEntry::VT_TITLE,
-                    title,
-                );
             }
             #[inline]
             pub fn add_target_relays(&mut self, target_relays: u32) {
@@ -500,7 +470,6 @@ pub mod nmp {
                 let mut ds = f.debug_struct("PublishQueueEntry");
                 ds.field("event_id", &self.event_id());
                 ds.field("kind", &self.kind());
-                ds.field("title", &self.title());
                 ds.field("target_relays", &self.target_relays());
                 ds.field("status", &self.status());
                 ds.field("can_retry", &self.can_retry());

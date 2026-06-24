@@ -153,17 +153,13 @@ pub mod nmp {
             pub const VT_PRIMARY_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_ID: ::flatbuffers::VOffsetT = 6;
             pub const VT_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 8;
-            pub const VT_HAS_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 10;
-            pub const VT_AUTHOR_DISPLAY_NAME: ::flatbuffers::VOffsetT = 12;
-            pub const VT_HAS_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 14;
-            pub const VT_AUTHOR_PICTURE_URL: ::flatbuffers::VOffsetT = 16;
-            pub const VT_KIND: ::flatbuffers::VOffsetT = 18;
-            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 20;
-            pub const VT_TAGS: ::flatbuffers::VOffsetT = 22;
-            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 24;
-            pub const VT_CONTENT_TREE_BYTES: ::flatbuffers::VOffsetT = 26;
-            pub const VT_HAS_SIGNED_EVENT_JSON: ::flatbuffers::VOffsetT = 28;
-            pub const VT_SIGNED_EVENT_JSON: ::flatbuffers::VOffsetT = 30;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 12;
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_CONTENT_TREE_BYTES: ::flatbuffers::VOffsetT = 18;
+            pub const VT_HAS_SIGNED_EVENT_JSON: ::flatbuffers::VOffsetT = 20;
+            pub const VT_SIGNED_EVENT_JSON: ::flatbuffers::VOffsetT = 22;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -194,12 +190,6 @@ pub mod nmp {
                     builder.add_tags(x);
                 }
                 builder.add_kind(args.kind);
-                if let Some(x) = args.author_picture_url {
-                    builder.add_author_picture_url(x);
-                }
-                if let Some(x) = args.author_display_name {
-                    builder.add_author_display_name(x);
-                }
                 if let Some(x) = args.author_pubkey {
                     builder.add_author_pubkey(x);
                 }
@@ -210,8 +200,6 @@ pub mod nmp {
                     builder.add_primary_id(x);
                 }
                 builder.add_has_signed_event_json(args.has_signed_event_json);
-                builder.add_has_author_picture_url(args.has_author_picture_url);
-                builder.add_has_author_display_name(args.has_author_display_name);
                 builder.finish()
             }
 
@@ -245,52 +233,6 @@ pub mod nmp {
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
                         ClaimedEvent::VT_AUTHOR_PUBKEY,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn has_author_display_name(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(ClaimedEvent::VT_HAS_AUTHOR_DISPLAY_NAME, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn author_display_name(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        ClaimedEvent::VT_AUTHOR_DISPLAY_NAME,
-                        None,
-                    )
-                }
-            }
-            #[inline]
-            pub fn has_author_picture_url(&self) -> bool {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab
-                        .get::<bool>(ClaimedEvent::VT_HAS_AUTHOR_PICTURE_URL, Some(false))
-                        .unwrap()
-                }
-            }
-            #[inline]
-            pub fn author_picture_url(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        ClaimedEvent::VT_AUTHOR_PICTURE_URL,
                         None,
                     )
                 }
@@ -397,26 +339,6 @@ pub mod nmp {
                         Self::VT_AUTHOR_PUBKEY,
                         false,
                     )?
-                    .visit_field::<bool>(
-                        "has_author_display_name",
-                        Self::VT_HAS_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "author_display_name",
-                        Self::VT_AUTHOR_DISPLAY_NAME,
-                        false,
-                    )?
-                    .visit_field::<bool>(
-                        "has_author_picture_url",
-                        Self::VT_HAS_AUTHOR_PICTURE_URL,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "author_picture_url",
-                        Self::VT_AUTHOR_PICTURE_URL,
-                        false,
-                    )?
                     .visit_field::<u32>("kind", Self::VT_KIND, false)?
                     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<
@@ -450,10 +372,6 @@ pub mod nmp {
             pub primary_id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub author_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub has_author_display_name: bool,
-            pub author_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub has_author_picture_url: bool,
-            pub author_picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub kind: u32,
             pub created_at: u64,
             pub tags: Option<
@@ -473,10 +391,6 @@ pub mod nmp {
                     primary_id: None,
                     id: None,
                     author_pubkey: None,
-                    has_author_display_name: false,
-                    author_display_name: None,
-                    has_author_picture_url: false,
-                    author_picture_url: None,
                     kind: 0,
                     created_at: 0,
                     tags: None,
@@ -510,42 +424,6 @@ pub mod nmp {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
                     ClaimedEvent::VT_AUTHOR_PUBKEY,
                     author_pubkey,
-                );
-            }
-            #[inline]
-            pub fn add_has_author_display_name(&mut self, has_author_display_name: bool) {
-                self.fbb_.push_slot::<bool>(
-                    ClaimedEvent::VT_HAS_AUTHOR_DISPLAY_NAME,
-                    has_author_display_name,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_author_display_name(
-                &mut self,
-                author_display_name: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    ClaimedEvent::VT_AUTHOR_DISPLAY_NAME,
-                    author_display_name,
-                );
-            }
-            #[inline]
-            pub fn add_has_author_picture_url(&mut self, has_author_picture_url: bool) {
-                self.fbb_.push_slot::<bool>(
-                    ClaimedEvent::VT_HAS_AUTHOR_PICTURE_URL,
-                    has_author_picture_url,
-                    false,
-                );
-            }
-            #[inline]
-            pub fn add_author_picture_url(
-                &mut self,
-                author_picture_url: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    ClaimedEvent::VT_AUTHOR_PICTURE_URL,
-                    author_picture_url,
                 );
             }
             #[inline]
@@ -625,10 +503,6 @@ pub mod nmp {
                 ds.field("primary_id", &self.primary_id());
                 ds.field("id", &self.id());
                 ds.field("author_pubkey", &self.author_pubkey());
-                ds.field("has_author_display_name", &self.has_author_display_name());
-                ds.field("author_display_name", &self.author_display_name());
-                ds.field("has_author_picture_url", &self.has_author_picture_url());
-                ds.field("author_picture_url", &self.author_picture_url());
                 ds.field("kind", &self.kind());
                 ds.field("created_at", &self.created_at());
                 ds.field("tags", &self.tags());

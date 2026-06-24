@@ -11,8 +11,6 @@ fn sample() -> ClaimedEventsModel {
                     primary_id: "ee".repeat(32),
                     id: "ee".repeat(32),
                     author_pubkey: "aa".repeat(32),
-                    author_display_name: Some("Alice".to_string()),
-                    author_picture_url: Some("https://example.com/a.png".to_string()),
                     kind: 1,
                     created_at: 1_700_000_000,
                     tags: vec![
@@ -37,8 +35,6 @@ fn sample() -> ClaimedEventsModel {
                     primary_id: "30023:aa:slug".to_string(),
                     id: "cc".repeat(32),
                     author_pubkey: "aa".repeat(32),
-                    author_display_name: None,
-                    author_picture_url: None,
                     kind: 30023,
                     created_at: 1_700_000_500,
                     tags: vec![vec!["d".to_string(), "slug".to_string()]],
@@ -71,7 +67,7 @@ fn empty_map_round_trips() {
 }
 
 #[test]
-fn nested_tags_and_none_authors_preserved() {
+fn nested_tags_are_preserved() {
     let model = ClaimedEventsModel {
         entries: vec![(
             "dd".repeat(32),
@@ -79,8 +75,6 @@ fn nested_tags_and_none_authors_preserved() {
                 primary_id: "dd".repeat(32),
                 id: "dd".repeat(32),
                 author_pubkey: "bb".repeat(32),
-                author_display_name: None,
-                author_picture_url: None,
                 kind: 6,
                 created_at: 42,
                 tags: vec![vec![], vec!["single".to_string()]],
@@ -92,8 +86,6 @@ fn nested_tags_and_none_authors_preserved() {
     };
     let decoded = decode_claimed_events(&encode_claimed_events(&model)).expect("decode succeeds");
     let row = &decoded.entries[0].1;
-    assert_eq!(row.author_display_name, None);
-    assert_eq!(row.author_picture_url, None);
     assert_eq!(
         row.tags,
         vec![Vec::<String>::new(), vec!["single".to_string()]]

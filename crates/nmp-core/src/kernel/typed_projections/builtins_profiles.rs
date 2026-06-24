@@ -41,8 +41,6 @@ impl super::super::Kernel {
                             primary_id: dto.primary_id.clone(),
                             id: dto.id.clone(),
                             author_pubkey: dto.author_pubkey.clone(),
-                            author_display_name: dto.author_display_name.clone(),
-                            author_picture_url: dto.author_picture_url.clone(),
                             kind: dto.kind,
                             created_at: dto.created_at,
                             tags: dto.tags.clone(),

@@ -45,8 +45,6 @@ table PublishQueueEntry {
   event_id:string;
   // Nostr event kind number.
   kind:uint;
-  // Pre-formatted English kind label (e.g. `"Note"`). Kernel-owned.
-  title:string;
   // Number of relays targeted (mirrors the JSON `usize`; `uint` is the widest
   // portable count type the shells share).
   target_relays:uint;

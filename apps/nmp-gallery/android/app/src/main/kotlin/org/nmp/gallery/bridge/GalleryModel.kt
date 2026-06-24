@@ -239,6 +239,4 @@ data class ClaimedEventWire(
     @SerialName("created_at") val createdAt: Long = 0L,
     @SerialName("tags") val tags: List<List<String>> = emptyList(),
     @SerialName("content") val content: String = "",
-    @SerialName("author_display_name") val authorDisplayName: String? = null,
-    @SerialName("author_picture_url") val authorPictureUrl: String? = null,
 )

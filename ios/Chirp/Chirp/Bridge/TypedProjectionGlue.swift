@@ -152,10 +152,10 @@ enum TypedProjectionGlue {
     /// `nmp_kernel_PublishQueueSnapshot`) to the `[PublishQueueEntry]` the JSON
     /// `projections.publish_queue` path yields. The Chirp domain type is a
     /// FIELD-SUBSET of the wire — it consumes only `eventId`, `kind`,
-    /// `targetRelays`, `status` (the wire's `title` / `canRetry` /
-    /// `relayOutcomes` fields are not decoded by the JSON path either, so
-    /// ignoring them is parity-preserving). `targetRelays` widens the wire
-    /// `uint` to the domain's `Int`.
+    /// `targetRelays`, `status` (the wire's `canRetry` / `relayOutcomes`
+    /// fields are not decoded by the JSON path either, so ignoring them is
+    /// parity-preserving). `targetRelays` widens the wire `uint` to the
+    /// domain's `Int`.
     static func publishQueue(_ reader: nmp_kernel_PublishQueueSnapshot) -> [PublishQueueEntry] {
         reader.entries.map { entry in
             PublishQueueEntry(
@@ -306,7 +306,7 @@ enum TypedProjectionGlue {
                     // (absent → nil == root); `children` is a vector of
                     // strings (absent → empty).
                     parent: row.parent,
-                    children: row.children.map { $0 ?? "" } ?? []
+                    children: row.children.map { $0 ?? "" }
                 )
             }
         )
@@ -421,12 +421,11 @@ enum TypedProjectionGlue {
     /// `ClaimedEventDto` (hand-declared in `EmbedHost.swift`) carries the generic
     /// event fields the refs.event accessor needs: `id`, `authorPubkey`, `kind`,
     /// `createdAt`, `content`, `tags`, and optional `signedEventJson` when the
-    /// producer emitted an `event.raw` row. The wire's `author_display_name` /
-    /// `author_picture_url` (and the redundant `primary_id` body copy) are
-    /// deliberately NOT mapped; the JSON decode drops them too. `kind` (`UInt32`)
-    /// and `createdAt` (`UInt64`) narrow to the DTO's `Int` exactly as the JSON
-    /// `Int` decode does. `tags` rebuilds `[[String]]` from the nested `[TagRow]`
-    /// / `[String]` vectors.
+    /// producer emitted an `event.raw` row. The redundant `primary_id` body copy
+    /// is deliberately NOT mapped; the JSON decode drops it too. `kind`
+    /// (`UInt32`) and `createdAt` (`UInt64`) narrow to the DTO's `Int` exactly
+    /// as the JSON `Int` decode does. `tags` rebuilds `[[String]]` from the
+    /// nested `[TagRow]` / `[String]` vectors.
     static func claimedEvents(
         _ reader: nmp_kernel_ClaimedEventsSnapshot
     ) -> [String: ClaimedEventDto] {

@@ -8,7 +8,6 @@ fn sample() -> PublishQueueModel {
             PublishQueueEntryRow {
                 event_id: "a".repeat(64),
                 kind: 1,
-                title: "Note".to_string(),
                 target_relays: 2,
                 status: "ok".to_string(),
                 can_retry: false,
@@ -30,7 +29,6 @@ fn sample() -> PublishQueueModel {
             PublishQueueEntryRow {
                 event_id: "b".repeat(64),
                 kind: 7,
-                title: "Reaction".to_string(),
                 target_relays: 0,
                 status: "accepted_locally".to_string(),
                 can_retry: true,
@@ -67,7 +65,6 @@ fn entry_with_no_outcomes_round_trips() {
         entries: vec![PublishQueueEntryRow {
             event_id: "c".repeat(64),
             kind: 1,
-            title: "Note".to_string(),
             target_relays: 3,
             status: "accepted_locally".to_string(),
             can_retry: true,

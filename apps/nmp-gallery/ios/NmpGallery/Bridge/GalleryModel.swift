@@ -79,12 +79,12 @@ let SHOWCASE_HIGHLIGHT_NEVENT = GALLERY_SHOWCASE.highlight.uri
 /// `ProfileCard`. Field names use snake_case in JSON; the decoder uses the
 /// global `.convertFromSnakeCase` strategy so Swift sees camelCase.
 ///
-/// ADR-0063 (#1671): the map is SOURCED from the kernel's `refs.profile`
+/// ADR-0063 (#1671): the map is sourced from the kernel's `refs.profile`
 /// row-delta projection (the resolve_ref output), merged host-side into the
 /// `GalleryRefProfileStore` and materialised under the `refs.profile` JSON key
-/// by `nmp_app_gallery_snapshot_json_from_update_frame`. Every entry carries a
-/// Rust-formatted bech32 `npub`. The extra `lnurl` field the card carries is
-/// ignored here.
+/// by `nmp_app_gallery_snapshot_json_from_update_frame`. The app JSON adapter
+/// derives a bech32 `npub` from the raw pubkey for this gallery-only view. The
+/// extra `lnurl` field the card carries is ignored here.
 private struct RefProfileWire: Decodable, Sendable {
     let pubkey: String
     let npub: String
@@ -217,11 +217,9 @@ struct GallerySnapshot: Decodable, Equatable, Sendable {
     }
 }
 
-/// Build a `ProfileWire` from one `refs.profile` entry (the kernel's resolved
-/// `ProfileCard`, which carries `npub` already-formatted by Rust per aim.md §2).
-/// `npubShort` is the only Swift-side derivation; aim.md §2 stipulates shells
-/// own abbreviation. Every entry carries a real bech32 `npub`, so the
-/// truncation is uniform.
+/// Build a `ProfileWire` from one `refs.profile` entry. The gallery JSON
+/// adapter derives the full `npub` from the raw pubkey; `npubShort` is the only
+/// Swift-side derivation. aim.md §2 stipulates shells own abbreviation.
 private func profileWire(fromRefProfile card: RefProfileWire, pubkey: String) -> ProfileWire {
     ProfileWire(
         pubkey: pubkey,
