@@ -50,7 +50,7 @@ js-sys = "0.3.98"
 # lifecycle into `nmp-network::browser_driver`. This crate no longer needs
 # a direct `web-sys` dependency — the driver is consumed through
 # `nmp-network` (which has its own wasm32-gated `web-sys` dep).
-# PR-2 — 1 Hz periodic tick driver. `gloo_timers::callback::Interval` fires
-# on the JS event loop without blocking; dropping it cancels `setInterval`.
+# #1937 — one-shot runtime deadline driver. `gloo_timers::callback::Timeout`
+# fires a single browser deadline; dropping it cancels the pending callback.
 # In 0.3.x the callback API ships in the default crate (no extra feature flag).
 gloo-timers = "0.3"

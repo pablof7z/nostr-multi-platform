@@ -1,26 +1,9 @@
-// This test uses native-only helpers (inject_relay_connected_for_test,
-// tick_for_test, snapshot_bytes_for_test) that only exist under
-// #[cfg(not(target_arch = "wasm32"))].  Skip the entire file when compiled
-// for wasm32 so `wasm-pack test` does not abort the build.
+// Native-only scheduler tests. The production wasm target schedules the same
+// runtime deadline state with a one-shot browser timeout.
 #![cfg(not(target_arch = "wasm32"))]
 
-// PR-2 acceptance: worker tick driver — idle-tick coalescing.
-//
-// Proves that `tick_for_test` (which calls the same `tick::tick_once` core
-// the wasm32 1 Hz timer closure calls) does NOT signal a snapshot push when
-// the kernel state has not changed since the last `make_update_frame`.
-//
-// Three-phase coalescing proof:
-//   1. After `Start`, take a snapshot (clears `changed_since_emit`).
-//   2. Idle tick → `dirty == false`; no snapshot push would occur.
-//   3. Inject a relay-connected event (mutates kernel state → dirty = true).
-//   4. Verify that a non-idle tick does signal a push (dirty = true).
-//   5. Take a snapshot to clear dirty again.
-//   6. Another idle tick → `dirty == false` again; coalescing re-armed.
-//
-// The coalescing gate in the real wasm32 timer is `if dirty { push... }`.
-// If that gate were absent every tick would burn a JS heap allocation + an
-// upstream re-render regardless of whether anything had changed.
+use std::fs;
+use std::path::PathBuf;
 
 use nmp_core::RelayRole;
 use nmp_wasm::{RelayBootstrapEntry, StartConfig, WasmRuntime, WorkerRequest};
@@ -37,7 +20,7 @@ fn started_runtime() -> WasmRuntime {
                 url: RELAY_URL.to_string(),
                 role: "both".to_string(),
             }],
-            database_name: "tick-test".to_string(),
+            database_name: "scheduler-test".to_string(),
             correlation_id: "start-1".to_string(),
         }))
         .expect("Start must succeed");
@@ -45,83 +28,85 @@ fn started_runtime() -> WasmRuntime {
 }
 
 #[test]
-fn idle_tick_does_not_signal_snapshot_push() {
+fn idle_runtime_deadline_fires_once_and_does_not_rearm() {
     let mut rt = started_runtime();
 
-    // Phase 1: take a snapshot — clears changed_since_emit.
-    let _ = rt.snapshot_bytes_for_test();
-
-    // Phase 2: idle tick (nothing pending after a fresh Start + snapshot).
-    let (outbound, dirty) = rt.tick_for_test();
-    assert!(outbound.is_empty(), "idle tick must produce no outbound");
     assert!(
-        !dirty,
-        "idle tick must not signal a snapshot push (dirty-flag coalescing)"
+        rt.maintenance_deadline_armed_for_test(),
+        "Start arms a single post-start maintenance deadline"
+    );
+
+    let (outbound, dirty) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("the post-start deadline must be armed");
+    assert!(
+        outbound.is_empty(),
+        "idle deadline must produce no outbound"
+    );
+    assert!(!dirty, "idle deadline must not mark a snapshot dirty");
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "idle runtime must not re-arm a fixed cadence"
+    );
+    assert_eq!(rt.maintenance_deadline_fires_for_test(), 1);
+
+    assert!(
+        rt.fire_maintenance_deadline_for_test().is_none(),
+        "no second wake exists without a new event or tracked deadline"
     );
 }
 
-// Issue #1143 fix 1 — tick() claim-expansion drain does not panic on native.
-//
-// `KernelReducer::tick()` now calls `poll_claim_expansion(crate::time::Instant::now())`
-// between the lifecycle drain and the publish pump. On native CI this resolves to
-// `std::time::Instant::now()` (never panics). On wasm32 the shim resolves to
-// `web_time::Instant::now()` (performance.now() backed — never panics in a
-// JS Worker). This test exercises the path on native CI.
 #[test]
-fn tick_with_both_role_relay_claims_expansion_does_not_panic() {
-    // Use a "both"-role relay (two drivers at the same URL). This exercises
-    // the claim-expansion drain AND the fan-out's `.filter()` path
-    // (fix 2 — all matching drivers receive the frame, not just the first).
-    let mut runtime = WasmRuntime::new();
-    runtime
-        .handle(WorkerRequest::Start(StartConfig {
-            app_id: "chirp".to_string(),
-            relays: vec![RELAY_URL.to_string()],
-            relay_bootstrap: vec![RelayBootstrapEntry {
-                url: RELAY_URL.to_string(),
-                role: "both".to_string(),
-            }],
-            database_name: "tick-parity-test".to_string(),
-            correlation_id: "start-parity".to_string(),
-        }))
-        .expect("Start must succeed");
+fn deadline_with_both_role_relay_claims_expansion_does_not_panic() {
+    let mut runtime = started_runtime();
 
-    // Connect the relay so claims would be immediately sendable.
     runtime.inject_relay_connected_for_test(RelayRole::Content, RELAY_URL);
 
-    // Tick must not panic even with the claim-expansion drain active.
-    let (_outbound, _dirty) = runtime.tick_for_test();
-    // Pass: no panic is the primary assertion (claim-expansion drain fires
-    // without a pre-existing Phase-1 claim → D8 no-op, no allocation).
+    let _ = runtime
+        .fire_maintenance_deadline_for_test()
+        .expect("relay-connected event must arm a deadline");
 }
 
 #[test]
-fn tick_after_relay_event_signals_push_then_coalesces() {
+fn relay_event_deadline_signals_dirty_snapshot_then_coalesces() {
     let mut rt = started_runtime();
 
-    // Take baseline snapshot to clear dirty flag.
     let _ = rt.snapshot_bytes_for_test();
-
-    // Phase 3: inject relay-connected — this mutates kernel relay state.
     rt.inject_relay_connected_for_test(RelayRole::Content, RELAY_URL);
 
-    // Phase 4: tick should be dirty because the relay state changed.
-    // (inject_relay_connected calls handle_relay_connected which marks the
-    // kernel dirty via the usual mutation path.)
-    let (_, dirty_after_connect) = rt.tick_for_test();
+    let (_, dirty_after_connect) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("relay-connected event must arm a deadline");
     assert!(
         dirty_after_connect,
-        "tick after a relay-connected mutation must signal dirty (snapshot push required)"
+        "deadline after a relay-connected mutation must signal dirty"
     );
 
-    // Phase 5: take a snapshot — clears dirty.
     let _ = rt.snapshot_bytes_for_test();
-
-    // Phase 6: another idle tick — no new mutations → not dirty again.
-    let (outbound2, dirty2) = rt.tick_for_test();
-    let _ = outbound2;
     assert!(
-        !dirty2,
-        "idle tick after snapshot must not signal dirty — coalescing must re-arm"
+        !rt.maintenance_deadline_armed_for_test(),
+        "snapshot-cleared relay event must not leave an idle cadence armed"
     );
+}
+
+#[test]
+fn production_scheduler_source_has_no_interval_driver() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for relative in ["Cargo.toml", "src/lib.rs", "src/runtime.rs", "src/tick.rs"] {
+        let path = manifest.join(relative);
+        let source = fs::read_to_string(&path).expect("scheduler source must be readable");
+        for forbidden in [
+            "Interval::new",
+            "start_tick_interval",
+            "tick_interval",
+            "setInterval",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "{} must not reintroduce fixed interval polling token `{}`",
+                path.display(),
+                forbidden
+            );
+        }
+    }
 }

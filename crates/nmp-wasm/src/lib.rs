@@ -41,9 +41,9 @@ mod dispatch_routing;
 mod publish_path;
 mod signer_slot;
 mod snapshot;
-// PR-2 — 1 Hz periodic tick driver. `tick_once` is always-compiled so the
-// native `tick_for_test` helper exercises the same coalescing path as the
-// wasm32 timer closure. `start_tick_interval` is wasm32-gated.
+// #1937 — event/deadline runtime drain. Always-compiled so native tests can
+// fire the same maintenance deadline state that wasm32 schedules with a
+// one-shot browser timeout.
 mod tick;
 
 pub use protocol::{

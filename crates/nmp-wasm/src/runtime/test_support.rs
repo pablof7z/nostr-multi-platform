@@ -14,12 +14,16 @@ impl super::WasmRuntime {
     pub fn set_snapshot_callback(&mut self, _callback: Option<()>) {}
 
     /// Inject a relay-connected event into the kernel (native test helper).
-    pub fn inject_relay_connected_for_test(
-        &mut self,
-        role: nmp_core::RelayRole,
-        url: &str,
-    ) {
-        let _ = self.reducer.borrow_mut().handle_relay_connected(role, url, false);
+    pub fn inject_relay_connected_for_test(&mut self, role: nmp_core::RelayRole, url: &str) {
+        let outbound = self
+            .reducer
+            .borrow_mut()
+            .handle_relay_connected(role, url, false);
+        let had_outbound = !outbound.is_empty();
+        self.fan_outbound(outbound);
+        if !had_outbound {
+            self.request_maintenance_deadline(crate::tick::WakePolicy::Single);
+        }
     }
 
     /// Inject a relay text frame into the kernel (native test helper).
@@ -29,10 +33,16 @@ impl super::WasmRuntime {
         url: &str,
         text: String,
     ) {
-        let _ = self
-            .reducer
-            .borrow_mut()
-            .handle_relay_frame(role, url, nmp_core::RelayFrame::Text(text));
+        let outbound = self.reducer.borrow_mut().handle_relay_frame(
+            role,
+            url,
+            nmp_core::RelayFrame::Text(text),
+        );
+        let had_outbound = !outbound.is_empty();
+        self.fan_outbound(outbound);
+        if !had_outbound {
+            self.request_maintenance_deadline(crate::tick::WakePolicy::Single);
+        }
     }
 
     /// Pull a snapshot as raw FlatBuffers bytes (native test helper). On
@@ -43,17 +53,32 @@ impl super::WasmRuntime {
         build_snapshot_bytes(&mut self.reducer.borrow_mut(), &self.meta.borrow())
     }
 
-    /// Simulate one tick cycle (native test helper). Returns `(outbound,
-    /// dirty)` where `dirty` mirrors `KernelReducer::changed_since_emit()`
-    /// **after** the tick — the same flag the wasm32 timer checks before
-    /// pushing a snapshot.
+    /// Fire the currently armed runtime deadline (native test helper).
     ///
-    /// Calling this helper exercises the identical coalescing path as the
-    /// wasm32 `gloo-timers` closure: both call [`crate::tick::tick_once`],
-    /// so a native test asserting `dirty == false` proves the timer would
-    /// not push a spurious snapshot.
-    pub fn tick_for_test(&mut self) -> (Vec<nmp_core::OutboundMessage>, bool) {
-        crate::tick::tick_once(&self.reducer)
+    /// Production wasm uses a one-shot browser `setTimeout`; native tests fire
+    /// the same scheduler state explicitly so they can prove idle runtimes do
+    /// not re-arm a fixed cadence.
+    pub fn fire_maintenance_deadline_for_test(
+        &mut self,
+    ) -> Option<(Vec<nmp_core::OutboundMessage>, bool)> {
+        crate::tick::fire_deadline_for_test(
+            &self.maintenance_deadline,
+            &self.reducer,
+            &self.post_tick_drain,
+        )
+        .map(|outcome| (outcome.outbound, outcome.dirty))
+    }
+
+    pub fn maintenance_deadline_armed_for_test(&self) -> bool {
+        self.maintenance_deadline.borrow().armed_for_test()
+    }
+
+    pub fn maintenance_deadline_requests_for_test(&self) -> u64 {
+        self.maintenance_deadline.borrow().requested_for_test()
+    }
+
+    pub fn maintenance_deadline_fires_for_test(&self) -> u64 {
+        self.maintenance_deadline.borrow().fired_for_test()
     }
 
     /// Read the active-account pubkey the kernel currently holds (native test
@@ -72,10 +97,8 @@ mod set_identity_tests {
     use super::super::WasmRuntime;
     use crate::protocol::{SetIdentity, WorkerRequest};
 
-    const LOWER_PK: &str =
-        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-    const UPPER_PK: &str =
-        "3BF0C63FCB93463407AF97A5E5EE64FA883D107EF9E558472C4EB9AAAEFA459D";
+    const LOWER_PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+    const UPPER_PK: &str = "3BF0C63FCB93463407AF97A5E5EE64FA883D107EF9E558472C4EB9AAAEFA459D";
 
     #[test]
     fn set_identity_uppercase_pubkey_stores_canonical_lowercase_active_account() {
@@ -94,10 +117,9 @@ mod set_identity_tests {
 
         // The handle call must succeed (ActionAccepted + snapshot, not an error).
         assert!(
-            result.iter().any(|e| matches!(
-                e,
-                crate::protocol::WorkerEvent::ActionAccepted { .. }
-            )),
+            result
+                .iter()
+                .any(|e| matches!(e, crate::protocol::WorkerEvent::ActionAccepted { .. })),
             "set_identity with valid uppercase pubkey must return ActionAccepted; got: {result:?}"
         );
 
@@ -216,7 +238,9 @@ mod s10_nip07_event_driven_tests {
     //! (no `SignCompleted`), and the assertion `has_sign_completed` would fail.
 
     use super::super::WasmRuntime;
-    use crate::protocol::{BeginSign, DeliverSignerResponse, SetIdentity, WorkerEvent, WorkerRequest};
+    use crate::protocol::{
+        BeginSign, DeliverSignerResponse, SetIdentity, WorkerEvent, WorkerRequest,
+    };
 
     const ACCOUNT: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
@@ -247,11 +271,15 @@ mod s10_nip07_event_driven_tests {
     }
 
     fn has_sign_completed(events: &[WorkerEvent]) -> bool {
-        events.iter().any(|e| matches!(e, WorkerEvent::SignCompleted { .. }))
+        events
+            .iter()
+            .any(|e| matches!(e, WorkerEvent::SignCompleted { .. }))
     }
 
     fn has_sign_request(events: &[WorkerEvent]) -> bool {
-        events.iter().any(|e| matches!(e, WorkerEvent::SignRequest { .. }))
+        events
+            .iter()
+            .any(|e| matches!(e, WorkerEvent::SignRequest { .. }))
     }
 
     fn sign_request_correlation_id(events: &[WorkerEvent]) -> Option<String> {
@@ -314,11 +342,13 @@ mod s10_nip07_event_driven_tests {
 
         // Step 2: deliver the signer response — must complete synchronously.
         let deliver_events = runtime
-            .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
-                correlation_id: corr_id.clone(),
-                signed_json: Some(signed_json()),
-                error: None,
-            }))
+            .handle(WorkerRequest::DeliverSignerResponse(
+                DeliverSignerResponse {
+                    correlation_id: corr_id.clone(),
+                    signed_json: Some(signed_json()),
+                    error: None,
+                },
+            ))
             .expect("deliver_signer_response must not error");
 
         assert!(
