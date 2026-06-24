@@ -4,7 +4,7 @@
 //! path (not by calling `on_claim_outcome_hit` / `on_claim_outcome_eose_no_match`
 //! directly). They exercise the full chain:
 //!
-//!   claim_event → OneshotApi::request → drain_lifecycle_tick → planner REQ
+//!   resolve_ref → OneshotApi::request → drain_lifecycle_tick → planner REQ
 //!   → register_wire_frames_for_test → claim_sub_index populated
 //!   → handle_text(EVENT) → record_claim_expansion_hit → on_claim_outcome_hit
 //!   → pending_claims empty, claim_sub_index empty
@@ -18,7 +18,7 @@ mod production_ingest_tests {
     use std::time::{Duration, Instant};
 
     use crate::kernel::claim_expansion::Phase;
-    use crate::kernel::Kernel;
+    use crate::kernel::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
     use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 
     // ── Helpers (mirror relay_score_record::tests helpers) ──────────────────
@@ -115,9 +115,9 @@ mod production_ingest_tests {
 
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-        // Register a claim expansion — mirrors what claim_event does in production.
+        // Register a claim expansion — mirrors what the event resolver does in production.
         // Use the authority (interest_id = 0 fallback) since we're not going
-        // through the full claim_event URI parse path here.
+        // through a full event ref resolve here.
         kernel.register_claim_expansion(
             event.id.clone(),
             None,
@@ -352,7 +352,7 @@ mod production_ingest_tests {
             "wss://hint2.test".to_string(),
         ];
 
-        // Register through the production claim_event path: use OneshotApi.
+        // Register through the production event-ref path: use OneshotApi.
         // We simulate by calling register_claim_expansion with a real interest
         // registered first.
         let shape = crate::planner::InterestShape {
@@ -360,12 +360,18 @@ mod production_ingest_tests {
             limit: Some(1),
             ..Default::default()
         };
-        let (_, interest_id, identity, interest) = kernel.oneshot.prepare(
-            crate::planner::InterestScope::Global,
-            shape,
-            Vec::new(),
+        let (_, interest_id, identity, interest) =
+            kernel
+                .oneshot
+                .prepare(crate::planner::InterestScope::Global, shape, Vec::new());
+        kernel.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            }],
+            "claim-expand-oneshot",
         );
-        kernel.register_interest(&[crate::kernel::cache_serve::InterestRegistration { identity, interest, policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent }], "claim-expand-oneshot");
 
         let oneshot_before = kernel.test_oneshot_in_flight();
         assert_eq!(
@@ -488,13 +494,12 @@ mod production_ingest_tests {
     /// EOSE-no-match teardown that precedes the EVENT — so it cannot catch this
     /// race.
     ///
-    /// The author is deliberately NOT in `timeline_authors`; the claim-allow
-    /// clause in `should_store_event` (`claim_expansion_match_author`) is the
-    /// only reason the EVENT stores at all.
+    /// The author is deliberately NOT in `timeline_authors`; the event persists
+    /// through the ingest chokepoint and surfaces because the live event-ref row
+    /// still exists after the sibling relay's EOSE-no-match.
     #[test]
     fn claimed_kind1_surfaces_when_event_arrives_after_sibling_eose_no_match() {
         use super::super::test_support;
-        use crate::nip19::{encode_nevent, NeventData};
         use crate::subs::WireFrame;
 
         test_support::clear_claim_expansion_subs();
@@ -509,30 +514,27 @@ mod production_ingest_tests {
             "kind:1 note resolved after sibling EOSE",
             1_700_000_000,
         );
-        let author_hex = event.pubkey.clone();
         let primary_id = event.id.clone();
 
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-        // Claim the event through the production `claim_event` primitive: this
+        // Resolve the event through the production raw-key event ref seam: this
         // both refcounts `event_claims[primary_id]` (the key the projection
-        // walks) AND registers the `PendingClaim` controller state. The URI
-        // carries the author TLV so the claim sub seeds
-        // `claim_expansion_match_author` — the `should_store_event` clause that
-        // lets the matching EVENT store even though the author is NOT in
-        // `timeline_authors`.
-        let bech = encode_nevent(&NeventData {
-            event_id: primary_id.clone(),
-            relays: vec![relay_a.to_string(), relay_b.to_string()],
-            author: Some(author_hex.clone()),
-            kind: Some(1),
-        })
-        .expect("encode_nevent");
-        let _ = kernel.claim_event(format!("nostr:{bech}"), "view-0".to_string(), true, false);
+        // walks) AND registers the `PendingClaim` controller state. The caller
+        // passes the relay hints that used to be carried by the URI TLV.
+        let _ = kernel.resolve_ref(
+            RefNamespace::Event,
+            primary_id.clone(),
+            "view-0".to_string(),
+            RefShape::Event(EventShape::Embed),
+            RefLiveness::CacheOk,
+            false,
+            vec![relay_a.to_string(), relay_b.to_string()],
+        );
 
         let interest_id = kernel
             .test_claim_interest_id(&primary_id)
-            .expect("claim_event must register a pending claim with an interest_id");
+            .expect("resolve_ref must register a pending claim with an interest_id");
 
         // Both relays share the SAME sub_id (same filter shape → same hash).
         let frames = vec![
@@ -597,7 +599,7 @@ mod production_ingest_tests {
     //          ingest path (claim → wire frame → handle_text EVENT → projection) ─
 
     /// Drives a kind:30023 addressable article through the SAME production wire
-    /// ingest the `claim_event_naddr_matches_kind_pubkey_dtag_in_store` unit
+    /// ingest the `resolve_event_ref_naddr_matches_kind_pubkey_dtag_in_store` unit
     /// test does NOT exercise. That unit test pre-injects the article into the
     /// store (`ingest_pre_verified_event`) and then claims, so it only proves
     /// the store→projection coordinate lookup (stage d). It never feeds a real
@@ -613,7 +615,6 @@ mod production_ingest_tests {
     #[test]
     fn claimed_naddr_article_surfaces_via_production_wire_ingest() {
         use super::super::test_support;
-        use crate::nip19::{encode_naddr, NaddrData};
         use crate::subs::WireFrame;
 
         test_support::clear_claim_expansion_subs();
@@ -635,24 +636,23 @@ mod production_ingest_tests {
 
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-        // Claim through the production `claim_event` primitive with a real
-        // `naddr` URI. This refcounts `event_claims[coord_key]` (the key the
-        // projection walks) AND registers the W5 PendingClaim. The naddr's
-        // author TLV (= pubkey) seeds `claim_expansion_match_author`, the
-        // `should_store_event` clause that lets the EVENT store even though the
-        // author is NOT in `timeline_authors`.
-        let bech = encode_naddr(&NaddrData {
-            identifier: d_tag.to_string(),
-            pubkey: author_hex.clone(),
-            kind: 30023,
-            relays: vec![relay_url.to_string()],
-        })
-        .expect("encode_naddr");
-        let _ = kernel.claim_event(format!("nostr:{bech}"), "view-0".to_string(), true, false);
+        // Resolve through the production raw-key event ref seam. This refcounts
+        // `event_claims[coord_key]` (the key the projection walks) AND registers
+        // the W5 PendingClaim. The coordinate key carries the author, so
+        // `claim_expansion_match_author` can still admit and score the EVENT.
+        let _ = kernel.resolve_ref(
+            RefNamespace::Event,
+            coord_key.clone(),
+            "view-0".to_string(),
+            RefShape::Event(EventShape::Embed),
+            RefLiveness::CacheOk,
+            false,
+            vec![relay_url.to_string()],
+        );
 
         let interest_id = kernel
             .test_claim_interest_id(&coord_key)
-            .expect("claim_event must register a pending claim with an interest_id for the naddr");
+            .expect("resolve_ref must register a pending claim with an interest_id for the naddr");
 
         // Register the planner wire frame so `claim_sub_index` is populated and
         // `handle_text(EVENT)` routes the hit to this claim's sub.

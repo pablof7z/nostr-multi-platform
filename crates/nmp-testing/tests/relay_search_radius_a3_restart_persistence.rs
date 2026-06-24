@@ -34,11 +34,12 @@
 #[path = "common/mod.rs"]
 mod common;
 
+use common::ref_commands::resolve_event_embed;
 use common::wire_log::{
     event_rx_for_author, req_emit_relays_for_phase, score_updates, StderrCapture,
 };
+use nmp_core::actor::LifecycleCommand;
 use nmp_core::testing::{spawn_actor_with_storage_path, ActorCommand};
-use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tempfile::tempdir;
@@ -153,12 +154,11 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
         return;
     }
 
-    tx1.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-        uri: GIGI_NADDR_S1.to_string(),
-        consumer_id: "a3-s1".to_string(),
-        force: false,
-    }))
-    .expect("A3 S1: ClaimEvent send");
+    tx1.send(ActorCommand::Refs(resolve_event_embed(
+        GIGI_NADDR_S1,
+        "a3-s1",
+    )))
+    .expect("A3 S1: event ref resolve send");
 
     let claim_deadline = Instant::now() + Duration::from_millis(SESSION_BUDGET_MS);
     drain_until_or_timeout(&rx1, claim_deadline, |_| false);
@@ -226,12 +226,11 @@ fn a3_restart_persistence_warm_relay_survives_kernel_restart() {
         return;
     }
 
-    tx2.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-        uri: GIGI_NADDR_S2.to_string(),
-        consumer_id: "a3-s2".to_string(),
-        force: false,
-    }))
-    .expect("A3 S2: ClaimEvent send");
+    tx2.send(ActorCommand::Refs(resolve_event_embed(
+        GIGI_NADDR_S2,
+        "a3-s2",
+    )))
+    .expect("A3 S2: event ref resolve send");
 
     let s2_claim_deadline = Instant::now() + Duration::from_millis(SESSION_BUDGET_MS);
     drain_until_or_timeout(&rx2, s2_claim_deadline, |_| false);

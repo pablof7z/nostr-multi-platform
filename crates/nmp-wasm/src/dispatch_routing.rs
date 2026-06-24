@@ -10,11 +10,8 @@
 //!
 //! 2. [`ref_dispatch_from_action`] / [`execute_ref_dispatch`] — parse and
 //!    execute the ADR-0063 unified reference-resolution operations
-//!    (`nmp.kernel.resolve_ref` / `nmp.kernel.release_ref`, raw-key seam) plus
-//!    the legacy URI front door (`nmp.kernel.claim_event` /
-//!    `nmp.kernel.release_event`) via the `KernelReducer`. Both converge on the
-//!    SAME `Kernel::resolve_ref` resolver body — there is no divergent web-only
-//!    resolution path.
+//!    (`nmp.kernel.resolve_ref` / `nmp.kernel.release_ref`, raw-key seam) via
+//!    the `KernelReducer`.
 //!
 //! 3. **RETIRED (#1740 step 8):** the raw feed-verb dispatch
 //!    (`interest_dispatch_from_action` / `execute_interest_dispatch` and the
@@ -39,7 +36,10 @@
 //! the routing table has a single owner that codegen / kernel-namespace
 //! additions touch directly.
 
-use nmp_core::{EventShape, KernelAction, KernelReducer, OutboundMessage, ProfileShape, RefLiveness, RefNamespace, RefShape};
+use nmp_core::{
+    EventShape, KernelAction, KernelReducer, OutboundMessage, ProfileShape, RefLiveness,
+    RefNamespace, RefShape,
+};
 use serde_json::Value;
 
 use crate::protocol::ActionDispatch;
@@ -48,11 +48,7 @@ use crate::protocol::ActionDispatch;
 ///
 /// The ADR-0063 unified seam (`resolve_ref` / `release_ref`) carries a RAW key
 /// (a hex pubkey for `profile`, a hex event-id / `kind:pubkey:d` coordinate for
-/// `event`) plus the namespace/shape/liveness discriminants. The legacy URI
-/// front door (`claim_event` / `release_event`) carries a `nostr:` URI that the
-/// kernel's `claim_event` adapter decodes to a raw key before delegating to the
-/// SAME `resolve_event_ref` body — it is the URI adapter of `resolve_ref`, not a
-/// separate resolver.
+/// `event`) plus the namespace/shape/liveness discriminants.
 ///
 /// Refs are NOT `KernelAction`s — they operate on the resolver's refcount table,
 /// separate from the M2 interest registry. `kernel_action_from_dispatch` returns
@@ -78,10 +74,6 @@ pub(crate) enum RefDispatch {
         key: String,
         consumer_id: String,
     },
-    /// Legacy URI front door of the event resolver (`nmp.kernel.claim_event`).
-    ClaimEventUri { uri: String, consumer_id: String },
-    /// Legacy URI release (`nmp.kernel.release_event`).
-    ReleaseEventUri { uri: String, consumer_id: String },
 }
 
 /// Parse an `ActionDispatch` as a reference-resolution operation. Returns `None`
@@ -115,16 +107,6 @@ pub(crate) fn ref_dispatch_from_action(action: &ActionDispatch) -> Option<RefDis
                 key,
                 consumer_id,
             })
-        }
-        "nmp.kernel.claim_event" => {
-            let uri = str_field(&action.payload, "uri")?;
-            let consumer_id = str_field(&action.payload, "consumer_id")?;
-            Some(RefDispatch::ClaimEventUri { uri, consumer_id })
-        }
-        "nmp.kernel.release_event" => {
-            let uri = str_field(&action.payload, "uri")?;
-            let consumer_id = str_field(&action.payload, "consumer_id")?;
-            Some(RefDispatch::ReleaseEventUri { uri, consumer_id })
         }
         _ => None,
     }
@@ -267,24 +249,20 @@ pub(crate) fn kernel_action_from_dispatch(action: &ActionDispatch) -> Option<Ker
 // The routing table and the execution logic stay co-located (dispatch_routing is
 // the single owner) so runtime.rs delegates in one line.
 //
-// `can_send` mirrors the native `claim_send_gate` semantics: true when any relay
-// lane has reported `Connected`; it gates only the legacy URI front door (the
-// unified `resolve_ref` seam reads `any_relay_connected` inside the kernel —
-// origin-blind, no caller flag). Release calls always return empty vecs.
+// Release calls always return empty vecs.
 
 /// Execute a decoded `RefDispatch` against the live kernel, returning any
 /// immediately-sendable `Vec<OutboundMessage>` (already `partition_auth_paused`
 /// inside the `KernelReducer` methods).
 ///
 /// Refs are not `KernelAction`s — they operate on the resolver refcount table,
-/// separate from the M2 interest registry. The two front doors (raw `resolve_ref`
-/// seam + legacy `claim_event` URI adapter) converge on the SAME kernel resolver.
+/// separate from the M2 interest registry.
 /// `force = false`: web-component resolves on mount are background, not
 /// user-navigation force-refreshes (F-TTL lazy path).
 pub(crate) fn execute_ref_dispatch(
     reducer: &mut KernelReducer,
     dispatch: RefDispatch,
-    can_send: bool,
+    _can_send: bool,
 ) -> Vec<OutboundMessage> {
     match dispatch {
         RefDispatch::Resolve {
@@ -299,14 +277,6 @@ pub(crate) fn execute_ref_dispatch(
             key,
             consumer_id,
         } => reducer.release_ref(namespace, &key, &consumer_id),
-        RefDispatch::ClaimEventUri { uri, consumer_id } => {
-            // URI front door of the event resolver: the kernel decodes the URI to
-            // a raw key, then delegates to the same `resolve_event_ref` body.
-            reducer.claim_event(uri, consumer_id, can_send, false)
-        }
-        RefDispatch::ReleaseEventUri { uri, consumer_id } => {
-            reducer.release_event(&uri, &consumer_id)
-        }
     }
 }
 

@@ -80,7 +80,7 @@ impl Kernel {
             .unwrap_or(0)
     }
 
-    /// Test-only: number of consumers currently holding a `claim_event`
+    /// Test-only: number of consumers currently holding an event ref
     /// on `primary_id`. Mirrors `profile_claims_len_for_test`.
     #[cfg(test)]
     pub(crate) fn event_claims_len_for_test(&self, primary_id: &str) -> usize {
@@ -90,7 +90,7 @@ impl Kernel {
             .unwrap_or(0)
     }
 
-    /// Test-only: `claim_event` requests dropped because a single
+    /// Test-only: event ref requests dropped because a single
     /// `primary_id`'s consumer set hit `MAX_EVENT_CLAIMS_PER_KEY`.
     #[cfg(test)]
     pub(crate) fn event_claim_drops_total_for_test(&self) -> u64 {

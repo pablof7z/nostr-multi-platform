@@ -212,25 +212,9 @@ fn dispatch_sign(cmd: SignCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<Out
 }
 
 /// `Refs` family dispatch — thin delegators to the kernel's
-/// `claim_event` / `release_event` / `resolve_ref` / `release_ref` one-liners.
+/// `resolve_ref` / `release_ref` seam.
 fn dispatch_refs(cmd: RefsCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
     match cmd {
-        RefsCommand::ClaimEvent {
-            uri,
-            consumer_id,
-            force,
-        } => {
-            let outbound = ctx
-                .kernel
-                .claim_event(uri, consumer_id, ctx.relays_ready, force);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
-        RefsCommand::ReleaseEvent { uri, consumer_id } => {
-            let outbound = ctx.kernel.release_event(&uri, &consumer_id);
-            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-            Some(outbound)
-        }
         RefsCommand::Resolve {
             namespace,
             key,

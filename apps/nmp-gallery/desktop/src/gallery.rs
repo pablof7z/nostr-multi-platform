@@ -13,7 +13,7 @@ use nmp_gallery_tui::content_tree_wire::{WireNode, WireUri};
 use nmp_gallery_tui::data::{GalleryData, LiveProfileMap};
 use nmp_gallery_tui::embed_host::EmbedHostState;
 use nmp_gallery_tui::gallery::{component_at, component_index, ComponentSpec, REGISTRY_SECTIONS};
-use nmp_gallery_tui::live::{GalleryTypedSnapshot, primary_pubkey};
+use nmp_gallery_tui::live::{primary_pubkey, GalleryTypedSnapshot};
 
 use crate::bridge::GalleryBridge;
 use crate::components::embed_article::ArticleCard;
@@ -149,7 +149,9 @@ impl iced::advanced::subscription::Recipe for SnapshotRecipe {
             .take()
             .expect("receiver present exactly once for the stream's lifetime");
         Box::pin(iced::futures::stream::unfold(rx, |mut rx| async move {
-            rx.recv().await.map(|v| (Message::Snapshot(Arc::new(v)), rx))
+            rx.recv()
+                .await
+                .map(|v| (Message::Snapshot(Arc::new(v)), rx))
         }))
     }
 }
@@ -236,7 +238,7 @@ fn claim_tree_refs(bridge: &GalleryBridge, nodes: &[WireNode]) {
             _ => None,
         };
         if let Some(u) = uri {
-            bridge.claim_event(&u.uri, CONSUMER_ID);
+            bridge.resolve_event_uri(&u.uri, CONSUMER_ID);
         }
     }
 }
@@ -501,12 +503,10 @@ fn render_component<'a>(spec: ComponentSpec, app: &'a GalleryApp) -> Element<'a,
                 let author_name = claim_and_resolve_author(app, &n.author_pubkey);
                 Some(
                     column![
-                        text(author_name)
-                            .size(13)
-                            .font(iced::Font {
-                                weight: iced::font::Weight::Bold,
-                                ..iced::Font::default()
-                            }),
+                        text(author_name).size(13).font(iced::Font {
+                            weight: iced::font::Weight::Bold,
+                            ..iced::Font::default()
+                        }),
                         text(format!(
                             "kind:1 · {}",
                             &n.author_pubkey[..12.min(n.author_pubkey.len())]

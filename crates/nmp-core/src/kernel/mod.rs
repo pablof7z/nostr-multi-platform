@@ -361,7 +361,7 @@ pub struct Kernel {
     event_claim_released_observers: Vec<Arc<dyn event_claim_released::EventClaimReleasedObserver>>,
     /// Cold-start parking queue for event refs awaiting a relay connection.
     pub(in crate::kernel) pending_event_claims: Vec<requests::PendingEventClaim>,
-    /// Counter for `claim_event` drops due to `MAX_EVENT_CLAIMS_PER_KEY`.
+    /// Counter for event-ref drops due to `MAX_EVENT_CLAIMS_PER_KEY`.
     event_claim_drops_total: u64,
     timeline_requested: bool,
     contacts_deadline: Option<Instant>,
@@ -478,4 +478,3 @@ pub struct Kernel {
     /// Kernel must not cross thread boundaries — D4 single-writer enforced at type level.
     _not_send: PhantomData<*const ()>,
 }
-

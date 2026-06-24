@@ -7,8 +7,8 @@
 //! set, and Phase-2 candidate queue. Three public entry points on `impl Kernel`
 //! drive the state machine:
 //!
-//! - `register_claim_expansion` — called from `requests/event.rs::claim_event`
-//!   after the existing OneshotApi registration (§7.3 retarget).
+//! - `register_claim_expansion` — called from `requests/event.rs`
+//!   after the event ref OneshotApi registration (§7.3 retarget).
 //! - `poll_claim_expansion(now)` — called from the actor idle tick (W6). Checks
 //!   Phase-1 budget, applies the §8.7 preflight, promotes Phase-1 claims past
 //!   their budget to Phase 2, and marks the total-budget elapse as Terminal.
@@ -39,8 +39,8 @@
 //! for O(log N) ingest lookups. The reverse index is populated by
 //! `register_planner_wire_frames` (bridge in `kernel/requests/mod.rs`).
 
-use std::collections::{BTreeSet, VecDeque};
 use crate::time::Instant;
+use std::collections::{BTreeSet, VecDeque};
 
 use crate::planner::{InterestId, InterestShape};
 use crate::relay::CanonicalRelayUrl;
@@ -158,7 +158,7 @@ impl PendingClaim {
 impl Kernel {
     /// Register a new claim-expansion tracker.
     ///
-    /// Called from `requests/event.rs::claim_event` after the OneshotApi
+    /// Called from `requests/event.rs` after the OneshotApi
     /// registration. `interest_id` is the id assigned by `OneshotApi::request`.
     /// `primary_id` is the event-id or coordinate string. `author` is `Some`
     /// for naddr and for nevent with author TLV, `None` otherwise. `uri_hints`
@@ -176,7 +176,7 @@ impl Kernel {
         started_at: Instant,
     ) {
         // Resolve the interest_id — use the provided value or the most-recently
-        // registered one. If neither is available, skip (claim_event must have
+        // registered one. If neither is available, skip (the resolver must have
         // registered the interest before calling us).
         let iid = match interest_id {
             Some(id) => id,
@@ -184,7 +184,7 @@ impl Kernel {
                 // Find the interest registered for this primary_id by looking at
                 // the last-inserted oneshot token entry. Use a synthetic id based
                 // on the shape hash when none is explicitly provided (test path).
-                // In production, `claim_event` always passes the real interest_id.
+                // In production, the resolver always passes the real interest_id.
                 // For tests that call without an interest_id, use a stable sentinel.
                 InterestId(0)
             }
@@ -199,7 +199,7 @@ impl Kernel {
             return;
         }
 
-        // Determine the InterestShape from what claim_event registered.
+        // Determine the InterestShape from what the resolver registered.
         // For tests (iid == 0) we use a minimal shape; production calls provide
         // the real iid and shape comes from the registry.
         let shape = self
@@ -351,27 +351,6 @@ impl Kernel {
             .retain(|_, c| !matches!(c.phase, Phase::Terminal(_)));
     }
 
-    /// Handle a matching EVENT on a claim-expansion sub identified by `primary_id`.
-    ///
-    /// Legacy entry point used by some call sites that have the primary_id
-    /// but not the sub_id. Routes through the primary-id scan path.
-    #[cfg(test)] // only called from claim_expansion_tests
-    pub(crate) fn on_claim_outcome_hit_by_primary_id(&mut self, primary_id: &str) {
-        let Some(iid) = self
-            .pending_claims
-            .values()
-            .find(|c| c.primary_id == primary_id)
-            .map(|c| c.interest_id.clone())
-        else {
-            return;
-        };
-        self.terminate_claim(iid.clone(), ClaimTermination::Hit);
-        // B3: clean up all reverse-index entries that pointed to this claim
-        self.claim_sub_index.retain(|_, v| *v != iid);
-        self.pending_claims
-            .retain(|_, c| !matches!(c.phase, Phase::Terminal(_)));
-    }
-
     /// Handle an EOSE-without-match on a claim-expansion sub.
     ///
     /// Called by the W3 ingest seam when an EOSE arrives on a sub_id that
@@ -431,7 +410,7 @@ impl Kernel {
     /// Release a claim (user navigated away). Removes the claim from tracking
     /// and cleans up the reverse index (B3: no claim_sub_index accumulation).
     ///
-    /// Called from `release_event` or equivalent in `requests/event.rs`.
+    /// Called from `release_event_ref` or equivalent in `requests/event.rs`.
     pub(crate) fn release_claim_expansion(&mut self, primary_id: &str) {
         let maybe_iid = self
             .pending_claims

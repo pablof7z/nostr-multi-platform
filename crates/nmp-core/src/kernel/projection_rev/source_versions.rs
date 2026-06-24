@@ -62,7 +62,7 @@ pub(crate) struct SourceVersions {
     pub(crate) profile_claims_ver: u64,
 
     /// Bumped on two conditions (codex #1 — store-backed claimed content):
-    /// 1. `claim_event` / `release_event` (the sole writers of
+    /// 1. event `resolve_ref` / `release_ref` (the sole writers of
     ///    `Kernel::event_claims` — D4 via `requests/event.rs`).
     /// 2. A store-insert/replace whose event-id OR addressable coord matches a
     ///    live `event_claims` key — checked at the `verify_and_persist`

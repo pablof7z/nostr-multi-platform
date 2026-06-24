@@ -34,9 +34,10 @@
 #[path = "common/mod.rs"]
 mod common;
 
+use common::ref_commands::{release_event_ref, resolve_event_embed};
 use common::wire_log::{req_emit_relays_for_phase, score_updates, StderrCapture};
+use nmp_core::actor::LifecycleCommand;
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
@@ -120,12 +121,11 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
     }
 
     // ── (4) Claim A — prime the score map ────────────────────────────────────
-    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-        uri: GIGI_NADDR_A.to_string(),
-        consumer_id: "a6-claim-a".to_string(),
-        force: false,
-    }))
-    .expect("A6: ClaimEvent A send");
+    tx.send(ActorCommand::Refs(resolve_event_embed(
+        GIGI_NADDR_A,
+        "a6-claim-a",
+    )))
+    .expect("A6: event ref A resolve send");
 
     let a_deadline = Instant::now() + Duration::from_millis(CLAIM_A_BUDGET_MS);
     drain_until_or_timeout(&rx, a_deadline, |_| false);
@@ -133,22 +133,21 @@ fn a6_concurrent_claims_claim_b_sees_claim_a_score_delta() {
     std::thread::sleep(Duration::from_millis(100));
 
     // Release claim A so the interest slot is freed before claim B.
-    let _ = tx.send(ActorCommand::Refs(RefsCommand::ReleaseEvent {
-        uri: GIGI_NADDR_A.to_string(),
-        consumer_id: "a6-claim-a".to_string(),
-    }));
+    let _ = tx.send(ActorCommand::Refs(release_event_ref(
+        GIGI_NADDR_A,
+        "a6-claim-a",
+    )));
     std::thread::sleep(Duration::from_millis(50));
 
     // ── (5) Claim B — must see claim A's score delta in phase1 ───────────────
     // Claim B registers AFTER claim A's scoring frame has been written.
     // The D4 single-writer model guarantees that the next compile pass
     // (triggered by claim B's ViewOpened) reads the updated score map.
-    tx.send(ActorCommand::Refs(RefsCommand::ClaimEvent {
-        uri: GIGI_NADDR_B.to_string(),
-        consumer_id: "a6-claim-b".to_string(),
-        force: false,
-    }))
-    .expect("A6: ClaimEvent B send");
+    tx.send(ActorCommand::Refs(resolve_event_embed(
+        GIGI_NADDR_B,
+        "a6-claim-b",
+    )))
+    .expect("A6: event ref B resolve send");
 
     let b_deadline = Instant::now() + Duration::from_millis(CLAIM_B_BUDGET_MS);
     drain_until_or_timeout(&rx, b_deadline, |_| false);

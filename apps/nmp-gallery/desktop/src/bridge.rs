@@ -62,8 +62,8 @@ impl GalleryBridge {
         }
     }
 
-    /// Forward an event claim (nevent / note / naddr URI) for embed resolution.
-    pub fn claim_event(&self, uri: &str, consumer_id: &str) {
+    /// Resolve an event URI (nevent / note / naddr) for embed rendering.
+    pub fn resolve_event_uri(&self, uri: &str, consumer_id: &str) {
         use nmp_content::EventClaimSink;
         self.sink.claim(uri, consumer_id);
     }

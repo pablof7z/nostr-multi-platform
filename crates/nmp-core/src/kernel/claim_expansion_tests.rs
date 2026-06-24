@@ -49,11 +49,11 @@ mod tests {
             "claim must be registered"
         );
 
-        // Simulate a Phase-1 hit: event becomes known + call on_claim_outcome Hit
-        // Uses the primary_id-based path since this test doesn't go through
-        // the production wire-frame registration (no claim_sub_index populated).
+        // Simulate a Phase-1 hit through the production sub-id keyed path.
         kernel.test_mark_event_known(&primary_id);
-        kernel.on_claim_outcome_hit_by_primary_id(&primary_id);
+        let sub_id = "sub-phase1-hit";
+        kernel.test_register_claim_sub_id(&primary_id, "wss://phase1.example", sub_id);
+        kernel.on_claim_outcome_hit(sub_id);
 
         // After hit, claim must be terminated (removed from pending)
         assert!(

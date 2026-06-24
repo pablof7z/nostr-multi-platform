@@ -119,7 +119,7 @@ impl Kernel {
         self.collect_content_mention_pubkeys(&event.content);
         // F-CR-00 capstone: proactive kind:0 fetch removed. The kernel now
         // fetches kind:0 ONLY in response to component claims
-        // (`resolve_ref` / `claim_event`). Every author-displaying
+        // (`resolve_ref`). Every author-displaying
         // component on all platforms self-claims on mount:
         //   iOS:     ChirpAvatar `.task(id: pubkey)` → claimProfile
         //   Android: RememberProfileClaim (DisposableEffect)

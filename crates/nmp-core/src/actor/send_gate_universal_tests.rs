@@ -3,13 +3,13 @@
 //! # The bug (shared-kernel, NOT Android-specific)
 //!
 //! The actor computes the per-dispatch `relays_ready` flag at
-//! `actor/mod.rs` as `all_relays_connected(&connected_relays)` and feeds it to
-//! `kernel.claim_event(uri, consumer, relays_ready)` (`actor/dispatch.rs`).
+//! `actor/mod.rs` as `all_relays_connected(&connected_relays)` and fed it to
+//! the event resolver's send gate.
 //! `all_relays_connected` is `true` only when EVERY [`RelayRole`] lane
 //! (`Content` AND `Indexer`) has a connected URL. If one bootstrap lane never
 //! establishes a socket (on an emulator's Indexer
 //! lane never opens its WebSocket), `relays_ready` is permanently `false` and
-//! every `claim_event` / `resolve_ref` / `open_*` parks forever — no REQ is
+//! every event/profile resolve / `open_*` parks forever — no REQ is
 //! ever emitted, not even to the nevent's own URI relay hint.
 //!
 //! # Why this is universal — there is NO iOS/TUI bypass
@@ -19,8 +19,8 @@
 //! the exact same shared kernel + actor gate. If their Indexer lane were down
 //! they would park identically. These tests prove that by composing the **real**
 //! actor gate function (`all_relays_connected`) with the **real** kernel
-//! `claim_event` — the identical composition every platform executes — and
-//! showing that "Content connected, Indexer offline" parks the claim.
+//! event ref resolve — the identical composition every platform executes — and
+//! showing that "Content connected, Indexer offline" still sends the event ref.
 //!
 //! # RED → GREEN
 //!
@@ -38,21 +38,8 @@ mod tests {
     use std::collections::HashSet;
 
     use crate::actor::relay_mgmt::{all_relays_connected, claim_send_gate};
-    use crate::kernel::Kernel;
-    use crate::nip19::{encode_nevent, NeventData};
+    use crate::kernel::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
     use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
-
-    /// Build an `nostr:nevent…` URI carrying NIP-19 relay TLVs.
-    fn nevent_uri_with_relays(event_id: &str, relays: &[&str]) -> String {
-        let bech = encode_nevent(&NeventData {
-            event_id: event_id.to_string(),
-            relays: relays.iter().map(|r| (*r).to_string()).collect(),
-            author: None,
-            kind: Some(1),
-        })
-        .expect("encode_nevent");
-        format!("nostr:{bech}")
-    }
 
     fn hex64(prefix: &str) -> String {
         let mut s = prefix.to_string();
@@ -87,10 +74,8 @@ mod tests {
     }
 
     /// UNIVERSAL PROOF — RED before Fix A, GREEN after. Drives the identical
-    /// composition every platform runs: `relays_ready = claim_send_gate(
-    /// &connected_relays)` (the single production gate at `actor/mod.rs`) fed to
-    /// `kernel.claim_event(uri, consumer, relays_ready)` (`actor/dispatch.rs`),
-    /// with only the Content lane connected.
+    /// composition every platform runs: the actor's connected-relay view and
+    /// the kernel's event-ref resolve state with only the Content lane connected.
     ///
     /// Because the test calls the SAME `claim_send_gate` function production
     /// calls, it flips with a one-line body change in that function — not by the
@@ -107,21 +92,29 @@ mod tests {
         // socket opened, the Indexer lane's never did.
         let mut connected_relays = HashSet::new();
         connected_relays.insert(RelayRole::Content);
+        kernel.relay_connected(RelayRole::Content);
 
         // EXACT actor computation — the single production gate (actor/mod.rs).
-        let relays_ready = claim_send_gate(&connected_relays);
+        assert!(claim_send_gate(&connected_relays));
 
-        // An nevent that carries a working relay hint — the publisher's own
+        // A caller-provided relay hint — the publisher's own
         // content relay. Even bootstrap-blind, this claim should resolve.
         let id = hex64("a1");
-        let uri = nevent_uri_with_relays(&id, &["wss://relay.publisher.example"]);
+        let hints = vec!["wss://relay.publisher.example".to_string()];
 
-        // EXACT actor dispatch (mirrors actor/dispatch.rs:509).
-        let outbound = kernel.claim_event(uri, "view-universal".to_string(), relays_ready, false);
+        let outbound = kernel.resolve_ref(
+            RefNamespace::Event,
+            id.clone(),
+            "view-universal".to_string(),
+            RefShape::Event(EventShape::Embed),
+            RefLiveness::CacheOk,
+            false,
+            hints,
+        );
 
         assert!(
             outbound.is_empty(),
-            "claim_event always returns Vec::new() — wire frames flow through the planner (D4)"
+            "resolve_ref always returns Vec::new() — wire frames flow through the planner (D4)"
         );
 
         // THE PROOF: with one lane connected the claim must SEND, i.e. register
@@ -153,6 +146,8 @@ mod tests {
         let mut connected_relays = HashSet::new();
         connected_relays.insert(RelayRole::Content);
         connected_relays.insert(RelayRole::Indexer);
+        kernel.relay_connected(RelayRole::Content);
+        kernel.relay_connected(RelayRole::Indexer);
 
         // Sanity: with both lanes up, the historical `all` gate and the
         // production `claim_send_gate` agree — proving Fix A is behavior-
@@ -168,8 +163,15 @@ mod tests {
         );
 
         let id = hex64("b2");
-        let uri = nevent_uri_with_relays(&id, &["wss://relay.publisher.example"]);
-        let _ = kernel.claim_event(uri, "view-happy".to_string(), relays_ready, false);
+        let _ = kernel.resolve_ref(
+            RefNamespace::Event,
+            id.clone(),
+            "view-happy".to_string(),
+            RefShape::Event(EventShape::Embed),
+            RefLiveness::CacheOk,
+            false,
+            vec!["wss://relay.publisher.example".to_string()],
+        );
 
         assert!(
             kernel.event_claim_is_requested_for_test(&id),

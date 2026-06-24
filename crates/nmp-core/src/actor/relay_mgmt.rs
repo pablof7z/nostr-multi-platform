@@ -61,7 +61,7 @@ pub(super) fn all_relays_connected(connected_relays: &HashSet<RelayRole>) -> boo
 }
 
 /// THE claim/open send-gate — the single production decision point for whether
-/// a `claim_event` / `resolve_ref` / `open_interest` /
+/// a `resolve_ref` / `open_interest` /
 /// `open_firehose` / sign-in-driven retarget sends its REQ now or parks until a
 /// relay connects. Its value is computed once per dispatch at `actor/mod.rs` and
 /// fed to every consumer as `relays_ready` / `can_send`.

@@ -1,6 +1,6 @@
 //! ADR-0063 — the kernel-owned `RefResolver` reference-resolution primitive.
 //!
-//! `claim_profile` + `claim_event` were already two instances of one shape:
+//! Profile and event refs are two instances of one shape:
 //! refcounted consumer ownership → kernel-owned fetch/routing/cache policy
 //! (`register_interest` / `OneshotApi`) → a push-updating keyed projection →
 //! release. This module NAMES that primitive. It does not invent a new machine;
@@ -21,9 +21,7 @@
 //! So the namespace markers ([`ProfileNs`] / [`EventNs`]) are **zero-sized**: the
 //! [`RefResolver`] trait captures the shared *contract* (the closed shape type,
 //! the namespace discriminant, the resolve/release entry points) while the kernel
-//! owns the state and the seam (`resolve_ref`) dispatches with a `match`. This is
-//! exactly how the existing `claim_*` methods already work (`impl Kernel` bodies),
-//! made uniform — not a new indirection layer.
+//! owns the state and the seam (`resolve_ref`) dispatches with a `match`.
 //!
 //! ## Closed, typed surface (ADR-0063 D2/D3/D4 — NOT a stringly registry)
 //!
@@ -241,8 +239,7 @@ impl RefResolver for EventNs {
     ) -> Vec<OutboundMessage> {
         // Origin-blind seam: readiness is a kernel-owned transport fact
         // (`any_relay_connected`), not a caller-supplied flag (the ADR seam has
-        // no `can_send`). The legacy `claim_event` scaffold still threads its
-        // caller's flag for byte-identical behaviour during the migration.
+        // no `can_send`).
         let can_send = kernel.any_relay_connected();
         kernel.resolve_event_ref(key, consumer_id, shape, liveness, force, can_send, hints)
     }
@@ -280,7 +277,9 @@ impl Kernel {
             RefShape::Profile(s) => {
                 ProfileNs::resolve(self, key, consumer_id, s, liveness, force, hints)
             }
-            RefShape::Event(s) => EventNs::resolve(self, key, consumer_id, s, liveness, force, hints),
+            RefShape::Event(s) => {
+                EventNs::resolve(self, key, consumer_id, s, liveness, force, hints)
+            }
         }
     }
 
@@ -314,19 +313,13 @@ impl Kernel {
     /// once no consumer holds the key.
     pub(crate) fn ref_demanded_profile_shape(&self, key: &str) -> Option<ProfileShape> {
         let consumers = self.ref_profile_shapes.get(key)?;
-        consumers
-            .values()
-            .copied()
-            .reduce(|acc, s| acc.widen(s))
+        consumers.values().copied().reduce(|acc, s| acc.widen(s))
     }
 
     /// The widest `event` shape any currently-live consumer of `key` demanded.
     /// Folds the widen lattice over the per-consumer shapes (HIGH 4).
     pub(crate) fn ref_demanded_event_shape(&self, key: &str) -> Option<EventShape> {
         let consumers = self.ref_event_shapes.get(key)?;
-        consumers
-            .values()
-            .copied()
-            .reduce(|acc, s| acc.widen(s))
+        consumers.values().copied().reduce(|acc, s| acc.widen(s))
     }
 }

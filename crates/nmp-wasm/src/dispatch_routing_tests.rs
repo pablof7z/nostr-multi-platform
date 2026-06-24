@@ -90,20 +90,13 @@ fn ref_dispatch_routes_release_ref() {
 }
 
 #[test]
-fn ref_dispatch_routes_legacy_event_uri_front_door() {
-    let uri = "nostr:note1abc".to_string();
+fn ref_dispatch_rejects_deleted_event_uri_front_door() {
     let action = ActionDispatch {
         action_type: "nmp.kernel.claim_event".to_string(),
-        payload: serde_json::json!({"uri": uri, "consumer_id": "embed-1"}),
+        payload: serde_json::json!({"uri": "nostr:note1abc", "consumer_id": "embed-1"}),
         correlation_id: "x".to_string(),
     };
-    assert_eq!(
-        ref_dispatch_from_action(&action),
-        Some(RefDispatch::ClaimEventUri {
-            uri,
-            consumer_id: "embed-1".to_string(),
-        })
-    );
+    assert!(ref_dispatch_from_action(&action).is_none());
 }
 
 #[test]

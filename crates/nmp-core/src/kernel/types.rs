@@ -699,7 +699,7 @@ pub(crate) struct KernelSnapshot {
 ///   renderer-side `WireUri.primary_id`).
 ///
 /// D0 — the name is intentionally generic ("event", not "embed"); the
-/// kernel primitive that drives this projection is `claim_event` and
+/// kernel primitive that drives this projection is event `resolve_ref` and
 /// can carry any kind, not just embed-class events.
 ///
 /// `pub(crate)` struct with `pub(super)` fields, serialised through

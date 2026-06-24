@@ -11,7 +11,7 @@
 //! The `claimed_events` projection calls the installed parser to embed a parsed
 //! `content_tree_bytes` alongside each claimed event's raw content, so a web
 //! host (which cannot run `nmp-content` in JS) can render the kernel-parsed
-//! content tree from a `claim_event` — matching the native gallery's
+//! content tree from an event `resolve_ref` — matching the native gallery's
 //! claim-driven content path. Hosts that install no parser (the default) get an
 //! empty buffer and fall back to the raw content string — behaviour-preserving
 //! for every existing native consumer (D0/D6).

@@ -1,6 +1,5 @@
 //! Generic event-claim primitive: the canonical raw-key resolver
-//! (`resolve_event_ref` / `release_event_ref`) plus the legacy URI front door
-//! (`claim_event` / `release_event`).
+//! (`resolve_event_ref` / `release_event_ref`).
 //!
 //! Symmetric with [`super::profile::resolve_profile_ref`] but addresses events.
 //! A "ref" is a refcounted assertion from one consumer that it wants the event
@@ -14,14 +13,11 @@
 //! compiles a wire REQ. `primary_id` is the projection key `claimed_events`
 //! uses (hex64 id, or `kind:pubkey:d_tag` matching `WireUri.primary_id`).
 //!
-//! ## One body, two front doors (ADR-0063 D1 — single path)
+//! ## One raw-key front door (ADR-0063 D1 — single path)
 //!
 //! [`Kernel::resolve_event_ref`] is the CANONICAL body and takes the raw key
-//! directly (the `event` arm of the origin-blind `resolve_ref` seam). The legacy
-//! `claim_event` FFI scaffold is URI-based, so it is a thin adapter that decodes
-//! the `nostr:` URI into the SAME canonical raw key (+ author/relay hints) and
-//! calls the same body. There is NO second resolver — the URI path converges
-//! onto the raw path.
+//! directly (the `event` arm of the origin-blind `resolve_ref` seam). Callers
+//! that start from `nostr:` URIs decode them before crossing this boundary.
 //!
 //! D0 — no name here names a higher-layer content concept (`nmp-content` owns
 //! the render-side projections). D6 — every error path silently logs and returns
@@ -32,87 +28,9 @@
 use super::super::{truncate, Instant, Kernel, OutboundMessage};
 use super::event_key::{parse_event_key, EventTarget, PendingEventClaim};
 use crate::kernel::refs::{EventShape, RefLiveness};
-use crate::nip21::{parse_nostr_uri, NostrUri};
 use crate::planner::{HintSource, InterestScope, RelayHint};
 
 impl Kernel {
-    /// Refcount a consumer's interest in the event identified by `uri` and,
-    /// on the cold-claim transition, register a `OneShot + Global` interest so
-    /// the planner compiles a REQ that fetches it.
-    ///
-    /// integration-scaffold(#1671 Lane H): delete before final master cut.
-    ///
-    /// LEGACY URI FRONT DOOR — decodes the `nostr:` URI into the canonical raw
-    /// key (+ author/relay hints from its NIP-19 TLVs) and forwards to
-    /// [`Kernel::resolve_event_ref`], the SAME body the raw `resolve_ref` seam
-    /// uses. The legacy `claim_event` surface renders an embed card
-    /// (`claimed_events` = embed shape) at cache-ok freshness, so it maps to
-    /// [`EventShape::Embed`] + [`RefLiveness::CacheOk`]. It threads its caller's
-    /// `can_send` verbatim (the origin-blind [`Kernel::resolve_ref`] seam instead
-    /// derives readiness from `any_relay_connected`).
-    pub(crate) fn claim_event(
-        &mut self,
-        uri: String,
-        consumer_id: String,
-        can_send: bool,
-        force: bool,
-    ) -> Vec<OutboundMessage> {
-        // D6: silently swallow parse failures. The host may surface arbitrary
-        // user-typed URIs (text content, mention pickers, shared-link routing);
-        // a malformed string is never an FFI error.
-        let parsed = match parse_nostr_uri(&uri) {
-            Ok(p) => p,
-            Err(e) => {
-                self.log(format!(
-                    "claim_event: ignoring unparseable URI {}: {}",
-                    truncate(&uri, 80),
-                    e
-                ));
-                return Vec::new();
-            }
-        };
-        // Decode the URI into the canonical raw key (+ author/relay hints). The
-        // Profile arm is refused (kind:0 routes through `resolve_ref`).
-        let (key, author, relay_hints) = match parsed {
-            NostrUri::Profile { .. } => {
-                self.log(format!(
-                    "claim_event: refusing Profile URI (use resolve_ref) {}",
-                    truncate(&uri, 80)
-                ));
-                return Vec::new();
-            }
-            NostrUri::Event {
-                event_id,
-                author,
-                relays,
-                kind: _,
-            } => (event_id, author, relays),
-            NostrUri::Address {
-                identifier,
-                pubkey,
-                kind,
-                relays,
-            } => (
-                // Stable coordinate form — must match the renderer-side
-                // `WireUri.primary_id` and the raw `kind:pubkey:d` key contract.
-                format!("{kind}:{pubkey}:{identifier}"),
-                // naddr is single-author by construction.
-                Some(pubkey),
-                relays,
-            ),
-        };
-        self.resolve_event_ref_inner(
-            key,
-            consumer_id,
-            EventShape::Embed,
-            RefLiveness::CacheOk,
-            force,
-            can_send,
-            author,
-            relay_hints,
-        )
-    }
-
     /// The `event` reference resolver (ADR-0063), CANONICAL raw-key entry. The
     /// `event` arm of the origin-blind `resolve_ref` seam (refs.rs) routes here.
     /// `key` is the raw FFI key — a 64-char lowercase hex event-id or a
@@ -126,9 +44,7 @@ impl Kernel {
     /// *tailing* interest so replacements (a newer kind:3xxxx) arrive reactively
     /// — the event twin of a `Live` profile ref. Immutable event-ids cannot
     /// change, so `Live` degrades to the one-shot fetch for them. `caller_hints`
-    /// are NIP-19 relay TLVs carried on `ActorCommand::ResolveRef.hints` (the raw
-    /// FFI path currently passes none; the legacy URI adapter threads the URI's
-    /// own TLVs through `resolve_event_ref_inner`).
+    /// are optional relay hints carried by the raw-key caller.
     #[allow(clippy::too_many_arguments)] // origin-blind seam; trimmed in Lane H.
     pub(in crate::kernel) fn resolve_event_ref(
         &mut self,
@@ -149,16 +65,13 @@ impl Kernel {
             liveness,
             force,
             can_send,
-            None,
             caller_hints,
         )
     }
 
-    /// Shared resolver body for BOTH front doors (raw seam + legacy URI adapter).
-    /// `author_override` carries the URI's author TLV from the legacy adapter
-    /// (`None` on the raw path, where the coordinate pubkey is the only author);
-    /// `relay_hints` are NIP-19 relay TLVs (URI adapter) or
-    /// `ActorCommand::ResolveRef.hints` (raw seam).
+    /// Shared resolver body for the raw-key seam and the cold-park replay path.
+    /// `relay_hints` are caller-supplied relay hints that seed the first
+    /// one-shot interest and the claim-expansion candidate queue.
     #[allow(clippy::too_many_arguments)] // origin-blind seam; trimmed in Lane H.
     pub(in crate::kernel) fn resolve_event_ref_inner(
         &mut self,
@@ -168,7 +81,6 @@ impl Kernel {
         liveness: RefLiveness,
         force: bool,
         can_send: bool,
-        author_override: Option<String>,
         relay_hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
         // D6: a malformed raw key fails closed (no claim, no discovery REQ, no
@@ -188,10 +100,9 @@ impl Kernel {
             return Vec::new();
         };
 
-        // Author for the claim-expansion Phase-1 warm filter: the URI adapter's
-        // explicit TLV author wins (it can be a nevent author the bare id cannot
-        // carry); otherwise the coordinate pubkey derived from the key.
-        let author = author_override.or(derived_author);
+        // Author for the claim-expansion Phase-1 warm filter. Raw event-id refs
+        // do not carry an author; addressable coordinates derive it from the key.
+        let author = derived_author;
 
         // Refcount + bound check (mirror of `resolve_profile_ref`). Drop-newest
         // on overflow bumps the diagnostic counter and silently no-ops (D6).
@@ -239,9 +150,13 @@ impl Kernel {
         if mutated {
             self.changed_since_emit = true;
             // ADR-0055 Rung 1: bump claimed_event_content_ver (codex #1 condition 1).
-            self.projection_rev_tracker.source_versions.bump_claimed_event_content();
+            self.projection_rev_tracker
+                .source_versions
+                .bump_claimed_event_content();
             // ADR-0063 Lane B (D6a) — per-key rev (resolve site 1 of 3).
-            self.projection_rev_tracker.source_versions.bump_event_row(&primary_id);
+            self.projection_rev_tracker
+                .source_versions
+                .bump_event_row(&primary_id);
         }
 
         // ADR-0063 — `Live` on an ADDRESSABLE coordinate registers a tailing
@@ -305,8 +220,8 @@ impl Kernel {
         // it falls through to the registration path below, which seeds the
         // OneshotApi interest with those hints. The planner then compiles a REQ
         // targeting the hint relay (empirically confirmed even with zero bootstrap
-        // relays connected and no cached mailbox — see `event_claim_tests::
-        // claim_event_parked_with_uri_hint_registers_and_targets_hint_relay`), and
+        // relays connected and no cached mailbox — see the hint-relay cold
+        // resolve regression in `event_claim_tests`), and
         // `send_outbound` dials that URL on demand (relay_mgmt.rs:358-389).
         if !can_send && relay_hints.is_empty() {
             // Cold-start parking: the claim is already refcounted into
@@ -328,7 +243,6 @@ impl Kernel {
                 shape,
                 liveness,
                 force,
-                author,
                 relay_hints,
             });
             return Vec::new();
@@ -352,7 +266,8 @@ impl Kernel {
         // identity+interest; register_interest installs via EnsureAbsent and
         // fires the store-serve + recompile trigger.
         let (token, interest_id, identity, interest) =
-            self.oneshot.prepare(InterestScope::Global, filter, initial_hints);
+            self.oneshot
+                .prepare(InterestScope::Global, filter, initial_hints);
         self.register_interest(
             &[crate::kernel::cache_serve::InterestRegistration {
                 identity,
@@ -377,39 +292,6 @@ impl Kernel {
         // register_interest already enqueued InvalidateCompile on install.
 
         Vec::new()
-    }
-
-    // integration-scaffold(#1671 Lane H): delete before final master cut.
-    //
-    // LEGACY URI FRONT DOOR — decodes the `nostr:` URI to the canonical raw key
-    // and forwards to [`Kernel::release_event_ref`], the SAME body the raw
-    // `release_ref` seam uses.
-    pub(crate) fn release_event(&mut self, uri: &str, consumer_id: &str) -> Vec<OutboundMessage> {
-        let key = match parse_nostr_uri(uri) {
-            Ok(NostrUri::Event { event_id, .. }) => event_id,
-            Ok(NostrUri::Address {
-                identifier,
-                pubkey,
-                kind,
-                ..
-            }) => format!("{kind}:{pubkey}:{identifier}"),
-            Ok(NostrUri::Profile { .. }) => {
-                self.log(format!(
-                    "release_event: refusing Profile URI {}",
-                    truncate(uri, 80)
-                ));
-                return Vec::new();
-            }
-            Err(e) => {
-                self.log(format!(
-                    "release_event: ignoring unparseable URI {}: {}",
-                    truncate(uri, 80),
-                    e
-                ));
-                return Vec::new();
-            }
-        };
-        self.release_event_ref(&key, consumer_id)
     }
 
     /// The `event` reference release (ADR-0063), CANONICAL raw-key entry. The

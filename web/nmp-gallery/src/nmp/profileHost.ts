@@ -19,8 +19,8 @@ import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWir
 import type { NostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 
-// ADR-0063 Lane D wire codes (mirror apps/chirp/chirp-tui runtime.rs FFI codes
-// and the wasm `resolve_dispatch_from_action` recognizer):
+// ADR-0063 Lane D wire codes (mirror the wasm `resolve_dispatch_from_action`
+// recognizer):
 //   namespace: 0 = profile, 1 = event
 //   shape:     profile → 0 = ref, 1 = card;  event → 0 = embed, 1 = raw
 //   liveness:  0 = CacheOk, 1 = Live
@@ -93,19 +93,19 @@ export type GalleryRuntime = {
    *  profile REQs route to the indexer lane, so claims must wait for this. */
   anyIndexerConnected: Accessor<boolean>;
   /** Reactive — true once a connected relay carries the `content` role. Event-id
-   *  fetches (claim_event) route to the content lane, so event claims must wait
+   *  fetches route to the content lane, so event claims must wait
    *  for this — claiming before the content socket is open drops the REQ (the
    *  wasm transport has no retry/on-demand dial). */
   anyContentConnected: Accessor<boolean>;
   /** Reactive — number of resolved profiles currently held. */
   resolvedCount: Accessor<number>;
-  /** Claim a single event by `nostr:` URI (nevent/naddr). Routes through the
+  /** Claim a single event by raw event key. Routes through the
    *  content-relay lane (Discovery seed), independent of the indexer lane. */
-  claimEvent(uri: string, consumerId: string): void;
+  claimEvent(key: string, consumerId: string): void;
   /** Release an event claim. Dropping the last consumer clears the kernel's
    *  "already requested" dedupe state, so a subsequent `claimEvent` re-issues a
    *  fresh REQ — the basis of the cold-start re-claim retry. */
-  releaseEvent(uri: string, consumerId: string): void;
+  releaseEvent(key: string, consumerId: string): void;
   /** Reactive — a claimed event keyed by its `primary_id`, or undefined until
    *  the kernel resolves it. */
   claimedEvent: (primaryId: string) => ClaimedEventWire | undefined;
@@ -428,19 +428,25 @@ export function createGalleryRuntime(): GalleryRuntime {
         (r) => r.connection.toLowerCase() === "connected" && r.role.includes("content"),
       ),
     resolvedCount,
-    claimEvent(uri: string, consumerId: string) {
+    claimEvent(key: string, consumerId: string) {
       void request({
         type: "dispatch",
-        action_type: "nmp.kernel.claim_event",
-        payload: { uri, consumer_id: consumerId },
+        action_type: "nmp.kernel.resolve_ref",
+        payload: {
+          namespace: REF_NS_EVENT,
+          key,
+          consumer_id: consumerId,
+          shape: REF_SHAPE_EVENT_EMBED,
+          liveness: REF_LIVENESS_CACHE_OK,
+        },
         correlation_id: `claim-event-${claimSeq++}`,
       });
     },
-    releaseEvent(uri: string, consumerId: string) {
+    releaseEvent(key: string, consumerId: string) {
       void request({
         type: "dispatch",
-        action_type: "nmp.kernel.release_event",
-        payload: { uri, consumer_id: consumerId },
+        action_type: "nmp.kernel.release_ref",
+        payload: { namespace: REF_NS_EVENT, key, consumer_id: consumerId },
         correlation_id: `release-event-${claimSeq++}`,
       });
     },
