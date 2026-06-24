@@ -148,7 +148,7 @@ mod command_wakes_blocked_actor_tests;
 
 #[cfg(test)]
 mod tests {
-    use crate::actor::{run_actor, ActorCommand, ActorMail, CommandSender};
+    use crate::actor::{spawn_test_actor, ActorCommand, ActorMail, CommandSender};
     use crate::actor::{IdentityCommand, LifecycleCommand, RefsCommand};
     use crate::app::KernelAction;
     use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
@@ -194,7 +194,7 @@ mod tests {
         let cmd_tx = CommandSender::new(inbox_tx);
         let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
-        thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
+        thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
 
         // Wait long enough for several idle-poll cycles without any commands.
         thread::sleep(Duration::from_millis(1_000));
@@ -227,7 +227,7 @@ mod tests {
         let cmd_tx = CommandSender::new(inbox_tx);
         let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
-        thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
+        thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
 
         cmd_tx
             .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
@@ -288,7 +288,7 @@ mod tests {
         let cmd_tx = CommandSender::new(inbox_tx);
         let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
-        thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
+        thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
 
         // Configure (NOT Start) — running stays false. Then fire a flurry of
         // view commands. None of these should produce a snapshot frame.
@@ -402,7 +402,7 @@ mod tests {
         let cmd_tx = CommandSender::new(inbox_tx);
         let (upd_tx, upd_rx) = mpsc::channel::<UpdateFrameBytes>();
         let actor_self_tx = cmd_tx.clone();
-        thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
+        thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
 
         cmd_tx
             .send(ActorCommand::Lifecycle(LifecycleCommand::Start {

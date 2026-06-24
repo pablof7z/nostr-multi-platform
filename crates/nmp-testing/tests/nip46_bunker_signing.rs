@@ -183,7 +183,7 @@ fn bunker_sign_event_round_trip_on_the_wire() {
 fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     use std::sync::mpsc;
 
-    use nmp_core::testing::run_actor;
+    use nmp_core::testing::spawn_test_actor;
     use nmp_core::actor::ActorCommand;
     use nmp_core::{ActorMail, CommandSender};
 
@@ -203,7 +203,7 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
     let cmd_tx = CommandSender::new(cmd_inbox_tx);
     let (upd_tx, upd_rx) = mpsc::channel::<Vec<u8>>();
     let actor_self_tx = cmd_tx.clone();
-    let actor_handle = std::thread::spawn(move || run_actor(cmd_rx, actor_self_tx, upd_tx));
+    let actor_handle = std::thread::spawn(move || spawn_test_actor(cmd_rx, actor_self_tx, upd_tx));
 
     cmd_tx
         .send(ActorCommand::Lifecycle(LifecycleCommand::Start {
