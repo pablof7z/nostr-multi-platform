@@ -5,8 +5,8 @@
 //! and the handler returns a typed envelope as JSON. Failures are represented
 //! as data (D6), never as panics or NULL returns to the caller.
 
-use std::ffi::{c_char, c_void, CString};
-use std::sync::{Arc, Mutex};
+use std::ffi::{CString, c_char, c_void};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 /// Native capability handler. Receives a `CapabilityRequest` JSON
 /// (`*const c_char`, NUL-terminated, UTF-8) and returns a freshly heap-
@@ -20,19 +20,120 @@ pub struct CapabilityCallbackRegistration {
     pub callback: CapabilityCallback,
 }
 
-pub type CapabilityCallbackSlot = Arc<Mutex<Option<CapabilityCallbackRegistration>>>;
+/// Mutable state for the capability-callback quiescence gate.
+///
+/// `in_flight > 0` only while Rust is actively invoking a native capability
+/// callback copied from `registration`. Set/replace/unregister waits for this
+/// counter to drain before returning so hosts can release callback contexts
+/// immediately after the setter returns.
+struct CapabilityCallbackGateInner {
+    registration: Option<CapabilityCallbackRegistration>,
+    in_flight: u32,
+}
+
+/// Quiescence-safe slot for the native capability callback registration.
+///
+/// Mirrors the FFI update-callback contract: after replacing or clearing the
+/// registration, the previous `(callback, context)` pair is neither registered
+/// nor mid-invocation. Native bridges may free or release the previous context
+/// after the setter returns.
+pub struct CapabilityCallbackGate {
+    inner: Mutex<CapabilityCallbackGateInner>,
+    drained: Condvar,
+}
+
+impl CapabilityCallbackGate {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new(CapabilityCallbackGateInner {
+                registration: None,
+                in_flight: 0,
+            }),
+            drained: Condvar::new(),
+        }
+    }
+
+    /// Replace or clear the callback registration, then wait for all
+    /// in-flight invocations to complete before returning.
+    ///
+    /// Re-entrancy matches the update callback: a native capability callback
+    /// must not call the setter for the same slot from inside the callback,
+    /// because the setter waits for that callback to finish.
+    pub fn set_registration(&self, registration: Option<CapabilityCallbackRegistration>) {
+        let mut guard = self.lock_inner();
+        guard.registration = registration;
+        drop(self.wait_drained(guard));
+    }
+
+    pub fn clear(&self) {
+        self.set_registration(None);
+    }
+
+    #[must_use]
+    pub fn is_registered(&self) -> bool {
+        self.lock_inner().registration.is_some()
+    }
+
+    fn begin_invocation(
+        &self,
+    ) -> Option<(CapabilityCallbackRegistration, CapabilityInvocation<'_>)> {
+        let mut guard = self.lock_inner();
+        let registration = guard.registration?;
+        guard.in_flight = guard.in_flight.saturating_add(1);
+        Some((registration, CapabilityInvocation { gate: self }))
+    }
+
+    fn finish_invocation(&self) {
+        let mut guard = self.lock_inner();
+        guard.in_flight = guard.in_flight.saturating_sub(1);
+        if guard.in_flight == 0 {
+            self.drained.notify_all();
+        }
+    }
+
+    fn lock_inner(&self) -> MutexGuard<'_, CapabilityCallbackGateInner> {
+        self.inner.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn wait_drained<'a>(
+        &'a self,
+        guard: MutexGuard<'a, CapabilityCallbackGateInner>,
+    ) -> MutexGuard<'a, CapabilityCallbackGateInner> {
+        self.drained
+            .wait_while(guard, |inner| inner.in_flight > 0)
+            .unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+impl Default for CapabilityCallbackGate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+struct CapabilityInvocation<'a> {
+    gate: &'a CapabilityCallbackGate,
+}
+
+impl Drop for CapabilityInvocation<'_> {
+    fn drop(&mut self) {
+        self.gate.finish_invocation();
+    }
+}
+
+pub type CapabilityCallbackSlot = Arc<CapabilityCallbackGate>;
 
 #[must_use]
 pub fn new_capability_callback_slot() -> CapabilityCallbackSlot {
-    Arc::new(Mutex::new(None))
+    Arc::new(CapabilityCallbackGate::new())
 }
 
 /// Invoke the registered native capability handler with `request_json` and
 /// return the `CapabilityEnvelope` JSON. Pure data in, data out (D6): a
 /// missing handler or NULL native return is reported as an error envelope.
 pub fn dispatch_capability(slot: &CapabilityCallbackSlot, request_json: &str) -> String {
-    let registration = slot.lock().ok().and_then(|guard| *guard);
-    let Some(registration) = registration else {
+    let Some((registration, _invocation)) = slot.begin_invocation() else {
         return capability_error_envelope(request_json, "no-capability-handler");
     };
     let Ok(request) = CString::new(request_json) else {
@@ -81,6 +182,10 @@ pub fn capability_error_envelope(request_json: &str, reason: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "capability_socket_quiescence_tests.rs"]
+mod capability_socket_quiescence_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -97,10 +202,10 @@ mod tests {
     }
 
     fn install(slot: &CapabilityCallbackSlot, cb: CapabilityCallback) {
-        *slot.lock().unwrap() = Some(CapabilityCallbackRegistration {
+        slot.set_registration(Some(CapabilityCallbackRegistration {
             context: 0,
             callback: cb,
-        });
+        }));
     }
 
     #[test]
@@ -110,10 +215,12 @@ mod tests {
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
         assert_eq!(v["namespace"], "test");
         assert_eq!(v["correlation_id"], "c1");
-        assert!(v["result_json"]
-            .as_str()
-            .unwrap()
-            .contains("no-capability-handler"));
+        assert!(
+            v["result_json"]
+                .as_str()
+                .unwrap()
+                .contains("no-capability-handler")
+        );
     }
 
     #[test]
@@ -122,10 +229,12 @@ mod tests {
         install(&slot, null_handler);
         let out = dispatch_capability(&slot, r#"{"namespace":"ns","correlation_id":"c2"}"#);
         let v: serde_json::Value = serde_json::from_str(&out).unwrap();
-        assert!(v["result_json"]
-            .as_str()
-            .unwrap()
-            .contains("handler-returned-null"));
+        assert!(
+            v["result_json"]
+                .as_str()
+                .unwrap()
+                .contains("handler-returned-null")
+        );
     }
 
     #[test]

@@ -34,11 +34,11 @@
 //!   reads actor-owned identity state. The worker only calls `dispatch_capability`
 //!   with pre-baked JSON.
 
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Duration;
 
 use crate::actor::IdentityCommand;
-use crate::capability_socket::{dispatch_capability, CapabilityCallbackSlot};
+use crate::capability_socket::{CapabilityCallbackSlot, dispatch_capability};
 use crate::substrate::CapabilityRequest;
 
 /// An item of work for the capability worker thread.
@@ -174,15 +174,15 @@ mod tests {
     use super::*;
     use crate::actor::{ActorMail, CommandSender};
     use crate::capability_socket::{
-        new_capability_callback_slot, CapabilityCallbackRegistration, CapabilityCallbackSlot,
+        CapabilityCallbackRegistration, CapabilityCallbackSlot, new_capability_callback_slot,
     };
     use crate::substrate::{
         CapabilityEnvelope, CapabilityModule, KeyringCapability, KeyringIdentityWiring,
     };
     use std::collections::HashMap;
-    use std::ffi::{c_char, c_void, CStr, CString};
-    use std::sync::mpsc::Receiver;
+    use std::ffi::{CStr, CString, c_char, c_void};
     use std::sync::Mutex;
+    use std::sync::mpsc::Receiver;
     use std::time::Duration;
 
     /// ADR-0050 §D3a — the worker now takes a [`CommandSender`] over an
@@ -265,10 +265,10 @@ mod tests {
 
     fn registered_slot() -> CapabilityCallbackSlot {
         let slot = new_capability_callback_slot();
-        *slot.lock().unwrap() = Some(CapabilityCallbackRegistration {
+        slot.set_registration(Some(CapabilityCallbackRegistration {
             context: 0,
             callback: mock_handler,
-        });
+        }));
         slot
     }
 
@@ -290,10 +290,10 @@ mod tests {
         }
 
         let slot = new_capability_callback_slot();
-        *slot.lock().unwrap() = Some(CapabilityCallbackRegistration {
+        slot.set_registration(Some(CapabilityCallbackRegistration {
             context: 0,
             callback: slow_handler,
-        });
+        }));
         let (cmd_tx, cmd_rx) = cap_channel();
         let work_tx = spawn_capability_worker(slot, cmd_tx);
 

@@ -65,10 +65,11 @@ final class KernelHandle {
     /// strong property were cleared, the Rust-side retain keeps the object
     /// alive until `nmp_app_set_update_callback(raw, nil, nil)` quiesces.
     private var retainedUpdateSink: Unmanaged<KernelUpdateSink>?
-    /// Strong reference to the registered capabilities object. Held so the
-    /// context pointer passed to `nmpCapabilityCallback` stays valid until
-    /// `deinit` unregisters the callback.
-    private var retainedCapabilities: ChirpCapabilities?
+    /// Retained capabilities object whose opaque pointer is registered with
+    /// Rust via `nmp_app_set_capability_callback`. The setter is quiescent, so
+    /// `clearCapabilityCallback()` can release this retain immediately after
+    /// unregister/replace returns.
+    private var retainedCapabilities: Unmanaged<ChirpCapabilities>?
     /// T146 — opaque handle returned by `nmp_app_chirp_register`. The
     /// modular-timeline bridge extension manages its lifetime; see
     /// `Bridge/ModularTimelineBridge.swift`.
@@ -156,10 +157,10 @@ final class KernelHandle {
         // Unregister the update callback and release the retained sink in
         // lock-step (balances the `passRetained` in `listen`).
         clearUpdateCallback()
-        // Unregister the capability callback before releasing `retainedCapabilities`
-        // so no callback fires with a dangling context pointer.
-        nmp_app_set_capability_callback(raw, nil, nil)
-        retainedCapabilities = nil
+        // Unregister the capability callback and release the retained context
+        // in lock-step (balances the `passRetained` in
+        // `registerCapabilityHandler`).
+        clearCapabilityCallback()
         nmp_app_free(raw)
     }
 
@@ -168,10 +169,12 @@ final class KernelHandle {
     /// before `start()` so the handler is in place for any capability requests
     /// the actor issues during startup.
     func registerCapabilityHandler(_ capabilities: ChirpCapabilities) {
-        retainedCapabilities = capabilities
+        clearCapabilityCallback()
+        let retained = Unmanaged.passRetained(capabilities)
+        retainedCapabilities = retained
         nmp_app_set_capability_callback(
             raw,
-            Unmanaged.passUnretained(capabilities).toOpaque(),
+            retained.toOpaque(),
             nmpCapabilityCallback)
     }
 
@@ -208,6 +211,18 @@ final class KernelHandle {
         nmp_app_set_update_callback(raw, nil, nil)
         retained.release()
         retainedUpdateSink = nil
+    }
+
+    /// Unregister the capability callback and release the retained capability
+    /// context. Idempotent. Relies on the
+    /// `nmp_app_set_capability_callback` quiescence guarantee: once the setter
+    /// returns, no in-flight capability callback can still dereference this
+    /// context pointer.
+    private func clearCapabilityCallback() {
+        guard let retained = retainedCapabilities else { return }
+        nmp_app_set_capability_callback(raw, nil, nil)
+        retained.release()
+        retainedCapabilities = nil
     }
 
     /// Actor-liveness probe (D7 pull-side, ADR-0028). Returns `true` when the

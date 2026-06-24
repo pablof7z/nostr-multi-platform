@@ -32,16 +32,12 @@
 //! Teardown / UAF safety
 //! ---------------------
 //! The synchronous handler's `GlobalRef` is dropped by `close_updates_locked`
-//! via `session.capability_handler.lock().take()`. The load-bearing safety
-//! mechanism is the **mutex hold**: `call_sync_handler` holds the
-//! `capability_handler` lock for the entire duration of `handler.call()`, and
-//! `close_updates_locked`'s `take()` acquires the same lock — so a dispatch and
-//! a teardown serialize and can never overlap. (Note: unlike the *update*
-//! callback gate, `nmp_app_set_capability_callback(None)` does NOT quiesce an
-//! in-flight capability dispatch — the kernel capability socket clones the
-//! registration out and releases its own slot lock before invoking. Do not
-//! remove the lock hold around `call()`; it is the only thing preventing a
-//! use-after-free of the `GlobalRef`.)
+//! after `nmp_app_set_capability_callback(None)` returns. The callback setter
+//! is quiescent: it blocks until any in-flight capability trampoline has
+//! returned, matching the update-callback contract. `call_sync_handler` still
+//! holds the `capability_handler` lock for the entire duration of
+//! `handler.call()` so explicit handler replacement/clearing through
+//! `nativeSetCapabilityHandler` also serializes against a live JNI upcall.
 //!
 //! Doctrine
 //! --------
@@ -51,8 +47,8 @@
 
 use std::sync::Mutex;
 
-use jni::objects::GlobalRef;
 use jni::JavaVM;
+use jni::objects::GlobalRef;
 use nmp_core::__ffi_internal::capability_error_envelope;
 
 /// A Kotlin object implementing `fun handle(requestJson: String): String`.
@@ -143,12 +139,14 @@ pub(crate) type CapabilityHandlerSlot = Mutex<Option<SyncCapabilityHandler>>;
 /// Returns `None` when no handler is registered (caller should error-envelope).
 ///
 /// LOAD-BEARING: the `slot` lock is held for the ENTIRE `h.call()` duration
-/// (the `guard` outlives the `map` closure). This serializes against
-/// `Session::close_updates_locked`'s `slot.take()`, which is the only thing
-/// preventing a use-after-free of the handler's `GlobalRef` during teardown
-/// (the capability socket does NOT quiesce in-flight dispatches — see the
-/// teardown note in this module's header). Do not narrow this lock scope.
-pub(crate) fn call_sync_handler(slot: &CapabilityHandlerSlot, request_json: &str) -> Option<String> {
+/// (the `guard` outlives the `map` closure). Teardown is fenced by the
+/// capability-callback quiescence gate; this lock additionally serializes
+/// explicit handler replacement/clearing through `nativeSetCapabilityHandler`
+/// against an active JNI upcall. Do not narrow this lock scope.
+pub(crate) fn call_sync_handler(
+    slot: &CapabilityHandlerSlot,
+    request_json: &str,
+) -> Option<String> {
     let guard = slot.lock().ok()?;
     guard.as_ref().map(|h| h.call(request_json))
 }

@@ -7,14 +7,14 @@
 
 use super::*;
 use nmp_core::{
-    capability_socket::{new_capability_callback_slot, CapabilityCallbackRegistration},
+    capability_socket::{CapabilityCallbackRegistration, new_capability_callback_slot},
     substrate::{
         CapabilityEnvelope, CapabilityModule, KeyringCapability, KeyringRequest,
         KeyringResult as NmpKeyringResult,
     },
 };
 use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::Mutex;
 
 // Serialize tests that touch the process-global keyring default store or
@@ -96,10 +96,7 @@ fn initialize_returns_mock_when_env_set() {
 // GLOBAL_LOCK and reset MOCK_KV to `Some(HashMap::new())` before running
 // to avoid cross-test interference.
 
-extern "C" fn mock_keyring_handler(
-    _ctx: *mut c_void,
-    request_json: *const c_char,
-) -> *mut c_char {
+extern "C" fn mock_keyring_handler(_ctx: *mut c_void, request_json: *const c_char) -> *mut c_char {
     let json = unsafe { CStr::from_ptr(request_json) }
         .to_str()
         .unwrap_or("");
@@ -163,10 +160,7 @@ extern "C" fn mock_keyring_handler(
 }
 
 /// Handler that always returns an error result (any op → error(-100)).
-extern "C" fn error_handler(
-    _ctx: *mut c_void,
-    request_json: *const c_char,
-) -> *mut c_char {
+extern "C" fn error_handler(_ctx: *mut c_void, request_json: *const c_char) -> *mut c_char {
     let json = unsafe { CStr::from_ptr(request_json) }
         .to_str()
         .unwrap_or("");
@@ -191,10 +185,10 @@ fn registered_slot_with(
     handler: nmp_core::capability_socket::CapabilityCallback,
 ) -> CapabilityCallbackSlot {
     let slot = new_capability_callback_slot();
-    *slot.lock().unwrap() = Some(CapabilityCallbackRegistration {
+    slot.set_registration(Some(CapabilityCallbackRegistration {
         context: 0,
         callback: handler,
-    });
+    }));
     slot
 }
 
@@ -279,7 +273,8 @@ fn set_and_get_secret_round_trip() {
         account_id: "svc/db-key".to_string(),
     };
     let secret_bytes = b"super-secret-db-key-bytes-0123456789";
-    cred.set_secret(secret_bytes).expect("set_secret must succeed");
+    cred.set_secret(secret_bytes)
+        .expect("set_secret must succeed");
     let retrieved = cred.get_secret().expect("get_secret must succeed");
     assert_eq!(retrieved, secret_bytes, "round-trip must be byte-identical");
 }

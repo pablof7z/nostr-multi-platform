@@ -29,7 +29,7 @@ private let kbLog = Logger(subsystem: "org.nmp.gallery", category: "GalleryKerne
 ///   7. `deinit`         — clears callback, frees app.
 final class GalleryKernelHandle {
     let raw: UnsafeMutableRawPointer
-    private var updateSink: GalleryUpdateSink?
+    private var retainedUpdateSink: Unmanaged<GalleryUpdateSink>?
     /// ADR-0063 (#1671) — host-side mirror of the kernel's `refs.profile`
     /// row-delta projection. One per kernel session; threaded into every
     /// snapshot decode so per-key deltas accumulate. Sole app-side profile
@@ -52,9 +52,9 @@ final class GalleryKernelHandle {
     }
 
     deinit {
-        // Clear the update callback before releasing `updateSink` so no
+        // Clear the update callback before releasing the retained sink so no
         // callback fires with a dangling context pointer.
-        nmp_app_set_update_callback(raw, nil, nil)
+        clearUpdateCallback()
         // NOTE: the gallery FFI doesn't expose an `nmp_app_gallery_unregister`
         // symbol today — the parallel crate is expected to add one for clean
         // teardown. For now the handle is dropped without explicit cleanup;
@@ -92,12 +92,21 @@ final class GalleryKernelHandle {
     /// is invoked from the kernel actor thread on every emit tick. Callers are
     /// responsible for thread-hopping if they need main-actor isolation.
     func listen(_ handler: @escaping (Data) -> Void) {
+        clearUpdateCallback()
         let sink = GalleryUpdateSink(handler: handler)
-        updateSink = sink
+        let retained = Unmanaged.passRetained(sink)
+        retainedUpdateSink = retained
         nmp_app_set_update_callback(
             raw,
-            Unmanaged.passUnretained(sink).toOpaque(),
+            retained.toOpaque(),
             galleryUpdateCallback)
+    }
+
+    private func clearUpdateCallback() {
+        guard let retained = retainedUpdateSink else { return }
+        nmp_app_set_update_callback(raw, nil, nil)
+        retained.release()
+        retainedUpdateSink = nil
     }
 
     /// Configure the kernel and start the actor thread. The arguments mirror
