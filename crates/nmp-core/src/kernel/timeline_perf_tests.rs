@@ -7,7 +7,8 @@
 
 use super::nostr::NostrEvent;
 use super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use std::time::Instant;
 
 const EVENT_COUNT: usize = 5_000;

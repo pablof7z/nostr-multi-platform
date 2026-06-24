@@ -24,7 +24,7 @@ pub(super) fn make_signer(
     let count_clone = Arc::clone(&count);
     let signer: crate::kernel::auth::AuthSignerFn = Arc::new(move |unsigned| {
         *count_clone.lock().unwrap() += 1;
-        Ok(crate::substrate::SignedEvent {
+        Ok(nmp_signer_iface::SignedEvent {
             id: fixed_id.to_string(),
             sig: "f".repeat(128),
             unsigned: unsigned.clone(),

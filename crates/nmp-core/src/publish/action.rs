@@ -16,8 +16,8 @@ use crate::publish::policy::{
 use crate::relay::CanonicalRelayUrl;
 use crate::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
-    SignedEvent,
 };
+use nmp_signer_iface::SignedEvent;
 
 /// Stable handle returned to the caller of `Publish`. Used to key snapshot
 /// entries and to address the action in the ledger when M6 wires the ledger.

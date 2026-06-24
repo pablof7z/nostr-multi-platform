@@ -513,7 +513,7 @@ fn v56_content_only_npub_mention_feeds_profile_discovery() {
 
     // Ingest through the production path (diag-firehose bypasses author gate).
     kernel.ingest_timeline_event(
-        crate::relay::RelayRole::Content,
+        nmp_network::role::RelayRole::Content,
         "wss://test.relay/",
         "diag-firehose-stress",
         note,

@@ -12,7 +12,7 @@ use super::state::{
 use super::traits::{
     InMemoryPublishStore, NoopSigner, OutboxResolver, ReplayDispatcher, StaticOutbox,
 };
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn signed_event(id: &str, author: &str, kind: u32, p_tags: &[&str]) -> SignedEvent {
     let tags = p_tags

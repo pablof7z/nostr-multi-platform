@@ -14,7 +14,8 @@
 
 use super::super::Kernel;
 use crate::planner::InterestShape;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::{CompiledIndexSpec, SearchField, SearchScopeId, StoredEvent};
 use std::collections::BTreeSet;
 use std::sync::Arc;

@@ -11,7 +11,7 @@
 //!      author pubkeys AND the compiled acquisition kinds.
 
 use super::*;
-use crate::relay::RelayRole;
+use nmp_network::role::RelayRole;
 const RELAY: &str = "wss://relay.example";
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 

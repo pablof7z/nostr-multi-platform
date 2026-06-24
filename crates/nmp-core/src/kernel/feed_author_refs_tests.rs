@@ -21,7 +21,8 @@ use super::feed_author_consumer_id;
 use super::super::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use super::super::snapshot_registry::new_snapshot_projection_slot;
 use super::super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
 const HOME_KEY: &str = "nmp.feed.home";
 

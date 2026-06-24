@@ -188,7 +188,7 @@ pub(super) fn seed_contact_list(kernel: &mut Kernel, author: &str, follows: &[&s
 /// Produce a genuine flat NIP-01 JSON for a real signed event over `id`'s
 /// active keys (kind:30023 article — generic, kind-agnostic).
 pub(super) fn signed_nip01_json(id: &IdentityRuntime, content: &str) -> (String, String, String) {
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(), // ignored by signer
         kind: 30023,
         tags: vec![
@@ -225,7 +225,7 @@ pub(super) fn signed_nip01_json(id: &IdentityRuntime, content: &str) -> (String,
 /// `publish_signed_event`) accepts this as a well-formed signed event; only
 /// the kernel-level D10 guard rejects it.
 pub(super) fn signed_kind_1059_raw(id: &IdentityRuntime) -> crate::store::RawEvent {
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(), // ignored by signer
         kind: 1059,
         tags: vec![vec![

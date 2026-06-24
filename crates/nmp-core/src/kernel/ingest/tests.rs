@@ -18,7 +18,8 @@
 //! `kernel/ingest_tests.rs::signed_note`.
 use super::*;
 use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::substrate::KernelEvent;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};

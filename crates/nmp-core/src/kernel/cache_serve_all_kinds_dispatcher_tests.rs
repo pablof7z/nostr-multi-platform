@@ -21,7 +21,8 @@ use super::cache_serve_tests::{
 };
 use super::*;
 use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::VerifiedEvent;
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use crate::substrate::IngestParser;

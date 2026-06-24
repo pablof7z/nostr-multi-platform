@@ -11,7 +11,7 @@ use super::super::traits::RelayDispatcher;
 use super::super::view::{PublishStatusState, RecentFailure, RecentSuccess};
 use super::{InFlight, TerminalOutcome};
 use crate::relay::CanonicalRelayUrl;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 pub(super) fn canonical_relay_identity(raw: &str) -> RelayUrl {
     CanonicalRelayUrl::parse_or_raw(raw).into_string()

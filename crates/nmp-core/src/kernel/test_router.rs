@@ -36,8 +36,9 @@ use crate::actor::LifecycleCommand;
 use crate::planner::{HintSource, LogicalInterest};
 use crate::substrate::{
     AppRelayMode, Direction, OutboxRouter, RoutedRelaySet, RoutingContext, RoutingError,
-    RoutingSource, UnsignedEvent, UserConfiguredCategory,
+    RoutingSource, UserConfiguredCategory,
 };
+use nmp_signer_iface::UnsignedEvent;
 
 /// Spec §3.1 lane 6 discovery kinds: kind:0 (profile metadata), kind:3
 /// (contacts), kind:10000–19999 (NIP-51 lists, INCLUDING kind:10002).

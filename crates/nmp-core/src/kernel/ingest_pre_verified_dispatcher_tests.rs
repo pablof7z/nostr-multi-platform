@@ -17,7 +17,8 @@
 //! Bisect evidence: fcec05d7f (green, pre-#1137) → b8f5332e1 (red, master).
 
 use super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::VerifiedEvent;
 use crate::substrate::IngestParser;
 use std::sync::{Arc, Mutex};

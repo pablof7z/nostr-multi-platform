@@ -43,7 +43,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::planner::interest::LogicalInterest;
-use crate::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 
 pub type Pubkey = String;
 pub type RelayUrl = String;

@@ -23,9 +23,7 @@ native = ["dep:tungstenite", "dep:mio", "dep:rustls"]
 # it MUST NOT depend on `nmp-core` (the cycle direction would be
 # `nmp-core → nmp-network → nmp-core`). The transport-layer value types
 # the worker uses live here directly: `RelayRole` (the lane discriminator),
-# `KeepaliveState` / `KeepaliveAction` (the keepalive FSM). `nmp-core`
-# re-exports `RelayRole` for downstream backward-compat
-# (`nmp_core::RelayRole` still resolves through the re-export). The
+# `KeepaliveState` / `KeepaliveAction` (the keepalive FSM). The
 # kernel's `RelayFrame` stays in `nmp-core`; the `tungstenite::Message →
 # RelayFrame` adapter lives there too (it bridges this crate's wire type
 # to the kernel's frame enum at the actor seam). Phase C

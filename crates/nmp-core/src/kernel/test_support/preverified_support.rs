@@ -23,7 +23,7 @@ impl Kernel {
     /// production FFI surface.
     pub(crate) fn ingest_pre_verified_event(
         &mut self,
-        role: crate::relay::RelayRole,
+        role: nmp_network::role::RelayRole,
         sub_id: &str,
         verified: crate::store::VerifiedEvent,
     ) {

@@ -76,18 +76,16 @@ pub(crate) const FIATJAF_PUBKEY: &str =
 pub(crate) const JB55_PUBKEY: &str =
     "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245";
 
-// Step 8 phase A — `RelayRole` moved to `nmp-network::role` (the transport
-// layer owns the lane discriminator). `nmp-core` re-exports it under its
-// prior path (`nmp_core::RelayRole`) via `lib.rs` so downstream callers
-// keep compiling unchanged. The test-only `bootstrap_url()` / `url()`
-// helpers live here as a private extension trait — they reference the
+// Step 8 phase A moved `RelayRole` to `nmp-network::role`; nmp-core uses
+// that owning path directly. The test-only `bootstrap_url()` / `url()`
+// helpers live here as a private extension trait because they reference the
 // `BOOTSTRAP_DISCOVERY_RELAYS` constants which are nmp-core-only.
 //
-// V-38: the `Wallet` variant on `nmp_network::RelayRole` is constructed by
+// V-38: the `Wallet` variant on `nmp_network::role::RelayRole` is constructed by
 // `nmp-nip47`'s wallet runtime through `Kernel::set_relay_auth_signer(
 // RelayRole::Wallet, ...)`. Substrate-grade — `nmp-network` carries no
 // app/protocol nouns even though the variant name reads "Wallet".
-pub use nmp_network::RelayRole;
+use nmp_network::role::RelayRole;
 
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) trait RelayRoleTestExt {

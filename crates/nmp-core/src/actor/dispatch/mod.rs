@@ -29,7 +29,8 @@ use std::time::Instant;
 use nmp_network::pool::Pool;
 
 use crate::kernel::Kernel;
-use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole};
+use crate::relay::{CanonicalRelayUrl, OutboundMessage};
+use nmp_network::role::RelayRole;
 use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
 
 use super::capability_worker::CapabilityWorkSender;

@@ -17,7 +17,8 @@
 use super::nostr::NostrEvent;
 use super::refs::{EventShape, RefLiveness, RefNamespace, RefShape};
 use super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
 /// A real signed event (any kind) carrying a NIP-73 `["i", external_id]` tag —
 /// the referencing event an `i:<external-id>` ref resolves to (e.g. a kind:1111

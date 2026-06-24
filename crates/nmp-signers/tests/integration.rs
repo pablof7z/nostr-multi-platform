@@ -14,11 +14,11 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_signer_iface::UnsignedEvent;
-use nmp_signers::signers::{Nip46Rpc, Nip46Transport};
+use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError, SignerOp, UnsignedEvent};
 use nmp_signers::{
     parse_bunker_uri, AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner,
-    Nip46Signer, Nip46SignerHandle, Signer, SignerBackend, SignerError, SignerOp, SignerPayload,
+    Nip46SignerHandle, Signer, SignerBackend, SignerPayload,
+    Nip46Signer,
 };
 use nostr::nips::nip19::FromBech32;
 use nostr::SecretKey;

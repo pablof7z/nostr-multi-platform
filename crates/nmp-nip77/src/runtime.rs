@@ -29,7 +29,7 @@ pub enum RelayNegentropyState {
 
 struct Session {
     sub_id: String,
-    role: nmp_core::RelayRole,
+    role: nmp_network::role::RelayRole,
     relay_url: String,
     filter_json: String,
     reconciler: Reconciler,
@@ -89,7 +89,7 @@ impl NegentropySyncRuntime {
     fn set_relay_state(
         &self,
         kernel: &mut Kernel,
-        role: nmp_core::RelayRole,
+        role: nmp_network::role::RelayRole,
         relay_url: &str,
         state: RelayNegentropyState,
     ) {

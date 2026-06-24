@@ -64,7 +64,7 @@ use nmp_signer_iface::{SignerError, SignerOp};
 
 use crate::actor::pending_sign::{ParkedOp, ParkedSignerOps};
 use crate::actor::SignContinuation;
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// The op-completion budget for a wasm NIP-07 sign round-trip. The user must
 /// approve in the extension UI, which can take a few seconds; this is the

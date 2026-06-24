@@ -52,7 +52,8 @@ use super::traits::{
     OutboxResolver, PublishStore, PublishStoreError, RelayDispatcher, RelaySelectionReason, Signer,
 };
 use super::view::{PublishStatusSnapshot, PublishStatusState, RecentFailure};
-use crate::substrate::{empty_blocked_relay_lookup, BlockedRelayLookup, SignedEvent};
+use crate::substrate::{empty_blocked_relay_lookup, BlockedRelayLookup};
+use nmp_signer_iface::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum PublishEngineError {

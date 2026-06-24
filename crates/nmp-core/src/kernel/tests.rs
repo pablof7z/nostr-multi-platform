@@ -265,7 +265,7 @@ fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
         sig: "a".repeat(128),
     };
     kernel.ingest_pre_verified_event(
-        crate::relay::RelayRole::Content,
+        nmp_network::role::RelayRole::Content,
         "diag-firehose-stress",
         VerifiedEvent::from_raw_unchecked(raw_note),
     );
@@ -338,7 +338,7 @@ fn picture_url_is_none_when_profile_omits_picture() {
         sig: "a".repeat(128),
     };
     kernel.ingest_pre_verified_event(
-        crate::relay::RelayRole::Content,
+        nmp_network::role::RelayRole::Content,
         "diag-firehose-stress",
         VerifiedEvent::from_raw_unchecked(raw_note),
     );
@@ -452,7 +452,7 @@ fn ingest_kind6(kernel: &mut Kernel, content: &str) {
         sig: "a".repeat(128),
     };
     kernel.ingest_pre_verified_event(
-        crate::relay::RelayRole::Content,
+        nmp_network::role::RelayRole::Content,
         "diag-firehose-stress",
         VerifiedEvent::from_raw_unchecked(raw),
     );
@@ -473,7 +473,7 @@ fn timeline_item_kind1_has_no_repost_flag_and_nav_targets_self() {
         sig: "a".repeat(128),
     };
     kernel.ingest_pre_verified_event(
-        crate::relay::RelayRole::Content,
+        nmp_network::role::RelayRole::Content,
         "diag-firehose-stress",
         VerifiedEvent::from_raw_unchecked(raw),
     );

@@ -8,7 +8,7 @@ use nostr::nips::nip19::FromBech32;
 use nostr::{Keys, SecretKey};
 
 use super::{stub_signer, StubRemoteSigner, TEST_NSEC};
-use crate::remote_signer::RemoteSignerHandle;
+use nmp_signer_iface::RemoteSignerHandle;
 
 // ──────────────────────────────────────────────────────────────────────────
 // RemoteSignerHandle NIP-44 seam (ADR-0026): the actor reaches NIP-44

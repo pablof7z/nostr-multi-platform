@@ -8,7 +8,7 @@ use nostr::Keys;
 use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{AppRelay, Kernel};
 use crate::relay::{canonical_relay_url, OutboundMessage};
-use crate::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 use crate::util::sort_dedup;
 
 use super::account_ops::{retarget_timeline, sync_kernel};

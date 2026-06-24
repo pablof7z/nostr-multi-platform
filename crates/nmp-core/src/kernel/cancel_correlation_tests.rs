@@ -13,7 +13,7 @@ use crate::kernel::Kernel;
 use crate::publish::{PublishHandle, PublishRecord, PublishStore, PublishStoreError};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const WRITE_R1: &str = "wss://s7-cancel-r1.test";
 const WRITE_R2: &str = "wss://s7-cancel-r2.test";

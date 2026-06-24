@@ -251,7 +251,7 @@ impl super::KernelReducer {
         target: crate::publish::PublishTarget,
         correlation_id: Option<String>,
     ) -> Vec<crate::relay::OutboundMessage> {
-        use crate::substrate::SignedEvent;
+        use nmp_signer_iface::SignedEvent;
         // Reconstruct the `SignedEvent` shape the kernel publish path expects.
         // `p_tags` drives the recipient-inbox fanout in `OutboxResolver::resolve`
         // (#1008 WasmOutboxResolver honours this by filtering the `#p` list).
@@ -264,7 +264,7 @@ impl super::KernelReducer {
         let signed = SignedEvent {
             id: raw.id.clone(),
             sig: raw.sig.clone(),
-            unsigned: crate::substrate::UnsignedEvent {
+            unsigned: nmp_signer_iface::UnsignedEvent {
                 pubkey: raw.pubkey.clone(),
                 kind: raw.kind,
                 tags: raw.tags.clone(),

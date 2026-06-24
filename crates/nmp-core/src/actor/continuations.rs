@@ -19,20 +19,20 @@
 /// Boxed continuation invoked with the resolved sign outcome (the generic
 /// `ActorCommand::SignEventForAccount` port).
 pub struct SignContinuation(
-    pub Box<dyn FnOnce(Result<crate::substrate::SignedEvent, String>) + Send>,
+    pub Box<dyn FnOnce(Result<nmp_signer_iface::SignedEvent, String>) + Send>,
 );
 
 impl SignContinuation {
     /// Construct from any `FnOnce` matching the sign-outcome shape.
     #[must_use]
     pub fn new(
-        f: impl FnOnce(Result<crate::substrate::SignedEvent, String>) + Send + 'static,
+        f: impl FnOnce(Result<nmp_signer_iface::SignedEvent, String>) + Send + 'static,
     ) -> Self {
         Self(Box::new(f))
     }
 
     /// Invoke the continuation with the sign outcome, consuming it.
-    pub fn call(self, outcome: Result<crate::substrate::SignedEvent, String>) {
+    pub fn call(self, outcome: Result<nmp_signer_iface::SignedEvent, String>) {
         (self.0)(outcome);
     }
 }

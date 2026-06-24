@@ -68,8 +68,9 @@ use crate::planner::{
 };
 use crate::substrate::{
     BlockedRelaySet, DmInboxRelayLookup, MailboxCache as SubstrateMailboxCache, RoutingContext,
-    SessionKeySet, UnsignedEvent,
+    SessionKeySet,
 };
+use nmp_signer_iface::UnsignedEvent;
 use crate::util::sort_dedup;
 
 impl Kernel {
@@ -224,7 +225,7 @@ impl Kernel {
         // V-50: indexer URLs feed router lane 6 (always-on for discovery
         // kinds). Cheap to populate unconditionally — the router only
         // consults the slice when `is_discovery_kind` matches.
-        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        let indexer_relays = self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Indexer);
         let blocked = self.snapshot_blocked_relays();
         let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
         match self.outbox_router.route_subscription(&interest, &ctx) {
@@ -263,7 +264,7 @@ impl Kernel {
             created_at: 0,
         };
         let app_relays = self.bootstrap_seed_urls(BootstrapSeed::Discovery);
-        let indexer_relays = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        let indexer_relays = self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Indexer);
         let blocked = self.snapshot_blocked_relays();
         let ctx = self.build_routing_context(&app_relays, &indexer_relays, &blocked);
         match self.outbox_router.route_publish(&synthetic, &ctx) {

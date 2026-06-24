@@ -3,7 +3,8 @@
 use super::*;
 
 use nmp_core::substrate::WalletKernelAccess;
-use nmp_core::{OutboundMessage, RelayRole};
+use nmp_core::OutboundMessage;
+use nmp_network::role::RelayRole;
 use serde_json::json;
 
 use crate::payment_store::{PaymentRecord, PaymentState};

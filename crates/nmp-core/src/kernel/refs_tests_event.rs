@@ -12,7 +12,8 @@
 use super::nostr::NostrEvent;
 use super::refs::{EventShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
 use super::*;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT, RelayRole};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()

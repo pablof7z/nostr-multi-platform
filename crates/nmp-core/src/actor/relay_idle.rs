@@ -64,7 +64,8 @@ pub(super) fn sweep_temporary_idle_relays(
 mod tests {
     use super::*;
     use crate::actor::relay_mgmt::{close_relays, ensure_relay_worker_with_kind};
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
     use nmp_network::pool::{PoolConfig, PoolEvent};
     use serde_json::json;
     use std::collections::HashSet;

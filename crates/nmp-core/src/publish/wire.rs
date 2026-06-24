@@ -47,8 +47,9 @@ use generated::nmp::publish as fb;
 
 use crate::publish::action::{PublishAction, PublishTarget, RelayUrl};
 use crate::substrate::{
-    ActionPayload, ActionPayloadDecodeError, SignedEvent, UnsignedEvent,
+    ActionPayload, ActionPayloadDecodeError,
 };
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// Stable identity of the `nmp.publish` typed payload schema.
 pub const SCHEMA_ID: &str = "nmp.publish";

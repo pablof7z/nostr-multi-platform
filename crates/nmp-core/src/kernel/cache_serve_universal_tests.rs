@@ -46,7 +46,7 @@ use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
 };
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use {crate::relay::DEFAULT_VISIBLE_LIMIT, nmp_network::role::RelayRole};
 use crate::store::VerifiedEvent;
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use crate::substrate::IngestParser;

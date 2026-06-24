@@ -117,7 +117,8 @@ mod tests {
     #[test]
     fn large_wot_bootstrap_interest_opens_nip77() {
         use nmp_core::substrate::{ReqFrameContext, ReqFrameInterceptor};
-        use nmp_core::{Kernel, RelayRole};
+        use nmp_core::Kernel;
+        use nmp_network::role::RelayRole;
         use nmp_planner::InterestLifecycle;
 
         let interest = follow_graph_interest((0..1_052).map(author)).unwrap();

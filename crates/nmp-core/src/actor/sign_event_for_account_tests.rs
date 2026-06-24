@@ -34,10 +34,10 @@ use super::pending_sign::{resolve_parked_op, ParkedOpSink};
 use super::signer_port_test_harness::dispatch_one;
 use super::SignCommand;
 use super::{ActorCommand, SignContinuation};
+use nmp_signer_iface::RemoteSignerHandle;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::remote_signer::RemoteSignerHandle;
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// Known-good test nsec (shared with `remote_signer_tests`).
 const TEST_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";

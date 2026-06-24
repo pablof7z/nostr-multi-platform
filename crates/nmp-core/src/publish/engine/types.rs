@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use super::super::action::{PublishHandle, RelayUrl};
 use super::super::state::PerRelayState;
 use super::super::traits::RelaySelectionReason;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 /// One in-flight publish row owned by the engine.
 pub(crate) struct InFlight {

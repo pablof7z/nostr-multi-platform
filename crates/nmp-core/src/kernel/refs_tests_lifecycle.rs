@@ -10,7 +10,8 @@
 
 use super::refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 use super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
 fn hex64(prefix: &str) -> String {
     format!("{prefix:0<64}").chars().take(64).collect()

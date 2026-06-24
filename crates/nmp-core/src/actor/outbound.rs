@@ -5,7 +5,8 @@
 //! (`RelayRole`) required by the transport pool.
 
 use crate::kernel::Kernel;
-use crate::relay::{canonical_relay_url, OutboundMessage, RelayRole};
+use crate::relay::{canonical_relay_url, OutboundMessage};
+use nmp_network::role::RelayRole;
 use crate::subs::WireFrame;
 use crate::substrate::ReqFrameContext;
 
@@ -106,7 +107,8 @@ mod tests {
     use super::wire_frames_to_outbound;
     use crate::kernel::Kernel;
     use crate::planner::{InterestId, InterestLifecycle};
-    use crate::relay::{OutboundMessage, RelayRole};
+    use crate::relay::{OutboundMessage};
+use nmp_network::role::RelayRole;
     use crate::subs::WireFrame;
     use crate::substrate::{ReqFrameContext, ReqFrameInterceptor};
     use std::sync::{Arc, Mutex};

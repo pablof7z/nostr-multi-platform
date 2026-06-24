@@ -18,7 +18,8 @@ use super::*;
 use crate::kernel::{EventShape, RefLiveness};
 use crate::nip19::{NaddrData, NeventData, encode_naddr, encode_nevent};
 use crate::nip21::{NostrUri, parse_nostr_uri};
-use crate::relay::{DEFAULT_VISIBLE_LIMIT, RelayRole};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
 
 const TEST_AUTHOR_HEX: &str = "abababababababababababababababababababababababababababababababab";

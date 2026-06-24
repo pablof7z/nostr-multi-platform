@@ -35,7 +35,8 @@ use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventO
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use crate::substrate::KernelEvent;
 use std::collections::BTreeSet;

@@ -24,7 +24,7 @@ use crate::kernel::publish_engine::OkFramePayload;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// T128 test relay URLs — declared as NIP-65 write relays in kind:10002.
 const WRITE_R1: &str = "wss://t128-write-r1.test";

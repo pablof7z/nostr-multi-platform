@@ -10,7 +10,7 @@ use super::super::action::PublishHandle;
 use super::super::view::{EventPublishStatus, RecentFailure};
 use super::types::LastTerminal;
 use super::PublishEngine;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 impl PublishEngine {
     /// Refresh the view's `in_flight` projection. Skips emission unless at

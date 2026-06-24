@@ -10,7 +10,8 @@
 use super::refs::{EventShape, RefLiveness, RefNamespace, RefShape};
 use super::requests::parse_event_key;
 use super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
 /// Mirror of the interest-inspection helper in `refs_tests_event.rs` — collect
 /// every active registry interest that addresses the addressable coordinate

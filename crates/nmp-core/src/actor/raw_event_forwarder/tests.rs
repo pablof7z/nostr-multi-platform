@@ -13,7 +13,8 @@ use crate::substrate::external_event_sink::{SignedEventFrame, SinkDestination};
 use crate::substrate::{
     ExternalEventSinkDispatcher, ExternalEventSinkPolicy, RawEventForwardTarget,
 };
-use crate::{KindFilter, RelayRole};
+use crate::{KindFilter};
+use nmp_network::role::RelayRole;
 
 // ─── Capture helpers ──────────────────────────────────────────────────────────
 

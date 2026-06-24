@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::publish::{PublishAction, PublishTarget};
 use nmp_core::substrate::ActionPayload;
-use nmp_core::RelayRole;
+use nmp_network::role::RelayRole;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_wasm::{
     DispatchBytes, RelayBootstrapEntry, ReleaseRef, ResolveRef, SetIdentity, StartConfig,

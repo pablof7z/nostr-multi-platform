@@ -20,7 +20,7 @@ use crate::kernel::publish_engine::OkFramePayload;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const WRITE_R1: &str = "wss://i1676-write-r1.test";
 const WRITE_R2: &str = "wss://i1676-write-r2.test";

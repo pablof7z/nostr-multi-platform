@@ -11,7 +11,7 @@ use super::Kernel;
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
-use crate::relay::RelayRole;
+use nmp_network::role::RelayRole;
 use crate::store::VerifiedEvent;
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use crate::substrate::IngestParser;

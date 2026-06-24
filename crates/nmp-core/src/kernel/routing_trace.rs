@@ -376,8 +376,9 @@ mod tests {
         use crate::relay::DEFAULT_VISIBLE_LIMIT;
         use crate::substrate::{
             BlockedRelaySet, Direction, MailboxCache, OutboxRouter, RoutedRelaySet, RoutingContext,
-            RoutingError, RoutingSource, SessionKeySet, UnsignedEvent,
+            RoutingError, RoutingSource, SessionKeySet,
         };
+        use nmp_signer_iface::UnsignedEvent;
 
         const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 

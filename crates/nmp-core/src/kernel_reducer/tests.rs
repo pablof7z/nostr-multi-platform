@@ -1,8 +1,9 @@
 use super::*;
 use crate::app::VIEW_PROFILE;
 use crate::kernel::{EventShape, RefLiveness, RefNamespace, RefShape, RelayFrame};
-use crate::relay::{OutboundMessage, RelayRole};
+use crate::relay::OutboundMessage;
 use crate::nip19::encode_npub;
+use nmp_network::role::RelayRole;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 

@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 
 use super::event_claim_released::EventClaimReleasedObserver;
 use super::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::subs::WireFrame;
 
 fn hex64(prefix: &str) -> String {

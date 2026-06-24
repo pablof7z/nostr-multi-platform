@@ -112,7 +112,7 @@ impl Kernel {
                 let relay_url = crate::relay::canonical_relay_url(&relay_url).unwrap_or(relay_url);
                 let role = self
                     .role_for_relay_url(&relay_url)
-                    .unwrap_or(crate::relay::RelayRole::Content);
+                    .unwrap_or(nmp_network::role::RelayRole::Content);
                 crate::relay::OutboundMessage {
                     role,
                     relay_url,
@@ -149,8 +149,8 @@ impl Kernel {
     // M11 will add a `None` path when the URL is unknown; the Option is
     // intentionally forward-reserved so call sites don't need signature churn.
     #[allow(clippy::unnecessary_wraps)]
-    pub(crate) fn role_for_relay_url(&self, url: &str) -> Option<crate::relay::RelayRole> {
-        use crate::relay::RelayRole;
+    pub(crate) fn role_for_relay_url(&self, url: &str) -> Option<nmp_network::role::RelayRole> {
+        use nmp_network::role::RelayRole;
         // Canonicalize so a raw/non-canonical input matches the canonical
         // `AppRelay.url` keys. Fall back to the raw string for inputs that
         // do not parse as ws/wss (no edit row will match those anyway).

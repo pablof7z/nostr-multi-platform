@@ -24,7 +24,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nmp_core::{KernelReducer, OutboundMessage, RelayFrame, RelayRole};
+use nmp_core::{KernelReducer, OutboundMessage, RelayFrame};
+use nmp_network::role::RelayRole;
 use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
 
 use crate::protocol::RelayBootstrapEntry;

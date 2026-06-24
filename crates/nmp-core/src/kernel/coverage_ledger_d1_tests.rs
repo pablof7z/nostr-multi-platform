@@ -18,7 +18,8 @@ use crate::kernel::clock::FixedClock;
 use crate::kernel::Kernel;
 use crate::kernel::RelayFrame;
 use crate::planner::{InterestId, InterestLifecycle};
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::subs::WireFrame;
 
 const RELAY: &str = "wss://relay.coverage-test";

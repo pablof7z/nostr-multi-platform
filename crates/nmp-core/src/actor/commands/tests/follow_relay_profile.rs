@@ -162,7 +162,7 @@ fn profile_update_publishes_kind0_metadata_event() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
     let active_pubkey = id.active_pubkey().unwrap();
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: "ignored-by-signer".into(),
         kind: 0,
         tags: Vec::new(),
@@ -241,7 +241,7 @@ fn profile_update_without_account_toasts_and_no_outbound() {
     // D6: a kind:0 metadata update with no active account is a toast, never
     // an exception — the generic publish path can't sign without an identity.
     let (id, mut kernel) = fresh();
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: "ignored".into(),
         kind: 0,
         tags: Vec::new(),

@@ -57,7 +57,7 @@ pub(super) struct LoopContext<'a> {
     /// slot() → canonical URL reverse-map for O(1) `PoolEvent` resolution.
     pub(super) slot_to_url: &'a mut HashMap<u32, CanonicalRelayUrl>,
     pub(super) pool: &'a Pool,
-    pub(super) connected_relays: &'a mut HashSet<crate::relay::RelayRole>,
+    pub(super) connected_relays: &'a mut HashSet<nmp_network::role::RelayRole>,
     pub(super) connected_urls: &'a mut HashSet<CanonicalRelayUrl>,
 
     // ── Emission & timing ────────────────────────────────────────────────

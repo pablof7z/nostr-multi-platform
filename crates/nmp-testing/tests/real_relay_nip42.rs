@@ -33,7 +33,8 @@ use std::time::{Duration, Instant};
 
 use common::{report_page, send_text, try_open, write_report, Verdict};
 use nmp_nip42::{build_auth_event, parse_auth_frame, parse_ok_frame, AuthChallenge, AuthOk};
-use nmp_signers::{LocalKeySigner, Signer, SignerOp};
+use nmp_signer_iface::SignerOp;
+use nmp_signers::{LocalKeySigner, Signer};
 use serde_json::Value;
 
 /// Auth-required public relay candidates, probed in order. The first to

@@ -29,7 +29,8 @@ fn event_to_unix_ms_conversions() {
 /// this would be flaky. With the anchor it is deterministic by construction.
 #[test]
 fn snapshot_is_byte_stable_without_intervening_event() {
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     // `start()` captures the wall-clock anchor; required for the conversion.
@@ -100,7 +101,8 @@ fn snapshot_emits_one_row_per_known_relay() {
 
 #[test]
 fn snapshot_emits_every_transport_url_for_same_role() {
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connecting_url(RelayRole::Content, "wss://relay-a.test/");
@@ -133,7 +135,8 @@ fn snapshot_emits_every_transport_url_for_same_role() {
 /// newest-first in the projection.
 #[test]
 fn notice_count_and_bounded_log() {
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
     use std::collections::HashMap;
 
     let url = "wss://relay-notice.test/";
@@ -191,7 +194,8 @@ fn notice_count_and_bounded_log() {
 
 #[test]
 fn relay_row_event_count_uses_session_transport_counter_after_subs_close() {
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.relay_connecting_url(RelayRole::Indexer, "wss://indexer-relay.example/");
@@ -215,7 +219,8 @@ fn relay_row_event_count_uses_session_transport_counter_after_subs_close() {
 
 #[test]
 fn set_relay_info_surfaces_on_diagnostics_row() {
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
     use crate::substrate::RelayInfoDoc;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -262,7 +267,8 @@ fn set_relay_info_surfaces_on_diagnostics_row() {
 
 #[test]
 fn relay_info_freshness_gate() {
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
     use crate::substrate::RelayInfoDoc;
     use std::time::Duration;
 

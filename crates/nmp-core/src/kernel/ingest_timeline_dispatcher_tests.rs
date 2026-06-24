@@ -15,7 +15,8 @@
 //! - An all-kinds range parser MUST receive kind:1 timeline events.
 
 use super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::VerifiedEvent;
 use crate::substrate::IngestParser;
 use std::sync::{Arc, Mutex};

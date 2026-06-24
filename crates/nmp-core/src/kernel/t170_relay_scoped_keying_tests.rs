@@ -104,7 +104,7 @@ fn t170_sibling_relay_persistence_survives_close_of_other_relay() {
     // Relay B answers EOSE for the shared sub.
     let eose = serde_json::json!(["EOSE", SHARED_SUB]).to_string();
     kernel.handle_message(
-        crate::relay::RelayRole::Content,
+        nmp_network::role::RelayRole::Content,
         RELAY_B,
         RelayFrame::Text(eose),
     );
@@ -167,7 +167,7 @@ fn t_normalize_planner_url_persistent_sub_survives_eose_on_canonical_url() {
     // EOSE arrives on the canonical URL (as the transport always delivers it).
     let eose = serde_json::json!(["EOSE", SUB]).to_string();
     kernel.handle_message(
-        crate::relay::RelayRole::Content,
+        nmp_network::role::RelayRole::Content,
         CANONICAL_URL,
         RelayFrame::Text(eose),
     );

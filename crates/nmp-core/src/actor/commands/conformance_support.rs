@@ -14,7 +14,7 @@ use crate::actor::SignerSource;
 use crate::kernel::Kernel;
 use crate::publish::{InMemoryPublishStore, PublishStore};
 use crate::relay::{OutboundMessage, DEFAULT_VISIBLE_LIMIT};
-use crate::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 use crate::tags::{e_tag, p_tag};
 
 /// A real `Kernel` + `IdentityRuntime` driven by the actual command

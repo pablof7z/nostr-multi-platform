@@ -61,7 +61,7 @@ pub(super) fn reconnect_relays(
 mod tests {
     use super::*;
     use crate::actor::relay_mgmt::ensure_relay_worker;
-    use crate::relay::RelayRole;
+    use nmp_network::role::RelayRole;
     use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
 
     /// #1689 — `reconnect_relays` re-dials a downed relay worker (the

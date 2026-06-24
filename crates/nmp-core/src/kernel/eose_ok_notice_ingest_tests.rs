@@ -31,10 +31,11 @@
 use crate::kernel::Kernel;
 use crate::kernel::RelayFrame;
 use crate::publish::PublishTarget;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
 use crate::subs::WireFrame;
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 use crate::planner::{InterestId, InterestLifecycle};
 

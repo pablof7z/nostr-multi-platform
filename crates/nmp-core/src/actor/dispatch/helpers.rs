@@ -118,7 +118,7 @@ pub(super) fn maybe_publish_relay_list_after_edit(
     commands::publish_unsigned_event(identity, kernel, unsigned, None, None, parked_ops)
 }
 
-/// Parse a host sign-and-return draft into an [`crate::substrate::UnsignedEvent`].
+/// Parse a host sign-and-return draft into an [`nmp_signer_iface::UnsignedEvent`].
 ///
 /// The draft is `{ "kind": u64, "content": str, "tags": [[str, …], …],
 /// "created_at": u64? }` — the shape `nmp_app_sign_event_for_return` accepts.
@@ -134,7 +134,7 @@ pub(super) fn build_unsigned_for_return(
     unsigned_json: &str,
     signer_pubkey: &str,
     now_secs: u64,
-) -> Result<crate::substrate::UnsignedEvent, String> {
+) -> Result<nmp_signer_iface::UnsignedEvent, String> {
     let value: serde_json::Value =
         serde_json::from_str(unsigned_json).map_err(|e| e.to_string())?;
     let kind = value
@@ -152,7 +152,7 @@ pub(super) fn build_unsigned_for_return(
         Some(tags_value) => serde_json::from_value(tags_value.clone())
             .map_err(|e| format!("`tags` must be an array of string arrays: {e}"))?,
     };
-    Ok(crate::substrate::UnsignedEvent {
+    Ok(nmp_signer_iface::UnsignedEvent {
         pubkey: signer_pubkey.to_string(),
         kind,
         tags,
@@ -161,7 +161,7 @@ pub(super) fn build_unsigned_for_return(
     })
 }
 
-/// Serialize a [`crate::substrate::SignedEvent`] into the standard flat Nostr
+/// Serialize a [`nmp_signer_iface::SignedEvent`] into the standard flat Nostr
 /// event JSON: `{ "id", "pubkey", "created_at", "kind", "tags", "content",
 /// "sig" }`. This is the on-wire NIP-01 event object (the inner body of an
 /// `["EVENT", …]` frame), which is what a host base64-encodes for a Blossom
@@ -170,7 +170,7 @@ pub(super) fn build_unsigned_for_return(
 ///
 /// `pub(super)` so the idle-loop parked-op drain in `mod.rs` reuses the exact
 /// same flat-event serialization the dispatch arm uses.
-pub(crate) fn signed_event_to_json(signed: &crate::substrate::SignedEvent) -> String {
+pub(crate) fn signed_event_to_json(signed: &nmp_signer_iface::SignedEvent) -> String {
     // Delegates to the public `SignedEvent::to_nip01_json` so the flat-event
     // serialization has exactly one definition shared by the dispatch arm, the
     // idle-loop drain, and protocol-crate workers.
@@ -185,7 +185,7 @@ mod sign_return_tests {
     //! `created_at`) and `signed_event_to_json` (kernel `SignedEvent` → the flat
     //! NIP-01 event JSON the host base64-encodes for a Blossom auth header).
     use super::{build_unsigned_for_return, signed_event_to_json};
-    use crate::substrate::{SignedEvent, UnsignedEvent};
+    use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
     #[test]
     fn build_unsigned_fills_pubkey_and_restamps_created_at() {

@@ -8,13 +8,8 @@ use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nostr::PublicKey;
 use serde::{Deserialize, Serialize};
 
-use super::SignerOp;
+use nmp_signer_iface::SignerOp;
 use super::SignerPayload;
-
-/// `SignerError` is defined in the leaf [`nmp_signer_iface`] crate so that
-/// `nmp-core` can refer to it without taking a dependency on `nmp-signers`
-/// (doctrine **D0**).  Re-exported here for backward-compatible paths.
-pub use nmp_signer_iface::SignerError;
 
 /// Backend kind for a [`Signer`].
 #[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
