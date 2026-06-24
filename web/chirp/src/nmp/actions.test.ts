@@ -1,11 +1,10 @@
 // ADR-0063 (#1671) — vitest for the resolve_ref/release_ref command builders.
 //
-// Pins the exact wire shape the Rust dispatch recognizer
-// (`resolve_dispatch_from_action` in crates/nmp-wasm/src/dispatch_routing.rs)
-// expects to parse. Key/discriminant consistency between the TS builders and the
-// Rust recognizer is the one cross-step failure mode that degrades silently to
-// None (D6) and never fires — asserting the shape here catches it before it
-// reaches the Rust layer.
+// Pins the exact structured command shape the Rust resolver
+// (`ref_dispatch_from_resolve` / `ref_dispatch_from_release`) expects to parse.
+// Key/discriminant consistency between the TS builders and the Rust recognizer
+// is the one cross-step failure mode that degrades silently to None (D6) and
+// never fires — asserting the shape here catches it before it reaches Rust.
 import { describe, expect, it } from "vitest";
 import {
   REF_LIVENESS_CACHE_OK,
@@ -22,69 +21,91 @@ import {
 describe("ADR-0063 resolve_ref/release_ref command builders", () => {
   it("resolveProfileCommand produces the Lane D resolve_ref wire shape", () => {
     expect(resolveProfileCommand("abc123pubkey", "chirp-web-author-eventid1")).toEqual({
-      actionType: "nmp.kernel.resolve_ref",
-      payload: {
-        namespace: REF_NS_PROFILE,
-        key: "abc123pubkey",
-        consumer_id: "chirp-web-author-eventid1",
-        shape: REF_SHAPE_PROFILE_REF,
-        liveness: REF_LIVENESS_CACHE_OK,
-      },
+      kind: "resolve_ref",
+      namespace: REF_NS_PROFILE,
+      key: "abc123pubkey",
+      consumerId: "chirp-web-author-eventid1",
+      shape: REF_SHAPE_PROFILE_REF,
+      liveness: REF_LIVENESS_CACHE_OK,
     });
   });
 
   it("releaseProfileCommand produces the release_ref wire shape (no shape/liveness)", () => {
     expect(releaseProfileCommand("abc123pubkey", "chirp-web-author-eventid1")).toEqual({
-      actionType: "nmp.kernel.release_ref",
-      payload: {
-        namespace: REF_NS_PROFILE,
-        key: "abc123pubkey",
-        consumer_id: "chirp-web-author-eventid1",
-      },
+      kind: "release_ref",
+      namespace: REF_NS_PROFILE,
+      key: "abc123pubkey",
+      consumerId: "chirp-web-author-eventid1",
     });
   });
 
   it("resolveEventCommand produces the event-namespace resolve_ref wire shape", () => {
     expect(resolveEventCommand("eventidhex", "chirp-web-embed-eventid2")).toEqual({
-      actionType: "nmp.kernel.resolve_ref",
-      payload: {
-        namespace: REF_NS_EVENT,
-        key: "eventidhex",
-        consumer_id: "chirp-web-embed-eventid2",
-        shape: REF_SHAPE_EVENT_EMBED,
-        liveness: REF_LIVENESS_CACHE_OK,
-      },
+      kind: "resolve_ref",
+      namespace: REF_NS_EVENT,
+      key: "eventidhex",
+      consumerId: "chirp-web-embed-eventid2",
+      shape: REF_SHAPE_EVENT_EMBED,
+      liveness: REF_LIVENESS_CACHE_OK,
+    });
+  });
+
+  it("resolveEventCommand preserves optional relay hints", () => {
+    expect(
+      resolveEventCommand("eventidhex", "chirp-web-embed-eventid2", [
+        "wss://relay.a.example",
+        "wss://relay.b.example",
+      ]),
+    ).toEqual({
+      kind: "resolve_ref",
+      namespace: REF_NS_EVENT,
+      key: "eventidhex",
+      consumerId: "chirp-web-embed-eventid2",
+      shape: REF_SHAPE_EVENT_EMBED,
+      liveness: REF_LIVENESS_CACHE_OK,
+      hints: ["wss://relay.a.example", "wss://relay.b.example"],
+    });
+  });
+
+  it("resolveEventCommand preserves optional event author metadata", () => {
+    const author = "ab".repeat(32);
+
+    expect(resolveEventCommand("eventidhex", "chirp-web-embed-eventid2", [], author)).toEqual({
+      kind: "resolve_ref",
+      namespace: REF_NS_EVENT,
+      key: "eventidhex",
+      consumerId: "chirp-web-embed-eventid2",
+      shape: REF_SHAPE_EVENT_EMBED,
+      liveness: REF_LIVENESS_CACHE_OK,
+      eventAuthor: author,
     });
   });
 
   it("releaseEventCommand produces the event-namespace release_ref wire shape", () => {
     expect(releaseEventCommand("eventidhex", "chirp-web-embed-eventid2")).toEqual({
-      actionType: "nmp.kernel.release_ref",
-      payload: {
-        namespace: REF_NS_EVENT,
-        key: "eventidhex",
-        consumer_id: "chirp-web-embed-eventid2",
-      },
+      kind: "release_ref",
+      namespace: REF_NS_EVENT,
+      key: "eventidhex",
+      consumerId: "chirp-web-embed-eventid2",
     });
   });
 
-  it("consumer_id key is snake_case (Rust parser expects consumer_id not consumerId)", () => {
-    // The Rust `str_field(&payload, "consumer_id")` call requires exactly this
-    // key. A camelCase mismatch would produce None from the recognizer and the
-    // resolve would silently fall through to write-path-unavailable.
+  it("consumerId is converted to consumer_id only at WorkerRequest construction", () => {
     const cmd = resolveProfileCommand("pk", "my-consumer");
-    const payload = cmd.payload as Record<string, unknown>;
-    expect(Object.keys(payload)).toContain("consumer_id");
-    expect(Object.keys(payload)).not.toContain("consumerId");
+    expect(cmd.kind).toBe("resolve_ref");
+    if (cmd.kind !== "resolve_ref") return;
+    expect(Object.keys(cmd)).toContain("consumerId");
+    expect(Object.keys(cmd)).not.toContain("consumer_id");
     // `key` (not `pubkey`) is the unified namespace-agnostic field name.
-    expect(payload.key).toBe("pk");
+    expect(cmd.key).toBe("pk");
   });
 
-  it("profile and event resolves share the action_type but differ in namespace", () => {
-    expect(resolveProfileCommand("pk", "c").actionType).toBe("nmp.kernel.resolve_ref");
-    expect(resolveEventCommand("ev", "c").actionType).toBe("nmp.kernel.resolve_ref");
-    const profile = resolveProfileCommand("pk", "c").payload as Record<string, unknown>;
-    const event = resolveEventCommand("ev", "c").payload as Record<string, unknown>;
+  it("profile and event resolves share the command kind but differ in namespace", () => {
+    expect(resolveProfileCommand("pk", "c").kind).toBe("resolve_ref");
+    expect(resolveEventCommand("ev", "c").kind).toBe("resolve_ref");
+    const profile = resolveProfileCommand("pk", "c");
+    const event = resolveEventCommand("ev", "c");
+    if (profile.kind !== "resolve_ref" || event.kind !== "resolve_ref") return;
     expect(profile.namespace).toBe(REF_NS_PROFILE);
     expect(event.namespace).toBe(REF_NS_EVENT);
   });

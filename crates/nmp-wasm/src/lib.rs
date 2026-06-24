@@ -36,8 +36,8 @@ mod dispatch_routing;
 // `NoopOutboxResolver`. ADR-0064 §5: the wasm signer is the `BeginSign` →
 // `SignRequest` → `DeliverSignerResponse` capability round-trip; there is no
 // `Arc<dyn Signer>` slot. Always-compiled — the resolver and the
-// `signer_not_installed` / `use_dispatch_bytes` reason strings are used on
-// both wasm32 and native test paths.
+// `signer_not_installed` reason string are used on both wasm32 and native test
+// paths.
 mod publish_path;
 mod signer_slot;
 mod snapshot;
@@ -47,8 +47,8 @@ mod snapshot;
 mod tick;
 
 pub use protocol::{
-    ActionDispatch, BeginSign, CapabilityFailure, CapabilityResult, ClientHello, DegradedMode,
-    DeliverSignerResponse, DispatchBytes, RelayBootstrapEntry, RuntimeStatus, SetIdentity,
-    StartConfig, WorkerEvent, WorkerRequest,
+    BeginSign, CapabilityFailure, CapabilityResult, ClientHello, DegradedMode,
+    DeliverSignerResponse, DispatchBytes, RelayBootstrapEntry, ReleaseRef, ResolveRef,
+    RuntimeStatus, SetIdentity, StartConfig, WorkerEvent, WorkerRequest,
 };
 pub use runtime::{WasmRuntime, WasmRuntimeError};

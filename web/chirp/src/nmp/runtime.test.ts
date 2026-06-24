@@ -22,7 +22,7 @@ afterEach(() => {
 });
 
 describe("DegradedRuntime protocol flow", () => {
-  it("accepts hello, degrades on start, and rejects dispatch capabilities", () => {
+  it("accepts hello, degrades on start, and rejects ref-control capabilities", () => {
     const runtime = new DegradedRuntime();
 
     expect(
@@ -53,16 +53,19 @@ describe("DegradedRuntime protocol flow", () => {
 
     expect(
       runtime.handle({
-        type: "dispatch",
-        action_type: "nmp.publish",
-        payload: { PublishNote: { content: "hello", reply_to_id: null, target: "Auto" } },
-        correlation_id: "dispatch-1",
+        type: "resolve_ref",
+        namespace: 0,
+        key: "pk",
+        consumer_id: "consumer-1",
+        shape: 0,
+        liveness: 0,
+        correlation_id: "resolve-1",
       }),
     ).toEqual([
       {
         type: "capability_failure",
-        capability: "nmp.publish",
-        correlation_id: "dispatch-1",
+        capability: "nmp.kernel.resolve_ref",
+        correlation_id: "resolve-1",
         reason: "nmp-wasm actor driver is not linked into the web worker yet",
       },
     ]);
@@ -235,30 +238,31 @@ describe("shared Chirp web semantics", () => {
     });
   });
 
-  it("uses the shared action namespaces for non-home Chirp features", () => {
+  it("marks preview-only feature commands unsupported instead of JSON-dispatching app namespaces", () => {
     expect(sendDmCommand("pk", "hello")).toEqual({
-      actionType: "nmp.nip17.send",
-      payload: { recipient_pubkey: "pk", content: "hello" },
+      kind: "unsupported",
+      capability: "nmp.nip17.send",
+      reason: expect.stringContaining("unsupported_in_web_preview"),
     });
     expect(discoverGroupsCommand("wss://groups.example")).toEqual({
-      actionType: "nmp.nip29.discover",
-      payload: { relay_url: "wss://groups.example" },
+      kind: "unsupported",
+      capability: "nmp.nip29.discover",
+      reason: expect.stringContaining("unsupported_in_web_preview"),
     });
     expect(walletCommand("pay_invoice", { bolt11: "lnbc1..." })).toEqual({
-      actionType: "nmp.wallet.pay_invoice",
-      payload: { bolt11: "lnbc1..." },
+      kind: "unsupported",
+      capability: "nmp.wallet.pay_invoice",
+      reason: expect.stringContaining("unsupported_in_web_preview"),
     });
     expect(reactGroupMessageCommand("wss://groups.example", "general", "event1")).toEqual({
-      actionType: "nmp.nip29.react_in_group",
-      payload: {
-        group: { host_relay_url: "wss://groups.example", local_id: "general" },
-        target_event_id: "event1",
-        content: "+",
-      },
+      kind: "unsupported",
+      capability: "nmp.nip29.react_in_group",
+      reason: expect.stringContaining("unsupported_in_web_preview"),
     });
     expect(replyGroupMessageCommand("wss://groups.example", "general", "event1", "reply")).toMatchObject({
-      actionType: "nmp.nip29.comment_in_group",
-      payload: { parent_event_id: "event1", content: "reply" },
+      kind: "unsupported",
+      capability: "nmp.nip29.comment_in_group",
+      reason: expect.stringContaining("unsupported_in_web_preview"),
     });
   });
 

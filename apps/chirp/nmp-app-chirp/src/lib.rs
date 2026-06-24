@@ -73,15 +73,23 @@ pub use ffi::{
 pub use action_specs::{
     action_spec_for_intent, action_spec_for_intent_json, action_spec_json_for_intent, follow_spec,
     publish_note_spec, publish_profile_spec, react_spec, repost_spec, send_dm_spec, unfollow_spec,
-    zap_spec, ActionDispatchSpec, ChirpActionIntent, ReplyTargetInput,
+    zap_spec, ChirpActionIntent, ReplyTargetInput, TypedActionSpec,
 };
+pub use dispatch_bytes::{dispatch_action_bytes_for, mint_correlation_id, parse_dispatch_envelope};
 pub use ffi::{
-    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_group_discovery,
-    nmp_app_chirp_close_home_feed, nmp_app_chirp_close_tag_feed, nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_group_discovery,
-    nmp_app_chirp_open_home_feed, nmp_app_chirp_open_tag_feed, nmp_app_chirp_open_thread_feed,
+    nmp_app_chirp_close_author_feed,
+    nmp_app_chirp_close_group_discovery,
+    nmp_app_chirp_close_home_feed,
+    nmp_app_chirp_close_tag_feed,
+    nmp_app_chirp_close_thread_feed,
+    nmp_app_chirp_open_author_feed,
+    nmp_app_chirp_open_group_discovery,
+    nmp_app_chirp_open_home_feed,
+    nmp_app_chirp_open_tag_feed,
+    nmp_app_chirp_open_thread_feed,
     // #1740 step 7 — the ONE public app-facing feed doorway.
-    nmp_app_close_feed, nmp_app_open_feed,
+    nmp_app_close_feed,
+    nmp_app_open_feed,
 };
 pub use nmp_ffi::{
     nmp_app_cancel_bunker_handshake, nmp_app_nostrconnect_uri, nmp_signer_broker_init,
@@ -92,9 +100,6 @@ pub use nmp_nip01::{
 pub use snapshot_types::{
     ActionResult, ActionStageRow, InterestRow, ProfileCard, RelayRow, RelayWireSubRow,
     RuntimeMetrics,
-};
-pub use dispatch_bytes::{
-    dispatch_action_bytes_for, mint_correlation_id, parse_dispatch_envelope,
 };
 pub use typed_api::{
     follow_action, publish_note_action, publish_profile_action, react_action, repost_action,

@@ -5,20 +5,36 @@ export type WorkerRequest =
       app_id: string;
       /** Relay set the host wants the runtime to connect to. Relay policy is a
        *  host concern (#1125): the framework defines no defaults, so the host
-       *  MUST supply this. Optional to support gallery's fixture-relay boot path
-       *  where only relay_bootstrap is supplied. */
-      relays?: string[];
+       *  MUST supply this. */
+      relays: string[];
       /** Explicit relay bootstrap list (url + role). Host policy with no
        *  framework default — the host MUST supply it. When non-empty the wasm
        *  runtime uses it verbatim and ignores `relays`. */
-      relay_bootstrap?: { url: string; role: string }[];
+      relay_bootstrap: { url: string; role: string }[];
       database_name: string;
       correlation_id: string;
     }
+  /** ADR-0063 structured reference-resolution control. This is not an app
+   *  write doorway and cannot carry arbitrary action namespaces. */
   | {
-      type: "dispatch";
-      action_type: string;
-      payload: unknown;
+      type: "resolve_ref";
+      namespace: number;
+      key: string;
+      consumer_id: string;
+      shape: number;
+      liveness: number;
+      /** Optional relay hints decoded from NIP-19/NIP-21 event refs. */
+      hints?: string[];
+      /** Optional nevent author TLV decoded at the app boundary. */
+      event_author?: string | null;
+      correlation_id: string;
+    }
+  /** ADR-0063 structured reference release. */
+  | {
+      type: "release_ref";
+      namespace: number;
+      key: string;
+      consumer_id: string;
       correlation_id: string;
     }
   /** ADR-0064 / S2 (#1750) — the typed binary write doorway. `bytes` are a

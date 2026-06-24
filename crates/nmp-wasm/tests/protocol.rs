@@ -1,27 +1,8 @@
-use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_wasm::{
-    ClientHello, DispatchBytes, RelayBootstrapEntry, RuntimeStatus, SetIdentity, StartConfig,
+    ClientHello, RelayBootstrapEntry, ResolveRef, RuntimeStatus, SetIdentity, StartConfig,
     WasmRuntime, WorkerEvent, WorkerRequest,
 };
 use serde_json::json;
-
-/// Build a `WorkerRequest::DispatchBytes` carrying a finished `DispatchEnvelope`
-/// for `action_namespace` with an opaque payload — the SAME open transport the
-/// native FFI uses. This is the ONLY wasm write doorway after #1743 Cut A;
-/// there is no `AppAction` enum / `"app_action"` envelope.
-fn dispatch_bytes_request(
-    correlation_id: &str,
-    action_namespace: &str,
-    payload: &[u8],
-) -> WorkerRequest {
-    let bytes = encode_dispatch_envelope(
-        correlation_id,
-        action_namespace,
-        DISPATCH_ENVELOPE_SCHEMA_VERSION,
-        payload,
-    );
-    WorkerRequest::DispatchBytes(DispatchBytes { bytes })
-}
 
 #[test]
 fn hello_round_trips_through_json() {
@@ -116,51 +97,21 @@ fn deleted_app_action_envelope_does_not_deserialize() {
     );
 }
 
-/// A wasm write routes through the generic typed `DispatchEnvelope` over the one
-/// `DispatchBytes` doorway — identical in shape to the native FFI seam. The
-/// envelope's `correlation_id` + `action_namespace` survive the decode, and the
-/// runtime routes by namespace (publishing itself stays honestly-disabled in the
-/// web preview, #1008 — but it crossed via the TYPED path, not `AppAction`).
+/// #1923: the retired public JSON action-dispatch envelope must fail serde
+/// decode. App writes use `dispatch_bytes`; reference control uses structured
+/// `resolve_ref` / `release_ref` messages.
 #[test]
-fn typed_write_routes_through_dispatch_envelope_not_app_action() {
-    let mut runtime = WasmRuntime::new();
-    let events = runtime
-        .handle(dispatch_bytes_request("follow-1", "nmp.follow", b"opaque-payload"))
-        .unwrap();
-
-    match &events[0] {
-        WorkerEvent::CapabilityFailure(failure) => {
-            // The namespace from the DECODED envelope is echoed back — proof the
-            // typed envelope crossed and routed by `action_namespace`.
-            assert_eq!(failure.capability, "nmp.follow");
-            assert_eq!(failure.correlation_id, "follow-1");
-            // No active account yet → "sign in to publish".
-            assert!(
-                failure.reason.starts_with("signer_not_installed"),
-                "expected signer_not_installed prefix, got: {}",
-                failure.reason
-            );
-        }
-        other => panic!("expected CapabilityFailure, got {other:?}"),
-    }
-}
-
-/// A malformed write buffer (not a `DispatchEnvelope` root) fails CLOSED with a
-/// data-shaped `Error` — never a panic, never a silent accept (D6).
-#[test]
-fn dispatch_bytes_rejects_non_envelope_buffer() {
-    let mut runtime = WasmRuntime::new();
-    let events = runtime
-        .handle(WorkerRequest::DispatchBytes(DispatchBytes {
-            bytes: b"not a flatbuffer".to_vec(),
-        }))
-        .unwrap();
-    match &events[0] {
-        WorkerEvent::Error { code, .. } => {
-            assert_eq!(code, "dispatch_envelope_rejected");
-        }
-        other => panic!("expected dispatch_envelope_rejected Error, got {other:?}"),
-    }
+fn retired_json_dispatch_envelope_does_not_deserialize() {
+    let result: Result<WorkerRequest, _> = serde_json::from_value(json!({
+        "type": "dispatch",
+        "action_type": "nmp.publish",
+        "payload": { "content": "hello" },
+        "correlation_id": "dispatch-1",
+    }));
+    assert!(
+        result.is_err(),
+        "the public JSON dispatch envelope is retired; it must not deserialize, got: {result:?}"
+    );
 }
 
 // V-01 Stage 2: `WasmRuntime` no longer keeps a local `Vec<LocalNote>` and no
@@ -201,96 +152,6 @@ fn start_emits_flatbuffer_snapshot_update_from_real_kernel() {
         !String::from_utf8_lossy(bytes).contains(r#""t":"snapshot""#),
         "snapshot update transport must not be the legacy JSON envelope"
     );
-}
-
-#[test]
-fn typed_write_without_active_account_returns_signer_not_installed() {
-    let mut runtime = WasmRuntime::new();
-
-    let events = runtime
-        .handle(dispatch_bytes_request("pub-1", "nmp.publish", b"opaque"))
-        .unwrap();
-
-    // With no active account seeded, app-level writes fail with the honest
-    // `signer_not_installed` token ("sign in to publish").
-    match &events[0] {
-        WorkerEvent::CapabilityFailure(failure) => {
-            assert_eq!(failure.capability, "nmp.publish");
-            assert_eq!(failure.correlation_id, "pub-1");
-            assert!(
-                failure.reason.starts_with("signer_not_installed"),
-                "expected signer_not_installed prefix, got: {}",
-                failure.reason
-            );
-        }
-        other => panic!("expected CapabilityFailure, got {other:?}"),
-    }
-}
-
-/// After #1008: `nmp.publish` dispatches through the typed registry with a real
-/// `WasmOutboxResolver`. A raw opaque payload (`b"opaque"`) reaches
-/// `PublishModule::decode_payload`, which rejects it as malformed — NOT the
-/// old "publish disabled in web preview" token that guarded a missing
-/// OutboxResolver. This test is the positive proof that #1008 is wired:
-/// - The `signer_not_installed` gate clears (account is seeded).
-/// - The old PUBLISH_NAMESPACE short-circuit skip is GONE.
-/// - The payload reaches the typed registry and fails at decode.
-#[test]
-fn typed_write_after_set_identity_fails_at_decode_after_1008() {
-    let mut runtime = WasmRuntime::new();
-
-    // Seed the active identity (NO persistent signer is installed — ADR-0064
-    // §5; `SetIdentity` only validates/canonicalizes the pubkey and sets the
-    // kernel active account).
-    let set_events = runtime
-        .handle(WorkerRequest::SetIdentity(SetIdentity {
-            kind: "nip07".to_string(),
-            pubkey_hex: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
-                .to_string(),
-            correlation_id: "set-1".to_string(),
-        }))
-        .unwrap();
-    match &set_events[0] {
-        WorkerEvent::ActionAccepted {
-            action_type,
-            correlation_id,
-        } => {
-            assert_eq!(action_type, "nmp.set_identity");
-            assert_eq!(correlation_id, "set-1");
-        }
-        other => panic!("expected ActionAccepted, got {other:?}"),
-    }
-
-    // After #1008: a non-FlatBuffers payload for `nmp.publish` surfaces a
-    // decode rejection, NOT the old publish-disabled token. The PUBLISH_NAMESPACE
-    // skip and `publish_not_supported_in_web_preview` token are removed.
-    let events = runtime
-        .handle(dispatch_bytes_request("pub-1", "nmp.publish", b"opaque"))
-        .unwrap();
-    match &events[0] {
-        WorkerEvent::CapabilityFailure(failure) => {
-            assert_eq!(failure.capability, "nmp.publish");
-            // Must NOT be the old pre-#1008 disable token.
-            assert!(
-                !failure.reason.starts_with("publish_not_supported_in_web_preview"),
-                "after #1008 the old publish-disabled token must be gone, got: {}",
-                failure.reason
-            );
-            assert!(
-                !failure.reason.starts_with("publish_path_not_wired"),
-                "legacy publish_path_not_wired token must be gone, got: {}",
-                failure.reason
-            );
-            // Payload reached typed registry and failed at FlatBuffers decode.
-            assert!(
-                failure.reason.contains("malformed") || failure.reason.contains("file identifier")
-                    || failure.reason.contains("decode") || failure.reason.contains("invalid"),
-                "expected a decode-rejection reason after #1008; got: {}",
-                failure.reason
-            );
-        }
-        other => panic!("expected CapabilityFailure, got {other:?}"),
-    }
 }
 
 #[test]
@@ -363,57 +224,131 @@ fn set_identity_serde_round_trip_through_json() {
 }
 
 #[test]
-fn kernel_namespaced_dispatch_routes_through_real_reducer() {
-    use nmp_wasm::ActionDispatch;
-    let mut runtime = WasmRuntime::new();
+fn resolve_ref_round_trips_through_json() {
+    let request: WorkerRequest = serde_json::from_value(json!({
+        "type": "resolve_ref",
+        "namespace": 0,
+        "key": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+        "consumer_id": "chirp-web-author-1",
+        "shape": 0,
+        "liveness": 0,
+        "correlation_id": "resolve-1",
+    }))
+    .unwrap();
 
-    // `nmp.kernel.start` is one of the action_types the runtime routes
-    // directly to `KernelReducer::reduce(KernelAction::Start)`. Proves the
-    // generic Dispatch path is wired to the real kernel — not a hardcoded
-    // string match against a fake snapshot.
-    let events = runtime
-        .handle(WorkerRequest::Dispatch(ActionDispatch {
-            action_type: "nmp.kernel.start".to_string(),
-            payload: serde_json::json!({}),
-            correlation_id: "k-start-1".to_string(),
-        }))
-        .unwrap();
-
-    assert_eq!(events.len(), 2);
-    assert_eq!(
-        events[0],
-        WorkerEvent::ActionAccepted {
-            action_type: "nmp.kernel.start".to_string(),
-            correlation_id: "k-start-1".to_string(),
+    match request {
+        WorkerRequest::ResolveRef(resolve) => {
+            assert_eq!(resolve.namespace, 0);
+            assert_eq!(resolve.consumer_id, "chirp-web-author-1");
+            assert!(resolve.hints.is_empty());
+            assert!(resolve.event_author.is_none());
+            assert_eq!(resolve.correlation_id, "resolve-1");
         }
-    );
-    let WorkerEvent::UpdateBytes { bytes } = &events[1] else {
-        panic!("expected update bytes, got {:?}", events[1]);
-    };
-    assert!(bytes.windows(4).any(|window| window == b"NMPU"));
+        other => panic!("expected ResolveRef, got {other:?}"),
+    }
 }
 
 #[test]
-fn app_namespaced_dispatch_without_signer_returns_signer_not_installed() {
-    use nmp_wasm::ActionDispatch;
+fn resolve_ref_preserves_relay_hints_through_json() {
+    let event_author = "ab".repeat(32);
+    let request: WorkerRequest = serde_json::from_value(json!({
+        "type": "resolve_ref",
+        "namespace": 1,
+        "key": "event-id",
+        "consumer_id": "embed-1",
+        "shape": 0,
+        "liveness": 0,
+        "hints": ["wss://relay.a.example", "wss://relay.b.example"],
+        "event_author": event_author,
+        "correlation_id": "resolve-event-1",
+    }))
+    .unwrap();
+
+    match request {
+        WorkerRequest::ResolveRef(resolve) => {
+            assert_eq!(
+                resolve.hints,
+                vec![
+                    "wss://relay.a.example".to_string(),
+                    "wss://relay.b.example".to_string(),
+                ]
+            );
+            assert_eq!(resolve.event_author, Some("ab".repeat(32)));
+            assert_eq!(resolve.correlation_id, "resolve-event-1");
+        }
+        other => panic!("expected ResolveRef, got {other:?}"),
+    }
+}
+
+#[test]
+fn release_ref_round_trips_through_json() {
+    let request: WorkerRequest = serde_json::from_value(json!({
+        "type": "release_ref",
+        "namespace": 1,
+        "key": "event-id",
+        "consumer_id": "chirp-web-embed-1",
+        "correlation_id": "release-1",
+    }))
+    .unwrap();
+
+    match request {
+        WorkerRequest::ReleaseRef(release) => {
+            assert_eq!(release.namespace, 1);
+            assert_eq!(release.consumer_id, "chirp-web-embed-1");
+            assert_eq!(release.correlation_id, "release-1");
+        }
+        other => panic!("expected ReleaseRef, got {other:?}"),
+    }
+}
+
+#[test]
+fn resolve_ref_routes_through_structured_control_message() {
     let mut runtime = WasmRuntime::new();
 
-    // `nmp.publish` is an *app* action — it produces a signed event. With
-    // no signer slot filled, the runtime returns the Stage 3b
-    // signer-precise error rather than fabricating a snapshot the way the
-    // pre-Stage-2 stub did.
     let events = runtime
-        .handle(WorkerRequest::Dispatch(ActionDispatch {
-            action_type: "nmp.publish".to_string(),
-            payload: serde_json::json!({"PublishRaw": {"kind": 1, "tags": [], "content": "hi", "target": "Auto"}}),
-            correlation_id: "pub-2".to_string(),
+        .handle(WorkerRequest::ResolveRef(ResolveRef {
+            namespace: 0,
+            key: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d".to_string(),
+            consumer_id: "profile-card".to_string(),
+            shape: 0,
+            liveness: 0,
+            hints: Vec::new(),
+            event_author: None,
+            correlation_id: "resolve-1".to_string(),
+        }))
+        .unwrap();
+
+    assert_eq!(
+        events[0],
+        WorkerEvent::ActionAccepted {
+            action_type: "nmp.kernel.resolve_ref".to_string(),
+            correlation_id: "resolve-1".to_string(),
+        }
+    );
+}
+
+#[test]
+fn invalid_resolve_ref_returns_data_failure() {
+    let mut runtime = WasmRuntime::new();
+
+    let events = runtime
+        .handle(WorkerRequest::ResolveRef(ResolveRef {
+            namespace: 99,
+            key: "bad".to_string(),
+            consumer_id: "profile-card".to_string(),
+            shape: 0,
+            liveness: 0,
+            hints: Vec::new(),
+            event_author: None,
+            correlation_id: "resolve-1".to_string(),
         }))
         .unwrap();
 
     match &events[0] {
         WorkerEvent::CapabilityFailure(failure) => {
-            assert_eq!(failure.capability, "nmp.publish");
-            assert!(failure.reason.starts_with("signer_not_installed"));
+            assert_eq!(failure.capability, "nmp.kernel.resolve_ref");
+            assert_eq!(failure.correlation_id, "resolve-1");
+            assert!(failure.reason.starts_with("invalid_ref_request"));
         }
         other => panic!("expected CapabilityFailure, got {other:?}"),
     }

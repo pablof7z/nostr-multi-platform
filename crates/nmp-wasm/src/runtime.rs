@@ -5,8 +5,9 @@
 //!
 //! - `Start` / `Stop` dispatch through `KernelReducer::reduce` and produce
 //!   real `KernelUpdate` values.
-//! - `OpenUri` routes through `resolve_open_uri` and emits the corresponding
-//!   `ViewOpened` update.
+//! - `DispatchBytes` routes typed app writes through `DispatchEnvelope` bytes.
+//! - `ResolveRef` / `ReleaseRef` route structured reference controls without
+//!   reopening the retired JSON action-dispatch surface.
 //! - Snapshot updates are produced as FlatBuffers `UpdateFrame` bytes.
 //! - **(wasm32)** Relay sockets dial on `Start`, reconnect with the same
 //!   exponential backoff + jitter constants the native worker uses, ingest
@@ -18,13 +19,10 @@
 //!   the result. The reducer never awaits the world (D7/D8).
 
 use std::cell::RefCell;
-use std::fmt;
 use std::rc::Rc;
 
-use nmp_core::substrate::{ActionModule, ActionRegistrar};
-use nmp_core::{
-    default_registry, ActionRegistry, KernelAction, KernelReducer, KernelUpdate, OutboundMessage,
-};
+use nmp_core::substrate::ActionModule;
+use nmp_core::{ActionRegistry, KernelAction, KernelReducer, KernelUpdate, OutboundMessage};
 
 #[cfg(target_arch = "wasm32")]
 use crate::relay_pool;
@@ -34,6 +32,7 @@ use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
 use crate::dispatch_routing::browser_driver_missing_reason;
 use crate::protocol::{CapabilityFailure, RuntimeStatus, StartConfig, WorkerEvent, WorkerRequest};
 use crate::snapshot::{build_snapshot_bytes, RuntimeMeta};
+pub use error::WasmRuntimeError;
 
 const PROTOCOL_VERSION: u16 = 1;
 
@@ -106,23 +105,6 @@ pub struct WasmRuntime {
     /// [`WasmRuntime::register_default_action`], mirroring the per-NIP
     /// `register_actions` entry points the native FFI app calls.
     action_registry: ActionRegistry,
-}
-
-impl Default for WasmRuntime {
-    fn default() -> Self {
-        Self {
-            reducer: Rc::new(RefCell::new(KernelReducer::new())),
-            meta: Rc::new(RefCell::new(RuntimeMeta::new())),
-            snapshot_callback: Rc::new(RefCell::new(None)),
-            post_tick_drain: Rc::new(RefCell::new(None)),
-            #[cfg(target_arch = "wasm32")]
-            relays: Rc::new(RefCell::new(Vec::new())),
-            #[cfg(target_arch = "wasm32")]
-            handlers_slot: Rc::new(RefCell::new(None)),
-            maintenance_deadline: Rc::new(RefCell::new(crate::tick::RuntimeDeadline::default())),
-            action_registry: default_registry(),
-        }
-    }
 }
 
 impl WasmRuntime {
@@ -243,7 +225,8 @@ impl WasmRuntime {
                 }])
             }
             WorkerRequest::Start(config) => self.start(config),
-            WorkerRequest::Dispatch(action) => self.dispatch(action),
+            WorkerRequest::ResolveRef(request) => self.resolve_ref(request),
+            WorkerRequest::ReleaseRef(request) => self.release_ref(request),
             // ADR-0064 / S2 — the one binary write doorway. Decodes the
             // `DispatchEnvelope` and routes by `action_namespace` (same open
             // transport as the native FFI). Total — never returns `Err`.
@@ -496,39 +479,11 @@ mod dispatch;
 #[path = "runtime/test_support.rs"]
 mod test_support;
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum WasmRuntimeError {
-    InvalidConfig(String),
-    /// The pure `KernelReducer` returned an unexpected `KernelUpdate` variant
-    /// for a `KernelAction` whose contract is single-valued (e.g. `Start`
-    /// always yields `Started`).
-    KernelContract(String),
-}
+#[path = "runtime/actions.rs"]
+mod actions;
 
-impl fmt::Display for WasmRuntimeError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InvalidConfig(message) => write!(formatter, "invalid config: {message}"),
-            Self::KernelContract(message) => write!(formatter, "kernel contract: {message}"),
-        }
-    }
-}
+#[path = "runtime/default.rs"]
+mod default;
 
-/// Lets the per-NIP `register_actions(&mut impl ActionRegistrar)` entry points
-/// (e.g. `nmp_nip02::register_actions`, `nmp_nip25::register_actions`) register
-/// straight into the runtime's typed action registry — the wasm twin of the
-/// `impl ActionRegistrar for NmpApp` the native FFI app provides.
-impl ActionRegistrar for WasmRuntime {
-    fn register_action<M: ActionModule + 'static>(
-        &mut self,
-        module: M,
-    ) -> Result<(), nmp_core::substrate::RegistrationError> {
-        WasmRuntime::register_action(self, module)
-    }
-
-    fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
-        WasmRuntime::register_default_action(self, module)
-    }
-}
-
-impl std::error::Error for WasmRuntimeError {}
+#[path = "runtime/error.rs"]
+mod error;

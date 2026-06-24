@@ -8,7 +8,7 @@
 //! no divergent web-only resolution path.
 
 use super::KernelReducer;
-use crate::kernel::{RefLiveness, RefNamespace, RefShape};
+use crate::kernel::{RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
 use crate::relay::OutboundMessage;
 
 impl KernelReducer {
@@ -46,6 +46,30 @@ impl KernelReducer {
         let outbound =
             self.kernel
                 .resolve_ref(namespace, key, consumer_id, shape, liveness, false, hints);
+        self.kernel.partition_auth_paused(outbound)
+    }
+
+    /// Same unified resolver with full caller-supplied metadata. Used by wasm and
+    /// native app-owned URI adapters after decoding NIP-19/NIP-21 relay and
+    /// author TLVs at their own boundary.
+    pub fn resolve_ref_with_metadata(
+        &mut self,
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+        metadata: RefResolveMetadata,
+    ) -> Vec<OutboundMessage> {
+        let outbound = self.kernel.resolve_ref_with_metadata(
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            false,
+            metadata,
+        );
         self.kernel.partition_auth_paused(outbound)
     }
 

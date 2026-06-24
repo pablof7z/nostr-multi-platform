@@ -94,9 +94,15 @@ fn wasm_runtime_boots_without_panicking() {
         }))
         .expect("Start must not error");
 
-    let running = start_events
-        .iter()
-        .any(|e| matches!(e, WorkerEvent::RuntimeStatus { status: RuntimeStatus::Running, .. }));
+    let running = start_events.iter().any(|e| {
+        matches!(
+            e,
+            WorkerEvent::RuntimeStatus {
+                status: RuntimeStatus::Running,
+                ..
+            }
+        )
+    });
     assert!(
         running,
         "Start must return RuntimeStatus::Running; got: {start_events:?}"
@@ -134,8 +140,8 @@ fn wasm_runtime_boots_without_panicking() {
         .find(|p| p.schema_id == CONFIGURED_RELAYS_SCHEMA_ID)
         .expect("configured_relays typed projection must be present in the snapshot");
 
-    let cr = decode_configured_relays(&cr_entry.payload)
-        .expect("configured_relays payload must decode");
+    let cr =
+        decode_configured_relays(&cr_entry.payload).expect("configured_relays payload must decode");
 
     assert!(
         cr.relays.iter().any(|r| r.url == "ws://127.0.0.1:1"),
@@ -163,9 +169,8 @@ fn wasm_runtime_boots_without_panicking() {
 ///    silent `ActionAccepted` (no #1202 regression where NoopOutboxResolver
 ///    dropped events silently).
 ///
-/// The native variant of this guard is
-/// `write_path_unavailable_reason_distinguishes_signer_states` in
-/// `dispatch_routing_tests.rs` (which asserts the legacy token is absent).
+/// The native variant of this guard is `signer_not_installed_reason_is_stable`
+/// in `dispatch_routing_tests.rs` (which asserts the legacy token is absent).
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen_test]
 fn typed_write_routes_through_publish_module_not_legacy_disable() {
@@ -197,7 +202,9 @@ fn typed_write_routes_through_publish_module_not_legacy_disable() {
         .expect("DispatchBytes must not error");
 
     match &events[0] {
-        WorkerEvent::CapabilityFailure(CapabilityFailure { capability, reason, .. }) => {
+        WorkerEvent::CapabilityFailure(CapabilityFailure {
+            capability, reason, ..
+        }) => {
             assert_eq!(
                 capability, "nmp.publish",
                 "CapabilityFailure must carry the decoded namespace; got: {capability:?}"
@@ -227,9 +234,7 @@ fn typed_write_routes_through_publish_module_not_legacy_disable() {
             );
         }
         other => {
-            panic!(
-                "expected CapabilityFailure from typed decode stage, got: {other:?}"
-            );
+            panic!("expected CapabilityFailure from typed decode stage, got: {other:?}");
         }
     }
 }

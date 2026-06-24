@@ -17,12 +17,12 @@ use serde_json::{json, Value};
 mod tests;
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ActionDispatchSpec {
+pub struct TypedActionSpec {
     pub namespace: String,
     pub body_json: String,
 }
 
-impl ActionDispatchSpec {
+impl TypedActionSpec {
     #[must_use]
     pub fn new(namespace: impl Into<String>, body_json: impl Into<String>) -> Self {
         Self {
@@ -115,7 +115,7 @@ pub struct ReplyTargetInput {
     pub mentioned_pubkeys: Vec<String>,
 }
 
-pub fn action_spec_for_intent_json(intent_json: &str) -> Result<ActionDispatchSpec, String> {
+pub fn action_spec_for_intent_json(intent_json: &str) -> Result<TypedActionSpec, String> {
     let intent: ChirpActionIntent = serde_json::from_str(intent_json)
         .map_err(|e| format!("invalid Chirp action intent JSON: {e}"))?;
     action_spec_for_intent(intent)
@@ -129,7 +129,7 @@ pub fn action_spec_json_for_intent(intent_json: &str) -> String {
     }
 }
 
-pub fn action_spec_for_intent(intent: ChirpActionIntent) -> Result<ActionDispatchSpec, String> {
+pub fn action_spec_for_intent(intent: ChirpActionIntent) -> Result<TypedActionSpec, String> {
     match intent {
         ChirpActionIntent::PublishNote {
             content,
@@ -195,7 +195,7 @@ pub fn action_spec_for_intent(intent: ChirpActionIntent) -> Result<ActionDispatc
 pub fn publish_note_spec(
     content: &str,
     reply_to: Option<&NoteRecord>,
-) -> Result<ActionDispatchSpec, String> {
+) -> Result<TypedActionSpec, String> {
     let mut builder = Note::new(content);
     if let Some(parent) = reply_to {
         builder = builder.reply_to(parent);
@@ -207,7 +207,7 @@ pub fn publish_note_spec(
 pub fn publish_note_minimal_reply_spec(
     content: &str,
     reply_to_event_id: Option<&str>,
-) -> Result<ActionDispatchSpec, String> {
+) -> Result<TypedActionSpec, String> {
     Note::new(content).build("", 0).map_err(|e| e.to_string())?;
     let tags = reply_to_event_id
         .filter(|id| !id.trim().is_empty())
@@ -222,19 +222,19 @@ pub fn publish_note_minimal_reply_spec(
 }
 
 #[must_use]
-pub fn publish_profile_spec(name: &str, about: &str, picture: &str) -> ActionDispatchSpec {
+pub fn publish_profile_spec(name: &str, about: &str, picture: &str) -> TypedActionSpec {
     let mut fields = serde_json::Map::new();
     insert_non_empty(&mut fields, "name", name);
     insert_non_empty(&mut fields, "about", about);
     insert_non_empty(&mut fields, "picture", picture);
-    ActionDispatchSpec::new(
+    TypedActionSpec::new(
         "nmp.publish",
         json!({ "PublishProfile": { "fields": Value::Object(fields) } }).to_string(),
     )
 }
 
 #[must_use]
-pub fn repost_spec(event_id: &str, author_pubkey: &str) -> ActionDispatchSpec {
+pub fn repost_spec(event_id: &str, author_pubkey: &str) -> TypedActionSpec {
     publish_raw_spec(
         6,
         vec![e_tag(event_id, None, None), p_tag(author_pubkey, None)],
@@ -243,7 +243,7 @@ pub fn repost_spec(event_id: &str, author_pubkey: &str) -> ActionDispatchSpec {
 }
 
 #[must_use]
-pub fn react_spec(event_id: &str, reaction: &str) -> ActionDispatchSpec {
+pub fn react_spec(event_id: &str, reaction: &str) -> TypedActionSpec {
     let input = ReactAction {
         target_event_id: event_id.to_string(),
         reaction: reaction.to_string(),
@@ -253,7 +253,7 @@ pub fn react_spec(event_id: &str, reaction: &str) -> ActionDispatchSpec {
 }
 
 #[must_use]
-pub fn follow_spec(pubkey: &str) -> ActionDispatchSpec {
+pub fn follow_spec(pubkey: &str) -> TypedActionSpec {
     typed_spec(
         "nmp.follow",
         &PubkeyAction {
@@ -263,7 +263,7 @@ pub fn follow_spec(pubkey: &str) -> ActionDispatchSpec {
 }
 
 #[must_use]
-pub fn unfollow_spec(pubkey: &str) -> ActionDispatchSpec {
+pub fn unfollow_spec(pubkey: &str) -> TypedActionSpec {
     typed_spec(
         "nmp.unfollow",
         &PubkeyAction {
@@ -277,7 +277,7 @@ pub fn send_dm_spec(
     recipient_pubkey: &str,
     content: &str,
     reply_to: Option<&str>,
-) -> ActionDispatchSpec {
+) -> TypedActionSpec {
     typed_spec(
         "nmp.nip17.send",
         &SendDmInput {
@@ -296,7 +296,7 @@ pub fn zap_spec(
     comment: Option<&str>,
     lnurl: Option<&str>,
     relays: Vec<String>,
-) -> ActionDispatchSpec {
+) -> TypedActionSpec {
     typed_spec(
         "nmp.nip57.zap",
         &ZapInput {
@@ -317,8 +317,8 @@ pub fn zap_spec(
 /// ActionModule validates the URL scheme and applies the edit idempotently
 /// against the active account's kind:10006 blocked-relay list.
 #[must_use]
-pub fn block_relay_spec(url: &str, account_pubkey: &str) -> ActionDispatchSpec {
-    ActionDispatchSpec::new(
+pub fn block_relay_spec(url: &str, account_pubkey: &str) -> TypedActionSpec {
+    TypedActionSpec::new(
         "nmp.nip51.block_relay",
         json!({ "url": url, "account_pubkey": account_pubkey }).to_string(),
     )
@@ -330,8 +330,8 @@ pub fn block_relay_spec(url: &str, account_pubkey: &str) -> ActionDispatchSpec {
 /// kind:10006 blocked-relay list. Rejects with `ActionRejection::Conflict` when
 /// the relay is not currently blocked (no publish, no spinner).
 #[must_use]
-pub fn unblock_relay_spec(url: &str, account_pubkey: &str) -> ActionDispatchSpec {
-    ActionDispatchSpec::new(
+pub fn unblock_relay_spec(url: &str, account_pubkey: &str) -> TypedActionSpec {
+    TypedActionSpec::new(
         "nmp.nip51.unblock_relay",
         json!({ "url": url, "account_pubkey": account_pubkey }).to_string(),
     )
@@ -346,12 +346,12 @@ pub fn unblock_relay_spec(url: &str, account_pubkey: &str) -> ActionDispatchSpec
 /// URL canonicalisation / `wss://` gating happens kernel-side in the action
 /// module, not in the shell.
 #[must_use]
-pub fn publish_relay_list_spec(relays: &[(&str, &str)]) -> ActionDispatchSpec {
+pub fn publish_relay_list_spec(relays: &[(&str, &str)]) -> TypedActionSpec {
     let entries: Vec<Value> = relays
         .iter()
         .map(|(url, role)| json!({ "url": url, "role": role }))
         .collect();
-    ActionDispatchSpec::new(
+    TypedActionSpec::new(
         "nmp.nip65.publish_relay_list",
         json!({ "relays": entries }).to_string(),
     )
@@ -379,8 +379,8 @@ impl ReplyTargetInput {
     }
 }
 
-fn publish_raw_spec(kind: u32, tags: Vec<Vec<String>>, content: &str) -> ActionDispatchSpec {
-    ActionDispatchSpec::new(
+fn publish_raw_spec(kind: u32, tags: Vec<Vec<String>>, content: &str) -> TypedActionSpec {
+    TypedActionSpec::new(
         "nmp.publish",
         json!({
             "PublishRaw": {
@@ -394,8 +394,8 @@ fn publish_raw_spec(kind: u32, tags: Vec<Vec<String>>, content: &str) -> ActionD
     )
 }
 
-fn typed_spec(namespace: &str, input: &impl Serialize) -> ActionDispatchSpec {
-    ActionDispatchSpec::new(namespace, serialize_action_body(input))
+fn typed_spec(namespace: &str, input: &impl Serialize) -> TypedActionSpec {
+    TypedActionSpec::new(namespace, serialize_action_body(input))
 }
 
 fn serialize_action_body(input: &impl Serialize) -> String {
@@ -404,7 +404,7 @@ fn serialize_action_body(input: &impl Serialize) -> String {
     value.to_string()
 }
 
-fn serialize_or_error(spec: &ActionDispatchSpec) -> String {
+fn serialize_or_error(spec: &TypedActionSpec) -> String {
     serde_json::to_string(spec).unwrap_or_else(|e| {
         json!({ "error": format!("failed to encode action spec: {e}") }).to_string()
     })
