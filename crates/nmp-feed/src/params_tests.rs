@@ -33,6 +33,9 @@ fn pubkey_set_expr_variants_construct() {
     let tag = FeedScope::Tag {
         term: TagTerm("nostr".into()),
     };
+    let referrer = FeedScope::Referrer {
+        event_id: "abc123".into(),
+    };
     let custom = FeedScope::CustomPerspectiveId(CustomPerspectiveId("trending".into()));
 
     let union = FeedScope::Union(Box::new(follows.clone()), Box::new(list.clone()));
@@ -41,7 +44,7 @@ fn pubkey_set_expr_variants_construct() {
 
     // Exhaustive match — adding a variant forces this to be revisited.
     for expr in [
-        follows, authors, contacts, list, wot, relays, tag, custom, union, inter, diff,
+        follows, authors, contacts, list, wot, relays, tag, referrer, custom, union, inter, diff,
     ] {
         assert!(describe(&expr).len() > 0);
     }
@@ -58,6 +61,7 @@ fn describe(expr: &PubkeySetExpr) -> &'static str {
         PubkeySetExpr::Wot { .. } => "wot",
         PubkeySetExpr::RelaySet { .. } => "relay-set",
         PubkeySetExpr::Tag { .. } => "tag",
+        PubkeySetExpr::Referrer { .. } => "referrer",
         PubkeySetExpr::Union(..) => "union",
         PubkeySetExpr::Intersection(..) => "intersection",
         PubkeySetExpr::Difference(..) => "difference",
@@ -158,6 +162,7 @@ fn feed_handle_pairs_projection_key_and_opaque_session_id() {
 fn sample_params(primary_kinds: Vec<u32>) -> FeedParams {
     FeedParams {
         primary_kinds,
+        render: FeedRender::OpCentric,
         acquisition: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,

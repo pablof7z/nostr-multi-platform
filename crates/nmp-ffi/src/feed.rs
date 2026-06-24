@@ -16,8 +16,8 @@ use crate::{app_ref, c_string_argument};
 /// `nmp-feed` engine (D0). The validation transform itself is the single
 /// canonical `nmp_nip18` transform; this layer only adds the empty-set guard.
 pub use nmp_feed::{
-    FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedScope, FeedSessionId, FeedWindow,
-    ProjectionKey, PubkeySetExpr,
+    FeedAdmission, FeedHandle, FeedParams, FeedRanking, FeedRender, FeedScope, FeedSessionId,
+    FeedWindow, ProjectionKey, PubkeySetExpr,
 };
 
 /// Typed error for a `FeedParams` declaration whose primary kinds are invalid
@@ -127,6 +127,7 @@ mod primary_kind_validation_tests {
     fn sample_params(primary_kinds: Vec<u32>) -> FeedParams {
         FeedParams {
             primary_kinds,
+            render: FeedRender::OpCentric,
             acquisition: FeedScope::ActiveUserFollows,
             admission: FeedAdmission::All,
             ranking: FeedRanking::ChronologicalDesc,

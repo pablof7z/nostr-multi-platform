@@ -146,11 +146,12 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 
 V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
 `nmp_app_open_thread`, and `nmp_app_close_thread` were **removed** (BREAKING,
-v0.3.1). Author/thread feeds go through the generic `nmp_app_open_interest` /
-`nmp_app_close_interest` pair for relay admission. Chirp's app crate composes
-the view by registering app-owned FlatFeeds under `nmp.feed.author.<pubkey>` /
-`nmp.feed.thread.<event_id>` and unregistering those dynamic keys on close;
-profile hydration uses `nmp_app_claim_profile`.
+v0.3.1). Author/thread feeds go through `nmp_app_open_feed` with
+`FeedScope::Authors` / `FeedScope::Referrer`, and close by passing the returned
+handle to `nmp_app_close_feed`. The feed compiler registers the flat projection,
+event observer, typed sidecar, acquisition interests, and cached replay under
+the declared projection key; handle close tears down that whole session.
+Profile hydration uses `nmp_app_claim_profile`.
 
 ---
 
@@ -324,6 +325,6 @@ the Rust action modules derive signing identity and routing policy.
 3. **RESOLVED (V-68 / V-112, ADR-0042):** `nmp_app_open_author`,
    `nmp_app_close_author`, `nmp_app_open_thread`, and `nmp_app_close_thread`
    were removed in v0.3.1. The prior open-without-close subscription-leak gap
-   is structurally closed: the generic `nmp_app_open_interest` /
-   `nmp_app_close_interest` pair is symmetric and refcounted in the planner's
-   interest registry.
+   is structurally closed by `nmp_app_open_feed` / `nmp_app_close_feed`: the
+   opaque feed handle owns the registered projection, observer, acquisition
+   interests, and teardown recipe, so close never re-derives a raw filter.

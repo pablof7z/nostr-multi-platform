@@ -19,6 +19,7 @@ nmp-chirp-config = { path = "../nmp-chirp-config" }
 
 # C-ABI surface (NmpApp, nmp_app_* symbols).
 nmp-ffi = { path = "../../../crates/nmp-ffi" }
+nmp-feed = { path = "../../../crates/nmp-feed" }
 
 # In-process kernel: we still decode FlatBuffer frames and use display helpers.
 nmp-core = { path = "../../../crates/nmp-core" }

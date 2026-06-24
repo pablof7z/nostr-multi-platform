@@ -5,11 +5,19 @@ import Foundation
 
 extension KernelHandle {
     func openAuthor(pubkey: String) {
-        pubkey.withCString { nmp_app_chirp_open_author_feed(raw, $0) }
+        openFeed(
+            projectionKey: "nmp.feed.author.\(pubkey)",
+            render: "Flat",
+            acquisition: ["Authors": ["authors": [pubkey]]]
+        )
     }
 
     func openThread(eventID: String) {
-        eventID.withCString { nmp_app_chirp_open_thread_feed(raw, $0) }
+        openFeed(
+            projectionKey: "nmp.feed.thread.\(eventID)",
+            render: "Flat",
+            acquisition: ["Referrer": ["event_id": eventID]]
+        )
     }
 
     // M2 (ADR-0042): `openFirehose(tag:)` and the `nmp_app_open_firehose_tag`
@@ -24,8 +32,6 @@ extension KernelHandle {
     /// protocol adapters derive repost wrappers. `consumerID` refcounts owners so
     /// repeated opens of the same filter share one live subscription; `scope`
     /// is `.activeAccount` (re-route on switch) or `.global` (account-agnostic).
-    /// Generic replacement for the deleted `openFirehose`. V-112 (ADR-0042):
-    /// `openAuthor` / `openThread` now delegate to the chirp feed seam below.
     func openInterest(filterJSON: String, consumerID: String, scope: InterestScope) {
         filterJSON.withCString { filterPtr in
             consumerID.withCString { consumerPtr in
@@ -46,25 +52,66 @@ extension KernelHandle {
     }
 
     /// Signal that the author feed for `pubkey` is no longer visible.
-    /// Tears down the author-subscription so the kernel's wire_subs count
-    /// returns to baseline. Call from `.onDisappear` on the AuthorView
-    /// (ProfileView) to prevent sub-leaks on navigation pop.
     func closeAuthor(pubkey: String) {
-        pubkey.withCString { nmp_app_chirp_close_author_feed(raw, $0) }
+        closeFeed(projectionKey: "nmp.feed.author.\(pubkey)")
     }
 
     /// Signal that the thread for `eventID` is no longer visible.
-    /// Symmetric counterpart to `openThread`; call from `.onDisappear`
-    /// on the ThreadScreen to release the thread subscription.
     func closeThread(eventID: String) {
-        eventID.withCString { nmp_app_chirp_close_thread_feed(raw, $0) }
+        closeFeed(projectionKey: "nmp.feed.thread.\(eventID)")
     }
 
     func openTimeline() {
-        nmp_app_chirp_open_home_feed(raw)
+        openFeed(
+            projectionKey: "nmp.feed.home",
+            render: "OpCentric",
+            acquisition: "ActiveUserFollows"
+        )
     }
 
     func closeTimeline() {
-        nmp_app_chirp_close_home_feed(raw)
+        closeFeed(projectionKey: "nmp.feed.home")
+    }
+
+    func closeAllOpenFeeds() {
+        let handles = Array(feedHandlesByKey.values)
+        feedHandlesByKey.removeAll()
+        for handle in handles {
+            handle.withCString { nmp_app_close_feed(raw, $0) }
+        }
+    }
+
+    @discardableResult
+    private func openFeed(projectionKey: String, render: String, acquisition: Any) -> Bool {
+        guard feedHandlesByKey[projectionKey] == nil else { return true }
+        let params: [String: Any] = [
+            "primary_kinds": [1],
+            "render": render,
+            "acquisition": acquisition,
+            "admission": "All",
+            "ranking": "ChronologicalDesc",
+            "window": ["initial_limit": 80],
+            "projection": projectionKey,
+        ]
+        guard
+            let data = try? JSONSerialization.data(withJSONObject: params),
+            let json = String(data: data, encoding: .utf8)
+        else {
+            return false
+        }
+        let resultPtr = json.withCString { nmp_app_open_feed(raw, $0) }
+        guard let resultPtr else { return false }
+        defer { nmp_free_string(resultPtr) }
+        let handle = String(cString: resultPtr)
+        guard !handle.contains("\"error\"") else { return false }
+        feedHandlesByKey[projectionKey] = handle
+        return true
+    }
+
+    private func closeFeed(projectionKey: String) {
+        guard let handle = feedHandlesByKey.removeValue(forKey: projectionKey) else {
+            return
+        }
+        handle.withCString { nmp_app_close_feed(raw, $0) }
     }
 }

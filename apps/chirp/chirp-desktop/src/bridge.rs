@@ -11,24 +11,23 @@
 //! construction here. Raw FFI methods (add_relay, open_timeline, etc.) remain
 //! unchanged.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    ChirpClient, ChirpHandle, MarmotHandle, NmpRegisterStatus, nmp_app_cancel_bunker_handshake,
-    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_home_feed,
-    nmp_app_chirp_close_thread_feed, nmp_app_chirp_declare_consumed_projections,
-    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
+    nmp_app_cancel_bunker_handshake, nmp_app_chirp_declare_consumed_projections,
     nmp_app_chirp_register, nmp_app_chirp_unregister, nmp_app_nostrconnect_uri,
-    nmp_marmot_unregister, nmp_signer_broker_init,
+    nmp_marmot_unregister, nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle,
+    NmpRegisterStatus,
 };
 use nmp_ffi::{
-    NmpApp, NmpConfigStatus, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_profile_ref,
+    nmp_app_free, nmp_app_load_older_feed, nmp_app_release_profile_ref,
     nmp_app_resolve_profile_card_live, nmp_app_resolve_profile_ref,
-    nmp_app_set_capability_callback, nmp_app_signin_nsec, nmp_app_start, nmp_free_string,
+    nmp_app_set_capability_callback, nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
+    NmpConfigStatus,
 };
 
 // ADR-0063 (#1671 Lane F) — typed resolve_ref / release_ref consumer ids.
@@ -44,6 +43,7 @@ const OPEN_PROFILE_CONSUMER: &str = "chirp-desktop.open-profile";
 // Wallet / social / account / relay / publish-lifecycle `impl AppRuntime`
 // methods (split out to keep this file under the 500-LOC hard ceiling).
 mod actions;
+mod feed;
 
 // ---------------------------------------------------------------------------
 // Update bridge (mirrors chirp-tui/src/bridge.rs)
@@ -102,6 +102,7 @@ pub struct AppRuntime {
     client: ChirpClient,
     chirp: *mut ChirpHandle,
     marmot: Cell<*mut MarmotHandle>,
+    feed_handles: RefCell<feed::FeedHandles>,
     /// Owns the FFI callback box registered with the actor thread.
     update_bridge: Option<Box<NmpUpdateBridge>>,
 }
@@ -154,7 +155,7 @@ impl AppRuntime {
         unsafe {
             nmp_app_start(app, 200, 10);
         }
-        nmp_app_chirp_open_home_feed(app);
+        let home_feed_handle = feed::open_home_feed(app).ok();
 
         Some((
             Self {
@@ -162,6 +163,10 @@ impl AppRuntime {
                 client: ChirpClient::new(app),
                 chirp,
                 marmot: Cell::new(initial_marmot),
+                feed_handles: RefCell::new(feed::FeedHandles {
+                    home: home_feed_handle,
+                    ..feed::FeedHandles::default()
+                }),
                 update_bridge: Some(bridge),
             },
             rx,
@@ -170,67 +175,6 @@ impl AppRuntime {
 
     pub fn app_ptr(&self) -> *mut NmpApp {
         self.app
-    }
-
-    // ------------------------------------------------------------------
-    // Timeline / view lifecycle
-    // ------------------------------------------------------------------
-
-    pub fn open_timeline(&self) {
-        if !self.app.is_null() {
-            nmp_app_chirp_open_home_feed(self.app);
-        }
-    }
-
-    pub fn close_timeline(&self) {
-        if !self.app.is_null() {
-            nmp_app_chirp_close_home_feed(self.app);
-        }
-    }
-
-    pub fn open_thread(&self, event_id: &str) {
-        // M2 (ADR-0042 §5.1, V-112): use the Chirp flat-feed seam instead of the
-        // deleted `nmp_app_open_thread` → `OpenThread` kernel machinery.
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(event_id) {
-            nmp_app_chirp_open_thread_feed(self.app, c.as_ptr());
-        }
-    }
-
-    pub fn close_thread(&self, event_id: &str) {
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(event_id) {
-            nmp_app_chirp_close_thread_feed(self.app, c.as_ptr());
-        }
-    }
-
-    pub fn open_author(&self, pubkey: &str) {
-        // M2 (ADR-0042 §5.1, V-112): use the Chirp flat-feed seam instead of the
-        // deleted `nmp_app_open_author` → `OpenAuthor` kernel machinery.
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(pubkey) {
-            nmp_app_chirp_open_author_feed(self.app, c.as_ptr());
-        }
-        // ADR-0063 (#1671 Lane F): the open profile screen demands the full card,
-        // kept Live for reactive kind:0 replacement.
-        self.resolve_profile_card_live(pubkey);
-    }
-
-    pub fn close_author(&self, pubkey: &str) {
-        if self.app.is_null() {
-            return;
-        }
-        if let Ok(c) = CString::new(pubkey) {
-            nmp_app_chirp_close_author_feed(self.app, c.as_ptr());
-        }
-        // ADR-0063 (#1671 Lane F): release the open-screen profile.card/Live ref.
-        self.release_ref(OPEN_PROFILE_CONSUMER, pubkey);
     }
 
     /// ADR-0063 (#1671 Lane F): resolve a feed/list-row author at `profile.ref` /
@@ -369,6 +313,7 @@ impl AppRuntime {
 impl Drop for AppRuntime {
     fn drop(&mut self) {
         unregister_callback(self.app);
+        self.close_all_feeds();
         // Explicitly drop the bridge before freeing the app so the FFI callback
         // never fires after the NmpApp is gone.
         self.update_bridge.take();

@@ -15,8 +15,8 @@ use std::sync::Mutex;
 use nmp_ffi::{nmp_app_free, nmp_app_new, FeedOpenError, NmpApp};
 
 use nmp_feed::{
-    CustomPerspectiveDef, CustomPerspectiveId, FeedAdmission, FeedParams, FeedRanking, FeedScope,
-    FeedWindow, ListId, ProjectionKey, TagTerm,
+    CustomPerspectiveDef, CustomPerspectiveId, FeedAdmission, FeedParams, FeedRanking, FeedRender,
+    FeedScope, FeedWindow, ListId, ProjectionKey, TagTerm,
 };
 
 // One live `NmpApp` at a time — same harness-contention guard the sibling
@@ -34,12 +34,38 @@ fn set_app_active(app: *mut NmpApp, active: Option<&str>) {
 fn home_params() -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
+        render: FeedRender::OpCentric,
         acquisition: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
         window: FeedWindow { initial_limit: 80 },
         projection: ProjectionKey("nmp.feed.home".into()),
     }
+}
+
+#[test]
+fn open_feed_active_follows_before_account_still_registers_for_later_reconcile() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let app = nmp_app_new();
+    assert!(!app.is_null());
+    set_app_active(app, None);
+    let app_ref: &NmpApp = unsafe { &*app };
+
+    let handle = app_ref
+        .open_feed(&home_params(), &compiler)
+        .expect("home feed opens before an active account is available");
+    assert_eq!(handle.projection_key, ProjectionKey("nmp.feed.home".into()));
+    assert!(app_ref.feed_session_is_open(&handle), "session live");
+    assert!(
+        app_ref
+            .run_typed_snapshot_projections()
+            .iter()
+            .any(|p| p.key == "nmp.feed.home"),
+        "pre-account home session still registers the typed sidecar"
+    );
+
+    assert!(app_ref.close_feed(&handle), "handle close tears down");
+    nmp_app_free(app);
 }
 
 /// Adapter so `compile_feed_params` (a free fn) satisfies `open_feed`'s compiler.
@@ -152,9 +178,10 @@ fn unsupported_scope_fails_closed_and_registers_nothing() {
     );
 
     assert_eq!(app_ref.live_feed_session_count(), 0, "no session leaked");
-    let any_sidecar = app_ref.run_typed_snapshot_projections().iter().any(|p| {
-        p.key == "test.feed.relayset" || p.key == "nmp.feed.home"
-    });
+    let any_sidecar = app_ref
+        .run_typed_snapshot_projections()
+        .iter()
+        .any(|p| p.key == "test.feed.relayset" || p.key == "nmp.feed.home");
     assert!(!any_sidecar, "no sidecar registered for a fail-closed open");
 
     nmp_app_free(app);

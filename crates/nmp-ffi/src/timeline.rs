@@ -2,9 +2,8 @@
 //! (the M2 feed seam, ADR-0042), `nostr:` URI routing, and profile claim/release.
 //!
 //! V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
-//! `nmp_app_open_thread`, `nmp_app_close_thread` deleted here; apps now call
-//! their own per-app seam (e.g. `nmp_app_chirp_open_author_feed`) which
-//! registers a `FlatFeed` and calls `nmp_app_open_interest` for kernel admission.
+//! `nmp_app_open_thread`, `nmp_app_close_thread` deleted here; apps now open
+//! typed feed sessions through `nmp_app_open_feed`.
 //!
 //! Split out of `ffi/mod.rs` to keep both files under the 300-LOC soft cap.
 //! These reuse the parent module's validated-argument helpers (`app_ref`,
@@ -12,7 +11,7 @@
 //! `#[no_mangle] extern "C"` so the Swift bridge sees a flat C ABI regardless
 //! of the Rust module split.
 
-use super::{NmpApp, app_ref, c_string_argument};
+use super::{app_ref, c_string_argument, NmpApp};
 use std::ffi::c_char;
 
 /// M2 (ADR-0042) — register (or attach an owner to) a generic tailing feed
@@ -111,8 +110,7 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
 // To decode a `nostr:` URI to an event key, call `nmp_nip21_decode_uri` first.
 
 // V-68 / V-112 (ADR-0042): nmp_app_close_author / nmp_app_close_thread deleted.
-// Apps use their per-app seam (nmp_app_chirp_close_author_feed etc.) which
-// releases the FlatFeed and calls nmp_app_close_interest for kernel cleanup.
+// Apps close typed feed sessions by the opaque handle returned from open_feed.
 
 /// Parse a primary-kinds JSON string (e.g. `"[1]"`) into a `BTreeSet<u32>`.
 ///

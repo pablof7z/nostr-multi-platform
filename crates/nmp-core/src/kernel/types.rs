@@ -443,8 +443,7 @@ pub(super) struct AuthorRelayList {
 // V-68 / V-112 (ADR-0042): ViewInterest + AuthorViewState / ThreadViewState
 // deleted here. View refcounting now lives in the planner's InterestRegistry
 // (multi-owner `(scope, key)` slots) behind the generic open_interest seam.
-// Author and thread view state now lives inside the per-app FlatFeed registered
-// by nmp_app_chirp_open_author_feed / nmp_app_chirp_open_thread_feed.
+// Author and thread view state now lives inside handle-opened per-app Flat feeds.
 
 /// Diagnostic ingest event counter.
 ///

@@ -22,7 +22,7 @@ const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 fn fresh() -> (IdentityRuntime, Kernel) {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     // Seed compiled acquisition kinds {1, 6}, as
-    // `nmp_app_chirp_open_home_feed` derives from the app's primary declaration
+    // `nmp_app_open_feed(ActiveUserFollows)` derives from the app's primary declaration
     // in production. Without this the kernel's `follow_feed_kinds` is empty and
     // follow-feed registration is a no-op (D0: the substrate no longer hardcodes
     // a kind set).

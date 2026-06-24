@@ -19,7 +19,7 @@ use std::sync::{
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{
-    FeedAdmission, FeedController, FeedParams, FeedRanking, FeedScope, FeedSessionBuild,
+    FeedAdmission, FeedController, FeedParams, FeedRanking, FeedRender, FeedScope, FeedSessionBuild,
     FeedSessionRegistry, FeedWindow, ProjectionKey, TeardownAction,
 };
 
@@ -53,6 +53,7 @@ impl KernelEventObserver for StubFeed {
 fn home_params() -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
+        render: FeedRender::OpCentric,
         acquisition: FeedScope::ActiveUserFollows,
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,

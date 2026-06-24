@@ -17,8 +17,8 @@ import Foundation
 // V-112 (ADR-0042): `ThreadView` Decodable deleted — the `thread_view`
 // projection (and its `threadView` field on the generated
 // `SnapshotProjections`) was removed with the kernel author/thread view
-// stack. Thread rendering reads the per-app FlatFeed
-// (`nmp_app_chirp_open_thread_feed`).
+// stack. Thread rendering reads the handle-opened per-app Flat feed under
+// `nmp.feed.thread.<event_id>`.
 
 // `AccountSummary` moved to `Generated/KernelTypes.generated.swift` (V6
 // Stage 1, plan §6b). Rust source: `nmp-core/src/kernel/identity_state.rs`
@@ -426,8 +426,8 @@ struct ProfileAction: Equatable {
 // V-112 (ADR-0042): `AuthorProfileSnapshot` Decodable deleted — the
 // `author_view` projection (and its `authorView` field on the generated
 // `SnapshotProjections`) was removed with the kernel author/thread view
-// stack. Author rendering reads the per-app FlatFeed
-// (`nmp_app_chirp_open_author_feed`); `ProfileAction` above stays as
+// stack. Author rendering reads the handle-opened per-app Flat feed;
+// `ProfileAction` above stays as
 // presentation chrome for `ProfileView`.
 
 // `TimelineItem` moved to `Generated/KernelTypes.generated.swift` (V6

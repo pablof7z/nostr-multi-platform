@@ -9,6 +9,8 @@
 //! What is asserted GONE (public surface only):
 //!   * the `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed` C-ABI
 //!     symbols (no `#[no_mangle]` definition, no `pub use` re-export anywhere);
+//!   * the Chirp-specific `nmp_app_chirp_open/close_{home,author,thread}_feed`
+//!     production symbols and callers;
 //!   * the raw wasm feed-verb dispatch STRINGS (`nmp.kernel.open_interest`,
 //!     `nmp.kernel.close_interest`, `nmp.feed.declare_active_follows`,
 //!     `nmp.feed.clear_active_follows`) — no routed `action_type` arm.
@@ -73,7 +75,16 @@ fn contact_feed_c_abi_symbols_are_not_defined_or_reexported() {
     // The retired C-ABI shims must not be DEFINED (`#[no_mangle] ... fn name`)
     // or RE-EXPORTED (`pub use ... name`) anywhere. A bare mention in a comment
     // is allowed (documents the removal); a code-line occurrence is a violation.
-    const RETIRED_C_SYMBOLS: &[&str] = &["nmp_app_open_contact_feed", "nmp_app_close_contact_feed"];
+    const RETIRED_C_SYMBOLS: &[&str] = &[
+        "nmp_app_open_contact_feed",
+        "nmp_app_close_contact_feed",
+        "nmp_app_chirp_open_home_feed",
+        "nmp_app_chirp_close_home_feed",
+        "nmp_app_chirp_open_author_feed",
+        "nmp_app_chirp_close_author_feed",
+        "nmp_app_chirp_open_thread_feed",
+        "nmp_app_chirp_close_thread_feed",
+    ];
 
     let root = repo_root();
     let mut files = Vec::new();

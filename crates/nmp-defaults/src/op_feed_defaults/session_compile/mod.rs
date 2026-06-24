@@ -29,6 +29,7 @@ use nmp_ffi::{FeedOpenError, NmpApp};
 use super::{read_active, register_op_feed_defaults};
 
 mod custom;
+mod flat_replay;
 mod resolve;
 mod resolve_static;
 mod session_engine;
@@ -90,6 +91,12 @@ pub fn compile_feed_params(
     // not support a custom admission gate (the home path is its own engine), so a
     // custom admission over `ActiveUserFollows` fails closed.
     if matches!(params.acquisition, FeedScope::ActiveUserFollows) {
+        if !matches!(params.render, nmp_feed::FeedRender::OpCentric) {
+            return not_supported_yet("active-user-follows-render");
+        }
+        if params.projection.0 != nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY {
+            return not_supported_yet("active-user-follows-projection");
+        }
         if !matches!(params.admission, FeedAdmission::All) {
             return not_supported_yet("custom-admission");
         }
@@ -109,7 +116,7 @@ pub fn compile_feed_params(
         resolved = custom::apply_custom_admission(app, resolved, id, acquisition_kinds)?;
     }
 
-    session_engine::build_scope_session(app, &params.projection.0, resolved)
+    session_engine::build_scope_session(app, &params.projection.0, &params.render, resolved)
 }
 
 fn not_supported_yet(scope: &'static str) -> Result<FeedSessionBuild, FeedOpenError> {
@@ -122,13 +129,12 @@ fn compile_active_user_follows(
     app: &NmpApp,
     params: &FeedParams,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
-    // The viewer is the active account (the reactive perspective owner). No live
-    // account ⇒ fail closed: an active-follows feed has no viewer to anchor.
-    let viewer = read_active(&app.active_account_handle()).ok_or(
-        FeedOpenError::ScopeNotSupportedYet {
-            scope: "ActiveUserFollows-no-active-account",
-        },
-    )?;
+    // The viewer is the active account when one exists. A view-driven shell may
+    // open the home feed before sign-in; `register_op_feed_defaults` already
+    // reads the live active-account slot for acquisition/pull and self-seeds
+    // once identity arrives, so use an empty bootstrap viewer in that window
+    // instead of dropping the declaration.
+    let viewer = read_active(&app.active_account_handle()).unwrap_or_default();
 
     // Reuse the EXISTING composition verbatim — engine + pull controller + typed
     // NOFS sidecar + observers. `register_op_feed_defaults` derives wrapper
@@ -163,12 +169,12 @@ fn compile_active_user_follows(
         // Registration order = REVERSE of the execution order documented above
         // (the registry reverses the Vec on close).
         teardown: vec![
-            teardown.mark_changed(),                       // exec #6 (runs last)
-            teardown.clear_active_follows(),               // exec #5
-            teardown.remove_projection(key),               // exec #4
+            teardown.mark_changed(),                          // exec #6 (runs last)
+            teardown.clear_active_follows(),                  // exec #5
+            teardown.remove_projection(key),                  // exec #4
             teardown.revoke_observer(follow_set_observer_id), // exec #3
-            teardown.revoke_observer(engine_observer_id),  // exec #2
-            teardown.unregister_feed(key),                 // exec #1 (runs first)
+            teardown.revoke_observer(engine_observer_id),     // exec #2
+            teardown.unregister_feed(key),                    // exec #1 (runs first)
         ],
     })
 }

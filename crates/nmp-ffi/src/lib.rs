@@ -149,8 +149,8 @@ pub use feed::nmp_app_load_older_feed;
 #[cfg(feature = "native")]
 pub use feed::{
     decode_and_validate_feed_params, validate_feed_params, FeedAdmission, FeedHandle, FeedParams,
-    FeedParamsDecodeError, FeedParamsError, FeedRanking, FeedScope, FeedSessionId, FeedWindow,
-    ProjectionKey, PubkeySetExpr,
+    FeedParamsDecodeError, FeedParamsError, FeedRanking, FeedRender, FeedScope, FeedSessionId,
+    FeedWindow, ProjectionKey, PubkeySetExpr,
 };
 #[cfg(feature = "native")]
 pub use feed_session::{

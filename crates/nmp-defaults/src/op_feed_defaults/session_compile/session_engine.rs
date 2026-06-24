@@ -29,13 +29,13 @@
 
 use std::sync::{Arc, Mutex};
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
-use nmp_core::{KernelEventObserver};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{InterestsCommand};
+use nmp_core::KernelEventObserver;
 use nmp_feed::{
-    ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
-    PullFeedController, RootAdmission,
+    ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
+    FeedSessionBuild, PullFeedController, RootAdmission,
 };
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
@@ -50,6 +50,18 @@ use super::resolve::ResolvedScope;
 /// interests, the live acquisition shape, and any resolver observer ids that
 /// must be revoked on close.
 pub(super) fn build_scope_session(
+    app: &NmpApp,
+    key: &str,
+    render: &FeedRender,
+    resolved: ResolvedScope,
+) -> Result<FeedSessionBuild, FeedOpenError> {
+    match render {
+        FeedRender::OpCentric => build_op_scope_session(app, key, resolved),
+        FeedRender::Flat => build_flat_scope_session(app, key, resolved),
+    }
+}
+
+fn build_op_scope_session(
     app: &NmpApp,
     key: &str,
     resolved: ResolvedScope,
@@ -177,7 +189,8 @@ pub(super) fn build_scope_session(
     // `remove_projection` / `unregister_feed` (same key) covers both lanes.
     let engine_for_typed = Arc::clone(&engine);
     let typed_key = key.to_string();
-    let source = nmp_feed::FeedRenderSource::new(move || engine_for_typed.snapshot_current_window());
+    let source =
+        nmp_feed::FeedRenderSource::new(move || engine_for_typed.snapshot_current_window());
     app.register_feed_render_source(key.to_string(), source, move |snapshot| {
         Some(nmp_core::TypedProjectionData {
             key: typed_key.clone(),
@@ -258,8 +271,8 @@ pub(super) fn build_scope_session(
     let teardown_handle = app.feed_teardown();
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
     teardown.push(teardown_handle.mark_changed()); // exec #6 (last)
-    // exec #5 — close EVERY interest this session opened, draining the live log
-    // so dynamically-resolved member interests are withdrawn too (no leak, D8).
+                                                   // exec #5 — close EVERY interest this session opened, draining the live log
+                                                   // so dynamically-resolved member interests are withdrawn too (no leak, D8).
     {
         let sender_for_close = sender.clone();
         let key_for_close = key.to_string();
@@ -270,12 +283,14 @@ pub(super) fn build_scope_session(
                 .map(|log| log.clone())
                 .unwrap_or_default();
             for (filter_json, scope) in drained {
-                let _ = sender_for_close.send(ActorCommand::Interests(InterestsCommand::CloseInterest {
-                    filter_json,
-                    consumer_id: key_for_close.clone(),
-                    scope,
-                    relay_pin: None,
-                }));
+                let _ = sender_for_close.send(ActorCommand::Interests(
+                    InterestsCommand::CloseInterest {
+                        filter_json,
+                        consumer_id: key_for_close.clone(),
+                        scope,
+                        relay_pin: None,
+                    },
+                ));
             }
         }));
     }
@@ -292,8 +307,150 @@ pub(super) fn build_scope_session(
     })
 }
 
+fn build_flat_scope_session(
+    app: &NmpApp,
+    key: &str,
+    resolved: ResolvedScope,
+) -> Result<FeedSessionBuild, FeedOpenError> {
+    let ResolvedScope {
+        admission,
+        interests,
+        live_shape,
+        extra_acquisition,
+        reset_hooks,
+        resolver_observer_ids,
+    } = resolved;
+
+    let feed = nmp_nip01::FlatFeed::new(admission);
+    let observer_for_registry: Arc<dyn KernelEventObserver> = feed.clone();
+    let engine_observer_id = app.register_event_observer(observer_for_registry);
+
+    let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
+        let live_shape = live_shape.clone();
+        Arc::new(ClosureInterestShape::new(move || live_shape()))
+    };
+    let pull = app.feed_pull_fn();
+    let apply: FeedApply = {
+        let feed = Arc::clone(&feed);
+        Arc::new(move |event: &KernelEvent| {
+            let before = visible_flat_payload(&feed);
+            feed.on_kernel_event(event);
+            visible_flat_payload(&feed) != before
+        })
+    };
+    let advance: FeedAdvance = {
+        let feed = Arc::clone(&feed);
+        Arc::new(move || {
+            feed.grow_visible_window();
+        })
+    };
+    let reset: FeedReset = {
+        let feed = Arc::clone(&feed);
+        Arc::new(move || feed.reset_for_perspective_change())
+    };
+    let controller: Arc<dyn FeedController> =
+        PullFeedController::new_with_perspective(provider, pull, apply, None, Some(reset), advance);
+    app.register_feed(key.to_string(), controller.clone());
+
+    let feed_for_typed = Arc::clone(&feed);
+    let typed_key = key.to_string();
+    let source = nmp_feed::FeedRenderSource::new(move || feed_for_typed.snapshot_current_window());
+    app.register_feed_render_source(key.to_string(), source, move |snapshot| {
+        Some(nmp_core::TypedProjectionData {
+            key: typed_key.clone(),
+            schema_id: nmp_nip01::op_feed::OP_FEED_SCHEMA_ID.to_string(),
+            schema_version: nmp_nip01::op_feed::OP_FEED_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(nmp_nip01::op_feed::OP_FEED_FILE_IDENTIFIER)
+                .into_owned(),
+            payload: nmp_nip01::op_feed::encode_op_feed_snapshot(snapshot),
+            ..Default::default()
+        })
+    });
+    let replayed_tail = app.load_older_feed(key);
+    let replayed_ids = super::flat_replay::replay_fixed_event_ids(app, &feed, &interests);
+    if replayed_ids && !replayed_tail {
+        (app.feed_teardown().mark_changed())();
+    }
+
+    let sender = app.command_sender();
+    let opened: Arc<Mutex<Vec<(String, u32)>>> = Arc::new(Mutex::new(Vec::new()));
+    let open_interest = {
+        let sender = sender.clone();
+        let key = key.to_string();
+        let opened = Arc::clone(&opened);
+        move |filter_json: String, scope: u32| {
+            if let Ok(mut log) = opened.lock() {
+                if log.iter().any(|(f, s)| *f == filter_json && *s == scope) {
+                    return;
+                }
+                log.push((filter_json.clone(), scope));
+            }
+            let _ = sender.send(ActorCommand::Interests(InterestsCommand::OpenInterest {
+                filter_json,
+                consumer_id: key.clone(),
+                scope,
+            }));
+        }
+    };
+    for (filter_json, scope) in &interests {
+        open_interest(filter_json.clone(), *scope);
+    }
+    sync_member_interest(&extra_acquisition, &open_interest);
+    for hook in reset_hooks {
+        let controller_for_reset = controller.clone();
+        let extra = extra_acquisition.clone();
+        let open_interest = open_interest.clone();
+        let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            sync_member_interest(&extra, &open_interest);
+            let _ = controller_for_reset.reset();
+        });
+        hook(reset_trigger);
+    }
+
+    let teardown_handle = app.feed_teardown();
+    let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
+    teardown.push(teardown_handle.mark_changed());
+    {
+        let sender_for_close = sender.clone();
+        let key_for_close = key.to_string();
+        let opened_for_close = Arc::clone(&opened);
+        teardown.push(Box::new(move || {
+            let drained = opened_for_close
+                .lock()
+                .map(|log| log.clone())
+                .unwrap_or_default();
+            for (filter_json, scope) in drained {
+                let _ = sender_for_close.send(ActorCommand::Interests(
+                    InterestsCommand::CloseInterest {
+                        filter_json,
+                        consumer_id: key_for_close.clone(),
+                        scope,
+                        relay_pin: None,
+                    },
+                ));
+            }
+        }));
+    }
+    teardown.push(teardown_handle.remove_projection(key.to_string()));
+    for id in &resolver_observer_ids {
+        teardown.push(teardown_handle.revoke_observer(*id));
+    }
+    teardown.push(teardown_handle.revoke_observer(engine_observer_id));
+    teardown.push(teardown_handle.unregister_feed(key.to_string()));
+
+    Ok(FeedSessionBuild {
+        projection_key: nmp_feed::ProjectionKey(key.to_string()),
+        teardown,
+    })
+}
+
 fn visible_payload(engine: &nmp_nip01::OpFeedEngine) -> Vec<u8> {
     let snapshot = engine.snapshot_current_window();
+    nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
+}
+
+fn visible_flat_payload(feed: &nmp_nip01::FlatFeed) -> Vec<u8> {
+    let snapshot = feed.snapshot_current_window();
     nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
 }
 

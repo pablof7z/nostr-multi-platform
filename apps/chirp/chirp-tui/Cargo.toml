@@ -51,6 +51,7 @@ nmp-nip47 = { path = "../../../crates/nmp-nip47" }
 # are reached only by the cfg(test) round-trip test, so test-support is re-pinned
 # under [dev-dependencies] below rather than on the shipping binary.
 nmp-ffi = { path = "../../../crates/nmp-ffi" }
+nmp-feed = { path = "../../../crates/nmp-feed" }
 clap = { version = "4", features = ["derive"] }
 color-eyre = "0.6"
 crossterm = "0.29"

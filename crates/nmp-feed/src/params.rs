@@ -100,6 +100,10 @@ pub enum PubkeySetExpr {
     RelaySet { relays: RelaySetId },
     /// A `#t` tag or free-text search scope.
     Tag { term: TagTerm },
+    /// Thread / referrer scope: the root event (by id) plus every primary-kind
+    /// event or derived wrapper that references the root via an `#e` tag.
+    /// An EMPTY event_id fails closed (admits nobody).
+    Referrer { event_id: String },
     /// Set union of two sub-expressions.
     Union(Box<PubkeySetExpr>, Box<PubkeySetExpr>),
     /// Set intersection of two sub-expressions.
@@ -118,8 +122,29 @@ pub enum PubkeySetExpr {
 pub type FeedScope = PubkeySetExpr;
 
 // ---------------------------------------------------------------------------
-// Admission, ranking, window, projection phases.
+// Render mode, admission, ranking, window, projection phases.
 // ---------------------------------------------------------------------------
+
+/// (a) RENDER MODE — how the session projects acquired, admitted rows.
+///
+/// `OpCentric` produces the default home-feed-style reply rollup (OP-feed engine).
+/// `Flat` produces a flat list with empty attribution (NIP-01 FlatFeed engine),
+/// used for profile and thread screens.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub enum FeedRender {
+    /// Reply-centric: replies roll up as attribution under their parent OP.
+    /// (home-feed style, OP-feed engine)
+    OpCentric,
+    /// Flat: every matching event is a top-level row; no attribution nesting.
+    /// (profile/thread style, FlatFeed engine)
+    Flat,
+}
+
+impl Default for FeedRender {
+    fn default() -> Self {
+        FeedRender::OpCentric
+    }
+}
 
 /// (b) ADMISSION policy — which acquired rows are allowed to render.
 ///
@@ -201,15 +226,18 @@ pub struct FeedParams {
     /// composition/compiler layer, which validates that no derived-acquisition
     /// kind was declared as primary input (fail-closed).
     pub primary_kinds: Vec<u32>,
-    /// (a) ACQUISITION source.
+    /// (a) RENDER MODE.
+    #[serde(default)]
+    pub render: FeedRender,
+    /// (b) ACQUISITION source.
     pub acquisition: FeedScope,
-    /// (b) ADMISSION policy.
+    /// (c) ADMISSION policy.
     pub admission: FeedAdmission,
-    /// (c) RANKING / ORDER.
+    /// (d) RANKING / ORDER.
     pub ranking: FeedRanking,
-    /// (d) WINDOW.
+    /// (e) WINDOW.
     pub window: FeedWindow,
-    /// (e) ITEM PROJECTION.
+    /// (f) ITEM PROJECTION.
     pub projection: ProjectionKey,
 }
 

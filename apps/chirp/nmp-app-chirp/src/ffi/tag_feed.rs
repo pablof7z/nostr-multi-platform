@@ -58,7 +58,8 @@ use nmp_feed::{
 use nmp_ffi::{FeedOpenError, NmpApp};
 
 use super::helpers::c_string_opt;
-use super::interest_feed::FEED_PRIMARY_KINDS;
+
+const CHIRP_FEED_PRIMARY_KINDS: [u32; 1] = [1];
 
 /// `nmp.feed.tag.<tag>` — the snapshot key a tag screen reads (additive render).
 #[must_use]
@@ -143,7 +144,8 @@ fn normalize_tag(value: &str) -> Option<String> {
 #[must_use]
 fn tag_feed_params(tag: &str) -> FeedParams {
     FeedParams {
-        primary_kinds: FEED_PRIMARY_KINDS.to_vec(),
+        primary_kinds: CHIRP_FEED_PRIMARY_KINDS.to_vec(),
+        render: nmp_feed::FeedRender::OpCentric,
         acquisition: FeedScope::Tag {
             term: TagTerm(tag.to_string()),
         },
@@ -265,9 +267,12 @@ mod tests {
         // SAME acquisition kind set the raw path opened (1 ∪ derived wrappers ∪ 5).
         // Validation lives in the composition layer (`nmp_ffi`), not in the
         // protocol-agnostic `nmp-feed` engine.
-        let kinds = nmp_ffi::validate_feed_params(&params)
-            .expect("primary [1] is a valid declaration");
+        let kinds =
+            nmp_ffi::validate_feed_params(&params).expect("primary [1] is a valid declaration");
         assert!(kinds.contains(&1), "primary kind:1 acquired");
-        assert!(kinds.contains(&6), "NIP-18 wrapper kind:6 derived by the compiler");
+        assert!(
+            kinds.contains(&6),
+            "NIP-18 wrapper kind:6 derived by the compiler"
+        );
     }
 }

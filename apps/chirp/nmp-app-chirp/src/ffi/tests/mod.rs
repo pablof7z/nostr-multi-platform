@@ -7,7 +7,6 @@ mod helpers;
 mod home_feed_pull;
 #[cfg(feature = "marmot")]
 mod identity;
-mod interest_feed;
 mod nip17;
 mod nip29;
 mod nip29_registration;

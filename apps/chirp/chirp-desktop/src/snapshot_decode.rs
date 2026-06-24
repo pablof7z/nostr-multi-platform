@@ -122,8 +122,7 @@ pub(crate) fn decode_snapshot_typed(
         std::collections::HashMap::new();
 
     // V-112 (ADR-0042): author_view / thread_view projections deleted.
-    // Author and thread screens now read from dynamic flat-feed projections
-    // registered by nmp_app_chirp_open_author_feed / _open_thread_feed under
+    // Author and thread screens now read from handle-opened flat-feed projections under
     // "nmp.feed.author.<pubkey>" / "nmp.feed.thread.<event_id>" keys. These
     // are present in the typed sidecar list with schema_id "nmp.nip01.opfeed"
     // and are decoded/inserted below alongside the home feed.

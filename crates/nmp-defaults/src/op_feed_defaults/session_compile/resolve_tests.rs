@@ -128,10 +128,14 @@ fn contact_list_predicate_admits_follows_rejects_strangers() {
 // ── Authors { authors } — static author-set timeline ─────────────────────
 
 fn note(author: &str) -> KernelEvent {
+    note_kind(author, 1)
+}
+
+fn note_kind(author: &str, kind: u32) -> KernelEvent {
     KernelEvent {
         id: EventId::from("2".repeat(64)),
         author: author.to_string(),
-        kind: 1,
+        kind,
         created_at: 100,
         tags: Vec::new(),
         content: "a note".to_string(),
@@ -144,8 +148,9 @@ fn authors_scope_admits_only_the_target_authors_rejects_others() {
     // The load-bearing proof: an author feed admits ONLY events authored BY the
     // target set — NOT a stranger's, NOT (because this is the author's OWN
     // timeline, not their follows) anyone else's.
-    let authors: std::collections::BTreeSet<String> =
-        [ALICE.to_string(), MEMBER.to_string()].into_iter().collect();
+    let authors: std::collections::BTreeSet<String> = [ALICE.to_string(), MEMBER.to_string()]
+        .into_iter()
+        .collect();
     let kinds: std::collections::BTreeSet<u32> = [1u32].into_iter().collect();
     let resolved = super::resolve_static::resolve_authors(&authors, &kinds)
         .expect("non-empty author set resolves");
@@ -160,18 +165,29 @@ fn authors_scope_admits_only_the_target_authors_rejects_others() {
         "every target author's note is admitted"
     );
     assert!(
+        !(resolved.admission)(&note_kind(ALICE, 30_023)),
+        "a target author's non-primary kind is excluded"
+    );
+    assert!(
         !(resolved.admission)(&note(STRANGER)),
         "a NON-author's note is excluded (the proof — author scope is not 'admit any')"
     );
 
     // Acquisition: ONE fixed author+kind interest, Global scope. No reactive
     // observers / reset hooks / extra acquisition (the set is static).
-    assert_eq!(resolved.interests.len(), 1, "one fixed acquisition interest");
+    assert_eq!(
+        resolved.interests.len(),
+        1,
+        "one fixed acquisition interest"
+    );
     let (filter_json, scope) = &resolved.interests[0];
     assert_eq!(*scope, 1, "Global scope (account-agnostic author pin)");
     let shape = nmp_planner::InterestShape::from_filter_json(filter_json)
         .expect("the author filter parses");
-    assert_eq!(shape.authors, authors, "acquires exactly the target authors");
+    assert_eq!(
+        shape.authors, authors,
+        "acquires exactly the target authors"
+    );
     assert_eq!(shape.kinds, kinds, "acquires exactly the compiled kinds");
     assert!(
         resolved.resolver_observer_ids.is_empty() && resolved.reset_hooks.is_empty(),
@@ -212,4 +228,174 @@ fn wot_tracks_seed_direct_follows_for_acquisition() {
     assert!(direct.contains(F1));
     assert!(direct.contains(F2));
     assert_eq!(direct.len(), 2);
+}
+
+// ── Referrer scope resolution (thread/referrer feeds) ─────────────────────
+
+use super::resolve_static::resolve_referrer;
+
+#[test]
+fn referrer_scope_fails_closed_on_empty_id() {
+    let kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    let result = resolve_referrer("", &kinds);
+    assert!(
+        result.is_err(),
+        "referrer scope with empty event_id must fail closed"
+    );
+}
+
+#[test]
+fn referrer_scope_fails_closed_on_no_kinds() {
+    let kinds = std::collections::BTreeSet::new();
+    let result = resolve_referrer("root123", &kinds);
+    assert!(
+        result.is_err(),
+        "referrer scope with no acquisition kinds must fail closed"
+    );
+}
+
+#[test]
+fn referrer_scope_admits_root_by_id() {
+    use super::resolve_static::resolve_referrer;
+    let kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    let resolved = resolve_referrer("root123", &kinds).expect("valid referrer scope");
+
+    // The root event itself (by id)
+    let root = KernelEvent {
+        id: EventId::from("root123"),
+        author: "alice".to_string(),
+        kind: 1,
+        created_at: 100,
+        tags: Vec::new(),
+        content: "root note".to_string(),
+        relay_provenance: Vec::new(),
+    };
+    assert!(
+        (resolved.admission)(&root),
+        "admission must admit the root by id"
+    );
+}
+
+#[test]
+fn referrer_scope_opens_etag_tail_and_root_id_interests() {
+    let kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    let resolved = resolve_referrer("root123", &kinds).expect("valid referrer scope");
+
+    assert_eq!(
+        resolved.interests.len(),
+        2,
+        "thread scope opens #e reply-tail plus root-by-id acquisition"
+    );
+    for (_, scope) in &resolved.interests {
+        assert_eq!(*scope, 1, "thread acquisition is Global/account-agnostic");
+    }
+    let shapes: Vec<_> = resolved
+        .interests
+        .iter()
+        .filter_map(|(json, _)| nmp_planner::InterestShape::from_filter_json(json))
+        .collect();
+    assert!(
+        shapes.iter().any(|shape| {
+            shape
+                .tags
+                .get("e")
+                .is_some_and(|values| values.contains("root123"))
+                && shape.kinds == kinds
+        }),
+        "#e reply-tail interest must be fixed at open"
+    );
+    assert!(
+        shapes
+            .iter()
+            .any(|shape| shape.event_ids.contains("root123") && shape.kinds == kinds),
+        "root-by-id interest must be kind-gated and fixed at open"
+    );
+
+    let live = (resolved.live_shape)().expect("live pull shape");
+    assert!(
+        live.tags
+            .get("e")
+            .is_some_and(|values| values.contains("root123")),
+        "load_older pulls the reply tail"
+    );
+    assert!(
+        live.event_ids.is_empty(),
+        "root-by-id replay is fixed acquisition, not the load_older tail"
+    );
+}
+
+#[test]
+fn referrer_scope_admits_events_referencing_root_via_etag() {
+    let kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    let resolved = resolve_referrer("root123", &kinds).expect("valid referrer scope");
+
+    // A reply that references the root via #e tag
+    let reply = KernelEvent {
+        id: EventId::from("reply456"),
+        author: "bob".to_string(),
+        kind: 1,
+        created_at: 101,
+        tags: vec![vec!["e".to_string(), "root123".to_string()]],
+        content: "a reply".to_string(),
+        relay_provenance: Vec::new(),
+    };
+    assert!(
+        (resolved.admission)(&reply),
+        "admission must admit events with #e referencing the root"
+    );
+}
+
+#[test]
+fn referrer_scope_rejects_non_primary_kind_root_and_etag_rows() {
+    let kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    let resolved = resolve_referrer("root123", &kinds).expect("valid referrer scope");
+
+    let wrong_kind_root = KernelEvent {
+        id: EventId::from("root123"),
+        author: "alice".to_string(),
+        kind: 30_023,
+        created_at: 100,
+        tags: Vec::new(),
+        content: "longform root".to_string(),
+        relay_provenance: Vec::new(),
+    };
+    let wrong_kind_reply = KernelEvent {
+        id: EventId::from("reply789"),
+        author: "bob".to_string(),
+        kind: 30_023,
+        created_at: 101,
+        tags: vec![vec!["e".to_string(), "root123".to_string()]],
+        content: "longform reply".to_string(),
+        relay_provenance: Vec::new(),
+    };
+
+    assert!(
+        !(resolved.admission)(&wrong_kind_root),
+        "root-by-id admission must still require the compiled kinds"
+    );
+    assert!(
+        !(resolved.admission)(&wrong_kind_reply),
+        "#e admission must reject events outside the compiled kinds"
+    );
+}
+
+#[test]
+fn referrer_scope_rejects_unrelated_events() {
+    let kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    let resolved = resolve_referrer("root123", &kinds).expect("valid referrer scope");
+
+    // An unrelated event
+    let unrelated = KernelEvent {
+        id: EventId::from("other789"),
+        author: "charlie".to_string(),
+        kind: 1,
+        created_at: 102,
+        tags: vec![vec!["e".to_string(), "other_root".to_string()]],
+        content: "unrelated note".to_string(),
+        relay_provenance: Vec::new(),
+    };
+    assert!(
+        !(resolved.admission)(&unrelated),
+        "admission must reject events that don't reference the root"
+    );
 }

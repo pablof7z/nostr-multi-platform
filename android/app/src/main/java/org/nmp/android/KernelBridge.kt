@@ -36,6 +36,9 @@ fun interface KernelSignerRequestListener {
 class KernelBridge {
     @Volatile
     private var handle: Long = 0
+    private var homeFeedHandle: String? = null
+    private val threadFeedHandles = mutableMapOf<String, String>()
+    private val authorFeedHandles = mutableMapOf<String, String>()
 
     init {
         System.loadLibrary("nmp_android_ffi")
@@ -83,7 +86,10 @@ class KernelBridge {
 
     /** Open the Chirp home feed for primary kind:1 notes. */
     fun openHomeFeed() {
-        if (handle != 0L) nativeOpenHomeFeed(handle)
+        val current = handle
+        if (current != 0L && homeFeedHandle == null) {
+            homeFeedHandle = nativeOpenHomeFeed(current)
+        }
     }
 
     fun createLocalAccount(displayName: String = "Android User") {
@@ -170,14 +176,18 @@ class KernelBridge {
      * D6: null handle or invalid note_id is a silent no-op.
      */
     fun openThread(noteId: String) {
-        if (handle != 0L) nativeOpenThread(handle, noteId)
+        val current = handle
+        if (current != 0L && !threadFeedHandles.containsKey(noteId)) {
+            nativeOpenThread(current, noteId)?.let { threadFeedHandles[noteId] = it }
+        }
     }
 
     /**
      * Close a thread feed opened with [openThread].
      */
     fun closeThread(noteId: String) {
-        if (handle != 0L) nativeCloseThread(handle, noteId)
+        val feedHandle = threadFeedHandles.remove(noteId) ?: return
+        if (handle != 0L) nativeCloseThread(handle, feedHandle)
     }
 
     /**
@@ -188,12 +198,16 @@ class KernelBridge {
      * D6: null handle or invalid pubkey is a silent no-op.
      */
     fun openAuthor(pubkey: String) {
-        if (handle != 0L) nativeOpenAuthor(handle, pubkey)
+        val current = handle
+        if (current != 0L && !authorFeedHandles.containsKey(pubkey)) {
+            nativeOpenAuthor(current, pubkey)?.let { authorFeedHandles[pubkey] = it }
+        }
     }
 
     /** Close an author feed opened with [openAuthor]. */
     fun closeAuthor(pubkey: String) {
-        if (handle != 0L) nativeCloseAuthor(handle, pubkey)
+        val feedHandle = authorFeedHandles.remove(pubkey) ?: return
+        if (handle != 0L) nativeCloseAuthor(handle, feedHandle)
     }
 
     /**
@@ -402,15 +416,25 @@ class KernelBridge {
     fun free() {
         val current = handle
         if (current != 0L) {
+            closeOpenFeeds(current)
             nativeFree(current)
             handle = 0
         }
     }
 
+    private fun closeOpenFeeds(current: Long) {
+        homeFeedHandle?.let { nativeCloseFeed(current, it) }
+        homeFeedHandle = null
+        threadFeedHandles.values.forEach { nativeCloseFeed(current, it) }
+        threadFeedHandles.clear()
+        authorFeedHandles.values.forEach { nativeCloseFeed(current, it) }
+        authorFeedHandles.clear()
+    }
+
     private external fun nativeNew(): Long
     private external fun nativeSetStoragePath(handle: Long, path: String): Int
     private external fun nativeStart(handle: Long, visibleLimit: Int, emitHz: Int)
-    private external fun nativeOpenHomeFeed(handle: Long)
+    private external fun nativeOpenHomeFeed(handle: Long): String?
     private external fun nativeCreateLocalAccount(handle: Long, displayName: String)
     private external fun nativeStop(handle: Long)
     private external fun nativeClose(handle: Long)
@@ -444,10 +468,11 @@ class KernelBridge {
     internal external fun nativeCancelPublish(handle: Long, correlationId: String)
     private external fun nativeLoadOlderFeed(handle: Long, feedKey: String)
     private external fun nativeBuildActionSpec(intentJson: String): String
-    private external fun nativeOpenThread(handle: Long, noteId: String)
-    private external fun nativeCloseThread(handle: Long, noteId: String)
-    private external fun nativeOpenAuthor(handle: Long, pubkey: String)
-    private external fun nativeCloseAuthor(handle: Long, pubkey: String)
+    private external fun nativeOpenThread(handle: Long, noteId: String): String?
+    private external fun nativeCloseThread(handle: Long, feedHandle: String)
+    private external fun nativeOpenAuthor(handle: Long, pubkey: String): String?
+    private external fun nativeCloseAuthor(handle: Long, feedHandle: String)
+    private external fun nativeCloseFeed(handle: Long, feedHandle: String)
     private external fun nativeSeedRelays(handle: Long, relaysJson: String?)
     private external fun nativeAddRelay(handle: Long, url: String, role: String)
     private external fun nativeRemoveRelay(handle: Long, url: String)

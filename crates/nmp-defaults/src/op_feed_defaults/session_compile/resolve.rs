@@ -86,6 +86,7 @@ pub(super) fn resolve_scope(
         S::ListMembers { list } => resolve_list_members(app, &list.0, kinds),
         S::Wot { seed, .. } => resolve_wot(app, &seed.0, kinds),
         S::Tag { term } => Ok(super::resolve_static::resolve_tag(&term.0, kinds)),
+        S::Referrer { event_id } => super::resolve_static::resolve_referrer(event_id, kinds),
         S::RelaySet { .. } => Err(not_supported("RelaySet")),
         S::Union(l, r) => super::set_algebra::resolve_set_op(app, SetOp::Union, l, r, kinds),
         S::Intersection(l, r) => {

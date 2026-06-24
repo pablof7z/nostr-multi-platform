@@ -304,8 +304,8 @@ pub extern "C" fn nmp_app_remove_relay(app: *mut NmpApp, url: *const c_char) {
 // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): `nmp_app_open_timeline` deleted.
 // #1740 step 8: the `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
 // C symbols are now DELETED too (no compatibility shim). The ONLY public way to
-// open a feed is the typed `nmp_app_open_feed` doorway; `nmp_app_chirp_open_home_feed`
-// (home-feed wiring) drives the internal active-follows glue in `timeline.rs`.
+// open a feed is the typed `nmp_app_open_feed` doorway, including the home
+// feed's active-follows declaration.
 
 #[cfg(test)]
 mod autopublish_flag_tests {

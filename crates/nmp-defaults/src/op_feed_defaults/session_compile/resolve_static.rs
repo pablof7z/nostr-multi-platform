@@ -5,6 +5,8 @@
 //! * [`resolve_authors`] — `FeedScope::Authors { authors }`: the primary-kind
 //!   timeline authored BY a fixed, app-named pubkey set (an author/profile feed).
 //! * [`resolve_tag`] — `FeedScope::Tag { term }`: a `#t` scope.
+//! * [`resolve_referrer`] — `FeedScope::Referrer { event_id }`: root-by-id plus
+//!   `#e` referrers for a thread feed.
 //!
 //! Both compile to an EVENT-AWARE [`AdmitExpr`] admission (so they compose
 //! faithfully under set algebra) over a fixed acquisition interest. The reactive
@@ -41,9 +43,16 @@ pub(super) fn resolve_authors(
         return Err(not_supported("Authors-no-acquisition-kinds"));
     }
 
-    // EVENT-AWARE admission over the fixed author set (composes faithfully under
-    // set algebra, mirroring the `Tag` scope's `AdmitExpr::Tag`).
-    let admission: RootAdmission = AdmitExpr::Authors(authors.clone()).to_root_admission();
+    // EVENT-AWARE admission over the fixed author set AND compiled kinds. The
+    // acquisition filter carries the same kinds, but admission also has to gate
+    // cached/live rows delivered through other paths.
+    let admission: RootAdmission = {
+        let authors = authors.clone();
+        let kinds = kinds.clone();
+        Arc::new(move |event: &nmp_core::substrate::KernelEvent| {
+            authors.contains(&event.author) && kinds.contains(&event.kind)
+        })
+    };
     // Acquisition: the authors' primary-kind (+ compiler-derived wrapper) timeline.
     let interests = vec![(authors_filter(authors, kinds), 1u32)]; // Global scope
     let shape = InterestShape::timeline_for(authors.clone(), kinds.clone());
@@ -101,4 +110,83 @@ fn tag_shape(term: &str, kinds: &BTreeSet<u32>) -> Option<InterestShape> {
         return None;
     }
     InterestShape::from_filter_json(&tag_filter(term, kinds))
+}
+
+// ── Referrer { event_id } — thread/referrer scope ──────────────────────────
+
+/// A STATIC thread/referrer scope: the root event (by id) plus every primary-kind
+/// event or derived wrapper that references the root via an `#e` tag. Fail-closed
+/// on empty event_id or empty kinds (mirror resolve_authors).
+pub(super) fn resolve_referrer(
+    event_id: &str,
+    kinds: &BTreeSet<u32>,
+) -> Result<ResolvedScope, FeedOpenError> {
+    if event_id.is_empty() {
+        return Err(not_supported("Referrer-empty-id"));
+    }
+    if kinds.is_empty() {
+        return Err(not_supported("Referrer-no-acquisition-kinds"));
+    }
+
+    // EVENT-AWARE admission: admits the root by id OR any acquired event that
+    // references the root via an #e tag (the same predicate logic as
+    // thread_feed_predicate in nmp-nip01).
+    let root_id = event_id.to_string();
+    let admission: RootAdmission = {
+        let id = root_id.clone();
+        let kinds = kinds.clone();
+        Arc::new(move |event: &nmp_core::substrate::KernelEvent| {
+            if !kinds.contains(&event.kind) {
+                return false;
+            }
+            if event.id == id {
+                return true;
+            }
+            event
+                .tags
+                .iter()
+                .any(|tag| tag.first().map(String::as_str) == Some("e") && tag.get(1) == Some(&id))
+        })
+    };
+
+    // Acquisition: two shapes — the #e reply-tail shape (for load_older), plus
+    // the root-by-id shape (so the root note itself is replayed into the store).
+    let interests = vec![
+        (referrer_filter(&root_id, kinds), 1u32), // Global scope for #e replies
+        (root_id_filter(&root_id, kinds), 1u32),  // Global scope for the root itself
+    ];
+
+    // Live shape: the #e-covered reply-tail shape (re-read on load_older).
+    let live_shape: LiveShape = {
+        let id = root_id.clone();
+        let k = kinds.clone();
+        Arc::new(move || referrer_live_shape(&id, &k))
+    };
+    Ok(ResolvedScope {
+        admission,
+        interests,
+        live_shape,
+        extra_acquisition: empty_extra(),
+        reset_hooks: Vec::new(),
+        resolver_observer_ids: Vec::new(),
+    })
+}
+
+// ── Filter JSON / shape helpers for referrer scope ──────────────────────────
+
+fn referrer_filter(root_id: &str, kinds: &BTreeSet<u32>) -> String {
+    let kinds: Vec<&u32> = kinds.iter().collect();
+    serde_json::json!({ "kinds": kinds, "#e": [root_id] }).to_string()
+}
+
+fn referrer_live_shape(root_id: &str, kinds: &BTreeSet<u32>) -> Option<InterestShape> {
+    if kinds.is_empty() {
+        return None;
+    }
+    InterestShape::from_filter_json(&referrer_filter(root_id, kinds))
+}
+
+fn root_id_filter(root_id: &str, kinds: &BTreeSet<u32>) -> String {
+    let kinds: Vec<&u32> = kinds.iter().collect();
+    serde_json::json!({ "ids": [root_id], "kinds": kinds }).to_string()
 }
