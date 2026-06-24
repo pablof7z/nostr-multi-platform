@@ -144,6 +144,7 @@ void nmp_app_signin_bunker(void *app, const char *uri, uint8_t make_active);
 // build does not enable — declared here so the header stays the single
 // canonical mirror of the Rust `nmp_app_*` surface).
 // Begin a NIP-55 sign-in routed to `signer_package` (NULL = OS resolver).
+void nmp_external_signer_init(void *app);
 void nmp_app_signin_nip55(void *app, const char *signer_package);
 // Report a raw ExternalSignerResponse JSON back to the NIP-55 driver (D7).
 void nmp_app_deliver_external_signer_response(void *app, const char *response_json);
@@ -178,6 +179,8 @@ bool nmp_app_chirp_seed_relays_from_json(void *app, const char *json);
 // Use the Chirp home-feed wrappers below instead.
 void nmp_app_chirp_open_home_feed(void *app);
 void nmp_app_chirp_close_home_feed(void *app);
+void nmp_app_chirp_open_tag_feed(void *app, const char *tag);
+void nmp_app_chirp_close_tag_feed(void *app, const char *tag);
 
 // H4 — NMP-provided NIP-19 identity encoder. Turns a 64-char hex pubkey into a
 // bech32 display identifier so app shells stop hand-rolling bech32.  Prefers
@@ -533,8 +536,6 @@ typedef enum : uint32_t {
 uint32_t nmp_app_chirp_register(void *app,
                                 const char *viewer_pubkey_or_null,
                                 void **handle_out);
-void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
-void nmp_app_chirp_register_dm_inbox(void *app);
 // ADR-0053 — declare Chirp's built-in projection consumption. Chirp's screens
 // (incl. the diagnostics view) read every kernel-owned built-in, so this routes
 // to `consume_all_builtin_projections` (the codegen-derived built-in key set —
