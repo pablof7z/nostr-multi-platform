@@ -47,6 +47,39 @@ mod edge_tests {
         }]);
     }
 
+    fn register_phase2_claim(
+        kernel: &mut Kernel,
+        primary_id: &str,
+        author: &str,
+        hints: Vec<String>,
+        started_at: Instant,
+    ) {
+        let shape = crate::planner::InterestShape {
+            event_ids: std::iter::once(primary_id.to_string()).collect(),
+            limit: Some(1),
+            ..Default::default()
+        };
+        let (_, interest_id, identity, interest) =
+            kernel
+                .oneshot
+                .prepare(crate::planner::InterestScope::Global, shape, Vec::new());
+        kernel.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            }],
+            "claim-expansion-edge-test",
+        );
+        kernel.register_claim_expansion(
+            primary_id.to_string(),
+            Some(interest_id),
+            Some(author.to_string()),
+            hints,
+            started_at,
+        );
+    }
+
     // ── T9: Phase-1 hit same tick as budget does not emit Phase 2 ─────────
 
     #[test]
@@ -209,10 +242,10 @@ mod edge_tests {
         let relay_hint = "wss://canonical-failing.test/";
         let relay_failed_url = "wss://canonical-failing.test";
 
-        kernel.register_claim_expansion(
-            primary_id,
-            None,
-            Some(author.clone()),
+        register_phase2_claim(
+            &mut kernel,
+            &primary_id,
+            &author,
             vec![relay_hint.to_string()],
             Instant::now() - Duration::from_millis(1600),
         );

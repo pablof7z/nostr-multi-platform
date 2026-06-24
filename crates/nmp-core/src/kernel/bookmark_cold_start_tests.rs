@@ -7,7 +7,7 @@
 //! **The fix**: `BookmarksRuntimeController` pushes `active_bookmark_list_interest`
 //! on sign-in, and `register_bookmark_runtime` registers the projection observer
 //! BEFORE the first tick so the synchronous cache-serve drain (triggered by the
-//! interest push inside the actor's `PushInterest` handler) fires AFTER the
+//! interest push inside the actor's `EnsureInterest` handler) fires AFTER the
 //! observer is already installed.
 //!
 //! # What this test proves
@@ -65,7 +65,10 @@ impl CapturingBookmarkObserver {
     }
 
     fn last_tags(&self) -> Vec<Vec<String>> {
-        self.last_tags.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+        self.last_tags
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
     }
 }
 
@@ -173,9 +176,9 @@ fn stored_kind10003_reaches_observer_via_cache_serve_drain() {
     register_rust_observer(&slot, observer.clone());
     kernel.set_event_observers_handle(slot);
 
-    // ── Phase 4: INTEREST PUSH (the tick's PushInterest → register_interest) ─
+    // ── Phase 4: INTEREST PUSH (the tick's EnsureInterest → register_interest) ─
     //
-    // In production the actor handles `ActorCommand::PushInterest` by calling
+    // In production the actor handles `InterestsCommand::EnsureInterest` by calling
     // `kernel.register_interest(...)` with the interest shape.  We call it
     // directly here so the test does not need the actor thread.  The cache-serve
     // drain runs synchronously inside `register_interest`, delivering the stored

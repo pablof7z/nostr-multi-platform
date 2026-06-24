@@ -1,10 +1,5 @@
 //! Lifecycle smoke, `apply_selection` wiring, dead-relay exclusion, and
 //! `drain_tick` actor-idle-loop driver tests.
-//!
-//! Relocated verbatim out of `subs/mod.rs`'s inline `mod tests` (file-size
-//! gate, NMP #169). No assertion, fixture, or test body was changed — only
-//! the host module moved. `use super::*;` resolves to the `subs` module just
-//! as it did when this lived inside `mod.rs`'s `mod tests`.
 
 use super::*;
 use crate::planner::{
@@ -17,7 +12,10 @@ fn pubkey(s: &str) -> String {
 }
 fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
     use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-    let _ = reg.apply(&RegistryWriteToken::for_test(), InterestWrite::Replace, SubIdentity::from_legacy_interest(&interest), interest);
+    let identity =
+        crate::subs::test_identity_for_interest(("scoped-test-interest", interest.id.0), &interest);
+    let token = RegistryWriteToken::for_test();
+    let _ = reg.apply(&token, InterestWrite::Replace, identity, interest);
 }
 /// Single-author follow interest (kind:1 timeline).
 fn follow(id: u64, author: &str) -> LogicalInterest {

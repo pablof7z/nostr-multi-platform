@@ -403,7 +403,7 @@ void nmp_app_register_action_result_observer(void *app, NmpActionResultObserver 
 // enqueues an actor command (D8).
 void nmp_app_ack_action_stage(void *app, const char *correlation_id);
 // ADR-0053 — host-declared projection subscriptions. The OUTPUT-side sibling of
-// the relay push_interest lattice: a host declares, ONCE at app init, the static
+// the relay interest-install lattice: a host declares, ONCE at app init, the static
 // set of Tier-2 kernel-owned built-in projection keys it consumes (the union of
 // every projection key any of the app's screens reads, known at build time).
 // `keys` is an array of `len` NUL-terminated UTF-8 C strings. The kernel then

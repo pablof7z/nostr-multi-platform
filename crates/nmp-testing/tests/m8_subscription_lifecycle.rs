@@ -15,13 +15,13 @@
 
 use std::collections::BTreeSet;
 
-use nmp_planner::{
-    InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
-    LogicalInterest,
-};
 use nmp_core::subs::{
     plan_diff, CompileTrigger, ConnectionPool, InMemoryPool, InvalidateReason, PoolSendOutcome,
     RelayAuthState, SubscriptionLifecycle, WireFrame,
+};
+use nmp_planner::{
+    InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
+    LogicalInterest,
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -203,7 +203,7 @@ fn reconnect_replays_current_plan_without_recompile() {
     let mut lifecycle = SubscriptionLifecycle::new();
     let interests = vec![interest(1, &["alice"], InterestLifecycle::Tailing)];
     for i in &interests {
-        lifecycle.register_for_test(i.clone());
+        nmp_core::subs::replace_test_interest(&mut lifecycle, i.clone());
     }
 
     // Initial compile + emit. T132: caller-owned mailbox cache.
@@ -240,7 +240,10 @@ fn reconnect_replays_current_plan_without_recompile() {
 #[test]
 fn trigger_inbox_coalesces_within_one_tick() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.register_for_test(interest(1, &["alice"], InterestLifecycle::Tailing));
+    nmp_core::subs::replace_test_interest(
+        &mut lifecycle,
+        interest(1, &["alice"], InterestLifecycle::Tailing),
+    );
     let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
     let baseline = lifecycle.compile_count();
@@ -307,7 +310,10 @@ fn send_path_defers_outbound_when_pool_disconnected() {
 #[test]
 fn auth_paused_relay_holds_reqs_until_authenticated() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.register_for_test(interest(1, &["alice"], InterestLifecycle::Tailing));
+    nmp_core::subs::replace_test_interest(
+        &mut lifecycle,
+        interest(1, &["alice"], InterestLifecycle::Tailing),
+    );
     let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
     // Auth challenge arrives BEFORE the first compile.

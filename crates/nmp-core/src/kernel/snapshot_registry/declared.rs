@@ -1,6 +1,6 @@
 //! Host-declared **consumed-projection set** (ADR-0053 / Workstream-E4).
 //!
-//! The output-side sibling of the relay `push_interest` lattice: a host declares,
+//! The output-side sibling of the relay interest-install lattice: a host declares,
 //! once at app init, the static set of snapshot **projection keys it consumes**.
 //! The kernel uses it to gate the Tier-2 kernel-owned built-ins
 //! ([`KERNEL_BUILTIN_PROJECTION_KEYS`](crate::kernel::KERNEL_BUILTIN_PROJECTION_KEYS))

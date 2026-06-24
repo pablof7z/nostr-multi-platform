@@ -40,7 +40,7 @@ pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send 
 /// side-effect seam for host-side reconcilers that need a "the kernel just
 /// ticked" callback but contribute no projection output (e.g. an active-account
 /// subscription reconciler that diffs the active pubkey each tick and enqueues
-/// `PushInterest` / `WithdrawInterest` actor commands). Such reconcilers
+/// `EnsureInterest` / `DropInterestOwner` actor commands). Such reconcilers
 /// previously abused the projection registry — registering a `ProjectionFn` that
 /// returned `Value::Null` purely to get the per-tick callback, leaving a phantom
 /// null-valued key in every snapshot.

@@ -122,7 +122,7 @@ pub(crate) enum InterestWrite {
     /// Force-replace. Attach the owner and replace the slot's interest.
     /// Used by: bootstrap self-kinds and account switch (author swap),
     /// profile-claim liveness upgrade (OneShot→Tailing), claim-expansion
-    /// hint update, and the `ActorCommand::PushInterest` command.
+    /// hint update, and the `InterestsCommand::EnsureInterest` command.
     Replace,
 }
 
@@ -300,11 +300,7 @@ impl Kernel {
     /// Private to this module — the only production caller is
     /// `enqueue_interest_cache_serve_deferred` (above). All external code
     /// reaches the enqueue path through [`Kernel::register_interest`].
-    fn enqueue_cache_serve(
-        &mut self,
-        shape: &InterestShape,
-        completion_key: u64,
-    ) {
+    fn enqueue_cache_serve(&mut self, shape: &InterestShape, completion_key: u64) {
         if self.served_interest_shapes.contains(&completion_key) {
             return;
         }

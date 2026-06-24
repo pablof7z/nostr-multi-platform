@@ -81,7 +81,7 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     put_mailbox(&mut mailboxes, "alice", &["wss://r1/"]);
 
     // Register a follow-list interest for alice.
-    lc.register_for_test(tailing_interest(1, &["alice"]));
+    nmp_core::subs::replace_test_interest(&mut lc, tailing_interest(1, &["alice"]));
 
     // First compile — expect a REQ for alice at wss://r1/.
     let frames1 = lc.recompile_and_diff(&mailboxes).expect("first compile");
@@ -118,7 +118,7 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     // Expand the follow-list interest to include bob (synthetic stand-in for
     // the M11 view rebuild; the trigger does not rewrite registry entries —
     // that is the view's responsibility).
-    lc.register_for_test(tailing_interest(1, &["alice", "bob"]));
+    nmp_core::subs::replace_test_interest(&mut lc, tailing_interest(1, &["alice", "bob"]));
 
     // Fire the real A11 FollowListChanged trigger (replaces the old A6
     // InvalidateCompile placeholder used before this variant existed).
@@ -169,7 +169,7 @@ fn c8_subscriptions_coalesce_and_buffer() {
     let mut lc = SubscriptionLifecycle::new();
     let mut mailboxes = InMemoryMailboxCache::new();
     put_mailbox(&mut mailboxes, "alice", &["wss://r1/"]);
-    lc.register_for_test(tailing_interest(1, &["alice"]));
+    nmp_core::subs::replace_test_interest(&mut lc, tailing_interest(1, &["alice"]));
 
     for _ in 0..3 {
         lc.enqueue_trigger(CompileTrigger::InvalidateCompile {
@@ -192,7 +192,7 @@ fn c8_subscriptions_coalesce_and_buffer() {
     let mut lc3 = SubscriptionLifecycle::new();
     let mut mailboxes3 = InMemoryMailboxCache::new();
     put_mailbox(&mut mailboxes3, "dave", &["wss://rd/"]);
-    lc3.register_for_test(tailing_interest(20, &["dave"]));
+    nmp_core::subs::replace_test_interest(&mut lc3, tailing_interest(20, &["dave"]));
 
     // Mark the relay as auth-challenged BEFORE the first compile.
     let _pre =

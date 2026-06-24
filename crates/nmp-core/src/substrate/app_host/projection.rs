@@ -64,7 +64,7 @@ pub trait SnapshotProjectionRegistrar {
     /// host-side reconcilers that need a "the kernel just ticked" callback but
     /// contribute no projection output. The canonical consumer is an
     /// active-account subscription reconciler that diffs the active pubkey each
-    /// tick and enqueues `PushInterest` / `WithdrawInterest` actor commands —
+    /// tick and enqueues `EnsureInterest` / `DropInterestOwner` actor commands —
     /// previously such reconcilers abused the projection registry by returning a
     /// `Value::Null` projection purely to obtain the per-tick callback.
     ///
@@ -155,7 +155,7 @@ pub trait SnapshotProjectionRegistrar {
     /// this host consumes (the union of every projection any of the app's screens
     /// can read, known at app build time).
     ///
-    /// The output-side sibling of the relay `push_interest` lattice: the kernel
+    /// The output-side sibling of the relay interest-install lattice: the kernel
     /// serializes a kernel-owned built-in into each snapshot only if its key is
     /// in the declared set. An **empty** declared set means "no opinion" and
     /// emits every built-in (no narrowing — the relay-filter semantic, where an

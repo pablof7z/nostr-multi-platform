@@ -1,8 +1,8 @@
 //! Canonical host-side runtime controllers wired by [`super::register_defaults`].
 //!
-//! Two per-tick reconcilers that own the active-account `PushInterest` /
-//! `WithdrawInterest` book-keeping the kernel itself cannot do (D0 — `nmp-core`
-//! ships no DM/zap nouns):
+//! Two per-tick reconcilers that own active-account scoped interest
+//! book-keeping the kernel itself cannot do (D0 — `nmp-core` ships no DM/zap
+//! nouns):
 //!
 //! 1. [`register_dm_runtime`] — NIP-17 DM inbox.
 //!    * Wires the kind:1059 [`nmp_nip17::DmInboxProjection`] as an
@@ -17,7 +17,7 @@
 //! 2. [`register_zap_receipts_runtime`] — NIP-57 self-zap receipts.
 //!    * Owns a `ZapReceiptsRuntimeController` registered via the generic
 //!      **per-tick observer** seam (`register_snapshot_tick_observer`): it
-//!      pushes / withdraws the active-account kind:9735 `#p` subscription on
+//!      ensures / drops the active-account kind:9735 `#p` subscription on
 //!      sign-in / account switch / sign-out and contributes NO snapshot data
 //!      (the `nmp.nip57.zaps` aggregate projection is registered separately by
 //!      an app crate that wants the per-target counts; the template ships only
@@ -25,11 +25,11 @@
 //!
 //! # Both controllers
 //!
-//! The snapshot tick drives reconciliation — the push must happen *before* the
+//! The snapshot tick drives reconciliation — the ensure must happen *before* the
 //! first event, the moment the user signs in. Both reconcile against a single
-//! `Mutex<Option<String>>` of the last-pushed pubkey, withdrawing by a
-//! pubkey-invariant interest id so an account switch cleanly replaces rather
-//! than leaks, and degrade silently on lock poisoning / channel disconnect (D6).
+//! `Mutex<Option<String>>` of the last-ensured pubkey, dropping a scoped owner
+//! so an account switch cleanly replaces rather than leaks, and degrade
+//! silently on lock poisoning / channel disconnect (D6).
 //! The seam differs only in that the DM controller also emits a typed projection;
 //! BOTH use `register_snapshot_tick_observer` for their reconcile→apply path.
 //! The DM projection closure is a PURE READ that never reconciles — keeping
@@ -43,17 +43,17 @@
 
 use std::sync::{Arc, Mutex};
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{InterestsCommand, PublishCommand};
 use nmp_core::substrate::{
     HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_core::{read_eligible_relay_urls, AppRelaySlot};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{InterestsCommand, PublishCommand};
 use nmp_nip17::{
-    active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmInboxProjection,
+    active_giftwrap_inbox_identity, active_giftwrap_inbox_interest, DmInboxProjection,
     DmRuntimeEffect, DmRuntimeState,
 };
-use nmp_nip57::{self_zap_receipts_interest, self_zap_receipts_interest_id};
+use nmp_nip57::{self_zap_receipts_identity, self_zap_receipts_interest};
 
 // ───────────────────────────────────────────────────────────────────────
 // NIP-17 DM runtime
@@ -186,10 +186,7 @@ fn register_inbox_projection(
             // Seed with the registration-time active pubkey so the first
             // identity-change fire is not a false positive (same pattern as
             // `op_feed_defaults.rs:290` — seed `last_seen` at construction).
-            active_pubkey
-                .lock()
-                .ok()
-                .and_then(|slot| slot.clone()),
+            active_pubkey.lock().ok().and_then(|slot| slot.clone()),
         ),
         projection: Arc::clone(&projection),
     });
@@ -215,7 +212,6 @@ fn register_inbox_projection(
             ..Default::default()
         })
     });
-
 }
 
 /// Lifecycle controller for the DM inbox projection.
@@ -345,10 +341,7 @@ impl DmRuntimeController {
     fn active_pubkey(&self) -> Option<String> {
         // Identity straight from the pubkey slot — already hex, no keypair
         // derivation. `None` on a poisoned lock or no signed-in account.
-        self.active_pubkey
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone())
+        self.active_pubkey.lock().ok().and_then(|slot| slot.clone())
     }
 
     fn read_relay_urls(&self) -> Vec<String> {
@@ -361,11 +354,14 @@ impl DmRuntimeController {
     fn apply(&self, effect: DmRuntimeEffect) {
         let cmd = match effect {
             DmRuntimeEffect::PushInboxInterest(pubkey) => {
-                ActorCommand::Interests(InterestsCommand::PushInterest(active_giftwrap_inbox_interest(&pubkey)))
+                ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                    identity: active_giftwrap_inbox_identity(),
+                    interest: active_giftwrap_inbox_interest(&pubkey),
+                })
             }
-            DmRuntimeEffect::WithdrawInboxInterest => {
-                ActorCommand::Interests(InterestsCommand::WithdrawInterest(active_giftwrap_inbox_interest_id()))
-            }
+            DmRuntimeEffect::WithdrawInboxInterest => ActorCommand::Interests(
+                InterestsCommand::DropInterestOwner(active_giftwrap_inbox_identity()),
+            ),
             DmRuntimeEffect::PublishRelayList { event, .. } => {
                 // Non-dispatch internal path — the action-seam variant at
                 // `nmp_nip17::PublishDmRelayListAction::execute` is where
@@ -390,9 +386,9 @@ impl DmRuntimeController {
 ///
 /// Registers a **per-tick observer** (`register_snapshot_tick_observer`) whose
 /// body reconciles the active-account kind:9735 inbox interest against the
-/// last-applied pubkey, emitting at most one `PushInterest` (on account change /
-/// first sign-in) and at most one `WithdrawInterest` (on logout / before the
-/// re-push) per tick. It contributes NO snapshot data — it is a pure per-tick
+/// last-applied pubkey, emitting at most one ensure (on account change /
+/// first sign-in) and at most one drop-owner (on logout / before the
+/// re-ensure) per tick. It contributes NO snapshot data — it is a pure per-tick
 /// reconciler, so it uses the generic tick-observer seam rather than the
 /// projection registry (which it previously abused by returning a `Value::Null`
 /// projection purely to obtain the per-tick callback).
@@ -404,9 +400,7 @@ impl DmRuntimeController {
 /// Called by [`super::register_defaults`]; exposed `pub` so an app crate
 /// that opts out of the wholesale defaults can still wire just the zap
 /// subscription by itself.
-pub fn register_zap_receipts_runtime(
-    app: &(impl HostCapabilities + SnapshotProjectionRegistrar),
-) {
+pub fn register_zap_receipts_runtime(app: &(impl HostCapabilities + SnapshotProjectionRegistrar)) {
     let controller = Arc::new(ZapReceiptsRuntimeController {
         // Pubkey-only identity (Finding C): the self-zap-receipts reconciler
         // only needs the active pubkey for the kind:9735 `#p` subscription —
@@ -431,13 +425,13 @@ struct ZapReceiptsRuntimeController {
 impl ZapReceiptsRuntimeController {
     /// Reconcile the active-account zap-receipts interest once per snapshot
     /// tick. Produces no snapshot data — it only diffs the active pubkey against
-    /// the last-pushed one and enqueues Push/Withdraw interest on change (D8:
+    /// the last-pushed one and enqueues scoped interest commands on change (D8:
     /// enqueue-only, non-blocking).
     fn tick(&self) {
         let active = self.active_pubkey();
 
-        // D6 — a poisoned slot is silently treated as "no prior push" so
-        // the next sign-in still pushes the interest.
+        // D6 — a poisoned slot is silently treated as "no prior ensure" so
+        // the next sign-in still ensures the interest.
         let mut last = self
             .last_pushed_pubkey
             .lock()
@@ -450,24 +444,30 @@ impl ZapReceiptsRuntimeController {
             (Some(now), None) => {
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(self_zap_receipts_interest(now))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity: self_zap_receipts_identity(),
+                        interest: self_zap_receipts_interest(now),
+                    }));
                 *last = Some(now.to_string());
             }
-            // Account switch: withdraw old (by pubkey-invariant id), push new.
+            // Account switch: drop old scoped owner, then ensure new shape.
             (Some(now), Some(_prev)) => {
-                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
-                    self_zap_receipts_interest_id(),
-                )));
+                let _ = self.tx.send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(self_zap_receipts_identity()),
+                ));
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(self_zap_receipts_interest(now))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity: self_zap_receipts_identity(),
+                        interest: self_zap_receipts_interest(now),
+                    }));
                 *last = Some(now.to_string());
             }
-            // Logout: withdraw standing interest, clear slot.
+            // Logout: drop standing owner, clear slot.
             (None, Some(_)) => {
-                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
-                    self_zap_receipts_interest_id(),
-                )));
+                let _ = self.tx.send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(self_zap_receipts_identity()),
+                ));
                 *last = None;
             }
             // Cold start before sign-in: nothing to do.
@@ -478,10 +478,7 @@ impl ZapReceiptsRuntimeController {
     fn active_pubkey(&self) -> Option<String> {
         // Identity straight from the pubkey slot — already hex, no keypair
         // derivation. `None` on a poisoned lock or no signed-in account.
-        self.active_pubkey
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone())
+        self.active_pubkey.lock().ok().and_then(|slot| slot.clone())
     }
 }
 

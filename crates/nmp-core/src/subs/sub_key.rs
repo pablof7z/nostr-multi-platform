@@ -25,7 +25,7 @@ use std::hash::{Hash, Hasher};
 
 use crate::stable_hash::{stable_hash64, StableHasher};
 
-use crate::planner::{InterestScope, LogicalInterest, Pubkey};
+use crate::planner::Pubkey;
 
 // ─── SubKey ──────────────────────────────────────────────────────────────────
 
@@ -143,22 +143,6 @@ impl SubIdentity {
     /// The `(scope, key)` pair shared across owners — the dedup key.
     pub(crate) fn shared(&self) -> (SubScope, SubKey) {
         (self.scope.clone(), self.key)
-    }
-
-    /// Map a planner-owned `LogicalInterest` (identified by its `InterestId`)
-    /// onto the `(owner, key, scope)` triple used by the registry. The synthetic
-    /// owner key `"planner-owned"` is shared across all interests installed via
-    /// this path so that `drop_slot_by_key` / `legacy_key` withdraw correctly.
-    ///
-    /// Used by the `ActorCommand::PushInterest` dispatch arm to derive the
-    /// registry identity from the interest's embedded `id` + `scope`.
-    pub(crate) fn from_legacy_interest(interest: &LogicalInterest) -> Self {
-        let key = SubKey::builder("planner-interest-id").with(interest.id.0).finish();
-        let scope = match &interest.scope {
-            InterestScope::Account(pk) => SubScope::Account(pk.clone()),
-            InterestScope::ActiveAccount | InterestScope::Global => SubScope::Global,
-        };
-        SubIdentity::new(SubOwnerKey::new("planner-owned"), key, scope)
     }
 }
 

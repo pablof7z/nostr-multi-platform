@@ -7,33 +7,39 @@
 //!    populates the pubkey-only `ActiveAccountSlot` for EVERY backend, while
 //!    `active_local_keys()` stays `None` for bunker. Tests drive the controller
 //!    directly (same pattern as `runtimes_zap_tests.rs`) with a pubkey-only slot
-//!    and assert the active-account gift-wrap inbox interest is pushed — proving
+//!    and assert the active-account gift-wrap inbox interest is ensured — proving
 //!    the reconciler reads identity, never secret key material.
 //!
 //! 2. Fire from the **tick observer** seam, NOT from the projection closure
 //!    (Blocker A): the `DmRuntimeController::tick` method must emit the inbox
-//!    interest push; a pure-read call to `typed_relay_list` must NOT emit effects.
+//!    interest ensure; a pure-read call to `typed_relay_list` must NOT emit effects.
 //!    This proves reconciliation cannot be lost by dropping the JSON projection
 //!    lane.
 
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::{AppRelayList};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{InterestsCommand};
-use nmp_nip17::{active_giftwrap_inbox_interest_id, DmRuntimeState};
+use nmp_core::AppRelayList;
+use nmp_nip17::{
+    active_giftwrap_inbox_identity, active_giftwrap_inbox_interest_id, DmRuntimeState,
+};
 use nostr::Keys;
 
 use super::DmRuntimeController;
 
 /// Build a controller wired to a fresh actor channel and a pubkey-only active
-/// account slot. The relay slot is empty — the gift-wrap inbox-interest push
+/// account slot. The relay slot is empty — the gift-wrap inbox-interest ensure
 /// (the bunker-activation signal under test) fires from the active pubkey
 /// alone, independent of any configured relay list. The slot carries hex
 /// pubkey only — the bunker shape.
-fn controller() -> (DmRuntimeController, ActiveAccountSlot, Receiver<nmp_core::ActorMail>) {
+fn controller() -> (
+    DmRuntimeController,
+    ActiveAccountSlot,
+    Receiver<nmp_core::ActorMail>,
+) {
     let (inbox_tx, rx) = mpsc::channel::<nmp_core::ActorMail>();
     let tx = nmp_core::CommandSender::new(inbox_tx);
     let active_pubkey: ActiveAccountSlot = Arc::new(Mutex::new(None));
@@ -73,7 +79,7 @@ fn bunker_only_account_activates_dm_relay_list_runtime() {
     // Pubkey-only sign-in (bunker shape): hex pubkey present, zero secrets.
     *slot.lock().unwrap() = Some(keys.public_key().to_hex());
 
-    // `tick` drives reconciliation (push/withdraw) once per tick — this is
+    // `tick` drives reconciliation once per tick — this is
     // the tick-observer seam, NOT the projection closure.
     controller.tick();
 
@@ -81,13 +87,14 @@ fn bunker_only_account_activates_dm_relay_list_runtime() {
     let pushed_inbox = cmds.iter().any(|cmd| {
         matches!(
             cmd,
-            ActorCommand::Interests(InterestsCommand::PushInterest(interest))
-                if interest.id == active_giftwrap_inbox_interest_id()
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest })
+                if *identity == active_giftwrap_inbox_identity()
+                    && interest.id == active_giftwrap_inbox_interest_id()
         )
     });
     assert!(
         pushed_inbox,
-        "a bunker account must still push the DM gift-wrap inbox interest via tick(); got {cmds:?}"
+        "a bunker account must still ensure the DM gift-wrap inbox interest via tick(); got {cmds:?}"
     );
 }
 
@@ -100,10 +107,11 @@ fn no_account_enqueues_no_inbox_interest() {
     assert!(
         !cmds.iter().any(|cmd| matches!(
             cmd,
-            ActorCommand::Interests(InterestsCommand::PushInterest(interest))
-                if interest.id == active_giftwrap_inbox_interest_id()
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest })
+                if *identity == active_giftwrap_inbox_identity()
+                    && interest.id == active_giftwrap_inbox_interest_id()
         )),
-        "no signed-in account must not push an inbox interest; got {cmds:?}"
+        "no signed-in account must not ensure an inbox interest; got {cmds:?}"
     );
 }
 
@@ -126,34 +134,36 @@ fn reconciliation_fires_from_tick_observer_not_from_projection_read() {
         "typed_relay_list (pure read) must not emit actor commands; got {cmds_after_read:?}"
     );
 
-    // Only tick() emits the push — this is the tick-observer seam.
+    // Only tick() emits the ensure — this is the tick-observer seam.
     controller.tick();
     let cmds_after_tick: Vec<ActorCommand> = drained(&rx);
     let pushed = cmds_after_tick.iter().any(|cmd| {
         matches!(
             cmd,
-            ActorCommand::Interests(InterestsCommand::PushInterest(interest))
-                if interest.id == active_giftwrap_inbox_interest_id()
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest })
+                if *identity == active_giftwrap_inbox_identity()
+                    && interest.id == active_giftwrap_inbox_interest_id()
         )
     });
     assert!(
         pushed,
-        "tick() must emit the inbox-interest push; got {cmds_after_tick:?}"
+        "tick() must emit the inbox-interest ensure; got {cmds_after_tick:?}"
     );
 
-    // A second tick with the same pubkey must NOT re-push (idempotent after
-    // the state machine has already pushed for this pubkey).
+    // A second tick with the same pubkey must NOT re-ensure (idempotent after
+    // the state machine has already ensured for this pubkey).
     controller.tick();
     let cmds_second_tick: Vec<ActorCommand> = drained(&rx);
     let pushed_again = cmds_second_tick.iter().any(|cmd| {
         matches!(
             cmd,
-            ActorCommand::Interests(InterestsCommand::PushInterest(interest))
-                if interest.id == active_giftwrap_inbox_interest_id()
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest })
+                if *identity == active_giftwrap_inbox_identity()
+                    && interest.id == active_giftwrap_inbox_interest_id()
         )
     });
     assert!(
         !pushed_again,
-        "a second tick with the same pubkey must NOT re-push; got {cmds_second_tick:?}"
+        "a second tick with the same pubkey must NOT re-ensure; got {cmds_second_tick:?}"
     );
 }

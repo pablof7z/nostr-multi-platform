@@ -3,15 +3,16 @@
 //! Registration wiring proofs (group-chat + discovery lifecycle) live in the
 //! sibling `nip29_registration` module to keep each file under the 500-LOC cap.
 
-use nmp_core::substrate::ActionModule;
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::{ActionLedgerCommand, InterestsCommand, PublishCommand};
+use nmp_core::substrate::ActionModule;
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 use nmp_nip29::action::{
     CreatePublicGroupAction, DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction,
     JoinGroupInput, PostChatMessageAction, PostChatMessageInput, ReactInGroupAction,
 };
 use nmp_nip29::group_id::GroupId;
+use nmp_nip29::interest::relay_discovery_identity;
 use nmp_nip29::kinds::KIND_CHAT_MESSAGE;
 
 use super::super::nmp_app_chirp_unregister;
@@ -178,14 +179,14 @@ fn nip29_all_namespaces_dispatch_through_action_registry() {
 /// THE DISCOVERY DISPATCH PROOF: `nmp.nip29.discover` is reachable through
 /// the typed byte doorway (ADR-0064 / Cut-B, #1756) with a well-formed body —
 /// the validator + executor land an echoed host-supplied `correlation_id`. The
-/// executor returns an [`ActorCommand::PushInterest`] (not a publish command),
+/// executor returns an [`ActorCommand::Interests`] command (not a publish command),
 /// proving the seam supports subscribe-side actions, not just publish-side.
 #[test]
-fn nip29_discover_dispatches_through_action_registry_and_emits_push_interest() {
+fn nip29_discover_dispatches_through_action_registry_and_ensures_interest() {
     let app = nmp_app_new();
     let handle = register_app(app);
 
-    // Well-formed: a `wss://` host relay URL. The executor pushes a
+    // Well-formed: a `wss://` host relay URL. The executor ensures a
     // host-pinned LogicalInterest scoped to that relay.
     let body = r#"{"relay_url":"wss://groups.example.com"}"#;
     let parsed = dispatch(app, DiscoverGroupsAction::NAMESPACE, body);
@@ -223,14 +224,14 @@ fn nip29_discover_dispatches_through_action_registry_and_emits_push_interest() {
 
 /// THE DISCOVERY EXECUTOR PROOF: the `nmp.nip29.discover` executor maps
 /// a validated `DiscoverGroupsInput` to a concrete
-/// [`ActorCommand::PushInterest`] pinned to the supplied relay, followed
+/// [`InterestsCommand::EnsureInterest`] pinned to the supplied relay, followed
 /// by an [`ActorCommand::RecordActionSuccess`] terminal — a
 /// subscription-only action has no async publish, so the success surface
 /// is instantaneous and must be recorded inline or the host spinner waits
 /// forever on `action_results`. Mirrors the in-crate shape proof at
-/// `crates/nmp-nip29/src/action/discover.rs::well_formed_input_yields_push_interest_then_record_success`.
+/// `crates/nmp-nip29/src/action/discover.rs::well_formed_input_yields_ensure_interest_then_record_success`.
 #[test]
-fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
+fn nip29_discover_executor_emits_host_pinned_ensure_interest_command() {
     let input = DiscoverGroupsInput {
         relay_url: "wss://groups.example.com".to_string(),
     };
@@ -240,11 +241,15 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
     assert_eq!(
         cmds.len(),
         2,
-        "expected PushInterest then RecordActionSuccess, got {cmds:?}"
+        "expected EnsureInterest then RecordActionSuccess, got {cmds:?}"
     );
 
     match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) => {
+            assert_eq!(
+                identity,
+                &relay_discovery_identity("wss://groups.example.com")
+            );
             // Pinned to the relay — Case E (the third routing lane).
             assert_eq!(
                 interest.shape.relay_pin.as_deref(),
@@ -263,13 +268,15 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
                 "discover must not constrain by group id"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 
     // Terminal `RecordActionSuccess` is what closes the host spinner for
     // this subscription-only action.
     match &cmds[1] {
-        ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess { correlation_id, .. }) => {
+        ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
+            correlation_id, ..
+        }) => {
             assert_eq!(correlation_id, "test-cid");
         }
         other => panic!("expected RecordActionSuccess, got {other:?}"),
@@ -366,4 +373,3 @@ fn nip29_join_executor_emits_kind_9021_with_host_pin() {
         other => panic!("expected PublishUnsignedEventToRelays, got {other:?}"),
     }
 }
-

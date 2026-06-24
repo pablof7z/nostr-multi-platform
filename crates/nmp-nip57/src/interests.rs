@@ -33,10 +33,9 @@
 //! account switch, so the kernel never accumulates one standing subscription
 //! per ever-active pubkey. Mirrors the NIP-17 inbox slot.
 
-use nmp_planner::{
-    InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
-};
+use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::ViewDependencies;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting};
 
 use crate::kinds::KIND_ZAP_RECEIPT;
 
@@ -53,9 +52,19 @@ pub fn self_zap_receipts_interest_id() -> InterestId {
     ))
 }
 
+/// Scoped registry identity for the active-account zap-receipts interest.
+#[must_use]
+pub fn self_zap_receipts_identity() -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new("nip57.zap_receipts.active"),
+        SubKey::new("nip57.zap_receipts.active"),
+        SubScope::Global,
+    )
+}
+
 /// Tailing [`LogicalInterest`] for kind:9735 `#p <pubkey>` zap receipts — the
-/// subscription a host pushes (via `NmpApp::push_interest` / a runtime
-/// controller) so a `ZapsAggregateProjection` actually receives receipts.
+/// subscription a host runtime controller ensures so a
+/// `ZapsAggregateProjection` actually receives receipts.
 ///
 /// Shape — read by the planner's cold-start bootstrap gate at
 /// `crates/nmp-core/src/planner/compiler/partition/mod.rs`:
@@ -146,12 +155,7 @@ mod tests {
         // Assert the structural shape rather than a flat iterator: an absent
         // `"p"` key, or a value-set missing the pubkey, are both regressions
         // the planner cannot route around.
-        let p_values = interest
-            .shape
-            .tags
-            .get("p")
-            .cloned()
-            .unwrap_or_default();
+        let p_values = interest.shape.tags.get("p").cloned().unwrap_or_default();
         assert!(
             p_values.contains(pk),
             "shape.tags[\"p\"] must contain the active account pubkey; got {:?}",

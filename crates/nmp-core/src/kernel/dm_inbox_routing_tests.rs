@@ -74,11 +74,18 @@ fn active_dm_inbox_uses_lookup_relays_not_nip65_read_relays() {
 
     {
         use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-        use crate::subs::SubIdentity;
         let interest = active_dm_inbox_interest(&account);
         let t = RegistryWriteToken::for_test();
-        let identity = SubIdentity::from_legacy_interest(&interest);
-        kernel.lifecycle_mut().registry_mut().apply(&t, InterestWrite::Replace, identity, interest);
+        let identity = crate::subs::test_identity_for_interest(
+            ("scoped-test-interest", interest.id.0),
+            &interest,
+        );
+        let _ = kernel.lifecycle_mut().registry_mut().apply(
+            &t,
+            InterestWrite::Replace,
+            identity,
+            interest,
+        );
     }
     let frames = kernel.drain_lifecycle_tick();
 

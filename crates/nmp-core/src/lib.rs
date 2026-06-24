@@ -123,7 +123,7 @@ pub(crate) mod planner {
 ///
 /// Manual relay-bypass path (D3 explicit opt-out): builds a
 /// [`nmp_planner::interest::LogicalInterest`] with `relay_pin = Some(url)` and
-/// dispatches `ActorCommand::PushInterest`. This is not a standard app path —
+/// dispatches `InterestsCommand::EnsureInterest`. This is not a standard app path —
 /// the host must explicitly register [`browse::BrowseRelayModule`] and the
 /// caller must supply a validated relay URL. NIP-65 fan-out is suppressed.
 pub mod browse;

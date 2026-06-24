@@ -11,25 +11,11 @@ use super::super::KernelEventObserverId;
 ///
 /// The kernel's subscription lifecycle registry is the single writer for live
 /// relay subscriptions (D4). Each variant either mutates the registry
-/// (`PushInterest` / `WithdrawInterest` / `EnsureInterest` /
-/// `DropInterestOwner` / `OpenInterest` / `OpenObservedInterest` /
-/// `CloseInterest`) or the pull-cursor registry (`OpenPullCursor` /
-/// `AdvancePullCursor` / `UnregisterPullCursor`).
+/// (`EnsureInterest` / `DropInterestOwner` / `OpenInterest` /
+/// `OpenObservedInterest` / `CloseInterest`) or the pull-cursor registry
+/// (`OpenPullCursor` / `AdvancePullCursor` / `UnregisterPullCursor`).
 #[derive(Debug)]
 pub enum InterestsCommand {
-    /// Register a `LogicalInterest` into the subscription registry and trigger
-    /// a recompile. Idempotent: same `InterestId` replaces the previous entry.
-    ///
-    /// Used by protocol crates (e.g. `nmp-marmot`) to register persistent relay
-    /// subscriptions (e.g. kind:1059 `#p <pubkey>`) that should remain live for
-    /// the session without Swift/Kotlin involvement (D0). The kernel will emit
-    /// the appropriate `REQ` frames to connected relays on the next compile
-    /// pass; matching inbound events then flow through the raw-event tap into
-    /// the host-app service automatically (D4 / event-driven delivery).
-    PushInterest(crate::planner::LogicalInterest),
-    /// Withdraw a previously registered logical interest by id and trigger a
-    /// recompile. Generic lifecycle counterpart to [`Self::PushInterest`].
-    WithdrawInterest(crate::planner::InterestId),
     /// Attach one owner to a logical interest using the registry's
     /// `(owner, key, scope)` identity. Multiple owners sharing the same key
     /// keep one live subscription until the last owner is dropped.

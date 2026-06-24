@@ -21,6 +21,7 @@
 //! kernel never accumulates one standing subscription per ever-active pubkey.
 //! Mirrors the NIP-57 zap-receipts slot pattern.
 
+use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::ViewDependencies;
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting};
 
@@ -39,6 +40,16 @@ pub fn active_bookmark_list_interest_id() -> InterestId {
     InterestId(nmp_planner::stable_hash::stable_hash64(
         "nmp.nip51.active_bookmark_list",
     ))
+}
+
+/// Scoped registry identity for the active-account bookmark-list interest.
+#[must_use]
+pub fn active_bookmark_list_identity() -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new("nmp.nip51.active_bookmark_list"),
+        SubKey::new("nmp.nip51.active_bookmark_list"),
+        SubScope::Global,
+    )
 }
 
 /// Tailing [`LogicalInterest`] for kind:10003 `authors=[pubkey]` bookmark lists —
@@ -81,6 +92,16 @@ pub fn active_mute_list_interest_id() -> InterestId {
     ))
 }
 
+/// Scoped registry identity for the active-account mute-list interest.
+#[must_use]
+pub fn active_mute_list_identity() -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new("nmp.nip51.active_mute_list"),
+        SubKey::new("nmp.nip51.active_mute_list"),
+        SubScope::Global,
+    )
+}
+
 /// Tailing [`LogicalInterest`] for kind:10000 `authors=[pubkey]` mute lists.
 ///
 /// Shape:
@@ -119,7 +140,7 @@ pub fn active_mute_list_interest(pubkey: &str) -> LogicalInterest {
 // replaceable list whose self-fetch rides the kernel's proven self-kinds
 // tailing bundle (`SELF_KINDS_TAILING` in `nmp-core`'s
 // `kernel/requests/startup.rs`). A bespoke `authors=[active] / kinds=[10007]`
-// PushInterest never reached the wire (#1817), leaving `effective_search_relays`
+// EnsureInterest never reached the wire (#1817), leaving `effective_search_relays`
 // empty; routing it through the self-kinds bundle is the fix. The
 // `SearchRelayListProjection` only needs to be registered as a kernel event
 // observer (see `nmp_defaults::register_search_relay_runtime`).

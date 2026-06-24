@@ -4,7 +4,7 @@ use crate::planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest,
 };
-use crate::subs::{SubscriptionLifecycle, WireFrame};
+use crate::subs::{replace_test_interest, SubscriptionLifecycle, WireFrame};
 
 const APP_A: &str = "wss://relay-set-a.example";
 const APP_B: &str = "wss://relay-set-b.example";
@@ -28,7 +28,7 @@ fn relay_set_feed_emits_wire_reqs_without_authors_filter() {
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.set_indexer_relays(vec![INDEXER.to_string()]);
     lifecycle.set_app_relays(vec![APP_A.to_string(), APP_B.to_string()]);
-    lifecycle.register_for_test(relay_set_longform_feed());
+    replace_test_interest(&mut lifecycle, relay_set_longform_feed());
 
     let frames = lifecycle
         .recompile_and_diff(&InMemoryMailboxCache::new())

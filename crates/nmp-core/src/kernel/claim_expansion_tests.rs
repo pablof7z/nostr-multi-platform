@@ -35,6 +35,40 @@ mod tests {
         );
     }
 
+    /// Register a claim through the same one-shot interest path the event
+    /// resolver uses before Phase 2 retargets hints.
+    fn register_phase2_claim(
+        k: &mut Kernel,
+        primary_id: &str,
+        author: &str,
+        hints: Vec<String>,
+        started: Instant,
+    ) {
+        let shape = crate::planner::InterestShape {
+            event_ids: std::iter::once(primary_id.to_string()).collect(),
+            limit: Some(1),
+            ..Default::default()
+        };
+        let (_, interest_id, identity, interest) =
+            k.oneshot
+                .prepare(crate::planner::InterestScope::Global, shape, Vec::new());
+        k.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            }],
+            "claim-expansion-phase2-test",
+        );
+        k.register_claim_expansion(
+            primary_id.to_string(),
+            Some(interest_id),
+            Some(author.to_string()),
+            hints,
+            started,
+        );
+    }
+
     // ── T1: Phase-1 hit terminates without Phase 2 ─────────────────────────
 
     #[test]
@@ -118,13 +152,7 @@ mod tests {
         let hints: Vec<String> = (0..5u8).map(|i| format!("wss://relay{i}.test")).collect();
 
         let started = Instant::now() - Duration::from_millis(1600);
-        kernel.register_claim_expansion(
-            primary_id.clone(),
-            None,
-            Some(author.clone()),
-            hints,
-            started,
-        );
+        register_phase2_claim(&mut kernel, &primary_id, &author, hints, started);
 
         // Poll past Phase-1 budget — should promote to Phase 2
         let now = Instant::now();
@@ -155,13 +183,7 @@ mod tests {
         let primary_id = event_id("22");
         let hints = vec![relay_cold.to_string(), relay_warm.to_string()];
         let started = Instant::now() - Duration::from_millis(1600);
-        kernel.register_claim_expansion(
-            primary_id.clone(),
-            None,
-            Some(author.clone()),
-            hints,
-            started,
-        );
+        register_phase2_claim(&mut kernel, &primary_id, &author, hints, started);
 
         let _msgs = kernel.poll_claim_expansion(Instant::now());
 
@@ -184,13 +206,7 @@ mod tests {
         // Register with a small hint set so exhaustion happens quickly
         let hints: Vec<String> = (0..2u8).map(|i| format!("wss://exhaust{i}.test")).collect();
         let started = Instant::now() - Duration::from_millis(1600);
-        kernel.register_claim_expansion(
-            primary_id.clone(),
-            None,
-            Some(author.clone()),
-            hints,
-            started,
-        );
+        register_phase2_claim(&mut kernel, &primary_id, &author, hints, started);
 
         // Trigger Phase 2 entry
         let _msgs = kernel.poll_claim_expansion(Instant::now());
@@ -291,13 +307,7 @@ mod tests {
             .collect();
 
         let started = Instant::now() - Duration::from_millis(1600);
-        kernel.register_claim_expansion(
-            primary_id.clone(),
-            None,
-            Some(author.clone()),
-            hints,
-            started,
-        );
+        register_phase2_claim(&mut kernel, &primary_id, &author, hints, started);
 
         // Drive through Phase 2 by repeatedly polling + reporting EoseNoMatch
         // until the claim terminates.

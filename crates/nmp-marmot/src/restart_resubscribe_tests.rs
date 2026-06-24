@@ -109,7 +109,7 @@ fn group_relays_read_seam_round_trips_after_create() {
 ///
 /// The assertion proves that the choke-point `cache_group_relays` was called
 /// with the persisted relays, which is the same code path that calls
-/// `subscribe_group_messages` (and thus `app.push_interest`) in production.
+/// `subscribe_group_messages` (and thus `app.ensure_interest`) in production.
 /// End-to-end interest delivery requires a live kernel; asserting the cache
 /// contents is the equivalent unit-level oracle.
 #[test]

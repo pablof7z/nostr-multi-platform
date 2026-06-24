@@ -10,20 +10,20 @@
 //! them into a flat list of [`DiscoveredGroup`](crate::projection::DiscoveredGroup)
 //! rows.
 //!
-//! The action returns an [`ActorCommand::PushInterest`]; the `InterestId`
-//! is derived deterministically from the relay URL by
-//! [`crate::interest::relay_discovery_interest`], so a re-dispatch for the
-//! same relay is idempotent at the kernel level (same id replaces).
+//! The action returns a scoped `EnsureInterest`; the registry identity is
+//! derived deterministically from the relay URL by
+//! [`crate::interest::relay_discovery_identity`], so a re-dispatch for the
+//! same relay is idempotent at the kernel level.
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{
     build_record_action_success, ActionContext, ActionModule, ActionPayload,
     ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::InterestsCommand;
 use serde::{Deserialize, Serialize};
 
-use crate::interest::relay_discovery_interest;
+use crate::interest::{relay_discovery_identity, relay_discovery_interest};
 
 /// Action input — the relay to discover groups on.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -57,13 +57,8 @@ impl ActionModule for DiscoverGroupsAction {
         Some(<DiscoverGroupsInput as ActionPayload>::decode(bytes))
     }
 
-    fn start(
-        &self,
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
-        validate_relay_url(&action.relay_url)
-            .map_err(ActionRejection::Invalid)?;
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
+        validate_relay_url(&action.relay_url).map_err(ActionRejection::Invalid)?;
         Ok(())
     }
     fn execute(
@@ -73,13 +68,19 @@ impl ActionModule for DiscoverGroupsAction {
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         let interest = relay_discovery_interest(&action.relay_url);
-        send(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
+        send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity: relay_discovery_identity(&action.relay_url),
+            interest,
+        }));
         // `discover_groups` is a subscription-only action: there is no event
         // published and no async worker, so the "success" surface is instantaneous
         // (the interest has been pushed to the lifecycle). Without a terminal
         // `RecordActionSuccess` the host's `dispatch_action` spinner waits forever
         // on `action_results`. Mirror the NIP-57 zap worker's success leg.
-        send(build_record_action_success(correlation_id.to_string(), None));
+        send(build_record_action_success(
+            correlation_id.to_string(),
+            None,
+        ));
         Ok(())
     }
 }
@@ -108,10 +109,13 @@ mod tests {
         assert_eq!(
             cmds.len(),
             2,
-            "expected PushInterest followed by RecordActionSuccess, got {cmds:?}"
+            "expected EnsureInterest followed by RecordActionSuccess, got {cmds:?}"
         );
         match &cmds[0] {
-            ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+            ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                identity: _,
+                interest,
+            }) => {
                 assert_eq!(
                     interest.shape.relay_pin.as_deref(),
                     Some("wss://groups.example.com")
@@ -121,11 +125,14 @@ mod tests {
                 assert!(interest.shape.kinds.contains(&39001));
                 assert!(interest.shape.kinds.contains(&39002));
             }
-            other => panic!("expected PushInterest, got {other:?}"),
+            other => panic!("expected EnsureInterest, got {other:?}"),
         }
         // Terminal `Accepted` stage is what closes the host spinner.
         match &cmds[1] {
-            ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess { correlation_id, .. }) => {
+            ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
+                correlation_id,
+                ..
+            }) => {
                 assert_eq!(correlation_id, "test-cid");
             }
             other => panic!("expected RecordActionSuccess, got {other:?}"),
@@ -138,7 +145,9 @@ mod tests {
         assert!(matches!(
             DiscoverGroupsAction.start(
                 &mut ctx,
-                DiscoverGroupsInput { relay_url: String::new() },
+                DiscoverGroupsInput {
+                    relay_url: String::new()
+                },
             ),
             Err(ActionRejection::Invalid(_))
         ));

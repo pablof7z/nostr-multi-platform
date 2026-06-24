@@ -104,7 +104,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    AppHost, EventObserverRegistrar, SnapshotProjectionRegistrar, register_observer_projection,
+    register_observer_projection, AppHost, EventObserverRegistrar, SnapshotProjectionRegistrar,
 };
 
 pub mod action_payloads;
@@ -119,10 +119,10 @@ pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
 pub use op_feed_defaults::{
-    OpFeedDefaults, compile_feed_params, register_op_feed_defaults,
-    register_op_feed_defaults_with_mute,
+    compile_feed_params, register_op_feed_defaults, register_op_feed_defaults_with_mute,
+    OpFeedDefaults,
 };
-pub use relay_info_probe::{RelayInfoProbeCallback, nmp_app_probe_relay_info};
+pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use runtimes::{
     register_bookmark_runtime, register_comment_runtime, register_mute_runtime,
     register_search_relay_runtime, register_search_relay_runtime_with,
@@ -308,7 +308,7 @@ fn register_defaults_inner(
         // relay round-trip). NIP-29 is a social/group feature, so it belongs
         // in this block rather than the always-on substrate tier.
         nmp_nip29::register_input_scopes(app);
-        // WOT bootstrap reconciler (PushInterest/WithdrawInterest book-keeping
+        // WOT bootstrap reconciler (EnsureInterest/DropInterestOwner book-keeping
         // for the active account; kernel ships zero WOT nouns — D0).
         handles.wot = nmp_wot::register_runtime(app);
         // NIP-51 mute-list observer + projection; the handle lets app-level

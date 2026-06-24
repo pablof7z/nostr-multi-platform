@@ -213,7 +213,7 @@ pub struct KeyPackageLookupPayload {
 /// `KernelAction::OpenView` reducer arm is an unwired stub that opens no
 /// subscription (it silently echoes `ViewOpened`). The key-package fetch now
 /// runs directly via `interest::key_package_lookup_interest` +
-/// `app.push_interest(...)` (the same pattern as the welcome/group-message
+/// `app.ensure_interest(...)` (the same pattern as the welcome/group-message
 /// legs), so this type has no live caller. It is retained as the canonical
 /// declaration of the lookup interest shape pending V-110 (wire `OpenView` to
 /// compile a view's dependencies, or remove the unused View machinery).

@@ -16,8 +16,8 @@ pub mod score;
 pub mod wire;
 
 pub use interest::{
-    active_follow_graph_interest_id, follow_graph_interest, KIND_CONTACT_LIST, KIND_MUTE_LIST,
-    KIND_PROFILE, KIND_RELAY_LIST, WOT_BOOTSTRAP_KINDS,
+    active_follow_graph_identity, active_follow_graph_interest_id, follow_graph_interest,
+    KIND_CONTACT_LIST, KIND_MUTE_LIST, KIND_PROFILE, KIND_RELAY_LIST, WOT_BOOTSTRAP_KINDS,
 };
 pub use runtime::{register_runtime, WotBootstrapRuntime, WotBootstrapSnapshot};
 pub use score::{

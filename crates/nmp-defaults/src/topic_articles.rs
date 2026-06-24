@@ -10,7 +10,7 @@
 //! 1. **Shell dispatches Claim.** The shell calls `dispatch_action` with the
 //!    `"op":"claim"` variant when the user opens a discovery view.
 //! 2. **Kernel opens the subscriptions.** `execute()` sends
-//!    `ActorCommand::EnsureInterest` for the direct article lane and for the
+//!    `InterestsCommand::EnsureInterest` for the direct article lane and for the
 //!    generic-repost lane. On the next planner tick the kernel emits REQs to
 //!    the relay(s). No relay logic is in the shell.
 //! 3. **Events arrive reactively.** Matching kind:30023 events and kind:16
@@ -19,7 +19,7 @@
 //!    snapshot frame. The shell does not poll; the kernel pushes.
 //! 4. **Shell dispatches Release.** When the view closes the shell dispatches
 //!    the `"op":"release"` variant with the same `topic` and `consumer_id`.
-//!    `execute()` sends `ActorCommand::DropInterestOwner` for both lanes.
+//!    `execute()` sends `InterestsCommand::DropInterestOwner` for both lanes.
 //!    When the last owner drops, the registry GCs the slots and sends CLOSE.
 //!
 //! # Why Claim/Release live in the same module
@@ -59,12 +59,12 @@
 //! cannot do (keyring, audio, file storage). Relay operations belong to the
 //! kernel exclusively; this module is how you reach them.
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionRegistrar, ActionRejection, ViewDependencies,
 };
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{InterestsCommand};
 use nmp_planner::stable_hash::stable_hash64;
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use serde::{Deserialize, Serialize};
@@ -270,13 +270,18 @@ impl ActionModule for TopicArticlesModule {
                 ref topic,
                 ref consumer_id,
             } => {
-                send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(topic_articles_identity(
+                send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(topic_articles_identity(
+                        topic,
+                        consumer_id,
+                    )),
+                ));
+                send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(topic_article_reposts_identity(
                     topic,
                     consumer_id,
-                ))));
-                send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(
-                    topic_article_reposts_identity(topic, consumer_id),
-                )));
+                    )),
+                ));
             }
         }
         Ok(())

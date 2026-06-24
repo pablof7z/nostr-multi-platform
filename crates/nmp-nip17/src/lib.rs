@@ -82,8 +82,9 @@ pub use dm_relay_list::{
 pub use dm_runtime::{DmRuntimeEffect, DmRuntimeState};
 pub use dm_send::SendGiftWrappedDmCommand;
 pub use inbox::{
-    active_giftwrap_inbox_interest, active_giftwrap_inbox_interest_id, DmConversation,
-    DmInboxProjection, DmInboxSnapshot, DmMessage,
+    active_giftwrap_inbox_identity, active_giftwrap_inbox_interest,
+    active_giftwrap_inbox_interest_id, DmConversation, DmInboxProjection, DmInboxSnapshot,
+    DmMessage,
 };
 pub use kind10050_parser::Kind10050Parser;
 pub use wire::dm_inbox_fb::{

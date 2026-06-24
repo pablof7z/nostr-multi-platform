@@ -10,11 +10,11 @@
 
 use std::sync::{Arc, Mutex};
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar};
-use nmp_core::{KernelEventObserver};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{InterestsCommand};
-use nmp_nip51::{active_mute_list_interest, active_mute_list_interest_id, MuteListProjection};
+use nmp_core::KernelEventObserver;
+use nmp_nip51::{active_mute_list_identity, active_mute_list_interest, MuteListProjection};
 
 /// Wire the NIP-51 mute-list observer into `app` and return the
 /// [`MuteListProjection`] so the caller can connect it to a timeline
@@ -38,7 +38,7 @@ use nmp_nip51::{active_mute_list_interest, active_mute_list_interest_id, MuteLis
 /// 4. **Tick observer — [`MuteRuntimeController`]** — registered LAST
 ///    (ordering contract: observer BEFORE tick observer). On every snapshot tick
 ///    reconciles the active pubkey against the last-pushed one, emitting
-///    `PushInterest` / `WithdrawInterest` to the kernel so the mute list
+///    scoped interest commands to the kernel so the mute list
 ///    interest (kind:10000, authors=[active]) is always live for the signed-in
 ///    account. This replaces the prior free-ride on `SELF_KINDS_TAILING`.
 /// 5. **Returns the `Arc<MuteListProjection>`** — the caller wires
@@ -126,7 +126,7 @@ pub fn register_mute_runtime(
     // On sign-in it pushes `active_mute_list_interest(pubkey)` so the kernel
     // has a live `authors=[active_pubkey] / kinds=[10000]` subscription. On
     // account switch it withdraws the old interest (by pubkey-invariant id) and
-    // pushes a new one. On sign-out it withdraws. Mirrors the NIP-57 zap-receipts
+    // ensures a new one. On sign-out it drops. Mirrors the NIP-57 zap-receipts
     // controller (`ZapReceiptsRuntimeController`).
     let controller = Arc::new(MuteRuntimeController {
         active_pubkey: app.active_pubkey(),
@@ -143,7 +143,7 @@ pub fn register_mute_runtime(
 ///
 /// Owns the kind:10000 `authors=[active_pubkey]` interest slot. On every
 /// snapshot tick diffs the active pubkey against the last-pushed one and
-/// enqueues `PushInterest` / `WithdrawInterest` on change (D8: non-blocking).
+/// enqueues scoped interest commands on change (D8: non-blocking).
 ///
 /// Exposed `pub(crate)` so the unit tests in `runtimes_mute_tests` can
 /// construct a controller without a real `AppHost`.
@@ -160,7 +160,7 @@ impl MuteRuntimeController {
     /// Reconcile the active-account mute-list interest once per snapshot tick.
     ///
     /// Diffs the active pubkey against the last-pushed one and enqueues
-    /// `PushInterest` / `WithdrawInterest` on change. D8: channel send is
+    /// scoped interest commands on change. D8: channel send is
     /// non-blocking; D6: a poisoned last-pushed mutex degrades to "no prior
     /// push" so the next sign-in still pushes.
     pub(crate) fn tick(&self) {
@@ -178,24 +178,30 @@ impl MuteRuntimeController {
             (Some(now), None) => {
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_mute_list_interest(now))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity: active_mute_list_identity(),
+                        interest: active_mute_list_interest(now),
+                    }));
                 *last = Some(now.to_string());
             }
-            // Account switch: withdraw old (by pubkey-invariant id), push new.
+            // Account switch: drop old scoped owner, then ensure new shape.
             (Some(now), Some(_prev)) => {
+                let _ = self.tx.send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(active_mute_list_identity()),
+                ));
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(active_mute_list_interest_id())));
-                let _ = self
-                    .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_mute_list_interest(now))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity: active_mute_list_identity(),
+                        interest: active_mute_list_interest(now),
+                    }));
                 *last = Some(now.to_string());
             }
-            // Logout: withdraw standing interest, clear slot.
+            // Logout: drop standing owner, clear slot.
             (None, Some(_)) => {
-                let _ = self
-                    .tx
-                    .send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(active_mute_list_interest_id())));
+                let _ = self.tx.send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(active_mute_list_identity()),
+                ));
                 *last = None;
             }
             // Cold start before sign-in: nothing to do.
@@ -204,9 +210,6 @@ impl MuteRuntimeController {
     }
 
     fn active_pubkey(&self) -> Option<String> {
-        self.active_pubkey
-            .lock()
-            .ok()
-            .and_then(|slot| slot.clone())
+        self.active_pubkey.lock().ok().and_then(|slot| slot.clone())
     }
 }

@@ -180,7 +180,7 @@ fn relay_set_kind30023_feed_reqs_have_no_author_or_tag_filters_at_relay_boundary
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.set_indexer_relays(vec!["wss://indexer.example".to_string()]);
     lifecycle.set_app_relays(vec![relay_a.clone(), relay_b.clone()]);
-    lifecycle.register_for_test(relay_set_longform_feed());
+    nmp_core::subs::replace_test_interest(&mut lifecycle, relay_set_longform_feed());
 
     let frames = lifecycle
         .recompile_and_diff(&InMemoryMailboxCache::new())

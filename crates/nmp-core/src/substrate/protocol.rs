@@ -317,9 +317,7 @@ impl<'a> ProtocolCommandContext<'a> {
     /// falls back to `None` (the genuinely-absent-handler
     /// branch) rather than unwinding the calling `ProtocolCommand::run` frame.
     #[must_use]
-    pub fn host_op_handler(
-        &self,
-    ) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
+    pub fn host_op_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
         let h = self.host_op_handler;
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.current_handler()))
             .unwrap_or(None)
@@ -507,10 +505,12 @@ impl<'a> ProtocolCommandContext<'a> {
         }));
     }
 
-    /// Push a [`LogicalInterest`](crate::planner::LogicalInterest) via
-    /// `ActorCommand::PushInterest`. Re-push with the same id is idempotent.
-    pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
-        self.send(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
+    pub fn ensure_interest(&self, identity: crate::subs::SubIdentity, interest: crate::planner::LogicalInterest) {
+        self.send(ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }));
+    }
+
+    pub fn drop_interest_owner(&self, identity: crate::subs::SubIdentity) {
+        self.send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)));
     }
 }
 

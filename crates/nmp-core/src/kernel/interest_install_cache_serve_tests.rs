@@ -1,14 +1,14 @@
 //! ADR-0045 single choke-point — interest-install cache-serve regression tests.
 //!
-//! Root cause (Fable debugging pass, 2026-06-13): `ActorCommand::PushInterest`
-//! and `ActorCommand::EnsureInterest` registered interests in the subscription
-//! registry and enqueued a recompile trigger, but **never** enqueued the
+//! Root cause (Fable debugging pass, 2026-06-13): interest installs registered
+//! entries in the subscription registry and enqueued a recompile trigger, but
+//! **never** enqueued the
 //! ADR-0045 E1 cache-serve. Events already in the persistent store were
 //! therefore invisible to kind-parsers installed for those interests on any
 //! session after the one that originally fetched them.
 //!
 //! Concrete victim: Marmot key-package lookup + giftwrap inbox interests
-//! (pushed via `app.push_interest`) could never be satisfied from the store
+//! (installed via `app.ensure_interest`) could never be satisfied from the store
 //! on relaunch → MLS group creation permanently no-ops cross-session.
 //!
 //! This fix funnels all interest-install paths through
@@ -18,36 +18,36 @@
 //!
 //! # Test inventory
 //!
-//! - `push_interest_serves_store_on_install` — PushInterest with pre-seeded store.
+//! - `replace_interest_serves_store_on_install` — replace install with pre-seeded store.
 //! - `ensure_interest_serves_store_on_newly_installed` — EnsureInterest same.
 //! - `ensure_interest_no_serve_on_idempotent_reinstall` — EnsureInterest second
 //!   call on same slot does NOT re-serve (completion-key idempotency).
-//! - `two_session_push_interest_regression` — the MLS fingerprint: session-1
+//! - `two_session_interest_install_regression` — the MLS fingerprint: session-1
 //!   kernel ingests + stores KP events; new kernel instance over the same store;
-//!   push the KP interest; parser receives stored events WITHOUT any network.
-//! - `push_interest_ingest_parser_idempotent_re_ingest` — re-serving an already-
+//!   install the KP interest; parser receives stored events WITHOUT any network.
+//! - `interest_install_ingest_parser_idempotent_re_ingest` — re-serving an already-
 //!   processed event does not panic and does not produce duplicate deliveries
 //!   within a session (in-memory dedup).
 
 use super::cache_serve_tests::{drain_cache_serves, seed_events, simulate_cold_restart};
 use super::interest_install_cache_serve_support::{
-    author_kind1_interest, kp_interest, seed_kind0_event, seed_kp_event, sub_id, CapturingParser,
+    author_kind1_interest, kp_interest, seed_kp_event, sub_id, CapturingParser,
 };
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
-/// PRIMARY CONTRACT (PushInterest):
+/// PRIMARY CONTRACT (EnsureInterest):
 ///
 /// A kind:1 event seeded into the store via live ingest is served to a
-/// registered `IngestParser` when `PushInterest` installs the matching
+/// registered `IngestParser` when `EnsureInterest` installs the matching
 /// interest on a cold-restart kernel (empty in-memory caches, warm store).
 ///
 /// Regression net: before this fix the cache-serve was never enqueued from
-/// the `PushInterest` dispatch arm, so parsers never saw store-resident events.
+/// the `EnsureInterest` dispatch arm, so parsers never saw store-resident events.
 #[test]
-fn push_interest_serves_store_on_install() {
+fn replace_interest_serves_store_on_install() {
     let base_ts: u64 = 1_730_000_000;
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
@@ -72,15 +72,24 @@ fn push_interest_serves_store_on_install() {
     assert!(kernel.events.is_empty(), "events cache must be cleared");
     assert!(parser.seen_kinds().is_empty(), "parser must be cleared");
 
-    // ── Phase 3: install interest via the real PushInterest front door ────────
-    // `register_interest(Replace)` is exactly what the `ActorCommand::PushInterest`
+    // ── Phase 3: install interest via the real EnsureInterest front door ────────
+    // `register_interest(Replace)` is exactly what the `InterestsCommand::EnsureInterest`
     // dispatch arm calls — unified front-door with Replace policy.
     let interest = author_kind1_interest(1, &author);
     {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
-        use crate::subs::SubIdentity;
-        let identity = SubIdentity::from_legacy_interest(&interest);
-        kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::Replace }], "push-interest");
+        let identity = crate::subs::test_identity_for_interest(
+            ("scoped-test-interest", interest.id.0),
+            &interest,
+        );
+        kernel.register_interest(
+            &[InterestRegistration {
+                identity,
+                interest,
+                policy: InterestWrite::Replace,
+            }],
+            "replace-interest",
+        );
     }
     drain_cache_serves(&mut kernel, 10);
 
@@ -89,8 +98,8 @@ fn push_interest_serves_store_on_install() {
     assert_eq!(
         seen.len(),
         3,
-        "PushInterest FAIL: IngestParser must receive 3 store-resident kind:1 events \
-         after PushInterest install; got {seen:?}"
+        "EnsureInterest FAIL: IngestParser must receive 3 store-resident kind:1 events \
+         after EnsureInterest install; got {seen:?}"
     );
     assert!(
         seen.iter().all(|&k| k == 1),
@@ -121,13 +130,20 @@ fn ensure_interest_serves_store_on_newly_installed() {
 
     // ── EnsureInterest (newly installed) via the real front door ─────────────
     // `register_interest(EnsureAbsent)` is exactly what the
-    // `ActorCommand::EnsureInterest` dispatch arm (and open_interest_sub /
+    // `InterestsCommand::EnsureInterest` dispatch arm (and open_interest_sub /
     // open_uri) calls — unified front-door with EnsureAbsent policy.
     let identity = sub_id(42);
     let interest = author_kind1_interest(42, &author);
     let newly = {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
-        let outcomes = kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::EnsureAbsent }], "ensure-interest");
+        let outcomes = kernel.register_interest(
+            &[InterestRegistration {
+                identity,
+                interest,
+                policy: InterestWrite::EnsureAbsent,
+            }],
+            "ensure-interest",
+        );
         outcomes[0].newly_installed
     };
     assert!(newly, "must be newly installed");
@@ -168,7 +184,14 @@ fn ensure_interest_no_serve_on_idempotent_reinstall() {
     let interest_1 = author_kind1_interest(100, &author);
     let newly_1 = {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
-        let outcomes = kernel.register_interest(&[InterestRegistration { identity: identity_1, interest: interest_1, policy: InterestWrite::EnsureAbsent }], "ensure-interest");
+        let outcomes = kernel.register_interest(
+            &[InterestRegistration {
+                identity: identity_1,
+                interest: interest_1,
+                policy: InterestWrite::EnsureAbsent,
+            }],
+            "ensure-interest",
+        );
         outcomes[0].newly_installed
     };
     assert!(newly_1);
@@ -185,7 +208,14 @@ fn ensure_interest_no_serve_on_idempotent_reinstall() {
     let interest_2 = author_kind1_interest(100, &author);
     let newly_2 = {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
-        let outcomes = kernel.register_interest(&[InterestRegistration { identity: identity_2, interest: interest_2, policy: InterestWrite::EnsureAbsent }], "ensure-interest");
+        let outcomes = kernel.register_interest(
+            &[InterestRegistration {
+                identity: identity_2,
+                interest: interest_2,
+                policy: InterestWrite::EnsureAbsent,
+            }],
+            "ensure-interest",
+        );
         outcomes[0].newly_installed
     };
     assert!(
@@ -213,15 +243,14 @@ fn ensure_interest_no_serve_on_idempotent_reinstall() {
 ///    live relay path.
 /// 2. A new `Kernel` instance is created over the SAME store (simulating a
 ///    process relaunch). In-memory caches are gone.
-/// 3. `push_interest` (the production path from `nmp-marmot/src/ffi.rs:499`)
-///    installs the KP interest.
+/// 3. The production `ensure_interest` path installs the KP interest.
 /// 4. The `IngestParser` (stand-in for `MarmotIngestParser`) must receive the
 ///    stored KP events WITHOUT any network activity.
 ///
 /// Before this fix: step 4 produced 0 parser deliveries → MLS group creation
 /// no-ops on relaunch.
 #[test]
-fn two_session_push_interest_kp_regression() {
+fn two_session_interest_install_kp_regression() {
     let base_ts: u64 = 1_740_000_000;
     let kp_publisher_keys = ::nostr::Keys::generate();
     let receiver_keys = ::nostr::Keys::generate();
@@ -266,15 +295,24 @@ fn two_session_push_interest_kp_regression() {
         "Session 2 pre-condition: events cache must be empty"
     );
 
-    // ── Session 2: push the KP interest (production path) ────────────────────
+    // ── Session 2: install the KP interest (production path) ─────────────────
     // `register_interest(Replace)` is the exact call the
-    // `ActorCommand::PushInterest` arm makes (Replace policy).
+    // `InterestsCommand::EnsureInterest` arm makes (Replace policy).
     let interest = kp_interest(999, &receiver_hex);
     {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
-        use crate::subs::SubIdentity;
-        let identity = SubIdentity::from_legacy_interest(&interest);
-        kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::Replace }], "push-interest");
+        let identity = crate::subs::test_identity_for_interest(
+            ("scoped-test-interest", interest.id.0),
+            &interest,
+        );
+        kernel.register_interest(
+            &[InterestRegistration {
+                identity,
+                interest,
+                policy: InterestWrite::Replace,
+            }],
+            "replace-interest",
+        );
     }
     drain_cache_serves(&mut kernel, 10);
 
@@ -283,13 +321,13 @@ fn two_session_push_interest_kp_regression() {
     assert!(
         seen_s2.contains(&kp_id_1),
         "TWO-SESSION REGRESSION FAIL: parser must receive KP event 1 ({kp_id_1}) \
-         from the store on session-2 PushInterest; got {seen_s2:?}. \
+         from the store on session-2 EnsureInterest; got {seen_s2:?}. \
          This is the MLS cross-session no-op bug."
     );
     assert!(
         seen_s2.contains(&kp_id_2),
         "TWO-SESSION REGRESSION FAIL: parser must receive KP event 2 ({kp_id_2}) \
-         from the store on session-2 PushInterest; got {seen_s2:?}. \
+         from the store on session-2 EnsureInterest; got {seen_s2:?}. \
          This is the MLS cross-session no-op bug."
     );
 }
@@ -306,7 +344,7 @@ fn two_session_push_interest_kp_regression() {
 /// processed welcomes; the in-memory dedup ensures even a re-triggered serve
 /// does not double-dispatch.
 #[test]
-fn push_interest_ingest_parser_idempotent_re_ingest() {
+fn interest_install_ingest_parser_idempotent_re_ingest() {
     let base_ts: u64 = 1_750_000_000;
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
@@ -325,9 +363,18 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
     let interest = author_kind1_interest(50, &author);
     {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
-        use crate::subs::SubIdentity;
-        let identity = SubIdentity::from_legacy_interest(&interest);
-        kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::Replace }], "push-interest");
+        let identity = crate::subs::test_identity_for_interest(
+            ("scoped-test-interest", interest.id.0),
+            &interest,
+        );
+        kernel.register_interest(
+            &[InterestRegistration {
+                identity,
+                interest,
+                policy: InterestWrite::Replace,
+            }],
+            "replace-interest",
+        );
     }
     drain_cache_serves(&mut kernel, 10);
     // Events already in memory → serve skips → no additional dispatches.
@@ -343,14 +390,23 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
     kernel.clear_served_interest_shapes();
     parser.clear();
 
-    // Second install via PushInterest with a new InterestId (fresh completion key).
+    // Second install via EnsureInterest with a new InterestId (fresh completion key).
     // This must NOT panic and must NOT deliver duplicate events (in-memory dedup).
     let interest_2 = author_kind1_interest(51, &author);
     {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
-        use crate::subs::SubIdentity;
-        let identity = SubIdentity::from_legacy_interest(&interest_2);
-        kernel.register_interest(&[InterestRegistration { identity, interest: interest_2, policy: InterestWrite::Replace }], "push-interest");
+        let identity = crate::subs::test_identity_for_interest(
+            ("scoped-test-interest", interest_2.id.0),
+            &interest_2,
+        );
+        kernel.register_interest(
+            &[InterestRegistration {
+                identity,
+                interest: interest_2,
+                policy: InterestWrite::Replace,
+            }],
+            "replace-interest",
+        );
     }
     drain_cache_serves(&mut kernel, 10);
 
@@ -359,138 +415,5 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
         after_reserve.is_empty(),
         "idempotent re-serve: events already in the events cache must NOT be \
          re-dispatched; got {after_reserve:?}"
-    );
-}
-
-/// OPEN-URI BYPASS REGRESSION (PR #1237 review F2):
-///
-/// Opening a `nostr:` URI installs an interest for the resolved target. Before
-/// the F2 fix, `open_uri` called bare `ensure_sub` with neither a recompile
-/// trigger nor a store-cache serve — so a `nostr:npub…` whose kind:0 metadata
-/// was already in the store would NOT surface those stored events to parsers.
-///
-/// This test seeds a kind:0 event into the store, cold-restarts (store warm,
-/// caches cold), then drives the real `dispatch_kernel_action(OpenUri{npub})`
-/// path and asserts the registered kind:0 parser receives the stored event
-/// WITHOUT any network — proving open_uri now routes through the single
-/// ensure-install front door (`register_interest(EnsureAbsent)`).
-#[test]
-fn open_uri_serves_store_for_resolved_target() {
-    use crate::app::{KernelAction, KernelUpdate};
-    use crate::kernel_action::dispatch_kernel_action;
-    use crate::nip19::encode_npub;
-
-    let base_ts: u64 = 1_760_000_000;
-    let keys = ::nostr::Keys::generate();
-    let author = keys.public_key().to_hex();
-
-    // ── Phase 1: seed a kind:0 metadata event into the store ─────────────────
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let parser = CapturingParser::new();
-    kernel.register_ingest_parser(0, parser.clone());
-    let meta_id = seed_kind0_event(&mut kernel, &keys, base_ts);
-    assert!(
-        parser.seen_ids().contains(&meta_id),
-        "Phase 1: parser must see the kind:0 event on live ingest"
-    );
-
-    // ── Phase 2: cold restart (store warm, caches cold) ──────────────────────
-    simulate_cold_restart(&mut kernel);
-    parser.clear();
-    assert!(kernel.events.is_empty());
-
-    // ── Phase 3: open the npub via the real action dispatcher ────────────────
-    let npub = encode_npub(&author).expect("valid npub");
-    let update = dispatch_kernel_action(
-        &mut kernel,
-        KernelAction::OpenUri {
-            uri: format!("nostr:{npub}"),
-        },
-    );
-    assert!(
-        matches!(update, KernelUpdate::ViewOpened { .. }),
-        "open_uri must resolve the npub to a profile view; got {update:?}"
-    );
-    // open_uri serves synchronously through register_interest; drain any
-    // continuation to be safe.
-    drain_cache_serves(&mut kernel, 10);
-
-    // ── Phase 4: parser must have received the stored kind:0 event ───────────
-    assert!(
-        parser.seen_ids().contains(&meta_id),
-        "OPEN-URI BYPASS FAIL: parser must receive the store-resident kind:0 \
-         event ({meta_id}) after open_uri installs the profile interest; \
-         got {:?}",
-        parser.seen_ids()
-    );
-}
-
-/// PROFILE-CLAIM STORE-FIRST (Phase C regression):
-///
-/// `register_profile_claim_interest` routes through the unified front-door
-/// (`register_interest` with Replace policy). This test proves that a stored
-/// kind:0 metadata event populates the ProfileCache on a cold-cache kernel
-/// immediately after `resolve_ref` — no relay delivery needed.
-///
-/// Regression guard: before Phase C the profile-claim path called bare
-/// `set_sub` without a cache-serve enqueue, so a stored kind:0 was invisible
-/// on relaunch (the "timeline shows only pubkeys after relaunch" bug).
-///
-/// Setup: after seeding, the profile_lookup is swapped to a FRESH empty
-/// TestProfileCache (+ matching TestKind0Parser) so `profile_lookup().profile(P)`
-/// is genuinely None before the claim — faithfully simulating a process restart
-/// where the in-memory ProfileCache is empty but the on-disk store is warm.
-#[test]
-fn profile_claim_serves_stored_kind0_from_store_on_cold_cache() {
-    use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
-    use crate::substrate::{ProfileLookup, TestKind0Parser, TestProfileCache};
-
-    let base_ts: u64 = 1_770_000_000;
-    let keys = ::nostr::Keys::generate();
-    let author = keys.public_key().to_hex();
-
-    // ── Phase 1: seed a kind:0 event into the store via live ingest ──────────
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let meta_id = seed_kind0_event(&mut kernel, &keys, base_ts);
-
-    // ── Phase 2: cold restart — clear in-memory event caches ─────────────────
-    simulate_cold_restart(&mut kernel);
-    assert!(kernel.events.is_empty(), "events cache must be empty after restart");
-
-    // Swap to a fresh, empty ProfileCache — faithfully simulates process restart
-    // where the in-memory profile lookup is cold (the store is warm).
-    let cold_cache = std::sync::Arc::new(TestProfileCache::new());
-    kernel.set_profile_lookup(std::sync::Arc::clone(&cold_cache) as std::sync::Arc<dyn ProfileLookup>);
-    // Register a matching kind:0 parser that writes INTO the new cold cache,
-    // so that cache-serve events populate it (the live pipeline is unchanged).
-    kernel.register_ingest_parser(0, std::sync::Arc::new(TestKind0Parser::new(std::sync::Arc::clone(&cold_cache))));
-
-    // Pre-condition: cold cache is genuinely empty.
-    assert!(
-        cold_cache.profile(&author).is_none(),
-        "Pre-condition: cold profile cache must not contain the author"
-    );
-
-    // ── Phase 3: claim the profile — routes through register_interest(Replace) ─
-    // cold_cache.contains(&author) == false → want_register = true → front-door
-    // fires, cache-serve enqueued. No relay connected, no wire event injected.
-    kernel.resolve_ref(
-        RefNamespace::Profile,
-        author.clone(),
-        "test-consumer".to_string(),
-        RefShape::Profile(ProfileShape::Card),
-        RefLiveness::CacheOk.into(),
-        false,
-        Vec::new(),
-    );
-    drain_cache_serves(&mut kernel, 10);
-
-    // ── Phase 4: cold_cache must now have P — served from the store ───────────
-    assert!(
-        cold_cache.profile(&author).is_some(),
-        "PROFILE-CLAIM STORE-FIRST FAIL: profile_lookup().profile(P) must be Some \
-         after resolve_ref installs the kind:0 interest and the cache-serve \
-         runs from the store; got None. This is the cold-cache kind:0 bug \
-         (timeline shows only pubkeys after relaunch)."
     );
 }

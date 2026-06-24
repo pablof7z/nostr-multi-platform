@@ -9,7 +9,7 @@
 //!
 //! Before issue #1644, kind:10000 free-rode on `SELF_KINDS_TAILING`. On
 //! cold start after the kernel's interest registry was cleared (process
-//! restart), if an external `PushInterest` for kind:10000 `authors=[pk]` was
+//! restart), if an external `EnsureInterest` for kind:10000 `authors=[pk]` was
 //! pushed before the observer was registered, the observer would miss the
 //! cache-serve drain delivery. This test locks the correct ordering contract:
 //! observer registered BEFORE interest pushed → observer receives drain.
@@ -32,7 +32,9 @@
 use super::cache_serve_tests::{drain_cache_serves, simulate_cold_restart};
 use super::*;
 use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
-use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use crate::substrate::KernelEvent;
@@ -134,11 +136,8 @@ fn open_mute_list_interest(kernel: &mut Kernel, seed: u64, author_hex: &str) {
         lifecycle: InterestLifecycle::Tailing,
         is_indexer_discovery: false,
     };
-    let sub_identity = SubIdentity::new(
-        SubOwnerKey::new(seed),
-        SubKey::new(seed),
-        SubScope::Global,
-    );
+    let sub_identity =
+        SubIdentity::new(SubOwnerKey::new(seed), SubKey::new(seed), SubScope::Global);
     kernel.open_interest_sub(sub_identity, interest);
 }
 

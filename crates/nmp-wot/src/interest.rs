@@ -1,8 +1,7 @@
 use std::collections::BTreeSet;
 
-use nmp_planner::{
-    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
-};
+use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
 
 // Kind constants sourced from the canonical registry in nmp-core::kinds
 // (which re-exports from nmp-kinds, the zero-dep Layer-0 crate — V-57 P2).
@@ -31,6 +30,16 @@ pub fn active_follow_graph_interest_id() -> InterestId {
     InterestId(nmp_planner::stable_hash::stable_hash64(
         "wot.follow_graph.active",
     ))
+}
+
+/// Scoped registry identity for the active-account WOT bootstrap interest.
+#[must_use]
+pub fn active_follow_graph_identity() -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new("wot.follow_graph.active"),
+        SubKey::new("wot.follow_graph.active"),
+        SubScope::Global,
+    )
 }
 
 /// Build the one-shot replaceable-kind fetch used to seed local WOT state.
@@ -107,9 +116,9 @@ mod tests {
 
     #[test]
     fn large_wot_bootstrap_interest_opens_nip77() {
-        use nmp_planner::InterestLifecycle;
         use nmp_core::substrate::{ReqFrameContext, ReqFrameInterceptor};
         use nmp_core::{Kernel, RelayRole};
+        use nmp_planner::InterestLifecycle;
 
         let interest = follow_graph_interest((0..1_052).map(author)).unwrap();
         let filter_json = serde_json::json!({

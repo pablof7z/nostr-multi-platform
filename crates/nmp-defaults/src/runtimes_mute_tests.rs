@@ -9,10 +9,10 @@
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{InterestsCommand};
-use nmp_nip51::{active_mute_list_interest, active_mute_list_interest_id};
+use nmp_core::actor::InterestsCommand;
+use nmp_core::slots::ActiveAccountSlot;
+use nmp_nip51::{active_mute_list_identity, active_mute_list_interest};
 use nostr::Keys;
 
 use super::mute_runtime::MuteRuntimeController;
@@ -53,8 +53,8 @@ fn drained(rx: &Receiver<nmp_core::ActorMail>) -> Vec<ActorCommand> {
         .collect()
 }
 
-/// Sign-in pushes exactly one `PushInterest` for the active pubkey; a steady
-/// tick afterwards enqueues nothing (the common fast path).
+/// Sign-in ensures exactly one interest for the active pubkey; a steady tick
+/// afterwards enqueues nothing (the common fast path).
 #[test]
 fn sign_in_pushes_interest_once_then_idles() {
     let (controller, slot, rx) = controller();
@@ -65,7 +65,7 @@ fn sign_in_pushes_interest_once_then_idles() {
     controller.tick();
     assert!(drained(&rx).is_empty(), "cold start must enqueue nothing");
 
-    // Sign in → exactly one PushInterest for this pubkey.
+    // Sign in → exactly one interest for this pubkey.
     sign_in(&slot, &keys);
     controller.tick();
     let cmds = drained(&rx);
@@ -80,8 +80,8 @@ fn sign_in_pushes_interest_once_then_idles() {
     );
 }
 
-/// An account switch withdraws the standing interest (by its pubkey-invariant
-/// id) then pushes the new account's interest — in that order, once.
+/// An account switch drops the standing owner then ensures the new account's
+/// interest — in that order, once.
 #[test]
 fn account_switch_withdraws_then_pushes() {
     let (controller, slot, rx) = controller();
@@ -96,12 +96,12 @@ fn account_switch_withdraws_then_pushes() {
     sign_in(&slot, &second);
     controller.tick();
     let cmds = drained(&rx);
-    assert_eq!(cmds.len(), 2, "switch enqueues withdraw + push");
+    assert_eq!(cmds.len(), 2, "switch enqueues drop + ensure");
     assert_withdraw(&cmds[0]);
     assert_push_for(&cmds[1], &second_pubkey);
 }
 
-/// Sign-out (active → none) withdraws the standing interest once, then a
+/// Sign-out (active → none) drops the standing owner once, then a
 /// subsequent idle tick enqueues nothing.
 #[test]
 fn sign_out_withdraws_interest_once() {
@@ -126,7 +126,7 @@ fn sign_out_withdraws_interest_once() {
 /// Finding C — a bunker (remote-signer-only) account must activate the
 /// mute-list subscription. The reconciler reads the pubkey-only slot the
 /// kernel populates for every backend; with NO secret keys ever present it
-/// must still push the kind:10000 `authors` interest for the active pubkey.
+/// must still ensure the kind:10000 `authors` interest for the active pubkey.
 #[test]
 fn bunker_only_account_activates_mute_list_interest() {
     let (controller, slot, rx) = controller();
@@ -141,33 +141,38 @@ fn bunker_only_account_activates_mute_list_interest() {
     assert_eq!(
         cmds.len(),
         1,
-        "a bunker account must still push exactly one mute-list interest"
+        "a bunker account must still ensure exactly one mute-list interest"
     );
     assert_push_for(&cmds[0], &pubkey);
 }
 
 fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) => {
+            assert_eq!(
+                identity,
+                &active_mute_list_identity(),
+                "ensured interest must use the active mute-list owner"
+            );
             assert_eq!(
                 interest.id,
                 active_mute_list_interest(pubkey).id,
-                "pushed interest must be the active-pubkey mute-list interest"
+                "ensured interest must be the active-pubkey mute-list interest"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }
 
 fn assert_withdraw(cmd: &ActorCommand) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) => {
+        ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)) => {
             assert_eq!(
-                *id,
-                active_mute_list_interest_id(),
-                "withdraw must target the pubkey-invariant mute-list interest id"
+                identity,
+                &active_mute_list_identity(),
+                "drop must target the active mute-list owner"
             );
         }
-        other => panic!("expected WithdrawInterest, got {other:?}"),
+        other => panic!("expected DropInterestOwner, got {other:?}"),
     }
 }

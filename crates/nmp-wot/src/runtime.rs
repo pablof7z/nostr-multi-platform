@@ -1,17 +1,17 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use nmp_planner::LogicalInterest;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{
     register_observer_projection, EventObserverRegistrar, HostCapabilities, KernelEvent,
     SnapshotProjectionRegistrar,
 };
 use nmp_core::KernelEventObserver;
+use nmp_planner::LogicalInterest;
 use serde::Serialize;
 
 use crate::interest::{
-    active_follow_graph_interest_id, follow_graph_interest, is_hex_pubkey, KIND_CONTACT_LIST,
+    active_follow_graph_identity, follow_graph_interest, is_hex_pubkey, KIND_CONTACT_LIST,
 };
 use crate::score::{TrustDecision, WotGraph, WotGraphStats};
 
@@ -260,6 +260,7 @@ impl WotBootstrapRuntime {
                 state.active_follows.clear();
                 state.bootstrap_pushed = false;
             } else {
+                withdraw |= state.bootstrap_pushed;
                 next_interest = follow_graph_interest(follows.iter().cloned());
                 state.active_follows = follows;
                 state.bootstrap_pushed = next_interest.is_some();
@@ -275,11 +276,12 @@ impl WotBootstrapRuntime {
     }
 
     fn push_bootstrap(&self, interest: LogicalInterest) {
-        self.tx.push_interest(interest);
+        self.tx
+            .ensure_interest(active_follow_graph_identity(), interest);
     }
 
     fn withdraw_bootstrap(&self) {
-        self.tx.withdraw_interest(active_follow_graph_interest_id());
+        self.tx.drop_interest_owner(active_follow_graph_identity());
     }
 }
 

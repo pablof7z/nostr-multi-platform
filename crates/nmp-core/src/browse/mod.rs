@@ -11,7 +11,7 @@
 //! `docs/architecture/crate-boundaries.md` §3.1 and Rule 9 of the merge
 //! lattice. Rather than adding a parallel `scope_relays` field (fragmentation),
 //! this module builds a `LogicalInterest` with `relay_pin = Some(url)` and
-//! dispatches `ActorCommand::PushInterest`.  No `actor/mod.rs` changes needed.
+//! dispatches scoped interest commands. No `actor/mod.rs` changes needed.
 //!
 //! ## Doctrine
 //! - D0: substrate-pure types only (RelayUrl = String, kinds = Vec<u32>).
@@ -22,8 +22,8 @@
 //!
 //! ## Action variants
 //!
-//! - [`BrowseRelayAction::Open`] — register a relay-pinned `LogicalInterest`.
-//! - [`BrowseRelayAction::Close`] — withdraw it by interest id.
+//! - [`BrowseRelayAction::Open`] — replace a relay-pinned `LogicalInterest`.
+//! - [`BrowseRelayAction::Close`] — drop its scoped owner by interest id.
 //!
 //! Both are synchronous-completing (default `is_async_completing() = false`).
 //!
@@ -51,6 +51,7 @@ use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
 use crate::relay::CanonicalRelayUrl;
+use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use crate::substrate::{ActionContext, ActionModule, ActionRejection};
 
 /// V-52: relay browsing action — `nmp.browse_relay` namespace.
@@ -96,6 +97,14 @@ pub enum BrowseLifecycle {
 
 fn default_lifecycle() -> BrowseLifecycle {
     BrowseLifecycle::Tailing
+}
+
+fn browse_identity(interest_id: u64) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new(("browse-relay", interest_id)),
+        SubKey::new(("browse-relay", interest_id)),
+        SubScope::Global,
+    )
 }
 
 /// `ActionModule` impl for the `nmp.browse_relay` namespace.
@@ -163,15 +172,20 @@ impl ActionModule for BrowseRelayModule {
                     lifecycle: lc,
                     is_indexer_discovery: false,
                 };
-                send(ActorCommand::Interests(InterestsCommand::PushInterest(
+                let identity = browse_identity(interest_id);
+                send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(identity.clone()),
+                ));
+                send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                    identity,
                     interest,
-                )));
+                }));
                 Ok(())
             }
             BrowseRelayAction::Close { interest_id } => {
-                send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
-                    InterestId(interest_id),
-                )));
+                send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(browse_identity(interest_id)),
+                ));
                 Ok(())
             }
         }

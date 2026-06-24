@@ -2,9 +2,9 @@
 //!
 //! These tests verify:
 //! 1. Validation rejects invalid relay URLs and zero interest_id.
-//! 2. `execute` for `Open` sends `ActorCommand::PushInterest` with
-//!    `relay_pin = Some(url)` and the correct kind set.
-//! 3. `execute` for `Close` sends `ActorCommand::WithdrawInterest`.
+//! 2. `execute` for `Open` drops then ensures the scoped relay-pinned
+//!    interest with `relay_pin = Some(url)` and the correct kind set.
+//! 3. `execute` for `Close` sends `DropInterestOwner`.
 //! 4. The relay-pinned interest only covers the scoped relay
 //!    (relay_pin semantics already tested in nmp-planner; we verify the field
 //!    is populated correctly here).
@@ -35,6 +35,20 @@ fn open_action(relay: &str, kinds: Vec<u32>, id: u64) -> BrowseRelayAction {
         kinds,
         lifecycle: BrowseLifecycle::Tailing,
         interest_id: id,
+    }
+}
+
+fn ensured_interest(cmds: &[ActorCommand]) -> &crate::planner::LogicalInterest {
+    match cmds {
+        [ActorCommand::Interests(InterestsCommand::DropInterestOwner(drop_identity)), ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest })] =>
+        {
+            assert_eq!(
+                drop_identity, identity,
+                "open must replace the same scoped owner"
+            );
+            interest
+        }
+        other => panic!("expected DropInterestOwner then EnsureInterest, got {other:?}"),
     }
 }
 
@@ -85,29 +99,24 @@ fn start_accepts_close_unconditionally() {
 // ─── Execute tests ───────────────────────────────────────────────────────────
 
 #[test]
-fn execute_open_sends_push_interest_with_relay_pin() {
+fn execute_open_sends_scoped_ensure_interest_with_relay_pin() {
     let relay = "wss://relay.damus.io";
     let cmds = capture_commands(open_action(relay, vec![1], 99));
-    assert_eq!(cmds.len(), 1, "Open must produce exactly one command");
-    match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
-            assert_eq!(
-                interest.shape.relay_pin.as_deref(),
-                Some(relay),
-                "relay_pin must be set to the requested relay URL"
-            );
-            assert_eq!(
-                interest.id,
-                InterestId(99),
-                "interest id must match the requested interest_id"
-            );
-            assert!(
-                interest.shape.kinds.contains(&1u32),
-                "kind 1 must be in the interest shape"
-            );
-        }
-        other => panic!("expected PushInterest, got {other:?}"),
-    }
+    let interest = ensured_interest(&cmds);
+    assert_eq!(
+        interest.shape.relay_pin.as_deref(),
+        Some(relay),
+        "relay_pin must be set to the requested relay URL"
+    );
+    assert_eq!(
+        interest.id,
+        InterestId(99),
+        "interest id must match the requested interest_id"
+    );
+    assert!(
+        interest.shape.kinds.contains(&1u32),
+        "kind 1 must be in the interest shape"
+    );
 }
 
 #[test]
@@ -118,16 +127,12 @@ fn execute_open_tailing_sets_tailing_lifecycle() {
         lifecycle: BrowseLifecycle::Tailing,
         interest_id: 10,
     });
-    match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
-            assert_eq!(
-                interest.lifecycle,
-                InterestLifecycle::Tailing,
-                "tailing lifecycle must be preserved"
-            );
-        }
-        other => panic!("expected PushInterest, got {other:?}"),
-    }
+    let interest = ensured_interest(&cmds);
+    assert_eq!(
+        interest.lifecycle,
+        InterestLifecycle::Tailing,
+        "tailing lifecycle must be preserved"
+    );
 }
 
 #[test]
@@ -138,28 +143,24 @@ fn execute_open_one_shot_sets_oneshot_lifecycle() {
         lifecycle: BrowseLifecycle::OneShot,
         interest_id: 11,
     });
-    match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
-            assert_eq!(
-                interest.lifecycle,
-                InterestLifecycle::OneShot,
-                "one_shot lifecycle must be preserved"
-            );
-        }
-        other => panic!("expected PushInterest, got {other:?}"),
-    }
+    let interest = ensured_interest(&cmds);
+    assert_eq!(
+        interest.lifecycle,
+        InterestLifecycle::OneShot,
+        "one_shot lifecycle must be preserved"
+    );
 }
 
 #[test]
-fn execute_close_sends_withdraw_interest() {
+fn execute_close_sends_drop_interest_owner() {
     let action = BrowseRelayAction::Close { interest_id: 99 };
     let cmds = capture_commands(action);
     assert_eq!(cmds.len(), 1, "Close must produce exactly one command");
     match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) => {
-            assert_eq!(*id, InterestId(99), "withdraw id must match interest_id");
+        ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)) => {
+            assert_eq!(*identity, browse_identity(99));
         }
-        other => panic!("expected WithdrawInterest, got {other:?}"),
+        other => panic!("expected DropInterestOwner, got {other:?}"),
     }
 }
 
@@ -167,15 +168,11 @@ fn execute_close_sends_withdraw_interest() {
 fn execute_open_with_empty_kinds_produces_wildcard_shape() {
     // Empty kinds = wildcard subscription (any kind) — valid, caller's choice.
     let cmds = capture_commands(open_action("wss://relay.example.com", vec![], 5));
-    match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
-            assert!(
-                interest.shape.kinds.is_empty(),
-                "empty kinds must produce a wildcard interest shape"
-            );
-        }
-        other => panic!("expected PushInterest, got {other:?}"),
-    }
+    let interest = ensured_interest(&cmds);
+    assert!(
+        interest.shape.kinds.is_empty(),
+        "empty kinds must produce a wildcard interest shape"
+    );
 }
 
 #[test]
@@ -186,17 +183,13 @@ fn relay_pin_not_in_scope_of_nip65_fan_out() {
     // when relay_pin is Some(_); this test documents that expectation at
     // the construction level.
     let cmds = capture_commands(open_action("wss://relay.damus.io", vec![1], 7));
-    match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
-            assert!(
-                interest.shape.authors.is_empty(),
-                "browse interest must have no authors (relay_pin suppresses NIP-65)"
-            );
-            assert!(
-                interest.hints.is_empty(),
-                "browse interest must have no hints"
-            );
-        }
-        other => panic!("expected PushInterest, got {other:?}"),
-    }
+    let interest = ensured_interest(&cmds);
+    assert!(
+        interest.shape.authors.is_empty(),
+        "browse interest must have no authors (relay_pin suppresses NIP-65)"
+    );
+    assert!(
+        interest.hints.is_empty(),
+        "browse interest must have no hints"
+    );
 }
