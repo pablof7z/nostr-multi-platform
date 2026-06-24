@@ -1,31 +1,23 @@
-// This test uses native-only helpers (inject_relay_connected_for_test,
-// tick_for_test, snapshot_bytes_for_test) that only exist under
-// #[cfg(not(target_arch = "wasm32"))].  Skip the entire file when compiled
-// for wasm32 so `wasm-pack test` does not abort the build.
+// Native-only scheduler tests. The production wasm target schedules the same
+// runtime deadline state with a one-shot browser timeout.
 #![cfg(not(target_arch = "wasm32"))]
 
-// PR-2 acceptance: worker tick driver — idle-tick coalescing.
-//
-// Proves that `tick_for_test` (which calls the same `tick::tick_once` core
-// the wasm32 1 Hz timer closure calls) does NOT signal a snapshot push when
-// the kernel state has not changed since the last `make_update_frame`.
-//
-// Three-phase coalescing proof:
-//   1. After `Start`, take a snapshot (clears `changed_since_emit`).
-//   2. Idle tick → `dirty == false`; no snapshot push would occur.
-//   3. Inject a relay-connected event (mutates kernel state → dirty = true).
-//   4. Verify that a non-idle tick does signal a push (dirty = true).
-//   5. Take a snapshot to clear dirty again.
-//   6. Another idle tick → `dirty == false` again; coalescing re-armed.
-//
-// The coalescing gate in the real wasm32 timer is `if dirty { push... }`.
-// If that gate were absent every tick would burn a JS heap allocation + an
-// upstream re-render regardless of whether anything had changed.
+use std::fs;
+use std::path::PathBuf;
 
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::nip19::{encode_nevent, encode_npub, NeventData};
+use nmp_core::publish::{PublishAction, PublishTarget};
+use nmp_core::substrate::ActionPayload;
 use nmp_core::RelayRole;
-use nmp_wasm::{RelayBootstrapEntry, StartConfig, WasmRuntime, WorkerRequest};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_wasm::{
+    ActionDispatch, DispatchBytes, RelayBootstrapEntry, SetIdentity, StartConfig, WasmRuntime,
+    WorkerEvent, WorkerRequest,
+};
 
 const RELAY_URL: &str = "wss://relay.example";
+const ACCOUNT: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
 fn started_runtime() -> WasmRuntime {
     let mut runtime = WasmRuntime::new();
@@ -37,91 +29,470 @@ fn started_runtime() -> WasmRuntime {
                 url: RELAY_URL.to_string(),
                 role: "both".to_string(),
             }],
-            database_name: "tick-test".to_string(),
+            database_name: "scheduler-test".to_string(),
             correlation_id: "start-1".to_string(),
         }))
         .expect("Start must succeed");
     runtime
 }
 
+fn seed_account(runtime: &mut WasmRuntime) {
+    let events = runtime
+        .handle(WorkerRequest::SetIdentity(SetIdentity {
+            kind: "nip07".to_string(),
+            pubkey_hex: ACCOUNT.to_string(),
+            correlation_id: "seed-account".to_string(),
+        }))
+        .expect("set identity must succeed");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::ActionAccepted { .. })),
+        "SetIdentity must ACK before publishing; got {events:?}"
+    );
+}
+
+fn signed_event(id: &str) -> SignedEvent {
+    SignedEvent {
+        id: id.to_string(),
+        sig: format!("sig-{id}"),
+        unsigned: UnsignedEvent {
+            pubkey: ACCOUNT.to_string(),
+            kind: 1,
+            tags: Vec::new(),
+            content: "deadline probe".to_string(),
+            created_at: 1_700_000_000,
+        },
+    }
+}
+
+fn publish_request(correlation_id: &str, event_id: &str) -> WorkerRequest {
+    let payload = PublishAction::Publish {
+        handle: event_id.to_string(),
+        event: signed_event(event_id),
+        target: PublishTarget::Auto,
+    }
+    .encode();
+    WorkerRequest::DispatchBytes(DispatchBytes {
+        bytes: encode_dispatch_envelope(
+            correlation_id,
+            "nmp.publish",
+            DISPATCH_ENVELOPE_SCHEMA_VERSION,
+            &payload,
+        ),
+    })
+}
+
+fn resolve_profile_request(consumer_id: &str) -> WorkerRequest {
+    WorkerRequest::Dispatch(ActionDispatch {
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 0,
+            "key": ACCOUNT,
+            "consumer_id": consumer_id,
+            "shape": 0,
+            "liveness": 0,
+        }),
+        correlation_id: format!("resolve-{consumer_id}"),
+    })
+}
+
+fn release_profile_request(consumer_id: &str) -> WorkerRequest {
+    WorkerRequest::Dispatch(ActionDispatch {
+        action_type: "nmp.kernel.release_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 0,
+            "key": ACCOUNT,
+            "consumer_id": consumer_id,
+        }),
+        correlation_id: format!("release-{consumer_id}"),
+    })
+}
+
+fn claim_event_request(consumer_id: &str, event_id: &str) -> WorkerRequest {
+    let uri = format!(
+        "nostr:{}",
+        encode_nevent(&NeventData {
+            event_id: event_id.to_string(),
+            relays: Vec::new(),
+            author: Some(ACCOUNT.to_string()),
+            kind: Some(1),
+        })
+        .expect("event id must encode as nevent")
+    );
+    WorkerRequest::Dispatch(ActionDispatch {
+        action_type: "nmp.kernel.claim_event".to_string(),
+        payload: serde_json::json!({
+            "uri": uri,
+            "consumer_id": consumer_id,
+        }),
+        correlation_id: format!("claim-{consumer_id}"),
+    })
+}
+
+fn open_uri_request() -> WorkerRequest {
+    WorkerRequest::Dispatch(ActionDispatch {
+        action_type: "nmp.kernel.open_uri".to_string(),
+        payload: serde_json::json!({
+            "uri": encode_npub(ACCOUNT).expect("account pubkey must encode as npub"),
+        }),
+        correlation_id: "open-uri-profile".to_string(),
+    })
+}
+
+fn settle_connected_runtime(rt: &mut WasmRuntime) {
+    let _ = rt.snapshot_bytes_for_test();
+    rt.inject_relay_connected_for_test(RelayRole::Content, RELAY_URL);
+    let _ = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("post-start/relay-connected event drain must be armed");
+    let _ = rt.snapshot_bytes_for_test();
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "connected runtime fixture must start from an unarmed scheduler"
+    );
+}
+
+fn assert_action_accepted(events: &[WorkerEvent], expected_action_type: &str) {
+    assert!(
+        events.iter().any(|event| {
+            matches!(
+                event,
+                WorkerEvent::ActionAccepted { action_type, .. }
+                    if action_type == expected_action_type
+            )
+        }),
+        "expected ActionAccepted for {expected_action_type}; got {events:?}"
+    );
+}
+
+fn assert_no_update_bytes(events: &[WorkerEvent]) {
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::UpdateBytes { .. })),
+        "ref dispatch bookkeeping must not emit a snapshot; got {events:?}"
+    );
+}
+
 #[test]
-fn idle_tick_does_not_signal_snapshot_push() {
+fn idle_runtime_deadline_fires_once_and_does_not_rearm() {
     let mut rt = started_runtime();
 
-    // Phase 1: take a snapshot — clears changed_since_emit.
-    let _ = rt.snapshot_bytes_for_test();
+    assert!(
+        rt.maintenance_deadline_armed_for_test(),
+        "Start arms a single post-start maintenance deadline"
+    );
 
-    // Phase 2: idle tick (nothing pending after a fresh Start + snapshot).
-    let (outbound, dirty) = rt.tick_for_test();
-    assert!(outbound.is_empty(), "idle tick must produce no outbound");
+    let (outbound, dirty) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("the post-start deadline must be armed");
+    assert!(
+        outbound.is_empty(),
+        "idle deadline must produce no outbound"
+    );
+    assert!(!dirty, "idle deadline must not mark a snapshot dirty");
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "idle runtime must not re-arm a fixed cadence"
+    );
+    assert_eq!(rt.maintenance_deadline_fires_for_test(), 1);
+
+    assert!(
+        rt.fire_maintenance_deadline_for_test().is_none(),
+        "no second wake exists without a new event or kernel deadline"
+    );
+}
+
+#[test]
+fn resolve_ref_empty_outbound_arms_event_drain_and_drains_lifecycle() {
+    let mut rt = started_runtime();
+    settle_connected_runtime(&mut rt);
+
+    let events = rt
+        .handle(resolve_profile_request("profile-card"))
+        .expect("resolve_ref dispatch must succeed");
+    assert_action_accepted(&events, "nmp.kernel.resolve_ref");
+    assert_no_update_bytes(&events);
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "resolve_ref returns no outbound directly but must arm one event drain"
+    );
+
+    let (outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("resolve_ref event drain must be armed");
+    assert!(
+        !outbound.is_empty(),
+        "event drain must compile the queued profile interest into outbound"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "resolve_ref drain must not leave a fixed cadence behind"
+    );
+}
+
+#[test]
+fn release_ref_empty_outbound_arms_event_drain_and_drains_lifecycle_close() {
+    let mut rt = started_runtime();
+    settle_connected_runtime(&mut rt);
+
+    let _ = rt
+        .handle(resolve_profile_request("profile-card-release"))
+        .expect("resolve_ref dispatch must succeed");
+    let (open_outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("resolve_ref event drain must be armed");
+    assert!(
+        !open_outbound.is_empty(),
+        "resolve_ref setup must open a lifecycle subscription"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "resolve_ref setup must settle before release"
+    );
+
+    let events = rt
+        .handle(release_profile_request("profile-card-release"))
+        .expect("release_ref dispatch must succeed");
+    assert_action_accepted(&events, "nmp.kernel.release_ref");
+    assert_no_update_bytes(&events);
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "release_ref returns no outbound directly but must arm one event drain"
+    );
+
+    let (close_outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("release_ref event drain must be armed");
+    assert!(
+        !close_outbound.is_empty(),
+        "release event drain must compile the queued teardown into outbound"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "release_ref drain must not leave a fixed cadence behind"
+    );
+}
+
+#[test]
+fn legacy_claim_event_empty_outbound_arms_event_drain_and_drains_lifecycle() {
+    let mut rt = started_runtime();
+    settle_connected_runtime(&mut rt);
+
+    let events = rt
+        .handle(claim_event_request("legacy-claim", &"33".repeat(32)))
+        .expect("claim_event dispatch must succeed");
+    assert_action_accepted(&events, "nmp.kernel.claim_event");
+    assert_no_update_bytes(&events);
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "legacy claim_event returns no outbound directly but must arm one event drain"
+    );
+
+    let (outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("claim_event drain must be armed");
+    assert!(
+        !outbound.is_empty(),
+        "event drain must compile the queued event claim into outbound"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "claim_event drain must not leave a fixed cadence behind"
+    );
+}
+
+#[test]
+fn kernel_open_uri_snapshot_path_arms_event_drain_for_lifecycle_work() {
+    let mut rt = started_runtime();
+    settle_connected_runtime(&mut rt);
+
+    let events = rt
+        .handle(open_uri_request())
+        .expect("open_uri dispatch must succeed");
+    assert_action_accepted(&events, "nmp.kernel.open_uri");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::UpdateBytes { .. })),
+        "kernel open_uri still returns its accepted snapshot"
+    );
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "accepted_with_snapshot must arm a one-shot event drain"
+    );
+
+    let (outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("open_uri event drain must be armed");
+    assert!(
+        !outbound.is_empty(),
+        "event drain must compile the queued open_uri interest into outbound"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "open_uri drain must not leave a fixed cadence behind"
+    );
+}
+
+#[test]
+fn outbound_event_wake_stops_when_kernel_declares_no_deadline() {
+    let mut rt = started_runtime();
+    seed_account(&mut rt);
+
+    let _ = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("clear the post-start event deadline first");
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "idle post-start drain must not leave a cadence armed"
+    );
+
+    let event_id = "22".repeat(32);
+    let events = rt
+        .handle(publish_request("publish-clears-before-wake", &event_id))
+        .expect("publish dispatch must succeed");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::ActionAccepted { .. })),
+        "publish dispatch must ACK; got {events:?}"
+    );
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "publish outbound should arm one bounded event drain"
+    );
+    assert!(
+        rt.next_runtime_deadline_delay_for_test().is_some(),
+        "in-flight publish starts with a kernel deadline"
+    );
+
+    let _ = rt.inject_relay_text_frame_for_test(
+        RelayRole::Content,
+        RELAY_URL,
+        format!(r#"["OK","{event_id}",true,""]"#),
+    );
+    assert_eq!(
+        rt.next_runtime_deadline_delay_for_test(),
+        None,
+        "OK before the event drain should clear the kernel publish deadline"
+    );
+
+    let _ = rt.snapshot_bytes_for_test();
+    let (outbound, dirty) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("event drain must be armed");
+    assert!(
+        outbound.is_empty(),
+        "regression setup expects no new outbound during the follow-up drain"
+    );
     assert!(
         !dirty,
-        "idle tick must not signal a snapshot push (dirty-flag coalescing)"
+        "snapshot pull clears the dirty bit before the follow-up drain"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "previous outbound must not keep re-arming without a kernel deadline"
     );
 }
 
-// Issue #1143 fix 1 — tick() claim-expansion drain does not panic on native.
-//
-// `KernelReducer::tick()` now calls `poll_claim_expansion(crate::time::Instant::now())`
-// between the lifecycle drain and the publish pump. On native CI this resolves to
-// `std::time::Instant::now()` (never panics). On wasm32 the shim resolves to
-// `web_time::Instant::now()` (performance.now() backed — never panics in a
-// JS Worker). This test exercises the path on native CI.
 #[test]
-fn tick_with_both_role_relay_claims_expansion_does_not_panic() {
-    // Use a "both"-role relay (two drivers at the same URL). This exercises
-    // the claim-expansion drain AND the fan-out's `.filter()` path
-    // (fix 2 — all matching drivers receive the frame, not just the first).
-    let mut runtime = WasmRuntime::new();
-    runtime
-        .handle(WorkerRequest::Start(StartConfig {
-            app_id: "chirp".to_string(),
-            relays: vec![RELAY_URL.to_string()],
-            relay_bootstrap: vec![RelayBootstrapEntry {
-                url: RELAY_URL.to_string(),
-                role: "both".to_string(),
-            }],
-            database_name: "tick-parity-test".to_string(),
-            correlation_id: "start-parity".to_string(),
-        }))
-        .expect("Start must succeed");
+fn publish_outbound_declares_bounded_kernel_deadline() {
+    let mut rt = started_runtime();
+    seed_account(&mut rt);
 
-    // Connect the relay so claims would be immediately sendable.
+    let _ = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("clear the post-start event deadline first");
+    let events = rt
+        .handle(publish_request("publish-deadline", &"11".repeat(32)))
+        .expect("publish dispatch must succeed");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::ActionAccepted { .. })),
+        "publish dispatch must ACK; got {events:?}"
+    );
+    assert!(
+        rt.next_runtime_deadline_delay_for_test().is_some(),
+        "in-flight publish must declare a kernel runtime deadline"
+    );
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "dispatch still gets one event drain before the longer publish deadline"
+    );
+
+    let _ = rt.snapshot_bytes_for_test();
+    let _ = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("event drain must be armed after publish outbound");
+    let delay = rt
+        .maintenance_deadline_delay_for_test()
+        .expect("event drain should re-arm at the kernel-declared publish deadline");
+    assert!(
+        delay > 1_000,
+        "follow-up wake must be the publish deadline, not another fixed 1s event drain"
+    );
+}
+
+#[test]
+fn deadline_with_both_role_relay_claims_expansion_does_not_panic() {
+    let mut runtime = started_runtime();
+
     runtime.inject_relay_connected_for_test(RelayRole::Content, RELAY_URL);
 
-    // Tick must not panic even with the claim-expansion drain active.
-    let (_outbound, _dirty) = runtime.tick_for_test();
-    // Pass: no panic is the primary assertion (claim-expansion drain fires
-    // without a pre-existing Phase-1 claim → D8 no-op, no allocation).
+    let _ = runtime
+        .fire_maintenance_deadline_for_test()
+        .expect("relay-connected event must arm a deadline");
 }
 
 #[test]
-fn tick_after_relay_event_signals_push_then_coalesces() {
+fn relay_event_deadline_signals_dirty_snapshot_then_coalesces() {
     let mut rt = started_runtime();
 
-    // Take baseline snapshot to clear dirty flag.
     let _ = rt.snapshot_bytes_for_test();
-
-    // Phase 3: inject relay-connected — this mutates kernel relay state.
     rt.inject_relay_connected_for_test(RelayRole::Content, RELAY_URL);
 
-    // Phase 4: tick should be dirty because the relay state changed.
-    // (inject_relay_connected calls handle_relay_connected which marks the
-    // kernel dirty via the usual mutation path.)
-    let (_, dirty_after_connect) = rt.tick_for_test();
+    let (_, dirty_after_connect) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("relay-connected event must arm a deadline");
     assert!(
         dirty_after_connect,
-        "tick after a relay-connected mutation must signal dirty (snapshot push required)"
+        "deadline after a relay-connected mutation must signal dirty"
     );
 
-    // Phase 5: take a snapshot — clears dirty.
     let _ = rt.snapshot_bytes_for_test();
-
-    // Phase 6: another idle tick — no new mutations → not dirty again.
-    let (outbound2, dirty2) = rt.tick_for_test();
-    let _ = outbound2;
     assert!(
-        !dirty2,
-        "idle tick after snapshot must not signal dirty — coalescing must re-arm"
+        !rt.maintenance_deadline_armed_for_test(),
+        "snapshot-cleared relay event must not leave an idle cadence armed"
     );
+}
+
+#[test]
+fn production_scheduler_source_has_no_interval_driver() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    for relative in ["Cargo.toml", "src/lib.rs", "src/runtime.rs", "src/tick.rs"] {
+        let path = manifest.join(relative);
+        let source = fs::read_to_string(&path).expect("scheduler source must be readable");
+        for forbidden in [
+            "Interval::new",
+            "start_tick_interval",
+            "tick_interval",
+            "setInterval",
+        ] {
+            assert!(
+                !source.contains(forbidden),
+                "{} must not reintroduce fixed interval polling token `{}`",
+                path.display(),
+                forbidden
+            );
+        }
+    }
 }

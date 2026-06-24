@@ -25,6 +25,8 @@ mod helpers;
 #[cfg(test)]
 mod auth_park_tests;
 #[cfg(test)]
+mod deadline_tests;
+#[cfg(test)]
 mod tests;
 mod types;
 mod view_ops;
@@ -284,6 +286,19 @@ impl PublishEngine {
         // fires for them). This mirrors the on_ack completion path.
         self.finalize_completed_rows(&handles, now_ms);
         self.flush_view();
+    }
+
+    /// Earliest engine-owned wall-clock deadline that can make publish work
+    /// progress. `None` means there is no pending publish work the runtime
+    /// should wake for.
+    #[must_use]
+    pub fn next_deadline_ms(&self, now_ms: u64) -> Option<u64> {
+        self.in_flight
+            .values()
+            .filter_map(|row| {
+                helpers::next_deadline_ms(row, &self.unavailable_relays, now_ms, self.policy)
+            })
+            .min()
     }
 
     /// Terminal-finalize every handle in `handles` that is now fully complete

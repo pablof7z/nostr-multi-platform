@@ -246,6 +246,37 @@ pub(super) fn collect_p_tags(event: &SignedEvent) -> Vec<String> {
     out.into_iter().collect()
 }
 
+#[must_use]
+pub(super) fn next_deadline_ms(
+    in_flight: &InFlight,
+    unavailable_relays: &BTreeSet<RelayUrl>,
+    now_ms: u64,
+    policy: RetryPolicy,
+) -> Option<u64> {
+    let mut next: Option<u64> = None;
+    for (relay_url, state) in &in_flight.per_relay {
+        if unavailable_relays.contains(relay_url) {
+            continue;
+        }
+        let candidate = match state {
+            PerRelayState::Pending => Some(now_ms),
+            PerRelayState::InFlight { sent_at_ms, .. } => {
+                Some(sent_at_ms.saturating_add(policy.inflight_deadline_ms))
+            }
+            PerRelayState::RelayError { .. } | PerRelayState::TimedOut { .. } => in_flight
+                .pending_retries
+                .get(relay_url)
+                .copied()
+                .or(Some(now_ms)),
+            PerRelayState::Ok { .. } | PerRelayState::FailedAfterRetries { .. } => None,
+        };
+        if let Some(candidate) = candidate {
+            next = Some(next.map_or(candidate, |current| current.min(candidate)));
+        }
+    }
+    next
+}
+
 /// Transition any `InFlight` relay whose send predates `now_ms - deadline_ms`.
 /// If the attempt count has exhausted the transient retry budget, transitions
 /// directly to `FailedAfterRetries`; otherwise to `TimedOut` so the existing

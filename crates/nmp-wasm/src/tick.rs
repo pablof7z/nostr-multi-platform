@@ -1,97 +1,264 @@
-//! PR-2 — periodic 1 Hz tick driver for the wasm32 runtime.
+//! Event/deadline-driven runtime drain for the wasm32 runtime.
 //!
-//! # Shared core: `tick_once`
-//!
-//! [`tick_once`] is **not** `cfg(wasm32)`-gated: it calls `KernelReducer::tick()`
-//! (which drains the publish engine and the subscription lifecycle outbound)
-//! and reads back the `changed_since_emit` flag. Both the wasm32 timer closure
-//! AND the native [`super::runtime::WasmRuntime::tick_for_test`] helper call
-//! this function, so the dirty-flag coalescing logic is exercised on native CI
-//! even though the gloo-timers closure itself only exists on wasm32.
-//!
-//! # wasm32 timer: `start_tick_interval`
-//!
-//! [`start_tick_interval`] (wasm32-only) constructs a
-//! `gloo_timers::callback::Interval` that fires once per second on the JS event
-//! loop. Each tick:
-//!
-//! 1. Calls `tick_once` — borrows, ticks, reads dirty flag, drops borrow.
-//! 2. Fans the outbound batch through `relay_pool::fan_out_outbound` to live
-//!    relay drivers (the single canonical fan-out that uses `.filter()` so
-//!    every matching driver on a `"both"`-role URL receives the frame).
-//! 3. Runs the `post_tick_drain` hook (PR-4) **after** step 1's borrow is
-//!    released. Wasm32 composition roots use this hook to drain the
-//!    pending-claim queue without re-entering the reducer while it is
-//!    borrowed. If no drain is installed the step is a no-op.
-//! 4. **Iff** `dirty` — pushes a snapshot through the registered JS callback
-//!    (`snapshot::push_snapshot_if_callback`). Idle ticks with no state change
-//!    skip the push, avoiding spurious JS-heap allocations and upstream
-//!    re-renders.
-//!
-//! Dropping the returned `Interval` cancels the underlying `setInterval` call;
-//! `WasmRuntime::stop()` sets `tick_interval = None` before tearing down relay
-//! drivers.
+//! The runtime has a small amount of kernel-owned maintenance work that is not
+//! tied to a single host request: subscription lifecycle drains, claim
+//! expansion, publish retries/timeouts, and composition-root post-event drains.
+//! The old production path drove that work from a fixed browser interval. This
+//! module keeps the same deterministic reducer drain, but production schedules
+//! it only from explicit events or a previously-armed runtime deadline.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use nmp_core::{KernelReducer, OutboundMessage};
 
-/// Drive one tick cycle and return `(outbound, dirty)`.
+/// Coarse post-event maintenance deadline.
 ///
-/// `dirty` is the value of `KernelReducer::changed_since_emit()` sampled
-/// **after** `tick()` returns — the wasm32 timer uses it to decide whether to
-/// push a snapshot (`true` → push; `false` → skip). The borrow on `reducer`
-/// is fully released before the function returns, so callers can safely
-/// re-borrow for the snapshot push without a `RefCell` panic.
-pub(crate) fn tick_once(
-    reducer: &Rc<RefCell<KernelReducer>>,
-) -> (Vec<OutboundMessage>, bool) {
-    let mut r = reducer.borrow_mut();
-    let outbound = r.tick();
-    let dirty = r.changed_since_emit();
-    (outbound, dirty)
+/// This is not a recurring interval. It is the delay for one event-triggered
+/// browser deadline; follow-up wakes are armed only from explicit
+/// kernel-declared deadlines.
+pub(crate) const RUNTIME_EVENT_DRAIN_MS: u32 = 1_000;
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) enum WakePolicy {
+    /// Fire once after an event that may have queued immediate maintenance.
+    Event,
+    /// Fire at the next deadline the kernel/reducer reported.
+    KernelDeadline { delay_ms: u32 },
 }
 
-/// Start the 1 Hz periodic tick interval. Returns a
-/// `gloo_timers::callback::Interval` whose `Drop` impl cancels the JS
-/// `setInterval`. Wasm32-only.
+impl WakePolicy {
+    #[must_use]
+    fn delay_ms(self) -> u32 {
+        match self {
+            Self::Event => RUNTIME_EVENT_DRAIN_MS,
+            Self::KernelDeadline { delay_ms } => delay_ms,
+        }
+    }
+}
+
+#[must_use]
+pub(crate) fn event_or_kernel_policy(reducer: &Rc<RefCell<KernelReducer>>) -> WakePolicy {
+    reducer
+        .borrow()
+        .next_runtime_deadline_delay_ms()
+        .filter(|delay| *delay < RUNTIME_EVENT_DRAIN_MS)
+        .map_or(WakePolicy::Event, |delay_ms| WakePolicy::KernelDeadline {
+            delay_ms,
+        })
+}
+
+#[derive(Default)]
+pub(crate) struct RuntimeDeadline {
+    armed: bool,
+    armed_delay_ms: Option<u32>,
+    requested: u64,
+    fired: u64,
+    #[cfg(target_arch = "wasm32")]
+    timeout: Option<gloo_timers::callback::Timeout>,
+}
+
+impl RuntimeDeadline {
+    fn request(&mut self, policy: WakePolicy) -> bool {
+        let delay_ms = policy.delay_ms();
+        if self.armed {
+            let should_replace = match self.armed_delay_ms {
+                Some(current) => delay_ms < current,
+                None => true,
+            };
+            if !should_replace {
+                return false;
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                self.timeout = None;
+            }
+        } else {
+            self.armed = true;
+        }
+        self.armed_delay_ms = Some(delay_ms);
+        self.requested = self.requested.saturating_add(1);
+        true
+    }
+
+    fn begin_fire(&mut self) {
+        self.armed = false;
+        self.armed_delay_ms = None;
+        self.fired = self.fired.saturating_add(1);
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.timeout = None;
+        }
+    }
+
+    fn finish_fire(&mut self, outcome: &DrainOutcome) -> Option<WakePolicy> {
+        outcome
+            .next_deadline_delay_ms
+            .map(|delay_ms| WakePolicy::KernelDeadline { delay_ms })
+    }
+
+    fn cancel(&mut self) {
+        self.armed = false;
+        self.armed_delay_ms = None;
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.timeout = None;
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn armed_for_test(&self) -> bool {
+        self.armed
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn armed_delay_ms_for_test(&self) -> Option<u32> {
+        self.armed_delay_ms
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn requested_for_test(&self) -> u64 {
+        self.requested
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn fired_for_test(&self) -> u64 {
+        self.fired
+    }
+}
+
+pub(crate) struct DrainOutcome {
+    pub(crate) outbound: Vec<OutboundMessage>,
+    pub(crate) dirty: bool,
+    pub(crate) next_deadline_delay_ms: Option<u32>,
+}
+
+/// Drive one deterministic reducer maintenance pass.
 ///
-/// The closure captures `Rc` handles — not references — so the timer can
-/// outlive any particular borrow window on `WasmRuntime`. Each fire:
-///
-/// 1. Calls `tick_once` (borrows reducer, ticks, drops borrow).
-/// 2. Fans outbound to relay drivers.
-/// 3. Runs the post-tick drain hook if installed (PR-4 claim drain).
-/// 4. Pushes a snapshot iff `dirty`.
+/// The reducer borrow is released before the post-event drain hook runs. If the
+/// hook exists, run one additional reducer pass afterwards so work the hook queued
+/// is serviced by the same explicit wake instead of depending on another
+/// timer event.
+pub(crate) fn drain_once(
+    reducer: &Rc<RefCell<KernelReducer>>,
+    post_event_drain: &Rc<RefCell<Option<Rc<dyn Fn()>>>>,
+) -> DrainOutcome {
+    let mut outbound = reducer.borrow_mut().tick();
+    if run_post_event_drain(post_event_drain) {
+        outbound.extend(reducer.borrow_mut().tick());
+    }
+    let reducer = reducer.borrow();
+    let dirty = reducer.changed_since_emit();
+    let next_deadline_delay_ms = reducer.next_runtime_deadline_delay_ms();
+    DrainOutcome {
+        outbound,
+        dirty,
+        next_deadline_delay_ms,
+    }
+}
+
+fn run_post_event_drain(post_event_drain: &Rc<RefCell<Option<Rc<dyn Fn()>>>>) -> bool {
+    let drain = match post_event_drain.try_borrow() {
+        Ok(slot) => slot.as_ref().map(Rc::clone),
+        Err(_) => None,
+    };
+    if let Some(drain) = drain {
+        drain();
+        true
+    } else {
+        false
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn request_deadline_for_test(
+    deadline: &Rc<RefCell<RuntimeDeadline>>,
+    policy: WakePolicy,
+) {
+    let _ = deadline.borrow_mut().request(policy);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn cancel_deadline(deadline: &Rc<RefCell<RuntimeDeadline>>) {
+    deadline.borrow_mut().cancel();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn fire_deadline_for_test(
+    deadline: &Rc<RefCell<RuntimeDeadline>>,
+    reducer: &Rc<RefCell<KernelReducer>>,
+    post_event_drain: &Rc<RefCell<Option<Rc<dyn Fn()>>>>,
+) -> Option<DrainOutcome> {
+    if !deadline.borrow().armed {
+        return None;
+    }
+    deadline.borrow_mut().begin_fire();
+    let outcome = drain_once(reducer, post_event_drain);
+    let next_policy = deadline.borrow_mut().finish_fire(&outcome);
+    if let Some(policy) = next_policy {
+        request_deadline_for_test(deadline, policy);
+    }
+    Some(outcome)
+}
+
 #[cfg(target_arch = "wasm32")]
-pub(crate) fn start_tick_interval(
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn request_runtime_deadline(
+    deadline: Rc<RefCell<RuntimeDeadline>>,
+    policy: WakePolicy,
     reducer: Rc<RefCell<KernelReducer>>,
     drivers: Rc<RefCell<Vec<Rc<nmp_network::browser_driver::BrowserRelayDriver>>>>,
     handlers_slot: Rc<RefCell<Option<nmp_network::browser_driver::BrowserKernelHandlers>>>,
     snapshot_callback: Rc<RefCell<Option<js_sys::Function>>>,
     meta: Rc<RefCell<crate::snapshot::RuntimeMeta>>,
-    post_tick_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
-) -> gloo_timers::callback::Interval {
-    gloo_timers::callback::Interval::new(1_000, move || {
-        // Step 1: tick. The borrow_mut is scoped to tick_once and drops
-        // before this closure continues — the post-tick drain is therefore
-        // safe to call here without a RefCell panic.
-        let (outbound, dirty) = tick_once(&reducer);
-        // Step 2: fan outbound relay frames (canonical fan-out via relay_pool;
-        // spawns drivers on demand for kernel-discovered relay URLs).
-        crate::relay_pool::fan_out_outbound(&drivers, &handlers_slot, &outbound);
-        // Step 3: post-tick drain (PR-4). Runs AFTER the reducer borrow
-        // from tick_once is fully released, so the drain closure can safely
-        // call reducer.borrow_mut() to process queued claim/release requests.
-        if let Ok(slot) = post_tick_drain.try_borrow() {
-            if let Some(drain) = slot.as_ref() {
-                drain();
-            }
+    post_event_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
+) {
+    let delay_ms = policy.delay_ms();
+    if !deadline.borrow_mut().request(policy) {
+        return;
+    }
+
+    let callback_deadline = Rc::clone(&deadline);
+    let callback_reducer = Rc::clone(&reducer);
+    let callback_drivers = Rc::clone(&drivers);
+    let callback_handlers = Rc::clone(&handlers_slot);
+    let callback_snapshot = Rc::clone(&snapshot_callback);
+    let callback_meta = Rc::clone(&meta);
+    let callback_post_drain = Rc::clone(&post_event_drain);
+
+    let timeout = gloo_timers::callback::Timeout::new(delay_ms, move || {
+        callback_deadline.borrow_mut().begin_fire();
+        let outcome = drain_once(&callback_reducer, &callback_post_drain);
+        crate::relay_pool::fan_out_outbound(
+            &callback_drivers,
+            &callback_handlers,
+            &outcome.outbound,
+        );
+        if outcome.dirty {
+            crate::snapshot::push_snapshot_if_callback(
+                &callback_snapshot,
+                &callback_reducer,
+                &callback_meta,
+            );
         }
-        // Step 4: push snapshot if state changed.
-        if dirty {
-            crate::snapshot::push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+        let next_policy = callback_deadline.borrow_mut().finish_fire(&outcome);
+        if let Some(policy) = next_policy {
+            request_runtime_deadline(
+                Rc::clone(&callback_deadline),
+                policy,
+                Rc::clone(&callback_reducer),
+                Rc::clone(&callback_drivers),
+                Rc::clone(&callback_handlers),
+                Rc::clone(&callback_snapshot),
+                Rc::clone(&callback_meta),
+                Rc::clone(&callback_post_drain),
+            );
         }
-    })
+    });
+    deadline.borrow_mut().timeout = Some(timeout);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn cancel_deadline(deadline: &Rc<RefCell<RuntimeDeadline>>) {
+    deadline.borrow_mut().cancel();
 }

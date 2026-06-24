@@ -22,7 +22,9 @@ use std::fmt;
 use std::rc::Rc;
 
 use nmp_core::substrate::{ActionModule, ActionRegistrar};
-use nmp_core::{default_registry, ActionRegistry, KernelAction, KernelReducer, KernelUpdate, OutboundMessage};
+use nmp_core::{
+    default_registry, ActionRegistry, KernelAction, KernelReducer, KernelUpdate, OutboundMessage,
+};
 
 #[cfg(target_arch = "wasm32")]
 use crate::relay_pool;
@@ -30,9 +32,7 @@ use crate::relay_pool;
 use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
 
 use crate::dispatch_routing::browser_driver_missing_reason;
-use crate::protocol::{
-    CapabilityFailure, RuntimeStatus, StartConfig, WorkerEvent, WorkerRequest,
-};
+use crate::protocol::{CapabilityFailure, RuntimeStatus, StartConfig, WorkerEvent, WorkerRequest};
 use crate::snapshot::{build_snapshot_bytes, RuntimeMeta};
 
 const PROTOCOL_VERSION: u16 = 1;
@@ -72,7 +72,10 @@ pub struct WasmRuntime {
     /// warning the symmetric struct layout otherwise triggers there.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     snapshot_callback: Rc<RefCell<Option<SnapshotCallback>>>,
-    /// PR-4 post-tick drain — fired AFTER `tick_once`'s `borrow_mut` drops.
+    /// PR-4 post-event drain — fired AFTER the reducer maintenance borrow
+    /// drops. Kept source-compatible with composition roots that installed the
+    /// old post-tick hook; the production scheduler now invokes it from event
+    /// and deadline wakes, not from a fixed interval.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     post_tick_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
     /// Live `web_sys::WebSocket` drivers — one per relay URL. Seeded from the
@@ -88,10 +91,10 @@ pub struct WasmRuntime {
     /// ordering invariant) and cleared on `Stop`. `wasm32`-only.
     #[cfg(target_arch = "wasm32")]
     handlers_slot: Rc<RefCell<Option<BrowserKernelHandlers>>>,
-    /// PR-2 — 1 Hz tick timer. Dropping cancels the JS `setInterval`.
-    /// `start()` fills it; `stop()` clears it. `wasm32`-only.
-    #[cfg(target_arch = "wasm32")]
-    tick_interval: Option<gloo_timers::callback::Interval>,
+    /// Event/deadline-driven runtime scheduler. Wasm32 stores a one-shot
+    /// `setTimeout` handle inside the scheduler; native builds keep the same
+    /// state for deterministic tests.
+    maintenance_deadline: Rc<RefCell<crate::tick::RuntimeDeadline>>,
     /// ADR-0064 / S3 (#1751) — the typed action registry. The wasm twin of
     /// `NmpApp::action_registry`: it owns the per-namespace `ActionModule`
     /// values whose `start_bytes` runs the typed FlatBuffers `decode_payload`
@@ -116,8 +119,7 @@ impl Default for WasmRuntime {
             relays: Rc::new(RefCell::new(Vec::new())),
             #[cfg(target_arch = "wasm32")]
             handlers_slot: Rc::new(RefCell::new(None)),
-            #[cfg(target_arch = "wasm32")]
-            tick_interval: None,
+            maintenance_deadline: Rc::new(RefCell::new(crate::tick::RuntimeDeadline::default())),
             action_registry: default_registry(),
         }
     }
@@ -129,8 +131,8 @@ impl WasmRuntime {
         Self::default()
     }
 
-    /// Install the post-tick drain hook — fires AFTER `tick_once`'s
-    /// `borrow_mut` is released, so the drain can safely call
+    /// Install the post-event drain hook — fires AFTER the scheduler's reducer
+    /// maintenance borrow is released, so the drain can safely call
     /// `reducer.borrow_mut()`. Subsequent calls replace the prior drain.
     pub fn install_post_tick_drain(&self, drain: Rc<dyn Fn()>) {
         *self.post_tick_drain.borrow_mut() = Some(drain);
@@ -139,9 +141,10 @@ impl WasmRuntime {
     /// Install a post-encode frame observer (issue #1767).
     ///
     /// The closure is invoked from `build_snapshot_bytes` with the
-    /// just-encoded FlatBuffers frame bytes, on EVERY snapshot path (tick,
-    /// relay-push, synchronous `handle` return, publish fan-out) — because
-    /// that builder is the single chokepoint all of them funnel through. The
+    /// just-encoded FlatBuffers frame bytes, on EVERY snapshot path
+    /// (deadline wake, relay-push, synchronous `handle` return, publish
+    /// fan-out) — because that builder is the single chokepoint all of them
+    /// funnel through. The
     /// callback runs AFTER `make_update_frame` returns and receives only
     /// `&[u8]`, so it never re-enters the reducer.
     ///
@@ -212,9 +215,7 @@ impl WasmRuntime {
     /// the same callback channel as `handle_json`. The slot is `Rc<RefCell>`
     /// so cloning it gives a shared handle with zero-copy semantics.
     #[cfg(target_arch = "wasm32")]
-    pub fn snapshot_callback_handle(
-        &self,
-    ) -> &Rc<RefCell<Option<js_sys::Function>>> {
+    pub fn snapshot_callback_handle(&self) -> &Rc<RefCell<Option<js_sys::Function>>> {
         &self.snapshot_callback
     }
 
@@ -327,8 +328,7 @@ impl WasmRuntime {
         // `NoopOutboxResolver` that resolved zero targets for every
         // `PublishTarget::Auto` and silently dropped every publish.
         {
-            let relay_urls: Vec<String> =
-                relay_bootstrap.iter().map(|e| e.url.clone()).collect();
+            let relay_urls: Vec<String> = relay_bootstrap.iter().map(|e| e.url.clone()).collect();
             let resolver = crate::publish_path::build_wasm_outbox_resolver(relay_urls);
             self.reducer.borrow_mut().set_publish_resolver(resolver);
         }
@@ -340,20 +340,14 @@ impl WasmRuntime {
             meta.database_name = config.database_name;
         }
 
-        // V-01 Stage 3 / PR-2 — spawn relay drivers and start the 1 Hz tick
-        // timer on wasm32. Native builds skip both.
+        // V-01 Stage 3 / #1937 — spawn relay drivers and arm one post-start
+        // deadline wake. Native builds skip drivers; tests can fire the same
+        // scheduler state explicitly.
         #[cfg(target_arch = "wasm32")]
         {
             self.spawn_relay_drivers()?;
-            self.tick_interval = Some(crate::tick::start_tick_interval(
-                Rc::clone(&self.reducer),
-                Rc::clone(&self.relays),
-                Rc::clone(&self.handlers_slot),
-                Rc::clone(&self.snapshot_callback),
-                Rc::clone(&self.meta),
-                Rc::clone(&self.post_tick_drain),
-            ));
         }
+        self.request_event_drain();
 
         Ok(vec![
             WorkerEvent::RuntimeStatus {
@@ -365,9 +359,9 @@ impl WasmRuntime {
     }
 
     fn stop(&mut self, correlation_id: String) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        // PR-2: cancel tick before relay teardown; no in-flight tick against partial pool.
-        #[cfg(target_arch = "wasm32")]
-        { self.tick_interval = None; }
+        // Cancel deadline before relay teardown; no in-flight wake against a
+        // partially closed pool.
+        crate::tick::cancel_deadline(&self.maintenance_deadline);
         // Tear down every live relay driver — closing the JS sockets and
         // dropping the parked closures so the user-agent reclaims them.
         // Order matters: close sockets BEFORE driving the kernel `Stop`,
@@ -416,6 +410,8 @@ impl WasmRuntime {
             Rc::clone(&self.reducer),
             Rc::clone(&self.meta),
             Rc::clone(&self.handlers_slot),
+            Rc::clone(&self.maintenance_deadline),
+            Rc::clone(&self.post_tick_drain),
         );
         // Publish the handler bag so on-demand spawns (`fan_out_outbound`'s
         // spawn-on-miss) wire up identical callbacks. The bag's closures
@@ -428,19 +424,43 @@ impl WasmRuntime {
         Ok(())
     }
 
+    /// Arm one runtime maintenance deadline.
+    fn request_maintenance_deadline(&self, policy: crate::tick::WakePolicy) {
+        #[cfg(target_arch = "wasm32")]
+        crate::tick::request_runtime_deadline(
+            Rc::clone(&self.maintenance_deadline),
+            policy,
+            Rc::clone(&self.reducer),
+            Rc::clone(&self.relays),
+            Rc::clone(&self.handlers_slot),
+            Rc::clone(&self.snapshot_callback),
+            Rc::clone(&self.meta),
+            Rc::clone(&self.post_tick_drain),
+        );
+        #[cfg(not(target_arch = "wasm32"))]
+        crate::tick::request_deadline_for_test(&self.maintenance_deadline, policy);
+    }
+
+    fn request_event_drain(&self) {
+        self.request_maintenance_deadline(crate::tick::WakePolicy::Event);
+    }
+
+    fn request_event_or_kernel_deadline(&self) {
+        self.request_maintenance_deadline(crate::tick::event_or_kernel_policy(&self.reducer));
+    }
+
     /// Fan `outbound` messages to live relay drivers (wasm32) or drop them
     /// (native — the driver pool does not exist in test builds).
     fn fan_outbound(&self, outbound: Vec<OutboundMessage>) {
+        let has_outbound = !outbound.is_empty();
         #[cfg(target_arch = "wasm32")]
         crate::relay_pool::fan_out_outbound(&self.relays, &self.handlers_slot, &outbound);
         #[cfg(not(target_arch = "wasm32"))]
         let _ = outbound;
+        if has_outbound {
+            self.request_event_or_kernel_deadline();
+        }
     }
-
-    // `accepted_with_snapshot`, `dispatch_bytes`, and `dispatch` — the
-    // action-namespace routing arm of `handle` — live in the sibling
-    // `runtime/dispatch.rs` module (LOC ceiling). They are still private
-    // methods of `WasmRuntime` (`impl WasmRuntime` in that file).
 
     /// Build a binary `WorkerEvent::UpdateBytes` from the current kernel +
     /// meta state. Delegates to `build_snapshot_bytes` which calls

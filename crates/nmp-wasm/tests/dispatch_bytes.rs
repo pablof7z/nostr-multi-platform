@@ -13,9 +13,7 @@
 //! returning the generic envelope-level write-path `CapabilityFailure` the S2
 //! arm produced for every namespace.
 
-use nmp_core::dispatch_envelope::{
-    encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION,
-};
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_wasm::{CapabilityFailure, SetIdentity, WasmRuntime, WorkerEvent, WorkerRequest};
 
 fn envelope(namespace: &str, correlation: &str, version: u32, payload: &[u8]) -> Vec<u8> {
@@ -45,7 +43,12 @@ fn seed_account(runtime: &mut WasmRuntime) {
 fn binary_doorway_decodes_and_routes_by_namespace() {
     let mut runtime = WasmRuntime::new();
     // Opaque payload — the binary lane carries it verbatim, never interpreted.
-    let bytes = envelope("nmp.publish", "corr-1", DISPATCH_ENVELOPE_SCHEMA_VERSION, b"\x01\x02\x03");
+    let bytes = envelope(
+        "nmp.publish",
+        "corr-1",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        b"\x01\x02\x03",
+    );
 
     let events = runtime.dispatch_bytes(&bytes);
 
@@ -64,7 +67,12 @@ fn binary_doorway_decodes_and_routes_by_namespace() {
 #[test]
 fn binary_doorway_rejects_schema_version_mismatch_fail_closed() {
     let mut runtime = WasmRuntime::new();
-    let bad = envelope("nmp.publish", "corr-2", DISPATCH_ENVELOPE_SCHEMA_VERSION + 1, b"p");
+    let bad = envelope(
+        "nmp.publish",
+        "corr-2",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION + 1,
+        b"p",
+    );
 
     let events = runtime.dispatch_bytes(&bad);
 
@@ -106,10 +114,10 @@ mod typed_decode {
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
 
+    use nmp_core::actor::ActorCommand;
     use nmp_core::substrate::{
         ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
     };
-    use nmp_core::actor::ActorCommand;
     use serde::{Deserialize, Serialize};
 
     const PROBE_NAMESPACE: &str = "nmp.test.typed_probe";
@@ -158,9 +166,7 @@ mod typed_decode {
         const NAMESPACE: &'static str = PROBE_NAMESPACE;
         type Action = ProbeAction;
 
-        fn decode_payload(
-            bytes: &[u8],
-        ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
             Some(<ProbeAction as ActionPayload>::decode(bytes))
         }
 
@@ -203,6 +209,14 @@ mod typed_decode {
         });
         // An active account is required (fail-closed: no signer → no write).
         seed_account(&mut runtime);
+        let _ = runtime
+            .fire_maintenance_deadline_for_test()
+            .expect("seed_account must arm a post-event drain");
+        let _ = runtime.snapshot_bytes_for_test();
+        assert!(
+            !runtime.maintenance_deadline_armed_for_test(),
+            "typed dispatch assertion must start from an unarmed scheduler"
+        );
 
         let bytes = envelope(
             PROBE_NAMESPACE,
@@ -222,7 +236,10 @@ mod typed_decode {
         // This is the #1008 outcome: the typed dispatch path runs to completion
         // instead of short-circuiting with a "not yet wired" token.
         match &events[..] {
-            [WorkerEvent::ActionAccepted { action_type, correlation_id }, WorkerEvent::UpdateBytes { .. }] => {
+            [WorkerEvent::ActionAccepted {
+                action_type,
+                correlation_id,
+            }, WorkerEvent::UpdateBytes { .. }] => {
                 assert_eq!(action_type, PROBE_NAMESPACE);
                 assert_eq!(correlation_id, "corr-typed");
             }
@@ -230,6 +247,11 @@ mod typed_decode {
                 "expected [ActionAccepted, UpdateBytes] for side-effect-only module; got {other:?}"
             ),
         }
+        assert_eq!(
+            runtime.maintenance_deadline_delay_for_test(),
+            Some(1_000),
+            "successful typed command execution must arm one post-event drain"
+        );
     }
 
     /// Fail-closed: a malformed typed payload for a registered namespace is
@@ -309,9 +331,7 @@ mod typed_decode {
         let events = runtime.dispatch_bytes(&bytes);
         match &events[..] {
             [WorkerEvent::CapabilityFailure(CapabilityFailure {
-                capability,
-                reason,
-                ..
+                capability, reason, ..
             })] => {
                 assert_eq!(capability, "nmp.publish");
                 // Decode rejection — not the old publish-disabled token.
@@ -320,8 +340,10 @@ mod typed_decode {
                     "after #1008 the old disable token must be gone; got: {reason}"
                 );
                 assert!(
-                    reason.contains("malformed") || reason.contains("file identifier")
-                        || reason.contains("decode") || reason.contains("invalid"),
+                    reason.contains("malformed")
+                        || reason.contains("file identifier")
+                        || reason.contains("decode")
+                        || reason.contains("invalid"),
                     "malformed payload must surface a decode rejection reason; got: {reason}"
                 );
             }

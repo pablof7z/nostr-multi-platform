@@ -13,7 +13,9 @@
 //! PD-025/5: codex review finding — quiet-period retry end-to-end verification.
 
 use std::sync::Arc;
+use std::time::{Duration, UNIX_EPOCH};
 
+use crate::kernel::clock::FixedClock;
 use crate::kernel::Kernel;
 use crate::publish::{InMemoryPublishStore, PublishStore};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
@@ -88,6 +90,33 @@ fn t127_quiet_socket_tick_progresses_pending_retry_without_inbound() {
         retry[0].text.contains("EVENT"),
         "retry frame must be a NIP-01 EVENT publish, got: {}",
         retry[0].text
+    );
+}
+
+#[test]
+fn runtime_deadline_delay_uses_injected_kernel_clock() {
+    let author = "ab".repeat(32);
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    seed_kind10002(&mut kernel, &author, &[WRITE_R1]);
+    let signed = fake_signed(
+        "fa".repeat(32).as_str(),
+        &author,
+        1,
+        "scheduler deadline clock-injection test",
+    );
+
+    let t0 = 1_000_000;
+    let outbound =
+        kernel.run_publish_engine_at(&signed, &[], crate::publish::PublishTarget::Auto, None, t0);
+    assert_eq!(outbound.len(), 1, "publish must enter InFlight");
+
+    kernel.set_clock(Arc::new(FixedClock(
+        UNIX_EPOCH + Duration::from_millis(t0 + 1_234),
+    )));
+    assert_eq!(
+        kernel.next_publish_engine_deadline_delay_ms(),
+        Some(30_000 - 1_234),
+        "runtime scheduler deadline must be computed from the injected kernel clock"
     );
 }
 

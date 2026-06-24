@@ -2,8 +2,9 @@
 //!
 //! Owns the construction of the per-relay [`BrowserRelayDriver`] set, the
 //! kernel-handler callback bag that bridges the driver back into
-//! [`nmp_core::KernelReducer`], the outbound fan-out, and the snapshot push
-//! that fires after every kernel-mutating inbound relay frame.
+//! [`nmp_core::KernelReducer`], the outbound fan-out, the event/deadline wake,
+//! and the snapshot push that fires after every kernel-mutating inbound relay
+//! frame.
 //!
 //! # Step 8 phase C — relocation seam
 //!
@@ -33,7 +34,7 @@ use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 /// Fan an outbound batch to the driver whose URL matches each message,
 /// spawning a driver on demand for any kernel-targeted URL not yet in the
 /// pool. Used by every kernel-handler closure (connected/text/binary), the
-/// 1 Hz tick path (`tick::start_tick_interval`), and the write publish path.
+/// event/deadline runtime wake, and the write publish path.
 ///
 /// One driver per URL (relay pool is now URL-keyed — see
 /// [`crate::relay_plan`]), so each message goes to the single matching driver;
@@ -93,6 +94,29 @@ pub(crate) fn fan_out_outbound(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+fn request_runtime_deadline(
+    deadline: &Rc<RefCell<crate::tick::RuntimeDeadline>>,
+    policy: crate::tick::WakePolicy,
+    reducer: &Rc<RefCell<KernelReducer>>,
+    drivers: &Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
+    handlers_slot: &Rc<RefCell<Option<BrowserKernelHandlers>>>,
+    snapshot_callback: &Rc<RefCell<Option<js_sys::Function>>>,
+    meta: &Rc<RefCell<RuntimeMeta>>,
+    post_event_drain: &Rc<RefCell<Option<Rc<dyn Fn()>>>>,
+) {
+    crate::tick::request_runtime_deadline(
+        Rc::clone(deadline),
+        policy,
+        Rc::clone(reducer),
+        Rc::clone(drivers),
+        Rc::clone(handlers_slot),
+        Rc::clone(snapshot_callback),
+        Rc::clone(meta),
+        Rc::clone(post_event_drain),
+    );
+}
+
 /// Build the [`BrowserKernelHandlers`] each [`BrowserRelayDriver`] will own.
 ///
 /// One closure per kernel-ingest touchpoint:
@@ -126,6 +150,8 @@ pub(crate) fn build_handlers(
     reducer: Rc<RefCell<KernelReducer>>,
     meta: Rc<RefCell<RuntimeMeta>>,
     handlers_slot: Rc<RefCell<Option<BrowserKernelHandlers>>>,
+    deadline: Rc<RefCell<crate::tick::RuntimeDeadline>>,
+    post_event_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
 ) -> BrowserKernelHandlers {
     // Each closure clones the `Rc` handles it needs. The driver invokes them
     // with `&str` URLs (we copy into owned `String` only where the kernel API
@@ -142,12 +168,24 @@ pub(crate) fn build_handlers(
         let snapshot_callback = Rc::clone(&snapshot_callback);
         let meta = Rc::clone(&meta);
         let handlers_slot = Rc::clone(&handlers_slot);
+        let deadline = Rc::clone(&deadline);
+        let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, is_reconnect: bool| {
             let outbound = reducer
                 .borrow_mut()
                 .handle_relay_connected(role, url, is_reconnect);
             fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+            request_runtime_deadline(
+                &deadline,
+                crate::tick::event_or_kernel_policy(&reducer),
+                &reducer,
+                &drivers,
+                &handlers_slot,
+                &snapshot_callback,
+                &meta,
+                &post_event_drain,
+            );
         }) as Rc<dyn Fn(RelayRole, &str, bool)>
     };
 
@@ -157,12 +195,25 @@ pub(crate) fn build_handlers(
         let snapshot_callback = Rc::clone(&snapshot_callback);
         let meta = Rc::clone(&meta);
         let handlers_slot = Rc::clone(&handlers_slot);
+        let deadline = Rc::clone(&deadline);
+        let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, text: String| {
-            let outbound = reducer
-                .borrow_mut()
-                .handle_relay_frame(role, url, RelayFrame::Text(text));
+            let outbound =
+                reducer
+                    .borrow_mut()
+                    .handle_relay_frame(role, url, RelayFrame::Text(text));
             fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+            request_runtime_deadline(
+                &deadline,
+                crate::tick::event_or_kernel_policy(&reducer),
+                &reducer,
+                &drivers,
+                &handlers_slot,
+                &snapshot_callback,
+                &meta,
+                &post_event_drain,
+            );
         }) as Rc<dyn Fn(RelayRole, &str, String)>
     };
 
@@ -172,12 +223,25 @@ pub(crate) fn build_handlers(
         let snapshot_callback = Rc::clone(&snapshot_callback);
         let meta = Rc::clone(&meta);
         let handlers_slot = Rc::clone(&handlers_slot);
+        let deadline = Rc::clone(&deadline);
+        let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, bytes: Vec<u8>| {
-            let outbound = reducer
-                .borrow_mut()
-                .handle_relay_frame(role, url, RelayFrame::Binary(bytes));
+            let outbound =
+                reducer
+                    .borrow_mut()
+                    .handle_relay_frame(role, url, RelayFrame::Binary(bytes));
             fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+            request_runtime_deadline(
+                &deadline,
+                crate::tick::event_or_kernel_policy(&reducer),
+                &reducer,
+                &drivers,
+                &handlers_slot,
+                &snapshot_callback,
+                &meta,
+                &post_event_drain,
+            );
         }) as Rc<dyn Fn(RelayRole, &str, Vec<u8>)>
     };
 
@@ -185,6 +249,10 @@ pub(crate) fn build_handlers(
         let reducer = Rc::clone(&reducer);
         let snapshot_callback = Rc::clone(&snapshot_callback);
         let meta = Rc::clone(&meta);
+        let drivers = Rc::clone(&drivers);
+        let handlers_slot = Rc::clone(&handlers_slot);
+        let deadline = Rc::clone(&deadline);
+        let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, reason: Option<String>| {
             // `RelayFrame::Close` always returns an empty outbound — we drop
             // it. Snapshot push captures `relay.last_close_reason`.
@@ -192,6 +260,16 @@ pub(crate) fn build_handlers(
                 .borrow_mut()
                 .handle_relay_frame(role, url, RelayFrame::Close(reason));
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+            request_runtime_deadline(
+                &deadline,
+                crate::tick::event_or_kernel_policy(&reducer),
+                &reducer,
+                &drivers,
+                &handlers_slot,
+                &snapshot_callback,
+                &meta,
+                &post_event_drain,
+            );
         }) as Rc<dyn Fn(RelayRole, &str, Option<String>)>
     };
 
@@ -199,9 +277,23 @@ pub(crate) fn build_handlers(
         let reducer = Rc::clone(&reducer);
         let snapshot_callback = Rc::clone(&snapshot_callback);
         let meta = Rc::clone(&meta);
+        let drivers = Rc::clone(&drivers);
+        let handlers_slot = Rc::clone(&handlers_slot);
+        let deadline = Rc::clone(&deadline);
+        let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str| {
             reducer.borrow_mut().handle_relay_closed(role, url);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+            request_runtime_deadline(
+                &deadline,
+                crate::tick::event_or_kernel_policy(&reducer),
+                &reducer,
+                &drivers,
+                &handlers_slot,
+                &snapshot_callback,
+                &meta,
+                &post_event_drain,
+            );
         }) as Rc<dyn Fn(RelayRole, &str)>
     };
 
@@ -209,9 +301,23 @@ pub(crate) fn build_handlers(
         let reducer = Rc::clone(&reducer);
         let snapshot_callback = Rc::clone(&snapshot_callback);
         let meta = Rc::clone(&meta);
+        let drivers = Rc::clone(&drivers);
+        let handlers_slot = Rc::clone(&handlers_slot);
+        let deadline = Rc::clone(&deadline);
+        let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, error: String| {
             reducer.borrow_mut().handle_relay_failed(role, url, error);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
+            request_runtime_deadline(
+                &deadline,
+                crate::tick::event_or_kernel_policy(&reducer),
+                &reducer,
+                &drivers,
+                &handlers_slot,
+                &snapshot_callback,
+                &meta,
+                &post_event_drain,
+            );
         }) as Rc<dyn Fn(RelayRole, &str, String)>
     };
 
