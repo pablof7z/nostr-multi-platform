@@ -3,15 +3,15 @@
 - **Status:** Accepted (owner-decided via [#1671](https://github.com/issues/1671); parent of [#1635](https://github.com/issues/1635)).
 - **Date:** 2026-06-21
 - **Decides:** Collapse the three-way profile surface
-  (`claimed_profiles` / `mention_profiles` / `resolved_profiles`) and the parallel
-  `claim_event` / `claimed_events` surface into ONE kernel-owned, refcounted,
+  (`claimed_profiles` / `mention_profiles` / `resolved_profiles`) and the legacy
+  event-claim / `claimed_events` surface into ONE kernel-owned, refcounted,
   deduped **reference-resolution primitive** — `RefResolver` — exposing a single
   origin-blind seam `resolve_ref(namespace, key, consumer_id, shape, liveness)` /
   `release_ref(...)`, and emitting ONE keyed push-updating projection per namespace
   (`refs.profile`, `refs.event`). Builds #1635's typed keyed profile read API on top.
 - **Supersedes / amends:**
   - **ADR-0042** (profile-resolution residue). ADR-0042 §4 deliberately kept
-    `claim_profile` / `claim_event` on a bespoke refcounted-one-shot lifecycle
+    profile claims and event claims on a bespoke refcounted-one-shot lifecycle
     ("explicitly NOT done here — claim_* keeps its bespoke lifecycle") and §5
     routed author/thread profile data through the `claimed_profiles` tier. This ADR
     finishes that deferred migration: the claim surface and the
@@ -63,10 +63,10 @@ resolves *iff* it was explicitly `claim_profile`-d. The precedence merge
 (`projections.rs:321-335`) reconciles a populated map against a permanently-empty one.
 Two code paths, one concept — a D4 ("single writer per fact") smell.
 
-### `claim_event` is already the second instance of the same machine
+### Legacy event claims were already the second instance of the same machine
 
-`claim_profile` (`kernel/requests/profile.rs`) and `claim_event`
-(`kernel/requests/event.rs`) are **already two instances of one shape**:
+Profile claims (`kernel/requests/profile.rs`) and legacy event claims
+(`kernel/requests/event.rs`) were **already two instances of one shape**:
 
 1. **refcounted consumer ownership** — `profile_claims: HashMap<pubkey, BTreeSet<consumer_id>>`
    / `event_claims: HashMap<primary_id, BTreeSet<consumer_id>>`, bounded
@@ -77,13 +77,12 @@ Two code paths, one concept — a D4 ("single writer per fact") smell.
 3. **a push-updating keyed projection** — `claimed_profiles` / `claimed_events`,
    each with a per-source rev counter already wired into ADR-0055's manifest
    (`source_versions.profile_claims_ver` / `claimed_event_content_ver`);
-4. **release** — symmetric `release_profile` / `release_event` decrement the refcount
-   and drop the registry interest on the last owner.
+4. **release** — symmetric profile/event release paths decrement the refcount and
+   drop the registry interest on the last owner.
 
-`claim_event.rs:1-11` and `:55-60` say so in the module docs ("Symmetric with
-`claim_profile`/`release_profile` but addresses events instead of authors",
-"Mirrors `Kernel::claim_profile` line-for-line"). The two surfaces are not two
-features; they are one primitive instantiated twice. This ADR names the primitive.
+The historical module docs described this symmetry directly. The two surfaces were
+not two features; they were one primitive instantiated twice. This ADR names the
+primitive.
 
 ### The coverage hole
 
@@ -107,7 +106,7 @@ only name + picture.
 ## Decision
 
 A kernel-owned **`RefResolver`** primitive: a refcounted, deduped, origin-blind
-reference resolver that generalizes the existing `claim_profile` + `claim_event`
+reference resolver that generalizes the existing profile + event claim
 machinery rather than inventing a new machine.
 
 ### D1 — One seam, origin-blind, refcounted + deduped
@@ -129,7 +128,7 @@ release_ref(namespace, key, consumer_id)
 
 ### D2 — Namespaces are a closed, typed set: `profile` + `event` ONLY
 
-Ship exactly two resolvers. `profile` is the first; `claim_event` / `claimed_events`
+Ship exactly two resolvers. `profile` is the first; legacy event claims / `claimed_events`
 fold into `refs.event`.
 
 **We do NOT generalize to `zap_total` / reply-counts / relay-names.** Those are
@@ -138,7 +137,7 @@ invalidation, coverage, and cache semantics (a count is invalidated by *any* mat
 event arriving anywhere; a ref is invalidated only by a newer replacement of *that one
 entity*). Folding aggregates into `resolve_ref` would make the abstraction dishonest:
 one seam pretending two incompatible invalidation models are the same. Both shipped
-namespaces **already exist** as `claim_*`; nothing here is speculative. (This is the
+namespaces already existed as claim families; nothing here is speculative. (This is the
 adversarial scope limit from codex's review; it is honored as a hard boundary.)
 
 ### D3 — Shapes are closed, namespace-owned enums, NOT per-field masks
@@ -305,9 +304,9 @@ typed-output / kernel-ownership requirements. Each is a test, not a hope.
 The ADR cites the symbols the implementation renames/generalizes, so the design is
 grounded in master, not aspiration:
 
-- **Refcount + registry:** `Kernel::claim_profile` / `release_profile`
-  (`crates/nmp-core/src/kernel/requests/profile.rs`) and `Kernel::claim_event` /
-  `release_event` (`crates/nmp-core/src/kernel/requests/event.rs`) become the two
+- **Refcount + registry:** the profile claim/release path
+  (`crates/nmp-core/src/kernel/requests/profile.rs`) and the event claim/release path
+  (`crates/nmp-core/src/kernel/requests/event.rs`) become the two
   `RefResolver` instances behind `resolve_ref` / `release_ref`. The `profile_claims` /
   `event_claims` refcount maps, the `MAX_*_PER_*` bounds, drop-newest+counter (D6),
   and the `InterestRegistry` owner-set dedup are retained as the resolver internals.
@@ -356,7 +355,7 @@ corrected to drop "npub forms." The shell encodes bech32 at render time.
   key-granular declaration + ADR-0055's per-row rev. A card is a few hundred bytes and
   unchanged rows are already omitted; named shapes are cheaper and additive.
 - **A profile-specific keyed read API without generalizing to a primitive.** Rejected:
-  `claim_event` is **already** the second instance of this exact machine (refcount →
+  legacy event claims were **already** the second instance of this exact machine (refcount →
   registry → keyed projection → release). Shipping a profile-only API would leave the
   event twin un-unified and re-derive the same shape a third time the next entity-type
   that needs it. The honest move is to name the primitive that already exists twice.
@@ -364,7 +363,7 @@ corrected to drop "npub forms." The shell encodes bech32 at render time.
   (D2 / codex scope risk #4): `zap_total` / reply-counts / relay-names are aggregate
   queries over event *sets* with a fundamentally different invalidation model; one
   abstraction over both is dishonest. Bounded to `profile` + `event` (both already
-  exist as `claim_*`), nothing speculative, until a real third namespace proves it.
+  existed as claim families), nothing speculative, until a real third namespace proves it.
 - **Defer per-key reactivity to measurement (codex's recommendation).** codex
   recommended doing only projection-level apply for `refs.*` now and deferring the wire
   row-delta (a) to ADR-0055's measured later rung. **The owner chose full per-key now.**
@@ -407,8 +406,8 @@ corrected to drop "npub forms." The shell encodes bech32 at render time.
 - The feed-author auto-resolve host-helper + debug-build guardrail (D7).
 
 **Rename / fold:**
-- `claim_profile` / `release_profile` → the `profile` resolver behind `resolve_ref`.
-- `claim_event` / `claimed_events` → the `event` resolver / `refs.event`.
+- Profile claim/release → the `profile` resolver behind `resolve_ref`.
+- Event claim / `claimed_events` → the `event` resolver / `refs.event`.
 
 **Upgrade in the same cut:** all shells (iOS / Android / desktop / TUI) swap claim
 calls for `resolve_ref` and read the single keyed accessor per namespace

@@ -4,11 +4,11 @@
 //! The renderer is frontend-driven (ADR-0034 / M16): when `NostrContentView`
 //! walks the content tree and hits an `EventRef(uri)`, it calls
 //! `sink.claim(uri, consumer_id)` via `EventClaimSink`. The host
-//! (`LiveKernelSink`) forwards to `nmp_app_claim_event` — the kernel
-//! registers a `OneshotApi` interest (D4 single writer), fetches the event
-//! from relays *or* short-circuits when it's already in the local store
-//! (cache hit, sub-tick latency), and surfaces the resolved event in the typed
-//! `claimed_events` sidecar (ADR-0037).
+//! (`LiveKernelSink`) decodes the URI and forwards the raw event key through
+//! `resolve_ref`. The kernel registers a `OneshotApi` interest (D4 single
+//! writer), fetches the event from relays *or* short-circuits when it's already
+//! in the local store (cache hit, sub-tick latency), and surfaces the resolved
+//! event in the typed `claimed_events` sidecar (ADR-0037).
 //!
 //! `EmbedHostState` is the gallery's read-side cache of that projection.
 //! Each snapshot push calls `update_from_typed`; on the next redraw the
@@ -27,8 +27,9 @@
 use std::collections::BTreeMap;
 
 use nmp_content::{
+    RenderContext,
     embed_projection::{EmbedKindProjection, EmbeddedEventEnvelope, RenderContextWire},
-    resolve_embed_projection, RenderContext,
+    resolve_embed_projection,
 };
 use nmp_core::substrate::KernelEvent;
 use nmp_core::typed_projections::ClaimedEventRow;
@@ -80,10 +81,14 @@ impl EmbedHostState {
                 continue;
             };
 
-            let author_display_name = row.author_display_name.as_deref()
+            let author_display_name = row
+                .author_display_name
+                .as_deref()
                 .filter(|s| !s.trim().is_empty())
                 .map(str::to_string);
-            let author_picture_url = row.author_picture_url.as_deref()
+            let author_picture_url = row
+                .author_picture_url
+                .as_deref()
                 .filter(|s| !s.trim().is_empty())
                 .map(str::to_string);
 
@@ -217,14 +222,18 @@ mod tests {
         let row = ClaimedEventRow {
             primary_id: primary.clone(),
             id: primary.clone(),
-            author_pubkey: "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93".to_string(),
+            author_pubkey: "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93"
+                .to_string(),
             author_display_name: None,
             author_picture_url: None,
             kind: 30023,
             created_at: 1716000000,
             tags: vec![
                 vec!["d".to_string(), "the-internet-left-me".to_string()],
-                vec!["title".to_string(), article_expected_title().unwrap_or("").to_string()],
+                vec![
+                    "title".to_string(),
+                    article_expected_title().unwrap_or("").to_string(),
+                ],
             ],
             content: "Long-form article body.".to_string(),
             content_tree_bytes: Vec::new(),

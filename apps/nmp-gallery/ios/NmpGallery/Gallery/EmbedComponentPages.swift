@@ -148,7 +148,7 @@ struct NoteEmbedPage: View {
         VStack(spacing: 16) {
             EmbedPageFrame(caption: "Note embed — kind:1 via NostrKindRegistry") {
                 NostrContentView(tree: tree)
-                Text("nevent1… URIs resolve via the same `claim_event` path. The default short-note renderer paints author + content.")
+                Text("nevent1… URIs resolve through the app-owned URI adapter and unified ref path. The default short-note renderer paints author + content.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.top, 6)

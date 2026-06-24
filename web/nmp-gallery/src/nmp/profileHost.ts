@@ -99,9 +99,9 @@ export type GalleryRuntime = {
   anyContentConnected: Accessor<boolean>;
   /** Reactive — number of resolved profiles currently held. */
   resolvedCount: Accessor<number>;
-  /** Claim a single event by raw event key. Routes through the
-   *  content-relay lane (Discovery seed), independent of the indexer lane. */
-  claimEvent(key: string, consumerId: string): void;
+  /** Claim a single event by raw event key. `hints` are optional relay hints
+   *  decoded by the app boundary from a NIP-19/NIP-21 URI. */
+  claimEvent(key: string, consumerId: string, hints?: string[]): void;
   /** Release an event claim. Dropping the last consumer clears the kernel's
    *  "already requested" dedupe state, so a subsequent `claimEvent` re-issues a
    *  fresh REQ — the basis of the cold-start re-claim retry. */
@@ -428,7 +428,7 @@ export function createGalleryRuntime(): GalleryRuntime {
         (r) => r.connection.toLowerCase() === "connected" && r.role.includes("content"),
       ),
     resolvedCount,
-    claimEvent(key: string, consumerId: string) {
+    claimEvent(key: string, consumerId: string, hints: string[] = []) {
       void request({
         type: "dispatch",
         action_type: "nmp.kernel.resolve_ref",
@@ -438,6 +438,7 @@ export function createGalleryRuntime(): GalleryRuntime {
           consumer_id: consumerId,
           shape: REF_SHAPE_EVENT_EMBED,
           liveness: REF_LIVENESS_CACHE_OK,
+          hints,
         },
         correlation_id: `claim-event-${claimSeq++}`,
       });

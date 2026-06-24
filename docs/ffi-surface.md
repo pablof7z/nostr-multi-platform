@@ -300,8 +300,8 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_open_uri` | PASS | PASS | |
 | `nmp_app_claim_profile` | PASS | PASS | |
 | `nmp_app_release_profile` | PASS | PASS | |
-| `nmp_app_resolve_ref` (namespace=1/event) | PASS | PASS | #1726 — replaces deleted `nmp_app_claim_event` |
-| `nmp_app_release_ref` (namespace=1/event) | PASS | PASS | #1726 — replaces deleted `nmp_app_release_event` |
+| `nmp_app_resolve_ref` (namespace=1/event) | PASS | PASS | Unified event-ref resolution |
+| `nmp_app_release_ref` (namespace=1/event) | PASS | PASS | Unified event-ref release |
 | `nmp_app_wallet_connect` | PASS | PASS | |
 | `nmp_app_wallet_disconnect` | PASS | PASS | |
 | `nmp_app_wallet_pay_invoice` | PASS | PASS | |

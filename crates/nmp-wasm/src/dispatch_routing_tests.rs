@@ -24,6 +24,7 @@ fn ref_dispatch_routes_resolve_profile() {
             consumer_id: "chirp-web-author-1".to_string(),
             shape: RefShape::Profile(ProfileShape::Ref),
             liveness: RefLiveness::CacheOk,
+            hints: Vec::new(),
         })
     );
 }
@@ -46,6 +47,7 @@ fn ref_dispatch_routes_resolve_profile_card_live() {
             consumer_id: "screen".to_string(),
             shape: RefShape::Profile(ProfileShape::Card),
             liveness: RefLiveness::Live,
+            hints: Vec::new(),
         })
     );
 }
@@ -68,6 +70,37 @@ fn ref_dispatch_routes_resolve_event() {
             consumer_id: "embed-1".to_string(),
             shape: RefShape::Event(EventShape::Embed),
             liveness: RefLiveness::CacheOk,
+            hints: Vec::new(),
+        })
+    );
+}
+
+#[test]
+fn ref_dispatch_routes_resolve_event_with_hints() {
+    let action = ActionDispatch {
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 1,
+            "key": "deadbeef",
+            "consumer_id": "embed-1",
+            "shape": 0,
+            "liveness": 0,
+            "hints": ["wss://relay.a.example", "wss://relay.b.example"],
+        }),
+        correlation_id: "x".to_string(),
+    };
+    assert_eq!(
+        ref_dispatch_from_action(&action),
+        Some(RefDispatch::Resolve {
+            namespace: RefNamespace::Event,
+            key: "deadbeef".to_string(),
+            consumer_id: "embed-1".to_string(),
+            shape: RefShape::Event(EventShape::Embed),
+            liveness: RefLiveness::CacheOk,
+            hints: vec![
+                "wss://relay.a.example".to_string(),
+                "wss://relay.b.example".to_string()
+            ],
         })
     );
 }
@@ -115,6 +148,23 @@ fn ref_dispatch_returns_none_for_missing_field() {
     let action = ActionDispatch {
         action_type: "nmp.kernel.resolve_ref".to_string(),
         payload: serde_json::json!({"namespace": 0, "key": "abc123", "shape": 0, "liveness": 0}),
+        correlation_id: "x".to_string(),
+    };
+    assert!(ref_dispatch_from_action(&action).is_none());
+}
+
+#[test]
+fn ref_dispatch_returns_none_for_malformed_hints() {
+    let action = ActionDispatch {
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 1,
+            "key": "deadbeef",
+            "consumer_id": "embed-1",
+            "shape": 0,
+            "liveness": 0,
+            "hints": ["wss://relay.a.example", 42],
+        }),
         correlation_id: "x".to_string(),
     };
     assert!(ref_dispatch_from_action(&action).is_none());

@@ -1,9 +1,7 @@
 import Foundation
 
-// Update-frame, typed snapshot envelope, dispatch-result, and create-account
-// DTOs for the KernelBridge FFI seam. Extracted from `KernelBridge.swift` so the
-// bridge file holds only `KernelHandle` (file-size hard-cap separation). These
-// are pure value types; same-module Swift files see each other without import.
+// Update-frame, typed snapshot envelope, dispatch-result, and create-account DTOs.
+// Extracted from `KernelBridge.swift`; same-module Swift files need no import.
 
 enum KernelDecodedUpdateFrame {
     case snapshot(KernelUpdateResult)

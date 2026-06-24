@@ -265,11 +265,10 @@ fn run_smoke(
                 snapshot_tick += 1;
                 host.update_from_typed(&snap);
 
-                // Re-claim on EVERY snapshot tick until claims_issued.
-                // The kernel's claim_event no-ops when !relays_ready
-                // (W1 open-Q #3), so we keep trying until at least one
-                // relay is connected — at which point the OneshotApi
-                // interest registers and the planner compiles a wire REQ.
+                // Re-resolve on EVERY snapshot tick until claims_issued.
+                // The kernel queues cold event refs until a relay is connected,
+                // so we keep trying until the OneshotApi interest can register
+                // and the planner compiles a wire REQ.
                 if !claims_issued && snap.any_relay_connected() {
                     println!("  + relay connected — claims firing on tick #{snapshot_tick}");
                     for t in &targets {

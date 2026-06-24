@@ -48,7 +48,9 @@ use crate::protocol::ActionDispatch;
 ///
 /// The ADR-0063 unified seam (`resolve_ref` / `release_ref`) carries a RAW key
 /// (a hex pubkey for `profile`, a hex event-id / `kind:pubkey:d` coordinate for
-/// `event`) plus the namespace/shape/liveness discriminants.
+/// `event`) plus the namespace/shape/liveness discriminants. Event callers that
+/// decoded a NIP-19/NIP-21 URI before entering this raw-key seam may also pass
+/// `hints: string[]`; absent hints are byte-identical to the bare-key path.
 ///
 /// Refs are NOT `KernelAction`s — they operate on the resolver's refcount table,
 /// separate from the M2 interest registry. `kernel_action_from_dispatch` returns
@@ -67,6 +69,7 @@ pub(crate) enum RefDispatch {
         consumer_id: String,
         shape: RefShape,
         liveness: RefLiveness,
+        hints: Vec<String>,
     },
     /// Unified raw-key release (`nmp.kernel.release_ref`).
     Release {
@@ -90,12 +93,14 @@ pub(crate) fn ref_dispatch_from_action(action: &ActionDispatch) -> Option<RefDis
             // downstream guard). An unknown shape int returns None.
             let shape = ref_shape_from_int(namespace, int_field(&action.payload, "shape")?)?;
             let liveness = ref_liveness_from_int(int_field(&action.payload, "liveness")?)?;
+            let hints = optional_string_array_field(&action.payload, "hints")?;
             Some(RefDispatch::Resolve {
                 namespace,
                 key,
                 consumer_id,
                 shape,
                 liveness,
+                hints,
             })
         }
         "nmp.kernel.release_ref" => {
@@ -126,6 +131,20 @@ fn int_field(payload: &Value, key: &str) -> Option<u32> {
         .get(key)
         .and_then(Value::as_u64)
         .and_then(|n| u32::try_from(n).ok())
+}
+
+/// Extract an optional array of strings from a JSON payload. Missing means
+/// "empty hints"; present-but-malformed fails closed.
+fn optional_string_array_field(payload: &Value, key: &str) -> Option<Vec<String>> {
+    let Some(value) = payload.get(key) else {
+        return Some(Vec::new());
+    };
+    let arr = value.as_array()?;
+    let mut out = Vec::with_capacity(arr.len());
+    for item in arr {
+        out.push(item.as_str()?.to_string());
+    }
+    Some(out)
 }
 
 /// Decode the namespace discriminant, FAILING CLOSED on an unknown value. The
@@ -271,7 +290,8 @@ pub(crate) fn execute_ref_dispatch(
             consumer_id,
             shape,
             liveness,
-        } => reducer.resolve_ref(namespace, key, consumer_id, shape, liveness),
+            hints,
+        } => reducer.resolve_ref_with_hints(namespace, key, consumer_id, shape, liveness, hints),
         RefDispatch::Release {
             namespace,
             key,

@@ -104,7 +104,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    register_observer_projection, AppHost, EventObserverRegistrar, SnapshotProjectionRegistrar,
+    AppHost, EventObserverRegistrar, SnapshotProjectionRegistrar, register_observer_projection,
 };
 
 pub mod action_payloads;
@@ -119,10 +119,10 @@ pub mod topic_articles;
 
 pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
 pub use op_feed_defaults::{
-    compile_feed_params, register_op_feed_defaults, register_op_feed_defaults_with_mute,
-    OpFeedDefaults,
+    OpFeedDefaults, compile_feed_params, register_op_feed_defaults,
+    register_op_feed_defaults_with_mute,
 };
-pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
+pub use relay_info_probe::{RelayInfoProbeCallback, nmp_app_probe_relay_info};
 pub use runtimes::{
     register_bookmark_runtime, register_comment_runtime, register_mute_runtime,
     register_search_relay_runtime, register_search_relay_runtime_with,
@@ -422,7 +422,7 @@ fn register_defaults_inner(
 /// the `nmp.nip23.articles` payload with the generated `NL23` accessors.
 ///
 /// D5-scoped: an observer only sees events from open subscriptions (an open
-/// `topic_articles` `#t` feed or a `claim_event(naddr)` document), so the
+/// `topic_articles` `#t` feed or an event `resolve_ref(naddr-key)` document), so the
 /// snapshot only ever carries the articles whose subscriptions are open.
 /// Supersession is resolved by the kernel store before the observer fires
 /// (`Inserted | Replaced` only), so the projection keeps the winning event with

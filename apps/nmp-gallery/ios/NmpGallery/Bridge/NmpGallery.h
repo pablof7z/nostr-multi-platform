@@ -58,8 +58,8 @@ void nmp_app_release_ref(void *app, int namespace, const char *key,
 
 // ── Event claim / release (kind-dispatch embed) ──────────────────────────
 
-// #1726: nmp_app_claim_event / nmp_app_release_event DELETED.
-// Callers decode the nostr: URI via nmp_nip21_decode_uri and then route to
+// Event URI front doors are removed. Callers decode the nostr: URI via
+// nmp_nip21_decode_uri and then route to
 // nmp_app_resolve_ref(namespace=1/*event*/, key=event-id-hex, shape=2/*embed*/,
 // liveness=0/*CacheOk*/) and nmp_app_release_ref(namespace=1, key, consumer_id).
 
@@ -140,8 +140,8 @@ char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefProfileSt
 //   {"ok":true,"target":"event","event_id":"<hex>", ...}
 // or {"ok":false,"error":"..."}.
 // The returned string is never NULL and MUST be freed via nmp_free_string.
-// Used by the gallery event-claim path to extract the event key from a URI
-// before calling nmp_app_resolve_ref (see the deleted nmp_app_claim_event note).
+// Used by app-owned URI adapters to extract the event key before calling
+// nmp_app_resolve_ref.
 char *nmp_nip21_decode_uri(const char *input);
 
 // Stateless content tokenizer. Returns {"ok":true,"tree":ContentTreeWire}

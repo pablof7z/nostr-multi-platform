@@ -454,8 +454,8 @@ small.
 
 ### PR-7 — F-TTL `force` claim parity (G7; tiny, any time after PR-1)
 
-**What it builds** — `ClaimDispatch::ClaimProfile`/`ClaimEvent` gain an
-optional `force: bool` payload field (default `false`,
+**What it builds** — the historical claim dispatch variants gain an optional
+`force: bool` payload field (default `false`,
 `dispatch_routing.rs:40-93`); `runtime.rs:393-408` passes it through instead
 of hardcoding `false`. ~30 lines, `nmp-wasm` only.
 

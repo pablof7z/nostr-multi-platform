@@ -1,10 +1,9 @@
 //! ADR-0063 Lane D — unified `resolve_ref` / `release_ref` C-ABI surface.
 //!
-//! Generalizes the former per-kind profile claim + `nmp_app_claim_event` behind
-//! one origin-blind entry point. ADR-0063 Lane H deleted the per-kind profile
-//! `claim_*` / `release_*` symbols; profiles now resolve exclusively through
-//! `nmp_app_resolve_ref`. `nmp_app_claim_event` / `nmp_app_release_event` are
-//! retained (event claims keep their dedicated URI front-door).
+//! Generalizes the former per-kind profile/event claim entry points behind one
+//! origin-blind entry point. ADR-0063 Lane H deleted the per-kind profile
+//! `claim_*` / `release_*` symbols; #1946 deleted the event URI front doors.
+//! Profiles and events now resolve exclusively through `nmp_app_resolve_ref`.
 //!
 //! ## Integer encoding
 //!
@@ -60,7 +59,7 @@
 //! An invalid key (wrong case, wrong length, non-decimal kind, missing segment,
 //! empty external id) is a silent no-op at the kernel's resolver body (D6).
 
-use super::{app_ref, c_string_argument, NmpApp};
+use super::{NmpApp, app_ref, c_string_argument};
 use nmp_core::__ffi_internal::is_hex_pubkey;
 use nmp_core::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
 use std::ffi::{c_char, c_int};
@@ -161,8 +160,7 @@ pub extern "C" fn nmp_app_resolve_ref(
 ///
 /// Decrements the refcount for `consumer_id`'s stake in `(namespace, key)`.
 /// The resolver slot is torn down when the last consumer releases (the same
-/// release contract the former per-kind profile release and `nmp_app_release_event`
-/// use).
+/// release contract the former per-kind profile/event releases used).
 ///
 /// **`namespace`** — `0` = profile, `1` = event (must match the `resolve_ref` call).
 /// **`key`** — same key that was passed to `nmp_app_resolve_ref`.

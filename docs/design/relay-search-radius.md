@@ -1,6 +1,6 @@
 # Relay-Search-Radius Expansion for OneshotApi Event Fetches
 
-**Status**: Accepted product behavior for `claim_event` relay-search expansion.
+**Status**: Accepted product behavior for event `resolve_ref` relay-search expansion.
 Implementation anchors live in `crates/nmp-core/src/kernel/claim_expansion*.rs`,
 `crates/nmp-core/src/kernel/relay_score*.rs`, and the
 `relay_search_radius_*` integration tests in `crates/nmp-testing/tests/`.
@@ -174,7 +174,7 @@ EOSE-without-match is neutral, and relay failure increments failures.
 | E13 | NIP-65 for the author arrives mid-claim — Phase 1 started against `app_relays` only (no outbox known), then the indexer hydrates kind:10002 before Phase 1 elapses | Build the Phase-2 candidate queue lazily at Phase-2 entry, not at claim registration. Reading `MailboxCache.write_relays` is cheap. This means a freshly-arrived outbox is honoured on the same claim's Phase 2 instead of being missed until the next claim. Scoring impact: only Phase-2 outcomes update scores for the newly-discovered relays; the Phase-1 EOSE on `app_relays` is scored against `app_relays`, not the then-unknown outbox. |
 | E14 | Relay-URL canonicalisation mismatch — a score row is written under `wss://relay.example.com/` (trailing slash) and read under `wss://relay.example.com` (no slash) | Both `record_claim_outcome` (write) and `is_warm` / `weight` (read) call `CanonicalRelayUrl::parse_or_raw` before keying the score map. Cell consolidation is by canonical form. Scoring impact: a single relay served under multiple textual forms scores as one cell, not many — preserves the "one author, one relay" invariant the score weight assumes. NIP-65 outbox entries (author-provided, not always canonical) and `app_relays` (operator-configured, usually canonical) both flow through the same canonicaliser. |
 | E15 | A relay in the Phase 2 candidate list requires NIP-42 AUTH and the kernel has no key bound for it | AUTH-pause is a follow-up outside this contract. The durable scoring rule is that an authentication pause must not be treated as relay unreliability unless the relay actually fails. |
-| E16 | Consumer calls `release_event` mid-Phase-2 — the user navigated away before the claim completed | Release removes the tracked claim and reverse-index entries. A later claim for the same author starts from the score table state already committed by earlier outcomes. |
+| E16 | Consumer releases an event ref mid-Phase-2 — the user navigated away before the claim completed | Release removes the tracked claim and reverse-index entries. A later claim for the same author starts from the score table state already committed by earlier outcomes. |
 
 ---
 
@@ -268,7 +268,7 @@ The scores table is NOT included in `AppUpdate` snapshots — it is purely inter
 ## 10. Implementation Anchors
 
 - `crates/nmp-core/src/kernel/requests/event.rs` registers and releases
-  `claim_event` interests.
+  event `resolve_ref` interests.
 - `crates/nmp-core/src/kernel/claim_expansion.rs` owns the per-claim phase
   controller.
 - `crates/nmp-core/src/kernel/claim_expansion_helpers.rs` builds Phase 2 relay

@@ -80,9 +80,9 @@ export default function App(): JSX.Element {
   // or we exhaust the budget. Idempotent and self-stopping.
   let claimStarted = false;
   const claimTargets = [
-    { id: SHOWCASE_NOTE.primaryId, consumer: "gallery-note" },
-    { id: SHOWCASE_ARTICLE.primaryId, consumer: "gallery-article" },
-    { id: SHOWCASE_HIGHLIGHT.primaryId, consumer: "gallery-highlight" },
+    { id: SHOWCASE_NOTE.primaryId, hints: SHOWCASE_NOTE.relayHints, consumer: "gallery-note" },
+    { id: SHOWCASE_ARTICLE.primaryId, hints: SHOWCASE_ARTICLE.relayHints, consumer: "gallery-article" },
+    { id: SHOWCASE_HIGHLIGHT.primaryId, hints: SHOWCASE_HIGHLIGHT.relayHints, consumer: "gallery-highlight" },
   ];
   createEffect(() => {
     if (!runtime.anyContentConnected() || claimStarted) return;
@@ -104,11 +104,11 @@ export default function App(): JSX.Element {
         // resolve again to force a FRESH REQ once more relays are connected.
         const claimedAt = lastClaimAt.get(t.id);
         if (claimedAt === undefined) {
-          runtime.claimEvent(t.id, t.consumer);
+          runtime.claimEvent(t.id, t.consumer, t.hints);
           lastClaimAt.set(t.id, attempt);
         } else if (attempt - claimedAt >= RECLAIM_AFTER) {
           runtime.releaseEvent(t.id, t.consumer);
-          runtime.claimEvent(t.id, t.consumer);
+          runtime.claimEvent(t.id, t.consumer, t.hints);
           lastClaimAt.set(t.id, attempt);
         }
       }

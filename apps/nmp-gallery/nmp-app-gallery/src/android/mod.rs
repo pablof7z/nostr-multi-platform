@@ -18,8 +18,7 @@ use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
 use jni::JNIEnv;
 
-// #1726: nmp_app_claim_event / nmp_app_release_event removed from C ABI.
-// nativeClaimEvent / nativeReleaseEvent now decode the nostr: URI and route to
+// App-local event URI JNI adapters decode nostr: URIs and route to
 // nmp_app_resolve_ref(namespace=1/event) / nmp_app_release_ref.
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_deliver_external_signer_response,
@@ -268,9 +267,8 @@ fn event_key_from_uri(uri: &std::ffi::CStr) -> Option<std::ffi::CString> {
     std::ffi::CString::new(key).ok()
 }
 
-/// #1726 — Demand-driven embedded-event claim. Decodes the `nostr:` URI in
-/// Rust and forwards to `nmp_app_resolve_ref(namespace=1/event, shape=2/embed,
-/// liveness=0/CacheOk)`. The deleted `nmp_app_claim_event` is NOT used.
+/// App-local JNI URI adapter. Decodes the `nostr:` URI in Rust and forwards to
+/// `nmp_app_resolve_ref(namespace=1/event, shape=2/embed, liveness=0/CacheOk)`.
 /// D6: bad handles / non-event URIs / decode errors are silent no-ops.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimEvent(
@@ -294,9 +292,8 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimEvent
     );
 }
 
-/// #1726 — Release a previously-claimed embedded event. Decodes the `nostr:`
-/// URI in Rust and forwards to `nmp_app_release_ref(namespace=1/event)`.
-/// The deleted `nmp_app_release_event` is NOT used.
+/// App-local JNI URI adapter. Decodes the `nostr:` URI in Rust and forwards to
+/// `nmp_app_release_ref(namespace=1/event)`.
 /// D6: bad handles / non-event URIs / decode errors are silent no-ops.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEvent(

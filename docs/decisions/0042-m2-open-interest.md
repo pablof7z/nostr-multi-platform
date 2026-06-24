@@ -100,11 +100,9 @@ satisfies the gate's ADR requirement for the surface change.
 
 - `nmp_app_open_uri` — a `nostr:` URI router, genuinely different (resolves an
   entity, not a tailing filter).
-- `claim_profile` / `claim_event` / `release_profile` / `release_event` —
-  different lifecycle (refcounted one-shot fetch that drives the `claimed_*`
-  projections; not a tailing feed). The profile.rs module doc's M2 note that
-  `claim_profile` *also* migrates to the registry is **explicitly not done
-  here** — claim_* keeps its bespoke lifecycle.
+- Refcounted reference resolution — a different lifecycle (one-shot fetch that
+  drives reference projections; not a tailing feed). ADR-0063 later folded the
+  bespoke profile/event claim lifecycle into `resolve_ref` / `release_ref`.
 
 ## 5. App-composes pattern for context hydration (read-path)
 
@@ -131,9 +129,10 @@ composition**:
 - **Profile card** → `claim_profile(pubkey, "author-page-<pk>", …)` → the
   highest-precedence `claimed_profiles` projection tier. The deleted author-view
   profile tier no longer participates in profile resolution.
-- **Thread root hydration** → `claim_event(nostr:nevent…, "thread-root-<id>", …)`
-  → `claimed_events`. When the root URI cannot be determined from context the
-  call is skipped (a follow-up, not a refactor blocker).
+- **Thread root hydration** → decode `nostr:nevent...`, then
+  `resolve_ref(namespace=event, key, "thread-root-<id>", ...)` → `refs.event`.
+  When the root URI cannot be determined from context the call is skipped (a
+  follow-up, not a refactor blocker).
 - **Thread navigation affordances** (previous/next counts, root/focused ids)
   and the profile **primary action** (follow/unfollow) → app-composed from the
   feed + follow-state the host already has.

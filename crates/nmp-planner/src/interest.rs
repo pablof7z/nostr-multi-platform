@@ -273,7 +273,7 @@ impl InterestShape {
     /// parser; they keep their `Default` values. The `#a` address-coordinate
     /// tag, if present, is carried through as an opaque `tags["a"]` entry rather
     /// than decoded into `NaddrCoord` — `open_interest` feeds are plain tailing
-    /// subscriptions, not address-pointer hydration (that path is `claim_event`).
+    /// subscriptions, not address-pointer hydration (that path is event refs).
     ///
     /// Returns `None` when `json` is not a JSON object (D6 — the FFI shim maps
     /// `None` to a silent no-op + diagnostic toast, never a panic). Unknown

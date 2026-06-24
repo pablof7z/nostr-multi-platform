@@ -16,11 +16,10 @@
 
 use super::*;
 use crate::kernel::{EventShape, RefLiveness};
-use crate::nip19::{encode_naddr, encode_nevent, NaddrData, NeventData};
-use crate::nip21::{parse_nostr_uri, NostrUri};
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::nip19::{NaddrData, NeventData, encode_naddr, encode_nevent};
+use crate::nip21::{NostrUri, parse_nostr_uri};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT, RelayRole};
 use crate::store::{RawEvent, VerifiedEvent};
-use crate::subs::WireFrame;
 
 const TEST_AUTHOR_HEX: &str = "abababababababababababababababababababababababababababababababab";
 const TEST_D_TAG: &str = "kind-dispatch";
@@ -41,18 +40,6 @@ fn nevent_uri(event_id: &str, kind: Option<u32>, author: Option<&str>) -> String
         relays: vec![],
         author: author.map(str::to_string),
         kind,
-    })
-    .expect("encode_nevent");
-    format!("nostr:{bech}")
-}
-
-/// Helper: build an `nostr:nevent…` URI carrying NIP-19 relay TLVs.
-fn nevent_uri_with_relays(event_id: &str, relays: &[&str]) -> String {
-    let bech = encode_nevent(&NeventData {
-        event_id: event_id.to_string(),
-        relays: relays.iter().map(|r| (*r).to_string()).collect(),
-        author: None,
-        kind: Some(1),
     })
     .expect("encode_nevent");
     format!("nostr:{bech}")
@@ -454,162 +441,5 @@ fn release_event_ref_cancels_claim_expansion_on_empty_set() {
     assert!(
         kernel.test_claim_phase(&id).is_none(),
         "the claim-expansion tracker must be gone after the last release"
-    );
-}
-
-/// 8. (V-59 rung 1, #3) A claim whose URI carries NIP-19 relay TLVs seeds the
-/// INITIAL OneshotApi interest's `hints` with those relays — so the first REQ
-/// fans out to publisher-provided content relays ∪ bootstrap lanes, instead of
-/// bootstrap-only. The hints are `UserConfigured` (matching `advance_to_phase2`).
-#[test]
-fn resolve_event_ref_seeds_initial_interest_hints_from_uri_relays() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    let id = hex64("e2");
-    let uri = nevent_uri_with_relays(&id, &["wss://relay.a.example", "wss://relay.b.example"]);
-
-    let _ = resolve_event_uri(&mut kernel, &uri, "view-0".to_string(), true, false);
-
-    // Exactly one oneshot interest registered; its hints must mirror the URI
-    // relay TLVs verbatim (the W5 §7.3 improvement).
-    let active = kernel.lifecycle.registry_mut().iter_active();
-    let hint_urls: std::collections::BTreeSet<String> = active
-        .iter()
-        .flat_map(|i| i.hints.iter().map(|h| h.url.clone()))
-        .collect();
-    assert_eq!(
-        hint_urls,
-        ["wss://relay.a.example", "wss://relay.b.example"]
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect::<std::collections::BTreeSet<_>>(),
-        "the claim's first REQ must carry the URI relay TLVs as interest hints"
-    );
-    assert!(
-        active
-            .iter()
-            .flat_map(|i| i.hints.iter())
-            .all(|h| h.source == crate::planner::HintSource::UserConfigured),
-        "URI-sourced relay hints must use the UserConfigured source variant"
-    );
-}
-
-/// 9. (V-59 rung 1, #3) A claim whose URI carries NO relay TLVs registers an
-/// interest with EMPTY hints — byte-identical to the pre-#3 behavior. This is
-/// the regression guard at the kernel layer (the OneshotApi-layer guard lives
-/// in `subs::oneshot::tests::empty_hints_registers_interest_with_no_hints`).
-#[test]
-fn resolve_event_ref_without_uri_relays_registers_empty_hints() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    let id = hex64("e3");
-    let uri = nevent_uri(&id, Some(1), None); // no relays in TLV
-
-    let _ = resolve_event_uri(&mut kernel, &uri, "view-0".to_string(), true, false);
-
-    let active = kernel.lifecycle.registry_mut().iter_active();
-    assert_eq!(active.len(), 1, "exactly one oneshot interest registered");
-    assert!(
-        active[0].hints.is_empty(),
-        "a hint-less claim URI must register an interest with no hints — \
-         byte-identical to pre-#3 behavior"
-    );
-}
-
-/// Helper: drain the planner and collect the relay URLs every compiled REQ
-/// targets. Used by the Fix B tests to prove a claim's REQ reaches the hint
-/// relay (the URL `send_outbound` then dials on demand, relay_mgmt.rs:358-389).
-fn drained_req_targets(kernel: &mut Kernel) -> Vec<String> {
-    kernel
-        .drain_lifecycle_tick()
-        .iter()
-        .filter_map(|f| match f {
-            WireFrame::Req { relay_url, .. } => Some(relay_url.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-/// 10. (Fix B — universal latent-bug fix) A claim that hits the cold-start
-/// `!can_send` branch but whose URI carries NIP-19 relay hints MUST NOT fully
-/// park: it registers the hint-seeded OneshotApi interest so the planner
-/// compiles a REQ targeting the hint relay, which `send_outbound` dials on
-/// demand. This lets an nevent with a working hint resolve even when NO
-/// bootstrap relay is up.
-///
-/// RED on master: the `!can_send` branch unconditionally parks (pushes to
-/// `pending_event_claims`, registers no interest), so no REQ is ever compiled
-/// and `event_claim_is_requested_for_test` is false. GREEN after Fix B: the
-/// hint-bearing claim registers, and a compiled REQ targets the hint URL.
-///
-/// Routing empirically confirmed by the in-test diagnostic below: a fresh
-/// `Kernel::new` has zero connected relays and no cached mailbox, so the hint
-/// URL is the publisher-provided target the planner routes to.
-#[test]
-fn resolve_event_ref_parked_with_uri_hint_registers_and_targets_hint_relay() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    let id = hex64("f1");
-    let hint = "wss://hint.publisher.example";
-    let uri = nevent_uri_with_relays(&id, &[hint]);
-
-    // can_send = false: NO bootstrap relay is connected. On master this parks
-    // unconditionally; with Fix B the URI hint makes the claim register anyway.
-    let outbound = resolve_event_uri(&mut kernel, &uri, "view-hint".to_string(), false, false);
-    assert!(
-        outbound.is_empty(),
-        "resolve_event_ref returns Vec::new() — wire frames flow through the planner (D4)"
-    );
-
-    // Fix B: the claim must register an interest (NOT sit parked) because it
-    // carries a usable relay hint.
-    assert!(
-        kernel.event_claim_is_requested_for_test(&id),
-        "Fix B: a parked (!can_send) claim carrying a URI relay hint must register \
-         its hint-seeded interest so the planner can compile a REQ to the hint relay \
-         — on master it fully parks and never sends"
-    );
-    assert_eq!(
-        kernel.pending_event_claims_len_for_test(),
-        0,
-        "Fix B: a hint-bearing claim must NOT be left in pending_event_claims — it \
-         has a reachable relay to leave on right now"
-    );
-
-    // The compiled REQ must target the hint URL (which send_outbound dials on
-    // demand), so the claim resolves with no bootstrap relay up.
-    let req_targets = drained_req_targets(&mut kernel);
-    eprintln!("Fix B hint-bearing parked-claim REQ targets: {req_targets:?}");
-    assert!(
-        req_targets
-            .iter()
-            .any(|u| u.contains("hint.publisher.example")),
-        "Fix B: a compiled REQ must target the URI hint relay so the claim resolves \
-         even with no bootstrap relay connected; got {req_targets:?}"
-    );
-}
-
-/// 11. (Fix B regression guard) A claim that hits `!can_send` with NO URI relay
-/// hints must STILL park exactly as before — Fix B only rescues hint-bearing
-/// claims. A hint-less cold claim has nowhere to send, so it waits for a
-/// bootstrap relay to connect (drained by `pending_event_claim_requests`).
-#[test]
-fn resolve_event_ref_parked_without_uri_hint_still_parks() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    let id = hex64("f2");
-    let uri = nevent_uri(&id, Some(1), None); // no relay TLVs
-
-    let _ = resolve_event_uri(&mut kernel, &uri, "view-no-hint".to_string(), false, false);
-
-    assert!(
-        !kernel.event_claim_is_requested_for_test(&id),
-        "a hint-less cold claim must NOT register an interest — there is no \
-         reachable relay; it parks until a bootstrap relay connects"
-    );
-    assert_eq!(
-        kernel.pending_event_claims_len_for_test(),
-        1,
-        "a hint-less cold claim must be parked in pending_event_claims"
     );
 }

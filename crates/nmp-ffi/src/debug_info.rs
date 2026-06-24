@@ -33,12 +33,12 @@
 //! - **D8** — the read is a `RwLock::read()` + JSON encode per call; never on
 //!   the producer path.
 
-use std::ffi::{c_char, c_int, CString};
+use std::ffi::{CString, c_char, c_int};
 
 use nmp_core::projection_to_json;
 use serde_json::json;
 
-use super::{app_ref, NmpApp};
+use super::{NmpApp, app_ref};
 
 // ── Domain codes (stable, wire-stable) ──────────────────────────────────────
 /// domain 0 — routing trace only.
@@ -71,8 +71,7 @@ fn composition_json(app: &NmpApp) -> serde_json::Value {
 }
 
 fn value_to_ptr(v: serde_json::Value) -> *mut c_char {
-    let s = serde_json::to_string(&v)
-        .unwrap_or_else(|_| String::from("{}"));
+    let s = serde_json::to_string(&v).unwrap_or_else(|_| String::from("{}"));
     CString::new(s)
         .unwrap_or_else(|_| c"{}".to_owned())
         .into_raw()
@@ -235,8 +234,8 @@ mod tests {
     // payloads the old symbols returned — so any regression is caught without a
     // separate compile-fail harness.
     //
-    // `nmp_app_claim_event`, `nmp_app_release_event`, `nmp_app_pull_page`, and
-    // `nmp_free_bytes` are similarly removed; callers migrated to
+    // The event URI C-ABI front doors, `nmp_app_pull_page`, and `nmp_free_bytes`
+    // are similarly removed; callers migrated to
     // `nmp_app_resolve_ref`/`nmp_app_release_ref` (event namespace) and
     // `nmp_mirror_pull_page`/`nmp_mirror_free_bytes` respectively.
     #[test]

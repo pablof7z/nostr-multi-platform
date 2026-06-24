@@ -63,15 +63,10 @@ void nmp_app_search_close(void *app, const char *session_id);
 // two-call size-probe). The bytes match the snapshot frame's N50S sidecar.
 int nmp_app_search_snapshot(void *app, const char *session_id,
                             uint8_t *out_buf, uintptr_t cap);
-// #1726: nmp_app_claim_event / nmp_app_release_event DELETED.
-// Callers migrate to nmp_app_resolve_ref(namespace=1/*event*/, key=event-id-hex,
-// shape=2/*event.embed*/, liveness=0/*CacheOk*/) and nmp_app_release_ref
-// (namespace=1, key, consumer_id). To decode a `nostr:` URI to an event key,
-// call nmp_nip21_decode_uri first and extract the event_id from the JSON result.
 // ADR-0063 Lane D — unified, origin-blind reference-resolution entry points.
-// Generalize the former per-kind profile claim + nmp_app_claim_event behind one
-// seam. ADR-0063 Lane H deleted the old per-kind profile claim_/release_ symbols;
-// profiles now resolve exclusively through nmp_app_resolve_ref below.
+// Profiles and events resolve exclusively through nmp_app_resolve_ref /
+// nmp_app_release_ref. App-owned URI adapters decode nostr: event URIs before
+// calling this raw-key boundary.
 //
 // `namespace` — 0 = profile (kind:0), 1 = event.
 // `key` — lowercase 64-hex pubkey for profile; lowercase event-id hex or "kind:pubkey:d" for event.

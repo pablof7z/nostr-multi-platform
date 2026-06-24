@@ -40,14 +40,14 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::substrate::SuppressionLookup;
 use nmp_core::KernelEventObserver;
 use nmp_core::TypedProjectionData;
+use nmp_core::slots::ActiveAccountSlot;
+use nmp_core::substrate::SuppressionLookup;
 use nmp_feed::FeedRequest;
 use nmp_nip01::op_feed::{
-    encode_op_feed_snapshot, op_feed_observer, register_op_feed, OpFeedEngine,
     OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION, OP_FEED_SNAPSHOT_KEY,
+    OpFeedEngine, encode_op_feed_snapshot, op_feed_observer, register_op_feed,
 };
 use nmp_nip02::ActiveFollowSet;
 use nmp_nip51::MuteListProjection;
@@ -64,7 +64,7 @@ const CHIRP_HOME_PRIMARY_KINDS: [u32; 1] = [1];
 /// CAN depend on nmp-content, so it installs the real NIP-10/markdown tokenizer
 /// into the kernel via `set_content_parser`. The kernel then carries a parsed
 /// NFCT content tree in the `claimed_events` typed projection, which the web
-/// content components decode and render — the `claim_event` twin of the native
+/// content components decode and render — the event-ref twin of the native
 /// content path.
 struct NmpContentParser;
 
@@ -171,7 +171,7 @@ pub fn setup_chirp_web_feeds(runtime: &mut WasmRuntime) -> ChirpWebFeedSetup {
     //     nmp-content (layering), so the kernel holds a no-op parser by default;
     //     here (a layer that CAN depend on nmp-content) we install the real
     //     tokenizer. This lets a web host render the kernel-parsed content tree
-    //     from a `claim_event` — the content components consume these bytes.
+    //     from an event ref — the content components consume these bytes.
     reducer
         .borrow_mut()
         .set_content_parser(Arc::new(NmpContentParser));

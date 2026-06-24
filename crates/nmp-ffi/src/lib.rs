@@ -66,9 +66,8 @@ mod external_signer;
 // Callers use `nmp_app_debug_info(app, domain)` instead (domain 0 = routing,
 // 1 = composition, 2 = merged). No compat shims kept.
 // ADR-0063 Lane D — unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI
-// symbols. Generalizes the former per-kind profile claim + claim_event behind one
-// origin-blind seam. Lane H deleted the per-kind profile claim/release symbols;
-// profiles resolve exclusively through resolve_ref (claim_event is retained).
+// symbols. Profiles and events resolve through this origin-blind seam; app-owned
+// URI adapters decode event URIs before calling the raw-key boundary.
 mod resolve_ref;
 mod search;
 mod snapshot;
@@ -207,8 +206,8 @@ pub use timeline::{
     // #1740 step 8: `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
     // C-ABI shims DELETED. `declare_active_follows_feed` / `clear_active_follows_feed`
     // stay as INTERNAL composition glue (home-feed wiring), not app-facing C ABI.
-    // #1726: `nmp_app_claim_event` / `nmp_app_release_event` C-ABI symbols DELETED.
-    // Callers migrate to `nmp_app_resolve_ref(namespace=1/event)` / `nmp_app_release_ref`.
+    // #1946: event URI C-ABI front doors DELETED. Callers migrate to
+    // `nmp_app_resolve_ref(namespace=1/event)` / `nmp_app_release_ref`.
     clear_active_follows_feed,
     declare_active_follows_feed,
     nmp_app_close_interest,
@@ -217,8 +216,8 @@ pub use timeline::{
 };
 // ADR-0063 Lane D — unified ref-resolution C-ABI entry points. Lane H deleted the
 // per-kind profile claim/release symbols; these are the sole profile-resolution
-// surface. #1726 deleted nmp_app_claim_event / nmp_app_release_event; event refs
-// now resolve exclusively through resolve_ref(namespace=1).
+// surface. #1946 deleted event URI C-ABI front doors; event refs now resolve
+// exclusively through resolve_ref(namespace=1).
 #[cfg(feature = "native")]
 pub use resolve_ref::{nmp_app_release_ref, nmp_app_resolve_ref};
 

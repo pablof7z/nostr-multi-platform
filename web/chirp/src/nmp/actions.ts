@@ -190,8 +190,7 @@ export function walletCommand(action: string, payload: Record<string, unknown> =
 //
 // Web components call these on mount / unmount to register / release their
 // interest in a profile or event through the UNIFIED, origin-blind
-// `resolve_ref` / `release_ref` seam (ADR-0063 D1) — the generalisation of the
-// former `claim_profile` / `claim_event` surface. The kernel refcounts
+// `resolve_ref` / `release_ref` seam (ADR-0063 D1). The kernel refcounts
 // consumers per `(namespace, key)`, fetches the entity on the first resolve, and
 // emits ONE keyed row-delta projection per namespace (`refs.profile` /
 // `refs.event`).

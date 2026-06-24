@@ -18,8 +18,9 @@ package org.nmp.android
  * is rendering an out-of-feed `EventRef` ([uri] is the verbatim
  * `nevent`/`note`/`naddr` URI) under [consumerId]; the kernel resolves the
  * event (cache-first, then relay) and ships its typed projection in the next
- * `NEMB` sidecar (`projections.claimedEventEmbeds`). Direct mirror of the
- * gallery app's `claimEvent` and iOS `KernelHandle.claimEvent`.
+ * `NEMB` sidecar (`projections.claimedEventEmbeds`). App-local wrappers named
+ * `claimEvent` / `nativeClaimEvent` are URI adapters over unified `resolve_ref`,
+ * not kernel or C front doors.
  *
  * Idempotent per (uri, consumerId); the matching [releaseEvent] must be
  * called when the embed leaves the composition so the kernel reclaims the

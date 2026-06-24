@@ -48,8 +48,8 @@ extension KernelHandle {
         }
     }
 
-    // #1726: claimEvent / releaseEvent DELETED.
-    // Use resolveRef(namespace: .event, key: decodedEventId, ...) instead.
+    // App-owned URI adapters decode nostr: event URIs before calling
+    // resolveRef(namespace: .event, key: decodedEventId, ...).
     // To decode a `nostr:` URI to an event key, call nmp_nip21_decode_uri and
     // extract the event_id field from the JSON result, then pass it as `key`.
 
@@ -83,7 +83,7 @@ extension KernelHandle {
     }
 
     /// #1726 — Decode a `nostr:` URI and resolve the embedded event ref via the
-    /// unified ref-resolution seam. Supersedes the deleted `claimEvent(uri:…)`.
+    /// unified ref-resolution seam.
     ///
     /// Handles `nevent`/`note` URIs (hex event_id key) and `naddr` URIs
     /// (canonical `kind:pubkey:identifier` coordinate key). On decode failure or

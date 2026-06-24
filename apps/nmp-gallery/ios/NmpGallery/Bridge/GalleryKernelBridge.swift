@@ -160,14 +160,13 @@ final class GalleryKernelHandle {
 
     // ── Event claim / release ────────────────────────────────────────────
 
-    // #1726: claimEvent / releaseEvent DELETED (nmp_app_claim_event /
-    // nmp_app_release_event removed from C ABI). The gallery now decodes the
-    // nostr: URI via nmp_nip21_decode_uri and routes to nmp_app_resolve_ref /
-    // nmp_app_release_ref (namespace=1/event).
+    // App-owned URI adapter: decode nostr: via nmp_nip21_decode_uri, then route
+    // the raw event key to nmp_app_resolve_ref / nmp_app_release_ref
+    // (namespace=1/event).
 
     /// #1726 — Decode a `nostr:` URI and resolve the embedded event via the
     /// unified ref-resolution seam (nmp_app_resolve_ref, namespace=1/event).
-    /// Supersedes the deleted `claimEvent(uri:…)`.
+    /// App-local URI adapter over the unified ref-resolution seam.
     func claimEvent(uri: String, consumerID: String, force: Bool = false) {
         guard let eventId = decodeEventKey(from: uri) else { return }
         let liveness: Int32 = force ? 1 : 0

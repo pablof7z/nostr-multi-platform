@@ -370,9 +370,8 @@ Registry components promise:
   needs, observes projection changes, redraws through the native UI mechanism,
   and releases the claim when no longer visible.
 - **One shell adapter.** Apps wire the registry host once at the platform shell
-  boundary. Feature screens do not call `claim_profile`, `release_profile`,
-  `claim_event`, `release_event`, or equivalent lifecycle APIs for each rendered
-  row.
+  boundary. Feature screens do not call per-row claim/release or equivalent
+  lifecycle APIs for each rendered row.
 - **Rust-owned truth.** Relay choice, fetch policy, cache mutation, replaceable
   supersession, and profile/embed resolution stay in Rust. Native components
   may emit lifecycle intent, render snapshots, and format raw projection fields

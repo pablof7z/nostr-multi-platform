@@ -4,13 +4,15 @@
 //! `NostrContentView` in the TUI registry) can take
 //! `Option<&dyn EventClaimSink>` without `nmp-content` ever gaining an
 //! `nmp-ffi` dependency. Each platform host (TUI, iOS, Compose) supplies an
-//! impl that bridges `claim` / `release` to `nmp_app_claim_event` /
-//! `nmp_app_release_event` on the FFI surface.
+//! impl that decodes the embed URI at the app boundary and bridges `claim` /
+//! `release` to the unified `resolve_ref` / `release_ref` surface.
 
 /// Host-side bridge that lets a renderer initiate an upstream fetch for
 /// an embedded event (ADR-0034). The trait lives in nmp-content so
 /// nmp-content never gains an nmp-ffi dependency; each platform host
-/// supplies the impl that bridges to its FFI surface.
+/// supplies the impl that bridges to its FFI surface. URI decoding is
+/// app-owned; the kernel boundary receives the raw event key plus optional
+/// relay hints.
 ///
 /// # Examples
 ///

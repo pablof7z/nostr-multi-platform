@@ -129,10 +129,12 @@ class GalleryModel : ViewModel() {
         bridge.releaseProfile(pubkey, consumerId)
     }
 
+    /** App-local URI adapter over the kernel's unified event ref seam. */
     fun claimEvent(uri: String, consumerId: String = CONSUMER_ID) {
         bridge.claimEvent(uri, consumerId)
     }
 
+    /** Inverse of [claimEvent]; safe if the claim is already gone. */
     fun releaseEvent(uri: String, consumerId: String = CONSUMER_ID) {
         bridge.releaseEvent(uri, consumerId)
     }

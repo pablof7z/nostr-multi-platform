@@ -24,16 +24,17 @@ C-ABI (`crates/nmp-ffi/src/timeline.rs`). That approach failed two CI gates:
 
 ## Decision
 
-Do **not** add a new symbol. Expose force-refresh as a trailing `force` argument
-on the two existing claim functions:
+Historical decision before ADR-0063/#1946: do **not** add a new symbol. Expose
+force-refresh as a trailing `force` argument on the two then-existing claim
+functions:
 
 - `nmp_app_claim_profile(app, pubkey, consumer_id, force: c_int)` — kind:0 profile.
-- `nmp_app_claim_event(app, uri, consumer_id, force: c_int)` — `naddr` addressable
+- the legacy event URI claim entry point — `naddr` addressable
   identities; a silent no-op for immutable `nevent`/`note` URIs (no TTL record).
 
 `force` (`force != 0`) propagates as `force: bool` through
-`ActorCommand::ClaimProfile`/`ClaimEvent`, `KernelReducer`/`Kernel::claim_profile`
-/`claim_event`, and into `Kernel::claim_replaceable(kind, pubkey, d_tag?, force)`.
+the historical profile/event claim commands, `KernelReducer`/`Kernel`, and into
+`Kernel::claim_replaceable(kind, pubkey, d_tag?, force)`.
 When `force == true` the kernel treats the stored `check_again_after` as `0`, so
 the TTL gate always reads as due and enqueues a re-verification REQ — semantically
 identical to what the deleted `nmp_app_refresh_replaceable` did. When

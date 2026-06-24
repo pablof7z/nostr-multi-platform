@@ -1,10 +1,8 @@
 //! Android JNI wrappers for the demand-driven claim/release seam.
 //!
-//! #1726: `nativeClaimEvent` and `nativeReleaseEvent` now decode the `nostr:`
-//! URI in Rust (via `nmp_nip21_decode_uri`) and forward the event key to the
-//! unified `nmp_app_resolve_ref` / `nmp_app_release_ref` seam. The deleted
-//! `nmp_app_claim_event` / `nmp_app_release_event` C-ABI symbols are NOT used
-//! here (no compat shim kept — they are gone).
+//! `nativeClaimEvent` and `nativeReleaseEvent` are app-owned URI adapters: they
+//! decode the `nostr:` URI in Rust and forward the event key to the unified
+//! `nmp_app_resolve_ref` / `nmp_app_release_ref` seam.
 //!
 //! Active claim families:
 //!   * embedded-event claims — `nativeClaimEvent` / `nativeReleaseEvent`
@@ -15,9 +13,9 @@
 //! the claim ledger and resolution; these entrypoints forward strings and
 //! return void. D6: a null/dead handle or a malformed string is a silent no-op.
 
+use jni::JNIEnv;
 use jni::objects::{JClass, JString};
 use jni::sys::{jint, jlong};
-use jni::JNIEnv;
 
 use nmp_ffi::{nmp_app_release_ref, nmp_app_resolve_ref, nmp_nip21_decode_uri};
 
@@ -66,10 +64,8 @@ fn event_key_from_uri(uri: &std::ffi::CStr) -> Option<std::ffi::CString> {
 
 /// Demand-driven embedded-event claim (#984 / T180 / ADR-0034 / #1726).
 ///
-/// #1726: decodes the `nostr:` URI in Rust, extracts the event-id key, and
-/// forwards to `nmp_app_resolve_ref(namespace=1/event, shape=2/embed,
-/// liveness=0/CacheOk)`. The deleted `nmp_app_claim_event` C-ABI symbol is
-/// NOT called.
+/// Decodes the `nostr:` URI in Rust, extracts the event-id key, and forwards to
+/// `nmp_app_resolve_ref(namespace=1/event, shape=2/embed, liveness=0/CacheOk)`.
 ///
 /// D6: bad handles / non-event URIs / decode errors are silent no-ops.
 #[no_mangle]
@@ -106,9 +102,8 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClaimEvent(
 
 /// Release a previously-claimed embedded event (#984 / #1726).
 ///
-/// #1726: decodes the `nostr:` URI in Rust, extracts the event-id key, and
-/// forwards to `nmp_app_release_ref(namespace=1/event)`. The deleted
-/// `nmp_app_release_event` C-ABI symbol is NOT called.
+/// Decodes the `nostr:` URI in Rust, extracts the event-id key, and forwards to
+/// `nmp_app_release_ref(namespace=1/event)`.
 ///
 /// D6: bad handles / non-event URIs / decode errors are silent no-ops.
 #[no_mangle]

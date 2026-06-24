@@ -98,10 +98,12 @@ class KernelBridge {
         if (handle != 0L) nativeReleaseRef(handle, REF_NS_PROFILE, pubkey, consumerId)
     }
 
+    /** App-local URI adapter: nativeClaimEvent decodes [uri] and calls resolve_ref. */
     fun claimEvent(uri: String, consumerId: String) {
         if (handle != 0L) nativeClaimEvent(handle, uri, consumerId)
     }
 
+    /** App-local URI adapter: nativeReleaseEvent decodes [uri] and calls release_ref. */
     fun releaseEvent(uri: String, consumerId: String) {
         if (handle != 0L) nativeReleaseEvent(handle, uri, consumerId)
     }

@@ -7,7 +7,7 @@
   - **ADR-0064** — unified write/command boundary. This ADR is the *payload-shape* side of the same collapse: ADR-0064 changes the wire transport; this ADR changes the in-process command vocabulary that the FFI shims and protocol crates construct.
   - **ADR-0050** — signer-session capability port. The `Sign` family below is the typed home for the port verbs `sign | nip44_encrypt | nip44_decrypt`, replacing four free-standing top-level variants.
   - **ADR-0042** (M2 interests) — the `Interests` family groups all interest-registry verbs into one payload, matching the existing `cmd_interests.rs` dispatch split.
-  - **ADR-0063** (reference resolution) — the `Refs` family groups `ClaimEvent` / `ReleaseEvent` / `ResolveRef` / `ReleaseRef` (the legacy + unified ref verbs).
+  - **ADR-0063** (reference resolution) — the `Refs` family groups the unified `Resolve` / `Release` ref verbs.
 - **Doctrines touched:** D0 (no app noun in core — the families are substrate-internal grouping, not app vocabulary), D4 (one writer / one dispatch authority — the collapse preserves the single `dispatch_command` doorway), D7 (capabilities report, kernel decides — the `Sign` family keeps the capability-port shape intact).
 
 ---
@@ -62,7 +62,7 @@ pub enum ActorCommand {
     Contacts(ContactsCommand),
     // ── Relay-list edits + transport-layer control ───────────────────────
     Relay(RelayCommand),
-    // ── Reference resolution (ADR-0063 unified + legacy) ─────────────────
+    // ── Reference resolution (ADR-0063 unified) ──────────────────────────
     Refs(RefsCommand),
     // ── Subscription registry + pull cursors (ADR-0042 M2 / ADR-0058) ─────
     Interests(InterestsCommand),
@@ -90,7 +90,7 @@ pub enum ActorCommand {
 | `Publish` | `PublishRawEvent`, `PublishProfile`, `PublishUnsignedEvent`, `PublishUnsignedEventToRelays`, `PublishSignedEvent`, `RetryPublish`, `CancelPublish` | `cmd_publish.rs` |
 | `Contacts` | `Follow`, `Unfollow`, `FollowMany`, `DeclareActiveFollowsFeed`, `ClearActiveFollowsFeed` | `cmd_publish.rs` (kind:3 follow-set path) |
 | `Relay` | `AddRelay`, `RemoveRelay`, `ReconnectRelays`, `SetRelayInfo` | `cmd_publish.rs` (relay-mutation path) |
-| `Refs` | `ClaimEvent`, `ReleaseEvent`, `ResolveRef`, `ReleaseRef` | `dispatch/mod.rs` (thin delegator) |
+| `Refs` | `Resolve`, `Release` | `dispatch/mod.rs` (thin delegator) |
 | `Interests` | `PushInterest`, `WithdrawInterest`, `EnsureInterest`, `DropInterestOwner`, `OpenInterest`, `OpenObservedInterest`, `CloseInterest`, `RegisterPullCursor`, `AdvancePullCursor`, `UnregisterPullCursor` | `cmd_interests.rs` |
 | `ActionLedger` | `AckActionStage`, `RecordActionFailure`, `RecordActionSuccess` | `cmd_publish.rs` |
 | `TestSupport` | `IngestPreVerifiedEvents`, `IngestPreVerifiedEventsForSubId`, `TriggerGcStep`, `Barrier` | `cmd_interests.rs` (ingest/GC) + `dispatch/mod.rs` (Barrier) |

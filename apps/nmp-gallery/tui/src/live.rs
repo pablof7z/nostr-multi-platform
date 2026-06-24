@@ -25,15 +25,15 @@
 
 use std::{
     collections::BTreeMap,
-    ffi::{c_void, CString},
+    ffi::{CString, c_void},
     os::raw::c_int,
     sync::mpsc::{Receiver, Sender},
     time::Duration,
 };
 
 use nmp_content::EventClaimSink;
-use nmp_core::refs::{RefProfileStore, REFS_PROFILE_KEY};
-use nmp_core::typed_projections::{ClaimedEventsModel, ProfileCardModel, CLAIMED_EVENTS_SCHEMA_ID};
+use nmp_core::refs::{REFS_PROFILE_KEY, RefProfileStore};
+use nmp_core::typed_projections::{CLAIMED_EVENTS_SCHEMA_ID, ClaimedEventsModel, ProfileCardModel};
 
 use crate::data::showcase_pubkey;
 
@@ -227,7 +227,7 @@ impl LiveKernelSink {
 ///   - nevent / note  → hex event_id
 ///   - naddr          → canonical coordinate "kind:pubkey:identifier"
 /// Returns `None` on decode failure or non-event/address target (D6: silent
-/// no-op). Used by `LiveKernelSink` migrating from deleted `nmp_app_claim_event`.
+/// no-op). Used by `LiveKernelSink` before it calls `nmp_app_resolve_ref`.
 fn event_key_from_uri(uri: &str) -> Option<CString> {
     let uri_c = CString::new(uri).ok()?;
     // SAFETY: nmp_nip21_decode_uri returns a heap-allocated NUL-terminated
@@ -259,8 +259,8 @@ fn event_key_from_uri(uri: &str) -> Option<CString> {
     CString::new(key).ok()
 }
 
-// #1726: migrated from the deleted nmp_app_claim_event / nmp_app_release_event
-// to nmp_app_resolve_ref(namespace=1/event) / nmp_app_release_ref.
+// App-owned URI adapter over nmp_app_resolve_ref(namespace=1/event) /
+// nmp_app_release_ref.
 impl EventClaimSink for LiveKernelSink {
     fn claim(&self, uri: &str, consumer_id: &str) {
         let Some(event_key) = event_key_from_uri(uri) else {
