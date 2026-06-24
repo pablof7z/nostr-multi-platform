@@ -150,16 +150,16 @@ struct DiscoveredGroupsSnapshot: Decodable, Equatable {
 
 // ─── NIP-29 group-create defaults read model (#626) ───────────────────────
 //
-// Mirror of `nmp-nip29`'s `GroupDefaultsSnapshot` — the shape the crate-owned
-// `GroupDefaultsProjection` serialises under the snapshot key
-// `"nmp.nip29.group_defaults"`. Thin-shell rule: the suggested public-group
-// relay URL is a NIP-29 protocol fact OWNED BY RUST (the `nmp-nip29` constant
-// `DEFAULT_PUBLIC_GROUP_RELAY_URL`), surfaced here so `NewGroupSheet` pre-fills
-// it without hardcoding a protocol URL in the shell (issue #626). Swift only
-// reads `suggestedRelayUrl` into the editable `TextField` binding.
+// Mirror of `nmp-nip29`'s `GroupDefaultsSnapshot` — the shape the Rust
+// projection serialises under the snapshot key `"nmp.nip29.group_defaults"`.
+// Thin-shell rule: the suggested public-group relay URL is app/operator policy
+// owned by Rust composition (`nmp-chirp-config`), surfaced here so
+// `NewGroupSheet` pre-fills it without hardcoding a protocol URL in the shell
+// (issues #626/#1924). Swift only reads `suggestedRelayUrl` into the editable
+// `TextField` binding.
 
 /// The serialised read-model `NewGroupSheet` seeds its public-group relay
-/// field from. `suggestedRelayUrl` is the crate-owned default; the user may
+/// field from. `suggestedRelayUrl` is the app-owned default; the user may
 /// overwrite it before creating the group.
 ///
 /// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy

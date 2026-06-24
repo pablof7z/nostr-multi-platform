@@ -512,7 +512,7 @@ pub use comments_runtime::register_comment_runtime;
 // `nmp_defaults::register_search_relay_runtime` facade in `lib.rs`) stay at
 // a stable path.
 mod search_relay_runtime;
-pub use search_relay_runtime::register_search_relay_runtime;
+pub use search_relay_runtime::{register_search_relay_runtime, register_search_relay_runtime_with};
 
 // Co-located zap-reconciler unit tests live in a sibling file (kept out of this
 // module body to hold it under the 300-LOC ceiling) but compile as a child

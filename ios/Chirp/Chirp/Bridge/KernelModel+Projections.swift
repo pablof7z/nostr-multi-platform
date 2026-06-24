@@ -32,7 +32,7 @@ extension KernelModel {
     var wireSubscriptions: [WireSubscriptionStatus] { typedEnvelope?.wireSubscriptions ?? [] }
     var relayDiagnostics: RelayDiagnosticsSnapshot { typedRelayDiagnostics ?? .empty }
     var zaps: ZapsAggregateSnapshot? { typedZaps }
-    // #626: crate-owned NIP-29 public-group create defaults. `.empty`
+    // #626/#1924: app/operator-owned NIP-29 public-group create defaults. `.empty`
     // (suggestedRelayUrl == "") until the output-only projection's first
     // snapshot tick lands — `NewGroupSheet` pre-fills the relay field once the
     // suggested URL arrives.

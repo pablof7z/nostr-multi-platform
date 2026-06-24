@@ -102,6 +102,7 @@
 		9270B58217AF84C5A100F45A /* ConfiguredRelays.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B50243EC2D32D04FF7003CE /* ConfiguredRelays.generated.swift */; };
 		92B09E468F53612C287D1BA9 /* KernelBridge+FeedOperations.swift in Sources */ = {isa = PBXBuildFile; fileRef = B93BA204F0BFDE2297E508BD /* KernelBridge+FeedOperations.swift */; };
 		9376A1F186AFC42A2D7BCDA4 /* PublicGroupBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64B43B029A84B84319DD0A7A /* PublicGroupBridge.swift */; };
+		A9E55E1D1924A7C900000001 /* KernelUpdateResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9E55E1D1924A7C900000002 /* KernelUpdateResult.swift */; };
 		939C2856A81F81A6A9B46E2F /* KernelUpdateTypes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A4F0BAE259F8DA4FFC502BA /* KernelUpdateTypes.swift */; };
 		939D52E3D5172AE04B9EA3D5 /* SearchSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A96502E99EF47E96F27F51 /* SearchSheet.swift */; };
 		96C98C820B23613308B5C31A /* SettingsHub.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = EFAA2430D446BC5045B521C3 /* SettingsHub.generated.swift */; };
@@ -282,6 +283,7 @@
 		5838C875325F4179A6CC1630 /* WalletStatusTone.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalletStatusTone.swift; sourceTree = "<group>"; };
 		58DA64278BE30C1CDB46300B /* Accounts.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Accounts.generated.swift; sourceTree = "<group>"; };
 		5A015A4A241347592C09EC0B /* ProfileWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileWire.swift; sourceTree = "<group>"; };
+		A9E55E1D1924A7C900000002 /* KernelUpdateResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelUpdateResult.swift; sourceTree = "<group>"; };
 		5A4F0BAE259F8DA4FFC502BA /* KernelUpdateTypes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelUpdateTypes.swift; sourceTree = "<group>"; };
 		5DDD17888ABA40FE82E0DFD0 /* BunkerHandshake.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BunkerHandshake.generated.swift; sourceTree = "<group>"; };
 		5EC56C5F40E415157200F282 /* NostrKindRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NostrKindRegistry.swift; sourceTree = "<group>"; };
@@ -677,6 +679,7 @@
 				414042D5889A82ADEF944C5A /* KernelSnapshotTypes.swift */,
 				6F41DE5EFD40306C7221AF4B /* KernelSnapshotTypes+RelayDiagnostics.swift */,
 				FD470B56883794083C54B5CC /* KernelUpdateFrameDecoder.swift */,
+				A9E55E1D1924A7C900000002 /* KernelUpdateResult.swift */,
 				5A4F0BAE259F8DA4FFC502BA /* KernelUpdateTypes.swift */,
 				D0F076F49C2C0FD895EB8D82 /* MarmotBridge.swift */,
 				B15293C7F9947AC5629CC8A6 /* MarmotModels.swift */,
@@ -994,6 +997,7 @@
 				16872F2668C9362DAB33840B /* KernelSnapshotTypes.swift in Sources */,
 				4C27415E41CA07D2994D4438 /* KernelTypes.generated.swift in Sources */,
 				728AF2FB6635CBEA25C9529D /* KernelUpdateFrameDecoder.swift in Sources */,
+				A9E55E1D1924A7C900000001 /* KernelUpdateResult.swift in Sources */,
 				939C2856A81F81A6A9B46E2F /* KernelUpdateTypes.swift in Sources */,
 				998745C91A2392EBF235E258 /* KeychainCapability.swift in Sources */,
 				E94AAD8E40BF274B23C79C19 /* KeyedRefCache.generated.swift in Sources */,

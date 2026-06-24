@@ -252,8 +252,8 @@ fn set_indexer_relays_is_reflected_in_next_recompile() {
     let mut l = SubscriptionLifecycle::new();
     assert_eq!(
         l.indexer_relays(),
-        &["wss://purplepag.es".to_string()],
-        "default indexer set is purplepag.es",
+        &["wss://indexer-relay.example".to_string()],
+        "cfg(test) default indexer set is a placeholder relay",
     );
 
     l.set_indexer_relays(vec!["wss://sentinel-indexer.example".to_string()]);
@@ -574,7 +574,7 @@ fn drain_tick_coalesces_multiple_triggers() {
 /// `new()` and `Default::default()` must both yield the same empty zero-state:
 /// no compiles, no plan, no dead relays, no probed mailboxes, no planner
 /// error, and an empty trigger inbox. The `#[cfg(test)]` build seeds
-/// `indexer_relays` with the purplepag.es default — assert that too so a
+/// `indexer_relays` with the cfg(test) placeholder default — assert that too so a
 /// regression in either constructor surfaces here.
 #[test]
 fn new_and_default_produce_identical_empty_state() {
@@ -597,8 +597,8 @@ fn new_and_default_produce_identical_empty_state() {
         assert!(l.inbox.is_empty(), "{label}: trigger inbox empty");
         assert_eq!(
             l.indexer_relays(),
-            ["wss://purplepag.es".to_string()].as_slice(),
-            "{label}: cfg(test) indexer default must be purplepag.es",
+            ["wss://indexer-relay.example".to_string()].as_slice(),
+            "{label}: cfg(test) indexer default must remain the placeholder",
         );
     }
 }
@@ -712,10 +712,10 @@ fn mark_relay_alive_on_never_dead_relay_is_noop() {
 #[test]
 fn pd033c_bootstrap_content_relays_threaded_into_recompile() {
     let mut l = SubscriptionLifecycle::new();
-    // Drop the cfg(test) purplepag.es default so we can prove the discovery
+    // Drop the cfg(test) placeholder default so we can prove the discovery
     // REQ lands on bootstrap content, not the indexer fallback.
     l.set_indexer_relays(vec![]);
-    l.set_bootstrap_content_relays(vec!["wss://relay.primal.net".to_string()]);
+    l.set_bootstrap_content_relays(vec!["wss://content-relay.example".to_string()]);
 
     let mailboxes = InMemoryMailboxCache::new();
     // Discovery oneshot for an event id — matches `oneshot.request(...)` in
@@ -738,7 +738,7 @@ fn pd033c_bootstrap_content_relays_threaded_into_recompile() {
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let landed: Vec<&WireFrame> = frames
         .iter()
-        .filter(|f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://relay.primal.net"))
+        .filter(|f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://content-relay.example"))
         .collect();
     assert_eq!(
         landed.len(),
@@ -826,7 +826,7 @@ fn pd033c_bootstrap_indexer_relays_threaded_into_recompile() {
     // REQ lands on the BOOTSTRAP indexer specifically (not the raw one — the
     // cold-start divergence the planner extension fixes).
     l.set_indexer_relays(vec![]);
-    l.set_bootstrap_indexer_relays(vec!["wss://purplepag.es".to_string()]);
+    l.set_bootstrap_indexer_relays(vec!["wss://indexer-relay.example".to_string()]);
 
     let mailboxes = InMemoryMailboxCache::new();
     // Profile-shape oneshot — matches `oneshot.request(...)` in
@@ -854,7 +854,7 @@ fn pd033c_bootstrap_indexer_relays_threaded_into_recompile() {
     let landed: Vec<&WireFrame> = frames
         .iter()
         .filter(
-            |f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://purplepag.es"),
+            |f| matches!(f, WireFrame::Req { relay_url, .. } if relay_url == "wss://indexer-relay.example"),
         )
         .filter(|f| match f {
             // Discriminate the bootstrap-indexer profile fetch from any
@@ -897,12 +897,12 @@ fn pd033c_bootstrap_indexer_relays_threaded_into_recompile() {
 }
 
 /// `set_indexer_relays` REPLACES the indexer set wholesale — it does not
-/// append to the `#[cfg(test)]` purplepag.es default. Setting an empty Vec
+/// append to the `#[cfg(test)]` placeholder default. Setting an empty Vec
 /// disables the indexer fallback entirely.
 #[test]
 fn set_indexer_relays_replaces_rather_than_appends() {
     let mut l = SubscriptionLifecycle::new();
-    // cfg(test) default is the single purplepag.es entry.
+    // cfg(test) default is the single placeholder entry.
     assert_eq!(l.indexer_relays().len(), 1);
 
     l.set_indexer_relays(vec![

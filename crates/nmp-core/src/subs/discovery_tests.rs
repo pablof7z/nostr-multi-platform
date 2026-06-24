@@ -54,7 +54,7 @@ fn probe_reqs(frames: &[WireFrame]) -> Vec<&WireFrame> {
 /// discovery REQ to the indexer set, targeting that author.
 #[test]
 fn unknown_author_triggers_mailbox_probe() {
-    let mut l = SubscriptionLifecycle::new(); // indexer = [purplepag.es]
+    let mut l = SubscriptionLifecycle::new(); // indexer = [indexer-relay.example]
     let empty = InMemoryMailboxCache::new(); // nothing cached
     push_legacy(l.registry_mut(), follow(1, "ab01"));
 
@@ -68,7 +68,7 @@ fn unknown_author_triggers_mailbox_probe() {
         ..
     } = probes[0]
     {
-        assert_eq!(relay_url, "wss://purplepag.es");
+        assert_eq!(relay_url, "wss://indexer-relay.example");
         assert!(filter_json.contains("10002"));
         assert!(filter_json.contains(&pubkey("ab01")));
         assert!(matches!(lifecycle, InterestLifecycle::OneShot));
@@ -263,14 +263,14 @@ fn no_indexer_no_app_relay_means_no_probe() {
 /// The kind:10002 discovery probe is ADDITIVE to app relays: when the only
 /// indexer-role relay is dropped (or AUTH-walled), an author with no cached
 /// mailbox is still probed via the configured app relay. This is the
-/// regression guard for the Chirp config flip that makes relay.primal.net an
+/// regression guard for the Chirp config flip that makes a content relay an
 /// app relay rather than a dedicated indexer — without the app-relay union the
 /// outbox model could never fetch third-party NIP-65 lists.
 #[test]
 fn app_relay_only_still_emits_mailbox_probe() {
     let mut l = SubscriptionLifecycle::new();
     l.set_indexer_relays(vec![]); // no dedicated indexer at all
-    l.set_app_relays(vec!["wss://relay.primal.net".to_string()]);
+    l.set_app_relays(vec!["wss://app-relay.example".to_string()]);
     let empty = InMemoryMailboxCache::new(); // nothing cached
     push_legacy(l.registry_mut(), follow(1, "ab01"));
 
@@ -288,7 +288,7 @@ fn app_relay_only_still_emits_mailbox_probe() {
         ..
     } = probes[0]
     {
-        assert_eq!(relay_url, "wss://relay.primal.net");
+        assert_eq!(relay_url, "wss://app-relay.example");
         assert!(filter_json.contains("10002"));
         assert!(filter_json.contains(&pubkey("ab01")));
         assert!(matches!(lifecycle, InterestLifecycle::OneShot));
@@ -304,8 +304,8 @@ fn app_relay_only_still_emits_mailbox_probe() {
 /// being AUTH-walled or dead.
 #[test]
 fn probe_unions_indexer_and_app_relays() {
-    let mut l = SubscriptionLifecycle::new(); // indexer = [purplepag.es]
-    l.set_app_relays(vec!["wss://relay.primal.net".to_string()]);
+    let mut l = SubscriptionLifecycle::new(); // indexer = [indexer-relay.example]
+    l.set_app_relays(vec!["wss://app-relay.example".to_string()]);
     let empty = InMemoryMailboxCache::new();
     push_legacy(l.registry_mut(), follow(1, "cd02"));
 
@@ -319,11 +319,11 @@ fn probe_unions_indexer_and_app_relays() {
         })
         .collect();
     assert!(
-        targets.contains("wss://purplepag.es"),
+        targets.contains("wss://indexer-relay.example"),
         "probe must still reach the dedicated indexer; saw {targets:?}"
     );
     assert!(
-        targets.contains("wss://relay.primal.net"),
+        targets.contains("wss://app-relay.example"),
         "probe must also reach the app relay; saw {targets:?}"
     );
 }

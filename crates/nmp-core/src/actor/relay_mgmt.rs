@@ -72,7 +72,7 @@ pub(super) fn all_relays_connected(connected_relays: &HashSet<RelayRole>) -> boo
 /// Returns `true` as soon as **any** bootstrap lane (`Content` or `Indexer`) has
 /// reported `Connected`. Previously this gate required **every** lane
 /// ([`all_relays_connected`]); if one bootstrap lane never opened its socket
-/// (the Android emulator's `purplepag.es` Indexer lane), the gate was
+/// (for example, an emulator's Indexer lane), the gate was
 /// permanently `false` and every claim/open parked forever with no REQ — even
 /// for an nevent carrying a working relay hint.
 ///

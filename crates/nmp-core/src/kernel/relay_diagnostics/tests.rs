@@ -194,15 +194,19 @@ fn relay_row_event_count_uses_session_transport_counter_after_subs_close() {
     use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    kernel.relay_connecting_url(RelayRole::Indexer, "wss://purplepag.es/");
-    kernel.relay_connected_url(RelayRole::Indexer, "wss://purplepag.es/");
-    kernel.record_transport_event(RelayRole::Indexer, "wss://purplepag.es/", Instant::now());
+    kernel.relay_connecting_url(RelayRole::Indexer, "wss://indexer-relay.example/");
+    kernel.relay_connected_url(RelayRole::Indexer, "wss://indexer-relay.example/");
+    kernel.record_transport_event(
+        RelayRole::Indexer,
+        "wss://indexer-relay.example/",
+        Instant::now(),
+    );
 
     let snap = kernel.relay_diagnostics_snapshot();
     let row = snap
         .relays
         .iter()
-        .find(|row| row.relay_url == "wss://purplepag.es")
+        .find(|row| row.relay_url == "wss://indexer-relay.example")
         .expect("diagnostics must include the indexer socket URL");
 
     assert_eq!(row.total_sub_count, 0, "completed subs may be evicted");

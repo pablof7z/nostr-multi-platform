@@ -37,13 +37,13 @@ struct NewGroupSheet: View {
     @State private var name = ""
     @State private var groupDescription = ""
     @State private var inviteeText = ""
-    // #626: the suggested public-group relay URL is a NIP-29 protocol fact owned
-    // by Rust (the `nmp-nip29` crate constant `DEFAULT_PUBLIC_GROUP_RELAY_URL`),
-    // surfaced on the kernel snapshot under `"nmp.nip29.group_defaults"`. This
-    // field starts EMPTY and is seeded from `model.groupDefaults.suggestedRelayUrl`
-    // once that projection lands (see `seedRelayUrlIfNeeded`) — never a hardcoded
-    // Swift literal. Swift keeps only the editable `TextField` binding; the user
-    // may overwrite the pre-filled value.
+    // #626/#1924: the suggested public-group relay URL is app/operator policy
+    // supplied by Rust composition (`nmp-chirp-config`) and surfaced on the
+    // kernel snapshot under `"nmp.nip29.group_defaults"`. This field starts
+    // EMPTY and is seeded from `model.groupDefaults.suggestedRelayUrl` once
+    // that projection lands (see `seedRelayUrlIfNeeded`) — never a hardcoded
+    // Swift literal. Swift keeps only the editable `TextField` binding; the
+    // user may overwrite the pre-filled value.
     @State private var publicRelayUrl = ""
     /// `true` once the kernel-suggested relay URL has been seeded into
     /// `publicRelayUrl`, so a later snapshot tick (or a user edit) never

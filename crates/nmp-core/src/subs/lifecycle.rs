@@ -24,7 +24,7 @@ impl Default for SubscriptionLifecycle {
 }
 
 impl SubscriptionLifecycle {
-    /// Construct an empty lifecycle with a default indexer set.
+    /// Construct an empty lifecycle with no production indexer set.
     ///
     /// T132: the lifecycle no longer owns a mailbox cache. The caller passes a
     /// `&dyn MailboxCache` into `recompile_and_diff` / `drain_tick`, sourced
@@ -40,7 +40,7 @@ impl SubscriptionLifecycle {
             indexer_relays: {
                 #[cfg(test)]
                 {
-                    vec!["wss://purplepag.es".to_string()]
+                    vec!["wss://indexer-relay.example".to_string()]
                 }
                 #[cfg(not(test))]
                 {
@@ -409,8 +409,8 @@ impl SubscriptionLifecycle {
     /// case-D cold-start fallback when both `app_relays` and the
     /// active-account read set are empty.
     ///
-    /// Default at construction is `vec!["wss://purplepag.es".to_string()]` under
-    /// `#[cfg(test)]`; empty in production so the app-supplied set is authoritative.
+    /// Default at construction is a `.example` fixture under `#[cfg(test)]`;
+    /// empty in production so the app-supplied set is authoritative.
     /// Set to an empty `Vec` to disable indexer fallback entirely (authors
     /// without a mailbox snapshot will still land in
     /// `CompiledPlan::unroutable_authors` — case A never falls back to the
@@ -486,6 +486,8 @@ impl SubscriptionLifecycle {
         use crate::subs::sub_key::SubIdentity;
         let token = RegistryWriteToken::for_test();
         let identity = SubIdentity::from_legacy_interest(&interest);
-        let _ = self.registry.apply(&token, InterestWrite::Replace, identity, interest);
+        let _ = self
+            .registry
+            .apply(&token, InterestWrite::Replace, identity, interest);
     }
 }

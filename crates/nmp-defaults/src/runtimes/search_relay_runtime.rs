@@ -11,9 +11,9 @@
 //! `register_search_relay_runtime` returns `Arc<SearchRelayListProjection>`.
 //! Pass it to [`crate::search_defaults::effective_search_relays`] to get
 //! the effective relay list (user's kind:10007 list, else the app-default
-//! fallback). A higher-order NIP-50 search crate that needs to open a relay
-//! subscription on the right relays calls that helper rather than reaching
-//! into the projection directly.
+//! fallback, else empty). A higher-order NIP-50 search crate that needs to open
+//! a relay subscription on the right relays calls that helper rather than
+//! reaching into the projection directly.
 //!
 //! # How kind:10007 events reach the projection (#1817)
 //!
@@ -64,7 +64,7 @@ use crate::search_defaults::SearchDefaults;
 ///    owner-pubkey gate inside the projection).
 /// 3. **Returns the `Arc<SearchRelayListProjection>`** — the caller passes it
 ///    to [`crate::search_defaults::effective_search_relays`] to resolve the
-///    effective search relay set (user list, else app default).
+///    effective search relay set (user list, else app default, else empty).
 ///
 /// # Account-switch safety
 ///
@@ -97,7 +97,7 @@ pub fn register_search_relay_runtime(
 /// [`register_search_relay_runtime`] with an explicit [`SearchDefaults`] for the
 /// app-default fallback that backs the transparently-wired default search-relay
 /// source. `register_search_relay_runtime` is the `SearchDefaults::default()`
-/// convenience (built-in NIP-50 relay).
+/// convenience, which declares no app-default relay.
 pub fn register_search_relay_runtime_with(
     app: &(impl EventObserverRegistrar + HostCapabilities),
     defaults: SearchDefaults,
@@ -119,9 +119,9 @@ pub fn register_search_relay_runtime_with(
     // to the user's published kind:10007 relays with ZERO app code. The source
     // reads the SAME live `SearchRelayListProjection` registered above for
     // `user_preferred()`, and the app-default `SearchDefaults` for the
-    // fallback — exactly the `effective_search_relays` preference order, but
-    // exposed through the `nmp-nip50` read seam instead of requiring the app to
-    // call `effective_search_relays` itself.
+    // fallback (possibly empty) — exactly the `effective_search_relays`
+    // preference order, but exposed through the `nmp-nip50` read seam instead
+    // of requiring the app to call `effective_search_relays` itself.
     //
     // `nmp_nip50::install_search_relay_source` installs the source through the
     // substrate-generic `HostCapabilities::install_preferred_relay_source` seam
@@ -146,7 +146,7 @@ pub fn register_search_relay_runtime_with(
 /// The default search-relay source the composition root auto-wires onto the
 /// host. `user_preferred()` returns the active account's live kind:10007 list
 /// (the `SearchRelayListProjection` the self-kinds tailing bundle populates);
-/// `app_default()` returns the app-configured [`SearchDefaults`] built-in.
+/// `app_default()` returns the app-configured [`SearchDefaults`] relay list.
 ///
 /// Mirrors [`crate::effective_search_relays`]'s preference order (user list →
 /// default), but `nmp_nip50::resolve_search_relays` applies the fallback itself,

@@ -1,44 +1,42 @@
-//! `GroupDefaultsProjection` — crate-owned defaults for the NIP-29
+//! `GroupDefaultsProjection` — app-supplied defaults for the NIP-29
 //! public-group create flow.
 //!
 //! Unlike [`super::group_chat::GroupChatProjection`] and
 //! [`super::discovered::DiscoveredGroupsProjection`], this projection is **not**
 //! event-driven: it carries no [`nmp_core::KernelEventObserver`] and observes no
-//! kernel events. It is a pure **output** projection that surfaces a constant
-//! the framework owns — the suggested host relay URL a host shell pre-fills into
+//! kernel events. It is a pure **output** projection that surfaces the
+//! app/operator-supplied suggested host relay URL a host shell pre-fills into
 //! its "new public group" form.
 //!
 //! ## Why this lives in Rust, not the shell
 //!
 //! Issue #626: the iOS `NewGroupSheet` hardcoded the default relay URL as a
-//! compile-time Swift `@State` literal
-//! (`"wss://relay.groups.nip29.com"`). That is a NIP-29 protocol fact (a
-//! protocol-specific relay URL) baked into a thin shell — a P5 violation
-//! (the framework, not the shell, must own protocol complexity) and it could
-//! not be changed without a client release.
+//! compile-time Swift `@State` literal. That was product/operator policy baked
+//! into a thin shell — a boundary violation because platform shells render and
+//! execute capabilities only.
 //!
 //! Surfacing it as a snapshot projection keyed `"nmp.nip29.group_defaults"`
-//! lets every host shell read the suggested URL off the kernel snapshot, and
-//! lets the value move (per-build today, per-kernel-config later) without any
-//! shell change. The shell keeps only the editable `TextField` binding.
+//! lets every host shell read the suggested URL off the kernel snapshot while
+//! the leaf app Rust config remains the single policy owner. The shell keeps
+//! only the editable `TextField` binding.
 //!
 //! ## D0 compliance
 //!
-//! The NIP-29 nouns (`group`, the protocol relay URL) live here, in the NIP-29
-//! crate — never in `nmp-core` (nip29 nouns are D0-banned there). The
-//! projection is registered from [`crate::register::wire_group_defaults`]
-//! alongside the other NIP-29 projections.
+//! The NIP-29 nouns (`group`, group defaults) live here, in the NIP-29 crate —
+//! never in `nmp-core` (nip29 nouns are D0-banned there). The relay URL itself
+//! is app/operator policy: [`crate::register::wire_group_defaults`] emits an
+//! empty suggestion, while leaf apps call
+//! [`crate::register::wire_group_defaults_with_relay`].
 
 use serde::{Deserialize, Serialize};
 
-/// The crate-owned default host relay URL for newly created NIP-29 public
+/// The shared-crate default host relay URL for newly created NIP-29 public
 /// groups.
 ///
-/// This is the single source of truth for the value issue #626 moved out of
-/// the iOS shell. It is sourced into the `"nmp.nip29.group_defaults"` snapshot
-/// projection so every host shell reads it identically. Changing the default
-/// is a one-line edit here — never a per-shell change.
-pub const DEFAULT_PUBLIC_GROUP_RELAY_URL: &str = "wss://relay.groups.nip29.com";
+/// Empty by design: shared NMP crates do not own public relay/operator policy.
+/// Leaf apps that want a pre-filled group host relay call
+/// [`crate::register::wire_group_defaults_with_relay`].
+pub const DEFAULT_PUBLIC_GROUP_RELAY_URL: &str = "";
 
 /// The read model surfaced under `"nmp.nip29.group_defaults"`.
 ///
@@ -54,11 +52,17 @@ pub struct GroupDefaultsSnapshot {
 }
 
 impl GroupDefaultsSnapshot {
-    /// Build the defaults snapshot from the crate-owned constant.
+    /// Build the empty shared defaults snapshot.
     #[must_use]
     pub fn from_defaults() -> Self {
+        Self::with_suggested_relay_url(DEFAULT_PUBLIC_GROUP_RELAY_URL)
+    }
+
+    /// Build the defaults snapshot from an app/operator-supplied relay URL.
+    #[must_use]
+    pub fn with_suggested_relay_url(url: impl Into<String>) -> Self {
         Self {
-            suggested_relay_url: DEFAULT_PUBLIC_GROUP_RELAY_URL.to_string(),
+            suggested_relay_url: url.into(),
         }
     }
 }
@@ -71,29 +75,50 @@ impl Default for GroupDefaultsSnapshot {
 
 /// The output-only projection of NIP-29 create-flow defaults.
 ///
-/// Holds no mutable state and observes no events — its snapshot is a pure
-/// function of [`DEFAULT_PUBLIC_GROUP_RELAY_URL`]. Registered as a snapshot
-/// projection (plus a typed FlatBuffers sidecar) under
-/// `"nmp.nip29.group_defaults"`.
-#[derive(Debug, Clone, Default)]
-pub struct GroupDefaultsProjection;
+/// Holds no mutable state and observes no events — its snapshot is the
+/// app-supplied value captured at registration time. Registered as a typed
+/// FlatBuffers snapshot projection under `"nmp.nip29.group_defaults"`.
+#[derive(Debug, Clone)]
+pub struct GroupDefaultsProjection {
+    snapshot: GroupDefaultsSnapshot,
+}
+
+impl Default for GroupDefaultsProjection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl GroupDefaultsProjection {
-    /// Construct the (stateless) defaults projection.
+    /// Construct the defaults projection with no suggested relay.
     #[must_use]
     pub fn new() -> Self {
-        Self
+        Self::with_snapshot(GroupDefaultsSnapshot::from_defaults())
+    }
+
+    /// Construct the defaults projection from an app/operator-supplied relay.
+    #[must_use]
+    pub fn with_suggested_relay_url(url: impl Into<String>) -> Self {
+        Self::with_snapshot(GroupDefaultsSnapshot::with_suggested_relay_url(url))
+    }
+
+    /// Construct the defaults projection from an explicit snapshot.
+    #[must_use]
+    pub fn with_snapshot(snapshot: GroupDefaultsSnapshot) -> Self {
+        Self { snapshot }
     }
 
     /// The typed read model carried on every snapshot.
     #[must_use]
     pub fn snapshot(&self) -> GroupDefaultsSnapshot {
-        GroupDefaultsSnapshot::from_defaults()
+        self.snapshot.clone()
     }
 
-    /// The generic `serde_json::Value` projection body registered under
-    /// `"nmp.nip29.group_defaults"` (the permanent ADR-0037 fallback carried
-    /// alongside the typed sidecar).
+    /// Serde JSON mirror of the typed read model.
+    ///
+    /// `wire_group_defaults*` does not register this as a generic projection;
+    /// it exists for serialization parity tests and callers that need the JSON
+    /// shape explicitly.
     #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot()).unwrap_or(serde_json::Value::Null)
@@ -105,12 +130,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn snapshot_sources_the_crate_owned_constant() {
+    fn default_snapshot_has_no_shared_relay_url() {
         let snap = GroupDefaultsProjection::new().snapshot();
         assert_eq!(snap.suggested_relay_url, DEFAULT_PUBLIC_GROUP_RELAY_URL);
-        // The constant is the documented #626 value — guard against an
-        // accidental edit that would silently change every shell's default.
-        assert_eq!(snap.suggested_relay_url, "wss://relay.groups.nip29.com");
+        assert!(
+            snap.suggested_relay_url.is_empty(),
+            "shared NIP-29 defaults must not name a public relay"
+        );
+    }
+
+    #[test]
+    fn snapshot_carries_app_supplied_relay_url() {
+        let snap =
+            GroupDefaultsProjection::with_suggested_relay_url("wss://groups.example").snapshot();
+        assert_eq!(snap.suggested_relay_url, "wss://groups.example");
     }
 
     #[test]
