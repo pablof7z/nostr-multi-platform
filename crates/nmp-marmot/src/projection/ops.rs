@@ -11,7 +11,7 @@
 //! [`crate::projection::publish`] through the actor/protocol runtime port — no
 //! Swift relay path. Per-kind routing:
 //! kind:445 → `publish_group_pinned` (group's relay-pinned list; a cache
-//! MISS degrades to author-outbox `Auto`); kind:30443 key-package
+//! MISS suppresses dispatch, never author-outbox fallback); kind:30443 key-package
 //! → `publish_explicit` (`Auto` / NIP-65 outbox; legacy kind:443 retired
 //! 2026-05-31); kind:1059
 //! gift-wrap Welcome → the GROUP's relays as a documented inbox-routing
@@ -37,140 +37,27 @@
 //! epoch). We never wedge the group; `clear` is reachable via `clear_pending`.
 //! * `leave_group` is SelfRemove: `commit()` is a documented no-op there.
 
-use nostr::{EventBuilder, JsonUtil, Kind, PublicKey, RelayUrl};
-use serde_json::{json, Value};
-use std::collections::BTreeSet;
+use nostr::{EventBuilder, JsonUtil, Kind, RelayUrl};
+use serde_json::{Value, json};
 
-use mdk_core::prelude::{GroupId, NostrGroupConfigData};
+use mdk_core::prelude::NostrGroupConfigData;
 
 use crate::projection::action::MarmotAction;
 use crate::projection::payload::MarmotMessageRow;
-use crate::projection::state::{hex_encode, parse_signed_event, InnerHandle};
+use crate::projection::state::{InnerHandle, hex_encode};
+
+#[path = "ops/input.rs"]
+mod input;
+use input::{
+    fill_key_packages_from_cache, group_id_from_hex, parse_pubkeys, parse_relays, resolve_invitees,
+    resolve_write_relays, signed_key_package_events,
+};
 
 /// `{"ok":false,"error":"…"}` — local copy of the FFI shell's `err`
 /// helper so this layer carries no `crate::marmot::ffi` dependency
 /// (Chirp is now a thin C-ABI shell over these modules).
 fn err(msg: &str) -> serde_json::Value {
     serde_json::json!({ "ok": false, "error": msg })
-}
-
-/// Decode a hex MLS group id into a `GroupId`.
-fn group_id_from_hex(hex: &str) -> Result<GroupId, String> {
-    let bytes = decode_hex(hex).ok_or_else(|| "group_id_hex is not valid hex".to_string())?;
-    Ok(GroupId::from_slice(&bytes))
-}
-
-fn decode_hex(s: &str) -> Option<Vec<u8>> {
-    if !s.len().is_multiple_of(2) {
-        return None;
-    }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
-        .collect()
-}
-
-/// Resolve the invitee npub list from EITHER the typed array
-/// (`invitee_npubs`) OR a free-form text field (`invitee_text`) the UI
-/// captures verbatim. Splits on whitespace, comma, semicolon, newline;
-/// trims each token; drops empties. Validation (npub/hex parse) stays in
-/// the per-op pipeline — this is just the input-adapter step Rust owns
-/// per aim.md §4.5 / §6.
-fn resolve_invitees(invitee_text: Option<&str>, invitee_npubs: Option<&[String]>) -> Vec<String> {
-    if let Some(arr) = invitee_npubs {
-        if !arr.is_empty() {
-            return arr.to_vec();
-        }
-    }
-    let Some(text) = invitee_text else {
-        return Vec::new();
-    };
-    text.split(|c: char| c.is_whitespace() || c == ',' || c == ';')
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
-
-fn parse_pubkeys(npubs: &[String]) -> Result<Vec<PublicKey>, String> {
-    npubs
-        .iter()
-        .map(|s| PublicKey::parse(s).map_err(|e| format!("bad pubkey `{s}`: {e}")))
-        .collect()
-}
-
-fn parse_relays(urls: &[String]) -> Result<Vec<RelayUrl>, String> {
-    urls.iter()
-        .map(|s| RelayUrl::parse(s).map_err(|e| format!("bad relay `{s}`: {e}")))
-        .collect()
-}
-
-/// Resolve the write-relay set for relay-bearing ops.
-///
-/// The app-wired NIP-65 write relays (`h.write_relay_urls()`, recovered
-/// from the live `NmpApp`) are authoritative for the FFI host path. When
-/// the projection is driven WITHOUT an app wired (a reusable host that
-/// supplies relays directly — e.g. the FFI round-trip tests, or any
-/// non-Chirp consumer), fall back to the envelope `relays` array. This
-/// keeps `nmp-marmot::projection` host-agnostic: relays come from the
-/// kernel when available, otherwise from the caller's op envelope.
-fn resolve_write_relays(h: &InnerHandle<'_>, relays: &[String]) -> Vec<String> {
-    let app_relays = h.write_relay_urls();
-    if !app_relays.is_empty() {
-        return app_relays;
-    }
-    relays.to_vec()
-}
-
-/// Pull `signed_key_package_events_json` (array of signed kind:30443
-/// event JSON strings OR objects) — the KeyPackage-cache seam escape hatch.
-fn signed_key_package_events(arr: &[Value]) -> Result<Vec<nostr::Event>, String> {
-    let mut out = Vec::with_capacity(arr.len());
-    for item in arr.iter().cloned() {
-        let json = match item {
-            Value::String(s) => s,
-            other => {
-                serde_json::to_string(&other).map_err(|e| format!("re-encode kp event: {e}"))?
-            }
-        };
-        out.push(parse_signed_event(&json)?);
-    }
-    Ok(out)
-}
-
-fn fill_key_packages_from_cache(
-    h: &InnerHandle<'_>,
-    invitee_npubs: &[String],
-    kp_events: &mut Vec<nostr::Event>,
-) -> (Vec<String>, Vec<PublicKey>) {
-    let valid_pubkeys = invitee_npubs
-        .iter()
-        .filter_map(|s| PublicKey::parse(s).ok())
-        .collect::<Vec<_>>();
-    let cached = h.service().cached_key_packages(&valid_pubkeys);
-    let mut present = kp_events
-        .iter()
-        .map(|event| event.pubkey.to_hex())
-        .collect::<BTreeSet<_>>();
-    for event in cached {
-        if present.insert(event.pubkey.to_hex()) {
-            kp_events.push(event);
-        }
-    }
-
-    let mut needs = Vec::new();
-    let mut fetch_pubkeys = Vec::new();
-    for invitee in invitee_npubs {
-        match PublicKey::parse(invitee) {
-            Ok(pk) if present.contains(&pk.to_hex()) => {}
-            Ok(pk) => {
-                needs.push(invitee.clone());
-                fetch_pubkeys.push(pk);
-            }
-            Err(_) => needs.push(invitee.clone()),
-        }
-    }
-    (needs, fetch_pubkeys)
 }
 
 /// Newest-N decrypted application messages for one group, newest first.
@@ -329,11 +216,10 @@ fn publish_key_package(
 ///
 /// Inbox-routing APPROXIMATION: no NIP-65 inbox resolver for invitees, so the
 /// kind:1059 goes to the GROUP's relays (members fetch from there). **D10
-/// provenance guard**: a group-relay cache miss does NOT degrade to
-/// author-outbox `Auto` — [`publish_to`](crate::projection::publish::publish_to)
-/// refuses an unpinned kind:1059 (it would leak the Welcome's existence to the
-/// author's public outbox). The signed JSON still appears in the INFORMATIONAL
-/// return; only the wire dispatch is suppressed.
+/// provenance guard**: a group-relay cache miss suppresses wire dispatch —
+/// [`publish_to`](crate::projection::publish::publish_to) refuses an unpinned
+/// kind:1059 (it would leak the Welcome's existence to the author's public
+/// outbox). The signed JSON still appears in the INFORMATIONAL return.
 ///
 /// Returns the signed kind:1059 JSONs (INFORMATIONAL — already submitted). A
 /// `wrap_welcome` failure → `Err` (D6 → `{"ok":false,...}`; no panic crosses FFI).

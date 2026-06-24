@@ -22,19 +22,17 @@
 //!
 //! ## Expiry
 //!
-//! Wall-clock gated on **KP-ingest + snapshot edges** (NO timers, NO polling,
-//! compliant with doctrine D8). Any pending op older than
+//! Wall-clock gated on **KP-ingest + explicit actor expiry commands** (NO
+//! timers, NO polling, compliant with doctrine D8). Any pending op older than
 //! [`PENDING_OP_EXPIRY_SECS`] is evicted with a terminal
-//! `key_package_unavailable` failure on the next edge that provides a
-//! `now_secs` reference. The `check_expired` helper is the single eviction
+//! `key_package_unavailable` failure on the next actor-side edge that provides
+//! a `now_secs` reference. The `check_expired` helper is the single eviction
 //! mechanism; it is driven from two call sites:
 //!   * the kind:30443 ingest arm of `ops::ingest_signed_event_core`
 //!     (so an arriving KP for *another* peer still ages out stale ops), and
-//!   * the top of `MarmotProjection::snapshot` (so an op whose KP NEVER
-//!     arrives still expires within a tick of its deadline — snapshots are
-//!     emitted on every frame-producing actor tick, a dense wall-clock edge).
-//! Without the snapshot edge a parked op could hang forever if no further KP
-//! events were ever ingested.
+//!   * an internal `MarmotProtocolCommand` queued by the snapshot tick observer
+//!     when pending ops exist. The observer only enqueues work; snapshot
+//!     generation itself stays read-only.
 //!
 //! ## Lifetime / durability
 //!
@@ -101,9 +99,7 @@ pub enum StoreResult {
     /// caller should return a "duplicate" pending envelope — no new
     /// `correlation_id` is minted; the host's spinner already shows the
     /// original.
-    Duplicate {
-        existing_correlation_id: String,
-    },
+    Duplicate { existing_correlation_id: String },
 }
 
 /// In-memory store for pending (deferred) Marmot ops.
@@ -212,15 +208,13 @@ impl PendingOpsStore {
     /// <= now_secs` and return them as expired [`PendingOp`]s so the caller
     /// can record terminal failures.
     ///
-    /// Call on every ingest/snapshot edge (provides `now_secs`). Never spawns
-    /// a timer or sleeps (D8).
+    /// Call from actor-side ingest/expiry command edges (provides `now_secs`).
+    /// Never spawns a timer or sleeps (D8).
     pub fn check_expired(&mut self, now_secs: u64) -> Vec<PendingOp> {
         let expired_cids: Vec<String> = self
             .ops
             .values()
-            .filter(|op| {
-                now_secs >= op.created_at_secs.saturating_add(PENDING_OP_EXPIRY_SECS)
-            })
+            .filter(|op| now_secs >= op.created_at_secs.saturating_add(PENDING_OP_EXPIRY_SECS))
             .map(|op| op.correlation_id.clone())
             .collect();
         let mut expired = Vec::new();
@@ -346,8 +340,10 @@ mod tests {
     #[test]
     fn fingerprint_uses_sorted_missing_pubkeys() {
         // Order-independent fingerprint.
-        let f1 = PendingOpsStore::fingerprint("create_group", &["bb".to_string(), "aa".to_string()]);
-        let f2 = PendingOpsStore::fingerprint("create_group", &["aa".to_string(), "bb".to_string()]);
+        let f1 =
+            PendingOpsStore::fingerprint("create_group", &["bb".to_string(), "aa".to_string()]);
+        let f2 =
+            PendingOpsStore::fingerprint("create_group", &["aa".to_string(), "bb".to_string()]);
         assert_eq!(f1, f2);
         // Different op tags produce different fingerprints.
         let f3 = PendingOpsStore::fingerprint("invite", &["aa".to_string()]);

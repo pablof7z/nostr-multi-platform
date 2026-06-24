@@ -6,7 +6,7 @@
 //! generic (`serde_json::Value`) lane has been removed; only typed projections
 //! remain.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 
@@ -51,6 +51,7 @@ pub type TypedProjectionFn =
 /// and MUST be non-blocking — it may only enqueue work, never do I/O or wait on
 /// a lock.
 pub type TickObserverFn = Box<dyn Fn() + Send + Sync + 'static>;
+type TickObserverEntry = (Option<String>, TickObserverFn);
 
 /// A feed-author-set provider (ADR-0063 D7, #1671 Lane H).
 ///
@@ -125,12 +126,10 @@ pub struct SnapshotRegistry {
     pending_typed_clears: Vec<String>,
     /// Per-tick observers — no-result callbacks fired once per snapshot tick.
     ///
-    /// A `Vec` rather than a keyed map: tick observers contribute no snapshot
-    /// data, so there is no namespace to collide on and no "replace by key"
-    /// semantics — each registration is an independent side-effect that should
-    /// fire on every tick. (Production wires exactly one today, the re-homed
-    /// zap-subscription reconciler.)
-    tick_observers: Vec<TickObserverFn>,
+    /// Additive entries use `None`; lifecycle-bound observers use a keyed
+    /// entry so account-scoped protocol modules can replace or remove their
+    /// hook without accumulating stale callbacks.
+    tick_observers: Vec<TickObserverEntry>,
     /// ADR-0063 D7 (#1671 Lane H) — feed-author-set providers, keyed by the feed
     /// snapshot key (e.g. `"nmp.feed.home"`) so a re-registration replaces (not
     /// duplicates) the provider and an `unregister_feed` removes it. Each closure
@@ -304,9 +303,10 @@ impl SnapshotRegistry {
     /// Register a typed projection closure that receives the kernel-authored
     /// Unix timestamp for the snapshot tick.
     ///
-    /// This is the narrow variant for protocol projections whose snapshot
-    /// computation is state-affecting because it expires pending records. The
-    /// timestamp comes from the kernel clock, not a host wall-clock read.
+    /// This is the narrow variant for protocol projections that render
+    /// time-derived fields (for example age/staleness) from kernel-authored
+    /// time. The closure must still be read-only: state transitions belong in
+    /// actor commands or tick observers that enqueue actor commands.
     pub fn register_typed_with_time(
         &mut self,
         key: impl Into<String>,
@@ -388,7 +388,41 @@ impl SnapshotRegistry {
         if !admit_additive(self.tick_observers.len()) {
             return;
         }
-        self.tick_observers.push(Box::new(f));
+        self.tick_observers.push((None, Box::new(f)));
+    }
+
+    /// Register or replace a lifecycle-bound per-tick observer under `key`.
+    ///
+    /// This is the keyed counterpart to [`Self::register_tick_observer`] for
+    /// app/protocol modules whose observer is owned by a replaceable account or
+    /// runtime. Re-registering the same key replaces the old closure without
+    /// growing the observer list; absent keys are admitted under the D5 cap.
+    pub fn replace_tick_observer(
+        &mut self,
+        key: impl Into<String>,
+        f: impl Fn() + Send + Sync + 'static,
+    ) {
+        let key = key.into();
+        if let Some((_, observer)) = self
+            .tick_observers
+            .iter_mut()
+            .find(|(slot_key, _)| slot_key.as_deref() == Some(key.as_str()))
+        {
+            *observer = Box::new(f);
+            return;
+        }
+        if !admit_additive(self.tick_observers.len()) {
+            return;
+        }
+        self.tick_observers.push((Some(key), Box::new(f)));
+    }
+
+    /// Remove a keyed per-tick observer. Additive observers are unaffected.
+    pub fn remove_tick_observer(&mut self, key: &str) -> bool {
+        let before = self.tick_observers.len();
+        self.tick_observers
+            .retain(|(slot_key, _)| slot_key.as_deref() != Some(key));
+        before != self.tick_observers.len()
     }
 
     // ADR-0053 host-declared consumed-projection methods
@@ -407,7 +441,7 @@ impl SnapshotRegistry {
     /// payload, so the bug stays visible) and every sibling observer in the same
     /// tick still fires.
     pub fn run_tick_observers(&self) {
-        for observer in &self.tick_observers {
+        for (_, observer) in &self.tick_observers {
             // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but a
             // panic here is fully contained — nothing the closure touched is
             // observed again after it unwinds, so there is no broken-invariant

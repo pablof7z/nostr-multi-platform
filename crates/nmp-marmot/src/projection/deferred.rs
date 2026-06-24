@@ -12,12 +12,12 @@
 //! declared in `state.rs`.
 
 use nostr::PublicKey;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::action::MarmotAction;
 use super::payload::{LastOpError, PendingOpRow};
 use super::pending::{PendingOp, PendingOpsStore, RetryOutcome, StoreResult};
-use super::state::{op_tag_of, InnerHandle};
+use super::state::{InnerHandle, op_tag_of};
 use nmp_core::actor::ActionLedgerCommand;
 
 /// Build the snapshot-visible [`PendingOpRow`]s from the pending-op store.
@@ -206,13 +206,12 @@ impl InnerHandle<'_> {
     }
 
     /// Evict expired pending ops and push terminal failure commands for each.
-    /// Driven from BOTH wall-clock edges — the KP-ingest arm (via
-    /// [`Self::handle_key_package_cached`]) and the top of
-    /// [`super::state::MarmotProjection::snapshot`] — so an op whose KP never
-    /// arrives still ages out within a tick of its deadline. No live actor
-    /// channel (test path) → the `RecordActionFailure` send is a no-op, but the
-    /// verdict is still recorded in the `#[cfg(test)]` capture seam.
-    pub(super) fn evict_expired_pending(&mut self, now_secs: u64) {
+    /// Driven from explicit actor-side edges: KP ingest and the internal
+    /// Marmot expiry protocol command queued by the snapshot tick observer.
+    /// No live actor channel (test path) means the `RecordActionFailure` send
+    /// is a no-op, but the verdict is still recorded in the `#[cfg(test)]`
+    /// capture seam.
+    pub(crate) fn evict_expired_pending(&mut self, now_secs: u64) {
         let expired: Vec<PendingOp> = self.inner.pending_ops.check_expired(now_secs);
         for op in expired {
             // Record the terminal failure as the snapshot-visible last op
