@@ -287,6 +287,20 @@ pub(super) struct CommandLaneDrain {
 }
 
 #[cfg(feature = "native")]
+impl CommandLaneDrain {
+    /// Whether the drain budget was exhausted this pass.
+    ///
+    /// When true the relay-event lane should use a zero wait so a command burst
+    /// is not penalised with a full idle delay.  Mirrors
+    /// [`fairness::CommandDrain::hit_budget`] but exposed on `CommandLaneDrain`
+    /// so sibling modules (e.g. `loop_context`) can access it without a direct
+    /// dependency on the crate-private `CommandDrain` type.
+    pub(super) fn hit_budget(&self) -> bool {
+        self.drain.hit_budget()
+    }
+}
+
+#[cfg(feature = "native")]
 impl MailScheduler {
     pub(super) fn new() -> Self {
         Self {
