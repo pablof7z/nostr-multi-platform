@@ -1,15 +1,11 @@
 //! Marmot (MLS-over-Nostr) per-app FFI surface.
 //!
-//! Two `extern "C"` symbols native links against — NEITHER carries secret key
-//! material across the ABI (#1727 / ADR-0025):
-//! - [`nmp_marmot_register_active`] — build a [`MarmotService`] reading the
-//!   secret from the actor's active local-key slot (`mls_local_nsec`; no nsec
-//!   exposed to native), register the lossy `KernelEvent` observer + the
-//!   `IngestParser` inbound seam (kinds `[444, 445, 1059, 30443]`) + the
-//!   `nmp.marmot.snapshot` / `nmp.marmot.messages` push projections. Returns an
-//!   opaque `*mut MarmotHandle`.
-//! - [`nmp_marmot_unregister`] — drop the observer + unregister all per-kind
-//!   `IngestParser` slots + free the handle. Idempotent.
+//! Native links against two `extern "C"` symbols, neither of which carries
+//! secret key material across the ABI (#1727 / ADR-0025):
+//! - [`nmp_marmot_register_active`] builds the service from the actor-owned
+//!   local-key slot, registers the observer, ingest parsers, and push
+//!   projections, then returns an opaque `*mut MarmotHandle`.
+//! - [`nmp_marmot_unregister`] drops those registrations and frees the handle.
 //!
 //! Plus the Rust-internal (NOT `extern "C"`) [`register_with_secret_hex`] —
 //! same registration with an in-hand secret for the app-shell nsec sign-in
@@ -62,17 +58,13 @@
 //!
 //! ## Inbound ingest seam — CLOSED
 //!
-//! Registration (`register_with_keys`, via either entry point) installs
-//! per-kind `IngestParser` registrations for
-//! the four active Marmot kinds (`[444, 445, 1059, 30443]`) through the
-//! substrate `EventIngestDispatcher` (slot key `"marmot"`,
-//! `replace_kind_parser` semantics — account-switch re-registration atomically
-//! evicts the previous parser for each kind). The kernel delivers every accepted
-//! inbound verified event of those kinds to [`crate::projection::tap::MarmotIngestParser`],
-//! which reconstructs the signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`]
-//! (same pattern as `nmp-nip17::DmInboxProjection::parse`, PR-1) and drives it
-//! through `ops::ingest_signed_event_core` — so welcomes / messages received
-//! from relays surface in the next snapshot with no Swift involvement.
+//! Registration installs per-kind `IngestParser` registrations for the active
+//! Marmot kinds (`[444, 445, 1059, 30443]`) under the `"marmot"` slot. The
+//! kernel delivers accepted verified events to
+//! [`crate::projection::tap::MarmotIngestParser`], which reconstructs the
+//! signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`] and drives
+//! `ops::ingest_signed_event_core`, so relay-delivered welcomes/messages
+//! surface in the next snapshot with no Swift involvement.
 //! `nmp_marmot_unregister` tears down BOTH kernel registrations (the lossy
 //! `KernelEvent` metadata observer AND all per-kind `IngestParser` slots via
 //! `unregister_ingest_parser`). This was the last open seam (raw-tap PR-2).

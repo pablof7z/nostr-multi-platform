@@ -1,11 +1,7 @@
 //! Deferred KP-completion tests (PR-1 — marmot-create-fix ladder).
 //!
-//! Proves: (1) a missing-KP `create_group`/`invite` with a `correlation_id`
-//! parks the op and returns `{"pending":true}`; (2) the parked op runs on KP
-//! arrival and records its verdict under the ORIGINAL `correlation_id` (the
-//! `#[cfg(test)]` capture seam `drain_captured_commands` lets us assert
-//! EXACTLY ONE terminal per id, since `app` is null in tests); (3) a parked op
-//! expires on the next wall-clock edge (KP ingest OR snapshot) past 60 s.
+//! Proves KP-gated ops park under their correlation id, retry on KP arrival,
+//! emit exactly one terminal verdict, and expire on a later ingest/snapshot edge.
 
 use crate::projection::ops::{self, ingest_signed_event_core};
 use crate::projection::pending::PENDING_OP_EXPIRY_SECS;
@@ -190,10 +186,7 @@ fn pending_op_expires_after_deadline_on_next_ingest_edge() {
     // expiry threshold.
     let expired_now = 1_001 + PENDING_OP_EXPIRY_SECS + 1;
     let _carol_kp = make_kp_event(&carol_keys);
-    // We need to drive the ingest through handle_key_package_cached which
-    // uses the event timestamp — but ingest_signed_event_core reads the
-    // system clock. We use with_inner to call handle_key_package_cached
-    // directly with the synthetic now_secs so the expiry gate fires.
+    // Drive the cache edge directly so the synthetic `expired_now` trips expiry.
     let ready = proj
         .with_inner(|h| h.handle_key_package_cached(&carol_keys.public_key().to_hex(), expired_now))
         .unwrap();
@@ -334,10 +327,7 @@ fn create_group_without_correlation_id_returns_terminal_soft_fail() {
     );
 }
 
-/// MAJOR review fix: a parked op whose KP NEVER arrives must still expire —
-/// the snapshot edge (not just the KP-ingest edge) drives `check_expired`.
-/// Here NO further KP event is ever ingested; the op ages out purely because
-/// a later snapshot is taken past the deadline.
+/// A parked op whose KP never arrives expires on a later snapshot edge.
 #[test]
 fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
     let alice_keys = Keys::generate();
@@ -372,8 +362,7 @@ fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
         .unwrap();
     assert_eq!(r["pending"], json!(true), "must park: {r}");
 
-    // A snapshot BEFORE the deadline keeps the op pending. (PR-1 surfaces
-    // pending ops via `pending_op_summaries`; PR-2 adds `snapshot.pending_ops`.)
+    // Before the deadline, the op stays pending.
     let _ = proj.snapshot(1_002);
     let summaries = proj.with_inner(|h| h.pending_op_summaries()).unwrap();
     assert_eq!(
@@ -402,13 +391,8 @@ fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
     );
 }
 
-/// MINOR review fix: assert EXACTLY ONE terminal command per correlation_id
-/// across the three deferred-op outcomes, using the `#[cfg(test)]` capture
-/// seam (no live `NmpApp` actor channel needed):
-///   * retry-success — KP arrives, op completes → one `success`
-///   * expiry — KP never arrives, op ages out on an edge → one `failure`
-///   * expiry-then-late-KP — op already expired; a late KP must NOT produce a
-///     second terminal verdict for the same id.
+/// Assert exactly one terminal command per correlation id across retry,
+/// expiry, and late-KP-after-expiry outcomes.
 #[test]
 fn exactly_one_terminal_command_per_correlation_id() {
     let alice_keys = Keys::generate();

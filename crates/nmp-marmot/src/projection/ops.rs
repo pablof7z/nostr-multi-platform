@@ -21,11 +21,10 @@
 //!
 //! ## Inbound ingest seam — CLOSED (receive direction)
 //!
-//! [`ingest_signed_event_core`] is the single path driving a signed inbound
-//! event into `MarmotService` (kind:1059 → `unwrap_and_process_welcome`;
-//! kind:445 → `process_message`; kind:30443 → cache KP + retry deferred ops;
-//! legacy kind:443 is no longer ingested). The automatic
-//! [`crate::projection::tap`] raw-event observer is the production ingress path.
+//! [`ingest_signed_event_core`] is the single path driving signed inbound
+//! events into `MarmotService` (1059 welcomes, 445 messages, 30443 KPs).
+//! Legacy kind:443 is no longer ingested. The automatic
+//! [`crate::projection::tap`] raw-event observer is production ingress.
 //!
 //! ## Pending-commit discipline (mdk-api.md §7.7)
 //!
@@ -205,12 +204,8 @@ pub fn group_messages(
 
 /// Route + execute one typed dispatch op.
 ///
-/// `correlation_id` is the action-registry–minted id for this dispatch. It is
-/// forwarded to KP-gated ops (`create_group` / `invite`) so they can park a
-/// pending op under the SAME id; the terminal verdict is later recorded under
-/// that id when the KPs arrive (or on expiry). Callers that do not come from
-/// the typed action pipeline (REPL / tests) may pass `None` — those callers
-/// should not attempt to create groups when invitee KPs are missing.
+/// `correlation_id` is the action-registry id. KP-gated ops park and later
+/// record terminal verdicts under that same id; REPL/test callers pass `None`.
 pub fn dispatch(
     h: &mut InnerHandle<'_>,
     action: &MarmotAction,
@@ -266,11 +261,8 @@ pub fn dispatch(
     match r {
         Ok(mut ok) => {
             if let Value::Object(map) = &mut ok {
-                // `{"pending":true}` envelopes must NOT get an `ok` field — the
-                // `HostOpCommand` keys off `"pending":true` to skip the
-                // terminal verdict; injecting `ok:true` would force a spurious
-                // success. Otherwise inject `ok:true` unless the handler already
-                // decided (soft-fail paths set `ok:false` explicitly).
+                // Pending envelopes must not get `ok`; HostOpCommand uses
+                // `"pending":true` to skip terminal verdict recording.
                 let is_pending = map.get("pending").and_then(Value::as_bool).unwrap_or(false);
                 if !is_pending {
                     map.entry("ok").or_insert(Value::Bool(true));
@@ -313,14 +305,8 @@ fn publish_key_package(
         .service()
         .publish_key_package(relays.clone())
         .map_err(|e| e.to_string())?;
-    // kind:30443 only — legacy kind:443 was retired 2026-05-31. The historical
-    // synchronous tungstenite "direct EVENT submit" path used to live here as a
-    // simulator-path verification fallback but it was a D8 violation: it
-    // blocked the calling thread (kernel actor / Swift worker) on
-    // synchronous TCP + TLS + per-relay 6 s wall-clock waits. The kernel
-    // publish pipeline is the canonical path; no consumer reads the
-    // former `direct_ok` / `send_errors` fields (verified across
-    // ios/, apps/, crates/).
+    // kind:30443 only; legacy kind:443 and the synchronous direct-submit
+    // fallback were retired. The kernel publish pipeline is canonical.
     use nostr::JsonUtil as _;
     h.publish_explicit(&pubn.event_30443, &relays);
     h.record_key_package(pubn.d_tag.clone(), now_secs);
