@@ -21,6 +21,7 @@ const swiftuiProfileEmbedSwift = nativeSource("registry/swiftui/content-kind-0/P
 const swiftuiArticleEmbedSwift = nativeSource("registry/swiftui/content-kind-30023/ArticleEmbed.swift");
 const composeProfileCardKotlin = nativeSource("registry/compose/content-kind-0/NostrProfileCard.kt");
 const composeArticleCardKotlin = nativeSource("registry/compose/content-kind-30023/NostrArticleCard.kt");
+const composeHighlightCardKotlin = nativeSource("registry/compose/content-kind-9802/NostrHighlightCard.kt");
 const desktopProfileCardRust = nativeSource("registry/desktop/content-kind-0/profile_card.rs");
 const desktopArticleCardRust = nativeSource("registry/desktop/content-kind-30023/embed_article.rs");
 const swiftuiHighlightEmbedSwift = nativeSource("registry/swiftui/content-kind-9802/HighlightEmbed.swift");
@@ -256,6 +257,22 @@ export const contentKindComponents: Component[] = [
         customization: [
           "Tweak the accent colour by editing the literal `Color.yellow.opacity(0.7)` — it merges cleanly on `nmp update component`.",
           "Extend `sourceFooter` to render rich previews when an `e` tag's referenced note has already been claimed.",
+        ],
+      },
+      compose: {
+        status: "stable",
+        installId: "compose/content-kind-9802",
+        version: "0.1.0",
+        dependencies: ["content-kind-registry"],
+        longDescription:
+          "`NostrHighlightCardRenderer` is the Compose NIP-84 renderer. Install it with `registry.setHighlight(NostrHighlightCardRenderer)` to replace the default highlight handler with a richer card: yellow-accent pull-quote, optional `context` line, `r`/`e`/`a` source footer, and highlighted-by byline. The component maps Rust's typed `HighlightProjection` into `NostrHighlightCardModel`; it never parses tags in Kotlin.",
+        files: [
+          { source: "compose/content-kind-9802/NostrHighlightCard.kt", target: "Components/NostrContent/NostrHighlightCard.kt", role: "source", content: composeHighlightCardKotlin },
+        ],
+        screenshots: ["embed-highlight-kotlin-preview.png"],
+        customization: [
+          "Swap the yellow accent by editing the local `accent` color in `PullQuote`; no registry format changes are needed.",
+          "Use `NostrHighlightCard(model = ...)` directly for custom card surfaces, or keep `NostrHighlightCardRenderer` registered for kind-dispatched embeds.",
         ],
       },
       tui: {

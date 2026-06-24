@@ -9,6 +9,7 @@ const swiftuiHighlightEmbedSwift = nativeSource("registry/swiftui/content-kind-9
 
 // Embeds & Kinds — Compose (Android)
 const composeArticleCardKotlin = nativeSource("registry/compose/content-kind-30023/NostrArticleCard.kt");
+const composeHighlightCardKotlin = nativeSource("registry/compose/content-kind-9802/NostrHighlightCard.kt");
 
 // Embeds & Kinds — Ratatui
 // The article and highlight embeds are rendered by the default renderers that ship
@@ -229,14 +230,19 @@ export const embedComponents: Component[] = [
       },
       compose: {
         status: "stable",
-        installId: "compose/content-view",
+        installId: "compose/content-kind-9802",
         version: "0.1.0",
-        dependencies: ["content-core"],
+        dependencies: ["content-kind-registry"],
         longDescription:
-          "Android resolves the kind:9802 highlight and renders it inline via `NostrContentView`'s generic quote card (pull-quote text + author + relative time). A typed Compose highlight renderer (matching the SwiftUI/TUI `HighlightEmbed`) is not built yet — `EventRefBlock` only dispatches kind:30023 to a typed card today.",
-        files: [],
+          "`NostrHighlightCardRenderer` is the Compose NIP-84 card for kind-dispatched embeds. Install via `registry.setHighlight(NostrHighlightCardRenderer)` to render the highlight as a yellow-accented pull-quote with optional context, source footer (`r` → `e` → `a`), and highlighted-by byline. The model is hydrated from Rust's typed `HighlightProjection`; Kotlin does not parse tags.",
+        files: [
+          { source: "compose/content-kind-9802/NostrHighlightCard.kt", target: "Components/NostrContent/NostrHighlightCard.kt", role: "source", content: composeHighlightCardKotlin },
+        ],
         screenshots: ["embed-highlight-kotlin-preview.png"],
-        customization: [],
+        customization: [
+          "Register `NostrHighlightCardRenderer` on your app's `NostrKindRegistry`; `EmbeddedEvent` continues to own claim/release and dispatch.",
+          "Use `NostrHighlightCard(model = ...)` directly when a screen already has a resolved `HighlightProjection` and wants a standalone card.",
+        ],
       },
       tui: {
         status: "stable",

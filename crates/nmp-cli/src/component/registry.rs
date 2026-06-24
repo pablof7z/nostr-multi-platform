@@ -324,6 +324,10 @@ const BUILTIN_FILES: &[(&str, &str)] = &[
         include_str!("../../registry/compose/content-kind-30023/NostrArticleCard.kt"),
     ),
     (
+        "compose/content-kind-9802/NostrHighlightCard.kt",
+        include_str!("../../registry/compose/content-kind-9802/NostrHighlightCard.kt"),
+    ),
+    (
         "compose/content-kind-0/NostrProfileCard.kt",
         include_str!("../../registry/compose/content-kind-0/NostrProfileCard.kt"),
     ),
