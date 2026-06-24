@@ -162,6 +162,17 @@ jobs:
           cargo run --quiet -p nmp-codegen -- gen action-builders --platform ts --check \
             --out web/packages/runtime-web/src/actionBuilders.generated.ts
 
+      # #1931 — the native write boundary must stay behind generated action
+      # builders for every migrated namespace. The self-test proves the gate
+      # trips when Swift/Kotlin production code hand-spells a migrated
+      # namespace; the live check excludes generated builder outputs and test
+      # sources, then fails on any remaining native literal.
+      - name: Native action-boundary self-test catches hand-spelled migrated namespaces
+        run: bash ci/check-native-action-boundary.sh --self-test
+
+      - name: Check native action-boundary uses generated builders
+        run: bash ci/check-native-action-boundary.sh
+
   # PR-B (#991/#979), hardened by #1931 — Rust flatc binding drift gate. Every
   # checked-in Rust FlatBuffers binding under crates/*/src/**/<stem>_generated.rs
   # must have an owning crates/<crate>/schema/<stem>.fbs schema and must be
