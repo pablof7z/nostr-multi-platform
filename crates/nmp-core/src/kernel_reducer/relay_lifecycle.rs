@@ -1,8 +1,9 @@
 //! Relay-lifecycle and maintenance methods for `KernelReducer`.
 
 use crate::kernel::RelayFrame;
-use crate::relay::{OutboundMessage, RelayRole};
+use crate::relay::OutboundMessage;
 use crate::time::Instant;
+use nmp_network::role::RelayRole;
 
 impl super::KernelReducer {
     /// One inbound relay frame on `(role, relay_url)`.

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use nostr::Keys;
 
-use crate::remote_signer::RemoteSignerHandle;
+use nmp_signer_iface::RemoteSignerHandle;
 
 use super::dto::{BunkerHandshakeDto, BunkerHandshakeSlot, SignerStateDto, SignerStateSlot};
 

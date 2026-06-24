@@ -247,7 +247,7 @@ fn publish_fans_out_to_author_write_relays_via_outbox() {
     // is the publish-side enforcement of D3: no `RelayRole::Content`
     // hardcoded constant lands the event on a single fixed socket.
     use crate::store::{RawEvent, VerifiedEvent};
-    use crate::substrate::{SignedEvent, UnsignedEvent};
+    use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 

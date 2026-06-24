@@ -23,7 +23,8 @@
 
 use super::super::ram_eviction_tests::{make_pubkey, pin_clock, T0_SECS};
 use super::super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
 
 /// Register a generic `open_interest` on the kernel from a verbatim NIP-01

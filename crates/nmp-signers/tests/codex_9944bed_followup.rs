@@ -13,12 +13,12 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_signer_iface::UnsignedEvent;
-use nmp_signers::signers::{Nip46Rpc, Nip46Transport, Nip07Payload};
+use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError, SignerOp, UnsignedEvent};
 use nmp_signers::{
     AccountManager, ActiveChangeEvent, ActiveChangeObserver, LocalKeySigner, Nip07Signer,
-    Nip46SignerHandle, Signer, SignerError,
+    Nip46SignerHandle, Signer,
 };
+use nmp_signers::signers::Nip07Payload;
 
 const SAMPLE_PK: &str = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
 
@@ -426,7 +426,7 @@ fn remove_non_active_account_does_not_fire_observer() {
 // ============================================================================
 
 fn poll_with_timeout<T: Send + 'static>(
-    op: &mut nmp_signers::SignerOp<T>,
+    op: &mut SignerOp<T>,
     timeout: std::time::Duration,
 ) -> Result<T, SignerError> {
     let deadline = std::time::Instant::now() + timeout;

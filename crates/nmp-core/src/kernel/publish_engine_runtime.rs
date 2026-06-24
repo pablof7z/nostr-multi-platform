@@ -4,7 +4,8 @@
 //! hand-authored file-size ceiling while keeping relay availability, retry
 //! ticks, and boot resume beside the engine wiring.
 
-use crate::relay::{OutboundMessage, RelayRole};
+use crate::relay::{OutboundMessage};
+use nmp_network::role::RelayRole;
 
 use super::super::publish_engine_wire::describe_engine_error;
 use super::super::Kernel;

@@ -157,7 +157,7 @@ impl<'a> crate::substrate::WalletKernelAccess for WalletKernelAccessAdapter<'a> 
     }
     fn set_relay_auth_signer(
         &self,
-        role: crate::RelayRole,
+        role: nmp_network::role::RelayRole,
         pubkey_hex: String,
         signer: crate::AuthSignerFn,
     ) {
@@ -165,7 +165,7 @@ impl<'a> crate::substrate::WalletKernelAccess for WalletKernelAccessAdapter<'a> 
             k.set_relay_auth_signer(role, pubkey_hex, signer);
         }
     }
-    fn clear_relay_auth_signer(&self, role: crate::RelayRole) {
+    fn clear_relay_auth_signer(&self, role: nmp_network::role::RelayRole) {
         if let Ok(mut k) = self.kernel.try_borrow_mut() {
             k.clear_relay_auth_signer(role);
         }

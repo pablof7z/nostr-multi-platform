@@ -15,7 +15,7 @@ pub(crate) struct RelayRoleOption {
 /// legacy composite token strings; `to_canonical_string` round-trips through
 /// `canonical_relay_role`.
 ///
-/// Distinct from `nmp_network::RelayRole` (transport-lane discriminator:
+/// Distinct from `nmp_network::role::RelayRole` (transport-lane discriminator:
 /// Content | Indexer | Wallet) — see ADR-0021.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Nip65Role {

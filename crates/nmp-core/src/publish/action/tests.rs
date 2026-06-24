@@ -1,6 +1,6 @@
 use super::*;
 use crate::actor::PublishCommand;
-use crate::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 
 fn ctx() -> ActionContext {
     ActionContext::default()

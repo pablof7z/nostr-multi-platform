@@ -50,10 +50,6 @@ mod empty_routing;
 mod host_op;
 mod host_op_handler;
 mod identity;
-// pub(crate) re-export so nmp-core internals can still use
-// `crate::substrate::{SignedEvent, UnsignedEvent}` without churn.
-// External callers must use `nmp_signer_iface` directly (issue #1772).
-pub(crate) use identity::{SignedEvent, UnsignedEvent};
 mod ingest;
 mod keyring;
 mod payment;

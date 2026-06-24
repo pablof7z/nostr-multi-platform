@@ -145,8 +145,6 @@ pub use transport::dispatch_envelope;
 // kernel no longer depends on `nmp-nwc`, and `nmp-core` no longer has a
 // `wallet` Cargo feature. See `docs/architecture/crate-boundaries.md`
 // §5 step 7 for the migration brief.
-pub(crate) mod remote_signer; // public re-export deleted (#1772) — use `nmp_signer_iface::RemoteSignerHandle`
-pub(crate) use remote_signer::RemoteSignerHandle;
 // Deterministic 64-bit hash helper — internal path for nmp-core.
 // External callers must depend on `nmp-planner` directly and use
 // `nmp_planner::stable_hash::stable_hash64` (#1608, compat facade deleted).
@@ -261,7 +259,7 @@ pub use relay::canonical_relay_url;
 // `BrowserRelayDriver` — both in `nmp-network` as of step 8 phase C) consumes.
 // Fields stay `pub(crate)` so the kernel remains the single writer; external
 // callers read via accessors.
-pub use relay::{OutboundMessage, RelayRole};
+pub use relay::OutboundMessage;
 pub use update_envelope::{
     decode_snapshot_envelope, decode_snapshot_typed_projections, decode_update_frame, encode_panic,
     encode_snapshot_frame, panic_message, PanicFrame, RelayStatusEntry, SnapshotEnvelope,

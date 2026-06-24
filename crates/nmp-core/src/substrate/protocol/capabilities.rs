@@ -120,7 +120,7 @@ pub trait RecipientRelayLookup: Send + Sync {
 /// mirroring [`ErrorSurface`].
 ///
 /// D0: every method names only protocol-neutral kernel primitives
-/// ([`RelayRole`](crate::RelayRole), [`AuthSignerFn`](crate::AuthSignerFn),
+/// ([`RelayRole`](nmp_network::role::RelayRole), [`AuthSignerFn`](crate::AuthSignerFn),
 /// persistent-sub ids) — no NIP-47 / wallet protocol concept crosses into
 /// `nmp-core`. The trait is consumed identically by the actor's
 /// `RelayTextInterceptor` path (which holds a real `&mut Kernel`) via
@@ -151,13 +151,13 @@ pub trait WalletKernelAccess: Send + Sync {
     /// `RelayRole::Wallet` lane).
     fn set_relay_auth_signer(
         &self,
-        role: crate::RelayRole,
+        role: nmp_network::role::RelayRole,
         pubkey_hex: String,
         signer: crate::AuthSignerFn,
     );
 
     /// Drop the signer for `role` (wallet disconnect clears the wallet lane).
-    fn clear_relay_auth_signer(&self, role: crate::RelayRole);
+    fn clear_relay_auth_signer(&self, role: nmp_network::role::RelayRole);
 
     /// Register `(relay_url, sub_id)` as persistent so EOSE does not auto-CLOSE
     /// the long-lived kind:23195 listener.
@@ -297,12 +297,12 @@ impl WalletKernelAccess for NoopWalletKernelAccess {
     fn record_action_success(&self, _correlation_id: String, _result_json: Option<String>) {}
     fn set_relay_auth_signer(
         &self,
-        _role: crate::RelayRole,
+        _role: nmp_network::role::RelayRole,
         _pubkey_hex: String,
         _signer: crate::AuthSignerFn,
     ) {
     }
-    fn clear_relay_auth_signer(&self, _role: crate::RelayRole) {}
+    fn clear_relay_auth_signer(&self, _role: nmp_network::role::RelayRole) {}
     fn register_persistent_sub(&self, _relay_url: String, _sub_id: String) {}
     fn unregister_persistent_sub(&self, _relay_url: &str, _sub_id: &str) {}
     fn mark_changed_since_emit(&self) {}

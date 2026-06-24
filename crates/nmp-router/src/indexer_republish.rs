@@ -13,7 +13,8 @@ use nmp_core::substrate::{
     ExternalEventSinkPolicy, RawEventForwardPolicyContext, RawEventForwardTarget,
     SignedEventFrame, SinkDestination,
 };
-use nmp_core::{KindFilter, RelayRole};
+use nmp_core::KindFilter;
+use nmp_network::role::RelayRole;
 
 const DEDUP_CAPACITY: usize = 4096;
 

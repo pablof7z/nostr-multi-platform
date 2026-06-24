@@ -15,7 +15,8 @@ use crate::actor::{
 use crate::kernel::observer_replay::ObserverReplayRequest;
 use crate::kernel::ram_eviction::EVENTS_RAM_HWM;
 use crate::planner::InterestShape;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
 use crate::substrate::KernelEvent;
 use crate::subs::SubIdentity;

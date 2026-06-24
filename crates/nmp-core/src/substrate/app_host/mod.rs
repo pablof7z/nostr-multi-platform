@@ -254,7 +254,7 @@ pub trait RoutingFactoryRegistrar {
     /// Default no-op so AppHost impls that do not need event forwarding compile
     /// without changes; override in production composition roots.
     ///
-    /// [`SignedEventFrame`]: crate::substrate::SignedEventFrame
+    /// [`SignedEventFrame`]: nmp_signer_iface::SignedEventFrame
     /// [`ExternalEventSinkDispatcher`]: crate::substrate::ExternalEventSinkDispatcher
     fn set_external_event_sink_policy_factory<F>(&self, _factory: F)
     where

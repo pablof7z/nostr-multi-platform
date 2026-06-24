@@ -4851,6 +4851,7 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-network",
  "nmp-nwc",
  "nmp-signer-iface",
  "nostr",
@@ -4948,6 +4949,7 @@ dependencies = [
  "negentropy",
  "nmp-core",
  "nmp-coverage-gate",
+ "nmp-network",
  "nmp-planner",
  "nmp-store",
  "nostr",
@@ -5034,6 +5036,7 @@ dependencies = [
  "flatbuffers",
  "nmp-core",
  "nmp-kinds",
+ "nmp-network",
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-store",
@@ -5189,6 +5192,7 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
+ "nmp-network",
  "nmp-nip77",
  "nmp-planner",
  "nostr",

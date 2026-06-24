@@ -19,7 +19,7 @@ mod production_ingest_tests {
 
     use crate::kernel::claim_expansion::Phase;
     use crate::kernel::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use {crate::relay::DEFAULT_VISIBLE_LIMIT, nmp_network::role::RelayRole};
 
     // ── Helpers (mirror relay_score_record::tests helpers) ──────────────────
 

@@ -190,7 +190,7 @@ impl Kernel {
         role: RelayRole,
         delivering_relay_url: &str,
         challenge: &str,
-        signed: crate::substrate::SignedEvent,
+        signed: nmp_signer_iface::SignedEvent,
     ) -> Vec<OutboundMessage> {
         let relay_url = delivering_relay_url.to_string();
         // Structural-validation guard against buggy/malicious signers that

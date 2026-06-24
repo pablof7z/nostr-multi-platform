@@ -17,7 +17,7 @@ use crate::kernel::publish_engine::OkFramePayload;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const WRITE_R1: &str = "wss://d8-forget-r1.test";
 const WRITE_R2: &str = "wss://d8-forget-r2.test";

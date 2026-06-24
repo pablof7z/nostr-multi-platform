@@ -173,7 +173,7 @@ pub(super) fn ingest_pre_verified_events(
     // after the loop to avoid O(n²·log n) for large batches.
     for verified in events {
         ctx.kernel.ingest_pre_verified_event(
-            crate::relay::RelayRole::Content,
+            nmp_network::role::RelayRole::Content,
             "diag-firehose-stress",
             verified,
         );
@@ -194,7 +194,7 @@ pub(super) fn ingest_pre_verified_events_for_sub_id(
     use crate::actor::tick::maybe_emit_after_dispatch;
     for verified in events {
         ctx.kernel
-            .ingest_pre_verified_event(crate::relay::RelayRole::Content, &sub_id, verified);
+            .ingest_pre_verified_event(nmp_network::role::RelayRole::Content, &sub_id, verified);
     }
     ctx.kernel.sort_timeline_deferred();
     maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);

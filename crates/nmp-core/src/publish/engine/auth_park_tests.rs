@@ -21,7 +21,7 @@ use crate::publish::traits::{
     InMemoryPublishStore, NoopSigner, RelayDispatcher, ReplayDispatcher, StaticOutbox,
 };
 use crate::publish::TerminalOutcome;
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const AUTH_RELAY: &str = "wss://auth-relay.test";
 

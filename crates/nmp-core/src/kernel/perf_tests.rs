@@ -57,7 +57,8 @@
 
 use super::nostr::NostrEvent;
 use super::Kernel;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
 /// Number of synthetic kind:1 events to inject before the gated emit. Large
 /// enough to populate `timeline`, `events`, and the timeline-author set with

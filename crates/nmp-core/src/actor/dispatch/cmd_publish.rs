@@ -49,7 +49,7 @@ pub(super) fn publish_raw_event(
     // ignore the caller's `unsigned.pubkey` and write the active
     // identity's pubkey onto the SignedEvent at sign time. Setting
     // it here would be dead work.
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
         kind,
         tags,
@@ -126,7 +126,7 @@ pub(super) fn publish_profile(
 
 /// Dispatch `ActorCommand::PublishUnsignedEvent`.
 pub(super) fn publish_unsigned_event(
-    mut unsigned: crate::substrate::UnsignedEvent,
+    mut unsigned: nmp_signer_iface::UnsignedEvent,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
     ctx: &mut ActorContext<'_>,
@@ -159,7 +159,7 @@ pub(super) fn publish_unsigned_event(
 
 /// Dispatch `ActorCommand::PublishUnsignedEventToRelays`.
 pub(super) fn publish_unsigned_event_to_relays(
-    mut event: crate::substrate::UnsignedEvent,
+    mut event: nmp_signer_iface::UnsignedEvent,
     relays: Vec<String>,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
@@ -316,7 +316,7 @@ pub(super) fn add_relay(
             ctx.pool,
             ctx.kernel,
             ctx.next_relay_generation,
-            crate::relay::RelayRole::Content,
+            nmp_network::role::RelayRole::Content,
             canonical_url,
         );
         outbound.extend(maybe_publish_relay_list_after_edit(

@@ -46,8 +46,9 @@ use crate::publish::{
     NoopOutboxResolver, NoopSigner, OutboxResolver, PublishAction, PublishEngine, PublishStore,
     PublishTarget, QueueDispatcher, RelayAck, RelayDispatcher, RetryPolicy,
 };
-use crate::relay::{OutboundMessage, RelayRole};
-use crate::substrate::SignedEvent;
+use crate::relay::{OutboundMessage};
+use nmp_network::role::RelayRole;
+use nmp_signer_iface::SignedEvent;
 
 use super::publish_engine_wire::{describe_engine_error, split_ok_message};
 use super::Kernel;

@@ -416,7 +416,7 @@ fn e1_account_switch_triggers_fresh_serve() {
 /// author; the follow's cache-serve must surface the prior events.
 #[test]
 fn adr0057_follow_added_later_surfaces_prior_events_from_store() {
-    use crate::relay::RelayRole;
+    use nmp_network::role::RelayRole;
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(hex_pk("aa"));

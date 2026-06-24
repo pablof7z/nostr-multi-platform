@@ -198,7 +198,8 @@ mod kernel_relay_config;
 mod relay_score_kernel;
 mod replaceable_ttl_kernel;
 
-use crate::relay::{CanonicalRelayUrl, OutboundMessage, RelayRole, DEFAULT_EMIT_HZ};
+use crate::relay::{CanonicalRelayUrl, OutboundMessage, DEFAULT_EMIT_HZ};
+use nmp_network::role::RelayRole;
 #[cfg(feature = "native")] use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

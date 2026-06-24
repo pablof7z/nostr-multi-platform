@@ -206,7 +206,7 @@ fn encode_handle(handle: &str) -> String {
 mod tests {
     use super::*;
     use crate::publish::PerRelayState;
-    use crate::substrate::{SignedEvent, UnsignedEvent};
+    use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
     fn record(handle: &str, state: PerRelayState) -> PublishRecord {
         PublishRecord {

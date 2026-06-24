@@ -25,7 +25,8 @@
 use super::clock::FixedClock;
 use super::ram_eviction::{EVENTS_RAM_HWM, PROFILES_RAM_HWM, CONTACTS_RAM_HWM};
 use super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};

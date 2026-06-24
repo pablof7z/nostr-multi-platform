@@ -14,7 +14,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::publish::PublishTarget;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 use serde::Serialize;
 
 /// Shared slot for the currently active account pubkey.
@@ -427,10 +427,10 @@ impl super::Kernel {
         // events-oneshot arm (Case D, `OneShot + Global + event_ids`) and the
         // profile-oneshot arm (Case A, `OneShot + Global + authors` with no
         // NIP-65 mailbox).
-        let bootstrap_content_urls = self.bootstrap_urls_for_role(crate::relay::RelayRole::Content);
+        let bootstrap_content_urls = self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Content);
         self.lifecycle
             .set_bootstrap_content_relays(bootstrap_content_urls);
-        let bootstrap_indexer_urls = self.bootstrap_urls_for_role(crate::relay::RelayRole::Indexer);
+        let bootstrap_indexer_urls = self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Indexer);
         self.lifecycle
             .set_bootstrap_indexer_relays(bootstrap_indexer_urls);
         let write_urls = rows

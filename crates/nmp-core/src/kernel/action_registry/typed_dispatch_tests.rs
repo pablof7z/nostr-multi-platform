@@ -6,7 +6,8 @@
 use super::*;
 use crate::actor::PublishCommand;
 use crate::publish::{PublishAction, PublishTarget};
-use crate::substrate::{ActionContext, ActionPayload, SignedEvent, UnsignedEvent};
+use crate::substrate::{ActionContext, ActionPayload};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 fn ctx() -> ActionContext {
     ActionContext::default()

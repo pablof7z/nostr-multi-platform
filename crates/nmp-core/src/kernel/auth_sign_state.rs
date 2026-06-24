@@ -13,7 +13,7 @@
 use std::sync::Arc;
 
 use super::{AuthSignerFn, Kernel, RelayAuthCredentials};
-use crate::relay::RelayRole;
+use nmp_network::role::RelayRole;
 
 /// V-06 / #960 — a NIP-42 AUTH kind:22242 that a *remote* (NIP-46 / NIP-55)
 /// account must sign through the async signer port.
@@ -35,7 +35,7 @@ pub struct PendingAuthSign {
     /// binding).
     pub relay_url: String,
     /// The unsigned kind:22242 the remote signer must sign as-is.
-    pub unsigned: crate::substrate::UnsignedEvent,
+    pub unsigned: nmp_signer_iface::UnsignedEvent,
     /// The verbatim challenge — re-validated against the signed event on
     /// re-entry (`validate_signed_for`).
     pub challenge: String,

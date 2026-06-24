@@ -13,7 +13,7 @@ use crate::actor::pending_sign::{ParkedOp, ParkedSignerOps};
 use crate::kernel::Kernel;
 use crate::publish::{validate_explicit_relays, validate_publish_target, PublishTarget};
 use crate::relay::OutboundMessage;
-use crate::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 
 // Workstream C (2026-06-15) — the private-envelope D10 guard no longer keys off
 // a raw `kind == KIND_GIFT_WRAP` literal here; the gift-wrap (kind:1059) AND
@@ -331,7 +331,7 @@ pub(crate) fn publish_signed_event(
     }
     // RawEvent (flat NIP-01) → SignedEvent. No re-signing: `id` and `sig` are
     // carried through verbatim onto the wire frame the engine builds.
-    let signed = crate::substrate::SignedEvent {
+    let signed = nmp_signer_iface::SignedEvent {
         id: raw.id,
         sig: raw.sig,
         unsigned: UnsignedEvent {

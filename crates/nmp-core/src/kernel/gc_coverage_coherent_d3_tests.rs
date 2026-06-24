@@ -23,7 +23,8 @@
 use crate::kernel::ram_eviction_tests::{make_pubkey, pin_clock, T0_SECS};
 use crate::kernel::Kernel;
 use crate::planner::canonical_filter_hash;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
 
 fn open_interest(kernel: &mut Kernel, filter_json: &str, consumer_id: &str) {

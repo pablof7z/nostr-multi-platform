@@ -27,7 +27,7 @@ pub enum SignerSource {
     BunkerUri(String),
     /// A fully-handshaken remote signer handle. The broker adapter constructs
     /// this after a NIP-46 handshake completes and sends it back to the actor.
-    RemoteHandle(Box<dyn crate::RemoteSignerHandle>),
+    RemoteHandle(Box<dyn nmp_signer_iface::RemoteSignerHandle>),
 }
 
 impl std::fmt::Debug for SignerSource {

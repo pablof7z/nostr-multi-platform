@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use crate::kernel::Kernel;
 use crate::planner::{InterestId, InterestLifecycle};
-use crate::relay::{OutboundMessage, RelayRole};
+use crate::relay::{OutboundMessage};
+use nmp_network::role::RelayRole;
 
 /// Immutable description of a planner-produced outbound `REQ`.
 #[derive(Clone, Debug)]

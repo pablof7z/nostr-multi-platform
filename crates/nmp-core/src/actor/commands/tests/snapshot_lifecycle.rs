@@ -7,7 +7,7 @@ use super::*;
 fn snapshot_json_carries_new_projections() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
         kind: 1,
         tags: Vec::new(),

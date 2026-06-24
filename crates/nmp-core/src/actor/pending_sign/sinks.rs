@@ -32,7 +32,7 @@
 //! key bytes.
 
 use crate::publish::PublishTarget;
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 use nmp_signer_iface::SignerOp;
 // D20 / #1753: the parked-op path is now wasm-reachable (the wasm `KernelReducer`
 // parks sign ops here). The deadline type routes through the `crate::time` shim
@@ -80,7 +80,7 @@ pub(crate) enum ParkedOpSink {
     Auth {
         op: SignerOp<SignedEvent>,
         /// The relay lane the challenge arrived on.
-        role: crate::relay::RelayRole,
+        role: nmp_network::role::RelayRole,
         /// The delivering relay URL (NIP-42 replay binding + routing target).
         relay_url: String,
         /// The verbatim challenge — re-validated against the signed event.
@@ -193,7 +193,7 @@ impl ParkedOp {
     #[must_use]
     pub fn auth(
         op: SignerOp<SignedEvent>,
-        role: crate::relay::RelayRole,
+        role: nmp_network::role::RelayRole,
         relay_url: String,
         challenge: String,
         deadline: Instant,
@@ -229,7 +229,7 @@ pub(crate) enum AuthObligation {
     /// The signed kind:22242 is ready — call `Kernel::dispatch_signed_auth` with
     /// these fields and route the resulting AUTH frame.
     Dispatch {
-        role: crate::relay::RelayRole,
+        role: nmp_network::role::RelayRole,
         relay_url: String,
         challenge: String,
         signed: SignedEvent,
@@ -237,7 +237,7 @@ pub(crate) enum AuthObligation {
     /// The sign failed / timed out — call `Kernel::fail_auth_sign` so the relay
     /// drives to `Failed` and any deferred REQs fail closed (T76 / D6).
     Failed {
-        role: crate::relay::RelayRole,
+        role: nmp_network::role::RelayRole,
         relay_url: String,
         reason: String,
     },

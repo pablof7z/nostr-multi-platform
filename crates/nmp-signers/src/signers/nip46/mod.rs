@@ -34,19 +34,19 @@ use std::collections::HashMap;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, SignerError, UnsignedEvent};
 use nostr::{Keys, PublicKey, SecretKey};
 use zeroize::Zeroizing;
 
 use super::payload::{Nip46Payload, SignerPayload};
-use super::traits::{Nip04, Nip44, Signer, SignerBackend, SignerError};
-use super::SignerOp;
+use super::traits::{Nip04, Nip44, Signer, SignerBackend};
+use nmp_signer_iface::SignerOp;
 use crate::bunker::{parse_bunker_uri, BunkerParseError, BunkerUri};
 
 // `Nip46Rpc` and `Nip46Transport` are defined in the leaf
 // [`nmp_signer_iface`] crate so the kernel side can refer to them
 // without depending on `nmp-signers` (doctrine **D0**).
-pub use nmp_signer_iface::{Nip46Rpc, Nip46Transport};
+use nmp_signer_iface::{Nip46Rpc, Nip46Transport};
 
 use mapper::{escape_json, generate_request_id, map_response_to_event};
 

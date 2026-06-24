@@ -19,10 +19,8 @@
 //! 3. [`keepalive`] — the pure FSM the worker drives. Internal to the
 //!    transport layer; `nmp-core` no longer re-exports it.
 //! 4. [`role::RelayRole`] — the transport-lane discriminator the worker
-//!    tags every `RelayEvent` with. Moved from `nmp_core::relay::RelayRole`
-//!    and re-exported by `nmp-core` under the prior path
-//!    (`nmp_core::RelayRole`) so downstream callers keep compiling
-//!    unchanged.
+//!    tags every `RelayEvent` with. Moved from `nmp_core::relay::RelayRole`;
+//!    the canonical exported path is now `nmp_network::role::RelayRole`.
 //!
 //! ## Dependency direction
 //!
@@ -113,9 +111,7 @@
 
 pub mod keepalive;
 pub mod relay_protocol;
-mod role;
-
-pub use role::RelayRole;
+pub mod role;
 
 // Phase F: `relay_worker` is the legacy per-URL worker primitive `pool::Pool`
 // wraps internally. With the kernel actor cut over to the `pool` surface

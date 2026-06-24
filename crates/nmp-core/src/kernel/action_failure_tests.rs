@@ -26,7 +26,7 @@
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 /// Read `projections.action_results` from a fresh wire snapshot. The key is
 /// conditionally inserted (only when a terminal settled this tick), so absence

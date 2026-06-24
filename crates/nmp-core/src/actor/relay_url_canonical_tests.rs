@@ -12,7 +12,8 @@
 use super::relay_mgmt::{close_relays, ensure_relay_worker, shutdown_relay_worker};
 use super::RelayControl;
 use crate::kernel::Kernel;
-use crate::relay::{CanonicalRelayUrl, RelayRole};
+use crate::relay::{CanonicalRelayUrl};
+use nmp_network::role::RelayRole;
 use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
 use std::collections::{HashMap, HashSet};
 use std::sync::mpsc;

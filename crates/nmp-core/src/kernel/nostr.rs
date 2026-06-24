@@ -14,7 +14,7 @@ use super::{Deserialize, HashSet};
 // `--no-default-features` (wasm32) compiles.
 #[cfg(feature = "native")]
 use super::{DateTime, Local, SystemTime};
-use crate::substrate::SignedEvent;
+use nmp_signer_iface::SignedEvent;
 
 #[derive(Clone, Debug, Deserialize)]
 pub(super) struct NostrEvent {

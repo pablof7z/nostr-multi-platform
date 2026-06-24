@@ -39,7 +39,7 @@ crates/nmp-core/src/kernel/state_projection_tests.rs	666
 crates/nmp-core/src/kernel/test_support.rs	519
 crates/nmp-core/src/kernel/tests.rs	708
 crates/nmp-core/src/kernel/types.rs	780
-crates/nmp-core/src/lib.rs	602
+crates/nmp-core/src/lib.rs	600
 crates/nmp-core/src/subs/lifecycle_tests.rs	963
 crates/nmp-core/src/substrate/ingest.rs	619
 crates/nmp-core/src/substrate/protocol.rs	538

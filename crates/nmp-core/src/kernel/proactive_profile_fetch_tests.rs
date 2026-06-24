@@ -36,7 +36,8 @@
 
 use super::nostr::NostrEvent;
 use super::*;
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT, INDEXER_RELAY_URL};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT, INDEXER_RELAY_URL};
+use nmp_network::role::RelayRole;
 
 /// Build a real Schnorr-signed kind:1 event.
 ///

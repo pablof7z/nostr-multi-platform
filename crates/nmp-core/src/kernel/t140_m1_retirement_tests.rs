@@ -188,7 +188,7 @@ fn m2_follow_feed_sub_survives_eose() {
     // Relay answers EOSE for that sub.
     let eose = serde_json::json!(["EOSE", sub_id]).to_string();
     kernel.handle_message(
-        crate::relay::RelayRole::Content,
+        nmp_network::role::RelayRole::Content,
         "wss://alice-t140.relay/",
         RelayFrame::Text(eose),
     );

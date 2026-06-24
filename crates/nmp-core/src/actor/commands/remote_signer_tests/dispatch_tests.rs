@@ -4,7 +4,7 @@
 //! are exercised (not just the command-handler functions they wrap).
 
 use crate::actor::{IdentityCommand, LifecycleCommand};
-use crate::remote_signer::RemoteSignerHandle;
+use nmp_signer_iface::RemoteSignerHandle;
 
 use super::stub_signer;
 

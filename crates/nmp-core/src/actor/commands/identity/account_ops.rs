@@ -10,7 +10,7 @@ use nostr::PublicKey;
 
 use crate::kernel::{AccountSummary, Kernel};
 use crate::relay::OutboundMessage;
-use crate::substrate::UnsignedEvent;
+use nmp_signer_iface::UnsignedEvent;
 
 use super::runtime::{IdentityId, IdentityRuntime};
 use super::sign::sign_with;
@@ -165,7 +165,7 @@ fn start_bunker_signer(
 fn add_remote_signer_handle(
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
-    handle: Box<dyn crate::remote_signer::RemoteSignerHandle>,
+    handle: Box<dyn nmp_signer_iface::RemoteSignerHandle>,
     make_active: bool,
     relays_ready: bool,
 ) -> Vec<OutboundMessage> {

@@ -29,7 +29,7 @@
 //! in `WasmRuntime::start`), independent of the driver pool — so role badges
 //! are unaffected.
 
-use nmp_core::RelayRole;
+use nmp_network::role::RelayRole;
 
 use crate::protocol::RelayBootstrapEntry;
 

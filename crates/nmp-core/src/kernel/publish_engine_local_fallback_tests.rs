@@ -1,6 +1,6 @@
 use crate::kernel::{AppRelay, Kernel};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::substrate::{SignedEvent, UnsignedEvent};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 
 const WRITE_RELAY: &str = "wss://relay.test";
 

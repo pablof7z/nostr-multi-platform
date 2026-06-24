@@ -62,7 +62,8 @@ use crate::planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot,
 };
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::store::StoreQuery;
 use crate::subs::WireFrame;
 

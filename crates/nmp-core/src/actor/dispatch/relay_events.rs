@@ -12,7 +12,8 @@ use std::time::Instant;
 use nmp_network::pool::{BackoffClass, Pool, PoolEvent, RelayFrame as PoolFrame};
 
 use crate::kernel::{BackoffHint, Kernel, RelayFrame};
-use crate::relay::{CanonicalRelayUrl, RelayRole};
+use crate::relay::{CanonicalRelayUrl};
+use nmp_network::role::RelayRole;
 
 use super::super::relay_mgmt::{maybe_send_startup, send_all_outbound};
 use super::super::tick::emit_now;

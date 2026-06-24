@@ -39,7 +39,8 @@ mod tests {
 
     use crate::actor::relay_mgmt::{all_relays_connected, claim_send_gate};
     use crate::kernel::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
-    use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 
     fn hex64(prefix: &str) -> String {
         let mut s = prefix.to_string();

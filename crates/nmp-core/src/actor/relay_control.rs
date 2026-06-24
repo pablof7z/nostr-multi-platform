@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use nmp_network::pool::RelayHandle;
 
-use crate::relay::RelayRole;
+use nmp_network::role::RelayRole;
 
 /// One per-URL relay-worker handle. T105: `relay_url` (NOT `role`) is the
 /// pool key — every resolved write/read relay gets its own socket. `role`

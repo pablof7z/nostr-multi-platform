@@ -13,7 +13,8 @@ use serde::{Deserialize, Serialize};
 
 use super::action::{PublishHandle, PublishTarget, RelayUrl};
 use super::state::{PerRelayState, RelayAck};
-use crate::substrate::{BlockedRelaySet, SignedEvent};
+use crate::substrate::BlockedRelaySet;
+use nmp_signer_iface::SignedEvent;
 
 /// Structured reason a relay was added to a publish set.
 ///

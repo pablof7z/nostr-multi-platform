@@ -6,8 +6,8 @@ use std::sync::atomic::Ordering;
 
 use super::{super::*, fresh, stub_signer};
 use crate::actor::commands::identity::sign_active_nonblocking;
-use crate::remote_signer::RemoteSignerHandle;
-use crate::substrate::UnsignedEvent;
+use nmp_signer_iface::RemoteSignerHandle;
+use nmp_signer_iface::UnsignedEvent;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Command-handler tests (the dispatch arms forward straight into these).

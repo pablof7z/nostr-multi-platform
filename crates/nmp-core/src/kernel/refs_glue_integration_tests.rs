@@ -31,7 +31,8 @@ use super::super::typed_projections::{
 };
 use super::super::Kernel;
 use crate::refs::{decode_ref_row_delta_batch, RefRowCache, RefRowDeltaTracker};
-use crate::relay::{RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_VISIBLE_LIMIT};
+use nmp_network::role::RelayRole;
 use crate::update_envelope::{decode_snapshot_envelope, decode_snapshot_typed_projections};
 
 fn hex64(prefix: &str) -> String {

@@ -56,7 +56,7 @@ fn build_reaction_draft_includes_p_tag_when_author_cached() {
     };
     let verified = VerifiedEvent::from_raw_unchecked(raw);
     r.kernel
-        .ingest_pre_verified_event(crate::relay::RelayRole::Content, "sub-test", verified);
+        .ingest_pre_verified_event(nmp_network::role::RelayRole::Content, "sub-test", verified);
 
     let (tags, content) = r
         .build_reaction_draft(TARGET_ID, "+")

@@ -17,7 +17,7 @@ fn publish_unsigned_event_to_relays_signs_and_routes_to_exactly_those() {
 
     // A kind:9021 NIP-29 join-request-shaped unsigned event. `pubkey` is a
     // placeholder — the signer derives it from the active identity.
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
         kind: 9021,
         tags: vec![vec!["h".into(), "rust-nostr".into()]],
@@ -70,7 +70,7 @@ fn publish_unsigned_event_to_relays_without_account_toasts() {
     let (id, mut kernel) = fresh();
     assert!(id.active_pubkey().is_none());
 
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
         kind: 9021,
         tags: vec![vec!["h".into(), "rust-nostr".into()]],
@@ -106,7 +106,7 @@ fn publish_unsigned_event_to_relays_empty_relays_fails_closed() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
 
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
         kind: 9021,
         tags: vec![vec!["h".into(), "rust-nostr".into()]],
@@ -142,7 +142,7 @@ fn publish_unsigned_event_to_relays_invalid_relay_fails_closed() {
     let (mut id, mut kernel) = fresh();
     sign_in_with_nip65(&mut id, &mut kernel);
 
-    let unsigned = crate::substrate::UnsignedEvent {
+    let unsigned = nmp_signer_iface::UnsignedEvent {
         pubkey: String::new(),
         kind: 9021,
         tags: vec![vec!["h".into(), "rust-nostr".into()]],

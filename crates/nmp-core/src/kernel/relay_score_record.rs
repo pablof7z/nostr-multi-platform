@@ -294,7 +294,7 @@ mod tests {
     #[test]
     fn claim_expansion_event_hit_records_score_after_acceptance() {
         use super::super::test_support;
-        use crate::relay::RelayRole;
+        use nmp_network::role::RelayRole;
 
         test_support::clear_claim_expansion_subs();
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn claim_expansion_invalid_event_does_not_record_hit() {
         use super::super::test_support;
-        use crate::relay::RelayRole;
+        use nmp_network::role::RelayRole;
 
         test_support::clear_claim_expansion_subs();
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn claim_expansion_wrong_author_event_does_not_record_hit() {
         use super::super::test_support;
-        use crate::relay::RelayRole;
+        use nmp_network::role::RelayRole;
 
         test_support::clear_claim_expansion_subs();
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn claim_expansion_eose_after_hit_does_not_record_no_match() {
         use super::super::test_support;
-        use crate::relay::RelayRole;
+        use nmp_network::role::RelayRole;
 
         test_support::clear_claim_expansion_subs();
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -415,7 +415,7 @@ mod tests {
     #[test]
     fn claim_expansion_eose_without_match_records_neutral_outcome() {
         use super::super::test_support;
-        use crate::relay::RelayRole;
+        use nmp_network::role::RelayRole;
 
         test_support::clear_claim_expansion_subs();
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
