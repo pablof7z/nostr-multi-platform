@@ -67,12 +67,25 @@ int nmp_app_search_snapshot(void *app, const char *session_id,
 // adapters instead of spelling raw namespace/shape/liveness integers.
 // D6: null/invalid args are silent no-ops, never panics.
 // D8: fire-and-forget; the actor processes commands asynchronously.
+void nmp_app_resolve_ref(void *app, int namespace, const char *key,
+                         const char *consumer_id, int shape, int liveness);
+void nmp_app_resolve_ref_with_metadata(void *app, int namespace,
+                                       const char *key,
+                                       const char *consumer_id, int shape,
+                                       int liveness,
+                                       const char *metadata_json);
+void nmp_app_release_ref(void *app, int namespace, const char *key,
+                         const char *consumer_id);
 void nmp_app_resolve_profile_ref(void *app, const char *key,
                                  const char *consumer_id);
 void nmp_app_resolve_profile_card_live(void *app, const char *key,
                                        const char *consumer_id);
 void nmp_app_release_profile_ref(void *app, const char *key,
                                  const char *consumer_id);
+void nmp_app_resolve_event_embed(void *app, const char *key,
+                                 const char *consumer_id);
+void nmp_app_resolve_event_embed_live(void *app, const char *key,
+                                      const char *consumer_id);
 void nmp_app_resolve_event_embed_with_metadata(void *app, const char *key,
                                                const char *consumer_id,
                                                const char *metadata_json);
