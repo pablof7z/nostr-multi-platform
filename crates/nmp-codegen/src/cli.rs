@@ -8,9 +8,8 @@ use std::path::{Path, PathBuf};
 
 /// `nmp gen swift [--schemas <path>] --out <path> [--check]`.
 ///
-/// `--schemas` defaults to `-` (stdin). The expected input is whatever
-/// `dump_projection_schemas` writes (see
-/// `crates/nmp-core/src/bin/dump_projection_schemas.rs`).
+/// `--schemas` defaults to `-` (stdin). The expected input is one or more
+/// whitespace-separated schema documents from schema-owner dump binaries.
 ///
 /// `--out` is required: the caller supplies the app-owned destination path.
 /// For Chirp the path is
@@ -69,8 +68,8 @@ pub fn run_gen_swift(args: Vec<String>, help: &str) -> Result<(), String> {
             Err(format!(
                 "Swift codegen stale at {}{where_diff}.\n\
                  Regenerate with:\n  \
-                 cargo run -p nmp-core --features codegen-schema \
-                 --bin dump_projection_schemas \
+                 {{ cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas; \
+                 cargo run -p nmp-nip01 --features codegen-schema --bin dump_nip01_projection_schemas; }} \
                  | cargo run -p nmp-codegen -- gen swift --out {}",
                 out.display(),
                 out.display()

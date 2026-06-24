@@ -19,10 +19,9 @@
 //! - Implements `Display`, `Deref<Target = T>`, and `AsRef<str>` (when
 //!   `T: AsRef<str>`) so callers can use it transparently wherever `T` is
 //!   expected.
-//! - Does **not** carry a `Pending`/`Authoritative` tag at this layer; the
-//!   `author_avatar_source` field (`"placeholder"` vs `"kind0"`) on
-//!   `TimelineItem` is the discriminator.  Adding a variant here would
-//!   duplicate that signal across the wire format for no gain.
+//! - Does **not** carry a `Pending`/`Authoritative` tag at this layer. Any
+//!   projection that needs provenance should carry its own single discriminator
+//!   instead of duplicating that signal inside this wrapper.
 //!
 //! # Picture URL placeholders
 //!

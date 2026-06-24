@@ -2,15 +2,16 @@
 // THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
 //
 // Regenerate via:
-//   cargo run -p nmp-core --features codegen-schema \
-//       --bin dump_projection_schemas \
-//       | cargo run -p nmp-codegen -- gen swift --stdin --out <path>
+//   { \
+//       cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas; \
+//       cargo run -p nmp-nip01 --features codegen-schema --bin dump_nip01_projection_schemas; \
+//   } | cargo run -p nmp-codegen -- gen swift --out <path>
 //
 // Source of truth: the Rust projection types listed in the per-struct
 // provenance comments below. The CI gate (`.github/workflows/codegen-drift.yml`)
 // fails any PR whose generated Swift differs from a fresh run.
 //
-// Stage 1 pilot — 7 flat-record types (V6, docs/architecture-audit/
+// Stage 1 pilot — 8 flat-record types (V6, docs/architecture-audit/
 // v6-codegen-plan.md §6b). Stage 2 expands to the dotted-projection-key
 // registry; Stage 3 sweeps the remaining hand-written Decodables.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -153,7 +154,7 @@ public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
 }
 
 // MARK: - TimelineItem
-// Source: nmp_core::kernel::types::TimelineItem
+// Source: nmp_nip01::TimelineItem
 public struct TimelineItem: Decodable, Equatable, RenderIdentifiable, Identifiable, Hashable, Sendable {
     public let authorDisplayName: String?
     public let authorLnurl: String?

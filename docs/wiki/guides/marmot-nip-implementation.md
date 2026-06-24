@@ -50,7 +50,7 @@ The empty relay hint in nmp-nip17 was assessed as intentional design per NIP-10 
 
 Marmot key-package and group-message kind constants (30443, 443, 445) are collapsed from three separate sites (interest.rs as u32, service.rs as u16, projection/state.rs as u32) into one canonical u32 definition in nmp-kinds, re-exported via nmp-core. At Kind::Custom call sites, the canonical u32 kind constants are cast to u16 (`as u16`) because nostr::Kind::Custom takes u16; all Marmot values (30443, 443, 445) and NIP-60 values (17375, 7375, 7376, 7374, 10019, 9321, 38172) fit safely in u16 (< 65536). The public constants KIND_KEY_PACKAGE, KIND_KEY_PACKAGE_LEGACY, and KIND_GROUP_MESSAGE in nmp-marmot's interest module were removed and replaced by re-exports of KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_KEY_PACKAGE_LEGACY, KIND_MARMOT_GROUP_MESSAGE from nmp-core::kinds, breaking any downstream consumer that imported the old names. Hardcoded kind literals (443, 445, 1059, 30443) remain in nmp-marmot's projection/tap.rs and projection/ops.rs, so the 'single source of truth' claim is not yet fully realized.
 
-The repost "triple-path" finding is stale; `nmp-nip18::try_from_kernel_event` is the canonical decoder and the kernel's `parse_repost_inner` is `#[cfg(test)]`-only.
+The repost "triple-path" finding is stale; `nmp-nip18::try_from_kernel_event` is the canonical decoder, and the old kernel test-only `parse_repost_inner` helper has been deleted.
 
 <!-- citations: [^11850-118] [^1c093-20] [^1c093-21] [^45fcf-7] [^d27a4-3] [^1c093-19] [^47203-11] [^95d02-11] [^1670f-8] [^cd2b6-7] [^019ed-14] [^019ed-71] [^11850-13] [^11850-34] [^11850-56] [^11850-72] [^11850-99] [^11850-209] [^11850-237] -->
 ## Marmot Crate Architecture and MDK Dependency

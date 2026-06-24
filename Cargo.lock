@@ -4728,6 +4728,7 @@ dependencies = [
  "nmp-signer-iface",
  "nmp-store",
  "nmp-threading",
+ "schemars",
  "serde",
  "serde_json",
  "tracing",

@@ -24,8 +24,8 @@ fn run() -> Result<(), String> {
     args.remove(0); // drop "gen"
     let h = help();
     match subcommand.as_str() {
-        // V6 Stage 1 — Swift `Decodable` emitter. Reads a projection schema
-        // document (default: stdin) and writes Swift to `--out`. See
+        // V6 Stage 1 — Swift `Decodable` emitter. Reads projection schema
+        // documents (default: stdin) and writes Swift to `--out`. See
         // `crates/nmp-codegen/src/swift.rs` for the emitter itself.
         "swift" => cli::run_gen_swift(args, &h),
         // V6 Stage 4 (consumer-side) — generated typed-FlatBuffer-sidecar

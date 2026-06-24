@@ -155,8 +155,7 @@ not banned `display::*` forwarders.
 - `display: String` → `display: Option<String>` (no `short_npub`
   fallback when kind:0 omits all name fields).
 
-**`nmp-core::TimelineItem`** (`crates/nmp-core/src/kernel/types.rs` +
-`crates/nmp-core/src/kernel/update.rs`):
+**`nmp-nip01::TimelineItem`** (`crates/nmp-nip01/src/timeline_item.rs`):
 - `author_display`, `author_avatar_initials`, `author_avatar_color`,
   `author_avatar_source`, `author_pubkey_short`, `short_id`,
   `created_at_display`

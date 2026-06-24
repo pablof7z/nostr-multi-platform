@@ -126,12 +126,9 @@ impl Kernel {
         //   TUI:     claim_visible_author_profile diff
         //   Web:     Post.onMount → claimProfileCommand (#885)
         //   Gallery: resolve_ref at render time
-        // The `author_display_name` fallback baked into each TimelineItem
-        // snapshot is populated from the profile cache as soon as a
-        // previously-claimed kind:0 arrives — no blank-out on first render.
-        // The `refs.profile` materialization reads `self.profiles` which the claim path
-        // populates unchanged. `claimed_events` stays raw and carries the
-        // author pubkey for profile components to compose.
+        // Profile rendering now flows through explicit profile claims and
+        // `refs.profile` materialization. `claimed_events` stays raw and carries
+        // the author pubkey for profile components to compose.
 
         // D9: kernel owns time — clamp relay-supplied created_at to now so a
         // future-dated event from a hostile/buggy relay cannot pin permanently
