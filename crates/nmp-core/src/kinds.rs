@@ -22,7 +22,7 @@
 //! the kernel knows how to read or write the corresponding event.
 
 // The integer constants AND the NIP-01 `is_replaceable` /
-// `is_parameterized_replaceable` predicates both live in `nmp-kinds` (the
+// `is_addressable` predicates both live in `nmp-kinds` (the
 // zero-dep Layer-0 crate) so there is exactly ONE definition of "replaceable"
 // in the workspace. A prior local copy here returned `true` for kind:1/6/7
 // (treating 0–9999 as replaceable) — the OPPOSITE of `nostr::Kind` and of the

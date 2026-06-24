@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 
 use nmp_content::{tokenize_with_kind, RenderMode};
-use nmp_core::kinds::is_parameterized_replaceable;
+use nmp_core::kinds::is_addressable;
 use nmp_signer_iface::SignedEvent;
 
 use crate::dto::{ArticleHeaderDto, ContentTreeDto, EmbedEntry, ListDto, SignedEventJson};
@@ -67,7 +67,7 @@ fn to_json(ev: &SignedEvent) -> SignedEventJson {
 
 fn event_cycle_key(ev: &SignedEvent) -> String {
     let kind = ev.unsigned.kind;
-    if is_parameterized_replaceable(kind) || kind == 10002 {
+    if is_addressable(kind) || kind == 10002 {
         let d_tag = ev
             .unsigned
             .tags

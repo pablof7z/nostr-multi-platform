@@ -378,7 +378,7 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
 ## Doctrine
 
 - **D0** — no NIP kind literals in the kernel ingest dispatch; gate by behavioral
-  predicates (`is_replaceable`, `is_parameterized_replaceable`,
+  predicates (`is_replaceable`, `is_addressable`,
   `follow_feed_kinds.contains`, parser `is_interested`). kind:1059 gift-wrap stays
   excluded via the parser registry, not a literal. Full D0 purity (zero kind
   literals in the ingest path) is reached at the end of PR 3, when profile and

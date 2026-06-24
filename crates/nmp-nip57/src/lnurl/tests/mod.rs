@@ -77,14 +77,6 @@ impl KernelClock for FixedClock {
 /// the captured `send` and drive it directly.
 struct LocalSigner;
 
-impl LocalSigner {
-    /// Back-compat constructor for the existing relay-injection tests that
-    /// wrote `LocalSigner::none()` (they never sign).
-    fn none() -> Self {
-        Self
-    }
-}
-
 impl LocalSignerAccess for LocalSigner {
     fn active_local_keys(&self) -> Option<Keys> {
         None

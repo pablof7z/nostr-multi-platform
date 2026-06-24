@@ -232,25 +232,23 @@ pub const KIND_MINT_ANNOUNCE: u32 = 38172;
 ///
 /// This is the strict NIP-01 meaning and does NOT include addressable kinds:
 /// callers wanting "replaceable in the broad sense" must test
-/// `is_replaceable(k) || is_parameterized_replaceable(k)`.
+/// `is_replaceable(k) || is_addressable(k)`.
 #[inline]
 #[must_use]
 pub fn is_replaceable(kind: u32) -> bool {
     matches!(kind, 0 | 3 | 41) || (10_000..20_000).contains(&kind)
 }
 
-/// Whether a kind is *addressable* (a.k.a. parameterized replaceable, NIP-01).
+/// Whether a kind is *addressable* (NIP-01).
 ///
 /// Addressable means that, for each `(pubkey, kind, d-tag)` combination, only
 /// the latest event MUST be stored. The addressable range is `30000..=39999`.
 ///
-/// The historical name "parameterized replaceable" is retained for the public
-/// symbol, but the semantics are exactly `nostr::Kind::is_addressable`: the
-/// ephemeral `20000..=29999` range is NOT addressable (the prior hand-rolled
-/// `nmp-core` copy wrongly included it).
+/// This matches `nostr::Kind::is_addressable`. Note that the ephemeral
+/// `20000..=29999` range is NOT addressable.
 #[inline]
 #[must_use]
-pub fn is_parameterized_replaceable(kind: u32) -> bool {
+pub fn is_addressable(kind: u32) -> bool {
     (30_000..40_000).contains(&kind)
 }
 
@@ -275,7 +273,7 @@ pub fn is_parameterized_replaceable(kind: u32) -> bool {
 #[inline]
 #[must_use]
 pub fn ptags_are_recipients(kind: u32) -> bool {
-    !(is_replaceable(kind) || is_parameterized_replaceable(kind))
+    !(is_replaceable(kind) || is_addressable(kind))
 }
 
 /// Whether an event of this kind carries its payload as opaque **ciphertext**
@@ -343,20 +341,20 @@ mod tests {
     }
 
     #[test]
-    fn parameterized_replaceable_is_addressable_range() {
-        assert!(is_parameterized_replaceable(30_000), "start of range");
-        assert!(is_parameterized_replaceable(30_023), "long-form article");
-        assert!(is_parameterized_replaceable(39_999), "end of range");
+    fn addressable_range() {
+        assert!(is_addressable(30_000), "start of range");
+        assert!(is_addressable(30_023), "long-form article");
+        assert!(is_addressable(39_999), "end of range");
 
         // Ephemeral is NOT addressable (prior copy wrongly said it was).
-        assert!(!is_parameterized_replaceable(20_000), "ephemeral start");
-        assert!(!is_parameterized_replaceable(29_999), "ephemeral end");
+        assert!(!is_addressable(20_000), "ephemeral start");
+        assert!(!is_addressable(29_999), "ephemeral end");
 
         // Neither regular nor regular-replaceable kinds are addressable.
-        assert!(!is_parameterized_replaceable(0));
-        assert!(!is_parameterized_replaceable(3));
-        assert!(!is_parameterized_replaceable(10_000));
-        assert!(!is_parameterized_replaceable(40_000));
+        assert!(!is_addressable(0));
+        assert!(!is_addressable(3));
+        assert!(!is_addressable(10_000));
+        assert!(!is_addressable(40_000));
     }
 
     #[test]

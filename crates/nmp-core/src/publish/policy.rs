@@ -37,7 +37,7 @@
 //!   *expressed*, not a behaviour change.
 
 use crate::kinds::{
-    is_parameterized_replaceable, is_replaceable, KIND_BLOCKED_RELAYS, KIND_BOOKMARK_LIST,
+    is_addressable, is_replaceable, KIND_BLOCKED_RELAYS, KIND_BOOKMARK_LIST,
     KIND_CHAT_MESSAGE, KIND_CONTACT_LIST, KIND_DM_RELAY_LIST, KIND_GIFT_WRAP, KIND_MUTE_LIST,
     KIND_PROFILE_METADATA, KIND_RELAY_LIST,
 };
@@ -169,7 +169,7 @@ pub(crate) fn classify_publish_behavior(kind: u32) -> PublishBehavior {
     //    them: a future contributor adding a behaviour split for a replaceable
     //    range edits THIS function, never a literal at a call site.
     let _is_replaceable = is_replaceable(kind);
-    let _is_param_replaceable = is_parameterized_replaceable(kind);
+    let _is_addressable = is_addressable(kind);
     PublishBehavior::PublicRoutable
 }
 

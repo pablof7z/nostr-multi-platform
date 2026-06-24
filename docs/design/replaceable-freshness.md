@@ -31,7 +31,7 @@ The core primitive is **`check_again_after`** — a per-replaceable-key timestam
 ## Replaceable kind ranges (NIP-01)
 
 - **is_replaceable:** kinds 0, 3, 10000–19999 — keyed by `(kind, pubkey)`
-- **is_parameterized_replaceable:** kinds 20000–29999, 30000–39999 — keyed by `(kind, pubkey, d_tag)`
+- **is_addressable:** kinds 30000–39999 — keyed by `(kind, pubkey, d_tag)`
 
 ## Default TTLs
 

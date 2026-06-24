@@ -75,7 +75,7 @@ impl ReplaceableKey {
         let mut pubkey = [0u8; 32];
         pubkey.copy_from_slice(&key_bytes[4..36]);
 
-        if is_parameterized_replaceable(kind) {
+        if is_addressable(kind) {
             // An empty d-tag is a valid NIP-01 addressable identity (the default
             // `d` value), encoded as exactly 36 bytes (kind + pubkey, no tail).
             // Only a key SHORTER than 36 bytes is malformed (caught above).
@@ -88,17 +88,12 @@ impl ReplaceableKey {
     }
 }
 
-/// Return whether a kind is *addressable* (a.k.a. parameterized replaceable, NIP-01).
+/// Return whether a kind is *addressable* (NIP-01).
 ///
 /// Delegates to [`nostr::Kind::is_addressable`] — the single source of truth for
 /// NIP-01 kind classification. Addressable kinds are the `30000..=39999` range;
 /// they are keyed by `(pubkey, kind, d-tag)`.
-///
-/// Note: the historical name "parameterized replaceable" is retained for the
-/// public symbol so existing F-TTL call sites keep compiling, but the semantics
-/// are exactly `nostr`'s `is_addressable` — it does NOT include the ephemeral
-/// `20000..=29999` range (the prior hand-rolled implementation wrongly did).
-pub fn is_parameterized_replaceable(kind: u32) -> bool {
+pub fn is_addressable(kind: u32) -> bool {
     nostr::Kind::from(kind as u16).is_addressable()
 }
 
@@ -110,7 +105,7 @@ pub fn is_parameterized_replaceable(kind: u32) -> bool {
 ///
 /// This is the strict NIP-01 meaning and does NOT include addressable kinds —
 /// callers that want "replaceable in the broad sense" must test
-/// `is_replaceable(k) || is_parameterized_replaceable(k)`.
+/// `is_replaceable(k) || is_addressable(k)`.
 pub fn is_replaceable(kind: u32) -> bool {
     nostr::Kind::from(kind as u16).is_replaceable()
 }
@@ -194,7 +189,7 @@ mod tests {
         assert!(!is_replaceable(29999));
 
         // Addressable (30000..=39999) is NOT "replaceable" in the strict
-        // NIP-01 sense — it is a separate class (is_parameterized_replaceable).
+        // NIP-01 sense — it is a separate class (is_addressable).
         assert!(!is_replaceable(30000));
         assert!(!is_replaceable(30023));
         assert!(!is_replaceable(39999));
@@ -203,21 +198,21 @@ mod tests {
     }
 
     #[test]
-    fn test_is_parameterized_replaceable() {
-        // Parameterized replaceable == addressable (30000..=39999).
-        assert!(is_parameterized_replaceable(30000));
-        assert!(is_parameterized_replaceable(30023));
-        assert!(is_parameterized_replaceable(39999));
+    fn test_is_addressable() {
+        // Addressable (30000..=39999).
+        assert!(is_addressable(30000));
+        assert!(is_addressable(30023));
+        assert!(is_addressable(39999));
 
         // Ephemeral (20000..=29999) is NOT addressable — the prior
         // hand-rolled impl wrongly included this range.
-        assert!(!is_parameterized_replaceable(20000));
-        assert!(!is_parameterized_replaceable(29999));
+        assert!(!is_addressable(20000));
+        assert!(!is_addressable(29999));
 
         // Regular/regular-replaceable kinds are not addressable.
-        assert!(!is_parameterized_replaceable(0));
-        assert!(!is_parameterized_replaceable(3));
-        assert!(!is_parameterized_replaceable(10000));
-        assert!(!is_parameterized_replaceable(40000));
+        assert!(!is_addressable(0));
+        assert!(!is_addressable(3));
+        assert!(!is_addressable(10000));
+        assert!(!is_addressable(40000));
     }
 }

@@ -52,7 +52,7 @@ impl Kernel {
         // Addressable / parameterized-replaceable coord — applies to BOTH Inserted
         // (fresh) and Replaced (supersede).
         if crate::store::is_replaceable(event.kind)
-            || crate::store::is_parameterized_replaceable(event.kind)
+            || crate::store::is_addressable(event.kind)
         {
             let d = event
                 .tags
