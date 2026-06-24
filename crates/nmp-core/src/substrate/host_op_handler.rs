@@ -10,14 +10,16 @@
 //! actor's dispatch arm signs+publishes. That works because publish state lives
 //! in the kernel.
 //!
-//! Some app crates own stateful runtime that the kernel cannot name (D0): the
-//! Marmot MLS state (a per-process `MarmotService<MdkSqliteStorage>` holding
-//! group ratchet secrets, processed Welcomes, key-package private keys) lives
-//! in `nmp-app-marmot`, not `nmp-core`. The fixture crate's TODO-list
-//! projection has the same shape — host-owned state that the kernel must not
-//! name. For those crates an `ActorCommand` variant per op
-//! (`ActorCommand::MarmotCreateGroup { ... }`, `ActorCommand::TodoAdd { ... }`)
-//! would force `nmp-core` to name the app's nouns — exactly what D0 forbids.
+//! Some app crates own stateful runtime that the kernel cannot name (D0). For
+//! those crates an `ActorCommand` variant per op would force `nmp-core` to name
+//! the app's nouns — exactly what D0 forbids.
+//!
+//! Marmot used this seam during the ADR-0025 migration, but now owns a typed
+//! `ProtocolCommand` in `nmp-marmot` and no longer routes through
+//! `HostOpHandler`. The remaining owner is the substrate-generic FFI extension
+//! surface (`nmp-ffi::NmpApp::set_host_op_handler`) for host-owned, JSON-shaped
+//! operations that have not defined their own typed protocol command yet; the
+//! in-tree consumer coverage lives in `nmp-ffi/src/action/tests_host_op.rs`.
 //!
 //! `HostOpHandler` is the boundary-shaped seam: a small, substrate-generic
 //! trait `nmp-core` defines so the actor can ask "whoever owns the app-side

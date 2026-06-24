@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_ffi::NmpApp;
 
-use super::{now_secs, DEFAULT_MESSAGE_PAGE};
+use super::DEFAULT_MESSAGE_PAGE;
 use crate::projection::payload::{MarmotInitError, MarmotSnapshot};
 use crate::projection::state::MarmotProjection;
 
@@ -98,15 +98,18 @@ pub(super) fn register_marmot_snapshot_projections(app_ref: &NmpApp, slot: &Marm
     // nothing when `Cleared`. Cheap on the `Ready` path: one lock + MDK reads.
     {
         let typed_snap_slot = Arc::clone(slot);
-        app_ref.register_typed_snapshot_projection("nmp.marmot.snapshot", move || {
-            let guard = typed_snap_slot.lock().ok()?;
-            let snapshot = match &*guard {
-                MarmotSlotState::Cleared => return None,
-                MarmotSlotState::Ready(proj) => proj.snapshot(now_secs()),
-                MarmotSlotState::InitFailed(init_error) => init_failed_snapshot(init_error),
-            };
-            Some(crate::wire::snapshot_fb::typed_projection(&snapshot))
-        });
+        app_ref.register_typed_snapshot_projection_with_time(
+            "nmp.marmot.snapshot",
+            move |now_secs| {
+                let guard = typed_snap_slot.lock().ok()?;
+                let snapshot = match &*guard {
+                    MarmotSlotState::Cleared => return None,
+                    MarmotSlotState::Ready(proj) => proj.snapshot(now_secs),
+                    MarmotSlotState::InitFailed(init_error) => init_failed_snapshot(init_error),
+                };
+                Some(crate::wire::snapshot_fb::typed_projection(&snapshot))
+            },
+        );
     }
 
     // **`nmp.marmot.messages`**: per-group decrypted-message map; only the

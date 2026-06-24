@@ -9,20 +9,18 @@
 //! KNOWN LIMITATION note). The outbound events landed in local MDK SQLite
 //! but never reached relays.
 //!
-//! This module closes that seam by publishing INTERNALLY through the
-//! kernel: it calls the workspace-internal pure-Rust kernel API
-//! [`nmp_ffi::NmpApp::publish_signed_explicit`] against the `&NmpApp` the
-//! host shell's Marmot handle already retains. The seam is now strictly
-//! explicit-target: empty relay sets fail closed in the kernel instead of
-//! widening to the author NIP-65 outbox. It is a generic kernel capability
-//! (no MLS/Marmot nouns kernel-side — D0 holds); it verifies Schnorr + id and
-//! routes fire-and-forget via the actor channel.
+//! This module closes that seam by publishing through the typed protocol
+//! runtime port. The seam is strictly explicit-target: empty relay sets fail
+//! closed in the kernel instead of widening to the author NIP-65 outbox. It is
+//! a generic actor capability (no MLS/Marmot nouns kernel-side — D0 holds); it
+//! verifies Schnorr + id and routes fire-and-forget via the actor channel.
 //!
 //! Inbound ingest is handled by the raw signed-event tap. This module only
 //! covers outbound publish routing.
 
-use nmp_ffi::NmpApp;
 use nostr::{Event, RelayUrl};
+
+use crate::projection::state::InnerHandle;
 
 /// Publish a signed event to an explicit relay set (Explicit routing).
 ///
@@ -48,9 +46,9 @@ use nostr::{Event, RelayUrl};
 /// the existing inbox-routing approximation) for a kind:1059 publish to
 /// actually go out.
 ///
-/// Fire-and-forget (D6): a poisoned actor channel inside `NmpApp::send_cmd`
-/// is a silent drop, mirroring the contract of every other FFI publish path.
-pub(crate) fn publish_to(app: &NmpApp, event: &Event, relays: &[RelayUrl]) {
+/// Fire-and-forget (D6): an unavailable actor/protocol port is a silent drop,
+/// mirroring the contract of other runtime command paths.
+pub(crate) fn publish_to(h: &InnerHandle<'_>, event: &Event, relays: &[RelayUrl]) {
     // D10 provenance guard: a kind:1059 gift-wrap with NO explicit relay
     // pin MUST NOT reach any fallback path that could leak the presence of
     // an encrypted DM / Welcome to public relays. Refuse the publish; the
@@ -59,19 +57,15 @@ pub(crate) fn publish_to(app: &NmpApp, event: &Event, relays: &[RelayUrl]) {
     if event.kind.as_u16() as u32 == crate::interest::KIND_GIFT_WRAP && relays.is_empty() {
         return;
     }
-    app.publish_signed_explicit(event.clone(), relays);
+    h.publish_signed_explicit(event, relays);
 }
 
 #[cfg(test)]
 mod tests {
     //! Unit tests for the D10 provenance guard in [`publish_to`].
     //!
-    //! These tests exercise the guard's *kind discrimination* with a null
-    //! `*mut NmpApp` so the FFI symbol is never invoked (a `nullptr` `app`
-    //! returns early before the guard, but we cover the guard logic by
-    //! exercising the inverse: with the early-null-return removed
-    //! conceptually, the guard is the next line of defense). The behavioral
-    //! contract this pins:
+    //! These tests exercise the guard's *kind discrimination* directly,
+    //! without needing a live actor runtime. The behavioral contract this pins:
     //!
     //! - `event.kind == 1059` + `relays.is_empty()` → no publish.
     //! - `event.kind == 1059` + non-empty `relays` → publish proceeds
@@ -79,9 +73,8 @@ mod tests {
     //! - `event.kind != 1059` + empty `relays` → the D10 predicate does not
     //!   block, and kernel explicit-target validation fails closed later.
     //!
-    //! Because `*mut NmpApp` is null in tests, no FFI symbol is reached;
-    //! the assertions therefore inspect the guard *predicate* shape directly
-    //! via a public helper, isolating the gate from the unsafe FFI body.
+    //! The assertions inspect the guard *predicate* shape directly via a local
+    //! helper, isolating the gate from actor publishing.
     use super::*;
     use nostr::Keys;
     use nostr::{EventBuilder, Kind};

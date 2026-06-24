@@ -24,11 +24,11 @@
 //! * **Host (iOS)** — `nmp_app_dispatch_action("nmp.marmot", action_json)`,
 //!   the generic kernel dispatch path. Registered in
 //!   [`register_with_keys`] via
-//!   [`crate::projection::action::MarmotActionModule`] +
-//!   [`crate::projection::handler::MarmotMlsOpHandler`]. Returns a
-//!   `correlation_id` synchronously; the terminal verdict is mirrored on
-//!   the `action_stages` projection. The rich per-op envelope is consumed
-//!   by the kernel, not surfaced to the host.
+//!   [`crate::projection::action::MarmotActionModule`]. Execution runs as a
+//!   typed `MarmotProtocolCommand` on the actor thread. Returns a
+//!   `correlation_id` synchronously; the terminal verdict is mirrored on the
+//!   `action_stages` projection. The rich per-op envelope is consumed by the
+//!   kernel, not surfaced to the host.
 //! * **In-process Rust callers (REPL / TUI / integration tests)** —
 //!   [`MarmotHandle::dispatch`], a Rust-native method that reaches the
 //!   SAME [`crate::projection::ops::dispatch`] entry point both seams use
@@ -69,21 +69,19 @@
 //! `KernelEvent` metadata observer AND all per-kind `IngestParser` slots via
 //! `unregister_ingest_parser`). This was the last open seam (raw-tap PR-2).
 
-use std::ffi::{c_char, CStr};
+use std::ffi::{CStr, c_char};
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 
-use nmp_core::KernelEventObserverId;
+use nmp_core::{KernelEventObserverId, actor::ActorCommand};
 use nmp_ffi::NmpApp;
 use nostr::Keys;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::service::MarmotService;
 
-use crate::projection::action::{MarmotAction, MarmotActionModule};
-use crate::projection::handler::MarmotMlsOpHandler;
+use crate::projection::action::{MarmotAction, MarmotActionModule, MarmotProtocolCommand};
 use crate::projection::state::MarmotProjection;
-use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT, TAP_KINDS};
+use crate::projection::tap::{MARMOT_INGEST_SLOT, MarmotIngestParser, TAP_KINDS};
 
 /// Page size used by the `nmp.marmot.messages` push projection and
 /// [`MarmotHandle::messages_rust`].
@@ -91,6 +89,7 @@ const DEFAULT_MESSAGE_PAGE: usize = 200;
 /// Generic key-id for the MLS SQLite DB encryption key in the keyring.
 /// The service-id (app-scoped namespace) is caller-supplied (D0 #1606).
 pub(crate) const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
+const MARMOT_EXPIRY_TICK_OBSERVER_SLOT: &str = "nmp.marmot.pending_expiry";
 
 mod slot;
 use slot::register_marmot_snapshot_projections;
@@ -135,12 +134,13 @@ pub struct MarmotHandle {
 //      `snapshot()` / dispatch. Soundness of that sharing comes from
 //      `MarmotProjection`'s interior `Mutex<Inner>`, not from this
 //      `unsafe impl`.
-//   3. The `app` raw pointer is only read (to forward fire-and-forget
-//      kernel commands). No use-after-free is possible: `nmp_app_free`'s
-//      `NmpApp::Drop` sends `Shutdown` and `join()`s the actor thread
-//      before freeing the allocation, and every kernel callback that can
-//      reach `app` (`on_kernel_event`, `parse`) runs INLINE on that actor
-//      thread — the join fences them.
+//   3. The `app` raw pointer is retained only for unregister teardown. Runtime
+//      projection callbacks do not read it; actor commands use the cloned
+//      `CommandSender` stored on `MarmotProjection`. No use-after-free is
+//      possible: `nmp_app_free`'s `NmpApp::Drop` sends `Shutdown` and `join()`s
+//      the actor thread before freeing the allocation, and every kernel
+//      callback (`on_kernel_event`, `parse`) runs INLINE on that actor thread —
+//      the join fences them.
 //
 // CALLER CONTRACT: `nmp_app_free` must not run while a kernel callback that
 // reaches this projection is still executing. The in-process Rust-trait
@@ -161,7 +161,17 @@ impl MarmotHandle {
     /// SnapshotFrame projection key (`projections["nmp.marmot.snapshot"]`).
     #[must_use]
     pub fn snapshot_rust(&self) -> crate::projection::payload::MarmotSnapshot {
-        self.projection.snapshot(now_secs())
+        self.snapshot_rust_at(0)
+    }
+
+    /// Rust-native snapshot accessor with caller-supplied actor/kernel time.
+    ///
+    /// The pushed projection path passes kernel time automatically. Direct
+    /// in-process callers that need age/staleness fields must supply the same
+    /// logical clock explicitly.
+    #[must_use]
+    pub fn snapshot_rust_at(&self, now_secs: u64) -> crate::projection::payload::MarmotSnapshot {
+        self.projection.snapshot(now_secs)
     }
 
     /// Rust-native messages accessor for in-process callers (REPL / TUI /
@@ -200,8 +210,8 @@ impl MarmotHandle {
     /// `nmp_app_dispatch_action("nmp.marmot", action_json)` path
     /// ([`crate::projection::action::MarmotActionModule`]). That path is
     /// non-blocking — it returns `{"correlation_id":"…"}` synchronously and
-    /// the rich envelope produced by the `MarmotMlsOpHandler` is consumed
-    /// by the kernel's `action_stages` machinery (which only mirrors the
+    /// the rich envelope produced by `MarmotProtocolCommand` is consumed by
+    /// the kernel's `action_stages` machinery (which only mirrors the
     /// `ok:true/false` verdict). The per-op event payloads are NOT surfaced
     /// to the caller on that path.
     ///
@@ -209,9 +219,9 @@ impl MarmotHandle {
     /// `AppRuntime`s — namely `chirp-repl` / `chirp-tui` / their
     /// integration tests — depend on the synchronous envelope. This
     /// accessor parses the JSON into the SAME typed
-    /// [`crate::projection::action::MarmotAction`] that the kernel actor's
-    /// `HostOpCommand` handler dispatches, then invokes
-    /// [`crate::projection::ops::dispatch`] without going through any FFI.
+    /// [`crate::projection::action::MarmotAction`] used by the actor command,
+    /// then invokes [`crate::projection::ops::dispatch`] without going through
+    /// any FFI.
     ///
     /// ## D0 / layering
     ///
@@ -219,7 +229,7 @@ impl MarmotHandle {
     /// crate. It is NOT a C-ABI symbol, not part of any host FFI surface,
     /// and not subject to ADR-0025's bespoke-FFI prohibition (which
     /// targeted `extern "C"` cluster bloat in the iOS bridge).
-    pub fn dispatch(&self, action: &Value) -> Value {
+    pub fn dispatch_at(&self, action: &Value, now_secs: u64) -> Value {
         let action: MarmotAction = match serde_json::from_value(action.clone()) {
             Ok(action) => action,
             Err(e) => {
@@ -232,9 +242,9 @@ impl MarmotHandle {
         // `correlation_id` is `None`: this in-process path (REPL / TUI / tests)
         // has no action-registry correlation, so the deferred-pending path
         // stays off (callers get the old terminal soft-fail); it activates only
-        // for the typed `HostOpCommand` pipeline, which supplies an id.
+        // for the typed protocol command pipeline, which supplies an id.
         self.projection
-            .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs(), None))
+            .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs, None))
             .unwrap_or_else(|| {
                 json!({
                     "ok": false,
@@ -242,13 +252,10 @@ impl MarmotHandle {
                 })
             })
     }
-}
 
-fn now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
+    pub fn dispatch(&self, action: &Value) -> Value {
+        self.dispatch_at(action, 0)
+    }
 }
 
 /// Inner registration logic shared by `register_with_secret_hex` and
@@ -291,7 +298,9 @@ pub(crate) fn register_with_keys(
 ) -> *mut MarmotHandle {
     // Capability slot for the probe (rationale in `credential_store::initialize`).
     // SAFETY: both callers null-check `app` before delegating here.
-    let capability_slot = unsafe { &*app }.capability_callback_slot();
+    let app_ref = unsafe { &*app };
+    app_ref.remove_snapshot_tick_observer(MARMOT_EXPIRY_TICK_OBSERVER_SLOT);
+    let capability_slot = app_ref.capability_callback_slot();
     let Some(use_mock) = crate::credential_store::initialize(capability_slot, keyring_service_id)
     else {
         return std::ptr::null_mut();
@@ -327,8 +336,6 @@ pub(crate) fn register_with_keys(
                     "nmp-marmot: service init failed (use_mock={use_mock}): {e}; \
                  surfacing {init_error:?} in nmp.marmot.snapshot, returning null handle"
                 );
-                // SAFETY: caller guarantees `app` is non-null and valid.
-                let app_ref = unsafe { &*app };
                 let slot: MarmotProjectionSlot =
                     Arc::new(Mutex::new(MarmotSlotState::InitFailed(init_error)));
                 register_marmot_snapshot_projections(app_ref, &slot);
@@ -336,27 +343,6 @@ pub(crate) fn register_with_keys(
             }
         };
 
-    // Step 1: register the substrate-generic `MarmotActionModule` against
-    // the kernel's action registry. This is the SOLE host entry point
-    // for Marmot mutating ops (the legacy bespoke `nmp_marmot_dispatch`
-    // C-ABI symbol was deleted in ADR-0025 PR 3, 2026-05-23); hosts
-    // reach every Marmot write through
-    // `nmp_app_dispatch_action("nmp.marmot", action_json)`. Registration
-    // is idempotent (replaces any prior entry under the same namespace),
-    // so a second `register_with_keys` (account switch) is safe. Takes
-    // `&mut NmpApp` and must run BEFORE any other `&NmpApp` borrow below.
-    //
-    // SAFETY: the caller guarantees `app` is a valid pointer from
-    // `nmp_app_new`. No other reference aliases `app` at this point — the
-    // `&*app` borrow on the next line is taken only after this exclusive
-    // borrow is dropped. Mirrors the `register_chirp_actions(unsafe { &mut
-    // *app })` pattern in `apps/chirp/nmp-app-chirp/src/ffi/register.rs`.
-    unsafe { &mut *app }
-        .register_action(MarmotActionModule)
-        .expect("duplicate registration: nmp-marmot MarmotActionModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error
-
-    // SAFETY: caller guarantees `app` is non-null and valid.
-    let app_ref = unsafe { &*app };
     // V-62 / #1651: when `initialize()` chose the in-memory mock store
     // (`use_mock == true`) the service works but its secrets are not durable,
     // so the projection carries `MarmotInitError::KeyringUnavailable` in every
@@ -365,7 +351,20 @@ pub(crate) fn register_with_keys(
     let init_error =
         use_mock.then_some(crate::projection::payload::MarmotInitError::KeyringUnavailable);
     let projection = Arc::new(MarmotProjection::new(service, init_error));
-    projection.set_app(app);
+    // SAFETY: caller guarantees `app` is non-null and valid.
+    let actor_sender = unsafe { (&*app).actor_sender() };
+    projection.set_actor_sender(actor_sender.clone());
+
+    // Register the typed Marmot action module against the kernel's action
+    // registry. The module owns the projection `Arc` and dispatches a typed
+    // `MarmotProtocolCommand`; no host-op JSON bridge or raw `NmpApp` pointer
+    // participates in protocol behavior.
+    //
+    // SAFETY: the caller guarantees `app` is a valid pointer from
+    // `nmp_app_new`. This exclusive borrow is scoped to registration.
+    unsafe { &mut *app }
+        .register_action(MarmotActionModule::new(Arc::clone(&projection)))
+        .expect("duplicate registration: nmp-marmot MarmotActionModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error
 
     // V-107 / ADR-0039: register the two Marmot push projections onto the
     // canonical snapshot seam. Both ride the SnapshotFrame on every tick
@@ -396,6 +395,15 @@ pub(crate) fn register_with_keys(
     let projection_slot: MarmotProjectionSlot =
         Arc::new(Mutex::new(MarmotSlotState::Ready(Arc::clone(&projection))));
     register_marmot_snapshot_projections(app_ref, &projection_slot);
+    let expiry_projection = Arc::clone(&projection);
+    app_ref.replace_snapshot_tick_observer(MARMOT_EXPIRY_TICK_OBSERVER_SLOT, move || {
+        if !expiry_projection.has_pending_ops() {
+            return;
+        }
+        let _ = actor_sender.send(ActorCommand::Protocol(Box::new(
+            MarmotProtocolCommand::new_expire_pending(Arc::clone(&expiry_projection)),
+        )));
+    });
 
     let observer_id = app_ref
         .register_event_observer(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
@@ -423,27 +431,14 @@ pub(crate) fn register_with_keys(
         );
     }
 
-    // Step 2: install the substrate-generic host-op handler against the
-    // same `MarmotProjection` the observer + parser registered above are
-    // tied to. The `HostOpCommand` (on the `Protocol` arm) clones this handler
-    // out of the slot whenever the `MarmotActionModule::execute` body emits the
-    // command — so every `nmp.marmot` dispatch reaches the SAME shared
-    // projection state that `MarmotHandle::dispatch` (the in-process
-    // Rust-native accessor) mutates and that the legacy bespoke
-    // `nmp_marmot_dispatch` symbol used to mutate pre-PR-3 (one source of
-    // truth; D4).
-    //
-    // A second `register_with_keys` (account switch, re-register) installs
-    // a fresh handler over the new projection; `set_host_op_handler`
-    // replaces the prior slot entry atomically.
-    app_ref.set_host_op_handler(Arc::new(MarmotMlsOpHandler::new(Arc::clone(&projection)))
-        as Arc<dyn nmp_core::substrate::HostOpHandler>);
-
     // D7: the gift-wrap inbox subscription (kind:1059 `#p` filter, deterministic
     // id, account scope) is protocol policy — it lives in `nmp-marmot`, not in
     // this glue. The FFI only resolves the concrete pubkey and forwards.
     let pubkey_hex = keys.public_key().to_hex();
-    app_ref.ensure_interest(crate::interest::giftwrap_inbox_identity(&pubkey_hex), crate::interest::giftwrap_inbox_interest(&pubkey_hex));
+    app_ref.ensure_interest(
+        crate::interest::giftwrap_inbox_identity(&pubkey_hex),
+        crate::interest::giftwrap_inbox_interest(&pubkey_hex),
+    );
 
     // Post-restart live-receive fix (re-push per-group kind:445; see resubscribe.rs).
     projection.resubscribe_all_groups();
@@ -571,6 +566,7 @@ pub extern "C" fn nmp_marmot_unregister(handle: *mut MarmotHandle) {
         let app_ref = unsafe { &*boxed.app };
         // Tear down the lossy KernelEvent metadata observer.
         app_ref.unregister_event_observer(boxed.observer_id);
+        app_ref.remove_snapshot_tick_observer(MARMOT_EXPIRY_TICK_OBSERVER_SLOT);
         // Remove all per-kind `IngestParser` slots registered under the
         // `"marmot"` slot key (raw-tap PR-2). Each `unregister_ingest_parser`
         // call is idempotent — a D6 no-op when the slot is already absent or

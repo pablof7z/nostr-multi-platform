@@ -39,8 +39,8 @@
 
 use std::sync::Arc;
 
-use nmp_store::VerifiedEvent;
 use nmp_core::substrate::IngestParser;
+use nmp_store::VerifiedEvent;
 use nostr::{Event, JsonUtil};
 
 use crate::interest::{
@@ -104,6 +104,10 @@ impl IngestParser for MarmotIngestParser {
     /// All failures are silent (D6); the projection mutation is the
     /// load-bearing effect a later snapshot refresh surfaces.
     fn parse(&self, evt: &VerifiedEvent) {
+        self.parse_at(evt, 0);
+    }
+
+    fn parse_at(&self, evt: &VerifiedEvent, now_secs: u64) {
         // Serialize the `RawEvent` (which includes `sig`) back to JSON.
         // `RawEvent` derives `Serialize` with the exact NIP-01 field order,
         // so this is lossless — no field is dropped.
@@ -121,10 +125,6 @@ impl IngestParser for MarmotIngestParser {
             // duplicate / unsupported-kind / decrypt error to (D6). The
             // projection side-effects (pending-welcome row, relay cache,
             // MDK state) are what the next snapshot reflects.
-            let now_secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
             let _ = ingest_signed_event_core(h, &event, now_secs);
         });
     }

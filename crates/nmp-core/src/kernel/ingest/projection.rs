@@ -31,16 +31,13 @@ impl Kernel {
         let contacts_before = self.contacts_lookup().follows(&author);
         // GAP-3: snapshot the active account's blocked-relay set BEFORE dispatch
         // so we can detect a kind:10006 write and enqueue a recompile.
-        let blocked_before_urls: std::collections::BTreeSet<String> = self
-            .snapshot_blocked_relays()
-            .iter()
-            .cloned()
-            .collect();
+        let blocked_before_urls: std::collections::BTreeSet<String> =
+            self.snapshot_blocked_relays().iter().cloned().collect();
 
         // (1) NIP-parser dispatch. D6 — a poisoned dispatcher lock degrades to
         // "no parser fired" (graceful; persistence already succeeded).
         if let Ok(d) = self.ingest_dispatcher_slot().read() {
-            d.dispatch(verified);
+            d.dispatch_at(verified, self.now_secs());
         }
 
         // (2b) Transition sweep AFTER dispatch.
@@ -83,11 +80,8 @@ impl Kernel {
         // a recompile so SPLIT B removes the newly-blocked relay on the next drain.
         // Only check for the active account — the blocked set is account-scoped.
         if self.active_account.as_deref() == Some(author.as_str()) {
-            let blocked_after_urls: std::collections::BTreeSet<String> = self
-                .snapshot_blocked_relays()
-                .iter()
-                .cloned()
-                .collect();
+            let blocked_after_urls: std::collections::BTreeSet<String> =
+                self.snapshot_blocked_relays().iter().cloned().collect();
             if blocked_before_urls != blocked_after_urls {
                 self.on_blocked_relays_changed();
             }

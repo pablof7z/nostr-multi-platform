@@ -6,10 +6,10 @@
 //! (`serde_json::Value`) lane has been removed; tests now cover only the typed
 //! and tick-observer ceilings.
 
-use super::bounds::{MAX_SNAPSHOT_PROJECTIONS, MAX_TICK_OBSERVERS};
 use super::SnapshotRegistry;
-use std::sync::atomic::{AtomicU64, Ordering};
+use super::bounds::{MAX_SNAPSHOT_PROJECTIONS, MAX_TICK_OBSERVERS};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// D5: same ceiling for the **typed** projection registry.
 #[test]
@@ -78,8 +78,13 @@ fn typed_projection_registry_allows_re_registration_at_ceiling() {
         MAX_SNAPSHOT_PROJECTIONS,
         "re-registration of an existing key must not grow the registry"
     );
-    let key0 = typed.iter().find(|t| t.key == "k" && t.schema_id == "schema-b");
-    assert!(key0.is_some(), "re-registered closure must replace the old one");
+    let key0 = typed
+        .iter()
+        .find(|t| t.key == "k" && t.schema_id == "schema-b");
+    assert!(
+        key0.is_some(),
+        "re-registered closure must replace the old one"
+    );
 }
 
 /// D5: tick-observer ceiling — the (MAX_TICK_OBSERVERS+1)-th registration is a
@@ -110,4 +115,28 @@ fn tick_observer_registry_rejects_overflow() {
         MAX_TICK_OBSERVERS as u64,
         "D5 regression: tick-observer list grew past MAX_TICK_OBSERVERS"
     );
+}
+
+#[test]
+fn keyed_tick_observer_replaces_and_removes_without_growing() {
+    let mut reg = SnapshotRegistry::new();
+    let marker = Arc::new(AtomicU64::new(0));
+
+    let first = Arc::clone(&marker);
+    reg.replace_tick_observer("marmot.expiry", move || {
+        first.store(1, Ordering::Relaxed);
+    });
+    let second = Arc::clone(&marker);
+    reg.replace_tick_observer("marmot.expiry", move || {
+        second.store(2, Ordering::Relaxed);
+    });
+
+    reg.run_tick_observers();
+    assert_eq!(marker.load(Ordering::Relaxed), 2);
+    assert!(reg.remove_tick_observer("marmot.expiry"));
+
+    marker.store(0, Ordering::Relaxed);
+    reg.run_tick_observers();
+    assert_eq!(marker.load(Ordering::Relaxed), 0);
+    assert!(!reg.remove_tick_observer("marmot.expiry"));
 }

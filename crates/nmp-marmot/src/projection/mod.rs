@@ -11,16 +11,13 @@
 //! * [`ops`] — dispatch + read-projection handlers; the ONLY place
 //!   `mdk-core` input types are named for this layer.
 //! * [`publish`] — the internal relay-publish bridge that CLOSES the
-//!   outbound seam (calls the workspace-internal
-//!   `nmp_ffi::NmpApp::publish_signed_explicit` kernel API against the
-//!   retained `&NmpApp`).
+//!   outbound seam through the actor/protocol runtime port.
 //! * [`tap`] — the inbound raw-event observer that CLOSES the inbound
 //!   ingest seam (drives accepted kind:1059/445 events through the shared
 //!   `ops::ingest_signed_event_core`).
 
 pub mod action;
 pub mod deferred;
-pub mod handler;
 pub mod ops;
 pub mod payload;
 pub mod pending;

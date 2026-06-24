@@ -102,7 +102,7 @@ fn pending_op_appears_in_snapshot_and_clears_after_retry() {
 }
 
 /// `last_op_error` is a REAL production-set value, not dead wire. Full
-/// lifecycle through the snapshot surface: park → expire via snapshot edge →
+/// lifecycle through the snapshot surface: park → expire via actor command →
 /// `last_op_error` populated with the real `(op, reason, correlation_id,
 /// at_secs)` → successful op → cleared.
 #[test]
@@ -149,8 +149,24 @@ fn last_op_error_is_set_on_expiry_and_cleared_on_next_success() {
         "no error while the op is still pending"
     );
 
-    // Snapshot PAST the deadline → expiry fires → last_op_error populated.
+    // Snapshot PAST the deadline is read-only: it shows age but does not evict
+    // or populate the error banner.
     let expired_now = 1_001 + PENDING_OP_EXPIRY_SECS + 1;
+    let snap_before = proj.snapshot(expired_now);
+    assert_eq!(
+        snap_before.pending_ops.len(),
+        1,
+        "snapshot must not evict pending ops: {snap_before:?}"
+    );
+    assert!(
+        snap_before.last_op_error.is_none(),
+        "snapshot must not record terminal failures"
+    );
+
+    // The explicit actor-side expiry command mutates state; the following
+    // snapshot only reads the result.
+    proj.with_inner(|h| h.evict_expired_pending(expired_now))
+        .unwrap();
     let snap = proj.snapshot(expired_now);
     assert!(
         snap.pending_ops.is_empty(),

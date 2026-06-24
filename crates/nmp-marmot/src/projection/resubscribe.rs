@@ -37,7 +37,10 @@ impl MarmotProjection {
         let Ok(mut guard) = self.inner.lock() else {
             return; // D6 — poisoned mutex silently no-ops.
         };
-        let mut h = InnerHandle { inner: &mut guard };
+        let mut h = InnerHandle {
+            inner: &mut guard,
+            port: None,
+        };
 
         // Enumerate all groups MDK has persisted in the SQLite store.
         let Ok(groups) = h.service().get_groups() else {

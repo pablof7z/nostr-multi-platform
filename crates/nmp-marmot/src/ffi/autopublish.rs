@@ -14,8 +14,8 @@
 
 use nmp_ffi::NmpApp;
 
-use super::{now_secs, MarmotHandle};
-use crate::projection::action::MarmotAction;
+use super::MarmotHandle;
+use crate::projection::action::{MarmotAction, MarmotProtocolCommand};
 
 /// If the sign-in path armed the autopublish flag, consume it and publish a
 /// key package against the freshly-registered handle. A no-op when the flag is
@@ -32,10 +32,8 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
         return;
     };
     let action = MarmotAction::PublishKeyPackage { relays: Vec::new() };
-    // `correlation_id` is `None`: this auto-publish path has no action-registry
-    // correlation, and publish_key_package is never KP-gated, so the deferred
-    // path is irrelevant here.
-    let _ = handle
-        .projection
-        .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs(), None));
+    let cmd = nmp_core::actor::ActorCommand::Protocol(Box::new(
+        MarmotProtocolCommand::new_internal(std::sync::Arc::clone(&handle.projection), action),
+    ));
+    let _ = handle.projection.with_inner(|h| h.send_actor_command(cmd));
 }
