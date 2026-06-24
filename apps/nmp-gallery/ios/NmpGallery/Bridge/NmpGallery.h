@@ -144,6 +144,16 @@ char *nmp_app_gallery_snapshot_json_from_update_frame(struct GalleryRefProfileSt
 // before calling nmp_app_resolve_ref (see the deleted nmp_app_claim_event note).
 char *nmp_nip21_decode_uri(const char *input);
 
+// Stateless content tokenizer. Returns {"ok":true,"tree":ContentTreeWire}
+// using the same wire arena as the registry renderers, or
+// {"ok":false,"error":"..."}. `mode`: 0 plain, 1 markdown, 2 auto by `kind`.
+// `tags_json` may be NULL or a JSON [[string]] event-tag array for emoji tags.
+// The returned string is never NULL and MUST be freed via nmp_free_string.
+char *nmp_content_tokenize_text(const char *content,
+                                const char *tags_json,
+                                int mode,
+                                uint32_t kind);
+
 // ── Heap-string release ──────────────────────────────────────────────────
 
 // Release a `*mut c_char` returned by any NMP FFI function. Passing NULL is a

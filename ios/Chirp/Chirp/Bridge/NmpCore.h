@@ -186,6 +186,16 @@ char *nmp_app_encode_profile(void *app, const char *pubkey_hex);
 // The returned string is never NULL and MUST be freed via nmp_free_string.
 char *nmp_nip21_decode_uri(const char *input);
 
+// Stateless content tokenizer. Returns {"ok":true,"tree":ContentTreeWire}
+// using the same wire arena as the registry renderers, or
+// {"ok":false,"error":"..."}. `mode`: 0 plain, 1 markdown, 2 auto by `kind`.
+// `tags_json` may be NULL or a JSON [[string]] event-tag array for emoji tags.
+// The returned string is never NULL and MUST be freed via nmp_free_string.
+char *nmp_content_tokenize_text(const char *content,
+                                const char *tags_json,
+                                int mode,
+                                uint32_t kind);
+
 // ── Input-intent resolver (#1804) ────────────────────────────────────────────
 // One untyped input string (one-box / paste / search field) is classified into
 // exactly one of: a NIP-19/21 direct ref, a relay URL, a NIP-05-shaped
