@@ -1,21 +1,28 @@
-//! Eligibility parsing for filters that can be reconciled exactly.
+//! Eligibility parsing for NIP-01 filters that can be reconciled exactly.
 
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
+use std::ops::ControlFlow;
 
-use nmp_store::{EventStore, StoreQuery};
+use nmp_coverage_gate::ResultSurface;
+use nmp_store::{EventStore, StoreQuery, StoredEvent};
 use serde_json::Value;
 
 use crate::reconciler::SyncedItem;
 
-/// Parsed filter that can be represented exactly as local store queries.
+/// Parsed NIP-01 filter plus the exact local matching machinery NIP-77 needs.
 #[derive(Clone, Debug)]
 pub struct EligibleFilter {
     /// Original JSON value used in `NEG-OPEN`.
     pub value: Value,
+    /// Exact event ids from `ids`.
+    pub ids: Vec<String>,
     /// Hex pubkeys from `authors`.
     pub authors: Vec<String>,
-    /// Explicit kind set.
+    /// Explicit kind set. Empty means wildcard.
     pub kinds: Vec<u32>,
+    /// Generic single-letter tag filters without the leading `#`.
+    pub tags: BTreeMap<String, Vec<String>>,
     /// Optional lower timestamp bound.
     pub since: Option<u64>,
     /// Optional upper timestamp bound.
@@ -30,36 +37,77 @@ impl EligibleFilter {
         let value: Value =
             serde_json::from_str(filter_json).map_err(|_| FilterEligibilityError::MalformedJson)?;
         let object = value.as_object().ok_or(FilterEligibilityError::NotObject)?;
+        let mut tags = BTreeMap::new();
         for key in object.keys() {
-            if !matches!(
-                key.as_str(),
-                "authors" | "kinds" | "since" | "until" | "limit"
-            ) {
-                return Err(FilterEligibilityError::UnsupportedField(key.clone()));
+            match key.as_str() {
+                "ids" | "authors" | "kinds" | "since" | "until" | "limit" => {}
+                "search" => return Err(FilterEligibilityError::SearchUnsupported),
+                other => {
+                    let Some(tag_key) = other.strip_prefix('#') else {
+                        return Err(FilterEligibilityError::UnsupportedField(key.clone()));
+                    };
+                    let mut chars = tag_key.chars();
+                    let (Some(c), None) = (chars.next(), chars.next()) else {
+                        return Err(FilterEligibilityError::UnsupportedField(key.clone()));
+                    };
+                    if !c.is_ascii_alphabetic() {
+                        return Err(FilterEligibilityError::UnsupportedField(key.clone()));
+                    }
+                    tags.insert(
+                        tag_key.to_string(),
+                        parse_string_array(object.get(key), "tag")?,
+                    );
+                }
             }
         }
+        let ids = parse_string_array(object.get("ids"), "ids")?;
         let authors = parse_string_array(object.get("authors"), "authors")?;
         let kinds = parse_kind_array(object.get("kinds"))?;
-        if authors.is_empty() || kinds.is_empty() {
-            return Err(FilterEligibilityError::EmptyDimension);
-        }
         let since = parse_optional_u64(object.get("since"), "since")?;
         let until = parse_optional_u64(object.get("until"), "until")?;
         let limit = parse_optional_usize(object.get("limit"))?;
         Ok(Self {
             value,
+            ids,
             authors,
             kinds,
+            tags,
             since,
             until,
             limit,
         })
     }
 
-    /// Author × kind product used by the large-filter gate.
+    /// Static upper bound for this filter's possible result set.
     #[must_use]
-    pub fn author_kind_pairs(&self) -> usize {
-        self.authors.len().saturating_mul(self.kinds.len())
+    pub fn result_surface(&self) -> ResultSurface {
+        let mut known = if self.ids.is_empty() {
+            None
+        } else {
+            Some(self.ids.len())
+        };
+
+        if self.is_replaceable_author_key() {
+            known = min_known(known, self.authors.len().saturating_mul(self.kinds.len()));
+        }
+
+        if let Some(d_values) = self.tags.get("d") {
+            if self.is_addressable_author_d_key() {
+                known = min_known(
+                    known,
+                    self.authors
+                        .len()
+                        .saturating_mul(self.kinds.len())
+                        .saturating_mul(d_values.len()),
+                );
+            }
+        }
+
+        if let Some(limit) = self.limit {
+            known = min_known(known, limit);
+        }
+
+        known.map_or(ResultSurface::Unbounded, ResultSurface::KnownMax)
     }
 
     /// Read matching local event ids from the store.
@@ -70,55 +118,47 @@ impl EligibleFilter {
         if self.limit == Some(0) {
             return Ok(Vec::new());
         }
+
         let mut out = Vec::new();
-        let scan_limit = self.limit.unwrap_or(usize::MAX);
-        for author_hex in &self.authors {
-            let author = hex_to_32(author_hex)
-                .ok_or_else(|| FilterEligibilityError::InvalidAuthor(author_hex.clone()))?;
-            let query = StoreQuery::AuthorKind {
-                author,
-                kinds: self.kinds.clone(),
-                since: self.since,
-                until: self.until,
-            };
-            store
-                .query_visit(&query, scan_limit, &mut |ev| {
-                    out.push(SyncedItem {
-                        created_at: ev.raw.created_at,
-                        id: ev.raw.id_bytes().expect("StoredEvent has verified hex id"),
-                    });
-                    std::ops::ControlFlow::Continue(())
-                })
-                .map_err(|e| FilterEligibilityError::Store(e.to_string()))?;
+        let mut seen = HashSet::new();
+
+        if !self.ids.is_empty() {
+            for id_hex in &self.ids {
+                let Some(id) = hex_to_32(id_hex) else {
+                    continue;
+                };
+                let Some(ev) = store
+                    .get_by_id(&id)
+                    .map_err(|e| FilterEligibilityError::Store(e.to_string()))?
+                else {
+                    continue;
+                };
+                self.push_if_match(&ev, &mut seen, &mut out);
+            }
+            self.apply_limit(out)
+        } else {
+            let queries = self.store_queries();
+            if queries.is_empty() {
+                return Err(FilterEligibilityError::NoLocalQuery);
+            }
+            for query in queries {
+                store
+                    .query_visit(&query, usize::MAX, &mut |ev| {
+                        self.push_if_match(ev, &mut seen, &mut out);
+                        ControlFlow::Continue(())
+                    })
+                    .map_err(|e| FilterEligibilityError::Store(e.to_string()))?;
+            }
+            self.apply_limit(out)
         }
-        if let Some(limit) = self.limit {
-            out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(a.id.cmp(&b.id)));
-            out.truncate(limit);
-        }
-        Ok(out)
     }
 
     /// Return a copy of this filter with its `since` lower bound removed.
     ///
-    /// K3 Stage A — the watermark rewrite (`apply_watermark_rewrite`) floors a
-    /// subscription's `since` to "newest stored event matching the shape + 1"
-    /// so a plain REQ does not re-fetch already-cached events. That floor is a
-    /// presence heuristic, not a coverage guarantee: a below-floor gap (an event
-    /// the client never fetched, e.g. an author's history older than the one
-    /// stray event that set the floor) is permanently unreachable through a
-    /// floored REQ.
-    ///
-    /// NIP-77 set reconciliation, by contrast, transfers exactly the symmetric
-    /// difference of the two id sets — so running it over the FULL window is
-    /// self-healing: any below-floor gap surfaces as a `need` id and is fetched.
-    /// Inheriting the floor would cap reconciliation at `[floor, ∞)` (a
-    /// spec-compliant relay scopes its set to the NEG-OPEN filter window),
-    /// exactly the window the floor already declared boring — defeating the
-    /// repair. The NEG path therefore reconciles over the un-floored filter.
-    ///
-    /// `until` and `limit` are preserved: they bound the *newest* side, which the
-    /// floor does not affect, and dropping them would change reconciliation
-    /// semantics. Only the `since` lower bound is removed.
+    /// NIP-77 set reconciliation should cover the full historical window. A
+    /// watermark-floor `since` is a REQ optimization, not proof that the client
+    /// has every below-floor event. `until` and `limit` remain part of the
+    /// requested set, so they are preserved.
     #[must_use]
     pub fn unfloored(&self) -> Self {
         let mut value = self.value.clone();
@@ -127,8 +167,10 @@ impl EligibleFilter {
         }
         Self {
             value,
+            ids: self.ids.clone(),
             authors: self.authors.clone(),
             kinds: self.kinds.clone(),
+            tags: self.tags.clone(),
             since: None,
             until: self.until,
             limit: self.limit,
@@ -146,6 +188,164 @@ impl EligibleFilter {
         }
         serde_json::to_string(&value).unwrap_or_else(|_| r#"{"limit":0}"#.to_string())
     }
+
+    fn is_replaceable_author_key(&self) -> bool {
+        !self.authors.is_empty()
+            && !self.kinds.is_empty()
+            && self
+                .kinds
+                .iter()
+                .all(|k| matches!(*k, 0 | 3 | 10_000..=19_999))
+    }
+
+    fn is_addressable_author_d_key(&self) -> bool {
+        !self.authors.is_empty()
+            && !self.kinds.is_empty()
+            && self.tags.get("d").is_some_and(|values| !values.is_empty())
+            && self.kinds.iter().all(|k| (30_000..=39_999).contains(k))
+    }
+
+    fn store_queries(&self) -> Vec<StoreQuery> {
+        let kinds = self.kinds.clone();
+        if let Some(values) = self.tags.get("e") {
+            let queries: Vec<_> = values
+                .iter()
+                .filter_map(|target| {
+                    hex_to_32(target).map(|target| StoreQuery::Etag {
+                        target,
+                        kinds: kinds.clone(),
+                    })
+                })
+                .collect();
+            if !queries.is_empty() {
+                return queries;
+            }
+        }
+        if let Some(values) = self.tags.get("p") {
+            let queries: Vec<_> = values
+                .iter()
+                .filter_map(|target| {
+                    hex_to_32(target).map(|target| StoreQuery::Ptag {
+                        target,
+                        kinds: kinds.clone(),
+                    })
+                })
+                .collect();
+            if !queries.is_empty() {
+                return queries;
+            }
+        }
+        if let Some(values) = self.tags.get("d") {
+            let addressable_kinds: Vec<u32> = self
+                .kinds
+                .iter()
+                .copied()
+                .filter(|k| (30_000..=39_999).contains(k))
+                .collect();
+            let queries: Vec<_> = addressable_kinds
+                .iter()
+                .flat_map(|kind| {
+                    values.iter().map(|d_tag| StoreQuery::KindDtag {
+                        kind: *kind,
+                        d_tag: d_tag.as_bytes().to_vec(),
+                        since: self.since,
+                        until: self.until,
+                    })
+                })
+                .collect();
+            if !queries.is_empty() {
+                return queries;
+            }
+        }
+
+        let authors: BTreeSet<_> = self.authors.iter().filter_map(|a| hex_to_32(a)).collect();
+        match (authors.len(), self.kinds.is_empty()) {
+            (1, false) => {
+                let Some(author) = authors.iter().next().copied() else {
+                    return Vec::new();
+                };
+                vec![StoreQuery::AuthorKind {
+                    author,
+                    kinds,
+                    since: self.since,
+                    until: self.until,
+                }]
+            }
+            (2.., false) => vec![StoreQuery::AuthorsKind {
+                authors,
+                kinds,
+                since: self.since,
+                until: self.until,
+            }],
+            _ => vec![StoreQuery::KindTime {
+                kinds,
+                since: self.since,
+                until: self.until,
+            }],
+        }
+    }
+
+    fn push_if_match(
+        &self,
+        ev: &StoredEvent,
+        seen: &mut HashSet<[u8; 32]>,
+        out: &mut Vec<SyncedItem>,
+    ) {
+        if !self.matches(ev) {
+            return;
+        }
+        let Some(id) = ev.raw.id_bytes() else {
+            return;
+        };
+        if seen.insert(id) {
+            out.push(SyncedItem {
+                created_at: ev.raw.created_at,
+                id,
+            });
+        }
+    }
+
+    fn matches(&self, ev: &StoredEvent) -> bool {
+        if !self.ids.is_empty() && !self.ids.contains(&ev.raw.id) {
+            return false;
+        }
+        if !self.authors.is_empty() && !self.authors.contains(&ev.raw.pubkey) {
+            return false;
+        }
+        if !self.kinds.is_empty() && !self.kinds.contains(&ev.raw.kind) {
+            return false;
+        }
+        if self.since.is_some_and(|since| ev.raw.created_at < since) {
+            return false;
+        }
+        if self.until.is_some_and(|until| ev.raw.created_at > until) {
+            return false;
+        }
+        for (tag_key, wanted) in &self.tags {
+            if wanted.is_empty() {
+                continue;
+            }
+            let satisfied = ev.raw.tags.iter().any(|row| {
+                row.first().is_some_and(|key| key == tag_key)
+                    && row.get(1).is_some_and(|value| wanted.contains(value))
+            });
+            if !satisfied {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn apply_limit(
+        &self,
+        mut out: Vec<SyncedItem>,
+    ) -> Result<Vec<SyncedItem>, FilterEligibilityError> {
+        out.sort_by(|a, b| b.created_at.cmp(&a.created_at).then(a.id.cmp(&b.id)));
+        if let Some(limit) = self.limit {
+            out.truncate(limit);
+        }
+        Ok(out)
+    }
 }
 
 /// Reasons a filter cannot safely use NIP-77.
@@ -155,14 +355,14 @@ pub enum FilterEligibilityError {
     MalformedJson,
     /// Filter must be a JSON object.
     NotObject,
-    /// A field other than authors/kinds/since/until was present.
+    /// A field outside the NIP-01 structural filter set was present.
     UnsupportedField(String),
-    /// `authors` or `kinds` was missing or empty.
-    EmptyDimension,
+    /// NIP-50 search is relay-evaluated and has no exact structural local set.
+    SearchUnsupported,
     /// Field type was not accepted.
     InvalidField(&'static str),
-    /// Author hex was malformed.
-    InvalidAuthor(String),
+    /// No store query can produce an exact local candidate set.
+    NoLocalQuery,
     /// Store query failed.
     Store(String),
 }
@@ -173,15 +373,19 @@ impl fmt::Display for FilterEligibilityError {
             Self::MalformedJson => f.write_str("malformed filter JSON"),
             Self::NotObject => f.write_str("filter must be an object"),
             Self::UnsupportedField(k) => write!(f, "unsupported filter field: {k}"),
-            Self::EmptyDimension => f.write_str("authors and kinds must be non-empty"),
+            Self::SearchUnsupported => f.write_str("search filters are not NIP-77 eligible"),
             Self::InvalidField(k) => write!(f, "invalid field: {k}"),
-            Self::InvalidAuthor(a) => write!(f, "invalid author hex: {a}"),
+            Self::NoLocalQuery => f.write_str("no exact local store query"),
             Self::Store(e) => write!(f, "store query failed: {e}"),
         }
     }
 }
 
 impl std::error::Error for FilterEligibilityError {}
+
+fn min_known(current: Option<usize>, candidate: usize) -> Option<usize> {
+    Some(current.map_or(candidate, |current| current.min(candidate)))
+}
 
 fn parse_string_array(
     value: Option<&Value>,
@@ -261,99 +465,5 @@ fn hex_nibble(b: u8) -> Option<u8> {
         b'a'..=b'f' => Some(b - b'a' + 10),
         b'A'..=b'F' => Some(b - b'A' + 10),
         _ => None,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn author(n: u8) -> String {
-        format!("{n:02x}").repeat(32)
-    }
-
-    #[test]
-    fn counts_author_kind_product() {
-        let filter = EligibleFilter::parse(
-            &serde_json::json!({
-                "authors": [author(1), author(2), author(3)],
-                "kinds": [0, 3],
-            })
-            .to_string(),
-        )
-        .unwrap();
-        assert_eq!(filter.author_kind_pairs(), 6);
-    }
-
-    #[test]
-    fn rejects_non_exact_filter_fields() {
-        let err =
-            EligibleFilter::parse(r##"{"authors":["aa"],"kinds":[1],"#e":["x"]}"##).unwrap_err();
-        assert!(matches!(err, FilterEligibilityError::UnsupportedField(_)));
-        assert!(EligibleFilter::parse(r#"{"ids":["aa"],"kinds":[1]}"#).is_err());
-    }
-
-    #[test]
-    fn accepts_limit_and_can_build_live_only_filter() {
-        let filter = EligibleFilter::parse(
-            &serde_json::json!({
-                "authors": [author(1)],
-                "kinds": [1],
-                "limit": 200,
-            })
-            .to_string(),
-        )
-        .unwrap();
-        assert_eq!(filter.limit, Some(200));
-
-        let live: Value = serde_json::from_str(&filter.live_only_filter_json()).unwrap();
-        assert_eq!(live["limit"], Value::from(0));
-        assert_eq!(live["kinds"], serde_json::json!([1]));
-    }
-
-    #[test]
-    fn unfloored_drops_since_keeps_until_and_limit() {
-        let filter = EligibleFilter::parse(
-            &serde_json::json!({
-                "authors": [author(1)],
-                "kinds": [1],
-                "since": 5_000,
-                "until": 9_000,
-                "limit": 200,
-            })
-            .to_string(),
-        )
-        .unwrap();
-        assert_eq!(filter.since, Some(5_000));
-
-        let unfloored = filter.unfloored();
-        assert_eq!(unfloored.since, None, "since field must be cleared");
-        assert_eq!(unfloored.until, Some(9_000), "until is preserved");
-        assert_eq!(unfloored.limit, Some(200), "limit is preserved");
-        // The JSON value used for the NEG-OPEN frame must also drop `since`.
-        let obj = unfloored.value.as_object().unwrap();
-        assert!(!obj.contains_key("since"), "NEG-OPEN filter must not carry since");
-        assert_eq!(obj["until"], Value::from(9_000));
-        assert_eq!(obj["limit"], Value::from(200));
-        assert_eq!(obj["kinds"], serde_json::json!([1]));
-    }
-
-    #[test]
-    fn unfloored_is_a_noop_when_no_since_present() {
-        let filter = EligibleFilter::parse(
-            &serde_json::json!({ "authors": [author(1)], "kinds": [1] }).to_string(),
-        )
-        .unwrap();
-        let unfloored = filter.unfloored();
-        assert_eq!(unfloored.since, None);
-        assert!(!unfloored.value.as_object().unwrap().contains_key("since"));
-    }
-
-    #[test]
-    fn rejects_empty_dimensions() {
-        assert!(matches!(
-            EligibleFilter::parse(r#"{"authors":[],"kinds":[1]}"#),
-            Err(FilterEligibilityError::EmptyDimension)
-        ));
     }
 }

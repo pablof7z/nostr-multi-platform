@@ -28,11 +28,11 @@
 //!
 //! # D2 doctrine
 //!
-//! For large or potentially stale interest sets (many authors, many
-//! historical events), a negentropy set-reconciliation round-trip has lower
-//! relay overhead than a blind REQ. The gate decides when the ratio tips by
-//! counting the author × kind filter surface. A `kinds:[3,10000]` fetch for 25
-//! authors is the same 50-way fanout as a one-kind fetch for 50 authors.
+//! For large or potentially stale interest sets, a negentropy
+//! set-reconciliation round-trip has lower relay overhead than a blind REQ.
+//! The gate decides when the ratio tips by looking at the filter's possible
+//! result surface. Older callers still express that surface as author × kind
+//! fanout; newer NIP-77 callers classify the full NIP-01 filter directly.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -54,7 +54,8 @@
 #[derive(Clone, Debug)]
 pub struct CoverageGate {
     /// Minimum author × kind fanout for a single filter before the gate
-    /// considers negentropy more efficient than a raw REQ.
+    /// considers negentropy more efficient than a raw REQ. Also used as the
+    /// known-result upper-bound threshold for full NIP-01 filters.
     ///
     /// Default: 50 author-kind pairs. At smaller fanouts the overhead of a
     /// negentropy handshake usually exceeds the bandwidth saved; at or above
@@ -102,8 +103,29 @@ impl CoverageGate {
         fanout: FilterFanout,
         relay_supports_negentropy: bool,
     ) -> bool {
+        self.should_use_negentropy_for_result_surface(
+            ResultSurface::KnownMax(fanout.author_kind_pairs()),
+            relay_supports_negentropy,
+        )
+    }
+
+    /// Returns `true` when a full NIP-01 filter has a large or unbounded possible
+    /// result surface and the relay can support negentropy.
+    ///
+    /// Known-small surfaces, such as a handful of exact ids or an exact
+    /// addressable key, should use a plain REQ. Unknown/unbounded surfaces, such
+    /// as `#e` threads or regular kind history, are good NIP-77 candidates.
+    #[must_use]
+    pub fn should_use_negentropy_for_result_surface(
+        &self,
+        surface: ResultSurface,
+        relay_supports_negentropy: bool,
+    ) -> bool {
         relay_supports_negentropy
-            && fanout.author_kind_pairs() >= self.filter_fanout_negentropy_threshold
+            && match surface {
+                ResultSurface::KnownMax(max) => max >= self.filter_fanout_negentropy_threshold,
+                ResultSurface::Unbounded => true,
+            }
     }
 
     /// Backward-compatible helper for callers that have not yet been upgraded
@@ -140,6 +162,15 @@ impl CoverageGate {
 pub struct FilterFanout {
     author_count: usize,
     kind_count: usize,
+}
+
+/// The statically-known upper bound for a NIP-01 filter's possible result set.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ResultSurface {
+    /// The filter can return at most this many events.
+    KnownMax(usize),
+    /// The filter has no static finite bound from NIP-01 semantics.
+    Unbounded,
 }
 
 impl FilterFanout {
@@ -230,6 +261,26 @@ mod tests {
         assert!(!gate.should_use_negentropy_for_filter(FilterFanout::new(2, 2), true));
         assert!(gate.should_use_negentropy_for_filter(FilterFanout::new(5, 1), true));
         assert!(gate.should_use_negentropy_for_filter(FilterFanout::new(2, 3), true));
+    }
+
+    #[test]
+    fn should_use_negentropy_for_result_surface_uses_known_max() {
+        let gate = CoverageGate::default();
+        assert!(
+            !gate.should_use_negentropy_for_result_surface(ResultSurface::KnownMax(3), true),
+            "small exact surfaces should use plain REQ"
+        );
+        assert!(
+            gate.should_use_negentropy_for_result_surface(ResultSurface::KnownMax(50), true),
+            "known surfaces at the threshold should use NIP-77"
+        );
+    }
+
+    #[test]
+    fn should_use_negentropy_for_result_surface_accepts_unbounded() {
+        let gate = CoverageGate::default();
+        assert!(gate.should_use_negentropy_for_result_surface(ResultSurface::Unbounded, true));
+        assert!(!gate.should_use_negentropy_for_result_surface(ResultSurface::Unbounded, false));
     }
 
     #[test]

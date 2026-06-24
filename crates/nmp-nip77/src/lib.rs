@@ -10,9 +10,13 @@
 
 mod codec;
 mod filter;
+#[cfg(test)]
+mod filter_tests;
 mod messages;
 mod reconciler;
 mod runtime;
+#[cfg(test)]
+mod runtime_surface_tests;
 #[cfg(test)]
 mod runtime_tests;
 #[cfg(test)]

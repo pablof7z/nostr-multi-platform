@@ -306,10 +306,12 @@ fn matches(ev: &StoredEvent, query: &StoreQuery) -> bool {
                 && in_range(*since, *until)
         }
         StoreQuery::Etag { target, kinds } => {
-            kinds.contains(&ev.raw.kind) && ev.raw.e_tags().contains(&bytes_to_hex(target))
+            (kinds.is_empty() || kinds.contains(&ev.raw.kind))
+                && ev.raw.e_tags().contains(&bytes_to_hex(target))
         }
         StoreQuery::Ptag { target, kinds } => {
-            kinds.contains(&ev.raw.kind) && ev.raw.p_tags().contains(&bytes_to_hex(target))
+            (kinds.is_empty() || kinds.contains(&ev.raw.kind))
+                && ev.raw.p_tags().contains(&bytes_to_hex(target))
         }
     }
 }

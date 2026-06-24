@@ -122,13 +122,15 @@ surfaces as a `need` id and is fetched.
   NEG-OPEN filter window) repairs the gap. Companion guard asserts the fallback
   plain REQ still carries the floor.
 - Cost / blast radius: contained to `nmp-nip77`; touches NO watermark code; makes
-  H1/H2 self-healing for every NEG-eligible shape (≥50 author×kind fanout — the
-  follow feed, exactly the H1/H2 shape).
+  H1/H2 self-healing for every NEG-eligible shape. Eligibility is based on the
+  NIP-01 filter's possible result surface: statically tiny sets such as a few
+  exact `ids` or one exact addressable key stay on plain REQ, while unbounded
+  filters such as regular kind history or `#e`/`#p` tag filters use NIP-77 when
+  the local store can compute the exact matching id set.
 
 ### Stage B — soundness patches on the heuristic while it lives
 
-Harden the floor where it still applies (plain REQs, sub-threshold shapes) before
-it is replaced:
+Harden the floor where it still applies on plain REQs before it is replaced:
 
 - **B1 — align the address-pointer branch with the authors min/abort rule.** The
   authors branch returns `None` if any author lacks stored events; the
@@ -221,8 +223,8 @@ D2 is the read surgery (fixture-relay-gated); D3 is the eviction coherence leg.
   (`apply_watermark_rewrite` → `watermark_fn(&shape)`) was per-shape, not
   per-relay — D2 threaded the relay into the floor computation so the ledger is
   read by `(filter_hash, relay)`.
-- The coverage gate consults ledger **staleness** (no completed-coverage row ⇒
-  refuse to floor) instead of fanout-only.
+- The coverage floor consults ledger **staleness** (no completed-coverage row ⇒
+  refuse to floor) instead of store-presence heuristics.
 - **MERGE GATE:** a fixture-relay journey test proving
   **follow-a-user-AFTER-a-thread-reply backfills the author's FULL history** (the
   H1 headline — presence-floor would suppress it; ledger-floor must not). Unit
@@ -374,8 +376,8 @@ proven against a relay.
 - The single-mechanism cache-serve principle (ADR-0045 Rev 2) is preserved: the
   ledger is the floor SOURCE; cache-serve remains the one event-acquisition path.
   The ledger does not introduce a second replay stage or per-domain special-casing.
-- Until Stage D lands, sub-threshold shapes (plain REQs that never qualify for
-  negentropy) still rely on the presence floor and are protected only by Stage B's
-  hardening — this is acceptable because the floor-coherent pin set already
-  prevents eviction holes, and the residual gap is "never-fetched below-floor
-  history for small non-NEG shapes," the lowest-impact slice.
+- Statically tiny shapes stay on plain REQ because the relay can return their
+  complete result set cheaply. Broad shapes are not excluded merely because
+  `authors` or `kinds` are empty, or because they are tag-filtered; NIP-77 is the
+  history-sync path whenever the result surface is not statically tiny and the
+  local store can compute the exact candidate set.

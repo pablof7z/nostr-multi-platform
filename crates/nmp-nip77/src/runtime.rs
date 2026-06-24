@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use nmp_planner::InterestLifecycle;
 use nmp_core::substrate::{RelayTextInterceptor, ReqFrameContext, ReqFrameInterceptor};
 use nmp_core::{Kernel, OutboundMessage};
-use nmp_coverage_gate::{CoverageGate, FilterFanout};
+use nmp_coverage_gate::CoverageGate;
+use nmp_planner::InterestLifecycle;
 use nostr::{Filter, JsonUtil as _, RelayMessage};
 
 use crate::codec::{hex_decode_size_limited, notice_mentions_negentropy};
@@ -74,30 +74,6 @@ impl NegentropySyncRuntime {
             sessions: Mutex::new(HashMap::new()),
             relay_states: Mutex::new(HashMap::new()),
         }
-    }
-
-    /// K3 (ADR-0056 §3.D2) — is this `(filter_hash, relay)` uncovered by the
-    /// coverage ledger?
-    ///
-    /// "Uncovered" means there is NO completed-coverage row for
-    /// `(canonical_filter_hash, relay)`. Such a shape has never been fully synced
-    /// against this relay, so a full-window (Stage A un-floored) negentropy
-    /// reconciliation should be preferred over a plain REQ regardless of fanout —
-    /// it is the one mechanism that self-heals a below-floor gap.
-    ///
-    /// The `filter_hash` is the `sub-<hash>` wire-id suffix — the SAME key the
-    /// write path records under and the floor read reads by. Non-planner ids
-    /// (no `sub-` prefix) have no canonical hash and so no ledger row; they are
-    /// treated as covered (not uncovered) — they fall through to the fanout
-    /// gate, never force negentropy on a key the ledger cannot track.
-    fn relay_filter_is_uncovered(&self, kernel: &Kernel, sub_id: &str, relay_url: &str) -> bool {
-        let Some(filter_hash) = sub_id.strip_prefix("sub-") else {
-            return false;
-        };
-        kernel
-            .event_store_handle()
-            .get_coverage(filter_hash, relay_url)
-            .is_none()
     }
 
     /// Read cached relay support state.
@@ -203,17 +179,15 @@ impl ReqFrameInterceptor for NegentropySyncRuntime {
             },
         };
         let filter = EligibleFilter::parse(&ctx.filter_json).ok()?;
-        let fanout = FilterFanout::new(filter.authors.len(), filter.kinds.len());
-        // K3 Stage D2 (ADR-0056 §3.D2): the gate consults coverage-ledger
-        // STALENESS, not fanout alone. When the ledger is enabled and this
-        // `(filter_hash, relay)` has NO completed-coverage row, the shape has
-        // never been fully synced against this relay — exactly the case the
-        // full-window (un-floored, Stage A) negentropy reconciliation is built
-        // to self-heal — so we prefer negentropy regardless of fanout. When a
-        // coverage row DOES exist (already synced) or the flag is OFF, the
-        // fanout heuristic governs as before (the fallback the ADR keeps).
-        let uncovered = self.relay_filter_is_uncovered(kernel, &ctx.sub_id, &ctx.relay_url);
-        if !(uncovered || self.gate.should_use_negentropy_for_filter(fanout, true)) {
+        let surface = filter.result_surface();
+        // A statically tiny surface (`ids:[a,b,c]`, exact addressable key) should
+        // use a plain REQ even if the coverage ledger has no row. Large known
+        // surfaces and unbounded filters (`#e`, regular-kind history, wildcard
+        // authors/kinds) are NIP-77 candidates.
+        if !self
+            .gate
+            .should_use_negentropy_for_result_surface(surface, true)
+        {
             return None;
         }
         // K3 Stage A: reconcile over the FULL window, not the watermark-floored

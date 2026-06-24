@@ -272,7 +272,9 @@ authors themselves; they render the already filtered or annotated Rust payload.
 
 ### 7.8 Sync engine (live REQ plus NIP-77 backfill)
 
-Per doctrine D2, live views tail with REQ immediately and use NIP-77 as the preferred historical backfill mechanism when support can be proven. The sync engine is a planner policy over cache coverage, relay capabilities, and progress state.
+Per doctrine D2, live views tail with REQ immediately and use NIP-77 as the preferred historical backfill mechanism when support can be proven. The sync engine is a planner policy over cache coverage, relay capabilities, progress state, and the NIP-01 filter's possible result surface.
+
+NIP-77 eligibility is not limited to author × kind filters. Empty `authors`, empty `kinds`, and single-letter tag filters such as `#e`, `#p`, and `#d` are valid when the local store can derive the exact matching id set. The gate avoids NIP-77 only when the possible result surface is statically tiny: `{"ids":[a,b,c]}` is just three possible events, and `{"kinds":[30023],"authors":[pk],"#d":["hello"]}` is one addressable event. By contrast, `{"#e":[root]}` may have hundreds of replies/reactions, and `{"kinds":[30023],"authors":[pk]}` can contain an unknown number of addressable events, so those filters are eligible for negentropy.
 
 **Position in the stack.**
 

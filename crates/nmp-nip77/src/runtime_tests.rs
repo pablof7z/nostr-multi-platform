@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use negentropy::{Id, Negentropy, NegentropyStorageVector};
-use nmp_planner::{InterestId, InterestLifecycle};
-use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::{RelayTextInterceptor, ReqFrameContext, ReqFrameInterceptor};
 use nmp_core::{Kernel, OutboundMessage, RelayRole};
 use nmp_coverage_gate::CoverageGate;
+use nmp_planner::{InterestId, InterestLifecycle};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{ClientMessage, JsonUtil as _};
 use serde_json::Value;
 
@@ -40,7 +40,7 @@ fn ctx(authors: usize, kinds: &[u32]) -> ReqFrameContext {
 }
 
 #[test]
-fn opens_negentropy_for_author_kind_product_at_threshold() {
+fn opens_negentropy_for_known_replaceable_surface_at_threshold() {
     let runtime = Arc::new(NegentropySyncRuntime::new(CoverageGate::default()));
     let mut kernel = Kernel::testing_new(50);
     let out = runtime
@@ -51,33 +51,12 @@ fn opens_negentropy_for_author_kind_product_at_threshold() {
 }
 
 #[test]
-fn counts_three_kinds_times_twenty_authors() {
+fn known_multi_kind_replaceable_surface_above_threshold() {
     let runtime = NegentropySyncRuntime::new(CoverageGate::default());
     let mut kernel = Kernel::testing_new(50);
     assert!(runtime
         .intercept_req(&mut kernel, &ctx(20, &[0, 3, 10_002]))
         .is_some());
-}
-
-#[test]
-fn below_threshold_falls_back_to_raw_req() {
-    let runtime = NegentropySyncRuntime::new(CoverageGate::default());
-    let mut kernel = Kernel::testing_new(50);
-    // The coverage ledger governs the since-floor: an un-synced shape (no
-    // coverage row) prefers a full-window negentropy reconciliation regardless
-    // of fanout (the K3 staleness gate, exercised in runtime_tests_k3). This
-    // test exercises the pure fanout-gate boundary, so record completed coverage
-    // for ("large", relay) — the `ctx` sub_id — so the shape is COVERED and the
-    // staleness gate stays inert; only the fanout threshold decides.
-    kernel
-        .event_store_handle()
-        .record_coverage("large", "wss://relay.example", 1_700_000_000);
-    assert!(runtime
-        .intercept_req(&mut kernel, &ctx(24, &[3, 10_000]))
-        .is_none());
-    let mut small_tailing = ctx(49, &[1]);
-    small_tailing.lifecycle = InterestLifecycle::Tailing;
-    assert!(runtime.intercept_req(&mut kernel, &small_tailing).is_none());
 }
 
 #[test]
@@ -324,8 +303,14 @@ fn done_reconcile_pushes_non_zero_session_stats_to_kernel() {
 
     // Relay server has event_B (shared) and event_C (relay-only).
     let relay_items = vec![
-        SyncedItem { created_at: 2_000, id: event_b },
-        SyncedItem { created_at: 3_000, id: event_c },
+        SyncedItem {
+            created_at: 2_000,
+            id: event_b,
+        },
+        SyncedItem {
+            created_at: 3_000,
+            id: event_c,
+        },
     ];
     let mut server = negentropy_server(relay_items);
     let mut client_payload = client_neg_payload(opened[0].text());
@@ -350,9 +335,18 @@ fn done_reconcile_pushes_non_zero_session_stats_to_kernel() {
     let need = kernel.negentropy_sync_need_ids_for_test();
     let avoided = kernel.negentropy_sync_transfer_avoided_bytes_for_test();
 
-    assert!(rounds > 0, "rounds must be non-zero after a completed session, got {rounds}");
-    assert!(have > 0, "have_ids must be non-zero (event_A is client-only), got {have}");
-    assert!(need > 0, "need_ids must be non-zero (event_C is relay-only), got {need}");
+    assert!(
+        rounds > 0,
+        "rounds must be non-zero after a completed session, got {rounds}"
+    );
+    assert!(
+        have > 0,
+        "have_ids must be non-zero (event_A is client-only), got {have}"
+    );
+    assert!(
+        need > 0,
+        "need_ids must be non-zero (event_C is relay-only), got {need}"
+    );
     assert!(
         avoided > 0,
         "transfer_avoided_bytes must be non-zero (event_B in both — no re-fetch), got {avoided}"
@@ -366,12 +360,23 @@ fn insert_cached_event(
     kind: u32,
     created_at: u64,
 ) {
+    insert_cached_event_with_tags(kernel, id, author, kind, created_at, Vec::new());
+}
+
+fn insert_cached_event_with_tags(
+    kernel: &mut Kernel,
+    id: [u8; 32],
+    author: &str,
+    kind: u32,
+    created_at: u64,
+    tags: Vec<Vec<String>>,
+) {
     let raw = RawEvent {
         id: hex_encode(&id),
         pubkey: author.to_string(),
         created_at,
         kind,
-        tags: Vec::new(),
+        tags,
         content: String::new(),
         sig: "a".repeat(128),
     };
