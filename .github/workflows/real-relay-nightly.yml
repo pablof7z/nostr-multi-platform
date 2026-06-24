@@ -1,30 +1,158 @@
-name: real-relay nightly
+name: real-relay matrix
 
-# Runs the real_relay_* integration tests nightly against public Nostr relays.
-# These tests are #[ignore] in test.yml because they open live sockets — this
-# workflow provides the falsifiable CI signal for F-02 / F-04 v1 blockers.
-#
-# A failed run means something broke in the relay pipeline, not a flaky test.
-# If the relay is simply down, the reachability pre-check marks the job
-# skipped instead of failed so downtime doesn't block v1 tracking.
-#
-# Gate: v1 exits only after this workflow is green for 7 consecutive days
-# (see F-02 issue #977 and F-04 issue #978).
+# Scheduled/manual only. Hermetic fixture tests stay in the PR workflows; this
+# workflow is the explicit public-relay signal for live relay capabilities.
 
 on:
   schedule:
-    # 03:00 UTC daily — off-peak for Damus relay
+    # 03:00 UTC daily, before the iOS UI nightly.
     - cron: "0 3 * * *"
   workflow_dispatch:
-    # Allow manual runs for on-demand verification
+
+permissions:
+  contents: read
 
 jobs:
   real-relay:
-    name: real-relay integration tests
+    name: ${{ matrix.capability }} / ${{ matrix.scenario }}
     runs-on: ubuntu-latest
-    # Mark the job skipped (not failed) when the primary relay is unreachable,
-    # so transient relay downtime doesn't block v1 tracking.
-    continue-on-error: false
+    timeout-minutes: ${{ matrix.timeout }}
+
+    strategy:
+      fail-fast: false
+      # Several scenarios use global process hooks or public relay side effects.
+      # Run rows serially by design; each cargo test command also uses one
+      # libtest thread.
+      max-parallel: 1
+      matrix:
+        include:
+          - scenario: connect-subscribe
+            capability: connect/subscribe
+            timeout: 15
+            relays: wss://relay.damus.io wss://nos.lol wss://relay.primal.net
+            command: >-
+              cargo test -p nmp-testing --test real_relay_connect
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: publish-ok
+            capability: publish OK
+            timeout: 15
+            relays: wss://relay.damus.io
+            command: >-
+              cargo test -p nmp-testing --test real_relay_smoke damus_round_trip_kind1
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: nip65-outbox
+            capability: NIP-65 outbox routing
+            timeout: 15
+            relays: wss://relay.damus.io wss://relay.primal.net wss://purplepag.es wss://nos.lol
+            command: >-
+              cargo test -p nmp-testing --test real_relay_outbox
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: nip77-negentropy
+            capability: NIP-77 negentropy
+            timeout: 15
+            relays: wss://nip29.f7z.io
+            command: >-
+              cargo run -p nmp-testing --bin nip77-real-relay-tui
+              -- --once --neg-only --relay wss://nip29.f7z.io
+
+          - scenario: nip42-auth
+            capability: NIP-42 auth
+            timeout: 20
+            relays: wss://nostr.wine wss://relay.snort.social wss://auth.nostr1.com wss://nostr.land wss://relay.damus.io
+            command: >-
+              cargo test -p nmp-testing --test real_relay_nip42
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: nip17-cold-start
+            capability: NIP-17 cold start
+            timeout: 20
+            relays: wss://relay.primal.net
+            command: >-
+              cargo test -p nmp-testing --test real_relay_nip17_cold_start_kernel
+              nip17_cold_start_receive_through_real_kernel
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: marmot-roundtrip
+            capability: Marmot roundtrip
+            timeout: 20
+            relays: wss://relay.damus.io
+            command: >-
+              cargo test -p nmp-testing --test real_relay_marmot_roundtrip
+              marmot_kind445_roundtrip_over_damus
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: feed-matrix
+            capability: declared feed matrix
+            timeout: 20
+            relays: wss://relay.damus.io wss://nos.lol wss://relay.primal.net wss://purplepag.es
+            command: >-
+              cargo test -p nmp-testing --test real_relay_feed_matrix
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: subscription-replan
+            capability: follow-list replan
+            timeout: 15
+            relays: wss://relay.damus.io wss://relay.primal.net wss://purplepag.es
+            command: >-
+              cargo test -p nmp-testing --test real_relay_replan
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: nip50-search
+            capability: NIP-50 search relay
+            timeout: 20
+            relays: wss://nostr.wine wss://nos.lol
+            command: >-
+              cargo test -p nmp-testing --features real-relay
+              --test real_relay_nip50_search
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: relay-search-a1-cold-claim
+            capability: relay-search radius A1
+            timeout: 20
+            relays: wss://relay.primal.net wss://purplepag.es
+            command: >-
+              cargo test -p nmp-testing --features real-relay
+              --test relay_search_radius_a1_cold_claim
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: relay-search-a2-warm-path
+            capability: relay-search radius A2
+            timeout: 20
+            relays: wss://relay.primal.net wss://purplepag.es
+            command: >-
+              cargo test -p nmp-testing --features real-relay
+              --test relay_search_radius_a2_warm_path
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: relay-search-a3-lmdb-restart
+            capability: relay-search radius A3 LMDB
+            timeout: 25
+            relays: wss://relay.primal.net wss://purplepag.es
+            command: >-
+              cargo test -p nmp-testing --features real-relay,lmdb-backend
+              --test relay_search_radius_a3_restart_persistence
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: relay-search-a5-unreachable
+            capability: relay-search radius A5
+            timeout: 20
+            relays: wss://relay.primal.net
+            command: >-
+              cargo test -p nmp-testing --features real-relay
+              --test relay_search_radius_a5_mid_claim_unreachable
+              -- --ignored --nocapture --test-threads=1
+
+          - scenario: relay-search-a6-concurrent
+            capability: relay-search radius A6
+            timeout: 20
+            relays: wss://relay.primal.net wss://purplepag.es
+            command: >-
+              cargo test -p nmp-testing --features real-relay
+              --test relay_search_radius_a6_concurrent_claims
+              -- --ignored --nocapture --test-threads=1
 
     steps:
       - uses: actions/checkout@v4
@@ -42,50 +170,22 @@ jobs:
           key: ${{ runner.os }}-cargo-real-relay-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-real-relay-
 
-      # Relay reachability check: if relay.damus.io is unreachable, skip the
-      # tests rather than failing (flapping relay ≠ broken publish pipeline).
-      - name: Check relay reachability
-        id: relay_check
-        run: |
-          # websocat is not present on the runner; use curl's --http1.1 upgrade
-          # probe (any non-refused TCP + HTTP 101/400 means the relay is up).
-          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 10 \
-            -H "Upgrade: websocket" \
-            -H "Connection: Upgrade" \
-            -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
-            -H "Sec-WebSocket-Version: 13" \
-            https://relay.damus.io 2>/dev/null || echo "000")
-          echo "http_code=$HTTP_CODE" >> "$GITHUB_OUTPUT"
-          # 101 = WebSocket upgrade accepted; 400 = relay rejected WS upgrade
-          # (expected from a plain HTTPS probe); anything else = down.
-          if [ "$HTTP_CODE" = "000" ]; then
-            echo "relay_up=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "relay_up=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Skip if relay is unreachable
-        if: steps.relay_check.outputs.relay_up == 'false'
-        run: |
-          echo "::warning ::relay.damus.io unreachable (curl returned 000) — skipping real-relay suite. This is relay downtime, not a pipeline failure."
-          exit 0
-
-      - name: cargo test — real_relay suite (--ignored)
-        if: steps.relay_check.outputs.relay_up == 'true'
-        run: |
-          cargo test -p nmp-testing \
-            -- --ignored --nocapture 2>&1 | tee real_relay_output.txt
-        timeout-minutes: 15
+      - name: Run real-relay scenario
+        id: scenario
         env:
-          # Increase stack size — NMP kernel uses deep async stacks.
-          RUST_MIN_STACK: 8388608
+          CAPABILITY: ${{ matrix.capability }}
+          COMMAND: ${{ matrix.command }}
+          OUTPUT_DIR: real-relay-output
+          RELAYS: ${{ matrix.relays }}
           RUST_BACKTRACE: 1
+          RUST_MIN_STACK: 8388608
+          SCENARIO: ${{ matrix.scenario }}
+        run: .github/scripts/real-relay-scenario.sh
 
-      - name: Upload test output on failure
-        if: failure()
+      - name: Upload scenario output
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: real-relay-output-${{ github.run_id }}
-          path: real_relay_output.txt
+          name: real-relay-${{ matrix.scenario }}-${{ github.run_id }}
+          path: real-relay-output/
           retention-days: 7
