@@ -91,8 +91,8 @@ impl Kernel {
     pub(crate) fn sync_follow_feed_interests(&mut self, follows: &[String]) {
         // Withdraw the stale interest from the prior follow set / kinds by
         // dropping the follow-feed runtime's explicit scoped owner.
-            let old_ids: Vec<InterestId> = self.follow_feed_interest_ids.iter().cloned().collect();
-            for id in &old_ids {
+        let old_ids: Vec<InterestId> = self.follow_feed_interest_ids.iter().cloned().collect();
+        for id in &old_ids {
             let identity = follow_feed_identity(id);
             if self.lifecycle.registry_mut().drop_owner(&identity) {
                 self.lifecycle

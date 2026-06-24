@@ -141,7 +141,7 @@ impl Kernel {
             //
             // `identity_for_interest` returns the same owner+key+scope triple
             // minted by `OneshotApi::prepare`, so `Replace` mutates the in-flight
-            // one-shot instead of attaching a planner-owned placeholder owner.
+            // one-shot instead of attaching a second owner.
             //
             // This keeps `oneshot.in_flight() == 1` across Phase 1 → Phase 2
             // because no new OneshotToken is created — only the hints change.
