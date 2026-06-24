@@ -16,6 +16,7 @@ type NmpWasmRuntime = {
    *  Added alongside `handle_json` so the bridge can detect whether the loaded
    *  module supports the binary path and fall back gracefully. */
   handle_dispatch_bytes?(bytes: Uint8Array): unknown;
+  recent_routing_decisions?(): string;
   set_snapshot_callback?(callback: SnapshotCallback | null): void;
 };
 
@@ -95,6 +96,25 @@ export class WasmBridge {
           console.error("[NMP] handle_dispatch_bytes not available — bridge not initialized");
           throw new Error("dispatch_bytes called before bridge initialization");
         }
+      }
+      if (request.type === "routing_decisions") {
+        if (typeof this.runtime.recent_routing_decisions !== "function") {
+          return [
+            {
+              type: "error",
+              code: "routing_decisions_unavailable",
+              message: "nmp-wasm module loaded without recent_routing_decisions export",
+              correlation_id: request.correlation_id,
+            },
+          ];
+        }
+        return [
+          {
+            type: "routing_decisions",
+            correlation_id: request.correlation_id,
+            json: this.runtime.recent_routing_decisions(),
+          },
+        ];
       }
       return decodeWorkerEvents(this.runtime.handle_json(JSON.stringify(request)));
     } catch (error) {

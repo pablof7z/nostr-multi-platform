@@ -69,6 +69,20 @@ describe("DegradedRuntime protocol flow", () => {
         reason: "nmp-wasm actor driver is not linked into the web worker yet",
       },
     ]);
+
+    expect(
+      runtime.handle({
+        type: "routing_decisions",
+        correlation_id: "routing-1",
+      }),
+    ).toEqual([
+      {
+        type: "capability_failure",
+        capability: "nmp.routing_decisions",
+        correlation_id: "routing-1",
+        reason: "nmp-wasm actor driver is not linked into the web worker yet",
+      },
+    ]);
   });
 
   it("returns a protocol mismatch error for incompatible hello requests", () => {

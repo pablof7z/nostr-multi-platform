@@ -82,6 +82,14 @@ export type WorkerRequest =
       correlation_id: string;
       signed_json?: string | null;
       error?: string | null;
+    }
+  /** Read-only diagnostics request: return the kernel-owned bounded routing
+   *  trace JSON. This is not a write doorway and carries no routing policy in
+   *  the host; the worker calls the wasm runtime's existing
+   *  `recent_routing_decisions()` accessor. */
+  | {
+      type: "routing_decisions";
+      correlation_id: string;
     };
 
 export type RuntimeStatus =
@@ -124,6 +132,9 @@ export type WorkerEvent =
   /** #1753 S6 — a sign round-trip failed (parse, account-pin mismatch, user
    *  rejection, or unknown/stale correlation id). */
   | { type: "sign_failed"; correlation_id: string; reason: string }
+  /** #968 — read-only routing diagnostics snapshot, JSON rendered by Rust from
+   *  the kernel-owned `RoutingTraceProjection`. */
+  | { type: "routing_decisions"; correlation_id: string; json: string }
   | { type: "error"; code: string; message: string; correlation_id?: string };
 
 export type ChirpAction =
@@ -147,6 +158,7 @@ export function eventCorrelationId(event: WorkerEvent): string | undefined {
     // instruction the main thread acts on, not a reply to a pending caller).
     case "sign_completed":
     case "sign_failed":
+    case "routing_decisions":
       return event.correlation_id;
     case "sign_request":
     case "hello_accepted":

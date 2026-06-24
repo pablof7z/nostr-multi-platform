@@ -28,6 +28,7 @@ export default function App() {
   const [snapshot, setSnapshot] = createSignal<RuntimeSnapshot>(client.snapshot());
   const [tab, setTab] = createSignal<AppTab>("home");
   const [starting, setStarting] = createSignal(false);
+  const [routingRefreshing, setRoutingRefreshing] = createSignal(false);
   const [signerConnected, setSignerConnected] = createSignal(false);
 
   const unsubscribe = client.subscribe(setSnapshot);
@@ -111,6 +112,14 @@ export default function App() {
   const publish = async (content: string, replyToId: string | null) => {
     setSnapshot(await client.dispatchChirp(publishNoteAction(content, replyToId)));
   };
+  const refreshRoutingDecisions = async () => {
+    setRoutingRefreshing(true);
+    try {
+      setSnapshot(await client.refreshRoutingDecisions());
+    } finally {
+      setRoutingRefreshing(false);
+    }
+  };
   const dispatch = async (command: RuntimeCommand) => {
     setSnapshot(await client.dispatchCommand(command));
   };
@@ -166,7 +175,13 @@ export default function App() {
           </Match>
         </Switch>
       </section>
-      <NmpInspector snapshot={snapshot()} starting={starting()} onStart={start} />
+      <NmpInspector
+        snapshot={snapshot()}
+        starting={starting()}
+        onStart={start}
+        onRoutingRefresh={refreshRoutingDecisions}
+        routingRefreshing={routingRefreshing()}
+      />
     </main>
   );
 }
