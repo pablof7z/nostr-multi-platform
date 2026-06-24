@@ -13,9 +13,9 @@ name: test
 # Excluded crates (do not build on a bare `ubuntu-latest` runner):
 #   - nmp-chirp-android-ffi : standalone `[workspace]` table, not a parent
 #     member. Gated by the separate `android-ffi` job below.
-#   - nmp-app-chirp   : app crate tests compile separately in the `app-crates`
-#     job with no default features so host-only optional stacks do not enter
-#     the workspace-wide lane.
+#   - nmp-app-chirp   : app crate tests execute separately in the `app-crates`
+#     job with no default features so optional app stacks do not enter the
+#     workspace-wide lane.
 #   - nmp-gallery-desktop : uses iced, which pulls `winit` needing
 #     libxkbcommon/wayland/xcb apt packages absent on the bare runner. It is
 #     a thin GUI shell with no tests.
@@ -227,7 +227,7 @@ jobs:
         run: cargo check -p nmp-app-gallery --features android-ffi
 
   app-crates:
-    name: cargo nextest (app crates, no-default-features)
+    name: cargo test (nmp-app-chirp, no-default-features)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -249,18 +249,16 @@ jobs:
         with:
           key: app-crates
 
-      - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-nextest
-
-      # Issue #1553 — compile app-crate test targets that the workspace lane
-      # intentionally excludes. `--no-run` is enough to catch E0560-class
-      # wire shape breaks in integration tests such as typed_feed_parity.rs,
-      # while `--no-default-features` keeps host-only optional stacks out of
-      # this Ubuntu gate.
-      - name: cargo test --no-run (nmp-app-chirp test targets)
-        run: cargo test -p nmp-app-chirp --no-run --no-default-features
+      # Issues #1553/#1941 — execute the deterministic app-crate behavior tests
+      # that the workspace lane intentionally excludes: feed/session behavior,
+      # DM signer-port round trips, typed action/projection registration, and
+      # FFI smoke paths. `--test-threads=1` keeps the public `NmpApp` FFI tests
+      # serialized because several test targets spin up actor threads in the
+      # same process. `--no-default-features` keeps wallet/LMDB default-feature
+      # coverage and feature-gated Marmot out of this PR lane; live-relay
+      # coverage remains in `real-relay-nightly.yml`.
+      - name: cargo test (nmp-app-chirp no-default-features, executed)
+        run: cargo test -p nmp-app-chirp --no-default-features -- --test-threads=1
 
   android-ffi:
     # ADR-0048 Stage 2 — nmp-chirp-android-ffi host test gate (advances #1124).
