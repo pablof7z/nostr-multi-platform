@@ -48,7 +48,7 @@ fn subscription_id(sub_id: &str) -> SubscriptionId {
 
 #[cfg(test)]
 mod tests {
-    use nostr::{ClientMessage, JsonUtil as _};
+    use nostr::ClientMessage;
 
     use super::*;
 

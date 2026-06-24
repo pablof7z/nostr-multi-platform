@@ -5,11 +5,11 @@
 //! rather than reaching into `runtime_tests` private items.
 
 use negentropy::{Id, Negentropy, NegentropyStorageVector};
-use nmp_planner::{InterestId, InterestLifecycle};
-use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::substrate::{RelayTextInterceptor, ReqFrameContext, ReqFrameInterceptor};
 use nmp_core::{Kernel, OutboundMessage, RelayRole};
 use nmp_coverage_gate::CoverageGate;
+use nmp_planner::{InterestId, InterestLifecycle};
+use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{ClientMessage, JsonUtil as _};
 use serde_json::Value;
 
@@ -28,8 +28,8 @@ fn id_hex(n: u8) -> String {
     format!("{n:02x}").repeat(32)
 }
 
-/// A large floored follow-feed REQ context (≥ 50 author×kind fanout), carrying
-/// `since` exactly as `apply_watermark_rewrite` would set it for a follow feed.
+/// A large floored follow-feed REQ context carrying `since` exactly as
+/// `apply_watermark_rewrite` would set it for a follow feed.
 fn floored_followfeed_ctx(since: u64) -> ReqFrameContext {
     ReqFrameContext {
         role: RelayRole::Content,
@@ -292,15 +292,12 @@ fn responded_relay_never_triggers_liveness_fallback() {
 
 // ─── K3 Stage D2: coverage-gate staleness (ADR-0056 §3.D2) ──────────────────────
 //
-// The gate now consults coverage-ledger staleness, not fanout alone: a
-// `(filter_hash, relay)` with no completed-coverage row is "uncovered" and
-// should prefer the full-window negentropy reconciliation regardless of fanout
-// (it is the self-healer for below-floor gaps). A covered shape, or the flag
-// off, leaves the fanout heuristic as the sole gate.
+// The gate now consults static result surface, not author×kind fanout alone:
+// small exact filters stay on plain REQ, while unbounded filters use full-window
+// negentropy regardless of whether a coverage row already exists.
 
-/// A SMALL-fanout REQ (1 author × 1 kind = 1 pair, far below the 50-pair fanout
-/// threshold). On fanout alone this NEVER opens negentropy. Its `sub-<hash>` id
-/// is what the staleness gate keys on.
+/// A one-author regular-kind REQ. It is below the old author×kind threshold but
+/// has an unbounded result surface because kind:1 history is not replaceable.
 fn small_followfeed_ctx() -> ReqFrameContext {
     ReqFrameContext {
         role: RelayRole::Content,
@@ -316,20 +313,18 @@ fn small_followfeed_ctx() -> ReqFrameContext {
     }
 }
 
-/// NO coverage row ⇒ a SMALL filter (below the fanout threshold) is "uncovered"
-/// and the staleness gate opens negentropy anyway — the self-heal path for a
-/// never-synced shape.
+/// A regular-kind history filter opens NIP-77 even below the old fanout
+/// threshold because its result surface is unbounded.
 #[test]
-fn uncovered_small_filter_opens_negentropy_when_ledger_enabled() {
+fn unbounded_regular_kind_opens_negentropy_below_old_fanout_threshold() {
     let mut kernel = Kernel::testing_new(50);
-    // No coverage row recorded for ("smallhash", relay) → uncovered.
 
     let runtime = NegentropySyncRuntime::new(CoverageGate::default());
     let opened = runtime.intercept_req(&mut kernel, &small_followfeed_ctx());
 
     let opened = opened.expect(
-        "an uncovered (no-ledger-row) shape must open NIP-77 even below the fanout \
-         threshold — the full-window reconciliation is the below-floor self-healer",
+        "an unbounded regular-kind shape must open NIP-77 even below the old \
+         author×kind threshold",
     );
     assert!(
         opened
@@ -339,14 +334,11 @@ fn uncovered_small_filter_opens_negentropy_when_ledger_enabled() {
     );
 }
 
-/// Flag ON + a coverage row PRESENT ⇒ the shape is covered, so the staleness
-/// path does NOT force negentropy; the small filter falls through to the fanout
-/// gate and (being below threshold) opens NO negentropy. Proves the gate is
-/// scoped to genuinely-uncovered shapes, not a blanket "always negentropy".
+/// Coverage rows do not suppress NIP-77 for unbounded filters. They only inform
+/// later REQ floors; the runtime gate remains result-surface based.
 #[test]
-fn covered_small_filter_does_not_force_negentropy() {
+fn covered_unbounded_filter_still_opens_negentropy() {
     let mut kernel = Kernel::testing_new(50);
-    // Record completed coverage for this (filter_hash, relay) → covered.
     kernel
         .event_store_handle()
         .record_coverage("smallhash", "wss://relay.example", 1_700_000_000);
@@ -355,9 +347,8 @@ fn covered_small_filter_does_not_force_negentropy() {
     let opened = runtime.intercept_req(&mut kernel, &small_followfeed_ctx());
 
     assert!(
-        opened.is_none(),
-        "a COVERED small filter must fall through to the fanout gate (below \
-         threshold ⇒ plain REQ, no negentropy) — staleness must not blanket-force it",
+        opened.is_some(),
+        "coverage rows must not suppress NIP-77 for unbounded filters",
     );
 }
 

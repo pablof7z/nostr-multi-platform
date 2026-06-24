@@ -75,7 +75,7 @@ This rules out, by construction:
 
 When your app needs historical events, the framework doesn't request everything from scratch — it uses a set-reconciliation protocol (NIP-77 / negentropy) that compares your local index against the relay's and fetches only what's missing. Live events still stream in real-time as usual.
 
-This isn't an optimization you opt into later. It's the default subscription policy, built on watermark metadata the framework maintains per relay.
+This isn't an optimization you opt into later. It's the default subscription policy, built on coverage metadata the framework maintains per relay. NIP-77 eligibility is based on the filter's possible result surface, not on requiring non-empty `authors` and `kinds`: exact small result sets stay on plain REQ, while broad NIP-01 filters reconcile by diff when the relay supports it.
 
 This rules out:
 
@@ -83,7 +83,7 @@ This rules out:
 - Unbounded REQ scans for history when a relay supports smarter sync.
 - Pagination logic you write yourself.
 
-*Implementation detail: Every `(filter, relay)` pair the framework touches is tracked as a sync target with a watermark. Live REQ handles the tail; NIP-77 reconciliation handles historical backfill where supported.*
+*Implementation detail: Every `(filter, relay)` pair the framework touches is tracked as a sync target with coverage. Live REQ handles the tail; NIP-77 reconciliation handles historical backfill where the possible result surface is not statically tiny and the local store can compute the exact matching id set.*
 
 ---
 
