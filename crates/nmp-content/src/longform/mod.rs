@@ -82,9 +82,7 @@ pub use feed::{
     LongformFeed, LongformFeedEntry, LongformFeedPredicate, LongformRepostAttribution,
     longform_acquisition_kinds, longform_feed_predicate,
 };
-
-/// NIP-23 long-form article kind.
-pub const KIND_LONG_FORM_ARTICLE: u32 = 30_023;
+pub use nmp_kinds::KIND_LONG_FORM_ARTICLE;
 
 /// Snapshot-projection key the typed sidecar is emitted under.
 pub const LONGFORM_PROJECTION_KEY: &str = "nmp.nip23.articles";

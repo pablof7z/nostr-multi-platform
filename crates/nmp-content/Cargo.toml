@@ -13,6 +13,7 @@ name = "nmp_content"
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
 nmp-feed = { path = "../nmp-feed" }
+nmp-kinds = { path = "../nmp-kinds" }
 nmp-nip18 = { path = "../nmp-nip18" }
 pulldown-cmark = { version = "0.13", default-features = false }
 regex = "1.11"

@@ -78,6 +78,21 @@ pub const KIND_CHANNEL_METADATA: u32 = 41;
 /// `nmp-nip68`; this constant is only Layer-0 vocabulary.
 pub const KIND_PICTURE_EVENT: u32 = 20;
 
+// ─── NIP-23 / NIP-54 — markdown-rendered content kinds ─────────────────────
+
+/// NIP-23 long-form article kind (kind:30023). Addressable by
+/// `(pubkey, kind, d-tag)`. Long-form projection/rendering logic lives in
+/// `nmp-content`; this constant is only Layer-0 vocabulary.
+pub const KIND_LONG_FORM_ARTICLE: u32 = 30_023;
+
+/// NIP-23 long-form draft kind (kind:30024). Same Markdown body shape as
+/// [`KIND_LONG_FORM_ARTICLE`], but not yet the published article.
+pub const KIND_LONG_FORM_DRAFT: u32 = 30_024;
+
+/// NIP-54 wiki article kind (kind:30818). Rendered as Markdown by
+/// `nmp-content`; wiki-specific event semantics live outside this registry.
+pub const KIND_WIKI_ARTICLE: u32 = 30_818;
+
 // ─── Marmot (MLS over Nostr, MIP-00..03) — group-messaging kinds ───────────
 
 /// Marmot KeyPackage event (kind:30443, NIP-33 addressable). Current spec.
@@ -318,6 +333,13 @@ mod tests {
         assert!(!is_replaceable(29_999), "kind:29999 ephemeral");
         assert!(!is_replaceable(30_000), "kind:30000 addressable");
         assert!(!is_replaceable(40_000), "kind:40000 above addressable");
+    }
+
+    #[test]
+    fn content_render_kind_constants_match_protocol_numbers() {
+        assert_eq!(KIND_LONG_FORM_ARTICLE, 30_023);
+        assert_eq!(KIND_LONG_FORM_DRAFT, 30_024);
+        assert_eq!(KIND_WIKI_ARTICLE, 30_818);
     }
 
     #[test]

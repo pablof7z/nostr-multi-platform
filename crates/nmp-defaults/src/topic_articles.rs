@@ -65,12 +65,10 @@ use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionRegistrar, ActionRejection, ViewDependencies,
 };
+pub use nmp_kinds::KIND_LONG_FORM_ARTICLE;
 use nmp_planner::stable_hash::stable_hash64;
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use serde::{Deserialize, Serialize};
-
-/// NIP-23 long-form article kind.
-pub const KIND_LONG_FORM_ARTICLE: u32 = 30023;
 
 /// Initial page size for discovery subscriptions. Articles are
 /// parameterised-replaceable events so relays do not bound them as tightly
