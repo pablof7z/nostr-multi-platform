@@ -5109,6 +5109,7 @@ dependencies = [
 name = "nmp-testing"
 version = "0.8.0"
 dependencies = [
+ "crossterm",
  "libc",
  "mdk-core",
  "mdk-sqlite-storage",
@@ -5133,6 +5134,7 @@ dependencies = [
  "nmp-nip57",
  "nmp-nip59",
  "nmp-nip68",
+ "nmp-nip77",
  "nmp-nwc",
  "nmp-planner",
  "nmp-router",
@@ -5143,6 +5145,7 @@ dependencies = [
  "nmp-wot",
  "nostr",
  "paste",
+ "ratatui",
  "rustls",
  "serde",
  "serde_json",
