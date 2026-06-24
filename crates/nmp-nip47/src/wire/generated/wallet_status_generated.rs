@@ -2,468 +2,615 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_47 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_47 {
 
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MIN_NWC_CONNECTION_STATE: u8 = 0;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        pub const ENUM_MAX_NWC_CONNECTION_STATE: u8 = 2;
+        #[deprecated(
+            since = "2.0.0",
+            note = "Use associated constants instead. This will no longer be generated in 2021."
+        )]
+        #[allow(non_camel_case_types)]
+        pub const ENUM_VALUES_NWC_CONNECTION_STATE: [NwcConnectionState; 3] = [
+            NwcConnectionState::Connected,
+            NwcConnectionState::Reconnecting,
+            NwcConnectionState::TransportLost,
+        ];
 
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MIN_NWC_CONNECTION_STATE: u8 = 0;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-pub const ENUM_MAX_NWC_CONNECTION_STATE: u8 = 2;
-#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
-#[allow(non_camel_case_types)]
-pub const ENUM_VALUES_NWC_CONNECTION_STATE: [NwcConnectionState; 3] = [
-  NwcConnectionState::Connected,
-  NwcConnectionState::Reconnecting,
-  NwcConnectionState::TransportLost,
-];
+        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+        #[repr(transparent)]
+        pub struct NwcConnectionState(pub u8);
+        #[allow(non_upper_case_globals)]
+        impl NwcConnectionState {
+            pub const Connected: Self = Self(0);
+            pub const Reconnecting: Self = Self(1);
+            pub const TransportLost: Self = Self(2);
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-#[repr(transparent)]
-pub struct NwcConnectionState(pub u8);
-#[allow(non_upper_case_globals)]
-impl NwcConnectionState {
-  pub const Connected: Self = Self(0);
-  pub const Reconnecting: Self = Self(1);
-  pub const TransportLost: Self = Self(2);
+            pub const ENUM_MIN: u8 = 0;
+            pub const ENUM_MAX: u8 = 2;
+            pub const ENUM_VALUES: &'static [Self] =
+                &[Self::Connected, Self::Reconnecting, Self::TransportLost];
+            /// Returns the variant's name or "" if unknown.
+            pub fn variant_name(self) -> Option<&'static str> {
+                match self {
+                    Self::Connected => Some("Connected"),
+                    Self::Reconnecting => Some("Reconnecting"),
+                    Self::TransportLost => Some("TransportLost"),
+                    _ => None,
+                }
+            }
+        }
+        impl ::core::fmt::Debug for NwcConnectionState {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
+                if let Some(name) = self.variant_name() {
+                    f.write_str(name)
+                } else {
+                    f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+                }
+            }
+        }
+        impl<'a> ::flatbuffers::Follow<'a> for NwcConnectionState {
+            type Inner = Self;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
+                Self(b)
+            }
+        }
 
-  pub const ENUM_MIN: u8 = 0;
-  pub const ENUM_MAX: u8 = 2;
-  pub const ENUM_VALUES: &'static [Self] = &[
-    Self::Connected,
-    Self::Reconnecting,
-    Self::TransportLost,
-  ];
-  /// Returns the variant's name or "" if unknown.
-  pub fn variant_name(self) -> Option<&'static str> {
-    match self {
-      Self::Connected => Some("Connected"),
-      Self::Reconnecting => Some("Reconnecting"),
-      Self::TransportLost => Some("TransportLost"),
-      _ => None,
-    }
-  }
-}
-impl ::core::fmt::Debug for NwcConnectionState {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter) -> ::core::fmt::Result {
-    if let Some(name) = self.variant_name() {
-      f.write_str(name)
-    } else {
-      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
-    }
-  }
-}
-impl<'a> ::flatbuffers::Follow<'a> for NwcConnectionState {
-  type Inner = Self;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    let b = unsafe { ::flatbuffers::read_scalar_at::<u8>(buf, loc) };
-    Self(b)
-  }
-}
+        impl ::flatbuffers::Push for NwcConnectionState {
+            type Output = NwcConnectionState;
+            #[inline]
+            unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+                unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
+            }
+        }
 
-impl ::flatbuffers::Push for NwcConnectionState {
-    type Output = NwcConnectionState;
-    #[inline]
-    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
-        unsafe { ::flatbuffers::emplace_scalar::<u8>(dst, self.0) };
-    }
-}
+        impl ::flatbuffers::EndianScalar for NwcConnectionState {
+            type Scalar = u8;
+            #[inline]
+            fn to_little_endian(self) -> u8 {
+                self.0.to_le()
+            }
+            #[inline]
+            #[allow(clippy::wrong_self_convention)]
+            fn from_little_endian(v: u8) -> Self {
+                let b = u8::from_le(v);
+                Self(b)
+            }
+        }
 
-impl ::flatbuffers::EndianScalar for NwcConnectionState {
-  type Scalar = u8;
-  #[inline]
-  fn to_little_endian(self) -> u8 {
-    self.0.to_le()
-  }
-  #[inline]
-  #[allow(clippy::wrong_self_convention)]
-  fn from_little_endian(v: u8) -> Self {
-    let b = u8::from_le(v);
-    Self(b)
-  }
-}
+        impl<'a> ::flatbuffers::Verifiable for NwcConnectionState {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                u8::run_verifier(v, pos)
+            }
+        }
 
-impl<'a> ::flatbuffers::Verifiable for NwcConnectionState {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    u8::run_verifier(v, pos)
-  }
-}
+        impl ::flatbuffers::SimpleToVerifyInSlice for NwcConnectionState {}
+        pub enum WalletStatusOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-impl ::flatbuffers::SimpleToVerifyInSlice for NwcConnectionState {}
-pub enum WalletStatusOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct WalletStatus<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct WalletStatus<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for WalletStatus<'a> {
+            type Inner = WalletStatus<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for WalletStatus<'a> {
-  type Inner = WalletStatus<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> WalletStatus<'a> {
+            pub const VT_STATUS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 6;
+            pub const VT_WALLET_NPUB: ::flatbuffers::VOffsetT = 8;
+            pub const VT_HAS_BALANCE_MSATS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_BALANCE_MSATS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_HAS_BALANCE_SATS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_BALANCE_SATS: ::flatbuffers::VOffsetT = 16;
+            pub const VT_IS_READY: ::flatbuffers::VOffsetT = 20;
+            pub const VT_IS_CONNECTED: ::flatbuffers::VOffsetT = 22;
+            pub const VT_HAS_CONNECTION_STATE: ::flatbuffers::VOffsetT = 24;
+            pub const VT_CONNECTION_STATE: ::flatbuffers::VOffsetT = 26;
+            pub const VT_WALLET_PUBKEY_HEX: ::flatbuffers::VOffsetT = 28;
 
-impl<'a> WalletStatus<'a> {
-  pub const VT_STATUS: ::flatbuffers::VOffsetT = 4;
-  pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 6;
-  pub const VT_WALLET_NPUB: ::flatbuffers::VOffsetT = 8;
-  pub const VT_HAS_BALANCE_MSATS: ::flatbuffers::VOffsetT = 10;
-  pub const VT_BALANCE_MSATS: ::flatbuffers::VOffsetT = 12;
-  pub const VT_HAS_BALANCE_SATS: ::flatbuffers::VOffsetT = 14;
-  pub const VT_BALANCE_SATS: ::flatbuffers::VOffsetT = 16;
-  pub const VT_IS_READY: ::flatbuffers::VOffsetT = 20;
-  pub const VT_IS_CONNECTED: ::flatbuffers::VOffsetT = 22;
-  pub const VT_HAS_CONNECTION_STATE: ::flatbuffers::VOffsetT = 24;
-  pub const VT_CONNECTION_STATE: ::flatbuffers::VOffsetT = 26;
-  pub const VT_WALLET_PUBKEY_HEX: ::flatbuffers::VOffsetT = 28;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WalletStatus { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WalletStatusArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WalletStatus<'bldr>> {
+                let mut builder = WalletStatusBuilder::new(_fbb);
+                builder.add_balance_sats(args.balance_sats);
+                builder.add_balance_msats(args.balance_msats);
+                if let Some(x) = args.wallet_pubkey_hex {
+                    builder.add_wallet_pubkey_hex(x);
+                }
+                if let Some(x) = args.wallet_npub {
+                    builder.add_wallet_npub(x);
+                }
+                if let Some(x) = args.relay_url {
+                    builder.add_relay_url(x);
+                }
+                if let Some(x) = args.status {
+                    builder.add_status(x);
+                }
+                builder.add_connection_state(args.connection_state);
+                builder.add_has_connection_state(args.has_connection_state);
+                builder.add_is_connected(args.is_connected);
+                builder.add_is_ready(args.is_ready);
+                builder.add_has_balance_sats(args.has_balance_sats);
+                builder.add_has_balance_msats(args.has_balance_msats);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    WalletStatus { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args WalletStatusArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<WalletStatus<'bldr>> {
-    let mut builder = WalletStatusBuilder::new(_fbb);
-    builder.add_balance_sats(args.balance_sats);
-    builder.add_balance_msats(args.balance_msats);
-    if let Some(x) = args.wallet_pubkey_hex { builder.add_wallet_pubkey_hex(x); }
-    if let Some(x) = args.wallet_npub { builder.add_wallet_npub(x); }
-    if let Some(x) = args.relay_url { builder.add_relay_url(x); }
-    if let Some(x) = args.status { builder.add_status(x); }
-    builder.add_connection_state(args.connection_state);
-    builder.add_has_connection_state(args.has_connection_state);
-    builder.add_is_connected(args.is_connected);
-    builder.add_is_ready(args.is_ready);
-    builder.add_has_balance_sats(args.has_balance_sats);
-    builder.add_has_balance_msats(args.has_balance_msats);
-    builder.finish()
-  }
+            #[inline]
+            pub fn status(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(WalletStatus::VT_STATUS, None)
+                }
+            }
+            #[inline]
+            pub fn relay_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletStatus::VT_RELAY_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn wallet_npub(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletStatus::VT_WALLET_NPUB,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_balance_msats(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletStatus::VT_HAS_BALANCE_MSATS, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn balance_msats(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WalletStatus::VT_BALANCE_MSATS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn has_balance_sats(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletStatus::VT_HAS_BALANCE_SATS, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn balance_sats(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WalletStatus::VT_BALANCE_SATS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_ready(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletStatus::VT_IS_READY, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn is_connected(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletStatus::VT_IS_CONNECTED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn has_connection_state(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WalletStatus::VT_HAS_CONNECTION_STATE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn connection_state(&self) -> NwcConnectionState {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<NwcConnectionState>(
+                            WalletStatus::VT_CONNECTION_STATE,
+                            Some(NwcConnectionState::Connected),
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn wallet_pubkey_hex(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WalletStatus::VT_WALLET_PUBKEY_HEX,
+                        None,
+                    )
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for WalletStatus<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "status",
+                        Self::VT_STATUS,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "relay_url",
+                        Self::VT_RELAY_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "wallet_npub",
+                        Self::VT_WALLET_NPUB,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_balance_msats", Self::VT_HAS_BALANCE_MSATS, false)?
+                    .visit_field::<u64>("balance_msats", Self::VT_BALANCE_MSATS, false)?
+                    .visit_field::<bool>("has_balance_sats", Self::VT_HAS_BALANCE_SATS, false)?
+                    .visit_field::<u64>("balance_sats", Self::VT_BALANCE_SATS, false)?
+                    .visit_field::<bool>("is_ready", Self::VT_IS_READY, false)?
+                    .visit_field::<bool>("is_connected", Self::VT_IS_CONNECTED, false)?
+                    .visit_field::<bool>(
+                        "has_connection_state",
+                        Self::VT_HAS_CONNECTION_STATE,
+                        false,
+                    )?
+                    .visit_field::<NwcConnectionState>(
+                        "connection_state",
+                        Self::VT_CONNECTION_STATE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "wallet_pubkey_hex",
+                        Self::VT_WALLET_PUBKEY_HEX,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WalletStatusArgs<'a> {
+            pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub wallet_npub: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_balance_msats: bool,
+            pub balance_msats: u64,
+            pub has_balance_sats: bool,
+            pub balance_sats: u64,
+            pub is_ready: bool,
+            pub is_connected: bool,
+            pub has_connection_state: bool,
+            pub connection_state: NwcConnectionState,
+            pub wallet_pubkey_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for WalletStatusArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WalletStatusArgs {
+                    status: None,
+                    relay_url: None,
+                    wallet_npub: None,
+                    has_balance_msats: false,
+                    balance_msats: 0,
+                    has_balance_sats: false,
+                    balance_sats: 0,
+                    is_ready: false,
+                    is_connected: false,
+                    has_connection_state: false,
+                    connection_state: NwcConnectionState::Connected,
+                    wallet_pubkey_hex: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn status(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(WalletStatus::VT_STATUS, None)}
-  }
-  #[inline]
-  pub fn relay_url(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(WalletStatus::VT_RELAY_URL, None)}
-  }
-  #[inline]
-  pub fn wallet_npub(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(WalletStatus::VT_WALLET_NPUB, None)}
-  }
-  #[inline]
-  pub fn has_balance_msats(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(WalletStatus::VT_HAS_BALANCE_MSATS, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn balance_msats(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(WalletStatus::VT_BALANCE_MSATS, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn has_balance_sats(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(WalletStatus::VT_HAS_BALANCE_SATS, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn balance_sats(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(WalletStatus::VT_BALANCE_SATS, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn is_ready(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(WalletStatus::VT_IS_READY, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn is_connected(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(WalletStatus::VT_IS_CONNECTED, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn has_connection_state(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(WalletStatus::VT_HAS_CONNECTION_STATE, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn connection_state(&self) -> NwcConnectionState {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<NwcConnectionState>(WalletStatus::VT_CONNECTION_STATE, Some(NwcConnectionState::Connected)).unwrap()}
-  }
-  #[inline]
-  pub fn wallet_pubkey_hex(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(WalletStatus::VT_WALLET_PUBKEY_HEX, None)}
-  }
-}
+        pub struct WalletStatusBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WalletStatusBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_status(&mut self, status: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletStatus::VT_STATUS,
+                    status,
+                );
+            }
+            #[inline]
+            pub fn add_relay_url(&mut self, relay_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletStatus::VT_RELAY_URL,
+                    relay_url,
+                );
+            }
+            #[inline]
+            pub fn add_wallet_npub(&mut self, wallet_npub: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletStatus::VT_WALLET_NPUB,
+                    wallet_npub,
+                );
+            }
+            #[inline]
+            pub fn add_has_balance_msats(&mut self, has_balance_msats: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletStatus::VT_HAS_BALANCE_MSATS,
+                    has_balance_msats,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_balance_msats(&mut self, balance_msats: u64) {
+                self.fbb_
+                    .push_slot::<u64>(WalletStatus::VT_BALANCE_MSATS, balance_msats, 0);
+            }
+            #[inline]
+            pub fn add_has_balance_sats(&mut self, has_balance_sats: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletStatus::VT_HAS_BALANCE_SATS,
+                    has_balance_sats,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_balance_sats(&mut self, balance_sats: u64) {
+                self.fbb_
+                    .push_slot::<u64>(WalletStatus::VT_BALANCE_SATS, balance_sats, 0);
+            }
+            #[inline]
+            pub fn add_is_ready(&mut self, is_ready: bool) {
+                self.fbb_
+                    .push_slot::<bool>(WalletStatus::VT_IS_READY, is_ready, false);
+            }
+            #[inline]
+            pub fn add_is_connected(&mut self, is_connected: bool) {
+                self.fbb_
+                    .push_slot::<bool>(WalletStatus::VT_IS_CONNECTED, is_connected, false);
+            }
+            #[inline]
+            pub fn add_has_connection_state(&mut self, has_connection_state: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WalletStatus::VT_HAS_CONNECTION_STATE,
+                    has_connection_state,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_connection_state(&mut self, connection_state: NwcConnectionState) {
+                self.fbb_.push_slot::<NwcConnectionState>(
+                    WalletStatus::VT_CONNECTION_STATE,
+                    connection_state,
+                    NwcConnectionState::Connected,
+                );
+            }
+            #[inline]
+            pub fn add_wallet_pubkey_hex(
+                &mut self,
+                wallet_pubkey_hex: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WalletStatus::VT_WALLET_PUBKEY_HEX,
+                    wallet_pubkey_hex,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WalletStatusBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WalletStatusBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WalletStatus<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for WalletStatus<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status", Self::VT_STATUS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("relay_url", Self::VT_RELAY_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("wallet_npub", Self::VT_WALLET_NPUB, false)?
-     .visit_field::<bool>("has_balance_msats", Self::VT_HAS_BALANCE_MSATS, false)?
-     .visit_field::<u64>("balance_msats", Self::VT_BALANCE_MSATS, false)?
-     .visit_field::<bool>("has_balance_sats", Self::VT_HAS_BALANCE_SATS, false)?
-     .visit_field::<u64>("balance_sats", Self::VT_BALANCE_SATS, false)?
-     .visit_field::<bool>("is_ready", Self::VT_IS_READY, false)?
-     .visit_field::<bool>("is_connected", Self::VT_IS_CONNECTED, false)?
-     .visit_field::<bool>("has_connection_state", Self::VT_HAS_CONNECTION_STATE, false)?
-     .visit_field::<NwcConnectionState>("connection_state", Self::VT_CONNECTION_STATE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("wallet_pubkey_hex", Self::VT_WALLET_PUBKEY_HEX, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct WalletStatusArgs<'a> {
-    pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub wallet_npub: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_balance_msats: bool,
-    pub balance_msats: u64,
-    pub has_balance_sats: bool,
-    pub balance_sats: u64,
-    pub is_ready: bool,
-    pub is_connected: bool,
-    pub has_connection_state: bool,
-    pub connection_state: NwcConnectionState,
-    pub wallet_pubkey_hex: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for WalletStatusArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    WalletStatusArgs {
-      status: None,
-      relay_url: None,
-      wallet_npub: None,
-      has_balance_msats: false,
-      balance_msats: 0,
-      has_balance_sats: false,
-      balance_sats: 0,
-      is_ready: false,
-      is_connected: false,
-      has_connection_state: false,
-      connection_state: NwcConnectionState::Connected,
-      wallet_pubkey_hex: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for WalletStatus<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WalletStatus");
+                ds.field("status", &self.status());
+                ds.field("relay_url", &self.relay_url());
+                ds.field("wallet_npub", &self.wallet_npub());
+                ds.field("has_balance_msats", &self.has_balance_msats());
+                ds.field("balance_msats", &self.balance_msats());
+                ds.field("has_balance_sats", &self.has_balance_sats());
+                ds.field("balance_sats", &self.balance_sats());
+                ds.field("is_ready", &self.is_ready());
+                ds.field("is_connected", &self.is_connected());
+                ds.field("has_connection_state", &self.has_connection_state());
+                ds.field("connection_state", &self.connection_state());
+                ds.field("wallet_pubkey_hex", &self.wallet_pubkey_hex());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `WalletStatus`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_wallet_status_unchecked`.
+        pub fn root_as_wallet_status(
+            buf: &[u8],
+        ) -> Result<WalletStatus<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<WalletStatus>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `WalletStatus` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_wallet_status_unchecked`.
+        pub fn size_prefixed_root_as_wallet_status(
+            buf: &[u8],
+        ) -> Result<WalletStatus<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<WalletStatus>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `WalletStatus` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_wallet_status_unchecked`.
+        pub fn root_as_wallet_status_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<WalletStatus<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<WalletStatus<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `WalletStatus` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_wallet_status_unchecked`.
+        pub fn size_prefixed_root_as_wallet_status_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<WalletStatus<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<WalletStatus<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a WalletStatus and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `WalletStatus`.
+        pub unsafe fn root_as_wallet_status_unchecked(buf: &[u8]) -> WalletStatus<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<WalletStatus>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed WalletStatus and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `WalletStatus`.
+        pub unsafe fn size_prefixed_root_as_wallet_status_unchecked(
+            buf: &[u8],
+        ) -> WalletStatus<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<WalletStatus>(buf) }
+        }
+        pub const WALLET_STATUS_IDENTIFIER: &str = "NWST";
 
-pub struct WalletStatusBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WalletStatusBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_status(&mut self, status: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(WalletStatus::VT_STATUS, status);
-  }
-  #[inline]
-  pub fn add_relay_url(&mut self, relay_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(WalletStatus::VT_RELAY_URL, relay_url);
-  }
-  #[inline]
-  pub fn add_wallet_npub(&mut self, wallet_npub: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(WalletStatus::VT_WALLET_NPUB, wallet_npub);
-  }
-  #[inline]
-  pub fn add_has_balance_msats(&mut self, has_balance_msats: bool) {
-    self.fbb_.push_slot::<bool>(WalletStatus::VT_HAS_BALANCE_MSATS, has_balance_msats, false);
-  }
-  #[inline]
-  pub fn add_balance_msats(&mut self, balance_msats: u64) {
-    self.fbb_.push_slot::<u64>(WalletStatus::VT_BALANCE_MSATS, balance_msats, 0);
-  }
-  #[inline]
-  pub fn add_has_balance_sats(&mut self, has_balance_sats: bool) {
-    self.fbb_.push_slot::<bool>(WalletStatus::VT_HAS_BALANCE_SATS, has_balance_sats, false);
-  }
-  #[inline]
-  pub fn add_balance_sats(&mut self, balance_sats: u64) {
-    self.fbb_.push_slot::<u64>(WalletStatus::VT_BALANCE_SATS, balance_sats, 0);
-  }
-  #[inline]
-  pub fn add_is_ready(&mut self, is_ready: bool) {
-    self.fbb_.push_slot::<bool>(WalletStatus::VT_IS_READY, is_ready, false);
-  }
-  #[inline]
-  pub fn add_is_connected(&mut self, is_connected: bool) {
-    self.fbb_.push_slot::<bool>(WalletStatus::VT_IS_CONNECTED, is_connected, false);
-  }
-  #[inline]
-  pub fn add_has_connection_state(&mut self, has_connection_state: bool) {
-    self.fbb_.push_slot::<bool>(WalletStatus::VT_HAS_CONNECTION_STATE, has_connection_state, false);
-  }
-  #[inline]
-  pub fn add_connection_state(&mut self, connection_state: NwcConnectionState) {
-    self.fbb_.push_slot::<NwcConnectionState>(WalletStatus::VT_CONNECTION_STATE, connection_state, NwcConnectionState::Connected);
-  }
-  #[inline]
-  pub fn add_wallet_pubkey_hex(&mut self, wallet_pubkey_hex: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(WalletStatus::VT_WALLET_PUBKEY_HEX, wallet_pubkey_hex);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WalletStatusBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    WalletStatusBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<WalletStatus<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn wallet_status_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, WALLET_STATUS_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for WalletStatus<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("WalletStatus");
-      ds.field("status", &self.status());
-      ds.field("relay_url", &self.relay_url());
-      ds.field("wallet_npub", &self.wallet_npub());
-      ds.field("has_balance_msats", &self.has_balance_msats());
-      ds.field("balance_msats", &self.balance_msats());
-      ds.field("has_balance_sats", &self.has_balance_sats());
-      ds.field("balance_sats", &self.balance_sats());
-      ds.field("is_ready", &self.is_ready());
-      ds.field("is_connected", &self.is_connected());
-      ds.field("has_connection_state", &self.has_connection_state());
-      ds.field("connection_state", &self.connection_state());
-      ds.field("wallet_pubkey_hex", &self.wallet_pubkey_hex());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `WalletStatus`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_wallet_status_unchecked`.
-pub fn root_as_wallet_status(buf: &[u8]) -> Result<WalletStatus<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<WalletStatus>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `WalletStatus` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_wallet_status_unchecked`.
-pub fn size_prefixed_root_as_wallet_status(buf: &[u8]) -> Result<WalletStatus<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<WalletStatus>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `WalletStatus` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_wallet_status_unchecked`.
-pub fn root_as_wallet_status_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<WalletStatus<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<WalletStatus<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `WalletStatus` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_wallet_status_unchecked`.
-pub fn size_prefixed_root_as_wallet_status_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<WalletStatus<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<WalletStatus<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a WalletStatus and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `WalletStatus`.
-pub unsafe fn root_as_wallet_status_unchecked(buf: &[u8]) -> WalletStatus<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<WalletStatus>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed WalletStatus and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `WalletStatus`.
-pub unsafe fn size_prefixed_root_as_wallet_status_unchecked(buf: &[u8]) -> WalletStatus<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<WalletStatus>(buf) }
-}
-pub const WALLET_STATUS_IDENTIFIER: &str = "NWST";
+        #[inline]
+        pub fn wallet_status_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, WALLET_STATUS_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn wallet_status_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, WALLET_STATUS_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_wallet_status_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<WalletStatus<'a>>,
+        ) {
+            fbb.finish(root, Some(WALLET_STATUS_IDENTIFIER));
+        }
 
-#[inline]
-pub fn wallet_status_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, WALLET_STATUS_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_wallet_status_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<WalletStatus<'a>>) {
-  fbb.finish(root, Some(WALLET_STATUS_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_wallet_status_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<WalletStatus<'a>>) {
-  fbb.finish_size_prefixed(root, Some(WALLET_STATUS_IDENTIFIER));
-}
-}  // pub mod nip47
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_wallet_status_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<WalletStatus<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(WALLET_STATUS_IDENTIFIER));
+        }
+    } // pub mod nip47
+} // pub mod nmp

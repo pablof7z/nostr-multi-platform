@@ -19,7 +19,9 @@ name: codegen-drift
 # byte-diff the checked-in FlatBuffers bindings against a fresh pinned-flatc
 # run, so .fbs schemas and their Rust/Swift/Kotlin/TS bindings can never
 # silently drift apart:
-#   rust-flatc-drift            nmp_update.fbs            (Rust,   25.12.19)
+#   rust-flatc-drift            all checked-in Rust *_generated.rs bindings
+#                               under crates/*/src, auto-paired with
+#                               crates/*/schema/*.fbs (Rust, 25.12.19)
 #   swift-flatc-drift           all `.fbs` Swift bindings (Swift,  25.12.19)
 #   kotlin-flatc-drift          nmp_update.fbs (transport)
 #                               + every nmp.kernel root schema (kernel, #1288)
@@ -27,8 +29,10 @@ name: codegen-drift
 #   typescript-flatc-drift      transport + feed + KRPR
 #                               + KRDG, for every checked-in web TS tree
 #                                                         (TS,     25.9.23)
-#   marmot-{rust,swift,kotlin}-flatc-drift
-#                               marmot_{snapshot,messages}.fbs (#1240)
+#   marmot-{swift,kotlin}-flatc-drift
+#                               marmot_{snapshot,messages}.fbs (#1240);
+#                               Rust Marmot bindings are covered by
+#                               rust-flatc-drift's auto-discovery.
 # Regenerate all checked-in flatc bindings locally with:
 #   bash ci/regenerate-flatbuffers.sh
 # Each gate prints that single entrypoint on failure.
@@ -158,15 +162,14 @@ jobs:
           cargo run --quiet -p nmp-codegen -- gen action-builders --platform ts --check \
             --out web/packages/runtime-web/src/actionBuilders.generated.ts
 
-  # PR-B (#991/#979) — Rust flatc transport-binding drift gate. The checked-in
-  # bindings at crates/nmp-core/src/transport/generated/nmp_update_generated.rs
-  # must be byte-identical to a fresh `flatc --rust` run (rustfmt'd) over
-  # crates/nmp-core/schema/nmp_update.fbs, with the flatc version pinned to the
-  # `flatbuffers` Rust runtime pin (25.12.19). Catches the gap that let a
-  # `(deprecated)` schema field keep stale accessors in the checked-in
-  # bindings. Regenerate locally per the instructions the script prints.
+  # PR-B (#991/#979), hardened by #1931 — Rust flatc binding drift gate. Every
+  # checked-in Rust FlatBuffers binding under crates/*/src/**/<stem>_generated.rs
+  # must have an owning crates/<crate>/schema/<stem>.fbs schema and must be
+  # byte-identical to a fresh `flatc --rust` run (rustfmt'd), with flatc pinned
+  # to the `flatbuffers` Rust runtime pin (25.12.19). Catches both stale
+  # bindings and omitted generated bindings.
   rust-flatc-drift:
-    name: Rust flatc drift (nmp_update_generated.rs vs nmp_update.fbs)
+    name: Rust flatc drift (all checked-in Rust bindings vs schemas)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -183,7 +186,10 @@ jobs:
           sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
           flatc --version
 
-      - name: Check Rust transport bindings are in sync with the schema
+      - name: Rust flatc discovery self-test catches omitted bindings
+        run: bash ci/check-rust-flatc-drift.sh --self-test
+
+      - name: Check Rust FlatBuffers bindings are in sync with the schemas
         run: bash ci/check-rust-flatc-drift.sh
 
       # ADR-0064 / S2 (#1750) — DispatchEnvelope fail-closed gates: the write
@@ -284,34 +290,9 @@ jobs:
       - name: Check TypeScript transport bindings are in sync with the schema
         run: bash ci/check-ts-flatc-drift.sh
 
-  # Issue #1240 — marmot (NMMS) flatc binding drift gates. The marmot schemas
-  # crates/nmp-marmot/schema/marmot_{snapshot,messages}.fbs drive checked-in
-  # Rust, Swift, and Kotlin bindings that were NOT gated before #1240 (PR #1235
-  # added PendingOpRow/LastOpError and hand-regenerated all three). These three
-  # jobs apply the proven nmp_update.fbs drift-gate pattern to the marmot schemas
-  # on each platform, reusing the same pinned-flatc install steps and the same
-  # per-platform pins (Rust+Swift 25.12.19, Kotlin 25.2.10) as the gates above.
-  marmot-rust-flatc-drift:
-    name: Marmot Rust flatc drift (marmot_*_generated.rs vs marmot_*.fbs)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt
-
-      - name: Install pinned flatc 25.12.19
-        run: |
-          curl -fsSL -o /tmp/flatc.zip \
-            https://github.com/google/flatbuffers/releases/download/v25.12.19/Linux.flatc.binary.clang++-18.zip
-          unzip -o /tmp/flatc.zip -d /tmp/flatc-bin
-          sudo install -m 0755 /tmp/flatc-bin/flatc /usr/local/bin/flatc
-          flatc --version
-
-      - name: Check Rust marmot bindings are in sync with the schemas
-        run: bash ci/check-marmot-flatc-drift.sh rust
-
+  # Issue #1240 — marmot (NMMS) Swift/Kotlin flatc binding drift gates. Rust
+  # Marmot bindings are covered by rust-flatc-drift's checked-in binding
+  # auto-discovery; Swift/Kotlin keep their platform-specific scripts and pins.
   marmot-swift-flatc-drift:
     name: Marmot Swift flatc drift (Marmot{Snapshot,Messages}.generated.swift vs marmot_*.fbs)
     runs-on: ubuntu-latest

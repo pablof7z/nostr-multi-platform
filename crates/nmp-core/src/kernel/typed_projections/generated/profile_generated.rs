@@ -7,191 +7,227 @@ use crate::profile_card_generated::*;
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-  use crate::profile_card_generated::*;
-#[allow(unused_imports, dead_code)]
-pub mod kernel {
+    use crate::profile_card_generated::*;
+    #[allow(unused_imports, dead_code)]
+    pub mod kernel {
 
-  use crate::profile_card_generated::*;
+        use crate::profile_card_generated::*;
 
-pub enum ProfileSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub enum ProfileSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub struct ProfileSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        pub struct ProfileSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for ProfileSnapshot<'a> {
-  type Inner = ProfileSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> ::flatbuffers::Follow<'a> for ProfileSnapshot<'a> {
+            type Inner = ProfileSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ProfileSnapshot<'a> {
-  pub const VT_CARD: ::flatbuffers::VOffsetT = 4;
+        impl<'a> ProfileSnapshot<'a> {
+            pub const VT_CARD: ::flatbuffers::VOffsetT = 4;
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    ProfileSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args ProfileSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<ProfileSnapshot<'bldr>> {
-    let mut builder = ProfileSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.card { builder.add_card(x); }
-    builder.finish()
-  }
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ProfileSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ProfileSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ProfileSnapshot<'bldr>> {
+                let mut builder = ProfileSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.card {
+                    builder.add_card(x);
+                }
+                builder.finish()
+            }
 
+            #[inline]
+            pub fn card(&self) -> Option<ProfileCard<'a>> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<ProfileCard>>(
+                            ProfileSnapshot::VT_CARD,
+                            None,
+                        )
+                }
+            }
+        }
 
-  #[inline]
-  pub fn card(&self) -> Option<ProfileCard<'a>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<ProfileCard>>(ProfileSnapshot::VT_CARD, None)}
-  }
-}
+        impl ::flatbuffers::Verifiable for ProfileSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<ProfileCard>>(
+                        "card",
+                        Self::VT_CARD,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ProfileSnapshotArgs<'a> {
+            pub card: Option<::flatbuffers::WIPOffset<ProfileCard<'a>>>,
+        }
+        impl<'a> Default for ProfileSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ProfileSnapshotArgs { card: None }
+            }
+        }
 
-impl ::flatbuffers::Verifiable for ProfileSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<ProfileCard>>("card", Self::VT_CARD, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct ProfileSnapshotArgs<'a> {
-    pub card: Option<::flatbuffers::WIPOffset<ProfileCard<'a>>>,
-}
-impl<'a> Default for ProfileSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    ProfileSnapshotArgs {
-      card: None,
-    }
-  }
-}
+        pub struct ProfileSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ProfileSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_card(&mut self, card: ::flatbuffers::WIPOffset<ProfileCard<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<ProfileCard>>(
+                        ProfileSnapshot::VT_CARD,
+                        card,
+                    );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ProfileSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ProfileSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ProfileSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-pub struct ProfileSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ProfileSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_card(&mut self, card: ::flatbuffers::WIPOffset<ProfileCard<'b >>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<ProfileCard>>(ProfileSnapshot::VT_CARD, card);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ProfileSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    ProfileSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<ProfileSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        impl ::core::fmt::Debug for ProfileSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ProfileSnapshot");
+                ds.field("card", &self.card());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `ProfileSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_profile_snapshot_unchecked`.
+        pub fn root_as_profile_snapshot(
+            buf: &[u8],
+        ) -> Result<ProfileSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<ProfileSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `ProfileSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_profile_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_profile_snapshot(
+            buf: &[u8],
+        ) -> Result<ProfileSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<ProfileSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `ProfileSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_profile_snapshot_unchecked`.
+        pub fn root_as_profile_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<ProfileSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<ProfileSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `ProfileSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_profile_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_profile_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<ProfileSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<ProfileSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a ProfileSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `ProfileSnapshot`.
+        pub unsafe fn root_as_profile_snapshot_unchecked(buf: &[u8]) -> ProfileSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<ProfileSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed ProfileSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `ProfileSnapshot`.
+        pub unsafe fn size_prefixed_root_as_profile_snapshot_unchecked(
+            buf: &[u8],
+        ) -> ProfileSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<ProfileSnapshot>(buf) }
+        }
+        pub const PROFILE_SNAPSHOT_IDENTIFIER: &str = "KPRF";
 
-impl ::core::fmt::Debug for ProfileSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("ProfileSnapshot");
-      ds.field("card", &self.card());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `ProfileSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_profile_snapshot_unchecked`.
-pub fn root_as_profile_snapshot(buf: &[u8]) -> Result<ProfileSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<ProfileSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `ProfileSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_profile_snapshot_unchecked`.
-pub fn size_prefixed_root_as_profile_snapshot(buf: &[u8]) -> Result<ProfileSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<ProfileSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `ProfileSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_profile_snapshot_unchecked`.
-pub fn root_as_profile_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<ProfileSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<ProfileSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `ProfileSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_profile_snapshot_unchecked`.
-pub fn size_prefixed_root_as_profile_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<ProfileSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<ProfileSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a ProfileSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `ProfileSnapshot`.
-pub unsafe fn root_as_profile_snapshot_unchecked(buf: &[u8]) -> ProfileSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<ProfileSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed ProfileSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `ProfileSnapshot`.
-pub unsafe fn size_prefixed_root_as_profile_snapshot_unchecked(buf: &[u8]) -> ProfileSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<ProfileSnapshot>(buf) }
-}
-pub const PROFILE_SNAPSHOT_IDENTIFIER: &str = "KPRF";
+        #[inline]
+        pub fn profile_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, PROFILE_SNAPSHOT_IDENTIFIER, false)
+        }
 
-#[inline]
-pub fn profile_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, PROFILE_SNAPSHOT_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn profile_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, PROFILE_SNAPSHOT_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn profile_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, PROFILE_SNAPSHOT_IDENTIFIER, true)
-}
+        #[inline]
+        pub fn finish_profile_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<ProfileSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(PROFILE_SNAPSHOT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn finish_profile_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<ProfileSnapshot<'a>>) {
-  fbb.finish(root, Some(PROFILE_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_profile_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<ProfileSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(PROFILE_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod kernel
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_profile_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<ProfileSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(PROFILE_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod kernel
+} // pub mod nmp

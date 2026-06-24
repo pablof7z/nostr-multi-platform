@@ -2,227 +2,294 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_17 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_17 {
 
+        pub enum DmRelayListSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum DmRelayListSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct DmRelayListSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct DmRelayListSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for DmRelayListSnapshot<'a> {
+            type Inner = DmRelayListSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for DmRelayListSnapshot<'a> {
-  type Inner = DmRelayListSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> DmRelayListSnapshot<'a> {
+            pub const VT_HAS_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_READ_RELAY_URLS: ::flatbuffers::VOffsetT = 8;
 
-impl<'a> DmRelayListSnapshot<'a> {
-  pub const VT_HAS_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 4;
-  pub const VT_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 6;
-  pub const VT_READ_RELAY_URLS: ::flatbuffers::VOffsetT = 8;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                DmRelayListSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args DmRelayListSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<DmRelayListSnapshot<'bldr>> {
+                let mut builder = DmRelayListSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.read_relay_urls {
+                    builder.add_read_relay_urls(x);
+                }
+                if let Some(x) = args.active_pubkey {
+                    builder.add_active_pubkey(x);
+                }
+                builder.add_has_active_pubkey(args.has_active_pubkey);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    DmRelayListSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args DmRelayListSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<DmRelayListSnapshot<'bldr>> {
-    let mut builder = DmRelayListSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.read_relay_urls { builder.add_read_relay_urls(x); }
-    if let Some(x) = args.active_pubkey { builder.add_active_pubkey(x); }
-    builder.add_has_active_pubkey(args.has_active_pubkey);
-    builder.finish()
-  }
+            #[inline]
+            pub fn has_active_pubkey(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(DmRelayListSnapshot::VT_HAS_ACTIVE_PUBKEY, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn active_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        DmRelayListSnapshot::VT_ACTIVE_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn read_relay_urls(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(DmRelayListSnapshot::VT_READ_RELAY_URLS, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for DmRelayListSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<bool>("has_active_pubkey", Self::VT_HAS_ACTIVE_PUBKEY, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "active_pubkey",
+                        Self::VT_ACTIVE_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("read_relay_urls", Self::VT_READ_RELAY_URLS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct DmRelayListSnapshotArgs<'a> {
+            pub has_active_pubkey: bool,
+            pub active_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub read_relay_urls: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for DmRelayListSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                DmRelayListSnapshotArgs {
+                    has_active_pubkey: false,
+                    active_pubkey: None,
+                    read_relay_urls: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn has_active_pubkey(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(DmRelayListSnapshot::VT_HAS_ACTIVE_PUBKEY, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn active_pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(DmRelayListSnapshot::VT_ACTIVE_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn read_relay_urls(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(DmRelayListSnapshot::VT_READ_RELAY_URLS, None)}
-  }
-}
+        pub struct DmRelayListSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DmRelayListSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_has_active_pubkey(&mut self, has_active_pubkey: bool) {
+                self.fbb_.push_slot::<bool>(
+                    DmRelayListSnapshot::VT_HAS_ACTIVE_PUBKEY,
+                    has_active_pubkey,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_active_pubkey(&mut self, active_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmRelayListSnapshot::VT_ACTIVE_PUBKEY,
+                    active_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_read_relay_urls(
+                &mut self,
+                read_relay_urls: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    DmRelayListSnapshot::VT_READ_RELAY_URLS,
+                    read_relay_urls,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> DmRelayListSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                DmRelayListSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<DmRelayListSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for DmRelayListSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<bool>("has_active_pubkey", Self::VT_HAS_ACTIVE_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("active_pubkey", Self::VT_ACTIVE_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("read_relay_urls", Self::VT_READ_RELAY_URLS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct DmRelayListSnapshotArgs<'a> {
-    pub has_active_pubkey: bool,
-    pub active_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub read_relay_urls: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for DmRelayListSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    DmRelayListSnapshotArgs {
-      has_active_pubkey: false,
-      active_pubkey: None,
-      read_relay_urls: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for DmRelayListSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("DmRelayListSnapshot");
+                ds.field("has_active_pubkey", &self.has_active_pubkey());
+                ds.field("active_pubkey", &self.active_pubkey());
+                ds.field("read_relay_urls", &self.read_relay_urls());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `DmRelayListSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_dm_relay_list_snapshot_unchecked`.
+        pub fn root_as_dm_relay_list_snapshot(
+            buf: &[u8],
+        ) -> Result<DmRelayListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<DmRelayListSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `DmRelayListSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_dm_relay_list_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_dm_relay_list_snapshot(
+            buf: &[u8],
+        ) -> Result<DmRelayListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<DmRelayListSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `DmRelayListSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_dm_relay_list_snapshot_unchecked`.
+        pub fn root_as_dm_relay_list_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<DmRelayListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<DmRelayListSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `DmRelayListSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_dm_relay_list_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_dm_relay_list_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<DmRelayListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<DmRelayListSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a DmRelayListSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `DmRelayListSnapshot`.
+        pub unsafe fn root_as_dm_relay_list_snapshot_unchecked(
+            buf: &[u8],
+        ) -> DmRelayListSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<DmRelayListSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed DmRelayListSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `DmRelayListSnapshot`.
+        pub unsafe fn size_prefixed_root_as_dm_relay_list_snapshot_unchecked(
+            buf: &[u8],
+        ) -> DmRelayListSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<DmRelayListSnapshot>(buf) }
+        }
+        pub const DM_RELAY_LIST_SNAPSHOT_IDENTIFIER: &str = "NDRL";
 
-pub struct DmRelayListSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> DmRelayListSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_has_active_pubkey(&mut self, has_active_pubkey: bool) {
-    self.fbb_.push_slot::<bool>(DmRelayListSnapshot::VT_HAS_ACTIVE_PUBKEY, has_active_pubkey, false);
-  }
-  #[inline]
-  pub fn add_active_pubkey(&mut self, active_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmRelayListSnapshot::VT_ACTIVE_PUBKEY, active_pubkey);
-  }
-  #[inline]
-  pub fn add_read_relay_urls(&mut self, read_relay_urls: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(DmRelayListSnapshot::VT_READ_RELAY_URLS, read_relay_urls);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> DmRelayListSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    DmRelayListSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<DmRelayListSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn dm_relay_list_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, DM_RELAY_LIST_SNAPSHOT_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for DmRelayListSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("DmRelayListSnapshot");
-      ds.field("has_active_pubkey", &self.has_active_pubkey());
-      ds.field("active_pubkey", &self.active_pubkey());
-      ds.field("read_relay_urls", &self.read_relay_urls());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `DmRelayListSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_dm_relay_list_snapshot_unchecked`.
-pub fn root_as_dm_relay_list_snapshot(buf: &[u8]) -> Result<DmRelayListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<DmRelayListSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `DmRelayListSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_dm_relay_list_snapshot_unchecked`.
-pub fn size_prefixed_root_as_dm_relay_list_snapshot(buf: &[u8]) -> Result<DmRelayListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<DmRelayListSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `DmRelayListSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_dm_relay_list_snapshot_unchecked`.
-pub fn root_as_dm_relay_list_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<DmRelayListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<DmRelayListSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `DmRelayListSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_dm_relay_list_snapshot_unchecked`.
-pub fn size_prefixed_root_as_dm_relay_list_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<DmRelayListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<DmRelayListSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a DmRelayListSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `DmRelayListSnapshot`.
-pub unsafe fn root_as_dm_relay_list_snapshot_unchecked(buf: &[u8]) -> DmRelayListSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<DmRelayListSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed DmRelayListSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `DmRelayListSnapshot`.
-pub unsafe fn size_prefixed_root_as_dm_relay_list_snapshot_unchecked(buf: &[u8]) -> DmRelayListSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<DmRelayListSnapshot>(buf) }
-}
-pub const DM_RELAY_LIST_SNAPSHOT_IDENTIFIER: &str = "NDRL";
+        #[inline]
+        pub fn dm_relay_list_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, DM_RELAY_LIST_SNAPSHOT_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn dm_relay_list_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, DM_RELAY_LIST_SNAPSHOT_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_dm_relay_list_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<DmRelayListSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(DM_RELAY_LIST_SNAPSHOT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn dm_relay_list_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, DM_RELAY_LIST_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_dm_relay_list_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<DmRelayListSnapshot<'a>>) {
-  fbb.finish(root, Some(DM_RELAY_LIST_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_dm_relay_list_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<DmRelayListSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(DM_RELAY_LIST_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod nip17
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_dm_relay_list_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<DmRelayListSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(DM_RELAY_LIST_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod nip17
+} // pub mod nmp
