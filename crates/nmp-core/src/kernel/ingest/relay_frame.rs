@@ -15,11 +15,27 @@ impl Kernel {
     /// [`RelayFrame`] before calling this; a non-native transport (wasm32
     /// WebSocket) is responsible for its own equivalent conversion. The
     /// kernel itself never names `tungstenite`.
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn handle_message(
         &mut self,
         role: RelayRole,
         relay_url: &str,
         message: RelayFrame,
+    ) -> Vec<OutboundMessage> {
+        self.handle_message_at(
+            role,
+            relay_url,
+            message,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    pub(crate) fn handle_message_at(
+        &mut self,
+        role: RelayRole,
+        relay_url: &str,
+        message: RelayFrame,
+        now: Instant,
     ) -> Vec<OutboundMessage> {
         match message {
             RelayFrame::Text(text) => {
@@ -27,7 +43,7 @@ impl Kernel {
                 relay.counters.frames_rx = relay.counters.frames_rx.saturating_add(1);
                 relay.counters.bytes_rx = relay.counters.bytes_rx.saturating_add(text.len() as u64);
                 self.record_transport_rx(role, relay_url, text.len());
-                let mut outbound = self.handle_text(role, relay_url, &text);
+                let mut outbound = self.handle_text_at(role, relay_url, &text, now);
                 outbound.extend(self.tick_publish_engine_for_now());
                 outbound
             }
@@ -52,11 +68,27 @@ impl Kernel {
         }
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(in crate::kernel) fn handle_text(
         &mut self,
         role: RelayRole,
         relay_url: &str,
         text: &str,
+    ) -> Vec<OutboundMessage> {
+        self.handle_text_at(
+            role,
+            relay_url,
+            text,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    pub(in crate::kernel) fn handle_text_at(
+        &mut self,
+        role: RelayRole,
+        relay_url: &str,
+        text: &str,
+        now: Instant,
     ) -> Vec<OutboundMessage> {
         // Canonicalize only the map key. Auth/publish/closed policy uses the
         // delivering URL because NIP-42 replay protection is URL-specific.
@@ -99,7 +131,10 @@ impl Kernel {
                 if relay.notices.len() >= MAX_NOTICE_LOG {
                     relay.notices.pop_front();
                 }
-                relay.notices.push_back(NoticeEntry { at_ms, text: notice.clone() });
+                relay.notices.push_back(NoticeEntry {
+                    at_ms,
+                    text: notice.clone(),
+                });
                 // relay borrow ends; transport map updated separately (URL-keyed).
                 self.record_transport_notice(role, relay_url, notice.clone());
                 self.changed_since_emit = true;
@@ -137,7 +172,7 @@ impl Kernel {
             _ => self.log(format!("relay frame {kind}")),
         }
 
-        outbound.extend(self.maybe_open_timeline());
+        outbound.extend(self.maybe_open_timeline_at(now));
         outbound
     }
 

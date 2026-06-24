@@ -37,10 +37,10 @@ use std::sync::Arc;
 #[cfg(test)]
 #[path = "publish_engine_local_fallback_tests.rs"]
 mod local_fallback_tests;
-#[path = "publish_engine_terminals.rs"]
-mod terminals;
 #[path = "publish_engine_runtime.rs"]
 mod runtime;
+#[path = "publish_engine_terminals.rs"]
+mod terminals;
 
 use crate::publish::{
     NoopOutboxResolver, NoopSigner, OutboxResolver, PublishAction, PublishEngine, PublishStore,
@@ -49,7 +49,7 @@ use crate::publish::{
 use crate::relay::{OutboundMessage, RelayRole};
 use crate::substrate::SignedEvent;
 
-use super::publish_engine_wire::{describe_engine_error, now_epoch_ms, split_ok_message};
+use super::publish_engine_wire::{describe_engine_error, split_ok_message};
 use super::Kernel;
 
 /// Build the kernel's publish engine with the in-crate `NoopOutboxResolver`
@@ -113,12 +113,12 @@ impl Kernel {
             p_tags,
             target,
             correlation_id_override,
-            now_epoch_ms(), // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
+            self.now_ms(),
         )
     }
 
-    /// Time-injected variant for deterministic tests. Production callers use
-    /// `run_publish_engine` (which captures `SystemTime::now()`).
+    /// Time-injected variant for deterministic tests. Production callers use the
+    /// kernel-owned clock through `run_publish_engine`.
     ///
     /// `target` selects the relay-resolution mode (D3): `Auto` defers to the
     /// `Nip65OutboxResolver` (kind:10002 outbox); `Explicit { relays }` is the
@@ -385,11 +385,11 @@ impl Kernel {
         relay_url: &str,
         payload: OkFramePayload<'_>,
     ) -> Vec<OutboundMessage> {
-        self.handle_publish_ok_at(relay_url, payload, now_epoch_ms()) // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
+        self.handle_publish_ok_at(relay_url, payload, self.now_ms())
     }
 
-    /// Time-injected variant for tests; production callers use the wall-clock
-    /// `handle_publish_ok`.
+    /// Time-injected variant for tests; production callers use the kernel-owned
+    /// clock through `handle_publish_ok`.
     pub(crate) fn handle_publish_ok_at(
         &mut self,
         relay_url: &str,
@@ -431,5 +431,4 @@ impl Kernel {
             })
             .collect()
     }
-
 }

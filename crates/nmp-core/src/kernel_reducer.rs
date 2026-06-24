@@ -45,6 +45,7 @@ use crate::app::{KernelAction, KernelUpdate};
 use crate::kernel::{Kernel, RelayFrame, SnapshotProjectionSlot};
 use crate::kernel_action::dispatch_kernel_action;
 use crate::relay::{OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
+use crate::time::Instant;
 
 /// Encapsulated kernel + public pure reducer.
 ///
@@ -133,14 +134,30 @@ impl KernelReducer {
     /// and `RelayFrame::Pong` are accepted and bump the keepalive frame
     /// counter; the driver still maintains its own client-side ping cadence
     /// on a `gloo-timers` interval (the kernel never produces outbound pings).
+    #[cfg(any(test, feature = "test-support"))]
     pub fn handle_relay_frame(
         &mut self,
         role: RelayRole,
         relay_url: &str,
         frame: RelayFrame,
     ) -> Vec<OutboundMessage> {
-        let mut outbound = self.kernel.handle_message(role, relay_url, frame);
-        outbound.extend(self.kernel.pending_view_requests());
+        self.handle_relay_frame_at(
+            role,
+            relay_url,
+            frame,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    pub fn handle_relay_frame_at(
+        &mut self,
+        role: RelayRole,
+        relay_url: &str,
+        frame: RelayFrame,
+        now: Instant,
+    ) -> Vec<OutboundMessage> {
+        let mut outbound = self.kernel.handle_message_at(role, relay_url, frame, now);
+        outbound.extend(self.kernel.pending_view_requests_at(now));
         self.kernel.partition_auth_paused(outbound)
     }
 
@@ -157,11 +174,27 @@ impl KernelReducer {
     /// every active shape must be re-REQed with its T129 watermark.
     ///
     /// The returned `Vec<OutboundMessage>` is already AUTH-pause-partitioned.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn handle_relay_connected(
         &mut self,
         role: RelayRole,
         relay_url: &str,
         is_reconnect: bool,
+    ) -> Vec<OutboundMessage> {
+        self.handle_relay_connected_at(
+            role,
+            relay_url,
+            is_reconnect,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    pub fn handle_relay_connected_at(
+        &mut self,
+        role: RelayRole,
+        relay_url: &str,
+        is_reconnect: bool,
+        now: Instant,
     ) -> Vec<OutboundMessage> {
         self.kernel.relay_connected_url(role, relay_url);
         let mut outbound = Vec::new();
@@ -172,8 +205,8 @@ impl KernelReducer {
             outbound.extend(self.kernel.replay_on_reconnect(role, relay_url));
         }
         outbound.extend(self.kernel.mark_publish_relay_available(relay_url));
-        outbound.extend(self.kernel.startup_requests());
-        outbound.extend(self.kernel.pending_view_requests());
+        outbound.extend(self.kernel.startup_requests(now));
+        outbound.extend(self.kernel.pending_view_requests_at(now));
         // V-04 Stage 2: `startup_requests` no longer emits M1 `OutboundMessage`
         // frames for the four bootstrap interests (self profile / NIP-65 /
         // NIP-17 DM relays / contacts) — it now registers them through
@@ -226,16 +259,21 @@ impl KernelReducer {
     /// (`contacts_deadline`, F-TTL `drain_pending_reverify`, deferred AUTH-gate
     /// REQs) fires on every idle tick rather than only when inbound traffic
     /// arrives. Note: `pending_view_requests()` internally calls
-    /// `maybe_open_timeline()` which uses `Instant::now()`, but that path
+    /// `maybe_open_timeline_at()` which uses the caller-provided tick, but that path
     /// already runs on every inbound frame via `handle_relay_frame` (line 114),
     /// so this call adds no new wasm32 `Instant` exposure.
     ///
+    #[cfg(any(test, feature = "test-support"))]
     pub fn tick(&mut self) -> Vec<OutboundMessage> {
+        self.tick_at(crate::kernel::test_support::test_support_now())
+    }
+
+    pub fn tick_at(&mut self, now: Instant) -> Vec<OutboundMessage> {
         // 1. Pending view requests: mirrors actor/mod.rs:2086-2098.
         //    Drains time-gated work (contacts_deadline, F-TTL reverify, deferred
         //    AUTH-gate REQs from deferred_outbound) that would otherwise only
         //    fire when inbound traffic arrives on a quiet socket.
-        let mut outbound = self.kernel.pending_view_requests();
+        let mut outbound = self.kernel.pending_view_requests_at(now);
         // 2. Lifecycle drain: mirrors actor/mod.rs:2107-2120.
         //    Compiles queued CompileTriggers into REQ/CLOSE WireFrames.
         //    Placed after pending_view_requests to ensure M1 CLOSE frames are
@@ -249,10 +287,7 @@ impl KernelReducer {
         //    respective targets (closes the #1143 / #1009 blocker).
         //    D8: with no pending claims this is a single `is_empty()` check;
         //    no allocation, no iteration.
-        outbound.extend(
-            self.kernel
-                .poll_claim_expansion(crate::time::Instant::now()), // doctrine-allow: D9 — residual claim-expansion tick tracked in #1952
-        );
+        outbound.extend(self.kernel.poll_claim_expansion(now));
         // 4. Publish pump: mirrors actor/mod.rs:2161-2173.
         //    Retries in-flight publish frames whose retry deadline has elapsed.
         outbound.extend(self.kernel.tick_publish_engine_for_now());

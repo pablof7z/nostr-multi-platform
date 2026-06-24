@@ -84,17 +84,6 @@ pub(super) fn describe_engine_error(err: &PublishEngineError) -> (String, String
     }
 }
 
-/// Wall-clock epoch milliseconds. The engine accepts any monotonic clock
-/// source as `now_ms` — production uses `SystemTime::now()`; tests inject
-/// `now_ms` directly via `*_at` variants on the `Kernel` engine surface.
-pub(super) fn now_epoch_ms() -> u64 {
-    use crate::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now() // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

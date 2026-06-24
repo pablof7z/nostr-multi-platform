@@ -404,7 +404,12 @@ impl WasmRuntime {
         };
 
         let can_send = self.reducer.borrow().any_relay_connected();
-        let outbound = execute_ref_dispatch(&mut self.reducer.borrow_mut(), ref_dispatch, can_send);
+        let outbound = execute_ref_dispatch(
+            &mut self.reducer.borrow_mut(),
+            ref_dispatch,
+            can_send,
+            nmp_core::time::Instant::now(),
+        );
         self.fan_outbound(outbound);
         self.request_event_drain();
         // Resolve/release are refcount bookkeeping — they carry no new

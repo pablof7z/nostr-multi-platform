@@ -134,6 +134,7 @@ pub(super) fn dispatch_one_with_relays(
         connected_urls: &mut connected_urls,
         update_tx: &update_tx,
         last_emit: &mut last_emit,
+        dispatch_now: Instant::now(),
         next_relay_generation,
         running: &mut running,
         emit_hz: &mut emit_hz,

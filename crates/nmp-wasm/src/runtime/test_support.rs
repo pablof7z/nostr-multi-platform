@@ -19,10 +19,12 @@ impl super::WasmRuntime {
         role: nmp_core::RelayRole,
         url: &str,
     ) -> bool {
-        let outbound = self
-            .reducer
-            .borrow_mut()
-            .handle_relay_connected(role, url, false);
+        let outbound = self.reducer.borrow_mut().handle_relay_connected_at(
+            role,
+            url,
+            false,
+            nmp_core::time::Instant::now(),
+        );
         let had_outbound = !outbound.is_empty();
         self.fan_outbound(outbound);
         if !had_outbound {
@@ -38,10 +40,11 @@ impl super::WasmRuntime {
         url: &str,
         text: String,
     ) -> bool {
-        let outbound = self.reducer.borrow_mut().handle_relay_frame(
+        let outbound = self.reducer.borrow_mut().handle_relay_frame_at(
             role,
             url,
             nmp_core::RelayFrame::Text(text),
+            nmp_core::time::Instant::now(),
         );
         let had_outbound = !outbound.is_empty();
         self.fan_outbound(outbound);

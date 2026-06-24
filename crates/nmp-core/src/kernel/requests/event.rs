@@ -25,8 +25,8 @@
 //! panic). D8 — no polling; interest registers once on the cold-claim transition
 //! (`event_claim_requested` dedupes) and the projection re-emits on the next tick.
 
-use super::super::{Instant, Kernel, OutboundMessage, truncate};
-use super::event_key::{EventTarget, PendingEventClaim, parse_event_key};
+use super::super::{truncate, Instant, Kernel, OutboundMessage};
+use super::event_key::{parse_event_key, EventTarget, PendingEventClaim};
 use crate::kernel::refs::{EventShape, RefLiveness};
 use crate::planner::{HintSource, InterestScope, RelayHint};
 
@@ -45,6 +45,7 @@ impl Kernel {
     /// — the event twin of a `Live` profile ref. Immutable event-ids cannot
     /// change, so `Live` degrades to the one-shot fetch for them. `caller_hints`
     /// are optional relay hints carried by the raw-key caller.
+    #[cfg(any(test, feature = "test-support"))]
     #[allow(clippy::too_many_arguments)] // origin-blind seam; trimmed in Lane H.
     pub(in crate::kernel) fn resolve_event_ref(
         &mut self,
@@ -56,10 +57,33 @@ impl Kernel {
         can_send: bool,
         caller_hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
+        self.resolve_event_ref_at(
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            can_send,
+            caller_hints,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    pub(in crate::kernel) fn resolve_event_ref_at(
+        &mut self,
+        key: String,
+        consumer_id: String,
+        shape: EventShape,
+        liveness: RefLiveness,
+        force: bool,
+        can_send: bool,
+        caller_hints: Vec<String>,
+        started_at: Instant,
+    ) -> Vec<OutboundMessage> {
         // Raw seam: the author is derived from the key itself (coordinate pubkey
         // or, for a bare event-id, unknown). App-owned URI adapters that decoded
         // nevent author TLVs use `resolve_event_ref_with_metadata`.
-        self.resolve_event_ref_with_metadata(
+        self.resolve_event_ref_with_metadata_at(
             key,
             consumer_id,
             shape,
@@ -68,11 +92,13 @@ impl Kernel {
             can_send,
             None,
             caller_hints,
+            started_at,
         )
     }
 
     /// Same raw-key event resolver with metadata decoded by an app-owned URI
     /// adapter. The key is still a raw event-id/coordinate, not a URI.
+    #[cfg(any(test, feature = "test-support"))]
     #[allow(clippy::too_many_arguments)] // metadata-bearing raw seam.
     pub(in crate::kernel) fn resolve_event_ref_with_metadata(
         &mut self,
@@ -85,6 +111,32 @@ impl Kernel {
         caller_author: Option<String>,
         caller_hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
+        self.resolve_event_ref_with_metadata_at(
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            can_send,
+            caller_author,
+            caller_hints,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)] // metadata-bearing raw seam.
+    pub(in crate::kernel) fn resolve_event_ref_with_metadata_at(
+        &mut self,
+        key: String,
+        consumer_id: String,
+        shape: EventShape,
+        liveness: RefLiveness,
+        force: bool,
+        can_send: bool,
+        caller_author: Option<String>,
+        caller_hints: Vec<String>,
+        started_at: Instant,
+    ) -> Vec<OutboundMessage> {
         self.resolve_event_ref_inner(
             key,
             consumer_id,
@@ -94,6 +146,7 @@ impl Kernel {
             can_send,
             caller_author,
             caller_hints,
+            started_at,
         )
     }
 
@@ -111,6 +164,7 @@ impl Kernel {
         can_send: bool,
         caller_author: Option<String>,
         relay_hints: Vec<String>,
+        started_at: Instant,
     ) -> Vec<OutboundMessage> {
         // D6: a malformed raw key fails closed (no claim, no discovery REQ, no
         // panic). The two valid forms are a 64-char lowercase hex event-id and a
@@ -320,7 +374,7 @@ impl Kernel {
             Some(interest_id),
             author,
             relay_hints,
-            Instant::now(), // doctrine-allow: D9 — residual claim-expansion registration time tracked in #1952
+            started_at,
         );
         // register_interest already enqueued InvalidateCompile on install.
 

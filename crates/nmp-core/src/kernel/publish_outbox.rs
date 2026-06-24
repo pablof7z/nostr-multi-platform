@@ -4,12 +4,10 @@
 //! module only projects that state into a compact UI shape and exposes
 //! user-triggered retry/cancel commands back through the engine.
 
-use crate::publish::{
-    PerRelayState, PublishEngineError, PublishStoreError, RelaySelectionReason,
-};
+use crate::publish::{PerRelayState, PublishEngineError, PublishStoreError, RelaySelectionReason};
 use crate::relay::{OutboundMessage, RelayRole};
 
-use super::publish_engine_wire::{describe_engine_error, now_epoch_ms};
+use super::publish_engine_wire::describe_engine_error;
 use super::{Kernel, OutboxSummarySnapshot, PublishOutboxItem, PublishOutboxRelay};
 
 impl Kernel {
@@ -108,7 +106,7 @@ impl Kernel {
     }
 
     pub(crate) fn retry_publish_now(&mut self, handle: &str) -> Vec<OutboundMessage> {
-        let now_ms = now_epoch_ms(); // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
+        let now_ms = self.now_ms();
         let handle = handle.to_string();
         let engine_rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self.publish_engine.retry_now(&handle, now_ms) {
@@ -155,7 +153,7 @@ impl Kernel {
     /// already-settled or never-indexed publish), so a stale host cancel is
     /// still a benign idempotent terminal verdict (D6).
     pub(crate) fn cancel_publish(&mut self, id: &str) {
-        let now_ms = now_epoch_ms(); // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
+        let now_ms = self.now_ms();
         // Reverse-resolve `id` → (handle, original correlation_id). Unknown id:
         // fall back to id-as-both so an evicted/never-indexed publish still
         // clears the host spinner under the id the host handed us. The resolved
@@ -256,9 +254,7 @@ fn publish_outbox_relay(
         PerRelayState::RelayError {
             message, attempt, ..
         } => ("retrying", *attempt, message.clone()), // raw relay protocol error — pass through
-        PerRelayState::TimedOut { attempt, .. } => {
-            ("retrying", *attempt, "timed_out".to_string())
-        }
+        PerRelayState::TimedOut { attempt, .. } => ("retrying", *attempt, "timed_out".to_string()),
         PerRelayState::FailedAfterRetries { reason, .. } => ("failed", 0, reason.clone()), // raw relay protocol error — pass through
     };
     PublishOutboxRelay {

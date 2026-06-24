@@ -429,7 +429,8 @@ pub(super) fn set_relay_info(
     // `relay_diagnostics` projection surfaces it). Malformed JSON is a
     // silent no-op (D6).
     if let Some(doc) = crate::substrate::RelayInfoDoc::from_json(&doc_json) {
-        ctx.kernel.set_relay_info(&relay_url, doc);
+        ctx.kernel
+            .set_relay_info_at(&relay_url, doc, ctx.dispatch_now);
         maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     }
     Some(Vec::new())

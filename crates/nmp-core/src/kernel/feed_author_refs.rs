@@ -30,7 +30,7 @@
 
 use std::collections::BTreeSet;
 
-use super::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
+use super::refs::{ProfileShape, RefLiveness, RefNamespace};
 use super::{Kernel, OutboundMessage};
 
 /// The consumer-id prefix for every feed-author auto-resolve claim (D7).
@@ -110,11 +110,10 @@ impl Kernel {
         let mut out = Vec::new();
         // ADDED → resolve (Profile / Ref / CacheOk).
         for key in new_set.difference(&prior) {
-            out.extend(self.resolve_ref(
-                RefNamespace::Profile,
+            out.extend(self.resolve_profile_ref(
                 key.clone(),
                 consumer_id.to_string(),
-                RefShape::Profile(ProfileShape::Ref),
+                ProfileShape::Ref,
                 RefLiveness::CacheOk,
                 false,
                 Vec::new(),
