@@ -102,6 +102,15 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
+      case "routing_decisions":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.routing_decisions",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "stop":
         this.status = "stopped";
         return [

@@ -706,10 +706,10 @@ declared order with matched counts, then the final URL set with per-URL lane
 badges and direction. This is the panel that answers "*why did my note go to
 those relays?*" — the outbox model made tangible.
 
-Data: `nmp_app_recent_routing_decisions` exists as a **pull-only FFI symbol**
-(`crates/nmp-ffi/src/routing_trace.rs`) — there is **no worker request for it
-in the wasm protocol**. Needs a `WorkerRequest` (or a snapshot projection)
-**[GAP-9]**. Until then the panel shows the §7 not-yet-wired placeholder.
+Data: the worker exposes a read-only `routing_decisions` request that calls the
+wasm runtime's `recent_routing_decisions()` accessor. The JSON is rendered by
+Rust from the kernel-owned routing-trace projection; the web panel only parses
+and displays that DTO.
 
 #### 5.6.7 Signer
 
@@ -943,7 +943,7 @@ lands.
 | GAP-6 | No browser persistence (IndexedDB) binding; `database_name` is a handshake echo only | Store panel persistence block, offline copy | `nmp-wasm` store binding |
 | GAP-7 | No source attribution for resolved profiles (store-hit vs. live relay) | profile whisper strip detail | optional kernel projection field |
 | GAP-8 | Reply path fails closed (`publish_path_not_wired_for_kind`); NIP-10 tag construction is host-side per issue #906 but unwired in wasm | Reply compose happy path | `nmp-wasm/src/publish_path.rs` |
-| GAP-9 | `recent_routing_decisions` is pull-only native FFI (`nmp-ffi/src/routing_trace.rs`); no `WorkerRequest` or projection carries it to the browser | Inspector ▸ Routing (lane waterfall) | new worker request or snapshot projection |
+| GAP-9 | Closed by the read-only `routing_decisions` worker request; the panel now consumes Rust-rendered routing DTO JSON from `recent_routing_decisions()` | Inspector ▸ Routing (lane waterfall) | keep renderer thin; do not recreate routing logic in TS |
 | GAP-10 | No per-event "seen on relays" provenance list (only `claimed_events.relay_count`) | provenance chip popover with relay names | kernel feed-projection field |
 
 ---

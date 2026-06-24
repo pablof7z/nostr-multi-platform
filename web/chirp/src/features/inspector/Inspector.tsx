@@ -38,6 +38,8 @@ export function NmpInspector(props: {
   snapshot: RuntimeSnapshot;
   onStart: () => void;
   starting: boolean;
+  onRoutingRefresh: () => void;
+  routingRefreshing: boolean;
 }) {
   const [open, setOpen] = createSignal(false);
   const [tab, setTab] = createSignal<InspectorTab>("overview");
@@ -54,6 +56,12 @@ export function NmpInspector(props: {
     if (!bytes) return undefined;
     return decodeInspectorSnapshot(bytes);
   });
+  const selectTab = (id: InspectorTab) => {
+    setTab(id);
+    if (id === "routing") {
+      props.onRoutingRefresh();
+    }
+  };
 
   return (
     <aside
@@ -138,7 +146,7 @@ export function NmpInspector(props: {
                 role="tab"
                 type="button"
                 class={`ins-tab${tab() === t.id ? " ins-tab-active" : ""}`}
-                onClick={() => setTab(t.id)}
+                onClick={() => selectTab(t.id)}
                 aria-selected={tab() === t.id}
               >{t.label}</button>
             )}
@@ -163,7 +171,11 @@ export function NmpInspector(props: {
               <PanelSync relayStatuses={props.snapshot.latestRelayStatuses} />
             </Match>
             <Match when={tab() === "routing"}>
-              <PanelRouting />
+              <PanelRouting
+                decisionsJson={props.snapshot.latestRoutingDecisionsJson}
+                refreshing={props.routingRefreshing}
+                onRefresh={props.onRoutingRefresh}
+              />
             </Match>
             <Match when={tab() === "signer"}>
               <PanelSigner snapshot={props.snapshot} />

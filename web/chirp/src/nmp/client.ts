@@ -29,36 +29,22 @@ export { makeCorrelationId } from "./correlationId";
 
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
-  /** Identifies which runtime path is active.
-   *  "worker"              — Web Worker launched; nmp-wasm will load inside it.
-   *  "in_process_fallback" — Worker construction failed or Worker API is absent;
-   *                          the client wraps a DegradedRuntime that returns
-   *                          capability_failure for every action. */
+  /** Active runtime path: real worker or in-process degraded fallback. */
   clientRuntime: "worker" | "in_process_fallback";
   events: WorkerEvent[];
   latestUpdateBytes?: Uint8Array;
-  /** Snapshot revision number — decoded cheaply on every frame for the
-   *  Inspector's collapsed pulse strip. Undefined before the first snapshot. */
+  /** Snapshot revision decoded cheaply for the Inspector pulse strip. */
   latestRev?: bigint;
-  /** Per-relay status rows decoded from the Tier-3 relay_statuses field of the
-   *  most recent SnapshotFrame. Populated after the first successful decode;
-   *  undefined before any snapshot arrives. Empty array means the kernel
-   *  has no relays configured yet. Carries raw protocol tokens only; the
-   *  inspector panels derive their own hue from them (#1768). */
+  /** Per-relay status rows from the Tier-3 relay_statuses field. Carries raw
+   *  protocol tokens; inspector panels derive their own hue (#1768). */
   latestRelayStatuses?: DecodedRelayStatus[];
-  /** Decoded home feed items from the nmp.feed.home typed projection.
-   *  Populated after the first snapshot that contains the projection; undefined
-   *  before any projection arrives. Keep-last-good: only overwritten when a
-   *  new successful decode arrives (never cleared on a corrupt frame). */
+  /** Decoded nmp.feed.home items. Keep-last-good: corrupt frames do not clear. */
   feedItems?: FeedItem[];
-  /** Materialised `refs.profile` map: hex pubkey -> ProfileWire (display name +
-   *  picture + nip05 + …). The per-key `refs.profile` row-delta projection is
-   *  merged into a stateful `RefProfileStore` (`RefRowCache`); this is its
-   *  current full set. Powers BOTH the feed-row display-name join and the
-   *  registry user-* components (NostrAvatar needs the picture URL). Replaced by
-   *  a fresh `Map` reference only when the cache actually changed this frame
-   *  (stable reference across no-op frames so SolidJS memos do not churn). */
+  /** Materialised refs.profile map: hex pubkey -> ProfileWire. Replaced only
+   *  when the row-delta cache changes so SolidJS memos do not churn. */
   profileCards?: Map<string, ProfileWire>;
+  /** Kernel-authored routing diagnostics JSON, undefined until requested. */
+  latestRoutingDecisionsJson?: string;
 };
 
 export type RuntimeConnection = {
@@ -74,8 +60,7 @@ export const runtimeConnection: RuntimeConnection = {
 export type NmpClient = {
   snapshot(): RuntimeSnapshot;
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
-  /** Start the runtime. Pass `relays` to override the built-in chirp relay
-   *  list (used by the Playwright smoke test to inject the fixture relay). */
+  /** Start the runtime; optional relays override Chirp defaults for tests/dev. */
   start(relays?: string[]): Promise<RuntimeSnapshot>;
   dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
   dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
@@ -83,9 +68,10 @@ export type NmpClient = {
    *  first and supply the resulting hex pubkey. The wasm runtime installs the
    *  signer synchronously; subsequent write actions use it. */
   setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
-  /** S6 — NIP-07 sign round-trip: parks a sign op, emits sign_request for the
-   *  main-thread broker; resolves via sign_completed / sign_failed (#1008). */
+  /** S6 — parks a NIP-07 sign op and emits sign_request for the main thread. */
   beginSign(accountPubkey: string, unsignedJson: string): void;
+  /** #968 — request the kernel-owned routing diagnostics snapshot. */
+  refreshRoutingDecisions(): Promise<RuntimeSnapshot>;
 };
 
 export function createNmpClient(): NmpClient {
@@ -119,6 +105,7 @@ abstract class BaseClient implements NmpClient {
   // into `latestProfileCards` only when the cache changed this frame.
   private readonly refProfiles = new RefProfileStore();
   private latestProfileCards: Map<string, ProfileWire> | undefined;
+  private latestRoutingDecisionsJson: string | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -134,6 +121,7 @@ abstract class BaseClient implements NmpClient {
       latestRelayStatuses: this.latestRelayStatuses,
       feedItems: this.latestFeedItems,
       profileCards: this.latestProfileCards,
+      latestRoutingDecisionsJson: this.latestRoutingDecisionsJson,
     };
   }
 
@@ -233,6 +221,9 @@ abstract class BaseClient implements NmpClient {
         }
       }
     }
+    if (event.type === "routing_decisions") {
+      this.latestRoutingDecisionsJson = event.json;
+    }
     this.events = [event, ...this.events].slice(0, 32);
     const snapshot = this.snapshot();
     for (const listener of this.listeners) {
@@ -246,6 +237,7 @@ abstract class BaseClient implements NmpClient {
   abstract dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
   abstract setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
   abstract beginSign(accountPubkey: string, unsignedJson: string): void;
+  abstract refreshRoutingDecisions(): Promise<RuntimeSnapshot>;
 }
 
 class WorkerNmpClient extends BaseClient {
@@ -348,6 +340,12 @@ class WorkerNmpClient extends BaseClient {
       account_pubkey: accountPubkey,
       unsigned_json: unsignedJson,
     } satisfies WorkerRequest);
+  }
+
+  async refreshRoutingDecisions(): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    const correlationId = makeCorrelationId("web-routing", this.nextCorrelationId++);
+    return this.request({ type: "routing_decisions", correlation_id: correlationId }, correlationId);
   }
 
   private request(request: WorkerRequest, explicitCorrelationId?: string): Promise<RuntimeSnapshot> {
@@ -475,6 +473,13 @@ class InProcessNmpClient extends BaseClient {
   beginSign(accountPubkey: string, unsignedJson: string): void {
     // Degraded runtime has no kernel — begin_sign returns a sign_failed.
     this.send({ type: "begin_sign", account_pubkey: accountPubkey, unsigned_json: unsignedJson });
+  }
+
+  async refreshRoutingDecisions(): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "routing_decisions",
+      correlation_id: makeCorrelationId("web-routing", this.nextCorrelationId++),
+    });
   }
 
   private send(request: WorkerRequest): RuntimeSnapshot {
