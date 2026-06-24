@@ -116,7 +116,6 @@ fn run_cmd(
         };
         let stages = NoopActionStageTracker;
         let recipients = NoopRecipientRelayLookup;
-        let host_op_handler = nmp_core::substrate::NoopHostOpHandlerAccess;
         let wallet_kernel = nmp_core::substrate::NoopWalletKernelAccess;
         let zap_profiles = nmp_core::substrate::NoopZapProfileLookup;
         let (tx, rx) = std::sync::mpsc::channel::<ActorMail>();
@@ -129,9 +128,9 @@ fn run_cmd(
             errors: &errors,
             stages: &stages,
             recipients: &recipients,
-            host_op_handler: &host_op_handler,
             wallet_kernel: &wallet_kernel,
             zap_profiles: &zap_profiles,
+            write_relays: &nmp_core::substrate::NoopWriteRelayLookup,
         });
         Box::new(cmd).run(&mut ctx).expect("command body returns Ok");
         rx

@@ -48,9 +48,9 @@ fn failed_lookup_emits_diagnostic_toast_and_failure_record() {
             errors: &nmp_core::substrate::NoopErrorSurface,
             stages: &nmp_core::substrate::NoopActionStageTracker,
             recipients: &nmp_core::substrate::NoopRecipientRelayLookup,
-            host_op_handler: &nmp_core::substrate::NoopHostOpHandlerAccess,
             wallet_kernel: &nmp_core::substrate::NoopWalletKernelAccess,
             zap_profiles: &nmp_core::substrate::NoopZapProfileLookup,
+            write_relays: &nmp_core::substrate::NoopWriteRelayLookup,
         },
     );
 
@@ -103,9 +103,9 @@ fn failed_lookup_without_correlation_id_still_toasts_but_records_nothing() {
             errors: &nmp_core::substrate::NoopErrorSurface,
             stages: &nmp_core::substrate::NoopActionStageTracker,
             recipients: &nmp_core::substrate::NoopRecipientRelayLookup,
-            host_op_handler: &nmp_core::substrate::NoopHostOpHandlerAccess,
             wallet_kernel: &nmp_core::substrate::NoopWalletKernelAccess,
             zap_profiles: &nmp_core::substrate::NoopZapProfileLookup,
+            write_relays: &nmp_core::substrate::NoopWriteRelayLookup,
         },
     );
 

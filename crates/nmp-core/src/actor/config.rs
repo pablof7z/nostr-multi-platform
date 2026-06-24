@@ -12,10 +12,9 @@ use crate::slots::{
 };
 use crate::subs::PlanCoverageHook;
 use crate::substrate::{
-    BlockedRelayLookup, ContactsLookup, DmInboxRelayLookup, EventIngestDispatcher, HostOpHandler,
-    HostOpHandlerSlot, ProfileLookup, RelayConnectedHook, RelayConnectedHookSlot,
-    RelayTextInterceptor, RelayTextInterceptorSlot, ReqFrameInterceptor, ReqFrameInterceptorSlot,
-    SearchScopeRegistry,
+    BlockedRelayLookup, ContactsLookup, DmInboxRelayLookup, EventIngestDispatcher, ProfileLookup,
+    RelayConnectedHook, RelayConnectedHookSlot, RelayTextInterceptor, RelayTextInterceptorSlot,
+    ReqFrameInterceptor, ReqFrameInterceptorSlot, SearchScopeRegistry,
 };
 use crate::update_envelope::UpdateFrameBytes;
 
@@ -55,7 +54,6 @@ pub struct ActorConfigSources {
     pub storage_path: StoragePathSlot,
     pub coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>>,
     pub req_frame_interceptor: ReqFrameInterceptorSlot,
-    pub host_op_handler: HostOpHandlerSlot,
     pub relay_text_interceptor: RelayTextInterceptorSlot,
     pub relay_connected_hook: RelayConnectedHookSlot,
     pub ingest_dispatcher: Arc<RwLock<EventIngestDispatcher>>,
@@ -101,11 +99,6 @@ impl ActorConfigSources {
                 .lock()
                 .ok()
                 .and_then(|guard| guard.clone()),
-            host_op_handler: self
-                .host_op_handler
-                .lock()
-                .ok()
-                .and_then(|guard| guard.as_ref().cloned()),
             relay_text_interceptors: self
                 .relay_text_interceptor
                 .lock()
@@ -172,7 +165,6 @@ pub struct ActorConfig {
     pub storage_path: Option<String>,
     pub coverage_hook: Option<PlanCoverageHook>,
     pub req_frame_interceptor: Option<Arc<dyn ReqFrameInterceptor>>,
-    pub host_op_handler: Option<Arc<dyn HostOpHandler>>,
     pub relay_text_interceptors: Vec<Arc<dyn RelayTextInterceptor>>,
     pub relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
     pub ingest_dispatcher: Arc<RwLock<EventIngestDispatcher>>,

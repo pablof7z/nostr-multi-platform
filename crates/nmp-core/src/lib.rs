@@ -504,7 +504,6 @@ pub mod testing {
                 storage_path: path_slot,
                 coverage_hook: Arc::new(Mutex::new(None)),
                 req_frame_interceptor: crate::substrate::new_req_frame_interceptor_slot(),
-                host_op_handler: crate::substrate::new_host_op_handler_slot(),
                 relay_text_interceptor: crate::substrate::new_relay_text_interceptor_slot(),
                 relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
                 ingest_dispatcher: Arc::new(std::sync::RwLock::new(crate::substrate::EventIngestDispatcher::new())),

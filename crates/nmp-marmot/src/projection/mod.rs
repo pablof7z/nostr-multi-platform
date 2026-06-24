@@ -10,21 +10,24 @@
 //!   implements `KernelEventObserver` (metadata-only).
 //! * [`ops`] — dispatch + read-projection handlers; the ONLY place
 //!   `mdk-core` input types are named for this layer.
-//! * [`publish`] — the internal relay-publish bridge that CLOSES the
-//!   outbound seam (calls the workspace-internal
-//!   `nmp_ffi::NmpApp::publish_signed_explicit` kernel API against the
-//!   retained `&NmpApp`).
+//! * [`command`] — the typed [`command::MarmotProtocolCommand`] (#1940) that
+//!   carries an already-parsed `MarmotAction` + the shared projection to
+//!   `ops::dispatch`, plus the `ContextHostPort` bridge.
+//! * [`host_port`] — the single outbound-effect seam (`MarmotHostPort`) ops
+//!   use for publish / write-relay / interest / terminal-verdict; replaces
+//!   the deleted `*mut NmpApp` raw pointer and the `projection::publish`
+//!   bridge.
 //! * [`tap`] — the inbound raw-event observer that CLOSES the inbound
 //!   ingest seam (drives accepted kind:1059/445 events through the shared
 //!   `ops::ingest_signed_event_core`).
 
 pub mod action;
+pub mod command;
 pub mod deferred;
-pub mod handler;
+pub mod host_port;
 pub mod ops;
 pub mod payload;
 pub mod pending;
-pub mod publish;
 pub mod resubscribe;
 pub mod state;
 pub mod tap;

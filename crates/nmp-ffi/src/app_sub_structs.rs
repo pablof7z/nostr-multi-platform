@@ -44,8 +44,6 @@ pub(crate) struct CompositionConfig {
     pub(crate) coverage_hook: Arc<Mutex<Option<PlanCoverageHook>>>,
     /// Outbound planner REQ interceptor slot.
     pub(crate) req_frame_interceptor: nmp_core::substrate::ReqFrameInterceptorSlot,
-    /// Host-installed host-op handler slot.
-    pub(crate) host_op_handler: nmp_core::substrate::HostOpHandlerSlot,
     /// V-38: substrate-generic relay-text interceptor slot.
     pub(crate) relay_text_interceptor: nmp_core::substrate::RelayTextInterceptorSlot,
     /// ADR-0051 — relay-connected hook slot.

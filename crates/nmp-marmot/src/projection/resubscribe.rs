@@ -39,6 +39,14 @@ impl MarmotProjection {
         };
         let mut h = InnerHandle { inner: &mut guard };
 
+        // #1940 — the stored `CommandSender`-backed port drives the per-group
+        // kind:445 subscribe interests. No port (in-memory test projection) →
+        // a no-op port: the in-memory `group_relays` cache is still seeded
+        // (pure state); only the interest enqueue degrades to a no-op.
+        let port = h
+            .host_port()
+            .unwrap_or_else(|| std::sync::Arc::new(super::host_port::NoopMarmotHostPort));
+
         // Enumerate all groups MDK has persisted in the SQLite store.
         let Ok(groups) = h.service().get_groups() else {
             return; // D6 — storage error silently no-ops.
@@ -69,7 +77,7 @@ impl MarmotProjection {
             // Route through the existing choke-point: seeds the in-memory
             // group_relays cache AND pushes subscribe_group_messages interests.
             let gid_hex = hex_encode(group_id.as_slice());
-            h.cache_group_relays(gid_hex, relays);
+            h.cache_group_relays(gid_hex, relays, port.as_ref());
         }
     }
 }

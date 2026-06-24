@@ -147,7 +147,6 @@ fn dispatch_capability_result(
     let mut parked_ops = ParkedSignerOps::new();
     let coverage_hook = Arc::new(Mutex::new(None::<crate::subs::PlanCoverageHook>));
     let req_frame_interceptor = Arc::new(Mutex::new(None));
-    let host_op_handler = Arc::new(Mutex::new(None));
     let ingest_dispatcher_slot = Arc::new(std::sync::RwLock::new(
         crate::substrate::EventIngestDispatcher::default(),
     ));
@@ -166,7 +165,6 @@ fn dispatch_capability_result(
         storage_path: Arc::new(Mutex::new(None)),
         coverage_hook,
         req_frame_interceptor,
-        host_op_handler,
         relay_text_interceptor: crate::substrate::new_relay_text_interceptor_slot(),
         relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
         ingest_dispatcher: ingest_dispatcher_slot,

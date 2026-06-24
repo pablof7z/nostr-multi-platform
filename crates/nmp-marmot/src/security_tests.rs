@@ -12,6 +12,7 @@ use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::{EventBuilder, JsonUtil, Keys, Kind};
 use serde_json::json;
 
+use crate::projection::host_port::NoopMarmotHostPort;
 use crate::projection::ops::ingest_signed_event_core;
 use crate::projection::state::MarmotProjection;
 use crate::service::MarmotService;
@@ -46,7 +47,7 @@ fn ingest_signed_event_rejects_forged_event() {
     let tampered_event = nostr::Event::from_json(&tampered_str).expect("tampered event parses");
 
     let resp = proj
-        .with_inner(|h| ingest_signed_event_core(h, &tampered_event, 0))
+        .with_inner(|h| ingest_signed_event_core(h, &tampered_event, 0, &NoopMarmotHostPort))
         .expect("dispatch must not panic");
 
     let err = resp.expect_err("forged event must fail verification");
@@ -71,7 +72,7 @@ fn ingest_signed_event_accepts_valid_event() {
         .expect("sign event");
 
     let resp = proj
-        .with_inner(|h| ingest_signed_event_core(h, &event, 0))
+        .with_inner(|h| ingest_signed_event_core(h, &event, 0, &NoopMarmotHostPort))
         .expect("dispatch must not panic");
 
     // If MDK rejects it (wrong gift-wrap key), the error must not be our gate.

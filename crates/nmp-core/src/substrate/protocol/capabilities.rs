@@ -187,25 +187,14 @@ pub trait ZapProfileLookup: Send + Sync {
     fn lnurl_for_pubkey(&self, pubkey: &str) -> Option<String>;
 }
 
-/// ADR-0052 §D4 — the narrow capability that reaches the actor's configured
-/// [`HostOpHandler`](crate::substrate::HostOpHandler).
-///
-/// This is the seam K2 rung 5.4 adds so the persistent, host-installed handler
-/// (the Marmot MLS service) can be expressed as a one-shot
-/// [`ProtocolCommand`](super::ProtocolCommand) (the `HostOpCommand` in
-/// [`crate::substrate::host_op`]) instead of a bespoke
-/// `ActorCommand::DispatchHostOp` arm. The command captures NO handler itself:
-/// it asks this capability for an `Arc::clone` of the handler that was snapped
-/// into actor config at start.
-///
-/// It is deliberately narrow — it does NOT hand out `&mut Kernel` (rung 5.5
-/// deleted that escape hatch entirely); it returns only the opaque
-/// `Arc<dyn HostOpHandler>` (D0: no protocol type crosses).
-pub trait HostOpHandlerAccess: Send + Sync {
-    /// Clone the configured handler, or `None` if no handler was installed
-    /// before actor start. The clone is returned by value so the long-running
-    /// `handle` call never depends on shared config locks.
-    fn current_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>>;
+/// #1940 — the user's NIP-65 write-relay set, read through the kernel's
+/// `local_write_relays` projection. Marmot's typed protocol command consults
+/// this to resolve the relays a `publish_key_package` / `create_group` op
+/// publishes to when no explicit envelope relays are supplied. D0: returns a
+/// bare `Vec<String>` of relay URLs; no protocol noun crosses.
+pub trait WriteRelayLookup: Send + Sync {
+    /// The user's current NIP-65 write-relay URLs (empty when none configured).
+    fn write_relay_urls(&self) -> Vec<String>;
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -268,16 +257,16 @@ impl RecipientRelayLookup for NoopRecipientRelayLookup {
     }
 }
 
-/// Noop [`HostOpHandlerAccess`] — always reports no installed handler.
-/// Mirrors the "no stateful app bound" branch (the test / no-handler default).
-/// Installed by `with_send_only` and by NIP crate tests that never exercise
-/// the host-op seam.
+/// Noop [`WriteRelayLookup`] — always reports no configured write relays.
+/// Mirrors the "no relays configured / no kernel attached" branch; the
+/// `with_send_only` default and NIP crate tests that never read write relays
+/// install this singleton.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct NoopHostOpHandlerAccess;
+pub struct NoopWriteRelayLookup;
 
-impl HostOpHandlerAccess for NoopHostOpHandlerAccess {
-    fn current_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
-        None
+impl WriteRelayLookup for NoopWriteRelayLookup {
+    fn write_relay_urls(&self) -> Vec<String> {
+        Vec::new()
     }
 }
 

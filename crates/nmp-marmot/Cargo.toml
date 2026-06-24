@@ -21,7 +21,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 # deps (`keyring-core`, `base64`) so non-FFI consumers (in-process REPL,
 # headless tests) do not pull them in. Chirp opts in via its own `marmot`
 # feature (`nmp-marmot/ffi`).
-ffi = ["dep:keyring-core", "dep:base64"]
+ffi = ["dep:keyring-core", "dep:base64", "dep:nmp-ffi"]
 
 [dependencies]
 nmp-core = { path = "../nmp-core" }
@@ -32,10 +32,12 @@ nmp-planner = { path = "../nmp-planner" }
 # Direct dep on nmp-store for VerifiedEvent / RawEvent — the nmp_core::store
 # compat facade is deleted (#1608).
 nmp-store = { path = "../nmp-store" }
-# `nmp-ffi` owns the `NmpApp` C-ABI handle (extracted from
-# `nmp-core::ffi` in step 11-final). The Marmot projection +
-# bridge name the handle through this dep.
-nmp-ffi = { path = "../nmp-ffi" }
+# `nmp-ffi` owns the `NmpApp` C-ABI handle. #1940 — OPTIONAL, gated behind the
+# `ffi` feature: only the C-ABI shell (`src/ffi.rs` + siblings) names `NmpApp`;
+# the PROTOCOL path (`projection/*`) reaches publish / write-relays / interests
+# through the kernel's typed `ProtocolCommandContext` seams + the stored
+# `CommandSender`-backed `MarmotHostPort`, so it compiles with `nmp-ffi` absent.
+nmp-ffi = { path = "../nmp-ffi", optional = true }
 # nmp-nip59 supplies the NIP-59 gift-wrap free functions used to deliver MLS
 # Welcome (kind:444) rumors. nmp-marmot is the SOLE importer of mdk-core /
 # openmls; nip59 is a sibling protocol crate carrying no MLS types.

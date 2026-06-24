@@ -47,26 +47,22 @@ impl NmpApp {
 mod tests {
     use std::sync::Arc;
 
-    use nmp_core::substrate::HostOpHandler;
-
     use crate::{nmp_app_free, nmp_app_new, nmp_app_start, NmpConfigStatus};
 
-    struct DummyHostOpHandler;
-
-    impl HostOpHandler for DummyHostOpHandler {
-        fn handle(&self, _action_json: &str, _correlation_id: &str) -> serde_json::Value {
-            serde_json::json!({ "ok": true })
-        }
-    }
-
+    /// A prestart AppHost setter called AFTER `nmp_app_start` must be rejected
+    /// with `AlreadyStarted` and recorded as `DroppedLateWiring` in the
+    /// composition ledger. Uses `set_coverage_hook` as the representative
+    /// prestart hook (the deleted #1940 `set_host_op_handler` previously
+    /// exercised the same `ensure_prestart_config` guard).
     #[test]
     fn app_host_setter_after_start_is_rejected_and_recorded() {
         let app = nmp_app_new();
         nmp_app_start(app, 256, 4);
 
         let app_ref = unsafe { &*app };
+        let hook: nmp_core::subs::PlanCoverageHook = Arc::new(|_plan| {});
         assert_eq!(
-            app_ref.set_host_op_handler(Arc::new(DummyHostOpHandler)),
+            app_ref.set_coverage_hook(hook),
             NmpConfigStatus::AlreadyStarted
         );
         let records = app_ref.composition_ledger().to_json()["records"]
@@ -75,7 +71,7 @@ mod tests {
             .unwrap_or_default();
         assert!(
             records.iter().any(|record| {
-                record["seam"] == "host_op_handler" && record["disposition"] == "DroppedLateWiring"
+                record["seam"] == "coverage_hook" && record["disposition"] == "DroppedLateWiring"
             }),
             "late AppHost setter should be visible in the composition ledger"
         );

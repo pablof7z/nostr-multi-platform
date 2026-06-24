@@ -238,7 +238,7 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
     // bunker (D13 — the chain never holds raw keys; it signs through the port).
     use crate::substrate::{
         EmptyDmInboxRelayLookup, LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
-        NoopHostOpHandlerAccess, NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
+        NoopKernelClock, NoopRecipientRelayLookup, ProtocolCommandContext,
         ProtocolCommandContextParts,
     };
 
@@ -274,7 +274,6 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
     static ERRORS: NoopErrorSurface = NoopErrorSurface;
     static STAGES: NoopActionStageTracker = NoopActionStageTracker;
     static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
-    static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
     static WALLET: crate::substrate::NoopWalletKernelAccess =
         crate::substrate::NoopWalletKernelAccess;
     static ZAP: crate::substrate::NoopZapProfileLookup = crate::substrate::NoopZapProfileLookup;
@@ -289,9 +288,9 @@ fn ctx_active_account_pubkey_resolves_the_bunker_pubkey() {
         errors: &ERRORS,
         stages: &STAGES,
         recipients: &RECIPIENTS,
-        host_op_handler: &HOST_OP,
         wallet_kernel: &WALLET,
         zap_profiles: &ZAP,
+        write_relays: &crate::substrate::NoopWriteRelayLookup,
     });
 
     // Backend-transparent: the active bunker's pubkey resolves through the

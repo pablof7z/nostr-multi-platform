@@ -3,6 +3,7 @@
 //! Proves KP-gated ops park under their correlation id, retry on KP arrival,
 //! emit exactly one terminal verdict, and expire on a later ingest/snapshot edge.
 
+use crate::projection::host_port::NoopMarmotHostPort;
 use crate::projection::ops::{self, ingest_signed_event_core};
 use crate::projection::pending::PENDING_OP_EXPIRY_SECS;
 use crate::projection::state::MarmotProjection;
@@ -105,7 +106,8 @@ fn create_group_with_missing_kp_parks_and_retries_on_kp_arrival() {
     // Use now_secs consistent with the parking time (1_001) so the expiry
     // gate (now - created_at >= 60s) does not fire prematurely.
     let kp_arrival_secs: u64 = 1_002;
-    let ingest_result = proj.with_inner(|h| ingest_signed_event_core(h, &bob_kp, kp_arrival_secs));
+    let ingest_result =
+        proj.with_inner(|h| ingest_signed_event_core(h, &bob_kp, kp_arrival_secs, &NoopMarmotHostPort));
     // Verify ingest did not error.
     let _ingest_ok = ingest_result
         .expect("with_inner lock")
@@ -188,7 +190,13 @@ fn pending_op_expires_after_deadline_on_next_ingest_edge() {
     let _carol_kp = make_kp_event(&carol_keys);
     // Drive the cache edge directly so the synthetic `expired_now` trips expiry.
     let ready = proj
-        .with_inner(|h| h.handle_key_package_cached(&carol_keys.public_key().to_hex(), expired_now))
+        .with_inner(|h| {
+            h.handle_key_package_cached(
+                &carol_keys.public_key().to_hex(),
+                expired_now,
+                &NoopMarmotHostPort,
+            )
+        })
         .unwrap();
 
     // handle_key_package_cached returns ready ops — Carol's KP doesn't match
@@ -444,7 +452,7 @@ fn exactly_one_terminal_command_per_correlation_id() {
 
     // Bob's KP arrives in-window → corr-success completes (one `success`).
     let bob_kp = make_kp_event(&bob_keys);
-    proj.with_inner(|h| ingest_signed_event_core(h, &bob_kp, 1_002))
+    proj.with_inner(|h| ingest_signed_event_core(h, &bob_kp, 1_002, &NoopMarmotHostPort))
         .unwrap()
         .unwrap();
 
@@ -456,7 +464,7 @@ fn exactly_one_terminal_command_per_correlation_id() {
     // must NOT produce a second terminal verdict for corr-expire (the op is
     // already gone from the store).
     let carol_kp = make_kp_event(&carol_keys);
-    proj.with_inner(|h| ingest_signed_event_core(h, &carol_kp, expired_now + 1))
+    proj.with_inner(|h| ingest_signed_event_core(h, &carol_kp, expired_now + 1, &NoopMarmotHostPort))
         .unwrap()
         .unwrap();
 

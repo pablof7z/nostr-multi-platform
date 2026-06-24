@@ -44,6 +44,7 @@ use std::collections::BTreeSet;
 use mdk_core::prelude::{GroupId, NostrGroupConfigData};
 
 use crate::projection::action::MarmotAction;
+use crate::projection::host_port::MarmotHostPort;
 use crate::projection::payload::MarmotMessageRow;
 use crate::projection::state::{hex_encode, parse_signed_event, InnerHandle};
 
@@ -107,17 +108,17 @@ fn parse_relays(urls: &[String]) -> Result<Vec<RelayUrl>, String> {
 
 /// Resolve the write-relay set for relay-bearing ops.
 ///
-/// The app-wired NIP-65 write relays (`h.write_relay_urls()`, recovered
-/// from the live `NmpApp`) are authoritative for the FFI host path. When
-/// the projection is driven WITHOUT an app wired (a reusable host that
-/// supplies relays directly — e.g. the FFI round-trip tests, or any
-/// non-Chirp consumer), fall back to the envelope `relays` array. This
-/// keeps `nmp-marmot::projection` host-agnostic: relays come from the
-/// kernel when available, otherwise from the caller's op envelope.
-fn resolve_write_relays(h: &InnerHandle<'_>, relays: &[String]) -> Vec<String> {
-    let app_relays = h.write_relay_urls();
-    if !app_relays.is_empty() {
-        return app_relays;
+/// The host's NIP-65 write relays (`port.write_relay_urls()`, read from the
+/// kernel's `local_write_relays` projection) are authoritative for the host
+/// path. When the port reports no relays (a reusable host that supplies relays
+/// directly — e.g. the FFI round-trip tests, or any non-Chirp consumer), fall
+/// back to the envelope `relays` array. This keeps `nmp-marmot::projection`
+/// host-agnostic: relays come from the kernel when available, otherwise from
+/// the caller's op envelope.
+fn resolve_write_relays(port: &dyn MarmotHostPort, relays: &[String]) -> Vec<String> {
+    let host_relays = port.write_relay_urls();
+    if !host_relays.is_empty() {
+        return host_relays;
     }
     relays.to_vec()
 }
@@ -206,14 +207,17 @@ pub fn group_messages(
 ///
 /// `correlation_id` is the action-registry id. KP-gated ops park and later
 /// record terminal verdicts under that same id; REPL/test callers pass `None`.
-pub fn dispatch(
+pub(crate) fn dispatch(
     h: &mut InnerHandle<'_>,
     action: &MarmotAction,
     now_secs: u64,
     correlation_id: Option<&str>,
+    port: &dyn MarmotHostPort,
 ) -> Value {
     let r: Result<Value, String> = match action {
-        MarmotAction::PublishKeyPackage { relays } => publish_key_package(h, relays, now_secs),
+        MarmotAction::PublishKeyPackage { relays } => {
+            publish_key_package(h, relays, now_secs, port)
+        }
         MarmotAction::CreateGroup {
             name,
             description,
@@ -232,6 +236,7 @@ pub fn dispatch(
             relays,
             now_secs,
             correlation_id,
+            port,
         ),
         MarmotAction::Invite {
             group_id_hex,
@@ -247,14 +252,17 @@ pub fn dispatch(
             signed_key_package_events_json,
             now_secs,
             correlation_id,
+            port,
         ),
-        MarmotAction::Send { group_id_hex, text } => send(h, group_id_hex, text),
-        MarmotAction::Leave { group_id_hex } => leave(h, group_id_hex),
+        MarmotAction::Send { group_id_hex, text } => send(h, group_id_hex, text, port),
+        MarmotAction::Leave { group_id_hex } => leave(h, group_id_hex, port),
         MarmotAction::Remove {
             group_id_hex,
             member_npubs,
-        } => remove(h, group_id_hex, member_npubs),
-        MarmotAction::AcceptWelcome { welcome_id_hex } => accept_welcome(h, welcome_id_hex),
+        } => remove(h, group_id_hex, member_npubs, port),
+        MarmotAction::AcceptWelcome { welcome_id_hex } => {
+            accept_welcome(h, welcome_id_hex, port)
+        }
         MarmotAction::DeclineWelcome { welcome_id_hex } => decline_welcome(h, welcome_id_hex),
         MarmotAction::ClearPending { group_id_hex } => clear_pending(h, group_id_hex),
     };
@@ -278,6 +286,14 @@ pub fn dispatch(
     }
 }
 
+/// Test-only `dispatch` entry that parses JSON and routes outbound effects
+/// through a [`NoopMarmotHostPort`](crate::projection::host_port::NoopMarmotHostPort).
+///
+/// Unit tests assert MDK state mutations + the deferred captured-commands seam
+/// (which records terminal verdicts BEFORE the port send, so a no-op port is
+/// sufficient) + the returned `{"ok"/"pending"/"error"}` envelope — none of
+/// which depend on a live publish/interest channel. Tests that need to assert
+/// outbound publish/interest pass a recording port to `dispatch` directly.
 #[cfg(test)]
 pub(crate) fn dispatch_json_for_tests(
     h: &mut InnerHandle<'_>,
@@ -285,8 +301,9 @@ pub(crate) fn dispatch_json_for_tests(
     now_secs: u64,
     correlation_id: Option<&str>,
 ) -> Value {
+    use crate::projection::host_port::NoopMarmotHostPort;
     match serde_json::from_value::<MarmotAction>(v) {
-        Ok(action) => dispatch(h, &action, now_secs, correlation_id),
+        Ok(action) => dispatch(h, &action, now_secs, correlation_id, &NoopMarmotHostPort),
         Err(e) => err(&format!("invalid MarmotAction: {e}")),
     }
 }
@@ -295,8 +312,9 @@ fn publish_key_package(
     h: &mut InnerHandle<'_>,
     relays: &[String],
     now_secs: u64,
+    port: &dyn MarmotHostPort,
 ) -> Result<Value, String> {
-    let urls = resolve_write_relays(h, relays);
+    let urls = resolve_write_relays(port, relays);
     if urls.is_empty() {
         return Err("no write relays configured — add one in Settings > Relays".to_string());
     }
@@ -308,7 +326,7 @@ fn publish_key_package(
     // kind:30443 only; legacy kind:443 and the synchronous direct-submit
     // fallback were retired. The kernel publish pipeline is canonical.
     use nostr::JsonUtil as _;
-    h.publish_explicit(&pubn.event_30443, &relays);
+    port.publish_signed_explicit(&pubn.event_30443, &relays);
     h.record_key_package(pubn.d_tag.clone(), now_secs);
     Ok(json!({
         "d_tag": pubn.d_tag,
@@ -341,6 +359,7 @@ fn wrap_and_publish_welcomes(
     group_relays: &[RelayUrl],
     kp_events: &[nostr::Event],
     rumors: &[nostr::UnsignedEvent],
+    port: &dyn MarmotHostPort,
 ) -> Result<Vec<String>, String> {
     let mut out = Vec::with_capacity(rumors.len());
     for (i, rumor) in rumors.iter().enumerate() {
@@ -357,8 +376,8 @@ fn wrap_and_publish_welcomes(
             .map_err(|e| e.to_string())?;
         // kind:1059 is ALREADY signed (NIP-59 ephemeral key) — publish
         // verbatim, never re-sign. Inbox approximation → group relays
-        // (empty → kernel explicit-target fail-closed).
-        h.publish_explicit(&wrapped, group_relays);
+        // (empty → D10 provenance guard suppresses the wire dispatch).
+        port.publish_signed_explicit(&wrapped, group_relays);
         out.push(wrapped.as_json());
     }
     Ok(out)
@@ -375,8 +394,9 @@ fn create_group(
     relays: &[String],
     now_secs: u64,
     correlation_id: Option<&str>,
+    port: &dyn MarmotHostPort,
 ) -> Result<Value, String> {
-    let urls = resolve_write_relays(h, relays);
+    let urls = resolve_write_relays(port, relays);
     if urls.is_empty() {
         return Err("no write relays configured — add one in Settings > Relays".to_string());
     }
@@ -398,6 +418,7 @@ fn create_group(
                 &fetch_pubkeys,
                 correlation_id,
                 now_secs,
+                port,
             ));
         }
     }
@@ -419,14 +440,14 @@ fn create_group(
     let rumors = pending.welcome_rumors.clone();
     // NIP-59 gift-wrap + internally publish each kind:444 welcome to the
     // group relays (inbox-routing approximation; empty → fail closed).
-    let welcomes = wrap_and_publish_welcomes(h, &relays, &kp_events, &rumors)?;
+    let welcomes = wrap_and_publish_welcomes(h, &relays, &kp_events, &rumors, port)?;
     // Events produced + submitted → commit eagerly so the group is not
     // wedged (pending-commit discipline, see module rustdoc). This drops
     // `pending`'s borrow of `h`, so the cache write below is free.
     pending.commit().map_err(|e| e.to_string())?;
     // Seed the relay-pinned cache from the envelope `relays` so this
     // group's later kind:445 sends/commits route to the group relays.
-    h.cache_group_relays(group_id_hex.clone(), relays);
+    h.cache_group_relays(group_id_hex.clone(), relays, port);
     Ok(json!({
         "group_id_hex": group_id_hex,
         // INFORMATIONAL — signed kind:1059 gift-wraps, already submitted.
@@ -443,6 +464,7 @@ fn invite(
     signed_key_package_events_json: &[Value],
     now_secs: u64,
     correlation_id: Option<&str>,
+    port: &dyn MarmotHostPort,
 ) -> Result<Value, String> {
     let gid = group_id_from_hex(group_id_hex)?;
     let invitee_npubs = resolve_invitees(invitee_text, invitee_npubs);
@@ -461,6 +483,7 @@ fn invite(
                 &fetch_pubkeys,
                 correlation_id,
                 now_secs,
+                port,
             ));
         }
     }
@@ -475,10 +498,10 @@ fn invite(
     let evolution = pending.evolution_event.as_json();
     // kind:445 commit → group relay-pinned relays (Explicit; cache miss
     // → fail closed). MUST go to the group relay(s), not the author outbox.
-    h.publish_explicit(&pending.evolution_event, &group_relays);
+    port.publish_signed_explicit(&pending.evolution_event, &group_relays);
     let rumors = pending.welcome_rumors.clone();
     // kind:444 rumors → NIP-59 gift-wrap + internal publish.
-    let welcomes = wrap_and_publish_welcomes(h, &group_relays, &kp_events, &rumors)?;
+    let welcomes = wrap_and_publish_welcomes(h, &group_relays, &kp_events, &rumors, port)?;
     pending.commit().map_err(|e| e.to_string())?;
     Ok(json!({
         // INFORMATIONAL — kind:445 commit + signed kind:1059 gift-wraps,
@@ -488,7 +511,26 @@ fn invite(
     }))
 }
 
-fn send(h: &mut InnerHandle<'_>, group_id_hex: &str, text: &str) -> Result<Value, String> {
+/// Publish a signed event to a group's relay-pinned relays (Explicit; a cache
+/// miss publishes to an empty set, which the kernel / D10 guard fail closed).
+/// Replaces the deleted `InnerHandle::publish_group_pinned` (which reached the
+/// raw `*mut NmpApp`); relays come from the cache, the publish from the port.
+fn publish_group_pinned(
+    h: &InnerHandle<'_>,
+    group_id_hex: &str,
+    event: &nostr::Event,
+    port: &dyn MarmotHostPort,
+) {
+    let relays = h.group_relays(group_id_hex);
+    port.publish_signed_explicit(event, &relays);
+}
+
+fn send(
+    h: &mut InnerHandle<'_>,
+    group_id_hex: &str,
+    text: &str,
+    port: &dyn MarmotHostPort,
+) -> Result<Value, String> {
     let gid = group_id_from_hex(group_id_hex)?;
     let author = h.service().public_key();
     let rumor = EventBuilder::new(Kind::TextNote, text.to_string()).build(author);
@@ -499,7 +541,7 @@ fn send(h: &mut InnerHandle<'_>, group_id_hex: &str, text: &str) -> Result<Value
     // Signed kind:445 (MDK signs with the MLS credential). Relay-pinned →
     // the group's configured relays (Explicit; cache miss → fail closed).
     let group_id_hex = hex_encode(gid.as_slice());
-    h.publish_group_pinned(&group_id_hex, &msg);
+    publish_group_pinned(h, &group_id_hex, &msg, port);
     Ok(json!({
         // INFORMATIONAL — already submitted to the group-pinned relays.
         "event": msg.as_json(),
@@ -507,14 +549,18 @@ fn send(h: &mut InnerHandle<'_>, group_id_hex: &str, text: &str) -> Result<Value
     }))
 }
 
-fn leave(h: &mut InnerHandle<'_>, group_id_hex: &str) -> Result<Value, String> {
+fn leave(
+    h: &mut InnerHandle<'_>,
+    group_id_hex: &str,
+    port: &dyn MarmotHostPort,
+) -> Result<Value, String> {
     let gid = group_id_from_hex(group_id_hex)?;
     let group_id_hex = hex_encode(gid.as_slice());
     let pending = h.service().leave_group(&gid).map_err(|e| e.to_string())?;
     let evolution = pending.evolution_event.as_json();
     // kind:445 SelfRemove commit → group relay-pinned relays (a peer
     // commits the epoch, but the proposal still ships to the group relay).
-    h.publish_group_pinned(&group_id_hex, &pending.evolution_event);
+    publish_group_pinned(h, &group_id_hex, &pending.evolution_event, port);
     // SelfRemove — commit() is a documented no-op (a peer commits it).
     pending.commit().map_err(|e| e.to_string())?;
     Ok(json!({ "evolution_event": evolution }))
@@ -524,6 +570,7 @@ fn remove(
     h: &mut InnerHandle<'_>,
     group_id_hex: &str,
     member_npubs: &[String],
+    port: &dyn MarmotHostPort,
 ) -> Result<Value, String> {
     let gid = group_id_from_hex(group_id_hex)?;
     let group_id_hex = hex_encode(gid.as_slice());
@@ -535,12 +582,16 @@ fn remove(
     let evolution = pending.evolution_event.as_json();
     // kind:445 remove commit → group relay-pinned relays (Explicit;
     // cache miss → fail closed).
-    h.publish_group_pinned(&group_id_hex, &pending.evolution_event);
+    publish_group_pinned(h, &group_id_hex, &pending.evolution_event, port);
     pending.commit().map_err(|e| e.to_string())?;
     Ok(json!({ "evolution_event": evolution }))
 }
 
-fn accept_welcome(h: &mut InnerHandle<'_>, welcome_id_hex: &str) -> Result<Value, String> {
+fn accept_welcome(
+    h: &mut InnerHandle<'_>,
+    welcome_id_hex: &str,
+    port: &dyn MarmotHostPort,
+) -> Result<Value, String> {
     let wid = welcome_id_hex.to_string();
     let Some(gift) = h.take_welcome_gift_wrap(&wid) else {
         return Err(format!("no pending welcome `{wid}`"));
@@ -567,13 +618,14 @@ fn accept_welcome(h: &mut InnerHandle<'_>, welcome_id_hex: &str) -> Result<Value
     h.cache_group_relays(
         group_id_hex.clone(),
         welcome.group_relays.iter().cloned().collect(),
+        port,
     );
     // MIP-02: post-join self-update is mandatory. Trigger it + publish
     // the signed kind:445 commit INTERNALLY to the group-pinned relays.
     let self_update = match h.service().self_update(&welcome.mls_group_id) {
         Ok(p) => {
             let ev = p.evolution_event.as_json();
-            h.publish_group_pinned(&group_id_hex, &p.evolution_event);
+            publish_group_pinned(h, &group_id_hex, &p.evolution_event, port);
             p.commit().map_err(|e| e.to_string())?;
             Some(ev)
         }
@@ -629,6 +681,7 @@ pub(crate) fn ingest_signed_event_core(
     h: &mut InnerHandle<'_>,
     event: &nostr::Event,
     now_secs: u64,
+    port: &dyn MarmotHostPort,
 ) -> Result<Option<Value>, String> {
     event
         .verify()
@@ -648,6 +701,7 @@ pub(crate) fn ingest_signed_event_core(
                 h.cache_group_relays(
                     hex_encode(welcome.mls_group_id.as_slice()),
                     welcome.group_relays.iter().cloned().collect(),
+                    port,
                 );
                 h.cache_welcome(wid.clone(), event.clone(), group_name, sender.to_hex());
                 Ok(Some(json!({ "kind": 1059, "pending_welcome_id_hex": wid })))
@@ -672,7 +726,7 @@ pub(crate) fn ingest_signed_event_core(
         // out expired ones (D8 wall-clock gate; `now_secs` is caller-supplied
         // so tests can use synthetic time). The retry + terminal-verdict
         // bookkeeping lives in the `deferred` module.
-        h.retry_unblocked_ops(&pubkey_hex, now_secs);
+        h.retry_unblocked_ops(&pubkey_hex, now_secs, port);
         Ok(Some(
             json!({ "kind": kind, "cached": true, "author": pubkey_hex }),
         ))

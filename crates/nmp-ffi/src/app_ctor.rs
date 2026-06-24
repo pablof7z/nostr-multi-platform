@@ -134,9 +134,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let actor_coverage_hook = Arc::clone(&coverage_hook);
     let req_frame_interceptor = nmp_core::substrate::new_req_frame_interceptor_slot();
     let actor_req_frame_interceptor = Arc::clone(&req_frame_interceptor);
-    // Substrate-generic host-op handler slot.
-    let host_op_handler = nmp_core::substrate::new_host_op_handler_slot();
-    let actor_host_op_handler = nmp_core::substrate::HostOpHandlerSlot::clone(&host_op_handler);
     // V-40 — substrate `EventIngestDispatcher` slot.
     let ingest_dispatcher_slot: Arc<std::sync::RwLock<nmp_core::substrate::EventIngestDispatcher>> =
         Arc::new(std::sync::RwLock::new(
@@ -217,7 +214,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             storage_path: actor_storage_path,
             coverage_hook: actor_coverage_hook,
             req_frame_interceptor: actor_req_frame_interceptor,
-            host_op_handler: actor_host_op_handler,
             relay_text_interceptor: actor_relay_text_interceptor,
             relay_connected_hook: actor_relay_connected_hook,
             ingest_dispatcher: actor_ingest_dispatcher,
@@ -342,7 +338,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             initial_relays_for_start: Mutex::new(Vec::new()),
             coverage_hook,
             req_frame_interceptor,
-            host_op_handler,
             relay_text_interceptor,
             relay_connected_hook,
             kernel_clock,

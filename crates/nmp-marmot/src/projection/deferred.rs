@@ -15,6 +15,7 @@ use nostr::PublicKey;
 use serde_json::{json, Value};
 
 use super::action::MarmotAction;
+use super::host_port::MarmotHostPort;
 use super::payload::{LastOpError, PendingOpRow};
 use super::pending::{PendingOp, PendingOpsStore, RetryOutcome, StoreResult};
 use super::state::{op_tag_of, InnerHandle};
@@ -65,9 +66,10 @@ impl InnerHandle<'_> {
         fetch_pubkeys: &[PublicKey],
         correlation_id: Option<&str>,
         now_secs: u64,
+        port: &dyn MarmotHostPort,
     ) -> Value {
         // Always fire the fetch interest (idempotent at the planner level).
-        let fetch_requested = self.request_key_package_fetch(fetch_pubkeys);
+        let fetch_requested = self.request_key_package_fetch(fetch_pubkeys, port);
         let needs_pubkeys_hex: Vec<String> = fetch_pubkeys.iter().map(PublicKey::to_hex).collect();
 
         let Some(cid) = correlation_id else {
@@ -143,8 +145,9 @@ impl InnerHandle<'_> {
         &mut self,
         pubkey_hex: &str,
         now_secs: u64,
+        port: &dyn MarmotHostPort,
     ) -> Vec<RetryOutcome> {
-        self.evict_expired_pending(now_secs);
+        self.evict_expired_pending(now_secs, port);
         self.inner.pending_ops.retry_for_pubkey(pubkey_hex)
     }
 
@@ -152,8 +155,13 @@ impl InnerHandle<'_> {
     /// recording the terminal verdict under each op's ORIGINAL `correlation_id`
     /// via the actor channel. Called from the kind:30443 ingest arm after
     /// the KP is cached. Fires exactly once per KP arrival (D8 — no polling).
-    pub(crate) fn retry_unblocked_ops(&mut self, pubkey_hex: &str, now_secs: u64) {
-        let ready = self.handle_key_package_cached(pubkey_hex, now_secs);
+    pub(crate) fn retry_unblocked_ops(
+        &mut self,
+        pubkey_hex: &str,
+        now_secs: u64,
+        port: &dyn MarmotHostPort,
+    ) {
+        let ready = self.handle_key_package_cached(pubkey_hex, now_secs, port);
         for outcome in ready {
             // Re-run the original op through the full dispatch path. The
             // pending store only returns an op once its missing set is empty,
@@ -161,9 +169,13 @@ impl InnerHandle<'_> {
             // handled defensively (skip the terminal write).
             let action: Result<MarmotAction, _> = serde_json::from_str(&outcome.action_json);
             let result = match &action {
-                Ok(action) => {
-                    super::ops::dispatch(self, action, now_secs, Some(&outcome.correlation_id))
-                }
+                Ok(action) => super::ops::dispatch(
+                    self,
+                    action,
+                    now_secs,
+                    Some(&outcome.correlation_id),
+                    port,
+                ),
                 Err(e) => json!({
                     "ok": false,
                     "error": format!("stored pending MarmotAction did not parse: {e}"),
@@ -201,7 +213,7 @@ impl InnerHandle<'_> {
                     reason,
                 })
             };
-            self.push_actor_command(cmd);
+            self.push_actor_command(cmd, port);
         }
     }
 
@@ -212,7 +224,7 @@ impl InnerHandle<'_> {
     /// arrives still ages out within a tick of its deadline. No live actor
     /// channel (test path) → the `RecordActionFailure` send is a no-op, but the
     /// verdict is still recorded in the `#[cfg(test)]` capture seam.
-    pub(super) fn evict_expired_pending(&mut self, now_secs: u64) {
+    pub(super) fn evict_expired_pending(&mut self, now_secs: u64, port: &dyn MarmotHostPort) {
         let expired: Vec<PendingOp> = self.inner.pending_ops.check_expired(now_secs);
         for op in expired {
             // Record the terminal failure as the snapshot-visible last op
@@ -225,12 +237,13 @@ impl InnerHandle<'_> {
                 op.correlation_id.clone(),
                 now_secs,
             );
-            self.push_actor_command(nmp_core::actor::ActorCommand::ActionLedger(
-                ActionLedgerCommand::RecordFailure {
+            self.push_actor_command(
+                nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
                     correlation_id: op.correlation_id,
                     reason: "key_package_unavailable".to_string(),
-                },
-            ));
+                }),
+                port,
+            );
         }
     }
 
@@ -258,13 +271,18 @@ impl InnerHandle<'_> {
     }
 
     /// Send an [`nmp_core::actor::ActorCommand`] back into the actor's own command
-    /// channel. Used to record deferred terminal verdicts from within the
-    /// ingest path (which runs on the actor thread). D8-safe because the
-    /// underlying `mpsc::Sender::send` is non-blocking for an unbounded
-    /// channel; the actor drains it on the next iteration.
+    /// channel via the supplied `port`. Used to record deferred terminal
+    /// verdicts from within the ingest path (which runs on the actor thread).
+    /// D8-safe because the underlying `mpsc::Sender::send` is non-blocking for
+    /// an unbounded channel; the actor drains it on the next iteration.
     ///
-    /// No-op when `app` is null (the test projection — no actor channel).
-    pub(crate) fn push_actor_command(&mut self, cmd: nmp_core::actor::ActorCommand) {
+    /// No-op when the port's channel is disconnected (the test projection — no
+    /// actor channel).
+    pub(crate) fn push_actor_command(
+        &mut self,
+        cmd: nmp_core::actor::ActorCommand,
+        port: &dyn MarmotHostPort,
+    ) {
         // Test capture seam: record a lightweight `(verdict, correlation_id)`
         // projection of the command stream so unit tests can assert EXACTLY
         // ONE terminal verdict per correlation_id without a live `NmpApp`.
@@ -292,12 +310,11 @@ impl InnerHandle<'_> {
             }
         }
 
-        let Some(app) = self.app() else {
-            return;
-        };
-        // `actor_sender()` clones the `Sender` end of the unbounded mpsc
-        // channel the actor owns. Sending here cannot block or deadlock.
-        let _ = app.actor_sender().send(cmd);
+        // The port forwards the command down the stored `CommandSender` clone
+        // (unbounded mpsc); sending here cannot block or deadlock. A test /
+        // unbound projection has no port → benign no-op (the captured-commands
+        // seam above still recorded the verdict for assertions).
+        port.send_actor_command(cmd);
     }
 
     /// Snapshot view: collect pending op descriptors as

@@ -121,11 +121,24 @@ impl IngestParser for MarmotIngestParser {
             // duplicate / unsupported-kind / decrypt error to (D6). The
             // projection side-effects (pending-welcome row, relay cache,
             // MDK state) are what the next snapshot reflects.
+            //
+            // The ingest-edge expiry gate needs true wall-clock elapsed time;
+            // the `IngestParser` trait carries no kernel timestamp, so this is
+            // the documented ingest-edge fallback. The production COMMAND path
+            // (`MarmotProtocolCommand::run`) is kernel-clock authored via
+            // `ctx.now_secs()` (the #1940 D9 fix). nmp-marmot is outside the
+            // D9 lint scope (`crates/nmp-core/src/kernel/**`).
             let now_secs = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            let _ = ingest_signed_event_core(h, &event, now_secs);
+            // #1940 — outbound effects (KP-retry publish, terminal verdicts)
+            // route through the stored `CommandSender`-backed port; a no-op
+            // port (in-memory test projection) degrades to silent no-op.
+            let port = h
+                .host_port()
+                .unwrap_or_else(|| std::sync::Arc::new(crate::projection::host_port::NoopMarmotHostPort));
+            let _ = ingest_signed_event_core(h, &event, now_secs, port.as_ref());
         });
     }
 }

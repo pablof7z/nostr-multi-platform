@@ -81,7 +81,7 @@ use serde_json::{json, Value};
 use crate::service::MarmotService;
 
 use crate::projection::action::{MarmotAction, MarmotActionModule};
-use crate::projection::handler::MarmotMlsOpHandler;
+use crate::projection::host_port::CommandSenderHostPort;
 use crate::projection::state::MarmotProjection;
 use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT, TAP_KINDS};
 
@@ -232,9 +232,21 @@ impl MarmotHandle {
         // `correlation_id` is `None`: this in-process path (REPL / TUI / tests)
         // has no action-registry correlation, so the deferred-pending path
         // stays off (callers get the old terminal soft-fail); it activates only
-        // for the typed `HostOpCommand` pipeline, which supplies an id.
+        // for the typed command pipeline, which supplies an id.
+        //
+        // #1940 — outbound effects route through the stored `CommandSender`-
+        // backed port (publish to the actor channel), the same port the tap /
+        // deferred paths use; a no-op port (no actor channel) degrades to a
+        // silent no-op. The in-process accessor reads wall-clock `now_secs()`
+        // (documented non-production path; the production COMMAND path uses
+        // `ctx.now_secs()` — the #1940 D9 fix).
         self.projection
-            .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs(), None))
+            .with_inner(|h| {
+                let port = h.host_port().unwrap_or_else(|| {
+                    std::sync::Arc::new(crate::projection::host_port::NoopMarmotHostPort)
+                });
+                crate::projection::ops::dispatch(h, &action, now_secs(), None, port.as_ref())
+            })
             .unwrap_or_else(|| {
                 json!({
                     "ok": false,
@@ -336,27 +348,6 @@ pub(crate) fn register_with_keys(
             }
         };
 
-    // Step 1: register the substrate-generic `MarmotActionModule` against
-    // the kernel's action registry. This is the SOLE host entry point
-    // for Marmot mutating ops (the legacy bespoke `nmp_marmot_dispatch`
-    // C-ABI symbol was deleted in ADR-0025 PR 3, 2026-05-23); hosts
-    // reach every Marmot write through
-    // `nmp_app_dispatch_action("nmp.marmot", action_json)`. Registration
-    // is idempotent (replaces any prior entry under the same namespace),
-    // so a second `register_with_keys` (account switch) is safe. Takes
-    // `&mut NmpApp` and must run BEFORE any other `&NmpApp` borrow below.
-    //
-    // SAFETY: the caller guarantees `app` is a valid pointer from
-    // `nmp_app_new`. No other reference aliases `app` at this point — the
-    // `&*app` borrow on the next line is taken only after this exclusive
-    // borrow is dropped. Mirrors the `register_chirp_actions(unsafe { &mut
-    // *app })` pattern in `apps/chirp/nmp-app-chirp/src/ffi/register.rs`.
-    unsafe { &mut *app }
-        .register_action(MarmotActionModule)
-        .expect("duplicate registration: nmp-marmot MarmotActionModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error
-
-    // SAFETY: caller guarantees `app` is non-null and valid.
-    let app_ref = unsafe { &*app };
     // V-62 / #1651: when `initialize()` chose the in-memory mock store
     // (`use_mock == true`) the service works but its secrets are not durable,
     // so the projection carries `MarmotInitError::KeyringUnavailable` in every
@@ -365,7 +356,63 @@ pub(crate) fn register_with_keys(
     let init_error =
         use_mock.then_some(crate::projection::payload::MarmotInitError::KeyringUnavailable);
     let projection = Arc::new(MarmotProjection::new(service, init_error));
-    projection.set_app(app);
+
+    // #1940 — install the stored `CommandSender`-backed `MarmotHostPort` so the
+    // tap-driven ingest + deferred-KP-retry paths can publish / enqueue
+    // interests / send terminal verdicts without a `*mut NmpApp` raw pointer
+    // and without a `ProtocolCommandContext` (those paths run on the actor
+    // thread with no `ctx`). The write-relay reader closure clones the kernel's
+    // `local_write_relays` projection handle so the protocol layer never names
+    // `nmp_ffi::NmpApp`. (The COMMAND path builds its own `ContextHostPort`
+    // from the context — see `MarmotProtocolCommand::run`.)
+    //
+    // SAFETY: caller guarantees `app` is non-null and valid; this `&*app`
+    // borrow is dropped before the `&mut *app` register_action borrow below.
+    {
+        let app_ref = unsafe { &*app };
+        let sender = app_ref.actor_sender();
+        let write_relays_slot = app_ref.configured_relays_handle();
+        let write_relays_reader: Box<dyn Fn() -> Vec<String> + Send + Sync> = Box::new(move || {
+            let Ok(guard) = write_relays_slot.lock() else {
+                return Vec::new();
+            };
+            guard
+                .as_slice()
+                .iter()
+                .filter(|r| nmp_core::actor::has_role(r.role(), "write"))
+                .map(|r| r.url().to_string())
+                .collect()
+        });
+        projection.set_host_port(Arc::new(CommandSenderHostPort::new(
+            sender,
+            write_relays_reader,
+        )));
+    }
+
+    // Step 1: register the substrate-generic `MarmotActionModule` against
+    // the kernel's action registry. This is the SOLE host entry point
+    // for Marmot mutating ops (the legacy bespoke `nmp_marmot_dispatch`
+    // C-ABI symbol was deleted in ADR-0025 PR 3, 2026-05-23); hosts
+    // reach every Marmot write through
+    // `nmp_app_dispatch_action("nmp.marmot", action_json)`. The module
+    // carries a clone of the shared projection (#1940) so its `execute`
+    // body can mint a `MarmotProtocolCommand` reaching the live MLS state
+    // directly — no host-op handler slot. Registration is idempotent
+    // (replaces any prior entry under the same namespace), so a second
+    // `register_with_keys` (account switch) is safe. Takes `&mut NmpApp`
+    // and must run BEFORE any other `&NmpApp` borrow below.
+    //
+    // SAFETY: the caller guarantees `app` is a valid pointer from
+    // `nmp_app_new`. No other reference aliases `app` at this point — the
+    // `&*app` borrow on the next line is taken only after this exclusive
+    // borrow is dropped. Mirrors the `register_chirp_actions(unsafe { &mut
+    // *app })` pattern in `apps/chirp/nmp-app-chirp/src/ffi/register.rs`.
+    unsafe { &mut *app }
+        .register_action(MarmotActionModule::new(Arc::clone(&projection)))
+        .expect("duplicate registration: nmp-marmot MarmotActionModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error
+
+    // SAFETY: caller guarantees `app` is non-null and valid.
+    let app_ref = unsafe { &*app };
 
     // V-107 / ADR-0039: register the two Marmot push projections onto the
     // canonical snapshot seam. Both ride the SnapshotFrame on every tick
@@ -423,21 +470,13 @@ pub(crate) fn register_with_keys(
         );
     }
 
-    // Step 2: install the substrate-generic host-op handler against the
-    // same `MarmotProjection` the observer + parser registered above are
-    // tied to. The `HostOpCommand` (on the `Protocol` arm) clones this handler
-    // out of the slot whenever the `MarmotActionModule::execute` body emits the
-    // command — so every `nmp.marmot` dispatch reaches the SAME shared
-    // projection state that `MarmotHandle::dispatch` (the in-process
-    // Rust-native accessor) mutates and that the legacy bespoke
-    // `nmp_marmot_dispatch` symbol used to mutate pre-PR-3 (one source of
-    // truth; D4).
-    //
-    // A second `register_with_keys` (account switch, re-register) installs
-    // a fresh handler over the new projection; `set_host_op_handler`
-    // replaces the prior slot entry atomically.
-    app_ref.set_host_op_handler(Arc::new(MarmotMlsOpHandler::new(Arc::clone(&projection)))
-        as Arc<dyn nmp_core::substrate::HostOpHandler>);
+    // #1940: no host-op handler install. `MarmotActionModule` (registered
+    // above) carries the shared projection and mints a `MarmotProtocolCommand`
+    // per dispatch, reaching the SAME projection state that
+    // `MarmotHandle::dispatch` (the in-process Rust-native accessor) and the
+    // tap/deferred paths mutate (one source of truth; D4). A second
+    // `register_with_keys` (account switch) re-registers the module over the
+    // new projection (last-writer-wins) and installs a fresh host port.
 
     // D7: the gift-wrap inbox subscription (kind:1059 `#p` filter, deterministic
     // id, account scope) is protocol policy — it lives in `nmp-marmot`, not in

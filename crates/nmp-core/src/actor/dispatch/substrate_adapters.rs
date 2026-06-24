@@ -208,67 +208,83 @@ impl<'a> crate::substrate::ZapProfileLookup for ZapProfileLookupAdapter<'a> {
     }
 }
 
-/// ADR-0052 §D4 — bridge the actor's snapped per-app host-op handler into the
-/// substrate [`crate::substrate::HostOpHandlerAccess`] capability. Reaches no
-/// kernel/identity state.
-pub(super) struct HostOpHandlerAccessAdapter {
-    pub(super) handler: Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>>,
+/// #1940 — bridge the kernel's `local_write_relays` projection into the
+/// substrate [`crate::substrate::WriteRelayLookup`] capability. Marmot's typed
+/// protocol command consults this for `publish_key_package` / `create_group`
+/// relay resolution without naming `NmpApp`. Kernel read only; `try_borrow`
+/// keeps the adapter total under a re-entrant borrow.
+pub(super) struct WriteRelayLookupAdapter<'a> {
+    pub(super) kernel: &'a std::cell::RefCell<&'a mut Kernel>,
 }
 
-unsafe impl Send for HostOpHandlerAccessAdapter {}
-unsafe impl Sync for HostOpHandlerAccessAdapter {}
+unsafe impl<'a> Send for WriteRelayLookupAdapter<'a> {}
+unsafe impl<'a> Sync for WriteRelayLookupAdapter<'a> {}
 
-impl crate::substrate::HostOpHandlerAccess for HostOpHandlerAccessAdapter {
-    fn current_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
-        self.handler.clone()
+impl<'a> crate::substrate::WriteRelayLookup for WriteRelayLookupAdapter<'a> {
+    fn write_relay_urls(&self) -> Vec<String> {
+        self.kernel
+            .try_borrow()
+            .ok()
+            .and_then(|k| {
+                k.local_write_relays_handle()
+                    .lock()
+                    .ok()
+                    .map(|guard| guard.as_slice().to_vec())
+            })
+            .unwrap_or_default()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    //! Regression guard for #1364 (K2 rung-5.4 regression #1356).
+    //! Regression guard for #1364 (K2 rung-5.4 regression #1356), re-expressed
+    //! against a generic `ProtocolCommand` after #1940 deleted the
+    //! `HostOpCommand`/`HostOpHandler` seam.
     //!
-    //! The whole-body `catch_unwind` wrapping a `HostOpCommand` at the dispatch
-    //! arm must NOT drop the `Requested` action-stage write. Before #1363
-    //! deleted the long-lived `with_kernel` exclusive borrow, the
+    //! The whole-body `catch_unwind` wrapping a `ProtocolCommand` at the
+    //! dispatch arm must NOT drop the `Requested` action-stage write. Before
+    //! #1363 deleted the long-lived `with_kernel` exclusive borrow, the
     //! `ActionStageTrackerAdapter::record_requested` `try_borrow_mut` failed
     //! (the dispatch arm still held the `&mut Kernel`) and the write was
-    //! silently dropped — a Marmot/MLS *pending* host op then had NO
-    //! `action_stages` entry until its async continuation fired, so the host
-    //! could not tell "pending, awaiting KP fetch" from "silently dropped".
+    //! silently dropped — a *pending* command (the Marmot KP-gated path) then
+    //! had NO `action_stages` entry until its async continuation fired, so the
+    //! host could not tell "pending, awaiting continuation" from "dropped".
     //!
     //! This test exercises the REAL `ActionStageTrackerAdapter` against a REAL
-    //! kernel through the REAL `HostOpCommand::run`, with a handler that returns
-    //! `{"pending":true}` (the Marmot KP-gated path). It asserts the kernel's
-    //! `action_stages` projection carries a `Requested` entry — the durable
-    //! oracle that the panic-guarded host-op path records its Requested stage
-    //! like every other action path.
+    //! kernel through a tiny pending `ProtocolCommand` that records `Requested`
+    //! and then defers (records no terminal) — the exact shape the Marmot
+    //! `MarmotProtocolCommand` takes on a KP-gated `{"pending":true}` op. It
+    //! asserts the kernel's `action_stages` projection carries a `Requested`
+    //! entry — the durable oracle that the panic-guarded command path records
+    //! its Requested stage like every other action path.
 
     use crate::actor::ActorCommand;
     use crate::kernel::Kernel;
     use crate::relay::DEFAULT_VISIBLE_LIMIT;
     use crate::substrate::{
-        host_op_command, EmptyDmInboxRelayLookup, HostOpHandler, HostOpHandlerAccess,
-        NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup,
-        NoopWalletKernelAccess, NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext,
-        ProtocolCommandContextParts,
+        EmptyDmInboxRelayLookup, NoopErrorSurface, NoopKernelClock, NoopLocalSignerAccess,
+        NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopWriteRelayLookup,
+        NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts,
+        ProtocolCommandError,
     };
     use std::cell::RefCell;
-    use std::sync::{Arc, Mutex};
 
-    /// Handler mirroring the Marmot KP-gated MLS op: it defers completion, so
-    /// only the `Requested` stage is written synchronously.
-    struct PendingHandler;
-    impl HostOpHandler for PendingHandler {
-        fn handle(&self, _: &str, _: &str) -> serde_json::Value {
-            serde_json::json!({ "pending": true })
-        }
+    /// A tiny pending `ProtocolCommand` mirroring the Marmot KP-gated path: it
+    /// records `Requested` and then defers (no terminal verdict written here).
+    #[derive(Debug)]
+    struct PendingCommand {
+        correlation_id: String,
     }
 
-    struct SlotAccess(Arc<Mutex<Option<Arc<dyn HostOpHandler>>>>);
-    impl HostOpHandlerAccess for SlotAccess {
-        fn current_handler(&self) -> Option<Arc<dyn HostOpHandler>> {
-            self.0.lock().ok().and_then(|g| g.as_ref().cloned())
+    impl ProtocolCommand for PendingCommand {
+        fn run(
+            self: Box<Self>,
+            ctx: &mut ProtocolCommandContext<'_>,
+        ) -> Result<(), ProtocolCommandError> {
+            ctx.record_action_stage_requested(&self.correlation_id);
+            // Deferred: no terminal verdict recorded (the `{"pending":true}`
+            // branch of `MarmotProtocolCommand::run`).
+            Ok(())
         }
     }
 
@@ -287,17 +303,12 @@ mod tests {
     }
 
     #[test]
-    fn pending_host_op_records_requested_stage_through_real_adapter() {
+    fn pending_command_records_requested_stage_through_real_adapter() {
         // A real kernel, wrapped in the SAME `RefCell<&mut Kernel>` shape the
         // dispatch arm builds, so the adapter's `try_borrow_mut` is exercised
         // exactly as in production.
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let correlation_id = "corr-marmot-pending";
-
-        // Install the pending handler in a real slot accessor.
-        let slot = crate::substrate::new_host_op_handler_slot();
-        *slot.lock().unwrap() = Some(Arc::new(PendingHandler) as Arc<dyn HostOpHandler>);
-        let access = SlotAccess(slot);
 
         {
             let kernel_cell = RefCell::new(&mut kernel);
@@ -305,7 +316,7 @@ mod tests {
                 kernel: &kernel_cell,
             };
 
-            // Noop surfaces for every capability the host op does not touch.
+            // Noop surfaces for every capability the command does not touch.
             static CLOCK: NoopKernelClock = NoopKernelClock;
             static SIGNERS: NoopLocalSignerAccess = NoopLocalSignerAccess;
             static ERRORS: NoopErrorSurface = NoopErrorSurface;
@@ -313,11 +324,12 @@ mod tests {
             static WALLET: NoopWalletKernelAccess = NoopWalletKernelAccess;
             static ZAP: NoopZapProfileLookup = NoopZapProfileLookup;
             static DMS: EmptyDmInboxRelayLookup = EmptyDmInboxRelayLookup;
+            static WRITE_RELAYS: NoopWriteRelayLookup = NoopWriteRelayLookup;
 
             let (tx, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
             let command_sender = crate::actor::CommandSender::new(tx);
-            // The host op's terminal verdict re-enters via `send`; a pending op
-            // sends nothing, but the slot must exist.
+            // The terminal verdict would re-enter via `send`; a pending command
+            // sends nothing.
             let send: &dyn Fn(ActorCommand) = &|_c: ActorCommand| {};
 
             let mut ctx = ProtocolCommandContext::new(ProtocolCommandContextParts {
@@ -329,22 +341,24 @@ mod tests {
                 errors: &ERRORS,
                 stages: &stages,
                 recipients: &RECIPIENTS,
-                host_op_handler: &access,
                 wallet_kernel: &WALLET,
                 zap_profiles: &ZAP,
+                write_relays: &WRITE_RELAYS,
             });
 
-            Box::new(host_op_command("{}".into(), correlation_id.into()))
-                .run(&mut ctx)
-                .expect("HostOpCommand::run never returns Err");
+            Box::new(PendingCommand {
+                correlation_id: correlation_id.to_string(),
+            })
+            .run(&mut ctx)
+            .expect("PendingCommand::run never returns Err");
         }
 
-        // ORACLE: a pending host op MUST leave a `Requested` action-stage entry
+        // ORACLE: a pending command MUST leave a `Requested` action-stage entry
         // so the host can tell "pending, awaiting continuation" from "dropped".
         let history = stage_history(&mut kernel, correlation_id);
         let arr = history
             .as_array()
-            .expect("pending host op must have an action_stages history entry (#1364)");
+            .expect("pending command must have an action_stages history entry (#1364)");
         assert!(
             arr.iter().any(|e| {
                 e.get("stage")

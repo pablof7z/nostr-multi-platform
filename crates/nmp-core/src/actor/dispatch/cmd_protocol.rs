@@ -7,8 +7,8 @@ use crate::actor::tick::emit_now;
 use crate::relay::OutboundMessage;
 
 use super::substrate_adapters::{
-    ActionStageTrackerAdapter, ErrorSurfaceAdapter, HostOpHandlerAccessAdapter, KernelClockAdapter,
-    LocalSignerAccessAdapter, RecipientRelayLookupAdapter, WalletKernelAccessAdapter,
+    ActionStageTrackerAdapter, ErrorSurfaceAdapter, KernelClockAdapter, LocalSignerAccessAdapter,
+    RecipientRelayLookupAdapter, WalletKernelAccessAdapter, WriteRelayLookupAdapter,
     ZapProfileLookupAdapter,
 };
 use super::ActorContext;
@@ -76,14 +76,6 @@ pub(super) fn protocol(
     let recipients = RecipientRelayLookupAdapter {
         kernel: &kernel_cell,
     };
-    // ADR-0052 §D4 — per-app host-op handler accessor, so the
-    // `HostOpCommand` (which replaced the deleted `DispatchHostOp` arm)
-    // can clone the start-time configured handler at `run` time.
-    // Reaches no kernel/identity state, so it needs no `RefCell`
-    // borrow and is safe to read inside the whole-body catch_unwind.
-    let host_op_handler = HostOpHandlerAccessAdapter {
-        handler: ctx.config.host_op_handler.clone(),
-    };
     // ADR-0052 §D5 — narrow wallet kernel-mutation + zap-profile-read
     // adapters replace the deleted `kernel_mut()` / `lnurl_for_pubkey`
     // surfaces. Both borrow the SAME `kernel_cell` the read adapters
@@ -95,6 +87,10 @@ pub(super) fn protocol(
         kernel: &kernel_cell,
     };
     let zap_profiles = ZapProfileLookupAdapter {
+        kernel: &kernel_cell,
+    };
+    // #1940 — kernel write-relay projection bridge for Marmot's typed command.
+    let write_relays = WriteRelayLookupAdapter {
         kernel: &kernel_cell,
     };
 
@@ -145,13 +141,13 @@ pub(super) fn protocol(
                 errors: &errors,
                 stages: &stages,
                 recipients: &recipients,
-                host_op_handler: &host_op_handler,
                 // ADR-0052 §D5 — the narrow wallet kernel-mutation +
                 // zap-profile-read capabilities. A wallet/zap command
                 // reaches its needs through these; every other command
                 // ignores them (it holds the noop singleton's surface).
                 wallet_kernel: &wallet_kernel,
                 zap_profiles: &zap_profiles,
+                write_relays: &write_relays,
             },
         )
         .with_outbound(&mut outbound);
@@ -159,11 +155,12 @@ pub(super) fn protocol(
     }))
     .unwrap_or_else(|_| {
         // A panic in the command body is converted to the same
-        // observable surface as an `Err` return (logged below). For a
-        // host op this is belt-and-suspenders: `HostOpCommand` already
-        // catches a panicking handler internally and records a
-        // `RecordActionFailure`; this whole-body catch covers a panic
-        // in any OTHER part of any command's `run`.
+        // observable surface as an `Err` return (logged below). For the
+        // Marmot typed command this is belt-and-suspenders:
+        // `MarmotProtocolCommand::run` already wraps its SQLite/MDK-bound
+        // dispatch in `catch_unwind` and records a precise
+        // `RecordActionFailure` (#1940); this whole-body catch covers a
+        // panic in any OTHER part of any command's `run`.
         Err(crate::substrate::ProtocolCommandError::new(
             "ProtocolCommand panicked",
         ))
@@ -183,6 +180,7 @@ pub(super) fn protocol(
     // ADR-0052 §D5: `wallet_kernel` / `zap_profiles` also borrow
     // `kernel_cell`, so they too must drop before the `emit_now`
     // re-borrow.
+    drop(write_relays);
     drop(zap_profiles);
     drop(wallet_kernel);
     drop(recipients);

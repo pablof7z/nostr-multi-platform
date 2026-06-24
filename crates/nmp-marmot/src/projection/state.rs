@@ -64,13 +64,14 @@
 //!    array to bypass the cache entirely.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use mdk_core::prelude::group_types::GroupState;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
-use nmp_ffi::NmpApp;
 use nostr::{Event, JsonUtil, PublicKey, RelayUrl};
+
+use crate::projection::host_port::MarmotHostPort;
 
 use crate::projection::payload::{
     KeyPackageStatus, LastOpError, MarmotGroupRow, MarmotInitError, MarmotSnapshot,
@@ -109,10 +110,15 @@ pub(super) struct Inner {
     /// seeded from the `create_group` envelope + `Welcome::group_relays`.
     /// A MISS → explicit publish fails closed (documented limitation).
     group_relays: HashMap<String, Vec<RelayUrl>>,
-    /// The live `*mut NmpApp` the owning host Marmot handle retains. `null`
-    /// for the in-memory test projection (publish degrades to a silent
-    /// no-op there — the D6 fire-and-forget contract).
-    app: *mut NmpApp,
+    /// #1940 — the stored outbound-effect port used by the tap-driven ingest
+    /// and deferred-KP-retry paths (which run on the actor thread with no
+    /// `ProtocolCommandContext` in scope). `None` for the in-memory test
+    /// projection (publish / interest degrade to a silent no-op — the D6
+    /// fire-and-forget contract). Set once by the FFI register path via
+    /// [`MarmotProjection::set_host_port`]. The command path
+    /// (`MarmotProtocolCommand::run`) builds its own port from the context
+    /// instead of reading this slot.
+    host_port: Option<Arc<dyn MarmotHostPort + Send + Sync>>,
     /// #1651: the service-init failure surfaced in every snapshot, or `None`
     /// on a healthy registration. `Some(KeyringUnavailable)` when the projection
     /// was built over the in-memory mock credential store (formerly the V-62
@@ -153,20 +159,24 @@ pub struct MarmotProjection {
 
 // SAFETY: REQUIRED — `register_event_observer` casts
 // `Arc<MarmotProjection>` to `Arc<dyn KernelEventObserver>` (bounded
-// `Send + Sync`). The auto-derived `!Send`/`!Sync` comes only from
-// `Inner::app: *mut NmpApp`; every other field is already `Send + Sync`.
+// `Send + Sync`). The auto-derived `!Send`/`!Sync` now comes only from the
+// embedded `MarmotService` (MDK / openmls types that are not `Send + Sync`);
+// the #1940 removal of `Inner::app: *mut NmpApp` deleted the raw-pointer
+// source, and the replacement `host_port: Option<Arc<dyn MarmotHostPort>>`
+// is itself `Send + Sync`.
 // Soundness:
 //   * All cross-thread state access (kernel actor thread via
 //     `on_kernel_event` / ingest parser; Swift `@MainActor` via FFI ops)
-//     goes through the inner `Mutex<Inner>`. The `unsafe impl` only asserts
-//     the `*mut NmpApp` field does not invalidate that.
-//   * `app` is only ever READ (to forward fire-and-forget commands), never
-//     mutated, and cannot dangle: `nmp_app_free` (`NmpApp::Drop`) sends
-//     `Shutdown` + `join()`s the actor thread before freeing, and every
-//     reader runs INLINE on that thread — the join fences in-flight access.
+//     goes through the inner `Mutex<Inner>`, which serializes every read and
+//     write of the `MarmotService`. The `unsafe impl` only asserts that the
+//     Mutex makes that MDK access sound across threads.
+//   * The stored `host_port` forwards only fire-and-forget kernel commands
+//     down an mpsc `CommandSender` clone (or a `&ctx` on the command path);
+//     it holds no raw pointer and cannot dangle.
 // CALLER CONTRACT (upheld by `nmp-app-chirp`): `nmp_app_free` must not run
 // while a kernel callback reaching this projection is still executing; the
-// in-process Rust-trait registration path provides that fence via the join.
+// in-process Rust-trait registration path provides that fence via the actor
+// join (the `CommandSender` send is benign after shutdown — D6).
 unsafe impl Send for MarmotProjection {}
 unsafe impl Sync for MarmotProjection {}
 
@@ -174,9 +184,10 @@ impl MarmotProjection {
     /// Build the projection around an already-constructed [`MarmotService`].
     /// The FFI layer owns service construction (it must parse the signer
     /// seam key + resolve the app-support DB path) so this stays infallible.
-    /// `app` starts `null`; the FFI `register` path calls
-    /// [`MarmotProjection::set_app`] with the retained pointer. Tests that
-    /// build the projection directly leave it `null` → publish no-ops.
+    /// `host_port` starts `None`; the FFI `register` path calls
+    /// [`MarmotProjection::set_host_port`] with a `CommandSender`-backed port.
+    /// Tests that build the projection directly leave it `None` → tap/deferred
+    /// publish no-ops.
     ///
     /// `init_error` is `Some(MarmotInitError::KeyringUnavailable)` when the
     /// service was initialized with the in-memory mock credential store
@@ -191,7 +202,7 @@ impl MarmotProjection {
                 key_package_published_at: None,
                 key_package_d_tag: None,
                 group_relays: HashMap::new(),
-                app: std::ptr::null_mut(),
+                host_port: None,
                 init_error,
                 pending_ops: PendingOpsStore::new(),
                 last_op_error: None,
@@ -201,13 +212,15 @@ impl MarmotProjection {
         }
     }
 
-    /// Record the live `*mut NmpApp` so the dispatch ops can publish
-    /// internally. Called once by the host shell's Marmot register path
-    /// with the same pointer the handle retains for its lifetime. D6 —
-    /// poisoned mutex silently no-ops (publish then degrades to no-op).
-    pub fn set_app(&self, app: *mut NmpApp) {
+    /// Record the stored outbound-effect [`MarmotHostPort`] so the tap-driven
+    /// ingest + deferred-KP-retry paths can publish / enqueue interests / send
+    /// terminal verdicts without a `ProtocolCommandContext`. Called once by the
+    /// FFI register path with a `CommandSender`-backed port. D6 — poisoned
+    /// mutex silently no-ops (those paths then degrade to no-op).
+    #[cfg(feature = "ffi")]
+    pub(crate) fn set_host_port(&self, port: Arc<dyn MarmotHostPort + Send + Sync>) {
         if let Ok(mut inner) = self.inner.lock() {
-            inner.app = app;
+            inner.host_port = Some(port);
         }
     }
 
@@ -310,8 +323,14 @@ impl MarmotProjection {
         // edges (D8 — no timers, no polling). Snapshots fire on every
         // frame-producing actor tick, so a parked op whose KP never arrives
         // still expires within a tick of its 60 s deadline. Run the same
-        // `evict_expired_pending` path here via a transient `InnerHandle`.
-        InnerHandle { inner: &mut guard }.evict_expired_pending(now_secs);
+        // `evict_expired_pending` path here via a transient `InnerHandle`,
+        // routing terminal verdicts through the stored port (or a no-op when
+        // none is bound — the in-memory test projection).
+        let evict_port = guard
+            .host_port
+            .clone()
+            .unwrap_or_else(|| Arc::new(crate::projection::host_port::NoopMarmotHostPort));
+        InnerHandle { inner: &mut guard }.evict_expired_pending(now_secs, evict_port.as_ref());
         let inner = guard;
 
         let groups: Vec<MarmotGroupRow> = match inner.service.get_groups() {
@@ -416,8 +435,14 @@ impl<'a> InnerHandle<'a> {
     /// Seed / overwrite the relay-pinned relay list for a group. Called
     /// from `create_group` (envelope `relays`) and `accept_welcome` /
     /// gift-wrap ingest (`Welcome::group_relays`). Empty list is ignored
-    /// (keep any prior, more-specific entry).
-    pub(crate) fn cache_group_relays(&mut self, group_id_hex: String, relays: Vec<RelayUrl>) {
+    /// (keep any prior, more-specific entry). The per-group kind:445
+    /// subscribe interests are enqueued through the supplied `port`.
+    pub(crate) fn cache_group_relays(
+        &mut self,
+        group_id_hex: String,
+        relays: Vec<RelayUrl>,
+        port: &dyn MarmotHostPort,
+    ) {
         if relays.is_empty() {
             return;
         }
@@ -426,40 +451,19 @@ impl<'a> InnerHandle<'a> {
             .map(|relay| relay.to_string())
             .collect::<Vec<_>>();
         self.inner.group_relays.insert(group_id_hex.clone(), relays);
-        self.subscribe_group_messages(&group_id_hex, relay_urls);
+        for (identity, interest) in
+            crate::interest::group_message_registrations(&group_id_hex, relay_urls)
+        {
+            port.ensure_interest(identity, interest);
+        }
     }
 
-    /// Borrow the retained host `NmpApp` as `&NmpApp`, or `None` if no host
-    /// app is bound (the in-memory test projection sets `app` to null).
-    ///
-    /// This is the SOLE `unsafe` deref of the retained `*mut NmpApp` in
-    /// this crate. Every other call site (publish routing, write-relay
-    /// lookup, interest push, key-package fetch) routes through here, so
-    /// the soundness argument lives in ONE place and the publish-routing
-    /// modules (`projection::publish`, `publish_group_pinned`,
-    /// `publish_explicit`) are themselves `unsafe`-free.
-    ///
-    /// # SAFETY
-    ///
-    /// `inner.app` is the live `*mut NmpApp` retained by the host handle for
-    /// its lifetime (non-null only after `set_app`). See the `unsafe impl
-    /// Send/Sync` block at the top of this file for the full soundness
-    /// argument (the `Drop` → `Shutdown` + `join` fence).
-    pub(super) fn app(&self) -> Option<&NmpApp> {
-        if self.inner.app.is_null() {
-            return None;
-        }
-        // SAFETY: see this function's rustdoc.
-        Some(unsafe { &*self.inner.app })
-    }
-
-    fn subscribe_group_messages(&self, group_id_hex: &str, relay_urls: Vec<String>) {
-        let Some(app) = self.app() else {
-            return;
-        };
-        for (identity, interest) in crate::interest::group_message_registrations(group_id_hex, relay_urls) {
-            app.ensure_interest(identity, interest);
-        }
+    /// Borrow the stored outbound-effect [`MarmotHostPort`], or `None` for the
+    /// in-memory test projection (no port set). Used by the deferred-KP-retry
+    /// and tap paths, which run on the actor thread with no
+    /// `ProtocolCommandContext`.
+    pub(crate) fn host_port(&self) -> Option<Arc<dyn MarmotHostPort + Send + Sync>> {
+        self.inner.host_port.clone()
     }
 
     /// The cached relay-pinned relays for a group, or `&[]` on a miss
@@ -473,60 +477,25 @@ impl<'a> InnerHandle<'a> {
             .unwrap_or_default()
     }
 
-    /// Publish a signed event to the group's relay-pinned relays
-    /// (`Explicit`); a cache miss now fails closed instead of falling
-    /// through to the author outbox.
-    /// Used for kind:445 (group message / commit) and the kind:1059
-    /// gift-wrap inbox-routing approximation.
-    ///
-    /// This method contains no `unsafe` block. The pointer deref happens once
-    /// inside [`Self::app`]; the publish-routing call site is plain safe Rust.
-    pub(crate) fn publish_group_pinned(&self, group_id_hex: &str, event: &nostr::Event) {
-        let Some(app) = self.app() else {
-            return;
-        };
-        let relays = self.group_relays(group_id_hex);
-        crate::projection::publish::publish_to(app, event, &relays);
-    }
-
-    /// Publish a signed event to an EXPLICIT relay set (`Explicit`; empty
-    /// → fail closed). Used by `create_group` / `invite` while a borrowed
-    /// `PendingGroupChange` is still live (the relay-pinned cache is keyed
-    /// by group and the relays are already known from the envelope, so we
-    /// route directly without a `&mut self` cache read/write).
-    ///
-    /// `unsafe`-free for publish routing (see `publish_group_pinned`).
-    pub(crate) fn publish_explicit(&self, event: &nostr::Event, relays: &[RelayUrl]) {
-        let Some(app) = self.app() else {
-            return;
-        };
-        crate::projection::publish::publish_to(app, event, relays);
-    }
-
-    /// Read the user's current write-relay URLs from the shared kernel
-    /// relay-edit projection. Empty when no write relays are configured.
-    #[must_use]
-    pub(crate) fn write_relay_urls(&self) -> Vec<String> {
-        let Some(app) = self.app() else {
-            return Vec::new();
-        };
-        app.write_relay_urls()
-    }
-
-    /// Ask the kernel to fetch peer KeyPackage events for the given pubkeys.
+    /// Ask the kernel to fetch peer KeyPackage events for the given pubkeys
+    /// through the supplied `port`.
     ///
     /// This is Rust-owned retry/recovery policy: `create_group` / `invite`
     /// discover the missing key packages, enqueue the lookup interests, then
     /// return a pending result for the UI to render. Native does not decide
-    /// when to fetch or retry.
-    pub(crate) fn request_key_package_fetch(&self, pubkeys: &[PublicKey]) -> usize {
-        let Some(app) = self.app() else {
-            return 0;
-        };
+    /// when to fetch or retry. Returns the count of fetch interests enqueued.
+    pub(crate) fn request_key_package_fetch(
+        &self,
+        pubkeys: &[PublicKey],
+        port: &dyn MarmotHostPort,
+    ) -> usize {
         let mut sent = 0;
         for pk in pubkeys {
             let pk_hex = pk.to_hex();
-            app.ensure_interest(crate::interest::key_package_lookup_identity(&pk_hex), crate::interest::key_package_lookup_interest(&pk_hex));
+            port.ensure_interest(
+                crate::interest::key_package_lookup_identity(&pk_hex),
+                crate::interest::key_package_lookup_interest(&pk_hex),
+            );
             sent += 1;
         }
         sent

@@ -46,10 +46,11 @@ pub use command_error::ProtocolCommandError;
 #[path = "protocol/capabilities.rs"]
 mod capabilities;
 pub use capabilities::{
-    ActionStageTracker, DmInboxLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
-    LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess,
+    ActionStageTracker, DmInboxLookup, ErrorSurface, KernelClock,
+    LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
     NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess,
-    NoopZapProfileLookup, RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
+    NoopWriteRelayLookup, NoopZapProfileLookup, RecipientRelayLookup, WalletKernelAccess,
+    WriteRelayLookup, ZapProfileLookup,
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -75,12 +76,13 @@ pub struct ProtocolCommandContextParts<'a> {
     pub errors: &'a dyn ErrorSurface,
     pub stages: &'a dyn ActionStageTracker,
     pub recipients: &'a dyn RecipientRelayLookup,
-    /// ADR-0052 §D4 host-op handler; noop singleton for all other commands.
-    pub host_op_handler: &'a dyn HostOpHandlerAccess,
     /// ADR-0052 §D5 narrow wallet-mutation surface (NIP-47 only).
     pub wallet_kernel: &'a dyn WalletKernelAccess,
     /// ADR-0052 §D5 zap-only cached-profile read (NIP-57 only).
     pub zap_profiles: &'a dyn ZapProfileLookup,
+    /// #1940 — the user's NIP-65 write-relay set (Marmot's typed command only;
+    /// noop singleton for every other command).
+    pub write_relays: &'a dyn WriteRelayLookup,
 }
 
 /// Per-command runtime affordances handed to [`ProtocolCommand::run`].
@@ -107,14 +109,14 @@ pub struct ProtocolCommandContext<'a> {
     errors: &'a dyn ErrorSurface,
     stages: &'a dyn ActionStageTracker,
     recipients: &'a dyn RecipientRelayLookup,
-    /// ADR-0052 §D4 — per-app host-op handler accessor.
-    host_op_handler: &'a dyn HostOpHandlerAccess,
     /// ADR-0052 §D5 — narrow wallet kernel-mutation surface (replaced the
     /// deleted `kernel: Option<&mut Kernel>` escape hatch).
     wallet_kernel: &'a dyn WalletKernelAccess,
     /// ADR-0052 §D5 — zap-only cached-profile read (replaced the generic
     /// `lnurl_for_pubkey`).
     zap_profiles: &'a dyn ZapProfileLookup,
+    /// #1940 — the user's NIP-65 write-relay set (Marmot typed command).
+    write_relays: &'a dyn WriteRelayLookup,
     /// V-38: outbound-frame sink. The wallet runtime returns
     /// `Vec<OutboundMessage>` per command; the command body pushes them
     /// here so the actor's dispatch arm picks them up and routes through
@@ -143,9 +145,9 @@ impl<'a> ProtocolCommandContext<'a> {
             errors,
             stages,
             recipients,
-            host_op_handler,
             wallet_kernel,
             zap_profiles,
+            write_relays,
         } = parts;
         Self {
             send,
@@ -156,9 +158,9 @@ impl<'a> ProtocolCommandContext<'a> {
             errors,
             stages,
             recipients,
-            host_op_handler,
             wallet_kernel,
             zap_profiles,
+            write_relays,
             outbound: None,
         }
     }
@@ -188,9 +190,9 @@ impl<'a> ProtocolCommandContext<'a> {
         static ERRORS: NoopErrorSurface = NoopErrorSurface;
         static STAGES: NoopActionStageTracker = NoopActionStageTracker;
         static RECIPIENTS: NoopRecipientRelayLookup = NoopRecipientRelayLookup;
-        static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
         static WALLET: NoopWalletKernelAccess = NoopWalletKernelAccess;
         static ZAP: NoopZapProfileLookup = NoopZapProfileLookup;
+        static WRITE_RELAYS: NoopWriteRelayLookup = NoopWriteRelayLookup;
         let (command_sender, _rx) = std::sync::mpsc::channel::<crate::actor::ActorMail>();
         let command_sender = crate::actor::CommandSender::new(command_sender);
         Self::new(ProtocolCommandContextParts {
@@ -202,9 +204,9 @@ impl<'a> ProtocolCommandContext<'a> {
             errors: &ERRORS,
             stages: &STAGES,
             recipients: &RECIPIENTS,
-            host_op_handler: &HOST_OP,
             wallet_kernel: &WALLET,
             zap_profiles: &ZAP,
+            write_relays: &WRITE_RELAYS,
         })
     }
 
@@ -310,17 +312,6 @@ impl<'a> ProtocolCommandContext<'a> {
     #[must_use]
     pub fn recipients(&self) -> &dyn RecipientRelayLookup {
         self.recipients
-    }
-
-    /// ADR-0052 §D4 — clone the configured host-op handler (`None` when none
-    /// was installed before actor start). D15-wrapped: a panicking accessor
-    /// falls back to `None` (the genuinely-absent-handler
-    /// branch) rather than unwinding the calling `ProtocolCommand::run` frame.
-    #[must_use]
-    pub fn host_op_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
-        let h = self.host_op_handler;
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.current_handler()))
-            .unwrap_or(None)
     }
 
     // ── D15 catch_unwind shortcuts ──
@@ -511,6 +502,48 @@ impl<'a> ProtocolCommandContext<'a> {
 
     pub fn drop_interest_owner(&self, identity: crate::subs::SubIdentity) {
         self.send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)));
+    }
+
+    /// #1940 — D15-wrapped [`WriteRelayLookup::write_relay_urls`]. Returns the
+    /// user's NIP-65 write-relay URLs, or an empty `Vec` on a panicking adapter
+    /// (matches the "no relays configured" branch). Marmot's typed protocol
+    /// command consults this to resolve `publish_key_package` / `create_group`
+    /// relays when no explicit envelope relays are supplied.
+    #[must_use]
+    pub fn write_relay_urls(&self) -> Vec<String> {
+        let w = self.write_relays;
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| w.write_relay_urls()))
+            .unwrap_or_default()
+    }
+
+    /// #1940 — publish an ALREADY-SIGNED `nostr::Event` to an EXPLICIT relay
+    /// set, bypassing the NIP-65 outbox. Marmot's MLS-credential-signed
+    /// kind:445 / ephemeral-key kind:1059 gift-wrap / kind:30443 key-package
+    /// events are signed by a non-account key, so kernel-side signing cannot
+    /// reproduce them — they must be published verbatim. Builds a
+    /// [`PublishCommand::SignedEvent`] (target `Explicit`) and re-enters the
+    /// actor loop via [`send`](Self::send) (the SAME command the deleted
+    /// `NmpApp::publish_signed_explicit` FFI accessor sent). The kernel
+    /// fails closed on an empty `Explicit` relay set.
+    pub fn publish_signed_explicit(
+        &self,
+        event: &nostr::Event,
+        relays: Vec<crate::publish::RelayUrl>,
+    ) {
+        let raw = crate::store::RawEvent {
+            id: event.id.to_hex(),
+            pubkey: event.pubkey.to_hex(),
+            created_at: event.created_at.as_secs(),
+            kind: u32::from(event.kind.as_u16()),
+            tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+            content: event.content.clone(),
+            sig: event.sig.to_string(),
+        };
+        self.send(ActorCommand::Publish(PublishCommand::SignedEvent {
+            raw,
+            target: crate::publish::PublishTarget::Explicit { relays },
+            correlation_id: None,
+        }));
     }
 }
 

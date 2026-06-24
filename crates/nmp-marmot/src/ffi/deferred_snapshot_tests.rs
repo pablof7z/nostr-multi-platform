@@ -6,6 +6,7 @@
 //! expired op populates `last_op_error` with the real failure context and a
 //! later success clears it.
 
+use crate::projection::host_port::NoopMarmotHostPort;
 use crate::projection::ops::{self, ingest_signed_event_core};
 use crate::projection::pending::PENDING_OP_EXPIRY_SECS;
 use crate::projection::state::MarmotProjection;
@@ -85,7 +86,7 @@ fn pending_op_appears_in_snapshot_and_clears_after_retry() {
 
     // Ingest Bob's KP → retry fires → pending_ops must clear.
     let bob_kp = make_kp_event(&bob_keys);
-    proj.with_inner(|h| ingest_signed_event_core(h, &bob_kp, 1_005))
+    proj.with_inner(|h| ingest_signed_event_core(h, &bob_kp, 1_005, &NoopMarmotHostPort))
         .unwrap()
         .unwrap();
 

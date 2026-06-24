@@ -92,7 +92,6 @@ fn snapshot_carries_nip46_onboarding_projection() {
             storage_path: Arc::new(std::sync::Mutex::new(None)),
             coverage_hook: Arc::new(std::sync::Mutex::new(None)),
             req_frame_interceptor: crate::substrate::new_req_frame_interceptor_slot(),
-            host_op_handler: crate::substrate::new_host_op_handler_slot(),
             relay_text_interceptor: crate::substrate::new_relay_text_interceptor_slot(),
             relay_connected_hook: crate::substrate::new_relay_connected_hook_slot(),
             ingest_dispatcher: Arc::new(std::sync::RwLock::new(

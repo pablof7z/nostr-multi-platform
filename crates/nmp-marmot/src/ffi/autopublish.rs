@@ -35,7 +35,16 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
     // `correlation_id` is `None`: this auto-publish path has no action-registry
     // correlation, and publish_key_package is never KP-gated, so the deferred
     // path is irrelevant here.
-    let _ = handle
-        .projection
-        .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs(), None));
+    //
+    // #1940 — outbound publish routes through the stored `CommandSender`-backed
+    // port (the same port the tap / deferred paths use); a no-op port (no actor
+    // channel) degrades to a silent no-op. `now_secs()` is the wall-clock
+    // register-tail read (documented non-production path; the production COMMAND
+    // path uses `ctx.now_secs()` — the #1940 D9 fix).
+    let _ = handle.projection.with_inner(|h| {
+        let port = h.host_port().unwrap_or_else(|| {
+            std::sync::Arc::new(crate::projection::host_port::NoopMarmotHostPort)
+        });
+        crate::projection::ops::dispatch(h, &action, now_secs(), None, port.as_ref());
+    });
 }

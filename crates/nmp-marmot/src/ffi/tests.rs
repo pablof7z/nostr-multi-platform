@@ -246,7 +246,12 @@ fn create_group_partial_key_package_set_reports_only_missing_invitees() {
     assert_eq!(r["ok"], json!(false));
     assert_eq!(r["error"], json!("key_package_unavailable"));
     assert_eq!(r["needs"], json!([carol_keys.public_key().to_hex()]));
-    assert_eq!(r["fetch_requested"], json!(0));
+    // #1940 — `fetch_requested` now counts the fetch interests requested for
+    // the missing invitees (one: carol), independent of whether the port's
+    // channel is live (the count is the number of pubkeys, not the number of
+    // delivered interests). Previously the null-`NmpApp` short-circuit returned
+    // 0; the typed port path reports the accurate request count.
+    assert_eq!(r["fetch_requested"], json!(1));
 }
 
 #[test]
@@ -302,7 +307,9 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
     assert_eq!(r["ok"], json!(false));
     assert_eq!(r["error"], json!("key_package_unavailable"));
     assert_eq!(r["needs"], json!([carol_keys.public_key().to_hex()]));
-    assert_eq!(r["fetch_requested"], json!(0));
+    // #1940 — see `create_group_partial_key_package_set_*`: the count reflects
+    // the requested fetch interests (one: carol), not the null-app short-circuit.
+    assert_eq!(r["fetch_requested"], json!(1));
 }
 
 #[test]
@@ -398,7 +405,14 @@ fn ingest_parser_kind_1059_welcome_reaches_service_and_snapshot() {
     // key package; a separate service would not — KP state is per-storage)
     // is idempotent, so re-ingesting succeeds and the row is still present.
     let r = bob_proj
-        .with_inner(|h| ingest_signed_event_core(h, &gift, 3))
+        .with_inner(|h| {
+            ingest_signed_event_core(
+                h,
+                &gift,
+                3,
+                &crate::projection::host_port::NoopMarmotHostPort,
+            )
+        })
         .unwrap();
     let r = r.expect("direct core re-ingest should succeed");
     assert_eq!(r.as_ref().and_then(|v| v.get("kind")), Some(&json!(1059)));
@@ -514,37 +528,60 @@ fn ingest_parser_kind_1059_coexistence_both_parsers_fire() {
     );
 }
 
-// ── ADR-0025 retirement / dispatch_action → MarmotMlsOpHandler ─────────
+// ── #1940 / dispatch_action → MarmotProtocolCommand ─────────────────────
 //
 // The substrate-generic Marmot dispatch seam (the SOLE host entry point
 // after ADR-0025 PR 3, 2026-05-23, deleted the legacy bespoke
-// `nmp_marmot_dispatch` C-ABI symbol). The proof points:
+// `nmp_marmot_dispatch` C-ABI symbol). #1940 collapsed the host-op JSON
+// bridge: `MarmotActionModule` now carries the shared projection and mints a
+// typed `MarmotProtocolCommand` (no `MarmotMlsOpHandler` / host-op slot). The
+// proof points:
 //
-//   1. `MarmotActionModule` registered against `NmpApp::register_action`
-//      and `MarmotMlsOpHandler` installed via `NmpApp::set_host_op_handler`
-//      are reachable through the kernel's `dispatch_action` path: a
-//      `nmp_app_dispatch_action("nmp.marmot", action_json)` call routes
-//      to the same `ops::dispatch` handler the legacy bespoke symbol
-//      used to reach (and that `MarmotHandle::dispatch` — the surviving
-//      Rust-native in-process accessor — still reaches today).
+//   1. `MarmotActionModule::new(projection)` registered against
+//      `NmpApp::register_action` is reachable through the kernel's
+//      `dispatch_action` path: a `nmp_app_dispatch_action("nmp.marmot",
+//      action_json)` call routes to the same `ops::dispatch` handler the
+//      Rust-native `MarmotHandle::dispatch` accessor reaches.
 //   2. Both the host (generic) seam and the in-process Rust-native seam
 //      (`MarmotHandle::dispatch` / direct `ops::dispatch`) share ONE
 //      `MarmotProjection` — a dispatch through the generic path mutates
 //      state visible to a subsequent read through the Rust-native path.
-//      This is the property the ADR-0025 PR 3 deletion relied on, and the
-//      property a future second Marmot host (post-Chirp) must continue to
-//      satisfy.
 
 use crate::projection::action::{MarmotActionModule, MARMOT_ACTION_NAMESPACE};
-use crate::projection::handler::MarmotMlsOpHandler;
 
-/// End-to-end PROOF of the dispatch_action → MarmotMlsOpHandler path.
+/// Wire a fresh `NmpApp` the way `register_with_keys` does for the
+/// dispatch_action seam (#1940): register the projection-carrying
+/// `MarmotActionModule` and install the stored `CommandSender`-backed host
+/// port. No host-op handler (deleted).
+fn wire_marmot_dispatch(app: *mut nmp_ffi::NmpApp, proj: &Arc<MarmotProjection>) {
+    use crate::projection::host_port::CommandSenderHostPort;
+    // SAFETY: caller passes a valid app from nmp_app_new.
+    let app_mut = unsafe { &mut *app };
+    let _ = app_mut.register_action(MarmotActionModule::new(Arc::clone(proj)));
+    let app_ref = unsafe { &*app };
+    let sender = app_ref.actor_sender();
+    let write_relays_slot = app_ref.configured_relays_handle();
+    let reader: Box<dyn Fn() -> Vec<String> + Send + Sync> = Box::new(move || {
+        let Ok(guard) = write_relays_slot.lock() else {
+            return Vec::new();
+        };
+        guard
+            .as_slice()
+            .iter()
+            .filter(|r| nmp_core::actor::has_role(r.role(), "write"))
+            .map(|r| r.url().to_string())
+            .collect()
+    });
+    proj.set_host_port(Arc::new(CommandSenderHostPort::new(sender, reader)));
+}
+
+/// End-to-end PROOF of the dispatch_action → MarmotProtocolCommand path.
 ///
 /// Builds the EXACT wiring `register_with_keys` does (minus the C-ABI
 /// shell) directly on a fresh `NmpApp`:
 ///
-/// * register `MarmotActionModule` against the action registry;
-/// * install `MarmotMlsOpHandler::new(projection)` into the MLS-op slot.
+/// * register `MarmotActionModule::new(projection)` against the action
+///   registry (the module mints a typed `MarmotProtocolCommand`).
 ///
 /// Then dispatches a typed Marmot action JSON body through
 /// `nmp_app_dispatch_action("nmp.marmot", action_json)` and asserts:
@@ -565,15 +602,9 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), None));
 
     let app = nmp_ffi::nmp_app_new();
-    // SAFETY: nmp_app_new never returns null; pointer is valid until nmp_app_free.
-    let app_mut = unsafe { &mut *app };
-
-    // The two-line wiring `register_with_keys` performs for the
-    // dispatch_action seam:
-    let _ = app_mut.register_action(MarmotActionModule);
-    let handler = Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj)))
-        as Arc<dyn nmp_core::substrate::HostOpHandler>;
-    app_mut.set_host_op_handler(handler);
+    // The wiring `register_with_keys` performs for the dispatch_action seam
+    // (#1940 — projection-carrying module + stored host port; no handler).
+    wire_marmot_dispatch(app, &proj);
     nmp_ffi::nmp_app_start(app, 256, 4);
 
     // Dispatch the typed action JSON through the generic seam.
@@ -618,9 +649,8 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     assert!(
         published,
         "dispatch_action(nmp.marmot, publish_key_package) must route through \
-         MarmotMlsOpHandler and mutate the projection state visible to snapshot \
-         (the SAME state MarmotHandle::dispatch mutates — i.e. the SAME state \
-         the legacy bespoke nmp_marmot_dispatch symbol used to mutate, pre-PR-3)"
+         the typed MarmotProtocolCommand and mutate the projection state visible \
+         to snapshot (the SAME state MarmotHandle::dispatch mutates)"
     );
 
     nmp_ffi::nmp_app_free(app);
@@ -650,12 +680,7 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), None));
 
     let app = nmp_ffi::nmp_app_new();
-    // SAFETY: nmp_app_new never returns null.
-    let app_mut = unsafe { &mut *app };
-    let _ = app_mut.register_action(MarmotActionModule);
-    let handler = Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj)))
-        as Arc<dyn nmp_core::substrate::HostOpHandler>;
-    app_mut.set_host_op_handler(handler);
+    wire_marmot_dispatch(app, &proj);
     nmp_ffi::nmp_app_start(app, 256, 4);
 
     // Generic seam: create the group via dispatch_action.

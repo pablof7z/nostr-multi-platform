@@ -45,10 +45,11 @@
 //!    `CreateGroup`, `Invite`, `Send`, `Leave`, `Remove`, etc.) are dispatched
 //!    through the substrate-generic [`projection::action::MarmotActionModule`]
 //!    registered under the `"nmp.marmot"` namespace — the host calls
-//!    `nmp_app_dispatch_action("nmp.marmot", action_json)` and the
-//!    [`projection::handler::MarmotMlsOpHandler`] installed via
-//!    `NmpApp::set_host_op_handler` runs the op against the live
-//!    `MarmotProjection`. The legacy bespoke `nmp_marmot_dispatch` C symbol
+//!    `nmp_app_dispatch_action("nmp.marmot", action_json)`; the module mints a
+//!    typed [`projection::command::MarmotProtocolCommand`] (#1940 — the
+//!    `HostOpHandler` JSON bridge collapsed into one typed command) that runs
+//!    the op against the live `MarmotProjection` it captured at registration.
+//!    The legacy bespoke `nmp_marmot_dispatch` C symbol
 //!    (ADR-0025) was DELETED in PR 3 (2026-05-23); the ADR-0025 *write-path*
 //!    exception is retired (the read/lifecycle cluster + `mls_local_nsec` slot
 //!    exception remains in force). In-process Rust callers that need the synchronous

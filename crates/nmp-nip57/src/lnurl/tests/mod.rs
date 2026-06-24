@@ -25,7 +25,7 @@
 use super::*;
 use nmp_core::substrate::{
     ActionStageTracker, EmptyDmInboxRelayLookup, KernelClock, LocalSignerAccess, NoopErrorSurface,
-    NoopHostOpHandlerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopZapProfileLookup,
+    NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopZapProfileLookup,
     ProtocolCommandContextParts, RecipientRelayLookup,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
@@ -163,9 +163,10 @@ fn ctx_with_sender<'a>(
 ) -> ProtocolCommandContext<'a> {
     static EMPTY_DM: EmptyDmInboxRelayLookup = EmptyDmInboxRelayLookup;
     static ERRORS: NoopErrorSurface = NoopErrorSurface;
-    static HOST_OP: NoopHostOpHandlerAccess = NoopHostOpHandlerAccess;
     static WALLET: NoopWalletKernelAccess = NoopWalletKernelAccess;
     static ZAP: NoopZapProfileLookup = NoopZapProfileLookup;
+    static WRITE_RELAYS: nmp_core::substrate::NoopWriteRelayLookup =
+        nmp_core::substrate::NoopWriteRelayLookup;
     ProtocolCommandContext::new(ProtocolCommandContextParts {
         send,
         command_sender,
@@ -175,9 +176,9 @@ fn ctx_with_sender<'a>(
         errors: &ERRORS,
         stages,
         recipients,
-        host_op_handler: &HOST_OP,
         wallet_kernel: &WALLET,
         zap_profiles: &ZAP,
+        write_relays: &WRITE_RELAYS,
     })
 }
 

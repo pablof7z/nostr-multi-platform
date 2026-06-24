@@ -47,8 +47,6 @@ mod capability;
 mod contacts_lookup;
 mod dm_inbox_relays;
 mod empty_routing;
-mod host_op;
-mod host_op_handler;
 mod identity;
 mod ingest;
 mod keyring;
@@ -120,7 +118,6 @@ pub use contacts_lookup::{
 #[cfg(any(test, feature = "test-support"))]
 pub use contacts_lookup::{TestContactsCache, TestKind3Parser};
 
-pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
 pub use ingest::{EventIngestDispatcher, IngestParser};
 pub use keyring::{
     KeyringCapability, KeyringIdentityWiring, KeyringRequest, KeyringResult, KeyringStatus,
@@ -129,15 +126,15 @@ pub use keyring::{
 pub use nmp_store::{DomainMigration, MigrationTx};
 pub use content_parser::{ContentParser, NoopContentParser};
 pub use placeholder::{picture_placeholder, Placeholder};
-pub use host_op::{host_op_command, HostOpCommand};
 pub use protocol::{
     build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
     build_record_action_failure, build_record_action_success,
-    ActionStageTracker, DmInboxLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
-    LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess,
+    ActionStageTracker, DmInboxLookup, ErrorSurface, KernelClock,
+    LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface,
     NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess,
-    NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts,
-    ProtocolCommandError, RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
+    NoopWriteRelayLookup, NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext,
+    ProtocolCommandContextParts, ProtocolCommandError, RecipientRelayLookup, WalletKernelAccess,
+    WriteRelayLookup, ZapProfileLookup,
 };
 pub use external_event_sink::{
     dispatcher::{ExternalEventSinkDispatcher, ExternalEventSinkDispatcherSlot,
