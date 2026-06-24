@@ -26,6 +26,7 @@ use crate::substrate::{ActionContext, ActionId, ActionRejection};
 
 impl ActionRegistry {
     /// Sorted namespaces currently registered in this action registry.
+    #[cfg(any(test, feature = "test-support"))]
     #[must_use]
     pub fn action_namespaces(&self) -> Vec<String> {
         let mut out: Vec<String> = self.modules.keys().cloned().collect();
