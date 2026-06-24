@@ -95,6 +95,26 @@ impl KernelReducer {
         }
     }
 
+    /// Build a passive pre-start snapshot through the normal kernel snapshot
+    /// encoder.
+    ///
+    /// Native FFI registers update callbacks before the actor exists. This
+    /// helper gives that passive state a kernel-authored frame anyway: it binds
+    /// the same queue-depth diagnostic handle the actor will later bind, applies
+    /// an injected test/replay clock when present, and then delegates to
+    /// [`Kernel::make_update`] through [`Self::make_update_frame`].
+    pub fn passive_snapshot_frame(
+        clock: Option<std::sync::Arc<dyn crate::Clock>>,
+        queue_depth: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    ) -> crate::UpdateFrameBytes {
+        let mut reducer = Self::new();
+        if let Some(clock) = clock {
+            reducer.kernel.set_clock(clock);
+        }
+        reducer.kernel.set_queue_depth_handle(queue_depth);
+        reducer.make_update_frame(false)
+    }
+
     /// Reduce one [`KernelAction`] against the encapsulated kernel, returning
     /// the [`KernelUpdate`] the host app should observe.
     ///
@@ -102,6 +122,24 @@ impl KernelReducer {
     /// funnels its typed error into [`KernelUpdate::UriRejected`].
     pub fn reduce(&mut self, action: KernelAction) -> KernelUpdate {
         dispatch_kernel_action(&mut self.kernel, action)
+    }
+
+    /// Current wall-clock milliseconds via the reducer-owned kernel clock.
+    #[must_use]
+    pub fn now_ms(&self) -> u64 {
+        self.kernel.now_ms()
+    }
+
+    /// Current wall-clock seconds via the reducer-owned kernel clock.
+    #[must_use]
+    pub fn now_secs(&self) -> u64 {
+        self.kernel.now_secs()
+    }
+
+    /// Test-support clock injection for non-actor runtimes such as `nmp-wasm`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_clock_for_test(&mut self, clock: std::sync::Arc<dyn crate::Clock>) {
+        self.kernel.set_clock(clock);
     }
 
     // ─── V-01 Stage 3 relay-lifecycle surface ────────────────────────────────
@@ -320,8 +358,10 @@ impl KernelReducer {
     /// Read the active-account pubkey the kernel currently holds (lowercase
     /// canonical hex), or `None` if no active account is set.
     ///
-    /// Wasm-side accessors (e.g. `nmp-wasm`'s test helpers) use this to
-    /// verify that `set_active_account` stored the canonicalised form.
+    /// Bounded reducer helper: wasm uses this to fail closed before building
+    /// write/sign requests and tests use it to verify canonicalization. It is
+    /// not a projection substitute and does not expose account lists or signer
+    /// roster state.
     #[must_use]
     pub fn active_account_pubkey(&self) -> Option<String> {
         self.kernel.active_account_pubkey().map(|s| s.to_string())
@@ -334,11 +374,11 @@ impl KernelReducer {
     /// carrying `publishes` and `subscriptions` arrays with per-URL
     /// `lanes[]` attribution.
     ///
-    /// Wasm-friendly read seam — the `nmp-wasm` runtime exposes this to JS
+    /// Bounded diagnostics seam — the `nmp-wasm` runtime exposes this to JS
     /// hosts (`NmpWasmRuntime::recent_routing_decisions`) so the web Chirp
-    /// shell can render the same routing inspector iOS gets via the
-    /// `nmp_app_recent_routing_decisions` FFI symbol. Native callers reach
-    /// the projection directly through [`crate::Kernel::routing_trace`].
+    /// shell can render the same routing inspector iOS gets through the
+    /// unified debug-info FFI symbol. Native callers reach the same
+    /// kernel-authored projection handle directly.
     ///
     /// D6 — total: the projection always exists (`Kernel::new` constructs
     /// it); a serialisation hiccup falls back to an empty-rings document.

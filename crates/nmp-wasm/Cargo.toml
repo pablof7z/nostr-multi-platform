@@ -34,6 +34,7 @@ serde_json = { workspace = true }
 wasm-bindgen = "0.2.121"
 
 [dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"], default-features = false }
 # W1 — headless wasm boot test (`tests/wasm_boot.rs`). Version must match the
 # `wasm-bindgen` pin above so the test binary's abi token matches the CLI.
 wasm-bindgen-test = "0.3"
@@ -43,7 +44,7 @@ wasm-bindgen-test = "0.3"
 # of an opaque `RuntimeError: unreachable` swallowed by the worker harness.
 # Net-new to Cargo.lock (was not a transitive dep before).
 console_error_panic_hook = "0.1"
-# `js_sys::Function` (snapshot callback slot) + `js_sys::Promise`/`Date`
+# `js_sys::Function` (snapshot callback slot) + `js_sys::Promise`
 # (used by the wasm-bindgen entrypoint in lib.rs).
 js-sys = "0.3.98"
 # Step 8 phase C moved `BrowserRelayDriver` + its `web_sys::WebSocket`
