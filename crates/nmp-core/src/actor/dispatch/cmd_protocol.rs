@@ -82,7 +82,7 @@ pub(super) fn protocol(
     // Reaches no kernel/identity state, so it needs no `RefCell`
     // borrow and is safe to read inside the whole-body catch_unwind.
     let host_op_handler = HostOpHandlerAccessAdapter {
-        handler: ports.config.host_op_handler.clone(),
+        handler: ports.host_op_handler.clone(),
     };
     // ADR-0052 §D5 + #1927 — single unified wallet/zap adapter
     // (`KernelWalletAccess::borrowed`) replaces the deleted `kernel_mut()` /
@@ -193,6 +193,11 @@ pub(super) fn protocol(
     // Emit promptly so the next snapshot tick carries the visible
     // effect, mirroring the legacy `FetchLnurlInvoice` and
     // `SendGiftWrappedDm` arms' `emit_now` precedents.
-    emit_now(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
+    emit_now(
+        ports.kernel,
+        ports.running,
+        ports.update_tx,
+        ports.last_emit,
+    );
     Some(outbound)
 }

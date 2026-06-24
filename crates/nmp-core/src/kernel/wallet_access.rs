@@ -61,7 +61,10 @@ fn with_kernel_mut(cell: &RefCell<&mut Kernel>, what: &str, f: impl FnOnce(&mut 
         Ok(mut k) => f(&mut k),
         Err(_) => {
             debug_assert!(false, "wallet kernel borrow contended during {what}");
-            tracing::error!(op = what, "wallet kernel mutation dropped: borrow contended");
+            tracing::error!(
+                op = what,
+                "wallet kernel mutation dropped: borrow contended"
+            );
         }
     }
 }
@@ -97,16 +100,6 @@ impl<'a> KernelWalletAccess<'a> {
         }
     }
 }
-
-// SAFETY: the adapter is constructed and dropped on the actor thread; the
-// `&mut Kernel` it wraps never crosses a thread boundary. The `Send + Sync`
-// claim is required only because the substrate capability traits carry the
-// bound (`dyn WalletKernelAccess` / `dyn ZapProfileLookup` live behind `&dyn`
-// in `ProtocolCommandContext`). This is the single audited unsafe impl for the
-// wallet/zap surface (#1927 collapsed the two duplicate dispatch adapters into
-// this one type).
-unsafe impl<'a> Send for KernelWalletAccess<'a> {}
-unsafe impl<'a> Sync for KernelWalletAccess<'a> {}
 
 impl<'a> WalletKernelAccess for KernelWalletAccess<'a> {
     fn now_secs(&self) -> u64 {
