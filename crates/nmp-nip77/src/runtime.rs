@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::{RelayTextInterceptor, ReqFrameContext, ReqFrameInterceptor};
-use nmp_core::{Kernel, OutboundMessage};
+use nmp_core::{Kernel, OutboundMessage, RelayRole};
 use nmp_coverage_gate::CoverageGate;
 use nmp_planner::InterestLifecycle;
 use nostr::{Filter, JsonUtil as _, RelayMessage};
@@ -29,7 +29,7 @@ pub enum RelayNegentropyState {
 
 struct Session {
     sub_id: String,
-    role: nmp_core::RelayRole,
+    role: RelayRole,
     relay_url: String,
     filter_json: String,
     reconciler: Reconciler,
@@ -89,7 +89,7 @@ impl NegentropySyncRuntime {
     fn set_relay_state(
         &self,
         kernel: &mut Kernel,
-        role: nmp_core::RelayRole,
+        role: RelayRole,
         relay_url: &str,
         state: RelayNegentropyState,
     ) {

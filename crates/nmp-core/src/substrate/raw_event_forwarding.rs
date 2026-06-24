@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::slots::IndexerRelaysSlot;
 use crate::store::EventStore;
-use crate::RelayRole;
+use crate::relay::RelayRole;
 
 /// Kernel-owned handles available to a raw-event forwarding policy.
 ///

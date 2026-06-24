@@ -7,7 +7,7 @@
 ///
 /// D0: the `RemoteHandle` arm carries a `Box<dyn RemoteSignerHandle>` whose
 /// concrete type lives in `nmp-signers` — `nmp-core` only sees the trait object
-/// (defined in `crate::remote_signer`); it never imports the broker or signer
+/// (defined in `nmp-signer-iface`); it never imports the broker or signer
 /// crate.
 #[allow(dead_code)] // live cross-crate constructors in nmp-ffi — per-crate lint false positive
 pub enum SignerSource {

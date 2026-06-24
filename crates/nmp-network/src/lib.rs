@@ -113,7 +113,7 @@
 
 pub mod keepalive;
 pub mod relay_protocol;
-mod role;
+pub mod role;
 
 pub use role::RelayRole;
 

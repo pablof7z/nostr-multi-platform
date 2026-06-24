@@ -1,6 +1,5 @@
 //! Transport-lane discriminator. Step 8 phase A — moved verbatim from
-//! `nmp-core::relay::RelayRole`. `nmp-core` re-exports the type under its
-//! prior path (`nmp_core::RelayRole`) for backward compatibility.
+//! `nmp-core::relay::RelayRole`.
 //!
 //! **Not a routing source (T105).** The actual wire target is the resolved
 //! `OutboundMessage::relay_url`. `RelayRole` only buckets relay-health rows,

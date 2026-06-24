@@ -259,7 +259,12 @@ pub use relay::canonical_relay_url;
 // `BrowserRelayDriver` — both in `nmp-network` as of step 8 phase C) consumes.
 // Fields stay `pub(crate)` so the kernel remains the single writer; external
 // callers read via accessors.
-pub use relay::{OutboundMessage, RelayRole};
+pub use relay::OutboundMessage;
+// The `Kernel` type uses `RelayRole` in its public API (specifically in
+// `auth_remote_pubkeys: HashMap<RelayRole, ...>`), so it must be available
+// at the crate root. The type definition moved to `nmp-network::role` in
+// step 8 phase A.
+pub use nmp_network::RelayRole;
 pub use update_envelope::{
     decode_snapshot_envelope, decode_snapshot_typed_projections, decode_update_frame, encode_panic,
     encode_snapshot_frame, panic_message, PanicFrame, RelayStatusEntry, SnapshotEnvelope,

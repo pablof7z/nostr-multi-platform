@@ -16,6 +16,8 @@
 //! bootstrap seed is no longer consulted for that author (D3: outbox routing
 //! automatic — `docs/product-spec/overview-and-dx.md` §1.5).
 
+pub(crate) use nmp_network::RelayRole;
+
 pub const DEFAULT_VISIBLE_LIMIT: usize = 80;
 pub const DEFAULT_EMIT_HZ: u32 = 4;
 // The per-account follow-set cap is GONE (#1497 amendment 6): the follow-feed
@@ -77,9 +79,7 @@ pub(crate) const JB55_PUBKEY: &str =
     "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245";
 
 // Step 8 phase A — `RelayRole` moved to `nmp-network::role` (the transport
-// layer owns the lane discriminator). `nmp-core` re-exports it under its
-// prior path (`nmp_core::RelayRole`) via `lib.rs` so downstream callers
-// keep compiling unchanged. The test-only `bootstrap_url()` / `url()`
+// layer owns the lane discriminator). The test-only `bootstrap_url()` / `url()`
 // helpers live here as a private extension trait — they reference the
 // `BOOTSTRAP_DISCOVERY_RELAYS` constants which are nmp-core-only.
 //
@@ -87,7 +87,6 @@ pub(crate) const JB55_PUBKEY: &str =
 // `nmp-nip47`'s wallet runtime through `Kernel::set_relay_auth_signer(
 // RelayRole::Wallet, ...)`. Substrate-grade — `nmp-network` carries no
 // app/protocol nouns even though the variant name reads "Wallet".
-pub use nmp_network::RelayRole;
 
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) trait RelayRoleTestExt {

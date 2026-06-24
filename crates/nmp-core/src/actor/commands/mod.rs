@@ -10,7 +10,7 @@
 //! `Box<dyn RemoteSignerHandle>` (for NIP-46 / NIP-07 / hardware signers),
 //! and adapts each active account to the kernel's existing `AuthSignerFn`
 //! seam (`Kernel::bind_auth_signer`). `RemoteSignerHandle` is defined in
-//! `crate::remote_signer` so the actor uses signers without importing the
+//! `nmp-signer-iface` so the actor uses signers without importing the
 //! `nmp-signers` crate; concrete impls live in `nmp-signers` and reach the
 //! actor through app/FFI composition. Full `AccountManager` integration is
 //! M14 (`UniFFI`), when the FFI surface can move to a crate that may depend
