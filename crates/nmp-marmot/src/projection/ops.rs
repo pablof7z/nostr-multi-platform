@@ -8,8 +8,8 @@
 //! ## Outbound relay seam — CLOSED (publish direction)
 //!
 //! Every op publishes its relay-bound events INTERNALLY via
-//! [`crate::projection::publish`] (`nmp_ffi::NmpApp::publish_signed_explicit`
-//! against the retained `&NmpApp`) — no Swift relay path. Per-kind routing:
+//! [`crate::projection::publish`] through the actor/protocol runtime port — no
+//! Swift relay path. Per-kind routing:
 //! kind:445 → `publish_group_pinned` (group's relay-pinned list; a cache
 //! MISS degrades to author-outbox `Auto`); kind:30443 key-package
 //! → `publish_explicit` (`Auto` / NIP-65 outbox; legacy kind:443 retired
@@ -261,8 +261,9 @@ pub fn dispatch(
     match r {
         Ok(mut ok) => {
             if let Value::Object(map) = &mut ok {
-                // Pending envelopes must not get `ok`; HostOpCommand uses
-                // `"pending":true` to skip terminal verdict recording.
+                // Pending envelopes must not get `ok`; the typed protocol
+                // command leaves `"pending":true` actions in Requested until
+                // deferred completion records the terminal verdict.
                 let is_pending = map.get("pending").and_then(Value::as_bool).unwrap_or(false);
                 if !is_pending {
                     map.entry("ok").or_insert(Value::Bool(true));

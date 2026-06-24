@@ -49,6 +49,21 @@ impl NmpApp {
         key: impl Into<String>,
         f: impl Fn() -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
     ) {
+        self.register_typed_snapshot_projection_with_time(key, move |_| f());
+    }
+
+    /// Register a typed FlatBuffers projection closure that receives the
+    /// kernel-authored Unix timestamp for the snapshot tick.
+    ///
+    /// Most producers should use [`Self::register_typed_snapshot_projection`].
+    /// This variant exists for protocol projections whose snapshot computation
+    /// must expire pending records using actor/kernel time rather than reading
+    /// the host wall clock.
+    pub fn register_typed_snapshot_projection_with_time(
+        &self,
+        key: impl Into<String>,
+        f: impl Fn(u64) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
+    ) {
         use nmp_core::__ffi_internal::TypedAdmission;
         let key = key.into();
         if let Ok(mut registry) = self.snapshot_projections.lock() {
@@ -57,7 +72,7 @@ impl NmpApp {
             // from a pre-insertion key-presence check. This is the only way to
             // distinguish a genuine `Installed` from a `DroppedFull` silent
             // no-op when the registry is at the D5 cap.
-            let admission = registry.register_typed(key.clone(), f);
+            let admission = registry.register_typed_with_time(key.clone(), f);
             let disposition = match admission {
                 TypedAdmission::Inserted => Some(nmp_core::Disposition::Installed),
                 TypedAdmission::Replaced => Some(nmp_core::Disposition::ReplacedPrevious),

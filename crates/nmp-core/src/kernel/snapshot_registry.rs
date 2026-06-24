@@ -30,7 +30,8 @@ use crate::update_envelope::{TypedProjectionData, WireProjectionState};
 /// `Send + Sync` because the box lives behind an `Arc<Mutex<…>>` shared with
 /// the actor thread (D8: the closure itself must also be non-blocking — it runs
 /// inside the snapshot tick, exactly like a generic projection).
-pub type TypedProjectionFn = Box<dyn Fn() -> Option<TypedProjectionData> + Send + Sync + 'static>;
+pub type TypedProjectionFn =
+    Box<dyn Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static>;
 
 /// A host-registered **per-tick observer** closure — a no-result callback fired
 /// once on every snapshot tick.
@@ -297,6 +298,20 @@ impl SnapshotRegistry {
         key: impl Into<String>,
         f: impl Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
     ) -> TypedAdmission {
+        self.register_typed_with_time(key, move |_| f())
+    }
+
+    /// Register a typed projection closure that receives the kernel-authored
+    /// Unix timestamp for the snapshot tick.
+    ///
+    /// This is the narrow variant for protocol projections whose snapshot
+    /// computation is state-affecting because it expires pending records. The
+    /// timestamp comes from the kernel clock, not a host wall-clock read.
+    pub fn register_typed_with_time(
+        &mut self,
+        key: impl Into<String>,
+        f: impl Fn(u64) -> Option<TypedProjectionData> + Send + Sync + 'static,
+    ) -> TypedAdmission {
         let key = key.into();
         let key_exists = self.typed_projections.contains_key(&key);
         if !admit_keyed(
@@ -324,6 +339,12 @@ impl SnapshotRegistry {
     /// prior value; removed keys emit one pending `Cleared` row. Closure panics
     /// are swallowed inside [`catch_unwind`] (D6).
     pub fn run_typed(&mut self) -> Vec<TypedProjectionData> {
+        self.run_typed_at(0)
+    }
+
+    /// Run every registered typed projection using the supplied kernel-authored
+    /// Unix timestamp for time-aware producers.
+    pub fn run_typed_at(&mut self, now_secs: u64) -> Vec<TypedProjectionData> {
         let mut out = Vec::with_capacity(self.typed_projections.len());
         for projection in self.typed_projections.values() {
             // `AssertUnwindSafe`: a boxed `Fn` closure is not `UnwindSafe`, but
@@ -331,7 +352,7 @@ impl SnapshotRegistry {
             // observed again after it unwinds, so there is no broken-invariant
             // hazard. The default panic hook still prints the payload, so the
             // bug stays visible.
-            match catch_unwind(AssertUnwindSafe(projection)) {
+            match catch_unwind(AssertUnwindSafe(|| projection(now_secs))) {
                 Ok(Some(data)) => out.push(data),
                 // `Ok(None)`: nothing to emit this tick. `Err(_)`: the closure
                 // panicked — swallow it (the namespace is omitted, the same

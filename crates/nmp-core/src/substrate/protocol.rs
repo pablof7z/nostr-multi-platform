@@ -488,29 +488,71 @@ impl<'a> ProtocolCommandContext<'a> {
         correlation_id: Option<String>,
         signer_pubkey: Option<String>,
     ) {
-        self.send(ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
-            event,
-            relays,
+        self.send(ActorCommand::Publish(
+            PublishCommand::UnsignedEventToRelays {
+                event,
+                relays,
+                correlation_id,
+                signer_pubkey,
+            },
+        ));
+    }
+
+    /// Publish an already-signed event to an explicit relay set.
+    ///
+    /// This is the narrow protocol-command port for crates that own a
+    /// protocol-specific signer or envelope and therefore cannot route through
+    /// `PublishUnsignedEvent`. The command provides the verbatim signed event;
+    /// the actor still owns target validation, publish retry state, ACK
+    /// handling, and failure surfacing.
+    pub fn publish_signed_to_relays(
+        &self,
+        event: nostr::Event,
+        relays: Vec<crate::publish::RelayUrl>,
+        correlation_id: Option<String>,
+    ) {
+        let raw = nmp_store::RawEvent {
+            id: event.id.to_hex(),
+            pubkey: event.pubkey.to_hex(),
+            created_at: event.created_at.as_secs(),
+            kind: u32::from(event.kind.as_u16()),
+            tags: event.tags.iter().map(|t| t.as_slice().to_vec()).collect(),
+            content: event.content.clone(),
+            sig: event.sig.to_string(),
+        };
+        self.send(ActorCommand::Publish(PublishCommand::SignedEvent {
+            raw,
+            target: crate::publish::PublishTarget::Explicit { relays },
             correlation_id,
-            signer_pubkey,
         }));
     }
 
     /// Record a terminal `Accepted` stage (`ActorCommand::RecordActionSuccess`).
     /// `result_json` is the optional Decision-4 structured return payload.
     pub fn record_action_success(&self, correlation_id: String, result_json: Option<String>) {
-        self.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
-            correlation_id,
-            result_json,
+        self.send(ActorCommand::ActionLedger(
+            ActionLedgerCommand::RecordSuccess {
+                correlation_id,
+                result_json,
+            },
+        ));
+    }
+
+    pub fn ensure_interest(
+        &self,
+        identity: crate::subs::SubIdentity,
+        interest: crate::planner::LogicalInterest,
+    ) {
+        self.send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity,
+            interest,
         }));
     }
 
-    pub fn ensure_interest(&self, identity: crate::subs::SubIdentity, interest: crate::planner::LogicalInterest) {
-        self.send(ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }));
-    }
-
     pub fn drop_interest_owner(&self, identity: crate::subs::SubIdentity) {
-        self.send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)));
+        self.send(ActorCommand::Interests(
+            InterestsCommand::DropInterestOwner(identity),
+        ));
     }
 }
 
@@ -529,8 +571,8 @@ pub trait ProtocolCommand: Send + fmt::Debug + 'static {
 #[path = "protocol/builders.rs"]
 mod builders;
 pub use builders::{
-    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
-    build_record_action_failure, build_record_action_success,
+    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_record_action_failure,
+    build_record_action_success, build_sign_event_for_account,
 };
 
 #[cfg(test)]

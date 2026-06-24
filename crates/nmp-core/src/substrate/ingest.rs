@@ -32,6 +32,13 @@ use crate::store::VerifiedEvent;
 /// `Arc<RwLock<…>>` the parser captures).
 pub trait IngestParser: Send + Sync {
     fn parse(&self, evt: &VerifiedEvent);
+
+    /// Timestamped ingest hook for parsers whose state changes need the
+    /// actor/kernel-authored clock. Existing parsers can keep implementing
+    /// `parse`; the dispatcher calls this method and the default delegates.
+    fn parse_at(&self, evt: &VerifiedEvent, _now_secs: u64) {
+        self.parse(evt);
+    }
 }
 
 /// Registry of [`IngestParser`]s the kernel fans every ingested event to.
@@ -104,10 +111,7 @@ impl EventIngestDispatcher {
     ) -> Option<Arc<dyn IngestParser>> {
         let bucket = self.by_kind.entry(kind).or_default();
         // Find and evict any prior entry with the same slot_key.
-        let prev = if let Some(pos) = bucket
-            .iter()
-            .position(|(key, _)| *key == Some(slot_key))
-        {
+        let prev = if let Some(pos) = bucket.iter().position(|(key, _)| *key == Some(slot_key)) {
             Some(bucket.remove(pos).1)
         } else {
             None
@@ -128,9 +132,7 @@ impl EventIngestDispatcher {
         slot_key: &'static str,
     ) -> Option<Arc<dyn IngestParser>> {
         let bucket = self.by_kind.get_mut(&kind)?;
-        let pos = bucket
-            .iter()
-            .position(|(key, _)| *key == Some(slot_key))?;
+        let pos = bucket.iter().position(|(key, _)| *key == Some(slot_key))?;
         let removed = bucket.remove(pos).1;
         if bucket.is_empty() {
             self.by_kind.remove(&kind);
@@ -202,21 +204,32 @@ impl EventIngestDispatcher {
     #[must_use]
     pub fn is_interested(&self, kind: u32) -> bool {
         self.by_kind.contains_key(&kind)
-            || self.by_range.iter().any(|(range, _, _)| range.contains(&kind))
+            || self
+                .by_range
+                .iter()
+                .any(|(range, _, _)| range.contains(&kind))
     }
 
-    /// Fan `evt` to every parser registered for its kind. Called by the
-    /// kernel's ingest path; non-existent registrations are a fast no-op.
+    /// Fan `evt` to every parser registered for its kind. Called by legacy
+    /// tests and non-kernel harnesses; timestamp-aware production paths should
+    /// call [`Self::dispatch_at`].
     pub fn dispatch(&self, evt: &VerifiedEvent) {
+        self.dispatch_at(evt, 0);
+    }
+
+    /// Fan `evt` to every parser registered for its kind, carrying the
+    /// actor/kernel-authored Unix timestamp for parsers that need replayable
+    /// state-affecting time.
+    pub fn dispatch_at(&self, evt: &VerifiedEvent, now_secs: u64) {
         let kind = evt.raw().kind;
         if let Some(parsers) = self.by_kind.get(&kind) {
             for (_, p) in parsers {
-                p.parse(evt);
+                p.parse_at(evt, now_secs);
             }
         }
         for (range, _, p) in &self.by_range {
             if range.contains(&kind) {
-                p.parse(evt);
+                p.parse_at(evt, now_secs);
             }
         }
     }
@@ -357,11 +370,23 @@ mod tests {
         // Replace: only the new parser survives under slot "a".
         let prev = d.replace_kind_parser(42, "a", new_p.clone());
         assert!(prev.is_some(), "old parser returned as previous");
-        assert_eq!(d.registration_count(), 1, "exactly one parser remains after replace");
+        assert_eq!(
+            d.registration_count(),
+            1,
+            "exactly one parser remains after replace"
+        );
 
         d.dispatch(&evt(42));
-        assert_eq!(old.kinds(), Vec::<u32>::new(), "old parser must NOT fire after replace");
-        assert_eq!(new_p.kinds(), vec![42], "new parser must fire after replace");
+        assert_eq!(
+            old.kinds(),
+            Vec::<u32>::new(),
+            "old parser must NOT fire after replace"
+        );
+        assert_eq!(
+            new_p.kinds(),
+            vec![42],
+            "new parser must fire after replace"
+        );
     }
 
     #[test]
@@ -405,12 +430,24 @@ mod tests {
         // Re-register slot "a" (account switch) — slot "b" must survive.
         let evicted = d.replace_kind_parser(1059, "nip17.dm_inbox", p_a2.clone());
         assert!(evicted.is_some(), "prior slot-a parser returned");
-        assert_eq!(d.registration_count(), 2, "slot count stays 2 after slot-a replace");
+        assert_eq!(
+            d.registration_count(),
+            2,
+            "slot count stays 2 after slot-a replace"
+        );
 
         d.dispatch(&evt(1059));
-        assert_eq!(p_a1.kinds(), Vec::<u32>::new(), "old slot-a parser must NOT fire");
+        assert_eq!(
+            p_a1.kinds(),
+            Vec::<u32>::new(),
+            "old slot-a parser must NOT fire"
+        );
         assert_eq!(p_a2.kinds(), vec![1059], "new slot-a parser must fire");
-        assert_eq!(p_b.kinds(), vec![1059], "slot-b parser must STILL fire after slot-a replace");
+        assert_eq!(
+            p_b.kinds(),
+            vec![1059],
+            "slot-b parser must STILL fire after slot-a replace"
+        );
     }
 
     // ── range-slot tests ─────────────────────────────────────────────────────
@@ -426,10 +463,18 @@ mod tests {
 
         let prev = d.replace_range_parser(0..u32::MAX, "chirp-tui.raw-cache", new_p.clone());
         assert!(prev.is_some(), "old range parser returned as previous");
-        assert_eq!(d.registration_count(), 1, "exactly one range registration after replace");
+        assert_eq!(
+            d.registration_count(),
+            1,
+            "exactly one range registration after replace"
+        );
 
         d.dispatch(&evt(1));
-        assert_eq!(old.kinds(), Vec::<u32>::new(), "evicted parser must NOT fire");
+        assert_eq!(
+            old.kinds(),
+            Vec::<u32>::new(),
+            "evicted parser must NOT fire"
+        );
         assert_eq!(new_p.kinds(), vec![1], "new parser must fire");
     }
 
@@ -457,7 +502,11 @@ mod tests {
         assert_eq!(d.registration_count(), 0, "registration count drops to 0");
 
         d.dispatch(&evt(1));
-        assert_eq!(p.kinds(), Vec::<u32>::new(), "evicted range parser must NOT fire");
+        assert_eq!(
+            p.kinds(),
+            Vec::<u32>::new(),
+            "evicted range parser must NOT fire"
+        );
     }
 
     #[test]
@@ -543,12 +592,24 @@ mod tests {
         // Replace slot-a — slot-b must survive untouched.
         let prev = d.replace_range_parser(0..20_000, "crate-a", a2.clone());
         assert!(prev.is_some(), "prior slot-a parser returned on replace");
-        assert_eq!(d.registration_count(), 2, "still exactly 2 range registrations");
+        assert_eq!(
+            d.registration_count(),
+            2,
+            "still exactly 2 range registrations"
+        );
 
         d.dispatch(&evt(15_000));
-        assert_eq!(a1.kinds(), vec![15_000], "old slot-a must NOT fire after replace");
+        assert_eq!(
+            a1.kinds(),
+            vec![15_000],
+            "old slot-a must NOT fire after replace"
+        );
         assert_eq!(a2.kinds(), vec![15_000], "new slot-a must fire");
-        assert_eq!(b.kinds(), vec![15_000, 15_000], "slot-b must fire both times");
+        assert_eq!(
+            b.kinds(),
+            vec![15_000, 15_000],
+            "slot-b must fire both times"
+        );
     }
 
     /// (c) An empty range (`5..5`) never fires, regardless of what event kind
@@ -594,16 +655,28 @@ mod tests {
         let p = CapturingParser::new();
         d.replace_range_parser(0..u32::MAX, "test.all-kinds", p.clone());
         assert!(d.is_interested(1), "all-kinds range must cover kind:1");
-        assert!(d.is_interested(1059), "all-kinds range must cover kind:1059");
-        assert!(d.is_interested(30023), "all-kinds range must cover kind:30023");
+        assert!(
+            d.is_interested(1059),
+            "all-kinds range must cover kind:1059"
+        );
+        assert!(
+            d.is_interested(30023),
+            "all-kinds range must cover kind:30023"
+        );
     }
 
     /// `is_interested` returns false for an empty dispatcher.
     #[test]
     fn is_interested_false_for_empty_dispatcher() {
         let d = EventIngestDispatcher::new();
-        assert!(!d.is_interested(1), "empty dispatcher: is_interested must be false");
-        assert!(!d.is_interested(1059), "empty dispatcher: is_interested must be false");
+        assert!(
+            !d.is_interested(1),
+            "empty dispatcher: is_interested must be false"
+        );
+        assert!(
+            !d.is_interested(1059),
+            "empty dispatcher: is_interested must be false"
+        );
     }
 
     /// `is_interested` returns false after all parsers for a kind are removed.

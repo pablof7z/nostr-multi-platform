@@ -45,15 +45,14 @@
 //!    `CreateGroup`, `Invite`, `Send`, `Leave`, `Remove`, etc.) are dispatched
 //!    through the substrate-generic [`projection::action::MarmotActionModule`]
 //!    registered under the `"nmp.marmot"` namespace — the host calls
-//!    `nmp_app_dispatch_action("nmp.marmot", action_json)` and the
-//!    [`projection::handler::MarmotMlsOpHandler`] installed via
-//!    `NmpApp::set_host_op_handler` runs the op against the live
-//!    `MarmotProjection`. The legacy bespoke `nmp_marmot_dispatch` C symbol
+//!    `nmp_app_dispatch_action("nmp.marmot", action_json)` and a typed
+//!    `MarmotProtocolCommand` runs the op against the live `MarmotProjection`
+//!    on the actor thread. The legacy bespoke `nmp_marmot_dispatch` C symbol
 //!    (ADR-0025) was DELETED in PR 3 (2026-05-23); the ADR-0025 *write-path*
 //!    exception is retired (the read/lifecycle cluster + `mls_local_nsec` slot
-//!    exception remains in force). In-process Rust callers that need the synchronous
-//!    rich envelope use the Rust-native [`ffi::MarmotHandle::dispatch`]
-//!    accessor (REPL / TUI / integration tests).
+//!    exception remains in force). In-process Rust callers that need the
+//!    synchronous rich envelope use the Rust-native
+//!    [`ffi::MarmotHandle::dispatch`] accessor (REPL / TUI / integration tests).
 //! 2. **Service layer** ([`service::MarmotService`]) — the real MDK-driving
 //!    API. Holds an `MDK<S>` + `nostr::Keys`. This is what the in-crate
 //!    round-trip tests exercise and what a headless integration-test driver

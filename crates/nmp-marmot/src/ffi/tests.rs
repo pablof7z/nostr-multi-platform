@@ -21,13 +21,17 @@ use crate::projection::{ops, ops::ingest_signed_event_core, state::MarmotProject
 use crate::service::MarmotService;
 use mdk_core::prelude::NostrGroupConfigData;
 use mdk_sqlite_storage::MdkSqliteStorage;
+use nmp_core::decode_snapshot_typed_projections;
 use nmp_core::substrate::IngestParser;
+use nmp_core::typed_projections::{decode_action_lifecycle, ACTION_LIFECYCLE_SCHEMA_ID};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{JsonUtil, Keys};
 use serde_json::json;
+use std::ffi::c_void;
 use std::ffi::{CStr, CString};
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 /// Parse a gift-wrap JSON string into a `VerifiedEvent` for use with `IngestParser::parse`.
 ///
@@ -43,6 +47,38 @@ fn gift_wrap_to_verified(json: &str) -> VerifiedEvent {
 fn in_memory(keys: Keys) -> MarmotService {
     let storage = MdkSqliteStorage::new_in_memory().expect("in-memory mls storage");
     MarmotService::from_storage(storage, keys, Default::default())
+}
+
+static ACTION_FRAME_CAPTURE_LOCK: Mutex<()> = Mutex::new(());
+static ACTION_FRAME_TX: OnceLock<Mutex<Option<Sender<Vec<u8>>>>> = OnceLock::new();
+
+extern "C" fn capture_action_frame(_ctx: *mut c_void, ptr: *const u8, len: usize) {
+    if ptr.is_null() || len == 0 {
+        return;
+    }
+    // SAFETY: nmp-ffi keeps the frame bytes valid for the callback duration;
+    // tests copy them immediately and never retain the raw pointer.
+    let bytes = unsafe { std::slice::from_raw_parts(ptr, len) }.to_vec();
+    if let Some(slot) = ACTION_FRAME_TX.get() {
+        if let Ok(guard) = slot.lock() {
+            if let Some(tx) = guard.as_ref() {
+                let _ = tx.send(bytes);
+            }
+        }
+    }
+}
+
+fn install_action_frame_capture() -> Receiver<Vec<u8>> {
+    let (tx, rx) = channel::<Vec<u8>>();
+    let slot = ACTION_FRAME_TX.get_or_init(|| Mutex::new(None));
+    *slot.lock().unwrap() = Some(tx);
+    rx
+}
+
+fn uninstall_action_frame_capture() {
+    if let Some(slot) = ACTION_FRAME_TX.get() {
+        *slot.lock().unwrap() = None;
+    }
 }
 
 // ── C-ABI D6 / lifetime ──────────────────────────────────────────────────
@@ -246,7 +282,7 @@ fn create_group_partial_key_package_set_reports_only_missing_invitees() {
     assert_eq!(r["ok"], json!(false));
     assert_eq!(r["error"], json!("key_package_unavailable"));
     assert_eq!(r["needs"], json!([carol_keys.public_key().to_hex()]));
-    assert_eq!(r["fetch_requested"], json!(0));
+    assert_eq!(r["fetch_requested"], json!(1));
 }
 
 #[test]
@@ -302,7 +338,7 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
     assert_eq!(r["ok"], json!(false));
     assert_eq!(r["error"], json!("key_package_unavailable"));
     assert_eq!(r["needs"], json!([carol_keys.public_key().to_hex()]));
-    assert_eq!(r["fetch_requested"], json!(0));
+    assert_eq!(r["fetch_requested"], json!(1));
 }
 
 #[test]
@@ -514,19 +550,15 @@ fn ingest_parser_kind_1059_coexistence_both_parsers_fire() {
     );
 }
 
-// ── ADR-0025 retirement / dispatch_action → MarmotMlsOpHandler ─────────
+// ── ADR-0025 retirement / dispatch_action → MarmotProtocolCommand ───────
 //
 // The substrate-generic Marmot dispatch seam (the SOLE host entry point
 // after ADR-0025 PR 3, 2026-05-23, deleted the legacy bespoke
 // `nmp_marmot_dispatch` C-ABI symbol). The proof points:
 //
 //   1. `MarmotActionModule` registered against `NmpApp::register_action`
-//      and `MarmotMlsOpHandler` installed via `NmpApp::set_host_op_handler`
-//      are reachable through the kernel's `dispatch_action` path: a
-//      `nmp_app_dispatch_action("nmp.marmot", action_json)` call routes
-//      to the same `ops::dispatch` handler the legacy bespoke symbol
-//      used to reach (and that `MarmotHandle::dispatch` — the surviving
-//      Rust-native in-process accessor — still reaches today).
+//      emits a typed `MarmotProtocolCommand` through `ActorCommand::Protocol`;
+//      no host-op JSON bridge or raw `NmpApp` pointer is involved.
 //   2. Both the host (generic) seam and the in-process Rust-native seam
 //      (`MarmotHandle::dispatch` / direct `ops::dispatch`) share ONE
 //      `MarmotProjection` — a dispatch through the generic path mutates
@@ -536,48 +568,8 @@ fn ingest_parser_kind_1059_coexistence_both_parsers_fire() {
 //      satisfy.
 
 use crate::projection::action::{MarmotActionModule, MARMOT_ACTION_NAMESPACE};
-use crate::projection::handler::MarmotMlsOpHandler;
 
-/// End-to-end PROOF of the dispatch_action → MarmotMlsOpHandler path.
-///
-/// Builds the EXACT wiring `register_with_keys` does (minus the C-ABI
-/// shell) directly on a fresh `NmpApp`:
-///
-/// * register `MarmotActionModule` against the action registry;
-/// * install `MarmotMlsOpHandler::new(projection)` into the MLS-op slot.
-///
-/// Then dispatches a typed Marmot action JSON body through
-/// `nmp_app_dispatch_action("nmp.marmot", action_json)` and asserts:
-///
-/// * the dispatcher returns a `correlation_id` (the action was accepted);
-/// * the `MarmotProjection::snapshot` reflects the published key package
-///   (the handler ran and mutated shared state — the SAME state the
-///   Rust-native [`MarmotHandle::dispatch`] accessor mutates, and the
-///   SAME state the legacy bespoke `nmp_marmot_dispatch` symbol used to
-///   mutate before ADR-0025 PR 3 deleted it).
-///
-/// The actor dispatch arm runs the handler on its own thread; we poll
-/// the projection's snapshot under a 2 s wall-clock cap, exactly the
-/// pattern the `dispatch_mls_op_*` nmp-core tests use.
-#[test]
-fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
-    let alice_keys = Keys::generate();
-    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), None));
-
-    let app = nmp_ffi::nmp_app_new();
-    // SAFETY: nmp_app_new never returns null; pointer is valid until nmp_app_free.
-    let app_mut = unsafe { &mut *app };
-
-    // The two-line wiring `register_with_keys` performs for the
-    // dispatch_action seam:
-    let _ = app_mut.register_action(MarmotActionModule);
-    let handler = Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj)))
-        as Arc<dyn nmp_core::substrate::HostOpHandler>;
-    app_mut.set_host_op_handler(handler);
-    nmp_ffi::nmp_app_start(app, 256, 4);
-
-    // Dispatch the typed action JSON through the generic seam.
-    let envelope_json = r#"{"op":"publish_key_package","relays":["wss://t.relay"]}"#;
+fn dispatch_marmot_action(app: *mut nmp_ffi::NmpApp, envelope_json: &str) -> String {
     let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
     let envelope_c = CString::new(envelope_json).unwrap();
     let out_ptr = nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
@@ -590,6 +582,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     let out = unsafe { CStr::from_ptr(out_ptr) }
         .to_string_lossy()
         .into_owned();
+    nmp_ffi::nmp_free_string(out_ptr);
     let parsed: serde_json::Value = serde_json::from_str(&out)
         .unwrap_or_else(|e| panic!("dispatch return must be valid JSON; got `{out}`: {e}"));
     let id = parsed
@@ -601,28 +594,105 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
         32,
         "correlation_id must be 32 hex chars; got: {id}"
     );
-    nmp_ffi::nmp_free_string(out_ptr);
+    id.to_string()
+}
 
-    // The handler ran on the actor thread; poll the projection's
-    // snapshot for the published key-package mutation. 2 s deadline
-    // mirrors the nmp-core dispatch_mls_op tests.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    let mut published = false;
-    while std::time::Instant::now() < deadline {
-        if proj.snapshot(1_000).key_package.published {
-            published = true;
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
+fn wait_for_projection_state<T>(
+    rx: &Receiver<Vec<u8>>,
+    proj: &MarmotProjection,
+    mut observe: impl FnMut(crate::projection::payload::MarmotSnapshot) -> Option<T>,
+) -> T {
+    if let Some(value) = observe(proj.snapshot(1_000)) {
+        return value;
     }
+    loop {
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("actor must emit an update frame");
+        if let Some(value) = observe(proj.snapshot(1_000)) {
+            return value;
+        }
+    }
+}
+
+fn wait_for_failed_action_stage(
+    rx: &Receiver<Vec<u8>>,
+    correlation_id: &str,
+) -> nmp_core::typed_projections::LifecycleEntryRow {
+    loop {
+        let bytes = rx
+            .recv_timeout(Duration::from_secs(5))
+            .expect("actor must emit an action lifecycle frame");
+        let Ok(typed) = decode_snapshot_typed_projections(&bytes) else {
+            continue;
+        };
+        let Some(sidecar) = typed.iter().find(|t| t.key == ACTION_LIFECYCLE_SCHEMA_ID) else {
+            continue;
+        };
+        let Ok(model) = decode_action_lifecycle(&sidecar.payload) else {
+            continue;
+        };
+        if let Some(row) = model
+            .recent_terminal
+            .into_iter()
+            .find(|row| row.correlation_id == correlation_id && row.stage == "failed")
+        {
+            return row;
+        }
+    }
+}
+
+/// End-to-end proof of the dispatch_action → MarmotProtocolCommand path.
+///
+/// Builds the EXACT wiring `register_with_keys` does (minus the C-ABI
+/// shell) directly on a fresh `NmpApp`:
+///
+/// * register `MarmotActionModule` against the action registry;
+/// * give the shared projection the actor sender used for runtime commands.
+///
+/// Then dispatches a typed Marmot action JSON body through
+/// `nmp_app_dispatch_action("nmp.marmot", action_json)` and asserts:
+///
+/// * the dispatcher returns a `correlation_id` (the action was accepted);
+/// * the `MarmotProjection::snapshot` reflects the published key package
+///   (the protocol command ran and mutated shared state — the SAME state the
+///   Rust-native [`MarmotHandle::dispatch`] accessor mutates, and the
+///   SAME state the legacy bespoke `nmp_marmot_dispatch` symbol used to
+///   mutate before ADR-0025 PR 3 deleted it).
+#[test]
+fn dispatch_action_nmp_marmot_routes_to_projection_via_protocol_command() {
+    let _capture_guard = ACTION_FRAME_CAPTURE_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let rx = install_action_frame_capture();
+    let alice_keys = Keys::generate();
+    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys.clone()), None));
+
+    let app = nmp_ffi::nmp_app_new();
+    // SAFETY: nmp_app_new never returns null; pointer is valid until nmp_app_free.
+    let app_mut = unsafe { &mut *app };
+
+    // The two-line wiring `register_with_keys` performs for the
+    // dispatch_action seam:
+    proj.set_actor_sender(app_mut.actor_sender());
+    let _ = app_mut.register_action(MarmotActionModule::new(Arc::clone(&proj)));
+    nmp_ffi::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_action_frame));
+    nmp_ffi::nmp_app_start(app, 256, 4);
+
+    // Dispatch the typed action JSON through the generic seam.
+    let envelope_json = r#"{"op":"publish_key_package","relays":["wss://t.relay"]}"#;
+    let _id = dispatch_marmot_action(app, envelope_json);
+    let published = wait_for_projection_state(&rx, &proj, |snap| {
+        snap.key_package.published.then_some(true)
+    });
     assert!(
         published,
         "dispatch_action(nmp.marmot, publish_key_package) must route through \
-         MarmotMlsOpHandler and mutate the projection state visible to snapshot \
+         MarmotProtocolCommand and mutate the projection state visible to snapshot \
          (the SAME state MarmotHandle::dispatch mutates — i.e. the SAME state \
          the legacy bespoke nmp_marmot_dispatch symbol used to mutate, pre-PR-3)"
     );
 
+    uninstall_action_frame_capture();
     nmp_ffi::nmp_app_free(app);
 }
 
@@ -638,12 +708,23 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
 /// substitute for the deleted C symbol.
 #[test]
 fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
+    let _capture_guard = ACTION_FRAME_CAPTURE_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let rx = install_action_frame_capture();
     let alice_keys = Keys::generate();
     let bob_keys = Keys::generate();
+    let charlie_keys = Keys::generate();
     let bob = in_memory(bob_keys.clone());
     let bob_kp_json = bob
         .publish_key_package(vec![nostr::RelayUrl::parse("wss://t.relay").unwrap()])
         .expect("bob kp")
+        .event_30443
+        .as_json();
+    let charlie = in_memory(charlie_keys.clone());
+    let charlie_kp_json = charlie
+        .publish_key_package(vec![nostr::RelayUrl::parse("wss://t.relay").unwrap()])
+        .expect("charlie kp")
         .event_30443
         .as_json();
 
@@ -652,10 +733,9 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     let app = nmp_ffi::nmp_app_new();
     // SAFETY: nmp_app_new never returns null.
     let app_mut = unsafe { &mut *app };
-    let _ = app_mut.register_action(MarmotActionModule);
-    let handler = Arc::new(MarmotMlsOpHandler::new(Arc::clone(&proj)))
-        as Arc<dyn nmp_core::substrate::HostOpHandler>;
-    app_mut.set_host_op_handler(handler);
+    proj.set_actor_sender(app_mut.actor_sender());
+    let _ = app_mut.register_action(MarmotActionModule::new(Arc::clone(&proj)));
+    nmp_ffi::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_action_frame));
     nmp_ffi::nmp_app_start(app, 256, 4);
 
     // Generic seam: create the group via dispatch_action.
@@ -668,40 +748,30 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
         "signed_key_package_events_json": [bob_kp_json],
     })
     .to_string();
-    let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
-    let envelope_c = CString::new(envelope).unwrap();
-    let out_ptr = nmp_ffi::nmp_app_dispatch_action(app, namespace_c.as_ptr(), envelope_c.as_ptr());
-    assert!(!out_ptr.is_null());
-    // SAFETY: out_ptr came from nmp_app_dispatch_action (D6 contract).
-    let out = unsafe { CStr::from_ptr(out_ptr) }
-        .to_string_lossy()
-        .into_owned();
-    let returned_id = serde_json::from_str::<serde_json::Value>(&out)
-        .ok()
-        .and_then(|v| {
-            v.get("correlation_id")
-                .and_then(|c| c.as_str())
-                .map(str::to_owned)
-        })
-        .expect("dispatch must return correlation_id");
-    nmp_ffi::nmp_free_string(out_ptr);
+    let returned_id = dispatch_marmot_action(app, &envelope);
+    let group_id_hex = wait_for_projection_state(&rx, &proj, |snap| {
+        snap.groups.first().map(|g| g.id_hex.clone())
+    });
 
-    // Poll for the create_group to complete on the actor thread.
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    let mut group: Option<String> = None;
-    while std::time::Instant::now() < deadline {
-        let snap = proj.snapshot(1_000);
-        if let Some(g) = snap.groups.first() {
-            group = Some(g.id_hex.clone());
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
-    let group_id_hex = group.unwrap_or_else(|| {
-        panic!(
-            "create_group through dispatch_action must mutate the same \
-             projection the bespoke seam reads (correlation_id={returned_id})"
-        )
+    let invite = json!({
+        "op": "invite",
+        "group_id_hex": &group_id_hex,
+        "relays": ["wss://t.relay"],
+        "invitee_npubs": [charlie_keys.public_key().to_hex()],
+        "signed_key_package_events_json": [charlie_kp_json],
+    })
+    .to_string();
+    let invite_id = dispatch_marmot_action(app, &invite);
+    let charlie_hex = charlie_keys.public_key().to_hex();
+    wait_for_projection_state(&rx, &proj, |snap| {
+        snap.groups
+            .iter()
+            .find(|g| {
+                g.id_hex == group_id_hex
+                    && g.member_count >= 3
+                    && g.members.iter().any(|m| m == &charlie_hex)
+            })
+            .map(|_| ())
     });
 
     // In-process Rust-native seam (via ops::dispatch — the SAME entry
@@ -732,6 +802,45 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
          generic dispatch_action seam: {r}"
     );
 
+    assert_eq!(returned_id.len(), 32);
+    assert_eq!(invite_id.len(), 32);
+    uninstall_action_frame_capture();
+    nmp_ffi::nmp_app_free(app);
+}
+
+#[test]
+fn dispatch_action_failure_records_typed_failed_stage() {
+    let _capture_guard = ACTION_FRAME_CAPTURE_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let rx = install_action_frame_capture();
+    let alice_keys = Keys::generate();
+    let proj = Arc::new(MarmotProjection::new(in_memory(alice_keys), None));
+
+    let app = nmp_ffi::nmp_app_new();
+    // SAFETY: nmp_app_new never returns null.
+    let app_mut = unsafe { &mut *app };
+    proj.set_actor_sender(app_mut.actor_sender());
+    let _ = app_mut.register_action(MarmotActionModule::new(Arc::clone(&proj)));
+    nmp_ffi::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_action_frame));
+    nmp_ffi::nmp_app_start(app, 256, 4);
+
+    let cid = dispatch_marmot_action(
+        app,
+        r#"{"op":"send","group_id_hex":"not-hex","text":"must fail"}"#,
+    );
+    let row = wait_for_failed_action_stage(&rx, &cid);
+    assert_eq!(row.correlation_id, cid);
+    assert_eq!(row.stage, "failed");
+    assert!(
+        row.reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("group_id_hex"),
+        "failed stage should carry the semantic Marmot error: {row:?}"
+    );
+
+    uninstall_action_frame_capture();
     nmp_ffi::nmp_app_free(app);
 }
 

@@ -2,14 +2,14 @@
 //!
 //! Split out of `state.rs` (LOC ceiling) as a cohesive sub-concern: parking
 //! ops blocked on missing peer KeyPackages, retrying them when the KP arrives,
-//! expiring them on a wall-clock edge, and recording the terminal verdict +
-//! the snapshot-visible `last_op_error` banner. See
+//! expiring them against actor/kernel-authored time, and recording the
+//! terminal verdict + the snapshot-visible `last_op_error` banner. See
 //! [`super::pending::PendingOpsStore`] for the underlying store and its expiry
 //! / single-flight rules.
 //!
 //! This is a continuation `impl InnerHandle` block — it reaches into the
-//! `pub(super)` `inner` field and the `pub(super)` `app()` accessor on
-//! `InnerHandle`, both declared in `state.rs`.
+//! `pub(super)` `inner` field and runtime-port helpers on `InnerHandle`, all
+//! declared in `state.rs`.
 
 use nostr::PublicKey;
 use serde_json::{json, Value};
@@ -49,10 +49,10 @@ impl InnerHandle<'_> {
 
     /// When a KP-gated op hits `key_package_unavailable` AND a `correlation_id`
     /// is available (typed dispatch pipeline), park the op and return a
-    /// `{"pending":true}` envelope instead of a terminal failure. The
-    /// `HostOpCommand` reads `{"pending":true}` as "leave the action in
-    /// `Requested`; the handler records the terminal verdict later". Without a
-    /// `correlation_id` (REPL / tests) fall back to the old `{"ok":false}`.
+    /// `{"pending":true}` envelope instead of a terminal failure. The typed
+    /// protocol command leaves that action in `Requested`; deferred completion
+    /// records the terminal verdict later. Without a `correlation_id` (REPL /
+    /// tests) fall back to the old `{"ok":false}`.
     ///
     /// Single-flight: an identical op + missing-pubkeys fingerprint already
     /// parked is rejected, returning a `{"pending":true,"duplicate":true}`
@@ -263,7 +263,7 @@ impl InnerHandle<'_> {
     /// underlying `mpsc::Sender::send` is non-blocking for an unbounded
     /// channel; the actor drains it on the next iteration.
     ///
-    /// No-op when `app` is null (the test projection — no actor channel).
+    /// No-op when no actor sender is installed (the test projection).
     pub(crate) fn push_actor_command(&mut self, cmd: nmp_core::actor::ActorCommand) {
         // Test capture seam: record a lightweight `(verdict, correlation_id)`
         // projection of the command stream so unit tests can assert EXACTLY
@@ -292,12 +292,7 @@ impl InnerHandle<'_> {
             }
         }
 
-        let Some(app) = self.app() else {
-            return;
-        };
-        // `actor_sender()` clones the `Sender` end of the unbounded mpsc
-        // channel the actor owns. Sending here cannot block or deadlock.
-        let _ = app.actor_sender().send(cmd);
+        self.send_actor_command(cmd);
     }
 
     /// Snapshot view: collect pending op descriptors as
@@ -322,6 +317,7 @@ impl InnerHandle<'_> {
     /// retry-success / expiry / expiry-then-late-KP flows without a live
     /// `NmpApp` actor channel.
     #[cfg(test)]
+    #[allow(dead_code)] // consumed by deferred-op tests in targeted configurations.
     pub(crate) fn drain_captured_commands(&mut self) -> Vec<(&'static str, String)> {
         std::mem::take(&mut self.inner.captured_commands)
     }
