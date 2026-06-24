@@ -81,23 +81,12 @@ impl EmbedHostState {
                 continue;
             };
 
-            let author_display_name = row
-                .author_display_name
-                .as_deref()
-                .filter(|s| !s.trim().is_empty())
-                .map(str::to_string);
-            let author_picture_url = row
-                .author_picture_url
-                .as_deref()
-                .filter(|s| !s.trim().is_empty())
-                .map(str::to_string);
-
-            if author_display_name.is_none() && !event.author.is_empty() {
+            if !event.author.is_empty() {
                 authors_needing_profile.push(event.author.clone());
             }
 
             let mut projection = resolve_embed_projection(&event, &ctx);
-            apply_author_profile(&mut projection, author_display_name, author_picture_url);
+            apply_author_profile(&mut projection, None, None);
             let envelope = EmbeddedEventEnvelope {
                 uri: String::new(), // The renderer falls back from primary_id; URI keying happens at claim time.
                 primary_id: primary_id.clone(),

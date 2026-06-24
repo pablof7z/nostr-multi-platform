@@ -5,8 +5,6 @@ use super::*;
 fn populated() -> ProfileCardModel {
     ProfileCardModel {
         pubkey: "a".repeat(64),
-        // ADR-0032 / V-115: `npub` deprecated; always empty in codec round-trips.
-        npub: String::new(),
         display_name: Some("Alice".to_string()),
         name: Some("alice".to_string()),
         raw_display_name: Some("Alice".to_string()),
@@ -26,7 +24,6 @@ fn placeholder() -> ProfileCardModel {
     // No kind:0 yet — every Option is None; non-Option strings stay present.
     ProfileCardModel {
         pubkey: String::new(),
-        npub: String::new(),
         display_name: None,
         name: None,
         raw_display_name: None,

@@ -21,9 +21,6 @@ use crate::update_envelope::TypedProjectionData;
 fn profile_card_model(card: &super::super::ProfileCard) -> ProfileCardModel {
     ProfileCardModel {
         pubkey: card.pubkey.clone(),
-        // ADR-0032 / V-115: npub field removed from ProfileCard; bech32 is
-        // now shell-side. Pass empty string; the FlatBuffers slot is deprecated.
-        npub: String::new(),
         display_name: card.display_name.clone(),
         name: card.name.clone(),
         raw_display_name: card.raw_display_name.clone(),

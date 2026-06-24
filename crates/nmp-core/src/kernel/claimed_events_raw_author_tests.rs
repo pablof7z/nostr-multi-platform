@@ -65,11 +65,11 @@ fn claimed_events_carries_raw_author_pubkey_without_profile_enrichment() {
     let entry = &snapshot["projections"]["claimed_events"][&id];
     assert_eq!(entry["author_pubkey"], TEST_AUTHOR_HEX);
     assert!(
-        entry["author_display_name"].is_null(),
-        "claimed_events must not duplicate kind:0 display names"
+        entry.get("author_display_name").is_none(),
+        "claimed_events must not carry kind:0 display data"
     );
     assert!(
-        entry["author_picture_url"].is_null(),
-        "claimed_events must not duplicate kind:0 avatar URLs"
+        entry.get("author_picture_url").is_none(),
+        "claimed_events must not carry kind:0 display data"
     );
 }

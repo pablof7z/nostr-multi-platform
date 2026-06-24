@@ -50,8 +50,6 @@ pub struct ClaimedEventRow {
     pub primary_id: String,
     pub id: String,
     pub author_pubkey: String,
-    pub author_display_name: Option<String>,
-    pub author_picture_url: Option<String>,
     pub kind: u32,
     pub created_at: u64,
     /// Raw event tags — an array of tag rows, each a list of strings.
@@ -84,14 +82,6 @@ fn create_claimed_event<'a>(
     let primary_id = fbb.create_string(&row.primary_id);
     let id = fbb.create_string(&row.id);
     let author_pubkey = fbb.create_string(&row.author_pubkey);
-    let author_display_name = row
-        .author_display_name
-        .as_ref()
-        .map(|v| fbb.create_string(v));
-    let author_picture_url = row
-        .author_picture_url
-        .as_ref()
-        .map(|v| fbb.create_string(v));
     let content = fbb.create_string(&row.content);
     let content_tree_bytes =
         (!row.content_tree_bytes.is_empty()).then(|| fbb.create_vector(&row.content_tree_bytes));
@@ -122,10 +112,6 @@ fn create_claimed_event<'a>(
             primary_id: Some(primary_id),
             id: Some(id),
             author_pubkey: Some(author_pubkey),
-            has_author_display_name: row.author_display_name.is_some(),
-            author_display_name,
-            has_author_picture_url: row.author_picture_url.is_some(),
-            author_picture_url,
             kind: row.kind,
             created_at: row.created_at,
             tags: Some(tags),
@@ -190,12 +176,6 @@ fn claimed_event_from_fb(row: fb::ClaimedEvent<'_>) -> ClaimedEventRow {
         primary_id: row.primary_id().unwrap_or_default().to_string(),
         id: row.id().unwrap_or_default().to_string(),
         author_pubkey: row.author_pubkey().unwrap_or_default().to_string(),
-        author_display_name: row
-            .has_author_display_name()
-            .then(|| row.author_display_name().unwrap_or_default().to_string()),
-        author_picture_url: row
-            .has_author_picture_url()
-            .then(|| row.author_picture_url().unwrap_or_default().to_string()),
         kind: row.kind(),
         created_at: row.created_at(),
         tags,

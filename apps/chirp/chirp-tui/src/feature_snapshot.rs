@@ -165,8 +165,6 @@ pub struct OutboxRelayLine {
 pub struct PublishHistoryLine {
     pub event_id: String,
     pub kind: u32,
-    /// Pre-formatted kind label (e.g. `"Note"`, `"Reaction"`).
-    pub title: String,
     /// Terminal status reported by the kernel.
     pub status: String,
     /// Rust-owned retry decision.

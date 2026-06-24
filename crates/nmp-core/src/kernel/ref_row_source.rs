@@ -77,9 +77,6 @@ impl Kernel {
         let card = self.profile_card_for(key, "");
         let mut model = ProfileCardModel {
             pubkey: card.pubkey,
-            // ADR-0032 / V-115: npub removed from ProfileCard; shells encode
-            // bech32 host-side. Empty here, matching the other profile codecs.
-            npub: String::new(),
             display_name: card.display_name,
             name: card.name,
             raw_display_name: card.raw_display_name,
@@ -146,8 +143,6 @@ impl Kernel {
                     primary_id: dto.primary_id.clone(),
                     id: dto.id.clone(),
                     author_pubkey: dto.author_pubkey.clone(),
-                    author_display_name: dto.author_display_name.clone(),
-                    author_picture_url: dto.author_picture_url.clone(),
                     kind: dto.kind,
                     created_at: dto.created_at,
                     tags: dto.tags.clone(),

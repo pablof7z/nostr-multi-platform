@@ -143,8 +143,6 @@ fn claimed_event_row_json(row: &ClaimedEventRow) -> Value {
         "primary_id": row.primary_id,
         "id": row.id,
         "author_pubkey": row.author_pubkey,
-        "author_display_name": row.author_display_name,
-        "author_picture_url": row.author_picture_url,
         "kind": row.kind,
         "created_at": row.created_at,
         "tags": row.tags,

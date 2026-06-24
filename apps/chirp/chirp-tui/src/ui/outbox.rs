@@ -189,7 +189,7 @@ fn append_history_item(
     let status = truncate(&item.status, 8);
     let status_len = status.chars().count();
     let title_max = pane_width.saturating_sub(2 + status_len + 1);
-    let title = truncate(&item.title, title_max);
+    let title = truncate(&format!("kind:{}", item.kind), title_max);
     let title_len = title.chars().count();
     let pad_len = pane_width.saturating_sub(2 + title_len + status_len).max(1);
     lines.push(Line::from(vec![
@@ -331,7 +331,7 @@ fn render_history_detail(frame: &mut Frame, area: Rect, item: &PublishHistoryLin
     lines.push(Line::from(vec![
         Span::styled("  kind   ", Style::default().fg(DIM_TEXT)),
         Span::styled(
-            format!("{} ({})", item.title, item.kind),
+            format!("{}", item.kind),
             Style::default().fg(BODY_TEXT),
         ),
     ]));

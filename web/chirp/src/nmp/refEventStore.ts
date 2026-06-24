@@ -12,8 +12,6 @@ export type ClaimedEventWire = {
   primaryId: string;
   id: string;
   authorPubkey: string;
-  authorDisplayName?: string;
-  authorPictureUrl?: string;
   kind: number;
   createdAt: number;
   tags: string[][];
@@ -71,14 +69,6 @@ function decodeEventRow(key: string, payload: Uint8Array): ClaimedEventWire | un
       tags,
       content: value.content() ?? "",
     };
-    if (value.hasAuthorDisplayName()) {
-      const display = value.authorDisplayName();
-      if (display) row.authorDisplayName = display;
-    }
-    if (value.hasAuthorPictureUrl()) {
-      const picture = value.authorPictureUrl();
-      if (picture) row.authorPictureUrl = picture;
-    }
     if (contentTree.tree) row.contentTree = contentTree.tree;
     if (contentTree.bytes) row.contentTreeBytes = contentTree.bytes;
     if (value.hasSignedEventJson()) {
@@ -139,8 +129,6 @@ function claimedEventEqual(a: ClaimedEventWire, b: ClaimedEventWire): boolean {
     a.primaryId === b.primaryId &&
     a.id === b.id &&
     a.authorPubkey === b.authorPubkey &&
-    a.authorDisplayName === b.authorDisplayName &&
-    a.authorPictureUrl === b.authorPictureUrl &&
     a.kind === b.kind &&
     a.createdAt === b.createdAt &&
     a.content === b.content &&

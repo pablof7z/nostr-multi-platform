@@ -99,10 +99,6 @@ pub(crate) fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLin
                     .and_then(Value::as_u64)
                     .and_then(|k| u32::try_from(k).ok())
                     .unwrap_or_default(),
-                // Pre-formatted by the kernel (`PublishQueueEntry.title`) —
-                // the TUI no longer owns a kind→label mapping (RMP bible
-                // commandment #4: backend owns display strings).
-                title: string_field(row, "title"),
                 status: string_field(row, "status"),
                 can_retry: bool_field(row, "can_retry") || bool_field(row, "canRetry"),
                 relays,

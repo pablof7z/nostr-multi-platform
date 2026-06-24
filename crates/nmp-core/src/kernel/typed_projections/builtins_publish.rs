@@ -41,11 +41,6 @@ impl super::super::Kernel {
                 .map(|entry| PublishQueueEntryRow {
                     event_id: entry.event_id.clone(),
                     kind: entry.kind,
-                    // `title` was removed from the Rust `PublishQueueEntry` DTO
-                    // (aim.md §2 #4: no pre-formatted English labels in kernel).
-                    // The wire field is kept for backward compat with older shells
-                    // that may read it; emit empty string (the glue ignores it).
-                    title: String::new(),
                     target_relays: entry.target_relays as u32,
                     status: entry.status.clone(),
                     can_retry: entry.can_retry,

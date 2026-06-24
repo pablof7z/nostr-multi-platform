@@ -69,7 +69,7 @@ pub(crate) fn decode_snapshot_typed(
         .and_then(|b| tp::decode_profile(b).ok())
         .map(|m| crate::snapshot::ProfileCard {
             pubkey: m.pubkey,
-            npub: m.npub,
+            npub: String::new(),
             display_name: m.display_name,
             name: m.name,
             raw_display_name: m.raw_display_name,
