@@ -14,7 +14,7 @@ use nmp_network::pool::{BackoffClass, Pool, PoolEvent, RelayFrame as PoolFrame};
 use crate::kernel::{BackoffHint, Kernel, RelayFrame};
 use crate::relay::{CanonicalRelayUrl, RelayRole};
 
-use super::super::relay_mgmt::{maybe_send_startup, send_all_outbound, spawn_missing_relays};
+use super::super::relay_mgmt::{maybe_send_startup, send_all_outbound};
 use super::super::tick::emit_now;
 use super::super::RelayControl;
 

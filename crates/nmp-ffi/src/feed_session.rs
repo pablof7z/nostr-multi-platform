@@ -30,7 +30,6 @@
 //!   closures, releasing everything the open registered (no leak).
 
 use crate::NmpApp;
-use nmp_core::actor::{ContactsCommand, InterestsCommand};
 use nmp_core::__ffi_internal::{
     unregister_observer, KernelEventObserverSlot, SnapshotProjectionSlot,
 };

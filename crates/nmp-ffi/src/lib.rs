@@ -92,6 +92,7 @@ mod app_lifecycle_ffi;
 pub use app_struct::NmpApp;
 // Make update-callback types accessible via `super::` from inline test
 // modules (passive_start_tests, update_callback_quiescence_tests).
+#[cfg(test)]
 pub(crate) use app_struct::{UpdateCallback, UpdateCallbackGate, UpdateCallbackRegistration};
 pub use app_ctor::nmp_app_new;
 pub use app_lifecycle_ffi::{

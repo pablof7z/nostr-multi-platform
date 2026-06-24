@@ -4,7 +4,6 @@ use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::previous_tag_prefix;
@@ -89,6 +88,7 @@ impl ActionModule for PostChatMessageAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nmp_core::actor::PublishCommand;
 
     fn input() -> PostChatMessageInput {
         PostChatMessageInput {

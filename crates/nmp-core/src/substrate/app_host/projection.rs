@@ -4,7 +4,6 @@
 //! Split out of `app_host/mod.rs` (D6 work) to keep that file under the 500-LOC
 //! hard ceiling — this is the single largest narrow registration concern.
 
-use crate::actor::LifecycleCommand;
 use crate::update_envelope::TypedProjectionData;
 
 /// Error returned by [`SnapshotProjectionRegistrar::declare_incremental_apply`]

@@ -10,7 +10,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{ContactsCommand, LifecycleCommand, PublishCommand};
+use nmp_core::actor::{ContactsCommand, LifecycleCommand};
+#[cfg(test)]
+use nmp_core::actor::PublishCommand;
 
 use crate::app_struct::NmpApp;
 

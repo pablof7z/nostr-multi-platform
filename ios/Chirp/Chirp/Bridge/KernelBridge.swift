@@ -51,7 +51,7 @@ enum RefLiveness: Int32 {
 /// Must be bumped in lock-step when the Rust constant changes. A mismatch causes
 /// `KernelBridge.decode()` to reject the snapshot rather than silently misparse
 /// renamed or retyped fields (see `update.rs` contract comment).
-private let KERNEL_SCHEMA_VERSION: UInt32 = 1
+let KERNEL_SCHEMA_VERSION: UInt32 = 1
 
 /// Thin C-FFI wrapper around the `nmp_core` static library.
 final class KernelHandle {

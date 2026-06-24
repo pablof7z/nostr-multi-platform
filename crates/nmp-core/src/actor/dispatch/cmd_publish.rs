@@ -18,7 +18,6 @@
 //! handler.
 
 use crate::actor::commands;
-use crate::actor::pending_sign::ParkedSignerOps;
 use crate::actor::relay_mgmt::{ensure_relay_worker, shutdown_relay_worker};
 use crate::actor::relay_reconnect::reconnect_relays;
 use crate::relay::OutboundMessage;

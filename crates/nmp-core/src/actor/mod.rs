@@ -3,17 +3,14 @@
 //! Idle-tick timing helpers are in `tick.rs`.
 //! Relay lifecycle helpers are in `relay_mgmt.rs`.
 //!
-//! # Dual-channel priority design
+//! # Single-inbox priority design
 //!
-//! Commands (`command_rx`) are checked via `try_recv` at the top of every
-//! iteration with a bounded burst budget — low latency, never dropped under
-//! relay event flood, while relay events and idle work still progress during
-//! sustained command bursts.
-//! Relay events go through their own separate channel, read via
-//! `recv_timeout(compute_wait(…))`. This replaces the old merged
-//! `SyncSender<ActorMsg>` design where a 4096-slot bounded channel could fill
-//! with relay events and cause `try_send` to silently drop commands like
-//! `CreateAccount` during onboarding.
+//! Commands and relay events share one waking `ActorMail` channel. Each
+//! iteration drains a bounded command-priority burst with `try_recv`, stashing
+//! relay mail into a bounded local backlog, then reaches the loop's single
+//! blocking `recv_timeout(compute_wait(…))`. A command send therefore wakes a
+//! relay-idle actor immediately, while relay events and idle work still
+//! progress under sustained command bursts.
 
 mod commands;
 pub mod kind_filter;
@@ -242,10 +239,6 @@ use capability_worker::spawn_capability_worker;
 pub use config::{ActorChannels, ActorConfig, ActorConfigSources, ActorRuntimeSlots};
 #[cfg(feature = "native")]
 use pending_sign::ParkedSignerOps;
-
-use crate::kernel::LifecyclePhase;
-
-use crate::app::KernelAction;
 
 // ADR-0050 §D3a — always-compiled inbox transport types. `CommandSender` is the
 // single command-send seam handed to host code, protocol/capability workers,

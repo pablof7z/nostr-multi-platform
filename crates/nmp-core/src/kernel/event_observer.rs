@@ -22,7 +22,6 @@
 use super::Kernel;
 use crate::actor::KernelEventObserverId;
 use crate::actor::KernelEventObserverSlot;
-use crate::actor::LifecycleCommand;
 use crate::substrate::KernelEvent;
 
 impl Kernel {

@@ -23,9 +23,10 @@
 //! re-derives the pubkey from the signing `Keys` at gift-wrap time, exactly
 //! as the NIP-29 actions do.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{PublishCommand};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{build_dm_rumor, DmInput, SendGiftWrappedDmCommand};
