@@ -18,10 +18,8 @@
 //! (no MLS/Marmot nouns kernel-side — D0 holds); it verifies Schnorr + id and
 //! routes fire-and-forget via the actor channel.
 //!
-//! The inbound ingest seam (`{"op":"ingest_signed_event"}`) is a SEPARATE,
-//! still-open seam (the `KernelEventObserver` fan-out is lossy — no
-//! signature — so MDK cannot ingest from it). This module does not touch
-//! that direction.
+//! Inbound ingest is handled by the raw signed-event tap. This module only
+//! covers outbound publish routing.
 
 use nmp_ffi::NmpApp;
 use nostr::{Event, RelayUrl};

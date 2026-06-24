@@ -2,9 +2,8 @@
 //!
 //! Covers the TDD proofs for the security hardening applied in this crate:
 //!
-//! * **Signature verification gate** — the back-compat
-//!   `{"op":"ingest_signed_event"}` dispatch op must reject tampered events
-//!   before they reach MDK / MLS group-state processing.
+//! * **Signature verification gate** — `ingest_signed_event_core` must reject
+//!   tampered events before they reach MDK / MLS group-state processing.
 //! * **Key zeroization** — `MarmotService` holds a `Zeroizing<[u8;32]>` copy
 //!   of the secret-key bytes so freed heap does not retain key material (not
 //!   directly unit-testable; the field presence is the structural guarantee).
@@ -13,7 +12,7 @@ use mdk_sqlite_storage::MdkSqliteStorage;
 use nostr::{EventBuilder, JsonUtil, Keys, Kind};
 use serde_json::json;
 
-use crate::projection::ops;
+use crate::projection::ops::ingest_signed_event_core;
 use crate::projection::state::MarmotProjection;
 use crate::service::MarmotService;
 
@@ -27,9 +26,9 @@ fn in_memory_proj(keys: Keys) -> MarmotProjection {
 
 /// A tampered event (valid parse, wrong signature) is rejected before MDK.
 ///
-/// The fix: `ingest_signed_event` calls `event.verify()` immediately after
-/// `parse_signed_event`.  A forged event must surface as `"ok":false` with an
-/// error mentioning verification, not as a silent MLS state mutation.
+/// The fix: `ingest_signed_event_core` calls `event.verify()` before MDK sees
+/// the event. A forged event must return an error mentioning verification, not
+/// silently mutate MLS state.
 #[test]
 fn ingest_signed_event_rejects_forged_event() {
     let proj = in_memory_proj(Keys::generate());
@@ -44,24 +43,13 @@ fn ingest_signed_event_rejects_forged_event() {
         serde_json::from_str(&legit_event.as_json()).expect("parse event json");
     tampered["content"] = json!("FORGED CONTENT");
     let tampered_str = tampered.to_string();
+    let tampered_event = nostr::Event::from_json(&tampered_str).expect("tampered event parses");
 
     let resp = proj
-        .with_inner(|h| {
-            ops::dispatch(
-                h,
-                &json!({ "op": "ingest_signed_event", "event_json": tampered_str }),
-                0,
-                None,
-            )
-        })
+        .with_inner(|h| ingest_signed_event_core(h, &tampered_event, 0))
         .expect("dispatch must not panic");
 
-    assert_eq!(
-        resp["ok"],
-        json!(false),
-        "forged event must produce ok:false, got: {resp}"
-    );
-    let err = resp["error"].as_str().unwrap_or("");
+    let err = resp.expect_err("forged event must fail verification");
     assert!(
         err.contains("verification failed") || err.contains("verify"),
         "error must name verification failure; got: {err}"
@@ -81,22 +69,13 @@ fn ingest_signed_event_accepts_valid_event() {
     let event = EventBuilder::new(Kind::Custom(1059), "not a real giftwrap")
         .sign_with_keys(&sender_keys)
         .expect("sign event");
-    let event_json = event.as_json();
 
     let resp = proj
-        .with_inner(|h| {
-            ops::dispatch(
-                h,
-                &json!({ "op": "ingest_signed_event", "event_json": event_json }),
-                0,
-                None,
-            )
-        })
+        .with_inner(|h| ingest_signed_event_core(h, &event, 0))
         .expect("dispatch must not panic");
 
     // If MDK rejects it (wrong gift-wrap key), the error must not be our gate.
-    if resp["ok"] == json!(false) {
-        let err = resp["error"].as_str().unwrap_or("");
+    if let Err(err) = resp {
         assert!(
             !err.contains("verification failed"),
             "valid event must not be rejected by the Schnorr verify gate; error: {err}"

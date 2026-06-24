@@ -21,13 +21,10 @@
 //!
 //! ## Inbound ingest seam — CLOSED (receive direction)
 //!
-//! [`ingest_signed_event_core`] is the single path driving a signed inbound
-//! event into `MarmotService` (kind:1059 → `unwrap_and_process_welcome`;
-//! kind:445 → `process_message`; kind:30443 → cache KP + retry deferred ops;
-//! legacy kind:443 is no longer ingested). Two callers share it: the
-//! automatic [`crate::projection::tap`]
-//! raw-event observer and the back-compat `{"op":"ingest_signed_event"}`
-//! dispatch op.
+//! [`ingest_signed_event_core`] is the single path driving signed inbound
+//! events into `MarmotService` (1059 welcomes, 445 messages, 30443 KPs).
+//! Legacy kind:443 is no longer ingested. The automatic
+//! [`crate::projection::tap`] raw-event observer is production ingress.
 //!
 //! ## Pending-commit discipline (mdk-api.md §7.7)
 //!
@@ -46,6 +43,7 @@ use std::collections::BTreeSet;
 
 use mdk_core::prelude::{GroupId, NostrGroupConfigData};
 
+use crate::projection::action::MarmotAction;
 use crate::projection::payload::MarmotMessageRow;
 use crate::projection::state::{hex_encode, parse_signed_event, InnerHandle};
 
@@ -72,35 +70,19 @@ fn decode_hex(s: &str) -> Option<Vec<u8>> {
         .collect()
 }
 
-fn str_field<'a>(v: &'a Value, k: &str) -> Result<&'a str, String> {
-    v.get(k)
-        .and_then(Value::as_str)
-        .ok_or_else(|| format!("missing or non-string field `{k}`"))
-}
-
-fn str_array(v: &Value, k: &str) -> Vec<String> {
-    v.get(k)
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str().map(str::to_owned))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 /// Resolve the invitee npub list from EITHER the typed array
 /// (`invitee_npubs`) OR a free-form text field (`invitee_text`) the UI
 /// captures verbatim. Splits on whitespace, comma, semicolon, newline;
 /// trims each token; drops empties. Validation (npub/hex parse) stays in
 /// the per-op pipeline — this is just the input-adapter step Rust owns
 /// per aim.md §4.5 / §6.
-fn resolve_invitees(v: &Value) -> Vec<String> {
-    let arr = str_array(v, "invitee_npubs");
-    if !arr.is_empty() {
-        return arr;
+fn resolve_invitees(invitee_text: Option<&str>, invitee_npubs: Option<&[String]>) -> Vec<String> {
+    if let Some(arr) = invitee_npubs {
+        if !arr.is_empty() {
+            return arr.to_vec();
+        }
     }
-    let Some(text) = v.get("invitee_text").and_then(Value::as_str) else {
+    let Some(text) = invitee_text else {
         return Vec::new();
     };
     text.split(|c: char| c.is_whitespace() || c == ',' || c == ';')
@@ -132,24 +114,19 @@ fn parse_relays(urls: &[String]) -> Result<Vec<RelayUrl>, String> {
 /// non-Chirp consumer), fall back to the envelope `relays` array. This
 /// keeps `nmp-marmot::projection` host-agnostic: relays come from the
 /// kernel when available, otherwise from the caller's op envelope.
-fn resolve_write_relays(h: &InnerHandle<'_>, v: &Value) -> Vec<String> {
+fn resolve_write_relays(h: &InnerHandle<'_>, relays: &[String]) -> Vec<String> {
     let app_relays = h.write_relay_urls();
     if !app_relays.is_empty() {
         return app_relays;
     }
-    str_array(v, "relays")
+    relays.to_vec()
 }
 
-/// Pull `signed_key_package_events_json` (array of signed kind:30443/443
+/// Pull `signed_key_package_events_json` (array of signed kind:30443
 /// event JSON strings OR objects) — the KeyPackage-cache seam escape hatch.
-fn signed_key_package_events(v: &Value) -> Result<Vec<nostr::Event>, String> {
-    let arr = match v.get("signed_key_package_events_json") {
-        Some(Value::Array(a)) => a.clone(),
-        Some(_) => return Err("signed_key_package_events_json must be an array".into()),
-        None => Vec::new(),
-    };
+fn signed_key_package_events(arr: &[Value]) -> Result<Vec<nostr::Event>, String> {
     let mut out = Vec::with_capacity(arr.len());
-    for item in arr {
+    for item in arr.iter().cloned() {
         let json = match item {
             Value::String(s) => s,
             other => {
@@ -196,7 +173,6 @@ fn fill_key_packages_from_cache(
     (needs, fetch_pubkeys)
 }
 
-
 /// Newest-N decrypted application messages for one group, newest first.
 ///
 /// Preserves the prior wire ordering (DESC) so existing Swift consumers
@@ -226,45 +202,67 @@ pub fn group_messages(
         .collect()
 }
 
-/// Route + execute one dispatch op envelope.
+/// Route + execute one typed dispatch op.
 ///
-/// `correlation_id` is the action-registry–minted id for this dispatch. It is
-/// forwarded to KP-gated ops (`create_group` / `invite`) so they can park a
-/// pending op under the SAME id; the terminal verdict is later recorded under
-/// that id when the KPs arrive (or on expiry). Callers that do not come from
-/// the typed action pipeline (REPL / tests) may pass `None` — those callers
-/// should not attempt to create groups when invitee KPs are missing.
+/// `correlation_id` is the action-registry id. KP-gated ops park and later
+/// record terminal verdicts under that same id; REPL/test callers pass `None`.
 pub fn dispatch(
     h: &mut InnerHandle<'_>,
-    v: &Value,
+    action: &MarmotAction,
     now_secs: u64,
     correlation_id: Option<&str>,
 ) -> Value {
-    let op = match str_field(v, "op") {
-        Ok(o) => o,
-        Err(e) => return err(&e),
-    };
-    let r: Result<Value, String> = match op {
-        "publish_key_package" => publish_key_package(h, v, now_secs),
-        "create_group" => create_group(h, v, now_secs, correlation_id),
-        "invite" => invite(h, v, now_secs, correlation_id),
-        "send" => send(h, v),
-        "leave" => leave(h, v),
-        "remove" => remove(h, v),
-        "accept_welcome" => accept_welcome(h, v),
-        "decline_welcome" => decline_welcome(h, v),
-        "ingest_signed_event" => ingest_signed_event(h, v),
-        "clear_pending" => clear_pending(h, v),
-        other => Err(format!("unknown op `{other}`")),
+    let r: Result<Value, String> = match action {
+        MarmotAction::PublishKeyPackage { relays } => publish_key_package(h, relays, now_secs),
+        MarmotAction::CreateGroup {
+            name,
+            description,
+            invitee_text,
+            invitee_npubs,
+            signed_key_package_events_json,
+            relays,
+        } => create_group(
+            h,
+            action,
+            name,
+            description,
+            invitee_text.as_deref(),
+            invitee_npubs.as_deref(),
+            signed_key_package_events_json,
+            relays,
+            now_secs,
+            correlation_id,
+        ),
+        MarmotAction::Invite {
+            group_id_hex,
+            invitee_text,
+            invitee_npubs,
+            signed_key_package_events_json,
+        } => invite(
+            h,
+            action,
+            group_id_hex,
+            invitee_text.as_deref(),
+            invitee_npubs.as_deref(),
+            signed_key_package_events_json,
+            now_secs,
+            correlation_id,
+        ),
+        MarmotAction::Send { group_id_hex, text } => send(h, group_id_hex, text),
+        MarmotAction::Leave { group_id_hex } => leave(h, group_id_hex),
+        MarmotAction::Remove {
+            group_id_hex,
+            member_npubs,
+        } => remove(h, group_id_hex, member_npubs),
+        MarmotAction::AcceptWelcome { welcome_id_hex } => accept_welcome(h, welcome_id_hex),
+        MarmotAction::DeclineWelcome { welcome_id_hex } => decline_welcome(h, welcome_id_hex),
+        MarmotAction::ClearPending { group_id_hex } => clear_pending(h, group_id_hex),
     };
     match r {
         Ok(mut ok) => {
             if let Value::Object(map) = &mut ok {
-                // `{"pending":true}` envelopes must NOT get an `ok` field — the
-                // `HostOpCommand` keys off `"pending":true` to skip the
-                // terminal verdict; injecting `ok:true` would force a spurious
-                // success. Otherwise inject `ok:true` unless the handler already
-                // decided (soft-fail paths set `ok:false` explicitly).
+                // Pending envelopes must not get `ok`; HostOpCommand uses
+                // `"pending":true` to skip terminal verdict recording.
                 let is_pending = map.get("pending").and_then(Value::as_bool).unwrap_or(false);
                 if !is_pending {
                     map.entry("ok").or_insert(Value::Bool(true));
@@ -280,12 +278,25 @@ pub fn dispatch(
     }
 }
 
+#[cfg(test)]
+pub(crate) fn dispatch_json_for_tests(
+    h: &mut InnerHandle<'_>,
+    v: Value,
+    now_secs: u64,
+    correlation_id: Option<&str>,
+) -> Value {
+    match serde_json::from_value::<MarmotAction>(v) {
+        Ok(action) => dispatch(h, &action, now_secs, correlation_id),
+        Err(e) => err(&format!("invalid MarmotAction: {e}")),
+    }
+}
+
 fn publish_key_package(
     h: &mut InnerHandle<'_>,
-    _v: &Value,
+    relays: &[String],
     now_secs: u64,
 ) -> Result<Value, String> {
-    let urls = resolve_write_relays(h, _v);
+    let urls = resolve_write_relays(h, relays);
     if urls.is_empty() {
         return Err("no write relays configured — add one in Settings > Relays".to_string());
     }
@@ -294,14 +305,8 @@ fn publish_key_package(
         .service()
         .publish_key_package(relays.clone())
         .map_err(|e| e.to_string())?;
-    // kind:30443 only — legacy kind:443 was retired 2026-05-31. The historical
-    // synchronous tungstenite "direct EVENT submit" path used to live here as a
-    // simulator-path verification fallback but it was a D8 violation: it
-    // blocked the calling thread (kernel actor / Swift worker) on
-    // synchronous TCP + TLS + per-relay 6 s wall-clock waits. The kernel
-    // publish pipeline is the canonical path; no consumer reads the
-    // former `direct_ok` / `send_errors` fields (verified across
-    // ios/, apps/, crates/).
+    // kind:30443 only; legacy kind:443 and the synchronous direct-submit
+    // fallback were retired. The kernel publish pipeline is canonical.
     use nostr::JsonUtil as _;
     h.publish_explicit(&pubn.event_30443, &relays);
     h.record_key_package(pubn.d_tag.clone(), now_secs);
@@ -361,23 +366,23 @@ fn wrap_and_publish_welcomes(
 
 fn create_group(
     h: &mut InnerHandle<'_>,
-    v: &Value,
+    action: &MarmotAction,
+    name: &str,
+    description: &str,
+    invitee_text: Option<&str>,
+    invitee_npubs: Option<&[String]>,
+    signed_key_package_events_json: &[Value],
+    relays: &[String],
     now_secs: u64,
     correlation_id: Option<&str>,
 ) -> Result<Value, String> {
-    let name = str_field(v, "name")?.to_string();
-    let description = v
-        .get("description")
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string();
-    let urls = resolve_write_relays(h, v);
+    let urls = resolve_write_relays(h, relays);
     if urls.is_empty() {
         return Err("no write relays configured — add one in Settings > Relays".to_string());
     }
     let relays = parse_relays(&urls)?;
-    let invitee_npubs = resolve_invitees(v);
-    let mut kp_events = signed_key_package_events(v)?;
+    let invitee_npubs = resolve_invitees(invitee_text, invitee_npubs);
+    let mut kp_events = signed_key_package_events(signed_key_package_events_json)?;
     // Fill from kp_cache (populated by the app's raw-event tap when the
     // kernel delivers peers' kind:30443 events), then require EVERY requested
     // invitee to have a signed KeyPackage. A partial cache must not silently
@@ -387,7 +392,7 @@ fn create_group(
             fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
         if !needs.is_empty() {
             return Ok(h.park_or_report_kp_unavailable(
-                v,
+                action,
                 "create_group",
                 needs,
                 &fetch_pubkeys,
@@ -397,8 +402,15 @@ fn create_group(
         }
     }
     let admins = vec![h.service().public_key()];
-    let config =
-        NostrGroupConfigData::new(name, description, None, None, None, relays.clone(), admins);
+    let config = NostrGroupConfigData::new(
+        name.to_string(),
+        description.to_string(),
+        None,
+        None,
+        None,
+        relays.clone(),
+        admins,
+    );
     let (group, pending) = h
         .service()
         .create_group(kp_events.clone(), config)
@@ -424,13 +436,17 @@ fn create_group(
 
 fn invite(
     h: &mut InnerHandle<'_>,
-    v: &Value,
+    action: &MarmotAction,
+    group_id_hex: &str,
+    invitee_text: Option<&str>,
+    invitee_npubs: Option<&[String]>,
+    signed_key_package_events_json: &[Value],
     now_secs: u64,
     correlation_id: Option<&str>,
 ) -> Result<Value, String> {
-    let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
-    let invitee_npubs = resolve_invitees(v);
-    let mut kp_events = signed_key_package_events(v)?;
+    let gid = group_id_from_hex(group_id_hex)?;
+    let invitee_npubs = resolve_invitees(invitee_text, invitee_npubs);
+    let mut kp_events = signed_key_package_events(signed_key_package_events_json)?;
     // Fill from kp_cache (populated by the tap), then require EVERY requested
     // invitee to have a signed KeyPackage. A partial cache must not silently
     // invite fewer members than the user requested.
@@ -439,7 +455,7 @@ fn invite(
             fill_key_packages_from_cache(h, &invitee_npubs, &mut kp_events);
         if !needs.is_empty() {
             return Ok(h.park_or_report_kp_unavailable(
-                v,
+                action,
                 "invite",
                 needs,
                 &fetch_pubkeys,
@@ -472,11 +488,10 @@ fn invite(
     }))
 }
 
-fn send(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
-    let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
-    let text = str_field(v, "text")?.to_string();
+fn send(h: &mut InnerHandle<'_>, group_id_hex: &str, text: &str) -> Result<Value, String> {
+    let gid = group_id_from_hex(group_id_hex)?;
     let author = h.service().public_key();
-    let rumor = EventBuilder::new(Kind::TextNote, text).build(author);
+    let rumor = EventBuilder::new(Kind::TextNote, text.to_string()).build(author);
     let msg = h
         .service()
         .create_message(&gid, rumor)
@@ -492,8 +507,8 @@ fn send(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     }))
 }
 
-fn leave(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
-    let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
+fn leave(h: &mut InnerHandle<'_>, group_id_hex: &str) -> Result<Value, String> {
+    let gid = group_id_from_hex(group_id_hex)?;
     let group_id_hex = hex_encode(gid.as_slice());
     let pending = h.service().leave_group(&gid).map_err(|e| e.to_string())?;
     let evolution = pending.evolution_event.as_json();
@@ -505,10 +520,14 @@ fn leave(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     Ok(json!({ "evolution_event": evolution }))
 }
 
-fn remove(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
-    let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
+fn remove(
+    h: &mut InnerHandle<'_>,
+    group_id_hex: &str,
+    member_npubs: &[String],
+) -> Result<Value, String> {
+    let gid = group_id_from_hex(group_id_hex)?;
     let group_id_hex = hex_encode(gid.as_slice());
-    let pubkeys = parse_pubkeys(&str_array(v, "member_npubs"))?;
+    let pubkeys = parse_pubkeys(member_npubs)?;
     let pending = h
         .service()
         .remove_members(&gid, &pubkeys)
@@ -521,8 +540,8 @@ fn remove(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     Ok(json!({ "evolution_event": evolution }))
 }
 
-fn accept_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
-    let wid = str_field(v, "welcome_id_hex")?.to_string();
+fn accept_welcome(h: &mut InnerHandle<'_>, welcome_id_hex: &str) -> Result<Value, String> {
+    let wid = welcome_id_hex.to_string();
     let Some(gift) = h.take_welcome_gift_wrap(&wid) else {
         return Err(format!("no pending welcome `{wid}`"));
     };
@@ -568,8 +587,8 @@ fn accept_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
     }))
 }
 
-fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
-    let wid = str_field(v, "welcome_id_hex")?.to_string();
+fn decline_welcome(h: &mut InnerHandle<'_>, welcome_id_hex: &str) -> Result<Value, String> {
+    let wid = welcome_id_hex.to_string();
     let Some(gift) = h.take_welcome_gift_wrap(&wid) else {
         return Err(format!("no pending welcome `{wid}`"));
     };
@@ -597,26 +616,23 @@ fn decline_welcome(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> 
 /// the wire welcome is the kind:1059 gift-wrap) must not be treated as an
 /// error there.
 ///
-/// TWO callers, ONE path:
+/// The automatic [`crate::projection::tap`] raw-event observer is the caller:
+/// the kernel delivers every accepted inbound signed kind:1059/445/30443 here.
+/// The tap discards the `Result` (D6: a poisoned/duplicate/malformed event is a
+/// silent no-op on the actor thread, never a panic across the FFI).
 ///
-/// * the automatic [`crate::projection::tap`] raw-event observer (the
-///   kernel delivers every accepted inbound signed kind:1059/445 here) —
-///   it discards the `Result` (D6: a poisoned/duplicate/malformed event
-///   is a silent no-op on the actor thread, never a panic across the
-///   FFI), and
-/// * the manual `{"op":"ingest_signed_event"}` dispatch op (back-compat /
-///   tests) — it maps `Ok(None)` (unsupported kind) and any `Err` to the
-///   `{"ok":false,"error":…}` envelope, exactly as before.
-///
-/// `Ok(Some(Value))` carries the per-kind informational payload the
-/// dispatch op echoes. The projection mutation (pending-welcome row,
+/// `Ok(Some(Value))` carries per-kind informational payload for tests and
+/// deferred-op retry assertions. The projection mutation (pending-welcome row,
 /// relay cache, MDK state) is the load-bearing effect — the next
-/// `nmp.marmot.snapshot` push projection reflects it for BOTH callers.
+/// `nmp.marmot.snapshot` push projection reflects it.
 pub(crate) fn ingest_signed_event_core(
     h: &mut InnerHandle<'_>,
     event: &nostr::Event,
     now_secs: u64,
 ) -> Result<Option<Value>, String> {
+    event
+        .verify()
+        .map_err(|e| format!("ingest_signed_event_core: event verification failed: {e}"))?;
     let kind = event.kind.as_u16();
     if kind == 1059 {
         // Gift-wrap: unwrap + process the inner kind:444 welcome, then
@@ -668,34 +684,12 @@ pub(crate) fn ingest_signed_event_core(
     }
 }
 
-/// Back-compat op alias over [`ingest_signed_event_core`]. Kept for tests and
-/// any Swift call site still dispatching `{"op":"ingest_signed_event"}`.
-fn ingest_signed_event(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
-    let json = str_field(v, "event_json")?;
-    let event = parse_signed_event(json)?;
-    // Untrusted JSON input: verify Schnorr sig + id before handing to MDK.
-    event
-        .verify()
-        .map_err(|e| format!("ingest_signed_event: event verification failed: {e}"))?;
-    let now_secs = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    match ingest_signed_event_core(h, &event, now_secs)? {
-        Some(payload) => Ok(payload),
-        None => Err(format!(
-            "ingest_signed_event: unsupported kind {} (expect 30443, 445, or 1059)",
-            event.kind.as_u16()
-        )),
-    }
-}
-
 /// Explicit pending-commit clear (mdk-api.md §7.7) — exposed so a caller
 /// that detected a relay-publish failure can unwedge the group. Re-runs
 /// `self_update` then `clear()`s it (the only sanctioned `MarmotService`
 /// path to reach `clear_pending_commit` without a publish).
-fn clear_pending(h: &mut InnerHandle<'_>, v: &Value) -> Result<Value, String> {
-    let gid = group_id_from_hex(str_field(v, "group_id_hex")?)?;
+fn clear_pending(h: &mut InnerHandle<'_>, group_id_hex: &str) -> Result<Value, String> {
+    let gid = group_id_from_hex(group_id_hex)?;
     let pending = h.service().self_update(&gid).map_err(|e| e.to_string())?;
     pending.clear().map_err(|e| e.to_string())?;
     Ok(json!({ "cleared": true }))

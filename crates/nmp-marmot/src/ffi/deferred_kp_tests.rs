@@ -1,11 +1,7 @@
 //! Deferred KP-completion tests (PR-1 — marmot-create-fix ladder).
 //!
-//! Proves: (1) a missing-KP `create_group`/`invite` with a `correlation_id`
-//! parks the op and returns `{"pending":true}`; (2) the parked op runs on KP
-//! arrival and records its verdict under the ORIGINAL `correlation_id` (the
-//! `#[cfg(test)]` capture seam `drain_captured_commands` lets us assert
-//! EXACTLY ONE terminal per id, since `app` is null in tests); (3) a parked op
-//! expires on the next wall-clock edge (KP ingest OR snapshot) past 60 s.
+//! Proves KP-gated ops park under their correlation id, retry on KP arrival,
+//! emit exactly one terminal verdict, and expire on a later ingest/snapshot edge.
 
 use crate::projection::ops::{self, ingest_signed_event_core};
 use crate::projection::pending::PENDING_OP_EXPIRY_SECS;
@@ -48,9 +44,9 @@ fn create_group_with_missing_kp_parks_and_retries_on_kp_arrival() {
 
     // Alice publishes her own KP (needed by the group op).
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
             None,
         )
@@ -60,9 +56,9 @@ fn create_group_with_missing_kp_parks_and_retries_on_kp_arrival() {
     // Dispatch create_group WITH a correlation_id but WITHOUT Bob's KP.
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "Deferred Test",
                     "relays": ["wss://t.relay"],
@@ -93,7 +89,10 @@ fn create_group_with_missing_kp_parks_and_retries_on_kp_arrival() {
 
     // Snapshot: no groups yet (the op is parked).
     let snap = proj.snapshot(1_001);
-    assert!(snap.groups.is_empty(), "group must not appear while op is pending: {snap:?}");
+    assert!(
+        snap.groups.is_empty(),
+        "group must not appear while op is pending: {snap:?}"
+    );
 
     // Now ingest Bob's KP — this should trigger the retry.
     let bob_kp = make_kp_event(&bob_keys);
@@ -120,12 +119,14 @@ fn create_group_with_missing_kp_parks_and_retries_on_kp_arrival() {
         "group must appear in snapshot after KP arrival triggers retry: {snap:?}"
     );
     assert_eq!(snap.groups[0].name, "Deferred Test");
-    assert_eq!(snap.groups[0].members.len(), 2, "both Alice and Bob must be members");
+    assert_eq!(
+        snap.groups[0].members.len(),
+        2,
+        "both Alice and Bob must be members"
+    );
 
     // Pending store must be empty after successful retry.
-    let summaries = proj
-        .with_inner(|h| h.pending_op_summaries())
-        .unwrap();
+    let summaries = proj.with_inner(|h| h.pending_op_summaries()).unwrap();
     assert!(
         summaries.is_empty(),
         "pending store must be cleared after successful retry: {summaries:?}"
@@ -150,9 +151,9 @@ fn pending_op_expires_after_deadline_on_next_ingest_edge() {
 
     // Alice publishes her own KP.
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
             None,
         )
@@ -162,9 +163,9 @@ fn pending_op_expires_after_deadline_on_next_ingest_edge() {
     // Park the op waiting for Bob's KP (which will never arrive before expiry).
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "Expiry Test",
                     "relays": ["wss://t.relay"],
@@ -185,10 +186,7 @@ fn pending_op_expires_after_deadline_on_next_ingest_edge() {
     // expiry threshold.
     let expired_now = 1_001 + PENDING_OP_EXPIRY_SECS + 1;
     let _carol_kp = make_kp_event(&carol_keys);
-    // We need to drive the ingest through handle_key_package_cached which
-    // uses the event timestamp — but ingest_signed_event_core reads the
-    // system clock. We use with_inner to call handle_key_package_cached
-    // directly with the synthetic now_secs so the expiry gate fires.
+    // Drive the cache edge directly so the synthetic `expired_now` trips expiry.
     let ready = proj
         .with_inner(|h| h.handle_key_package_cached(&carol_keys.public_key().to_hex(), expired_now))
         .unwrap();
@@ -203,9 +201,7 @@ fn pending_op_expires_after_deadline_on_next_ingest_edge() {
     );
 
     // Pending store must be empty after expiry eviction.
-    let summaries = proj
-        .with_inner(|h| h.pending_op_summaries())
-        .unwrap();
+    let summaries = proj.with_inner(|h| h.pending_op_summaries()).unwrap();
     assert!(
         summaries.is_empty(),
         "expired op must be evicted from the pending store: {summaries:?}"
@@ -230,9 +226,9 @@ fn duplicate_create_group_while_pending_is_rejected_as_duplicate() {
     let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
 
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
             None,
         )
@@ -242,9 +238,9 @@ fn duplicate_create_group_while_pending_is_rejected_as_duplicate() {
     // First dispatch — parks the op.
     let r1 = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "g",
                     "relays": ["wss://t.relay"],
@@ -260,9 +256,9 @@ fn duplicate_create_group_while_pending_is_rejected_as_duplicate() {
     // Second identical dispatch — must be rejected as duplicate.
     let r2 = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "g",
                     "relays": ["wss://t.relay"],
@@ -273,8 +269,16 @@ fn duplicate_create_group_while_pending_is_rejected_as_duplicate() {
             )
         })
         .unwrap();
-    assert_eq!(r2["pending"], json!(true), "duplicate must still be pending: {r2}");
-    assert_eq!(r2["duplicate"], json!(true), "duplicate flag must be set: {r2}");
+    assert_eq!(
+        r2["pending"],
+        json!(true),
+        "duplicate must still be pending: {r2}"
+    );
+    assert_eq!(
+        r2["duplicate"],
+        json!(true),
+        "duplicate flag must be set: {r2}"
+    );
     assert_eq!(
         r2.get("correlation_id").and_then(|v| v.as_str()),
         Some("corr-first"),
@@ -282,9 +286,7 @@ fn duplicate_create_group_while_pending_is_rejected_as_duplicate() {
     );
 
     // Only one pending op must exist (the first).
-    let summaries = proj
-        .with_inner(|h| h.pending_op_summaries())
-        .unwrap();
+    let summaries = proj.with_inner(|h| h.pending_op_summaries()).unwrap();
     assert_eq!(
         summaries.len(),
         1,
@@ -303,9 +305,9 @@ fn create_group_without_correlation_id_returns_terminal_soft_fail() {
     let proj = MarmotProjection::new(in_memory(Keys::generate()), None);
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "g",
                     "relays": ["wss://t.relay"],
@@ -325,10 +327,7 @@ fn create_group_without_correlation_id_returns_terminal_soft_fail() {
     );
 }
 
-/// MAJOR review fix: a parked op whose KP NEVER arrives must still expire —
-/// the snapshot edge (not just the KP-ingest edge) drives `check_expired`.
-/// Here NO further KP event is ever ingested; the op ages out purely because
-/// a later snapshot is taken past the deadline.
+/// A parked op whose KP never arrives expires on a later snapshot edge.
 #[test]
 fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
     let alice_keys = Keys::generate();
@@ -336,9 +335,9 @@ fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
 
     let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
             None,
         )
@@ -348,9 +347,9 @@ fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
     // Park the op at t=1_001.
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "Snapshot Expiry",
                     "relays": ["wss://t.relay"],
@@ -363,8 +362,7 @@ fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
         .unwrap();
     assert_eq!(r["pending"], json!(true), "must park: {r}");
 
-    // A snapshot BEFORE the deadline keeps the op pending. (PR-1 surfaces
-    // pending ops via `pending_op_summaries`; PR-2 adds `snapshot.pending_ops`.)
+    // Before the deadline, the op stays pending.
     let _ = proj.snapshot(1_002);
     let summaries = proj.with_inner(|h| h.pending_op_summaries()).unwrap();
     assert_eq!(
@@ -393,13 +391,8 @@ fn pending_op_expires_on_snapshot_edge_without_any_further_ingest() {
     );
 }
 
-/// MINOR review fix: assert EXACTLY ONE terminal command per correlation_id
-/// across the three deferred-op outcomes, using the `#[cfg(test)]` capture
-/// seam (no live `NmpApp` actor channel needed):
-///   * retry-success — KP arrives, op completes → one `success`
-///   * expiry — KP never arrives, op ages out on an edge → one `failure`
-///   * expiry-then-late-KP — op already expired; a late KP must NOT produce a
-///     second terminal verdict for the same id.
+/// Assert exactly one terminal command per correlation id across retry,
+/// expiry, and late-KP-after-expiry outcomes.
 #[test]
 fn exactly_one_terminal_command_per_correlation_id() {
     let alice_keys = Keys::generate();
@@ -408,9 +401,9 @@ fn exactly_one_terminal_command_per_correlation_id() {
 
     let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
             None,
         )
@@ -419,9 +412,9 @@ fn exactly_one_terminal_command_per_correlation_id() {
 
     // (A) retry-success op blocked on Bob.
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({
+            json!({
                 "op": "create_group",
                 "name": "Retry Success",
                 "relays": ["wss://t.relay"],
@@ -435,9 +428,9 @@ fn exactly_one_terminal_command_per_correlation_id() {
 
     // (B) expiry op blocked on Carol.
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({
+            json!({
                 "op": "create_group",
                 "name": "Will Expire",
                 "relays": ["wss://t.relay"],
@@ -482,11 +475,21 @@ fn exactly_one_terminal_command_per_correlation_id() {
         .iter()
         .filter(|(v, c)| *v == "failure" && c == "corr-expire")
         .count();
-    assert_eq!(success_count, 1, "exactly one success for corr-success: {cmds:?}");
-    assert_eq!(failure_count, 1, "exactly one failure for corr-expire: {cmds:?}");
+    assert_eq!(
+        success_count, 1,
+        "exactly one success for corr-success: {cmds:?}"
+    );
+    assert_eq!(
+        failure_count, 1,
+        "exactly one failure for corr-expire: {cmds:?}"
+    );
     // No correlation_id appears twice.
     let mut ids: Vec<&String> = cmds.iter().map(|(_, c)| c).collect();
     ids.sort();
     ids.dedup();
-    assert_eq!(ids.len(), 2, "no correlation_id may receive two terminals: {cmds:?}");
+    assert_eq!(
+        ids.len(),
+        2,
+        "no correlation_id may receive two terminals: {cmds:?}"
+    );
 }

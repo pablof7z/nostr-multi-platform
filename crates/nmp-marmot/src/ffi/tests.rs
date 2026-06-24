@@ -16,7 +16,7 @@
 
 use super::*;
 use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT};
-use crate::projection::{ops, state::MarmotProjection};
+use crate::projection::{ops, ops::ingest_signed_event_core, state::MarmotProjection};
 
 use crate::service::MarmotService;
 use mdk_core::prelude::NostrGroupConfigData;
@@ -101,9 +101,9 @@ fn round_trip_publish_create_snapshot_send_messages() {
     // 1. publish_key_package dispatch.
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({ "op": "publish_key_package",
+                json!({ "op": "publish_key_package",
                          "relays": ["wss://t.relay"] }),
                 1_000,
                 None,
@@ -123,9 +123,9 @@ fn round_trip_publish_create_snapshot_send_messages() {
     // 2. create_group dispatch (seeded via the KeyPackage-cache seam).
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "Marmot FFI Test",
                     "description": "round-trip",
@@ -157,9 +157,9 @@ fn round_trip_publish_create_snapshot_send_messages() {
     // 4. send dispatch.
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({ "op": "send",
+                json!({ "op": "send",
                          "group_id_hex": group_id_hex,
                          "text": "hello marmot" }),
                 1_003,
@@ -188,9 +188,9 @@ fn create_group_without_key_packages_reports_seam() {
     let proj = MarmotProjection::new(in_memory(Keys::generate()), None);
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "g",
                     "relays": ["wss://t.relay"],
@@ -225,9 +225,9 @@ fn create_group_partial_key_package_set_reports_only_missing_invitees() {
     let proj = MarmotProjection::new(in_memory(Keys::generate()), None);
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "g",
                     "relays": ["wss://t.relay"],
@@ -264,9 +264,9 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
     let proj = MarmotProjection::new(in_memory(alice_keys), None);
     let group_id_hex = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "g",
                     "relays": ["wss://t.relay"],
@@ -282,9 +282,9 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
 
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "invite",
                     "group_id_hex": group_id_hex,
                     "invitee_npubs": [
@@ -309,13 +309,16 @@ fn invite_partial_key_package_set_reports_only_missing_invitees() {
 fn unknown_op_and_bad_json_degrade() {
     let proj = MarmotProjection::new(in_memory(Keys::generate()), None);
     let r = proj
-        .with_inner(|h| ops::dispatch(h, &json!({ "op": "frobnicate" }), 1, None))
+        .with_inner(|h| ops::dispatch_json_for_tests(h, json!({ "op": "frobnicate" }), 1, None))
         .unwrap();
     assert_eq!(r["ok"], json!(false));
-    assert!(r["error"].as_str().unwrap().contains("unknown op"));
+    assert!(r["error"]
+        .as_str()
+        .unwrap()
+        .contains("invalid MarmotAction"));
 
     let r = proj
-        .with_inner(|h| ops::dispatch(h, &json!({ "no_op": true }), 1, None))
+        .with_inner(|h| ops::dispatch_json_for_tests(h, json!({ "no_op": true }), 1, None))
         .unwrap();
     assert_eq!(r["ok"], json!(false));
 }
@@ -323,12 +326,11 @@ fn unknown_op_and_bad_json_degrade() {
 // ── Inbound ingest seam (IngestParser — raw-tap PR-2) ────────────────────
 
 /// Simulate the kernel `IngestParser` delivering a signed kind:1059
-/// gift-wrap welcome: it must reach `MarmotService` via the SAME shared
-/// `ingest_signed_event_core` the dispatch op uses, and Bob's snapshot
-/// must then show a pending welcome — with NO Swift / dispatch call (the
-/// existing snapshot read surfaces the new state). Builds a real gift-wrap
-/// via the two-party in-memory pattern (the `nmp_nip59` path), exactly as
-/// `crates/nmp-marmot/src/tests.rs` does.
+/// gift-wrap welcome: it must reach `MarmotService` via
+/// `ingest_signed_event_core`, and Bob's snapshot must then show a pending
+/// welcome — with NO Swift / dispatch call (the existing snapshot read surfaces
+/// the new state). Builds a real gift-wrap via the two-party in-memory pattern
+/// (the `nmp_nip59` path), exactly as `crates/nmp-marmot/src/tests.rs` does.
 #[test]
 fn ingest_parser_kind_1059_welcome_reaches_service_and_snapshot() {
     let alice_keys = Keys::generate();
@@ -392,27 +394,14 @@ fn ingest_parser_kind_1059_welcome_reaches_service_and_snapshot() {
     parser.parse(&verified);
     assert_eq!(bob_proj.snapshot(2).pending_welcomes.len(), 1);
 
-    // The back-compat dispatch op drives the SAME shared core against the
-    // SAME projection (its key store has Bob's key package; a separate
-    // service would not — KP state is per-storage). `unwrap_and_process_
-    // welcome` is idempotent, so re-ingesting via the op succeeds and the
-    // row is still present — proving the parser and the op share one path.
+    // A direct core call against the SAME projection (its key store has Bob's
+    // key package; a separate service would not — KP state is per-storage)
+    // is idempotent, so re-ingesting succeeds and the row is still present.
     let r = bob_proj
-        .with_inner(|h| {
-            ops::dispatch(
-                h,
-                &json!({ "op": "ingest_signed_event", "event_json": gift_json }),
-                3,
-                None,
-            )
-        })
+        .with_inner(|h| ingest_signed_event_core(h, &gift, 3))
         .unwrap();
-    assert_eq!(
-        r["ok"],
-        json!(true),
-        "dispatch back-compat shares core: {r}"
-    );
-    assert_eq!(r["kind"], json!(1059));
+    let r = r.expect("direct core re-ingest should succeed");
+    assert_eq!(r.as_ref().and_then(|v| v.get("kind")), Some(&json!(1059)));
     assert_eq!(bob_proj.snapshot(3).pending_welcomes.len(), 1);
 }
 
@@ -557,9 +546,8 @@ use crate::projection::handler::MarmotMlsOpHandler;
 /// * register `MarmotActionModule` against the action registry;
 /// * install `MarmotMlsOpHandler::new(projection)` into the MLS-op slot.
 ///
-/// Then dispatches the legacy `{"op": "publish_key_package", "relays":
-/// [...]}` envelope through `nmp_app_dispatch_action("nmp.marmot",
-/// envelope_json)` and asserts:
+/// Then dispatches a typed Marmot action JSON body through
+/// `nmp_app_dispatch_action("nmp.marmot", action_json)` and asserts:
 ///
 /// * the dispatcher returns a `correlation_id` (the action was accepted);
 /// * the `MarmotProjection::snapshot` reflects the published key package
@@ -588,11 +576,7 @@ fn dispatch_action_nmp_marmot_routes_to_projection_via_handler() {
     app_mut.set_host_op_handler(handler);
     nmp_ffi::nmp_app_start(app, 256, 4);
 
-    // Dispatch the legacy envelope through the generic seam. The JSON
-    // shape is byte-identical with what iOS used to send to the legacy
-    // bespoke `nmp_marmot_dispatch` symbol — kept stable so the iOS
-    // migration in ADR-0025 PR 2 was a one-line call-site change per op,
-    // not a re-encode.
+    // Dispatch the typed action JSON through the generic seam.
     let envelope_json = r#"{"op":"publish_key_package","relays":["wss://t.relay"]}"#;
     let namespace_c = CString::new(MARMOT_ACTION_NAMESPACE).unwrap();
     let envelope_c = CString::new(envelope_json).unwrap();
@@ -728,9 +712,9 @@ fn dispatch_action_and_bespoke_dispatch_share_one_projection() {
     // `unknown group_id`.
     let r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "send",
                     "group_id_hex": &group_id_hex,
                     "text": "parity proof",
@@ -792,9 +776,9 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
     // Publish key package and create a group.
     let kp_r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+                json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
                 1_000,
                 None,
             )
@@ -804,9 +788,9 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
 
     let create_r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "Msgs All Groups Test",
                     "relays": ["wss://t.relay"],
@@ -836,9 +820,9 @@ fn messages_all_groups_json_emits_keyed_rows_after_send() {
     // Send a message.
     let send_r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "send",
                     "group_id_hex": &group_id_hex,
                     "text": "all-groups map test",
@@ -899,18 +883,18 @@ fn projection_slot_cleared_on_unregister_emits_empty() {
     // Test setup step — dispatch result is asserted via the subsequent
     // `create_r`; discard the `#[must_use]` return here explicitly.
     let _ = proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
             None,
         )
     });
     let create_r = proj
         .with_inner(|h| {
-            ops::dispatch(
+            ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "Slot Clear Test",
                     "relays": ["wss://t.relay"],

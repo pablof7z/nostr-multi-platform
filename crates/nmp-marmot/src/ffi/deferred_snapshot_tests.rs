@@ -38,9 +38,9 @@ fn pending_op_appears_in_snapshot_and_clears_after_retry() {
 
     let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
             None,
         )
@@ -49,9 +49,9 @@ fn pending_op_appears_in_snapshot_and_clears_after_retry() {
 
     // Park the op.
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({
+            json!({
                 "op": "create_group",
                 "name": "Snapshot Test",
                 "relays": ["wss://t.relay"],
@@ -74,7 +74,10 @@ fn pending_op_appears_in_snapshot_and_clears_after_retry() {
     assert_eq!(row.correlation_id, "corr-snap-1");
     assert_eq!(row.op_tag, "create_group");
     assert_eq!(row.missing_count, 1);
-    assert_eq!(row.age_secs, 3, "age_secs = now 1_004 - parked 1_001: {row:?}");
+    assert_eq!(
+        row.age_secs, 3,
+        "age_secs = now 1_004 - parked 1_001: {row:?}"
+    );
     assert_eq!(
         row.missing_count, 1,
         "missing_count must equal the number of pending KPs: {row:?}"
@@ -91,7 +94,11 @@ fn pending_op_appears_in_snapshot_and_clears_after_retry() {
         snap.pending_ops.is_empty(),
         "pending_ops must be empty after retry: {snap:?}"
     );
-    assert_eq!(snap.groups.len(), 1, "group must appear after retry: {snap:?}");
+    assert_eq!(
+        snap.groups.len(),
+        1,
+        "group must appear after retry: {snap:?}"
+    );
 }
 
 /// `last_op_error` is a REAL production-set value, not dead wire. Full
@@ -105,9 +112,9 @@ fn last_op_error_is_set_on_expiry_and_cleared_on_next_success() {
 
     let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
             None,
         )
@@ -122,9 +129,9 @@ fn last_op_error_is_set_on_expiry_and_cleared_on_next_success() {
 
     // Park an op that will never receive its KP.
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({
+            json!({
                 "op": "create_group",
                 "name": "Will Expire",
                 "relays": ["wss://t.relay"],
@@ -145,12 +152,18 @@ fn last_op_error_is_set_on_expiry_and_cleared_on_next_success() {
     // Snapshot PAST the deadline → expiry fires → last_op_error populated.
     let expired_now = 1_001 + PENDING_OP_EXPIRY_SECS + 1;
     let snap = proj.snapshot(expired_now);
-    assert!(snap.pending_ops.is_empty(), "op evicted from pending: {snap:?}");
+    assert!(
+        snap.pending_ops.is_empty(),
+        "op evicted from pending: {snap:?}"
+    );
     let err = snap
         .last_op_error
         .clone()
         .expect("expiry must populate last_op_error");
-    assert_eq!(err.op, "create_group", "op tag from the parked action: {err:?}");
+    assert_eq!(
+        err.op, "create_group",
+        "op tag from the parked action: {err:?}"
+    );
     assert_eq!(err.reason, "key_package_unavailable");
     assert_eq!(err.correlation_id, "corr-will-expire");
     assert_eq!(err.at_secs, expired_now, "recorded at the expiry edge time");
@@ -158,9 +171,9 @@ fn last_op_error_is_set_on_expiry_and_cleared_on_next_success() {
     // A subsequent SUCCESSFUL op clears the banner (publish_key_package always
     // succeeds — no KP gating — so it is the cleanest clearing trigger).
     proj.with_inner(|h| {
-        ops::dispatch(
+        ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             expired_now + 1,
             None,
         )

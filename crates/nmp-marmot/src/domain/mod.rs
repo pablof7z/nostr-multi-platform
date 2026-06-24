@@ -8,7 +8,7 @@
 //! free of MLS types (kernel-boundary exit gate).
 //!
 //! Marmot event kinds (mdk-api.md §4):
-//! - 30443 / 443 — KeyPackage ([`MarmotKeyPackageRecord`]).
+//! - 30443 — KeyPackage ([`MarmotKeyPackageRecord`]).
 //! - 444 — Welcome rumor, wrapped in NIP-59 kind:1059 ([`MarmotWelcomeRecord`]).
 //! - 445 — group message / commit / proposal ([`MarmotGroupRecord`] +
 //!   [`MarmotMessageRecord`]).

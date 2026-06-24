@@ -1,15 +1,11 @@
 //! Marmot (MLS-over-Nostr) per-app FFI surface.
 //!
-//! Two `extern "C"` symbols native links against — NEITHER carries secret key
-//! material across the ABI (#1727 / ADR-0025):
-//! - [`nmp_marmot_register_active`] — build a [`MarmotService`] reading the
-//!   secret from the actor's active local-key slot (`mls_local_nsec`; no nsec
-//!   exposed to native), register the lossy `KernelEvent` observer + the
-//!   `IngestParser` inbound seam (kinds `[444, 445, 1059, 30443]`) + the
-//!   `nmp.marmot.snapshot` / `nmp.marmot.messages` push projections. Returns an
-//!   opaque `*mut MarmotHandle`.
-//! - [`nmp_marmot_unregister`] — drop the observer + unregister all per-kind
-//!   `IngestParser` slots + free the handle. Idempotent.
+//! Native links against two `extern "C"` symbols, neither of which carries
+//! secret key material across the ABI (#1727 / ADR-0025):
+//! - [`nmp_marmot_register_active`] builds the service from the actor-owned
+//!   local-key slot, registers the observer, ingest parsers, and push
+//!   projections, then returns an opaque `*mut MarmotHandle`.
+//! - [`nmp_marmot_unregister`] drops those registrations and frees the handle.
 //!
 //! Plus the Rust-internal (NOT `extern "C"`) [`register_with_secret_hex`] —
 //! same registration with an in-hand secret for the app-shell nsec sign-in
@@ -62,18 +58,13 @@
 //!
 //! ## Inbound ingest seam — CLOSED
 //!
-//! Registration (`register_with_keys`, via either entry point) installs
-//! per-kind `IngestParser` registrations for
-//! the four active Marmot kinds (`[444, 445, 1059, 30443]`) through the
-//! substrate `EventIngestDispatcher` (slot key `"marmot"`,
-//! `replace_kind_parser` semantics — account-switch re-registration atomically
-//! evicts the previous parser for each kind). The kernel delivers every accepted
-//! inbound verified event of those kinds to [`crate::projection::tap::MarmotIngestParser`],
-//! which reconstructs the signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`]
-//! (same pattern as `nmp-nip17::DmInboxProjection::parse`, PR-1) and drives it
-//! through the SAME `ops::ingest_signed_event_core` the back-compat
-//! `{"op":"ingest_signed_event"}` dispatch op uses — so welcomes / messages
-//! received from relays surface in the next snapshot with no Swift involvement.
+//! Registration installs per-kind `IngestParser` registrations for the active
+//! Marmot kinds (`[444, 445, 1059, 30443]`) under the `"marmot"` slot. The
+//! kernel delivers accepted verified events to
+//! [`crate::projection::tap::MarmotIngestParser`], which reconstructs the
+//! signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`] and drives
+//! `ops::ingest_signed_event_core`, so relay-delivered welcomes/messages
+//! surface in the next snapshot with no Swift involvement.
 //! `nmp_marmot_unregister` tears down BOTH kernel registrations (the lossy
 //! `KernelEvent` metadata observer AND all per-kind `IngestParser` slots via
 //! `unregister_ingest_parser`). This was the last open seam (raw-tap PR-2).
@@ -89,7 +80,7 @@ use serde_json::{json, Value};
 
 use crate::service::MarmotService;
 
-use crate::projection::action::MarmotActionModule;
+use crate::projection::action::{MarmotAction, MarmotActionModule};
 use crate::projection::handler::MarmotMlsOpHandler;
 use crate::projection::state::MarmotProjection;
 use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT, TAP_KINDS};
@@ -217,10 +208,10 @@ impl MarmotHandle {
     /// In-process Rust callers that hand-shuttle MLS events between
     /// `AppRuntime`s — namely `chirp-repl` / `chirp-tui` / their
     /// integration tests — depend on the synchronous envelope. This
-    /// accessor invokes the SAME [`crate::projection::ops::dispatch`]
-    /// entry point both seams reach (the kernel actor's `HostOpCommand` on
-    /// the `Protocol` arm and the legacy C symbol used) without going through
-    /// any FFI.
+    /// accessor parses the JSON into the SAME typed
+    /// [`crate::projection::action::MarmotAction`] that the kernel actor's
+    /// `HostOpCommand` handler dispatches, then invokes
+    /// [`crate::projection::ops::dispatch`] without going through any FFI.
     ///
     /// ## D0 / layering
     ///
@@ -229,12 +220,21 @@ impl MarmotHandle {
     /// and not subject to ADR-0025's bespoke-FFI prohibition (which
     /// targeted `extern "C"` cluster bloat in the iOS bridge).
     pub fn dispatch(&self, action: &Value) -> Value {
+        let action: MarmotAction = match serde_json::from_value(action.clone()) {
+            Ok(action) => action,
+            Err(e) => {
+                return json!({
+                    "ok": false,
+                    "error": format!("invalid MarmotAction: {e}"),
+                });
+            }
+        };
         // `correlation_id` is `None`: this in-process path (REPL / TUI / tests)
         // has no action-registry correlation, so the deferred-pending path
         // stays off (callers get the old terminal soft-fail); it activates only
         // for the typed `HostOpCommand` pipeline, which supplies an id.
         self.projection
-            .with_inner(|h| crate::projection::ops::dispatch(h, action, now_secs(), None))
+            .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs(), None))
             .unwrap_or_else(|| {
                 json!({
                     "ok": false,

@@ -581,7 +581,7 @@ fn remove_non_member_errors() {
 }
 
 /// `validate_peer_key_package` against a wrong-kind event (a plain text note)
-/// must reject it — it is a pre-flight sanity check for kind:30443/443.
+/// must reject it — it is a pre-flight sanity check for kind:30443.
 #[test]
 fn validate_rejects_non_key_package_event() {
     let alice = new_actor();

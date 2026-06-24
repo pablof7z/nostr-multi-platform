@@ -51,11 +51,9 @@
 //!    `on_kernel_event` uses it for *metadata* only. Actual MLS ingest of
 //!    kind:445 / kind:1059 is driven by
 //!    [`crate::projection::tap::MarmotIngestParser`] (slot `"marmot"`,
-//!    TAP_KINDS `[443, 444, 445, 1059, 30443]`), which reconstructs the
+//!    TAP_KINDS `[444, 445, 1059, 30443]`), which reconstructs the
 //!    signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`]
-//!    and drives `ops::ingest_signed_event_core`. The
-//!    `{"op":"ingest_signed_event"}` dispatch op is a back-compat alias
-//!    over the same core.
+//!    and drives `ops::ingest_signed_event_core`.
 //! 3. **KeyPackage cache seam — deferred completion (see
 //!    [`crate::projection::deferred`]).** `create_group` / `invite` need
 //!    the invitees' signed kind:30443 key packages. When one is missing

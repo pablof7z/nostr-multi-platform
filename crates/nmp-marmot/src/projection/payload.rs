@@ -82,7 +82,7 @@ pub struct MarmotGroupRow {
 ///
 /// `MarmotService` exposes no `get_pending_welcomes`, so these rows are
 /// served from the in-handle cache populated when a kind:1059 gift-wrap is
-/// fed in via the `ingest_signed_event` dispatch op (see `state.rs`).
+/// fed in via the raw signed-event tap (see `state.rs`).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct PendingWelcomeRow {
     /// The kind:444 Welcome event id, hex. Pass back as `welcome_id_hex`
@@ -166,7 +166,7 @@ pub struct MarmotSnapshot {
     pub key_package: KeyPackageStatus,
     /// Pubkeys (hex) of peers whose signed KeyPackage events are cached in
     /// `MarmotService::kp_cache`. Populated by the tap when the kernel
-    /// delivers a peer's kind:30443/443 event. Native renders this as
+    /// delivers a peer's kind:30443 event. Native renders this as
     /// pending/completed state; Rust owns when lookup interests are opened.
     pub cached_kp_pubkeys: Vec<String>,
     /// `true` when this snapshot was built against a registered Marmot
