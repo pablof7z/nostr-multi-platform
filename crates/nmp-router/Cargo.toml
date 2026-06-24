@@ -30,6 +30,11 @@ nmp-store = { path = "../nmp-store" }
 # Layer-0 kind-constant registry — re-exports KIND_BLOCKED_RELAYS
 # so this crate no longer duplicates that value (V-57).
 nmp-kinds = { path = "../nmp-kinds" }
+# Direct dep on nmp-network for RelayRole — used by RawEventForwardTarget
+# (which is a public type in nmp-core's external_event_sink surface). The
+# type is defined in nmp-network and re-exported through this crate's
+# dependency chain.
+nmp-network = { path = "../nmp-network" }
 serde = { workspace = true, features = ["derive"] }
 # Typed FlatBuffers action payloads (ADR-0064 / #1756) for the three relay-list
 # action modules this crate owns (block/unblock relay + NIP-65 publish). Pinned

@@ -16,7 +16,7 @@ impl super::WasmRuntime {
     /// Inject a relay-connected event into the kernel (native test helper).
     pub fn inject_relay_connected_for_test(
         &mut self,
-        role: nmp_core::RelayRole,
+        role: nmp_network::RelayRole,
         url: &str,
     ) -> bool {
         let outbound = self.reducer.borrow_mut().handle_relay_connected_at(
@@ -36,7 +36,7 @@ impl super::WasmRuntime {
     /// Inject a relay text frame into the kernel (native test helper).
     pub fn inject_relay_text_frame_for_test(
         &mut self,
-        role: nmp_core::RelayRole,
+        role: nmp_network::RelayRole,
         url: &str,
         text: String,
     ) -> bool {

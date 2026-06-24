@@ -17,6 +17,9 @@ nmp-planner = { path = "../nmp-planner" }
 # Direct dep on nmp-store for EventStore / StoreQuery — the nmp_core::store
 # compat facade is deleted (#1608).
 nmp-store = { path = "../nmp-store" }
+# Direct dep on nmp-network for RelayRole — used by OutboundMessage and
+# the NIP-77 runtime adapter.
+nmp-network = { path = "../nmp-network" }
 nmp-coverage-gate = { path = "../nmp-coverage-gate" }
 negentropy = { version = "0.5", default-features = false, features = ["std"] }
 nostr = { workspace = true }

@@ -6,7 +6,7 @@ use nmp_core::substrate::{ExternalEventSinkPolicy, RawEventForwardPolicyContext}
 use nmp_core::substrate::external_event_sink::{
     IngestOutcomeKind, SignedEventFrame, SinkDestination,
 };
-use nmp_core::RelayRole;
+use nmp_network::RelayRole;
 
 use super::IndexerRepublishPolicy;
 

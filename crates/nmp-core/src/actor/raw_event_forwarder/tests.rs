@@ -8,12 +8,13 @@ use std::sync::{Arc, Mutex};
 
 use crate::actor::raw_event_forwarder::register_raw_event_forward_policies;
 use crate::kernel::Kernel;
+use crate::relay::RelayRole;
 use crate::store::RawEvent;
 use crate::substrate::external_event_sink::{SignedEventFrame, SinkDestination};
 use crate::substrate::{
     ExternalEventSinkDispatcher, ExternalEventSinkPolicy, RawEventForwardTarget,
 };
-use crate::{KindFilter, RelayRole};
+use crate::KindFilter;
 
 // ─── Capture helpers ──────────────────────────────────────────────────────────
 

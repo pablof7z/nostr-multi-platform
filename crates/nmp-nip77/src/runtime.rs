@@ -4,7 +4,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::{RelayTextInterceptor, ReqFrameContext, ReqFrameInterceptor};
-use nmp_core::{Kernel, OutboundMessage, RelayRole};
+use nmp_core::{Kernel, OutboundMessage};
+use nmp_network::RelayRole;
 use nmp_coverage_gate::CoverageGate;
 use nmp_planner::InterestLifecycle;
 use nostr::{Filter, JsonUtil as _, RelayMessage};

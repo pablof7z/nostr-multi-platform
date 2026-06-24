@@ -29,8 +29,8 @@ use nmp_core::{
         decode_configured_relays, ACCOUNTS_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_ID,
         CONFIGURED_RELAYS_SCHEMA_ID, PROFILE_SCHEMA_ID,
     },
-    RelayRole,
 };
+use nmp_network::RelayRole;
 use nmp_wasm::{RelayBootstrapEntry, StartConfig, WasmRuntime, WorkerRequest};
 
 const RELAY_URL_A: &str = "wss://nos.lol";

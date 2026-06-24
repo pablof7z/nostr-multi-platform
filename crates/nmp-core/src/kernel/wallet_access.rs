@@ -24,8 +24,9 @@
 use std::cell::RefCell;
 
 use crate::kernel::Kernel;
+use crate::relay::RelayRole;
 use crate::substrate::{WalletKernelAccess, ZapProfileLookup};
-use crate::{AuthSignerFn, RelayRole};
+use crate::AuthSignerFn;
 
 /// Adapter wrapping a `&mut Kernel` as the narrow wallet/zap capabilities.
 ///

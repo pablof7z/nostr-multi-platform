@@ -6,7 +6,8 @@
 use super::*;
 
 use nmp_core::substrate::WalletKernelAccess;
-use nmp_core::{AuthSignerFn, OutboundMessage, RelayRole};
+use nmp_core::{AuthSignerFn, OutboundMessage};
+use nmp_network::RelayRole;
 use nmp_signer_iface::UnsignedEvent;
 use nostr::{Keys, SecretKey};
 use nmp_nwc::decode::{try_decode_relay_message_with_id, try_decode_response_for_request};
