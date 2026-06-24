@@ -1,9 +1,9 @@
 //! Interest, pull-cursor, and test-support dispatch arms.
 //!
-//! Covers: `PushInterest`, `WithdrawInterest`, `EnsureInterest`,
-//! `DropInterestOwner`, `OpenPullCursor`, `AdvancePullCursor`,
-//! `UnregisterPullCursor`, `OpenInterest`, `OpenObservedInterest`,
-//! `CloseInterest`, and the `#[cfg(test)]` ingest/GC arms.
+//! Covers: `EnsureInterest`, `DropInterestOwner`, `OpenPullCursor`,
+//! `AdvancePullCursor`, `UnregisterPullCursor`, `OpenInterest`,
+//! `OpenObservedInterest`, `CloseInterest`, and the `#[cfg(test)]`
+//! ingest/GC arms.
 //!
 //! Extracted from `dispatch/mod.rs` to keep it under the 500-LOC ceiling.
 //! No behaviour change — all logic is verbatim from the original file.
@@ -17,46 +17,6 @@ use crate::relay::OutboundMessage;
 
 use super::build_open_interest;
 use super::ActorContext;
-
-/// Dispatch `ActorCommand::PushInterest`.
-pub(super) fn push_interest(
-    interest: crate::planner::LogicalInterest,
-    ctx: &mut ActorContext<'_>,
-) -> Option<Vec<OutboundMessage>> {
-    // Route through the unified front-door. Derive the legacy identity
-    // (synthetic single owner, planner-interest-id key) so the slot
-    // matches what WithdrawInterest reconstructs for teardown.
-    let identity = crate::subs::SubIdentity::from_legacy_interest(&interest);
-    ctx.kernel.register_interest(
-        &[crate::kernel::cache_serve::InterestRegistration {
-            identity,
-            interest,
-            policy: crate::kernel::cache_serve::InterestWrite::Replace,
-        }],
-        "push-interest",
-    );
-    Some(Vec::new())
-}
-
-/// Dispatch `ActorCommand::WithdrawInterest`.
-pub(super) fn withdraw_interest(
-    id: crate::planner::InterestId,
-    ctx: &mut ActorContext<'_>,
-) -> Option<Vec<OutboundMessage>> {
-    // Reconstruct the SubKey the legacy push path minted for this id,
-    // then drop every slot carrying that key (covers all scopes).
-    let key = crate::subs::InterestRegistry::legacy_key(&id);
-    ctx.kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .drop_slot_by_key(key);
-    ctx.kernel
-        .lifecycle_mut()
-        .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
-            reason: crate::subs::InvalidateReason::External("withdraw-interest".to_string()),
-        });
-    Some(Vec::new())
-}
 
 /// Dispatch `ActorCommand::EnsureInterest`.
 pub(super) fn ensure_interest(
@@ -261,8 +221,6 @@ pub(super) fn dispatch(
     ctx: &mut ActorContext<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     match cmd {
-        InterestsCommand::PushInterest(interest) => push_interest(interest, ctx),
-        InterestsCommand::WithdrawInterest(id) => withdraw_interest(id, ctx),
         InterestsCommand::EnsureInterest { identity, interest } => {
             ensure_interest(identity, interest, ctx)
         }

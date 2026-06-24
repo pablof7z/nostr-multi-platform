@@ -467,27 +467,4 @@ impl SubscriptionLifecycle {
         self.last_planner_error = Some(error.into());
     }
 
-    // ─── Test-only seam ──────────────────────────────────────────────────────
-
-    /// Test seam: register a `LogicalInterest` using the legacy `push` semantics
-    /// (Replace policy, synthetic `"planner-owned"` owner, key from the
-    /// interest's `InterestId`). Reproduces what `InterestRegistry::push` did
-    /// before the registry-mutator surface was sealed behind
-    /// `RegistryWriteToken`.
-    ///
-    /// **Production code MUST NOT call this method.** The doctrine lint
-    /// (`nmp-testing`'s `doctrine_lint_smoke`) verifies no production caller
-    /// reaches `RegistryWriteToken::for_test` or `register_for_test`.
-    ///
-    /// Use `Kernel::register_interest` in production paths.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn register_for_test(&mut self, interest: crate::planner::LogicalInterest) {
-        use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-        use crate::subs::sub_key::SubIdentity;
-        let token = RegistryWriteToken::for_test();
-        let identity = SubIdentity::from_legacy_interest(&interest);
-        let _ = self
-            .registry
-            .apply(&token, InterestWrite::Replace, identity, interest);
-    }
 }

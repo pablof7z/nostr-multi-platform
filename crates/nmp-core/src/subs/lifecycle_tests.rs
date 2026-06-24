@@ -17,7 +17,7 @@ fn pubkey(s: &str) -> String {
 }
 fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
     use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-    let _ = reg.apply(&RegistryWriteToken::for_test(), InterestWrite::Replace, SubIdentity::from_legacy_interest(&interest), interest);
+    let _ = reg.apply(&RegistryWriteToken::for_test(), InterestWrite::Replace, SubIdentity::for_standing_interest(&interest), interest);
 }
 /// Single-author follow interest (kind:1 timeline).
 fn follow(id: u64, author: &str) -> LogicalInterest {

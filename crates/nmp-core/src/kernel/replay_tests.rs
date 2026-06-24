@@ -63,7 +63,7 @@ fn kernel_with_one_sub(
         use crate::subs::SubIdentity;
         let interest = timeline_interest(interest_id, author);
         let t = RegistryWriteToken::for_test();
-        let identity = SubIdentity::from_legacy_interest(&interest);
+        let identity = SubIdentity::for_standing_interest(&interest);
         kernel.lifecycle_mut().registry_mut().apply(&t, InterestWrite::Replace, identity, interest);
     }
     // First recompile populates `current_plan`. The frames returned here are
@@ -202,7 +202,7 @@ fn replay_applies_t129_watermark_to_since() {
         use crate::subs::SubIdentity;
         let interest = timeline_interest_with_since(7, author, 500);
         let t = RegistryWriteToken::for_test();
-        let identity = SubIdentity::from_legacy_interest(&interest);
+        let identity = SubIdentity::for_standing_interest(&interest);
         kernel.lifecycle_mut().registry_mut().apply(&t, InterestWrite::Replace, identity, interest);
     }
     let _ = kernel

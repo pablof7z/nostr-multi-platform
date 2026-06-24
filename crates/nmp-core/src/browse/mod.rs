@@ -51,6 +51,7 @@ use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
 use crate::relay::CanonicalRelayUrl;
+use crate::subs::{SubIdentity, SubScope};
 use crate::substrate::{ActionContext, ActionModule, ActionRejection};
 
 /// V-52: relay browsing action — `nmp.browse_relay` namespace.
@@ -163,14 +164,20 @@ impl ActionModule for BrowseRelayModule {
                     lifecycle: lc,
                     is_indexer_discovery: false,
                 };
-                send(ActorCommand::Interests(InterestsCommand::PushInterest(
+                let identity = SubIdentity::for_standing_interest(&interest);
+                send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                    identity,
                     interest,
-                )));
+                }));
                 Ok(())
             }
             BrowseRelayAction::Close { interest_id } => {
-                send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
+                let identity = SubIdentity::for_standing_interest_id(
                     InterestId(interest_id),
+                    SubScope::Global,
+                );
+                send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(
+                    identity,
                 )));
                 Ok(())
             }

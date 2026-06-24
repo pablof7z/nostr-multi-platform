@@ -202,7 +202,15 @@ fn kind3_update_rewires_subscriptions() {
     );
 
     // Register a tailing interest for alice.
-    lc.register_for_test(tailing_interest(1, &["alice"]));
+    let interest = tailing_interest(1, &["alice"]);
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lc.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     // Compile: alice's relay must receive a REQ.
     let frames1 = lc.recompile_and_diff(&mailboxes).expect("initial compile");
@@ -233,7 +241,15 @@ fn kind3_update_rewires_subscriptions() {
     );
 
     // Expand the interest to cover carol too (production view rebuild equivalent).
-    lc.register_for_test(tailing_interest(1, &["alice", "carol"]));
+    let interest = tailing_interest(1, &["alice", "carol"]);
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lc.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     // Fire the A11 FollowListChanged trigger — the canonical kind:3 rewire signal.
     lc.enqueue_trigger(CompileTrigger::FollowListChanged {
@@ -450,7 +466,15 @@ fn negentropy_skips_redundant_req() {
     warm_interest.shape.since = Some(1);
     let mut lc_warm = SubscriptionLifecycle::new();
     lc_warm.set_watermark_fn(Arc::new(|_shape, _relay: &str| Some(1700)));
-    lc_warm.register_for_test(warm_interest);
+    let interest = warm_interest;
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lc_warm.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
     let frames_warm = lc_warm
         .recompile_and_diff(&mailboxes)
         .expect("warm compile");
@@ -470,7 +494,15 @@ fn negentropy_skips_redundant_req() {
     // Case 2: cold start (no watermark) → since=None stays None → REQ has no since field (full fetch).
     let mut lc_cold = SubscriptionLifecycle::new();
     lc_cold.set_watermark_fn(Arc::new(|_shape, _relay: &str| None));
-    lc_cold.register_for_test(alice_interest);
+    let interest = alice_interest;
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lc_cold.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
     let frames_cold = lc_cold
         .recompile_and_diff(&mailboxes)
         .expect("cold compile");
@@ -529,7 +561,7 @@ fn auth_required_for_read_flow() {
         },
     );
 
-    lc.register_for_test(LogicalInterest {
+    let interest = LogicalInterest {
         id: InterestId(1),
         scope: InterestScope::Global,
         shape: InterestShape {
@@ -540,7 +572,15 @@ fn auth_required_for_read_flow() {
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
         is_indexer_discovery: false,
-    });
+    };
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lc.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     // Phase 1: AUTH challenge arrives BEFORE the first compile.
     // This puts the relay into the paused state so recompile_and_diff routes

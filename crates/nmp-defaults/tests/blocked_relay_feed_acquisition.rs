@@ -91,7 +91,15 @@ fn kind10006_parser_update_closes_blocked_feed_acquisition_relay() {
     let mailbox = mailbox_cache();
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.set_indexer_relays(Vec::new());
-    lifecycle.register_for_test(feed_interest());
+    let interest = feed_interest();
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lifecycle.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     let initially_open = lifecycle
         .recompile_and_diff_with_blocked(&mailbox, None, &blocked_cache.blocked_relays(ACTIVE))
@@ -131,7 +139,15 @@ fn kind10006_blocked_relay_is_absent_from_first_feed_req() {
     let mailbox = mailbox_cache();
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.set_indexer_relays(Vec::new());
-    lifecycle.register_for_test(feed_interest());
+    let interest = feed_interest();
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lifecycle.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     let frames = lifecycle
         .recompile_and_diff_with_blocked(&mailbox, None, &blocked_cache.blocked_relays(ACTIVE))

@@ -28,7 +28,15 @@ fn relay_set_feed_emits_wire_reqs_without_authors_filter() {
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.set_indexer_relays(vec![INDEXER.to_string()]);
     lifecycle.set_app_relays(vec![APP_A.to_string(), APP_B.to_string()]);
-    lifecycle.register_for_test(relay_set_longform_feed());
+    let interest = relay_set_longform_feed();
+    let token = crate::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = crate::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lifecycle.registry_mut().apply(
+        &token,
+        crate::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     let frames = lifecycle
         .recompile_and_diff(&InMemoryMailboxCache::new())

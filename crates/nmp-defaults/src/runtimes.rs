@@ -361,10 +361,19 @@ impl DmRuntimeController {
     fn apply(&self, effect: DmRuntimeEffect) {
         let cmd = match effect {
             DmRuntimeEffect::PushInboxInterest(pubkey) => {
-                ActorCommand::Interests(InterestsCommand::PushInterest(active_giftwrap_inbox_interest(&pubkey)))
+                let interest = active_giftwrap_inbox_interest(&pubkey);
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+                ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                    identity,
+                    interest,
+                })
             }
             DmRuntimeEffect::WithdrawInboxInterest => {
-                ActorCommand::Interests(InterestsCommand::WithdrawInterest(active_giftwrap_inbox_interest_id()))
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest_id(
+                    active_giftwrap_inbox_interest_id(),
+                    nmp_core::subs::SubScope::Global,
+                );
+                ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity))
             }
             DmRuntimeEffect::PublishRelayList { event, .. } => {
                 // Non-dispatch internal path — the action-seam variant at
@@ -448,26 +457,40 @@ impl ZapReceiptsRuntimeController {
             (Some(now), Some(prev)) if now == prev => {}
             // Sign-in (or first-ever push).
             (Some(now), None) => {
+                let interest = self_zap_receipts_interest(now);
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(self_zap_receipts_interest(now))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity,
+                        interest,
+                    }));
                 *last = Some(now.to_string());
             }
             // Account switch: withdraw old (by pubkey-invariant id), push new.
             (Some(now), Some(_prev)) => {
-                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest_id(
                     self_zap_receipts_interest_id(),
-                )));
+                    nmp_core::subs::SubScope::Global,
+                );
+                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)));
+                let interest = self_zap_receipts_interest(now);
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(self_zap_receipts_interest(now))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity,
+                        interest,
+                    }));
                 *last = Some(now.to_string());
             }
             // Logout: withdraw standing interest, clear slot.
             (None, Some(_)) => {
-                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest_id(
                     self_zap_receipts_interest_id(),
-                )));
+                    nmp_core::subs::SubScope::Global,
+                );
+                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)));
                 *last = None;
             }
             // Cold start before sign-in: nothing to do.

@@ -148,26 +148,30 @@ fn bunker_only_account_activates_mute_list_interest() {
 
 fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
             assert_eq!(
                 interest.id,
                 active_mute_list_interest(pubkey).id,
-                "pushed interest must be the active-pubkey mute-list interest"
+                "ensured interest must be the active-pubkey mute-list interest"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }
 
 fn assert_withdraw(cmd: &ActorCommand) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) => {
-            assert_eq!(
-                *id,
+        ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)) => {
+            let expected = nmp_core::subs::SubIdentity::for_standing_interest_id(
                 active_mute_list_interest_id(),
-                "withdraw must target the pubkey-invariant mute-list interest id"
+                nmp_core::subs::SubScope::Global,
+            );
+            assert_eq!(
+                identity,
+                &expected,
+                "drop must target the pubkey-invariant mute-list interest id"
             );
         }
-        other => panic!("expected WithdrawInterest, got {other:?}"),
+        other => panic!("expected DropInterestOwner, got {other:?}"),
     }
 }

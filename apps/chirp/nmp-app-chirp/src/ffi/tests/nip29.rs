@@ -240,11 +240,11 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
     assert_eq!(
         cmds.len(),
         2,
-        "expected PushInterest then RecordActionSuccess, got {cmds:?}"
+        "expected EnsureInterest then RecordActionSuccess, got {cmds:?}"
     );
 
     match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
             // Pinned to the relay — Case E (the third routing lane).
             assert_eq!(
                 interest.shape.relay_pin.as_deref(),
@@ -263,7 +263,7 @@ fn nip29_discover_executor_emits_host_pinned_push_interest_command() {
                 "discover must not constrain by group id"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 
     // Terminal `RecordActionSuccess` is what closes the host spinner for

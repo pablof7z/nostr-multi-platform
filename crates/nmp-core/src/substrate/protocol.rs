@@ -508,9 +508,13 @@ impl<'a> ProtocolCommandContext<'a> {
     }
 
     /// Push a [`LogicalInterest`](crate::planner::LogicalInterest) via
-    /// `ActorCommand::PushInterest`. Re-push with the same id is idempotent.
+    /// `ActorCommand::EnsureInterest`. Re-push with the same id is idempotent.
     pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
-        self.send(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
+        let identity = crate::subs::SubIdentity::for_standing_interest(&interest);
+        self.send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity,
+            interest,
+        }));
     }
 }
 

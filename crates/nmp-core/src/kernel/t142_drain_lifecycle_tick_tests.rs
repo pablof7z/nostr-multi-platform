@@ -103,7 +103,7 @@ fn t142_drain_lifecycle_tick_with_trigger_emits_frames() {
         use crate::subs::SubIdentity;
         let t = RegistryWriteToken::for_test();
         let interest = follow_interest(1, ALICE);
-        let identity = SubIdentity::from_legacy_interest(&interest);
+        let identity = SubIdentity::for_standing_interest(&interest);
         kernel
             .lifecycle_mut()
             .registry_mut()

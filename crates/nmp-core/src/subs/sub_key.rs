@@ -25,7 +25,7 @@ use std::hash::{Hash, Hasher};
 
 use crate::stable_hash::{stable_hash64, StableHasher};
 
-use crate::planner::{InterestScope, LogicalInterest, Pubkey};
+use crate::planner::{InterestId, InterestScope, LogicalInterest, Pubkey};
 
 // ─── SubKey ──────────────────────────────────────────────────────────────────
 
@@ -145,20 +145,38 @@ impl SubIdentity {
         (self.scope.clone(), self.key)
     }
 
-    /// Map a planner-owned `LogicalInterest` (identified by its `InterestId`)
-    /// onto the `(owner, key, scope)` triple used by the registry. The synthetic
-    /// owner key `"planner-owned"` is shared across all interests installed via
-    /// this path so that `drop_slot_by_key` / `legacy_key` withdraw correctly.
+    /// Derive a stable `SubIdentity` for a standing interest (one that is
+    /// registered and managed as a long-lived subscription, e.g., mute list,
+    /// bookmark list, zap receipts, giftwrap inbox). Each standing interest
+    /// has a real per-interest owner (derived from the interest's `id`), not a
+    /// shared synthetic "planner-owned" owner.
     ///
-    /// Used by the `ActorCommand::PushInterest` dispatch arm to derive the
-    /// registry identity from the interest's embedded `id` + `scope`.
-    pub(crate) fn from_legacy_interest(interest: &LogicalInterest) -> Self {
-        let key = SubKey::builder("planner-interest-id").with(interest.id.0).finish();
+    /// The identity is constructed as:
+    /// - key: `SubKey::builder("standing-interest").with(interest.id.0).finish()`
+    /// - owner: `SubOwnerKey::new(("standing-interest-owner", interest.id.0))`
+    /// - scope: mapped from `interest.scope` (Account/Global variants preserved).
+    pub fn for_standing_interest(interest: &LogicalInterest) -> Self {
+        let key = SubKey::builder("standing-interest").with(interest.id.0).finish();
         let scope = match &interest.scope {
             InterestScope::Account(pk) => SubScope::Account(pk.clone()),
             InterestScope::ActiveAccount | InterestScope::Global => SubScope::Global,
         };
-        SubIdentity::new(SubOwnerKey::new("planner-owned"), key, scope)
+        let owner = SubOwnerKey::new(("standing-interest-owner", interest.id.0));
+        SubIdentity::new(owner, key, scope)
+    }
+
+    /// Derive a stable `SubIdentity` for withdrawing a standing interest by its
+    /// `InterestId` and scope (used on the withdrawal path where only the id is
+    /// available). The identity must derive the same `(scope, key, owner)` as
+    /// `for_standing_interest(&interest)` for the same interest.
+    ///
+    /// # Arguments
+    /// - `id`: the interest's `InterestId`
+    /// - `scope`: the scope the interest was registered under
+    pub fn for_standing_interest_id(id: InterestId, scope: SubScope) -> Self {
+        let key = SubKey::builder("standing-interest").with(id.0).finish();
+        let owner = SubOwnerKey::new(("standing-interest-owner", id.0));
+        SubIdentity::new(owner, key, scope)
     }
 }
 
@@ -213,5 +231,25 @@ mod tests {
         let o2 = SubIdentity::new(SubOwnerKey::new("v2"), k, SubScope::Global);
         assert_eq!(o1.shared(), o2.shared());
         assert_ne!(o1, o2);
+    }
+
+    #[test]
+    fn standing_interest_register_withdraw_consistency() {
+        use crate::planner::InterestScope;
+
+        let interest = LogicalInterest {
+            id: InterestId(42),
+            scope: InterestScope::Global,
+            // Other fields don't matter for this test
+            ..Default::default()
+        };
+
+        let register_id = SubIdentity::for_standing_interest(&interest);
+        let withdraw_id = SubIdentity::for_standing_interest_id(interest.id, SubScope::Global);
+
+        // Register and withdraw must produce identical (scope, key, owner)
+        assert_eq!(register_id.key, withdraw_id.key);
+        assert_eq!(register_id.owner, withdraw_id.owner);
+        assert_eq!(register_id.scope, withdraw_id.scope);
     }
 }

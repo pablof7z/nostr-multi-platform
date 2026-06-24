@@ -155,26 +155,30 @@ fn bunker_only_account_activates_self_zap_receipts() {
 
 fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
             assert_eq!(
                 interest.id,
                 self_zap_receipts_interest(pubkey).id,
-                "pushed interest must be the active-pubkey zap-receipts interest"
+                "ensured interest must be the active-pubkey zap-receipts interest"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }
 
 fn assert_withdraw(cmd: &ActorCommand) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) => {
-            assert_eq!(
-                *id,
+        ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)) => {
+            let expected = nmp_core::subs::SubIdentity::for_standing_interest_id(
                 self_zap_receipts_interest_id(),
-                "withdraw must target the pubkey-invariant zap-receipts interest id"
+                nmp_core::subs::SubScope::Global,
+            );
+            assert_eq!(
+                identity,
+                &expected,
+                "drop must target the pubkey-invariant zap-receipts interest id"
             );
         }
-        other => panic!("expected WithdrawInterest, got {other:?}"),
+        other => panic!("expected DropInterestOwner, got {other:?}"),
     }
 }

@@ -70,7 +70,15 @@ fn cache_for(author: &str, relay: &str) -> InMemoryMailboxCache {
 #[test]
 fn t142_actor_idle_loop_drains_tick() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.register_for_test(interest_for(1, "alice"));
+    let interest = interest_for(1, "alice");
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lifecycle.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
     lifecycle.set_selection_budget(usize::MAX, usize::MAX);
 
     let mailboxes = cache_for("alice", "wss://t142-test.example");
@@ -102,7 +110,15 @@ fn t142_follow_list_update_produces_wire_frames_e2e() {
     let mut lifecycle = SubscriptionLifecycle::new();
     let author = pubkey("bob");
 
-    lifecycle.register_for_test(interest_for(2, "bob"));
+    let interest = interest_for(2, "bob");
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lifecycle.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
     lifecycle.set_selection_budget(usize::MAX, usize::MAX);
 
     let mailboxes = cache_for("bob", "wss://bob-relay.example");

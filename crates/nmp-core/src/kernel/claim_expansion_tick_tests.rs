@@ -66,7 +66,7 @@ mod tests {
             use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
             use crate::subs::SubIdentity;
             let t = RegistryWriteToken::for_test();
-            let identity = SubIdentity::from_legacy_interest(&interest);
+            let identity = SubIdentity::for_standing_interest(&interest);
             kernel
                 .lifecycle_mut()
                 .registry_mut()

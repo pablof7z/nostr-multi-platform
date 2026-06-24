@@ -341,7 +341,7 @@ fn scenario(keys: &Keys, relay_url: &str) -> (Kernel, String) {
         use crate::subs::SubIdentity;
         let t = RegistryWriteToken::for_test();
         let interest = follow_feed_interest(&author_hex);
-        let identity = SubIdentity::from_legacy_interest(&interest);
+        let identity = SubIdentity::for_standing_interest(&interest);
         kernel
             .lifecycle_mut()
             .registry_mut()

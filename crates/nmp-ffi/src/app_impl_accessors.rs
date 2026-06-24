@@ -78,7 +78,11 @@ impl NmpApp {
     /// Push a `LogicalInterest` into the subscription registry and schedule a
     /// recompile. Idempotent: same `InterestId` replaces the prior entry.
     pub fn push_interest(&self, interest: nmp_planner::LogicalInterest) {
-        self.send_cmd(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
+        let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+        self.send_cmd(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity,
+            interest,
+        }));
     }
 
     /// Route a typed capability request through the registered native

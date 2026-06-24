@@ -176,26 +176,44 @@ impl MuteRuntimeController {
             (Some(now), Some(prev)) if now == prev => {}
             // Sign-in (or first-ever push).
             (Some(now), None) => {
+                let interest = active_mute_list_interest(now);
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_mute_list_interest(now))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity,
+                        interest,
+                    }));
                 *last = Some(now.to_string());
             }
             // Account switch: withdraw old (by pubkey-invariant id), push new.
             (Some(now), Some(_prev)) => {
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest_id(
+                    active_mute_list_interest_id(),
+                    nmp_core::subs::SubScope::Global,
+                );
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(active_mute_list_interest_id())));
+                    .send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)));
+                let interest = active_mute_list_interest(now);
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_mute_list_interest(now))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity,
+                        interest,
+                    }));
                 *last = Some(now.to_string());
             }
             // Logout: withdraw standing interest, clear slot.
             (None, Some(_)) => {
+                let identity = nmp_core::subs::SubIdentity::for_standing_interest_id(
+                    active_mute_list_interest_id(),
+                    nmp_core::subs::SubScope::Global,
+                );
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(active_mute_list_interest_id())));
+                    .send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)));
                 *last = None;
             }
             // Cold start before sign-in: nothing to do.

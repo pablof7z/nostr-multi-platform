@@ -19,7 +19,7 @@ fn pubkey(s: &str) -> String {
 fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
     use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
     let t = RegistryWriteToken::for_test();
-    let identity = SubIdentity::from_legacy_interest(&interest);
+    let identity = SubIdentity::for_standing_interest(&interest);
     reg.apply(&t, InterestWrite::Replace, identity, interest);
 }
 

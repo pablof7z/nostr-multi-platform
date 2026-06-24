@@ -203,7 +203,15 @@ fn reconnect_replays_current_plan_without_recompile() {
     let mut lifecycle = SubscriptionLifecycle::new();
     let interests = vec![interest(1, &["alice"], InterestLifecycle::Tailing)];
     for i in &interests {
-        lifecycle.register_for_test(i.clone());
+        let interest = i.clone();
+        let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+        let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+        let _ = lifecycle.registry_mut().apply(
+            &token,
+            nmp_core::kernel::cache_serve::InterestWrite::Replace,
+            identity,
+            interest,
+        );
     }
 
     // Initial compile + emit. T132: caller-owned mailbox cache.
@@ -240,7 +248,15 @@ fn reconnect_replays_current_plan_without_recompile() {
 #[test]
 fn trigger_inbox_coalesces_within_one_tick() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.register_for_test(interest(1, &["alice"], InterestLifecycle::Tailing));
+    let interest = interest(1, &["alice"], InterestLifecycle::Tailing);
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lifecycle.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
     let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
     let baseline = lifecycle.compile_count();
@@ -307,7 +323,15 @@ fn send_path_defers_outbound_when_pool_disconnected() {
 #[test]
 fn auth_paused_relay_holds_reqs_until_authenticated() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.register_for_test(interest(1, &["alice"], InterestLifecycle::Tailing));
+    let interest = interest(1, &["alice"], InterestLifecycle::Tailing);
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lifecycle.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
     let mailboxes = cache_with("alice", &["wss://relay.damus.io"]);
 
     // Auth challenge arrives BEFORE the first compile.

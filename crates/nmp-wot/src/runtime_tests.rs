@@ -107,8 +107,8 @@ fn bunker_only_account_activates_wot_bootstrap() {
         rx.recv()
             .expect("bunker account must still push WOT bootstrap"),
     );
-    let ActorCommand::Interests(InterestsCommand::PushInterest(interest)) = cmd else {
-        panic!("expected PushInterest for a bunker-only account");
+    let ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) = cmd else {
+        panic!("expected EnsureInterest for a bunker-only account");
     };
     assert_eq!(interest.id, active_follow_graph_interest_id());
     assert_eq!(interest.shape.authors.len(), 8);
@@ -124,8 +124,8 @@ fn active_kind3_pushes_large_one_shot_wot_interest() {
     runtime.on_kernel_event(&contact_event(&active, 1_052));
 
     let cmd = unwrap_mail(rx.recv().expect("wot bootstrap command"));
-    let ActorCommand::Interests(InterestsCommand::PushInterest(interest)) = cmd else {
-        panic!("expected PushInterest");
+    let ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) = cmd else {
+        panic!("expected EnsureInterest");
     };
     assert_eq!(interest.id, active_follow_graph_interest_id());
     assert!(matches!(interest.lifecycle, InterestLifecycle::OneShot));
@@ -158,10 +158,14 @@ fn account_switch_snapshot_withdraws_previous_bootstrap() {
     let _ = runtime.snapshot_typed();
 
     let cmd = unwrap_mail(rx.recv().expect("withdraw command"));
-    let ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) = cmd else {
-        panic!("expected WithdrawInterest");
+    let ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)) = cmd else {
+        panic!("expected DropInterestOwner");
     };
-    assert_eq!(id, active_follow_graph_interest_id());
+    // Verify the identity was built from the active_follow_graph interest id
+    assert_eq!(identity, nmp_core::subs::SubIdentity::for_standing_interest_id(
+        active_follow_graph_interest_id(),
+        nmp_core::subs::SubScope::Global,
+    ));
     assert!(
         rx.try_recv().is_err(),
         "the account-switch withdraw must fire exactly once across both projection closures"

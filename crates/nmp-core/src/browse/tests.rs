@@ -90,7 +90,7 @@ fn execute_open_sends_push_interest_with_relay_pin() {
     let cmds = capture_commands(open_action(relay, vec![1], 99));
     assert_eq!(cmds.len(), 1, "Open must produce exactly one command");
     match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
             assert_eq!(
                 interest.shape.relay_pin.as_deref(),
                 Some(relay),
@@ -106,7 +106,7 @@ fn execute_open_sends_push_interest_with_relay_pin() {
                 "kind 1 must be in the interest shape"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }
 
@@ -119,14 +119,14 @@ fn execute_open_tailing_sets_tailing_lifecycle() {
         interest_id: 10,
     });
     match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
             assert_eq!(
                 interest.lifecycle,
                 InterestLifecycle::Tailing,
                 "tailing lifecycle must be preserved"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }
 
@@ -139,14 +139,14 @@ fn execute_open_one_shot_sets_oneshot_lifecycle() {
         interest_id: 11,
     });
     match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
             assert_eq!(
                 interest.lifecycle,
                 InterestLifecycle::OneShot,
                 "one_shot lifecycle must be preserved"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }
 
@@ -156,10 +156,14 @@ fn execute_close_sends_withdraw_interest() {
     let cmds = capture_commands(action);
     assert_eq!(cmds.len(), 1, "Close must produce exactly one command");
     match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) => {
-            assert_eq!(*id, InterestId(99), "withdraw id must match interest_id");
+        ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)) => {
+            let expected = crate::subs::SubIdentity::for_standing_interest_id(
+                InterestId(99),
+                crate::subs::SubScope::Global,
+            );
+            assert_eq!(identity, &expected, "withdrawn identity must match interest_id");
         }
-        other => panic!("expected WithdrawInterest, got {other:?}"),
+        other => panic!("expected DropInterestOwner, got {other:?}"),
     }
 }
 
@@ -168,13 +172,13 @@ fn execute_open_with_empty_kinds_produces_wildcard_shape() {
     // Empty kinds = wildcard subscription (any kind) — valid, caller's choice.
     let cmds = capture_commands(open_action("wss://relay.example.com", vec![], 5));
     match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
             assert!(
                 interest.shape.kinds.is_empty(),
                 "empty kinds must produce a wildcard interest shape"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }
 
@@ -187,7 +191,7 @@ fn relay_pin_not_in_scope_of_nip65_fan_out() {
     // the construction level.
     let cmds = capture_commands(open_action("wss://relay.damus.io", vec![1], 7));
     match &cmds[0] {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
             assert!(
                 interest.shape.authors.is_empty(),
                 "browse interest must have no authors (relay_pin suppresses NIP-65)"
@@ -197,6 +201,6 @@ fn relay_pin_not_in_scope_of_nip65_fan_out() {
                 "browse interest must have no hints"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }

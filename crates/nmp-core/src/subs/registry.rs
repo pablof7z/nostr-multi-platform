@@ -161,32 +161,21 @@ impl InterestRegistry {
         }
     }
 
-    /// Remove the slot with the given `SubKey` under ANY scope. Used for
-    /// legacy withdraw-by-id (the `ActorCommand::WithdrawInterest` path) where
-    /// only the key is known, not the scope.
+    /// Force removal of the exact slot identified by `(scope, key)`.
+    /// Returns `true` iff the slot was removed, `false` if it was absent.
+    ///
+    /// Unlike `drop_owner`, which is keyed by `(scope, key, owner)` and only
+    /// drops the slot when ALL owners leave, `drop_slot` removes the slot
+    /// unconditionally regardless of owner refcount. Used when tearing down a
+    /// scoped subscription (e.g., event-claim teardown) where the slot must be
+    /// fully retired, not just detached from one owner.
     ///
     /// Un-registration is intentionally un-sealed (removing a sub is always
     /// safe — the worst outcome is a missed REQ that the planner would re-emit
     /// on the next recompile).
-    pub(crate) fn drop_slot_by_key(&mut self, key: SubKey) {
-        self.slots.retain(|(_, k), _| *k != key);
-    }
-
-    // ─── Legacy bridge helper (key derivation only) ───────────────────────────
-
-    /// The `SubKey` minted for interests registered via the legacy `push`
-    /// path (`InterestId` → `SubKey` bridge).
-    ///
-    /// `pub(crate)` (ADR-0045 E1 review item 8): the cache-serve completion
-    /// key for `push`-registered follow-feed interests must be derived from
-    /// the SAME key the registry mints — a hand-copied derivation at the
-    /// serve site would silently diverge if this ever changes (single source
-    /// of truth; the R2.1 single-mechanism correction cuts both ways).
-    ///
-    /// Used by the `ActorCommand::WithdrawInterest` arm to reconstruct the
-    /// key to drop from an `InterestId`.
-    pub(crate) fn legacy_key(id: &InterestId) -> SubKey {
-        SubKey::builder("planner-interest-id").with(id.0).finish()
+    #[must_use]
+    pub fn drop_slot(&mut self, scope: &SubScope, key: SubKey) -> bool {
+        self.slots.remove(&(scope.clone(), key)).is_some()
     }
 
     // ─── Read-only surface ────────────────────────────────────────────────────
@@ -274,11 +263,7 @@ mod tests {
     }
 
     fn planner_identity(interest: &LogicalInterest) -> SubIdentity {
-        SubIdentity::new(
-            SubOwnerKey::new("planner-owned"),
-            InterestRegistry::legacy_key(&interest.id),
-            SubScope::Global,
-        )
+        SubIdentity::for_standing_interest(interest)
     }
 
     // ── Legacy surface (now via apply) ───────────────────────────────────────
@@ -313,13 +298,14 @@ mod tests {
     }
 
     #[test]
-    fn drop_slot_by_key_removes() {
+    fn drop_slot_removes_by_scope_key() {
         let mut r = InterestRegistry::new();
         let t = token();
         let interest = fixture(1);
-        let key = InterestRegistry::legacy_key(&interest.id);
-        r.apply(&t, InterestWrite::Replace, planner_identity(&interest), interest);
-        r.drop_slot_by_key(key);
+        let id = SubIdentity::for_standing_interest(&interest);
+        r.apply(&t, InterestWrite::Replace, id.clone(), interest);
+        assert!(!r.is_empty());
+        assert!(r.drop_slot(&id.scope, id.key));
         assert!(r.is_empty());
     }
 

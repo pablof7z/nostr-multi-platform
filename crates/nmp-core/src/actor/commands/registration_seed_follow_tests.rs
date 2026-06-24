@@ -334,7 +334,7 @@ fn create_account_prepopulates_self_relay_list_for_inbox_interests() {
             is_indexer_discovery: false,
         };
         let t = RegistryWriteToken::for_test();
-        let identity = SubIdentity::from_legacy_interest(&interest);
+        let identity = SubIdentity::for_standing_interest(&interest);
         kernel
             .lifecycle_mut()
             .registry_mut()

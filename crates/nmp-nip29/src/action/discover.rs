@@ -73,7 +73,11 @@ impl ActionModule for DiscoverGroupsAction {
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         let interest = relay_discovery_interest(&action.relay_url);
-        send(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
+        let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+        send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity,
+            interest,
+        }));
         // `discover_groups` is a subscription-only action: there is no event
         // published and no async worker, so the "success" surface is instantaneous
         // (the interest has been pushed to the lifecycle). Without a terminal
@@ -108,10 +112,10 @@ mod tests {
         assert_eq!(
             cmds.len(),
             2,
-            "expected PushInterest followed by RecordActionSuccess, got {cmds:?}"
+            "expected EnsureInterest followed by RecordActionSuccess, got {cmds:?}"
         );
         match &cmds[0] {
-            ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
                 assert_eq!(
                     interest.shape.relay_pin.as_deref(),
                     Some("wss://groups.example.com")
@@ -121,7 +125,7 @@ mod tests {
                 assert!(interest.shape.kinds.contains(&39001));
                 assert!(interest.shape.kinds.contains(&39002));
             }
-            other => panic!("expected PushInterest, got {other:?}"),
+            other => panic!("expected EnsureInterest, got {other:?}"),
         }
         // Terminal `Accepted` stage is what closes the host spinner.
         match &cmds[1] {

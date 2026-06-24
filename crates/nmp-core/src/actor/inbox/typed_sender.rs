@@ -18,15 +18,21 @@ use crate::actor::{
 impl CommandSender {
     /// Push a [`crate::planner::LogicalInterest`] into the subscription registry.
     pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
-        let _ = self.send(ActorCommand::Interests(InterestsCommand::PushInterest(
+        let identity = crate::subs::SubIdentity::for_standing_interest(&interest);
+        let _ = self.send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity,
             interest,
-        )));
+        }));
     }
 
     /// Withdraw a previously-pushed interest by id.
     pub fn withdraw_interest(&self, id: crate::planner::InterestId) {
-        let _ = self.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
+        let identity = crate::subs::SubIdentity::for_standing_interest_id(
             id,
+            crate::subs::SubScope::Global,
+        );
+        let _ = self.send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(
+            identity,
         )));
     }
 

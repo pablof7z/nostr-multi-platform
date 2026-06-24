@@ -32,7 +32,7 @@ fn push_legacy(reg: &mut super::InterestRegistry, interest: LogicalInterest) {
     use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
     use super::SubIdentity;
     let t = RegistryWriteToken::for_test();
-    let identity = SubIdentity::from_legacy_interest(&interest);
+    let identity = SubIdentity::for_standing_interest(&interest);
     let _ = reg.apply(&t, InterestWrite::Replace, identity, interest);
 }
 

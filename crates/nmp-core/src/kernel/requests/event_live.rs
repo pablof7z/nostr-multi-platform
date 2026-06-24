@@ -134,11 +134,11 @@ impl Kernel {
         else {
             return;
         };
-        // Drop the registry slot (any scope) so the planner emits the CLOSE and no
+        // Drop the registry slot so the planner emits the CLOSE and no
         // second REQ is compiled for this key.
-        self.lifecycle
+        let _ = self.lifecycle
             .registry_mut()
-            .drop_slot_by_key(SubKey(interest_id.0));
+            .drop_slot(&SubScope::Global, SubKey(interest_id.0));
         // Release the OneshotApi token bookkeeping (else it lingers until EOSE).
         if let Some(token) = self.pending_discovery_oneshots.remove(&interest_id) {
             let registry = self.lifecycle.registry_mut();
@@ -317,9 +317,9 @@ impl Kernel {
         // (the terminal-miss path never ran per-consumer releases, so there may be
         // several). Idempotent when the per-consumer release already cleared it.
         if self.live_event_claims.remove(primary_id).is_some() {
-            self.lifecycle
+            let _ = self.lifecycle
                 .registry_mut()
-                .drop_slot_by_key(event_claim_sub_key(primary_id));
+                .drop_slot(&SubScope::Global, event_claim_sub_key(primary_id));
             self.lifecycle
                 .enqueue_trigger(crate::subs::CompileTrigger::ViewOpened {
                     interest_ids: Vec::new(),

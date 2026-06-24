@@ -81,16 +81,15 @@ impl Kernel {
     /// After this call the planner's next `drain_tick` will compile the new
     /// interest set and emit the correct REQ/CLOSE diff via `drain_lifecycle_tick`.
     pub(crate) fn sync_follow_feed_interests(&mut self, follows: &[String]) {
-        // Withdraw the stale interest from the prior follow set / kinds.
-        // Use drop_slot_by_key (legacy-key bridge) to remove any scope
-        // the slot was registered under.
-        {
-            use crate::subs::InterestRegistry;
-            let old_ids: Vec<InterestId> = self.follow_feed_interest_ids.iter().cloned().collect();
-            for id in &old_ids {
-                let key = InterestRegistry::legacy_key(id);
-                self.lifecycle.registry_mut().drop_slot_by_key(key);
-            }
+        // Withdraw the stale interest from the prior follow set / kinds using
+        // the scoped withdrawal path.
+        let old_ids: Vec<InterestId> = self.follow_feed_interest_ids.iter().cloned().collect();
+        for id in &old_ids {
+            let identity = crate::subs::SubIdentity::for_standing_interest_id(
+                id.clone(),
+                crate::subs::SubScope::Global,
+            );
+            self.lifecycle.registry_mut().drop_owner(&identity);
         }
         self.follow_feed_interest_ids.clear();
 
@@ -137,9 +136,8 @@ impl Kernel {
         // `timeline_bound` flag is computed against the updated author set.
         self.timeline_authors = authors.into_iter().collect();
 
-        // Derive the legacy identity for this interest (single synthetic owner,
-        // planner-interest-id key) — matches what drop_slot_by_key used above.
-        let identity = crate::subs::SubIdentity::from_legacy_interest(&interest);
+        // Derive the standing-interest identity for this follow-feed interest.
+        let identity = crate::subs::SubIdentity::for_standing_interest(&interest);
 
         // ADR-0045 E1 — unified front-door: register + serve in one call.
         // The collapsed shape maps to ONE `StoreQuery::AuthorsKind`, so a

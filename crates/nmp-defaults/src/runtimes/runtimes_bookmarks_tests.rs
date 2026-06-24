@@ -148,7 +148,7 @@ fn bunker_only_account_activates_bookmark_list_interest() {
 
 fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { interest, .. }) => {
             // The id is pubkey-invariant, so checking it alone doesn't prove
             // the correct pubkey was embedded. Assert the full interest shape:
             // authors, kind, lifecycle, and scope — so a stale or hardcoded
@@ -157,7 +157,7 @@ fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
             assert_eq!(
                 interest.id,
                 active_bookmark_list_interest_id(),
-                "pushed interest must carry the pubkey-invariant slot id"
+                "ensured interest must carry the pubkey-invariant slot id"
             );
             assert_eq!(
                 interest.shape.authors,
@@ -184,19 +184,23 @@ fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
                 interest.scope
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }
 
 fn assert_withdraw(cmd: &ActorCommand) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) => {
-            assert_eq!(
-                *id,
+        ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)) => {
+            let expected = nmp_core::subs::SubIdentity::for_standing_interest_id(
                 active_bookmark_list_interest_id(),
-                "withdraw must target the pubkey-invariant bookmark-list interest id"
+                nmp_core::subs::SubScope::Global,
+            );
+            assert_eq!(
+                identity,
+                &expected,
+                "drop must target the pubkey-invariant bookmark-list interest id"
             );
         }
-        other => panic!("expected WithdrawInterest, got {other:?}"),
+        other => panic!("expected DropInterestOwner, got {other:?}"),
     }
 }

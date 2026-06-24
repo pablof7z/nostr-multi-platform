@@ -81,7 +81,15 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     put_mailbox(&mut mailboxes, "alice", &["wss://r1/"]);
 
     // Register a follow-list interest for alice.
-    lc.register_for_test(tailing_interest(1, &["alice"]));
+    let interest = tailing_interest(1, &["alice"]);
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lc.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     // First compile — expect a REQ for alice at wss://r1/.
     let frames1 = lc.recompile_and_diff(&mailboxes).expect("first compile");
@@ -118,7 +126,15 @@ fn c5_kind3_change_recompiles_follow_dependent_subs() {
     // Expand the follow-list interest to include bob (synthetic stand-in for
     // the M11 view rebuild; the trigger does not rewrite registry entries —
     // that is the view's responsibility).
-    lc.register_for_test(tailing_interest(1, &["alice", "bob"]));
+    let interest = tailing_interest(1, &["alice", "bob"]);
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lc.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     // Fire the real A11 FollowListChanged trigger (replaces the old A6
     // InvalidateCompile placeholder used before this variant existed).
@@ -169,7 +185,15 @@ fn c8_subscriptions_coalesce_and_buffer() {
     let mut lc = SubscriptionLifecycle::new();
     let mut mailboxes = InMemoryMailboxCache::new();
     put_mailbox(&mut mailboxes, "alice", &["wss://r1/"]);
-    lc.register_for_test(tailing_interest(1, &["alice"]));
+    let interest = tailing_interest(1, &["alice"]);
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lc.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     for _ in 0..3 {
         lc.enqueue_trigger(CompileTrigger::InvalidateCompile {
@@ -192,7 +216,15 @@ fn c8_subscriptions_coalesce_and_buffer() {
     let mut lc3 = SubscriptionLifecycle::new();
     let mut mailboxes3 = InMemoryMailboxCache::new();
     put_mailbox(&mut mailboxes3, "dave", &["wss://rd/"]);
-    lc3.register_for_test(tailing_interest(20, &["dave"]));
+    let interest = tailing_interest(20, &["dave"]);
+    let token = nmp_core::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = nmp_core::subs::SubIdentity::for_standing_interest(&interest);
+    let _ = lc3.registry_mut().apply(
+        &token,
+        nmp_core::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
 
     // Mark the relay as auth-challenged BEFORE the first compile.
     let _pre =

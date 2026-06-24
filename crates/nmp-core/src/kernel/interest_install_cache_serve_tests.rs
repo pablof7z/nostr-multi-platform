@@ -79,7 +79,7 @@ fn push_interest_serves_store_on_install() {
     {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
         use crate::subs::SubIdentity;
-        let identity = SubIdentity::from_legacy_interest(&interest);
+        let identity = SubIdentity::for_standing_interest(&interest);
         kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::Replace }], "push-interest");
     }
     drain_cache_serves(&mut kernel, 10);
@@ -273,7 +273,7 @@ fn two_session_push_interest_kp_regression() {
     {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
         use crate::subs::SubIdentity;
-        let identity = SubIdentity::from_legacy_interest(&interest);
+        let identity = SubIdentity::for_standing_interest(&interest);
         kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::Replace }], "push-interest");
     }
     drain_cache_serves(&mut kernel, 10);
@@ -326,7 +326,7 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
     {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
         use crate::subs::SubIdentity;
-        let identity = SubIdentity::from_legacy_interest(&interest);
+        let identity = SubIdentity::for_standing_interest(&interest);
         kernel.register_interest(&[InterestRegistration { identity, interest, policy: InterestWrite::Replace }], "push-interest");
     }
     drain_cache_serves(&mut kernel, 10);
@@ -349,7 +349,7 @@ fn push_interest_ingest_parser_idempotent_re_ingest() {
     {
         use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
         use crate::subs::SubIdentity;
-        let identity = SubIdentity::from_legacy_interest(&interest_2);
+        let identity = SubIdentity::for_standing_interest(&interest_2);
         kernel.register_interest(&[InterestRegistration { identity, interest: interest_2, policy: InterestWrite::Replace }], "push-interest");
     }
     drain_cache_serves(&mut kernel, 10);
