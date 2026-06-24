@@ -76,6 +76,37 @@ call `send(ActorCommand::PublishUnsignedEventToRelays { relays: vec![group.host]
 — the planner gets `relay_pin: Some(host)` and routes to the group relay,
 never the author's NIP-65 outbox (D3's third routing lane, ADR-0012).
 
+## Default typed action contract
+
+If a protocol action is wired by `nmp-defaults`, add one
+`ActionContract` row in `crates/nmp-codegen/src/action_contract/table.rs`.
+That row is the source for the default action surface; do not duplicate these
+facts in tests, generated builders, or docs.
+
+The row must name the action namespace, producer crate/module, public payload
+type, `ActionPayload::SCHEMA_ID`, schema path, FlatBuffers `root_type`,
+schema version, file identifier, default tier, builder support, public
+re-export policy, and typed-dispatch policy. The namespace must equal
+`ActionModule::NAMESPACE`; the schema id/version must equal the public
+`ActionPayload`; and the `.fbs` file must declare the same `root_type` and
+`file_identifier`.
+
+For a default action, also re-export the payload from
+`nmp-defaults::action_payloads`. If host builders should be generated, mark the
+contract `GeneratedFlatTable` and add the builder field shape in
+`crates/nmp-codegen/src/action_builders/registry.rs`; the codegen tests fail if
+either side is missing. JSON-only defaults require a tracked
+`TypedDispatchPolicy::Exempt { issue }` row, not a local allowlist.
+
+Before opening the PR, run the contract gates:
+
+```bash
+cargo test -p nmp-codegen action_contract
+cargo test -p nmp-defaults --test action_contract
+cargo test -p nmp-defaults --test typed_only_action_doorway_gate
+cargo run -p nmp-codegen -- gen action-contract-report
+```
+
 ## PR-ready file list
 
 **Must add**

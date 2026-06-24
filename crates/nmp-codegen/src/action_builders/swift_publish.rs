@@ -12,10 +12,8 @@
 //! [`crate::action_builders::registry::BodyShape`] enum rather than the generic
 //! flat-table [`PayloadField`] list.
 
-use crate::action_builders::registry::{
-    BodyShape, PublishBuilder, PUBLISH_BUILDERS, PUBLISH_FILE_IDENTIFIER, PUBLISH_NAMESPACE,
-    PUBLISH_SCHEMA_VERSION,
-};
+use crate::action_builders::registry::{BodyShape, PublishBuilder, PUBLISH_BUILDERS};
+use crate::action_contract::{contract_for, PUBLISH_NAMESPACE};
 
 /// Render every `nmp.publish` builder into `out`.
 pub(crate) fn render_publish(out: &mut String) {
@@ -26,6 +24,7 @@ pub(crate) fn render_publish(out: &mut String) {
 }
 
 fn render_one(builder: &PublishBuilder, out: &mut String) {
+    let contract = contract_for(PUBLISH_NAMESPACE);
     out.push_str(&format!("    /// {}\n", builder.doc));
     out.push_str(&format!(
         "    /// Builds the `{PUBLISH_NAMESPACE}` `DispatchEnvelope` bytes (body \
@@ -59,13 +58,15 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
     out.push_str(&format!(
         "        let payloadStart = fbb.startTable(with: 3)\n\
          \x20       fbb.add(element: UInt32({PUBLISH_SCHEMA_VERSION}), def: UInt32(0), at: 4) // slot 0: schema_version\n\
-         \x20       fbb.add(element: UInt8({}), def: UInt8(0), at: 6) // slot 1: body_type\n\
+         \x20       fbb.add(element: UInt8({body_type}), def: UInt8(0), at: 6) // slot 1: body_type\n\
          \x20       fbb.add(offset: bodyOffset, at: 8) // slot 2: body\n",
-        builder.body_type
+        PUBLISH_SCHEMA_VERSION = contract.schema_version,
+        body_type = builder.body_type
     ));
     out.push_str("        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))\n");
     out.push_str(&format!(
-        "        fbb.finish(offset: payloadRoot, fileId: {PUBLISH_FILE_IDENTIFIER:?})\n"
+        "        fbb.finish(offset: payloadRoot, fileId: {:?})\n",
+        contract.file_identifier
     ));
     out.push_str("        let payload = fbb.sizedByteArray\n");
     out.push_str(&format!(

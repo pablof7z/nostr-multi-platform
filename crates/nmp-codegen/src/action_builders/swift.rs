@@ -27,6 +27,7 @@ use crate::action_builders::registry::{
     ActionBuilder, FieldKind, ACTION_BUILDERS, DISPATCH_ENVELOPE_FILE_IDENTIFIER,
     DISPATCH_ENVELOPE_SCHEMA_VERSION,
 };
+use crate::action_contract::contract_for;
 
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,6 +124,7 @@ fn envelope_helper() -> String {
 
 /// Render one typed builder function.
 fn render_one(builder: &ActionBuilder, out: &mut String) {
+    let contract = contract_for(builder.namespace);
     let method = builder.method;
     // Doc + signature.
     out.push_str(&format!("    /// {}\n", builder.doc));
@@ -188,7 +190,7 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     ));
     out.push_str(&format!(
         "        fbb.add(element: UInt32({}), def: UInt32(0), at: 4) // slot 0: schema_version\n",
-        builder.payload_schema_version
+        contract.schema_version
     ));
     for (idx, field) in builder.fields.iter().enumerate() {
         let slot = idx + 1; // slot 0 is schema_version
@@ -221,7 +223,7 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     out.push_str("        let payloadRoot = Offset(offset: fbb.endTable(at: payloadStart))\n");
     out.push_str(&format!(
         "        fbb.finish(offset: payloadRoot, fileId: {:?})\n",
-        builder.payload_file_identifier
+        contract.file_identifier
     ));
     out.push_str("        let payload = fbb.sizedByteArray\n");
     // Wrap in the envelope.

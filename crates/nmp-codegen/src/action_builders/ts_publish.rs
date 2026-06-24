@@ -12,10 +12,8 @@
 //! [`crate::action_builders::registry::BodyShape`] enum rather than the generic
 //! flat-table [`PayloadField`] list.
 
-use crate::action_builders::registry::{
-    BodyShape, PublishBuilder, PUBLISH_BUILDERS, PUBLISH_FILE_IDENTIFIER, PUBLISH_NAMESPACE,
-    PUBLISH_SCHEMA_VERSION,
-};
+use crate::action_builders::registry::{BodyShape, PublishBuilder, PUBLISH_BUILDERS};
+use crate::action_contract::{contract_for, PUBLISH_NAMESPACE};
 
 /// Render every `nmp.publish` builder into `out` (as methods on the
 /// `GeneratedActionBuilders` object literal).
@@ -26,6 +24,7 @@ pub(crate) fn render_publish(out: &mut String) {
 }
 
 fn render_one(builder: &PublishBuilder, out: &mut String) {
+    let contract = contract_for(PUBLISH_NAMESPACE);
     out.push_str(&format!("  /** {} */\n", builder.doc));
     out.push_str(&format!("  {}(\n", builder.method));
     out.push_str("    correlationId: string,\n");
@@ -54,13 +53,15 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
     out.push_str(&format!(
         "    fbb.startObject(3);\n\
          \x20   fbb.addFieldInt32(0, {PUBLISH_SCHEMA_VERSION}, 0); // slot 0: schema_version\n\
-         \x20   fbb.addFieldInt8(1, {}, 0); // slot 1: body_type\n\
+         \x20   fbb.addFieldInt8(1, {body_type}, 0); // slot 1: body_type\n\
          \x20   fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body\n",
-        builder.body_type
+        PUBLISH_SCHEMA_VERSION = contract.schema_version,
+        body_type = builder.body_type
     ));
     out.push_str("    const payloadRoot = fbb.endObject();\n");
     out.push_str(&format!(
-        "    fbb.finish(payloadRoot, {PUBLISH_FILE_IDENTIFIER:?});\n"
+        "    fbb.finish(payloadRoot, {:?});\n",
+        contract.file_identifier
     ));
     out.push_str("    const payload = fbb.asUint8Array();\n");
     out.push_str(&format!(

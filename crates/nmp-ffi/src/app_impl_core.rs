@@ -140,6 +140,13 @@ impl NmpApp {
         self.action_registry.untyped_namespaces()
     }
 
+    /// Test-support probe for the contract-driven default action registry gate.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn registered_action_namespaces(&self) -> Vec<String> {
+        self.action_registry.action_namespaces()
+    }
+
     /// ADR-0049 — read-only handle to the composition ledger for
     /// `nmp_app_composition_report`.
     #[must_use]

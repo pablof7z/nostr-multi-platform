@@ -34,9 +34,8 @@
 //! fixed template per builder. That stability is what the `--check` drift gate
 //! relies on (exactly like [`crate::action_builders::kotlin`]).
 
-use crate::action_builders::registry::{
-    ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS,
-};
+use crate::action_builders::registry::{ActionBuilder, FieldKind, PayloadField, ACTION_BUILDERS};
+use crate::action_contract::contract_for;
 
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,6 +104,7 @@ fn shared_helpers() -> String {
 /// Render one typed builder method (a property on the `GeneratedActionBuilders`
 /// object literal).
 fn render_one(builder: &ActionBuilder, out: &mut String) {
+    let contract = contract_for(builder.namespace);
     out.push_str(&format!("  /** {} */\n", builder.doc));
     out.push_str(&format!("  {}(\n", builder.method));
     out.push_str("    correlationId: string");
@@ -153,7 +153,7 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     out.push_str(&format!("{});\n", builder.fields.len() + 1));
     out.push_str(&format!(
         "    fbb.addFieldInt32(0, {}, 0); // slot 0: schema_version\n",
-        builder.payload_schema_version
+        contract.schema_version
     ));
     for (idx, field) in builder.fields.iter().enumerate() {
         let slot = idx + 1; // slot 0 is schema_version
@@ -182,7 +182,7 @@ fn render_one(builder: &ActionBuilder, out: &mut String) {
     out.push_str("    const payloadRoot = fbb.endObject();\n");
     out.push_str(&format!(
         "    fbb.finish(payloadRoot, {:?});\n",
-        builder.payload_file_identifier
+        contract.file_identifier
     ));
     out.push_str("    const payload = fbb.asUint8Array();\n");
     out.push_str(&format!(
