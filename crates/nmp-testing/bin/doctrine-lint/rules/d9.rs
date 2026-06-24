@@ -1,276 +1,212 @@
-//! D9 — protocol-crate action namespaces use the `nmp.` prefix.
+//! D9 — kernel-owned time.
 //!
-//! Every action namespace registered through the kernel's action seam is
-//! visible on the dispatch wire (`nmp_app_dispatch_action`'s `namespace`
-//! argument). For external hosts to identify substrate-provided verbs at a
-//! glance — and for protocol/substrate crates to never collide with an app
-//! crate's own action vocabulary — protocol-crate namespaces MUST use the
-//! `nmp.<nip>.<verb>` shape (e.g. `nmp.nip29.post_chat_message`).
+//! Reducer, replay, and kernel-policy paths must not read wall-clock time
+//! directly. They thread time through the kernel's injected `Clock`
+//! (`Kernel::now_secs` / `Kernel::now_ms`) or accept a caller-supplied
+//! timestamp/instant that already came from that seam. This keeps replay and
+//! fixed-clock tests deterministic.
 //!
 //! ## What this catches
 //!
-//! `ActionModule` impls declare their wire namespace via a
-//! `const NAMESPACE: &'static str = "..."` item. If the string literal does
-//! not begin with `nmp.`, D9 fires.
+//! - `SystemTime::now()` in D9-scoped paths.
+//! - `Instant::now()` in D9-scoped paths. Diagnostic/perf timing needs an
+//!   exact-line reasoned allow, not a heuristic bypass.
+//! - `now_epoch_ms()` helper use in those same paths.
 //!
 //! ## Scope
 //!
-//! Protocol/substrate crates only — every `crates/nmp-*/src/` tree. App-layer
-//! crates under `apps/<app>/` legitimately use app-local vocabulary
-//! (`chirp.react`, ...) so they are exempt. Note: `nmp.follow` /
-//! `nmp.unfollow` were renamed from `chirp.follow` / `chirp.unfollow` because
-//! NIP-02 follow/unfollow are protocol primitives, not Chirp-specific verbs —
-//! they now live under the substrate `nmp.*` namespace and are not exempt.
+//! `crates/nmp-core/src/kernel/**` and `crates/nmp-core/src/kernel_reducer.rs`.
+//! The injected clock implementation itself (`kernel/clock.rs`) is exempt.
+//! The main driver excludes test-only files and `#[cfg(test)]` bodies.
 //!
-//! The `nmp-testing` crate is also exempt — it hosts this rule's own fixtures
-//! and test harnesses that intentionally include negative examples.
+//! ## Exemptions
 //!
-//! ## Allowed exemptions
-//!
-//! - Comment lines (any of `//`, `///`, `//!`, inside `/* */`).
-//! - Per-line `// doctrine-allow: D9 — reason` opt-out.
+//! A production escape must be on the exact line and carry a reason:
+//! `// doctrine-allow: D9 — reason`.
 
 use std::path::Path;
 
 pub const ID: &str = "D9";
 
-/// True iff the file lives under a `crates/nmp-*/src/` tree (a protocol or
-/// substrate crate), EXCEPT for `crates/nmp-testing/src/` and the doctrine-lint
-/// binary's own source — those host fixture / negative-example strings that
-/// would otherwise be false positives.
+const SYSTEM_TIME_TOKENS: &[&str] = &[
+    "std::time::SystemTime::now",
+    "crate::time::SystemTime::now",
+    "SystemTime::now",
+];
+
+const INSTANT_TOKENS: &[&str] = &[
+    "std::time::Instant::now",
+    "crate::time::Instant::now",
+    "Instant::now",
+];
+
 pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
-    // Only the workspace `crates/` tree is scoped — app-layer crates under
-    // `apps/<app>/` legitimately use app-local vocabulary.
-    let in_crates = s.contains("/crates/nmp-") || s.starts_with("crates/nmp-");
-    if !in_crates {
+    if s.contains("/bin/doctrine-lint/") {
         return false;
     }
-    // Exempt the test-infrastructure crate (this rule's host and fixtures).
-    if s.contains("/crates/nmp-testing/") || s.starts_with("crates/nmp-testing/") {
+    if s.ends_with("/crates/nmp-core/src/kernel/clock.rs")
+        || s.ends_with("crates/nmp-core/src/kernel/clock.rs")
+    {
         return false;
     }
-    true
+    s.ends_with("/crates/nmp-core/src/kernel_reducer.rs")
+        || s.ends_with("crates/nmp-core/src/kernel_reducer.rs")
+        || s.contains("/crates/nmp-core/src/kernel/")
+        || s.contains("crates/nmp-core/src/kernel/")
 }
 
-/// Detect `const NAMESPACE: &'static str = "..."` and emit a finding when the
-/// quoted value does not start with `nmp.`.
-///
-/// The match is deliberately precise — it requires the `NAMESPACE` identifier
-/// and the `&'static str` type so it does NOT trip on unrelated `const` items
-/// or on `pub const NS_FOO: &str = "chirp.foo"` style aliases (those live in
-/// app crates and are out of scope anyway).
-pub fn check(line: &str, is_comment: bool) -> Vec<(usize, String, String)> {
-    if is_comment {
+pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, String, String)> {
+    if is_comment || in_test_cfg {
         return Vec::new();
     }
-    let Some((value_start, value)) = parse_namespace_literal(line) else {
-        return Vec::new();
-    };
-    if value.starts_with("nmp.") {
-        return Vec::new();
-    }
-    let col = value_start + 1; // 1-indexed columns for clippy compatibility
-    vec![(
-        col,
-        format!(
-            "action namespace `\"{}\"` does not start with `nmp.` — D9 requires \
-             protocol-crate namespaces to use the `nmp.<nip>.<verb>` shape",
-            value
-        ),
-        format!(
-            "rename to `\"nmp.{}\"` (or otherwise prefix with `nmp.`); update every \
-             string-literal call site in lockstep",
-            value
-        ),
-    )]
+
+    let mut hits = Vec::new();
+    push_system_time_hits(line, &mut hits);
+    push_instant_hits(line, &mut hits);
+    push_helper_hits(line, &mut hits);
+    hits.sort_by_key(|hit| hit.0);
+    hits.dedup_by_key(|hit| hit.0);
+    hits
 }
 
-/// If `line` declares `const NAMESPACE: &str = "<value>";` or
-/// `const NAMESPACE: &'static str = "<value>";`, return the byte offset of
-/// the opening quote and the literal value. Returns `None` for any other line.
-///
-/// Tolerates surrounding whitespace and an optional visibility modifier
-/// (`pub`, `pub(crate)`, `pub(super)`) — matches the codebase convention used
-/// by every `ActionModule` impl. Both the `&str` (module-level constant) and
-/// `&'static str` (trait-associated constant) type ascriptions are accepted.
-fn parse_namespace_literal(line: &str) -> Option<(usize, String)> {
-    // Cheap reject — skip any line that obviously can't be a NAMESPACE
-    // string-literal declaration.
-    if !line.contains("NAMESPACE") || (!line.contains("&'static str") && !line.contains("&str")) {
-        return None;
-    }
-    // Find the position of `NAMESPACE`.
-    let ns_pos = line.find("NAMESPACE")?;
-    // The fragment before `NAMESPACE` must end in something that makes it a
-    // `const` item declaration (we accept `const ` immediately before, or
-    // after a visibility modifier).
-    let before = &line[..ns_pos];
-    let trimmed_before = before.trim_end();
-    if !trimmed_before.ends_with("const") {
-        return None;
-    }
+fn push_system_time_hits(line: &str, hits: &mut Vec<(usize, String, String)>) {
+    push_tokens(line, SYSTEM_TIME_TOKENS, hits, |token| {
+        (
+            format!(
+                "`{}` violates D9: reducer/replay/kernel policy paths must not \
+                 read wall-clock time directly",
+                token
+            ),
+            "thread time from the kernel's injected `Clock` via `now_ms()` / \
+             `now_secs()`, or accept a caller-supplied timestamp sourced from \
+             that seam"
+                .to_string(),
+        )
+    });
+}
 
-    // Find the `=` between the type ascription and the value.
-    let eq_pos = line[ns_pos..].find('=').map(|i| ns_pos + i)?;
-    // Find the opening quote of the string literal.
-    let after_eq = &line[eq_pos + 1..];
-    let quote_rel = after_eq.find('"')?;
-    let value_start = eq_pos + 1 + quote_rel;
-    let after_quote = &line[value_start + 1..];
-    let close_rel = after_quote.find('"')?;
-    let value = after_quote[..close_rel].to_string();
-    Some((value_start, value))
+fn push_instant_hits(line: &str, hits: &mut Vec<(usize, String, String)>) {
+    push_tokens(line, INSTANT_TOKENS, hits, |token| {
+        (
+            format!(
+                "`{}` violates D9 in reducer/replay/kernel policy paths: \
+                 kernel time must be injected for replayable decisions",
+                token
+            ),
+            "pass the relevant instant/timestamp in from the actor/kernel clock \
+             seam instead of reading time inside reducer or kernel-policy code"
+                .to_string(),
+        )
+    });
+}
+
+fn push_helper_hits(line: &str, hits: &mut Vec<(usize, String, String)>) {
+    let needle = "now_epoch_ms(";
+    if line.trim_start().contains("fn now_epoch_ms(") {
+        return;
+    }
+    let mut start = 0;
+    while let Some(rel) = line[start..].find(needle) {
+        let abs = start + rel;
+        hits.push((
+            abs + 1,
+            "`now_epoch_ms()` violates D9 in reducer/replay/kernel policy paths: \
+             it hides a raw wall-clock read behind a helper"
+                .to_string(),
+            "use `self.now_ms()` / `self.now_secs()` or pass an injected timestamp \
+             into this path"
+                .to_string(),
+        ));
+        start = abs + needle.len();
+    }
+}
+
+fn push_tokens<F>(line: &str, tokens: &[&str], hits: &mut Vec<(usize, String, String)>, message: F)
+where
+    F: Fn(&str) -> (String, String),
+{
+    for token in tokens {
+        let mut start = 0;
+        while let Some(rel) = line[start..].find(token) {
+            let abs = start + rel;
+            if token.starts_with("SystemTime") || token.starts_with("Instant") {
+                if abs > 0
+                    && matches!(line.as_bytes()[abs - 1], b':' | b'_' | b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9')
+                {
+                    start = abs + token.len();
+                    continue;
+                }
+            }
+            let (msg, suggested) = message(token);
+            hits.push((abs + 1, msg, suggested));
+            start = abs + token.len();
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
 
     #[test]
-    fn flags_nip29_prefixed_namespace() {
-        let hits = check(
-            "    const NAMESPACE: &'static str = \"nip29.post_chat_message\";",
-            false,
-        );
-        assert_eq!(hits.len(), 1, "expected one D9 finding");
-        assert!(
-            hits[0].1.contains("nip29.post_chat_message"),
-            "message must name the offending literal; got: {}",
-            hits[0].1
-        );
-        assert!(
-            hits[0].1.contains("D9"),
-            "rule id must appear; got: {}",
-            hits[0].1
-        );
+    fn flags_system_time_now() {
+        let hits = check("let now = SystemTime::now();", false, false);
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("D9"));
+        assert!(hits[0].2.contains("now_ms"));
     }
 
     #[test]
-    fn allows_nmp_prefixed_namespace() {
+    fn flags_deadline_instant_now() {
         let hits = check(
-            "    const NAMESPACE: &'static str = \"nmp.nip29.post_chat_message\";",
+            "self.contacts_deadline = Some(Instant::now() + ttl);",
+            false,
             false,
         );
-        assert!(hits.is_empty(), "nmp.-prefixed namespace must not fire");
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].1.contains("Instant::now"));
     }
 
     #[test]
-    fn allows_nmp_publish_namespace() {
-        let hits = check(
-            "    const NAMESPACE: &'static str = \"nmp.publish\";",
-            false,
-        );
-        assert!(hits.is_empty());
-    }
-
-    #[test]
-    fn allows_nmp_nip17_send_namespace() {
-        let hits = check(
-            "    const NAMESPACE: &'static str = \"nmp.nip17.send\";",
-            false,
-        );
-        assert!(hits.is_empty());
-    }
-
-    #[test]
-    fn flags_pub_const_namespace() {
-        // Tolerates `pub const NAMESPACE: ...` too.
-        let hits = check(
-            "    pub const NAMESPACE: &'static str = \"foo.bar\";",
-            false,
-        );
+    fn flags_bare_local_instant_now() {
+        let hits = check("let started = Instant::now();", false, false);
         assert_eq!(hits.len(), 1);
     }
 
     #[test]
-    fn flags_module_level_str_namespace() {
-        // Module-level constants use `&str` (not `&'static str`) — e.g. the
-        // pattern in `crates/nmp-nipNN/src/domain.rs`. Both forms must trip
-        // the rule when the literal lacks the `nmp.` prefix.
-        let hits = check("pub const NAMESPACE: &str = \"legacy.namespace\";", false);
+    fn flags_multiline_argument_instant_now() {
+        let hits = check("            Instant::now(),", false, false);
         assert_eq!(hits.len(), 1);
-        assert!(hits[0].1.contains("legacy.namespace"));
     }
 
     #[test]
-    fn allows_module_level_str_namespace_with_prefix() {
-        let hits = check("pub const NAMESPACE: &str = \"nmp.nip22.comments\";", false);
-        assert!(hits.is_empty());
-    }
-
-    #[test]
-    fn ignores_comment_line() {
-        let hits = check(
-            "    /// const NAMESPACE: &'static str = \"nip29.post_chat_message\";",
-            true,
-        );
-        assert!(hits.is_empty());
-    }
-
-    #[test]
-    fn ignores_unrelated_const_with_namespace_in_value() {
-        // A `const FOO` whose value happens to contain the word `NAMESPACE`
-        // is not a NAMESPACE declaration — D9 must not fire.
-        let hits = check("    const FOO: &str = \"reserved.NAMESPACE.token\";", false);
-        assert!(hits.is_empty());
-    }
-
-    #[test]
-    fn ignores_non_const_namespace_lines() {
-        // A method or field named `namespace` is not the NAMESPACE constant
-        // and must not be flagged.
-        let hits = check("        let namespace = action.namespace();", false);
-        assert!(hits.is_empty());
-    }
-
-    #[test]
-    fn reports_column_at_opening_quote() {
-        // Column points at the offending string literal so a developer can
-        // jump straight to the value to fix.
-        let line = "const NAMESPACE: &'static str = \"foo.bar\";";
-        let hits = check(line, false);
+    fn flags_epoch_helper_call() {
+        let hits = check("let now_ms = now_epoch_ms();", false, false);
         assert_eq!(hits.len(), 1);
-        let expected_col = line.find('"').unwrap() + 1; // 1-indexed
-        assert_eq!(
-            hits[0].0, expected_col,
-            "column must point at the opening quote"
-        );
+        assert!(hits[0].1.contains("now_epoch_ms"));
     }
 
     #[test]
-    fn file_in_scope_includes_protocol_crates() {
-        assert!(file_in_scope(&PathBuf::from(
-            "crates/nmp-nip29/src/action/content.rs"
-        )));
-        assert!(file_in_scope(&PathBuf::from(
-            "/abs/path/crates/nmp-nip17/src/lib.rs"
-        )));
-        assert!(file_in_scope(&PathBuf::from(
-            "crates/nmp-core/src/publish.rs"
-        )));
+    fn ignores_comments_and_test_cfg() {
+        assert!(check("// SystemTime::now()", true, false).is_empty());
+        assert!(check("SystemTime::now()", false, true).is_empty());
     }
 
     #[test]
-    fn file_in_scope_excludes_apps() {
-        assert!(!file_in_scope(&PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+    fn scope_is_kernel_policy_only() {
+        assert!(file_in_scope(Path::new(
+            "crates/nmp-core/src/kernel_reducer.rs"
         )));
-        assert!(!file_in_scope(&PathBuf::from(
-            "/abs/path/apps/chirp/nmp-app-chirp/src/lib.rs"
+        assert!(file_in_scope(Path::new(
+            "crates/nmp-core/src/kernel/routing_trace.rs"
         )));
-    }
-
-    #[test]
-    fn file_in_scope_excludes_nmp_testing() {
-        // The lint's own host crate carries fixtures with negative examples;
-        // scanning itself would create spurious findings.
-        assert!(!file_in_scope(&PathBuf::from(
-            "crates/nmp-testing/bin/doctrine-lint/fixtures/d9/pos.rs"
+        assert!(!file_in_scope(Path::new(
+            "crates/nmp-core/src/kernel/clock.rs"
         )));
-        assert!(!file_in_scope(&PathBuf::from(
-            "/abs/path/crates/nmp-testing/src/lib.rs"
+        assert!(!file_in_scope(Path::new(
+            "crates/nmp-testing/bin/doctrine-lint/rules/d9.rs"
         )));
+        assert!(!file_in_scope(Path::new("crates/nmp-nip17/src/lib.rs")));
     }
 }

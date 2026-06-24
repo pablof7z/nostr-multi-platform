@@ -128,7 +128,7 @@ pub(super) fn truncate(value: &str, limit: usize) -> String {
 // emits raw `created_at` (Unix seconds); shells format timestamps locally.
 #[cfg(feature = "native")]
 pub(super) fn now_hms() -> String {
-    let now = SystemTime::now();
+    let now = SystemTime::now(); // doctrine-allow: D9 — native-only diagnostic display helper; not reducer policy
     let datetime: DateTime<Local> = DateTime::<Local>::from(now);
     datetime.format("%H:%M:%S").to_string()
 }

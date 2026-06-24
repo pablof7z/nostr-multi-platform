@@ -21,7 +21,7 @@ captured_at: 2026-06-18T05:05:38Z
 
 ## Prior State
 
-Projection keys used bare protocol prefixes (`nip17.*`, `nip29.*`) — inconsistent with the D9 action-namespace convention that already enforced `nmp.*` for actions.
+Projection keys used bare protocol prefixes (`nip17.*`, `nip29.*`) — inconsistent with the action_namespace convention that already enforced `nmp.*` for actions.
 
 ## Trigger
 
@@ -47,4 +47,3 @@ Renamed all projection keys to `nmp.nip17.*` / `nmp.nip29.*` form and added a D1
 - transcript lines 1422-1426
 - transcript lines 1494-1513
 - transcript lines 1562-1578
-

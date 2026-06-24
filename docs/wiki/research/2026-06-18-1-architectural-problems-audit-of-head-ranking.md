@@ -89,11 +89,11 @@ Current master state: `publish/engine.rs` has `correlation_id_override: Option<S
 
 - **PR #103** (`fix(nip29): snake_case admin action namespaces`, commit `eb0a9230`) — fixed the CamelCase vs snake_case issue from review #34.
 
-- **PR #153** (`pr/nip29-namespace-rename-B`, commits `f5348c44` + `e7111ffc`) — renamed all bare `nip29.*` action `NAMESPACE` constants to `nmp.nip29.*` prefix, and added D9 doctrine-lint rule to enforce it going forward.
+- **PR #153** (`pr/nip29-namespace-rename-B`, commits `f5348c44` + `e7111ffc`) — renamed all bare `nip29.*` action `NAMESPACE` constants to `nmp.nip29.*` prefix, and added the action_namespace doctrine-lint rule to enforce it going forward.
 
-Current master state: All `NAMESPACE` constants in `crates/nmp-nip29/src/action/` now read `"nmp.nip29.post_chat_message"`, `"nmp.nip29.discover"`, `"nmp.nip29.join"`, etc. The D9 lint (in `crates/nmp-testing/bin/doctrine-lint/rules/d9.rs`) actively bans any bare `nip29.*` NAMESPACE constant. There is no open branch or worktree touching this.
+Current master state: All `NAMESPACE` constants in `crates/nmp-nip29/src/action/` now read `"nmp.nip29.post_chat_message"`, `"nmp.nip29.discover"`, `"nmp.nip29.join"`, etc. The action_namespace lint (in `crates/nmp-testing/bin/doctrine-lint/rules/action_namespace.rs`) actively bans any bare `nip29.*` NAMESPACE constant. There is no open branch or worktree touching this.
 
-**Note on remaining `"nip29.*"` strings in master:** There are still `"nip29.group_chat"` and `"nip29.discovered_groups"` strings used as *snapshot projection keys* (not action NAMESPACE constants) in `apps/chirp/nmp-app-chirp/src/ffi.rs` and iOS bridge files. D9 does not ban these (it only flags `NAMESPACE` constants). The `"nip29.discover"` string in `crates/nmp-nip29/src/interest.rs:80` is used as a stable hash seed for `InterestId`, not a namespace — renaming it would silently break interest de-duplication. No in-flight branch is addressing these snapshot keys.
+**Note on remaining `"nip29.*"` strings in master:** There are still `"nip29.group_chat"` and `"nip29.discovered_groups"` strings used as *snapshot projection keys* (not action NAMESPACE constants) in `apps/chirp/nmp-app-chirp/src/ffi.rs` and iOS bridge files. action_namespace does not ban these (it only flags `NAMESPACE` constants). The `"nip29.discover"` string in `crates/nmp-nip29/src/interest.rs:80` is used as a stable hash seed for `InterestId`, not a namespace — renaming it would silently break interest de-duplication. No in-flight branch is addressing these snapshot keys.
 
 ---
 
@@ -154,7 +154,7 @@ Extensive thin-shell work landed today (May 21):
 
 - **Review #37's delete-12 admin/membership directive**: The 6-deletion PR covers the Marmot side. The admin/membership NIP-29 executors were targeted by review #37; no separate open branch specifically for those was found.
 
-**Current state on master**: Only `PublishKeyPackageAction` remains in `nmp-marmot/src/action/`. The `DomainModule` NAMESPACE consts in `domain/mod.rs` are `doctrine-allow: D9` (LMDB storage prefixes, data migration required — not deletable without migration).
+**Current state on master**: Only `PublishKeyPackageAction` remains in `nmp-marmot/src/action/`. The `DomainModule` NAMESPACE consts in `domain/mod.rs` are `doctrine-allow: action_namespace` (LMDB storage prefixes, data migration required — not deletable without migration).
 
 **Verdict: ADDRESSED-IN-FLIGHT (landed).** PR #200 merged 6 Marmot deletions. nmp-nip77 stub also deleted. The review #37 full 12-deletion mandate is partially complete (6 done, remainder not in any open branch).
 

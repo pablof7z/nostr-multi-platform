@@ -13,9 +13,9 @@ use super::*;
 /// Coded-rejection test module under `test.coded_reject` — `start()` returns
 /// an `ActionRejection::InvalidCoded` with a stable `code` (issue #1734).
 /// Used to verify that the FFI action-result JSON carries `{"error":…,"code":…}`.
-struct TestCodedRejectModule; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+struct TestCodedRejectModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
 impl nmp_core::substrate::ActionModule for TestCodedRejectModule {
-    const NAMESPACE: &'static str = "test.coded_reject"; // doctrine-allow: D9
+    const NAMESPACE: &'static str = "test.coded_reject"; // doctrine-allow: action_namespace — test fixture uses a local namespace
     type Action = serde_json::Value;
     fn start(
         &self,
@@ -85,9 +85,9 @@ fn coded_rejection_includes_code_field_in_ffi_json() {
 /// bytes doorway (`start_bytes`) proceeds to `start()`, which then returns
 /// `ActionRejection::InvalidCoded`. This is a TEST-ONLY bypass of the normal
 /// typed-payload decode — production modules decode real FlatBuffers.
-struct TestCodedRejectBytesModule; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+struct TestCodedRejectBytesModule; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
 impl nmp_core::substrate::ActionModule for TestCodedRejectBytesModule {
-    const NAMESPACE: &'static str = "test.coded_reject.bytes"; // doctrine-allow: D9
+    const NAMESPACE: &'static str = "test.coded_reject.bytes"; // doctrine-allow: action_namespace — test fixture uses a local namespace
     type Action = serde_json::Value;
     /// Opt into the typed bytes doorway by returning `Some(Ok(...))` for any
     /// payload. The content is irrelevant for this rejection test; only `start()`

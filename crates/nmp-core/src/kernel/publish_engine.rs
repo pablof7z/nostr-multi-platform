@@ -113,7 +113,7 @@ impl Kernel {
             p_tags,
             target,
             correlation_id_override,
-            now_epoch_ms(),
+            now_epoch_ms(), // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
         )
     }
 
@@ -385,7 +385,7 @@ impl Kernel {
         relay_url: &str,
         payload: OkFramePayload<'_>,
     ) -> Vec<OutboundMessage> {
-        self.handle_publish_ok_at(relay_url, payload, now_epoch_ms())
+        self.handle_publish_ok_at(relay_url, payload, now_epoch_ms()) // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
     }
 
     /// Time-injected variant for tests; production callers use the wall-clock

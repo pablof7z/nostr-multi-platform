@@ -23,8 +23,8 @@
 //! `GroupChatDecodeTests.swift` round-trip tests and the typed
 //! `SnapshotProjections.CodingKeys` enum — a Swift scanner is out of scope
 //! for doctrine-lint (Rust binary, no Swift AST). Protocol crates under
-//! `crates/nmp-nip*/src/` are already covered by D9 (action-namespace prefix)
-//! and have no projection-key registrations.
+//! `crates/nmp-nip*/src/` are already covered by the action_namespace prefix
+//! rule and have no projection-key registrations.
 //!
 //! ## Explicit allowlist
 //!

@@ -153,7 +153,7 @@ impl Kernel {
             return;
         };
 
-        let now = Instant::now();
+        let now = Instant::now(); // doctrine-allow: D9 — relay/event diagnostic elapsed-time marker; not replay policy
         {
             let relay = self.relay_mut(role);
             relay.counters.events_rx = relay.counters.events_rx.saturating_add(1);
