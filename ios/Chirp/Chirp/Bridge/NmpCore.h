@@ -63,19 +63,9 @@ void nmp_app_search_close(void *app, const char *session_id);
 // two-call size-probe). The bytes match the snapshot frame's N50S sidecar.
 int nmp_app_search_snapshot(void *app, const char *session_id,
                             uint8_t *out_buf, uintptr_t cap);
-// ADR-0063 Lane D — unified, origin-blind reference-resolution entry points.
-// Profiles and events resolve through the raw-key resolve_ref / release_ref
-// boundary. App-owned URI adapters decode nostr: event URIs before calling this
-// boundary; use the metadata variant when decoded relay/author TLVs must seed
-// the event resolver.
-//
-// `namespace` — 0 = profile (kind:0), 1 = event.
-// `key` — lowercase 64-hex pubkey for profile; lowercase event-id hex or "kind:pubkey:d" for event.
-// `consumer_id` — opaque refcount owner key (e.g. SwiftUI view identity).
-// `shape` — 0=profile.ref 1=profile.card 2=event.embed 3=event.raw.
-//   Globally unique across namespaces; kernel fails closed on namespace/shape mismatch.
-// `liveness` — 0=CacheOk (background / feed row), non-zero=Live (open screen).
-// D6: null/invalid args and unknown int codes are silent no-ops, never panics.
+// ADR-0063 Lane D — typed reference-resolution entry points. Hosts call these
+// adapters instead of spelling raw namespace/shape/liveness integers.
+// D6: null/invalid args are silent no-ops, never panics.
 // D8: fire-and-forget; the actor processes commands asynchronously.
 void nmp_app_resolve_ref(void *app, int namespace, const char *key,
                          const char *consumer_id, int shape, int liveness);
@@ -86,6 +76,24 @@ void nmp_app_resolve_ref_with_metadata(void *app, int namespace,
                                        const char *metadata_json);
 void nmp_app_release_ref(void *app, int namespace, const char *key,
                          const char *consumer_id);
+void nmp_app_resolve_profile_ref(void *app, const char *key,
+                                 const char *consumer_id);
+void nmp_app_resolve_profile_card_live(void *app, const char *key,
+                                       const char *consumer_id);
+void nmp_app_release_profile_ref(void *app, const char *key,
+                                 const char *consumer_id);
+void nmp_app_resolve_event_embed(void *app, const char *key,
+                                 const char *consumer_id);
+void nmp_app_resolve_event_embed_live(void *app, const char *key,
+                                      const char *consumer_id);
+void nmp_app_resolve_event_embed_with_metadata(void *app, const char *key,
+                                               const char *consumer_id,
+                                               const char *metadata_json);
+void nmp_app_resolve_event_embed_live_with_metadata(void *app, const char *key,
+                                                    const char *consumer_id,
+                                                    const char *metadata_json);
+void nmp_app_release_event_ref(void *app, const char *key,
+                               const char *consumer_id);
 // V-68 / V-112 (ADR-0042): nmp_app_close_author, nmp_app_close_thread deleted.
 // Use nmp_app_chirp_close_author_feed / nmp_app_chirp_close_thread_feed below.
 //

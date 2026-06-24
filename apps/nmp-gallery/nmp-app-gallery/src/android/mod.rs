@@ -14,15 +14,14 @@
 use std::ffi::c_void;
 use std::sync::Arc;
 
+use jni::JNIEnv;
 use jni::objects::{JByteArray, JClass, JObject, JString};
 use jni::sys::{jint, jlong, jstring};
-use jni::JNIEnv;
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_deliver_external_signer_response,
-    nmp_app_new, nmp_app_release_ref, nmp_app_resolve_ref,
-    nmp_app_set_capability_callback, nmp_app_set_update_callback,
-    nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
+    nmp_app_add_relay, nmp_app_deliver_external_signer_response, nmp_app_new,
+    nmp_app_release_profile_ref, nmp_app_resolve_profile_ref, nmp_app_set_capability_callback,
+    nmp_app_set_update_callback, nmp_app_signin_nip55, nmp_app_start, nmp_app_stop,
     nmp_external_signer_init,
 };
 
@@ -34,11 +33,11 @@ use nmp_core::refs::RefProfileStore;
 
 use std::sync::Mutex;
 
-pub(crate) mod session;
 mod event_claims;
+pub(crate) mod session;
 use session::{
-    jstring_to_cstring, on_capability_request, on_update, session_ref, set_update_listener,
-    teardown_session, GallerySession,
+    GallerySession, jstring_to_cstring, on_capability_request, on_update, session_ref,
+    set_update_listener, teardown_session,
 };
 
 // ── JNI entry points ──────────────────────────────────────────────────────
@@ -66,7 +65,11 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeNew(
     // `on_capability_request` is safe for the full session lifetime.
     let trampoline_ctx =
         Arc::as_ptr(&signer_listener) as *mut Mutex<Option<Arc<SignerRequestPushListener>>>;
-    nmp_app_set_capability_callback(app, trampoline_ctx as *mut c_void, Some(on_capability_request));
+    nmp_app_set_capability_callback(
+        app,
+        trampoline_ctx as *mut c_void,
+        Some(on_capability_request),
+    );
     nmp_external_signer_init(app);
     let session = Box::new(GallerySession {
         app,
@@ -138,7 +141,9 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDecodeSnap
     // session's persistent store before building the snapshot JSON. The handle is
     // optional only for the (pre-session) error path; without it the row-deltas
     // cannot accumulate, so a missing handle yields null (D6).
-    let Some(s) = session_ref(handle) else { return null };
+    let Some(s) = session_ref(handle) else {
+        return null;
+    };
     let Ok(mut store) = s.ref_profiles.lock() else {
         return null;
     };
@@ -163,8 +168,12 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStart(
 ) {
     let Some(s) = session_ref(handle) else { return };
     for relay in &crate::showcase::references().relays {
-        let Ok(url_c) = std::ffi::CString::new(relay.url.as_str()) else { continue };
-        let Ok(role_c) = std::ffi::CString::new(relay.role.as_str()) else { continue };
+        let Ok(url_c) = std::ffi::CString::new(relay.url.as_str()) else {
+            continue;
+        };
+        let Ok(role_c) = std::ffi::CString::new(relay.role.as_str()) else {
+            continue;
+        };
         nmp_app_add_relay(s.app, url_c.as_ptr(), role_c.as_ptr());
     }
     nmp_app_start(s.app, visible_limit as u32, emit_hz as u32);
@@ -176,56 +185,51 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeStop(
     _class: JClass,
     handle: jlong,
 ) {
-    if let Some(s) = session_ref(handle) { nmp_app_stop(s.app); }
+    if let Some(s) = session_ref(handle) {
+        nmp_app_stop(s.app);
+    }
 }
 
-/// ADR-0063 (#1671) — unified, origin-blind reference resolution. Supersedes
-/// the deleted `nativeClaimProfile`.
-///
-/// `namespace` — 0 = profile. `key` — lowercase 64-hex pubkey.
-/// `consumer_id` — opaque refcount owner key. `shape` — 0 = profile.ref (avatar),
-/// 1 = profile.card. `liveness` — 0 = CacheOk (background), non-zero = Live.
-/// D6: bad handles/strings/unknown int codes are silent no-ops.
+/// ADR-0063 (#1671) — typed profile-ref resolution for visible gallery authors.
+/// Supersedes the deleted `nativeClaimProfile` and avoids exposing raw
+/// namespace/shape/liveness discriminants to Kotlin.
 #[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveRef(
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeResolveProfileRef(
     mut env: JNIEnv,
     _class: JClass,
     handle: jlong,
-    namespace: jint,
-    key: JString,
-    consumer_id: JString,
-    shape: jint,
-    liveness: jint,
-) {
-    let Some(s) = session_ref(handle) else { return };
-    let Some(key) = jstring_to_cstring(&mut env, &key) else { return };
-    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else { return };
-    nmp_app_resolve_ref(
-        s.app,
-        namespace,
-        key.as_ptr(),
-        consumer_id.as_ptr(),
-        shape,
-        liveness,
-    );
-}
-
-/// ADR-0063 (#1671) — release a reference previously registered via
-/// `nativeResolveRef`. Pass the SAME `(namespace, key, consumer_id)`.
-/// D6: bad handles/strings/unknown int codes are silent no-ops.
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseRef(
-    mut env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-    namespace: jint,
     key: JString,
     consumer_id: JString,
 ) {
     let Some(s) = session_ref(handle) else { return };
-    let Some(key) = jstring_to_cstring(&mut env, &key) else { return };
-    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else { return };
-    nmp_app_release_ref(s.app, namespace, key.as_ptr(), consumer_id.as_ptr());
+    let Some(key) = jstring_to_cstring(&mut env, &key) else {
+        return;
+    };
+    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+        return;
+    };
+    nmp_app_resolve_profile_ref(s.app, key.as_ptr(), consumer_id.as_ptr());
+}
+
+/// ADR-0063 (#1671) — release a profile ref previously registered via
+/// `nativeResolveProfileRef`. Pass the SAME `(key, consumer_id)`.
+/// D6: bad handles/strings/unknown int codes are silent no-ops.
+#[no_mangle]
+pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseProfileRef(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    key: JString,
+    consumer_id: JString,
+) {
+    let Some(s) = session_ref(handle) else { return };
+    let Some(key) = jstring_to_cstring(&mut env, &key) else {
+        return;
+    };
+    let Some(consumer_id) = jstring_to_cstring(&mut env, &consumer_id) else {
+        return;
+    };
+    nmp_app_release_profile_ref(s.app, key.as_ptr(), consumer_id.as_ptr());
 }
 
 /// Register (or clear) the JNI push listener for kernel update frames
@@ -284,9 +288,15 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDispatchAc
     payload: JString<'l>,
 ) -> jstring {
     let null = std::ptr::null_mut();
-    let Some(s) = session_ref(handle) else { return null };
-    let Some(action_c) = jstring_to_cstring(&mut env, &action) else { return null };
-    let Some(payload_c) = jstring_to_cstring(&mut env, &payload) else { return null };
+    let Some(s) = session_ref(handle) else {
+        return null;
+    };
+    let Some(action_c) = jstring_to_cstring(&mut env, &action) else {
+        return null;
+    };
+    let Some(payload_c) = jstring_to_cstring(&mut env, &payload) else {
+        return null;
+    };
     let (Ok(namespace), Ok(body)) = (action_c.to_str(), payload_c.to_str()) else {
         return null;
     };
@@ -323,11 +333,15 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeSetSignerR
 ) {
     let Some(s) = session_ref(handle) else { return };
     if listener.is_null() {
-        if let Ok(mut slot) = s.signer_listener.lock() { slot.take(); }
+        if let Ok(mut slot) = s.signer_listener.lock() {
+            slot.take();
+        }
         return;
     }
     let Ok(vm) = env.get_java_vm() else { return };
-    let Ok(global) = env.new_global_ref(&listener) else { return };
+    let Ok(global) = env.new_global_ref(&listener) else {
+        return;
+    };
     if let Ok(mut slot) = s.signer_listener.lock() {
         *slot = Some(Arc::new(SignerRequestPushListener::new(vm, global)));
     }
@@ -342,7 +356,9 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClearSigne
     handle: jlong,
 ) {
     if let Some(s) = session_ref(handle) {
-        if let Ok(mut slot) = s.signer_listener.lock() { slot.take(); }
+        if let Ok(mut slot) = s.signer_listener.lock() {
+            slot.take();
+        }
     }
 }
 
@@ -359,9 +375,16 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeSignInNip5
     let Some(s) = session_ref(handle) else { return };
     let package = {
         let obj: &jni::objects::JObject = AsRef::<jni::objects::JObject>::as_ref(&signer_package);
-        if obj.as_raw().is_null() { None } else { jstring_to_cstring(&mut env, &signer_package) }
+        if obj.as_raw().is_null() {
+            None
+        } else {
+            jstring_to_cstring(&mut env, &signer_package)
+        }
     };
-    nmp_app_signin_nip55(s.app, package.as_ref().map_or(std::ptr::null(), |v| v.as_ptr()));
+    nmp_app_signin_nip55(
+        s.app,
+        package.as_ref().map_or(std::ptr::null(), |v| v.as_ptr()),
+    );
 }
 
 /// Report a raw `ExternalSignerResponse` JSON back to the Rust driver
@@ -374,6 +397,8 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeDeliverSig
     response_json: JString,
 ) {
     let Some(s) = session_ref(handle) else { return };
-    let Some(response) = jstring_to_cstring(&mut env, &response_json) else { return };
+    let Some(response) = jstring_to_cstring(&mut env, &response_json) else {
+        return;
+    };
     nmp_app_deliver_external_signer_response(s.app, response.as_ptr());
 }

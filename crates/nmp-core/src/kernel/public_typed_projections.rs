@@ -17,8 +17,9 @@ pub use super::typed_projections::{
     decode_action_stages,
     // active_account
     decode_active_account,
-    // claimed_events (nmp-gallery typed-sidecar migration — PR-B final zeroing)
+    // claimed_events (also used as the per-row `refs.event` payload)
     decode_claimed_events,
+    encode_claimed_events,
     // configured_relays
     decode_configured_relays,
     // profile (encode: ADR-0063 Lane F — build a refs.profile KPRF row payload)

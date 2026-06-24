@@ -82,20 +82,11 @@ class KernelBridge {
      * `refs.profile` row-delta projection.
      */
     fun claimProfile(pubkey: String, consumerId: String) {
-        if (handle != 0L) {
-            nativeResolveRef(
-                handle,
-                REF_NS_PROFILE,
-                pubkey,
-                consumerId,
-                REF_SHAPE_PROFILE_REF,
-                REF_LIVENESS_CACHE_OK,
-            )
-        }
+        if (handle != 0L) nativeResolveProfileRef(handle, pubkey, consumerId)
     }
 
     fun releaseProfile(pubkey: String, consumerId: String) {
-        if (handle != 0L) nativeReleaseRef(handle, REF_NS_PROFILE, pubkey, consumerId)
+        if (handle != 0L) nativeReleaseProfileRef(handle, pubkey, consumerId)
     }
 
     /** App-local URI adapter: nativeClaimEvent decodes [uri] and calls resolve_ref. */
@@ -201,15 +192,8 @@ class KernelBridge {
     private external fun nativeRegistryJson(): String
     private external fun nativeStart(handle: Long, eventsPerSec: Int, visibleLimit: Int, emitHz: Int)
     private external fun nativeStop(handle: Long)
-    private external fun nativeResolveRef(
-        handle: Long,
-        namespace: Int,
-        key: String,
-        consumerId: String,
-        shape: Int,
-        liveness: Int,
-    )
-    private external fun nativeReleaseRef(handle: Long, namespace: Int, key: String, consumerId: String)
+    private external fun nativeResolveProfileRef(handle: Long, key: String, consumerId: String)
+    private external fun nativeReleaseProfileRef(handle: Long, key: String, consumerId: String)
     private external fun nativeClaimEvent(handle: Long, uri: String, consumerId: String)
     // nativeDecodeSnapshotJson lives in the companion (static JNI) so it can be
     // reused without an instance; the [handle] selects the session's store.
@@ -225,14 +209,6 @@ class KernelBridge {
     companion object {
         @JvmStatic
         private external fun nativeDecodeSnapshotJson(handle: Long, frame: ByteArray): String?
-
-        // ADR-0063 (#1671) FFI integer codes for resolve_ref / release_ref.
-        /** `namespace` — the profile resolver. */
-        private const val REF_NS_PROFILE: Int = 0
-        /** `shape` — `profile.ref` (`{pubkey, display_name, picture_url}`; avatar/name). */
-        private const val REF_SHAPE_PROFILE_REF: Int = 0
-        /** `liveness` — `CacheOk` (background; no per-row tailing sub). */
-        private const val REF_LIVENESS_CACHE_OK: Int = 0
 
         private val loaded: Boolean = run {
             System.loadLibrary("nmp_app_gallery")

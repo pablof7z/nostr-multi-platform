@@ -121,14 +121,6 @@ final class GalleryKernelHandle {
 
     // ── Profile resolution (ADR-0063 #1671) ──────────────────────────────
 
-    // ADR-0063 (#1671) FFI integer codes for resolve_ref / release_ref.
-    /// `namespace` — the profile resolver.
-    private static let refNamespaceProfile: Int32 = 0
-    /// `shape` — `profile.ref` (`{pubkey, display_name, picture_url}`; avatar/name).
-    private static let refShapeProfileRef: Int32 = 0
-    /// `liveness` — `CacheOk` (background; no per-row tailing sub).
-    private static let refLivenessCacheOk: Int32 = 0
-
     /// Resolve a visible profile reference for `pubkey` (ADR-0063 #1671 —
     /// supersedes `claimProfile`). The registry widgets call this on mount; the
     /// resolved kind:0 flows back through `refs.profile`. Origin-blind: every
@@ -137,13 +129,7 @@ final class GalleryKernelHandle {
     func claimProfile(pubkey: String, consumerID: String) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_resolve_ref(
-                    raw,
-                    Self.refNamespaceProfile,
-                    pkPtr,
-                    cidPtr,
-                    Self.refShapeProfileRef,
-                    Self.refLivenessCacheOk)
+                nmp_app_resolve_profile_ref(raw, pkPtr, cidPtr)
             }
         }
     }
@@ -153,7 +139,7 @@ final class GalleryKernelHandle {
     func releaseProfile(pubkey: String, consumerID: String) {
         pubkey.withCString { pkPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_release_ref(raw, Self.refNamespaceProfile, pkPtr, cidPtr)
+                nmp_app_release_profile_ref(raw, pkPtr, cidPtr)
             }
         }
     }
@@ -161,8 +147,8 @@ final class GalleryKernelHandle {
     // ── Event claim / release ────────────────────────────────────────────
 
     // App-owned URI adapter: decode nostr: via nmp_nip21_decode_uri, then route
-    // the raw event key plus decoded relay/author metadata to the resolve_ref /
-    // release_ref seams (namespace=1/event).
+    // the raw event key plus decoded relay/author metadata to typed event-ref
+    // adapters.
 
     private struct EventRefFromUri {
         let key: String
@@ -170,30 +156,32 @@ final class GalleryKernelHandle {
     }
 
     /// #1726 — Decode a `nostr:` URI and resolve the embedded event via the
-    /// unified ref-resolution seam (nmp_app_resolve_ref_with_metadata,
-    /// namespace=1/event).
+    /// typed event-embed ref adapter.
     /// App-local URI adapter over the unified ref-resolution seam.
     func claimEvent(uri: String, consumerID: String, force: Bool = false) {
         guard let eventRef = decodeEventRef(from: uri) else { return }
-        let liveness: Int32 = force ? 1 : 0
         eventRef.key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
                 eventRef.metadataJson.withCString { metadataPtr in
-                    nmp_app_resolve_ref_with_metadata(
-                        raw, 1 /*event*/, keyPtr, cidPtr,
-                        2 /*event.embed*/, liveness, metadataPtr)
+                    if force {
+                        nmp_app_resolve_event_embed_live_with_metadata(
+                            raw, keyPtr, cidPtr, metadataPtr)
+                    } else {
+                        nmp_app_resolve_event_embed_with_metadata(
+                            raw, keyPtr, cidPtr, metadataPtr)
+                    }
                 }
             }
         }
     }
 
-    /// #1726 — App-local URI adapter that releases the event via
-    /// nmp_app_release_ref (namespace=1/event).
+    /// #1726 — App-local URI adapter that releases the event via the typed
+    /// event-ref adapter.
     func releaseEvent(uri: String, consumerID: String) {
         guard let eventRef = decodeEventRef(from: uri) else { return }
         eventRef.key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_release_ref(raw, 1 /*event*/, keyPtr, cidPtr)
+                nmp_app_release_event_ref(raw, keyPtr, cidPtr)
             }
         }
     }

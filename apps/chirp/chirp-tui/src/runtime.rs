@@ -1,31 +1,30 @@
 use std::cell::Cell;
 use std::ffi::CString;
-use std::os::raw::c_int;
 use std::ptr;
 use std::sync::mpsc::Receiver;
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    follow_spec, nmp_app_chirp_close_author_feed, nmp_app_chirp_close_group_discovery,
-    nmp_app_chirp_close_thread_feed, nmp_app_chirp_declare_consumed_projections,
-    nmp_app_chirp_identity_restore, nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
-    nmp_app_chirp_open_thread_feed, nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, react_spec, unfollow_spec,
-    ChirpHandle, MarmotHandle, NmpRegisterStatus,
+    ChirpHandle, MarmotHandle, NmpRegisterStatus, follow_spec, nmp_app_chirp_close_author_feed,
+    nmp_app_chirp_close_group_discovery, nmp_app_chirp_close_thread_feed,
+    nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_identity_restore,
+    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
+    nmp_app_chirp_register, nmp_app_chirp_unregister, nmp_marmot_unregister,
+    nmp_signer_broker_init, publish_note_action, react_spec, unfollow_spec,
 };
-use nmp_nip29::register::GroupDiscoveryHandle;
 use nmp_core::tags::Nip10Refs;
 use nmp_nip01::NoteRecord;
+use nmp_nip29::register::GroupDiscoveryHandle;
 
 use crate::app::ReplyTarget;
 use nmp_ffi::{
-    nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref, nmp_app_resolve_ref,
-    nmp_app_start, NmpApp, NmpConfigStatus,
+    NmpApp, NmpConfigStatus, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_profile_ref,
+    nmp_app_resolve_profile_card_live, nmp_app_resolve_profile_ref, nmp_app_start,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use crate::bridge::{self, NmpEvent, NmpUpdateBridge};
 use crate::Result;
+use crate::bridge::{self, NmpEvent, NmpUpdateBridge};
 
 const VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.visible-author";
 const VISIBLE_NOTE_RELATIONS_CONSUMER_PREFIX: &str = "chirp-tui.visible-note";
@@ -34,18 +33,6 @@ const VISIBLE_NOTE_RELATIONS_CONSUMER_PREFIX: &str = "chirp-tui.visible-note";
 /// the slot is upgraded to Live/card while the pane is open and downgraded back
 /// to whatever feed rows still demand when the pane closes.
 const OPEN_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.open-profile";
-
-// ADR-0063 Lane D FFI integer codes for `nmp_app_resolve_ref` / `release_ref`.
-/// `namespace` — the profile resolver.
-const REF_NS_PROFILE: c_int = 0;
-/// `shape` — `profile.ref` (`{pubkey, display_name, picture_url}`; feed-avatar).
-const REF_SHAPE_PROFILE_REF: c_int = 0;
-/// `shape` — `profile.card` (full `ProfileCard`; profile-screen).
-const REF_SHAPE_PROFILE_CARD: c_int = 1;
-/// `liveness` — `CacheOk` (background, no tailing sub).
-const REF_LIVENESS_CACHE_OK: c_int = 0;
-/// `liveness` — `Live` (open screen; keeps a tailing sub for replacements).
-const REF_LIVENESS_LIVE: c_int = 1;
 
 pub struct AppRuntime {
     app: *mut NmpApp,
@@ -101,11 +88,7 @@ impl AppRuntime {
         let marmot = db_dir.and_then(|dir| {
             let dir_c = CString::new(dir.to_string_lossy().as_ref()).ok()?;
             let h = nmp_app_chirp_identity_restore(app, dir_c.as_ptr(), ptr::null());
-            if h.is_null() {
-                None
-            } else {
-                Some(h)
-            }
+            if h.is_null() { None } else { Some(h) }
         });
         let initial_marmot = marmot.unwrap_or(ptr::null_mut());
 
@@ -172,20 +155,13 @@ impl AppRuntime {
         // mention authors. The slot dedupes per (namespace, key); Live/card from
         // the open profile pane upgrades it in place.
         self.with_visible_author_profile_args(pubkey, |pubkey, consumer| {
-            nmp_app_resolve_ref(
-                self.app,
-                REF_NS_PROFILE,
-                pubkey.as_ptr(),
-                consumer.as_ptr(),
-                REF_SHAPE_PROFILE_REF,
-                REF_LIVENESS_CACHE_OK,
-            );
+            nmp_app_resolve_profile_ref(self.app, pubkey.as_ptr(), consumer.as_ptr());
         })
     }
 
     pub fn release_visible_author_profile(&self, pubkey: &str) -> Result<()> {
         self.with_visible_author_profile_args(pubkey, |pubkey, consumer| {
-            nmp_app_release_ref(self.app, REF_NS_PROFILE, pubkey.as_ptr(), consumer.as_ptr());
+            nmp_app_release_profile_ref(self.app, pubkey.as_ptr(), consumer.as_ptr());
         })
     }
 
@@ -196,20 +172,13 @@ impl AppRuntime {
     /// view). Uses a consumer id distinct from the feed-row visible-author claim.
     pub fn resolve_open_profile(&self, pubkey: &str) -> Result<()> {
         self.with_open_profile_args(pubkey, |pubkey, consumer| {
-            nmp_app_resolve_ref(
-                self.app,
-                REF_NS_PROFILE,
-                pubkey.as_ptr(),
-                consumer.as_ptr(),
-                REF_SHAPE_PROFILE_CARD,
-                REF_LIVENESS_LIVE,
-            );
+            nmp_app_resolve_profile_card_live(self.app, pubkey.as_ptr(), consumer.as_ptr());
         })
     }
 
     pub fn release_open_profile(&self, pubkey: &str) -> Result<()> {
         self.with_open_profile_args(pubkey, |pubkey, consumer| {
-            nmp_app_release_ref(self.app, REF_NS_PROFILE, pubkey.as_ptr(), consumer.as_ptr());
+            nmp_app_release_profile_ref(self.app, pubkey.as_ptr(), consumer.as_ptr());
         })
     }
 

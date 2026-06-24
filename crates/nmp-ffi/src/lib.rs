@@ -65,10 +65,13 @@ mod external_signer;
 // #1726: `mod routing_trace` and `mod composition_report` deleted.
 // Callers use `nmp_app_debug_info(app, domain)` instead (domain 0 = routing,
 // 1 = composition, 2 = merged). No compat shims kept.
-// ADR-0063 Lane D — unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI
-// symbols. Profiles and events resolve through this origin-blind seam; app-owned
-// URI adapters decode event URIs before calling the raw-key boundary.
+// ADR-0063 Lane D — ref-resolution C-ABI symbols. Hosts should prefer the typed
+// adapters; the raw resolve_ref/release_ref surface remains as the compatibility
+// boundary for generated or legacy bindings.
 mod resolve_ref;
+#[cfg(test)]
+#[path = "resolve_ref_tests.rs"]
+mod resolve_ref_tests;
 mod search;
 mod snapshot;
 mod storage;
@@ -206,21 +209,24 @@ pub use timeline::{
     // #1740 step 8: `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
     // C-ABI shims DELETED. `declare_active_follows_feed` / `clear_active_follows_feed`
     // stay as INTERNAL composition glue (home-feed wiring), not app-facing C ABI.
-    // #1946: event URI C-ABI front doors DELETED. Callers migrate to
-    // `nmp_app_resolve_ref(namespace=1/event)` / `nmp_app_release_ref`.
+    // #1946: event URI C-ABI front doors DELETED. Callers migrate to the typed
+    // event-ref adapters below.
     clear_active_follows_feed,
     declare_active_follows_feed,
     nmp_app_close_interest,
     nmp_app_open_interest,
     nmp_app_open_uri,
 };
-// ADR-0063 Lane D — unified ref-resolution C-ABI entry points. Lane H deleted the
-// per-kind profile claim/release symbols; these are the sole profile-resolution
-// surface. #1946 deleted event URI C-ABI front doors; event refs now resolve
-// exclusively through resolve_ref(namespace=1).
+// ADR-0063 Lane D — ref-resolution C-ABI entry points. Hosts should prefer the
+// typed adapters; the raw resolve_ref/release_ref surface remains as the
+// compatibility boundary for generated or legacy bindings.
 #[cfg(feature = "native")]
 pub use resolve_ref::{
-    nmp_app_release_ref, nmp_app_resolve_ref, nmp_app_resolve_ref_with_metadata,
+    nmp_app_release_event_ref, nmp_app_release_profile_ref, nmp_app_release_ref,
+    nmp_app_resolve_event_embed, nmp_app_resolve_event_embed_live,
+    nmp_app_resolve_event_embed_live_with_metadata, nmp_app_resolve_event_embed_with_metadata,
+    nmp_app_resolve_profile_card_live, nmp_app_resolve_profile_ref, nmp_app_resolve_ref,
+    nmp_app_resolve_ref_with_metadata,
 };
 
 // ── test-support delta ───────────────────────────────────────────────────

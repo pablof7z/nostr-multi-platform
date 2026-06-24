@@ -105,8 +105,8 @@ pub extern "C" fn nmp_app_open_uri(app: *mut NmpApp, uri: *const c_char) {
 }
 
 // Event URI front doors are removed (no compat shims). Callers use:
-//   nmp_app_resolve_ref(app, 1/*event*/, key, consumer_id, 2/*embed*/, 0/*cache_ok*/)
-//   nmp_app_release_ref(app, 1/*event*/, key, consumer_id)
+//   nmp_app_resolve_event_embed(app, key, consumer_id)
+//   nmp_app_release_event_ref(app, key, consumer_id)
 // The `key` is the event-id hex (for nevent/note) or `"kind:pubkey:d"` (for naddr).
 // To decode a `nostr:` URI to an event key, call `nmp_nip21_decode_uri` first.
 

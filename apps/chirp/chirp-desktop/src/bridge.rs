@@ -16,36 +16,22 @@ use std::ffi::{CStr, CString};
 use std::ptr;
 use std::sync::mpsc::{self, Receiver, Sender};
 
-use nmp_app_chirp::ffi::{
-    nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
-};
+use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    nmp_app_cancel_bunker_handshake, nmp_app_chirp_close_author_feed,
-    nmp_app_chirp_close_home_feed, nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_declare_consumed_projections,
-    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
-    nmp_app_chirp_open_thread_feed, nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_app_nostrconnect_uri, nmp_marmot_unregister,
-    nmp_signer_broker_init, ChirpClient, ChirpHandle, MarmotHandle, NmpRegisterStatus,
+    ChirpClient, ChirpHandle, MarmotHandle, NmpRegisterStatus, nmp_app_cancel_bunker_handshake,
+    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_home_feed,
+    nmp_app_chirp_close_thread_feed, nmp_app_chirp_declare_consumed_projections,
+    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
+    nmp_app_chirp_register, nmp_app_chirp_unregister, nmp_app_nostrconnect_uri,
+    nmp_marmot_unregister, nmp_signer_broker_init,
 };
 use nmp_ffi::{
-    nmp_app_free, nmp_app_load_older_feed, nmp_app_release_ref, nmp_app_resolve_ref,
-    nmp_app_set_capability_callback, nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
-    NmpConfigStatus,
+    NmpApp, NmpConfigStatus, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_profile_ref,
+    nmp_app_resolve_profile_card_live, nmp_app_resolve_profile_ref,
+    nmp_app_set_capability_callback, nmp_app_signin_nsec, nmp_app_start, nmp_free_string,
 };
-use std::os::raw::c_int;
 
-// ADR-0063 (#1671 Lane F) — resolve_ref / release_ref FFI codes + consumer ids.
-/// `namespace` — profile resolver.
-const REF_NS_PROFILE: c_int = 0;
-/// `shape` — `profile.ref` (feed-avatar subset).
-const REF_SHAPE_PROFILE_REF: c_int = 0;
-/// `shape` — `profile.card` (full ProfileCard; profile screen).
-const REF_SHAPE_PROFILE_CARD: c_int = 1;
-/// `liveness` — `CacheOk` (background; no tailing sub).
-const REF_LIVENESS_CACHE_OK: c_int = 0;
-/// `liveness` — `Live` (open screen; tailing sub for replacements).
-const REF_LIVENESS_LIVE: c_int = 1;
+// ADR-0063 (#1671 Lane F) — typed resolve_ref / release_ref consumer ids.
 /// Consumer id for feed/list-row author refs (profile.ref / CacheOk). Shared
 /// across rows — the kernel dedupes per (namespace, key); release on view change.
 const FEED_AUTHOR_CONSUMER: &str = "chirp-desktop.feed-author";
@@ -251,12 +237,7 @@ impl AppRuntime {
     /// `CacheOk` so its avatar/name renders. Origin-blind and deduped per pubkey;
     /// idempotent. Best-effort (D6: invalid args are a silent no-op in the FFI).
     pub fn resolve_feed_author_ref(&self, pubkey: &str) {
-        self.resolve_ref(
-            pubkey,
-            FEED_AUTHOR_CONSUMER,
-            REF_SHAPE_PROFILE_REF,
-            REF_LIVENESS_CACHE_OK,
-        );
+        self.resolve_profile_ref(pubkey, FEED_AUTHOR_CONSUMER);
     }
 
     /// Release a feed/list-row author's `profile.ref` claim when it scrolls off /
@@ -266,29 +247,24 @@ impl AppRuntime {
     }
 
     fn resolve_profile_card_live(&self, pubkey: &str) {
-        self.resolve_ref(
-            pubkey,
-            OPEN_PROFILE_CONSUMER,
-            REF_SHAPE_PROFILE_CARD,
-            REF_LIVENESS_LIVE,
-        );
+        if self.app.is_null() {
+            return;
+        }
+        let (Ok(key), Ok(consumer)) = (CString::new(pubkey), CString::new(OPEN_PROFILE_CONSUMER))
+        else {
+            return;
+        };
+        nmp_app_resolve_profile_card_live(self.app, key.as_ptr(), consumer.as_ptr());
     }
 
-    fn resolve_ref(&self, pubkey: &str, consumer: &str, shape: c_int, liveness: c_int) {
+    fn resolve_profile_ref(&self, pubkey: &str, consumer: &str) {
         if self.app.is_null() {
             return;
         }
         let (Ok(key), Ok(consumer)) = (CString::new(pubkey), CString::new(consumer)) else {
             return;
         };
-        nmp_app_resolve_ref(
-            self.app,
-            REF_NS_PROFILE,
-            key.as_ptr(),
-            consumer.as_ptr(),
-            shape,
-            liveness,
-        );
+        nmp_app_resolve_profile_ref(self.app, key.as_ptr(), consumer.as_ptr());
     }
 
     fn release_ref(&self, consumer: &str, pubkey: &str) {
@@ -298,7 +274,7 @@ impl AppRuntime {
         let (Ok(key), Ok(consumer)) = (CString::new(pubkey), CString::new(consumer)) else {
             return;
         };
-        nmp_app_release_ref(self.app, REF_NS_PROFILE, key.as_ptr(), consumer.as_ptr());
+        nmp_app_release_profile_ref(self.app, key.as_ptr(), consumer.as_ptr());
     }
 
     pub fn load_older_timeline(&self) {
