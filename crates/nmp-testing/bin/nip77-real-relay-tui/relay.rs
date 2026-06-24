@@ -10,7 +10,7 @@ use nostr::{ClientMessage, Event, EventBuilder, EventId, Filter, RelayMessage};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{connect, Message, WebSocket};
 
-use crate::cache::{default_cache_path, hex_to_32, CachedEvent, EventCache};
+use crate::cache::{default_cache_path, CachedEvent, EventCache};
 
 type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 
@@ -466,9 +466,4 @@ pub fn parsed_cache_count(config: &Config) -> usize {
     EventCache::load(&config.cache_path, &config.relay, &config.filter_json)
         .events
         .len()
-}
-
-#[allow(dead_code)]
-fn _assert_hex_to_32_is_used_for_cache_ids(id: &str) -> Option<[u8; 32]> {
-    hex_to_32(id)
 }
