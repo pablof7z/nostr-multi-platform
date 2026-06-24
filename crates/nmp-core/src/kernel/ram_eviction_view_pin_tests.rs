@@ -18,13 +18,11 @@
 //! Shared fixtures live in `ram_eviction_tests` (`pub(super)` helpers).
 
 use super::ram_eviction::{EVENTS_RAM_HWM, PROFILES_RAM_HWM};
-use super::ram_eviction_tests::{
-    inject_events, inject_profiles, make_pubkey, pin_clock, T0_SECS,
-};
+use super::ram_eviction_tests::{inject_events, inject_profiles, make_pubkey, pin_clock, T0_SECS};
 use super::*;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
+use nmp_network::role::RelayRole;
 
 /// Register a generic `open_interest` on the kernel from a verbatim NIP-01
 /// filter — the exact body of the `ActorCommand::OpenInterest` dispatch arm
@@ -37,7 +35,10 @@ fn open_interest(kernel: &mut Kernel, filter_json: &str, consumer_id: &str) {
 
     let shape = crate::planner::InterestShape::from_filter_json(filter_json)
         .expect("test filter must be a valid NIP-01 filter object");
-    let key = SubKey::builder("open-interest").with(&shape).with(1u32).finish();
+    let key = SubKey::builder("open-interest")
+        .with(&shape)
+        .with(1u32)
+        .finish();
     let identity = SubIdentity::new(SubOwnerKey::new(consumer_id), key, SubScope::Global);
     let interest = LogicalInterest {
         scope: InterestScope::Global,
@@ -122,7 +123,13 @@ fn open_thread_interest_events_survive_eviction() {
     // open; without the pin, eviction would remove it from under the open
     // feed (the read path has no store fallback).
     let hydrated_id = format!("{:0>64x}", 0xA00099u64);
-    inject_tagged_note(&mut kernel, &hydrated_id, &make_pubkey(5_099), T0_SECS + 7, vec![]);
+    inject_tagged_note(
+        &mut kernel,
+        &hydrated_id,
+        &make_pubkey(5_099),
+        T0_SECS + 7,
+        vec![],
+    );
 
     // Open the thread through the REAL generic seam: an `ids` interest for
     // the root/focused/hydrated notes + a `#e` interest for the replies.
@@ -253,8 +260,7 @@ fn open_author_interest_profile_survives_eviction() {
 }
 
 /// Thread PARTICIPANT profiles (authors of the open thread feed's events)
-/// must survive profile eviction — they feed `timeline_item()` enrichment
-/// for the open feed via `profile_for_pubkey()`.
+/// must survive profile eviction — they feed profile refs for the open feed.
 #[test]
 fn open_thread_interest_participant_profiles_survive_eviction() {
     let mut kernel = Kernel::with_storage_path(DEFAULT_VISIBLE_LIMIT, None);

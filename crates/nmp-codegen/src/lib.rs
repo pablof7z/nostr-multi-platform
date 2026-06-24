@@ -8,8 +8,8 @@ mod manifest;
 // length-only mismatch never masquerades as a missing file.
 mod diff_report;
 // V6 Stage 1 — Swift `Decodable` emitter pilot. Consumes the JSON document
-// `nmp-core --features codegen-schema --bin dump_projection_schemas` writes,
-// emits one Swift file with one struct per pilot type. See
+// schema-owner dump binaries write, emits one Swift file
+// with one struct per pilot type. See
 // `docs/architecture-audit/v6-codegen-plan.md` §6b.
 //
 // NOTE (ADR-0046 — "composition is a library, not a generator"): the former

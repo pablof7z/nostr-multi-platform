@@ -18,6 +18,8 @@
 //!   (parent/child tree with out-of-order arrival buffering).
 //! - [`meta_timeline`] — `Nip10ModularTimelineView` (Twitter-style
 //!   stacked-modules timeline; wraps `nmp_threading::Grouper`).
+//! - [`TimelineItem`] — NIP-01-owned schema source for the still-live flat
+//!   Swift timeline row while native callers migrate to typed timeline cards.
 
 // FlatBuffers-generated bindings, mounted at the crate root. The OP-feed schema
 // (`op_feed.fbs`) `include`s the timeline schema and references its
@@ -58,6 +60,8 @@ mod timeline_snapshot_generated {
 mod op_feed_generated;
 
 pub mod build;
+#[cfg(feature = "codegen-schema")]
+pub mod codegen_schema;
 pub mod decode;
 pub mod contacts_cache;
 pub mod flat_feed;
@@ -69,6 +73,7 @@ pub mod note_relations;
 pub mod op_feed;
 pub mod profile_cache;
 mod profile_display;
+mod timeline_item;
 pub mod timeline_projection;
 pub mod typed_wire;
 pub mod view;
@@ -98,6 +103,7 @@ pub use op_feed::{
     OP_FEED_SCHEMA_VERSION,
 };
 pub use profile_display::{AuthorDisplay, ProfileDisplay};
+pub use timeline_item::TimelineItem;
 pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard, TimelineWindowCursor,
     TimelineWindowMetrics, TimelineWindowPage, TimelineWindowRequest,

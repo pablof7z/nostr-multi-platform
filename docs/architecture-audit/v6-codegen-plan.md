@@ -96,7 +96,7 @@ Source: `/Users/pablofernandez/Work/nostr-multi-platform/ios/Chirp/Chirp/Bridge/
 | 39 | `ProfileDispatchSpec` (KernelBridge.swift:1861) | `nmp-core/src/kernel/types.rs:180` | `pub(super)` | |
 | 40 | `ProfileAction` (KernelBridge.swift:1866) | `nmp-core/src/kernel/types.rs:201` | `pub(super)` | |
 | 41 | `AuthorProfileSnapshot` (KernelBridge.swift:1878) | `AuthorViewPayload` (`nmp-core/src/kernel/types.rs:216`) | `pub(super)` | |
-| 42 | `TimelineItem` (KernelBridge.swift:1891) | `TimelineItem` (`nmp-core/src/kernel/types.rs:91`) | `pub(super)` | Has custom `init(from:)` defaulting `isRepost: false`, `navTargetId: id`, `repostInnerContent: ""`. |
+| 42 | `TimelineItem` (KernelBridge.swift:1891) | `TimelineItem` (`crates/nmp-nip01/src/timeline_item.rs`) | `pub` | Generated from the NIP-01 schema-owner dump; old custom `init(from:)` defaults are gone. |
 | 43 | `KernelMetrics` (KernelBridge.swift:1989) | `Metrics` (`nmp-core/src/kernel/types.rs:615`) | `pub(super)` | 42 primitive fields; pure flat record. |
 | 44 | `RelayStatus` (KernelBridge.swift:2032) | `RelayStatus` (`nmp-core/src/kernel/types.rs:265`) | `pub(super)` | |
 

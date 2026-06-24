@@ -43,9 +43,8 @@ private enum ModuleLayout {
 struct ModularBlockView: View {
     let block: TimelineBlock
     let cards: [String: ChirpEventCard]
-    /// Lookup into the kernel's existing TimelineItem snapshot for author
-    /// display / avatar metadata. A missing entry falls back to the card's
-    /// raw pubkey (D1 placeholders apply: identicon + truncated npub).
+    /// Lookup into the remaining flat TimelineItem snapshot for author display
+    /// / avatar metadata. A missing entry falls back to the card's raw pubkey.
     let items: [String: TimelineItem]
     let onLike: (String) -> Void
     /// NIP-18 — (eventID, authorPubkey) → dispatch kind:6 repost.

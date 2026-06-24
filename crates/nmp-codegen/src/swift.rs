@@ -1,8 +1,9 @@
 //! V6 Stage 1 — Swift `Decodable` emitter.
 //!
-//! Reads a `ProjectionSchemaDocument` (the JSON the `dump_projection_schemas`
-//! binary writes) and renders Swift `struct` declarations conforming to
-//! `Decodable` (plus Equatable / Identifiable when registry metadata asks).
+//! Reads one or more `ProjectionSchemaDocument` JSON values (the output of each
+//! schema-owner crate's `dump_projection_schemas` binary) and renders Swift
+//! `struct` declarations conforming to `Decodable` (plus Equatable /
+//! Identifiable when registry metadata asks).
 //!
 //! Stage 1 covers flat-record types only — every pilot schema decodes as a
 //! JSON Schema `object` with scalar / nullable-scalar / array-of-scalar
@@ -27,7 +28,7 @@ use serde::Deserialize;
 
 use crate::swift_projections_registry::{SnapshotProjectionEntry, SNAPSHOT_PROJECTIONS};
 
-/// Parsed shape of the document `dump_projection_schemas` writes.
+/// Parsed shape of each document a `dump_projection_schemas` binary writes.
 #[derive(Debug, Deserialize)]
 struct ProjectionSchemaDocument {
     version: u32,
@@ -76,11 +77,13 @@ struct TypeSchema {
 /// without dragging in a new dep tree.
 #[derive(Debug)]
 pub enum SwiftEmitError {
-    /// The input JSON did not decode as a [`ProjectionSchemaDocument`].
+    /// The input JSON did not decode as a stream of [`ProjectionSchemaDocument`] values.
     ParseFailed { reason: String },
     /// The schema document version doesn't match the emitter's supported
     /// set. Bump emitter + document together when this trips.
     UnsupportedDocumentVersion { found: u32, expected: u32 },
+    /// Two schema-owner documents tried to emit the same Swift type.
+    DuplicateSwiftType { swift_name: String },
     /// One pilot type's schema isn't a flat object — Stage 1 deliberately
     /// rejects this so the dotted-key / tagged-enum work goes through
     /// Stage 2 / 3 instead of being silently emitted wrong here.
@@ -97,13 +100,20 @@ impl std::fmt::Display for SwiftEmitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ParseFailed { reason } => {
-                write!(f, "failed to parse projection schema document: {reason}")
+                write!(
+                    f,
+                    "failed to parse projection schema document stream: {reason}"
+                )
             }
             Self::UnsupportedDocumentVersion { found, expected } => write!(
                 f,
                 "projection schema document version {found} unsupported by this nmp-codegen \
-                 build (expected version {expected}). Regenerate by re-running \
-                 `cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas`."
+                 build (expected version {expected}). Regenerate by piping the schema-owner \
+                 dump binaries into `nmp-codegen gen swift`."
+            ),
+            Self::DuplicateSwiftType { swift_name } => write!(
+                f,
+                "duplicate Swift schema type `{swift_name}` across projection schema documents"
             ),
             Self::Unsupported {
                 swift_name,
@@ -131,24 +141,24 @@ impl From<std::io::Error> for SwiftEmitError {
 /// side bumps this in lockstep with any change to the document shape.
 const SUPPORTED_DOCUMENT_VERSION: u32 = 1;
 
-/// Header comment emitted at the top of every generated file. The
-/// regeneration command must stay accurate — CI fails on a stale
-/// generated file, so anyone hitting the failure needs the exact
-/// command to reproduce the regeneration locally.
+/// Header comment emitted at the top of every generated file. The regeneration
+/// command must stay accurate — CI fails on a stale generated file, so anyone
+/// hitting the failure needs the exact command to reproduce it locally.
 const HEADER: &str = "\
 // ─────────────────────────────────────────────────────────────────────────────
 // THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
 //
 // Regenerate via:
-//   cargo run -p nmp-core --features codegen-schema \\
-//       --bin dump_projection_schemas \\
-//       | cargo run -p nmp-codegen -- gen swift --stdin --out <path>
+//   { \\
+//       cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas; \\
+//       cargo run -p nmp-nip01 --features codegen-schema --bin dump_nip01_projection_schemas; \\
+//   } | cargo run -p nmp-codegen -- gen swift --out <path>
 //
 // Source of truth: the Rust projection types listed in the per-struct
 // provenance comments below. The CI gate (`.github/workflows/codegen-drift.yml`)
 // fails any PR whose generated Swift differs from a fresh run.
 //
-// Stage 1 pilot — 7 flat-record types (V6, docs/architecture-audit/
+// Stage 1 pilot — 8 flat-record types (V6, docs/architecture-audit/
 // v6-codegen-plan.md §6b). Stage 2 expands to the dotted-projection-key
 // registry; Stage 3 sweeps the remaining hand-written Decodables.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -156,37 +166,63 @@ const HEADER: &str = "\
 import Foundation
 ";
 
-/// Generate the Swift source for the given schema-document JSON.
+fn parse_schema_documents(
+    document_json: &str,
+) -> Result<Vec<ProjectionSchemaDocument>, SwiftEmitError> {
+    let docs: Vec<ProjectionSchemaDocument> = serde_json::Deserializer::from_str(document_json)
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| SwiftEmitError::ParseFailed {
+            reason: err.to_string(),
+        })?;
+    if docs.is_empty() {
+        return Err(SwiftEmitError::ParseFailed {
+            reason: "no schema documents supplied".to_string(),
+        });
+    }
+    Ok(docs)
+}
+
+/// Generate the Swift source for the given schema-document JSON stream.
 ///
 /// Returns the rendered Swift as a `String`. Caller is responsible for
 /// writing it to disk (the indirection lets [`check_swift`] diff against
 /// the committed file without going through the filesystem).
 ///
 /// # Errors
-/// - [`SwiftEmitError::ParseFailed`] if `document_json` isn't valid
-///   `ProjectionSchemaDocument`.
+/// - [`SwiftEmitError::ParseFailed`] if `document_json` isn't a valid stream of
+///   `ProjectionSchemaDocument` values.
 /// - [`SwiftEmitError::UnsupportedDocumentVersion`] if the document version
 ///   doesn't match this emitter.
+/// - [`SwiftEmitError::DuplicateSwiftType`] if two schema owners claim the same
+///   Swift type.
 /// - [`SwiftEmitError::Unsupported`] if any type has a non-flat-record
 ///   schema.
 pub fn render_swift(document_json: &str) -> Result<String, SwiftEmitError> {
-    let document: ProjectionSchemaDocument = serde_json::from_str(document_json)
-        .map_err(|err| SwiftEmitError::ParseFailed {
-            reason: err.to_string(),
-        })?;
+    let documents = parse_schema_documents(document_json)?;
 
-    if document.version != SUPPORTED_DOCUMENT_VERSION {
-        return Err(SwiftEmitError::UnsupportedDocumentVersion {
-            found: document.version,
-            expected: SUPPORTED_DOCUMENT_VERSION,
-        });
+    for document in &documents {
+        if document.version != SUPPORTED_DOCUMENT_VERSION {
+            return Err(SwiftEmitError::UnsupportedDocumentVersion {
+                found: document.version,
+                expected: SUPPORTED_DOCUMENT_VERSION,
+            });
+        }
     }
 
     let mut out = String::from(HEADER);
     out.push('\n');
-    for entry in &document.types {
-        render_type(entry, &mut out)?;
-        out.push('\n');
+    let mut seen_swift_names = BTreeSet::new();
+    for document in &documents {
+        for entry in &document.types {
+            if !seen_swift_names.insert(entry.swift_name.clone()) {
+                return Err(SwiftEmitError::DuplicateSwiftType {
+                    swift_name: entry.swift_name.clone(),
+                });
+            }
+            render_type(entry, &mut out)?;
+            out.push('\n');
+        }
     }
     // V6 Stage 2 — append the `SnapshotProjections` registry struct +
     // `CodingKeys` enum. Driven by the static slice in
@@ -226,7 +262,9 @@ pub fn render_swift(document_json: &str) -> Result<String, SwiftEmitError> {
 /// `public` would change the symbol-table surface area unnecessarily.
 fn render_snapshot_projections(entries: &[SnapshotProjectionEntry], out: &mut String) {
     out.push_str("// MARK: - SnapshotProjections\n");
-    out.push_str("// Source: crates/nmp-codegen/src/swift_projections_registry.rs (Stage 2 registry)\n");
+    out.push_str(
+        "// Source: crates/nmp-codegen/src/swift_projections_registry.rs (Stage 2 registry)\n",
+    );
     out.push_str("//\n");
     out.push_str("// The kernel's host-extensible `projections` map. Each entry mirrors one\n");
     out.push_str("// registered snapshot-projection key. Every member is optional so a stale\n");
@@ -337,8 +375,7 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
 
     // Conformance clause. `Identifiable` is appended automatically when
     // `id_field` is `Some` so the registry never has to repeat itself.
-    let mut conformances: BTreeSet<String> =
-        entry.conformances.iter().cloned().collect();
+    let mut conformances: BTreeSet<String> = entry.conformances.iter().cloned().collect();
     if entry.id_field.is_some() {
         conformances.insert("Identifiable".to_string());
     }
@@ -363,11 +400,17 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
     // `NoteRenderContext` holding `[String: TimelineItem]` in a
     // `static let`) hard-fails under strict concurrency. The fix is at
     // the source: every generated struct opts in to Sendable explicitly.
-    let conformances: Vec<&str> =
-        ["Decodable", "Equatable", "RenderIdentifiable", "Identifiable", "Hashable", "Sendable"]
-            .into_iter()
-            .filter(|c| conformances.contains(*c))
-            .collect();
+    let conformances: Vec<&str> = [
+        "Decodable",
+        "Equatable",
+        "RenderIdentifiable",
+        "Identifiable",
+        "Hashable",
+        "Sendable",
+    ]
+    .into_iter()
+    .filter(|c| conformances.contains(*c))
+    .collect();
     let conformances_clause = conformances.join(", ");
 
     out.push_str(&format!(
@@ -389,9 +432,7 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
         let swift_type = swift_type_for(raw_schema).ok_or_else(|| SwiftEmitError::Unsupported {
             swift_name: entry.swift_name.clone(),
             rust_path: entry.rust_path.clone(),
-            reason: format!(
-                "field `{raw_name}` has unsupported schema shape: {raw_schema}"
-            ),
+            reason: format!("field `{raw_name}` has unsupported schema shape: {raw_schema}"),
         })?;
         let optional_suffix = if is_required { "" } else { "?" };
         field_decls.push(format!(
@@ -406,9 +447,7 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
     if let Some(id_field) = entry.id_field.as_deref() {
         if id_field != "id" {
             out.push('\n');
-            out.push_str(&format!(
-                "    public var id: String {{ {id_field} }}\n"
-            ));
+            out.push_str(&format!("    public var id: String {{ {id_field} }}\n"));
         }
     }
 
@@ -449,11 +488,15 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
 /// else (a tagged enum's `oneOf`, an array root, a `$ref`) returns
 /// `Unsupported`.
 fn require_flat_object(entry: &TypeEntry) -> Result<(), SwiftEmitError> {
-    let ty = entry.schema.ty.as_ref().ok_or_else(|| SwiftEmitError::Unsupported {
-        swift_name: entry.swift_name.clone(),
-        rust_path: entry.rust_path.clone(),
-        reason: "schema root has no `type` field (likely an enum or $ref)".to_string(),
-    })?;
+    let ty = entry
+        .schema
+        .ty
+        .as_ref()
+        .ok_or_else(|| SwiftEmitError::Unsupported {
+            swift_name: entry.swift_name.clone(),
+            rust_path: entry.rust_path.clone(),
+            reason: "schema root has no `type` field (likely an enum or $ref)".to_string(),
+        })?;
     let is_object = match ty {
         serde_json::Value::String(s) => s == "object",
         _ => false,
@@ -581,7 +624,10 @@ pub fn generate_swift(document_json: &str, out_path: &Path) -> Result<(), SwiftE
 /// As [`render_swift`]. A missing file returns `up_to_date = false` with
 /// `first_diff_line = None`, not an error — the CI gate treats "file
 /// doesn't exist" the same as "file is stale".
-pub fn check_swift(document_json: &str, out_path: &Path) -> Result<SwiftCheckOutcome, SwiftEmitError> {
+pub fn check_swift(
+    document_json: &str,
+    out_path: &Path,
+) -> Result<SwiftCheckOutcome, SwiftEmitError> {
     let rendered = render_swift(document_json)?;
     let actual = match std::fs::read_to_string(out_path) {
         Ok(s) => s,

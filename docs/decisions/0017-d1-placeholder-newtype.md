@@ -1,14 +1,18 @@
 # ADR-0017 — D1 placeholder contract: `Placeholder<T>` newtype for always-renderable display fields
 
 **Date:** 2026-05-18
-**Status:** Accepted (T64 — substrate gap: TimelineItem D1 placeholder contract)
+**Status:** Historical; superseded by ADR-0032 raw-data projection doctrine.
+Do not use this ADR as current guidance for `TimelineItem` or `ProfileCard`
+picture fields.
 **Doctrines invoked:** D1 (best-effort rendering — render now, refine in place)
 
 ## Context
 
-D1 mandates that every view payload field carries a value at all times.  The
-Rust type system is the enforcement layer: display fields must be non-`Option`
-so the wrong thing (returning `null` to Swift/Kotlin) is a compile error.
+This ADR originally interpreted D1 as requiring every display field to carry a
+non-optional value at all times. ADR-0032 later corrected the projection
+contract: raw absent facts stay absent (`Option<String>`), and presentation
+layers render missing-picture UI without Rust inventing placeholder protocol
+values.
 
 `TimelineItem.author_picture_url` was `Option<String>`, which:
 
@@ -25,9 +29,9 @@ The C13 test was `#[should_panic]`-documented as a substrate gap
 (`#57-c13-gap`) because the field type made it impossible to write a passing
 assertion that `author_picture_url` is always non-null.
 
-## Decision
+## Historical Decision
 
-### Option chosen: migrate `Option<String>` display fields to `String` (D1-aligned)
+### Option chosen at the time: migrate `Option<String>` display fields to `String`
 
 Option (a) — simply re-export `TimelineItem` for integration-test access — was
 rejected because it would have unlocked tests against the *current broken
@@ -67,52 +71,40 @@ The `identicon:` scheme prefix is:
   color instead of attempting a network fetch.
 - **Non-empty** — satisfies D1's "always renderable" invariant.
 
-### Fields migrated
+### Historical fields migrated
 
-| Type | Field | Before | After |
-|------|-------|--------|-------|
-| `TimelineItem` | `author_picture_url` | `Option<String>` | `String` |
-| `ProfileCard` | `picture_url` | `Option<String>` | `String` |
+This ADR records the placeholder-newtype experiment. Current raw-data
+projection doctrine (ADR-0032) keeps absent profile pictures as
+`Option<String>` at the projection boundary; do not reintroduce placeholder
+strings as a parallel source of truth.
 
 `Profile` (the internal cache struct, never serialised) keeps `picture_url:
-Option<String>` — `None` correctly models "kind:0 has not arrived".  The
-`Option` is collapsed to a non-Option `String` only at the projection boundary
-in `timeline_item()` and `profile_card_for()`.
+Option<String>` — `None` correctly models "kind:0 has not arrived".
 
 ### C13 test — resolved
 
 The `#[should_panic]` marker is removed.  C13 now drives the kernel via
 `spawn_actor` + `IngestPreVerifiedEvents` and asserts:
 
-1. `author_picture_url` in the emitted JSON is a non-null, non-empty string.
-2. It starts with `"identicon:"` when no kind:0 has arrived.
-3. `author_avatar_source` is `"placeholder"`.
-
-A companion kernel-internal test (`c13_kernel_*` in `kernel/tests.rs`) verifies
-the in-place refinement: once a `Profile` with a real `picture_url` is inserted,
-`timeline_item()` returns the real URL for the same event.
+The kernel-internal `timeline_item()` helper has been deleted; the remaining
+current guard is `ProfileCard::picture_url`, which surfaces `None` when a
+profile omits a picture.
 
 ## Consequences
 
-### Positive
+### Current contract
 
-- D1 is enforced at compile time for the two highest-traffic display fields.
-- The FFI boundary never emits `null` for picture URLs — Swift callers can
-  unconditionally render an identicon or image.
-- C13 is an active, passing test (not a `#[should_panic]` document).
-- `Placeholder<T>` is available for future display fields that need the same
-  always-renderable guarantee.
+- `TimelineItem.author_picture_url` and `ProfileCard::picture_url` are
+  `Option<String>` projection fields.
+- Missing pictures are not represented as `identicon:` strings in Rust-owned
+  projection data.
+- The remaining current kernel guard is `ProfileCard::picture_url`, which
+  surfaces `None` when a profile omits a picture.
 
-### Negative / constraints
+### Remaining utility
 
-- Swift structs still declare `pictureUrl: String?` and `authorPictureUrl: String?`.
-  Changing them to `String` is a follow-up task (T65 or later): the existing
-  `String?` decoders accept non-null strings without breaking, so no FFI breakage
-  occurs from this change alone.
-- `picture_placeholder` is not a true identicon URI — it does not encode image
-  data.  Rendering falls back to the avatar initials + color fields that already
-  exist on every item.  A richer identicon-as-data-URI could replace it later
-  without breaking the field's non-Option contract.
+- `Placeholder<T>` still exists as a general helper, but it is not the current
+  contract for `TimelineItem` or `ProfileCard` picture fields.
 
 ## Alternatives rejected
 
@@ -123,7 +115,7 @@ Rejected: would not fix the underlying D1 violation.  The type would still be
 
 ### C — `Placeholder<T>` as tagged enum (`Pending | Authoritative(T)`)
 
-Rejected: the `author_avatar_source` field (`"placeholder"` | `"kind0"`) already
-serves as the discriminator on the wire.  Adding a tagged enum here would
-duplicate that signal, change the serialised shape (JSON object instead of bare
-string), and break existing Swift decoders.
+Rejected at the time: a tagged enum would have duplicated projection-level
+provenance. Current projections that need provenance should carry one
+projection-owned discriminator rather than duplicating that signal inside this
+wrapper.

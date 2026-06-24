@@ -42,8 +42,8 @@
 //! - The pubkey is in `self.profile_claims` (a UI component is claiming it).
 //! - The pubkey is the active account's own key (`self.active_account`).
 //! - **Open-interest authors**: the author of every pinned open-interest
-//!   event.  These feed `timeline_item()` enrichment for the open feeds via
-//!   `profile_for_pubkey()`, which has no store fallback.
+//!   event. These feed profile refs for open feeds through the in-memory
+//!   profile lookup, which has no store fallback.
 //!
 //! ### contacts-cache pin set (pubkey → follow list)
 //! - The pubkey is `self.active_account` (follow/unfollow actions,
@@ -151,9 +151,8 @@ struct OpenViewPins {
     /// Event ids the open-interest feeds currently read from `self.events`
     /// (no store fallback exists on the feed-engine read path).
     event_ids: HashSet<String>,
-    /// Authors of the pinned open-interest events — read by
-    /// `profile_for_pubkey()` for `timeline_item()` enrichment of the open
-    /// feeds.
+    /// Authors of the pinned open-interest events — kept for profile refs in
+    /// open feeds.
     profile_pubkeys: HashSet<String>,
 }
 

@@ -432,8 +432,8 @@ struct ProfileAction: Equatable {
 
 // `TimelineItem` moved to `Generated/KernelTypes.generated.swift` (V6
 // Stage 3 partial, plan §6d — F-05). Rust source:
-// `nmp-core/src/kernel/types.rs::TimelineItem`. Field docs live alongside
-// the Rust definitions.
+// `crates/nmp-nip01/src/timeline_item.rs::TimelineItem`. Field docs live
+// alongside the Rust definitions.
 //
 // The generated struct tightens three field-level shapes the hand-written
 // version had loosened for "older kernel snapshot" tolerance. The Rust
@@ -446,9 +446,7 @@ struct ProfileAction: Equatable {
 //    `identicon:<prefix>` placeholder URI).
 // 2. `isRepost`, `navTargetId`, `repostInnerContent` were
 //    `decodeIfPresent ?? false / id / ""`; the generated decoder hard-fails
-//    if any is absent. Rust `kernel/types.rs::TimelineItem` defines them
-//    as non-Option and `kernel/update.rs::timeline_items` populates them
-//    on every tick — the fallback was dead.
+//    if any is absent. Rust `TimelineItem` defines them as non-Option.
 // 3. `authorAvatarSource` is added as a non-optional `String`. The Rust
 //    field is `pub(super) author_avatar_source: String` (kind:0 ↔
 //    placeholder discriminator); the hand-written struct never decoded

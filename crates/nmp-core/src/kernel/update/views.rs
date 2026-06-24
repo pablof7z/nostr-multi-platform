@@ -1,9 +1,5 @@
 use super::super::requests::external_id_from_key;
-#[cfg(test)]
-use super::super::TimelineItem;
 use super::super::{truncate, AccountSummary, Kernel, ProfileCard, StoredEvent};
-#[cfg(test)]
-use super::helpers::parse_repost_inner;
 use super::helpers::{hex64_to_bytes32, is_hex64_lower, nmp_store_to_kernel_stored};
 use crate::substrate::ProfileView;
 
@@ -84,85 +80,6 @@ impl Kernel {
                         .any(|t| t.len() >= 2 && t[0] == "d" && t[1] == d_tag)
             })
             .cloned()
-    }
-
-    #[cfg(test)] // only called from kernel/tests.rs
-    pub(in crate::kernel) fn timeline_item(&self, event: &StoredEvent) -> TimelineItem {
-        let profile = self.profile_for_pubkey(&event.author);
-        // aim.md §2: picture URL stays `Option<String>`. No identicon
-        // placeholder is substituted in NMP; presentation layers choose
-        // the missing-picture strategy.
-        let author_picture_url = profile
-            .as_ref()
-            .and_then(|p| p.picture_url.as_deref())
-            .filter(|url| !url.is_empty())
-            .map(str::to_owned);
-        // NIP-18 kind:6: the repost's `content` field carries the
-        // verbatim stringified inner event JSON. We resolve it once here
-        // so the shell binds `nav_target_id` / `repost_inner_content`
-        // verbatim and never touches the JSON.
-        //
-        // D1 best-effort: when `content` is empty or malformed JSON,
-        // the shell-visible fallbacks (`event.id`, `""`) match prior
-        // behaviour — the "Repost" badge alone communicates state.
-        let is_repost = event.kind == 6;
-        let (nav_target_id, repost_inner_content) = if is_repost {
-            let (inner_id, inner_content) = parse_repost_inner(&event.content);
-            (
-                inner_id.unwrap_or_else(|| event.id.clone()),
-                inner_content.unwrap_or_default(),
-            )
-        } else {
-            (event.id.clone(), String::new())
-        };
-        TimelineItem {
-            id: event.id.clone(),
-            author_pubkey: event.author.clone(),
-            author_picture_url,
-            // NIP-57 — pre-extracted lightning address / LNURL from the
-            // author's kind:0 (or `None` when no kind:0 has arrived or
-            // it carried no lud16/lud06). Surfaced here so the shell zap
-            // button toggles enabled/disabled without a separate profile
-            // lookup. Rust decides zapability.
-            author_lnurl: profile.as_ref().and_then(|p| p.lnurl.clone()),
-            // Author display name baked into the snapshot item so the renderer
-            // has it without depending on the `refs.profile` claim
-            // lifecycle. Empty string → `None` at this projection boundary
-            // (aim.md §2), mirroring `mention_profiles_from_items`.
-            author_display_name: profile
-                .as_ref()
-                .map(|p| p.display.clone())
-                .filter(|d| !d.is_empty()),
-            kind: event.kind,
-            content: truncate(&event.content, 1_200),
-            // NIP-18 kind:6: outer `content` is the stringified inner-event
-            // JSON, so we must NOT use it directly as the preview — that
-            // ships raw `{"id":"...` to the consumer. Derive the preview from
-            // the already-extracted `repost_inner_content` (flat-map newlines,
-            // truncate at 180 chars). It is the empty string when the inner
-            // content is unavailable or empty (NIP-18 allows omitting it, or the
-            // inner JSON was malformed — D1 best-effort). The kernel ships NO
-            // display prose for the empty case (#1683, D7/D27 / aim.md §2): the
-            // `is_repost` flag is on the wire, so presentation owns any "Repost"
-            // label — it never lived in this raw preview. Non-repost path is
-            // byte-identical to the old behaviour.
-            content_preview: if is_repost {
-                truncate(&repost_inner_content.trim().replace('\n', " "), 180)
-            } else {
-                truncate(&event.content.replace('\n', " "), 180)
-            },
-            // aim.md §2 — raw Unix seconds; the presentation layer
-            // formats the relative-time label.
-            created_at: event.created_at,
-            relay_count: event.relay_count,
-            relay_provenance: super::super::provenance::relay_urls_for_event(
-                &*self.store,
-                &event.id,
-            ),
-            is_repost,
-            nav_target_id,
-            repost_inner_content,
-        }
     }
 
     pub(in crate::kernel) fn profile_card(&self) -> ProfileCard {

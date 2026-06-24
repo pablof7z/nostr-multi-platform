@@ -236,7 +236,6 @@ pub use identity_state::{new_active_account_slot, ActiveAccountSlot};
 #[cfg(feature = "codegen-schema")] pub(crate) use types::Metrics as MetricsForCodegen;
 #[cfg(feature = "codegen-schema")] pub(crate) use types::RelayStatus as RelayStatusForCodegen;
 pub use identity_state::{read_eligible_relay_urls, AppRelay};
-#[cfg(feature = "codegen-schema")] pub(crate) use types::TimelineItem as TimelineItemForCodegen;
 #[cfg(feature = "codegen-schema")] pub(crate) use types::WireSubscriptionStatus as WireSubscriptionStatusForCodegen;
 pub use snapshot_registry::new_snapshot_projection_slot;
 pub use snapshot_registry::SnapshotProjectionSlot;
@@ -261,7 +260,6 @@ use crate::util::sort_dedup;
 use relay_transport::RelayTransportMap;
 use std::sync::atomic::AtomicU64;
 pub(crate) use types::KernelSnapshot;
-#[cfg(test)] use types::TimelineItem;
 use types::{
     ClaimedEventDto, Counters, DiagnosticFirehoseState, LogicalInterestStatus,
     Metrics, NoticeEntry, OutboxSummarySnapshot, ProfileCard,

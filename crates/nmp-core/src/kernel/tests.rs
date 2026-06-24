@@ -1,6 +1,6 @@
 use super::*;
-use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use crate::display::avatar_color_hex;
+use crate::kernel::refs::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use crate::relay::{DEFAULT_VISIBLE_LIMIT, FIATJAF_PUBKEY, JB55_PUBKEY};
 use crate::store::InsertOutcome;
 
@@ -42,7 +42,10 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
     };
     let first = resolve("timeline-row:first");
     let second = resolve("timeline-row:second");
-    assert!(first.is_empty(), "profile resolve emits no outbound directly");
+    assert!(
+        first.is_empty(),
+        "profile resolve emits no outbound directly"
+    );
     assert!(second.is_empty());
 
     // The planner emits a kind:0 REQ for the claimed author (detailed routing /
@@ -67,7 +70,8 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
         Some(2)
     );
 
-    let first_release = kernel.release_ref(RefNamespace::Profile, FIATJAF_PUBKEY, "timeline-row:first");
+    let first_release =
+        kernel.release_ref(RefNamespace::Profile, FIATJAF_PUBKEY, "timeline-row:first");
     assert!(first_release.is_empty());
     assert_eq!(
         kernel
@@ -77,7 +81,8 @@ fn profile_claims_are_ui_driven_and_deduped_by_pubkey() {
         Some(1)
     );
 
-    let second_release = kernel.release_ref(RefNamespace::Profile, FIATJAF_PUBKEY, "timeline-row:second");
+    let second_release =
+        kernel.release_ref(RefNamespace::Profile, FIATJAF_PUBKEY, "timeline-row:second");
     assert!(second_release.is_empty());
     assert!(!kernel.profile_claims.contains_key(FIATJAF_PUBKEY));
 }
@@ -232,117 +237,18 @@ fn kind10002_stale_redelivery_does_not_overwrite_relay_list_cache() {
     assert_eq!(list_after_v1.write, vec!["wss://v2-write.example/"]);
 }
 
-// ─── C13 kernel companion: D1 placeholder contract + in-place refinement ─────
+// ─── ProfileCard raw picture-url contract ────────────────────────────────────
 
 const C13_PK: &str = "c13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13ac13a";
-const C13_ID: &str = "e1e2e3e4e5e6e7e8e9eae1e2e3e4e5e6e7e8e9eae1e2e3e4e5e6e7e8e9eae1e2";
 const C13_KIND0_ID: &str = "f1f2f3f4f5f6f7f8f9faf1f2f3f4f5f6f7f8f9faf1f2f3f4f5f6f7f8f9faf1f2";
 
-/// C13 kernel companion (D1 best-effort rendering — placeholder contract).
-///
-/// Phase 1: before any kind:0 arrives, `timeline_item().author_picture_url`
-/// must be a non-empty deterministic identicon URI (never empty, never panic).
-///
-/// Phase 2: after kind:0 with a real picture URL arrives, the same item's
-/// `author_picture_url` must resolve to the real URL (in-place refinement).
-///
-/// Design: `docs/product-spec/doctrine.md` §D1, ADR-0017.
-#[test]
-fn c13_kernel_timeline_item_d1_picture_url_placeholder_and_refinement() {
-    use crate::store::VerifiedEvent;
-    use crate::substrate::placeholder::picture_placeholder;
-
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    // ── Phase 1: inject kind:1, no kind:0 yet ────────────────────────────────
-    let raw_note = crate::store::RawEvent {
-        id: C13_ID.to_string(),
-        pubkey: C13_PK.to_string(),
-        created_at: 1_000,
-        kind: 1,
-        tags: vec![],
-        content: "test note".to_string(),
-        sig: "a".repeat(128),
-    };
-    kernel.ingest_pre_verified_event(
-        nmp_network::role::RelayRole::Content,
-        "diag-firehose-stress",
-        VerifiedEvent::from_raw_unchecked(raw_note),
-    );
-    kernel.sort_timeline_deferred();
-
-    let event = kernel.events.get(C13_ID).expect("event must be in cache");
-    let item_no_profile = kernel.timeline_item(event);
-
-    // aim.md §2 — no identicon placeholder substituted in NMP.
-    // `author_picture_url` is `None` until kind:0 arrives.
-    assert_eq!(
-        item_no_profile.author_picture_url, None,
-        "aim.md §2: picture_url must be None before kind:0 (presentation owns the fallback)"
-    );
-
-    // ── Phase 2: inject kind:0 with a real picture URL ───────────────────────
-    let picture = "https://example.com/avatar.png";
-
-    // Insert the profile directly into the kernel's profile cache.
-    // (inject_replaceable_event always uses empty content and therefore
-    //  produces a profile with no picture_url — insufficient for this test.)
-    kernel.test_profile_cache.upsert_view(
-        C13_PK,
-        crate::substrate::ProfileView {
-            event_id: C13_KIND0_ID.to_string(),
-            created_at: 2_000,
-            display: "c13".to_string(),
-            picture_url: Some(picture.to_string()),
-            nip05: String::new(),
-            about: String::new(),
-            lnurl: None,
-            ..Default::default()
-        },
-    );
-
-    let event_after = kernel
-        .events
-        .get(C13_ID)
-        .expect("event must still be in cache");
-    let item_with_profile = kernel.timeline_item(event_after);
-
-    // After kind:0 arrives, the real picture URL surfaces verbatim.
-    assert_eq!(
-        item_with_profile.author_picture_url.as_deref(),
-        Some(picture),
-        "picture_url updates to kind:0 URL in place"
-    );
-    // The item id is unchanged — refinement is in-place.
-    assert_eq!(item_with_profile.id, item_no_profile.id);
-}
-
 /// aim.md §2 — a profile that arrived with no picture (empty/absent
-/// `picture_url`) surfaces `None` for `author_picture_url` /
-/// `ProfileCard::picture_url`. Presentation layers choose the
-/// missing-picture rendering (identicon, initials tile, etc.); NMP no
-/// longer substitutes a placeholder URI.
+/// `picture_url`) surfaces `None` for `ProfileCard::picture_url`. Presentation
+/// layers choose the missing-picture rendering (identicon, initials tile,
+/// etc.); NMP no longer substitutes a placeholder URI.
 #[test]
-fn picture_url_is_none_when_profile_omits_picture() {
-    use crate::store::VerifiedEvent;
-
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-
-    let raw_note = crate::store::RawEvent {
-        id: C13_ID.to_string(),
-        pubkey: C13_PK.to_string(),
-        created_at: 1_000,
-        kind: 1,
-        tags: vec![],
-        content: "no-picture profile note".to_string(),
-        sig: "a".repeat(128),
-    };
-    kernel.ingest_pre_verified_event(
-        nmp_network::role::RelayRole::Content,
-        "diag-firehose-stress",
-        VerifiedEvent::from_raw_unchecked(raw_note),
-    );
-    kernel.sort_timeline_deferred();
+fn profile_card_picture_url_is_none_when_profile_omits_picture() {
+    let kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     for picture in [None, Some(String::new())] {
         kernel.test_profile_cache.upsert_view(
@@ -357,13 +263,6 @@ fn picture_url_is_none_when_profile_omits_picture() {
                 lnurl: None,
                 ..Default::default()
             },
-        );
-
-        let event = kernel.events.get(C13_ID).expect("event must be in cache");
-        let item = kernel.timeline_item(event);
-        assert_eq!(
-            item.author_picture_url, None,
-            "profile without picture must surface None ({picture:?})"
         );
 
         let card = kernel.profile_card_for(C13_PK, "about");
@@ -424,207 +323,6 @@ fn kind10002_empty_relay_list_clears_cache_entry() {
     assert!(
         !kernel.mailbox_cache().known(&PK_A.to_string()),
         "empty kind:10002 must remove stale cache entry"
-    );
-}
-
-// ── kind:6 (NIP-18) repost view-field projection ────────────────────────────
-//
-// Companion tests for the thin-shell move: the inner-event JSON parse that
-// used to live in Swift (`NoteRowView.swift::innerEventField`,
-// `ThreadNoteRow.swift::repostInnerText`) now resolves once in Rust and is
-// emitted as `is_repost` / `nav_target_id` / `repost_inner_content`. Tests
-// pin the D1 fallback contract so a malformed/empty inner JSON never strands
-// the row in an unrenderable state.
-
-const REPOST_PK: &str = "ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51ba51";
-const REPOST_ID: &str = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
-const REPOST_INNER_ID: &str = "1234567812345678123456781234567812345678123456781234567812345678";
-
-fn ingest_kind6(kernel: &mut Kernel, content: &str) {
-    use crate::store::VerifiedEvent;
-    let raw = crate::store::RawEvent {
-        id: REPOST_ID.to_string(),
-        pubkey: REPOST_PK.to_string(),
-        created_at: 1_000,
-        kind: 6,
-        tags: vec![],
-        content: content.to_string(),
-        sig: "a".repeat(128),
-    };
-    kernel.ingest_pre_verified_event(
-        nmp_network::role::RelayRole::Content,
-        "diag-firehose-stress",
-        VerifiedEvent::from_raw_unchecked(raw),
-    );
-    kernel.sort_timeline_deferred();
-}
-
-#[test]
-fn timeline_item_kind1_has_no_repost_flag_and_nav_targets_self() {
-    use crate::store::VerifiedEvent;
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    let raw = crate::store::RawEvent {
-        id: REPOST_ID.to_string(),
-        pubkey: REPOST_PK.to_string(),
-        created_at: 1_000,
-        kind: 1,
-        tags: vec![],
-        content: "plain note".to_string(),
-        sig: "a".repeat(128),
-    };
-    kernel.ingest_pre_verified_event(
-        nmp_network::role::RelayRole::Content,
-        "diag-firehose-stress",
-        VerifiedEvent::from_raw_unchecked(raw),
-    );
-    kernel.sort_timeline_deferred();
-    let event = kernel.events.get(REPOST_ID).expect("event cached");
-    let item = kernel.timeline_item(event);
-    assert!(!item.is_repost, "kind:1 must not be flagged as a repost");
-    assert_eq!(
-        item.nav_target_id, REPOST_ID,
-        "kind:1 thread navigation targets the event itself"
-    );
-    assert_eq!(
-        item.repost_inner_content, "",
-        "kind:1 must not surface a repost-inner content string"
-    );
-}
-
-#[test]
-fn timeline_item_kind6_well_formed_inner_event_extracts_id_and_content() {
-    let inner_json = format!(
-        r#"{{"id":"{}","pubkey":"{}","kind":1,"content":"inner note text","tags":[]}}"#,
-        REPOST_INNER_ID, REPOST_PK
-    );
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    ingest_kind6(&mut kernel, &inner_json);
-
-    let event = kernel.events.get(REPOST_ID).expect("event cached");
-    let item = kernel.timeline_item(event);
-    assert!(item.is_repost, "kind:6 must be flagged as a repost");
-    assert_eq!(
-        item.nav_target_id, REPOST_INNER_ID,
-        "kind:6 thread navigation targets the inner kind:1 id"
-    );
-    assert_eq!(item.repost_inner_content, "inner note text");
-}
-
-#[test]
-fn timeline_item_kind6_empty_content_falls_back_to_event_id_and_empty_text() {
-    // NIP-18 reposts MAY ship empty `content`; the row still needs to be
-    // renderable — the shell renders a "Repost" placeholder from the `is_repost`
-    // flag (D1 best-effort). The kernel ships no display prose (#1683).
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    ingest_kind6(&mut kernel, "");
-
-    let event = kernel.events.get(REPOST_ID).expect("event cached");
-    let item = kernel.timeline_item(event);
-    assert!(item.is_repost);
-    assert_eq!(
-        item.nav_target_id, REPOST_ID,
-        "empty inner JSON: navigation falls back to the repost's own id"
-    );
-    assert_eq!(item.repost_inner_content, "");
-    assert_eq!(
-        item.content_preview, "",
-        "empty kind:6 ships an empty preview — the shell renders the 'Repost' \
-         placeholder from is_repost (#1683, no display prose on the wire)"
-    );
-}
-
-#[test]
-fn timeline_item_kind6_malformed_inner_event_falls_back_cleanly() {
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    ingest_kind6(&mut kernel, "RT some plain-text repost");
-
-    let event = kernel.events.get(REPOST_ID).expect("event cached");
-    let item = kernel.timeline_item(event);
-    assert!(item.is_repost);
-    assert_eq!(item.nav_target_id, REPOST_ID, "malformed JSON: id fallback");
-    assert_eq!(
-        item.repost_inner_content, "",
-        "malformed JSON: empty content"
-    );
-    // NIP-18 bug guard: malformed/non-JSON content must NOT ship raw text as
-    // the preview. An empty preview is the correct raw value when no inner
-    // content is recoverable; the shell renders its own "Repost" placeholder.
-    assert_eq!(
-        item.content_preview, "",
-        "malformed kind:6 content must yield an empty preview, not raw non-JSON \
-         text (the shell formats the 'Repost' placeholder — #1683)"
-    );
-}
-
-/// NIP-18 kind:6 content_preview must derive from the inner event's
-/// `content` field, not from the outer stringified-JSON `content`. The
-/// outer `content` is valid JSON (non-empty), so the old code's
-/// `!is_empty()` guard let it through and shipped `{"id":"...` as the
-/// preview. This test pins the correct behaviour: the inner text, flat-
-/// ened and truncated, is what consumers (TypedHomeFeedDecoder, etc.) see.
-#[test]
-fn timeline_item_kind6_well_formed_content_preview_derives_from_inner_content() {
-    let inner_json = format!(
-        r#"{{"id":"{}","pubkey":"{}","kind":1,"content":"hello world","tags":[]}}"#,
-        REPOST_INNER_ID, REPOST_PK
-    );
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    ingest_kind6(&mut kernel, &inner_json);
-
-    let event = kernel.events.get(REPOST_ID).expect("event cached");
-    let item = kernel.timeline_item(event);
-    assert!(item.is_repost);
-    assert_eq!(
-        item.content_preview, "hello world",
-        "kind:6 content_preview must be derived from the inner event content, \
-         not the raw outer JSON string"
-    );
-    // Verify the outer JSON is definitely not leaking through.
-    assert!(
-        !item.content_preview.starts_with('{'),
-        "content_preview must not begin with '{{' (raw JSON leak)"
-    );
-}
-
-/// kind:6 whose inner event content has embedded newlines: they must be
-/// flattened before truncation, matching the same treatment applied to
-/// kind:1 content_preview.
-#[test]
-fn timeline_item_kind6_content_preview_flattens_newlines() {
-    let inner_json = format!(
-        r#"{{"id":"{}","pubkey":"{}","kind":1,"content":"line one\nline two","tags":[]}}"#,
-        REPOST_INNER_ID, REPOST_PK
-    );
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    ingest_kind6(&mut kernel, &inner_json);
-
-    let event = kernel.events.get(REPOST_ID).expect("event cached");
-    let item = kernel.timeline_item(event);
-    assert_eq!(
-        item.content_preview, "line one line two",
-        "kind:6 preview must flatten inner-content newlines to spaces"
-    );
-}
-
-/// kind:6 whose inner event has an empty `content` field: the preview is the
-/// empty string (the raw truth — no content to preview). The shell renders its
-/// own "Repost" placeholder from the `is_repost` flag; the kernel ships no
-/// display prose (#1683, D7/D27 / aim.md §2).
-#[test]
-fn timeline_item_kind6_empty_inner_content_yields_empty_preview() {
-    let inner_json = format!(
-        r#"{{"id":"{}","pubkey":"{}","kind":1,"content":"","tags":[]}}"#,
-        REPOST_INNER_ID, REPOST_PK
-    );
-    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    ingest_kind6(&mut kernel, &inner_json);
-
-    let event = kernel.events.get(REPOST_ID).expect("event cached");
-    let item = kernel.timeline_item(event);
-    assert_eq!(
-        item.content_preview, "",
-        "kind:6 with empty inner content ships an empty preview — the shell \
-         renders the 'Repost' placeholder from is_repost (#1683)"
     );
 }
 

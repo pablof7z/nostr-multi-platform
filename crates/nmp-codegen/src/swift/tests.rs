@@ -28,6 +28,61 @@ fn one_type_document() -> &'static str {
     }"#
 }
 
+fn second_type_document() -> &'static str {
+    r#"{
+      "version": 1,
+      "types": [
+        {
+          "rust_path": "nmp_nip01::TimelineItem",
+          "swift_name": "TimelineItem",
+          "id_field": "id",
+          "conformances": ["Decodable", "Equatable", "Hashable", "Sendable"],
+          "render_identity_fields": ["id", "author_pubkey"],
+          "schema": {
+            "type": "object",
+            "title": "TimelineItem",
+            "properties": {
+              "id": { "type": "string" },
+              "author_pubkey": { "type": "string" }
+            },
+            "required": ["id", "author_pubkey"]
+          }
+        }
+      ]
+    }"#
+}
+
+#[test]
+fn renders_concatenated_schema_document_stream_in_order() {
+    let stream = format!("{}\n{}", one_type_document(), second_type_document());
+    let out = render_swift(&stream).expect("renders schema stream");
+    let sample_pos = out.find("// MARK: - Sample").expect("Sample emitted");
+    let item_pos = out
+        .find("// MARK: - TimelineItem")
+        .expect("TimelineItem emitted");
+    assert!(
+        sample_pos < item_pos,
+        "schema stream order must be preserved in generated Swift"
+    );
+    assert!(out.contains("// Source: nmp_nip01::TimelineItem"));
+}
+
+#[test]
+fn rejects_duplicate_swift_type_across_schema_documents() {
+    let stream = format!("{}\n{}", one_type_document(), one_type_document());
+    let err = render_swift(&stream).expect_err("duplicate type must fail");
+    assert!(matches!(
+        err,
+        SwiftEmitError::DuplicateSwiftType { swift_name } if swift_name == "Sample"
+    ));
+}
+
+#[test]
+fn rejects_empty_schema_stream() {
+    let err = render_swift("   ").expect_err("empty stream must fail");
+    assert!(matches!(err, SwiftEmitError::ParseFailed { .. }));
+}
+
 #[test]
 fn renders_one_type_with_required_and_optional_fields() {
     let out = render_swift(one_type_document()).expect("renders");
