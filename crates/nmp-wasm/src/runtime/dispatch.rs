@@ -40,30 +40,6 @@ fn rejection_reason(rejection: nmp_core::substrate::ActionRejection) -> String {
     }
 }
 
-/// Wall-clock milliseconds for the action-id mint inside `start_bytes`.
-///
-/// The minted id is discarded on the byte lane (the operation identity is the
-/// host-supplied `correlation_id`, ADR-0064 §4), so the exact value is
-/// irrelevant — but the call must not panic on wasm32. `std::time::SystemTime`
-/// traps on wasm32, so the browser path reads `js_sys::Date::now()` (the same
-/// clock the relay-pool backoff uses); native reads `SystemTime`.
-#[cfg(target_arch = "wasm32")]
-fn wall_clock_ms() -> u64 {
-    js_sys::Date::now() as u64
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn wall_clock_ms() -> u64 {
-    // This fn is `#[cfg(not(target_arch = "wasm32"))]` — never compiled on
-    // wasm32 (the wasm32 twin above reads `js_sys::Date::now()`), so the D20
-    // panic-on-wasm hazard cannot arise here.
-    use std::time::{SystemTime, UNIX_EPOCH}; // doctrine-allow: D20 — native-only branch, cfg-gated off wasm32
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
 impl WasmRuntime {
     /// ADR-0064 / S2 (#1750) — the **binary write doorway**.
     ///
@@ -138,7 +114,12 @@ impl WasmRuntime {
         // `schema_version` gate + `start()`. Unknown namespace, not-typed-capable
         // module, decode/version trip, or `start()` rejection surface as
         // data-shaped `CapabilityFailure` (the module never ran).
-        let now_ms = wall_clock_ms();
+        //
+        // The id minted by `start_bytes` is discarded on this byte lane because
+        // the host-supplied envelope correlation id is the operation identity.
+        // Use reducer time anyway so even validation metadata shares the
+        // kernel-owned clock seam.
+        let now_ms = self.reducer.borrow().now_ms();
         let mut ctx = ActionContext {};
         match self
             .action_registry

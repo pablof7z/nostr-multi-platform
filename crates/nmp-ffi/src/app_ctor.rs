@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::passive_start::{prestart_snapshot_frame, ActorStarter};
+use crate::passive_start::ActorStarter;
 use nmp_core::__ffi_internal::{
     default_registry, new_app_relay_slot, new_bunker_handshake_slot, new_capability_callback_slot,
     new_event_observer_slot, new_lifecycle_observer_slot, new_signer_state_slot,
@@ -248,7 +248,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             }
         })
     });
-    let _ = startup_update_tx.send(prestart_snapshot_frame(0));
     let (embed_sidecar, listener_embed_sidecar) =
         crate::snapshot::embed_sidecar::new_embed_sidecar_pair();
     let update_listener = thread::spawn(move || {

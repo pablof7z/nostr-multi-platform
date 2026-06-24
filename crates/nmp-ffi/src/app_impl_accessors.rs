@@ -150,7 +150,15 @@ impl NmpApp {
         self.tx.clone()
     }
 
-    /// V-83 — synchronous event-by-id read against the kernel's event store.
+    /// V-83 — bounded helper read against the kernel's published event-store
+    /// handle.
+    ///
+    /// D5 exception: normal host UI data still flows through typed projections
+    /// and update frames. This helper is a narrow hydration seam for callers
+    /// that already hold a concrete event id (for example OP-feed embed
+    /// hydration); it cannot scan, query by author/kind, or synthesize snapshot
+    /// state. The `event_by_id_tests` suite proves the handle is kernel-authored
+    /// and is republished across reset.
     #[must_use]
     pub fn event_by_id(&self, id: &str) -> Option<nmp_core::substrate::KernelEvent> {
         event_by_id_from_store(&self.read_handles.event_store_handle, id)

@@ -126,6 +126,12 @@ pub(in crate::action) fn dispatch_action_bytes(app: Option<&NmpApp>, bytes: &[u8
         Ok(decoded) => decoded,
         Err(err) => return error_json(&err.to_string()),
     };
+    // Non-authoritative validation metadata: on the byte lane `start_bytes`
+    // mints an id only after validation, but this doorway discards it and uses
+    // the host-supplied `decoded.correlation_id` as the operation identity.
+    // This stamp never feeds reducer state, event `created_at`, diagnostics, or
+    // snapshot metadata; it is retained only because `ActionRegistry::start_*`
+    // still returns an id for the legacy JSON twin.
     let dispatch_now_ms = {
         use std::time::{SystemTime, UNIX_EPOCH};
         SystemTime::now()

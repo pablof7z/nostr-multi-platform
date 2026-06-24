@@ -104,6 +104,11 @@ impl super::WasmRuntime {
     pub fn next_runtime_deadline_delay_for_test(&self) -> Option<u32> {
         self.reducer.borrow().next_runtime_deadline_delay_ms()
     }
+
+    /// Pin the reducer clock for deterministic native integration tests.
+    pub fn set_kernel_clock_for_test(&mut self, clock: std::sync::Arc<dyn nmp_core::Clock>) {
+        self.reducer.borrow_mut().set_clock_for_test(clock);
+    }
 }
 
 #[cfg(test)]

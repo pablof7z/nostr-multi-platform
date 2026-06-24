@@ -2,13 +2,15 @@
 //! snapshot-first hosts a pre-start frame through the update callback.
 
 use super::{
-    UpdateCallback, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start,
+    nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, UpdateCallback,
 };
 use nmp_core::decode_snapshot_envelope;
 use std::ffi::c_void;
-use std::sync::mpsc::{Sender, channel};
+use std::sync::atomic::Ordering;
+use std::sync::mpsc::{channel, Sender};
+use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, UNIX_EPOCH};
 
 static UPDATE_TX: OnceLock<Mutex<Option<Sender<Vec<u8>>>>> = OnceLock::new();
 static SERIAL: Mutex<()> = Mutex::new(());
@@ -53,6 +55,13 @@ fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
         0,
         "new handle must be passive"
     );
+    let app_ref = crate::app_ref(app).expect("app");
+    let clock = Arc::new(nmp_core::MonotonicSecondClock::new(
+        UNIX_EPOCH + Duration::from_millis(1_700_000_123_456),
+    ));
+    app_ref.set_kernel_clock_for_test(Arc::clone(&clock));
+    app_ref.queue_depth.store(7, Ordering::Relaxed);
+
     nmp_app_set_update_callback(
         app,
         std::ptr::null_mut(),
@@ -67,6 +76,15 @@ fn passive_handle_delivers_prestart_snapshot_on_callback_registration() {
         !envelope.running,
         "passive pre-start frame must be running=false"
     );
+    assert_eq!(
+        envelope.last_tick_ms, 1_700_000_123_456,
+        "passive pre-start frame must use the injected kernel clock"
+    );
+    assert_eq!(
+        envelope.actor_queue_depth, 7,
+        "passive pre-start frame must read the kernel-bound queue-depth handle"
+    );
+    app_ref.queue_depth.store(0, Ordering::Relaxed);
 
     nmp_app_start(app, 256, 4);
     assert_eq!(crate::nmp_app_is_alive(app), 1, "start spawns the actor");

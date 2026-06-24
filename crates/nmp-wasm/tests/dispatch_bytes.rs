@@ -14,7 +14,11 @@
 //! arm produced for every namespace.
 
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::publish::{PublishAction, PublishTarget};
+use nmp_core::substrate::ActionPayload;
 use nmp_wasm::{CapabilityFailure, SetIdentity, WasmRuntime, WorkerEvent, WorkerRequest};
+use std::sync::Arc;
+use std::time::{Duration, UNIX_EPOCH};
 
 fn envelope(namespace: &str, correlation: &str, version: u32, payload: &[u8]) -> Vec<u8> {
     encode_dispatch_envelope(correlation, namespace, version, payload)
@@ -37,6 +41,17 @@ fn seed_account(runtime: &mut WasmRuntime) {
             .any(|e| matches!(e, WorkerEvent::ActionAccepted { .. })),
         "seed_account: SetIdentity must ACK; got {events:?}"
     );
+}
+
+fn publish_raw_payload(content: &str) -> Vec<u8> {
+    PublishAction::PublishRaw {
+        kind: 1,
+        tags: Vec::new(),
+        content: content.to_string(),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+    }
+    .encode()
 }
 
 #[test]
@@ -103,6 +118,41 @@ fn binary_doorway_rejects_garbage_fail_closed() {
         &events[..],
         [WorkerEvent::Error { code, .. }] if code == "dispatch_envelope_rejected"
     ));
+}
+
+#[test]
+fn publish_raw_unsigned_json_uses_reducer_clock_for_created_at() {
+    let mut runtime = WasmRuntime::new();
+    seed_account(&mut runtime);
+    runtime.set_kernel_clock_for_test(Arc::new(nmp_core::MonotonicSecondClock::new(
+        UNIX_EPOCH + Duration::from_secs(1_700_001_234),
+    )));
+
+    let payload = publish_raw_payload("clock-owned publish");
+    let bytes = envelope(
+        "nmp.publish",
+        "corr-clock",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        &payload,
+    );
+    let events = runtime.dispatch_bytes(&bytes);
+    let unsigned_json = events
+        .iter()
+        .find_map(|event| {
+            if let WorkerEvent::SignRequest { unsigned_json, .. } = event {
+                Some(unsigned_json)
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| panic!("expected SignRequest from PublishRaw; got {events:?}"));
+    let value: serde_json::Value =
+        serde_json::from_str(unsigned_json).expect("unsigned JSON must decode");
+    assert_eq!(
+        value["created_at"].as_u64(),
+        Some(1_700_001_234),
+        "PublishRaw created_at must come from the reducer-owned kernel clock"
+    );
 }
 
 // ---------------------------------------------------------------------------
