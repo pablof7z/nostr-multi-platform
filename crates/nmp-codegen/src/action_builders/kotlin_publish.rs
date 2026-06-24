@@ -7,10 +7,8 @@
 //! `nmp_core::publish::wire`. Kotlin's `add*` takes a 0-indexed SLOT (not a
 //! vtable byte offset, unlike Swift).
 
-use crate::action_builders::registry::{
-    BodyShape, PublishBuilder, PUBLISH_BUILDERS, PUBLISH_FILE_IDENTIFIER, PUBLISH_NAMESPACE,
-    PUBLISH_SCHEMA_VERSION,
-};
+use crate::action_builders::registry::{BodyShape, PublishBuilder, PUBLISH_BUILDERS};
+use crate::action_contract::{contract_for, PUBLISH_NAMESPACE};
 
 /// Render every `nmp.publish` builder into `out`.
 pub(crate) fn render_publish(out: &mut String) {
@@ -21,6 +19,7 @@ pub(crate) fn render_publish(out: &mut String) {
 }
 
 fn render_one(builder: &PublishBuilder, out: &mut String) {
+    let contract = contract_for(PUBLISH_NAMESPACE);
     out.push_str(&format!("    /// {}\n", builder.doc));
     out.push_str(&format!(
         "    /// Builds the `{PUBLISH_NAMESPACE}` `DispatchEnvelope` bytes (body \
@@ -54,13 +53,15 @@ fn render_one(builder: &PublishBuilder, out: &mut String) {
     out.push_str(&format!(
         "        fbb.startTable(3)\n\
          \x20       fbb.addInt(0, {PUBLISH_SCHEMA_VERSION}, 0) // slot 0: schema_version\n\
-         \x20       fbb.addByte(1, {}.toByte(), 0) // slot 1: body_type\n\
+         \x20       fbb.addByte(1, {body_type}.toByte(), 0) // slot 1: body_type\n\
          \x20       fbb.addOffset(2, bodyOffset, 0) // slot 2: body\n",
-        builder.body_type
+        PUBLISH_SCHEMA_VERSION = contract.schema_version,
+        body_type = builder.body_type
     ));
     out.push_str("        val payloadRoot = fbb.endTable()\n");
     out.push_str(&format!(
-        "        fbb.finish(payloadRoot, {PUBLISH_FILE_IDENTIFIER:?})\n"
+        "        fbb.finish(payloadRoot, {:?})\n",
+        contract.file_identifier
     ));
     out.push_str("        val payload = fbb.sizedByteArray()\n");
     out.push_str(&format!(

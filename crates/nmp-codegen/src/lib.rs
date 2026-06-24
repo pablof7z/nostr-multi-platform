@@ -35,6 +35,11 @@ pub mod swift_projections_registry;
 // presence policy. The kernel built-in key set, the revision dependency table,
 // and the registries' neutral columns are derived FROM this. See module doc.
 pub mod projection_contract;
+// #1939 (epic #1921) — the neutral typed action contract manifest. The single
+// source for default typed action namespace / producer / payload schema /
+// schema-version / FlatBuffers file identifier / default tier / generated
+// builder posture / public re-export policy / typed-dispatch posture.
+pub mod action_contract;
 // V6 Stage 4 (consumer-side) — generated typed-FlatBuffer-sidecar decoders.
 // Reads `SnapshotProjectionEntry::typed_sidecar` and emits, per projection key
 // with a checked-in `flatc --swift` reader binding, the mechanical
@@ -89,6 +94,13 @@ pub mod swift_keyed_cache;
 pub mod kotlin_keyed_cache;
 
 pub use manifest::{AppManifest, ModuleSet, NmpDependency};
+pub use action_contract::{
+    canonical_default_action_namespaces, contract_for as action_contract_for,
+    dm_action_namespaces, lookup as action_contract_lookup, render_action_contract_report,
+    social_action_namespaces, substrate_action_namespaces, typed_dispatch_exemption_namespaces,
+    zap_action_namespaces, ActionContract, ActionDefaultTier, BuilderSupport,
+    PublicReExportPolicy, TypedDispatchPolicy, ACTION_CONTRACT,
+};
 pub use projection_contract::{
     contract_for, drain_projection_keys, kernel_builtin_dependencies,
     kernel_builtin_projection_keys, lookup, rev_conditional_presence_keys, DeclarationPolicy,

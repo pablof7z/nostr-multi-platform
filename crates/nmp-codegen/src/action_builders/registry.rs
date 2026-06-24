@@ -6,9 +6,10 @@
 //! Each [`ActionBuilder`] describes ONE app-facing typed write method
 //! (`client.react(...)`, `client.follow(...)`, …): its GENERATED
 //! `action_namespace` (the open-registry routing key — ADR-0064 §2, never
-//! hand-written by app code), the FlatBuffers payload table that namespace's
-//! `ActionModule` decodes (S3 / #1751), and the `schema_version` stamped on
-//! both the payload and the wrapping [`DispatchEnvelope`].
+//! hand-written by app code) and the FlatBuffers payload table field shape. The
+//! neutral namespace/schema/file-id facts live in
+//! [`crate::action_contract::ACTION_CONTRACT`] so registration, public payload
+//! exposure, and generated builders share one source.
 //!
 //! The Swift/Kotlin emitters ([`crate::action_builders::swift`] /
 //! [`crate::action_builders::kotlin`]) read this slice and emit, per builder, a
@@ -88,17 +89,10 @@ pub struct ActionBuilder {
     /// lowerCamelCase. Emitted verbatim in both Swift and Kotlin (both use
     /// lowerCamelCase method names).
     pub method: &'static str,
-    /// The FlatBuffers payload table's file identifier (`"N25R"`, `"NF2A"`, …),
-    /// stamped into the finished payload buffer so the per-crate Rust decoder's
-    /// `*_buffer_has_identifier` gate passes.
-    pub payload_file_identifier: &'static str,
-    /// The payload schema version stamped into the payload table's slot-0
-    /// `schema_version` field (the per-crate `SCHEMA_VERSION`, currently 1 for
-    /// every S3 module).
-    pub payload_schema_version: u32,
     /// The payload table fields in DECLARATION ORDER (slot order). Slot 0 is the
     /// implicit `schema_version` tripwire — it is NOT listed here; the emitter
-    /// always writes it at slot 0 and these fields start at slot 1.
+    /// always writes the contract's schema version at slot 0 and these fields
+    /// start at slot 1.
     pub fields: &'static [PayloadField],
     /// One-line human description for the generated doc comment.
     pub doc: &'static str,
@@ -118,8 +112,6 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     ActionBuilder {
         namespace: "nmp.nip25.react",
         method: "react",
-        payload_file_identifier: "N25R",
-        payload_schema_version: 1,
         fields: &[
             PayloadField {
                 name: "targetEventId",
@@ -142,8 +134,6 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     ActionBuilder {
         namespace: "nmp.nip25.unreact",
         method: "unreact",
-        payload_file_identifier: "N25U",
-        payload_schema_version: 1,
         fields: &[
             PayloadField {
                 name: "reactionEventId",
@@ -164,8 +154,6 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     ActionBuilder {
         namespace: "nmp.follow",
         method: "follow",
-        payload_file_identifier: "NF2A",
-        payload_schema_version: 1,
         fields: &[PayloadField {
             name: "pubkey",
             kind: FieldKind::Str,
@@ -176,8 +164,6 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     ActionBuilder {
         namespace: "nmp.unfollow",
         method: "unfollow",
-        payload_file_identifier: "NF2A",
-        payload_schema_version: 1,
         fields: &[PayloadField {
             name: "pubkey",
             kind: FieldKind::Str,
@@ -188,8 +174,6 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
     ActionBuilder {
         namespace: "nmp.follow_many",
         method: "followMany",
-        payload_file_identifier: "NFMA",
-        payload_schema_version: 1,
         fields: &[PayloadField {
             name: "pubkeys",
             kind: FieldKind::StrVec,
@@ -233,13 +217,6 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
 pub const PUBLISH_BODY_PUBLISH_PROFILE: u8 = 2;
 /// See [`PUBLISH_BODY_PUBLISH_PROFILE`].
 pub const PUBLISH_BODY_PUBLISH_RAW: u8 = 3;
-
-/// The `nmp.publish` open-registry routing key.
-pub const PUBLISH_NAMESPACE: &str = "nmp.publish";
-/// The `PublishPayload` root buffer file identifier.
-pub const PUBLISH_FILE_IDENTIFIER: &str = "NPUB";
-/// The `nmp.publish` payload schema version (`nmp_core::publish::wire::SCHEMA_VERSION`).
-pub const PUBLISH_SCHEMA_VERSION: u32 = 1;
 
 /// One `nmp.publish` union-bodied builder.
 ///

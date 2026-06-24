@@ -17,45 +17,15 @@
 //! load-bearing negative that registers a deliberately JSON-only module and
 //! proves the gate flags it (so the assertion can never be vacuous).
 //!
-//! # Migration ratchet (ADR-0064 is per-crate, in-flight)
-//!
-//! ADR-0064 migrates each action crate to a typed FlatBuffers payload
-//! INDIVIDUALLY; the JSON doorway (`nmp_app_dispatch_action`) still exists for
-//! not-yet-migrated modules and is deleted only at Cut B. So a handful of
-//! production modules legitimately remain JSON-only on the JSON doorway today.
-//! Rather than assert ZERO untyped modules (which would falsely fail on those
-//! in-flight modules), this gate pins the untyped set to a frozen ALLOWLIST.
-//! The allowlist is a RATCHET:
-//! * a NEW untyped module (not on the list) → FAILS the gate (regression: no
-//!   one may add a JSON-only module without an explicit, reviewed allowlist
-//!   entry, and re-adding the reverted opaque-passthrough shim does not help —
-//!   the byte doorway still rejects these `NotTypedCapable`);
-//! * migrating a listed module to typed without removing it from the list →
-//!   FAILS the gate (forcing the allowlist to SHRINK toward empty as ADR-0064
-//!   completes; at Cut B the JSON doorway and this allowlist both reach zero).
+//! The allowed untyped set is no longer a hand-maintained allowlist. It derives
+//! from `ActionContract::typed_dispatch`, so a JSON-only default action needs an
+//! explicit tracked exemption in the contract and this gate fails on drift.
 
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 
-/// Production modules NOT yet migrated to a typed FlatBuffers payload — they
-/// ride the JSON doorway (`nmp_app_dispatch_action`) only and are rejected
-/// `NotTypedCapable` by the byte doorway. This is the ADR-0064 migration
-/// backlog. It MUST only shrink: each removal is a crate that finished its
-/// typed migration.
-///
-/// As of #1756 this allowlist is EMPTY: the last three pending modules — the
-/// `nmp-router`-owned `nmp.nip51.block_relay`, `nmp.nip51.unblock_relay`, and
-/// `nmp.nip65.publish_relay_list` — are now typed, so EVERY canonical default
-/// module decodes a typed FlatBuffers payload. The gate below now effectively
-/// asserts "the untyped set is empty", the Cut-B end state: ADR-0064 Cut B can
-/// delete the JSON doorway and this whole gate collapses to that assertion. A
-/// re-grown allowlist entry would be a regression.
-const MIGRATION_PENDING_UNTYPED: &[&str] = &[];
-
 /// THE production gate: after the canonical `register_defaults` wiring, the
-/// untyped (JSON-doorway-only) module set is EXACTLY the frozen migration
-/// allowlist — no more (no new JSON-only module / no re-grown opaque shim), no
-/// fewer (a migrated module must be struck from the allowlist). Everything else
-/// is typed (ADR-0064 / #1756 — the byte doorway is typed-only).
+/// untyped (JSON-doorway-only) module set is EXACTLY the contract exemption
+/// set. Everything else is typed (ADR-0064 / #1756).
 #[test]
 fn register_defaults_untyped_modules_match_the_migration_allowlist() {
     let app = nmp_app_new();
@@ -66,21 +36,17 @@ fn register_defaults_untyped_modules_match_the_migration_allowlist() {
     nmp_defaults::register_defaults(app_mut);
 
     let untyped = app_mut.untyped_action_namespaces(); // already sorted
-    let mut expected: Vec<String> = MIGRATION_PENDING_UNTYPED
-        .iter()
-        .map(|s| (*s).to_string())
+    let expected: Vec<String> = nmp_codegen::typed_dispatch_exemption_namespaces()
+        .into_iter()
+        .map(str::to_string)
         .collect();
-    expected.sort();
 
     assert_eq!(
         untyped, expected,
-        "the untyped (JSON-doorway-only) action-module set must equal the \
-         frozen ADR-0064 migration allowlist. A namespace present here but NOT \
-         in the allowlist is a NEW JSON-only module (forbidden — the byte \
-         doorway is typed-only, #1756; re-adding the reverted #1828 \
-         opaque-passthrough shim does not make it reachable). A namespace in the \
-         allowlist but absent here finished its typed migration — strike it from \
-         `MIGRATION_PENDING_UNTYPED` so the ratchet shrinks toward empty."
+        "the untyped (JSON-doorway-only) action-module set must equal \
+         ACTION_CONTRACT typed-dispatch exemptions. A namespace present here \
+         without an exemption is a forbidden JSON-only default module; an \
+         exemption absent here must be removed from the contract."
     );
 
     nmp_app_free(app);

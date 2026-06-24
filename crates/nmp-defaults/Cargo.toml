@@ -94,6 +94,7 @@ nostr = { version = "0.44", default-features = false, features = ["std"] }
 # entries. Mirrors the per-NIP-crate test pattern (`nmp-nip17`,
 # `nmp-app-chirp`).
 nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nmp-codegen = { path = "../nmp-codegen" }
 # Same posture for the extracted FFI crate so dev/test builds see
 # `nmp_app_new`/`nmp_app_free`.
 nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }

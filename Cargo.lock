@@ -4551,6 +4551,7 @@ version = "0.8.0"
 name = "nmp-defaults"
 version = "0.8.0"
 dependencies = [
+ "nmp-codegen",
  "nmp-content",
  "nmp-core",
  "nmp-coverage-gate",
