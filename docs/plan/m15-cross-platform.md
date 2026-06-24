@@ -37,7 +37,7 @@
 Moved out of v1 on 2026-06-11. The web port resumes after v1 and owns:
 
 - `nmp-wasm` production parity.
-- IndexedDB storage backend; OPFS where supported.
+- OPFS-SQLite storage backend per ADR-0054.
 - `nmp-nip07` browser-signer capability module.
 - Web shell stack TBD (React + signals / Solid / Svelte — pick at start of milestone).
 - Browser consistency coverage added to the native consistency harness.

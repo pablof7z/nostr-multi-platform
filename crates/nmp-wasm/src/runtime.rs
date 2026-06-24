@@ -20,18 +20,17 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use nmp_core::substrate::ActionModule;
-use nmp_core::{ActionRegistry, KernelReducer, OutboundMessage};
+use nmp_core::{ActionRegistry, KernelReducer};
 
-#[cfg(target_arch = "wasm32")]
-use crate::relay_pool;
 #[cfg(target_arch = "wasm32")]
 use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
 
 use crate::dispatch_routing::browser_driver_missing_reason;
-use crate::protocol::{CapabilityFailure, RuntimeStatus, StartConfig, WorkerEvent, WorkerRequest};
-use crate::snapshot::{build_snapshot_bytes, RuntimeMeta};
+use crate::protocol::{CapabilityFailure, RuntimeStatus, WorkerEvent, WorkerRequest};
+use crate::snapshot::RuntimeMeta;
 pub use error::WasmRuntimeError;
 
 const PROTOCOL_VERSION: u16 = 1;
@@ -57,6 +56,14 @@ pub struct WasmRuntime {
     /// Held behind `Rc<RefCell>` so the wasm32 relay-driver closures can
     /// share it without unsafe lifetime gymnastics.
     reducer: Rc<RefCell<KernelReducer>>,
+    /// ADR-0054 Stage #5 — boot-time event-store injection slot.
+    ///
+    /// Future web persistence opens its platform backend before `Start`, then
+    /// installs the ready synchronous [`EventStore`](nmp_store::EventStore)
+    /// here. `Start` consumes this once and rebuilds the reducer before relay
+    /// drivers/deadlines capture it. Empty means the default in-memory reducer
+    /// stays in place.
+    injected_store: Rc<RefCell<Option<Arc<dyn nmp_store::EventStore>>>>,
     /// Runtime metadata mirrored into every snapshot update. Shared with
     /// the relay-pool sink via `Rc<RefCell>` so the sink can build a fresh
     /// snapshot from kernel + meta without holding a reference to the
@@ -146,6 +153,27 @@ impl WasmRuntime {
     #[must_use]
     pub fn reducer_handle(&self) -> Rc<RefCell<KernelReducer>> {
         Rc::clone(&self.reducer)
+    }
+
+    /// Install an externally-opened event store to be consumed by the next
+    /// `Start`.
+    ///
+    /// This is intentionally a boot-time seam. The store backend must already
+    /// be open and synchronous; the kernel's [`EventStore`](nmp_store::EventStore)
+    /// contract remains unchanged. Calling after `Start` is rejected because
+    /// existing relay, publish, projection, and query handles would otherwise
+    /// split across old and new stores.
+    pub fn set_injected_store(
+        &mut self,
+        store: Arc<dyn nmp_store::EventStore>,
+    ) -> Result<(), WasmRuntimeError> {
+        if self.meta.borrow().started {
+            return Err(WasmRuntimeError::InvalidConfig(
+                "event store injection must happen before Start".to_string(),
+            ));
+        }
+        *self.injected_store.borrow_mut() = Some(store);
+        Ok(())
     }
 
     /// Register a typed [`ActionModule`] under its `NAMESPACE` into the runtime's
@@ -261,175 +289,6 @@ impl WasmRuntime {
     // capability round-trip arms — live in the sibling `runtime/signer.rs`
     // module (LOC ceiling). They are still private methods on `WasmRuntime`.
 
-    fn start(&mut self, config: StartConfig) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        if config.app_id.trim().is_empty() {
-            return Err(WasmRuntimeError::InvalidConfig(
-                "app_id is required".to_string(),
-            ));
-        }
-        if config.database_name.trim().is_empty() {
-            return Err(WasmRuntimeError::InvalidConfig(
-                "database_name is required".to_string(),
-            ));
-        }
-        if config.relays.is_empty() {
-            return Err(WasmRuntimeError::InvalidConfig(
-                "at least one relay is required".to_string(),
-            ));
-        }
-
-        let relay_bootstrap =
-            crate::protocol::relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
-
-        // Seed the kernel's configured-relay lanes so `make_update_frame`
-        // emits real relay-status rows and the `configured_relays` typed
-        // projection. Must run before the first snapshot (below) and before
-        // spawning drivers (which read the same rows for their URLs).
-        self.reducer.borrow_mut().set_configured_relays(
-            relay_bootstrap
-                .iter()
-                .map(|e| (e.url.clone(), e.role.clone()))
-                .collect(),
-        );
-
-        // #1008 — install the real OutboxResolver so publish actions reach the
-        // wire. The resolver returns the configured relay URLs as
-        // `LocalConfigRelay` targets, replacing the default
-        // `NoopOutboxResolver` that resolved zero targets for every
-        // `PublishTarget::Auto` and silently dropped every publish.
-        {
-            let relay_urls: Vec<String> = relay_bootstrap.iter().map(|e| e.url.clone()).collect();
-            let resolver = crate::publish_path::build_wasm_outbox_resolver(relay_urls);
-            self.reducer.borrow_mut().set_publish_resolver(resolver);
-        }
-
-        {
-            let mut meta = self.meta.borrow_mut();
-            meta.started = true;
-            meta.relay_bootstrap = relay_bootstrap;
-            meta.database_name = config.database_name;
-        }
-
-        // V-01 Stage 3 / #1937 — spawn relay drivers and arm one post-start
-        // deadline wake. Native builds skip drivers; tests can fire the same
-        // scheduler state explicitly.
-        #[cfg(target_arch = "wasm32")]
-        {
-            self.spawn_relay_drivers()?;
-        }
-        self.request_event_drain();
-
-        Ok(vec![
-            WorkerEvent::RuntimeStatus {
-                status: RuntimeStatus::Running,
-                correlation_id: Some(config.correlation_id),
-            },
-            self.snapshot_event(),
-        ])
-    }
-
-    fn stop(&mut self, correlation_id: String) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        // Cancel deadline before relay teardown; no in-flight wake against a
-        // partially closed pool.
-        crate::tick::cancel_deadline(&self.maintenance_deadline);
-        // Tear down every live relay driver — closing the JS sockets and
-        // dropping the parked closures so the user-agent reclaims them.
-        // Order matters: close sockets before clearing runtime metadata, so
-        // callbacks settle against the state they were started from.
-        #[cfg(target_arch = "wasm32")]
-        relay_pool::close_drivers(&self.relays);
-        // Drop the handler bag so any late callback cannot spawn a driver into
-        // a stopped pool, and a subsequent `Start` rebuilds it cleanly.
-        #[cfg(target_arch = "wasm32")]
-        {
-            *self.handlers_slot.borrow_mut() = None;
-        }
-
-        {
-            let mut meta = self.meta.borrow_mut();
-            meta.started = false;
-        }
-        Ok(vec![WorkerEvent::RuntimeStatus {
-            status: RuntimeStatus::Stopped,
-            correlation_id: Some(correlation_id),
-        }])
-    }
-
-    /// V-01 Stage 3 — instantiate one `BrowserRelayDriver` per configured
-    /// relay URL. Wires each driver's kernel-handler callbacks (Step 8
-    /// phase C: the driver itself lives in `nmp-network` and is kernel-
-    /// agnostic; the callback bag bridges it back into our `KernelReducer`)
-    /// to the relay-pool helpers, which also push a snapshot through the
-    /// registered callback (if any) so the JS host sees kernel mutations
-    /// as they happen.
-    #[cfg(target_arch = "wasm32")]
-    fn spawn_relay_drivers(&mut self) -> Result<(), WasmRuntimeError> {
-        let handlers = relay_pool::build_handlers(
-            Rc::clone(&self.relays),
-            Rc::clone(&self.snapshot_callback),
-            Rc::clone(&self.reducer),
-            Rc::clone(&self.meta),
-            Rc::clone(&self.handlers_slot),
-            Rc::clone(&self.maintenance_deadline),
-            Rc::clone(&self.post_tick_drain),
-        );
-        // Publish the handler bag so on-demand spawns (`fan_out_outbound`'s
-        // spawn-on-miss) wire up identical callbacks. The bag's closures
-        // captured `handlers_slot` while it was empty; populating it now is
-        // safe because no JS callback can fire until control returns to the
-        // event loop, after the bootstrap drivers below are installed.
-        *self.handlers_slot.borrow_mut() = Some(handlers.clone());
-        let drivers = relay_pool::spawn_drivers(&self.meta.borrow().relay_bootstrap, handlers)?;
-        *self.relays.borrow_mut() = drivers;
-        Ok(())
-    }
-
-    /// Arm one runtime maintenance deadline.
-    fn request_maintenance_deadline(&self, policy: crate::tick::WakePolicy) {
-        #[cfg(target_arch = "wasm32")]
-        crate::tick::request_runtime_deadline(
-            Rc::clone(&self.maintenance_deadline),
-            policy,
-            Rc::clone(&self.reducer),
-            Rc::clone(&self.relays),
-            Rc::clone(&self.handlers_slot),
-            Rc::clone(&self.snapshot_callback),
-            Rc::clone(&self.meta),
-            Rc::clone(&self.post_tick_drain),
-        );
-        #[cfg(not(target_arch = "wasm32"))]
-        crate::tick::request_deadline_for_test(&self.maintenance_deadline, policy);
-    }
-
-    fn request_event_drain(&self) {
-        self.request_maintenance_deadline(crate::tick::WakePolicy::Event);
-    }
-
-    fn request_event_or_kernel_deadline(&self) {
-        self.request_maintenance_deadline(crate::tick::event_or_kernel_policy(&self.reducer));
-    }
-
-    /// Fan `outbound` messages to live relay drivers (wasm32) or drop them
-    /// (native — the driver pool does not exist in test builds).
-    fn fan_outbound(&self, outbound: Vec<OutboundMessage>) {
-        let has_outbound = !outbound.is_empty();
-        #[cfg(target_arch = "wasm32")]
-        crate::relay_pool::fan_out_outbound(&self.relays, &self.handlers_slot, &outbound);
-        #[cfg(not(target_arch = "wasm32"))]
-        let _ = outbound;
-        if has_outbound {
-            self.request_event_or_kernel_deadline();
-        }
-    }
-
-    /// Build a binary `WorkerEvent::UpdateBytes` from the current kernel +
-    /// meta state. Delegates to `build_snapshot_bytes` which calls
-    /// `make_update_frame` — the kernel is the sole author of the encoded
-    /// frame (rev, relay statuses, typed projections).
-    fn snapshot_event(&mut self) -> WorkerEvent {
-        let bytes = build_snapshot_bytes(&mut self.reducer.borrow_mut(), &self.meta.borrow());
-        WorkerEvent::UpdateBytes { bytes }
-    }
 }
 
 // Routing diagnostics. Production code (all targets); the methods are public
@@ -441,6 +300,10 @@ mod diagnostics;
 // public app-facing API on `WasmRuntime`.
 #[path = "runtime/feed.rs"]
 mod feed;
+
+// Runtime lifecycle and scheduler helpers. Production code (all targets).
+#[path = "runtime/lifecycle.rs"]
+mod lifecycle;
 
 // Signer installation helper. Production code (all targets); split out for the
 // LOC ceiling without changing the runtime surface.

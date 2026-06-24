@@ -14,6 +14,32 @@ impl Kernel {
         Self::with_optional_publish_store_and_path(visible_limit, None, storage_path)
     }
 
+    /// Construct a Kernel from an externally-opened event store.
+    ///
+    /// This is the store-agnostic constructor used by non-native composition
+    /// roots such as `nmp-wasm`: async or platform-specific store open happens
+    /// before the kernel exists, then the already-opened synchronous
+    /// [`EventStore`](nmp_store::EventStore) is injected here. Native callers
+    /// should keep using [`Self::with_storage_path`], which owns the LMDB
+    /// path-resolution and degraded-open diagnostic contract.
+    pub fn from_parts(
+        visible_limit: usize,
+        event_store: Arc<dyn nmp_store::EventStore>,
+        store_open_failure: Option<String>,
+    ) -> Self {
+        Self::with_store_bundle_publish_store_path_and_account_slot(
+            visible_limit,
+            store_init::EventStoreBundle {
+                store: event_store,
+                relay_score_store: None,
+            },
+            store_open_failure,
+            None,
+            None,
+            None,
+        )
+    }
+
     /// V-82 — like `with_storage_path` but threads in an externally-owned `ActiveAccountSlot`.
     #[must_use]
     pub fn with_storage_path_and_account_slot(
@@ -74,6 +100,24 @@ impl Kernel {
         active_account_handle: Option<ActiveAccountSlot>,
     ) -> Self {
         let (store_bundle, store_open_failure) = store_init::build_event_store(storage_path);
+        Self::with_store_bundle_publish_store_path_and_account_slot(
+            visible_limit,
+            store_bundle,
+            store_open_failure,
+            publish_store,
+            storage_path,
+            active_account_handle,
+        )
+    }
+
+    fn with_store_bundle_publish_store_path_and_account_slot(
+        visible_limit: usize,
+        store_bundle: store_init::EventStoreBundle,
+        store_open_failure: Option<String>,
+        publish_store: Option<Arc<dyn crate::publish::PublishStore>>,
+        storage_path: Option<&str>,
+        active_account_handle: Option<ActiveAccountSlot>,
+    ) -> Self {
         let store = store_bundle.store;
         let publish_store = publish_store
             .unwrap_or_else(|| store_init::resolve_publish_store(storage_path, &store));

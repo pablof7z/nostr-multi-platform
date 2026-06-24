@@ -22,6 +22,7 @@
 
 use super::*;
 use crate::kernel::refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+use crate::relay::RelayRole;
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";

@@ -8,7 +8,7 @@ This document is the cold-start context for a brand-new working session. Read it
 
 ## 1. The north star
 
-We are designing a **Rust multiplatform framework for building Nostr applications** that ships a single Rust core consumed identically by iOS (SwiftUI), Android (Jetpack Compose), and desktop (egui). The v1 platform contract is iOS, Android, and desktop. Web/wasm is a non-persistent preview target until IndexedDB persistence and the NmpApp-actor-in-Worker port land (both post-v1). The core owns all protocol logic, all state, all caching, all relay management, all signing orchestration, all derived views. Platform code is a thin rendering shell.
+We are designing a **Rust multiplatform framework for building Nostr applications** that ships a single Rust core consumed identically by iOS (SwiftUI), Android (Jetpack Compose), and desktop (egui). The v1 platform contract is iOS, Android, and desktop. Web/wasm is a non-persistent preview target until OPFS-SQLite persistence and the NmpApp-actor-in-Worker port land (both post-v1). The core owns all protocol logic, all state, all caching, all relay management, all signing orchestration, all derived views. Platform code is a thin rendering shell.
 
 The framing concern is one sentence: **make it nearly impossible to build a broken Nostr application.** Today, building a Nostr client involves dozens of subtle correctness pitfalls — stale replaceable events, lost subscriptions, wrong relays for wrong events, race conditions between local state and relay state, leaked signing operations, multi-account state desync. The framework's job is to make each of those classes of bug structurally impossible through the safe app-kernel and FFI API: not merely documented as a footgun or caught by a linter, but ruled out by the type system, actor ownership, and public API surface. A capability the sound design cannot express through a typed seam is a design gap to close, not an exception to whitelist. The only mechanically-gated exception is test-only synthetic injection behind a `cfg`/`test-support` gate; external consumers read through the store via a bounded, backpressured cursor (the pull model), never a kernel bypass — see [`docs/escape-hatches.md`](escape-hatches.md).
 
@@ -82,7 +82,7 @@ The framework does not reimplement the Nostr protocol. The Rust ecosystem alread
 
 - A **protocol crate** providing `Event`, `EventBuilder`, `Filter`, `Keys`, `Tag`, all NIP-defined types, bech32 encoding, NIP-19 entities, no_std support, and around 60 implemented NIPs.
 - A **client/SDK crate** (`nostr-sdk`) providing `Client`, relay pool management, subscription routing, async streaming over tokio. **NMP does not use this crate.** Its relay pool is tokio-async and reference-counted; NMP's kernel is a single synchronous actor (§2). NMP instead depends on the `nostr` protocol crate for types/crypto and maintains its own relay transport (`crates/nmp-core/src/relay_worker/`, raw `tungstenite`) shaped to the actor model — generational relay handles, idle-tick-gated `recv_timeout`, interest-lattice subscription coalescing. See **ADR-0022** (`docs/decisions/0022-relay-transport-reimplementation.md`) for the full rationale.
-- A **database trait** with multiple swappable backends: in-memory, LMDB, nostrdb, SQLite (native and WASM via OPFS/IndexedDB VFS).
+- A **database trait** with multiple swappable backends: in-memory, LMDB, nostrdb, SQLite (native and WASM via OPFS-SQLite).
 - A **gossip/outbox trait** with in-memory and SQLite backends, implementing the NIP-65 relay-list metadata model and per-pubkey relay discovery.
 - A **NIP-46 (Nostr Connect / bunker) signer crate** for remote signing.
 - A **NIP-07 browser signer crate** plus a native-side proxy to use NIP-07 from desktop/mobile.
@@ -226,7 +226,7 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 └── flake.nix
 ```
 
-The core crate compiles as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web compiles to wasm32-unknown-unknown via the wasm crate, but is a non-persistent preview until the post-v1 web milestone (IndexedDB persistence + NmpApp-actor-in-Worker). **One source of truth; v1 delivery = iOS, Android, and desktop (egui); web follows post-v1.**
+The core crate compiles as `cdylib + staticlib + rlib`. Desktop and CLI consumers link the rlib directly (no FFI). iOS links the staticlib via xcframework. Android links the cdylib via cargo-ndk. Web compiles to wasm32-unknown-unknown via the wasm crate, but is a non-persistent preview until the post-v1 web milestone (OPFS-SQLite persistence + NmpApp-actor-in-Worker). **One source of truth; v1 delivery = iOS, Android, and desktop (egui); web follows post-v1.**
 
 ---
 

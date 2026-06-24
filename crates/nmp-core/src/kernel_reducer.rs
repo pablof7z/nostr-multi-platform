@@ -42,10 +42,9 @@
 //! This is the NMP-145 follow-up: T-NMP-145-FF.
 
 use crate::app::{KernelAction, KernelUpdate};
-use crate::kernel::{Kernel, RelayFrame, SnapshotProjectionSlot};
+use crate::kernel::{Kernel, SnapshotProjectionSlot};
 use crate::kernel_action::dispatch_kernel_action;
-use crate::relay::{OutboundMessage, RelayRole, DEFAULT_VISIBLE_LIMIT};
-use crate::time::Instant;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 
 /// Encapsulated kernel + public pure reducer.
 ///
@@ -137,208 +136,9 @@ impl KernelReducer {
         self.kernel.now_secs()
     }
 
-    /// Test-support clock injection for non-actor runtimes such as `nmp-wasm`.
-    #[cfg(any(test, feature = "test-support"))]
+    /// Clock injection for non-actor runtimes such as `nmp-wasm`.
     pub fn set_clock_for_test(&mut self, clock: std::sync::Arc<dyn crate::Clock>) {
         self.kernel.set_clock(clock);
-    }
-
-    // ─── V-01 Stage 3 relay-lifecycle surface ────────────────────────────────
-    //
-    // These methods mirror the per-event arms of
-    // `actor::dispatch::handle_relay_event` so a non-actor consumer (the
-    // wasm32 `BrowserRelayDriver`) can drive the same kernel state machine.
-    // Each method returns the outbound the kernel wants sent immediately — the
-    // caller fans those out over its transport. There is no central outbound
-    // queue inside the kernel; producers return frames directly. The actor
-    // captures these per-call, and so must the WASM driver.
-    //
-    // AUTH-pause partitioning is applied before returning so a frame addressed
-    // to a relay currently mid-NIP-42-handshake is buffered inside the kernel
-    // and replayed on the next tick after `Authenticated` — matching the
-    // native `send_all_outbound` invariant. The caller does not need to know
-    // the AUTH state machine exists.
-
-    /// One inbound relay frame on `(role, relay_url)`. Mirrors the
-    /// `RelayEvent::Message` arm of the native actor: routes through
-    /// [`Kernel::handle_message`], appends [`Kernel::pending_view_requests`]
-    /// (newly-registered subs that need a wire REQ now that we have a socket
-    /// to leave on), and partitions the result through the NIP-42 AUTH-pause
-    /// gate before returning.
-    ///
-    /// V-01 Stage 3 — the wasm32 `BrowserRelayDriver` calls this from its
-    /// `WebSocket::onmessage` closure for every text/binary frame and from
-    /// its `oncloseevent` closure for [`RelayFrame::Close`]. `RelayFrame::Ping`
-    /// and `RelayFrame::Pong` are accepted and bump the keepalive frame
-    /// counter; the driver still maintains its own client-side ping cadence
-    /// on a `gloo-timers` interval (the kernel never produces outbound pings).
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn handle_relay_frame(
-        &mut self,
-        role: RelayRole,
-        relay_url: &str,
-        frame: RelayFrame,
-    ) -> Vec<OutboundMessage> {
-        self.handle_relay_frame_at(
-            role,
-            relay_url,
-            frame,
-            crate::kernel::test_support::test_support_now(),
-        )
-    }
-
-    pub fn handle_relay_frame_at(
-        &mut self,
-        role: RelayRole,
-        relay_url: &str,
-        frame: RelayFrame,
-        now: Instant,
-    ) -> Vec<OutboundMessage> {
-        let mut outbound = self.kernel.handle_message_at(role, relay_url, frame, now);
-        outbound.extend(self.kernel.pending_view_requests_at(now));
-        self.kernel.partition_auth_paused(outbound)
-    }
-
-    /// A relay socket entered the `connected` state. Mirrors the
-    /// `RelayEvent::Connected` arm: flips the per-lane `RelayStatus`
-    /// connection field, emits any startup REQs that were waiting on a socket,
-    /// and replays publish-engine frames whose target relay just became
-    /// available.
-    ///
-    /// `is_reconnect == true` triggers the same re-emission of active
-    /// subscription shapes the native `replay_on_reconnect` path applies
-    /// (T116/G1) — the wire-subs map for this URL was evicted by the prior
-    /// `Closed` and the relay's per-connection sub-id table is fresh, so
-    /// every active shape must be re-REQed with its T129 watermark.
-    ///
-    /// The returned `Vec<OutboundMessage>` is already AUTH-pause-partitioned.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn handle_relay_connected(
-        &mut self,
-        role: RelayRole,
-        relay_url: &str,
-        is_reconnect: bool,
-    ) -> Vec<OutboundMessage> {
-        self.handle_relay_connected_at(
-            role,
-            relay_url,
-            is_reconnect,
-            crate::kernel::test_support::test_support_now(),
-        )
-    }
-
-    pub fn handle_relay_connected_at(
-        &mut self,
-        role: RelayRole,
-        relay_url: &str,
-        is_reconnect: bool,
-        now: Instant,
-    ) -> Vec<OutboundMessage> {
-        self.kernel.relay_connected_url(role, relay_url);
-        let mut outbound = Vec::new();
-        if is_reconnect {
-            // Same call shape the native actor uses; `replay_on_reconnect`
-            // is a pure read of `SubscriptionLifecycle::handle_reconnect` and
-            // never panics.
-            outbound.extend(self.kernel.replay_on_reconnect(role, relay_url));
-        }
-        outbound.extend(self.kernel.mark_publish_relay_available(relay_url));
-        outbound.extend(self.kernel.startup_requests(now));
-        outbound.extend(self.kernel.pending_view_requests_at(now));
-        // V-04 Stage 2: `startup_requests` no longer emits M1 `OutboundMessage`
-        // frames for the four bootstrap interests (self profile / NIP-65 /
-        // NIP-17 DM relays / contacts) — it now registers them through
-        // `InterestRegistry::ensure_sub` and enqueues a
-        // `CompileTrigger::ViewOpened`. The native actor drains the lifecycle
-        // on its idle loop; the wasm `KernelReducer` has no such loop, so we
-        // drain inline here. Empty diff is a zero-cost no-op (D8).
-        outbound.extend(self.kernel.drain_lifecycle_outbound());
-        self.kernel.partition_auth_paused(outbound)
-    }
-
-    /// A relay socket failed transiently (the transport will retry). Mirrors
-    /// the `RelayEvent::Failed` arm: marks the per-URL wire-subs as
-    /// `retrying` and surfaces the error on the next snapshot. Returns no
-    /// outbound (the kernel never emits replies to a failed connection;
-    /// queued frames are deferred until the next `Connected`).
-    pub fn handle_relay_failed(&mut self, role: RelayRole, relay_url: &str, error: String) {
-        self.kernel.relay_failed(role, relay_url, error);
-        self.kernel.mark_publish_relay_unavailable(relay_url);
-    }
-
-    /// A relay socket was torn down (no retry). Mirrors the `RelayEvent::Closed`
-    /// arm: evicts every wire-sub keyed on this URL (T133) and resets the NIP-42
-    /// driver for the role lane. Returns no outbound.
-    pub fn handle_relay_closed(&mut self, role: RelayRole, relay_url: &str) {
-        self.kernel.relay_closed(role, relay_url);
-        self.kernel.mark_publish_relay_unavailable(relay_url);
-    }
-
-    /// Pump all four maintenance drains in native parity order: pending view
-    /// requests → lifecycle drain → claim-expansion tick → publish pump.
-    /// Mirrors the native actor's idle-tick sequence at
-    /// `actor/mod.rs:2086–2098` (pending_view_requests), `2107–2120`
-    /// (lifecycle drain), `2164–2188` (claim-expansion W6), and `2161–2173`
-    /// (publish pump).
-    ///
-    /// The wasm32 driver calls this from explicit event/deadline wakes so
-    /// transient publish failures recover on kernel-declared deadlines without
-    /// a fixed polling interval, `CompileTrigger::ViewOpened` events enqueued
-    /// by `resolve_ref` compile into REQ frames after the triggering event,
-    /// and Phase-1 claims are checked only when a runtime wake is already
-    /// justified (closes the W6 gap tracked in issue #1143 without restoring a
-    /// browser cadence).
-    ///
-    /// `pending_view_requests()` is placed first (before the lifecycle drain)
-    /// to preserve the native M1-CLOSE-before-M2-REQ ordering: any pending
-    /// M1 CLOSE frames must be enqueued before the M2 planner opens new subs
-    /// (spec §3.1 placement rationale, also documented at the lifecycle-drain
-    /// site in `actor/mod.rs:2099–2106`). It also ensures time-gated work
-    /// (`contacts_deadline`, F-TTL `drain_pending_reverify`, deferred AUTH-gate
-    /// REQs) fires on every idle tick rather than only when inbound traffic
-    /// arrives. Note: `pending_view_requests()` internally calls
-    /// `maybe_open_timeline_at()` which uses the caller-provided tick, but that path
-    /// already runs on every inbound frame via `handle_relay_frame` (line 114),
-    /// so this call adds no new wasm32 `Instant` exposure.
-    ///
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn tick(&mut self) -> Vec<OutboundMessage> {
-        self.tick_at(crate::kernel::test_support::test_support_now())
-    }
-
-    pub fn tick_at(&mut self, now: Instant) -> Vec<OutboundMessage> {
-        // 1. Pending view requests: mirrors actor/mod.rs:2086-2098.
-        //    Drains time-gated work (contacts_deadline, F-TTL reverify, deferred
-        //    AUTH-gate REQs from deferred_outbound) that would otherwise only
-        //    fire when inbound traffic arrives on a quiet socket.
-        let mut outbound = self.kernel.pending_view_requests_at(now);
-        // 2. Lifecycle drain: mirrors actor/mod.rs:2107-2120.
-        //    Compiles queued CompileTriggers into REQ/CLOSE WireFrames.
-        //    Placed after pending_view_requests to ensure M1 CLOSE frames are
-        //    enqueued before M2 opens new subs (spec §3.1).
-        outbound.extend(self.kernel.drain_lifecycle_outbound());
-        // 3. Claim-expansion idle tick: mirrors actor/mod.rs:2164-2188 (W6).
-        //    Advances the per-claim Phase-1/2 state machine once per tick.
-        //    `crate::time::Instant` resolves to `web_time::Instant` on
-        //    wasm32-unknown-unknown (performance.now() backed) and to
-        //    `std::time::Instant` on native — both are panic-free on their
-        //    respective targets (closes the #1143 / #1009 blocker).
-        //    D8: with no pending claims this is a single `is_empty()` check;
-        //    no allocation, no iteration.
-        outbound.extend(self.kernel.poll_claim_expansion(now));
-        // 4. Publish pump: mirrors actor/mod.rs:2161-2173.
-        //    Retries in-flight publish frames whose retry deadline has elapsed.
-        outbound.extend(self.kernel.tick_publish_engine_for_now());
-        self.kernel.partition_auth_paused(outbound)
-    }
-
-    /// Return the next kernel-owned runtime deadline, as a delay from now.
-    ///
-    /// `None` means there is no pending kernel work that should keep the wasm
-    /// runtime armed after an event/deadline drain.
-    #[must_use]
-    pub fn next_runtime_deadline_delay_ms(&self) -> Option<u32> {
-        self.kernel.next_publish_engine_deadline_delay_ms()
     }
 
     /// Returns `true` when the kernel state has changed since the last
@@ -439,11 +239,6 @@ impl KernelReducer {
     pub fn make_update_frame(&mut self, running: bool) -> crate::UpdateFrameBytes {
         self.kernel.make_update(running)
     }
-
-    // `set_configured_relays`, `set_routing`, and `set_content_parser` — the
-    // composition-root wiring methods — live in the sibling
-    // `composition_seams.rs` module (LOC ceiling, #1753). They are still public
-    // methods on `KernelReducer` (`impl KernelReducer` in that file).
 }
 
 /// Test-support seam: fire the observer slot directly with a `KernelEvent`.
@@ -468,6 +263,7 @@ mod feed_verbs;
 mod follow;
 mod react;
 mod refs;
+mod relay_lifecycle;
 mod reply;
 // #1753 S6 — the wasm signing capability round-trip seam (pure message
 // re-entry). Adds `begin_sign_roundtrip` / `deliver_signed_response` to

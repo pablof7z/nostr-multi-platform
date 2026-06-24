@@ -3,6 +3,7 @@ use nmp_wasm::{
     WasmRuntime, WorkerEvent, WorkerRequest,
 };
 use serde_json::json;
+use std::sync::Arc;
 
 #[test]
 fn hello_round_trips_through_json() {
@@ -46,6 +47,61 @@ fn start_runs_browser_wasm_facade_with_shared_relay_defaults() {
         }
     );
     assert!(matches!(events[1], WorkerEvent::UpdateBytes { .. }));
+}
+
+#[test]
+fn start_consumes_injected_event_store_before_snapshot() {
+    let store: Arc<dyn nmp_store::EventStore> = Arc::new(nmp_store::MemEventStore::new());
+    let mut runtime = WasmRuntime::new();
+    runtime
+        .set_injected_store(Arc::clone(&store))
+        .expect("pre-start event-store injection must succeed");
+
+    let events = runtime
+        .handle(WorkerRequest::Start(StartConfig {
+            app_id: "chirp".to_string(),
+            relays: vec!["wss://relay.example".to_string()],
+            relay_bootstrap: vec![RelayBootstrapEntry {
+                url: "wss://relay.example".to_string(),
+                role: "both,indexer".to_string(),
+            }],
+            database_name: "chirp-dev".to_string(),
+            correlation_id: "start-injected-store".to_string(),
+        }))
+        .unwrap();
+
+    assert!(matches!(events[1], WorkerEvent::UpdateBytes { .. }));
+    let reducer_store = runtime.reducer_handle().borrow().event_store_handle();
+    assert!(
+        Arc::ptr_eq(&store, &reducer_store),
+        "Start must rebuild the reducer around the injected EventStore before emitting snapshots"
+    );
+}
+
+#[test]
+fn event_store_injection_after_start_is_rejected() {
+    let mut runtime = WasmRuntime::new();
+    runtime
+        .handle(WorkerRequest::Start(StartConfig {
+            app_id: "chirp".to_string(),
+            relays: vec!["wss://relay.example".to_string()],
+            relay_bootstrap: vec![RelayBootstrapEntry {
+                url: "wss://relay.example".to_string(),
+                role: "both,indexer".to_string(),
+            }],
+            database_name: "chirp-dev".to_string(),
+            correlation_id: "start-before-inject".to_string(),
+        }))
+        .unwrap();
+
+    let store: Arc<dyn nmp_store::EventStore> = Arc::new(nmp_store::MemEventStore::new());
+    let err = runtime
+        .set_injected_store(store)
+        .expect_err("post-start event-store injection must fail closed");
+    assert!(
+        err.to_string().contains("before Start"),
+        "post-start rejection should explain the boot-time contract, got: {err}"
+    );
 }
 
 #[test]

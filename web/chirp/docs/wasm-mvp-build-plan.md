@@ -5,7 +5,7 @@
 > pump) into small, independently-landable PRs. Every gap claim below was
 > re-verified against the code on this date; §6 lists where the product spec
 > was wrong or incomplete. Scope: MVP = spec §2.1 M1–M8 + §3.1 D1–D5,
-> **non-persistent preview** — no OPFS/IndexedDB store (#1007 / spec V11 is
+> **non-persistent preview** — no OPFS-SQLite store (#1007 / spec V11 is
 > post-MVP).
 
 Doctrine constraints carried throughout: the web shell renders snapshots and

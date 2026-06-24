@@ -82,9 +82,9 @@ browser runtime): identity store / account lifecycle (`nmp.sign_in_nsec`,
 NIP-47 wallet runtime (`apps/chirp/nmp-app-chirp/src/wallet_runtime.rs`),
 the capability socket (HTTP fetches — wasm returns
 `browser_actor_driver_missing`, `runtime.rs:208-219`), the NIP-77 reconciler
-(`crates/nmp-nip77`), LMDB persistence (`crates/nmp-store/src/lib.rs` —
-Memory or Lmdb only; **no IndexedDB binding exists anywhere**,
-`runtime.rs:36`), and drain-on-emit action-lifecycle projections (actor tick
+(`crates/nmp-nip77`), OPFS-SQLite persistence (ADR-0054; the boot-time store
+injection seam exists, but no browser backend crate is wired yet), and
+drain-on-emit action-lifecycle projections (actor tick
 scoping).
 
 ---
@@ -123,7 +123,7 @@ diagnostics panel (§3.1). Mirrors the Home/Thread/Author/Compose surface of
 | V8 | **Reaction / repost / zap counts on cards** | `[needs-wasm-exposure]` | `nmp.reactions.summary` / `nmp.reactions.reposts` (`nmp-nip01/note_relations`) and `nmp.nip57.zaps` (`nmp-nip57`) are observer-registered projections; the kernel owns observer registration (`kernel/mod.rs:193,445-457`) — needs a wasm-side registration seam (G2). If the observer seam proves actor-bound in practice, this escalates to core work — flag at implementation time |
 | V9 | **Edit profile** (kind:0 publish) | `[needs-wasm-exposure]` | `nmp.publish` `PublishProfile` variant exists in core (`docs/dispatch-actions.md:44-55`); wasm write path must route it |
 | V10 | **Relay management** — add/remove relays + roles at runtime, NIP-65 list publish | `[needs-wasm-exposure]` | Kernel owns configured-relay state (`nmp.relay.configured_relays` Tier-2) and `nmp.nip65.publish_relay_list` exists (`docs/dispatch-actions.md:217-233`); wasm gap: driver pool is fixed at `Start` (`runtime.rs:316-326`) — needs add/remove driver mutation + dispatch verbs |
-| V11 | **Persistence across reloads** | `[needs-core-work]` | "Kernel still runs in memory, resets on page reload" (`runtime.rs:36`); `nmp-store` has `Memory`/`Lmdb` only (`crates/nmp-store/src/lib.rs`); zero IndexedDB code in the workspace. Core must grow an IndexedDB (or OPFS) `EventStore` backend |
+| V11 | **Persistence across reloads** | `[needs-core-work]` | ADR-0054 Stage #5 gives `nmp-wasm` a boot-time `EventStore` injection seam, but the OPFS-SQLite backend and worker conformance vehicle are still pending. Without injection the kernel still runs in memory and resets on page reload. IndexedDB is rejected by ADR-0054 because it is async-only and cannot satisfy the synchronous `EventStore` contract. |
 
 ### 2.3 Stretch — blocked on core, listed so nobody fakes them
 
@@ -174,7 +174,7 @@ nothing.
 |---|---|---|---|
 | D13 | **NIP-77 reconciliation stats** — ranges reconciled, events healed, bytes saved vs naive REQ | `[needs-core-work]` | The reconciler (`crates/nmp-nip77`) runs only on the native side; the kernel carries the probe diagnostic only (`kernel/status.rs:403-404`). Browser reconciliation needs core work first (and is a flagship showcase once it lands) |
 | D14 | **Action lifecycle timeline** — dispatch → signed → published → per-relay OK as an animated trace | `[needs-core-work]` | `nmp.action.lifecycle/results/stages` are drain-on-emit projections whose semantics are scoped to the actor's snapshot tick; `KernelReducer` has no tick-scoped drain. Needs a core decision (drain-on-push semantics for the reducer) before wasm exposure |
-| D15 | **Persistence panel** — IndexedDB store size, hydration-on-boot stats | `[needs-core-work]` | Depends on V11 (no browser store exists) |
+| D15 | **Persistence panel** — OPFS-SQLite store size, hydration-on-boot stats | `[needs-core-work]` | Depends on V11 (no browser backend exists) |
 
 ---
 
@@ -237,8 +237,9 @@ nothing.
 
 ### 5.2 Core gaps (NMP must grow; Chirp Web waits)
 
-- **G8 — Browser persistence:** IndexedDB/OPFS `EventStore` backend in
-  `nmp-store` (`runtime.rs:36`; `nmp-store/src/lib.rs`). → V11, D15.
+- **G8 — Browser persistence:** OPFS-SQLite `EventStore` backend per ADR-0054
+  (new `nmp-sqlite-wasm` crate + worker-context conformance). The store
+  injection seam exists; the durable backend does not. → V11, D15.
 - **G9 — NIP-44/NIP-17 on wasm:** `window.nostr.nip44` bridge in
   `nmp-signers` + a DM runtime that is not actor-bound. → S1.
 - **G10 — Capability socket on wasm:** HTTP capability completions currently

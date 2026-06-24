@@ -25,7 +25,7 @@ See [`m12-wallet.md`](m12-wallet.md) for the full milestone spec.
 
 ## Post-v1 Web/WASM — Browser host + wasm parity
 
-See [`m15-cross-platform.md`](m15-cross-platform.md) for the post-v1 web follow-on list. **Deferred reason:** v1 proves the Rust-owned kernel across the native platform contract: iOS, Android, and desktop. Browser delivery needs a production `nmp-wasm` host, IndexedDB/OPFS persistence, NIP-07 signer wiring, browser consistency fixtures, and honest degraded-mode behavior before the framework claims web support. The tactical queue lives in [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008).
+See [`m15-cross-platform.md`](m15-cross-platform.md) for the post-v1 web follow-on list. **Deferred reason:** v1 proves the Rust-owned kernel across the native platform contract: iOS, Android, and desktop. Browser delivery needs a production `nmp-wasm` host, OPFS-SQLite persistence, NIP-07 signer wiring, browser consistency fixtures, and honest degraded-mode behavior before the framework claims web support. The tactical queue lives in [#1007](https://github.com/pablof7z/nostr-multi-platform/issues/1007) and [#1008](https://github.com/pablof7z/nostr-multi-platform/issues/1008).
 
 ## Post-v1 Marmot — MLS-over-Nostr Encrypted Groups
 
