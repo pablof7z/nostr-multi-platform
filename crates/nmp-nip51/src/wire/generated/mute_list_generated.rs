@@ -2,210 +2,276 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_51 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_51 {
 
+        pub enum MuteListSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum MuteListSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct MuteListSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct MuteListSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for MuteListSnapshot<'a> {
+            type Inner = MuteListSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for MuteListSnapshot<'a> {
-  type Inner = MuteListSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> MuteListSnapshot<'a> {
+            pub const VT_MUTED_PUBKEYS: ::flatbuffers::VOffsetT = 4;
+            pub const VT_MUTED_EVENT_IDS: ::flatbuffers::VOffsetT = 6;
 
-impl<'a> MuteListSnapshot<'a> {
-  pub const VT_MUTED_PUBKEYS: ::flatbuffers::VOffsetT = 4;
-  pub const VT_MUTED_EVENT_IDS: ::flatbuffers::VOffsetT = 6;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                MuteListSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args MuteListSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<MuteListSnapshot<'bldr>> {
+                let mut builder = MuteListSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.muted_event_ids {
+                    builder.add_muted_event_ids(x);
+                }
+                if let Some(x) = args.muted_pubkeys {
+                    builder.add_muted_pubkeys(x);
+                }
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    MuteListSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args MuteListSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<MuteListSnapshot<'bldr>> {
-    let mut builder = MuteListSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.muted_event_ids { builder.add_muted_event_ids(x); }
-    if let Some(x) = args.muted_pubkeys { builder.add_muted_pubkeys(x); }
-    builder.finish()
-  }
+            #[inline]
+            pub fn muted_pubkeys(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(MuteListSnapshot::VT_MUTED_PUBKEYS, None)
+                }
+            }
+            #[inline]
+            pub fn muted_event_ids(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(MuteListSnapshot::VT_MUTED_EVENT_IDS, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for MuteListSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("muted_pubkeys", Self::VT_MUTED_PUBKEYS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("muted_event_ids", Self::VT_MUTED_EVENT_IDS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct MuteListSnapshotArgs<'a> {
+            pub muted_pubkeys: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+            pub muted_event_ids: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for MuteListSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                MuteListSnapshotArgs {
+                    muted_pubkeys: None,
+                    muted_event_ids: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn muted_pubkeys(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(MuteListSnapshot::VT_MUTED_PUBKEYS, None)}
-  }
-  #[inline]
-  pub fn muted_event_ids(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>(MuteListSnapshot::VT_MUTED_EVENT_IDS, None)}
-  }
-}
+        pub struct MuteListSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MuteListSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_muted_pubkeys(
+                &mut self,
+                muted_pubkeys: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MuteListSnapshot::VT_MUTED_PUBKEYS,
+                    muted_pubkeys,
+                );
+            }
+            #[inline]
+            pub fn add_muted_event_ids(
+                &mut self,
+                muted_event_ids: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    MuteListSnapshot::VT_MUTED_EVENT_IDS,
+                    muted_event_ids,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> MuteListSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                MuteListSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<MuteListSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for MuteListSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("muted_pubkeys", Self::VT_MUTED_PUBKEYS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>>>("muted_event_ids", Self::VT_MUTED_EVENT_IDS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct MuteListSnapshotArgs<'a> {
-    pub muted_pubkeys: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-    pub muted_event_ids: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>>,
-}
-impl<'a> Default for MuteListSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    MuteListSnapshotArgs {
-      muted_pubkeys: None,
-      muted_event_ids: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for MuteListSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("MuteListSnapshot");
+                ds.field("muted_pubkeys", &self.muted_pubkeys());
+                ds.field("muted_event_ids", &self.muted_event_ids());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `MuteListSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_mute_list_snapshot_unchecked`.
+        pub fn root_as_mute_list_snapshot(
+            buf: &[u8],
+        ) -> Result<MuteListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<MuteListSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `MuteListSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_mute_list_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_mute_list_snapshot(
+            buf: &[u8],
+        ) -> Result<MuteListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<MuteListSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `MuteListSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_mute_list_snapshot_unchecked`.
+        pub fn root_as_mute_list_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<MuteListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<MuteListSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `MuteListSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_mute_list_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_mute_list_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<MuteListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<MuteListSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a MuteListSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `MuteListSnapshot`.
+        pub unsafe fn root_as_mute_list_snapshot_unchecked(buf: &[u8]) -> MuteListSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<MuteListSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed MuteListSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `MuteListSnapshot`.
+        pub unsafe fn size_prefixed_root_as_mute_list_snapshot_unchecked(
+            buf: &[u8],
+        ) -> MuteListSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<MuteListSnapshot>(buf) }
+        }
+        pub const MUTE_LIST_SNAPSHOT_IDENTIFIER: &str = "NMUT";
 
-pub struct MuteListSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> MuteListSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_muted_pubkeys(&mut self, muted_pubkeys: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MuteListSnapshot::VT_MUTED_PUBKEYS, muted_pubkeys);
-  }
-  #[inline]
-  pub fn add_muted_event_ids(&mut self, muted_event_ids: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<&'b  str>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(MuteListSnapshot::VT_MUTED_EVENT_IDS, muted_event_ids);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> MuteListSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    MuteListSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<MuteListSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn mute_list_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, MUTE_LIST_SNAPSHOT_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for MuteListSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("MuteListSnapshot");
-      ds.field("muted_pubkeys", &self.muted_pubkeys());
-      ds.field("muted_event_ids", &self.muted_event_ids());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `MuteListSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_mute_list_snapshot_unchecked`.
-pub fn root_as_mute_list_snapshot(buf: &[u8]) -> Result<MuteListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<MuteListSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `MuteListSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_mute_list_snapshot_unchecked`.
-pub fn size_prefixed_root_as_mute_list_snapshot(buf: &[u8]) -> Result<MuteListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<MuteListSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `MuteListSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_mute_list_snapshot_unchecked`.
-pub fn root_as_mute_list_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<MuteListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<MuteListSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `MuteListSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_mute_list_snapshot_unchecked`.
-pub fn size_prefixed_root_as_mute_list_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<MuteListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<MuteListSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a MuteListSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `MuteListSnapshot`.
-pub unsafe fn root_as_mute_list_snapshot_unchecked(buf: &[u8]) -> MuteListSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<MuteListSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed MuteListSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `MuteListSnapshot`.
-pub unsafe fn size_prefixed_root_as_mute_list_snapshot_unchecked(buf: &[u8]) -> MuteListSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<MuteListSnapshot>(buf) }
-}
-pub const MUTE_LIST_SNAPSHOT_IDENTIFIER: &str = "NMUT";
+        #[inline]
+        pub fn mute_list_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, MUTE_LIST_SNAPSHOT_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn mute_list_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, MUTE_LIST_SNAPSHOT_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_mute_list_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<MuteListSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(MUTE_LIST_SNAPSHOT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn mute_list_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, MUTE_LIST_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_mute_list_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<MuteListSnapshot<'a>>) {
-  fbb.finish(root, Some(MUTE_LIST_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_mute_list_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<MuteListSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(MUTE_LIST_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod nip51
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_mute_list_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<MuteListSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(MUTE_LIST_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod nip51
+} // pub mod nmp

@@ -2,278 +2,362 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod wot {
+    #[allow(unused_imports, dead_code)]
+    pub mod wot {
 
+        pub enum WotBootstrapSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum WotBootstrapSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct WotBootstrapSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct WotBootstrapSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for WotBootstrapSnapshot<'a> {
+            type Inner = WotBootstrapSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for WotBootstrapSnapshot<'a> {
-  type Inner = WotBootstrapSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> WotBootstrapSnapshot<'a> {
+            pub const VT_HAS_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ACTIVE_FOLLOW_COUNT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_BOOTSTRAP_REQUESTED: ::flatbuffers::VOffsetT = 10;
+            pub const VT_GRAPH_FOLLOW_AUTHORS: ::flatbuffers::VOffsetT = 12;
+            pub const VT_GRAPH_MUTE_AUTHORS: ::flatbuffers::VOffsetT = 14;
 
-impl<'a> WotBootstrapSnapshot<'a> {
-  pub const VT_HAS_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 4;
-  pub const VT_ACTIVE_PUBKEY: ::flatbuffers::VOffsetT = 6;
-  pub const VT_ACTIVE_FOLLOW_COUNT: ::flatbuffers::VOffsetT = 8;
-  pub const VT_BOOTSTRAP_REQUESTED: ::flatbuffers::VOffsetT = 10;
-  pub const VT_GRAPH_FOLLOW_AUTHORS: ::flatbuffers::VOffsetT = 12;
-  pub const VT_GRAPH_MUTE_AUTHORS: ::flatbuffers::VOffsetT = 14;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                WotBootstrapSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args WotBootstrapSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<WotBootstrapSnapshot<'bldr>> {
+                let mut builder = WotBootstrapSnapshotBuilder::new(_fbb);
+                builder.add_graph_mute_authors(args.graph_mute_authors);
+                builder.add_graph_follow_authors(args.graph_follow_authors);
+                builder.add_active_follow_count(args.active_follow_count);
+                if let Some(x) = args.active_pubkey {
+                    builder.add_active_pubkey(x);
+                }
+                builder.add_bootstrap_requested(args.bootstrap_requested);
+                builder.add_has_active_pubkey(args.has_active_pubkey);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    WotBootstrapSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args WotBootstrapSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<WotBootstrapSnapshot<'bldr>> {
-    let mut builder = WotBootstrapSnapshotBuilder::new(_fbb);
-    builder.add_graph_mute_authors(args.graph_mute_authors);
-    builder.add_graph_follow_authors(args.graph_follow_authors);
-    builder.add_active_follow_count(args.active_follow_count);
-    if let Some(x) = args.active_pubkey { builder.add_active_pubkey(x); }
-    builder.add_bootstrap_requested(args.bootstrap_requested);
-    builder.add_has_active_pubkey(args.has_active_pubkey);
-    builder.finish()
-  }
+            #[inline]
+            pub fn has_active_pubkey(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WotBootstrapSnapshot::VT_HAS_ACTIVE_PUBKEY, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn active_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        WotBootstrapSnapshot::VT_ACTIVE_PUBKEY,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn active_follow_count(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WotBootstrapSnapshot::VT_ACTIVE_FOLLOW_COUNT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn bootstrap_requested(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(WotBootstrapSnapshot::VT_BOOTSTRAP_REQUESTED, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn graph_follow_authors(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WotBootstrapSnapshot::VT_GRAPH_FOLLOW_AUTHORS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn graph_mute_authors(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(WotBootstrapSnapshot::VT_GRAPH_MUTE_AUTHORS, Some(0))
+                        .unwrap()
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for WotBootstrapSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<bool>("has_active_pubkey", Self::VT_HAS_ACTIVE_PUBKEY, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "active_pubkey",
+                        Self::VT_ACTIVE_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<u64>("active_follow_count", Self::VT_ACTIVE_FOLLOW_COUNT, false)?
+                    .visit_field::<bool>(
+                        "bootstrap_requested",
+                        Self::VT_BOOTSTRAP_REQUESTED,
+                        false,
+                    )?
+                    .visit_field::<u64>(
+                        "graph_follow_authors",
+                        Self::VT_GRAPH_FOLLOW_AUTHORS,
+                        false,
+                    )?
+                    .visit_field::<u64>("graph_mute_authors", Self::VT_GRAPH_MUTE_AUTHORS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct WotBootstrapSnapshotArgs<'a> {
+            pub has_active_pubkey: bool,
+            pub active_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub active_follow_count: u64,
+            pub bootstrap_requested: bool,
+            pub graph_follow_authors: u64,
+            pub graph_mute_authors: u64,
+        }
+        impl<'a> Default for WotBootstrapSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                WotBootstrapSnapshotArgs {
+                    has_active_pubkey: false,
+                    active_pubkey: None,
+                    active_follow_count: 0,
+                    bootstrap_requested: false,
+                    graph_follow_authors: 0,
+                    graph_mute_authors: 0,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn has_active_pubkey(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(WotBootstrapSnapshot::VT_HAS_ACTIVE_PUBKEY, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn active_pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(WotBootstrapSnapshot::VT_ACTIVE_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn active_follow_count(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(WotBootstrapSnapshot::VT_ACTIVE_FOLLOW_COUNT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn bootstrap_requested(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(WotBootstrapSnapshot::VT_BOOTSTRAP_REQUESTED, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn graph_follow_authors(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(WotBootstrapSnapshot::VT_GRAPH_FOLLOW_AUTHORS, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn graph_mute_authors(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(WotBootstrapSnapshot::VT_GRAPH_MUTE_AUTHORS, Some(0)).unwrap()}
-  }
-}
+        pub struct WotBootstrapSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WotBootstrapSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_has_active_pubkey(&mut self, has_active_pubkey: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WotBootstrapSnapshot::VT_HAS_ACTIVE_PUBKEY,
+                    has_active_pubkey,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_active_pubkey(&mut self, active_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    WotBootstrapSnapshot::VT_ACTIVE_PUBKEY,
+                    active_pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_active_follow_count(&mut self, active_follow_count: u64) {
+                self.fbb_.push_slot::<u64>(
+                    WotBootstrapSnapshot::VT_ACTIVE_FOLLOW_COUNT,
+                    active_follow_count,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_bootstrap_requested(&mut self, bootstrap_requested: bool) {
+                self.fbb_.push_slot::<bool>(
+                    WotBootstrapSnapshot::VT_BOOTSTRAP_REQUESTED,
+                    bootstrap_requested,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_graph_follow_authors(&mut self, graph_follow_authors: u64) {
+                self.fbb_.push_slot::<u64>(
+                    WotBootstrapSnapshot::VT_GRAPH_FOLLOW_AUTHORS,
+                    graph_follow_authors,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn add_graph_mute_authors(&mut self, graph_mute_authors: u64) {
+                self.fbb_.push_slot::<u64>(
+                    WotBootstrapSnapshot::VT_GRAPH_MUTE_AUTHORS,
+                    graph_mute_authors,
+                    0,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> WotBootstrapSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                WotBootstrapSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<WotBootstrapSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for WotBootstrapSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<bool>("has_active_pubkey", Self::VT_HAS_ACTIVE_PUBKEY, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("active_pubkey", Self::VT_ACTIVE_PUBKEY, false)?
-     .visit_field::<u64>("active_follow_count", Self::VT_ACTIVE_FOLLOW_COUNT, false)?
-     .visit_field::<bool>("bootstrap_requested", Self::VT_BOOTSTRAP_REQUESTED, false)?
-     .visit_field::<u64>("graph_follow_authors", Self::VT_GRAPH_FOLLOW_AUTHORS, false)?
-     .visit_field::<u64>("graph_mute_authors", Self::VT_GRAPH_MUTE_AUTHORS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct WotBootstrapSnapshotArgs<'a> {
-    pub has_active_pubkey: bool,
-    pub active_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub active_follow_count: u64,
-    pub bootstrap_requested: bool,
-    pub graph_follow_authors: u64,
-    pub graph_mute_authors: u64,
-}
-impl<'a> Default for WotBootstrapSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    WotBootstrapSnapshotArgs {
-      has_active_pubkey: false,
-      active_pubkey: None,
-      active_follow_count: 0,
-      bootstrap_requested: false,
-      graph_follow_authors: 0,
-      graph_mute_authors: 0,
-    }
-  }
-}
+        impl ::core::fmt::Debug for WotBootstrapSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("WotBootstrapSnapshot");
+                ds.field("has_active_pubkey", &self.has_active_pubkey());
+                ds.field("active_pubkey", &self.active_pubkey());
+                ds.field("active_follow_count", &self.active_follow_count());
+                ds.field("bootstrap_requested", &self.bootstrap_requested());
+                ds.field("graph_follow_authors", &self.graph_follow_authors());
+                ds.field("graph_mute_authors", &self.graph_mute_authors());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `WotBootstrapSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_wot_bootstrap_snapshot_unchecked`.
+        pub fn root_as_wot_bootstrap_snapshot(
+            buf: &[u8],
+        ) -> Result<WotBootstrapSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<WotBootstrapSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `WotBootstrapSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_wot_bootstrap_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_wot_bootstrap_snapshot(
+            buf: &[u8],
+        ) -> Result<WotBootstrapSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<WotBootstrapSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `WotBootstrapSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_wot_bootstrap_snapshot_unchecked`.
+        pub fn root_as_wot_bootstrap_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<WotBootstrapSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<WotBootstrapSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `WotBootstrapSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_wot_bootstrap_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_wot_bootstrap_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<WotBootstrapSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<WotBootstrapSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a WotBootstrapSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `WotBootstrapSnapshot`.
+        pub unsafe fn root_as_wot_bootstrap_snapshot_unchecked(
+            buf: &[u8],
+        ) -> WotBootstrapSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<WotBootstrapSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed WotBootstrapSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `WotBootstrapSnapshot`.
+        pub unsafe fn size_prefixed_root_as_wot_bootstrap_snapshot_unchecked(
+            buf: &[u8],
+        ) -> WotBootstrapSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<WotBootstrapSnapshot>(buf) }
+        }
+        pub const WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER: &str = "NWBS";
 
-pub struct WotBootstrapSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> WotBootstrapSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_has_active_pubkey(&mut self, has_active_pubkey: bool) {
-    self.fbb_.push_slot::<bool>(WotBootstrapSnapshot::VT_HAS_ACTIVE_PUBKEY, has_active_pubkey, false);
-  }
-  #[inline]
-  pub fn add_active_pubkey(&mut self, active_pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(WotBootstrapSnapshot::VT_ACTIVE_PUBKEY, active_pubkey);
-  }
-  #[inline]
-  pub fn add_active_follow_count(&mut self, active_follow_count: u64) {
-    self.fbb_.push_slot::<u64>(WotBootstrapSnapshot::VT_ACTIVE_FOLLOW_COUNT, active_follow_count, 0);
-  }
-  #[inline]
-  pub fn add_bootstrap_requested(&mut self, bootstrap_requested: bool) {
-    self.fbb_.push_slot::<bool>(WotBootstrapSnapshot::VT_BOOTSTRAP_REQUESTED, bootstrap_requested, false);
-  }
-  #[inline]
-  pub fn add_graph_follow_authors(&mut self, graph_follow_authors: u64) {
-    self.fbb_.push_slot::<u64>(WotBootstrapSnapshot::VT_GRAPH_FOLLOW_AUTHORS, graph_follow_authors, 0);
-  }
-  #[inline]
-  pub fn add_graph_mute_authors(&mut self, graph_mute_authors: u64) {
-    self.fbb_.push_slot::<u64>(WotBootstrapSnapshot::VT_GRAPH_MUTE_AUTHORS, graph_mute_authors, 0);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> WotBootstrapSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    WotBootstrapSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<WotBootstrapSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn wot_bootstrap_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER, false)
+        }
 
-impl ::core::fmt::Debug for WotBootstrapSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("WotBootstrapSnapshot");
-      ds.field("has_active_pubkey", &self.has_active_pubkey());
-      ds.field("active_pubkey", &self.active_pubkey());
-      ds.field("active_follow_count", &self.active_follow_count());
-      ds.field("bootstrap_requested", &self.bootstrap_requested());
-      ds.field("graph_follow_authors", &self.graph_follow_authors());
-      ds.field("graph_mute_authors", &self.graph_mute_authors());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `WotBootstrapSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_wot_bootstrap_snapshot_unchecked`.
-pub fn root_as_wot_bootstrap_snapshot(buf: &[u8]) -> Result<WotBootstrapSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<WotBootstrapSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `WotBootstrapSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_wot_bootstrap_snapshot_unchecked`.
-pub fn size_prefixed_root_as_wot_bootstrap_snapshot(buf: &[u8]) -> Result<WotBootstrapSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<WotBootstrapSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `WotBootstrapSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_wot_bootstrap_snapshot_unchecked`.
-pub fn root_as_wot_bootstrap_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<WotBootstrapSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<WotBootstrapSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `WotBootstrapSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_wot_bootstrap_snapshot_unchecked`.
-pub fn size_prefixed_root_as_wot_bootstrap_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<WotBootstrapSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<WotBootstrapSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a WotBootstrapSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `WotBootstrapSnapshot`.
-pub unsafe fn root_as_wot_bootstrap_snapshot_unchecked(buf: &[u8]) -> WotBootstrapSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<WotBootstrapSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed WotBootstrapSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `WotBootstrapSnapshot`.
-pub unsafe fn size_prefixed_root_as_wot_bootstrap_snapshot_unchecked(buf: &[u8]) -> WotBootstrapSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<WotBootstrapSnapshot>(buf) }
-}
-pub const WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER: &str = "NWBS";
+        #[inline]
+        pub fn wot_bootstrap_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER, true)
+        }
 
-#[inline]
-pub fn wot_bootstrap_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER, false)
-}
+        #[inline]
+        pub fn finish_wot_bootstrap_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<WotBootstrapSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn wot_bootstrap_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_wot_bootstrap_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<WotBootstrapSnapshot<'a>>) {
-  fbb.finish(root, Some(WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_wot_bootstrap_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<WotBootstrapSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod wot
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_wot_bootstrap_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<WotBootstrapSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(WOT_BOOTSTRAP_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod wot
+} // pub mod nmp

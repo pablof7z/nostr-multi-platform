@@ -2,323 +2,411 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod kernel {
+    #[allow(unused_imports, dead_code)]
+    pub mod kernel {
 
+        pub enum RelayRoleOptionOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum RelayRoleOptionOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct RelayRoleOption<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct RelayRoleOption<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for RelayRoleOption<'a> {
+            type Inner = RelayRoleOption<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for RelayRoleOption<'a> {
-  type Inner = RelayRoleOption<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> RelayRoleOption<'a> {
+            pub const VT_VALUE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_TINT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_IS_DEFAULT: ::flatbuffers::VOffsetT = 10;
 
-impl<'a> RelayRoleOption<'a> {
-  pub const VT_VALUE: ::flatbuffers::VOffsetT = 4;
-  pub const VT_TINT: ::flatbuffers::VOffsetT = 8;
-  pub const VT_IS_DEFAULT: ::flatbuffers::VOffsetT = 10;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RelayRoleOption { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RelayRoleOptionArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RelayRoleOption<'bldr>> {
+                let mut builder = RelayRoleOptionBuilder::new(_fbb);
+                if let Some(x) = args.tint {
+                    builder.add_tint(x);
+                }
+                if let Some(x) = args.value {
+                    builder.add_value(x);
+                }
+                builder.add_is_default(args.is_default);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    RelayRoleOption { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args RelayRoleOptionArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<RelayRoleOption<'bldr>> {
-    let mut builder = RelayRoleOptionBuilder::new(_fbb);
-    if let Some(x) = args.tint { builder.add_tint(x); }
-    if let Some(x) = args.value { builder.add_value(x); }
-    builder.add_is_default(args.is_default);
-    builder.finish()
-  }
+            #[inline]
+            pub fn value(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        RelayRoleOption::VT_VALUE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn tint(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(RelayRoleOption::VT_TINT, None)
+                }
+            }
+            #[inline]
+            pub fn is_default(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(RelayRoleOption::VT_IS_DEFAULT, Some(false))
+                        .unwrap()
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for RelayRoleOption<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "value",
+                        Self::VT_VALUE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "tint",
+                        Self::VT_TINT,
+                        false,
+                    )?
+                    .visit_field::<bool>("is_default", Self::VT_IS_DEFAULT, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RelayRoleOptionArgs<'a> {
+            pub value: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub tint: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub is_default: bool,
+        }
+        impl<'a> Default for RelayRoleOptionArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RelayRoleOptionArgs {
+                    value: None,
+                    tint: None,
+                    is_default: false,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn value(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayRoleOption::VT_VALUE, None)}
-  }
-  #[inline]
-  pub fn tint(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(RelayRoleOption::VT_TINT, None)}
-  }
-  #[inline]
-  pub fn is_default(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(RelayRoleOption::VT_IS_DEFAULT, Some(false)).unwrap()}
-  }
-}
+        pub struct RelayRoleOptionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayRoleOptionBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_value(&mut self, value: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayRoleOption::VT_VALUE,
+                    value,
+                );
+            }
+            #[inline]
+            pub fn add_tint(&mut self, tint: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayRoleOption::VT_TINT,
+                    tint,
+                );
+            }
+            #[inline]
+            pub fn add_is_default(&mut self, is_default: bool) {
+                self.fbb_
+                    .push_slot::<bool>(RelayRoleOption::VT_IS_DEFAULT, is_default, false);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> RelayRoleOptionBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RelayRoleOptionBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RelayRoleOption<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for RelayRoleOption<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("value", Self::VT_VALUE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("tint", Self::VT_TINT, false)?
-     .visit_field::<bool>("is_default", Self::VT_IS_DEFAULT, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct RelayRoleOptionArgs<'a> {
-    pub value: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub tint: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub is_default: bool,
-}
-impl<'a> Default for RelayRoleOptionArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    RelayRoleOptionArgs {
-      value: None,
-      tint: None,
-      is_default: false,
-    }
-  }
-}
+        impl ::core::fmt::Debug for RelayRoleOption<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RelayRoleOption");
+                ds.field("value", &self.value());
+                ds.field("tint", &self.tint());
+                ds.field("is_default", &self.is_default());
+                ds.finish()
+            }
+        }
+        pub enum RelayRoleOptionsSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub struct RelayRoleOptionBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayRoleOptionBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_value(&mut self, value: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayRoleOption::VT_VALUE, value);
-  }
-  #[inline]
-  pub fn add_tint(&mut self, tint: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayRoleOption::VT_TINT, tint);
-  }
-  #[inline]
-  pub fn add_is_default(&mut self, is_default: bool) {
-    self.fbb_.push_slot::<bool>(RelayRoleOption::VT_IS_DEFAULT, is_default, false);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RelayRoleOptionBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    RelayRoleOptionBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<RelayRoleOption<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        pub struct RelayRoleOptionsSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl ::core::fmt::Debug for RelayRoleOption<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("RelayRoleOption");
-      ds.field("value", &self.value());
-      ds.field("tint", &self.tint());
-      ds.field("is_default", &self.is_default());
-      ds.finish()
-  }
-}
-pub enum RelayRoleOptionsSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> ::flatbuffers::Follow<'a> for RelayRoleOptionsSnapshot<'a> {
+            type Inner = RelayRoleOptionsSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-pub struct RelayRoleOptionsSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> RelayRoleOptionsSnapshot<'a> {
+            pub const VT_OPTIONS: ::flatbuffers::VOffsetT = 4;
 
-impl<'a> ::flatbuffers::Follow<'a> for RelayRoleOptionsSnapshot<'a> {
-  type Inner = RelayRoleOptionsSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                RelayRoleOptionsSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args RelayRoleOptionsSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<RelayRoleOptionsSnapshot<'bldr>> {
+                let mut builder = RelayRoleOptionsSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.options {
+                    builder.add_options(x);
+                }
+                builder.finish()
+            }
 
-impl<'a> RelayRoleOptionsSnapshot<'a> {
-  pub const VT_OPTIONS: ::flatbuffers::VOffsetT = 4;
+            #[inline]
+            pub fn options(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayRoleOption<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayRoleOption>>,
+                    >>(RelayRoleOptionsSnapshot::VT_OPTIONS, None)
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    RelayRoleOptionsSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args RelayRoleOptionsSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<RelayRoleOptionsSnapshot<'bldr>> {
-    let mut builder = RelayRoleOptionsSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.options { builder.add_options(x); }
-    builder.finish()
-  }
+        impl ::flatbuffers::Verifiable for RelayRoleOptionsSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RelayRoleOption>>,
+                    >>("options", Self::VT_OPTIONS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct RelayRoleOptionsSnapshotArgs<'a> {
+            pub options: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayRoleOption<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for RelayRoleOptionsSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                RelayRoleOptionsSnapshotArgs { options: None }
+            }
+        }
 
+        pub struct RelayRoleOptionsSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayRoleOptionsSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_options(
+                &mut self,
+                options: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<RelayRoleOption<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    RelayRoleOptionsSnapshot::VT_OPTIONS,
+                    options,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> RelayRoleOptionsSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                RelayRoleOptionsSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<RelayRoleOptionsSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-  #[inline]
-  pub fn options(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayRoleOption<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayRoleOption>>>>(RelayRoleOptionsSnapshot::VT_OPTIONS, None)}
-  }
-}
+        impl ::core::fmt::Debug for RelayRoleOptionsSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("RelayRoleOptionsSnapshot");
+                ds.field("options", &self.options());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `RelayRoleOptionsSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_relay_role_options_snapshot_unchecked`.
+        pub fn root_as_relay_role_options_snapshot(
+            buf: &[u8],
+        ) -> Result<RelayRoleOptionsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<RelayRoleOptionsSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `RelayRoleOptionsSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_relay_role_options_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_relay_role_options_snapshot(
+            buf: &[u8],
+        ) -> Result<RelayRoleOptionsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<RelayRoleOptionsSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `RelayRoleOptionsSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_relay_role_options_snapshot_unchecked`.
+        pub fn root_as_relay_role_options_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<RelayRoleOptionsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<RelayRoleOptionsSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `RelayRoleOptionsSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_relay_role_options_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_relay_role_options_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<RelayRoleOptionsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<RelayRoleOptionsSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a RelayRoleOptionsSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `RelayRoleOptionsSnapshot`.
+        pub unsafe fn root_as_relay_role_options_snapshot_unchecked(
+            buf: &[u8],
+        ) -> RelayRoleOptionsSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<RelayRoleOptionsSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed RelayRoleOptionsSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `RelayRoleOptionsSnapshot`.
+        pub unsafe fn size_prefixed_root_as_relay_role_options_snapshot_unchecked(
+            buf: &[u8],
+        ) -> RelayRoleOptionsSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<RelayRoleOptionsSnapshot>(buf) }
+        }
+        pub const RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER: &str = "KRRO";
 
-impl ::flatbuffers::Verifiable for RelayRoleOptionsSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<RelayRoleOption>>>>("options", Self::VT_OPTIONS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct RelayRoleOptionsSnapshotArgs<'a> {
-    pub options: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<RelayRoleOption<'a>>>>>,
-}
-impl<'a> Default for RelayRoleOptionsSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    RelayRoleOptionsSnapshotArgs {
-      options: None,
-    }
-  }
-}
+        #[inline]
+        pub fn relay_role_options_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER, false)
+        }
 
-pub struct RelayRoleOptionsSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> RelayRoleOptionsSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_options(&mut self, options: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<RelayRoleOption<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(RelayRoleOptionsSnapshot::VT_OPTIONS, options);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> RelayRoleOptionsSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    RelayRoleOptionsSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<RelayRoleOptionsSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn relay_role_options_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER, true)
+        }
 
-impl ::core::fmt::Debug for RelayRoleOptionsSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("RelayRoleOptionsSnapshot");
-      ds.field("options", &self.options());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `RelayRoleOptionsSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_relay_role_options_snapshot_unchecked`.
-pub fn root_as_relay_role_options_snapshot(buf: &[u8]) -> Result<RelayRoleOptionsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<RelayRoleOptionsSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `RelayRoleOptionsSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_relay_role_options_snapshot_unchecked`.
-pub fn size_prefixed_root_as_relay_role_options_snapshot(buf: &[u8]) -> Result<RelayRoleOptionsSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<RelayRoleOptionsSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `RelayRoleOptionsSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_relay_role_options_snapshot_unchecked`.
-pub fn root_as_relay_role_options_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<RelayRoleOptionsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<RelayRoleOptionsSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `RelayRoleOptionsSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_relay_role_options_snapshot_unchecked`.
-pub fn size_prefixed_root_as_relay_role_options_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<RelayRoleOptionsSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<RelayRoleOptionsSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a RelayRoleOptionsSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `RelayRoleOptionsSnapshot`.
-pub unsafe fn root_as_relay_role_options_snapshot_unchecked(buf: &[u8]) -> RelayRoleOptionsSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<RelayRoleOptionsSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed RelayRoleOptionsSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `RelayRoleOptionsSnapshot`.
-pub unsafe fn size_prefixed_root_as_relay_role_options_snapshot_unchecked(buf: &[u8]) -> RelayRoleOptionsSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<RelayRoleOptionsSnapshot>(buf) }
-}
-pub const RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER: &str = "KRRO";
+        #[inline]
+        pub fn finish_relay_role_options_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<RelayRoleOptionsSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn relay_role_options_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER, false)
-}
-
-#[inline]
-pub fn relay_role_options_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_relay_role_options_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<RelayRoleOptionsSnapshot<'a>>) {
-  fbb.finish(root, Some(RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_relay_role_options_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<RelayRoleOptionsSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod kernel
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_relay_role_options_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<RelayRoleOptionsSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(RELAY_ROLE_OPTIONS_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod kernel
+} // pub mod nmp

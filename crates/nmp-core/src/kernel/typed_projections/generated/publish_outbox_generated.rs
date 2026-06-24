@@ -2,588 +2,836 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod kernel {
+    #[allow(unused_imports, dead_code)]
+    pub mod kernel {
 
+        pub enum PublishOutboxRelayOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum PublishOutboxRelayOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct PublishOutboxRelay<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct PublishOutboxRelay<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for PublishOutboxRelay<'a> {
+            type Inner = PublishOutboxRelay<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for PublishOutboxRelay<'a> {
-  type Inner = PublishOutboxRelay<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> PublishOutboxRelay<'a> {
+            pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 4;
+            pub const VT_STATUS: ::flatbuffers::VOffsetT = 6;
+            pub const VT_ATTEMPT: ::flatbuffers::VOffsetT = 8;
+            pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 10;
+            pub const VT_RELAY_REASON: ::flatbuffers::VOffsetT = 12;
 
-impl<'a> PublishOutboxRelay<'a> {
-  pub const VT_RELAY_URL: ::flatbuffers::VOffsetT = 4;
-  pub const VT_STATUS: ::flatbuffers::VOffsetT = 6;
-  pub const VT_ATTEMPT: ::flatbuffers::VOffsetT = 8;
-  pub const VT_MESSAGE: ::flatbuffers::VOffsetT = 10;
-  pub const VT_RELAY_REASON: ::flatbuffers::VOffsetT = 12;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PublishOutboxRelay { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PublishOutboxRelayArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PublishOutboxRelay<'bldr>> {
+                let mut builder = PublishOutboxRelayBuilder::new(_fbb);
+                if let Some(x) = args.relay_reason {
+                    builder.add_relay_reason(x);
+                }
+                if let Some(x) = args.message {
+                    builder.add_message(x);
+                }
+                builder.add_attempt(args.attempt);
+                if let Some(x) = args.status {
+                    builder.add_status(x);
+                }
+                if let Some(x) = args.relay_url {
+                    builder.add_relay_url(x);
+                }
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    PublishOutboxRelay { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args PublishOutboxRelayArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<PublishOutboxRelay<'bldr>> {
-    let mut builder = PublishOutboxRelayBuilder::new(_fbb);
-    if let Some(x) = args.relay_reason { builder.add_relay_reason(x); }
-    if let Some(x) = args.message { builder.add_message(x); }
-    builder.add_attempt(args.attempt);
-    if let Some(x) = args.status { builder.add_status(x); }
-    if let Some(x) = args.relay_url { builder.add_relay_url(x); }
-    builder.finish()
-  }
+            #[inline]
+            pub fn relay_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishOutboxRelay::VT_RELAY_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn status(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishOutboxRelay::VT_STATUS,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn attempt(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(PublishOutboxRelay::VT_ATTEMPT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn message(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishOutboxRelay::VT_MESSAGE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn relay_reason(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishOutboxRelay::VT_RELAY_REASON,
+                        None,
+                    )
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for PublishOutboxRelay<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "relay_url",
+                        Self::VT_RELAY_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "status",
+                        Self::VT_STATUS,
+                        false,
+                    )?
+                    .visit_field::<u32>("attempt", Self::VT_ATTEMPT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "message",
+                        Self::VT_MESSAGE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "relay_reason",
+                        Self::VT_RELAY_REASON,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PublishOutboxRelayArgs<'a> {
+            pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub attempt: u32,
+            pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub relay_reason: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PublishOutboxRelayArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PublishOutboxRelayArgs {
+                    relay_url: None,
+                    status: None,
+                    attempt: 0,
+                    message: None,
+                    relay_reason: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn relay_url(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxRelay::VT_RELAY_URL, None)}
-  }
-  #[inline]
-  pub fn status(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxRelay::VT_STATUS, None)}
-  }
-  #[inline]
-  pub fn attempt(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(PublishOutboxRelay::VT_ATTEMPT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn message(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxRelay::VT_MESSAGE, None)}
-  }
-  #[inline]
-  pub fn relay_reason(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxRelay::VT_RELAY_REASON, None)}
-  }
-}
+        pub struct PublishOutboxRelayBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxRelayBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_relay_url(&mut self, relay_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxRelay::VT_RELAY_URL,
+                    relay_url,
+                );
+            }
+            #[inline]
+            pub fn add_status(&mut self, status: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxRelay::VT_STATUS,
+                    status,
+                );
+            }
+            #[inline]
+            pub fn add_attempt(&mut self, attempt: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PublishOutboxRelay::VT_ATTEMPT, attempt, 0);
+            }
+            #[inline]
+            pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxRelay::VT_MESSAGE,
+                    message,
+                );
+            }
+            #[inline]
+            pub fn add_relay_reason(&mut self, relay_reason: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxRelay::VT_RELAY_REASON,
+                    relay_reason,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> PublishOutboxRelayBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PublishOutboxRelayBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishOutboxRelay<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for PublishOutboxRelay<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("relay_url", Self::VT_RELAY_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status", Self::VT_STATUS, false)?
-     .visit_field::<u32>("attempt", Self::VT_ATTEMPT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("message", Self::VT_MESSAGE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("relay_reason", Self::VT_RELAY_REASON, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct PublishOutboxRelayArgs<'a> {
-    pub relay_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub attempt: u32,
-    pub message: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub relay_reason: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for PublishOutboxRelayArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    PublishOutboxRelayArgs {
-      relay_url: None,
-      status: None,
-      attempt: 0,
-      message: None,
-      relay_reason: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for PublishOutboxRelay<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PublishOutboxRelay");
+                ds.field("relay_url", &self.relay_url());
+                ds.field("status", &self.status());
+                ds.field("attempt", &self.attempt());
+                ds.field("message", &self.message());
+                ds.field("relay_reason", &self.relay_reason());
+                ds.finish()
+            }
+        }
+        pub enum PublishOutboxItemOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub struct PublishOutboxRelayBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxRelayBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_relay_url(&mut self, relay_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxRelay::VT_RELAY_URL, relay_url);
-  }
-  #[inline]
-  pub fn add_status(&mut self, status: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxRelay::VT_STATUS, status);
-  }
-  #[inline]
-  pub fn add_attempt(&mut self, attempt: u32) {
-    self.fbb_.push_slot::<u32>(PublishOutboxRelay::VT_ATTEMPT, attempt, 0);
-  }
-  #[inline]
-  pub fn add_message(&mut self, message: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxRelay::VT_MESSAGE, message);
-  }
-  #[inline]
-  pub fn add_relay_reason(&mut self, relay_reason: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxRelay::VT_RELAY_REASON, relay_reason);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PublishOutboxRelayBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    PublishOutboxRelayBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishOutboxRelay<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        pub struct PublishOutboxItem<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl ::core::fmt::Debug for PublishOutboxRelay<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("PublishOutboxRelay");
-      ds.field("relay_url", &self.relay_url());
-      ds.field("status", &self.status());
-      ds.field("attempt", &self.attempt());
-      ds.field("message", &self.message());
-      ds.field("relay_reason", &self.relay_reason());
-      ds.finish()
-  }
-}
-pub enum PublishOutboxItemOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> ::flatbuffers::Follow<'a> for PublishOutboxItem<'a> {
+            type Inner = PublishOutboxItem<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-pub struct PublishOutboxItem<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> PublishOutboxItem<'a> {
+            pub const VT_HANDLE: ::flatbuffers::VOffsetT = 4;
+            pub const VT_EVENT_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
+            pub const VT_STATUS: ::flatbuffers::VOffsetT = 10;
+            pub const VT_CAN_RETRY: ::flatbuffers::VOffsetT = 12;
+            pub const VT_TARGET_RELAYS: ::flatbuffers::VOffsetT = 14;
+            pub const VT_RELAYS: ::flatbuffers::VOffsetT = 16;
+            pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 18;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 20;
 
-impl<'a> ::flatbuffers::Follow<'a> for PublishOutboxItem<'a> {
-  type Inner = PublishOutboxItem<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PublishOutboxItem { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PublishOutboxItemArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PublishOutboxItem<'bldr>> {
+                let mut builder = PublishOutboxItemBuilder::new(_fbb);
+                builder.add_created_at(args.created_at);
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                if let Some(x) = args.relays {
+                    builder.add_relays(x);
+                }
+                builder.add_target_relays(args.target_relays);
+                if let Some(x) = args.status {
+                    builder.add_status(x);
+                }
+                builder.add_kind(args.kind);
+                if let Some(x) = args.event_id {
+                    builder.add_event_id(x);
+                }
+                if let Some(x) = args.handle {
+                    builder.add_handle(x);
+                }
+                builder.add_can_retry(args.can_retry);
+                builder.finish()
+            }
 
-impl<'a> PublishOutboxItem<'a> {
-  pub const VT_HANDLE: ::flatbuffers::VOffsetT = 4;
-  pub const VT_EVENT_ID: ::flatbuffers::VOffsetT = 6;
-  pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
-  pub const VT_STATUS: ::flatbuffers::VOffsetT = 10;
-  pub const VT_CAN_RETRY: ::flatbuffers::VOffsetT = 12;
-  pub const VT_TARGET_RELAYS: ::flatbuffers::VOffsetT = 14;
-  pub const VT_RELAYS: ::flatbuffers::VOffsetT = 16;
-  pub const VT_CREATED_AT: ::flatbuffers::VOffsetT = 18;
-  pub const VT_CONTENT: ::flatbuffers::VOffsetT = 20;
+            #[inline]
+            pub fn handle(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishOutboxItem::VT_HANDLE,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn event_id(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishOutboxItem::VT_EVENT_ID,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn kind(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(PublishOutboxItem::VT_KIND, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn status(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishOutboxItem::VT_STATUS,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn can_retry(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(PublishOutboxItem::VT_CAN_RETRY, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn target_relays(&self) -> u32 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u32>(PublishOutboxItem::VT_TARGET_RELAYS, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn relays(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<PublishOutboxRelay>,
+                        >,
+                    >>(PublishOutboxItem::VT_RELAYS, None)
+                }
+            }
+            #[inline]
+            pub fn created_at(&self) -> u64 {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<u64>(PublishOutboxItem::VT_CREATED_AT, Some(0))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn content(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishOutboxItem::VT_CONTENT,
+                        None,
+                    )
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    PublishOutboxItem { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args PublishOutboxItemArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<PublishOutboxItem<'bldr>> {
-    let mut builder = PublishOutboxItemBuilder::new(_fbb);
-    builder.add_created_at(args.created_at);
-    if let Some(x) = args.content { builder.add_content(x); }
-    if let Some(x) = args.relays { builder.add_relays(x); }
-    builder.add_target_relays(args.target_relays);
-    if let Some(x) = args.status { builder.add_status(x); }
-    builder.add_kind(args.kind);
-    if let Some(x) = args.event_id { builder.add_event_id(x); }
-    if let Some(x) = args.handle { builder.add_handle(x); }
-    builder.add_can_retry(args.can_retry);
-    builder.finish()
-  }
+        impl ::flatbuffers::Verifiable for PublishOutboxItem<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "handle",
+                        Self::VT_HANDLE,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "event_id",
+                        Self::VT_EVENT_ID,
+                        false,
+                    )?
+                    .visit_field::<u32>("kind", Self::VT_KIND, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "status",
+                        Self::VT_STATUS,
+                        false,
+                    )?
+                    .visit_field::<bool>("can_retry", Self::VT_CAN_RETRY, false)?
+                    .visit_field::<u32>("target_relays", Self::VT_TARGET_RELAYS, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<PublishOutboxRelay>,
+                        >,
+                    >>("relays", Self::VT_RELAYS, false)?
+                    .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PublishOutboxItemArgs<'a> {
+            pub handle: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub kind: u32,
+            pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub can_retry: bool,
+            pub target_relays: u32,
+            pub relays: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'a>>,
+                    >,
+                >,
+            >,
+            pub created_at: u64,
+            pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PublishOutboxItemArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PublishOutboxItemArgs {
+                    handle: None,
+                    event_id: None,
+                    kind: 0,
+                    status: None,
+                    can_retry: false,
+                    target_relays: 0,
+                    relays: None,
+                    created_at: 0,
+                    content: None,
+                }
+            }
+        }
 
+        pub struct PublishOutboxItemBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxItemBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_handle(&mut self, handle: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxItem::VT_HANDLE,
+                    handle,
+                );
+            }
+            #[inline]
+            pub fn add_event_id(&mut self, event_id: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxItem::VT_EVENT_ID,
+                    event_id,
+                );
+            }
+            #[inline]
+            pub fn add_kind(&mut self, kind: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PublishOutboxItem::VT_KIND, kind, 0);
+            }
+            #[inline]
+            pub fn add_status(&mut self, status: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxItem::VT_STATUS,
+                    status,
+                );
+            }
+            #[inline]
+            pub fn add_can_retry(&mut self, can_retry: bool) {
+                self.fbb_
+                    .push_slot::<bool>(PublishOutboxItem::VT_CAN_RETRY, can_retry, false);
+            }
+            #[inline]
+            pub fn add_target_relays(&mut self, target_relays: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PublishOutboxItem::VT_TARGET_RELAYS, target_relays, 0);
+            }
+            #[inline]
+            pub fn add_relays(
+                &mut self,
+                relays: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxItem::VT_RELAYS,
+                    relays,
+                );
+            }
+            #[inline]
+            pub fn add_created_at(&mut self, created_at: u64) {
+                self.fbb_
+                    .push_slot::<u64>(PublishOutboxItem::VT_CREATED_AT, created_at, 0);
+            }
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxItem::VT_CONTENT,
+                    content,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> PublishOutboxItemBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PublishOutboxItemBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishOutboxItem<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-  #[inline]
-  pub fn handle(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_HANDLE, None)}
-  }
-  #[inline]
-  pub fn event_id(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_EVENT_ID, None)}
-  }
-  #[inline]
-  pub fn kind(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(PublishOutboxItem::VT_KIND, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn status(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_STATUS, None)}
-  }
-  #[inline]
-  pub fn can_retry(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(PublishOutboxItem::VT_CAN_RETRY, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn target_relays(&self) -> u32 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u32>(PublishOutboxItem::VT_TARGET_RELAYS, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn relays(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay>>>>(PublishOutboxItem::VT_RELAYS, None)}
-  }
-  #[inline]
-  pub fn created_at(&self) -> u64 {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<u64>(PublishOutboxItem::VT_CREATED_AT, Some(0)).unwrap()}
-  }
-  #[inline]
-  pub fn content(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(PublishOutboxItem::VT_CONTENT, None)}
-  }
-}
+        impl ::core::fmt::Debug for PublishOutboxItem<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PublishOutboxItem");
+                ds.field("handle", &self.handle());
+                ds.field("event_id", &self.event_id());
+                ds.field("kind", &self.kind());
+                ds.field("status", &self.status());
+                ds.field("can_retry", &self.can_retry());
+                ds.field("target_relays", &self.target_relays());
+                ds.field("relays", &self.relays());
+                ds.field("created_at", &self.created_at());
+                ds.field("content", &self.content());
+                ds.finish()
+            }
+        }
+        pub enum PublishOutboxSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-impl ::flatbuffers::Verifiable for PublishOutboxItem<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("handle", Self::VT_HANDLE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("event_id", Self::VT_EVENT_ID, false)?
-     .visit_field::<u32>("kind", Self::VT_KIND, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("status", Self::VT_STATUS, false)?
-     .visit_field::<bool>("can_retry", Self::VT_CAN_RETRY, false)?
-     .visit_field::<u32>("target_relays", Self::VT_TARGET_RELAYS, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay>>>>("relays", Self::VT_RELAYS, false)?
-     .visit_field::<u64>("created_at", Self::VT_CREATED_AT, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content", Self::VT_CONTENT, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct PublishOutboxItemArgs<'a> {
-    pub handle: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub kind: u32,
-    pub status: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub can_retry: bool,
-    pub target_relays: u32,
-    pub relays: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'a>>>>>,
-    pub created_at: u64,
-    pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for PublishOutboxItemArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    PublishOutboxItemArgs {
-      handle: None,
-      event_id: None,
-      kind: 0,
-      status: None,
-      can_retry: false,
-      target_relays: 0,
-      relays: None,
-      created_at: 0,
-      content: None,
-    }
-  }
-}
+        pub struct PublishOutboxSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct PublishOutboxItemBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxItemBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_handle(&mut self, handle: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_HANDLE, handle);
-  }
-  #[inline]
-  pub fn add_event_id(&mut self, event_id: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_EVENT_ID, event_id);
-  }
-  #[inline]
-  pub fn add_kind(&mut self, kind: u32) {
-    self.fbb_.push_slot::<u32>(PublishOutboxItem::VT_KIND, kind, 0);
-  }
-  #[inline]
-  pub fn add_status(&mut self, status: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_STATUS, status);
-  }
-  #[inline]
-  pub fn add_can_retry(&mut self, can_retry: bool) {
-    self.fbb_.push_slot::<bool>(PublishOutboxItem::VT_CAN_RETRY, can_retry, false);
-  }
-  #[inline]
-  pub fn add_target_relays(&mut self, target_relays: u32) {
-    self.fbb_.push_slot::<u32>(PublishOutboxItem::VT_TARGET_RELAYS, target_relays, 0);
-  }
-  #[inline]
-  pub fn add_relays(&mut self, relays: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<PublishOutboxRelay<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_RELAYS, relays);
-  }
-  #[inline]
-  pub fn add_created_at(&mut self, created_at: u64) {
-    self.fbb_.push_slot::<u64>(PublishOutboxItem::VT_CREATED_AT, created_at, 0);
-  }
-  #[inline]
-  pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxItem::VT_CONTENT, content);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PublishOutboxItemBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    PublishOutboxItemBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishOutboxItem<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        impl<'a> ::flatbuffers::Follow<'a> for PublishOutboxSnapshot<'a> {
+            type Inner = PublishOutboxSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl ::core::fmt::Debug for PublishOutboxItem<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("PublishOutboxItem");
-      ds.field("handle", &self.handle());
-      ds.field("event_id", &self.event_id());
-      ds.field("kind", &self.kind());
-      ds.field("status", &self.status());
-      ds.field("can_retry", &self.can_retry());
-      ds.field("target_relays", &self.target_relays());
-      ds.field("relays", &self.relays());
-      ds.field("created_at", &self.created_at());
-      ds.field("content", &self.content());
-      ds.finish()
-  }
-}
-pub enum PublishOutboxSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> PublishOutboxSnapshot<'a> {
+            pub const VT_ITEMS: ::flatbuffers::VOffsetT = 4;
 
-pub struct PublishOutboxSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PublishOutboxSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PublishOutboxSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PublishOutboxSnapshot<'bldr>> {
+                let mut builder = PublishOutboxSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.items {
+                    builder.add_items(x);
+                }
+                builder.finish()
+            }
 
-impl<'a> ::flatbuffers::Follow<'a> for PublishOutboxSnapshot<'a> {
-  type Inner = PublishOutboxSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub fn items(
+                &self,
+            ) -> Option<
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxItem<'a>>>,
+            > {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<PublishOutboxItem>,
+                        >,
+                    >>(PublishOutboxSnapshot::VT_ITEMS, None)
+                }
+            }
+        }
 
-impl<'a> PublishOutboxSnapshot<'a> {
-  pub const VT_ITEMS: ::flatbuffers::VOffsetT = 4;
+        impl ::flatbuffers::Verifiable for PublishOutboxSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<PublishOutboxItem>,
+                        >,
+                    >>("items", Self::VT_ITEMS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PublishOutboxSnapshotArgs<'a> {
+            pub items: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<PublishOutboxItem<'a>>,
+                    >,
+                >,
+            >,
+        }
+        impl<'a> Default for PublishOutboxSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PublishOutboxSnapshotArgs { items: None }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    PublishOutboxSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args PublishOutboxSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<PublishOutboxSnapshot<'bldr>> {
-    let mut builder = PublishOutboxSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.items { builder.add_items(x); }
-    builder.finish()
-  }
+        pub struct PublishOutboxSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_items(
+                &mut self,
+                items: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<PublishOutboxItem<'b>>,
+                    >,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishOutboxSnapshot::VT_ITEMS,
+                    items,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> PublishOutboxSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PublishOutboxSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishOutboxSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
+        impl ::core::fmt::Debug for PublishOutboxSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PublishOutboxSnapshot");
+                ds.field("items", &self.items());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `PublishOutboxSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_publish_outbox_snapshot_unchecked`.
+        pub fn root_as_publish_outbox_snapshot(
+            buf: &[u8],
+        ) -> Result<PublishOutboxSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<PublishOutboxSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `PublishOutboxSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_publish_outbox_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_publish_outbox_snapshot(
+            buf: &[u8],
+        ) -> Result<PublishOutboxSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<PublishOutboxSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `PublishOutboxSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_publish_outbox_snapshot_unchecked`.
+        pub fn root_as_publish_outbox_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<PublishOutboxSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<PublishOutboxSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `PublishOutboxSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_publish_outbox_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_publish_outbox_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<PublishOutboxSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<PublishOutboxSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a PublishOutboxSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `PublishOutboxSnapshot`.
+        pub unsafe fn root_as_publish_outbox_snapshot_unchecked(
+            buf: &[u8],
+        ) -> PublishOutboxSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<PublishOutboxSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed PublishOutboxSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `PublishOutboxSnapshot`.
+        pub unsafe fn size_prefixed_root_as_publish_outbox_snapshot_unchecked(
+            buf: &[u8],
+        ) -> PublishOutboxSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<PublishOutboxSnapshot>(buf) }
+        }
+        pub const PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER: &str = "KPBO";
 
-  #[inline]
-  pub fn items(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxItem<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxItem>>>>(PublishOutboxSnapshot::VT_ITEMS, None)}
-  }
-}
+        #[inline]
+        pub fn publish_outbox_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER, false)
+        }
 
-impl ::flatbuffers::Verifiable for PublishOutboxSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<PublishOutboxItem>>>>("items", Self::VT_ITEMS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct PublishOutboxSnapshotArgs<'a> {
-    pub items: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<PublishOutboxItem<'a>>>>>,
-}
-impl<'a> Default for PublishOutboxSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    PublishOutboxSnapshotArgs {
-      items: None,
-    }
-  }
-}
+        #[inline]
+        pub fn publish_outbox_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER, true)
+        }
 
-pub struct PublishOutboxSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishOutboxSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_items(&mut self, items: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<PublishOutboxItem<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(PublishOutboxSnapshot::VT_ITEMS, items);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> PublishOutboxSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    PublishOutboxSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishOutboxSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn finish_publish_outbox_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<PublishOutboxSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER));
+        }
 
-impl ::core::fmt::Debug for PublishOutboxSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("PublishOutboxSnapshot");
-      ds.field("items", &self.items());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `PublishOutboxSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_publish_outbox_snapshot_unchecked`.
-pub fn root_as_publish_outbox_snapshot(buf: &[u8]) -> Result<PublishOutboxSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<PublishOutboxSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `PublishOutboxSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_publish_outbox_snapshot_unchecked`.
-pub fn size_prefixed_root_as_publish_outbox_snapshot(buf: &[u8]) -> Result<PublishOutboxSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<PublishOutboxSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `PublishOutboxSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_publish_outbox_snapshot_unchecked`.
-pub fn root_as_publish_outbox_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<PublishOutboxSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<PublishOutboxSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `PublishOutboxSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_publish_outbox_snapshot_unchecked`.
-pub fn size_prefixed_root_as_publish_outbox_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<PublishOutboxSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<PublishOutboxSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a PublishOutboxSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `PublishOutboxSnapshot`.
-pub unsafe fn root_as_publish_outbox_snapshot_unchecked(buf: &[u8]) -> PublishOutboxSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<PublishOutboxSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed PublishOutboxSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `PublishOutboxSnapshot`.
-pub unsafe fn size_prefixed_root_as_publish_outbox_snapshot_unchecked(buf: &[u8]) -> PublishOutboxSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<PublishOutboxSnapshot>(buf) }
-}
-pub const PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER: &str = "KPBO";
-
-#[inline]
-pub fn publish_outbox_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER, false)
-}
-
-#[inline]
-pub fn publish_outbox_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_publish_outbox_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<PublishOutboxSnapshot<'a>>) {
-  fbb.finish(root, Some(PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_publish_outbox_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<PublishOutboxSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod kernel
-}  // pub mod nmp
+        #[inline]
+        pub fn finish_size_prefixed_publish_outbox_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<PublishOutboxSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(PUBLISH_OUTBOX_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod kernel
+} // pub mod nmp

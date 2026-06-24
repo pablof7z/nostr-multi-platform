@@ -2,484 +2,718 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod kernel {
+    #[allow(unused_imports, dead_code)]
+    pub mod kernel {
 
+        pub enum ProfileCardOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum ProfileCardOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct ProfileCard<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct ProfileCard<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for ProfileCard<'a> {
+            type Inner = ProfileCard<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for ProfileCard<'a> {
-  type Inner = ProfileCard<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> ProfileCard<'a> {
+            pub const VT_PUBKEY: ::flatbuffers::VOffsetT = 4;
+            pub const VT_HAS_DISPLAY_NAME: ::flatbuffers::VOffsetT = 6;
+            pub const VT_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
+            pub const VT_HAS_PICTURE_URL: ::flatbuffers::VOffsetT = 10;
+            pub const VT_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
+            pub const VT_NIP05: ::flatbuffers::VOffsetT = 14;
+            pub const VT_ABOUT: ::flatbuffers::VOffsetT = 16;
+            pub const VT_HAS_LNURL: ::flatbuffers::VOffsetT = 18;
+            pub const VT_LNURL: ::flatbuffers::VOffsetT = 20;
+            pub const VT_HAS_NAME: ::flatbuffers::VOffsetT = 22;
+            pub const VT_NAME: ::flatbuffers::VOffsetT = 24;
+            pub const VT_HAS_RAW_DISPLAY_NAME: ::flatbuffers::VOffsetT = 26;
+            pub const VT_RAW_DISPLAY_NAME: ::flatbuffers::VOffsetT = 28;
+            pub const VT_HAS_DISPLAY_NAME_CAMEL: ::flatbuffers::VOffsetT = 30;
+            pub const VT_DISPLAY_NAME_CAMEL: ::flatbuffers::VOffsetT = 32;
+            pub const VT_HAS_BANNER: ::flatbuffers::VOffsetT = 34;
+            pub const VT_BANNER: ::flatbuffers::VOffsetT = 36;
+            pub const VT_HAS_WEBSITE: ::flatbuffers::VOffsetT = 38;
+            pub const VT_WEBSITE: ::flatbuffers::VOffsetT = 40;
+            pub const VT_HAS_LUD16: ::flatbuffers::VOffsetT = 42;
+            pub const VT_LUD16: ::flatbuffers::VOffsetT = 44;
+            pub const VT_HAS_LUD06: ::flatbuffers::VOffsetT = 46;
+            pub const VT_LUD06: ::flatbuffers::VOffsetT = 48;
 
-impl<'a> ProfileCard<'a> {
-  pub const VT_PUBKEY: ::flatbuffers::VOffsetT = 4;
-  pub const VT_HAS_DISPLAY_NAME: ::flatbuffers::VOffsetT = 6;
-  pub const VT_DISPLAY_NAME: ::flatbuffers::VOffsetT = 8;
-  pub const VT_HAS_PICTURE_URL: ::flatbuffers::VOffsetT = 10;
-  pub const VT_PICTURE_URL: ::flatbuffers::VOffsetT = 12;
-  pub const VT_NIP05: ::flatbuffers::VOffsetT = 14;
-  pub const VT_ABOUT: ::flatbuffers::VOffsetT = 16;
-  pub const VT_HAS_LNURL: ::flatbuffers::VOffsetT = 18;
-  pub const VT_LNURL: ::flatbuffers::VOffsetT = 20;
-  pub const VT_HAS_NAME: ::flatbuffers::VOffsetT = 22;
-  pub const VT_NAME: ::flatbuffers::VOffsetT = 24;
-  pub const VT_HAS_RAW_DISPLAY_NAME: ::flatbuffers::VOffsetT = 26;
-  pub const VT_RAW_DISPLAY_NAME: ::flatbuffers::VOffsetT = 28;
-  pub const VT_HAS_DISPLAY_NAME_CAMEL: ::flatbuffers::VOffsetT = 30;
-  pub const VT_DISPLAY_NAME_CAMEL: ::flatbuffers::VOffsetT = 32;
-  pub const VT_HAS_BANNER: ::flatbuffers::VOffsetT = 34;
-  pub const VT_BANNER: ::flatbuffers::VOffsetT = 36;
-  pub const VT_HAS_WEBSITE: ::flatbuffers::VOffsetT = 38;
-  pub const VT_WEBSITE: ::flatbuffers::VOffsetT = 40;
-  pub const VT_HAS_LUD16: ::flatbuffers::VOffsetT = 42;
-  pub const VT_LUD16: ::flatbuffers::VOffsetT = 44;
-  pub const VT_HAS_LUD06: ::flatbuffers::VOffsetT = 46;
-  pub const VT_LUD06: ::flatbuffers::VOffsetT = 48;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                ProfileCard { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args ProfileCardArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<ProfileCard<'bldr>> {
+                let mut builder = ProfileCardBuilder::new(_fbb);
+                if let Some(x) = args.lud06 {
+                    builder.add_lud06(x);
+                }
+                if let Some(x) = args.lud16 {
+                    builder.add_lud16(x);
+                }
+                if let Some(x) = args.website {
+                    builder.add_website(x);
+                }
+                if let Some(x) = args.banner {
+                    builder.add_banner(x);
+                }
+                if let Some(x) = args.display_name_camel {
+                    builder.add_display_name_camel(x);
+                }
+                if let Some(x) = args.raw_display_name {
+                    builder.add_raw_display_name(x);
+                }
+                if let Some(x) = args.name {
+                    builder.add_name(x);
+                }
+                if let Some(x) = args.lnurl {
+                    builder.add_lnurl(x);
+                }
+                if let Some(x) = args.about {
+                    builder.add_about(x);
+                }
+                if let Some(x) = args.nip05 {
+                    builder.add_nip05(x);
+                }
+                if let Some(x) = args.picture_url {
+                    builder.add_picture_url(x);
+                }
+                if let Some(x) = args.display_name {
+                    builder.add_display_name(x);
+                }
+                if let Some(x) = args.pubkey {
+                    builder.add_pubkey(x);
+                }
+                builder.add_has_lud06(args.has_lud06);
+                builder.add_has_lud16(args.has_lud16);
+                builder.add_has_website(args.has_website);
+                builder.add_has_banner(args.has_banner);
+                builder.add_has_display_name_camel(args.has_display_name_camel);
+                builder.add_has_raw_display_name(args.has_raw_display_name);
+                builder.add_has_name(args.has_name);
+                builder.add_has_lnurl(args.has_lnurl);
+                builder.add_has_picture_url(args.has_picture_url);
+                builder.add_has_display_name(args.has_display_name);
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    ProfileCard { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args ProfileCardArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<ProfileCard<'bldr>> {
-    let mut builder = ProfileCardBuilder::new(_fbb);
-    if let Some(x) = args.lud06 { builder.add_lud06(x); }
-    if let Some(x) = args.lud16 { builder.add_lud16(x); }
-    if let Some(x) = args.website { builder.add_website(x); }
-    if let Some(x) = args.banner { builder.add_banner(x); }
-    if let Some(x) = args.display_name_camel { builder.add_display_name_camel(x); }
-    if let Some(x) = args.raw_display_name { builder.add_raw_display_name(x); }
-    if let Some(x) = args.name { builder.add_name(x); }
-    if let Some(x) = args.lnurl { builder.add_lnurl(x); }
-    if let Some(x) = args.about { builder.add_about(x); }
-    if let Some(x) = args.nip05 { builder.add_nip05(x); }
-    if let Some(x) = args.picture_url { builder.add_picture_url(x); }
-    if let Some(x) = args.display_name { builder.add_display_name(x); }
-    if let Some(x) = args.pubkey { builder.add_pubkey(x); }
-    builder.add_has_lud06(args.has_lud06);
-    builder.add_has_lud16(args.has_lud16);
-    builder.add_has_website(args.has_website);
-    builder.add_has_banner(args.has_banner);
-    builder.add_has_display_name_camel(args.has_display_name_camel);
-    builder.add_has_raw_display_name(args.has_raw_display_name);
-    builder.add_has_name(args.has_name);
-    builder.add_has_lnurl(args.has_lnurl);
-    builder.add_has_picture_url(args.has_picture_url);
-    builder.add_has_display_name(args.has_display_name);
-    builder.finish()
-  }
+            #[inline]
+            pub fn pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_PUBKEY, None)
+                }
+            }
+            #[inline]
+            pub fn has_display_name(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_DISPLAY_NAME, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn display_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ProfileCard::VT_DISPLAY_NAME,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_picture_url(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_PICTURE_URL, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn picture_url(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ProfileCard::VT_PICTURE_URL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn nip05(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_NIP05, None)
+                }
+            }
+            #[inline]
+            pub fn about(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_ABOUT, None)
+                }
+            }
+            #[inline]
+            pub fn has_lnurl(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_LNURL, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn lnurl(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_LNURL, None)
+                }
+            }
+            #[inline]
+            pub fn has_name(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_NAME, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_NAME, None)
+                }
+            }
+            #[inline]
+            pub fn has_raw_display_name(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_RAW_DISPLAY_NAME, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn raw_display_name(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ProfileCard::VT_RAW_DISPLAY_NAME,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_display_name_camel(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_DISPLAY_NAME_CAMEL, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn display_name_camel(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        ProfileCard::VT_DISPLAY_NAME_CAMEL,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn has_banner(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_BANNER, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn banner(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_BANNER, None)
+                }
+            }
+            #[inline]
+            pub fn has_website(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_WEBSITE, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn website(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_WEBSITE, None)
+                }
+            }
+            #[inline]
+            pub fn has_lud16(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_LUD16, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn lud16(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_LUD16, None)
+                }
+            }
+            #[inline]
+            pub fn has_lud06(&self) -> bool {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<bool>(ProfileCard::VT_HAS_LUD06, Some(false))
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn lud06(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_LUD06, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for ProfileCard<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "pubkey",
+                        Self::VT_PUBKEY,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_display_name", Self::VT_HAS_DISPLAY_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "display_name",
+                        Self::VT_DISPLAY_NAME,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_picture_url", Self::VT_HAS_PICTURE_URL, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "picture_url",
+                        Self::VT_PICTURE_URL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "nip05",
+                        Self::VT_NIP05,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "about",
+                        Self::VT_ABOUT,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_lnurl", Self::VT_HAS_LNURL, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "lnurl",
+                        Self::VT_LNURL,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_name", Self::VT_HAS_NAME, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "name",
+                        Self::VT_NAME,
+                        false,
+                    )?
+                    .visit_field::<bool>(
+                        "has_raw_display_name",
+                        Self::VT_HAS_RAW_DISPLAY_NAME,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "raw_display_name",
+                        Self::VT_RAW_DISPLAY_NAME,
+                        false,
+                    )?
+                    .visit_field::<bool>(
+                        "has_display_name_camel",
+                        Self::VT_HAS_DISPLAY_NAME_CAMEL,
+                        false,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "display_name_camel",
+                        Self::VT_DISPLAY_NAME_CAMEL,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_banner", Self::VT_HAS_BANNER, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "banner",
+                        Self::VT_BANNER,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_website", Self::VT_HAS_WEBSITE, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "website",
+                        Self::VT_WEBSITE,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_lud16", Self::VT_HAS_LUD16, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "lud16",
+                        Self::VT_LUD16,
+                        false,
+                    )?
+                    .visit_field::<bool>("has_lud06", Self::VT_HAS_LUD06, false)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "lud06",
+                        Self::VT_LUD06,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct ProfileCardArgs<'a> {
+            pub pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_display_name: bool,
+            pub display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_picture_url: bool,
+            pub picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub nip05: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub about: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_lnurl: bool,
+            pub lnurl: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_name: bool,
+            pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_raw_display_name: bool,
+            pub raw_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_display_name_camel: bool,
+            pub display_name_camel: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_banner: bool,
+            pub banner: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_website: bool,
+            pub website: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_lud16: bool,
+            pub lud16: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub has_lud06: bool,
+            pub lud06: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for ProfileCardArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                ProfileCardArgs {
+                    pubkey: None,
+                    has_display_name: false,
+                    display_name: None,
+                    has_picture_url: false,
+                    picture_url: None,
+                    nip05: None,
+                    about: None,
+                    has_lnurl: false,
+                    lnurl: None,
+                    has_name: false,
+                    name: None,
+                    has_raw_display_name: false,
+                    raw_display_name: None,
+                    has_display_name_camel: false,
+                    display_name_camel: None,
+                    has_banner: false,
+                    banner: None,
+                    has_website: false,
+                    website: None,
+                    has_lud16: false,
+                    lud16: None,
+                    has_lud06: false,
+                    lud06: None,
+                }
+            }
+        }
 
-  #[inline]
-  pub fn pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_PUBKEY, None)}
-  }
-  #[inline]
-  pub fn has_display_name(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_DISPLAY_NAME, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn display_name(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_DISPLAY_NAME, None)}
-  }
-  #[inline]
-  pub fn has_picture_url(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_PICTURE_URL, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn picture_url(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_PICTURE_URL, None)}
-  }
-  #[inline]
-  pub fn nip05(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_NIP05, None)}
-  }
-  #[inline]
-  pub fn about(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_ABOUT, None)}
-  }
-  #[inline]
-  pub fn has_lnurl(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_LNURL, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn lnurl(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_LNURL, None)}
-  }
-  #[inline]
-  pub fn has_name(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_NAME, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn name(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_NAME, None)}
-  }
-  #[inline]
-  pub fn has_raw_display_name(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_RAW_DISPLAY_NAME, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn raw_display_name(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_RAW_DISPLAY_NAME, None)}
-  }
-  #[inline]
-  pub fn has_display_name_camel(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_DISPLAY_NAME_CAMEL, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn display_name_camel(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_DISPLAY_NAME_CAMEL, None)}
-  }
-  #[inline]
-  pub fn has_banner(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_BANNER, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn banner(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_BANNER, None)}
-  }
-  #[inline]
-  pub fn has_website(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_WEBSITE, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn website(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_WEBSITE, None)}
-  }
-  #[inline]
-  pub fn has_lud16(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_LUD16, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn lud16(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_LUD16, None)}
-  }
-  #[inline]
-  pub fn has_lud06(&self) -> bool {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<bool>(ProfileCard::VT_HAS_LUD06, Some(false)).unwrap()}
-  }
-  #[inline]
-  pub fn lud06(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ProfileCard::VT_LUD06, None)}
-  }
-}
+        pub struct ProfileCardBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ProfileCardBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_pubkey(&mut self, pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ProfileCard::VT_PUBKEY,
+                    pubkey,
+                );
+            }
+            #[inline]
+            pub fn add_has_display_name(&mut self, has_display_name: bool) {
+                self.fbb_.push_slot::<bool>(
+                    ProfileCard::VT_HAS_DISPLAY_NAME,
+                    has_display_name,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_display_name(&mut self, display_name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ProfileCard::VT_DISPLAY_NAME,
+                    display_name,
+                );
+            }
+            #[inline]
+            pub fn add_has_picture_url(&mut self, has_picture_url: bool) {
+                self.fbb_.push_slot::<bool>(
+                    ProfileCard::VT_HAS_PICTURE_URL,
+                    has_picture_url,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_picture_url(&mut self, picture_url: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ProfileCard::VT_PICTURE_URL,
+                    picture_url,
+                );
+            }
+            #[inline]
+            pub fn add_nip05(&mut self, nip05: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_NIP05, nip05);
+            }
+            #[inline]
+            pub fn add_about(&mut self, about: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_ABOUT, about);
+            }
+            #[inline]
+            pub fn add_has_lnurl(&mut self, has_lnurl: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ProfileCard::VT_HAS_LNURL, has_lnurl, false);
+            }
+            #[inline]
+            pub fn add_lnurl(&mut self, lnurl: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_LNURL, lnurl);
+            }
+            #[inline]
+            pub fn add_has_name(&mut self, has_name: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ProfileCard::VT_HAS_NAME, has_name, false);
+            }
+            #[inline]
+            pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_NAME, name);
+            }
+            #[inline]
+            pub fn add_has_raw_display_name(&mut self, has_raw_display_name: bool) {
+                self.fbb_.push_slot::<bool>(
+                    ProfileCard::VT_HAS_RAW_DISPLAY_NAME,
+                    has_raw_display_name,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_raw_display_name(
+                &mut self,
+                raw_display_name: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ProfileCard::VT_RAW_DISPLAY_NAME,
+                    raw_display_name,
+                );
+            }
+            #[inline]
+            pub fn add_has_display_name_camel(&mut self, has_display_name_camel: bool) {
+                self.fbb_.push_slot::<bool>(
+                    ProfileCard::VT_HAS_DISPLAY_NAME_CAMEL,
+                    has_display_name_camel,
+                    false,
+                );
+            }
+            #[inline]
+            pub fn add_display_name_camel(
+                &mut self,
+                display_name_camel: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ProfileCard::VT_DISPLAY_NAME_CAMEL,
+                    display_name_camel,
+                );
+            }
+            #[inline]
+            pub fn add_has_banner(&mut self, has_banner: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ProfileCard::VT_HAS_BANNER, has_banner, false);
+            }
+            #[inline]
+            pub fn add_banner(&mut self, banner: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ProfileCard::VT_BANNER,
+                    banner,
+                );
+            }
+            #[inline]
+            pub fn add_has_website(&mut self, has_website: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ProfileCard::VT_HAS_WEBSITE, has_website, false);
+            }
+            #[inline]
+            pub fn add_website(&mut self, website: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    ProfileCard::VT_WEBSITE,
+                    website,
+                );
+            }
+            #[inline]
+            pub fn add_has_lud16(&mut self, has_lud16: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ProfileCard::VT_HAS_LUD16, has_lud16, false);
+            }
+            #[inline]
+            pub fn add_lud16(&mut self, lud16: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_LUD16, lud16);
+            }
+            #[inline]
+            pub fn add_has_lud06(&mut self, has_lud06: bool) {
+                self.fbb_
+                    .push_slot::<bool>(ProfileCard::VT_HAS_LUD06, has_lud06, false);
+            }
+            #[inline]
+            pub fn add_lud06(&mut self, lud06: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_LUD06, lud06);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> ProfileCardBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                ProfileCardBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<ProfileCard<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for ProfileCard<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("pubkey", Self::VT_PUBKEY, false)?
-     .visit_field::<bool>("has_display_name", Self::VT_HAS_DISPLAY_NAME, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("display_name", Self::VT_DISPLAY_NAME, false)?
-     .visit_field::<bool>("has_picture_url", Self::VT_HAS_PICTURE_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("picture_url", Self::VT_PICTURE_URL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("nip05", Self::VT_NIP05, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("about", Self::VT_ABOUT, false)?
-     .visit_field::<bool>("has_lnurl", Self::VT_HAS_LNURL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("lnurl", Self::VT_LNURL, false)?
-     .visit_field::<bool>("has_name", Self::VT_HAS_NAME, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("name", Self::VT_NAME, false)?
-     .visit_field::<bool>("has_raw_display_name", Self::VT_HAS_RAW_DISPLAY_NAME, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("raw_display_name", Self::VT_RAW_DISPLAY_NAME, false)?
-     .visit_field::<bool>("has_display_name_camel", Self::VT_HAS_DISPLAY_NAME_CAMEL, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("display_name_camel", Self::VT_DISPLAY_NAME_CAMEL, false)?
-     .visit_field::<bool>("has_banner", Self::VT_HAS_BANNER, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("banner", Self::VT_BANNER, false)?
-     .visit_field::<bool>("has_website", Self::VT_HAS_WEBSITE, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("website", Self::VT_WEBSITE, false)?
-     .visit_field::<bool>("has_lud16", Self::VT_HAS_LUD16, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("lud16", Self::VT_LUD16, false)?
-     .visit_field::<bool>("has_lud06", Self::VT_HAS_LUD06, false)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("lud06", Self::VT_LUD06, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct ProfileCardArgs<'a> {
-    pub pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_display_name: bool,
-    pub display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_picture_url: bool,
-    pub picture_url: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub nip05: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub about: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_lnurl: bool,
-    pub lnurl: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_name: bool,
-    pub name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_raw_display_name: bool,
-    pub raw_display_name: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_display_name_camel: bool,
-    pub display_name_camel: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_banner: bool,
-    pub banner: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_website: bool,
-    pub website: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_lud16: bool,
-    pub lud16: Option<::flatbuffers::WIPOffset<&'a str>>,
-    pub has_lud06: bool,
-    pub lud06: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for ProfileCardArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    ProfileCardArgs {
-      pubkey: None,
-      has_display_name: false,
-      display_name: None,
-      has_picture_url: false,
-      picture_url: None,
-      nip05: None,
-      about: None,
-      has_lnurl: false,
-      lnurl: None,
-      has_name: false,
-      name: None,
-      has_raw_display_name: false,
-      raw_display_name: None,
-      has_display_name_camel: false,
-      display_name_camel: None,
-      has_banner: false,
-      banner: None,
-      has_website: false,
-      website: None,
-      has_lud16: false,
-      lud16: None,
-      has_lud06: false,
-      lud06: None,
-    }
-  }
-}
-
-pub struct ProfileCardBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ProfileCardBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_pubkey(&mut self, pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_PUBKEY, pubkey);
-  }
-  #[inline]
-  pub fn add_has_display_name(&mut self, has_display_name: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_DISPLAY_NAME, has_display_name, false);
-  }
-  #[inline]
-  pub fn add_display_name(&mut self, display_name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_DISPLAY_NAME, display_name);
-  }
-  #[inline]
-  pub fn add_has_picture_url(&mut self, has_picture_url: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_PICTURE_URL, has_picture_url, false);
-  }
-  #[inline]
-  pub fn add_picture_url(&mut self, picture_url: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_PICTURE_URL, picture_url);
-  }
-  #[inline]
-  pub fn add_nip05(&mut self, nip05: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_NIP05, nip05);
-  }
-  #[inline]
-  pub fn add_about(&mut self, about: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_ABOUT, about);
-  }
-  #[inline]
-  pub fn add_has_lnurl(&mut self, has_lnurl: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_LNURL, has_lnurl, false);
-  }
-  #[inline]
-  pub fn add_lnurl(&mut self, lnurl: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_LNURL, lnurl);
-  }
-  #[inline]
-  pub fn add_has_name(&mut self, has_name: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_NAME, has_name, false);
-  }
-  #[inline]
-  pub fn add_name(&mut self, name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_NAME, name);
-  }
-  #[inline]
-  pub fn add_has_raw_display_name(&mut self, has_raw_display_name: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_RAW_DISPLAY_NAME, has_raw_display_name, false);
-  }
-  #[inline]
-  pub fn add_raw_display_name(&mut self, raw_display_name: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_RAW_DISPLAY_NAME, raw_display_name);
-  }
-  #[inline]
-  pub fn add_has_display_name_camel(&mut self, has_display_name_camel: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_DISPLAY_NAME_CAMEL, has_display_name_camel, false);
-  }
-  #[inline]
-  pub fn add_display_name_camel(&mut self, display_name_camel: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_DISPLAY_NAME_CAMEL, display_name_camel);
-  }
-  #[inline]
-  pub fn add_has_banner(&mut self, has_banner: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_BANNER, has_banner, false);
-  }
-  #[inline]
-  pub fn add_banner(&mut self, banner: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_BANNER, banner);
-  }
-  #[inline]
-  pub fn add_has_website(&mut self, has_website: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_WEBSITE, has_website, false);
-  }
-  #[inline]
-  pub fn add_website(&mut self, website: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_WEBSITE, website);
-  }
-  #[inline]
-  pub fn add_has_lud16(&mut self, has_lud16: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_LUD16, has_lud16, false);
-  }
-  #[inline]
-  pub fn add_lud16(&mut self, lud16: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_LUD16, lud16);
-  }
-  #[inline]
-  pub fn add_has_lud06(&mut self, has_lud06: bool) {
-    self.fbb_.push_slot::<bool>(ProfileCard::VT_HAS_LUD06, has_lud06, false);
-  }
-  #[inline]
-  pub fn add_lud06(&mut self, lud06: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ProfileCard::VT_LUD06, lud06);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ProfileCardBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    ProfileCardBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<ProfileCard<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
-
-impl ::core::fmt::Debug for ProfileCard<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("ProfileCard");
-      ds.field("pubkey", &self.pubkey());
-      ds.field("has_display_name", &self.has_display_name());
-      ds.field("display_name", &self.display_name());
-      ds.field("has_picture_url", &self.has_picture_url());
-      ds.field("picture_url", &self.picture_url());
-      ds.field("nip05", &self.nip05());
-      ds.field("about", &self.about());
-      ds.field("has_lnurl", &self.has_lnurl());
-      ds.field("lnurl", &self.lnurl());
-      ds.field("has_name", &self.has_name());
-      ds.field("name", &self.name());
-      ds.field("has_raw_display_name", &self.has_raw_display_name());
-      ds.field("raw_display_name", &self.raw_display_name());
-      ds.field("has_display_name_camel", &self.has_display_name_camel());
-      ds.field("display_name_camel", &self.display_name_camel());
-      ds.field("has_banner", &self.has_banner());
-      ds.field("banner", &self.banner());
-      ds.field("has_website", &self.has_website());
-      ds.field("website", &self.website());
-      ds.field("has_lud16", &self.has_lud16());
-      ds.field("lud16", &self.lud16());
-      ds.field("has_lud06", &self.has_lud06());
-      ds.field("lud06", &self.lud06());
-      ds.finish()
-  }
-}
-}  // pub mod kernel
-}  // pub mod nmp
-
+        impl ::core::fmt::Debug for ProfileCard<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("ProfileCard");
+                ds.field("pubkey", &self.pubkey());
+                ds.field("has_display_name", &self.has_display_name());
+                ds.field("display_name", &self.display_name());
+                ds.field("has_picture_url", &self.has_picture_url());
+                ds.field("picture_url", &self.picture_url());
+                ds.field("nip05", &self.nip05());
+                ds.field("about", &self.about());
+                ds.field("has_lnurl", &self.has_lnurl());
+                ds.field("lnurl", &self.lnurl());
+                ds.field("has_name", &self.has_name());
+                ds.field("name", &self.name());
+                ds.field("has_raw_display_name", &self.has_raw_display_name());
+                ds.field("raw_display_name", &self.raw_display_name());
+                ds.field("has_display_name_camel", &self.has_display_name_camel());
+                ds.field("display_name_camel", &self.display_name_camel());
+                ds.field("has_banner", &self.has_banner());
+                ds.field("banner", &self.banner());
+                ds.field("has_website", &self.has_website());
+                ds.field("website", &self.website());
+                ds.field("has_lud16", &self.has_lud16());
+                ds.field("lud16", &self.lud16());
+                ds.field("has_lud06", &self.has_lud06());
+                ds.field("lud06", &self.lud06());
+                ds.finish()
+            }
+        }
+    } // pub mod kernel
+} // pub mod nmp

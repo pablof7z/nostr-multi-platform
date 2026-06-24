@@ -5,7 +5,8 @@
 #   Rust + Swift:      25.12.19
 #   Android/Kotlin:   25.2.10
 #   Web/TypeScript:   25.9.23
-#   Marmot/NMMS:      Rust+Swift 25.12.19, Kotlin 25.2.10
+#   Marmot/NMMS:      Rust covered by the unified Rust gate; Swift 25.12.19,
+#                     Kotlin 25.2.10
 #
 # Usage:
 #   bash ci/regenerate-flatbuffers.sh
@@ -125,7 +126,6 @@ run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-swift-flatc-drift.sh --wr
 run_with_flatc "${FLATC_PIN_KOTLIN}" bash ci/check-kotlin-flatc-drift.sh --write
 run_with_flatc "${FLATC_PIN_TS}" bash ci/check-ts-flatc-drift.sh --write
 
-run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-marmot-flatc-drift.sh rust --write
 run_with_flatc "${FLATC_PIN_RUST_SWIFT}" bash ci/check-marmot-flatc-drift.sh swift --write
 run_with_flatc "${FLATC_PIN_KOTLIN}" bash ci/check-marmot-flatc-drift.sh kotlin --write
 

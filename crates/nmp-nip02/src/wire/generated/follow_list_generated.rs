@@ -2,289 +2,349 @@
 // @generated
 extern crate alloc;
 
-
 #[allow(unused_imports, dead_code)]
 pub mod nmp {
 
-#[allow(unused_imports, dead_code)]
-pub mod nip_02 {
+    #[allow(unused_imports, dead_code)]
+    pub mod nip_02 {
 
+        pub enum FollowEntryOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub enum FollowEntryOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        pub struct FollowEntry<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-pub struct FollowEntry<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> ::flatbuffers::Follow<'a> for FollowEntry<'a> {
+            type Inner = FollowEntry<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-impl<'a> ::flatbuffers::Follow<'a> for FollowEntry<'a> {
-  type Inner = FollowEntry<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+        impl<'a> FollowEntry<'a> {
+            pub const VT_PUBKEY: ::flatbuffers::VOffsetT = 4;
 
-impl<'a> FollowEntry<'a> {
-  pub const VT_PUBKEY: ::flatbuffers::VOffsetT = 4;
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FollowEntry { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FollowEntryArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FollowEntry<'bldr>> {
+                let mut builder = FollowEntryBuilder::new(_fbb);
+                if let Some(x) = args.pubkey {
+                    builder.add_pubkey(x);
+                }
+                builder.finish()
+            }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    FollowEntry { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args FollowEntryArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<FollowEntry<'bldr>> {
-    let mut builder = FollowEntryBuilder::new(_fbb);
-    if let Some(x) = args.pubkey { builder.add_pubkey(x); }
-    builder.finish()
-  }
+            #[inline]
+            pub fn pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(FollowEntry::VT_PUBKEY, None)
+                }
+            }
+        }
 
+        impl ::flatbuffers::Verifiable for FollowEntry<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "pubkey",
+                        Self::VT_PUBKEY,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FollowEntryArgs<'a> {
+            pub pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for FollowEntryArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FollowEntryArgs { pubkey: None }
+            }
+        }
 
-  #[inline]
-  pub fn pubkey(&self) -> Option<&'a str> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(FollowEntry::VT_PUBKEY, None)}
-  }
-}
+        pub struct FollowEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FollowEntryBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_pubkey(&mut self, pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    FollowEntry::VT_PUBKEY,
+                    pubkey,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> FollowEntryBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FollowEntryBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FollowEntry<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-impl ::flatbuffers::Verifiable for FollowEntry<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("pubkey", Self::VT_PUBKEY, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct FollowEntryArgs<'a> {
-    pub pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
-}
-impl<'a> Default for FollowEntryArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    FollowEntryArgs {
-      pubkey: None,
-    }
-  }
-}
+        impl ::core::fmt::Debug for FollowEntry<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FollowEntry");
+                ds.field("pubkey", &self.pubkey());
+                ds.finish()
+            }
+        }
+        pub enum FollowListSnapshotOffset {}
+        #[derive(Copy, Clone, PartialEq)]
 
-pub struct FollowEntryBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FollowEntryBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_pubkey(&mut self, pubkey: ::flatbuffers::WIPOffset<&'b  str>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(FollowEntry::VT_PUBKEY, pubkey);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FollowEntryBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    FollowEntryBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<FollowEntry<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        pub struct FollowListSnapshot<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
 
-impl ::core::fmt::Debug for FollowEntry<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("FollowEntry");
-      ds.field("pubkey", &self.pubkey());
-      ds.finish()
-  }
-}
-pub enum FollowListSnapshotOffset {}
-#[derive(Copy, Clone, PartialEq)]
+        impl<'a> ::flatbuffers::Follow<'a> for FollowListSnapshot<'a> {
+            type Inner = FollowListSnapshot<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
 
-pub struct FollowListSnapshot<'a> {
-  pub _tab: ::flatbuffers::Table<'a>,
-}
+        impl<'a> FollowListSnapshot<'a> {
+            pub const VT_FOLLOWS: ::flatbuffers::VOffsetT = 4;
 
-impl<'a> ::flatbuffers::Follow<'a> for FollowListSnapshot<'a> {
-  type Inner = FollowListSnapshot<'a>;
-  #[inline]
-  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
-    Self { _tab: unsafe { ::flatbuffers::Table::new(buf, loc) } }
-  }
-}
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                FollowListSnapshot { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args FollowListSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<FollowListSnapshot<'bldr>> {
+                let mut builder = FollowListSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.follows {
+                    builder.add_follows(x);
+                }
+                builder.finish()
+            }
 
-impl<'a> FollowListSnapshot<'a> {
-  pub const VT_FOLLOWS: ::flatbuffers::VOffsetT = 4;
+            #[inline]
+            pub fn follows(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FollowEntry<'a>>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FollowEntry>>,
+                    >>(FollowListSnapshot::VT_FOLLOWS, None)
+                }
+            }
+        }
 
-  #[inline]
-  pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-    FollowListSnapshot { _tab: table }
-  }
-  #[allow(unused_mut)]
-  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: ::flatbuffers::Allocator + 'bldr>(
-    _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-    args: &'args FollowListSnapshotArgs<'args>
-  ) -> ::flatbuffers::WIPOffset<FollowListSnapshot<'bldr>> {
-    let mut builder = FollowListSnapshotBuilder::new(_fbb);
-    if let Some(x) = args.follows { builder.add_follows(x); }
-    builder.finish()
-  }
+        impl ::flatbuffers::Verifiable for FollowListSnapshot<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FollowEntry>>,
+                    >>("follows", Self::VT_FOLLOWS, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct FollowListSnapshotArgs<'a> {
+            pub follows: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FollowEntry<'a>>>,
+                >,
+            >,
+        }
+        impl<'a> Default for FollowListSnapshotArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                FollowListSnapshotArgs { follows: None }
+            }
+        }
 
+        pub struct FollowListSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FollowListSnapshotBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_follows(
+                &mut self,
+                follows: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<FollowEntry<'b>>>,
+                >,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    FollowListSnapshot::VT_FOLLOWS,
+                    follows,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> FollowListSnapshotBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                FollowListSnapshotBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<FollowListSnapshot<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
 
-  #[inline]
-  pub fn follows(&self) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FollowEntry<'a>>>> {
-    // Safety:
-    // Created from valid Table for this object
-    // which contains a valid value in this slot
-    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FollowEntry>>>>(FollowListSnapshot::VT_FOLLOWS, None)}
-  }
-}
+        impl ::core::fmt::Debug for FollowListSnapshot<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("FollowListSnapshot");
+                ds.field("follows", &self.follows());
+                ds.finish()
+            }
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a `FollowListSnapshot`
+        /// and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_follow_list_snapshot_unchecked`.
+        pub fn root_as_follow_list_snapshot(
+            buf: &[u8],
+        ) -> Result<FollowListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<FollowListSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies that a buffer of bytes contains a size prefixed
+        /// `FollowListSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `size_prefixed_root_as_follow_list_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_follow_list_snapshot(
+            buf: &[u8],
+        ) -> Result<FollowListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<FollowListSnapshot>(buf)
+        }
+        #[inline]
+        /// Verifies, with the given options, that a buffer of bytes
+        /// contains a `FollowListSnapshot` and returns it.
+        /// Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_follow_list_snapshot_unchecked`.
+        pub fn root_as_follow_list_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<FollowListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<FollowListSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Verifies, with the given verifier options, that a buffer of
+        /// bytes contains a size prefixed `FollowListSnapshot` and returns
+        /// it. Note that verification is still experimental and may not
+        /// catch every error, or be maximally performant. For the
+        /// previous, unchecked, behavior use
+        /// `root_as_follow_list_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_follow_list_snapshot_with_opts<'b, 'o>(
+            opts: &'o ::flatbuffers::VerifierOptions,
+            buf: &'b [u8],
+        ) -> Result<FollowListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<FollowListSnapshot<'b>>(opts, buf)
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a FollowListSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid `FollowListSnapshot`.
+        pub unsafe fn root_as_follow_list_snapshot_unchecked(buf: &[u8]) -> FollowListSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<FollowListSnapshot>(buf) }
+        }
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed FollowListSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `FollowListSnapshot`.
+        pub unsafe fn size_prefixed_root_as_follow_list_snapshot_unchecked(
+            buf: &[u8],
+        ) -> FollowListSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<FollowListSnapshot>(buf) }
+        }
+        pub const FOLLOW_LIST_SNAPSHOT_IDENTIFIER: &str = "NF02";
 
-impl ::flatbuffers::Verifiable for FollowListSnapshot<'_> {
-  #[inline]
-  fn run_verifier(
-    v: &mut ::flatbuffers::Verifier, pos: usize
-  ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
-    v.visit_table(pos)?
-     .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<FollowEntry>>>>("follows", Self::VT_FOLLOWS, false)?
-     .finish();
-    Ok(())
-  }
-}
-pub struct FollowListSnapshotArgs<'a> {
-    pub follows: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<FollowEntry<'a>>>>>,
-}
-impl<'a> Default for FollowListSnapshotArgs<'a> {
-  #[inline]
-  fn default() -> Self {
-    FollowListSnapshotArgs {
-      follows: None,
-    }
-  }
-}
+        #[inline]
+        pub fn follow_list_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, FOLLOW_LIST_SNAPSHOT_IDENTIFIER, false)
+        }
 
-pub struct FollowListSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
-  fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-  start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
-}
-impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> FollowListSnapshotBuilder<'a, 'b, A> {
-  #[inline]
-  pub fn add_follows(&mut self, follows: ::flatbuffers::WIPOffset<::flatbuffers::Vector<'b , ::flatbuffers::ForwardsUOffset<FollowEntry<'b >>>>) {
-    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(FollowListSnapshot::VT_FOLLOWS, follows);
-  }
-  #[inline]
-  pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> FollowListSnapshotBuilder<'a, 'b, A> {
-    let start = _fbb.start_table();
-    FollowListSnapshotBuilder {
-      fbb_: _fbb,
-      start_: start,
-    }
-  }
-  #[inline]
-  pub fn finish(self) -> ::flatbuffers::WIPOffset<FollowListSnapshot<'a>> {
-    let o = self.fbb_.end_table(self.start_);
-    ::flatbuffers::WIPOffset::new(o.value())
-  }
-}
+        #[inline]
+        pub fn follow_list_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, FOLLOW_LIST_SNAPSHOT_IDENTIFIER, true)
+        }
 
-impl ::core::fmt::Debug for FollowListSnapshot<'_> {
-  fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-    let mut ds = f.debug_struct("FollowListSnapshot");
-      ds.field("follows", &self.follows());
-      ds.finish()
-  }
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a `FollowListSnapshot`
-/// and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_follow_list_snapshot_unchecked`.
-pub fn root_as_follow_list_snapshot(buf: &[u8]) -> Result<FollowListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root::<FollowListSnapshot>(buf)
-}
-#[inline]
-/// Verifies that a buffer of bytes contains a size prefixed
-/// `FollowListSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `size_prefixed_root_as_follow_list_snapshot_unchecked`.
-pub fn size_prefixed_root_as_follow_list_snapshot(buf: &[u8]) -> Result<FollowListSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root::<FollowListSnapshot>(buf)
-}
-#[inline]
-/// Verifies, with the given options, that a buffer of bytes
-/// contains a `FollowListSnapshot` and returns it.
-/// Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_follow_list_snapshot_unchecked`.
-pub fn root_as_follow_list_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<FollowListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::root_with_opts::<FollowListSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Verifies, with the given verifier options, that a buffer of
-/// bytes contains a size prefixed `FollowListSnapshot` and returns
-/// it. Note that verification is still experimental and may not
-/// catch every error, or be maximally performant. For the
-/// previous, unchecked, behavior use
-/// `root_as_follow_list_snapshot_unchecked`.
-pub fn size_prefixed_root_as_follow_list_snapshot_with_opts<'b, 'o>(
-  opts: &'o ::flatbuffers::VerifierOptions,
-  buf: &'b [u8],
-) -> Result<FollowListSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-  ::flatbuffers::size_prefixed_root_with_opts::<FollowListSnapshot<'b>>(opts, buf)
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a FollowListSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid `FollowListSnapshot`.
-pub unsafe fn root_as_follow_list_snapshot_unchecked(buf: &[u8]) -> FollowListSnapshot<'_> {
-  unsafe { ::flatbuffers::root_unchecked::<FollowListSnapshot>(buf) }
-}
-#[inline]
-/// Assumes, without verification, that a buffer of bytes contains a size prefixed FollowListSnapshot and returns it.
-/// # Safety
-/// Callers must trust the given bytes do indeed contain a valid size prefixed `FollowListSnapshot`.
-pub unsafe fn size_prefixed_root_as_follow_list_snapshot_unchecked(buf: &[u8]) -> FollowListSnapshot<'_> {
-  unsafe { ::flatbuffers::size_prefixed_root_unchecked::<FollowListSnapshot>(buf) }
-}
-pub const FOLLOW_LIST_SNAPSHOT_IDENTIFIER: &str = "NF02";
+        #[inline]
+        pub fn finish_follow_list_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<FollowListSnapshot<'a>>,
+        ) {
+            fbb.finish(root, Some(FOLLOW_LIST_SNAPSHOT_IDENTIFIER));
+        }
 
-#[inline]
-pub fn follow_list_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, FOLLOW_LIST_SNAPSHOT_IDENTIFIER, false)
-}
-
-#[inline]
-pub fn follow_list_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-  ::flatbuffers::buffer_has_identifier(buf, FOLLOW_LIST_SNAPSHOT_IDENTIFIER, true)
-}
-
-#[inline]
-pub fn finish_follow_list_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-    fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-    root: ::flatbuffers::WIPOffset<FollowListSnapshot<'a>>) {
-  fbb.finish(root, Some(FOLLOW_LIST_SNAPSHOT_IDENTIFIER));
-}
-
-#[inline]
-pub fn finish_size_prefixed_follow_list_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>, root: ::flatbuffers::WIPOffset<FollowListSnapshot<'a>>) {
-  fbb.finish_size_prefixed(root, Some(FOLLOW_LIST_SNAPSHOT_IDENTIFIER));
-}
-}  // pub mod nip02
-}  // pub mod nmp
-
+        #[inline]
+        pub fn finish_size_prefixed_follow_list_snapshot_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<FollowListSnapshot<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(FOLLOW_LIST_SNAPSHOT_IDENTIFIER));
+        }
+    } // pub mod nip02
+} // pub mod nmp
