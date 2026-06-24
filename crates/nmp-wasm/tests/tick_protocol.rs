@@ -6,7 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
-use nmp_core::nip19::{encode_nevent, encode_npub, NeventData};
+use nmp_core::nip19::encode_npub;
 use nmp_core::publish::{PublishAction, PublishTarget};
 use nmp_core::substrate::ActionPayload;
 use nmp_core::RelayRole;
@@ -109,24 +109,18 @@ fn release_profile_request(consumer_id: &str) -> WorkerRequest {
     })
 }
 
-fn claim_event_request(consumer_id: &str, event_id: &str) -> WorkerRequest {
-    let uri = format!(
-        "nostr:{}",
-        encode_nevent(&NeventData {
-            event_id: event_id.to_string(),
-            relays: Vec::new(),
-            author: Some(ACCOUNT.to_string()),
-            kind: Some(1),
-        })
-        .expect("event id must encode as nevent")
-    );
+fn resolve_event_request(consumer_id: &str, event_id: &str) -> WorkerRequest {
     WorkerRequest::Dispatch(ActionDispatch {
-        action_type: "nmp.kernel.claim_event".to_string(),
+        action_type: "nmp.kernel.resolve_ref".to_string(),
         payload: serde_json::json!({
-            "uri": uri,
+            "namespace": 1,
+            "key": event_id,
             "consumer_id": consumer_id,
+            "shape": 0,
+            "liveness": 0,
+            "hints": [RELAY_URL],
         }),
-        correlation_id: format!("claim-{consumer_id}"),
+        correlation_id: format!("resolve-event-{consumer_id}"),
     })
 }
 
@@ -278,31 +272,31 @@ fn release_ref_empty_outbound_arms_event_drain_and_drains_lifecycle_close() {
 }
 
 #[test]
-fn legacy_claim_event_empty_outbound_arms_event_drain_and_drains_lifecycle() {
+fn resolve_ref_event_empty_outbound_arms_event_drain_and_drains_lifecycle() {
     let mut rt = started_runtime();
     settle_connected_runtime(&mut rt);
 
     let events = rt
-        .handle(claim_event_request("legacy-claim", &"33".repeat(32)))
-        .expect("claim_event dispatch must succeed");
-    assert_action_accepted(&events, "nmp.kernel.claim_event");
+        .handle(resolve_event_request("event-embed", &"33".repeat(32)))
+        .expect("resolve_ref event dispatch must succeed");
+    assert_action_accepted(&events, "nmp.kernel.resolve_ref");
     assert_no_update_bytes(&events);
     assert_eq!(
         rt.maintenance_deadline_delay_for_test(),
         Some(1_000),
-        "legacy claim_event returns no outbound directly but must arm one event drain"
+        "event resolve_ref returns no outbound directly but must arm one event drain"
     );
 
     let (outbound, _) = rt
         .fire_maintenance_deadline_for_test()
-        .expect("claim_event drain must be armed");
+        .expect("event resolve_ref drain must be armed");
     assert!(
         !outbound.is_empty(),
-        "event drain must compile the queued event claim into outbound"
+        "event drain must compile the queued event ref into outbound"
     );
     assert!(
         !rt.maintenance_deadline_armed_for_test(),
-        "claim_event drain must not leave a fixed cadence behind"
+        "event resolve_ref drain must not leave a fixed cadence behind"
     );
 }
 

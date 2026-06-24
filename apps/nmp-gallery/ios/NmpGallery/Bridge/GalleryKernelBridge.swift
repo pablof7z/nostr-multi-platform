@@ -178,8 +178,8 @@ final class GalleryKernelHandle {
         }
     }
 
-    /// #1726 — Release a previously-claimed event ref.
-    /// Supersedes the deleted `releaseEvent(uri:…)`.
+    /// #1726 — App-local URI adapter that releases the event via
+    /// nmp_app_release_ref (namespace=1/event).
     func releaseEvent(uri: String, consumerID: String) {
         guard let eventId = decodeEventKey(from: uri) else { return }
         eventId.withCString { keyPtr in

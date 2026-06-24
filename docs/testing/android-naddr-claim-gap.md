@@ -11,7 +11,7 @@ Fresh cold-start of the Android gallery (emulator-5554) on master `01a6cdfc` (#8
 So: a connected relay serves the kind:30023, Android is connected to it, yet the claim never resolves. This is NOT relay timing (the trap that mislead earlier hypotheses) — it is reproduced with the relay demonstrably serving the event at the same moment.
 
 ## Contrast that localizes it
-- **nevent (kind:1 note 276d69d6…) RESOLVES on Android** via the same `model.claimEvent(uri, CONSUMER_ID)` path (EmbedComponentPages.kt:126 vs article :228). Note resolved in <3s against the connected primal.
+- **nevent (kind:1 note 276d69d6…) RESOLVES on Android** via the same app-local `model.claimEvent(uri, CONSUMER_ID)` URI adapter over `resolve_ref` (EmbedComponentPages.kt:126 vs article :228). Note resolved in <3s against the connected primal.
 - **naddr (kind:30023 article) does NOT resolve** on Android, even with primal connected + serving it.
 - Both resolve on TUI (TUI smoke 2/2) — because TUI's primal connection + claim path handle the naddr. So the gap is Android-specific OR an addressable-claim path difference that Android happens to exercise.
 
