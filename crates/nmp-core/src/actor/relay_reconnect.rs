@@ -7,11 +7,9 @@
 //! cap.
 
 use crate::kernel::Kernel;
-use crate::relay::CanonicalRelayUrl;
 use nmp_network::pool::Pool;
-use std::collections::HashMap;
 
-use super::RelayControl;
+use super::relay_runtime::RelayRuntime;
 
 /// Re-attempt connection on every relay worker the actor tracks.
 ///
@@ -32,13 +30,9 @@ use super::RelayControl;
 /// actor being `running`.
 ///
 /// Returns the number of sockets whose slot was reopened (errored → re-dialing).
-pub(super) fn reconnect_relays(
-    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    pool: &Pool,
-    kernel: &mut Kernel,
-) -> usize {
+pub(super) fn reconnect_relays(rt: &mut RelayRuntime, pool: &Pool, kernel: &mut Kernel) -> usize {
     let mut reopened = 0_usize;
-    for control in relay_controls.values_mut() {
+    for control in rt.relay_controls.values_mut() {
         let role = control.role;
         let url = control.relay_url.clone();
         let handle = pool.ensure_open_with_role(&url, role);
@@ -61,8 +55,9 @@ pub(super) fn reconnect_relays(
 mod tests {
     use super::*;
     use crate::actor::relay_mgmt::ensure_relay_worker;
-    use nmp_network::role::RelayRole;
+    use crate::relay::CanonicalRelayUrl;
     use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
+    use nmp_network::role::RelayRole;
 
     /// #1689 — `reconnect_relays` re-dials a downed relay worker (the
     /// load-bearing proof that `ActorCommand::Relay(RelayCommand::ReconnectRelays)` triggers a
@@ -76,30 +71,21 @@ mod tests {
         let (events_tx, _events_rx) = std::sync::mpsc::channel::<PoolEvent>();
         let pool = Pool::new(PoolConfig::default(), events_tx);
         let mut kernel = Kernel::new(80);
-        let mut relay_controls = HashMap::new();
-        let mut slot_to_url = HashMap::new();
-        let mut next_gen = 1_u64;
+        let mut rt = RelayRuntime::new();
         let url = "wss://127.0.0.1:1".to_string();
 
-        let spawned = ensure_relay_worker(
-            &mut relay_controls,
-            &mut slot_to_url,
-            &pool,
-            &mut kernel,
-            &mut next_gen,
-            RelayRole::Content,
-            url.clone(),
-        );
+        let spawned = ensure_relay_worker(&mut rt, &pool, &mut kernel, RelayRole::Content, url.clone());
         assert!(spawned, "first ensure_relay_worker call must spawn");
 
         let key = CanonicalRelayUrl::parse_or_raw(&url);
-        let before = relay_controls.get(&key).expect("control exists").handle;
+        let before = rt.relay_controls.get(&key).expect("control exists").handle;
         assert!(pool.close(before), "closing the live handle must succeed");
 
-        let reopened = reconnect_relays(&mut relay_controls, &pool, &mut kernel);
+        let reopened = reconnect_relays(&mut rt, &pool, &mut kernel);
         assert_eq!(reopened, 1, "#1689: must re-dial the one downed socket");
 
-        let after = relay_controls
+        let after = rt
+            .relay_controls
             .get(&key)
             .expect("control still exists")
             .handle;
@@ -116,7 +102,7 @@ mod tests {
         );
 
         // A second reconnect over the now-live (Connecting) slot is a no-op.
-        let again = reconnect_relays(&mut relay_controls, &pool, &mut kernel);
+        let again = reconnect_relays(&mut rt, &pool, &mut kernel);
         assert_eq!(again, 0, "#1689: reconnect over a live socket is a no-op");
     }
 
@@ -133,44 +119,18 @@ mod tests {
     }
 
     /// Seed one relay worker for `url`, close its pool slot (down state), and
-    /// return the harness state plus the pre-reconnect handle generation.
-    #[allow(clippy::type_complexity)]
-    fn seed_downed_relay(
-        url: &str,
-    ) -> (
-        Pool,
-        Kernel,
-        HashMap<CanonicalRelayUrl, RelayControl>,
-        HashMap<u32, CanonicalRelayUrl>,
-        u64,
-        u64,
-    ) {
+    /// return the harness state (pool + kernel + runtime) plus the pre-reconnect
+    /// handle generation.
+    fn seed_downed_relay(url: &str) -> (Pool, Kernel, RelayRuntime, u64) {
         let (events_tx, _events_rx) = std::sync::mpsc::channel::<PoolEvent>();
         let pool = Pool::new(PoolConfig::default(), events_tx);
         let mut kernel = Kernel::new(80);
-        let mut relay_controls = HashMap::new();
-        let mut slot_to_url = HashMap::new();
-        let mut next_gen = 1_u64;
-        ensure_relay_worker(
-            &mut relay_controls,
-            &mut slot_to_url,
-            &pool,
-            &mut kernel,
-            &mut next_gen,
-            RelayRole::Content,
-            url.to_string(),
-        );
+        let mut rt = RelayRuntime::new();
+        ensure_relay_worker(&mut rt, &pool, &mut kernel, RelayRole::Content, url.to_string());
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let before = relay_controls.get(&key).expect("control").handle;
+        let before = rt.relay_controls.get(&key).expect("control").handle;
         assert!(pool.close(before), "close the live handle");
-        (
-            pool,
-            kernel,
-            relay_controls,
-            slot_to_url,
-            next_gen,
-            before.generation(),
-        )
+        (pool, kernel, rt, before.generation())
     }
 
     /// #1689 — the `ActorCommand::Relay(RelayCommand::ReconnectRelays)` DISPATCH ARM re-dials a downed
@@ -180,8 +140,7 @@ mod tests {
     #[test]
     fn reconnect_relays_command_dispatches_and_redials() {
         let url = "wss://127.0.0.1:1";
-        let (pool, mut kernel, mut relay_controls, mut slot_to_url, mut next_gen, gen_before) =
-            seed_downed_relay(url);
+        let (pool, mut kernel, mut rt, gen_before) = seed_downed_relay(url);
         let mut identity = fresh_identity();
 
         dispatch_one_with_relays(
@@ -189,14 +148,13 @@ mod tests {
             &mut identity,
             &mut kernel,
             &pool,
-            &mut relay_controls,
-            &mut slot_to_url,
-            &mut next_gen,
+            &mut rt,
             true, // running
         );
 
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let gen_after = relay_controls
+        let gen_after = rt
+            .relay_controls
             .get(&key)
             .expect("control")
             .handle
@@ -213,8 +171,7 @@ mod tests {
     #[test]
     fn reconnect_relays_command_is_noop_before_start() {
         let url = "wss://127.0.0.1:1";
-        let (pool, mut kernel, mut relay_controls, mut slot_to_url, mut next_gen, gen_before) =
-            seed_downed_relay(url);
+        let (pool, mut kernel, mut rt, gen_before) = seed_downed_relay(url);
         let mut identity = fresh_identity();
 
         dispatch_one_with_relays(
@@ -222,14 +179,13 @@ mod tests {
             &mut identity,
             &mut kernel,
             &pool,
-            &mut relay_controls,
-            &mut slot_to_url,
-            &mut next_gen,
+            &mut rt,
             false, // NOT running — fail-closed
         );
 
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let gen_after = relay_controls
+        let gen_after = rt
+            .relay_controls
             .get(&key)
             .expect("control")
             .handle

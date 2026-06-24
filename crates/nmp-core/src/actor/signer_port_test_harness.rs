@@ -22,26 +22,12 @@ pub(super) fn dispatch_one(
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
 ) -> Vec<ParkedOp> {
-    use crate::relay::CanonicalRelayUrl;
-    use std::collections::HashMap;
-
     let pool = nmp_network::pool::Pool::new(
         nmp_network::pool::PoolConfig::default(),
         channel::<nmp_network::pool::PoolEvent>().0,
     );
-    let mut relay_controls: HashMap<CanonicalRelayUrl, super::RelayControl> = HashMap::new();
-    let mut slot_to_url: HashMap<u32, CanonicalRelayUrl> = HashMap::new();
-    let mut next_relay_generation = 1u64;
-    dispatch_one_with_relays(
-        cmd,
-        identity,
-        kernel,
-        &pool,
-        &mut relay_controls,
-        &mut slot_to_url,
-        &mut next_relay_generation,
-        true,
-    )
+    let mut relay_runtime = super::relay_runtime::RelayRuntime::new();
+    dispatch_one_with_relays(cmd, identity, kernel, &pool, &mut relay_runtime, true)
 }
 
 /// Lower-level variant of [`dispatch_one`] that threads caller-owned relay
@@ -49,21 +35,14 @@ pub(super) fn dispatch_one(
 /// [`ActorContext`] so a test can pre-seed relay workers and inspect them after
 /// the dispatch. `running` selects the actor's running flag (the fail-closed
 /// gate the `ReconnectRelays` arm checks). Returns the parked-op queue.
-#[allow(clippy::too_many_arguments)]
 pub(super) fn dispatch_one_with_relays(
     cmd: ActorCommand,
     identity: &mut IdentityRuntime,
     kernel: &mut Kernel,
     pool: &nmp_network::pool::Pool,
-    relay_controls: &mut std::collections::HashMap<
-        crate::relay::CanonicalRelayUrl,
-        super::RelayControl,
-    >,
-    slot_to_url: &mut std::collections::HashMap<u32, crate::relay::CanonicalRelayUrl>,
-    next_relay_generation: &mut u64,
+    relay_runtime: &mut super::relay_runtime::RelayRuntime,
     running_flag: bool,
 ) -> Vec<ParkedOp> {
-    use std::collections::HashSet;
     use std::time::Instant;
 
     let (update_tx, _update_rx) = channel::<crate::update_envelope::UpdateFrameBytes>();
@@ -72,8 +51,6 @@ pub(super) fn dispatch_one_with_relays(
     let lifecycle_observer = commands::new_observer_slot();
     let mls_local_nsec = Arc::new(Mutex::new(None));
     let active_local_keys = Arc::new(Mutex::new(None));
-    let mut connected_relays = HashSet::new();
-    let mut connected_urls = HashSet::new();
     let mut last_emit = Instant::now();
     let mut running = running_flag;
     let mut emit_hz = 4u32;
@@ -127,15 +104,11 @@ pub(super) fn dispatch_one_with_relays(
     let mut ctx = ActorContext {
         kernel,
         identity,
-        relay_controls,
-        slot_to_url,
+        relay_runtime,
         pool,
-        connected_relays: &mut connected_relays,
-        connected_urls: &mut connected_urls,
         update_tx: &update_tx,
         last_emit: &mut last_emit,
         dispatch_now: Instant::now(),
-        next_relay_generation,
         running: &mut running,
         emit_hz: &mut emit_hz,
         startup_sent: &mut startup_sent,

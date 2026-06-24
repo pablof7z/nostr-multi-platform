@@ -107,6 +107,11 @@ mod relay_mgmt;
 #[cfg(feature = "native")]
 mod relay_reconnect;
 mod relay_roles;
+// #1938 — URL-keyed relay runtime owner. Consolidates the five scattered relay
+// loop-locals into one struct and derives role readiness from per-URL socket
+// state (no parallel `connected_relays` role-set). Native-only.
+#[cfg(feature = "native")]
+mod relay_runtime;
 #[cfg(all(test, feature = "native"))]
 mod relay_url_canonical_tests;
 #[cfg(all(test, feature = "native"))]
@@ -254,15 +259,15 @@ pub use continuations::{CipherContinuation, SignContinuation};
 use inbox::{CommandLaneDrain, Inbox, LoopStep, MailScheduler};
 
 #[cfg(feature = "native")]
-use relay_control::RelayControl;
-#[cfg(feature = "native")]
 use relay_mgmt::close_relays;
+#[cfg(feature = "native")]
+use relay_runtime::RelayRuntime;
 #[cfg(feature = "native")]
 use tick::{compute_wait, emit_now};
 
 #[cfg(feature = "native")]
 #[cfg(feature = "native")]
-use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
+use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 #[cfg(feature = "native")]
 // Step 8 phase F — actor cut-over to the push-model `Pool` API. The legacy
 // `nmp_network::relay_worker::{RelayCommand, RelayEvent, spawn_relay_worker}`
@@ -275,9 +280,6 @@ use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 #[cfg(feature = "native")]
 #[cfg(feature = "native")]
 use nmp_network::pool::{Pool, PoolConfig};
-use std::collections::HashMap;
-#[cfg(feature = "native")]
-use std::collections::HashSet;
 #[cfg(feature = "native")]
 #[cfg(feature = "native")]
 use std::sync::Arc;
@@ -520,22 +522,18 @@ pub fn run_actor_with_observers(
     // `running=true` Start frame is rev=2.
     emit_now(&mut kernel, running, &update_tx, &mut last_emit);
 
-    // T105: URL-keyed transport pool. One socket per resolved relay URL;
-    // workers spawn on demand as OutboundMessages flow with new relay_urls.
-    // Keyed by `CanonicalRelayUrl` so the canonicalization invariant is
-    // compiler-enforced — a raw `&str` cannot index the pool.
-    let mut relay_controls: HashMap<CanonicalRelayUrl, RelayControl> = HashMap::new();
-    // Phase F: reverse lookup from a `RelayHandle.slot()` back to the
-    // canonical pool key. Inbound `PoolEvent`s carry the handle but not the
-    // URL on every variant (`Opened` carries it; `Frame`/`Closed`/`Failed`
-    // do not), so we maintain this side-map alongside `relay_controls` so
-    // the event dispatcher can resolve `slot → (url, role)` without an
-    // O(n) scan. Inserted by `ensure_relay_worker`, removed by
-    // `shutdown_relay_worker` / `close_relays`.
-    let mut slot_to_url: HashMap<u32, CanonicalRelayUrl> = HashMap::new();
-    let mut connected_relays = HashSet::new();
-    let mut connected_urls: HashSet<CanonicalRelayUrl> = HashSet::new(); // T116/G1 reconnect-replay discriminator.
-    let mut next_relay_generation = 1;
+    // #1938 — URL-keyed relay runtime owner. Consolidates the per-URL
+    // transport bookkeeping that used to live as five scattered loop-locals:
+    // `relay_controls` (one socket per resolved relay URL, keyed by
+    // `CanonicalRelayUrl` so the canonicalization invariant is
+    // compiler-enforced), `slot_to_url` (reverse lookup from a
+    // `RelayHandle.slot()` back to the canonical pool key — handle-carrying
+    // `PoolEvent`s don't all carry the URL), `connected_urls` (THE canonical
+    // per-socket readiness fact + T116/G1 reconnect-replay discriminator), and
+    // `next_relay_generation` (belt-and-braces stale-event stamp). Role
+    // readiness is derived from `connected_urls`, not a parallel role-set, so a
+    // single sibling-URL failure no longer drops a whole role lane.
+    let mut relay_runtime = RelayRuntime::new();
     // #1069 — wall-clock gate for the bounded GC pass. Initialised to "now" so
     // the first pass fires one `GC_TICK_INTERVAL` after the actor starts, not
     // on the cold-start burst (the store is empty then anyway). An `Instant`
@@ -594,18 +592,14 @@ pub fn run_actor_with_observers(
             let mut lc = LoopContext {
                 kernel: &mut kernel,
                 identity: &mut identity,
-                relay_controls: &mut relay_controls,
-                slot_to_url: &mut slot_to_url,
+                relay_runtime: &mut relay_runtime,
                 pool: &pool,
-                connected_relays: &mut connected_relays,
-                connected_urls: &mut connected_urls,
                 update_tx: &update_tx,
                 last_emit: &mut last_emit,
                 last_gc: &mut last_gc,
                 running: &mut running,
                 emit_hz: &mut emit_hz,
                 startup_sent: &mut startup_sent,
-                next_relay_generation: &mut next_relay_generation,
                 lifecycle_observer: &lifecycle_observer,
                 mls_local_nsec: &mls_local_nsec,
                 active_local_keys: &active_local_keys,
@@ -663,12 +657,8 @@ pub fn run_actor_with_observers(
                     &config.relay_text_interceptors,
                     &config.relay_connected_hooks,
                     &command_tx_self,
-                    &mut relay_controls,
-                    &mut slot_to_url,
+                    &mut relay_runtime,
                     &pool,
-                    &mut next_relay_generation,
-                    &mut connected_relays,
-                    &mut connected_urls,
                     &update_tx,
                     &mut last_emit,
                     &mut startup_sent,
@@ -723,14 +713,7 @@ pub fn run_actor_with_observers(
                 first_command = Some(command);
             }
             LoopStep::Shutdown => {
-                close_relays(
-                    &mut relay_controls,
-                    &mut slot_to_url,
-                    &pool,
-                    &mut connected_relays,
-                    &mut kernel,
-                );
-                connected_urls.clear();
+                close_relays(&mut relay_runtime, &pool, &mut kernel);
                 return;
             }
             LoopStep::Idle => {
@@ -751,18 +734,14 @@ pub fn run_actor_with_observers(
             let mut lc = LoopContext {
                 kernel: &mut kernel,
                 identity: &mut identity,
-                relay_controls: &mut relay_controls,
-                slot_to_url: &mut slot_to_url,
+                relay_runtime: &mut relay_runtime,
                 pool: &pool,
-                connected_relays: &mut connected_relays,
-                connected_urls: &mut connected_urls,
                 update_tx: &update_tx,
                 last_emit: &mut last_emit,
                 last_gc: &mut last_gc,
                 running: &mut running,
                 emit_hz: &mut emit_hz,
                 startup_sent: &mut startup_sent,
-                next_relay_generation: &mut next_relay_generation,
                 lifecycle_observer: &lifecycle_observer,
                 mls_local_nsec: &mls_local_nsec,
                 active_local_keys: &active_local_keys,

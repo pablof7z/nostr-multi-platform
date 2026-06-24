@@ -17,7 +17,6 @@
 //! `&mut kernel` borrow, and moving it here would require re-threading or
 //! duplicating the macro expansion sites.
 
-use std::collections::{HashMap, HashSet};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
@@ -31,13 +30,13 @@ use crate::actor::dispatch::{dispatch_command, ActorContext};
 use crate::actor::pending_sign::{DrainBatch, ParkedSignerOps, PublishObligation};
 use crate::actor::relay_idle::{sweep_temporary_idle_relays, TEMPORARY_RELAY_IDLE_GRACE};
 use crate::actor::relay_mgmt::{
-    claim_send_gate, close_relays, maybe_send_startup, route_dispatch_outbound, send_all_outbound,
+    close_relays, maybe_send_startup, route_dispatch_outbound, send_all_outbound,
 };
+use crate::actor::relay_runtime::RelayRuntime;
 use crate::actor::tick::{emit_now, flush_due};
-use crate::actor::{ActorCommand, ActorConfig, CommandSender, RelayControl, GC_TICK_INTERVAL};
+use crate::actor::{ActorCommand, ActorConfig, CommandSender, GC_TICK_INTERVAL};
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel::Kernel;
-use crate::relay::CanonicalRelayUrl;
 use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
 
 /// Borrowed bundle of the mutable loop-locals shared between the command lane,
@@ -53,12 +52,11 @@ pub(super) struct LoopContext<'a> {
     pub(super) identity: &'a mut IdentityRuntime,
 
     // ── Relay-pool state ─────────────────────────────────────────────────
-    pub(super) relay_controls: &'a mut HashMap<CanonicalRelayUrl, RelayControl>,
-    /// slot() → canonical URL reverse-map for O(1) `PoolEvent` resolution.
-    pub(super) slot_to_url: &'a mut HashMap<u32, CanonicalRelayUrl>,
+    /// #1938 — URL-keyed relay runtime owner (relay_controls + slot_to_url +
+    /// connected_urls + next_relay_generation). Role readiness is derived from
+    /// its `connected_urls`, not a parallel role-set.
+    pub(super) relay_runtime: &'a mut RelayRuntime,
     pub(super) pool: &'a Pool,
-    pub(super) connected_relays: &'a mut HashSet<nmp_network::role::RelayRole>,
-    pub(super) connected_urls: &'a mut HashSet<CanonicalRelayUrl>,
 
     // ── Emission & timing ────────────────────────────────────────────────
     pub(super) update_tx: &'a Sender<crate::update_envelope::UpdateFrameBytes>,
@@ -69,7 +67,6 @@ pub(super) struct LoopContext<'a> {
     pub(super) running: &'a mut bool,
     pub(super) emit_hz: &'a mut u32,
     pub(super) startup_sent: &'a mut bool,
-    pub(super) next_relay_generation: &'a mut u64,
 
     // ── Observer / hook slots (shared `Arc<Mutex<…>>`) ───────────────────
     pub(super) lifecycle_observer: &'a LifecycleObserverSlot,
@@ -156,22 +153,19 @@ pub(super) fn drain_commands(
 
         // Fix A (universal latent-bug fix): `relays_ready` is the
         // SINGLE claim/open send-gate, computed here once per dispatch
-        // and fed to every consumer.  `claim_send_gate` returns true as
-        // soon as ANY bootstrap lane is connected.
-        let relays_ready = claim_send_gate(lc.connected_relays);
+        // and fed to every consumer.  #1938 — derived from per-URL socket
+        // state (`RelayRuntime::any_role_connected`): true as soon as ANY
+        // connected URL exists (any role lane ready).
+        let relays_ready = lc.relay_runtime.any_role_connected();
         let dispatch_now = Instant::now();
         let mut ctx = ActorContext {
             kernel: lc.kernel,
             identity: lc.identity,
-            relay_controls: lc.relay_controls,
-            slot_to_url: lc.slot_to_url,
+            relay_runtime: lc.relay_runtime,
             pool: lc.pool,
-            connected_relays: lc.connected_relays,
-            connected_urls: lc.connected_urls,
             update_tx: lc.update_tx,
             last_emit: lc.last_emit,
             dispatch_now,
-            next_relay_generation: lc.next_relay_generation,
             running: lc.running,
             emit_hz: lc.emit_hz,
             startup_sent: lc.startup_sent,
@@ -197,23 +191,18 @@ pub(super) fn drain_commands(
         route_dispatch_outbound(
             *lc.running,
             lc.queued_publish_outbound,
-            lc.relay_controls,
-            lc.slot_to_url,
+            lc.relay_runtime,
             lc.pool,
             lc.kernel,
-            lc.next_relay_generation,
             outbound,
         );
         if *lc.running
             && maybe_send_startup(
                 *lc.running,
                 lc.startup_sent,
-                lc.connected_relays,
-                lc.relay_controls,
-                lc.slot_to_url,
+                lc.relay_runtime,
                 lc.pool,
                 lc.kernel,
-                lc.next_relay_generation,
                 dispatch_now,
             )
         {
@@ -225,14 +214,7 @@ pub(super) fn drain_commands(
     // Relay traffic alone can never disconnect the inbox (the actor holds the
     // relay sink), so a disconnect means all command senders are gone.
     if inbox_disconnected {
-        close_relays(
-            lc.relay_controls,
-            lc.slot_to_url,
-            lc.pool,
-            lc.connected_relays,
-            lc.kernel,
-        );
-        lc.connected_urls.clear();
+        close_relays(lc.relay_runtime, lc.pool, lc.kernel);
         return DrainResult::Shutdown;
     }
 
@@ -264,14 +246,7 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
     for interceptor in &lc.config.relay_text_interceptors {
         let extra = interceptor.on_idle_tick(lc.kernel);
         if !extra.is_empty() {
-            send_all_outbound(
-                lc.relay_controls,
-                lc.slot_to_url,
-                lc.pool,
-                lc.kernel,
-                lc.next_relay_generation,
-                extra,
-            );
+            send_all_outbound(lc.relay_runtime, lc.pool, lc.kernel, extra);
         }
     }
 
@@ -280,14 +255,7 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
         let now = Instant::now();
         let pending = lc.kernel.pending_view_requests_at(now);
         if !pending.is_empty() {
-            send_all_outbound(
-                lc.relay_controls,
-                lc.slot_to_url,
-                lc.pool,
-                lc.kernel,
-                lc.next_relay_generation,
-                pending,
-            );
+            send_all_outbound(lc.relay_runtime, lc.pool, lc.kernel, pending);
         }
     }
 
@@ -299,14 +267,7 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
         let wire_frames = lc.kernel.drain_lifecycle_tick();
         if !wire_frames.is_empty() {
             let outbound = crate::actor::outbound::wire_frames_to_outbound(wire_frames, lc.kernel);
-            send_all_outbound(
-                lc.relay_controls,
-                lc.slot_to_url,
-                lc.pool,
-                lc.kernel,
-                lc.next_relay_generation,
-                outbound,
-            );
+            send_all_outbound(lc.relay_runtime, lc.pool, lc.kernel, outbound);
         }
     }
 
@@ -316,14 +277,7 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
         let now = Instant::now();
         let expansion_msgs = lc.kernel.poll_claim_expansion(now);
         if !expansion_msgs.is_empty() {
-            send_all_outbound(
-                lc.relay_controls,
-                lc.slot_to_url,
-                lc.pool,
-                lc.kernel,
-                lc.next_relay_generation,
-                expansion_msgs,
-            );
+            send_all_outbound(lc.relay_runtime, lc.pool, lc.kernel, expansion_msgs);
         }
     }
 
@@ -335,23 +289,14 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
     if *lc.running {
         let retry_frames = lc.kernel.tick_publish_engine_for_now();
         if !retry_frames.is_empty() {
-            send_all_outbound(
-                lc.relay_controls,
-                lc.slot_to_url,
-                lc.pool,
-                lc.kernel,
-                lc.next_relay_generation,
-                retry_frames,
-            );
+            send_all_outbound(lc.relay_runtime, lc.pool, lc.kernel, retry_frames);
         }
     }
 
     // ── 7. Temporary-relay idle sweep ────────────────────────────────────
     if *lc.running {
         sweep_temporary_idle_relays(
-            lc.relay_controls,
-            lc.slot_to_url,
-            lc.connected_urls,
+            lc.relay_runtime,
             lc.pool,
             lc.kernel,
             Instant::now(),
@@ -384,10 +329,8 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
         &mut crate::actor::auth_sign::RouteCtx {
             running: *lc.running,
             queued_publish_outbound: lc.queued_publish_outbound,
-            relay_controls: lc.relay_controls,
-            slot_to_url: lc.slot_to_url,
+            relay_runtime: lc.relay_runtime,
             pool: lc.pool,
-            next_relay_generation: lc.next_relay_generation,
         },
     );
 
@@ -408,10 +351,8 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
             &mut crate::actor::auth_sign::RouteCtx {
                 running: *lc.running,
                 queued_publish_outbound: lc.queued_publish_outbound,
-                relay_controls: lc.relay_controls,
-                slot_to_url: lc.slot_to_url,
+                relay_runtime: lc.relay_runtime,
                 pool: lc.pool,
-                next_relay_generation: lc.next_relay_generation,
             },
         );
 
@@ -433,11 +374,9 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
                     route_dispatch_outbound(
                         *lc.running,
                         lc.queued_publish_outbound,
-                        lc.relay_controls,
-                        lc.slot_to_url,
+                        lc.relay_runtime,
                         lc.pool,
                         lc.kernel,
-                        lc.next_relay_generation,
                         outbound,
                     );
                 }

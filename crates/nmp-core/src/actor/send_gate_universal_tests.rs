@@ -35,12 +35,12 @@
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
-    use crate::actor::relay_mgmt::{all_relays_connected, claim_send_gate};
+    use crate::actor::relay_mgmt::{all_relays_connected, claim_send_gate, ensure_relay_worker};
+    use crate::actor::relay_runtime::RelayRuntime;
     use crate::kernel::{EventShape, Kernel, RefLiveness, RefNamespace, RefShape};
-    use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+    use crate::relay::{CanonicalRelayUrl, DEFAULT_VISIBLE_LIMIT};
+    use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
+    use nmp_network::role::RelayRole;
 
     fn hex64(prefix: &str) -> String {
         let mut s = prefix.to_string();
@@ -50,25 +50,38 @@ use nmp_network::role::RelayRole;
         s.chars().take(64).collect()
     }
 
+    /// Build a `RelayRuntime` with one connected URL on `role`. Seeds a control
+    /// row (so the URL→role join resolves) and marks the URL connected.
+    fn runtime_with_connected(role: RelayRole, url: &str) -> RelayRuntime {
+        let (events_tx, _events_rx) = std::sync::mpsc::channel::<PoolEvent>();
+        let pool = Pool::new(PoolConfig::default(), events_tx);
+        let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let mut rt = RelayRuntime::new();
+        ensure_relay_worker(&mut rt, &pool, &mut kernel, role, url.to_string());
+        rt.mark_url_connected(&CanonicalRelayUrl::parse_or_raw(url));
+        rt
+    }
+
     /// The gate computation itself, isolated. `claim_send_gate` is the single
     /// function the actor calls at `mod.rs` to derive `relays_ready`.
     /// `Content` connected + `Indexer` absent: the historical `all`-lane gate
-    /// (`all_relays_connected`) returns `false` (the bug trigger), while the
-    /// production gate `claim_send_gate` (Fix A — `any`) returns `true`.
+    /// (`all_relays_connected`, over the derived role set) returns `false` (the
+    /// bug trigger), while the production gate `claim_send_gate` (Fix A — `any`,
+    /// over the real URL-keyed runtime) returns `true`.
     #[test]
     fn gate_all_vs_any_with_one_lane_offline() {
-        let mut connected = HashSet::new();
-        connected.insert(RelayRole::Content);
-        // Indexer is NOT connected (its bootstrap socket never opened).
+        // Only the Content lane has a connected URL; the Indexer lane's
+        // bootstrap socket never opened.
+        let rt = runtime_with_connected(RelayRole::Content, "wss://content.example");
 
         assert!(
-            !all_relays_connected(&connected),
+            !all_relays_connected(&rt.roles_connected()),
             "the historical all-lane gate is false when the Indexer lane is offline \
              — this was exactly the value the actor fed as `relays_ready`, which \
              parked every claim/open dispatch"
         );
         assert!(
-            claim_send_gate(&connected),
+            claim_send_gate(&rt),
             "claim_send_gate (Fix A) must be true the moment a single lane is \
              connected — the claim has a reachable socket to leave on"
         );
@@ -90,13 +103,14 @@ use nmp_network::role::RelayRole;
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
         // Live transport state as the actor would hold it: the Content lane's
-        // socket opened, the Indexer lane's never did.
-        let mut connected_relays = HashSet::new();
-        connected_relays.insert(RelayRole::Content);
+        // socket opened, the Indexer lane's never did. The runtime holds one
+        // connected URL on the Content lane.
+        let rt = runtime_with_connected(RelayRole::Content, "wss://content.example");
         kernel.relay_connected(RelayRole::Content);
 
-        // EXACT actor computation — the single production gate (actor/mod.rs).
-        assert!(claim_send_gate(&connected_relays));
+        // EXACT actor computation — the single production gate (actor/mod.rs),
+        // now derived from the URL-keyed runtime.
+        assert!(claim_send_gate(&rt));
 
         // A caller-provided relay hint — the publisher's own
         // content relay. Even bootstrap-blind, this claim should resolve.
@@ -144,20 +158,39 @@ use nmp_network::role::RelayRole;
     fn all_lanes_connected_sends_claim_unchanged() {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
-        let mut connected_relays = HashSet::new();
-        connected_relays.insert(RelayRole::Content);
-        connected_relays.insert(RelayRole::Indexer);
+        // Build a runtime with one connected URL on EACH bootstrap lane.
+        let (events_tx, _events_rx) = std::sync::mpsc::channel::<PoolEvent>();
+        let pool = Pool::new(PoolConfig::default(), events_tx);
+        let mut seed_kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+        let mut rt = RelayRuntime::new();
+        ensure_relay_worker(
+            &mut rt,
+            &pool,
+            &mut seed_kernel,
+            RelayRole::Content,
+            "wss://content.example".to_string(),
+        );
+        ensure_relay_worker(
+            &mut rt,
+            &pool,
+            &mut seed_kernel,
+            RelayRole::Indexer,
+            "wss://indexer.example".to_string(),
+        );
+        rt.mark_url_connected(&CanonicalRelayUrl::parse_or_raw("wss://content.example"));
+        rt.mark_url_connected(&CanonicalRelayUrl::parse_or_raw("wss://indexer.example"));
         kernel.relay_connected(RelayRole::Content);
         kernel.relay_connected(RelayRole::Indexer);
 
-        // Sanity: with both lanes up, the historical `all` gate and the
-        // production `claim_send_gate` agree — proving Fix A is behavior-
-        // preserving on the all-lanes-healthy path iOS/TUI actually run.
+        // Sanity: with both lanes up, the historical `all` gate (over the
+        // derived role set) and the production `claim_send_gate` agree —
+        // proving Fix A is behavior-preserving on the all-lanes-healthy path
+        // iOS/TUI actually run.
         assert!(
-            all_relays_connected(&connected_relays),
+            all_relays_connected(&rt.roles_connected()),
             "sanity: both lanes connected → the historical all-lane gate is true"
         );
-        let relays_ready = claim_send_gate(&connected_relays);
+        let relays_ready = claim_send_gate(&rt);
         assert!(
             relays_ready,
             "both lanes connected → claim_send_gate is true (agrees with all-lane gate)"

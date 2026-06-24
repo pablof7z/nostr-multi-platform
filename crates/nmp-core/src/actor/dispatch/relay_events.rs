@@ -4,7 +4,6 @@
 //! Extracted from `dispatch.rs` to keep `mod.rs` under the LOC ceiling.
 //! No behaviour change — all logic is verbatim from the original file.
 
-use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Instant;
@@ -12,12 +11,12 @@ use std::time::Instant;
 use nmp_network::pool::{BackoffClass, Pool, PoolEvent, RelayFrame as PoolFrame};
 
 use crate::kernel::{BackoffHint, Kernel, RelayFrame};
-use crate::relay::{CanonicalRelayUrl};
+use crate::relay::CanonicalRelayUrl;
 use nmp_network::role::RelayRole;
 
 use super::super::relay_mgmt::{maybe_send_startup, send_all_outbound};
+use super::super::relay_runtime::RelayRuntime;
 use super::super::tick::emit_now;
-use super::super::RelayControl;
 
 /// Convert a [`nmp_network::pool::RelayFrame`] (the wire frame variant the
 /// pool's translator emits) into the kernel's wire-transport-agnostic
@@ -56,13 +55,12 @@ fn pool_frame_to_relay_frame(frame: PoolFrame) -> RelayFrame {
 /// caller may have already shut down the worker for this URL. Stale events
 /// are dropped silently; the pool's translator already filters out events
 /// whose slot generation no longer matches, so this is belt-and-braces.
-fn resolve_handle<'a>(
+fn resolve_handle(
     h: nmp_network::pool::RelayHandle,
-    relay_controls: &'a HashMap<CanonicalRelayUrl, RelayControl>,
-    slot_to_url: &'a HashMap<u32, CanonicalRelayUrl>,
-) -> Option<(&'a CanonicalRelayUrl, RelayRole)> {
-    let url = slot_to_url.get(&h.slot())?;
-    let control = relay_controls.get(url)?;
+    rt: &RelayRuntime,
+) -> Option<(&CanonicalRelayUrl, RelayRole)> {
+    let url = rt.slot_to_url.get(&h.slot())?;
+    let control = rt.relay_controls.get(url)?;
     if control.handle.generation() != h.generation() {
         return None;
     }
@@ -76,12 +74,8 @@ pub(crate) fn handle_relay_event(
     relay_text_interceptors: &[Arc<dyn crate::substrate::RelayTextInterceptor>],
     relay_connected_hooks: &[Arc<dyn crate::substrate::RelayConnectedHook>],
     command_tx_self: &crate::actor::CommandSender,
-    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    relay_runtime: &mut RelayRuntime,
     pool: &Pool,
-    next_relay_generation: &mut u64,
-    connected_relays: &mut HashSet<RelayRole>,
-    connected_urls: &mut HashSet<CanonicalRelayUrl>,
     update_tx: &Sender<crate::update_envelope::UpdateFrameBytes>,
     last_emit: &mut Instant,
     startup_sent: &mut bool,
@@ -96,7 +90,7 @@ pub(crate) fn handle_relay_event(
         // `ensure_relay_worker` only ever hands canonical strings in).
         PoolEvent::Opened { h, url, .. } => {
             let canonical = CanonicalRelayUrl::parse_or_raw(&url);
-            let Some(control) = relay_controls.get(&canonical) else {
+            let Some(control) = relay_runtime.relay_controls.get(&canonical) else {
                 // No control row — stale event (worker spawned, then
                 // RemoveRelay shut down the slot before `Opened` arrived).
                 return;
@@ -105,7 +99,9 @@ pub(crate) fn handle_relay_event(
                 return;
             }
             let role = control.role;
-            connected_relays.insert(role);
+            // #1938: role readiness is derived from `connected_urls` — no
+            // separate `connected_relays.insert(role)`. Marking this URL
+            // connected below is the single readiness write.
             kernel.relay_connected_url(role, &url);
             // T116/G1 — reconnect-replay. The first `Opened` for a URL is
             // the initial dial; the startup path (`maybe_send_startup` /
@@ -121,7 +117,7 @@ pub(crate) fn handle_relay_event(
             //
             // D7 preserved: actor reports the OS-level transition; the
             // kernel decides what to replay and rewrites `since`.
-            let is_reconnect = !connected_urls.insert(canonical.clone());
+            let is_reconnect = !relay_runtime.mark_url_connected(&canonical);
             for hook in relay_connected_hooks {
                 let sender = command_tx_self.clone();
                 let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -131,40 +127,16 @@ pub(crate) fn handle_relay_event(
             if is_reconnect && running {
                 let replay = kernel.replay_on_reconnect(role, &url);
                 if !replay.is_empty() {
-                    send_all_outbound(
-                        relay_controls,
-                        slot_to_url,
-                        pool,
-                        kernel,
-                        next_relay_generation,
-                        replay,
-                    );
+                    send_all_outbound(relay_runtime, pool, kernel, replay);
                 }
             }
             if running {
                 let publish_replay = kernel.mark_publish_relay_available(&url);
                 if !publish_replay.is_empty() {
-                    send_all_outbound(
-                        relay_controls,
-                        slot_to_url,
-                        pool,
-                        kernel,
-                        next_relay_generation,
-                        publish_replay,
-                    );
+                    send_all_outbound(relay_runtime, pool, kernel, publish_replay);
                 }
             }
-            maybe_send_startup(
-                running,
-                startup_sent,
-                connected_relays,
-                relay_controls,
-                slot_to_url,
-                pool,
-                kernel,
-                next_relay_generation,
-                Instant::now(),
-            );
+            maybe_send_startup(running, startup_sent, relay_runtime, pool, kernel, Instant::now());
             emit_now(kernel, running, update_tx, last_emit);
         }
         // ── Failed ───────────────────────────────────────────────────────
@@ -175,11 +147,15 @@ pub(crate) fn handle_relay_event(
         // permanent-vs-transient distinction surfaces via the next
         // `Opened` (transient) or absence thereof (permanent).
         PoolEvent::Failed { h, error, .. } => {
-            let Some((url, role)) = resolve_handle(h, relay_controls, slot_to_url) else {
+            let Some((url_ref, role)) = resolve_handle(h, relay_runtime) else {
                 return;
             };
-            let url = url.as_str().to_string();
-            connected_relays.remove(&role);
+            let url_key = url_ref.clone();
+            let url = url_key.as_str().to_string();
+            // #1938: mark only THIS URL disconnected. Sibling URLs on the same
+            // role stay in `connected_urls`, so the role stays derived-ready —
+            // no `connected_relays.remove(&role)` dropping the whole lane.
+            relay_runtime.mark_url_disconnected(&url_key);
             *startup_sent = false;
             // T105: scope the `retrying` mark to the specific socket that
             // failed — sibling sockets sharing this role lane are still live.
@@ -191,11 +167,14 @@ pub(crate) fn handle_relay_event(
         // Pool→kernel "socket torn down, no retry". Mirrors the legacy
         // `RelayEvent::Closed` arm one-to-one.
         PoolEvent::Closed { h, .. } => {
-            let Some((url, role)) = resolve_handle(h, relay_controls, slot_to_url) else {
+            let Some((url_ref, role)) = resolve_handle(h, relay_runtime) else {
                 return;
             };
-            let url = url.as_str().to_string();
-            connected_relays.remove(&role);
+            let url_key = url_ref.clone();
+            let url = url_key.as_str().to_string();
+            // #1938: mark only THIS URL disconnected — sibling URLs on the same
+            // role keep the role derived-ready.
+            relay_runtime.mark_url_disconnected(&url_key);
             *startup_sent = false;
             // T105: scope T133 wire-sub eviction to the closed socket's URL,
             // not the whole role lane (sibling sockets keep their subs).
@@ -210,10 +189,10 @@ pub(crate) fn handle_relay_event(
         // round-trip the `Auth` variant back to a `Text` frame so the
         // kernel's existing ingest path handles AUTH unchanged.
         PoolEvent::Frame { h, frame, .. } if running => {
-            let Some((url, role)) = resolve_handle(h, relay_controls, slot_to_url) else {
-                return;
+            let (url_str, role) = match resolve_handle(h, relay_runtime) {
+                Some((url, role)) => (url.as_str().to_string(), role),
+                None => return,
             };
-            let url_str = url.as_str().to_string();
             // V-38: peek at the text payload BEFORE kernel ingest so an
             // installed substrate-generic relay-text interceptor (today
             // `nmp-nip47`'s NWC runtime) can decode kind:23195 responses
@@ -238,7 +217,7 @@ pub(crate) fn handle_relay_event(
             // dispatch does. Stale or missing handles are silently ignored.
             for (hint_url, hint) in kernel.take_backoff_hints() {
                 let canonical = CanonicalRelayUrl::parse_or_raw(&hint_url);
-                if let Some(control) = relay_controls.get(&canonical) {
+                if let Some(control) = relay_runtime.relay_controls.get(&canonical) {
                     let class = match hint {
                         BackoffHint::RateLimited => BackoffClass::RateLimited,
                     };
@@ -251,14 +230,7 @@ pub(crate) fn handle_relay_event(
                     outbound.extend(extra);
                 }
             }
-            send_all_outbound(
-                relay_controls,
-                slot_to_url,
-                pool,
-                kernel,
-                next_relay_generation,
-                outbound,
-            );
+            send_all_outbound(relay_runtime, pool, kernel, outbound);
         }
         PoolEvent::Frame { .. } => {}
         // ── Health ───────────────────────────────────────────────────────

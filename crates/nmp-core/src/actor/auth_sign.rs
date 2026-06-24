@@ -18,16 +18,14 @@
 //! so the two call sites in `run_actor_with_observers` stay one-liners and the
 //! routing fields are threaded once rather than per call.
 
-use std::collections::HashMap;
-
 use nmp_network::pool::Pool;
 
 use super::commands::{self, IdentityRuntime};
 use super::pending_sign::{AuthObligation, ParkedOp, ParkedSignerOps};
 use super::relay_mgmt::route_dispatch_outbound;
-use super::RelayControl;
+use super::relay_runtime::RelayRuntime;
 use crate::kernel::Kernel;
-use crate::relay::{CanonicalRelayUrl, OutboundMessage};
+use crate::relay::OutboundMessage;
 
 /// The mutable relay-routing surface the actor loop owns. Bundled so the AUTH
 /// drain / obligation phases borrow it once instead of taking six parameters
@@ -36,10 +34,8 @@ use crate::relay::{CanonicalRelayUrl, OutboundMessage};
 pub(super) struct RouteCtx<'a> {
     pub running: bool,
     pub queued_publish_outbound: &'a mut Vec<OutboundMessage>,
-    pub relay_controls: &'a mut HashMap<CanonicalRelayUrl, RelayControl>,
-    pub slot_to_url: &'a mut HashMap<u32, CanonicalRelayUrl>,
+    pub relay_runtime: &'a mut RelayRuntime,
     pub pool: &'a Pool,
-    pub next_relay_generation: &'a mut u64,
 }
 
 impl RouteCtx<'_> {
@@ -49,11 +45,9 @@ impl RouteCtx<'_> {
         route_dispatch_outbound(
             self.running,
             self.queued_publish_outbound,
-            self.relay_controls,
-            self.slot_to_url,
+            self.relay_runtime,
             self.pool,
             kernel,
-            self.next_relay_generation,
             outbound,
         );
     }

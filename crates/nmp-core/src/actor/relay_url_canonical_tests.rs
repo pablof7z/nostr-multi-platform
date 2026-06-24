@@ -10,27 +10,21 @@
 //! invariants the pre-Pool design exposed.
 
 use super::relay_mgmt::{close_relays, ensure_relay_worker, shutdown_relay_worker};
-use super::RelayControl;
+use super::relay_runtime::RelayRuntime;
 use crate::kernel::Kernel;
-use crate::relay::{CanonicalRelayUrl};
-use nmp_network::role::RelayRole;
 use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
-use std::collections::{HashMap, HashSet};
+use nmp_network::role::RelayRole;
 use std::sync::mpsc;
 
 /// Build the actor-side transport state every test in this file needs:
 /// a fresh `Pool` (wrapping a real worker pool), the event receiver
-/// (kept around so the channel doesn't disconnect mid-test), and the
-/// empty `relay_controls` + `slot_to_url` side-maps.
-fn fresh_pool() -> (
-    Pool,
-    mpsc::Receiver<PoolEvent>,
-    HashMap<CanonicalRelayUrl, RelayControl>,
-    HashMap<u32, CanonicalRelayUrl>,
-) {
+/// (kept around so the channel doesn't disconnect mid-test), and an empty
+/// [`RelayRuntime`] owner (relay_controls + slot_to_url + connected_urls +
+/// next_relay_generation).
+fn fresh_pool() -> (Pool, mpsc::Receiver<PoolEvent>, RelayRuntime) {
     let (events_tx, events_rx) = mpsc::channel::<PoolEvent>();
     let pool = Pool::new(PoolConfig::default(), events_tx);
-    (pool, events_rx, HashMap::new(), HashMap::new())
+    (pool, events_rx, RelayRuntime::new())
 }
 
 // ── Pool dedup — canonical key equality ──────────────────────────────────────
@@ -43,24 +37,19 @@ fn fresh_pool() -> (
 #[test]
 fn t_normalize_case_and_slash_variants_share_one_pool_entry() {
     let mut kernel = Kernel::new(80);
-    let (pool, _events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_gen = 1_u64;
+    let (pool, _events_rx, mut rt) = fresh_pool();
 
     let spawned_a = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         "wss://R.Ex/".to_string(),
     );
     let spawned_b = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         "wss://r.ex".to_string(),
     );
@@ -71,20 +60,13 @@ fn t_normalize_case_and_slash_variants_share_one_pool_entry() {
         "second call with URL-equivalent form must NOT spawn a second worker"
     );
     assert_eq!(
-        relay_controls.len(),
+        rt.relay_controls.len(),
         1,
         "T-normalize-1: URL-equivalent forms must share one pool entry, got {}",
-        relay_controls.len()
+        rt.relay_controls.len()
     );
 
-    let mut connected = HashSet::new();
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut connected,
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }
 
 /// T-normalize-2: uppercase-scheme variant (`WSS://R.Ex`) maps to the same
@@ -92,24 +74,19 @@ fn t_normalize_case_and_slash_variants_share_one_pool_entry() {
 #[test]
 fn t_normalize_uppercase_scheme_deduplicates() {
     let mut kernel = Kernel::new(80);
-    let (pool, _events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_gen = 1_u64;
+    let (pool, _events_rx, mut rt) = fresh_pool();
 
     let spawned_a = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         "WSS://R.Ex".to_string(),
     );
     let spawned_b = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Indexer,
         "wss://r.ex".to_string(),
     );
@@ -120,19 +97,12 @@ fn t_normalize_uppercase_scheme_deduplicates() {
         "lowercase form must hit the canonical key of the first call"
     );
     assert_eq!(
-        relay_controls.len(),
+        rt.relay_controls.len(),
         1,
         "T-normalize-2: one entry for case-variant forms"
     );
 
-    let mut connected = HashSet::new();
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut connected,
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }
 
 /// T-normalize-3: relay with a real non-empty path is distinct from the root
@@ -140,24 +110,19 @@ fn t_normalize_uppercase_scheme_deduplicates() {
 #[test]
 fn t_normalize_nonempty_path_is_distinct() {
     let mut kernel = Kernel::new(80);
-    let (pool, _events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_gen = 1_u64;
+    let (pool, _events_rx, mut rt) = fresh_pool();
 
     let spawned_a = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         "wss://r.ex".to_string(),
     );
     let spawned_b = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         "wss://r.ex/nostr".to_string(),
     );
@@ -168,19 +133,12 @@ fn t_normalize_nonempty_path_is_distinct() {
         "non-empty-path form is distinct and must also spawn"
     );
     assert_eq!(
-        relay_controls.len(),
+        rt.relay_controls.len(),
         2,
         "T-normalize-3: two distinct pool entries for root vs non-empty-path relay"
     );
 
-    let mut connected = HashSet::new();
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut connected,
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }
 
 // ── Add/remove round-trip — no worker leak ───────────────────────────────────
@@ -196,39 +154,31 @@ fn t_normalize_nonempty_path_is_distinct() {
 #[test]
 fn t_normalize_add_uppercase_remove_lowercase_no_leak() {
     let mut kernel = Kernel::new(80);
-    let (pool, _events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_gen = 1_u64;
+    let (pool, _events_rx, mut rt) = fresh_pool();
 
     // Add with uppercase + trailing slash.
     let spawned = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         "WSS://127.0.0.1:1/".to_string(),
     );
     assert!(spawned, "add must spawn a worker");
     assert_eq!(
-        relay_controls.len(),
+        rt.relay_controls.len(),
         1,
         "pool must have one entry after add"
     );
 
     // Remove with lowercase + no trailing slash (the canonical form).
-    let removed = shutdown_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        "wss://127.0.0.1:1",
-    );
+    let removed = shutdown_relay_worker(&mut rt, &pool, "wss://127.0.0.1:1");
     assert!(
         removed,
         "T-normalize-4: shutdown_relay_worker must find the canonical key and return true"
     );
     assert!(
-        relay_controls.is_empty(),
+        rt.relay_controls.is_empty(),
         "T-normalize-4: pool must be empty after remove — no worker leak"
     );
 }
@@ -238,33 +188,25 @@ fn t_normalize_add_uppercase_remove_lowercase_no_leak() {
 #[test]
 fn t_normalize_add_lowercase_remove_trailing_slash_no_leak() {
     let mut kernel = Kernel::new(80);
-    let (pool, _events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_gen = 1_u64;
+    let (pool, _events_rx, mut rt) = fresh_pool();
 
     let spawned = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         "wss://127.0.0.1:1".to_string(),
     );
     assert!(spawned, "add must spawn a worker");
 
     // Remove with the trailing-slash variant.
-    let removed = shutdown_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        "wss://127.0.0.1:1/",
-    );
+    let removed = shutdown_relay_worker(&mut rt, &pool, "wss://127.0.0.1:1/");
     assert!(
         removed,
         "T-normalize-5: shutdown_relay_worker with trailing-slash variant must return true"
     );
     assert!(
-        relay_controls.is_empty(),
+        rt.relay_controls.is_empty(),
         "T-normalize-5: pool must be empty — no worker leak"
     );
 }
