@@ -27,9 +27,8 @@
 use std::collections::BTreeMap;
 
 use nmp_content::{
-    RenderContext,
-    embed_projection::{EmbedKindProjection, EmbeddedEventEnvelope, RenderContextWire},
-    resolve_embed_projection,
+    embed_projection::{EmbeddedEventEnvelope, RenderContextWire},
+    resolve_embed_projection, RenderContext,
 };
 use nmp_core::substrate::KernelEvent;
 use nmp_core::typed_projections::ClaimedEventRow;
@@ -81,23 +80,11 @@ impl EmbedHostState {
                 continue;
             };
 
-            let author_display_name = row
-                .author_display_name
-                .as_deref()
-                .filter(|s| !s.trim().is_empty())
-                .map(str::to_string);
-            let author_picture_url = row
-                .author_picture_url
-                .as_deref()
-                .filter(|s| !s.trim().is_empty())
-                .map(str::to_string);
-
-            if author_display_name.is_none() && !event.author.is_empty() {
+            if !event.author.is_empty() {
                 authors_needing_profile.push(event.author.clone());
             }
 
-            let mut projection = resolve_embed_projection(&event, &ctx);
-            apply_author_profile(&mut projection, author_display_name, author_picture_url);
+            let projection = resolve_embed_projection(&event, &ctx);
             let envelope = EmbeddedEventEnvelope {
                 uri: String::new(), // The renderer falls back from primary_id; URI keying happens at claim time.
                 primary_id: primary_id.clone(),
@@ -154,36 +141,6 @@ fn kernel_event_from_row(row: &ClaimedEventRow) -> Option<KernelEvent> {
     })
 }
 
-/// Stamp legacy author profile fields when an older typed row provides them.
-/// Current kernels leave these fields empty and renderers compose the raw
-/// author pubkey with `NostrProfileName` / `NostrAvatar`.
-fn apply_author_profile(
-    projection: &mut EmbedKindProjection,
-    display_name: Option<String>,
-    picture_url: Option<String>,
-) {
-    match projection {
-        EmbedKindProjection::ShortNote(n) => {
-            n.author_display_name = display_name;
-            n.author_picture_url = picture_url;
-        }
-        EmbedKindProjection::Article(a) => {
-            a.author_display_name = display_name;
-            a.author_picture_url = picture_url;
-        }
-        EmbedKindProjection::Highlight(h) => {
-            h.author_display_name = display_name;
-        }
-        EmbedKindProjection::Profile(_) => {
-            // kind:0 — the projection itself IS the profile.
-        }
-        EmbedKindProjection::Unknown(u) => {
-            u.author_display_name = display_name;
-            u.author_picture_url = picture_url;
-        }
-    }
-}
-
 #[cfg(test)]
 trait ArticleHelpers {
     fn kind_optional_check(&self) -> u32;
@@ -224,8 +181,6 @@ mod tests {
             id: primary.clone(),
             author_pubkey: "6e468422dfb74a5738702a8823b9b28168abab8655faacb6853cd0ee15deee93"
                 .to_string(),
-            author_display_name: None,
-            author_picture_url: None,
             kind: 30023,
             created_at: 1716000000,
             tags: vec![
@@ -248,8 +203,6 @@ mod tests {
             primary_id: primary.clone(),
             id: primary.clone(),
             author_pubkey: showcase_pubkey().to_string(),
-            author_display_name: None,
-            author_picture_url: None,
             kind: 1,
             created_at: 1716000001,
             tags: vec![],
@@ -266,8 +219,6 @@ mod tests {
             primary_id: primary.clone(),
             id: primary.clone(),
             author_pubkey: showcase_pubkey().to_string(),
-            author_display_name: None,
-            author_picture_url: None,
             kind: 9802,
             created_at: 1716000002,
             tags: vec![vec!["r".to_string(), "https://pablof7z.com".to_string()]],
@@ -344,8 +295,6 @@ mod tests {
             primary_id: primary.clone(),
             id: primary.clone(),
             author_pubkey: String::new(), // empty → skipped
-            author_display_name: None,
-            author_picture_url: None,
             kind: 1,
             created_at: 0,
             tags: vec![],

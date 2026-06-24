@@ -84,10 +84,17 @@ fn all_dotted_keys_are_present() {
         "nmp.feed.home",
     ];
     for key in expected {
-        assert!(dotted.contains(&key), "expected dotted key {key:?} not in registry");
+        assert!(
+            dotted.contains(&key),
+            "expected dotted key {key:?} not in registry"
+        );
     }
     // Equal lengths + the forward-contains prove set equality.
-    assert_eq!(dotted.len(), expected.len(), "dotted keys drifted: {dotted:?}");
+    assert_eq!(
+        dotted.len(),
+        expected.len(),
+        "dotted keys drifted: {dotted:?}"
+    );
 }
 
 /// Drift/overlap guard (ADR-0063 codegen-time partition): a projection key must
@@ -140,9 +147,7 @@ fn typed_sidecar_coverage_gate() {
     const ALLOWED_SIDECAR_LESS: &[&str] = &[];
 
     for entry in SNAPSHOT_PROJECTIONS {
-        if entry.typed_sidecar.is_none()
-            && !ALLOWED_SIDECAR_LESS.contains(&entry.key)
-        {
+        if entry.typed_sidecar.is_none() && !ALLOWED_SIDECAR_LESS.contains(&entry.key) {
             panic!(
                 "registry entry {:?} has typed_sidecar: None without an approved \
                  exemption. Either add a typed FlatBuffer sidecar for this key OR \

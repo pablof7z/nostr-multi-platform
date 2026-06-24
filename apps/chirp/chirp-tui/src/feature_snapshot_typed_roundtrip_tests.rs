@@ -10,8 +10,8 @@
 //! (`encode_snapshot_with_envelope`), with no JSON payload on the wire.
 
 use super::feature_snapshot_from_flatbuffer;
-use nmp_core::testing::{spawn_actor, ActorCommand};
 use nmp_core::actor::{IdentityCommand, LifecycleCommand};
+use nmp_core::testing::{spawn_actor, ActorCommand};
 use std::time::{Duration, Instant};
 
 /// A fixed nsec used only in tests (same key as nmp-testing's e2e pipeline).
@@ -31,13 +31,14 @@ fn feature_snapshot_round_trips_real_kernel_frame() {
     }))
     .expect("send Start");
     tx.send(ActorCommand::Identity(IdentityCommand::AddSigner {
-        source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(
-            TEST_NSEC.to_string(),
-        )),
+        source: nmp_core::SignerSource::LocalNsec(zeroize::Zeroizing::new(TEST_NSEC.to_string())),
         make_active: true,
     }))
     .expect("send AddSigner");
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit)).expect("send MarkChangedSinceEmit");
+    tx.send(ActorCommand::Lifecycle(
+        LifecycleCommand::MarkChangedSinceEmit,
+    ))
+    .expect("send MarkChangedSinceEmit");
 
     // Drain real frames until the typed `accounts` sidecar surfaces the
     // signed-in account through the production decode path.
@@ -71,7 +72,10 @@ fn feature_snapshot_round_trips_real_kernel_frame() {
         .find(|a| a.id == TEST_PUBKEY_HEX)
         .expect("the signed-in account must appear in the accounts sidecar");
     assert_eq!(account.npub, TEST_NPUB, "npub must round-trip");
-    assert!(account.active, "the signed-in account must be flagged active");
+    assert!(
+        account.active,
+        "the signed-in account must be flagged active"
+    );
     assert!(
         !account.signer.is_empty(),
         "the signer label/kind must round-trip non-empty"
@@ -92,5 +96,6 @@ fn feature_snapshot_round_trips_real_kernel_frame() {
         "settings_hub subtitle must carry the relay-count summary"
     );
 
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
+        .ok();
 }

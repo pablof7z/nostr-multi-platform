@@ -68,8 +68,8 @@ pub(crate) fn decode_snapshot_typed(
     let profile = find(tp::PROFILE_SCHEMA_ID)
         .and_then(|b| tp::decode_profile(b).ok())
         .map(|m| crate::snapshot::ProfileCard {
+            npub: nmp_core::display::to_npub(&m.pubkey),
             pubkey: m.pubkey,
-            npub: m.npub,
             display_name: m.display_name,
             name: m.name,
             raw_display_name: m.raw_display_name,

@@ -17,14 +17,10 @@ namespace nmp.kernel;
 // so the entries are already sorted by key — preserved verbatim, matching the
 // BTree-ordered serde JSON map.
 //
-// Field-for-field mirror of the SERIALISED `ClaimedEventDto`. Its two
-// `Option<String>` author fields (`author_display_name` / `author_picture_url`)
-// carry NO serde `skip_serializing_if`, so they serialise as JSON
-// `null`-when-`None` (key always present); the typed buffer carries each
-// presence as an explicit `has_*` flag. The raw `tags` field is a
-// `Vec<Vec<String>>` (an array of tag rows, each a list of strings) — FlatBuffers
-// has no nested-vector type, so it is modelled as `[TagRow]` where each `TagRow`
-// wraps one inner `[string]`.
+// Field-for-field mirror of the SERIALISED `ClaimedEventDto`. The raw `tags`
+// field is a `Vec<Vec<String>>` (an array of tag rows, each a list of strings)
+// — FlatBuffers has no nested-vector type, so it is modelled as `[TagRow]`
+// where each `TagRow` wraps one inner `[string]`.
 //
 // D0: a claimed-events map carries raw protocol event data (kind / tags /
 // content) but `kind` rides as an opaque `uint` and no kind-dependent branching
@@ -55,14 +51,6 @@ table ClaimedEvent {
   id:string;
   // Author pubkey, hex (64 chars).
   author_pubkey:string;
-  // Author's display name from kind:0; `has_author_display_name == false`
-  // mirrors JSON `null`.
-  has_author_display_name:bool;
-  author_display_name:string;
-  // Author's picture URL from kind:0; `has_author_picture_url == false`
-  // mirrors JSON `null`.
-  has_author_picture_url:bool;
-  author_picture_url:string;
   // Event kind (opaque passthrough — no kind-dependent branching in the buffer).
   kind:uint;
   // Unix-seconds `created_at`.

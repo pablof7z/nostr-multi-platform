@@ -379,8 +379,8 @@ private func relayQuoteModel(from model: GalleryModel) -> NostrQuoteCardModel {
         id: note.id,
         unresolvedUri: SHOWCASE_NOTE_NEVENT,
         authorPubkey: note.authorPubkey,
-        authorDisplayName: note.authorDisplayName ?? profile?.displayName,
-        authorAvatarUrl: (note.authorPictureUrl ?? profile?.pictureUrl).flatMap(URL.init(string:)),
+        authorDisplayName: profile?.displayName,
+        authorAvatarUrl: profile?.pictureUrl.flatMap(URL.init(string:)),
         content: note.content,
         mediaThumbnailUrl: note.mediaUrls.first.flatMap(URL.init(string:)),
         createdAtDisplay: note.createdAt == 0 ? nil : NostrRelativeTime.ago(note.createdAt)

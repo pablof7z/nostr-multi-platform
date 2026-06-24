@@ -129,8 +129,7 @@ private fun ArticleEmbedPage(
     // EventRef paints as a generic quote card, so nothing instantiates a
     // NostrProfileName/avatar that would claim the author's kind:0 (the way
     // iOS's typed ArticleEmbed does). Without an explicit claim the kernel
-    // never fetches Gigi's kind:0, `claimed_events` enrichment leaves
-    // `author_display_name` null, and the byline falls back to hex.
+    // never fetches Gigi's kind:0, and the byline falls back to hex.
     //
     // Component-owned claiming (ADR-0034; mirrors iOS #847 / ProfileEmbedPage
     // below): the presentation component claims the author's profile so the
@@ -180,13 +179,10 @@ private fun ArticleEmbedPage(
         )
         NostrContentView(
             tree = tree,
-            // Resolve the byline from the live profile map as well as the
-            // claimed_events enrichment — the same read-from-profile shape the
-            // note path uses (ContentComponentPages QuoteCardShowcase) and that
-            // iOS's typed renderer relies on. The claimed_events enrichment also
-            // resolves Gigi (kernel `profile_for_pubkey` reads the general
-            // profile cache the claim populates), but reading profileMap makes
-            // the byline robust to enrichment-tick timing.
+            // Resolve the byline from the live profile map — the same
+            // read-from-profile shape the note path uses
+            // (ContentComponentPages QuoteCardShowcase) and that iOS's typed
+            // renderer relies on.
             quoteCardProvider = { uri -> quoteCardFor(uri, claimedEvents, profileMap) },
             articleCardProvider = { uri -> articleCardFor(uri, claimedEvents, profileMap) },
         )
@@ -387,16 +383,17 @@ private fun quoteCardFor(
     profileMap: Map<String, ProfileWire> = emptyMap(),
 ): NostrQuoteCardModel? {
     val event = claimedEvents[uri.primaryId] ?: return null
-    // Prefer the kernel's claimed_events enrichment; fall back to a separately
-    // claimed profile in the live profile map. Mirrors ContentComponentPages
-    // QuoteCardShowcase (the note path) and iOS's read-from-profile byline.
+    // Claimed events carry raw event data only; author display data comes from
+    // a separately claimed profile in the live profile map. Mirrors
+    // ContentComponentPages QuoteCardShowcase (the note path) and iOS's
+    // read-from-profile byline.
     val profile = profileMap[event.authorPubkey]
     return NostrQuoteCardModel(
         id = event.id,
         unresolvedUri = uri.uri,
         authorPubkey = event.authorPubkey,
-        authorDisplayName = event.authorDisplayName ?: profile?.displayName,
-        authorAvatarUrl = event.authorPictureUrl ?: profile?.pictureUrl,
+        authorDisplayName = profile?.displayName,
+        authorAvatarUrl = profile?.pictureUrl,
         content = event.content,
         createdAtDisplay = event.createdAt.takeIf { it > 0L }?.let { NostrRelativeTime.ago(it) },
     )
@@ -406,9 +403,8 @@ private fun quoteCardFor(
  * Build a typed [NostrArticleCardModel] for a kind:30023 long-form article
  * EventRef. Returns null for any non-article ref so [NostrContentView] falls
  * back to the generic quote card. Title / summary / hero come from the event's
- * NIP-23 tags; the byline prefers the kernel's claimed_events enrichment and
- * falls back to a separately claimed profile (Gigi) — mirroring iOS's typed
- * ArticleEmbed byline.
+ * NIP-23 tags; the byline comes from a separately claimed profile (Gigi),
+ * mirroring iOS's typed ArticleEmbed byline.
  */
 private fun articleCardFor(
     uri: WireNostrUri,
@@ -423,8 +419,8 @@ private fun articleCardFor(
     return NostrArticleCardModel(
         id = event.id,
         authorPubkey = event.authorPubkey,
-        authorDisplayName = event.authorDisplayName ?: profile?.displayName,
-        authorPictureUrl = event.authorPictureUrl ?: profile?.pictureUrl,
+        authorDisplayName = profile?.displayName,
+        authorPictureUrl = profile?.pictureUrl,
         title = tag("title"),
         summary = tag("summary"),
         heroImageUrl = tag("image"),

@@ -57,8 +57,8 @@ function eventRelayHints(node: WireNode): string[] {
 
 function quoteModel(event: ClaimedEventWire): NostrQuoteCardModel {
   return {
-    authorName: event.authorDisplayName ?? shortKey(event.authorPubkey),
-    authorPicture: event.authorPictureUrl,
+    authorName: shortKey(event.authorPubkey),
+    authorPicture: undefined,
     content: contentPreview(event.contentTree) || event.content,
     createdAt: event.createdAt || undefined,
   };

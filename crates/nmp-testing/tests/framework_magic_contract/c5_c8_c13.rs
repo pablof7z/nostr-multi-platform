@@ -227,15 +227,14 @@ fn c8_subscriptions_coalesce_and_buffer() {
 
 // ── C13 ───────────────────────────────────────────────────────────────────────
 
-/// C13: Best-effort rendering — `author_picture_url` is a non-`Option` `String`
-/// on the JSON wire format; authoritative data refines in place.
+/// C13: Best-effort rendering — the kernel emits raw event facts and leaves
+/// presentation fallback/avatar strategy to the shell.
 ///
 /// Integration proof of TWO contracts in one drain:
 ///
 /// 1. **ADR-0017 (D1 placeholder shape).** With no kind:0 ingested, the
-///    timeline item's `author_picture_url` is the deterministic
-///    `identicon:<pubkey-prefix>` URI and `author_avatar_source` is
-///    `"placeholder"` (the discriminator tracks the actual URL selection).
+///    claimed event row still carries the raw author pubkey; avatar/display
+///    placeholder selection is a presentation concern outside this projection.
 /// 2. **ADR-0001 / T103 (FFI envelope).** Every frame on the channel decodes
 ///    as the single FlatBuffers `UpdateEnvelope` discriminated type — the tag
 ///    *is* the discriminant (D6). This test never sniffs payload keys to
@@ -249,7 +248,8 @@ fn c8_subscriptions_coalesce_and_buffer() {
 ///         `docs/design/0001-ffi-update-channel-envelope.md` (T103).
 /// V-112 (ADR-0042): Updated to use event ref resolution + `claimed_events` typed
 /// projection instead of the deleted `OpenAuthor` + `author_view` sidecar.
-/// C13 property remains the same: `author_picture_url` is None before kind:0.
+/// C13 property remains the same: raw event projections do not synthesize
+/// presentation fields before kind:0.
 #[test]
 fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_core::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
@@ -354,13 +354,12 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
         )
     };
 
-    // C13 core assertion: aim.md §2 — NMP ships raw data; the presentation
-    // layer owns the placeholder/identicon strategy. author_picture_url is
-    // None until a kind:0 event is received for this author (ADR-0032).
-    // Observed via `claimed_events` (V-112: author_view deleted).
-    assert!(
-        our_row.author_picture_url.is_none(),
-        "author_picture_url must be None before kind:0 arrives (aim.md §2)"
+    // C13 core assertion: aim.md §2 — NMP ships raw event facts; the
+    // presentation layer owns display/avatar synthesis. Observed via
+    // `claimed_events` (V-112: author_view deleted).
+    assert_eq!(
+        our_row.author_pubkey, author_pk,
+        "claimed_events must carry the raw event author pubkey, not synthesized presentation data"
     );
 
     tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))

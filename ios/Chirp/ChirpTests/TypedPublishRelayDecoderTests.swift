@@ -344,16 +344,15 @@ final class TypedPublishRelayDecoderTests: XCTestCase {
         return fbb.data
     }
 
-    /// Build a KPBQ buffer. `title` / `canRetry` / `relayOutcomes` are populated
-    /// on the wire (proving the field-subset glue ignores them deterministically).
+    /// Build a KPBQ buffer. `canRetry` / `relayOutcomes` are populated on the
+    /// wire (proving the field-subset glue ignores them deterministically).
     private func buildPublishQueue(_ rows: [(String, UInt32, UInt32, String)]) -> Data {
         var fbb = FlatBufferBuilder(initialSize: 512)
         let rowOffsets: [Offset] = rows.map { (eventId, kind, targetRelays, status) in
             let eventIdOff = fbb.create(string: eventId)
-            let titleOff = fbb.create(string: "WIRE-ONLY title (ignored by glue)")
             let statusOff = fbb.create(string: status)
             return nmp_kernel_PublishQueueEntry.createPublishQueueEntry(
-                &fbb, eventIdOffset: eventIdOff, kind: kind, titleOffset: titleOff,
+                &fbb, eventIdOffset: eventIdOff, kind: kind,
                 targetRelays: targetRelays, statusOffset: statusOff, canRetry: true,
                 relayOutcomesVectorOffset: Offset())
         }

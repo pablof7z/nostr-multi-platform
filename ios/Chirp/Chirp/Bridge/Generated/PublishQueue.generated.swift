@@ -81,11 +81,10 @@ public struct nmp_kernel_PublishQueueEntry: FlatBufferTable, FlatbuffersVectorIn
   private enum VTOFFSET: VOffset {
     case eventId = 4
     case kind = 6
-    case title = 8
-    case targetRelays = 10
-    case status = 12
-    case canRetry = 14
-    case relayOutcomes = 16
+    case targetRelays = 8
+    case status = 10
+    case canRetry = 12
+    case relayOutcomes = 14
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -93,17 +92,14 @@ public struct nmp_kernel_PublishQueueEntry: FlatBufferTable, FlatbuffersVectorIn
   public var eventId: String? { let o = _accessor.offset(VTOFFSET.eventId.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var eventIdSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.eventId.v) }
   public var kind: UInt32 { let o = _accessor.offset(VTOFFSET.kind.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
-  public var title: String? { let o = _accessor.offset(VTOFFSET.title.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var titleSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.title.v) }
   public var targetRelays: UInt32 { let o = _accessor.offset(VTOFFSET.targetRelays.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var status: String? { let o = _accessor.offset(VTOFFSET.status.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var statusSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.status.v) }
   public var canRetry: Bool { let o = _accessor.offset(VTOFFSET.canRetry.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var relayOutcomes: FlatbufferVector<nmp_kernel_RelayAckOutcome> { return _accessor.vector(at: VTOFFSET.relayOutcomes.v, byteSize: 4) }
-  public static func startPublishQueueEntry(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 7) }
+  public static func startPublishQueueEntry(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 6) }
   public static func add(eventId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: eventId, at: VTOFFSET.eventId.p) }
   public static func add(kind: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: kind, def: 0, at: VTOFFSET.kind.p) }
-  public static func add(title: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: title, at: VTOFFSET.title.p) }
   public static func add(targetRelays: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: targetRelays, def: 0, at: VTOFFSET.targetRelays.p) }
   public static func add(status: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: status, at: VTOFFSET.status.p) }
   public static func add(canRetry: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: canRetry, def: false,
@@ -114,7 +110,6 @@ public struct nmp_kernel_PublishQueueEntry: FlatBufferTable, FlatbuffersVectorIn
     _ fbb: inout FlatBufferBuilder,
     eventIdOffset eventId: Offset = Offset(),
     kind: UInt32 = 0,
-    titleOffset title: Offset = Offset(),
     targetRelays: UInt32 = 0,
     statusOffset status: Offset = Offset(),
     canRetry: Bool = false,
@@ -123,7 +118,6 @@ public struct nmp_kernel_PublishQueueEntry: FlatBufferTable, FlatbuffersVectorIn
     let __start = nmp_kernel_PublishQueueEntry.startPublishQueueEntry(&fbb)
     nmp_kernel_PublishQueueEntry.add(eventId: eventId, &fbb)
     nmp_kernel_PublishQueueEntry.add(kind: kind, &fbb)
-    nmp_kernel_PublishQueueEntry.add(title: title, &fbb)
     nmp_kernel_PublishQueueEntry.add(targetRelays: targetRelays, &fbb)
     nmp_kernel_PublishQueueEntry.add(status: status, &fbb)
     nmp_kernel_PublishQueueEntry.add(canRetry: canRetry, &fbb)
@@ -135,7 +129,6 @@ public struct nmp_kernel_PublishQueueEntry: FlatBufferTable, FlatbuffersVectorIn
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.eventId.p, fieldName: "eventId", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.kind.p, fieldName: "kind", required: false, type: UInt32.self)
-    try _v.visit(field: VTOFFSET.title.p, fieldName: "title", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.targetRelays.p, fieldName: "targetRelays", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.status.p, fieldName: "status", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.canRetry.p, fieldName: "canRetry", required: false, type: Bool.self)

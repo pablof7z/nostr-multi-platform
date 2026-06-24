@@ -46,86 +46,62 @@ authorPubkey(optionalEncoding?:any):string|Uint8Array|null {
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
-hasAuthorDisplayName():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 10);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-authorDisplayName():string|null
-authorDisplayName(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authorDisplayName(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 12);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
-hasAuthorPictureUrl():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 14);
-  return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
-}
-
-authorPictureUrl():string|null
-authorPictureUrl(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
-authorPictureUrl(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 16);
-  return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
-}
-
 kind():number {
-  const offset = this.bb!.__offset(this.bb_pos, 18);
+  const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.readUint32(this.bb_pos + offset) : 0;
 }
 
 createdAt():bigint {
-  const offset = this.bb!.__offset(this.bb_pos, 20);
+  const offset = this.bb!.__offset(this.bb_pos, 12);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
 
 tags(index: number, obj?:TagRow):TagRow|null {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? (obj || new TagRow()).__init(this.bb!.__indirect(this.bb!.__vector(this.bb_pos + offset) + index * 4), this.bb!) : null;
 }
 
 tagsLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 22);
+  const offset = this.bb!.__offset(this.bb_pos, 14);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 content():string|null
 content(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 content(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 24);
+  const offset = this.bb!.__offset(this.bb_pos, 16);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 contentTreeBytes(index: number):number|null {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? this.bb!.readUint8(this.bb!.__vector(this.bb_pos + offset) + index) : 0;
 }
 
 contentTreeBytesLength():number {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? this.bb!.__vector_len(this.bb_pos + offset) : 0;
 }
 
 contentTreeBytesArray():Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 26);
+  const offset = this.bb!.__offset(this.bb_pos, 18);
   return offset ? new Uint8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
 }
 
 hasSignedEventJson():boolean {
-  const offset = this.bb!.__offset(this.bb_pos, 28);
+  const offset = this.bb!.__offset(this.bb_pos, 20);
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
 signedEventJson():string|null
 signedEventJson(optionalEncoding:flatbuffers.Encoding):string|Uint8Array|null
 signedEventJson(optionalEncoding?:any):string|Uint8Array|null {
-  const offset = this.bb!.__offset(this.bb_pos, 30);
+  const offset = this.bb!.__offset(this.bb_pos, 22);
   return offset ? this.bb!.__string(this.bb_pos + offset, optionalEncoding) : null;
 }
 
 static startClaimedEvent(builder:flatbuffers.Builder) {
-  builder.startObject(14);
+  builder.startObject(10);
 }
 
 static addPrimaryId(builder:flatbuffers.Builder, primaryIdOffset:flatbuffers.Offset) {
@@ -140,32 +116,16 @@ static addAuthorPubkey(builder:flatbuffers.Builder, authorPubkeyOffset:flatbuffe
   builder.addFieldOffset(2, authorPubkeyOffset, 0);
 }
 
-static addHasAuthorDisplayName(builder:flatbuffers.Builder, hasAuthorDisplayName:boolean) {
-  builder.addFieldInt8(3, +hasAuthorDisplayName, +false);
-}
-
-static addAuthorDisplayName(builder:flatbuffers.Builder, authorDisplayNameOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(4, authorDisplayNameOffset, 0);
-}
-
-static addHasAuthorPictureUrl(builder:flatbuffers.Builder, hasAuthorPictureUrl:boolean) {
-  builder.addFieldInt8(5, +hasAuthorPictureUrl, +false);
-}
-
-static addAuthorPictureUrl(builder:flatbuffers.Builder, authorPictureUrlOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(6, authorPictureUrlOffset, 0);
-}
-
 static addKind(builder:flatbuffers.Builder, kind:number) {
-  builder.addFieldInt32(7, kind, 0);
+  builder.addFieldInt32(3, kind, 0);
 }
 
 static addCreatedAt(builder:flatbuffers.Builder, createdAt:bigint) {
-  builder.addFieldInt64(8, createdAt, BigInt('0'));
+  builder.addFieldInt64(4, createdAt, BigInt('0'));
 }
 
 static addTags(builder:flatbuffers.Builder, tagsOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(9, tagsOffset, 0);
+  builder.addFieldOffset(5, tagsOffset, 0);
 }
 
 static createTagsVector(builder:flatbuffers.Builder, data:flatbuffers.Offset[]):flatbuffers.Offset {
@@ -181,11 +141,11 @@ static startTagsVector(builder:flatbuffers.Builder, numElems:number) {
 }
 
 static addContent(builder:flatbuffers.Builder, contentOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(10, contentOffset, 0);
+  builder.addFieldOffset(6, contentOffset, 0);
 }
 
 static addContentTreeBytes(builder:flatbuffers.Builder, contentTreeBytesOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(11, contentTreeBytesOffset, 0);
+  builder.addFieldOffset(7, contentTreeBytesOffset, 0);
 }
 
 static createContentTreeBytesVector(builder:flatbuffers.Builder, data:number[]|Uint8Array):flatbuffers.Offset {
@@ -201,11 +161,11 @@ static startContentTreeBytesVector(builder:flatbuffers.Builder, numElems:number)
 }
 
 static addHasSignedEventJson(builder:flatbuffers.Builder, hasSignedEventJson:boolean) {
-  builder.addFieldInt8(12, +hasSignedEventJson, +false);
+  builder.addFieldInt8(8, +hasSignedEventJson, +false);
 }
 
 static addSignedEventJson(builder:flatbuffers.Builder, signedEventJsonOffset:flatbuffers.Offset) {
-  builder.addFieldOffset(13, signedEventJsonOffset, 0);
+  builder.addFieldOffset(9, signedEventJsonOffset, 0);
 }
 
 static endClaimedEvent(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -213,15 +173,11 @@ static endClaimedEvent(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createClaimedEvent(builder:flatbuffers.Builder, primaryIdOffset:flatbuffers.Offset, idOffset:flatbuffers.Offset, authorPubkeyOffset:flatbuffers.Offset, hasAuthorDisplayName:boolean, authorDisplayNameOffset:flatbuffers.Offset, hasAuthorPictureUrl:boolean, authorPictureUrlOffset:flatbuffers.Offset, kind:number, createdAt:bigint, tagsOffset:flatbuffers.Offset, contentOffset:flatbuffers.Offset, contentTreeBytesOffset:flatbuffers.Offset, hasSignedEventJson:boolean, signedEventJsonOffset:flatbuffers.Offset):flatbuffers.Offset {
+static createClaimedEvent(builder:flatbuffers.Builder, primaryIdOffset:flatbuffers.Offset, idOffset:flatbuffers.Offset, authorPubkeyOffset:flatbuffers.Offset, kind:number, createdAt:bigint, tagsOffset:flatbuffers.Offset, contentOffset:flatbuffers.Offset, contentTreeBytesOffset:flatbuffers.Offset, hasSignedEventJson:boolean, signedEventJsonOffset:flatbuffers.Offset):flatbuffers.Offset {
   ClaimedEvent.startClaimedEvent(builder);
   ClaimedEvent.addPrimaryId(builder, primaryIdOffset);
   ClaimedEvent.addId(builder, idOffset);
   ClaimedEvent.addAuthorPubkey(builder, authorPubkeyOffset);
-  ClaimedEvent.addHasAuthorDisplayName(builder, hasAuthorDisplayName);
-  ClaimedEvent.addAuthorDisplayName(builder, authorDisplayNameOffset);
-  ClaimedEvent.addHasAuthorPictureUrl(builder, hasAuthorPictureUrl);
-  ClaimedEvent.addAuthorPictureUrl(builder, authorPictureUrlOffset);
   ClaimedEvent.addKind(builder, kind);
   ClaimedEvent.addCreatedAt(builder, createdAt);
   ClaimedEvent.addTags(builder, tagsOffset);

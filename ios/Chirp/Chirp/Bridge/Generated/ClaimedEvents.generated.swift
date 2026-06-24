@@ -60,17 +60,13 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
     case primaryId = 4
     case id = 6
     case authorPubkey = 8
-    case hasAuthorDisplayName = 10
-    case authorDisplayName = 12
-    case hasAuthorPictureUrl = 14
-    case authorPictureUrl = 16
-    case kind = 18
-    case createdAt = 20
-    case tags = 22
-    case content = 24
-    case contentTreeBytes = 26
-    case hasSignedEventJson = 28
-    case signedEventJson = 30
+    case kind = 10
+    case createdAt = 12
+    case tags = 14
+    case content = 16
+    case contentTreeBytes = 18
+    case hasSignedEventJson = 20
+    case signedEventJson = 22
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -81,12 +77,6 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
   public var idSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.id.v) }
   public var authorPubkey: String? { let o = _accessor.offset(VTOFFSET.authorPubkey.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var authorPubkeySegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.authorPubkey.v) }
-  public var hasAuthorDisplayName: Bool { let o = _accessor.offset(VTOFFSET.hasAuthorDisplayName.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var authorDisplayName: String? { let o = _accessor.offset(VTOFFSET.authorDisplayName.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var authorDisplayNameSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.authorDisplayName.v) }
-  public var hasAuthorPictureUrl: Bool { let o = _accessor.offset(VTOFFSET.hasAuthorPictureUrl.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
-  public var authorPictureUrl: String? { let o = _accessor.offset(VTOFFSET.authorPictureUrl.v); return o == 0 ? nil : _accessor.string(at: o) }
-  public var authorPictureUrlSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.authorPictureUrl.v) }
   public var kind: UInt32 { let o = _accessor.offset(VTOFFSET.kind.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
   public var createdAt: UInt64 { let o = _accessor.offset(VTOFFSET.createdAt.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var tags: FlatbufferVector<nmp_kernel_TagRow> { return _accessor.vector(at: VTOFFSET.tags.v, byteSize: 4) }
@@ -97,16 +87,10 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
   public var hasSignedEventJson: Bool { let o = _accessor.offset(VTOFFSET.hasSignedEventJson.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
   public var signedEventJson: String? { let o = _accessor.offset(VTOFFSET.signedEventJson.v); return o == 0 ? nil : _accessor.string(at: o) }
   public var signedEventJsonSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.signedEventJson.v) }
-  public static func startClaimedEvent(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 14) }
+  public static func startClaimedEvent(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 10) }
   public static func add(primaryId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: primaryId, at: VTOFFSET.primaryId.p) }
   public static func add(id: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: id, at: VTOFFSET.id.p) }
   public static func add(authorPubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPubkey, at: VTOFFSET.authorPubkey.p) }
-  public static func add(hasAuthorDisplayName: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasAuthorDisplayName, def: false,
-   at: VTOFFSET.hasAuthorDisplayName.p) }
-  public static func add(authorDisplayName: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorDisplayName, at: VTOFFSET.authorDisplayName.p) }
-  public static func add(hasAuthorPictureUrl: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasAuthorPictureUrl, def: false,
-   at: VTOFFSET.hasAuthorPictureUrl.p) }
-  public static func add(authorPictureUrl: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPictureUrl, at: VTOFFSET.authorPictureUrl.p) }
   public static func add(kind: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: kind, def: 0, at: VTOFFSET.kind.p) }
   public static func add(createdAt: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: createdAt, def: 0, at: VTOFFSET.createdAt.p) }
   public static func addVectorOf(tags: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: tags, at: VTOFFSET.tags.p) }
@@ -121,10 +105,6 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
     primaryIdOffset primaryId: Offset = Offset(),
     idOffset id: Offset = Offset(),
     authorPubkeyOffset authorPubkey: Offset = Offset(),
-    hasAuthorDisplayName: Bool = false,
-    authorDisplayNameOffset authorDisplayName: Offset = Offset(),
-    hasAuthorPictureUrl: Bool = false,
-    authorPictureUrlOffset authorPictureUrl: Offset = Offset(),
     kind: UInt32 = 0,
     createdAt: UInt64 = 0,
     tagsVectorOffset tags: Offset = Offset(),
@@ -137,10 +117,6 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
     nmp_kernel_ClaimedEvent.add(primaryId: primaryId, &fbb)
     nmp_kernel_ClaimedEvent.add(id: id, &fbb)
     nmp_kernel_ClaimedEvent.add(authorPubkey: authorPubkey, &fbb)
-    nmp_kernel_ClaimedEvent.add(hasAuthorDisplayName: hasAuthorDisplayName, &fbb)
-    nmp_kernel_ClaimedEvent.add(authorDisplayName: authorDisplayName, &fbb)
-    nmp_kernel_ClaimedEvent.add(hasAuthorPictureUrl: hasAuthorPictureUrl, &fbb)
-    nmp_kernel_ClaimedEvent.add(authorPictureUrl: authorPictureUrl, &fbb)
     nmp_kernel_ClaimedEvent.add(kind: kind, &fbb)
     nmp_kernel_ClaimedEvent.add(createdAt: createdAt, &fbb)
     nmp_kernel_ClaimedEvent.addVectorOf(tags: tags, &fbb)
@@ -156,10 +132,6 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
     try _v.visit(field: VTOFFSET.primaryId.p, fieldName: "primaryId", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.id.p, fieldName: "id", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.authorPubkey.p, fieldName: "authorPubkey", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasAuthorDisplayName.p, fieldName: "hasAuthorDisplayName", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.authorDisplayName.p, fieldName: "authorDisplayName", required: false, type: ForwardOffset<String>.self)
-    try _v.visit(field: VTOFFSET.hasAuthorPictureUrl.p, fieldName: "hasAuthorPictureUrl", required: false, type: Bool.self)
-    try _v.visit(field: VTOFFSET.authorPictureUrl.p, fieldName: "authorPictureUrl", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.kind.p, fieldName: "kind", required: false, type: UInt32.self)
     try _v.visit(field: VTOFFSET.createdAt.p, fieldName: "createdAt", required: false, type: UInt64.self)
     try _v.visit(field: VTOFFSET.tags.p, fieldName: "tags", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_kernel_TagRow>, nmp_kernel_TagRow>>.self)

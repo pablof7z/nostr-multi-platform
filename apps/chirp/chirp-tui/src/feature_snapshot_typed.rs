@@ -273,7 +273,7 @@ fn publish_history_from_queue(
             PublishHistoryLine {
                 event_id: row.event_id,
                 kind: row.kind,
-                title: row.title,
+                title: outbox_kind_title(row.kind),
                 status: row.status,
                 can_retry: row.can_retry,
                 relays,

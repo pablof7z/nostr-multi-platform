@@ -208,8 +208,8 @@ private fun QuoteCardShowcase(
     val quoteModel = quoteCardFor(noteUri, claimedEvents)?.let { model ->
         val profile = model.authorPubkey?.let { profileMap[it] }
         model.copy(
-            authorDisplayName = model.authorDisplayName ?: profile?.displayName,
-            authorAvatarUrl = model.authorAvatarUrl ?: profile?.pictureUrl,
+            authorDisplayName = profile?.displayName,
+            authorAvatarUrl = profile?.pictureUrl,
         )
     } ?: NostrQuoteCardModel(id = showcase.note.primaryId, unresolvedUri = showcase.note.uri)
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -298,8 +298,6 @@ private fun quoteCardFor(
         id = event.id,
         unresolvedUri = uri.uri,
         authorPubkey = event.authorPubkey,
-        authorDisplayName = event.authorDisplayName,
-        authorAvatarUrl = event.authorPictureUrl,
         content = event.content,
         mediaThumbnailUrl = mediaUrls(event).firstOrNull(),
         createdAtDisplay = event.createdAt.takeIf { it > 0L }?.let { NostrRelativeTime.ago(it) },

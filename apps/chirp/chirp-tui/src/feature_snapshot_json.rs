@@ -92,17 +92,15 @@ pub(crate) fn publish_history_from(projections: &Value) -> Vec<PublishHistoryLin
                     message: format_relay_message_token(&string_field(r, "message")),
                 })
                 .collect();
+            let kind = row
+                .get("kind")
+                .and_then(Value::as_u64)
+                .and_then(|k| u32::try_from(k).ok())
+                .unwrap_or_default();
             PublishHistoryLine {
                 event_id: string_field(row, "event_id"),
-                kind: row
-                    .get("kind")
-                    .and_then(Value::as_u64)
-                    .and_then(|k| u32::try_from(k).ok())
-                    .unwrap_or_default(),
-                // Pre-formatted by the kernel (`PublishQueueEntry.title`) —
-                // the TUI no longer owns a kind→label mapping (RMP bible
-                // commandment #4: backend owns display strings).
-                title: string_field(row, "title"),
+                kind,
+                title: json_outbox_kind_title(kind),
                 status: string_field(row, "status"),
                 can_retry: bool_field(row, "can_retry") || bool_field(row, "canRetry"),
                 relays,

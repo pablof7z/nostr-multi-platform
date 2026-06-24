@@ -618,9 +618,9 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             // `nmp_kernel_ClaimedEvent` + `nmp_kernel_TagRow`) ships with this
             // batch from `crates/nmp-core/schema/claimed_events.fbs`. Flattened
             // `[{key,value}]` → `[String: ClaimedEventDto]` map, mirroring the
-            // `claimed_profiles` precedent; the wire's author display/picture
-            // fields are NOT mapped (the hand-declared `ClaimedEventDto` in
-            // `EmbedHost.swift` ignores them — field-aligned, not thick). See
+            // `claimed_profiles` precedent; the redundant `primary_id` body
+            // field is NOT mapped (the hand-declared `ClaimedEventDto` in
+            // `EmbedHost.swift` ignores it — field-aligned, not thick). See
             // `TypedProjectionGlue.claimedEvents`.
             swift_reader_type: Some("nmp_kernel_ClaimedEventsSnapshot"),
         }),

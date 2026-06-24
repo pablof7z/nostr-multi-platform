@@ -296,7 +296,6 @@ mod live_profile_map_tests {
         let pubkey = showcase_pubkey();
         let card = ProfileCardModel {
             pubkey: pubkey.to_string(),
-            npub: String::new(),
             display_name: Some("Resolved Name".to_string()),
             picture_url: Some("https://example.com/a.png".to_string()),
             nip05: "name@example.com".to_string(),

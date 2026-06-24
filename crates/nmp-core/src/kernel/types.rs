@@ -717,13 +717,6 @@ pub(crate) struct ClaimedEventDto {
     /// Author pubkey, hex (64 chars). Presentation layer formats for
     /// display.
     pub(super) author_pubkey: String,
-    /// Legacy nullable field retained for wire compatibility. The kernel no
-    /// longer enriches `claimed_events` with kind:0 display data; renderers
-    /// compose `author_pubkey` with profile components/projections instead.
-    pub(super) author_display_name: Option<String>,
-    /// Legacy nullable field retained for wire compatibility. Avatar/profile
-    /// renderers resolve picture state through profile claims instead.
-    pub(super) author_picture_url: Option<String>,
     /// Event kind.
     pub(super) kind: u32,
     /// Unix-seconds `created_at`. Presentation layer formats relative
@@ -749,16 +742,13 @@ impl ClaimedEventDto {
     /// Build a `ClaimedEventDto` from a kernel-side `StoredEvent`,
     /// stamping the caller-provided `primary_id` (which may be either
     /// the event id verbatim or an addressable coordinate string).
-    /// Author profile fields default to `None`; the projection builder
-    /// in `kernel/update.rs` enriches them from
-    /// `Kernel::profile_for_pubkey`.
+    /// Author profile data is resolved through `refs.profile` claims instead
+    /// of being duplicated into claimed-event rows.
     pub(super) fn from_stored(primary_id: String, e: &StoredEvent) -> Self {
         Self {
             primary_id,
             id: e.id.clone(),
             author_pubkey: e.author.clone(),
-            author_display_name: None,
-            author_picture_url: None,
             kind: e.kind,
             created_at: e.created_at,
             tags: e.tags.clone(),
