@@ -14,9 +14,8 @@ use std::sync::Arc;
 use nmp_core::substrate::{
     CacheSearchMode, SearchIndexSpec, SearchPrivacyPolicy, SearchScopeProvider, SearchScopeRegistrar,
 };
+use nmp_kinds::KIND_LONG_FORM_ARTICLE;
 use nmp_store::{SearchField, SearchScopeId, StoredEvent};
-
-use crate::request::KIND_LONG_FORM;
 
 /// Stable scope labels — also the bridge the result projection uses to map a
 /// [`crate::SearchScope`] to the store's [`SearchScopeId`].
@@ -166,7 +165,7 @@ impl SearchScopeProvider for LongFormSearchScope {
         SearchIndexSpec {
             scope: SearchScopeId::from_label(SCOPE_LABEL_LONGFORM),
             source: "nip50.longform (kind:30023 title/summary/body)",
-            kinds: BTreeSet::from([KIND_LONG_FORM]),
+            kinds: BTreeSet::from([KIND_LONG_FORM_ARTICLE]),
             fields: vec![Self::F_TITLE, Self::F_SUMMARY, Self::F_BODY],
             privacy: SearchPrivacyPolicy::PublicIndexable,
             cache_mode: CacheSearchMode::Both,

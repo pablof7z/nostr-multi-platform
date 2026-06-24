@@ -10,6 +10,8 @@ description = "The framework's default composition for an NMP-based Nostr applic
 # Kernel substrate — `ActorCommand`, observer traits, the routing
 # substrate factory seam, and the app-neutral `AppHost` registration trait.
 nmp-core = { path = "../nmp-core" }
+# Canonical Nostr kind-integer registry used by default action modules.
+nmp-kinds = { path = "../nmp-kinds" }
 # Direct dep on nmp-planner for InterestShape / InterestId / InterestLifecycle /
 # InterestScope / LogicalInterest — the nmp_core::planner compat facade is
 # deleted (#1608).

@@ -5,12 +5,12 @@
 use std::collections::BTreeSet;
 
 use nmp_core::substrate::ViewDependencies;
-use nmp_kinds::KIND_PROFILE_METADATA;
+use nmp_kinds::{KIND_LONG_FORM_ARTICLE, KIND_PROFILE_METADATA};
 use nmp_planner::interest::bounded_search_query;
 use nmp_planner::InterestShape;
 use serde::{Deserialize, Serialize};
 
-pub const KIND_LONG_FORM: u32 = 30_023;
+pub use nmp_kinds::KIND_LONG_FORM_ARTICLE as KIND_LONG_FORM;
 pub const DEFAULT_MAX_SEARCH_HITS: usize = 200;
 pub const HARD_MAX_SEARCH_HITS: usize = 500;
 
@@ -63,7 +63,7 @@ impl SearchRequest {
                 ..Default::default()
             },
             SearchScope::LongForm => InterestShape {
-                kinds: BTreeSet::from([KIND_LONG_FORM]),
+                kinds: BTreeSet::from([KIND_LONG_FORM_ARTICLE]),
                 ..Default::default()
             },
             SearchScope::Kinds(kinds) => InterestShape {
@@ -81,7 +81,7 @@ impl SearchRequest {
     pub fn view_dependencies(&self) -> Option<ViewDependencies> {
         let kinds: Vec<u32> = match &self.scope {
             SearchScope::Users => vec![KIND_PROFILE_METADATA],
-            SearchScope::LongForm => vec![KIND_LONG_FORM],
+            SearchScope::LongForm => vec![KIND_LONG_FORM_ARTICLE],
             SearchScope::Kinds(kinds) => kinds.iter().copied().collect(),
             SearchScope::Custom(_) => return None,
         };
