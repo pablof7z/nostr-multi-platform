@@ -19,9 +19,9 @@
 //!   `native` feature.
 
 use nmp_core::substrate::{ProtocolCommand, ProtocolCommandContext, ProtocolCommandError};
-use nmp_core::{ActionLedgerCommand, ActorCommand};
+use nmp_core::actor::{ActionLedgerCommand, ActorCommand};
 #[cfg(feature = "native")]
-use nmp_core::RefsCommand;
+use nmp_core::actor::RefsCommand;
 
 pub mod parse;
 

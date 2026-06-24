@@ -45,6 +45,7 @@ pub mod kind_filter;
 // the native `ActorContext`).
 #[cfg(feature = "native")] mod fairness;
 #[cfg(feature = "native")] mod signer_port_dispatch;
+mod signer_source;
 // ADR-0050 §D3a — the single waking actor inbox. `ActorMail` + `CommandSender`
 // are always-compiled (the always-compiled `substrate::protocol` seam hands
 // `CommandSender` to workers, and `ActorCommand` itself is always-compiled);

@@ -51,7 +51,8 @@ use nmp_core::typed_projections::{
     ACTIVE_ACCOUNT_SCHEMA_ID, PUBLISH_QUEUE_SCHEMA_ID,
 };
 use nmp_core::actor::ActorCommand;
-use nmp_core::{decode_snapshot_typed_projections, ActorMail, CommandSender, IdentityCommand, LifecycleCommand, PublishCommand};
+use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand};
+use nmp_core::{decode_snapshot_typed_projections, ActorMail, CommandSender};
 use nmp_signer_iface::RemoteSignerHandle;
 use nmp_signer_iface::SignerError;
 use nostr::{Event, Keys};
@@ -184,7 +185,8 @@ fn bunker_publish_unsigned_event_routes_signed_kind1_through_publish_queue() {
 
     use nmp_core::testing::run_actor;
     use nmp_core::actor::ActorCommand;
-    use nmp_core::{ActorMail, CommandSender, IdentityCommand, LifecycleCommand, PublishCommand};
+    use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand};
+    use nmp_core::{ActorMail, CommandSender};
 
     let bunker_keys = Keys::generate();
     let user_keys = Keys::generate();

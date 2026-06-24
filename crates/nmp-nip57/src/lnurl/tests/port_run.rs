@@ -5,7 +5,7 @@
 //! closed. Backend-transparent resolution is proven in nmp-core.
 
 use super::*;
-use nmp_core::SignCommand;
+use nmp_core::actor::SignCommand;
 use std::sync::Mutex;
 
 /// Drive `run()` with a captured send sink + recordable stage tracker.

@@ -21,7 +21,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::actor::ActorCommand;
-use nmp_core::{AppRelayList, InterestsCommand};
+use nmp_core::actor::{InterestsCommand};
+use nmp_core::{AppRelayList};
 use nmp_nip17::{active_giftwrap_inbox_interest_id, DmRuntimeState};
 use nostr::Keys;
 

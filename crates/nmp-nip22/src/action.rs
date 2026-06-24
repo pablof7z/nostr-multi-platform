@@ -9,7 +9,7 @@ use nmp_core::substrate::{
     ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::{ActorCommand, PublishCommand};
+use nmp_core::actor::{ActorCommand, PublishCommand};
 use nmp_kinds::KIND_NIP22_COMMENT;
 use serde::{Deserialize, Serialize};
 

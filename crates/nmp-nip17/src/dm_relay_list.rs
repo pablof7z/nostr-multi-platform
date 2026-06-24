@@ -44,7 +44,8 @@
 
 use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::{canonical_relay_url, ActorCommand, PublishCommand};
+use nmp_core::actor::{ActorCommand, PublishCommand};
+use nmp_core::{canonical_relay_url};
 use nmp_kinds::KIND_DM_RELAY_LIST;
 use serde::{Deserialize, Serialize};
 

@@ -3,7 +3,7 @@
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::{ActorCommand, PublishCommand};
+use nmp_core::actor::{ActorCommand, PublishCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::cache::previous_tag_prefix;

@@ -17,7 +17,8 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_core::substrate::RelayConnectedHook;
-use nmp_core::{ActorCommand, CommandSender, RelayCommand};
+use nmp_core::actor::{ActorCommand, RelayCommand};
+use nmp_core::{CommandSender};
 
 use crate::fetch::fetch_relay_info_blocking;
 

@@ -63,7 +63,7 @@ use nmp_core::substrate::{
     ActionRejection, BlockedRelayLookup,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::{ActorCommand, PublishCommand};
+use nmp_core::actor::{ActorCommand, PublishCommand};
 use nmp_kinds::KIND_BLOCKED_RELAYS;
 use serde::{Deserialize, Serialize};
 

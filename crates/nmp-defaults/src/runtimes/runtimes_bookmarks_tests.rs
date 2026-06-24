@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::actor::ActorCommand;
-use nmp_core::InterestsCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_nip51::active_bookmark_list_interest_id;
 use nmp_planner::{InterestLifecycle, InterestScope};
 use nostr::Keys;

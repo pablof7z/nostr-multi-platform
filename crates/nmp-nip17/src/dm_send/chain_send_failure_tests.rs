@@ -11,7 +11,8 @@
 //! is invoked — never a silent `let _ = send(..)`.
 
 use super::*;
-use nmp_core::{ActionLedgerCommand, ActorCommand, ActorMail, PublishCommand};
+use nmp_core::actor::{ActionLedgerCommand, ActorCommand, PublishCommand};
+use nmp_core::{ActorMail};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 /// A signed kind:13 seal for the wrap step, signed with a real test key so

@@ -19,7 +19,7 @@ use crate::report::ScenarioMetrics;
 use crate::scenarios::{finish_scenario, gate_eq, gate_max, gate_min};
 use nmp_core::{ProfileShape, RefLiveness, RefNamespace, RefShape};
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::{LifecycleCommand, RefsCommand};
+use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use nmp_testing::harness_probe::recv_latest_until;
 use std::time::{Duration, Instant};
 

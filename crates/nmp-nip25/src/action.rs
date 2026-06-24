@@ -4,7 +4,7 @@ use nmp_core::substrate::{
     ProtocolDescriptor,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::{ActorCommand, PublishCommand};
+use nmp_core::actor::{ActorCommand, PublishCommand};
 use serde::{Deserialize, Serialize};
 
 pub const KIND_REACTION: u32 = 7;

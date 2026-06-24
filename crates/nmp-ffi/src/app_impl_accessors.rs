@@ -22,9 +22,9 @@ use nmp_core::slots::{
     event_by_id_from_store, ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot,
     PullCursorRegistryHandleSlot,
 };
-use nmp_core::actor::ActorCommand;
-use nmp_core::{
-    ContactsCommand, IdentityCommand, InterestsCommand, PublishCommand, RefsCommand, SignCommand,
+use nmp_core::actor::{
+    ActorCommand, ContactsCommand, IdentityCommand, InterestsCommand, PublishCommand, RefsCommand,
+    SignCommand,
 };
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
 use zeroize::Zeroizing;
@@ -235,13 +235,13 @@ impl NmpApp {
     /// Add a relay to the active account's relay list.
     /// Typed wrapper for [`ActorCommand::AddRelay`].
     pub(crate) fn add_relay(&self, url: String, role: String) {
-        self.send_cmd(ActorCommand::Relay(nmp_core::RelayCommand::AddRelay { url, role }));
+        self.send_cmd(ActorCommand::Relay(nmp_core::actor::RelayCommand::AddRelay { url, role }));
     }
 
     /// Remove a relay from the active account's relay list.
     /// Typed wrapper for [`ActorCommand::RemoveRelay`].
     pub(crate) fn remove_relay(&self, url: String) {
-        self.send_cmd(ActorCommand::Relay(nmp_core::RelayCommand::RemoveRelay { url }));
+        self.send_cmd(ActorCommand::Relay(nmp_core::actor::RelayCommand::RemoveRelay { url }));
     }
 
     /// Retry a failed publish, addressed by its handle.

@@ -295,7 +295,7 @@ fn start_rejects_input_that_produces_zero_canonical_tags() {
 #[test]
 fn execute_emits_kind10002_publish_unsigned_event_command() {
     use nmp_core::actor::ActorCommand;
-    use nmp_core::PublishCommand;
+    use nmp_core::actor::PublishCommand;
     use std::cell::RefCell;
 
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());

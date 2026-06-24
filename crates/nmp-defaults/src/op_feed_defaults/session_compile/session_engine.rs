@@ -31,7 +31,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
 use nmp_core::actor::ActorCommand;
-use nmp_core::{KernelEventObserver, InterestsCommand};
+use nmp_core::actor::{InterestsCommand};
+use nmp_core::{KernelEventObserver};
 use nmp_feed::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedReset, FeedSessionBuild,
     PullFeedController, RootAdmission,

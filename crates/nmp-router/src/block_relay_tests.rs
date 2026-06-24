@@ -1,6 +1,6 @@
 use super::*;
 use nmp_core::actor::ActorCommand;
-use nmp_core::PublishCommand;
+use nmp_core::actor::PublishCommand;
 use std::cell::RefCell;
 
 fn cache_with(pubkey: &str, urls: &[&str]) -> Arc<InMemoryBlockedRelayCache> {

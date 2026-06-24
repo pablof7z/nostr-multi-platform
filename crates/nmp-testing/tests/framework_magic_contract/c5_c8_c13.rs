@@ -256,9 +256,9 @@ fn c13_view_payload_uses_placeholders_then_refines_in_place() {
     use nmp_store::RawEvent;
     use nmp_core::testing::{spawn_actor, ActorCommand};
     use nmp_core::typed_projections::{decode_claimed_events, CLAIMED_EVENTS_SCHEMA_ID};
+    use nmp_core::actor::{LifecycleCommand, RefsCommand, TestSupportCommand};
     use nmp_core::{
-        decode_snapshot_typed_projections, decode_update_frame, LifecycleCommand, RefsCommand,
-        TestSupportCommand, UpdateEnvelope,
+        decode_snapshot_typed_projections, decode_update_frame, UpdateEnvelope,
     };
     use std::time::Duration;
 

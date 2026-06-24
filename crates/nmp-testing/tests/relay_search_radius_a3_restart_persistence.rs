@@ -38,7 +38,7 @@ use common::wire_log::{
     event_rx_for_author, req_emit_relays_for_phase, score_updates, StderrCapture,
 };
 use nmp_core::testing::{spawn_actor_with_storage_path, ActorCommand};
-use nmp_core::{LifecycleCommand, RefsCommand};
+use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tempfile::tempdir;

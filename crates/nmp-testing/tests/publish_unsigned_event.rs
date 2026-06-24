@@ -31,7 +31,7 @@
 
 use nmp_core::decode_snapshot_envelope;
 use nmp_core::testing::ActorCommand;
-use nmp_core::{LifecycleCommand, PublishCommand};
+use nmp_core::actor::{LifecycleCommand, PublishCommand};
 use nmp_nip01::Note;
 use std::time::Duration;
 

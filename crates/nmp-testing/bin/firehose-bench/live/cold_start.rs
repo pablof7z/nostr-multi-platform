@@ -14,7 +14,7 @@ use super::{drain, round2, visible_items, wait_connected, wait_update, Scenario}
 use crate::report::ScenarioMetrics;
 use crate::scenarios::{finish_scenario, gate_max};
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::LifecycleCommand;
+use nmp_core::actor::LifecycleCommand;
 use std::time::{Duration, Instant};
 
 const FIRST_ITEM_GATE_MS: f64 = 800.0;
