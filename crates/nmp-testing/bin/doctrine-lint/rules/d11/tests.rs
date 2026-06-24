@@ -177,6 +177,73 @@ fn ignores_comment_lines() {
 }
 
 #[test]
+fn flags_bare_publishsignedevent_split_construction() {
+    // Regression guard for the split-construction bypass: a developer
+    // assigns `PublishCommand::SignedEvent { .. }` to a local on line A,
+    // then passes the local to `ActorCommand::Publish(cmd)` on line B.
+    // Neither line contains the full inline pattern
+    // `ActorCommand::Publish(PublishCommand::SignedEvent`; D11 must still
+    // fire on line A via the bare `PublishCommand::SignedEvent` entry.
+    let lines = [
+        "#[no_mangle]",
+        "pub extern \"C\" fn nmp_app_something(app: *mut NmpApp) {",
+        "    let cmd = PublishCommand::SignedEvent { event, relays: Vec::new(), correlation_id: None };",
+        "    app.send_cmd(ActorCommand::Publish(cmd));",
+        "}",
+    ];
+    let hits = run_tracker(&lines);
+    assert!(
+        !hits.is_empty(),
+        "bare PublishCommand::SignedEvent in FFI body must trip D11; got no hits"
+    );
+    assert!(
+        hits.iter().any(|(_, msg, _)| msg.contains("PublishSignedEvent")),
+        "at least one hit must name ActorCommand::PublishSignedEvent; got {:?}",
+        hits
+    );
+}
+
+#[test]
+fn flags_bare_publishunsignedevent_split_construction() {
+    // Same loophole for the unsigned variant.
+    let lines = [
+        "#[no_mangle]",
+        "pub extern \"C\" fn nmp_app_other(app: *mut NmpApp) {",
+        "    let cmd = PublishCommand::UnsignedEvent { event };",
+        "    app.send_cmd(ActorCommand::Publish(cmd));",
+        "}",
+    ];
+    let hits = run_tracker(&lines);
+    assert!(
+        !hits.is_empty(),
+        "bare PublishCommand::UnsignedEvent in FFI body must trip D11; got no hits"
+    );
+    assert!(
+        hits.iter().any(|(_, msg, _)| msg.contains("PublishUnsignedEvent")),
+        "at least one hit must name ActorCommand::PublishUnsignedEvent; got {:?}",
+        hits
+    );
+}
+
+#[test]
+fn split_construction_exempt_in_whitelisted_symbol() {
+    // The whitelist must suppress the new bare-variant entries too.
+    let lines = [
+        "#[no_mangle]",
+        "pub extern \"C\" fn nmp_app_retry_publish(app: *mut NmpApp, handle: *const c_char) {",
+        "    let cmd = PublishCommand::SignedEvent { /* hypothetical */ };",
+        "    app.send_cmd(ActorCommand::Publish(cmd));",
+        "}",
+    ];
+    let hits = run_tracker(&lines);
+    assert!(
+        hits.is_empty(),
+        "whitelist must suppress bare-variant entries inside nmp_app_retry_publish; got {:?}",
+        hits
+    );
+}
+
+#[test]
 fn parse_verb_handles_paren_terminator() {
     assert_eq!(
         parse_nmp_app_verb("nmp_app_publish_signed_event(app: *mut NmpApp)"),

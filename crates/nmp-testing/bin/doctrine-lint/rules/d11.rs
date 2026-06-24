@@ -30,6 +30,11 @@
 //! fully-qualified path component (`ActorCommand::`) so an unrelated local
 //! type named `PublishSignedEvent` cannot trip it.
 //!
+//! Split-construction bypass (bare variant on its own line) is also caught:
+//! a bare `PublishCommand::SignedEvent` or `PublishCommand::UnsignedEvent`
+//! inside an FFI body is flagged even when `ActorCommand::Publish(` appears
+//! on a different line. This closes the two-line split-assignment loophole.
+//!
 //! ## Whitelist (explicit per PR-F task)
 //!
 //! Two `nmp_app_*` symbols are publish-lifecycle control-plane (they address
@@ -91,6 +96,17 @@ const BANNED_VARIANTS: &[(&str, &str)] = &[
         "ActorCommand::Publish(PublishCommand::UnsignedEvent",
         "ActorCommand::PublishUnsignedEvent",
     ),
+    // Split-construction bypass: bare variant assigned to a local before
+    // being wrapped in ActorCommand::Publish(). Flagging the bare
+    // PublishCommand::* occurrence closes the two-line loophole.
+    (
+        "PublishCommand::SignedEvent",
+        "ActorCommand::PublishSignedEvent",
+    ),
+    (
+        "PublishCommand::UnsignedEvent",
+        "ActorCommand::PublishUnsignedEvent",
+    ),
 ];
 
 /// Whitelisted `nmp_app_*` symbol names whose bodies are not scanned. Per
@@ -130,8 +146,19 @@ pub fn check(
     if !in_nmp_app_extern_fn {
         return hits;
     }
+    // Track matched byte ranges so that a shorter sub-pattern (e.g. the bare
+    // `PublishCommand::SignedEvent` fallback) is not reported twice when the
+    // longer inline pattern (`ActorCommand::Publish(PublishCommand::SignedEvent`)
+    // already matched and covers the same substring.
+    let mut matched_ranges: Vec<(usize, usize)> = Vec::new();
     for (pattern, display) in BANNED_VARIANTS {
         if let Some(rel) = line.find(pattern) {
+            let end = rel + pattern.len();
+            // Skip if this match's start falls within an already-reported span.
+            if matched_ranges.iter().any(|&(s, e)| rel >= s && rel < e) {
+                continue;
+            }
+            matched_ranges.push((rel, end));
             hits.push((
                 rel + 1, // 1-indexed columns for clippy compatibility
                 format!(
