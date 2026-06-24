@@ -14,7 +14,8 @@ that keep it doctrine-clean.
 There is no UniFFI on master (that is M14; see
 [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). iOS calls the `extern "C"`
 surface exported by `crates/nmp-ffi` (`nmp_app_new`, `nmp_app_start`,
-`nmp_app_dispatch_action`, Chirp feed wrappers, capability callbacks, etc.).
+`nmp_app_dispatch_action`, the generic feed doorway, capability callbacks,
+etc.).
 One C callback delivers binary `nmp.transport.UpdateFrame` bytes with file
 identifier `NMPU`. The frame is FlatBuffers-only: `Snapshot` or `Panic`, with no
 JSON snapshot fallback.
@@ -41,16 +42,20 @@ final class KernelHandle {
             raw, Unmanaged.passUnretained(sink).toOpaque(), nmpUpdateCallback)
     }
 
-    func openAuthorFeed(pubkey: String) {              // a command. NO return value.
-        pubkey.withCString { nmp_app_chirp_open_author_feed(raw, $0) }
+    func openFeed(paramsJson: String) {                // returns an opaque close handle.
+        paramsJson.withCString { paramsPtr in
+            guard let handle = nmp_app_open_feed(raw, paramsPtr) else { return }
+            defer { nmp_app_string_free(handle) }
+            // Store String(cString: handle) and pass it to nmp_app_close_feed.
+        }
     }
     // decode(): UpdateFrame bytes → generated FlatBuffers readers → KernelModel shadow
 }
 ```
 
-Every command method is **fire-and-forget** — `nmp_app_chirp_open_author_feed` returns
-`void`. There is no synchronous "give me the result". State change arrives only
-later, via the callback, as a fresh snapshot. That is the actor model (see
+Feed open returns only an opaque handle for symmetric teardown; it is not a data
+result. State change arrives later, via the callback, as a fresh snapshot. Feed
+close passes that handle back to `nmp_app_close_feed`. That is the actor model (see
 [04 — Actor model (TEA on one thread)](04-actor-and-tea.md)) crossing FFI intact.
 
 The C callback (`KernelBridge.swift:101-110`) is invoked **on a Rust thread**.

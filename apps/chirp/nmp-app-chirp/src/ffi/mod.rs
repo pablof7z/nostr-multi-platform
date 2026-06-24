@@ -2,12 +2,10 @@
 //!
 //! `extern "C"` symbols Swift links against:
 //!
-//! - [`nmp_app_chirp_register`] — wire the OP-centric home feed (V-80 rung 7)
-//!   via `nmp_defaults::register_op_feed_defaults`: the `nmp-nip01` OP-feed
-//!   engine registered as both a kernel event observer (ingest) and a
-//!   `"nmp.feed.home"` feed controller (output), plus the `ActiveFollowSet`
-//!   producer. Returns an opaque handle (boxed engine + follow set) for later
-//!   snapshots / unregister.
+//! - [`nmp_app_chirp_register`] — wire the Chirp modular projections and return
+//!   an opaque handle for later snapshots / unregister.
+//! - [`nmp_app_open_feed`] / [`nmp_app_close_feed`] — the single typed feed
+//!   session doorway for home, author, thread, and other declared feeds.
 //! - [`nmp_app_chirp_register_group_chat`] — wire a NIP-29
 //!   `GroupChatProjection` for one group into the kernel: an event observer
 //!   (ingest) plus a `"nmp.nip29.group_chat"` snapshot projection (output). Pure
@@ -53,8 +51,7 @@
 //!
 //! This module is split across several sub-modules to keep each file under
 //! the V-09 500-LOC hand-authored ceiling. The split is purely organizational —
-//! every `pub extern "C"` symbol Swift links against is re-exported below so
-//! the C-ABI surface is unchanged.
+//! every `pub extern "C"` symbol Swift links against is re-exported below.
 
 mod actions;
 mod create_account;
@@ -65,7 +62,6 @@ mod handle;
 mod helpers;
 #[cfg(feature = "marmot")]
 mod identity;
-mod interest_feed;
 mod register;
 mod relay_seeding;
 mod snapshot;
@@ -80,20 +76,15 @@ pub use declared_projections::nmp_app_chirp_declare_consumed_projections;
 // #1740 step 7 — the ONE public app-facing feed doorway (typed params in,
 // opaque handle out). Replaces per-feed-type opens with a single generic entry.
 pub use feed::{nmp_app_close_feed, nmp_app_open_feed};
+pub use group::{
+    nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
+    nmp_app_chirp_register_group_chat,
+};
 pub use handle::ChirpHandle;
 #[cfg(feature = "marmot")]
 pub use identity::{
     nmp_app_chirp_identity_remove_account, nmp_app_chirp_identity_restore,
     nmp_app_chirp_identity_sign_in_nsec,
-};
-pub use interest_feed::{
-    nmp_app_chirp_close_author_feed, nmp_app_chirp_close_home_feed,
-    nmp_app_chirp_close_thread_feed, nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed,
-    nmp_app_chirp_open_thread_feed,
-};
-pub use group::{
-    nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
-    nmp_app_chirp_register_group_chat,
 };
 pub use register::{
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,

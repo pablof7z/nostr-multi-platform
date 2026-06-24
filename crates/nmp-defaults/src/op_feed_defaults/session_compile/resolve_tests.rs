@@ -144,8 +144,9 @@ fn authors_scope_admits_only_the_target_authors_rejects_others() {
     // The load-bearing proof: an author feed admits ONLY events authored BY the
     // target set — NOT a stranger's, NOT (because this is the author's OWN
     // timeline, not their follows) anyone else's.
-    let authors: std::collections::BTreeSet<String> =
-        [ALICE.to_string(), MEMBER.to_string()].into_iter().collect();
+    let authors: std::collections::BTreeSet<String> = [ALICE.to_string(), MEMBER.to_string()]
+        .into_iter()
+        .collect();
     let kinds: std::collections::BTreeSet<u32> = [1u32].into_iter().collect();
     let resolved = super::resolve_static::resolve_authors(&authors, &kinds)
         .expect("non-empty author set resolves");
@@ -166,12 +167,19 @@ fn authors_scope_admits_only_the_target_authors_rejects_others() {
 
     // Acquisition: ONE fixed author+kind interest, Global scope. No reactive
     // observers / reset hooks / extra acquisition (the set is static).
-    assert_eq!(resolved.interests.len(), 1, "one fixed acquisition interest");
+    assert_eq!(
+        resolved.interests.len(),
+        1,
+        "one fixed acquisition interest"
+    );
     let (filter_json, scope) = &resolved.interests[0];
     assert_eq!(*scope, 1, "Global scope (account-agnostic author pin)");
     let shape = nmp_planner::InterestShape::from_filter_json(filter_json)
         .expect("the author filter parses");
-    assert_eq!(shape.authors, authors, "acquires exactly the target authors");
+    assert_eq!(
+        shape.authors, authors,
+        "acquires exactly the target authors"
+    );
     assert_eq!(shape.kinds, kinds, "acquires exactly the compiled kinds");
     assert!(
         resolved.resolver_observer_ids.is_empty() && resolved.reset_hooks.is_empty(),
@@ -257,6 +265,54 @@ fn referrer_scope_admits_root_by_id() {
     assert!(
         (resolved.admission)(&root),
         "admission must admit the root by id"
+    );
+}
+
+#[test]
+fn referrer_scope_opens_etag_tail_and_root_id_interests() {
+    let kinds = std::collections::BTreeSet::from([1u32, 6u32]);
+    let resolved = resolve_referrer("root123", &kinds).expect("valid referrer scope");
+
+    assert_eq!(
+        resolved.interests.len(),
+        2,
+        "thread scope opens #e reply-tail plus root-by-id acquisition"
+    );
+    for (_, scope) in &resolved.interests {
+        assert_eq!(*scope, 1, "thread acquisition is Global/account-agnostic");
+    }
+    let shapes: Vec<_> = resolved
+        .interests
+        .iter()
+        .filter_map(|(json, _)| nmp_planner::InterestShape::from_filter_json(json))
+        .collect();
+    assert!(
+        shapes.iter().any(|shape| {
+            shape
+                .tags
+                .get("e")
+                .is_some_and(|values| values.contains("root123"))
+                && shape.kinds == kinds
+        }),
+        "#e reply-tail interest must be fixed at open"
+    );
+    assert!(
+        shapes
+            .iter()
+            .any(|shape| shape.event_ids.contains("root123") && shape.kinds.is_empty()),
+        "root-by-id interest must be fixed at open"
+    );
+
+    let live = (resolved.live_shape)().expect("live pull shape");
+    assert!(
+        live.tags
+            .get("e")
+            .is_some_and(|values| values.contains("root123")),
+        "load_older pulls the reply tail"
+    );
+    assert!(
+        live.event_ids.is_empty(),
+        "root-by-id replay is fixed acquisition, not the load_older tail"
     );
 }
 

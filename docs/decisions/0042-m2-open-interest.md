@@ -277,11 +277,12 @@ internally by the feed session machinery, not an app-facing feed API.
 - `ClearActiveFollowsFeed` — withdraws the declaration and closes the resulting
   follow-feed interests.
 
-> The `open_author` / `open_thread` names survive correctly as Chirp **app-layer**
-> wrappers (`nmp_app_chirp_open_author_feed` / `nmp_app_chirp_open_thread_feed`,
-> e.g. `apps/chirp/chirp-tui/src/runtime.rs`). What was deleted is the *kernel*
-> `OpenAuthor` / `OpenThread` commands and their bespoke machines (§1); the app
-> verbs now compose `open_interest` + a dynamic feed key (§5.1).
+> Chirp author/thread/home feeds now use the generic app-layer feed doorway:
+> construct typed `FeedParams`, call `nmp_app_open_feed`, retain the returned
+> opaque handle, and pass that handle to `nmp_app_close_feed`. What was deleted
+> is the *kernel* `OpenAuthor` / `OpenThread` commands and their bespoke
+> machines (§1); app feed verbs compose through the same generic session
+> machinery instead of keeping Chirp-specific feed symbols.
 
 ### Net symbol delta
 
@@ -298,9 +299,9 @@ correction; it is not permission to add a second follow-feed API.
   set.
 - The `timeline_requested` milestone is unaffected: it is flipped by ingest at
   `kernel/ingest/timeline.rs:309-337`, not by the open/close verb.
-- All Chirp shells (iOS, Android, TUI, desktop) call the Chirp wrapper or
-  app registration path that declares primary kind `[1]`; wrapper kinds are
-  derived below that app-facing API.
+- All Chirp shells (iOS, Android, TUI, desktop) open home, author, and thread
+  feeds through `nmp_app_open_feed` with typed `FeedParams`; Chirp-specific
+  primary kinds are derived below that app-facing API.
 - `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`. Any
   platform-stable wrapper name that remains for binary/UI compatibility must
   call the active-follows declaration path; it must not preserve a separate

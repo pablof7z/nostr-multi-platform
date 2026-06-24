@@ -1,9 +1,9 @@
 //! Higher-order NIP-50 search C-ABI surface + the reusable `NmpApp` Rust API.
 //!
 //! `nmp-ffi` is the composition root that owns the `NmpApp` actor handle, so the
-//! host-driving search entrypoint lives here (the same role
-//! `nmp_app_chirp_open_author_feed` plays for the author feed, but reusable by
-//! every `NmpApp` host — the Rust app `hl` calls [`NmpApp::open_search`]
+//! host-driving search entrypoint lives here (the same composition role
+//! `nmp_app_open_feed` plays for declared feeds, but reusable by every
+//! `NmpApp` host — the Rust app `hl` calls [`NmpApp::open_search`]
 //! directly; the iOS app Chirp calls the C-ABI thin shell). The orchestration
 //! primitives — relay resolution, the per-relay relay-pinned interest plan, the
 //! deduplicating result projection, and the typed `N50S` snapshot codec — are

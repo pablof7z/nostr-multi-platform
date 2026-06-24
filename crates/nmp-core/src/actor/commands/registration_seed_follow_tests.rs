@@ -21,7 +21,7 @@ const FIATJAF_HEX: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb
 fn fresh() -> (IdentityRuntime, Kernel) {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     // Seed compiled acquisition kinds {1, 6}, as the FFI
-    // `nmp_app_chirp_open_home_feed` derives from the app's primary declaration
+    // `nmp_app_open_feed(ActiveUserFollows)` derives from the app's primary declaration
     // in production. Without this the kernel's `follow_feed_kinds` is empty and
     // `sync_follow_feed_interests` registers nothing (D0: the substrate no
     // longer hardcodes a kind set).

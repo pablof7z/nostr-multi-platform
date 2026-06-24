@@ -257,6 +257,5 @@ impl Kernel {
 
     // V-112 (ADR-0042): author_view(), author_items(), thread_view(),
     // thread_items(), thread_root_id() deleted. View state and item lists now
-    // live in the per-app FlatFeed registered by nmp_app_chirp_open_author_feed
-    // / nmp_app_chirp_open_thread_feed.
+    // live in handle-opened per-app Flat feeds.
 }

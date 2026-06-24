@@ -64,12 +64,6 @@ pub use ffi::nmp_app_chirp_create_new_account;
 // and the direct namespace+body dispatch (`nmp_app_chirp_dispatch_action_bytes`).
 // The retired `nmp_app_chirp_action_spec` symbol stays exported until the host
 // stops calling it (later cleanup).
-pub use ffi::{
-    nmp_app_chirp_action_spec, nmp_app_chirp_dispatch_action_bytes,
-    nmp_app_chirp_dispatch_intent_bytes,
-};
-// M2 (ADR-0042 §5.1, V-112): per-open flat author/thread feeds that replace the
-// `author_view`/`thread_view` projections + the four `open_*`/`close_*` symbols.
 pub use action_specs::{
     action_spec_for_intent, action_spec_for_intent_json, action_spec_json_for_intent, follow_spec,
     publish_note_spec, publish_profile_spec, react_spec, repost_spec, send_dm_spec, unfollow_spec,
@@ -77,16 +71,14 @@ pub use action_specs::{
 };
 pub use dispatch_bytes::{dispatch_action_bytes_for, mint_correlation_id, parse_dispatch_envelope};
 pub use ffi::{
-    nmp_app_chirp_close_author_feed,
+    nmp_app_chirp_action_spec, nmp_app_chirp_dispatch_action_bytes,
+    nmp_app_chirp_dispatch_intent_bytes,
+};
+pub use ffi::{
     nmp_app_chirp_close_group_discovery,
-    nmp_app_chirp_close_home_feed,
     nmp_app_chirp_close_tag_feed,
-    nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_open_author_feed,
     nmp_app_chirp_open_group_discovery,
-    nmp_app_chirp_open_home_feed,
     nmp_app_chirp_open_tag_feed,
-    nmp_app_chirp_open_thread_feed,
     // #1740 step 7 — the ONE public app-facing feed doorway.
     nmp_app_close_feed,
     nmp_app_open_feed,

@@ -14,7 +14,7 @@ use std::sync::Mutex;
 use nmp_ffi::{nmp_app_free, nmp_app_new, FeedOpenError, NmpApp};
 
 use nmp_feed::{
-    FeedAdmission, FeedParams, FeedRanking, FeedScope, FeedWindow, ProjectionKey,
+    FeedAdmission, FeedParams, FeedRanking, FeedRender, FeedScope, FeedWindow, ProjectionKey,
 };
 
 // One live `NmpApp` at a time — the harness-contention guard the sibling
@@ -33,6 +33,7 @@ fn set_app_active(app: *mut NmpApp, active: Option<&str>) {
 fn author_params(authors: &[&str], projection: &str) -> FeedParams {
     FeedParams {
         primary_kinds: vec![1],
+        render: FeedRender::Flat,
         acquisition: FeedScope::Authors {
             authors: authors.iter().map(|s| (*s).to_string()).collect(),
         },

@@ -65,6 +65,9 @@ final class KernelHandle {
     /// SOURCE of truth for resolved profiles/events the shell renders via the
     /// `resolve_ref` claim path — there is NO app-side profile cache (D4).
     let keyedRefCache = KeyedRefCache()
+    /// Opaque feed-session handles returned by `nmp_app_open_feed`, keyed by
+    /// the projection key the screen reads. Close feeds by these handles only.
+    var feedHandlesByKey: [String: String] = [:]
 
     init() {
         raw = nmp_app_new()
@@ -124,6 +127,7 @@ final class KernelHandle {
     }
 
     deinit {
+        closeAllOpenFeeds()
         // T146 — drop the projection BEFORE `nmp_app_free` per FFI contract.
         unregisterChirpProjectionIfNeeded()
         // Same contract for the Marmot observer registration.

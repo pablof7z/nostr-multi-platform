@@ -15,7 +15,7 @@ the `nmp_app_*` public FFI (sign-in-as-account).
 
 | File | Role |
 |---|---|
-| `crates/nmp-testing/bin/sanity-gate/` | Rust driver + in-process gates. Drives the **real Chirp composition** via the public FFI (`nmp_app_chirp_register` → `nmp_app_signin_nsec` → `nmp_app_add_relay` → `nmp_app_start` → `nmp_app_chirp_open_home_feed`), reads in-process counters, asserts the absolute gates, writes `docs/perf/<run>/sanity-report.{json,md}`. |
+| `crates/nmp-testing/bin/sanity-gate/` | Rust driver + in-process gates. Drives the **real Chirp composition** via the public FFI (`nmp_app_chirp_register` → `nmp_app_signin_nsec` → `nmp_app_add_relay` → `nmp_app_start` → `nmp_app_open_feed` with Chirp home `FeedParams`), reads in-process counters, asserts the absolute gates, writes `docs/perf/<run>/sanity-report.{json,md}`. |
 | `scripts/perf-sanity/run.sh` | Orchestrator. Starts `nak serve` (local) or targets a public relay (`--live`), resolves a high-follow account, launches `sanity-gate`, aligns the OS sampler, merges metrics. |
 | `scripts/perf-sanity/os-sampler.sh` | OS CPU%/RSS/per-thread sampler (`ps -o %cpu,rss`, `ps -M`/`top -H`). Writes the per-phase JSON the Rust bin merges via `--os-metrics`. |
 | `scripts/perf-sanity/capture-real-events.sh` | `nak req` dump of real kinds 1,6,7,0,3,10002,1059,30023,9735 → `artifacts/real-events.jsonl`. |

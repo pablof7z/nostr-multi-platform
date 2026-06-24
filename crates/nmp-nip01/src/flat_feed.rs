@@ -166,6 +166,11 @@ impl FlatFeed {
     pub fn grow_visible_window(&self) -> bool {
         self.inner.grow_visible_window()
     }
+
+    /// Clear all rows and reset the visible window to the first page.
+    pub fn reset_for_perspective_change(&self) -> bool {
+        self.inner.reset_for_perspective_change()
+    }
 }
 
 fn timeline_item_builder() -> FlatFeedItemBuilder<TimelineEventCard> {

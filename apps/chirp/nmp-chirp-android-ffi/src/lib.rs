@@ -45,7 +45,6 @@ mod signer;
 mod signer_request_listener;
 mod update_listener;
 use nmp_app_chirp::nmp_app_chirp_create_new_account;
-use nmp_app_chirp::nmp_app_chirp_open_home_feed;
 use nmp_ffi::{
     nmp_app_add_relay, nmp_app_declare_incremental_apply, nmp_app_encode_profile, nmp_app_free,
     nmp_app_new, nmp_app_remove_account, nmp_app_remove_relay, nmp_app_signin_nsec, nmp_app_start,
@@ -184,21 +183,6 @@ pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeClose(
 ) {
     if let Some(s) = session_arc(handle) {
         s.close_updates();
-    }
-}
-
-/// Open the Chirp home feed (kind:1 plus derived repost wrappers). Calls the
-/// Chirp wrapper that declares primary home-feed kinds in `nmp_app_chirp`.
-/// Renamed from `nativeOpenTimeline` → `nativeOpenHomeFeed` when ownership
-/// moved to `nmp-chirp-android-ffi` (issue #1611, D0).
-#[no_mangle]
-pub extern "system" fn Java_org_nmp_android_KernelBridge_nativeOpenHomeFeed(
-    _env: JNIEnv,
-    _class: JClass,
-    handle: jlong,
-) {
-    if let Some(s) = session_arc(handle) {
-        s.with_app(|app| nmp_app_chirp_open_home_feed(app));
     }
 }
 

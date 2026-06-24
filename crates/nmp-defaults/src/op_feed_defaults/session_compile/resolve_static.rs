@@ -5,6 +5,8 @@
 //! * [`resolve_authors`] — `FeedScope::Authors { authors }`: the primary-kind
 //!   timeline authored BY a fixed, app-named pubkey set (an author/profile feed).
 //! * [`resolve_tag`] — `FeedScope::Tag { term }`: a `#t` scope.
+//! * [`resolve_referrer`] — `FeedScope::Referrer { event_id }`: root-by-id plus
+//!   `#e` referrers for a thread feed.
 //!
 //! Both compile to an EVENT-AWARE [`AdmitExpr`] admission (so they compose
 //! faithfully under set algebra) over a fixed acquisition interest. The reactive
@@ -136,10 +138,11 @@ pub(super) fn resolve_referrer(
         })
     };
 
-    // Acquisition: two shapes — the #e reply-tail shape (for load_older), plus the
-    // root-by-id shape (so the root note itself is replayed into the store).
+    // Acquisition: two shapes — the #e reply-tail shape (for load_older), plus
+    // the root-by-id shape (so the root note itself is replayed into the store).
     let interests = vec![
         (referrer_filter(&root_id, kinds), 1u32), // Global scope for #e replies
+        (root_id_filter(&root_id), 1u32),         // Global scope for the root itself
     ];
 
     // Live shape: the #e-covered reply-tail shape (re-read on load_older).
@@ -148,7 +151,6 @@ pub(super) fn resolve_referrer(
         let k = kinds.clone();
         Arc::new(move || referrer_live_shape(&id, &k))
     };
-
     Ok(ResolvedScope {
         admission,
         interests,
@@ -171,4 +173,8 @@ fn referrer_live_shape(root_id: &str, kinds: &BTreeSet<u32>) -> Option<InterestS
         return None;
     }
     InterestShape::from_filter_json(&referrer_filter(root_id, kinds))
+}
+
+fn root_id_filter(root_id: &str) -> String {
+    serde_json::json!({ "ids": [root_id] }).to_string()
 }

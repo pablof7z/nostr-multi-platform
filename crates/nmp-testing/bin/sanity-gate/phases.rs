@@ -8,9 +8,7 @@ use std::time::Duration;
 
 use crate::config::{gates, Args, Phase, FILLED_TIMELINE_TARGET};
 use crate::driver::DrivenApp;
-use crate::metrics::{
-    alloc_snapshot, load_os_metrics, process_rss_mb, OsPhaseMetrics,
-};
+use crate::metrics::{alloc_snapshot, load_os_metrics, process_rss_mb, OsPhaseMetrics};
 use crate::report::{GateRow, SanityReport, Verdict};
 
 mod firehose;
@@ -32,11 +30,7 @@ const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Establish a live app + wait for relay connect. Returns `None` (after
 /// pushing a SKIP-relay-miss row) if no relay connected in budget.
-pub fn connect_or_skip(
-    report: &mut SanityReport,
-    phase: &str,
-    args: &Args,
-) -> Option<DrivenApp> {
+pub fn connect_or_skip(report: &mut SanityReport, phase: &str, args: &Args) -> Option<DrivenApp> {
     let app = DrivenApp::launch(
         args.nsec.as_deref(),
         args.viewer_hex.as_deref(),
@@ -74,6 +68,7 @@ pub fn connect_or_skip(
 pub fn open_active_follows_feed(app: *mut nmp_ffi::NmpApp) -> Option<String> {
     let params_json = r#"{
       "primary_kinds": [1],
+      "render": "OpCentric",
       "acquisition": "ActiveUserFollows",
       "admission": "All",
       "ranking": "ChronologicalDesc",
@@ -198,7 +193,9 @@ pub fn run_cold_start(report: &mut SanityReport, args: &Args) {
     let before_visible = app.with_state(|s| s.peak_visible());
     let key = std::ffi::CString::new("nmp.feed.home").unwrap();
     nmp_ffi::nmp_app_load_older_feed(app.raw(), key.as_ptr());
-    match app.wait_until(Duration::from_secs(8), |s| s.peak_visible() > before_visible) {
+    match app.wait_until(Duration::from_secs(8), |s| {
+        s.peak_visible() > before_visible
+    }) {
         Some(ms) => report.push(GateRow::max(
             "load-older",
             phase,

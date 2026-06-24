@@ -14,7 +14,8 @@ use std::ffi::{c_void, CStr, CString};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
 use nmp_ffi::{
-    nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_free_string, NmpApp,
+    nmp_app_free, nmp_app_load_older_feed, nmp_app_new, nmp_app_set_update_callback, nmp_app_start,
+    nmp_free_string, NmpApp,
 };
 use serde_json::Value;
 
@@ -48,11 +49,53 @@ fn tag_params_json(primary_kinds: &str, projection: &str) -> String {
     format!(
         r#"{{
           "primary_kinds": {primary_kinds},
+          "render": "OpCentric",
           "acquisition": {{ "Tag": {{ "term": "nostr" }} }},
           "admission": "All",
           "ranking": "ChronologicalDesc",
           "window": {{ "initial_limit": 80 }},
           "projection": "{projection}"
+        }}"#
+    )
+}
+
+fn home_params_json() -> String {
+    r#"{
+      "primary_kinds": [1],
+      "render": "OpCentric",
+      "acquisition": "ActiveUserFollows",
+      "admission": "All",
+      "ranking": "ChronologicalDesc",
+      "window": { "initial_limit": 80 },
+      "projection": "nmp.feed.home"
+    }"#
+    .to_string()
+}
+
+fn author_params_json(pubkey: &str) -> String {
+    format!(
+        r#"{{
+          "primary_kinds": [1],
+          "render": "Flat",
+          "acquisition": {{ "Authors": {{ "authors": ["{pubkey}"] }} }},
+          "admission": "All",
+          "ranking": "ChronologicalDesc",
+          "window": {{ "initial_limit": 80 }},
+          "projection": "nmp.feed.author.{pubkey}"
+        }}"#
+    )
+}
+
+fn thread_params_json(event_id: &str) -> String {
+    format!(
+        r#"{{
+          "primary_kinds": [1],
+          "render": "Flat",
+          "acquisition": {{ "Referrer": {{ "event_id": "{event_id}" }} }},
+          "admission": "All",
+          "ranking": "ChronologicalDesc",
+          "window": {{ "initial_limit": 80 }},
+          "projection": "nmp.feed.thread.{event_id}"
         }}"#
     )
 }
@@ -78,6 +121,72 @@ fn close_feed(app: *mut NmpApp, handle: &Value) {
     let handle_json = serde_json::to_string(handle).expect("re-serialize handle");
     let c = CString::new(handle_json).expect("handle JSON has no NUL");
     nmp_app_close_feed(app, c.as_ptr());
+}
+
+#[test]
+fn public_open_feed_chirp_home_author_thread_all_open_and_close_by_handle() {
+    let (app, _rx, _tx) = start_app();
+    let app_ref: &NmpApp = unsafe { &*app };
+    let author = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let event_id = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    for (label, params, key) in [
+        ("home", home_params_json(), "nmp.feed.home".to_string()),
+        (
+            "author",
+            author_params_json(author),
+            format!("nmp.feed.author.{author}"),
+        ),
+        (
+            "thread",
+            thread_params_json(event_id),
+            format!("nmp.feed.thread.{event_id}"),
+        ),
+    ] {
+        let envelope = open_feed(app, &params);
+        assert!(
+            envelope.get("error").is_none(),
+            "{label} feed must open through generic nmp_app_open_feed, got {envelope}"
+        );
+        assert_eq!(envelope["projection_key"], key);
+        assert_eq!(
+            app_ref.live_feed_session_count(),
+            1,
+            "{label} open registers one live session"
+        );
+
+        close_feed(app, &envelope);
+        assert_eq!(
+            app_ref.live_feed_session_count(),
+            0,
+            "{label} close tears down by opaque handle"
+        );
+    }
+
+    nmp_app_free(app);
+}
+
+#[test]
+fn public_load_older_reaches_handle_opened_author_feed_controller() {
+    let (app, _rx, _tx) = start_app();
+    let author = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let key = CString::new(format!("nmp.feed.author.{author}")).unwrap();
+    let envelope = open_feed(app, &author_params_json(author));
+    assert!(
+        envelope.get("error").is_none(),
+        "author feed must open through generic nmp_app_open_feed"
+    );
+
+    let _ = nmp_app_load_older_feed(app, key.as_ptr());
+
+    close_feed(app, &envelope);
+    let app_ref: &NmpApp = unsafe { &*app };
+    assert_eq!(
+        app_ref.live_feed_session_count(),
+        0,
+        "author load-older session still tears down by handle"
+    );
+    nmp_app_free(app);
 }
 
 #[test]

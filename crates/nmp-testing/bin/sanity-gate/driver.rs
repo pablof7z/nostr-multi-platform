@@ -11,7 +11,7 @@
 //!   → nmp_app_add_relay(url, "both")            // local nak or live relays
 //!   → nmp_app_set_update_callback(capture_cb)
 //!   → nmp_app_start(...)
-//!   → nmp_app_chirp_open_home_feed              // the real follow feed
+//!   → nmp_app_open_feed(ActiveUserFollows)      // the real follow feed
 //!
 //! Update frames are captured into a `Mutex<CaptureState>` via the same
 //! `Box::into_raw` ctx pattern ffi-stress uses (`s7_feed_idle.rs`).
@@ -21,19 +21,19 @@
 //! harness-only injection/read/synchronization seams.
 
 use std::collections::HashSet;
-use std::ffi::{CString, c_void};
+use std::ffi::{c_void, CString};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nmp_app_chirp::{
-    ChirpHandle, nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_open_home_feed,
-    nmp_app_chirp_register, nmp_app_chirp_unregister,
+    nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_register, nmp_app_chirp_unregister,
+    nmp_app_close_feed, nmp_app_open_feed, ChirpHandle,
 };
-use nmp_core::typed_projections::{ACTION_RESULTS_SCHEMA_ID, decode_action_results};
-use nmp_core::{WireProjectionState, decode_snapshot_envelope, decode_snapshot_typed_projections};
+use nmp_core::typed_projections::{decode_action_results, ACTION_RESULTS_SCHEMA_ID};
+use nmp_core::{decode_snapshot_envelope, decode_snapshot_typed_projections, WireProjectionState};
 use nmp_ffi::{
-    NmpApp, nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
-    nmp_app_signin_nsec, nmp_app_start,
+    nmp_app_add_relay, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_signin_nsec,
+    nmp_app_start, nmp_free_string, NmpApp,
 };
 use nmp_testing::harness_probe::{FrameProbe, ProbeSignal};
 
@@ -184,11 +184,41 @@ fn action_terminal_ids(bytes: &[u8]) -> Vec<String> {
         .collect()
 }
 
+fn open_home_feed(app: *mut NmpApp) -> Option<String> {
+    let params_json = r#"{
+      "primary_kinds": [1],
+      "render": "OpCentric",
+      "acquisition": "ActiveUserFollows",
+      "admission": "All",
+      "ranking": "ChronologicalDesc",
+      "window": { "initial_limit": 80 },
+      "projection": "nmp.feed.home"
+    }"#;
+    let params = CString::new(params_json).ok()?;
+    let raw = nmp_app_open_feed(app, params.as_ptr());
+    if raw.is_null() {
+        return None;
+    }
+    let json = unsafe { std::ffi::CStr::from_ptr(raw) }
+        .to_str()
+        .ok()
+        .map(str::to_owned);
+    nmp_free_string(raw);
+    json.filter(|j| !j.contains("\"error\""))
+}
+
+fn close_home_feed(app: *mut NmpApp, handle_json: &str) {
+    if let Ok(handle) = CString::new(handle_json) {
+        nmp_app_close_feed(app, handle.as_ptr());
+    }
+}
+
 /// A live driven app. Holds the raw FFI handles + the capture ctx; tears them
 /// down in the correct order on drop.
 pub struct DrivenApp {
     app: *mut NmpApp,
     chirp: *mut ChirpHandle,
+    home_feed_handle: Option<String>,
     ctx: *mut CaptureCtx,
     /// Waiter half of the frame probe; woken by each `capture_cb` frame.
     probe: FrameProbe,
@@ -241,11 +271,12 @@ impl DrivenApp {
 
         // Start: visible_limit 500 (TIMELINE_CACHE_LIMIT), emit 4 Hz (cold_start parity).
         nmp_app_start(app, 500, 4);
-        nmp_app_chirp_open_home_feed(app);
+        let home_feed_handle = open_home_feed(app);
 
         DrivenApp {
             app,
             chirp,
+            home_feed_handle,
             ctx,
             probe,
         }
@@ -318,6 +349,9 @@ impl Drop for DrivenApp {
         // Detach the callback before reclaiming the ctx so no in-flight
         // invocation dereferences freed memory (mirror ffi-stress teardown).
         nmp_app_set_update_callback(self.app, std::ptr::null_mut(), None);
+        if let Some(handle) = self.home_feed_handle.take() {
+            close_home_feed(self.app, &handle);
+        }
         if !self.chirp.is_null() {
             nmp_app_chirp_unregister(self.chirp);
         }

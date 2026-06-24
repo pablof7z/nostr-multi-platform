@@ -34,6 +34,7 @@ nmp-core = { path = "../../../crates/nmp-core" }
 # `docs/architecture/crate-boundaries.md` §5). The JNI shim consumes the
 # `nmp_app_*` Rust paths through this crate.
 nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["android-ffi"] }
+nmp-feed = { path = "../../../crates/nmp-feed" }
 # Chirp app composition: registers the modular timeline observer, provides
 # Chirp-specific account creation with product seed follows, and re-exports
 # Marmot/wallet symbols when features are enabled.

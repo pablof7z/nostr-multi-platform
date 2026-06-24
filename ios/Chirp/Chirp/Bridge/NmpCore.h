@@ -31,9 +31,6 @@ void nmp_app_start(void *app, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_configure(void *app, unsigned int visible_limit, unsigned int emit_hz);
 void nmp_app_stop(void *app);
 void nmp_app_reset(void *app);
-// V-68 / V-112 (ADR-0042): nmp_app_open_author, nmp_app_open_thread deleted.
-// Use nmp_app_chirp_open_author_feed / nmp_app_chirp_open_thread_feed below.
-//
 // M2 (ADR-0042) — generic feed-subscription surface. Replaces the deleted
 // open_firehose_tag verb. Hashtag feeds now use the Chirp-owned tag-feed seam:
 // primary kind `[1]` is declared app-side, repost wrapper acquisition is
@@ -94,9 +91,6 @@ void nmp_app_resolve_event_embed_live_with_metadata(void *app, const char *key,
                                                     const char *metadata_json);
 void nmp_app_release_event_ref(void *app, const char *key,
                                const char *consumer_id);
-// V-68 / V-112 (ADR-0042): nmp_app_close_author, nmp_app_close_thread deleted.
-// Use nmp_app_chirp_close_author_feed / nmp_app_chirp_close_thread_feed below.
-//
 // #1740 step 7 — the ONE public app-facing feed doorway. (The raw
 // nmp_app_open_contact_feed / nmp_app_close_contact_feed active-follows shims
 // are RETIRED in step 8 — use nmp_app_open_feed(FeedScope::ActiveUserFollows)
@@ -175,10 +169,6 @@ void nmp_app_remove_relay(void *app, const char *url);
 // nmp-android-ffi relay-seeding glue.
 bool nmp_app_chirp_seed_default_relays(void *app);
 bool nmp_app_chirp_seed_relays_from_json(void *app, const char *json);
-// V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline REMOVED.
-// Use the Chirp home-feed wrappers below instead.
-void nmp_app_chirp_open_home_feed(void *app);
-void nmp_app_chirp_close_home_feed(void *app);
 void nmp_app_chirp_open_tag_feed(void *app, const char *tag);
 void nmp_app_chirp_close_tag_feed(void *app, const char *tag);
 
@@ -563,36 +553,6 @@ char *nmp_app_chirp_dispatch_intent_bytes(void *app, const char *intent_json);
 // contract. Fail-closed (D6) on null/unknown namespace.
 char *nmp_app_chirp_dispatch_action_bytes(void *app, const char *namespace, const char *body_json);
 void nmp_app_chirp_unregister(void *handle);
-
-// ── M2 per-open flat author / thread feeds (ADR-0042 §5.1, V-112) ─────────
-//
-// Replace the deleted `author_view` / `thread_view` snapshot projections (and
-// the deleted `nmp_app_open_author` / `nmp_app_open_thread` symbols). Each open
-// registers a flat `FlatFeed` under a per-consumer snapshot key AND pushes the
-// kernel interest that admits primary kind:1 notes plus NIP-18-derived repost
-// wrappers into storage; each close tears both down. Chirp declares primary
-// kind `[1]`; wrapper acquisition is derived below that app-facing declaration
-// (D0).
-//
-//   • `nmp_app_chirp_open_author_feed(app, pubkey_hex)` — registers
-//     `"nmp.feed.author.<pubkey_hex>"`, read by ProfileView. The feed emits the
-//     SAME `RootFeedSnapshot` (`{ "cards": [{ card, attribution }] }`) shape the
-//     home feed emits (attribution always empty), so the existing
-//     `nmp.feed.home` reader decodes it with no new schema.
-//   • `nmp_app_chirp_open_thread_feed(app, event_id_hex)` — registers
-//     `"nmp.feed.thread.<event_id_hex>"`, read by ThreadScreen: the root by id
-//     plus every admitted primary note or derived repost wrapper referencing it
-//     via `#e`.
-//   • The matching `close_*` symbols drop the feed controller, its snapshot
-//     projection, and its ingest observer, and detach the kernel interest.
-//     Idempotent — closing an unopened feed is a harmless no-op.
-//   • Fire-and-forget (D6): a null `app` or null / invalid-UTF-8 id is a silent
-//     no-op. `app` MUST outlive the feed; call the matching `close_*` (or rely
-//     on the `nmp_app_free` actor join) before freeing it.
-void nmp_app_chirp_open_author_feed(void *app, const char *pubkey_hex);
-void nmp_app_chirp_close_author_feed(void *app, const char *pubkey_hex);
-void nmp_app_chirp_open_thread_feed(void *app, const char *event_id_hex);
-void nmp_app_chirp_close_thread_feed(void *app, const char *event_id_hex);
 
 // ── NIP-29 group-chat read projection ────────────────────────────────────
 //

@@ -1,16 +1,14 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ffi::CString;
 use std::ptr;
 use std::sync::mpsc::Receiver;
 
 use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list};
 use nmp_app_chirp::{
-    ChirpHandle, MarmotHandle, NmpRegisterStatus, follow_spec, nmp_app_chirp_close_author_feed,
-    nmp_app_chirp_close_group_discovery, nmp_app_chirp_close_thread_feed,
-    nmp_app_chirp_declare_consumed_projections, nmp_app_chirp_identity_restore,
-    nmp_app_chirp_open_author_feed, nmp_app_chirp_open_home_feed, nmp_app_chirp_open_thread_feed,
-    nmp_app_chirp_register, nmp_app_chirp_unregister, nmp_marmot_unregister,
-    nmp_signer_broker_init, publish_note_action, react_spec, unfollow_spec,
+    follow_spec, nmp_app_chirp_close_group_discovery, nmp_app_chirp_declare_consumed_projections,
+    nmp_app_chirp_identity_restore, nmp_app_chirp_register, nmp_app_chirp_unregister,
+    nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, react_spec, unfollow_spec,
+    ChirpHandle, MarmotHandle, NmpRegisterStatus,
 };
 use nmp_core::tags::Nip10Refs;
 use nmp_nip01::NoteRecord;
@@ -18,13 +16,14 @@ use nmp_nip29::register::GroupDiscoveryHandle;
 
 use crate::app::ReplyTarget;
 use nmp_ffi::{
-    NmpApp, NmpConfigStatus, nmp_app_free, nmp_app_load_older_feed, nmp_app_release_profile_ref,
-    nmp_app_resolve_profile_card_live, nmp_app_resolve_profile_ref, nmp_app_start,
+    nmp_app_free, nmp_app_load_older_feed, nmp_app_release_profile_ref,
+    nmp_app_resolve_profile_card_live, nmp_app_resolve_profile_ref, nmp_app_start, NmpApp,
+    NmpConfigStatus,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
-use crate::Result;
 use crate::bridge::{self, NmpEvent, NmpUpdateBridge};
+use crate::Result;
 
 const VISIBLE_AUTHOR_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.visible-author";
 const VISIBLE_NOTE_RELATIONS_CONSUMER_PREFIX: &str = "chirp-tui.visible-note";
@@ -34,6 +33,9 @@ const VISIBLE_NOTE_RELATIONS_CONSUMER_PREFIX: &str = "chirp-tui.visible-note";
 /// to whatever feed rows still demand when the pane closes.
 const OPEN_PROFILE_CONSUMER_PREFIX: &str = "chirp-tui.open-profile";
 
+#[path = "runtime/feed.rs"]
+mod feed;
+
 pub struct AppRuntime {
     app: *mut NmpApp,
     chirp: *mut ChirpHandle,
@@ -41,6 +43,7 @@ pub struct AppRuntime {
     /// Open group-discovery handle; closed (and replaced) on each `discover_groups`
     /// call, then finally freed in `Drop`. `null_mut()` when inactive.
     pub(crate) discovery: Cell<*mut GroupDiscoveryHandle>,
+    feed_handles: RefCell<feed::FeedHandles>,
     update_bridge: Option<Box<NmpUpdateBridge>>,
 }
 
@@ -88,7 +91,11 @@ impl AppRuntime {
         let marmot = db_dir.and_then(|dir| {
             let dir_c = CString::new(dir.to_string_lossy().as_ref()).ok()?;
             let h = nmp_app_chirp_identity_restore(app, dir_c.as_ptr(), ptr::null());
-            if h.is_null() { None } else { Some(h) }
+            if h.is_null() {
+                None
+            } else {
+                Some(h)
+            }
         });
         let initial_marmot = marmot.unwrap_or(ptr::null_mut());
 
@@ -99,7 +106,7 @@ impl AppRuntime {
         nmp_app_chirp_declare_consumed_projections(app);
 
         nmp_app_start(app, 200, 10);
-        nmp_app_chirp_open_home_feed(app);
+        let home_feed_handle = feed::open_home_feed(app).ok();
 
         Ok((
             Self {
@@ -107,6 +114,10 @@ impl AppRuntime {
                 chirp,
                 marmot: Cell::new(initial_marmot),
                 discovery: Cell::new(ptr::null_mut()),
+                feed_handles: RefCell::new(feed::FeedHandles {
+                    home: home_feed_handle,
+                    ..feed::FeedHandles::default()
+                }),
                 update_bridge: Some(bridge),
             },
             rx,
@@ -121,31 +132,19 @@ impl AppRuntime {
     }
 
     pub fn open_thread(&self, event_id: &str) -> Result<()> {
-        // M2 (ADR-0042 §5.1, V-112): use the Chirp flat-feed seam instead of the
-        // deleted `nmp_app_open_thread` → `OpenThread` kernel machinery.
-        self.with_cstr(event_id, |c| {
-            nmp_app_chirp_open_thread_feed(self.app, c.as_ptr())
-        })
+        self.open_thread_feed(event_id)
     }
 
     pub fn close_thread(&self, event_id: &str) -> Result<()> {
-        self.with_cstr(event_id, |c| {
-            nmp_app_chirp_close_thread_feed(self.app, c.as_ptr())
-        })
+        self.close_thread_feed(event_id)
     }
 
     pub fn open_author(&self, pubkey: &str) -> Result<()> {
-        // M2 (ADR-0042 §5.1, V-112): use the Chirp flat-feed seam instead of the
-        // deleted `nmp_app_open_author` → `OpenAuthor` kernel machinery.
-        self.with_cstr(pubkey, |c| {
-            nmp_app_chirp_open_author_feed(self.app, c.as_ptr())
-        })
+        self.open_author_feed(pubkey)
     }
 
     pub fn close_author(&self, pubkey: &str) -> Result<()> {
-        self.with_cstr(pubkey, |c| {
-            nmp_app_chirp_close_author_feed(self.app, c.as_ptr())
-        })
+        self.close_author_feed(pubkey)
     }
 
     pub fn claim_visible_author_profile(&self, pubkey: &str) -> Result<()> {
@@ -314,6 +313,7 @@ impl AppRuntime {
 impl Drop for AppRuntime {
     fn drop(&mut self) {
         if !self.app.is_null() {
+            self.close_all_feeds();
             bridge::unregister(self.app);
         }
         self.update_bridge.take();

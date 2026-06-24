@@ -272,7 +272,7 @@ fn sub_leak(report: &mut SanityReport, phase: &str, args: &Args) {
         GateRow::max(
             "resilience-sub-leak",
             phase,
-            "legacy active-follows close shim + decode_snapshot_envelope",
+            "public close_feed(handle) + decode_snapshot_envelope",
             "SnapshotEnvelope.wire_subscriptions[state=open] after close",
             leaked as f64,
             0.0,
