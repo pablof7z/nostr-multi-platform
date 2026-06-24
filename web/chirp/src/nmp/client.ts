@@ -1,7 +1,13 @@
 import * as flatbuffers from "flatbuffers";
 
 import { DegradedRuntime } from "@nmp/runtime-web";
-import { decodeHomeFeed, findRefsProfileSidecar, type FeedItem } from "./feedProjection";
+import {
+  decodeHomeFeed,
+  findRefsEventSidecar,
+  findRefsProfileSidecar,
+  type FeedItem,
+} from "./feedProjection";
+import { claimedEventsEqual, RefEventStore, type ClaimedEventWire } from "./refEventStore";
 import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
@@ -45,6 +51,9 @@ export type RuntimeSnapshot = {
   profileCards?: Map<string, ProfileWire>;
   /** Kernel-authored routing diagnostics JSON, undefined until requested. */
   latestRoutingDecisionsJson?: string;
+  /** Materialised `refs.event` map: primary_id -> resolved KCEV event row.
+   *  Event-ref content nodes claim these rows and render them as quote cards. */
+  eventCards?: Map<string, ClaimedEventWire>;
 };
 
 export type RuntimeConnection = {
@@ -100,12 +109,11 @@ abstract class BaseClient implements NmpClient {
   private latestRev: bigint | undefined;
   private latestRelayStatuses: DecodedRelayStatus[] | undefined;
   private latestFeedItems: FeedItem[] | undefined;
-  // Stateful per-key `refs.profile` row-delta cache. Lives for the client's
-  // lifetime (NOT rebuilt per frame — row deltas merge into it). Materialised
-  // into `latestProfileCards` only when the cache changed this frame.
   private readonly refProfiles = new RefProfileStore();
+  private readonly refEvents = new RefEventStore();
   private latestProfileCards: Map<string, ProfileWire> | undefined;
   private latestRoutingDecisionsJson: string | undefined;
+  private latestEventCards: Map<string, ClaimedEventWire> | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -122,6 +130,7 @@ abstract class BaseClient implements NmpClient {
       feedItems: this.latestFeedItems,
       profileCards: this.latestProfileCards,
       latestRoutingDecisionsJson: this.latestRoutingDecisionsJson,
+      eventCards: this.latestEventCards,
     };
   }
 
@@ -139,12 +148,8 @@ abstract class BaseClient implements NmpClient {
       const bytes = event.bytes instanceof Uint8Array ? event.bytes : new Uint8Array(event.bytes);
       this.latestUpdateBytes = bytes;
       try {
-        // Hot path: lite=true skips the logicalInterests / wireSubscriptions /
-        // metrics loops in decodeUpdateFrameBytes. Those arrays are only needed
-        // by the Inspector panels when the dock is open; they are decoded lazily
-        // there via decodeInspectorSnapshot(). The feed-critical path (relay
-        // statuses, rev, feed items, resolved profiles) is kept lean so
-        // profile-resolution frames are processed without delay.
+        // Hot path: lite=true keeps inspector-only arrays lazy while feed,
+        // relay, and ref-row sidecars still process on every frame.
         const decoded = decodeUpdateFrameBytes(bytes, { lite: true });
         if (decoded.type === "snapshot") {
           // Envelope schema version mismatch: the kernel's wire layout moved
@@ -164,10 +169,7 @@ abstract class BaseClient implements NmpClient {
             if (decoded.running) {
               this.status = "running";
             }
-            // Second pass over the same bytes to access typed projections
-            // (feed items, resolved profiles). These are all feed-critical and
-            // must run on every frame.
-            // Keep-last-good: only overwrite on a non-undefined result.
+            // Second pass over the same bytes to access feed/ref typed projections.
             try {
               const bb = new flatbuffers.ByteBuffer(bytes);
               if (UpdateFrame.bufferHasIdentifier(bb)) {
@@ -179,15 +181,6 @@ abstract class BaseClient implements NmpClient {
                     if (feedResult !== undefined) {
                       this.latestFeedItems = feedResult.items;
                     }
-                    // Merge the `refs.profile` row-delta sidecar into the stateful
-                    // RefProfileStore under THIS frame's identity (session_id,
-                    // snapshot_epoch). The store handles baseline/incremental/
-                    // identity-rebuild + decode-before-commit + fail-closed
-                    // internally (ADR-0063); an absent entry leaves it untouched.
-                    // After applying we re-derive the FULL set (like native
-                    // desktop/tui) and swap `latestProfileCards` ONLY when the
-                    // content differs — so an empty rebaseline drops stale cards
-                    // (changedKeys alone would not) without churning the feed (#1436).
                     const refsPayload = findRefsProfileSidecar(snap);
                     if (refsPayload !== undefined) {
                       this.refProfiles.applySidecar(
@@ -198,6 +191,18 @@ abstract class BaseClient implements NmpClient {
                       const next = this.refProfiles.profiles();
                       if (!profileCardsEqual(this.latestProfileCards, next)) {
                         this.latestProfileCards = next;
+                      }
+                    }
+                    const eventPayload = findRefsEventSidecar(snap);
+                    if (eventPayload !== undefined) {
+                      this.refEvents.applySidecar(
+                        eventPayload,
+                        snap.sessionId(),
+                        snap.snapshotEpoch(),
+                      );
+                      const next = this.refEvents.events();
+                      if (!claimedEventsEqual(this.latestEventCards, next)) {
+                        this.latestEventCards = next;
                       }
                     }
                     // #1768 — relay-status hue is derived shell-side from the
