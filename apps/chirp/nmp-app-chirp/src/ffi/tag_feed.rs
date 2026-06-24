@@ -144,6 +144,7 @@ fn normalize_tag(value: &str) -> Option<String> {
 fn tag_feed_params(tag: &str) -> FeedParams {
     FeedParams {
         primary_kinds: FEED_PRIMARY_KINDS.to_vec(),
+        render: nmp_feed::FeedRender::OpCentric,
         acquisition: FeedScope::Tag {
             term: TagTerm(tag.to_string()),
         },
