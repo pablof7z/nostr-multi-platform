@@ -5,10 +5,18 @@
 use std::fs;
 use std::path::PathBuf;
 
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::publish::{PublishAction, PublishTarget};
+use nmp_core::substrate::ActionPayload;
 use nmp_core::RelayRole;
-use nmp_wasm::{RelayBootstrapEntry, StartConfig, WasmRuntime, WorkerRequest};
+use nmp_signer_iface::{SignedEvent, UnsignedEvent};
+use nmp_wasm::{
+    DispatchBytes, RelayBootstrapEntry, SetIdentity, StartConfig, WasmRuntime, WorkerEvent,
+    WorkerRequest,
+};
 
 const RELAY_URL: &str = "wss://relay.example";
+const ACCOUNT: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
 fn started_runtime() -> WasmRuntime {
     let mut runtime = WasmRuntime::new();
@@ -25,6 +33,53 @@ fn started_runtime() -> WasmRuntime {
         }))
         .expect("Start must succeed");
     runtime
+}
+
+fn seed_account(runtime: &mut WasmRuntime) {
+    let events = runtime
+        .handle(WorkerRequest::SetIdentity(SetIdentity {
+            kind: "nip07".to_string(),
+            pubkey_hex: ACCOUNT.to_string(),
+            correlation_id: "seed-account".to_string(),
+        }))
+        .expect("set identity must succeed");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::ActionAccepted { .. })),
+        "SetIdentity must ACK before publishing; got {events:?}"
+    );
+}
+
+fn signed_event(id: &str) -> SignedEvent {
+    SignedEvent {
+        id: id.to_string(),
+        sig: format!("sig-{id}"),
+        unsigned: UnsignedEvent {
+            pubkey: ACCOUNT.to_string(),
+            kind: 1,
+            tags: Vec::new(),
+            content: "deadline probe".to_string(),
+            created_at: 1_700_000_000,
+        },
+    }
+}
+
+fn publish_request(correlation_id: &str, event_id: &str) -> WorkerRequest {
+    let payload = PublishAction::Publish {
+        handle: event_id.to_string(),
+        event: signed_event(event_id),
+        target: PublishTarget::Auto,
+    }
+    .encode();
+    WorkerRequest::DispatchBytes(DispatchBytes {
+        bytes: encode_dispatch_envelope(
+            correlation_id,
+            "nmp.publish",
+            DISPATCH_ENVELOPE_SCHEMA_VERSION,
+            &payload,
+        ),
+    })
 }
 
 #[test]
@@ -52,7 +107,109 @@ fn idle_runtime_deadline_fires_once_and_does_not_rearm() {
 
     assert!(
         rt.fire_maintenance_deadline_for_test().is_none(),
-        "no second wake exists without a new event or tracked deadline"
+        "no second wake exists without a new event or kernel deadline"
+    );
+}
+
+#[test]
+fn outbound_event_wake_stops_when_kernel_declares_no_deadline() {
+    let mut rt = started_runtime();
+    seed_account(&mut rt);
+
+    let _ = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("clear the post-start event deadline first");
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "idle post-start drain must not leave a cadence armed"
+    );
+
+    let event_id = "22".repeat(32);
+    let events = rt
+        .handle(publish_request("publish-clears-before-wake", &event_id))
+        .expect("publish dispatch must succeed");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::ActionAccepted { .. })),
+        "publish dispatch must ACK; got {events:?}"
+    );
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "publish outbound should arm one bounded event drain"
+    );
+    assert!(
+        rt.next_runtime_deadline_delay_for_test().is_some(),
+        "in-flight publish starts with a kernel deadline"
+    );
+
+    let _ = rt.inject_relay_text_frame_for_test(
+        RelayRole::Content,
+        RELAY_URL,
+        format!(r#"["OK","{event_id}",true,""]"#),
+    );
+    assert_eq!(
+        rt.next_runtime_deadline_delay_for_test(),
+        None,
+        "OK before the event drain should clear the kernel publish deadline"
+    );
+
+    let _ = rt.snapshot_bytes_for_test();
+    let (outbound, dirty) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("event drain must be armed");
+    assert!(
+        outbound.is_empty(),
+        "regression setup expects no new outbound during the follow-up drain"
+    );
+    assert!(
+        !dirty,
+        "snapshot pull clears the dirty bit before the follow-up drain"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "previous outbound must not keep re-arming without a kernel deadline"
+    );
+}
+
+#[test]
+fn publish_outbound_declares_bounded_kernel_deadline() {
+    let mut rt = started_runtime();
+    seed_account(&mut rt);
+
+    let _ = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("clear the post-start event deadline first");
+    let events = rt
+        .handle(publish_request("publish-deadline", &"11".repeat(32)))
+        .expect("publish dispatch must succeed");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::ActionAccepted { .. })),
+        "publish dispatch must ACK; got {events:?}"
+    );
+    assert!(
+        rt.next_runtime_deadline_delay_for_test().is_some(),
+        "in-flight publish must declare a kernel runtime deadline"
+    );
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "dispatch still gets one event drain before the longer publish deadline"
+    );
+
+    let _ = rt.snapshot_bytes_for_test();
+    let _ = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("event drain must be armed after publish outbound");
+    let delay = rt
+        .maintenance_deadline_delay_for_test()
+        .expect("event drain should re-arm at the kernel-declared publish deadline");
+    assert!(
+        delay > 1_000,
+        "follow-up wake must be the publish deadline, not another fixed 1s event drain"
     );
 }
 

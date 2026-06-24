@@ -174,16 +174,11 @@ pub(crate) fn build_handlers(
             let outbound = reducer
                 .borrow_mut()
                 .handle_relay_connected(role, url, is_reconnect);
-            let policy = if outbound.is_empty() {
-                crate::tick::WakePolicy::Single
-            } else {
-                crate::tick::WakePolicy::Tracked
-            };
             fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,
-                policy,
+                crate::tick::event_or_kernel_policy(&reducer),
                 &reducer,
                 &drivers,
                 &handlers_slot,
@@ -207,16 +202,11 @@ pub(crate) fn build_handlers(
                 reducer
                     .borrow_mut()
                     .handle_relay_frame(role, url, RelayFrame::Text(text));
-            let policy = if outbound.is_empty() {
-                crate::tick::WakePolicy::Single
-            } else {
-                crate::tick::WakePolicy::Tracked
-            };
             fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,
-                policy,
+                crate::tick::event_or_kernel_policy(&reducer),
                 &reducer,
                 &drivers,
                 &handlers_slot,
@@ -240,16 +230,11 @@ pub(crate) fn build_handlers(
                 reducer
                     .borrow_mut()
                     .handle_relay_frame(role, url, RelayFrame::Binary(bytes));
-            let policy = if outbound.is_empty() {
-                crate::tick::WakePolicy::Single
-            } else {
-                crate::tick::WakePolicy::Tracked
-            };
             fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,
-                policy,
+                crate::tick::event_or_kernel_policy(&reducer),
                 &reducer,
                 &drivers,
                 &handlers_slot,
@@ -277,7 +262,7 @@ pub(crate) fn build_handlers(
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,
-                crate::tick::WakePolicy::Single,
+                crate::tick::event_or_kernel_policy(&reducer),
                 &reducer,
                 &drivers,
                 &handlers_slot,
@@ -301,7 +286,7 @@ pub(crate) fn build_handlers(
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,
-                crate::tick::WakePolicy::Single,
+                crate::tick::event_or_kernel_policy(&reducer),
                 &reducer,
                 &drivers,
                 &handlers_slot,
@@ -325,7 +310,7 @@ pub(crate) fn build_handlers(
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,
-                crate::tick::WakePolicy::Single,
+                crate::tick::event_or_kernel_policy(&reducer),
                 &reducer,
                 &drivers,
                 &handlers_slot,

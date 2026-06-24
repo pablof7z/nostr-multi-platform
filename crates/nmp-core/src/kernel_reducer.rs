@@ -203,21 +203,20 @@ impl KernelReducer {
         self.kernel.mark_publish_relay_unavailable(relay_url);
     }
 
-    /// Pump all four idle drains in native parity order: pending view
+    /// Pump all four maintenance drains in native parity order: pending view
     /// requests → lifecycle drain → claim-expansion tick → publish pump.
     /// Mirrors the native actor's idle-tick sequence at
     /// `actor/mod.rs:2086–2098` (pending_view_requests), `2107–2120`
     /// (lifecycle drain), `2164–2188` (claim-expansion W6), and `2161–2173`
     /// (publish pump).
     ///
-    /// The wasm32 driver calls this from its `gloo-timers` periodic interval
-    /// (1 Hz is sufficient; retry deadlines are seconds-scale) so transient
-    /// publish failures recover without waiting for the next inbound frame
-    /// from any relay, `CompileTrigger::ViewOpened` events enqueued by
-    /// `claim_event` / `resolve_ref` compile into REQ frames without
-    /// waiting for the next relay event, and Phase-1 claims advance to
-    /// Phase 2 on every tick rather than stalling permanently on quiet
-    /// sockets (closes the W6 gap tracked in issue #1143).
+    /// The wasm32 driver calls this from explicit event/deadline wakes so
+    /// transient publish failures recover on kernel-declared deadlines without
+    /// a fixed polling interval, `CompileTrigger::ViewOpened` events enqueued
+    /// by `claim_event` / `resolve_ref` compile into REQ frames after the
+    /// triggering event, and Phase-1 claims are checked only when a runtime wake
+    /// is already justified (closes the W6 gap tracked in issue #1143 without
+    /// restoring a browser cadence).
     ///
     /// `pending_view_requests()` is placed first (before the lifecycle drain)
     /// to preserve the native M1-CLOSE-before-M2-REQ ordering: any pending
@@ -257,10 +256,19 @@ impl KernelReducer {
         self.kernel.partition_auth_paused(outbound)
     }
 
+    /// Return the next kernel-owned runtime deadline, as a delay from now.
+    ///
+    /// `None` means there is no pending kernel work that should keep the wasm
+    /// runtime armed after an event/deadline drain.
+    #[must_use]
+    pub fn next_runtime_deadline_delay_ms(&self) -> Option<u32> {
+        self.kernel.next_publish_engine_deadline_delay_ms()
+    }
+
     /// Returns `true` when the kernel state has changed since the last
-    /// `make_update_frame` call. The wasm32 periodic timer checks this before
-    /// pushing a snapshot so that idle ticks do not produce spurious frames
-    /// (dirty-flag coalescing, PR-2 rider).
+    /// `make_update_frame` call. The wasm32 event/deadline scheduler checks
+    /// this before pushing a snapshot so idle deadline drains do not produce
+    /// spurious frames (dirty-flag coalescing, PR-2 rider).
     pub fn changed_since_emit(&self) -> bool {
         self.kernel.changed_since_emit()
     }

@@ -12,25 +12,46 @@ use std::rc::Rc;
 
 use nmp_core::{KernelReducer, OutboundMessage};
 
-/// Coarse runtime-deadline cadence.
+/// Coarse post-event maintenance deadline.
 ///
-/// This is not a recurring interval. It is the delay for one armed browser
-/// deadline; the callback decides whether deadline-bearing work remains before
-/// arming another one.
-pub(crate) const RUNTIME_DEADLINE_MS: u32 = 1_000;
+/// This is not a recurring interval. It is the delay for one event-triggered
+/// browser deadline; follow-up wakes are armed only from explicit
+/// kernel-declared deadlines.
+pub(crate) const RUNTIME_EVENT_DRAIN_MS: u32 = 1_000;
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub(crate) enum WakePolicy {
     /// Fire once after an event that may have queued immediate maintenance.
-    Single,
-    /// Continue deadline checks until the tracked work resolves.
-    Tracked,
+    Event,
+    /// Fire at the next deadline the kernel/reducer reported.
+    KernelDeadline { delay_ms: u32 },
+}
+
+impl WakePolicy {
+    #[must_use]
+    fn delay_ms(self) -> u32 {
+        match self {
+            Self::Event => RUNTIME_EVENT_DRAIN_MS,
+            Self::KernelDeadline { delay_ms } => delay_ms,
+        }
+    }
+}
+
+#[must_use]
+pub(crate) fn event_or_kernel_policy(reducer: &Rc<RefCell<KernelReducer>>) -> WakePolicy {
+    reducer
+        .borrow()
+        .next_runtime_deadline_delay_ms()
+        .filter(|delay| *delay < RUNTIME_EVENT_DRAIN_MS)
+        .map_or(WakePolicy::Event, |delay_ms| WakePolicy::KernelDeadline {
+            delay_ms,
+        })
 }
 
 #[derive(Default)]
 pub(crate) struct RuntimeDeadline {
     armed: bool,
-    tracked: bool,
+    armed_delay_ms: Option<u32>,
     requested: u64,
     fired: u64,
     #[cfg(target_arch = "wasm32")]
@@ -39,19 +60,30 @@ pub(crate) struct RuntimeDeadline {
 
 impl RuntimeDeadline {
     fn request(&mut self, policy: WakePolicy) -> bool {
-        if matches!(policy, WakePolicy::Tracked) {
-            self.tracked = true;
-        }
+        let delay_ms = policy.delay_ms();
         if self.armed {
-            return false;
+            let should_replace = match self.armed_delay_ms {
+                Some(current) => delay_ms < current,
+                None => true,
+            };
+            if !should_replace {
+                return false;
+            }
+            #[cfg(target_arch = "wasm32")]
+            {
+                self.timeout = None;
+            }
+        } else {
+            self.armed = true;
         }
-        self.armed = true;
+        self.armed_delay_ms = Some(delay_ms);
         self.requested = self.requested.saturating_add(1);
         true
     }
 
     fn begin_fire(&mut self) {
         self.armed = false;
+        self.armed_delay_ms = None;
         self.fired = self.fired.saturating_add(1);
         #[cfg(target_arch = "wasm32")]
         {
@@ -59,18 +91,15 @@ impl RuntimeDeadline {
         }
     }
 
-    fn finish_fire(&mut self, outcome: &DrainOutcome) -> bool {
-        if outcome.has_outbound() {
-            self.tracked = true;
-        } else if outcome.dirty {
-            self.tracked = false;
-        }
-        self.tracked
+    fn finish_fire(&mut self, outcome: &DrainOutcome) -> Option<WakePolicy> {
+        outcome
+            .next_deadline_delay_ms
+            .map(|delay_ms| WakePolicy::KernelDeadline { delay_ms })
     }
 
     fn cancel(&mut self) {
         self.armed = false;
-        self.tracked = false;
+        self.armed_delay_ms = None;
         #[cfg(target_arch = "wasm32")]
         {
             self.timeout = None;
@@ -80,6 +109,11 @@ impl RuntimeDeadline {
     #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn armed_for_test(&self) -> bool {
         self.armed
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn armed_delay_ms_for_test(&self) -> Option<u32> {
+        self.armed_delay_ms
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -96,13 +130,7 @@ impl RuntimeDeadline {
 pub(crate) struct DrainOutcome {
     pub(crate) outbound: Vec<OutboundMessage>,
     pub(crate) dirty: bool,
-}
-
-impl DrainOutcome {
-    #[must_use]
-    pub(crate) fn has_outbound(&self) -> bool {
-        !self.outbound.is_empty()
-    }
+    pub(crate) next_deadline_delay_ms: Option<u32>,
 }
 
 /// Drive one deterministic reducer maintenance pass.
@@ -110,7 +138,7 @@ impl DrainOutcome {
 /// The reducer borrow is released before the post-event drain hook runs. If the
 /// hook exists, run one additional reducer pass afterwards so work the hook queued
 /// is serviced by the same explicit wake instead of depending on another
-/// periodic timer.
+/// timer event.
 pub(crate) fn drain_once(
     reducer: &Rc<RefCell<KernelReducer>>,
     post_event_drain: &Rc<RefCell<Option<Rc<dyn Fn()>>>>,
@@ -119,8 +147,14 @@ pub(crate) fn drain_once(
     if run_post_event_drain(post_event_drain) {
         outbound.extend(reducer.borrow_mut().tick());
     }
-    let dirty = reducer.borrow().changed_since_emit();
-    DrainOutcome { outbound, dirty }
+    let reducer = reducer.borrow();
+    let dirty = reducer.changed_since_emit();
+    let next_deadline_delay_ms = reducer.next_runtime_deadline_delay_ms();
+    DrainOutcome {
+        outbound,
+        dirty,
+        next_deadline_delay_ms,
+    }
 }
 
 fn run_post_event_drain(post_event_drain: &Rc<RefCell<Option<Rc<dyn Fn()>>>>) -> bool {
@@ -160,8 +194,9 @@ pub(crate) fn fire_deadline_for_test(
     }
     deadline.borrow_mut().begin_fire();
     let outcome = drain_once(reducer, post_event_drain);
-    if deadline.borrow_mut().finish_fire(&outcome) {
-        request_deadline_for_test(deadline, WakePolicy::Single);
+    let next_policy = deadline.borrow_mut().finish_fire(&outcome);
+    if let Some(policy) = next_policy {
+        request_deadline_for_test(deadline, policy);
     }
     Some(outcome)
 }
@@ -178,6 +213,7 @@ pub(crate) fn request_runtime_deadline(
     meta: Rc<RefCell<crate::snapshot::RuntimeMeta>>,
     post_event_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
 ) {
+    let delay_ms = policy.delay_ms();
     if !deadline.borrow_mut().request(policy) {
         return;
     }
@@ -190,7 +226,7 @@ pub(crate) fn request_runtime_deadline(
     let callback_meta = Rc::clone(&meta);
     let callback_post_drain = Rc::clone(&post_event_drain);
 
-    let timeout = gloo_timers::callback::Timeout::new(RUNTIME_DEADLINE_MS, move || {
+    let timeout = gloo_timers::callback::Timeout::new(delay_ms, move || {
         callback_deadline.borrow_mut().begin_fire();
         let outcome = drain_once(&callback_reducer, &callback_post_drain);
         crate::relay_pool::fan_out_outbound(
@@ -205,11 +241,11 @@ pub(crate) fn request_runtime_deadline(
                 &callback_meta,
             );
         }
-        let should_rearm = callback_deadline.borrow_mut().finish_fire(&outcome);
-        if should_rearm {
+        let next_policy = callback_deadline.borrow_mut().finish_fire(&outcome);
+        if let Some(policy) = next_policy {
             request_runtime_deadline(
                 Rc::clone(&callback_deadline),
-                WakePolicy::Single,
+                policy,
                 Rc::clone(&callback_reducer),
                 Rc::clone(&callback_drivers),
                 Rc::clone(&callback_handlers),

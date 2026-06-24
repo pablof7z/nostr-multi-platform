@@ -200,8 +200,9 @@ frames are dropped on the synchronous path.
 The callback fires on three triggers:
 - **Relay-driven mutations:** an inbound `WebSocket::onmessage` fires a
   `BrowserRelayDriver` handler, which calls `KernelReducer::handle_relay_frame`,
-  then pushes a snapshot via the registered callback. No timer is scheduled;
-  the push fires only on relay activity.
+  then pushes a snapshot via the registered callback. Relay activity may arm a
+  one-shot maintenance deadline, but follow-up wakes continue only when the
+  reducer reports an explicit runtime deadline.
 - **Request-driven mutations:** `handle_json` drains `UpdateBytes` events from
   the handle result and routes them through the callback before returning.
 

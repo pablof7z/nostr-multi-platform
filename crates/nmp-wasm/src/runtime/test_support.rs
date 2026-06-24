@@ -14,7 +14,11 @@ impl super::WasmRuntime {
     pub fn set_snapshot_callback(&mut self, _callback: Option<()>) {}
 
     /// Inject a relay-connected event into the kernel (native test helper).
-    pub fn inject_relay_connected_for_test(&mut self, role: nmp_core::RelayRole, url: &str) {
+    pub fn inject_relay_connected_for_test(
+        &mut self,
+        role: nmp_core::RelayRole,
+        url: &str,
+    ) -> bool {
         let outbound = self
             .reducer
             .borrow_mut()
@@ -22,8 +26,9 @@ impl super::WasmRuntime {
         let had_outbound = !outbound.is_empty();
         self.fan_outbound(outbound);
         if !had_outbound {
-            self.request_maintenance_deadline(crate::tick::WakePolicy::Single);
+            self.request_maintenance_deadline(crate::tick::WakePolicy::Event);
         }
+        had_outbound
     }
 
     /// Inject a relay text frame into the kernel (native test helper).
@@ -32,7 +37,7 @@ impl super::WasmRuntime {
         role: nmp_core::RelayRole,
         url: &str,
         text: String,
-    ) {
+    ) -> bool {
         let outbound = self.reducer.borrow_mut().handle_relay_frame(
             role,
             url,
@@ -41,8 +46,9 @@ impl super::WasmRuntime {
         let had_outbound = !outbound.is_empty();
         self.fan_outbound(outbound);
         if !had_outbound {
-            self.request_maintenance_deadline(crate::tick::WakePolicy::Single);
+            self.request_maintenance_deadline(crate::tick::WakePolicy::Event);
         }
+        had_outbound
     }
 
     /// Pull a snapshot as raw FlatBuffers bytes (native test helper). On
@@ -73,6 +79,10 @@ impl super::WasmRuntime {
         self.maintenance_deadline.borrow().armed_for_test()
     }
 
+    pub fn maintenance_deadline_delay_for_test(&self) -> Option<u32> {
+        self.maintenance_deadline.borrow().armed_delay_ms_for_test()
+    }
+
     pub fn maintenance_deadline_requests_for_test(&self) -> u64 {
         self.maintenance_deadline.borrow().requested_for_test()
     }
@@ -86,6 +96,10 @@ impl super::WasmRuntime {
     /// account is active.
     pub fn active_account_pubkey_for_test(&self) -> Option<String> {
         self.reducer.borrow().active_account_pubkey()
+    }
+
+    pub fn next_runtime_deadline_delay_for_test(&self) -> Option<u32> {
+        self.reducer.borrow().next_runtime_deadline_delay_ms()
     }
 }
 

@@ -16,6 +16,18 @@ impl Kernel {
         self.tick_publish_engine(now_epoch_ms())
     }
 
+    /// Earliest publish-engine deadline expressed as a delay from now. This is
+    /// the kernel-owned scheduling predicate the wasm runtime uses for bounded
+    /// deadline timers; no deadline means no publish work should wake the
+    /// runtime.
+    #[must_use]
+    pub(crate) fn next_publish_engine_deadline_delay_ms(&self) -> Option<u32> {
+        let now_ms = now_epoch_ms();
+        self.publish_engine
+            .next_deadline_ms(now_ms)
+            .map(|deadline| deadline.saturating_sub(now_ms).min(u64::from(u32::MAX)) as u32)
+    }
+
     /// Drive the publish engine's wall-clock retries. Called from
     /// `kernel::ingest::handle_message` opportunistically (every inbound
     /// relay text frame ticks the engine, so the live path bounds retry latency

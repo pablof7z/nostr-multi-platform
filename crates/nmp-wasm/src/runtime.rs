@@ -347,7 +347,7 @@ impl WasmRuntime {
         {
             self.spawn_relay_drivers()?;
         }
-        self.request_maintenance_deadline(crate::tick::WakePolicy::Single);
+        self.request_maintenance_deadline(crate::tick::WakePolicy::Event);
 
         Ok(vec![
             WorkerEvent::RuntimeStatus {
@@ -441,6 +441,10 @@ impl WasmRuntime {
         crate::tick::request_deadline_for_test(&self.maintenance_deadline, policy);
     }
 
+    fn request_event_or_kernel_deadline(&self) {
+        self.request_maintenance_deadline(crate::tick::event_or_kernel_policy(&self.reducer));
+    }
+
     /// Fan `outbound` messages to live relay drivers (wasm32) or drop them
     /// (native — the driver pool does not exist in test builds).
     fn fan_outbound(&self, outbound: Vec<OutboundMessage>) {
@@ -450,7 +454,7 @@ impl WasmRuntime {
         #[cfg(not(target_arch = "wasm32"))]
         let _ = outbound;
         if has_outbound {
-            self.request_maintenance_deadline(crate::tick::WakePolicy::Tracked);
+            self.request_event_or_kernel_deadline();
         }
     }
 
