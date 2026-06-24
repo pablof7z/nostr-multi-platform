@@ -4,13 +4,11 @@ namespace nmp.nip29;
 // (`nmp_nip29::projection::GroupDefaultsSnapshot`), schema_id
 // "nmp.nip29.group_defaults".
 //
-// This is the typed sidecar (ADR-0037) carried alongside the generic
-// `serde_json::Value` projection registered under the same key in
-// `nmp_nip29::register::wire_group_defaults`. The serde shape
-// (`GroupDefaultsProjection::snapshot_json`) stays authoritative; this buffer
-// mirrors it byte-for-byte in field semantics so a host with a `NGDF` decoder
-// can read typed accessors instead of JSON reflection. An un-updated host falls
-// back to the generic `Value` subtree (the permanent fallback from ADR-0037).
+// This is the typed FlatBuffers snapshot projection registered under the key by
+// `nmp_nip29::register::wire_group_defaults`. No generic `serde_json::Value`
+// projection is registered for this key; hosts decode `NGDF` or treat the
+// defaults as absent. The serde shape (`GroupDefaultsProjection::snapshot_json`)
+// is retained as a parity helper and mirrors this buffer's field semantics.
 //
 // Issue #626 moved the NIP-29 public-group suggested relay URL out of the iOS
 // shell. Issue #1924 made the concrete relay app/operator policy: the shared

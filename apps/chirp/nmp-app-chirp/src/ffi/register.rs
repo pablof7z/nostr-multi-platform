@@ -179,12 +179,12 @@ pub extern "C" fn nmp_app_chirp_register(
 
     // #626: wire the NIP-29 group-create defaults projection so Chirp's
     // app-owned suggested public-group relay URL surfaces under
-    // `"nmp.nip29.group_defaults"` (typed `NGDF` sidecar + generic `Value`
-    // fallback) instead of being a hardcoded Swift `@State` literal in
-    // `NewGroupSheet`. Output-only: the projection observes no kernel events,
-    // so this is a one-time registration at app init, like the zaps projection
-    // above. NIP-29 group-create is a Chirp verb, not part of the canonical NMP
-    // composition, so it lives here and its operator relay policy comes from
+    // `"nmp.nip29.group_defaults"` as the typed `NGDF` projection instead of
+    // being a hardcoded Swift `@State` literal in `NewGroupSheet`. Output-only:
+    // the projection observes no kernel events, so this is a one-time
+    // registration at app init, like the zaps projection above. NIP-29
+    // group-create is a Chirp verb, not part of the canonical NMP composition,
+    // so it lives here and its operator relay policy comes from
     // `nmp-chirp-config`, not from `nmp-nip29`.
     nmp_nip29::register::wire_group_defaults_with_relay(
         app_ref,

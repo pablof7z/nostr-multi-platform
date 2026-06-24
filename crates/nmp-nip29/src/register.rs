@@ -291,10 +291,10 @@ pub fn wire_group_events(
 /// Wire an empty NIP-29 group-create defaults projection into `app`.
 ///
 /// Exposes [`GroupDefaultsProjection::snapshot`] under
-/// `"nmp.nip29.group_defaults"` as both a typed FlatBuffers sidecar
-/// (`NGDF`, ADR-0037) and the generic `Value` projection (the permanent
-/// fallback). The no-arg path emits an empty `suggested_relay_url`: shared
-/// crates do not own public relay/operator policy.
+/// `"nmp.nip29.group_defaults"` as a typed FlatBuffers snapshot projection
+/// (`NGDF`). No generic `Value` projection is registered for this key. The
+/// no-arg path emits an empty `suggested_relay_url`: shared crates do not own
+/// public relay/operator policy.
 ///
 /// Output-only: unlike [`wire_group_chat`] / [`open_group_discovery`] this
 /// projection observes no kernel events — its snapshot is a pure function of
@@ -325,10 +325,10 @@ pub fn wire_group_defaults_with_snapshot(
     snapshot: GroupDefaultsSnapshot,
 ) {
     let projection = GroupDefaultsProjection::with_snapshot(snapshot);
-    // Typed FlatBuffers sidecar (ADR-0037), registered ALONGSIDE the generic
-    // `Value` projection under the same key. A `NGDF`-aware host prefers this
-    // typed payload; an un-updated host falls back to the generic `Value`
-    // subtree (the permanent fallback). Additive — un-updated hosts unaffected.
+    // Typed FlatBuffers snapshot projection (`NGDF`). Unlike older
+    // typed+generic registrations in this module, group defaults has no generic
+    // `Value` projection under the same key; hosts read this typed payload or
+    // treat the defaults as absent.
     app.register_typed_snapshot_projection("nmp.nip29.group_defaults", move || {
         let snapshot = projection.snapshot();
         Some(nmp_core::TypedProjectionData {

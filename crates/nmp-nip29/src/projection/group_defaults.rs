@@ -76,9 +76,8 @@ impl Default for GroupDefaultsSnapshot {
 /// The output-only projection of NIP-29 create-flow defaults.
 ///
 /// Holds no mutable state and observes no events — its snapshot is the
-/// app-supplied value captured at registration time. Registered as a snapshot
-/// projection (plus a typed FlatBuffers sidecar) under
-/// `"nmp.nip29.group_defaults"`.
+/// app-supplied value captured at registration time. Registered as a typed
+/// FlatBuffers snapshot projection under `"nmp.nip29.group_defaults"`.
 #[derive(Debug, Clone)]
 pub struct GroupDefaultsProjection {
     snapshot: GroupDefaultsSnapshot,
@@ -115,9 +114,11 @@ impl GroupDefaultsProjection {
         self.snapshot.clone()
     }
 
-    /// The generic `serde_json::Value` projection body registered under
-    /// `"nmp.nip29.group_defaults"` (the permanent ADR-0037 fallback carried
-    /// alongside the typed sidecar).
+    /// Serde JSON mirror of the typed read model.
+    ///
+    /// `wire_group_defaults*` does not register this as a generic projection;
+    /// it exists for serialization parity tests and callers that need the JSON
+    /// shape explicitly.
     #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot()).unwrap_or(serde_json::Value::Null)
