@@ -18,10 +18,10 @@ nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features 
 nmp-chirp-config = { path = "../nmp-chirp-config" }
 
 # C-ABI surface (NmpApp, nmp_app_* symbols).
-nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
+nmp-ffi = { path = "../../../crates/nmp-ffi" }
 
 # In-process kernel: we still decode FlatBuffer frames and use display helpers.
-nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-core = { path = "../../../crates/nmp-core" }
 
 # NIP-01 typed OP-feed codec: decode_op_feed_snapshot + OP_FEED_SCHEMA_ID for
 # the typed sidecar render cutover (ADR-0038).
@@ -45,3 +45,7 @@ zeroize = { workspace = true }
 
 # OS credential store backing for the desktop KeyringCapability handler.
 keyring = { version = "3.6.3", default-features = false, features = ["apple-native", "windows-native", "linux-native"] }
+
+[dev-dependencies]
+nmp-core = { path = "../../../crates/nmp-core", features = ["test-support"] }
+nmp-ffi = { path = "../../../crates/nmp-ffi", features = ["test-support"] }
