@@ -79,8 +79,7 @@ pub(super) fn dispatch_one_with_relays(
     let mut emit_hz = 4u32;
     let mut startup_sent = false;
     let mut parked_ops = ParkedSignerOps::new();
-    let capability_callback: crate::capability_socket::CapabilityCallbackSlot =
-        Arc::new(Mutex::new(None));
+    let capability_callback = crate::capability_socket::new_capability_callback_slot();
     let (capability_work_inner_tx, _capability_work_rx) = channel::<ActorMail>();
     let capability_work_tx = crate::actor::capability_worker::spawn_capability_worker(
         Arc::clone(&capability_callback),

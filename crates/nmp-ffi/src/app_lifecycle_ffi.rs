@@ -16,6 +16,9 @@ use crate::app_struct::{NmpApp, UpdateCallback, UpdateCallbackRegistration};
 #[no_mangle]
 pub extern "C" fn nmp_app_free(app: *mut NmpApp) {
     if !app.is_null() {
+        // `NmpApp::drop` clears the capability callback through the quiescence
+        // gate before joining the actor, so actor/worker-owned capability
+        // dispatches cannot keep executing against host context after free.
         // SAFETY: caller guarantees app is a valid pointer allocated by nmp_app_new().
         unsafe {
             drop(Box::from_raw(app));

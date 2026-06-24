@@ -8,6 +8,9 @@ mod passive_start_tests;
 #[cfg(test)]
 #[path = "update_callback_quiescence_tests.rs"]
 mod update_callback_quiescence_tests;
+#[cfg(test)]
+#[path = "capability_quiescence_tests.rs"]
+mod capability_quiescence_tests;
 mod keyring_forget;
 #[cfg(test)]
 #[path = "active_account_handle_tests.rs"]

@@ -10,7 +10,7 @@
 
 use super::*;
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{IdentityCommand};
+use nmp_core::actor::IdentityCommand;
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -84,10 +84,12 @@ extern "C" fn ack_handler(_ctx: *mut std::ffi::c_void, request_json: *const c_ch
 }
 
 fn install_dispatch_ack(slot: &CapabilityCallbackSlot) {
-    *slot.lock().unwrap() = Some(nmp_core::__ffi_internal::CapabilityCallbackRegistration {
-        context: 0,
-        callback: ack_handler,
-    });
+    slot.set_registration(Some(
+        nmp_core::__ffi_internal::CapabilityCallbackRegistration {
+            context: 0,
+            callback: ack_handler,
+        },
+    ));
 }
 
 fn last_dispatched_request() -> ExternalSignerRequest {
@@ -151,7 +153,9 @@ fn signin_loop_resolves_add_signer_and_sign_round_trip() {
     assert_eq!(handle.pubkey_hex(), keys.public_key().to_hex());
     assert_eq!(handle.op_timeout(), Duration::from_secs(90));
     match rx.try_recv().expect("ready state sent") {
-        ActorCommand::Identity(IdentityCommand::Nip55SignerStateChanged { state, .. }) => assert_eq!(state, "ready"),
+        ActorCommand::Identity(IdentityCommand::Nip55SignerStateChanged { state, .. }) => {
+            assert_eq!(state, "ready")
+        }
         other => panic!("expected ready state, got {other:?}"),
     }
 

@@ -58,6 +58,7 @@ impl Drop for NmpApp {
         if let Ok(mut inner) = self.update_callback.inner.lock() {
             inner.registration = None;
         }
+        self.capability_callback.clear();
         // Route through `shutdown_actor` (→ `send_cmd`) so the G-S4 queue-depth
         // counter stays consistent: the actor decrements it as it dequeues `Shutdown`.
         self.shutdown_actor();

@@ -14,12 +14,12 @@
 //!   *which* capability, *what* operation, and *how* to react to the result
 //!   are the issuing module's concern (see `substrate::KeyringIdentityWiring`).
 
-use super::{app_ref, NmpApp};
+use super::{NmpApp, app_ref};
 use nmp_core::__ffi_internal::{
-    capability_error_envelope, dispatch_capability, CapabilityCallback,
-    CapabilityCallbackRegistration, CapabilityCallbackSlot,
+    CapabilityCallback, CapabilityCallbackRegistration, CapabilityCallbackSlot,
+    capability_error_envelope, dispatch_capability,
 };
-use std::ffi::{c_char, c_void, CString};
+use std::ffi::{CString, c_char, c_void};
 use std::sync::Arc;
 
 impl NmpApp {
@@ -40,6 +40,20 @@ impl NmpApp {
 /// `KeychainCapability.handleJSON(_:)`). Passing `None` unregisters; a
 /// request received while unregistered yields an error envelope (D6), never
 /// a crash.
+///
+/// # Quiescence contract
+///
+/// After this function returns, the previous `(callback, context)` pair is
+/// guaranteed to be neither registered nor mid-invocation. Hosts may safely
+/// free or release `context` once this call returns. Replacement installs the
+/// new pair before waiting for in-flight callbacks to drain, matching
+/// `nmp_app_set_update_callback`.
+///
+/// # Re-entrancy
+///
+/// A host capability callback must not call this setter for the same app from
+/// inside the callback. The setter waits for in-flight invocations to drain,
+/// which cannot happen while the callback is blocking inside the setter.
 #[no_mangle]
 pub extern "C" fn nmp_app_set_capability_callback(
     app: *mut NmpApp,
@@ -49,13 +63,11 @@ pub extern "C" fn nmp_app_set_capability_callback(
     let Some(app) = app_ref(app) else {
         return;
     };
-    let Ok(mut slot) = app.capability_callback.lock() else {
-        return;
-    };
-    *slot = callback.map(|callback| CapabilityCallbackRegistration {
-        context: context as usize,
-        callback,
-    });
+    app.capability_callback
+        .set_registration(callback.map(|callback| CapabilityCallbackRegistration {
+            context: context as usize,
+            callback,
+        }));
 }
 
 /// Route a `CapabilityRequest` JSON to the registered native handler and
@@ -97,7 +109,7 @@ mod tests {
     };
     use std::collections::HashMap;
     use std::ffi::CStr;
-    use std::sync::{Arc, Mutex};
+    use std::sync::Mutex;
 
     // In-memory secret store standing in for the iOS Keychain. The mock
     // handler is a plain `extern "C"` fn (FFI shape) and cannot capture
@@ -165,15 +177,17 @@ mod tests {
             .into_raw()
     }
 
-    fn registered_slot() -> Arc<Mutex<Option<CapabilityCallbackRegistration>>> {
-        Arc::new(Mutex::new(Some(CapabilityCallbackRegistration {
+    fn registered_slot() -> CapabilityCallbackSlot {
+        let slot = nmp_core::__ffi_internal::new_capability_callback_slot();
+        slot.set_registration(Some(CapabilityCallbackRegistration {
             context: 0,
             callback: mock_handler,
-        })))
+        }));
+        slot
     }
 
     fn run(
-        slot: &Arc<Mutex<Option<CapabilityCallbackRegistration>>>,
+        slot: &CapabilityCallbackSlot,
         req: &nmp_core::substrate::CapabilityRequest,
     ) -> KeyringResult {
         let json = serde_json::to_string(req).unwrap();
@@ -216,7 +230,7 @@ mod tests {
     #[test]
     fn missing_handler_yields_error_envelope_not_panic() {
         let _g = SERIAL.lock().unwrap();
-        let empty: Arc<Mutex<Option<CapabilityCallbackRegistration>>> = Arc::new(Mutex::new(None));
+        let empty = nmp_core::__ffi_internal::new_capability_callback_slot();
         let req = KeyringIdentityWiring::persist_secret("c9", "acct-x", "nsec1");
         let json = serde_json::to_string(&req).unwrap();
 
@@ -235,10 +249,11 @@ mod tests {
         extern "C" fn null_handler(_c: *mut c_void, _r: *const c_char) -> *mut c_char {
             std::ptr::null_mut()
         }
-        let slot = Arc::new(Mutex::new(Some(CapabilityCallbackRegistration {
+        let slot = nmp_core::__ffi_internal::new_capability_callback_slot();
+        slot.set_registration(Some(CapabilityCallbackRegistration {
             context: 0,
             callback: null_handler,
-        })));
+        }));
         let req = KeyringIdentityWiring::recall_secret("c0", "acct-1");
         let json = serde_json::to_string(&req).unwrap();
         let envelope: CapabilityEnvelope =

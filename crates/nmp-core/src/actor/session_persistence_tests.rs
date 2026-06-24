@@ -13,8 +13,8 @@ use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
 use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CStr, CString};
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::ffi::{CStr, CString, c_char, c_void};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -81,10 +81,10 @@ extern "C" fn mock_handler(_ctx: *mut c_void, request_json: *const c_char) -> *m
 
 fn registered_slot() -> CapabilityCallbackSlot {
     let slot = crate::capability_socket::new_capability_callback_slot();
-    *slot.lock().unwrap() = Some(CapabilityCallbackRegistration {
+    slot.set_registration(Some(CapabilityCallbackRegistration {
         context: 0,
         callback: mock_handler,
-    });
+    }));
     slot
 }
 

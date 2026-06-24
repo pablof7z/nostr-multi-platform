@@ -23,13 +23,11 @@ use crate::session::session_arc;
 /// None)` unregisters the trampoline.
 ///
 /// UAF safety: the load-bearing guard is the capability-socket unregister in
-/// `close_updates_locked`. Unlike the synchronous capability handler (whose
-/// `GlobalRef` is protected by the `capability_handler` mutex hold across the
-/// upcall), this listener follows the *update-callback* shape: the trampoline
-/// snapshots an `Arc` clone of the listener under the slot lock and drops the
-/// lock before the upcall, so the `take()` in `close_updates_locked` only ever
-/// races a cheap `Arc::clone`, never the JNI `push` itself. The dropped
-/// `GlobalRef` is therefore never read by an in-flight upcall.
+/// `close_updates_locked`, which blocks until in-flight trampolines drain. This
+/// listener follows the *update-callback* shape: the trampoline snapshots an
+/// `Arc` clone of the listener under the slot lock and drops the lock before
+/// the upcall, so replacement/clearing only ever races a cheap `Arc::clone`,
+/// never the JNI `push` itself.
 pub(crate) struct SignerRequestPushListener {
     vm: JavaVM,
     handler: GlobalRef,
