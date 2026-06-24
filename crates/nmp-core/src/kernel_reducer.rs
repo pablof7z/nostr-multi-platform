@@ -137,8 +137,7 @@ impl KernelReducer {
         self.kernel.now_secs()
     }
 
-    /// Test-support clock injection for non-actor runtimes such as `nmp-wasm`.
-    #[cfg(any(test, feature = "test-support"))]
+    /// Clock injection for non-actor runtimes such as `nmp-wasm`.
     pub fn set_clock_for_test(&mut self, clock: std::sync::Arc<dyn crate::Clock>) {
         self.kernel.set_clock(clock);
     }
@@ -439,11 +438,6 @@ impl KernelReducer {
     pub fn make_update_frame(&mut self, running: bool) -> crate::UpdateFrameBytes {
         self.kernel.make_update(running)
     }
-
-    // `set_configured_relays`, `set_routing`, and `set_content_parser` — the
-    // composition-root wiring methods — live in the sibling
-    // `composition_seams.rs` module (LOC ceiling, #1753). They are still public
-    // methods on `KernelReducer` (`impl KernelReducer` in that file).
 }
 
 /// Test-support seam: fire the observer slot directly with a `KernelEvent`.

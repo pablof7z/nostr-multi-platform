@@ -25,12 +25,53 @@
 use std::sync::Arc;
 
 use crate::actor::register_rust_observer;
+use crate::kernel::Kernel;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::slots::ActiveAccountSlot;
 use crate::store::EventStore;
 use crate::substrate::{ContactsLookup, IngestParser, ProfileLookup};
 use crate::{KernelEventObserver, KernelEventObserverId, TypedProjectionData};
 
 impl super::KernelReducer {
+    /// Construct a reducer around an externally-opened event store.
+    ///
+    /// The `EventStore` trait stays synchronous and unchanged; platform
+    /// composition opens any platform-specific backend first, then injects the
+    /// ready handle here. This is the accepted ADR-0054 Stage #5 seam for the
+    /// future OPFS-SQLite wasm backend.
+    #[must_use]
+    pub fn with_store(store: Arc<dyn EventStore>) -> Self {
+        use crate::actor::new_event_observer_slot_headless;
+        use crate::kernel::new_snapshot_projection_slot;
+
+        let observer_slot = new_event_observer_slot_headless();
+        let snapshot_slot = new_snapshot_projection_slot();
+        let mut kernel = Kernel::from_parts(DEFAULT_VISIBLE_LIMIT, store, None);
+        kernel.set_event_observers_handle(Arc::clone(&observer_slot));
+        kernel.set_snapshot_projection_handle(Arc::clone(&snapshot_slot));
+        Self {
+            kernel,
+            observer_slot,
+            snapshot_slot,
+            sign_roundtrip: super::wasm_signing::SignRoundTripState::default(),
+        }
+    }
+
+    /// Rebuild the wrapped kernel around `store` while preserving the reducer's
+    /// headless observer/projection slots.
+    ///
+    /// Called by `nmp-wasm` at the top of `Start`, before relay drivers and
+    /// runtime deadlines capture the reducer. The caller must only use this as
+    /// a boot-time seam: swapping stores mid-session would fork publish,
+    /// coverage, and query state across two backends.
+    pub fn replace_store_for_start(&mut self, store: Arc<dyn EventStore>) {
+        let mut kernel = Kernel::from_parts(DEFAULT_VISIBLE_LIMIT, store, None);
+        kernel.set_event_observers_handle(Arc::clone(&self.observer_slot));
+        kernel.set_snapshot_projection_handle(Arc::clone(&self.snapshot_slot));
+        self.kernel = kernel;
+        self.sign_roundtrip = super::wasm_signing::SignRoundTripState::default();
+    }
+
     // ── Event-observer slot seam ──────────────────────────────────────────
 
     /// Register an in-process Rust observer that will be called for every
@@ -189,10 +230,7 @@ impl super::KernelReducer {
     /// real resolver that returns the configured relay URLs as write targets.
     /// Without this, every `PublishTarget::Auto` resolves to no relays and
     /// events are silently dropped.
-    pub fn set_publish_resolver(
-        &mut self,
-        resolver: Arc<dyn crate::publish::OutboxResolver>,
-    ) {
+    pub fn set_publish_resolver(&mut self, resolver: Arc<dyn crate::publish::OutboxResolver>) {
         self.kernel.set_publish_resolver(resolver);
     }
 
@@ -234,9 +272,12 @@ impl super::KernelReducer {
                 created_at: raw.created_at,
             },
         };
-        let outbound = self
-            .kernel
-            .publish_signed_to_with_correlation(&signed, &p_tags, target, correlation_id);
+        let outbound = self.kernel.publish_signed_to_with_correlation(
+            &signed,
+            &p_tags,
+            target,
+            correlation_id,
+        );
         self.kernel.partition_auth_paused(outbound)
     }
 }
@@ -256,5 +297,4 @@ impl super::KernelReducer {
         self.kernel
             .project_raw_event_for_test(id, pubkey, created_at, kind, tags, content);
     }
-
 }

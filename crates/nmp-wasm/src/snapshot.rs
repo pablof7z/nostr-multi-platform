@@ -56,8 +56,9 @@ pub(crate) struct RuntimeMeta {
     /// running state in the Tier-3 envelope.
     pub(crate) started: bool,
     /// Database name captured at `Start` time. Echoed through the snapshot
-    /// so hosts can verify the start handshake. The pure kernel never sees
-    /// a database (no IndexedDB binding yet — Stage 3b follow-up).
+    /// so hosts can verify the start handshake. ADR-0054 Stage #5 adds the
+    /// boot-time event-store injection seam; the OPFS-SQLite backend is the
+    /// follow-up that will make this name select a durable browser store.
     pub(crate) database_name: String,
     /// Relay bootstrap captured at `Start` time. Used to seed the kernel's
     /// configured-relay lanes (via `set_configured_relays`) and to spawn

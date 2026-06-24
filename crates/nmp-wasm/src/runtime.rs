@@ -20,6 +20,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use nmp_core::substrate::ActionModule;
 use nmp_core::{ActionRegistry, KernelReducer, OutboundMessage};
@@ -57,6 +58,14 @@ pub struct WasmRuntime {
     /// Held behind `Rc<RefCell>` so the wasm32 relay-driver closures can
     /// share it without unsafe lifetime gymnastics.
     reducer: Rc<RefCell<KernelReducer>>,
+    /// ADR-0054 Stage #5 — boot-time event-store injection slot.
+    ///
+    /// Future web persistence opens its platform backend before `Start`, then
+    /// installs the ready synchronous [`EventStore`](nmp_store::EventStore)
+    /// here. `Start` consumes this once and rebuilds the reducer before relay
+    /// drivers/deadlines capture it. Empty means the default in-memory reducer
+    /// stays in place.
+    injected_store: Rc<RefCell<Option<Arc<dyn nmp_store::EventStore>>>>,
     /// Runtime metadata mirrored into every snapshot update. Shared with
     /// the relay-pool sink via `Rc<RefCell>` so the sink can build a fresh
     /// snapshot from kernel + meta without holding a reference to the
@@ -146,6 +155,27 @@ impl WasmRuntime {
     #[must_use]
     pub fn reducer_handle(&self) -> Rc<RefCell<KernelReducer>> {
         Rc::clone(&self.reducer)
+    }
+
+    /// Install an externally-opened event store to be consumed by the next
+    /// `Start`.
+    ///
+    /// This is intentionally a boot-time seam. The store backend must already
+    /// be open and synchronous; the kernel's [`EventStore`](nmp_store::EventStore)
+    /// contract remains unchanged. Calling after `Start` is rejected because
+    /// existing relay, publish, projection, and query handles would otherwise
+    /// split across old and new stores.
+    pub fn set_injected_store(
+        &mut self,
+        store: Arc<dyn nmp_store::EventStore>,
+    ) -> Result<(), WasmRuntimeError> {
+        if self.meta.borrow().started {
+            return Err(WasmRuntimeError::InvalidConfig(
+                "event store injection must happen before Start".to_string(),
+            ));
+        }
+        *self.injected_store.borrow_mut() = Some(store);
+        Ok(())
     }
 
     /// Register a typed [`ActionModule`] under its `NAMESPACE` into the runtime's
@@ -276,6 +306,10 @@ impl WasmRuntime {
             return Err(WasmRuntimeError::InvalidConfig(
                 "at least one relay is required".to_string(),
             ));
+        }
+
+        if let Some(store) = self.injected_store.borrow_mut().take() {
+            self.reducer.borrow_mut().replace_store_for_start(store);
         }
 
         let relay_bootstrap =

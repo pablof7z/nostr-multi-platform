@@ -5175,6 +5175,7 @@ dependencies = [
  "nmp-network",
  "nmp-nip18",
  "nmp-signer-iface",
+ "nmp-store",
  "nostr",
  "serde",
  "serde_json",

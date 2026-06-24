@@ -16,8 +16,9 @@ crate-type = ["cdylib", "rlib"]
 # traits. Phase 1c (PR #341) gated actor/, relay_worker/, and tungstenite
 # behind `#[cfg(feature = "native")]`, which unblocked this dep. Phase 2 will
 # wire NmpApp into WasmRuntime using a WASM-compatible transport
-# (web_sys::WebSocket + IndexedDB store).
+# (web_sys::WebSocket + OPFS-SQLite store injection).
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-store = { path = "../nmp-store" }
 # #1740 step 1 — the typed feed-session param model lives in nmp-feed (single
 # source, D4). The wasm runtime re-exports its param types and the boundary
 # decode/validation surface; it adds no parallel model.

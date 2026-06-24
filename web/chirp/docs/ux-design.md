@@ -645,10 +645,10 @@ renders a muted `session stats not yet reported by the runtime` line.
 ┌─ Store ───────────────────────────────────────────┐
 │                                                   │
 │  PERSISTENCE                                      │
-│  ● in-memory (ephemeral)                          │ ← honest: IndexedDB not
-│    events are kept for this tab only —            │   bound yet; never claim
-│    browser persistence is not wired yet           │   disk we don't have
-│    ┌ truth chip ───────────────────┐              │   [GAP-6]
+│  ● in-memory (ephemeral)                          │ ← honest: OPFS-SQLite
+│    events are kept for this tab only —            │   backend not wired yet;
+│    browser persistence is not wired yet           │   never claim disk we
+│    ┌ truth chip ───────────────────┐              │   don't have [GAP-6]
 │    │ store_open_failure: none ·    │              │
 │    │ backend: memory               │              │
 │    └───────────────────────────────┘              │
@@ -940,7 +940,7 @@ lands.
 | GAP-3 | Store metrics (`stored_events`, `tombstones`, `estimated_store_bytes`, `duplicate_events`, visible/placeholder counts) not in wasm frames | Inspector ▸ Store | subset of GAP-1/2 emission |
 | GAP-4 | `negentropy_probe` exists on kernel `RelayStatus` but (a) is not decoded by `nmp-core::RelayStatusEntry` (subset decoder skips it) and (b) NIP-77 isn't wired in the browser runtime | Sync panel per-relay states, relay-card negentropy line | `update_envelope/relay_status.rs` decode + wasm NIP-77 wiring |
 | GAP-5 | **No negentropy session-stats projection anywhere** (rounds, ranges compared, have/need counts, est. bytes avoided) | Sync panel session block — NMP's most persuasive number | new kernel projection (`nmp-nip77` → typed sidecar) |
-| GAP-6 | No browser persistence (IndexedDB) binding; `database_name` is a handshake echo only | Store panel persistence block, offline copy | `nmp-wasm` store binding |
+| GAP-6 | No OPFS-SQLite browser backend yet; ADR-0054 Stage #5 adds the store-injection seam, but `database_name` is still only a handshake/store-selection input until the backend lands | Store panel persistence block, offline copy | `nmp-wasm` store binding + `nmp-sqlite-wasm` backend |
 | GAP-7 | No source attribution for resolved profiles (store-hit vs. live relay) | profile whisper strip detail | optional kernel projection field |
 | GAP-8 | Reply path fails closed (`publish_path_not_wired_for_kind`); NIP-10 tag construction is host-side per issue #906 but unwired in wasm | Reply compose happy path | `nmp-wasm/src/publish_path.rs` |
 | GAP-9 | Closed by the read-only `routing_decisions` worker request; the panel now consumes Rust-rendered routing DTO JSON from `recent_routing_decisions()` | Inspector ▸ Routing (lane waterfall) | keep renderer thin; do not recreate routing logic in TS |

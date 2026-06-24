@@ -3,6 +3,7 @@ use crate::app::VIEW_PROFILE;
 use crate::kernel::{EventShape, RefLiveness, RefNamespace, RefShape};
 use crate::nip19::encode_npub;
 use std::collections::BTreeSet;
+use std::sync::Arc;
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
@@ -31,6 +32,18 @@ fn reduce_start_rejects_runtime_lifecycle_placeholder() {
             action: "start".into(),
             reason: "runtime lifecycle is not a kernel action".into(),
         }
+    );
+}
+
+#[test]
+fn with_store_uses_the_injected_event_store_handle() {
+    let store: Arc<dyn nmp_store::EventStore> = Arc::new(nmp_store::MemEventStore::new());
+    let r = KernelReducer::with_store(Arc::clone(&store));
+    let reducer_store = r.event_store_handle();
+
+    assert!(
+        Arc::ptr_eq(&store, &reducer_store),
+        "KernelReducer::with_store must expose the exact injected EventStore handle"
     );
 }
 
