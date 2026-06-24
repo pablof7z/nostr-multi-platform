@@ -64,9 +64,10 @@ void nmp_app_search_close(void *app, const char *session_id);
 int nmp_app_search_snapshot(void *app, const char *session_id,
                             uint8_t *out_buf, uintptr_t cap);
 // ADR-0063 Lane D — unified, origin-blind reference-resolution entry points.
-// Profiles and events resolve exclusively through nmp_app_resolve_ref /
-// nmp_app_release_ref. App-owned URI adapters decode nostr: event URIs before
-// calling this raw-key boundary.
+// Profiles and events resolve through the raw-key resolve_ref / release_ref
+// boundary. App-owned URI adapters decode nostr: event URIs before calling this
+// boundary; use the metadata variant when decoded relay/author TLVs must seed
+// the event resolver.
 //
 // `namespace` — 0 = profile (kind:0), 1 = event.
 // `key` — lowercase 64-hex pubkey for profile; lowercase event-id hex or "kind:pubkey:d" for event.
@@ -78,6 +79,11 @@ int nmp_app_search_snapshot(void *app, const char *session_id,
 // D8: fire-and-forget; the actor processes commands asynchronously.
 void nmp_app_resolve_ref(void *app, int namespace, const char *key,
                          const char *consumer_id, int shape, int liveness);
+void nmp_app_resolve_ref_with_metadata(void *app, int namespace,
+                                       const char *key,
+                                       const char *consumer_id, int shape,
+                                       int liveness,
+                                       const char *metadata_json);
 void nmp_app_release_ref(void *app, int namespace, const char *key,
                          const char *consumer_id);
 // V-68 / V-112 (ADR-0042): nmp_app_close_author, nmp_app_close_thread deleted.

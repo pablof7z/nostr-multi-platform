@@ -228,10 +228,10 @@ impl Kernel {
                 }
             }
             // Replay the parked target's OWN shape / liveness / force /
-            // relay-hints through the canonical raw body (D) — `can_send = true`
-            // now that a relay is connected. (The parked `force` is preserved
-            // verbatim so the original caller's freshness intent survives the
-            // cold-start delay.)
+            // URI-decoded metadata through the canonical raw body (D) —
+            // `can_send = true` now that a relay is connected. (The parked
+            // `force` is preserved verbatim so the original caller's freshness
+            // intent survives the cold-start delay.)
             out.extend(self.resolve_event_ref_inner(
                 claim.key,
                 claim.consumer_id,
@@ -239,6 +239,7 @@ impl Kernel {
                 claim.liveness,
                 claim.force,
                 true,
+                claim.event_author,
                 claim.relay_hints,
             ));
         }

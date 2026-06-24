@@ -53,6 +53,11 @@ void nmp_app_stop(void *app);
 // D8: fire-and-forget; the actor processes commands asynchronously.
 void nmp_app_resolve_ref(void *app, int namespace, const char *key,
                          const char *consumer_id, int shape, int liveness);
+void nmp_app_resolve_ref_with_metadata(void *app, int namespace,
+                                       const char *key,
+                                       const char *consumer_id, int shape,
+                                       int liveness,
+                                       const char *metadata_json);
 void nmp_app_release_ref(void *app, int namespace, const char *key,
                          const char *consumer_id);
 
@@ -60,8 +65,9 @@ void nmp_app_release_ref(void *app, int namespace, const char *key,
 
 // Event URI front doors are removed. Callers decode the nostr: URI via
 // nmp_nip21_decode_uri and then route to
-// nmp_app_resolve_ref(namespace=1/*event*/, key=event-id-hex, shape=2/*embed*/,
-// liveness=0/*CacheOk*/) and nmp_app_release_ref(namespace=1, key, consumer_id).
+// nmp_app_resolve_ref_with_metadata(namespace=1/*event*/, key=event-id-hex,
+// shape=2/*embed*/, liveness=0/*CacheOk*/, metadata_json) and
+// nmp_app_release_ref(namespace=1, key, consumer_id).
 
 // ── Relay management ─────────────────────────────────────────────────────
 

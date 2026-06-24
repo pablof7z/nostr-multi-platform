@@ -48,17 +48,17 @@ extension KernelHandle {
         }
     }
 
-    // App-owned URI adapters decode nostr: event URIs before calling
-    // resolveRef(namespace: .event, key: decodedEventId, ...).
-    // To decode a `nostr:` URI to an event key, call nmp_nip21_decode_uri and
-    // extract the event_id field from the JSON result, then pass it as `key`.
+    private struct EventRefFromUri {
+        let key: String
+        let metadataJson: String
+    }
 
     // #1726 — nostr: URI → canonical event key helper.
-    // Returns the raw key the kernel resolver expects:
+    // Returns the raw key plus decoded metadata the kernel resolver expects:
     //   - nevent / note  → the hex event_id
     //   - naddr          → the canonical coordinate string "kind:pubkey:identifier"
     // Returns nil on any decode failure (D6: silent no-op).
-    private func eventKeyFromUri(_ uri: String) -> String? {
+    private func eventRefFromUri(_ uri: String) -> EventRefFromUri? {
         guard let jsonStr = uri.withCString({ ptr -> String? in
             guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
             defer { nmp_free_string(cResult) }
@@ -68,18 +68,31 @@ extension KernelHandle {
               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
               let ok = obj["ok"] as? Bool, ok
         else { return nil }
+        let key: String
         switch obj["target"] as? String {
         case "event":
-            return obj["event_id"] as? String
+            guard let eventId = obj["event_id"] as? String else { return nil }
+            key = eventId
         case "address":
-            guard let kind = obj["kind"] as? UInt32,
+            guard let kind = obj["kind"] as? NSNumber,
                   let pubkey = obj["pubkey"] as? String,
                   let identifier = obj["identifier"] as? String
             else { return nil }
-            return "\(kind):\(pubkey):\(identifier)"
+            key = "\(kind.uint32Value):\(pubkey):\(identifier)"
         default:
             return nil
         }
+        var metadata: [String: Any] = ["hints": obj["relays"] as? [String] ?? []]
+        if let author = obj["author"] as? String {
+            metadata["author"] = author
+        }
+        if let kind = obj["kind"] as? NSNumber {
+            metadata["kind"] = kind.uint32Value
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: metadata),
+              let metadataJson = String(data: data, encoding: .utf8)
+        else { return nil }
+        return EventRefFromUri(key: key, metadataJson: metadataJson)
     }
 
     /// #1726 — Decode a `nostr:` URI and resolve the embedded event ref via the
@@ -89,16 +102,24 @@ extension KernelHandle {
     /// (canonical `kind:pubkey:identifier` coordinate key). On decode failure or
     /// a non-event URI this is a silent no-op (D6).
     func claimEventUri(uri: String, consumerID: String, force: Bool = false) {
-        guard let key = eventKeyFromUri(uri) else { return }
+        guard let eventRef = eventRefFromUri(uri) else { return }
         // Use CacheOk (0) for background, Live (1) for explicit navigation.
         let liveness: RefLiveness = force ? .live : .cacheOk
-        resolveRef(namespace: .event, key: key, consumerID: consumerID,
-                   shape: .eventEmbed, liveness: liveness)
+        eventRef.key.withCString { keyPtr in
+            consumerID.withCString { cidPtr in
+                eventRef.metadataJson.withCString { metadataPtr in
+                    nmp_app_resolve_ref_with_metadata(
+                        raw, RefNamespace.event.rawValue, keyPtr, cidPtr,
+                        RefShape.eventEmbed.rawValue, liveness.rawValue,
+                        metadataPtr)
+                }
+            }
+        }
     }
 
     /// #1726 — Release a previously-claimed event ref (mirror of `claimEventUri`).
     func releaseEventUri(uri: String, consumerID: String) {
-        guard let key = eventKeyFromUri(uri) else { return }
-        releaseRef(namespace: .event, key: key, consumerID: consumerID)
+        guard let eventRef = eventRefFromUri(uri) else { return }
+        releaseRef(namespace: .event, key: eventRef.key, consumerID: consumerID)
     }
 }

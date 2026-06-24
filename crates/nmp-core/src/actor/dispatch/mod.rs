@@ -230,6 +230,27 @@ fn dispatch_refs(cmd: RefsCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<Out
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
+        RefsCommand::ResolveWithMetadata {
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            metadata,
+        } => {
+            let outbound = ctx.kernel.resolve_ref_with_metadata(
+                namespace,
+                key,
+                consumer_id,
+                shape,
+                liveness,
+                force,
+                metadata,
+            );
+            maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+            Some(outbound)
+        }
         RefsCommand::Release {
             namespace,
             key,

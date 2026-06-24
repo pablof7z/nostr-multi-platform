@@ -161,19 +161,28 @@ final class GalleryKernelHandle {
     // ── Event claim / release ────────────────────────────────────────────
 
     // App-owned URI adapter: decode nostr: via nmp_nip21_decode_uri, then route
-    // the raw event key to nmp_app_resolve_ref / nmp_app_release_ref
-    // (namespace=1/event).
+    // the raw event key plus decoded relay/author metadata to the resolve_ref /
+    // release_ref seams (namespace=1/event).
+
+    private struct EventRefFromUri {
+        let key: String
+        let metadataJson: String
+    }
 
     /// #1726 — Decode a `nostr:` URI and resolve the embedded event via the
-    /// unified ref-resolution seam (nmp_app_resolve_ref, namespace=1/event).
+    /// unified ref-resolution seam (nmp_app_resolve_ref_with_metadata,
+    /// namespace=1/event).
     /// App-local URI adapter over the unified ref-resolution seam.
     func claimEvent(uri: String, consumerID: String, force: Bool = false) {
-        guard let eventId = decodeEventKey(from: uri) else { return }
+        guard let eventRef = decodeEventRef(from: uri) else { return }
         let liveness: Int32 = force ? 1 : 0
-        eventId.withCString { keyPtr in
+        eventRef.key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_resolve_ref(raw, 1 /*event*/, keyPtr, cidPtr,
-                                   2 /*event.embed*/, liveness)
+                eventRef.metadataJson.withCString { metadataPtr in
+                    nmp_app_resolve_ref_with_metadata(
+                        raw, 1 /*event*/, keyPtr, cidPtr,
+                        2 /*event.embed*/, liveness, metadataPtr)
+                }
             }
         }
     }
@@ -181,19 +190,20 @@ final class GalleryKernelHandle {
     /// #1726 — App-local URI adapter that releases the event via
     /// nmp_app_release_ref (namespace=1/event).
     func releaseEvent(uri: String, consumerID: String) {
-        guard let eventId = decodeEventKey(from: uri) else { return }
-        eventId.withCString { keyPtr in
+        guard let eventRef = decodeEventRef(from: uri) else { return }
+        eventRef.key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
                 nmp_app_release_ref(raw, 1 /*event*/, keyPtr, cidPtr)
             }
         }
     }
 
-    /// Decode a `nostr:` URI to the canonical event key expected by the kernel:
+    /// Decode a `nostr:` URI to the canonical event key plus metadata expected by
+    /// the kernel:
     ///   - nevent / note  → hex event_id
     ///   - naddr          → canonical coordinate "kind:pubkey:identifier"
     /// Returns nil on decode failure or a non-event URI (D6: silent no-op).
-    private func decodeEventKey(from uri: String) -> String? {
+    private func decodeEventRef(from uri: String) -> EventRefFromUri? {
         guard let jsonStr = uri.withCString({ ptr -> String? in
             guard let cResult = nmp_nip21_decode_uri(ptr) else { return nil }
             defer { nmp_free_string(cResult) }
@@ -203,18 +213,31 @@ final class GalleryKernelHandle {
               let obj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
               let ok = obj["ok"] as? Bool, ok
         else { return nil }
+        let key: String
         switch obj["target"] as? String {
         case "event":
-            return obj["event_id"] as? String
+            guard let eventId = obj["event_id"] as? String else { return nil }
+            key = eventId
         case "address":
-            guard let kind = obj["kind"] as? UInt32,
+            guard let kind = obj["kind"] as? NSNumber,
                   let pubkey = obj["pubkey"] as? String,
                   let identifier = obj["identifier"] as? String
             else { return nil }
-            return "\(kind):\(pubkey):\(identifier)"
+            key = "\(kind.uint32Value):\(pubkey):\(identifier)"
         default:
             return nil
         }
+        var metadata: [String: Any] = ["hints": obj["relays"] as? [String] ?? []]
+        if let author = obj["author"] as? String {
+            metadata["author"] = author
+        }
+        if let kind = obj["kind"] as? NSNumber {
+            metadata["kind"] = kind.uint32Value
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: metadata),
+              let metadataJson = String(data: data, encoding: .utf8)
+        else { return nil }
+        return EventRefFromUri(key: key, metadataJson: metadataJson)
     }
 
     // ── Relay seeding ────────────────────────────────────────────────────

@@ -25,8 +25,8 @@
 //! panic). D8 — no polling; interest registers once on the cold-claim transition
 //! (`event_claim_requested` dedupes) and the projection re-emits on the next tick.
 
-use super::super::{truncate, Instant, Kernel, OutboundMessage};
-use super::event_key::{parse_event_key, EventTarget, PendingEventClaim};
+use super::super::{Instant, Kernel, OutboundMessage, truncate};
+use super::event_key::{EventTarget, PendingEventClaim, parse_event_key};
 use crate::kernel::refs::{EventShape, RefLiveness};
 use crate::planner::{HintSource, InterestScope, RelayHint};
 
@@ -57,7 +57,34 @@ impl Kernel {
         caller_hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
         // Raw seam: the author is derived from the key itself (coordinate pubkey
-        // or, for a bare event-id, unknown). No URI author TLV exists here.
+        // or, for a bare event-id, unknown). App-owned URI adapters that decoded
+        // nevent author TLVs use `resolve_event_ref_with_metadata`.
+        self.resolve_event_ref_with_metadata(
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            can_send,
+            None,
+            caller_hints,
+        )
+    }
+
+    /// Same raw-key event resolver with metadata decoded by an app-owned URI
+    /// adapter. The key is still a raw event-id/coordinate, not a URI.
+    #[allow(clippy::too_many_arguments)] // metadata-bearing raw seam.
+    pub(in crate::kernel) fn resolve_event_ref_with_metadata(
+        &mut self,
+        key: String,
+        consumer_id: String,
+        shape: EventShape,
+        liveness: RefLiveness,
+        force: bool,
+        can_send: bool,
+        caller_author: Option<String>,
+        caller_hints: Vec<String>,
+    ) -> Vec<OutboundMessage> {
         self.resolve_event_ref_inner(
             key,
             consumer_id,
@@ -65,6 +92,7 @@ impl Kernel {
             liveness,
             force,
             can_send,
+            caller_author,
             caller_hints,
         )
     }
@@ -81,6 +109,7 @@ impl Kernel {
         liveness: RefLiveness,
         force: bool,
         can_send: bool,
+        caller_author: Option<String>,
         relay_hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
         // D6: a malformed raw key fails closed (no claim, no discovery REQ, no
@@ -100,9 +129,12 @@ impl Kernel {
             return Vec::new();
         };
 
-        // Author for the claim-expansion Phase-1 warm filter. Raw event-id refs
-        // do not carry an author; addressable coordinates derive it from the key.
-        let author = derived_author;
+        // Author for claim-expansion scoring. Coordinates are self-authenticating
+        // and win over caller metadata; bare event-id refs may carry the nevent
+        // author TLV decoded by an app-owned URI adapter.
+        let caller_author =
+            caller_author.filter(|author| crate::kernel::is_hex_pubkey(author.as_str()));
+        let author = derived_author.or(caller_author);
 
         // Refcount + bound check (mirror of `resolve_profile_ref`). Drop-newest
         // on overflow bumps the diagnostic counter and silently no-ops (D6).
@@ -243,6 +275,7 @@ impl Kernel {
                 shape,
                 liveness,
                 force,
+                event_author: author,
                 relay_hints,
             });
             return Vec::new();

@@ -275,6 +275,28 @@ impl NmpApp {
         }));
     }
 
+    /// Resolve a ref with app-decoded metadata from a URI adapter.
+    /// Typed wrapper for [`RefsCommand::ResolveWithMetadata`].
+    pub(crate) fn resolve_ref_with_metadata(
+        &self,
+        namespace: nmp_core::RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: nmp_core::RefShape,
+        liveness: nmp_core::RefLiveness,
+        metadata: nmp_core::RefResolveMetadata,
+    ) {
+        self.send_cmd(ActorCommand::Refs(RefsCommand::ResolveWithMetadata {
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force: false,
+            metadata,
+        }));
+    }
+
     /// Release a ref previously registered via [`Self::resolve_ref`].
     /// Typed wrapper for [`ActorCommand::ReleaseRef`].
     pub(crate) fn release_ref(

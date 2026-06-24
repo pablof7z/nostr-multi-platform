@@ -170,6 +170,32 @@ impl From<RefLiveness> for ProfileLiveness {
     }
 }
 
+/// Optional caller-supplied metadata for a raw-key ref resolve.
+///
+/// This is NOT a URI front door. App-owned URI adapters decode `nostr:` /
+/// NIP-19 values before crossing the boundary, then pass the raw key plus this
+/// metadata so relay TLVs and nevent author TLVs keep the behavior the deleted
+/// URI adapter had.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RefResolveMetadata {
+    /// Relay hints decoded by the caller from NIP-19/NIP-21 TLVs.
+    pub hints: Vec<String>,
+    /// Optional event author decoded from a nevent author TLV. Ignored for
+    /// profile refs and superseded by coordinate-derived authors for naddr keys.
+    pub event_author: Option<String>,
+}
+
+impl RefResolveMetadata {
+    /// Metadata carrying only relay hints.
+    #[must_use]
+    pub fn from_hints(hints: Vec<String>) -> Self {
+        Self {
+            hints,
+            event_author: None,
+        }
+    }
+}
+
 /// The shared contract both reference resolvers implement.
 ///
 /// Enum-dispatched through [`Kernel::resolve_ref`] (see module docs for why this
@@ -266,6 +292,31 @@ impl Kernel {
         force: bool,
         hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
+        self.resolve_ref_with_metadata(
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            RefResolveMetadata::from_hints(hints),
+        )
+    }
+
+    /// Same raw-key resolver with caller-supplied metadata from an app-owned URI
+    /// adapter. The metadata does not create a second resolution door: the key is
+    /// still raw, shape/namespace are still checked here, and dispatch still
+    /// lands in the namespace-owned resolver body.
+    pub(crate) fn resolve_ref_with_metadata(
+        &mut self,
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+        force: bool,
+        metadata: RefResolveMetadata,
+    ) -> Vec<OutboundMessage> {
         if shape.namespace() != namespace {
             self.log(format!(
                 "resolve_ref: shape namespace {:?} != requested {namespace:?} — ignoring",
@@ -275,10 +326,20 @@ impl Kernel {
         }
         match shape {
             RefShape::Profile(s) => {
-                ProfileNs::resolve(self, key, consumer_id, s, liveness, force, hints)
+                ProfileNs::resolve(self, key, consumer_id, s, liveness, force, metadata.hints)
             }
             RefShape::Event(s) => {
-                EventNs::resolve(self, key, consumer_id, s, liveness, force, hints)
+                let can_send = self.any_relay_connected();
+                self.resolve_event_ref_with_metadata(
+                    key,
+                    consumer_id,
+                    s,
+                    liveness,
+                    force,
+                    can_send,
+                    metadata.event_author,
+                    metadata.hints,
+                )
             }
         }
     }

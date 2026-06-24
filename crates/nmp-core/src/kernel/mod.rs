@@ -121,7 +121,9 @@ mod replay;
 mod requests;
 pub use requests::ProfileLiveness;
 pub(crate) mod refs; // ADR-0063 (#1671) — kernel RefResolver.
-pub use refs::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+pub use refs::{
+    EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape,
+};
 mod ref_row_source;
 mod feed_author_refs;
 #[cfg(test)] mod refs_tests;

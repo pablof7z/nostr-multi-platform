@@ -193,7 +193,7 @@ pub use kernel::{
     KERNEL_BUILTIN_PROJECTION_KEYS,
 };
 // ADR-0063 Lane D — closed typed `resolve_ref`/`release_ref` surface at the crate root.
-pub use kernel::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefShape};
+pub use kernel::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
 pub use kernel::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7 (#1671)
 pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0058
 pub use kernel::pull_cursor::{InvalidCursorSpec, PullConsumerId, PullCursorHandle};

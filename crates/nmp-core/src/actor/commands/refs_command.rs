@@ -25,6 +25,18 @@ pub enum RefsCommand {
         force: bool,
         hints: Vec<String>,
     },
+    /// Same raw-key resolve with metadata decoded by an app-owned URI adapter.
+    /// This is deliberately not a URI front door: callers must pass the
+    /// canonical raw key and only use metadata for relay/author TLVs.
+    ResolveWithMetadata {
+        namespace: crate::kernel::RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: crate::kernel::RefShape,
+        liveness: crate::kernel::RefLiveness,
+        force: bool,
+        metadata: crate::kernel::RefResolveMetadata,
+    },
     /// ADR-0063 Lane D — release a reference previously registered via
     /// [`Self::Resolve`]. Decrements the refcount; the slot is torn down when
     /// the last consumer releases. `(namespace, key, consumer_id)` must match

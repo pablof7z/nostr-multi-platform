@@ -50,8 +50,8 @@ pub(in crate::kernel) struct EventTarget {
 }
 
 /// A cold-start-parked event claim. Stores the CANONICAL pending target — the
-/// raw key plus the shape / liveness / force / relay-hints the resolver body
-/// needs — so the drain (`pending_event_claim_requests`) replays the raw
+/// raw key plus the shape / liveness / force / URI-decoded metadata the resolver
+/// body needs — so the drain (`pending_event_claim_requests`) replays the raw
 /// resolver body.
 pub(in crate::kernel) struct PendingEventClaim {
     pub key: String,
@@ -59,6 +59,7 @@ pub(in crate::kernel) struct PendingEventClaim {
     pub shape: EventShape,
     pub liveness: RefLiveness,
     pub force: bool,
+    pub event_author: Option<String>,
     pub relay_hints: Vec<String>,
 }
 

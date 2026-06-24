@@ -219,7 +219,9 @@ pub use timeline::{
 // surface. #1946 deleted event URI C-ABI front doors; event refs now resolve
 // exclusively through resolve_ref(namespace=1).
 #[cfg(feature = "native")]
-pub use resolve_ref::{nmp_app_release_ref, nmp_app_resolve_ref};
+pub use resolve_ref::{
+    nmp_app_release_ref, nmp_app_resolve_ref, nmp_app_resolve_ref_with_metadata,
+};
 
 // ── test-support delta ───────────────────────────────────────────────────
 #[cfg(any(test, feature = "test-support"))]
