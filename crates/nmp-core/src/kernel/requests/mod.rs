@@ -32,7 +32,8 @@ pub(in crate::kernel) use event_key::external_id_from_key;
 pub(in crate::kernel) use event_key::PendingEventClaim;
 
 use super::{
-    discovery, json, wire_log, CanonicalRelayUrl, Kernel, OutboundMessage, RelayRole, Value,
+    discovery, json, wire_log, CanonicalRelayUrl, Instant, Kernel, OutboundMessage, RelayRole,
+    Value,
 };
 
 impl Kernel {
@@ -72,20 +73,25 @@ impl Kernel {
         self.changed_since_emit = true;
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn pending_view_requests(&mut self) -> Vec<OutboundMessage> {
+        self.pending_view_requests_at(crate::kernel::test_support::test_support_now())
+    }
+
+    pub(crate) fn pending_view_requests_at(&mut self, now: Instant) -> Vec<OutboundMessage> {
         let mut requests = Vec::new();
         while let Some(message) = self.deferred_outbound.pop_front() {
             requests.push(message);
         }
         // Check time-gated timeline open (contacts_deadline may have elapsed).
-        requests.extend(self.maybe_open_timeline());
+        requests.extend(self.maybe_open_timeline_at(now));
         // V-68 / V-112 (ADR-0042): author_view.request_pending / author_requests(),
         // thread_view.request_pending / prepare_thread_requests(), and
         // maybe_open_thread_hydration() deleted — per-app FlatFeed handles these.
         // M2 migration: profile (kind:0) claims are registry interests now
         // (`resolve_ref` → `InterestRegistry`); there is no bespoke
         // `pending_profile_claim_requests` drain — the planner compiles them.
-        requests.extend(self.pending_event_claim_requests());
+        requests.extend(self.pending_event_claim_requests_at(now));
         // F-TTL — register pending replaceable re-verification interests through
         // the registry chokepoint (no bespoke REQ build). The planner compiles
         // them on the next drain, so a reverify of a stale replaceable for an

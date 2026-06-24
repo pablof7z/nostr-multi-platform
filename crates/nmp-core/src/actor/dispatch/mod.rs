@@ -97,6 +97,7 @@ pub(super) struct ActorContext<'a> {
     pub(super) connected_urls: &'a mut HashSet<CanonicalRelayUrl>,
     pub(super) update_tx: &'a Sender<crate::update_envelope::UpdateFrameBytes>,
     pub(super) last_emit: &'a mut Instant,
+    pub(super) dispatch_now: Instant,
     pub(super) next_relay_generation: &'a mut u64,
     pub(super) running: &'a mut bool,
     pub(super) emit_hz: &'a mut u32,
@@ -224,9 +225,16 @@ fn dispatch_refs(cmd: RefsCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<Out
             force,
             hints,
         } => {
-            let outbound =
-                ctx.kernel
-                    .resolve_ref(namespace, key, consumer_id, shape, liveness, force, hints);
+            let outbound = ctx.kernel.resolve_ref_at(
+                namespace,
+                key,
+                consumer_id,
+                shape,
+                liveness,
+                force,
+                hints,
+                ctx.dispatch_now,
+            );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)
         }
@@ -239,7 +247,7 @@ fn dispatch_refs(cmd: RefsCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<Out
             force,
             metadata,
         } => {
-            let outbound = ctx.kernel.resolve_ref_with_metadata(
+            let outbound = ctx.kernel.resolve_ref_with_metadata_at(
                 namespace,
                 key,
                 consumer_id,
@@ -247,6 +255,7 @@ fn dispatch_refs(cmd: RefsCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<Out
                 liveness,
                 force,
                 metadata,
+                ctx.dispatch_now,
             );
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(outbound)

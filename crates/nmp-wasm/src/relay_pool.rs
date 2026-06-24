@@ -171,9 +171,12 @@ pub(crate) fn build_handlers(
         let deadline = Rc::clone(&deadline);
         let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, is_reconnect: bool| {
-            let outbound = reducer
-                .borrow_mut()
-                .handle_relay_connected(role, url, is_reconnect);
+            let outbound = reducer.borrow_mut().handle_relay_connected_at(
+                role,
+                url,
+                is_reconnect,
+                nmp_core::time::Instant::now(),
+            );
             fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
@@ -198,10 +201,12 @@ pub(crate) fn build_handlers(
         let deadline = Rc::clone(&deadline);
         let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, text: String| {
-            let outbound =
-                reducer
-                    .borrow_mut()
-                    .handle_relay_frame(role, url, RelayFrame::Text(text));
+            let outbound = reducer.borrow_mut().handle_relay_frame_at(
+                role,
+                url,
+                RelayFrame::Text(text),
+                nmp_core::time::Instant::now(),
+            );
             fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
@@ -226,10 +231,12 @@ pub(crate) fn build_handlers(
         let deadline = Rc::clone(&deadline);
         let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, bytes: Vec<u8>| {
-            let outbound =
-                reducer
-                    .borrow_mut()
-                    .handle_relay_frame(role, url, RelayFrame::Binary(bytes));
+            let outbound = reducer.borrow_mut().handle_relay_frame_at(
+                role,
+                url,
+                RelayFrame::Binary(bytes),
+                nmp_core::time::Instant::now(),
+            );
             fan_out_outbound(&drivers, &handlers_slot, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
@@ -256,9 +263,12 @@ pub(crate) fn build_handlers(
         Rc::new(move |role: RelayRole, url: &str, reason: Option<String>| {
             // `RelayFrame::Close` always returns an empty outbound — we drop
             // it. Snapshot push captures `relay.last_close_reason`.
-            let _ = reducer
-                .borrow_mut()
-                .handle_relay_frame(role, url, RelayFrame::Close(reason));
+            let _ = reducer.borrow_mut().handle_relay_frame_at(
+                role,
+                url,
+                RelayFrame::Close(reason),
+                nmp_core::time::Instant::now(),
+            );
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,

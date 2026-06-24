@@ -5,7 +5,7 @@
 //! Split out of `requests/event.rs` to keep that file under the 500-LOC hard
 //! ceiling (AGENTS.md). All bodies are `impl Kernel`; no new state lives here.
 
-use super::super::{Kernel, OutboundMessage};
+use super::super::{Instant, Kernel, OutboundMessage};
 use super::event_key::external_id_from_key;
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, RelayHint,
@@ -206,7 +206,12 @@ impl Kernel {
     /// The primary fix removes the parked stake on release (`release_event_ref` →
     /// `remove_parked_event_claim`); this filter is a belt-and-suspenders guard so
     /// the drain can never resurrect a key whose refcount row is gone.
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn pending_event_claim_requests(&mut self) -> Vec<OutboundMessage> {
+        self.pending_event_claim_requests_at(crate::kernel::test_support::test_support_now())
+    }
+
+    pub(crate) fn pending_event_claim_requests_at(&mut self, now: Instant) -> Vec<OutboundMessage> {
         if self.pending_event_claims.is_empty() {
             return Vec::new();
         }
@@ -241,6 +246,7 @@ impl Kernel {
                 true,
                 claim.event_author,
                 claim.relay_hints,
+                now,
             ));
         }
         out

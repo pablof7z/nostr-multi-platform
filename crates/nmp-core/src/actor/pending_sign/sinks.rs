@@ -9,7 +9,7 @@
 //!   `resolve_pending_sign_return`.
 //!
 //! This module collapses both into ONE [`ParkedOp`] carried in ONE `Vec`,
-//! drained once per idle tick by [`super::drain::resolve_parked_op`]. The
+//! drained once per idle tick by [`super::drain::resolve_parked_op_at`]. The
 //! terminal behaviour is selected by [`ParkedOpSink`]:
 //!
 //! * [`ParkedOpSink::SignedEventsProjection`] — write signed JSON / error into
@@ -35,10 +35,9 @@ use crate::publish::PublishTarget;
 use crate::substrate::SignedEvent;
 use nmp_signer_iface::SignerOp;
 // D20 / #1753: the parked-op path is now wasm-reachable (the wasm `KernelReducer`
-// parks sign ops here). `std::time::Instant::now()` PANICS on wasm32, so the
-// deadline type + `timed_out()` route through the `crate::time` shim (verbatim
-// `std::time` on native, `web_time` on wasm32) — keeping the `deadline` field
-// type-consistent with the wasm caller's `Instant`.
+// parks sign ops here). The deadline type routes through the `crate::time` shim
+// (verbatim `std::time` on native, `web_time` on wasm32), and production timeout
+// checks receive the caller-captured `Instant` explicitly.
 use crate::time::Instant;
 
 use crate::actor::{CipherContinuation, SignContinuation};
@@ -210,9 +209,15 @@ impl ParkedOp {
         }
     }
 
-    /// True once the op has overrun its deadline.
+    /// True once the op has overrun its deadline at caller-supplied `now`.
+    pub fn timed_out_at(&self, now: Instant) -> bool {
+        now >= self.deadline
+    }
+
+    /// Test-support convenience wrapper.
+    #[cfg(test)]
     pub fn timed_out(&self) -> bool {
-        Instant::now() >= self.deadline
+        self.timed_out_at(crate::kernel::test_support::test_support_now())
     }
 }
 

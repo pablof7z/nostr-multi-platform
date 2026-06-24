@@ -8,8 +8,8 @@
 use std::collections::{BTreeMap, HashSet, VecDeque};
 
 use super::{
-    CanonicalRelayUrl, Counters, Instant, Kernel, NoticeEntry, RelayRole, RelayStatus,
-    WireSub, MAX_NOTICE_LOG,
+    CanonicalRelayUrl, Counters, Instant, Kernel, NoticeEntry, RelayRole, RelayStatus, WireSub,
+    MAX_NOTICE_LOG,
 };
 use crate::substrate::RelayInfoDoc;
 
@@ -140,7 +140,13 @@ impl RelayTransportMap {
     /// anchoring its freshness to `now` (ADR-0051).
     fn set_info(&mut self, relay_url: &str, doc: RelayInfoDoc, now: Instant) {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
-        self.info.insert(key, InfoEntry { doc, fetched_at: now });
+        self.info.insert(
+            key,
+            InfoEntry {
+                doc,
+                fetched_at: now,
+            },
+        );
     }
 
     /// Whether a *fresh* (within `ttl`) document already exists for
@@ -158,7 +164,6 @@ impl RelayTransportMap {
         let key = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.info.get(&key).map(|e| &e.doc)
     }
-
 }
 
 impl Kernel {
@@ -220,9 +225,17 @@ impl Kernel {
     /// transport row and mark the snapshot dirty so the `relay_diagnostics`
     /// projection surfaces the new metadata on the next emit. Called from the
     /// actor's [`crate::ActorCommand::SetRelayInfo`] dispatch arm.
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_relay_info(&mut self, relay_url: &str, doc: RelayInfoDoc) {
-        self.transport_relays
-            .set_info(relay_url, doc, Instant::now()); // doctrine-allow: D9 — residual relay-info freshness anchor tracked in #1952
+        self.set_relay_info_at(
+            relay_url,
+            doc,
+            crate::kernel::test_support::test_support_now(),
+        );
+    }
+
+    pub(crate) fn set_relay_info_at(&mut self, relay_url: &str, doc: RelayInfoDoc, now: Instant) {
+        self.transport_relays.set_info(relay_url, doc, now);
         self.changed_since_emit = true;
     }
 
@@ -346,7 +359,10 @@ impl Kernel {
         if entry.notices.len() >= MAX_NOTICE_LOG {
             entry.notices.pop_front();
         }
-        entry.notices.push_back(NoticeEntry { at_ms, text: notice });
+        entry.notices.push_back(NoticeEntry {
+            at_ms,
+            text: notice,
+        });
     }
 
     pub(super) fn record_transport_closed_frame(&mut self, role: RelayRole, relay_url: &str) {

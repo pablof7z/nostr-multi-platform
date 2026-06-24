@@ -266,7 +266,7 @@ fn t117_actor_restart_with_pending_resumes_from_pending_retries() {
     let mut kernel_b =
         Kernel::with_publish_store(DEFAULT_VISIBLE_LIMIT, Arc::clone(&publish_store));
     let resumed = kernel_b.resume_publish_engine();
-    // `resume_publish_engine` uses wall-clock now (`now_epoch_ms`); the
+    // `resume_publish_engine` uses the kernel wall-clock seam; the
     // persisted deadline (1_000 ms epoch) is in the deep past so the retry
     // dispatches immediately.
     assert_eq!(

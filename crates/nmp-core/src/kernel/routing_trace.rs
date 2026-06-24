@@ -28,10 +28,11 @@
 //!   `Option::is_some` in the router so the no-projection-installed path
 //!   stays zero-alloc.
 
-use crate::time::{SystemTime, UNIX_EPOCH};
+use crate::time::UNIX_EPOCH;
 use std::collections::{BTreeSet, VecDeque};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
+use super::{clock::SystemClock, Clock};
 use crate::substrate::{
     PublishTrace, RoutedRelaySet, RoutingPubkey as Pubkey, RoutingRelayUrl as RelayUrl,
     RoutingSource, RoutingTraceObserver, SubscriptionTrace,
@@ -78,6 +79,7 @@ pub struct SubscriptionTraceEntry {
 pub struct RoutingTraceProjection {
     publishes: RwLock<VecDeque<PublishTraceEntry>>,
     subscriptions: RwLock<VecDeque<SubscriptionTraceEntry>>,
+    clock: RwLock<Arc<dyn Clock>>,
     capacity: usize,
 }
 
@@ -86,7 +88,14 @@ impl RoutingTraceProjection {
     /// Construct a projection with [`DEFAULT_ROUTING_TRACE_CAPACITY`].
     #[must_use]
     pub fn new() -> Self {
-        Self::with_capacity(DEFAULT_ROUTING_TRACE_CAPACITY)
+        Self::with_clock(Arc::new(SystemClock))
+    }
+
+    /// Construct a projection with the default capacity and an injected
+    /// kernel clock.
+    #[must_use]
+    pub(crate) fn with_clock(clock: Arc<dyn Clock>) -> Self {
+        Self::with_capacity_and_clock(DEFAULT_ROUTING_TRACE_CAPACITY, clock)
     }
 
     /// Construct a projection with the given per-stream capacity. `capacity`
@@ -94,11 +103,23 @@ impl RoutingTraceProjection {
     /// otherwise make every record immediately evict itself.
     #[must_use]
     pub fn with_capacity(capacity: usize) -> Self {
+        Self::with_capacity_and_clock(capacity, Arc::new(SystemClock))
+    }
+
+    #[must_use]
+    pub(crate) fn with_capacity_and_clock(capacity: usize, clock: Arc<dyn Clock>) -> Self {
         let capacity = capacity.max(1);
         Self {
             publishes: RwLock::new(VecDeque::with_capacity(capacity)),
             subscriptions: RwLock::new(VecDeque::with_capacity(capacity)),
+            clock: RwLock::new(clock),
             capacity,
+        }
+    }
+
+    pub(crate) fn set_clock(&self, clock: Arc<dyn Clock>) {
+        if let Ok(mut slot) = self.clock.write() {
+            *slot = clock;
         }
     }
 
@@ -151,6 +172,19 @@ impl RoutingTraceProjection {
             .map(|(u, s)| (u.clone(), s.clone()))
             .collect()
     }
+
+    /// Current wall-clock ms since Unix epoch through the injected kernel
+    /// clock, or `0` if the clock lock is poisoned or pre-epoch.
+    fn now_ms(&self) -> u64 {
+        let Ok(clock) = self.clock.read() else {
+            return 0;
+        };
+        clock
+            .now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+            .unwrap_or(0)
+    }
 }
 
 impl Default for RoutingTraceProjection {
@@ -162,7 +196,7 @@ impl Default for RoutingTraceProjection {
 impl RoutingTraceObserver for RoutingTraceProjection {
     fn on_publish(&self, summary: PublishTrace, routed: &RoutedRelaySet) {
         let entry = PublishTraceEntry {
-            at_ms: now_ms(),
+            at_ms: self.now_ms(),
             trace: summary,
             urls: Self::copy_urls(routed),
         };
@@ -174,7 +208,7 @@ impl RoutingTraceObserver for RoutingTraceProjection {
 
     fn on_subscription(&self, summary: SubscriptionTrace, routed: &RoutedRelaySet) {
         let entry = SubscriptionTraceEntry {
-            at_ms: now_ms(),
+            at_ms: self.now_ms(),
             trace: summary,
             urls: Self::copy_urls(routed),
         };
@@ -190,14 +224,6 @@ fn push_bounded<T>(q: &mut VecDeque<T>, entry: T, capacity: usize) {
         q.pop_front();
     }
     q.push_back(entry);
-}
-
-/// Current wall-clock ms since Unix epoch, or `0` for pre-epoch systems.
-fn now_ms() -> u64 {
-    SystemTime::now() // doctrine-allow: D9 — residual routing trace timestamp tracked in #1952
-        .duration_since(UNIX_EPOCH)
-        .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
-        .unwrap_or(0)
 }
 
 // Suppress dead-code warnings on the public type's accessors when no caller

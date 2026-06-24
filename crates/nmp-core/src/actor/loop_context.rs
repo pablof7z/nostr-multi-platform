@@ -159,6 +159,7 @@ pub(super) fn drain_commands(
         // and fed to every consumer.  `claim_send_gate` returns true as
         // soon as ANY bootstrap lane is connected.
         let relays_ready = claim_send_gate(lc.connected_relays);
+        let dispatch_now = Instant::now();
         let mut ctx = ActorContext {
             kernel: lc.kernel,
             identity: lc.identity,
@@ -169,6 +170,7 @@ pub(super) fn drain_commands(
             connected_urls: lc.connected_urls,
             update_tx: lc.update_tx,
             last_emit: lc.last_emit,
+            dispatch_now,
             next_relay_generation: lc.next_relay_generation,
             running: lc.running,
             emit_hz: lc.emit_hz,
@@ -212,6 +214,7 @@ pub(super) fn drain_commands(
                 lc.pool,
                 lc.kernel,
                 lc.next_relay_generation,
+                dispatch_now,
             )
         {
             emit_now(lc.kernel, *lc.running, lc.update_tx, lc.last_emit);
@@ -274,7 +277,8 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
 
     // ── 2. Pending view requests ──────────────────────────────────────────
     if *lc.running {
-        let pending = lc.kernel.pending_view_requests();
+        let now = Instant::now();
+        let pending = lc.kernel.pending_view_requests_at(now);
         if !pending.is_empty() {
             send_all_outbound(
                 lc.relay_controls,
@@ -309,7 +313,8 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
     // ── 4. Claim-expansion tick ───────────────────────────────────────────
     // W6 — advance per-claim Phase 1/2/3 state machine.
     if *lc.running {
-        let expansion_msgs = lc.kernel.poll_claim_expansion(Instant::now());
+        let now = Instant::now();
+        let expansion_msgs = lc.kernel.poll_claim_expansion(now);
         if !expansion_msgs.is_empty() {
             send_all_outbound(
                 lc.relay_controls,
@@ -389,11 +394,12 @@ pub(super) fn run_idle_work(lc: &mut LoopContext<'_>) {
     // ── 11. Parked-op drive ───────────────────────────────────────────────
     // ADR-0050 §D2 — ONE `retain_mut` over ONE `Vec<ParkedOp>`.
     if !lc.parked_ops.is_empty() {
+        let parked_drive_now = Instant::now();
         let DrainBatch {
             publish: publish_obligations,
             auth: auth_obligations,
             changed: any_changed,
-        } = lc.parked_ops.drive(lc.kernel);
+        } = lc.parked_ops.drive_at(lc.kernel, parked_drive_now);
 
         // Execute NIP-42 AUTH obligations (re-enter after drain's &mut kernel borrow ended).
         crate::actor::auth_sign::run_auth_obligations(

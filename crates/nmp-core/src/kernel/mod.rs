@@ -144,7 +144,7 @@ mod store_init;
 #[cfg(test)] mod t170_relay_scoped_keying_tests;
 #[cfg(test)] mod t171_planner_error_projection_tests;
 #[cfg(test)] mod test_router;
-#[cfg(any(test, feature = "test-support"))] mod test_support;
+#[cfg(any(test, feature = "test-support"))] pub(crate) mod test_support;
 #[cfg(test)] mod tests;
 mod tier3_encode;
 #[cfg(test)] mod tier3_envelope_tests;

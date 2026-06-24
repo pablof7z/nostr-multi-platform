@@ -17,18 +17,18 @@
 //!    routes to the handler; a still-present-account result succeeds silently
 //!    (no toast, no kernel mutation for a write result).
 
+use super::commands::{self, IdentityRuntime};
+use super::dispatch::{dispatch_command, ActorContext};
 use super::ActorCommand;
 use super::IdentityCommand;
-use super::commands::{self, IdentityRuntime};
-use super::dispatch::{ActorContext, dispatch_command};
-use crate::actor::capability_worker::{CapabilityWorkSender, spawn_capability_worker};
+use crate::actor::capability_worker::{spawn_capability_worker, CapabilityWorkSender};
 use crate::actor::{ActorConfigSources, ActorMail, CommandSender};
 use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_char, c_void};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
@@ -194,6 +194,7 @@ fn dispatch_capability_result(
         connected_urls: &mut connected_urls,
         update_tx: &update_tx,
         last_emit: &mut last_emit,
+        dispatch_now: Instant::now(),
         next_relay_generation: &mut next_relay_generation,
         running: &mut running,
         emit_hz: &mut emit_hz,

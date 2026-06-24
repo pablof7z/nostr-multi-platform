@@ -1,9 +1,7 @@
 //! Test-support helpers for the kernel.
 //!
-//! All items in this file are gated on `cfg(any(test, feature = "test-support"))`.
-//! They provide fast, signature-verification-free injection paths that let
-//! unit tests and the firehose/FFI stress harnesses exercise the same ingest
-//! hot-paths as production code without needing real secp256k1 keys.
+//! Test-only injection paths for production ingest hot-paths without real
+//! secp256k1 signatures.
 //!
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -11,6 +9,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use super::*;
 
 mod preverified_support;
+
+pub(crate) fn test_support_now() -> Instant {
+    Instant::now()
+}
 
 thread_local! {
     static CLAIM_EXPANSION_SUBS: RefCell<BTreeMap<String, String>> =
@@ -160,8 +162,7 @@ impl Kernel {
                     // upsert (or remove on empty) into the substrate `MailboxCache`,
                     // and enqueue the `Nip65Arrived` recompile trigger — exactly
                     // what `Kernel::on_mailbox_changed` does in production.
-                    let parsed =
-                        parse_relay_list_to_substrate(&event.tags);
+                    let parsed = parse_relay_list_to_substrate(&event.tags);
                     let empty =
                         parsed.read.is_empty() && parsed.write.is_empty() && parsed.both.is_empty();
                     let had_entry = self.mailbox_cache.known(&event.pubkey);
@@ -515,5 +516,4 @@ impl Kernel {
     pub(crate) fn probed_mailboxes_for_test(&self) -> &std::collections::BTreeSet<String> {
         self.lifecycle.probed_mailboxes()
     }
-
 }

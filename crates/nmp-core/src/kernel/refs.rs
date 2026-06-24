@@ -45,7 +45,7 @@
 //! elsewhere is still caught (mirrors `kernel/projection_rev/mod.rs`).
 #![allow(dead_code)]
 
-use super::{Kernel, OutboundMessage};
+use super::{Instant, Kernel, OutboundMessage};
 use crate::kernel::ProfileLiveness;
 
 /// Closed, typed set of reference resolvers (ADR-0063 D2). Adding a namespace is
@@ -217,6 +217,7 @@ pub(crate) trait RefResolver {
         liveness: RefLiveness,
         force: bool,
         hints: Vec<String>,
+        now: Instant,
     ) -> Vec<OutboundMessage>;
 
     /// Drop a consumer's interest; tear the slot down on the last owner
@@ -241,6 +242,7 @@ impl RefResolver for ProfileNs {
         liveness: RefLiveness,
         force: bool,
         hints: Vec<String>,
+        _now: Instant,
     ) -> Vec<OutboundMessage> {
         kernel.resolve_profile_ref(key, consumer_id, shape, liveness, force, hints)
     }
@@ -262,12 +264,22 @@ impl RefResolver for EventNs {
         liveness: RefLiveness,
         force: bool,
         hints: Vec<String>,
+        now: Instant,
     ) -> Vec<OutboundMessage> {
         // Origin-blind seam: readiness is a kernel-owned transport fact
         // (`any_relay_connected`), not a caller-supplied flag (the ADR seam has
         // no `can_send`).
         let can_send = kernel.any_relay_connected();
-        kernel.resolve_event_ref(key, consumer_id, shape, liveness, force, can_send, hints)
+        kernel.resolve_event_ref_at(
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            can_send,
+            hints,
+            now,
+        )
     }
 
     fn release(kernel: &mut Kernel, key: &str, consumer_id: &str) -> Vec<OutboundMessage> {
@@ -282,6 +294,7 @@ impl Kernel {
     /// mismatch fails closed (D6: log + no-op, never an FFI error). `hints` are
     /// NIP-19 relay TLVs seeding the registered interest (empty for the bare
     /// key path).
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn resolve_ref(
         &mut self,
         namespace: RefNamespace,
@@ -292,7 +305,30 @@ impl Kernel {
         force: bool,
         hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
-        self.resolve_ref_with_metadata(
+        self.resolve_ref_at(
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            hints,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    pub(crate) fn resolve_ref_at(
+        &mut self,
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+        force: bool,
+        hints: Vec<String>,
+        now: Instant,
+    ) -> Vec<OutboundMessage> {
+        self.resolve_ref_with_metadata_at(
             namespace,
             key,
             consumer_id,
@@ -300,6 +336,7 @@ impl Kernel {
             liveness,
             force,
             RefResolveMetadata::from_hints(hints),
+            now,
         )
     }
 
@@ -307,6 +344,7 @@ impl Kernel {
     /// adapter. The metadata does not create a second resolution door: the key is
     /// still raw, shape/namespace are still checked here, and dispatch still
     /// lands in the namespace-owned resolver body.
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn resolve_ref_with_metadata(
         &mut self,
         namespace: RefNamespace,
@@ -317,6 +355,29 @@ impl Kernel {
         force: bool,
         metadata: RefResolveMetadata,
     ) -> Vec<OutboundMessage> {
+        self.resolve_ref_with_metadata_at(
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            force,
+            metadata,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    pub(crate) fn resolve_ref_with_metadata_at(
+        &mut self,
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+        force: bool,
+        metadata: RefResolveMetadata,
+        now: Instant,
+    ) -> Vec<OutboundMessage> {
         if shape.namespace() != namespace {
             self.log(format!(
                 "resolve_ref: shape namespace {:?} != requested {namespace:?} — ignoring",
@@ -325,12 +386,19 @@ impl Kernel {
             return Vec::new();
         }
         match shape {
-            RefShape::Profile(s) => {
-                ProfileNs::resolve(self, key, consumer_id, s, liveness, force, metadata.hints)
-            }
+            RefShape::Profile(s) => ProfileNs::resolve(
+                self,
+                key,
+                consumer_id,
+                s,
+                liveness,
+                force,
+                metadata.hints,
+                now,
+            ),
             RefShape::Event(s) => {
                 let can_send = self.any_relay_connected();
-                self.resolve_event_ref_with_metadata(
+                self.resolve_event_ref_with_metadata_at(
                     key,
                     consumer_id,
                     s,
@@ -339,6 +407,7 @@ impl Kernel {
                     can_send,
                     metadata.event_author,
                     metadata.hints,
+                    now,
                 )
             }
         }

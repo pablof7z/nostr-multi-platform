@@ -162,6 +162,7 @@ pub(crate) fn handle_relay_event(
                 pool,
                 kernel,
                 next_relay_generation,
+                Instant::now(),
             );
             emit_now(kernel, running, update_tx, last_emit);
         }
@@ -226,8 +227,9 @@ pub(crate) fn handle_relay_event(
                 _ => None,
             };
             let kernel_frame = pool_frame_to_relay_frame(frame);
-            let mut outbound = kernel.handle_message(role, &url_str, kernel_frame);
-            outbound.extend(kernel.pending_view_requests());
+            let now = Instant::now();
+            let mut outbound = kernel.handle_message_at(role, &url_str, kernel_frame, now);
+            outbound.extend(kernel.pending_view_requests_at(now));
             // V-58: drain any backoff hints the kernel enqueued during
             // `handle_message` (e.g. from a rate-limited CLOSED) and forward
             // each one to the pool worker. The hint is URL-keyed; we look up

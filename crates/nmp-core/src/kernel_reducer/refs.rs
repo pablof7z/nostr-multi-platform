@@ -10,6 +10,7 @@
 use super::KernelReducer;
 use crate::kernel::{RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
 use crate::relay::OutboundMessage;
+use crate::time::Instant;
 
 impl KernelReducer {
     /// ADR-0063 D1 — the unified, origin-blind reference-resolution seam.
@@ -20,6 +21,7 @@ impl KernelReducer {
     /// web component resolves on mount are background, bare-key. A `(namespace,
     /// shape)` mismatch fails closed inside `Kernel::resolve_ref` (D6). Returns
     /// any immediately-sendable outbound.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn resolve_ref(
         &mut self,
         namespace: RefNamespace,
@@ -34,6 +36,7 @@ impl KernelReducer {
     /// Same unified resolver with caller-supplied relay hints. Used by the
     /// wasm dispatch surface after the app decodes NIP-19 relay TLVs at its
     /// own boundary.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn resolve_ref_with_hints(
         &mut self,
         namespace: RefNamespace,
@@ -43,15 +46,44 @@ impl KernelReducer {
         liveness: RefLiveness,
         hints: Vec<String>,
     ) -> Vec<OutboundMessage> {
-        let outbound =
-            self.kernel
-                .resolve_ref(namespace, key, consumer_id, shape, liveness, false, hints);
+        self.resolve_ref_with_hints_at(
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            hints,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    pub fn resolve_ref_with_hints_at(
+        &mut self,
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+        hints: Vec<String>,
+        now: Instant,
+    ) -> Vec<OutboundMessage> {
+        let outbound = self.kernel.resolve_ref_at(
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            false,
+            hints,
+            now,
+        );
         self.kernel.partition_auth_paused(outbound)
     }
 
     /// Same unified resolver with full caller-supplied metadata. Used by wasm and
     /// native app-owned URI adapters after decoding NIP-19/NIP-21 relay and
     /// author TLVs at their own boundary.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn resolve_ref_with_metadata(
         &mut self,
         namespace: RefNamespace,
@@ -61,7 +93,28 @@ impl KernelReducer {
         liveness: RefLiveness,
         metadata: RefResolveMetadata,
     ) -> Vec<OutboundMessage> {
-        let outbound = self.kernel.resolve_ref_with_metadata(
+        self.resolve_ref_with_metadata_at(
+            namespace,
+            key,
+            consumer_id,
+            shape,
+            liveness,
+            metadata,
+            crate::kernel::test_support::test_support_now(),
+        )
+    }
+
+    pub fn resolve_ref_with_metadata_at(
+        &mut self,
+        namespace: RefNamespace,
+        key: String,
+        consumer_id: String,
+        shape: RefShape,
+        liveness: RefLiveness,
+        metadata: RefResolveMetadata,
+        now: Instant,
+    ) -> Vec<OutboundMessage> {
+        let outbound = self.kernel.resolve_ref_with_metadata_at(
             namespace,
             key,
             consumer_id,
@@ -69,6 +122,7 @@ impl KernelReducer {
             liveness,
             false,
             metadata,
+            now,
         );
         self.kernel.partition_auth_paused(outbound)
     }

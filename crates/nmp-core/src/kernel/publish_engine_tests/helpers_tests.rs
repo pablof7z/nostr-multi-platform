@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use crate::kernel::publish_engine::OkFramePayload;
 use crate::kernel::Kernel;
-use crate::publish::{PublishStore};
+use crate::publish::PublishStore;
 use crate::store::{RawEvent, VerifiedEvent};
 use crate::substrate::{SignedEvent, UnsignedEvent};
 
@@ -80,8 +80,8 @@ pub(crate) fn ok_payload<'a>(
 /// Helper for the boot-resume test: `handle_publish_ok_at` needs a `now_ms`
 /// strictly past the engine's most recent recorded ack timestamp, otherwise
 /// `apply_ack`'s late-ack idempotence path would discard the OK as stale.
-/// `resume_publish_engine` uses wall-clock `now_epoch_ms()`, so this returns
-/// the same wall-clock time the engine already saw.
+/// `resume_publish_engine` uses the kernel wall-clock seam, so this returns
+/// the same wall-clock domain the engine already saw.
 pub(crate) fn now_ms_after_resume(_signed: &SignedEvent) -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()

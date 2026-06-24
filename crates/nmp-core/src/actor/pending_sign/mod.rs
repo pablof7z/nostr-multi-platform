@@ -6,7 +6,7 @@
 //! `Ready` and resolves inline; a remote signer's op is `Pending` and is parked
 //! here in a single [`ParkedOp`] queue. The actor's idle section
 //! `retain_mut`-drains every parked op once per tick via
-//! [`drain::resolve_parked_op`] — a non-blocking `try_recv` — and runs the op's
+//! [`drain::resolve_parked_op_at`] — a non-blocking `try_recv` — and runs the op's
 //! terminal the moment the broker turns the request around.
 //!
 //! Before ADR-0050 §D2 this lived in TWO queues with duplicated machinery: a
@@ -35,13 +35,14 @@ mod sinks;
 // duration from the handle it already holds. Consumers import it directly from
 // `nmp_signer_iface`; no re-export here.
 
-// `resolve_parked_op` is the per-op drain step. Production drives it only
-// through `ParkedSignerOps::drive` (queue.rs); the signer-port dispatch tests
-// call it directly against a single parked op, so the re-export is test-gated.
+// `resolve_parked_op` is the per-op test helper. Production drives through
+// `ParkedSignerOps::drive_at` (queue.rs) with caller-captured time; the
+// signer-port dispatch tests call the helper directly against a single parked
+// op, so the re-export is test-gated.
 #[cfg(test)]
 pub(crate) use drain::resolve_parked_op;
 pub(crate) use queue::ParkedSignerOps;
-// `DrainBatch` is the obligation bundle `ParkedSignerOps::drive` returns. The
+// `DrainBatch` is the obligation bundle `ParkedSignerOps::drive_at` returns. The
 // native actor loop destructures it (`publish` / `auth` / `changed`); the wasm
 // reducer ignores the obligations (it never parks a Publish/Auth sink — web
 // publish is disabled, #1008). So the named re-export is native-only.

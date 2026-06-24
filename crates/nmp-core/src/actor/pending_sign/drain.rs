@@ -2,7 +2,7 @@
 //!
 //! One `retain_mut` pass over one `Vec<ParkedOp>` replaces the two former
 //! drains (the inline publish block in `actor/mod.rs` and
-//! `resolve_pending_sign_return`). [`resolve_parked_op`] polls one op, and on a
+//! `resolve_pending_sign_return`). [`resolve_parked_op_at`] polls one op, and on a
 //! resolved / errored / timed-out outcome dispatches it to the op's terminal:
 //!
 //! * projection / continuation sinks resolve directly against the kernel /
@@ -20,7 +20,7 @@ use nmp_signer_iface::SignerOp;
 
 use super::sinks::{AuthObligation, ParkedOp, ParkedOpSink, PublishObligation};
 
-/// What the actor loop must do after [`resolve_parked_op`] handled one op.
+/// What the actor loop must do after [`resolve_parked_op_at`] handled one op.
 pub(crate) struct DrainOutcome {
     /// `true` to KEEP the op (still pending, deadline not elapsed); `false` once
     /// it has resolved / errored / timed out so `retain_mut` drops it.
@@ -104,11 +104,12 @@ fn poll<T: Send + 'static>(op: &mut SignerOp<T>, timed_out: bool) -> Resolved<T>
 /// Drain one parked op against its sink. Called once per idle tick from the
 /// actor loop's single `retain_mut` over `parked_ops` (D8 — one non-blocking
 /// `poll()`, never a wait).
-pub(crate) fn resolve_parked_op(
+pub(crate) fn resolve_parked_op_at(
     parked: &mut ParkedOp,
     kernel: &mut crate::kernel::Kernel,
+    now: crate::time::Instant,
 ) -> DrainOutcome {
-    let timed_out = parked.timed_out();
+    let timed_out = parked.timed_out_at(now);
     match &mut parked.sink {
         ParkedOpSink::SignedEventsProjection { op, correlation_id } => {
             let Some(outcome) = poll(op, timed_out).into_result("signing timed out") else {
@@ -228,4 +229,18 @@ pub(crate) fn resolve_parked_op(
             }
         }
     }
+}
+
+/// Test-support convenience wrapper. Production drive sites capture time at the
+/// actor/runtime boundary and call [`resolve_parked_op_at`].
+#[cfg(test)]
+pub(crate) fn resolve_parked_op(
+    parked: &mut ParkedOp,
+    kernel: &mut crate::kernel::Kernel,
+) -> DrainOutcome {
+    resolve_parked_op_at(
+        parked,
+        kernel,
+        crate::kernel::test_support::test_support_now(),
+    )
 }

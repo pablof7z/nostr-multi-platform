@@ -247,12 +247,13 @@ pub(super) fn maybe_send_startup(
     pool: &Pool,
     kernel: &mut Kernel,
     next_relay_generation: &mut u64,
+    now: std::time::Instant,
 ) -> bool {
     if !running || *startup_sent {
         return false;
     }
 
-    let startup_requests = kernel.startup_requests();
+    let startup_requests = kernel.startup_requests(now);
     send_all_outbound(
         relay_controls,
         slot_to_url,
@@ -261,7 +262,7 @@ pub(super) fn maybe_send_startup(
         next_relay_generation,
         startup_requests,
     );
-    let view_requests = kernel.pending_view_requests();
+    let view_requests = kernel.pending_view_requests_at(now);
     send_all_outbound(
         relay_controls,
         slot_to_url,
@@ -526,7 +527,6 @@ fn bootstrap_lane_close(connected_relays: &mut HashSet<RelayRole>, kernel: &mut 
         // caller to enumerate sockets it is discarding anyway — T105).
         kernel.relay_closed_all(role);
     }
-    // Cold-start bootstrap seeds will be respawned from configured_relays on the next Start cycle.
 }
 
 #[cfg(test)]

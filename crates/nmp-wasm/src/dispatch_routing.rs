@@ -195,6 +195,7 @@ pub(crate) fn execute_ref_dispatch(
     reducer: &mut KernelReducer,
     dispatch: RefDispatch,
     _can_send: bool,
+    now: nmp_core::time::Instant,
 ) -> Vec<OutboundMessage> {
     match dispatch {
         RefDispatch::Resolve {
@@ -204,13 +205,14 @@ pub(crate) fn execute_ref_dispatch(
             shape,
             liveness,
             metadata,
-        } => reducer.resolve_ref_with_metadata(
+        } => reducer.resolve_ref_with_metadata_at(
             namespace,
             key,
             consumer_id,
             shape,
             liveness,
             metadata,
+            now,
         ),
         RefDispatch::Release {
             namespace,

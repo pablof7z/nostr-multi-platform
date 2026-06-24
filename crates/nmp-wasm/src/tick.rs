@@ -143,9 +143,10 @@ pub(crate) fn drain_once(
     reducer: &Rc<RefCell<KernelReducer>>,
     post_event_drain: &Rc<RefCell<Option<Rc<dyn Fn()>>>>,
 ) -> DrainOutcome {
-    let mut outbound = reducer.borrow_mut().tick();
+    let now = nmp_core::time::Instant::now();
+    let mut outbound = reducer.borrow_mut().tick_at(now);
     if run_post_event_drain(post_event_drain) {
-        outbound.extend(reducer.borrow_mut().tick());
+        outbound.extend(reducer.borrow_mut().tick_at(now));
     }
     let reducer = reducer.borrow();
     let dirty = reducer.changed_since_emit();

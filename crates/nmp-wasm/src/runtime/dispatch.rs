@@ -111,7 +111,7 @@ impl WasmRuntime {
     ///
     /// * **`PublishRawEvent` / `PublishProfile`** — needs the `BeginSign`
     ///   capability round-trip. Builds unsigned JSON, parks a sign op via
-    ///   [`nmp_core::KernelReducer::begin_sign_roundtrip`], and returns
+    ///   [`nmp_core::KernelReducer::begin_sign_roundtrip_at`], and returns
     ///   `WorkerEvent::SignRequest` for the main-thread broker.
     ///
     /// Fail-closed for no-signer (no active account) and unknown namespace /
@@ -235,7 +235,7 @@ impl WasmRuntime {
                             continue;
                         }
                     };
-                    let created_at = wall_clock_ms() / 1000;
+                    let created_at = self.reducer.borrow().now_secs();
                     let unsigned_json = serde_json::json!({
                         "pubkey": account_pubkey,
                         "kind": kind,
@@ -247,7 +247,11 @@ impl WasmRuntime {
                     match self
                         .reducer
                         .borrow_mut()
-                        .begin_sign_roundtrip(account_pubkey, &unsigned_json)
+                        .begin_sign_roundtrip_at(
+                            account_pubkey,
+                            &unsigned_json,
+                            nmp_core::time::Instant::now(),
+                        )
                     {
                         Ok(req) => {
                             self.request_event_drain();
@@ -285,7 +289,7 @@ impl WasmRuntime {
                     };
                     let content =
                         serde_json::to_string(&fields).unwrap_or_else(|_| "{}".to_string());
-                    let created_at = wall_clock_ms() / 1000;
+                    let created_at = self.reducer.borrow().now_secs();
                     let unsigned_json = serde_json::json!({
                         "pubkey": account_pubkey,
                         "kind": 0u32,
@@ -297,7 +301,11 @@ impl WasmRuntime {
                     match self
                         .reducer
                         .borrow_mut()
-                        .begin_sign_roundtrip(account_pubkey, &unsigned_json)
+                        .begin_sign_roundtrip_at(
+                            account_pubkey,
+                            &unsigned_json,
+                            nmp_core::time::Instant::now(),
+                        )
                     {
                         Ok(req) => {
                             self.request_event_drain();
@@ -404,7 +412,12 @@ impl WasmRuntime {
         };
 
         let can_send = self.reducer.borrow().any_relay_connected();
-        let outbound = execute_ref_dispatch(&mut self.reducer.borrow_mut(), ref_dispatch, can_send);
+        let outbound = execute_ref_dispatch(
+            &mut self.reducer.borrow_mut(),
+            ref_dispatch,
+            can_send,
+            nmp_core::time::Instant::now(),
+        );
         self.fan_outbound(outbound);
         self.request_event_drain();
         // Resolve/release are refcount bookkeeping — they carry no new

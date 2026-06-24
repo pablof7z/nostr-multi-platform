@@ -49,7 +49,11 @@ impl WasmRuntime {
         match self
             .reducer
             .borrow_mut()
-            .begin_sign_roundtrip(request.account_pubkey, &request.unsigned_json)
+            .begin_sign_roundtrip_at(
+                request.account_pubkey,
+                &request.unsigned_json,
+                nmp_core::time::Instant::now(),
+            )
         {
             Ok(req) => vec![WorkerEvent::SignRequest {
                 correlation_id: req.correlation_id,
@@ -75,19 +79,23 @@ impl WasmRuntime {
         response: DeliverSignerResponse,
     ) -> Vec<WorkerEvent> {
         use nmp_core::SignRoundTripOutcome;
+        let now = nmp_core::time::Instant::now();
         let outcome = {
             let mut reducer = self.reducer.borrow_mut();
             match (response.signed_json, response.error) {
                 // A broker-reported failure (user rejected / no window.nostr).
-                (_, Some(error)) => reducer.fail_sign_roundtrip(&response.correlation_id, &error),
+                (_, Some(error)) => {
+                    reducer.fail_sign_roundtrip_at(&response.correlation_id, &error, now)
+                }
                 // A signed event to deliver.
                 (Some(signed_json), None) => {
-                    reducer.deliver_signed_response(&response.correlation_id, &signed_json)
+                    reducer.deliver_signed_response_at(&response.correlation_id, &signed_json, now)
                 }
                 // Neither field set — an honest protocol error, failed closed.
-                (None, None) => reducer.fail_sign_roundtrip(
+                (None, None) => reducer.fail_sign_roundtrip_at(
                     &response.correlation_id,
                     "deliver_signer_response carried neither signed_json nor error",
+                    now,
                 ),
             }
         };

@@ -11,12 +11,14 @@ impl Kernel {
     #[allow(dead_code)]
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_clock(&mut self, clock: Arc<dyn Clock>) {
+        self.routing_trace.set_clock(Arc::clone(&clock));
         self.clock = clock;
     }
 
     #[allow(dead_code)]
     #[cfg(not(any(test, feature = "test-support")))]
     pub(crate) fn set_clock(&mut self, clock: Arc<dyn Clock>) {
+        self.routing_trace.set_clock(Arc::clone(&clock));
         self.clock = clock;
     }
 

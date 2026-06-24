@@ -114,6 +114,8 @@ impl Kernel {
         let mut lifecycle = SubscriptionLifecycle::new();
         lifecycle.set_watermark_fn(watermark_fn);
 
+        let clock: Arc<dyn Clock> = Arc::new(SystemClock);
+
         // V-51 phase 1 — construct the routing-trace projection. The kernel
         // hands this to production composition (via `routing_trace()` →
         // `RoutingSubstrateSlot` factory → `GenericOutboxRouter::with_trace_observer`)
@@ -137,7 +139,9 @@ impl Kernel {
         // without each one having to inject `nmp_router::InMemoryMailboxCache`
         // from a downstream crate (which `nmp-core` cannot depend on —
         // layering).
-        let routing_trace = Arc::new(routing_trace::RoutingTraceProjection::new());
+        let routing_trace = Arc::new(routing_trace::RoutingTraceProjection::with_clock(
+            Arc::clone(&clock),
+        ));
         let outbox_router: Arc<dyn OutboxRouter> = Arc::new(EmptyOutboxRouter::new());
         let content_parser: Arc<dyn crate::substrate::ContentParser> =
             Arc::new(crate::substrate::NoopContentParser::new());
@@ -184,7 +188,7 @@ impl Kernel {
 
         let mut kernel = Self {
             store,
-            clock: Arc::new(SystemClock),
+            clock,
             rev: 0,
             visible_limit,
             // ADR-0055 Rung 1: default (all counters 0, epoch 0); free on Reset.
