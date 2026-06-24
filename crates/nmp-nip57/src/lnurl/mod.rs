@@ -78,7 +78,7 @@ use nmp_core::substrate::{
     ProtocolCommandContext, ProtocolCommandError,
 };
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
-use nmp_core::{ActionLedgerCommand, ActorCommand};
+use nmp_core::actor::{ActionLedgerCommand, ActorCommand};
 use nmp_kinds::KIND_ZAP_RECEIPT;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 

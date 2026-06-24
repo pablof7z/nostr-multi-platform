@@ -10,7 +10,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::{LifecycleCommand, ContactsCommand};
+use nmp_core::actor::{LifecycleCommand, ContactsCommand};
 
 use crate::app_struct::NmpApp;
 
@@ -46,8 +46,8 @@ impl NmpApp {
         #[cfg(test)]
         if let Ok(mut tag) = self.last_cmd_tag.lock() {
             *tag = Some(match &cmd {
-                ActorCommand::Publish(nmp_core::PublishCommand::CancelPublish { .. }) => "CancelPublish",
-                ActorCommand::Publish(nmp_core::PublishCommand::RetryPublish { .. }) => "RetryPublish",
+                ActorCommand::Publish(nmp_core::actor::PublishCommand::CancelPublish { .. }) => "CancelPublish",
+                ActorCommand::Publish(nmp_core::actor::PublishCommand::RetryPublish { .. }) => "RetryPublish",
                 _ => "_other",
             });
         }

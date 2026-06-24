@@ -2,7 +2,7 @@
 
 - **Status:** Accepted (2026-06-23).
 - **Date:** 2026-06-23
-- **Issues:** #1867 (split `actor/mod.rs` under the 500-LOC ceiling), #1747 (unified write/command boundary — this ADR is the `ActorCommand` side of the same shape change), #1719 (API simplification convergence).
+- **Issues:** #1904 (collapse `ActorCommand` into typed command-family payloads), #1905 (companion actor run-loop extraction), #1901 (typed runtime surface convergence), #1747 (unified write/command boundary — this ADR is the `ActorCommand` side of the same shape change). Supersedes the #1867 actor split framing.
 - **Related:**
   - **ADR-0064** — unified write/command boundary. This ADR is the *payload-shape* side of the same collapse: ADR-0064 changes the wire transport; this ADR changes the in-process command vocabulary that the FFI shims and protocol crates construct.
   - **ADR-0050** — signer-session capability port. The `Sign` family below is the typed home for the port verbs `sign | nip44_encrypt | nip44_decrypt`, replacing four free-standing top-level variants.
@@ -44,9 +44,9 @@ This split is the natural grouping signal for the sub-enum families. The flat en
 
 ## Decision
 
-Collapse `ActorCommand` from a 55-variant flat enum into **11 top-level variants**, each carrying a sub-payload enum grouped by cohesive ownership. The families match the existing `cmd_*.rs` dispatch split (D4: one dispatch authority, one type authority).
+Collapse `ActorCommand` from a 55-variant flat enum into cohesive command-family payloads plus a few small singleton seams. Each command-family payload is grouped by ownership and routed by the existing actor dispatch split (D4: one dispatch authority, one type authority).
 
-### The 11 families
+### Command families and singleton seams
 
 ```rust
 pub enum ActorCommand {
@@ -110,13 +110,13 @@ pub enum ActorCommand {
 
 ### Run-loop helper extraction (companion to the collapse)
 
-`run_actor_with_observers` (~828 LOC) exceeds the cap independent of the enum collapse. Three inline blocks account for the bulk:
+`run_actor_with_observers` exceeded the cap independent of the enum collapse. The landing split keeps setup and the loop body separate:
 
-1. **Built-in snapshot-projection registration** (~230 LOC): `bunker_handshake`, `nip46_onboarding`, `signer_state`. Extract to `actor/builtin_projections.rs` as `register_builtin_projections(&kernel, &slots)`.
-2. **Idle-tail relay-event + parked-op drain** (~180 LOC): the `process_relay_event!` macro + the publish/auth obligation fan-out. Extract to `actor/idle_tail.rs` as `drive_idle_tail(ctx)`.
-3. **Per-tick outbound fan-out** (~120 LOC): the `send_all_outbound` calls after lifecycle/cache-serve/publish/GC ticks. Fold into the `drive_idle_tail` helper.
+1. **Actor setup** lives in `actor/actor_run.rs`: slot binding, built-in projection registration, pool setup, and initial loop state construction.
+2. **Main loop body** lives in `actor/actor_loop.rs`: command drain, relay-event handling, idle work, parked-op drain, and flush cadence.
+3. **Built-in snapshot-projection registration** lives in `actor/builtin_projections.rs`: `bunker_handshake`, `nip46_onboarding`, and `signer_state`.
 
-After extraction `actor_run.rs` is ~300 LOC (the loop skeleton + slot wiring), and the three helpers are each under 250 LOC.
+After extraction every new hand-authored actor file remains under the 500-LOC ceiling.
 
 ---
 
@@ -176,12 +176,12 @@ Each `cmd_*.rs` sub-module gains a `dispatch(cmd, ctx)` entry point that matches
 
 | File | Before | After |
 |---|---|---|
-| `actor/mod.rs` | 2482 LOC | ~280 LOC (already done by Stage 1) |
-| `actor/actor_command.rs` | 976 LOC (over cap) | ~450 LOC (enum + 11 sub-enums + `SignerSource`) |
-| `actor/actor_run.rs` | 871 LOC (over cap) | ~300 LOC (loop skeleton) |
-| `actor/builtin_projections.rs` | — | ~230 LOC (extracted) |
-| `actor/idle_tail.rs` | — | ~250 LOC (extracted) |
-| `actor/dispatch/mod.rs` | 293 LOC | ~80 LOC (one-arm-per-family) |
+| `actor/mod.rs` | 2482 LOC | ~256 LOC (module wiring and re-exports) |
+| `actor/actor_command.rs` | 976 LOC (over cap) | ~90 LOC (top-level enum and command-family re-exports) |
+| `actor/actor_run.rs` | 871 LOC (over cap) | ~294 LOC (setup and loop-state construction) |
+| `actor/actor_loop.rs` | — | ~480 LOC (main loop body) |
+| `actor/builtin_projections.rs` | — | ~103 LOC (built-in projection registration) |
+| `actor/dispatch/mod.rs` | 293 LOC | ~247 LOC (context plus one-arm-per-family dispatch) |
 
 All files land under the 500-LOC hard cap.
 

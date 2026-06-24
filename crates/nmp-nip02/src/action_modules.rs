@@ -12,7 +12,7 @@
 //! `decode`, BEFORE `start()`.
 
 use nmp_core::substrate::{ActionModule, ActionPayload, ActionPayloadDecodeError};
-use nmp_core::{ActorCommand, ContactsCommand};
+use nmp_core::actor::{ActorCommand, ContactsCommand};
 
 use crate::{FollowManyAction, FollowManyModule, FollowModule, PubkeyAction, UnfollowModule};
 

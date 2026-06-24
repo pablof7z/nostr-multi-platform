@@ -59,7 +59,7 @@ pub(super) struct ActorLoopState {
 /// remaining parameters (shared handles that are never re-assigned).
 #[allow(clippy::too_many_arguments)]
 pub(super) fn run_actor_loop(
-    mut state: ActorLoopState,
+    state: ActorLoopState,
     mut kernel: crate::Kernel,
     inbox: Inbox,
     mut scheduler: MailScheduler,

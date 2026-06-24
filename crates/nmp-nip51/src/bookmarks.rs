@@ -13,7 +13,8 @@ use nmp_core::substrate::{
     ActionRejection, KernelEvent,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::{ActorCommand, PublishCommand, canonical_relay_url, KernelEventObserver};
+use nmp_core::actor::{ActorCommand, PublishCommand};
+use nmp_core::{canonical_relay_url, KernelEventObserver};
 use nmp_kinds::KIND_BOOKMARK_LIST;
 use serde::{Deserialize, Serialize};
 

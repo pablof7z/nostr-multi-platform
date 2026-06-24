@@ -6,24 +6,17 @@
 //! This module is only compiled when `feature = "native"` (via the gated
 //! `mod actor_run;` declaration in `actor/mod.rs`).
 
-use super::commands::IdentityRuntime;
-use super::{ActorChannels, ActorConfig, ActorRuntimeSlots, GC_TICK_INTERVAL, RelayControl};
-use super::{auth_sign, raw_event_forwarder, relay_event_guard, typed_projections};
 use super::capability_worker::spawn_capability_worker;
-use super::dispatch::{dispatch_command, ActorContext};
-use super::inbox::{CommandLaneDrain, Inbox, LoopStep, MailScheduler};
-use super::outbound::wire_frames_to_outbound;
-use super::pending_sign::{self, ParkedSignerOps, PublishObligation};
-use super::relay_idle::{sweep_temporary_idle_relays, TEMPORARY_RELAY_IDLE_GRACE};
-use super::relay_mgmt::{
-    claim_send_gate, close_relays, maybe_send_startup, route_dispatch_outbound, send_all_outbound,
-};
-use super::tick::{compute_wait, emit_now, flush_due};
+use super::commands::IdentityRuntime;
+use super::inbox::{Inbox, MailScheduler};
+use super::pending_sign::ParkedSignerOps;
+use super::tick::emit_now;
+use super::{builtin_projections, raw_event_forwarder};
+use super::{ActorChannels, ActorConfig, ActorRuntimeSlots, RelayControl};
 use crate::relay::{CanonicalRelayUrl, DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 use nmp_network::pool::{Pool, PoolConfig};
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use super::actor_loop::{run_actor_loop, ActorLoopState};
@@ -72,28 +65,26 @@ pub fn run_actor_with_observers(
         pull_cursor_registry,
         external_event_sink_dispatcher: dispatcher_slot,
     } = runtime;
-    // Dual-channel design: relay events get their own dedicated channel.
-    // No merged SyncSender<ActorMsg>, no forwarder threads, no drops.
+    // ADR-0050 §D3a single-inbox design: the pool delivers relay events through
+    // a `RelayMailSink` that wraps each `PoolEvent` into `ActorMail::Relay` and
+    // pushes it onto the SAME inbox `inbox_rx` receives commands on. There is
+    // no separate `relay_rx`: relay traffic and commands share one waking
+    // channel, so a command send wakes a relay-blocked actor.
     //
-    // Phase F: the channel item is now [`PoolEvent`] (push-model surface from
+    // Phase F: the relay item is now [`PoolEvent`] (push-model surface from
     // `nmp_network::pool`). The `Pool` is constructed eagerly here — it owns
     // every per-URL worker thread and the worker→pool translator thread that
     // rewrites `RelayEvent` into `PoolEvent`. Default `PoolConfig` (production
     // keepalive constants, `RelayRole::Content` default lane) matches the
     // pre-Pool actor behaviour bit-for-bit; per-URL role attribution still
     // flows through `Pool::ensure_open_with_role` from `ensure_relay_worker`.
-    // ADR-0050 §D3a — the pool delivers relay events through a
-    // `RelayMailSink` that wraps each `PoolEvent` into `ActorMail::Relay` and
-    // pushes it onto the SAME inbox `inbox_rx` receives commands on. There is
-    // no longer a separate `relay_rx`: relay traffic and commands share one
-    // waking channel, so a command send wakes a relay-blocked actor.
     let inbox = Inbox::new(inbox_rx);
     let pool = Pool::new(PoolConfig::default(), command_tx_self.relay_sink());
 
     // The lane scheduler (ADR-0050 §D3a). It owns the relay backlog so any
     // relay mail stashed while draining the command lane each iteration is
     // replayed in order.
-    let mut scheduler = MailScheduler::new();
+    let scheduler = MailScheduler::new();
 
     // The actor owns the only live kernel. FFI/app configuration was snapped at
     // `nmp_app_start` into `config`; runtime-observable handles stay in
@@ -174,113 +165,14 @@ pub fn run_actor_with_observers(
     // shared handles do so host projections stay live across a kernel
     // rebuild.
     kernel.set_snapshot_projection_handle(Arc::clone(&snapshot_projections));
-    // D0 — register the built-in `"bunker_handshake"` snapshot projection.
-    // NIP-46 remote signing is an app noun, so handshake state is NOT a typed
-    // `KernelSnapshot` field — it is projected under
-    // `projections["bunker_handshake"]` exactly like a host-registered
-    // namespace. The closure reads the shared bunker-handshake slot the
-    // actor's `IdentityRuntime` writes; it runs on every snapshot tick (D8:
-    // cheap, non-blocking — a single lock-and-clone). When no handshake is in
-    // flight the slot holds `None` and the closure contributes JSON `null`,
-    // preserving the "key present, value null when idle" semantic the host
-    // sign-in flow decodes. Registered here (the actor wiring site) rather than
-    // on the FFI surface so every actor consumer — FFI or test — gets it.
-    {
-        // Typed sidecar (ADR-0037).
-        let typed_slot = Arc::clone(&bunker_handshake);
-        if let Ok(mut registry) = snapshot_projections.lock() {
-            registry.register_typed("bunker_handshake", move || {
-                typed_projections::bunker_handshake_typed(&typed_slot)
-            });
-        }
-    }
-    // D0 — second built-in NIP-46 projection: `"nip46_onboarding"`. Where
-    // `"bunker_handshake"` carries the raw broker progress (stage string +
-    // message), this projection carries the *typed* onboarding read model
-    // shells render directly — the static signer-app probe table, the typed
-    // `stage_kind`, and pre-computed `is_in_flight` / `is_failed` /
-    // `is_terminal_success` / `can_cancel` flags. The closure reads the same
-    // shared bunker-handshake slot the previous projection serializes, plus a
-    // Rust-owned static signer-app list (no platform-shell ownership of
-    // protocol-knowledge tables). Always present (never JSON null) so the host
-    // can read `signer_apps` even when no handshake is in flight.
-    //
-    // ADR-0055 R6-S2: the typed sidecar now uses `TypedProjectionEmissionState`
-    // to omit an unchanged `nip46_onboarding` frame when the host has declared
-    // incremental-apply capability (exact byte equality, monotonic rev, freeze
-    // guard on the same FrameIdentity the feed uses — one implementation, shared).
-    {
-        // Typed sidecar (ADR-0037).
-        let typed_slot = Arc::clone(&bunker_handshake);
-        // R6-S2: read the frame-identity and capability handles from the
-        // registry (one lock) before the registration lock below.
-        let (
-            nip46_onboarding_incremental_apply,
-            nip46_onboarding_frame_session_id,
-            nip46_onboarding_frame_snapshot_epoch,
-        ) = if let Ok(reg) = snapshot_projections.lock() {
-            let cap = reg.incremental_apply_handle();
-            let (sid, epoch) = reg.frame_identity_handles();
-            (cap, sid, epoch)
-        } else {
-            use std::sync::atomic::AtomicU64;
-            (
-                Arc::new(std::sync::atomic::AtomicBool::new(false)),
-                Arc::new(AtomicU64::new(0)),
-                Arc::new(AtomicU64::new(0)),
-            )
-        };
-        let nip46_onboarding_emission_state = Arc::new(Mutex::new(
-            crate::projection_emission::TypedProjectionEmissionState::new(
-                nip46_onboarding_incremental_apply,
-            ),
-        ));
-        if let Ok(mut registry) = snapshot_projections.lock() {
-            let emission_state = Arc::clone(&nip46_onboarding_emission_state);
-            let frame_session_id = Arc::clone(&nip46_onboarding_frame_session_id);
-            let frame_snapshot_epoch = Arc::clone(&nip46_onboarding_frame_snapshot_epoch);
-            registry.register_typed("nip46_onboarding", move || {
-                // Build the typed payload (always Some for nip46_onboarding).
-                let typed_data = typed_projections::nip46_onboarding_typed(&typed_slot)?;
-                // R6-S2: apply byte-equality omit (same mechanism as feed R6-S1).
-                let identity = crate::projection_emission::FrameIdentity {
-                    session_id: frame_session_id.load(Ordering::Acquire),
-                    snapshot_epoch: frame_snapshot_epoch.load(Ordering::Acquire),
-                };
-                let Ok(mut state) = emission_state.lock() else {
-                    // Poisoned mutex — degrade to always-emit (D6: safe fallback).
-                    return Some(typed_data);
-                };
-                let emit_decision = state.should_emit(typed_data.payload.clone(), identity);
-                drop(state);
-                match emit_decision {
-                    None => None,
-                    Some((payload, projection_rev)) => {
-                        Some(crate::update_envelope::TypedProjectionData {
-                            payload,
-                            projection_rev,
-                            ..typed_data
-                        })
-                    }
-                }
-            });
-        }
-    }
-    // ADR-0048 D6 — generalised remote-signer health projection: `"signer_state"`.
-    // Replaces the NIP-46-only `"bunker_connection_state"` (V-14 step b) with a
-    // unified surface keyed by `signer_kind` (`"nip46"` | `"nip55"`). Both
-    // signers write into the same slot via `IdentityRuntime::set_signer_state`.
-    // `None` (no active remote signer session) → JSON `null`.
-    // D0: remote-signer health is an app noun, not a typed `KernelSnapshot` field.
-    {
-        // Typed sidecar (ADR-0037).
-        let typed_slot = Arc::clone(&signer_state);
-        if let Ok(mut registry) = snapshot_projections.lock() {
-            registry.register_typed("signer_state", move || {
-                typed_projections::signer_state_typed(&typed_slot)
-            });
-        }
-    }
+    // D0 — register actor-owned built-in snapshot projections at the actor
+    // wiring site so every actor consumer gets the same remote-signer read
+    // models without moving app nouns into `KernelSnapshot`.
+    builtin_projections::register_builtin_projections(
+        &snapshot_projections,
+        &bunker_handshake,
+        &signer_state,
+    );
     // Bind the shared relay-edit rows handle so external Rust callers
     // (e.g. a per-app dispatch crate) can read the user's current
     // relay list without crossing FFI. Survives `Reset` the same way as

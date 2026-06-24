@@ -37,7 +37,7 @@ use nmp_core::substrate::{
     build_sign_event_for_account,
     ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
 };
-use nmp_core::{ActionLedgerCommand, ActorCommand};
+use nmp_core::actor::{ActionLedgerCommand, ActorCommand};
 use sha2::{Digest, Sha256};
 
 use crate::auth;

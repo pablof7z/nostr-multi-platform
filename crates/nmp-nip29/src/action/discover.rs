@@ -19,7 +19,7 @@ use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload,
     ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::{ActionLedgerCommand, ActorCommand, InterestsCommand};
+use nmp_core::actor::{ActionLedgerCommand, ActorCommand, InterestsCommand};
 use serde::{Deserialize, Serialize};
 
 use crate::interest::relay_discovery_interest;

@@ -52,7 +52,7 @@ use common::stub_relay::StubRelay;
 use common::wire_log::{req_emit_relays_for_phase, score_updates, StderrCapture};
 use nmp_core::nip19::{encode_nevent, NeventData};
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::{LifecycleCommand, RefsCommand};
+use nmp_core::actor::{LifecycleCommand, RefsCommand};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 

@@ -18,14 +18,8 @@
 //! handler.
 
 use crate::actor::commands;
-use crate::actor::pending_sign::ParkedSignerOps;
-use crate::actor::relay_mgmt::{
-    ensure_relay_worker, shutdown_relay_worker,
-};
+use crate::actor::relay_mgmt::{ensure_relay_worker, shutdown_relay_worker};
 use crate::actor::relay_reconnect::reconnect_relays;
-use crate::actor::{
-    ActionLedgerCommand, ContactsCommand, PublishCommand, RelayCommand,
-};
 use crate::relay::OutboundMessage;
 
 use super::helpers::maybe_publish_relay_list_after_edit;

@@ -66,7 +66,7 @@ fn cold_open_profile_view_full_pipeline() {
     use nmp_core::decode_snapshot_typed_projections;
     use nmp_core::testing::{spawn_actor, ActorCommand};
     use nmp_core::typed_projections::{decode_profile, PROFILE_SCHEMA_ID};
-    use nmp_core::{IdentityCommand, LifecycleCommand, PublishCommand};
+    use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand};
     use std::time::Duration;
 
     // A fixed nsec used only in tests (same key as in c13).
@@ -599,7 +599,7 @@ fn auth_required_for_read_flow() {
 fn monotonic_rev_under_concurrent_dispatch() {
     use nmp_store::{RawEvent, VerifiedEvent};
     use nmp_core::testing::{spawn_actor, ActorCommand};
-    use nmp_core::{decode_update_frame, UpdateEnvelope, LifecycleCommand};
+    use nmp_core::{actor::{LifecycleCommand, TestSupportCommand}, decode_update_frame, UpdateEnvelope};
     use std::sync::Arc;
     use std::time::Duration;
     // PR-B: `UpdateEnvelope::Snapshot` carries the typed `SnapshotEnvelope`
@@ -635,7 +635,7 @@ fn monotonic_rev_under_concurrent_dispatch() {
                     sig: "a".repeat(128),
                 };
                 let verified = VerifiedEvent::from_raw_unchecked(raw);
-                tx.send(ActorCommand::TestSupport(nmp_core::TestSupportCommand::IngestPreVerifiedEvents(vec![verified])))
+                tx.send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(vec![verified])))
                     .ok();
             })
         })
@@ -746,7 +746,7 @@ fn wait_for_error_toast(
 fn publish_raw_signer_pubkey_unregistered_fails_closed() {
     use nmp_core::publish::PublishTarget;
     use nmp_core::testing::{spawn_actor, ActorCommand};
-    use nmp_core::{IdentityCommand, LifecycleCommand, PublishCommand};
+    use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand};
 
     const ALICE_NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
     let unregistered_pubkey_hex = "d".repeat(64);
@@ -803,7 +803,7 @@ fn publish_raw_signer_pubkey_unregistered_fails_closed() {
 fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_account() {
     use nmp_core::publish::PublishTarget;
     use nmp_core::testing::{spawn_actor, ActorCommand};
-    use nmp_core::{IdentityCommand, LifecycleCommand, PublishCommand};
+    use nmp_core::actor::{IdentityCommand, LifecycleCommand, PublishCommand};
     use nostr::nips::nip19::ToBech32;
     use nostr::Keys;
 

@@ -53,7 +53,7 @@ pub(super) fn clamp_emit_hz_logged(kernel: &mut Kernel, requested_hz: u32, site:
     hz
 }
 
-/// Compute how long the actor loop should block on `relay_rx.recv_timeout`.
+/// Compute how long the actor loop should block on the inbox `recv_timeout`.
 ///
 /// When the kernel has un-emitted changes and we are running, returns the
 /// time remaining until the next emit window (clamped to zero). Otherwise

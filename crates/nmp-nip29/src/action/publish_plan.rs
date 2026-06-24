@@ -107,9 +107,9 @@ impl PublishPlan {
     /// # Errors
     ///
     /// Returns a string error if `pin_to` is `None` (no relay pin set).
-    pub fn into_actor_command(self, correlation_id: Option<String>) -> Result<nmp_core::ActorCommand, String> {
+    pub fn into_actor_command(self, correlation_id: Option<String>) -> Result<nmp_core::actor::ActorCommand, String> {
         use nmp_signer_iface::UnsignedEvent;
-        use nmp_core::{ActorCommand, PublishCommand};
+        use nmp_core::actor::{ActorCommand, PublishCommand};
         let relay = self
             .pin_to
             .ok_or_else(|| "publish plan has no relay pin".to_string())?
@@ -190,7 +190,7 @@ mod tests {
 
     #[test]
     fn into_actor_command_publishes_host_pinned_unsigned_event() {
-        use nmp_core::{ActorCommand, PublishCommand};
+        use nmp_core::actor::{ActorCommand, PublishCommand};
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
         match p.into_actor_command(None).expect("pinned plan converts") {
             ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, relays, correlation_id, .. }) => {
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn into_actor_command_threads_correlation_id() {
-        use nmp_core::{ActorCommand, PublishCommand};
+        use nmp_core::actor::{ActorCommand, PublishCommand};
         let p = PublishPlan::pinned(&g(), 9, "hi", vec![vec!["h".into(), "room".into()]]);
         match p
             .into_actor_command(Some("test-correlation-id".to_string()))

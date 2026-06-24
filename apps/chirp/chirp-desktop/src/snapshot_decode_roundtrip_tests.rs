@@ -10,7 +10,7 @@
 
 use super::decode_snapshot_typed;
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::{IdentityCommand, LifecycleCommand};
+use nmp_core::actor::{IdentityCommand, LifecycleCommand};
 use std::time::{Duration, Instant};
 
 /// A fixed nsec used only in tests (same key as nmp-testing's e2e pipeline).

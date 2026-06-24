@@ -19,7 +19,7 @@
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::{ActorCommand, PublishCommand};
+use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -89,6 +89,8 @@ impl ActionModule for JoinGroupAction {
 
 #[cfg(test)]
 mod tests {
+    use nmp_core::actor::PublishCommand;
+
     use super::*;
     use nmp_signer_iface::UnsignedEvent;
     use std::cell::RefCell;

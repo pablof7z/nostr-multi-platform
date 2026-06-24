@@ -3,7 +3,7 @@
 
 use super::*;
 use nmp_core::actor::ActorCommand;
-use nmp_core::InterestsCommand;
+use nmp_core::actor::InterestsCommand;
 use crate::interest::KIND_MUTE_LIST;
 use nmp_planner::InterestLifecycle;
 use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};

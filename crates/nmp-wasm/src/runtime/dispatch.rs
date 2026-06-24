@@ -12,7 +12,7 @@
 //! seam, not an API boundary.
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::PublishCommand;
+use nmp_core::actor::PublishCommand;
 
 use crate::dispatch_routing::{
     execute_ref_dispatch, kernel_action_from_dispatch, ref_dispatch_from_action,

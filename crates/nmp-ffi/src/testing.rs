@@ -13,7 +13,7 @@
 
 use super::{app_ref, NmpApp};
 use nmp_core::actor::ActorCommand;
-use nmp_core::TestSupportCommand;
+use nmp_core::actor::TestSupportCommand;
 use std::ffi::{c_char, CStr};
 
 /// Inject `count` pre-verified kind-1 events into the kernel timeline via

@@ -64,7 +64,7 @@ use nmp_core::substrate::{
     ActionContext, ActionModule, ActionRegistrar, ActionRejection, ViewDependencies,
 };
 use nmp_core::actor::ActorCommand;
-use nmp_core::InterestsCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_planner::stable_hash::stable_hash64;
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use serde::{Deserialize, Serialize};

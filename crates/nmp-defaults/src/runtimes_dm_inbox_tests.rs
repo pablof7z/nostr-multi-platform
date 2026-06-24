@@ -15,7 +15,8 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::{ActorMail, CommandSender, SignCommand};
+use nmp_core::actor::{SignCommand};
+use nmp_core::{ActorMail, CommandSender};
 use nmp_nip17::DmInboxProjection;
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, Tag, Timestamp};
 

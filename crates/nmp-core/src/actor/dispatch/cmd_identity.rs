@@ -12,7 +12,7 @@
 //! sub-enum and routes each verb to its existing handler.
 
 use crate::actor::commands;
-use crate::actor::pending_sign::{ParkedOp, ParkedSignerOps};
+use crate::actor::pending_sign::ParkedOp;
 use crate::actor::{session_persistence, IdentityCommand};
 use crate::relay::OutboundMessage;
 

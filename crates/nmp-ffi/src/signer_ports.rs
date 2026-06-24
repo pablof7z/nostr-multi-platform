@@ -8,6 +8,7 @@
 //! lives on the `NmpApp` and dies with it — no global aliasing across
 //! `nmp_app_free`.
 
+#[cfg(any(feature = "external-signer", feature = "signer-broker"))]
 use std::sync::Arc;
 
 use super::NmpApp;

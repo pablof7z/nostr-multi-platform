@@ -15,7 +15,8 @@ use std::sync::mpsc::{channel, Receiver};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::IngestParser;
-use nmp_core::{ActorCommand, ActorMail, CommandSender, SignCommand};
+use nmp_core::actor::{ActorCommand, SignCommand};
+use nmp_core::{ActorMail, CommandSender};
 use nmp_store::{RawEvent, VerifiedEvent};
 use nostr::{EventBuilder, JsonUtil, Keys, Kind, PublicKey, SecretKey, Tag, Timestamp};
 

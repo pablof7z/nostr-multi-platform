@@ -18,7 +18,7 @@
 use std::time::{Duration, Instant};
 
 use nmp_core::testing::{spawn_actor, ActorCommand};
-use nmp_core::{ActionLedgerCommand, IdentityCommand, LifecycleCommand, PublishCommand};
+use nmp_core::actor::{ActionLedgerCommand, IdentityCommand, LifecycleCommand, PublishCommand};
 use nmp_core::typed_projections::{
     decode_action_results, decode_publish_queue, ACTION_RESULTS_FILE_IDENTIFIER,
     ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION, PUBLISH_QUEUE_FILE_IDENTIFIER,

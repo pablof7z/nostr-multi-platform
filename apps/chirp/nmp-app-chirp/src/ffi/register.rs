@@ -12,7 +12,6 @@ use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 
 use nmp_nip02::register_follow_state_runtime;
-use nmp_nip02::FollowListProjection;
 
 use super::actions::register_nip29_actions;
 use super::handle::ChirpHandle;

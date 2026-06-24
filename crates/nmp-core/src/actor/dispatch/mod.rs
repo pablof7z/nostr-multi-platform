@@ -37,11 +37,7 @@ use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
 use super::pending_sign::ParkedSignerOps;
 use super::signer_port_dispatch;
 use super::tick::maybe_emit_after_dispatch;
-use super::{
-    ActionLedgerCommand, ActorCommand, ActorConfig, ContactsCommand, IdentityCommand,
-    InterestsCommand, LifecycleCommand, PublishCommand, RelayCommand, RefsCommand, RelayControl,
-    SignCommand,
-};
+use super::{ActorCommand, ActorConfig, RefsCommand, RelayControl, SignCommand};
 #[cfg(any(test, feature = "test-support"))]
 use super::TestSupportCommand;
 use crate::capability_socket::CapabilityCallbackSlot;
@@ -59,7 +55,8 @@ mod relay_events;
 // Debt C — capability adapters for `ProtocolCommandContext`.
 mod substrate_adapters;
 
-// Re-exports needed by callers outside this module.
+// Test-only re-export used by actor integration tests.
+#[cfg(test)]
 pub(crate) use helpers::signed_event_to_json;
 pub(crate) use relay_events::handle_relay_event;
 

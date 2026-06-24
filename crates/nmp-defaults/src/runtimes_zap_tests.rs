@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::actor::ActorCommand;
-use nmp_core::InterestsCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_nip57::{self_zap_receipts_interest, self_zap_receipts_interest_id};
 use nostr::Keys;
 

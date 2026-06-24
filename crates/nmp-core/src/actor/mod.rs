@@ -3,17 +3,14 @@
 //! Idle-tick timing helpers are in `tick.rs`.
 //! Relay lifecycle helpers are in `relay_mgmt.rs`.
 //!
-//! # Dual-channel priority design
+//! # Single-inbox priority design
 //!
-//! Commands (`command_rx`) are checked via `try_recv` at the top of every
-//! iteration with a bounded burst budget — low latency, never dropped under
-//! relay event flood, while relay events and idle work still progress during
-//! sustained command bursts.
-//! Relay events go through their own separate channel, read via
-//! `recv_timeout(compute_wait(…))`. This replaces the old merged
-//! `SyncSender<ActorMsg>` design where a 4096-slot bounded channel could fill
-//! with relay events and cause `try_send` to silently drop commands like
-//! `CreateAccount` during onboarding.
+//! Commands and relay events share one waking `ActorMail` channel.
+//! Each iteration drains a bounded command-priority burst with `try_recv`,
+//! stashing relay mail into a bounded local backlog, then reaches the loop's
+//! single blocking `recv_timeout(compute_wait(…))`. A command send therefore
+//! wakes a relay-idle actor immediately, while relay events and idle work still
+//! progress under sustained command bursts.
 
 mod commands;
 pub mod kind_filter;
@@ -45,6 +42,7 @@ pub mod kind_filter;
 // the native `ActorContext`).
 #[cfg(feature = "native")] mod fairness;
 #[cfg(feature = "native")] mod signer_port_dispatch;
+mod signer_source;
 // ADR-0050 §D3a — the single waking actor inbox. `ActorMail` + `CommandSender`
 // are always-compiled (the always-compiled `substrate::protocol` seam hands
 // `CommandSender` to workers, and `ActorCommand` itself is always-compiled);
@@ -81,10 +79,10 @@ pub(crate) mod pending_sign;
 #[cfg(all(test, feature = "native"))] mod protocol_panic_isolation_tests;
 #[cfg(all(test, feature = "native"))] mod publish_relay_dispatch_tests;
 #[cfg(feature = "native")] pub(crate) mod raw_event_forwarder;
-// Per-URL relay-worker state (RelayControl, RelayConnectionKind).
+// Per-URL relay-worker state.
 // Extracted from mod.rs to keep it within the 500-LOC ceiling (AGENTS.md).
 #[cfg(feature = "native")] mod relay_control;
-#[cfg(feature = "native")] pub(in crate::actor) use relay_control::{RelayControl, RelayConnectionKind};
+#[cfg(feature = "native")] pub(in crate::actor) use relay_control::RelayControl;
 #[cfg(feature = "native")] mod relay_event_guard;
 #[cfg(feature = "native")] mod relay_idle;
 #[cfg(feature = "native")] mod relay_mgmt;
