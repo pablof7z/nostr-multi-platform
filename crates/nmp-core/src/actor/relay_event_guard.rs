@@ -7,20 +7,18 @@
 //! the single recv'd event from one place (#1264), keeping `actor/mod.rs`
 //! within its size budget.
 
-use std::collections::{HashMap, HashSet};
 use std::panic::{self, AssertUnwindSafe};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Instant;
 
 use crate::kernel::Kernel;
-use crate::relay::{CanonicalRelayUrl};
-use nmp_network::role::RelayRole;
 use nmp_network::pool::{Pool, PoolEvent};
 
 use super::dispatch::handle_relay_event;
+use super::relay_runtime::RelayRuntime;
 use super::tick::emit_now;
-use super::{CommandSender, RelayControl};
+use super::CommandSender;
 
 /// Process one relay [`PoolEvent`] under panic isolation.
 ///
@@ -52,12 +50,8 @@ pub(super) fn process_relay_event(
     relay_text_interceptors: &[Arc<dyn crate::substrate::RelayTextInterceptor>],
     relay_connected_hooks: &[Arc<dyn crate::substrate::RelayConnectedHook>],
     command_tx_self: &CommandSender,
-    relay_controls: &mut HashMap<CanonicalRelayUrl, RelayControl>,
-    slot_to_url: &mut HashMap<u32, CanonicalRelayUrl>,
+    relay_runtime: &mut RelayRuntime,
     pool: &Pool,
-    next_relay_generation: &mut u64,
-    connected_relays: &mut HashSet<RelayRole>,
-    connected_urls: &mut HashSet<CanonicalRelayUrl>,
     update_tx: &Sender<crate::update_envelope::UpdateFrameBytes>,
     last_emit: &mut Instant,
     startup_sent: &mut bool,
@@ -70,12 +64,8 @@ pub(super) fn process_relay_event(
             relay_text_interceptors,
             relay_connected_hooks,
             command_tx_self,
-            relay_controls,
-            slot_to_url,
+            relay_runtime,
             pool,
-            next_relay_generation,
-            connected_relays,
-            connected_urls,
             update_tx,
             last_emit,
             startup_sent,

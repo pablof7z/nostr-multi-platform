@@ -311,11 +311,9 @@ pub(super) fn add_relay(
     let mut outbound = Vec::new();
     if let Some(canonical_url) = commands::add_relay(ctx.kernel, &url, &role) {
         ensure_relay_worker(
-            ctx.relay_controls,
-            ctx.slot_to_url,
+            ctx.relay_runtime,
             ctx.pool,
             ctx.kernel,
-            ctx.next_relay_generation,
             nmp_network::role::RelayRole::Content,
             canonical_url,
         );
@@ -349,7 +347,7 @@ pub(super) fn remove_relay(
     // Removing a URL that was never present is a no-op and must NOT
     // re-publish kind:10002.
     let projection_before = ctx.kernel.configured_relays_snapshot().to_vec();
-    shutdown_relay_worker(ctx.relay_controls, ctx.slot_to_url, ctx.pool, &url);
+    shutdown_relay_worker(ctx.relay_runtime, ctx.pool, &url);
     commands::remove_relay(ctx.kernel, &url);
     let outbound = maybe_publish_relay_list_after_edit(
         ctx.identity,
@@ -367,7 +365,7 @@ pub(super) fn reconnect_relays_cmd(ctx: &mut ActorContext<'_>) -> Option<Vec<Out
     // #1689: kernel-driven "reconnect all". Fail-closed — a no-op before
     // `Start` (nothing consented to re-dial; never dial unconsented relays).
     if *ctx.running {
-        reconnect_relays(ctx.relay_controls, ctx.pool, ctx.kernel);
+        reconnect_relays(ctx.relay_runtime, ctx.pool, ctx.kernel);
         maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     }
     Some(Vec::new())

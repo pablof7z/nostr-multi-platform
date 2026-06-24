@@ -13,14 +13,14 @@ use super::commands::{
     create_account, new_bunker_handshake_slot, publish_signed_event, IdentityRuntime,
 };
 use super::relay_mgmt::{close_relays, route_dispatch_outbound};
-use super::RelayControl;
+use super::relay_runtime::RelayRuntime;
 use crate::kernel::Kernel;
 use crate::publish::PublishTarget;
 use crate::relay::{CanonicalRelayUrl, OutboundMessage, DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
 use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
+use nmp_network::role::RelayRole;
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::mpsc;
 
 const UNSEEN_RELAY: &str = "ws://127.0.0.1:1/";
@@ -46,32 +46,22 @@ fn publish_message(relay_url: &str, event_id: &str) -> OutboundMessage {
 }
 
 /// Build the full actor-side transport substrate every test needs.
-/// Returns `(kernel, pool, events_rx, relay_controls, slot_to_url, next_gen)`.
+/// Returns `(kernel, pool, events_rx, relay_runtime)`.
 /// `events_rx` is kept around so the channel doesn't disconnect mid-test.
-fn route_state() -> (
-    Kernel,
-    Pool,
-    mpsc::Receiver<PoolEvent>,
-    HashMap<CanonicalRelayUrl, RelayControl>,
-    HashMap<u32, CanonicalRelayUrl>,
-    u64,
-) {
+fn route_state() -> (Kernel, Pool, mpsc::Receiver<PoolEvent>, RelayRuntime) {
     let (events_tx, events_rx) = mpsc::channel::<PoolEvent>();
     let pool = Pool::new(PoolConfig::default(), events_tx);
     (
         Kernel::new(DEFAULT_VISIBLE_LIMIT),
         pool,
         events_rx,
-        HashMap::new(),
-        HashMap::new(),
-        1,
+        RelayRuntime::new(),
     )
 }
 
 #[test]
 fn explicit_publish_target_spawns_worker_for_unseen_relay() {
-    let (mut kernel, pool, _events_rx, mut relay_controls, mut slot_to_url, mut next_generation) =
-        route_state();
+    let (mut kernel, pool, _events_rx, mut rt) = route_state();
     let raw = signed_raw_event("explicit relay dispatch");
     let outbound = publish_signed_event(
         &mut kernel,
@@ -86,32 +76,24 @@ fn explicit_publish_target_spawns_worker_for_unseen_relay() {
     route_dispatch_outbound(
         true,
         &mut queued_publish_outbound,
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_generation,
         outbound,
     );
 
     assert!(
-        relay_controls.contains_key(&CanonicalRelayUrl::parse_or_raw(CANONICAL_UNSEEN_RELAY)),
+        rt.relay_controls
+            .contains_key(&CanonicalRelayUrl::parse_or_raw(CANONICAL_UNSEEN_RELAY)),
         "explicit publish target must spawn a worker for its relay URL"
     );
     assert!(queued_publish_outbound.is_empty());
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut HashSet::new(),
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }
 
 #[test]
 fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
-    let (mut kernel, pool, _events_rx, mut relay_controls, mut slot_to_url, mut next_generation) =
-        route_state();
+    let (mut kernel, pool, _events_rx, mut rt) = route_state();
     let mut identity = IdentityRuntime::new(
         new_bunker_handshake_slot(),
         crate::actor::new_signer_state_slot(),
@@ -132,47 +114,37 @@ fn create_account_publish_targets_spawn_workers_for_unseen_relays() {
     route_dispatch_outbound(
         true,
         &mut queued_publish_outbound,
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_generation,
         outbound,
     );
 
     assert!(
-        relay_controls.contains_key(&CanonicalRelayUrl::parse_or_raw(CANONICAL_UNSEEN_RELAY)),
+        rt.relay_controls
+            .contains_key(&CanonicalRelayUrl::parse_or_raw(CANONICAL_UNSEEN_RELAY)),
         "CreateAccount cold-start publish output must spawn a worker for declared relays"
     );
     assert!(queued_publish_outbound.is_empty());
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut HashSet::new(),
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }
 
 #[test]
 fn stopped_actor_queues_publish_frames_until_running() {
-    let (mut kernel, pool, _events_rx, mut relay_controls, mut slot_to_url, mut next_generation) =
-        route_state();
+    let (mut kernel, pool, _events_rx, mut rt) = route_state();
     let mut queued_publish_outbound = Vec::new();
 
     route_dispatch_outbound(
         false,
         &mut queued_publish_outbound,
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_generation,
         vec![publish_message(UNSEEN_RELAY, "offline-event")],
     );
 
     assert!(
-        relay_controls.is_empty(),
+        rt.relay_controls.is_empty(),
         "stopped actor must not spawn workers"
     );
     assert_eq!(
@@ -184,11 +156,9 @@ fn stopped_actor_queues_publish_frames_until_running() {
     route_dispatch_outbound(
         true,
         &mut queued_publish_outbound,
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_generation,
         Vec::new(),
     );
 
@@ -197,14 +167,9 @@ fn stopped_actor_queues_publish_frames_until_running() {
         "queued publish frame must flush once the actor is running"
     );
     assert!(
-        relay_controls.contains_key(&CanonicalRelayUrl::parse_or_raw(CANONICAL_UNSEEN_RELAY)),
+        rt.relay_controls
+            .contains_key(&CanonicalRelayUrl::parse_or_raw(CANONICAL_UNSEEN_RELAY)),
         "flushed publish frame must spawn a worker for its relay URL"
     );
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut HashSet::new(),
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }

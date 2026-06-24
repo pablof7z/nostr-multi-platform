@@ -1,20 +1,20 @@
 use super::*;
+use crate::actor::relay_runtime::RelayRuntime;
 use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
 
 /// Build the actor-side transport state every test in this file needs: a
 /// fresh [`Pool`] (phase F's substrate for per-URL workers), the event
-/// receiver (kept around so the channel doesn't disconnect mid-test), the
-/// empty `relay_controls` map, and the `slot_to_url` reverse-lookup
-/// side-map. Returns `(pool, events_rx, relay_controls, slot_to_url)`.
+/// receiver (kept around so the channel doesn't disconnect mid-test), and an
+/// empty [`RelayRuntime`] owner (relay_controls + slot_to_url + connected_urls
+/// + next_relay_generation). Returns `(pool, events_rx, relay_runtime)`.
 fn fresh_pool() -> (
     Pool,
     std::sync::mpsc::Receiver<PoolEvent>,
-    HashMap<CanonicalRelayUrl, RelayControl>,
-    HashMap<u32, CanonicalRelayUrl>,
+    RelayRuntime,
 ) {
     let (events_tx, events_rx) = std::sync::mpsc::channel::<PoolEvent>();
     let pool = Pool::new(PoolConfig::default(), events_tx);
-    (pool, events_rx, HashMap::new(), HashMap::new())
+    (pool, events_rx, RelayRuntime::new())
 }
 
 /// T126 — one-socket-per-URL invariant.
@@ -37,27 +37,22 @@ fn fresh_pool() -> (
 #[test]
 fn same_url_two_roles_yields_one_control() {
     let mut kernel = Kernel::new(80);
-    let (pool, _events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_relay_generation = 1_u64;
+    let (pool, _events_rx, mut rt) = fresh_pool();
     // Supply with trailing slash — canonical form strips it.
     let raw_url = "wss://127.0.0.1:1/".to_string();
     let canonical_key = "wss://127.0.0.1:1"; // expected pool key after canonicalization
 
     let spawned_a = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_relay_generation,
         RelayRole::Content,
         raw_url.clone(),
     );
     let spawned_b = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_relay_generation,
         RelayRole::Indexer,
         raw_url.clone(),
     );
@@ -68,13 +63,14 @@ fn same_url_two_roles_yields_one_control() {
         "second call MUST short-circuit on canonical URL match"
     );
     assert_eq!(
-        relay_controls.len(),
+        rt.relay_controls.len(),
         1,
         "T126: one socket per URL — got {} entries",
-        relay_controls.len()
+        rt.relay_controls.len()
     );
     // Pool key is the canonical form (no trailing slash), not the raw input.
-    let control = relay_controls
+    let control = rt
+        .relay_controls
         .get(&CanonicalRelayUrl::parse_or_raw(canonical_key))
         .expect("entry must exist under canonical key");
     assert_eq!(
@@ -84,14 +80,7 @@ fn same_url_two_roles_yields_one_control() {
     );
 
     // Cleanly drain workers so they don't outlive the test.
-    let mut connected = HashSet::new();
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut connected,
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }
 
 /// T126 — three-role coverage including the post-`2afa4b1` Wallet lane.
@@ -104,37 +93,21 @@ fn same_url_two_roles_yields_one_control() {
 #[test]
 fn same_url_three_roles_including_wallet_yields_one_control() {
     let mut kernel = Kernel::new(80);
-    let (pool, _events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_relay_generation = 1_u64;
+    let (pool, _events_rx, mut rt) = fresh_pool();
     let url = "wss://127.0.0.1:1/".to_string();
 
     for role in [RelayRole::Content, RelayRole::Indexer, RelayRole::Wallet] {
-        let _ = ensure_relay_worker(
-            &mut relay_controls,
-            &mut slot_to_url,
-            &pool,
-            &mut kernel,
-            &mut next_relay_generation,
-            role,
-            url.clone(),
-        );
+        let _ = ensure_relay_worker(&mut rt, &pool, &mut kernel, role, url.clone());
     }
 
     assert_eq!(
-        relay_controls.len(),
+        rt.relay_controls.len(),
         1,
         "T126: one socket per URL across Content+Indexer+Wallet — got {}",
-        relay_controls.len()
+        rt.relay_controls.len()
     );
 
-    let mut connected = HashSet::new();
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut connected,
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }
 
 /// T162 — `shutdown_relay_worker` removes the worker entry from `relay_controls`.
@@ -191,16 +164,13 @@ fn t_remove_relay_shuts_down_worker() {
     thread::sleep(Duration::from_millis(30));
 
     let mut kernel = Kernel::new(80);
-    let (pool, events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_gen = 1_u64;
+    let (pool, events_rx, mut rt) = fresh_pool();
 
     // Step 1: add relay, wait for Opened (pool-side rename of legacy Connected).
     let spawned = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         relay_url.clone(),
     );
@@ -209,7 +179,7 @@ fn t_remove_relay_shuts_down_worker() {
         "first ensure_relay_worker call must spawn a worker"
     );
     assert_eq!(
-        relay_controls.len(),
+        rt.relay_controls.len(),
         1,
         "pool must have exactly one entry after add"
     );
@@ -234,13 +204,14 @@ fn t_remove_relay_shuts_down_worker() {
     );
 
     // Step 2: shutdown — closes the pool slot and drops the control row.
-    let removed = shutdown_relay_worker(&mut relay_controls, &mut slot_to_url, &pool, &relay_url);
+    let removed = shutdown_relay_worker(&mut rt, &pool, &relay_url);
     assert!(
         removed,
         "T162: shutdown_relay_worker must return true for a known URL"
     );
     assert!(
-        !relay_controls.contains_key(&CanonicalRelayUrl::parse_or_raw(&relay_url)),
+        !rt.relay_controls
+            .contains_key(&CanonicalRelayUrl::parse_or_raw(&relay_url)),
         "T162: relay_controls must NOT contain the URL after RemoveRelay shutdown"
     );
 }
@@ -254,16 +225,16 @@ fn t_remove_relay_shuts_down_worker() {
 fn t_remove_relay_unknown_url_is_noop() {
     use super::shutdown_relay_worker;
 
-    let (pool, _events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
+    let (pool, _events_rx, mut rt) = fresh_pool();
     let url = "wss://nonexistent.example.com/".to_string();
 
-    let removed = shutdown_relay_worker(&mut relay_controls, &mut slot_to_url, &pool, &url);
+    let removed = shutdown_relay_worker(&mut rt, &pool, &url);
     assert!(
         !removed,
         "T162: shutdown_relay_worker for unknown URL must return false"
     );
     assert!(
-        relay_controls.is_empty(),
+        rt.relay_controls.is_empty(),
         "T162: relay_controls must remain empty after noop shutdown"
     );
 }
@@ -323,15 +294,12 @@ fn t158_ensure_relay_worker_dials_and_emits_connected() {
     thread::sleep(Duration::from_millis(30));
 
     let mut kernel = Kernel::new(80);
-    let (pool, events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_gen = 1_u64;
+    let (pool, events_rx, mut rt) = fresh_pool();
 
     let spawned = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         relay_url.clone(),
     );
@@ -339,7 +307,7 @@ fn t158_ensure_relay_worker_dials_and_emits_connected() {
         spawned,
         "first ensure_relay_worker call must spawn a worker"
     );
-    assert_eq!(relay_controls.len(), 1, "pool must have exactly one entry");
+    assert_eq!(rt.relay_controls.len(), 1, "pool must have exactly one entry");
 
     // Wait for the Opened event — proves the socket actually dialled.
     let mut got_opened = false;
@@ -361,13 +329,7 @@ fn t158_ensure_relay_worker_dials_and_emits_connected() {
          within 3s (url={relay_url})"
     );
 
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut HashSet::new(),
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }
 
 /// T-normalize-send-outbound: `send_outbound` with a non-canonical URL
@@ -427,16 +389,13 @@ fn t_normalize_send_outbound_non_canonical_url_routes_not_deferred() {
     thread::sleep(Duration::from_millis(30));
 
     let mut kernel = Kernel::new(80);
-    let (pool, events_rx, mut relay_controls, mut slot_to_url) = fresh_pool();
-    let mut next_gen = 1_u64;
+    let (pool, events_rx, mut rt) = fresh_pool();
 
     // Pre-add via canonical URL so the worker is in the pool.
     let spawned = ensure_relay_worker(
-        &mut relay_controls,
-        &mut slot_to_url,
+        &mut rt,
         &pool,
         &mut kernel,
-        &mut next_gen,
         RelayRole::Content,
         canonical_url.clone(),
     );
@@ -459,22 +418,15 @@ fn t_normalize_send_outbound_non_canonical_url_routes_not_deferred() {
         relay_url: non_canonical_url.clone(),
         text: r#"["REQ","t-normalize-sub",{"kinds":[1],"limit":1}]"#.to_string(),
     };
-    send_outbound(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut kernel,
-        &mut next_gen,
-        msg,
-    );
+    send_outbound(&mut rt, &pool, &mut kernel, msg);
 
     // Pool must still have exactly one entry (no duplicate spawned).
     assert_eq!(
-        relay_controls.len(),
+        rt.relay_controls.len(),
         1,
         "T-normalize-send-outbound: pool must have 1 entry after send_outbound \
          with non-canonical URL (trailing slash), got {}",
-        relay_controls.len()
+        rt.relay_controls.len()
     );
 
     // Deferred queue must be empty — the frame was routed, not deferred.
@@ -485,11 +437,5 @@ fn t_normalize_send_outbound_non_canonical_url_routes_not_deferred() {
          frame with non-canonical URL must NOT be deferred"
     );
 
-    close_relays(
-        &mut relay_controls,
-        &mut slot_to_url,
-        &pool,
-        &mut HashSet::new(),
-        &mut kernel,
-    );
+    close_relays(&mut rt, &pool, &mut kernel);
 }

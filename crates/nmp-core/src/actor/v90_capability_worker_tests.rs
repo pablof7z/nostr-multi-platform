@@ -123,8 +123,6 @@ fn dispatch_capability_result(
     // Build a minimal ActorContext with the required fields. Relay pool,
     // relay_controls, etc. are not needed for CapabilityResultReady.
     use crate::actor::pending_sign::ParkedSignerOps;
-    use crate::relay::CanonicalRelayUrl;
-    use std::collections::{HashMap, HashSet};
     use std::time::Instant;
 
     let (update_tx, _update_rx) = channel::<crate::update_envelope::UpdateFrameBytes>();
@@ -135,12 +133,8 @@ fn dispatch_capability_result(
         nmp_network::pool::PoolConfig::default(),
         channel::<nmp_network::pool::PoolEvent>().0,
     );
-    let mut relay_controls: HashMap<CanonicalRelayUrl, super::RelayControl> = HashMap::new();
-    let mut slot_to_url: HashMap<u32, CanonicalRelayUrl> = HashMap::new();
-    let mut connected_relays = HashSet::new();
-    let mut connected_urls = HashSet::new();
+    let mut relay_runtime = super::relay_runtime::RelayRuntime::new();
     let mut last_emit = Instant::now();
-    let mut next_relay_generation = 1u64;
     let mut running = true;
     let mut emit_hz = 4u32;
     let mut startup_sent = false;
@@ -187,15 +181,11 @@ fn dispatch_capability_result(
     let mut ctx = ActorContext {
         kernel,
         identity,
-        relay_controls: &mut relay_controls,
-        slot_to_url: &mut slot_to_url,
+        relay_runtime: &mut relay_runtime,
         pool: &pool,
-        connected_relays: &mut connected_relays,
-        connected_urls: &mut connected_urls,
         update_tx: &update_tx,
         last_emit: &mut last_emit,
         dispatch_now: Instant::now(),
-        next_relay_generation: &mut next_relay_generation,
         running: &mut running,
         emit_hz: &mut emit_hz,
         startup_sent: &mut startup_sent,

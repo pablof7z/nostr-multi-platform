@@ -63,13 +63,7 @@ pub(super) fn start(
     // D1 — first snapshot must reach the shell before any relay TCP
     // connection is dialed, so emit_now precedes spawn_missing_relays.
     emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-    spawn_missing_relays(
-        ctx.relay_controls,
-        ctx.slot_to_url,
-        ctx.pool,
-        ctx.kernel,
-        ctx.next_relay_generation,
-    );
+    spawn_missing_relays(ctx.relay_runtime, ctx.pool, ctx.kernel);
     // T127: boot-resume for the publish engine. Closes Residual 3
     // from T117 — `accepted_locally` rows persisted by a previous
     // process come back as `InFlight` and any due retries dispatch
@@ -89,30 +83,17 @@ pub(super) fn start(
 pub(super) fn stop(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
     *ctx.running = false;
     *ctx.startup_sent = false;
-    close_relays(
-        ctx.relay_controls,
-        ctx.slot_to_url,
-        ctx.pool,
-        ctx.connected_relays,
-        ctx.kernel,
-    );
-    // T116/G1 — clear reconnect-replay discriminator so a subsequent
-    // Start replays cleanly (every URL appears as a first-connect).
-    ctx.connected_urls.clear();
+    // T116/G1 — `close_relays` clears the reconnect-replay discriminator
+    // (`connected_urls`) so a subsequent Start replays cleanly (every URL
+    // appears as a first-connect).
+    close_relays(ctx.relay_runtime, ctx.pool, ctx.kernel);
     emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     Some(Vec::new())
 }
 
 /// Dispatch `ActorCommand::Lifecycle(LifecycleCommand::Shutdown)` — signals the actor loop to exit.
 pub(super) fn shutdown(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
-    close_relays(
-        ctx.relay_controls,
-        ctx.slot_to_url,
-        ctx.pool,
-        ctx.connected_relays,
-        ctx.kernel,
-    );
-    ctx.connected_urls.clear();
+    close_relays(ctx.relay_runtime, ctx.pool, ctx.kernel);
     None
 }
 
@@ -122,14 +103,7 @@ pub(super) fn shutdown(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage
 /// FFI surface keeps working across the state wipe, and re-starts relay
 /// workers if the actor is currently running.
 pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
-    close_relays(
-        ctx.relay_controls,
-        ctx.slot_to_url,
-        ctx.pool,
-        ctx.connected_relays,
-        ctx.kernel,
-    );
-    ctx.connected_urls.clear();
+    close_relays(ctx.relay_runtime, ctx.pool, ctx.kernel);
     // G-S4 — preserve the actor command-channel depth counter across
     // Reset for the same reason: the `Arc<AtomicU64>` is shared with
     // `NmpApp::send_cmd`; replacing it would orphan the counter so
@@ -231,13 +205,7 @@ pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> 
         // D1 — first snapshot must reach the shell before any relay TCP
         // connection is dialed, so emit_now precedes spawn_missing_relays.
         emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-        spawn_missing_relays(
-            ctx.relay_controls,
-            ctx.slot_to_url,
-            ctx.pool,
-            ctx.kernel,
-            ctx.next_relay_generation,
-        );
+        spawn_missing_relays(ctx.relay_runtime, ctx.pool, ctx.kernel);
     }
     Some(Vec::new())
 }

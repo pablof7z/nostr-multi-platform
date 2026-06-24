@@ -23,8 +23,7 @@ crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	826
 crates/nmp-codegen/src/swift.rs	613
 crates/nmp-codegen/src/swift_projections_registry.rs	741
 crates/nmp-core/src/actor/commands/publish.rs	740
-crates/nmp-core/src/actor/mod.rs	785
-crates/nmp-core/src/actor/relay_mgmt.rs	534
+crates/nmp-core/src/actor/mod.rs	764
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565
 crates/nmp-core/src/kernel/action_registry/tests.rs	724
 crates/nmp-core/src/kernel/auth_tests.rs	762

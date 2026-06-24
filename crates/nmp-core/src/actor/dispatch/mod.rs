@@ -21,7 +21,6 @@
 //! | `open_interest_tests.rs` | `OpenInterest` / `CloseInterest` kernel-side tests |
 //! | `nip65_tests.rs` | NIP-65 auto-publish end-to-end tests |
 
-use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -29,20 +28,20 @@ use std::time::Instant;
 use nmp_network::pool::Pool;
 
 use crate::kernel::Kernel;
-use crate::relay::{CanonicalRelayUrl, OutboundMessage};
-use nmp_network::role::RelayRole;
+use crate::relay::OutboundMessage;
 use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
 
 use super::capability_worker::CapabilityWorkSender;
 use super::commands::{self, IdentityRuntime, LifecycleObserverSlot};
 use super::pending_sign::ParkedSignerOps;
+use super::relay_runtime::RelayRuntime;
 use super::signer_port_dispatch;
 use super::tick::maybe_emit_after_dispatch;
 #[cfg(any(test, feature = "test-support"))]
 use super::TestSupportCommand;
 use super::{
     ActionLedgerCommand, ActorCommand, ActorConfig, ContactsCommand, LifecycleCommand,
-    PublishCommand, RefsCommand, RelayCommand, RelayControl, SignCommand,
+    PublishCommand, RefsCommand, RelayCommand, SignCommand,
 };
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
@@ -90,20 +89,20 @@ pub(crate) fn build_open_interest(
 pub(super) struct ActorContext<'a> {
     pub(super) kernel: &'a mut Kernel,
     pub(super) identity: &'a mut IdentityRuntime,
-    pub(super) relay_controls: &'a mut HashMap<CanonicalRelayUrl, RelayControl>,
-    /// slot() → canonical URL reverse-map for O(1) `PoolEvent` resolution.
-    pub(super) slot_to_url: &'a mut HashMap<u32, CanonicalRelayUrl>,
+    /// #1938 — URL-keyed relay runtime owner (relay_controls + slot_to_url +
+    /// connected_urls + next_relay_generation). Role readiness is derived from
+    /// its `connected_urls`, not a parallel role-set.
+    pub(super) relay_runtime: &'a mut RelayRuntime,
     pub(super) pool: &'a Pool,
-    pub(super) connected_relays: &'a mut HashSet<RelayRole>,
-    pub(super) connected_urls: &'a mut HashSet<CanonicalRelayUrl>,
     pub(super) update_tx: &'a Sender<crate::update_envelope::UpdateFrameBytes>,
     pub(super) last_emit: &'a mut Instant,
     pub(super) dispatch_now: Instant,
-    pub(super) next_relay_generation: &'a mut u64,
     pub(super) running: &'a mut bool,
     pub(super) emit_hz: &'a mut u32,
     pub(super) startup_sent: &'a mut bool,
-    /// Derived per-call value (`all_relays_connected(...)`), not a borrow.
+    /// Derived per-call value — the URL-derived send-gate
+    /// (`RelayRuntime::any_role_connected()`), computed once per dispatch at the
+    /// caller, not a borrow.
     pub(super) relays_ready: bool,
     pub(super) lifecycle_observer: &'a LifecycleObserverSlot,
     pub(super) mls_local_nsec: &'a MlsLocalNsecSlot,
