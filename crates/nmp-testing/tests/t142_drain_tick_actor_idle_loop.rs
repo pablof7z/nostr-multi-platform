@@ -18,12 +18,12 @@
 //! (in `nmp-core/src/actor/tests.rs`) cover the `wire_frames_to_outbound`
 //! conversion; these tests cover the `drain_tick` trigger-to-frame pipeline.
 
+use nmp_core::subs::{
+    AccountId, CompileTrigger, InvalidateReason, SubscriptionLifecycle, WireFrame,
+};
 use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
     LogicalInterest, MailboxSnapshot,
-};
-use nmp_core::subs::{
-    AccountId, CompileTrigger, InvalidateReason, SubscriptionLifecycle, WireFrame,
 };
 
 fn pubkey(s: &str) -> String {
@@ -70,7 +70,7 @@ fn cache_for(author: &str, relay: &str) -> InMemoryMailboxCache {
 #[test]
 fn t142_actor_idle_loop_drains_tick() {
     let mut lifecycle = SubscriptionLifecycle::new();
-    lifecycle.register_for_test(interest_for(1, "alice"));
+    nmp_core::subs::replace_test_interest(&mut lifecycle, interest_for(1, "alice"));
     lifecycle.set_selection_budget(usize::MAX, usize::MAX);
 
     let mailboxes = cache_for("alice", "wss://t142-test.example");
@@ -102,7 +102,7 @@ fn t142_follow_list_update_produces_wire_frames_e2e() {
     let mut lifecycle = SubscriptionLifecycle::new();
     let author = pubkey("bob");
 
-    lifecycle.register_for_test(interest_for(2, "bob"));
+    nmp_core::subs::replace_test_interest(&mut lifecycle, interest_for(2, "bob"));
     lifecycle.set_selection_budget(usize::MAX, usize::MAX);
 
     let mailboxes = cache_for("bob", "wss://bob-relay.example");

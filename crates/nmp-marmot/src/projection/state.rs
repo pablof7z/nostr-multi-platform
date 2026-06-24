@@ -457,8 +457,10 @@ impl<'a> InnerHandle<'a> {
         let Some(app) = self.app() else {
             return;
         };
-        for interest in crate::interest::group_message_interests(group_id_hex, relay_urls) {
-            app.push_interest(interest);
+        for (identity, interest) in
+            crate::interest::group_message_registrations(group_id_hex, relay_urls)
+        {
+            app.ensure_interest(identity, interest);
         }
     }
 
@@ -523,12 +525,16 @@ impl<'a> InnerHandle<'a> {
         let Some(app) = self.app() else {
             return 0;
         };
-        // `push_interest` is infallible once `app()` is `Some` (guarded above),
+        // `ensure_interest` is infallible once `app()` is `Some` (guarded above),
         // so the count always equals the pubkey count. Callers use it only as a
         // UI hint (`fetch_requested` in the `key_package_unavailable` response).
         let mut sent = 0;
         for pk in pubkeys {
-            app.push_interest(crate::interest::key_package_lookup_interest(&pk.to_hex()));
+            let pk_hex = pk.to_hex();
+            app.ensure_interest(
+                crate::interest::key_package_lookup_identity(&pk_hex),
+                crate::interest::key_package_lookup_interest(&pk_hex),
+            );
             sent += 1;
         }
         sent

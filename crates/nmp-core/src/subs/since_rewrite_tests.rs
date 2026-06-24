@@ -30,9 +30,9 @@ fn pubkey(s: &str) -> String {
 
 fn push_legacy(reg: &mut super::InterestRegistry, interest: LogicalInterest) {
     use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-    use super::SubIdentity;
     let t = RegistryWriteToken::for_test();
-    let identity = SubIdentity::from_legacy_interest(&interest);
+    let identity =
+        crate::subs::test_identity_for_interest(("scoped-test-interest", interest.id.0), &interest);
     let _ = reg.apply(&t, InterestWrite::Replace, identity, interest);
 }
 
@@ -293,9 +293,7 @@ fn two_author_interest(id: u64, author_a: &str, author_b: &str) -> LogicalIntere
         id: InterestId(id),
         scope: InterestScope::Global,
         shape: InterestShape {
-            authors: [pubkey(author_a), pubkey(author_b)]
-                .into_iter()
-                .collect(),
+            authors: [pubkey(author_a), pubkey(author_b)].into_iter().collect(),
             kinds: [1u32].into_iter().collect(),
             ..Default::default()
         },

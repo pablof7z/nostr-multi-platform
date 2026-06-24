@@ -15,8 +15,9 @@ use crate::substrate::BlockedRelaySet;
 fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
     use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
     let t = RegistryWriteToken::for_test();
-    let identity = SubIdentity::from_legacy_interest(&interest);
-    reg.apply(&t, InterestWrite::Replace, identity, interest);
+    let identity =
+        crate::subs::test_identity_for_interest(("scoped-test-interest", interest.id.0), &interest);
+    let _ = reg.apply(&t, InterestWrite::Replace, identity, interest);
 }
 
 fn make_interest(id: u64, author: &str) -> LogicalInterest {
@@ -92,7 +93,8 @@ fn blocked_relay_absent_from_wire_frames() {
     let mut blocked = BlockedRelaySet::new();
     blocked.insert(relay.clone());
 
-    let frames = lc.recompile_and_diff_with_blocked(&cache, None, &blocked)
+    let frames = lc
+        .recompile_and_diff_with_blocked(&cache, None, &blocked)
         .unwrap_or_default();
 
     // No REQ frames should target the blocked relay.

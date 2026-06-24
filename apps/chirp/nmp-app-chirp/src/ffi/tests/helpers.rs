@@ -20,7 +20,7 @@ use super::super::{nmp_app_chirp_register, ChirpHandle, NmpRegisterStatus};
 /// sending any command (a valid no-op); returns `Err(...)` only when the
 /// executor itself returns `Err(...)`. Earlier this helper kept only the
 /// last `send()` call in a `RefCell<Option<_>>`, silently dropping
-/// multi-command executors (e.g. `PushInterest` followed by
+/// multi-command executors (e.g. `EnsureInterest` followed by
 /// `RecordActionSuccess`).
 pub(super) fn run_module_execute<M: ActionModule + Default>(
     input: M::Action,

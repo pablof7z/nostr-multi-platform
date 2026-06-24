@@ -38,7 +38,7 @@ use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 /// kind:10000 (mute list) is intentionally excluded: the host-side
 /// `MuteRuntimeController` (in `nmp-defaults`) owns a dedicated
 /// `authors=[active_pubkey] / kinds=[10000]` interest and pushes it via
-/// `PushInterest` on sign-in. Free-riding on this bundle would route mute
+/// `EnsureInterest` on sign-in. Free-riding on this bundle would route mute
 /// lists through the wrong interest scope — D0 forbids the kernel knowing
 /// about NIP-51 mute semantics.
 const SELF_KINDS_TAILING: &[u32] = &[0, 3, 10002, 10006, 10007];

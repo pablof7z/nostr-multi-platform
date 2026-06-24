@@ -17,7 +17,12 @@ fn pubkey(s: &str) -> String {
 }
 fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
     use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-    let _ = reg.apply(&RegistryWriteToken::for_test(), InterestWrite::Replace, SubIdentity::from_legacy_interest(&interest), interest);
+    let _ = reg.apply(
+        &RegistryWriteToken::for_test(),
+        InterestWrite::Replace,
+        crate::subs::test_identity_for_interest(("scoped-test-interest", interest.id.0), &interest),
+        interest,
+    );
 }
 /// Single-author follow interest (kind:1 timeline).
 fn follow(id: u64, author: &str) -> LogicalInterest {
@@ -782,7 +787,9 @@ fn pd033c_set_bootstrap_content_relays_replaces_rather_than_appends() {
 
     let mailboxes = InMemoryMailboxCache::new();
     let event_id_hex: String = "bb".repeat(32);
-    push_legacy(l.registry_mut(), LogicalInterest {
+    push_legacy(
+        l.registry_mut(),
+        LogicalInterest {
         id: InterestId(1),
         scope: InterestScope::Global,
         shape: InterestShape {
@@ -793,7 +800,8 @@ fn pd033c_set_bootstrap_content_relays_replaces_rather_than_appends() {
         hints: Vec::new(),
         lifecycle: InterestLifecycle::OneShot,
         is_indexer_discovery: false,
-    });
+        },
+    );
 
     let frames = l.recompile_and_diff(&mailboxes).expect("compile");
     let urls: std::collections::BTreeSet<String> = frames

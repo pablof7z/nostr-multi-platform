@@ -2,11 +2,13 @@
 //! switching, and the typed-snapshot sidecar (Wave A, ADR-0037).
 
 use super::*;
+use crate::interest::{
+    active_follow_graph_identity, active_follow_graph_interest_id, KIND_MUTE_LIST,
+};
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{InterestsCommand};
-use crate::interest::KIND_MUTE_LIST;
-use nmp_planner::InterestLifecycle;
+use nmp_core::actor::InterestsCommand;
 use nmp_core::slots::{new_active_account_slot, ActiveAccountSlot};
+use nmp_planner::InterestLifecycle;
 use nostr::Keys;
 
 /// ADR-0050 §D3a — the runtime now sends through a `CommandSender` over an
@@ -91,7 +93,7 @@ fn mute_event(event_author: &str, mutes: &[&str]) -> KernelEvent {
 /// bootstrap. The kernel writes the active pubkey into `ActiveAccountSlot`
 /// for every backend, including bunker, while the local-keys slot stays
 /// `None` (no secret material in-process). This proves the runtime resolves
-/// its active pubkey and pushes the bootstrap interest from the pubkey slot
+/// its active pubkey and ensures the bootstrap interest from the pubkey slot
 /// alone — the whole point of the least-privilege identity accessor.
 #[test]
 fn bunker_only_account_activates_wot_bootstrap() {
@@ -105,11 +107,13 @@ fn bunker_only_account_activates_wot_bootstrap() {
 
     let cmd = unwrap_mail(
         rx.recv()
-            .expect("bunker account must still push WOT bootstrap"),
+            .expect("bunker account must still ensure WOT bootstrap"),
     );
-    let ActorCommand::Interests(InterestsCommand::PushInterest(interest)) = cmd else {
-        panic!("expected PushInterest for a bunker-only account");
+    let ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) = cmd
+    else {
+        panic!("expected EnsureInterest for a bunker-only account");
     };
+    assert_eq!(identity, active_follow_graph_identity());
     assert_eq!(interest.id, active_follow_graph_interest_id());
     assert_eq!(interest.shape.authors.len(), 8);
 }
@@ -124,9 +128,11 @@ fn active_kind3_pushes_large_one_shot_wot_interest() {
     runtime.on_kernel_event(&contact_event(&active, 1_052));
 
     let cmd = unwrap_mail(rx.recv().expect("wot bootstrap command"));
-    let ActorCommand::Interests(InterestsCommand::PushInterest(interest)) = cmd else {
-        panic!("expected PushInterest");
+    let ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) = cmd
+    else {
+        panic!("expected EnsureInterest");
     };
+    assert_eq!(identity, active_follow_graph_identity());
     assert_eq!(interest.id, active_follow_graph_interest_id());
     assert!(matches!(interest.lifecycle, InterestLifecycle::OneShot));
     assert_eq!(interest.shape.limit, None);
@@ -146,7 +152,7 @@ fn account_switch_snapshot_withdraws_previous_bootstrap() {
     let runtime = WotBootstrapRuntime::new(Arc::clone(&slot), tx);
 
     runtime.on_kernel_event(&contact_event(&active, 30));
-    let _ = unwrap_mail(rx.recv().expect("initial push"));
+    let _ = unwrap_mail(rx.recv().expect("initial ensure"));
     *slot.lock().unwrap() = None;
 
     // Both registered projection closures call `current_snapshot()` every tick.
@@ -157,11 +163,11 @@ fn account_switch_snapshot_withdraws_previous_bootstrap() {
     let _ = runtime.snapshot_json();
     let _ = runtime.snapshot_typed();
 
-    let cmd = unwrap_mail(rx.recv().expect("withdraw command"));
-    let ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) = cmd else {
-        panic!("expected WithdrawInterest");
+    let cmd = unwrap_mail(rx.recv().expect("drop command"));
+    let ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)) = cmd else {
+        panic!("expected DropInterestOwner");
     };
-    assert_eq!(id, active_follow_graph_interest_id());
+    assert_eq!(identity, active_follow_graph_identity());
     assert!(
         rx.try_recv().is_err(),
         "the account-switch withdraw must fire exactly once across both projection closures"

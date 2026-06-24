@@ -320,7 +320,6 @@ fn create_account_prepopulates_self_relay_list_for_inbox_interests() {
     tags.insert("p".to_string(), [active.clone()].into_iter().collect());
     {
         use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-        use crate::subs::SubIdentity;
         let interest = LogicalInterest {
             id: InterestId(9_001),
             scope: InterestScope::Account(active),
@@ -334,11 +333,16 @@ fn create_account_prepopulates_self_relay_list_for_inbox_interests() {
             is_indexer_discovery: false,
         };
         let t = RegistryWriteToken::for_test();
-        let identity = SubIdentity::from_legacy_interest(&interest);
-        kernel
-            .lifecycle_mut()
-            .registry_mut()
-            .apply(&t, InterestWrite::Replace, identity, interest);
+        let identity = crate::subs::test_identity_for_interest(
+            ("scoped-test-interest", interest.id.0),
+            &interest,
+        );
+        let _ = kernel.lifecycle_mut().registry_mut().apply(
+            &t,
+            InterestWrite::Replace,
+            identity,
+            interest,
+        );
     }
     kernel
         .lifecycle_mut()

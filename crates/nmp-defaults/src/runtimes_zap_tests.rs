@@ -4,8 +4,8 @@
 //! The reconciler moved OFF the dynamic snapshot-projection registry (which it
 //! abused with a `Value::Null` projection purely to obtain a per-tick callback)
 //! ONTO the generic `AppHost::register_snapshot_tick_observer` seam. Its
-//! Push/Withdraw logic is unchanged — these tests pin that logic by driving the
-//! same `tick()` the observer now calls and asserting the emitted
+//! ensure/drop-owner logic is unchanged — these tests pin that logic by driving
+//! the same `tick()` the observer now calls and asserting the emitted
 //! [`ActorCommand`] sequence across sign-in / account-switch / sign-out.
 //!
 //! The `"nmp.nip57.zap_subscription"` key is no longer a projection at all; the
@@ -15,10 +15,10 @@
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{InterestsCommand};
-use nmp_nip57::{self_zap_receipts_interest, self_zap_receipts_interest_id};
+use nmp_core::actor::InterestsCommand;
+use nmp_core::slots::ActiveAccountSlot;
+use nmp_nip57::{self_zap_receipts_identity, self_zap_receipts_interest};
 use nostr::Keys;
 
 use super::ZapReceiptsRuntimeController;
@@ -60,8 +60,8 @@ fn drained(rx: &Receiver<nmp_core::ActorMail>) -> Vec<ActorCommand> {
         .collect()
 }
 
-/// Sign-in pushes exactly one `PushInterest` for the active pubkey; a steady
-/// tick afterwards enqueues nothing (the common fast path).
+/// Sign-in ensures exactly one interest for the active pubkey; a steady tick
+/// afterwards enqueues nothing (the common fast path).
 #[test]
 fn sign_in_pushes_interest_once_then_idles() {
     let (controller, slot, rx) = controller();
@@ -72,7 +72,7 @@ fn sign_in_pushes_interest_once_then_idles() {
     controller.tick();
     assert!(drained(&rx).is_empty(), "cold start must enqueue nothing");
 
-    // Sign in → exactly one PushInterest for this pubkey.
+    // Sign in → exactly one interest for this pubkey.
     sign_in(&slot, &keys);
     controller.tick();
     let cmds = drained(&rx);
@@ -87,8 +87,8 @@ fn sign_in_pushes_interest_once_then_idles() {
     );
 }
 
-/// An account switch withdraws the standing interest (by its pubkey-invariant
-/// id) then pushes the new account's interest — in that order, once.
+/// An account switch drops the standing owner then ensures the new account's
+/// interest — in that order, once.
 #[test]
 fn account_switch_withdraws_then_pushes() {
     let (controller, slot, rx) = controller();
@@ -103,12 +103,12 @@ fn account_switch_withdraws_then_pushes() {
     sign_in(&slot, &second);
     controller.tick();
     let cmds = drained(&rx);
-    assert_eq!(cmds.len(), 2, "switch enqueues withdraw + push");
+    assert_eq!(cmds.len(), 2, "switch enqueues drop + ensure");
     assert_withdraw(&cmds[0]);
     assert_push_for(&cmds[1], &second_pubkey);
 }
 
-/// Sign-out (active → none) withdraws the standing interest once, then a
+/// Sign-out (active → none) drops the standing owner once, then a
 /// subsequent idle tick enqueues nothing.
 #[test]
 fn sign_out_withdraws_interest_once() {
@@ -133,7 +133,7 @@ fn sign_out_withdraws_interest_once() {
 /// Finding C — a bunker (remote-signer-only) account must activate the
 /// self-zap-receipts subscription. The reconciler reads the pubkey-only slot
 /// the kernel populates for every backend; with NO secret keys ever present it
-/// must still push the kind:9735 `#p` interest for the active pubkey.
+/// must still ensure the kind:9735 `#p` interest for the active pubkey.
 #[test]
 fn bunker_only_account_activates_self_zap_receipts() {
     let (controller, slot, rx) = controller();
@@ -148,33 +148,38 @@ fn bunker_only_account_activates_self_zap_receipts() {
     assert_eq!(
         cmds.len(),
         1,
-        "a bunker account must still push exactly one zap-receipts interest"
+        "a bunker account must still ensure exactly one zap-receipts interest"
     );
     assert_push_for(&cmds[0], &pubkey);
 }
 
 fn assert_push_for(cmd: &ActorCommand, pubkey: &str) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::PushInterest(interest)) => {
+        ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) => {
+            assert_eq!(
+                identity,
+                &self_zap_receipts_identity(),
+                "ensured interest must use the active zap-receipts owner"
+            );
             assert_eq!(
                 interest.id,
                 self_zap_receipts_interest(pubkey).id,
-                "pushed interest must be the active-pubkey zap-receipts interest"
+                "ensured interest must be the active-pubkey zap-receipts interest"
             );
         }
-        other => panic!("expected PushInterest, got {other:?}"),
+        other => panic!("expected EnsureInterest, got {other:?}"),
     }
 }
 
 fn assert_withdraw(cmd: &ActorCommand) {
     match cmd {
-        ActorCommand::Interests(InterestsCommand::WithdrawInterest(id)) => {
+        ActorCommand::Interests(InterestsCommand::DropInterestOwner(identity)) => {
             assert_eq!(
-                *id,
-                self_zap_receipts_interest_id(),
-                "withdraw must target the pubkey-invariant zap-receipts interest id"
+                identity,
+                &self_zap_receipts_identity(),
+                "drop must target the active zap-receipts owner"
             );
         }
-        other => panic!("expected WithdrawInterest, got {other:?}"),
+        other => panic!("expected DropInterestOwner, got {other:?}"),
     }
 }

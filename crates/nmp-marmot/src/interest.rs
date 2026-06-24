@@ -11,8 +11,9 @@
 //!
 //! The raw-event tap then drives accepted signed events into `MarmotService`.
 
-use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
+use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_planner::stable_hash::stable_hash64;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 // Kind integers from the canonical Layer-0 registry (`nmp-kinds`, reached via
 // nmp-nip59 / nmp-core). KIND_GIFT_WRAP = 1059; the Marmot key-package,
 // group-message, and welcome kinds were previously re-declared as literals in
@@ -26,7 +27,9 @@ use nmp_planner::stable_hash::stable_hash64;
 // KIND_MARMOT_KEY_PACKAGE_LEGACY (kind:443) is intentionally NOT re-exported:
 // the legacy dual-publish was retired 2026-05-31; nmp-marmot now only
 // publishes/subscribes kind:30443.
-pub use nmp_core::kinds::{KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_WELCOME};
+pub use nmp_core::kinds::{
+    KIND_MARMOT_GROUP_MESSAGE, KIND_MARMOT_KEY_PACKAGE, KIND_MARMOT_WELCOME,
+};
 pub use nmp_nip59::KIND_GIFT_WRAP;
 
 /// Stable, deterministic `InterestId` for a pubkey's gift-wrap inbox
@@ -77,6 +80,16 @@ pub fn giftwrap_inbox_interest(pubkey: &str) -> LogicalInterest {
     )
 }
 
+/// Scoped registry identity for a Marmot gift-wrap inbox subscription.
+#[must_use]
+pub fn giftwrap_inbox_identity(pubkey: &str) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new(("marmot.giftwrap", pubkey)),
+        SubKey::new(("marmot.giftwrap", pubkey)),
+        SubScope::Account(pubkey.to_string()),
+    )
+}
+
 /// Tailing author-scoped KeyPackage lookup for invite flows.
 ///
 /// KeyPackage events are addressable replaceable events published to the
@@ -99,6 +112,26 @@ pub fn key_package_lookup_interest(pubkey: &str) -> LogicalInterest {
     )
 }
 
+/// Scoped registry identity for a peer KeyPackage lookup subscription.
+#[must_use]
+pub fn key_package_lookup_identity(pubkey: &str) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new(("marmot.key_package_lookup", pubkey)),
+        SubKey::new(("marmot.key_package_lookup", pubkey)),
+        SubScope::Global,
+    )
+}
+
+/// Scoped registry identity for one relay-pinned group-message subscription.
+#[must_use]
+pub fn group_message_identity(group_id_hex: &str, relay_url: &str) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new(("marmot.group_messages", group_id_hex, relay_url)),
+        SubKey::new(("marmot.group_messages", group_id_hex, relay_url)),
+        SubScope::Global,
+    )
+}
+
 /// Relay-pinned tailing interests for group kind:445 traffic.
 ///
 /// Marmot group traffic is bound to the group relays, not author outboxes. Each
@@ -109,10 +142,22 @@ pub fn group_message_interests(
     group_id_hex: &str,
     relays: impl IntoIterator<Item = String>,
 ) -> Vec<LogicalInterest> {
+    group_message_registrations(group_id_hex, relays)
+        .into_iter()
+        .map(|(_, interest)| interest)
+        .collect()
+}
+
+/// Relay-pinned group subscriptions paired with their scoped identities.
+pub fn group_message_registrations(
+    group_id_hex: &str,
+    relays: impl IntoIterator<Item = String>,
+) -> Vec<(SubIdentity, LogicalInterest)> {
     relays
         .into_iter()
         .map(|relay_url| {
-            nmp_core::substrate::ViewDependencies {
+            let identity = group_message_identity(group_id_hex, &relay_url);
+            let interest = nmp_core::substrate::ViewDependencies {
                 kinds: vec![KIND_MARMOT_GROUP_MESSAGE],
                 relay_pin: Some(relay_url.clone()),
                 limit: Some(200),
@@ -122,7 +167,8 @@ pub fn group_message_interests(
                 group_message_interest_id(group_id_hex, &relay_url),
                 InterestScope::Global,
                 InterestLifecycle::Tailing,
-            )
+            );
+            (identity, interest)
         })
         .collect()
 }
@@ -173,7 +219,11 @@ mod tests {
         assert!(i.shape.authors.contains("peerpubkey"));
         assert!(i.shape.kinds.contains(&KIND_MARMOT_KEY_PACKAGE));
         // Legacy kind:443 is retired — must NOT appear in lookup interests.
-        assert_eq!(i.shape.kinds.len(), 1, "only kind:30443, no legacy kind:443");
+        assert_eq!(
+            i.shape.kinds.len(),
+            1,
+            "only kind:30443, no legacy kind:443"
+        );
         assert_eq!(i.shape.limit, Some(4));
         assert!(i.shape.relay_pin.is_none());
         assert!(matches!(i.lifecycle, InterestLifecycle::Tailing));

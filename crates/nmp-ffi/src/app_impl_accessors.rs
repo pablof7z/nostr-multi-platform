@@ -4,7 +4,7 @@
 //!
 //! Covers: `register_event_observer`, `unregister_event_observer`,
 //! `event_observers_slot`, `swap_singleton_event_observer`,
-//! `push_interest`, `dispatch_capability`, `mls_local_nsec`,
+//! `ensure_interest`, `dispatch_capability`, `mls_local_nsec`,
 //! `active_local_keys`, `active_account_handle`,
 //! `register_identity_change_observer`, `event_store_handle`,
 //! `pull_cursor_registry_handle`, `event_observers_handle`,
@@ -18,13 +18,15 @@ use std::sync::Arc;
 use nmp_core::__ffi_internal::{
     dispatch_capability, register_rust_observer, unregister_observer, KernelEventObserverSlot,
 };
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::{
+    IdentityCommand, InterestsCommand, PublishCommand, RefsCommand, RelayCommand, SignCommand,
+};
 use nmp_core::slots::{
     event_by_id_from_store, ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot,
     PullCursorRegistryHandleSlot,
 };
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{IdentityCommand, InterestsCommand, PublishCommand, RefsCommand, RelayCommand, SignCommand};
 use zeroize::Zeroizing;
 
 use crate::app_struct::NmpApp;
@@ -75,10 +77,16 @@ impl NmpApp {
         prev
     }
 
-    /// Push a `LogicalInterest` into the subscription registry and schedule a
-    /// recompile. Idempotent: same `InterestId` replaces the prior entry.
-    pub fn push_interest(&self, interest: nmp_planner::LogicalInterest) {
-        self.send_cmd(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
+    /// Attach one scoped owner to a `LogicalInterest`.
+    pub fn ensure_interest(
+        &self,
+        identity: nmp_core::subs::SubIdentity,
+        interest: nmp_planner::LogicalInterest,
+    ) {
+        self.send_cmd(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity,
+            interest,
+        }));
     }
 
     /// Route a typed capability request through the registered native
@@ -196,7 +204,9 @@ impl NmpApp {
 
     /// Remove an identity through the actor-owned identity reducer.
     pub fn remove_account(&self, identity_id: String) {
-        self.send_cmd(ActorCommand::Identity(IdentityCommand::RemoveAccount { identity_id }));
+        self.send_cmd(ActorCommand::Identity(IdentityCommand::RemoveAccount {
+            identity_id,
+        }));
     }
 
     /// Sign an event draft and park the result in `signed_events`.
@@ -235,7 +245,9 @@ impl NmpApp {
 
     /// Switch the active account. Typed wrapper for [`ActorCommand::SwitchActive`].
     pub(crate) fn switch_active(&self, identity_id: String) {
-        self.send_cmd(ActorCommand::Identity(IdentityCommand::SwitchActive { identity_id }));
+        self.send_cmd(ActorCommand::Identity(IdentityCommand::SwitchActive {
+            identity_id,
+        }));
     }
 
     /// Add a relay to the active account's relay list.
@@ -253,13 +265,17 @@ impl NmpApp {
     /// Retry a failed publish, addressed by its handle.
     /// Typed wrapper for [`ActorCommand::RetryPublish`].
     pub(crate) fn retry_publish(&self, handle: String) {
-        self.send_cmd(ActorCommand::Publish(PublishCommand::RetryPublish { handle }));
+        self.send_cmd(ActorCommand::Publish(PublishCommand::RetryPublish {
+            handle,
+        }));
     }
 
     /// Cancel an in-flight operation by its `correlation_id`.
     /// Typed wrapper for [`ActorCommand::CancelPublish`].
     pub(crate) fn cancel_publish(&self, correlation_id: String) {
-        self.send_cmd(ActorCommand::Publish(PublishCommand::CancelPublish { correlation_id }));
+        self.send_cmd(ActorCommand::Publish(PublishCommand::CancelPublish {
+            correlation_id,
+        }));
     }
 
     /// Resolve a ref (profile or event) in the kernel's ref resolver.

@@ -64,17 +64,54 @@ mod tests {
         };
         {
             use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-            use crate::subs::SubIdentity;
             let t = RegistryWriteToken::for_test();
-            let identity = SubIdentity::from_legacy_interest(&interest);
-            kernel
-                .lifecycle_mut()
-                .registry_mut()
-                .apply(&t, InterestWrite::Replace, identity, interest);
+            let identity = crate::subs::test_identity_for_interest(
+                ("scoped-test-interest", interest.id.0),
+                &interest,
+            );
+            let _ = kernel.lifecycle_mut().registry_mut().apply(
+                &t,
+                InterestWrite::Replace,
+                identity,
+                interest,
+            );
         }
         kernel
             .lifecycle_mut()
             .set_selection_budget(usize::MAX, usize::MAX);
+    }
+
+    fn register_phase2_claim(
+        kernel: &mut Kernel,
+        primary_id: &str,
+        author: &str,
+        hints: Vec<String>,
+        started_at: Instant,
+    ) {
+        let shape = InterestShape {
+            event_ids: std::iter::once(primary_id.to_string()).collect(),
+            limit: Some(1),
+            ..Default::default()
+        };
+        let (_, interest_id, identity, interest) =
+            kernel
+                .oneshot
+                .prepare(InterestScope::Global, shape, Vec::new());
+        kernel.register_interest(
+            &[crate::kernel::cache_serve::InterestRegistration {
+                identity,
+                interest,
+                policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
+            }],
+            "claim-expansion-tick-test",
+        );
+        kernel.register_claim_expansion(
+            primary_id.to_string(),
+            Some(interest_id),
+            Some(author.to_string()),
+            hints,
+            started_at,
+        );
     }
 
     // ── Test 1 — no pending claims is a D8 zero-cost no-op ───────────────────
@@ -116,10 +153,10 @@ mod tests {
 
         // Register a claim started 2 000 ms ago — past the 1 500 ms Phase-1 budget.
         let started_at = Instant::now() - Duration::from_millis(PHASE_1_BUDGET_MS + 500);
-        kernel.register_claim_expansion(
-            primary_id.clone(),
-            None,
-            Some(author.clone()),
+        register_phase2_claim(
+            &mut kernel,
+            &primary_id,
+            &author,
             vec!["wss://w6-test-relay.example/".to_string()],
             started_at,
         );
@@ -171,10 +208,10 @@ mod tests {
 
         // Register a claim past the Phase-1 budget with a hint.
         let started_at = Instant::now() - Duration::from_millis(PHASE_1_BUDGET_MS + 500);
-        kernel.register_claim_expansion(
-            primary_id.clone(),
-            None,
-            Some(author.clone()),
+        register_phase2_claim(
+            &mut kernel,
+            &primary_id,
+            &author,
             vec!["wss://w6-hint-relay.example/".to_string()],
             started_at,
         );

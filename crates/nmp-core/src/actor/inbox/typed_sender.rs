@@ -16,18 +16,23 @@ use crate::actor::{
 };
 
 impl CommandSender {
-    /// Push a [`crate::planner::LogicalInterest`] into the subscription registry.
-    pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
-        let _ = self.send(ActorCommand::Interests(InterestsCommand::PushInterest(
+    /// Attach one scoped owner to a [`crate::planner::LogicalInterest`].
+    pub fn ensure_interest(
+        &self,
+        identity: crate::subs::SubIdentity,
+        interest: crate::planner::LogicalInterest,
+    ) {
+        let _ = self.send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity,
             interest,
-        )));
+        }));
     }
 
-    /// Withdraw a previously-pushed interest by id.
-    pub fn withdraw_interest(&self, id: crate::planner::InterestId) {
-        let _ = self.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
-            id,
-        )));
+    /// Detach one scoped owner from the subscription registry.
+    pub fn drop_interest_owner(&self, identity: crate::subs::SubIdentity) {
+        let _ = self.send(ActorCommand::Interests(
+            InterestsCommand::DropInterestOwner(identity),
+        ));
     }
 
     /// Mark the kernel dirty so snapshot projections re-emit next tick.

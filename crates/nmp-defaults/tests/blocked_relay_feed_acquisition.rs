@@ -91,7 +91,7 @@ fn kind10006_parser_update_closes_blocked_feed_acquisition_relay() {
     let mailbox = mailbox_cache();
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.set_indexer_relays(Vec::new());
-    lifecycle.register_for_test(feed_interest());
+    nmp_core::subs::replace_test_interest(&mut lifecycle, feed_interest());
 
     let initially_open = lifecycle
         .recompile_and_diff_with_blocked(&mailbox, None, &blocked_cache.blocked_relays(ACTIVE))
@@ -131,7 +131,7 @@ fn kind10006_blocked_relay_is_absent_from_first_feed_req() {
     let mailbox = mailbox_cache();
     let mut lifecycle = SubscriptionLifecycle::new();
     lifecycle.set_indexer_relays(Vec::new());
-    lifecycle.register_for_test(feed_interest());
+    nmp_core::subs::replace_test_interest(&mut lifecycle, feed_interest());
 
     let frames = lifecycle
         .recompile_and_diff_with_blocked(&mailbox, None, &blocked_cache.blocked_relays(ACTIVE))

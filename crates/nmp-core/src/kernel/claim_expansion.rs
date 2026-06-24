@@ -27,10 +27,10 @@
 //!
 //! # §8.2 — Phase 2 via hints, not per-candidate interests
 //!
-//! Phase 2 mutates the existing `LogicalInterest`'s `hints` vec (re-pushed
-//! via `registry.push()`) rather than creating new interests per candidate.
-//! This keeps `oneshot.in_flight()` at 1/claim and avoids contending with
-//! `MAX_DISCOVERY_CONCURRENCY`.
+//! Phase 2 mutates the existing `LogicalInterest`'s `hints` vec through the
+//! unified registration front door rather than creating new interests per
+//! candidate. This keeps `oneshot.in_flight()` at 1/claim and avoids contending
+//! with `MAX_DISCOVERY_CONCURRENCY`.
 //!
 //! # §8.3 — Twin BTreeMaps
 //!
@@ -97,7 +97,7 @@ pub(crate) struct PendingClaim {
     /// author TLV; `None` for nevent without author TLV (§7.3).
     pub(crate) author: Option<String>,
     /// The interest shape — needed to rebuild the `LogicalInterest` when
-    /// pushing Phase-2 hints via `registry.push()`.
+    /// installing Phase-2 hints.
     pub(crate) shape: InterestShape,
     /// Wall-clock instant at which this claim was registered.
     pub(crate) started_at: Instant,

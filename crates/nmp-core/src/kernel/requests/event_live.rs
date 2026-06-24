@@ -16,9 +16,14 @@ use crate::subs::{CompileTrigger, SubIdentity, SubKey, SubOwnerKey, SubScope};
 /// `primary_id`, so every `Live` consumer of the same coordinate dedups onto a
 /// single wire REQ (the event twin of `profile_claim_sub_key`). Used by both the
 /// per-consumer `release_event_claim_interest` and the unified
-/// `teardown_event_claim_key` (drop-by-key on terminal-miss, BLOCKING 1).
+/// `teardown_event_claim_key` cleanup path.
 fn event_claim_sub_key(primary_id: &str) -> SubKey {
     SubKey::new(("event-claim", primary_id))
+}
+
+fn event_claim_identity(primary_id: &str, consumer_id: &str) -> SubIdentity {
+    let owner = SubOwnerKey::new(("event-claim-owner", consumer_id));
+    SubIdentity::new(owner, event_claim_sub_key(primary_id), SubScope::Global)
 }
 
 impl Kernel {
@@ -39,8 +44,7 @@ impl Kernel {
         hints: Vec<RelayHint>,
     ) {
         let key = event_claim_sub_key(primary_id);
-        let owner = SubOwnerKey::new(("event-claim-owner", consumer_id));
-        let identity = SubIdentity::new(owner, key, SubScope::Global);
+        let identity = event_claim_identity(primary_id, consumer_id);
 
         // Tailing wins: track THIS consumer's live owner per-coordinate so the
         // slot's owner is detached on each live release (BLOCKING 1). The slot
@@ -98,9 +102,7 @@ impl Kernel {
             }
             None => return, // coordinate never had a Live claim
         };
-        let key = event_claim_sub_key(primary_id);
-        let owner = SubOwnerKey::new(("event-claim-owner", consumer_id));
-        let identity = SubIdentity::new(owner, key, SubScope::Global);
+        let identity = event_claim_identity(primary_id, consumer_id);
         let slot_removed = self.lifecycle.registry_mut().drop_owner(&identity);
         if last_live_owner {
             // Last live owner gone: drop the per-coordinate live-owner record so a
@@ -134,11 +136,6 @@ impl Kernel {
         else {
             return;
         };
-        // Drop the registry slot (any scope) so the planner emits the CLOSE and no
-        // second REQ is compiled for this key.
-        self.lifecycle
-            .registry_mut()
-            .drop_slot_by_key(SubKey(interest_id.0));
         // Release the OneshotApi token bookkeeping (else it lingers until EOSE).
         if let Some(token) = self.pending_discovery_oneshots.remove(&interest_id) {
             let registry = self.lifecycle.registry_mut();
@@ -316,10 +313,11 @@ impl Kernel {
         // BLOCKING 1 — drop the `Live` tailing slot for ANY remaining live owners
         // (the terminal-miss path never ran per-consumer releases, so there may be
         // several). Idempotent when the per-consumer release already cleared it.
-        if self.live_event_claims.remove(primary_id).is_some() {
-            self.lifecycle
-                .registry_mut()
-                .drop_slot_by_key(event_claim_sub_key(primary_id));
+        if let Some(owners) = self.live_event_claims.remove(primary_id) {
+            for consumer_id in owners {
+                let identity = event_claim_identity(primary_id, &consumer_id);
+                let _ = self.lifecycle.registry_mut().drop_owner(&identity);
+            }
             self.lifecycle
                 .enqueue_trigger(crate::subs::CompileTrigger::ViewOpened {
                     interest_ids: Vec::new(),

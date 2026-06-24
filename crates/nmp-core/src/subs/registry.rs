@@ -37,7 +37,7 @@
 use std::collections::BTreeMap;
 
 use crate::kernel::cache_serve::{InterestWrite, RegistrationOutcome, RegistryWriteToken};
-use crate::planner::{InterestId, LogicalInterest};
+use crate::planner::LogicalInterest;
 use crate::subs::sub_key::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 /// One `(scope, key)` slot: the single live interest plus the set of owners
@@ -161,34 +161,6 @@ impl InterestRegistry {
         }
     }
 
-    /// Remove the slot with the given `SubKey` under ANY scope. Used for
-    /// legacy withdraw-by-id (the `ActorCommand::WithdrawInterest` path) where
-    /// only the key is known, not the scope.
-    ///
-    /// Un-registration is intentionally un-sealed (removing a sub is always
-    /// safe — the worst outcome is a missed REQ that the planner would re-emit
-    /// on the next recompile).
-    pub(crate) fn drop_slot_by_key(&mut self, key: SubKey) {
-        self.slots.retain(|(_, k), _| *k != key);
-    }
-
-    // ─── Legacy bridge helper (key derivation only) ───────────────────────────
-
-    /// The `SubKey` minted for interests registered via the legacy `push`
-    /// path (`InterestId` → `SubKey` bridge).
-    ///
-    /// `pub(crate)` (ADR-0045 E1 review item 8): the cache-serve completion
-    /// key for `push`-registered follow-feed interests must be derived from
-    /// the SAME key the registry mints — a hand-copied derivation at the
-    /// serve site would silently diverge if this ever changes (single source
-    /// of truth; the R2.1 single-mechanism correction cuts both ways).
-    ///
-    /// Used by the `ActorCommand::WithdrawInterest` arm to reconstruct the
-    /// key to drop from an `InterestId`.
-    pub(crate) fn legacy_key(id: &InterestId) -> SubKey {
-        SubKey::builder("planner-interest-id").with(id.0).finish()
-    }
-
     // ─── Read-only surface ────────────────────────────────────────────────────
 
     /// Snapshot of all active interests, deterministically ordered by
@@ -245,7 +217,7 @@ impl InterestRegistry {
 mod tests {
     use super::*;
     use crate::kernel::cache_serve::RegistryWriteToken;
-    use crate::planner::{InterestLifecycle, InterestScope, InterestShape};
+    use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape};
 
     fn token() -> RegistryWriteToken {
         RegistryWriteToken::for_test()
@@ -273,22 +245,22 @@ mod tests {
         SubIdentity::new(SubOwnerKey::new("test-owner"), key, SubScope::Global)
     }
 
-    fn planner_identity(interest: &LogicalInterest) -> SubIdentity {
-        SubIdentity::new(
-            SubOwnerKey::new("planner-owned"),
-            InterestRegistry::legacy_key(&interest.id),
-            SubScope::Global,
-        )
-    }
-
-    // ── Legacy surface (now via apply) ───────────────────────────────────────
-
     #[test]
     fn replace_then_iter_active_returns_inserted() {
         let mut r = InterestRegistry::new();
         let t = token();
-        r.apply(&t, InterestWrite::Replace, planner_identity(&fixture(1)), fixture(1));
-        r.apply(&t, InterestWrite::Replace, planner_identity(&fixture(2)), fixture(2));
+        let _ = r.apply(
+            &t,
+            InterestWrite::Replace,
+            global_identity(SubKey::new("replace-slot-1")),
+            fixture(1),
+        );
+        let _ = r.apply(
+            &t,
+            InterestWrite::Replace,
+            global_identity(SubKey::new("replace-slot-2")),
+            fixture(2),
+        );
         let active = r.iter_active();
         assert_eq!(active.len(), 2);
         let ids: std::collections::BTreeSet<u64> = active.iter().map(|i| i.id.0).collect();
@@ -299,10 +271,11 @@ mod tests {
     fn replace_with_same_id_replaces() {
         let mut r = InterestRegistry::new();
         let t = token();
-        r.apply(&t, InterestWrite::Replace, planner_identity(&fixture(1)), fixture(1));
+        let identity = global_identity(SubKey::new("replace-slot"));
+        let _ = r.apply(&t, InterestWrite::Replace, identity.clone(), fixture(1));
         let mut updated = fixture(1);
         updated.lifecycle = InterestLifecycle::OneShot;
-        let reg = r.apply(&t, InterestWrite::Replace, planner_identity(&updated), updated);
+        let reg = r.apply(&t, InterestWrite::Replace, identity, updated);
         assert_eq!(r.len(), 1);
         assert!(matches!(
             r.iter_active()[0].lifecycle,
@@ -310,17 +283,6 @@ mod tests {
         ));
         // Shape unchanged, lifecycle changed → plan-relevant → changed == true.
         assert!(reg.changed);
-    }
-
-    #[test]
-    fn drop_slot_by_key_removes() {
-        let mut r = InterestRegistry::new();
-        let t = token();
-        let interest = fixture(1);
-        let key = InterestRegistry::legacy_key(&interest.id);
-        r.apply(&t, InterestWrite::Replace, planner_identity(&interest), interest);
-        r.drop_slot_by_key(key);
-        assert!(r.is_empty());
     }
 
     // ── (owner, key, scope) triple ───────────────────────────────────────────
@@ -361,11 +323,11 @@ mod tests {
 
         let mut v1 = fixture(1);
         v1.lifecycle = InterestLifecycle::Tailing;
-        r.apply(&t, InterestWrite::Replace, id.clone(), v1);
+        let _ = r.apply(&t, InterestWrite::Replace, id.clone(), v1);
 
         let mut v2 = fixture(1);
         v2.lifecycle = InterestLifecycle::OneShot;
-        r.apply(&t, InterestWrite::Replace, id, v2);
+        let _ = r.apply(&t, InterestWrite::Replace, id, v2);
 
         assert_eq!(r.len(), 1);
         assert!(matches!(
@@ -387,13 +349,13 @@ mod tests {
         );
         let glob = SubIdentity::new(SubOwnerKey::new("v1"), key, SubScope::Global);
 
-        r.apply(
+        let _ = r.apply(
             &t,
             InterestWrite::EnsureAbsent,
             acct,
             scoped_fixture(1, InterestScope::Account("alice".into())),
         );
-        r.apply(
+        let _ = r.apply(
             &t,
             InterestWrite::EnsureAbsent,
             glob,
@@ -419,7 +381,10 @@ mod tests {
         let r1 = r.apply(&t, InterestWrite::EnsureAbsent, o1.clone(), fixture(1));
         assert!(r1.newly_installed);
         let r2 = r.apply(&t, InterestWrite::EnsureAbsent, o2.clone(), fixture(1));
-        assert!(!r2.newly_installed, "second owner attaches, does not re-install");
+        assert!(
+            !r2.newly_installed,
+            "second owner attaches, does not re-install"
+        );
 
         // Dedup: one logical interest despite two owners.
         assert_eq!(r.iter_active().len(), 1);
@@ -455,7 +420,7 @@ mod tests {
         let id = global_identity(key);
         let interest = fixture(42);
 
-        r.apply(&t, InterestWrite::Replace, id.clone(), interest.clone());
+        let _ = r.apply(&t, InterestWrite::Replace, id.clone(), interest.clone());
         // Second Replace with identical interest: shape/lifecycle/hints all same.
         let reg = r.apply(&t, InterestWrite::Replace, id, interest);
         assert!(!reg.changed, "identical replace must not flag changed");

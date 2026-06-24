@@ -4,7 +4,7 @@
 //! the kind:10003 observer and read-modify-write state backing the default
 //! add/remove bookmark actions. It also owns a [`BookmarksRuntimeController`]
 //! registered via the generic **per-tick observer** seam
-//! (`register_snapshot_tick_observer`) that pushes / withdraws the
+//! (`register_snapshot_tick_observer`) that ensures / drops the
 //! active-account kind:10003 `authors=[pubkey]` subscription on sign-in /
 //! account switch / sign-out — mirroring the `ZapReceiptsRuntimeController`
 //! pattern in `runtimes.rs`.
@@ -18,14 +18,14 @@
 
 use std::sync::{Arc, Mutex};
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{
     ActionRegistrar, EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar,
 };
-use nmp_core::{KernelEventObserver};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{InterestsCommand};
+use nmp_core::KernelEventObserver;
 use nmp_nip51::{
-    active_bookmark_list_interest, active_bookmark_list_interest_id, BookmarkListProjection,
+    active_bookmark_list_identity, active_bookmark_list_interest, BookmarkListProjection,
 };
 
 /// Wire active-account kind:10003 bookmark projection and safe write actions,
@@ -38,8 +38,8 @@ use nmp_nip51::{
 /// 3. Registers the add/remove bookmark action modules (read-modify-write
 ///    against the same projection).
 /// 4. Creates a [`BookmarksRuntimeController`] and registers it as a per-tick
-///    observer — it pushes the `active_bookmark_list_interest` on sign-in,
-///    withdraws-then-pushes on account switch, and withdraws on logout.
+///    observer — it ensures the `active_bookmark_list_interest` on sign-in,
+///    drops-then-ensures on account switch, and drops on logout.
 pub fn register_bookmark_runtime(
     app: &mut (impl ActionRegistrar
               + EventObserverRegistrar
@@ -89,7 +89,7 @@ pub(crate) struct BookmarksRuntimeController {
 impl BookmarksRuntimeController {
     /// Reconcile the active-account bookmark-list interest once per snapshot
     /// tick. Produces no snapshot data — it only diffs the active pubkey
-    /// against the last-pushed one and enqueues Push/Withdraw on change (D8:
+    /// against the last-pushed one and enqueues scoped interest commands on change (D8:
     /// enqueue-only, non-blocking).
     pub(crate) fn tick(&self) {
         let active = self.active_pubkey();
@@ -108,28 +108,30 @@ impl BookmarksRuntimeController {
             (Some(now), None) => {
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_bookmark_list_interest(
-                        now,
-                    ))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity: active_bookmark_list_identity(),
+                        interest: active_bookmark_list_interest(now),
+                    }));
                 *last = Some(now.to_string());
             }
-            // Account switch: withdraw old (by pubkey-invariant id), push new.
+            // Account switch: drop old scoped owner, then ensure new shape.
             (Some(now), Some(_prev)) => {
-                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
-                    active_bookmark_list_interest_id(),
-                )));
+                let _ = self.tx.send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(active_bookmark_list_identity()),
+                ));
                 let _ = self
                     .tx
-                    .send(ActorCommand::Interests(InterestsCommand::PushInterest(active_bookmark_list_interest(
-                        now,
-                    ))));
+                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+                        identity: active_bookmark_list_identity(),
+                        interest: active_bookmark_list_interest(now),
+                    }));
                 *last = Some(now.to_string());
             }
-            // Logout: withdraw standing interest, clear slot.
+            // Logout: drop standing owner, clear slot.
             (None, Some(_)) => {
-                let _ = self.tx.send(ActorCommand::Interests(InterestsCommand::WithdrawInterest(
-                    active_bookmark_list_interest_id(),
-                )));
+                let _ = self.tx.send(ActorCommand::Interests(
+                    InterestsCommand::DropInterestOwner(active_bookmark_list_identity()),
+                ));
                 *last = None;
             }
             // Cold start before sign-in: nothing to do.

@@ -13,7 +13,7 @@ impl NmpApp {
     /// ADR-0053 — declare (union into) the static set of Tier-2 built-in
     /// projection keys this host consumes (the narrowing path).
     ///
-    /// The output-side sibling of relay `push_interest`: the kernel serializes a
+    /// The output-side sibling of relay interest installs: the kernel serializes a
     /// kernel-owned built-in into each snapshot only if its key is declared. A
     /// non-empty set narrows to its members, skipping the producer work (notably
     /// the `relay_diagnostics` roll-up) for everything else. Additive, `&self`

@@ -6,13 +6,12 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
+use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::ViewDependencies;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 
 use crate::group_id::GroupId;
-use crate::kinds::{
-    KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS, KIND_GROUP_METADATA, KIND_GROUP_ROLES,
-};
+use crate::kinds::{KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS, KIND_GROUP_METADATA, KIND_GROUP_ROLES};
 
 /// Build a tailing host-pinned interest for the live group surface (chat /
 /// discussions / etc.) — caller supplies the `kinds` they care about and any
@@ -70,7 +69,7 @@ pub fn metadata_interest(id: u64, group: &GroupId) -> LogicalInterest {
 /// the relay hosts surfaces.
 ///
 /// This is the read-side companion to the `nmp.nip29.discover` action: the
-/// action enqueues this interest via `ActorCommand::PushInterest`, the relay
+/// action enqueues this interest via `InterestsCommand::EnsureInterest`, the relay
 /// streams its metadata catalog back, and the `DiscoveredGroupsProjection`
 /// (a `KernelEventObserver`) accumulates it into a flat list.
 ///
@@ -84,15 +83,21 @@ pub fn relay_discovery_interest(host_relay_url: &str) -> LogicalInterest {
         host_relay_url,
     )));
     ViewDependencies {
-        kinds: vec![
-            KIND_GROUP_METADATA,
-            KIND_GROUP_ADMINS,
-            KIND_GROUP_MEMBERS,
-        ],
+        kinds: vec![KIND_GROUP_METADATA, KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS],
         relay_pin: Some(host_relay_url.to_string()),
         ..Default::default()
     }
     .into_logical_interest(id, InterestScope::Global, InterestLifecycle::Tailing)
+}
+
+/// Scoped registry identity for one relay's discovery catalog subscription.
+#[must_use]
+pub fn relay_discovery_identity(host_relay_url: &str) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new(("nip29.discover", host_relay_url)),
+        SubKey::new(("nip29.discover", host_relay_url)),
+        SubScope::Global,
+    )
 }
 
 /// Build a tailing interest for the `JoinedGroups` view: one per host relay in
@@ -139,7 +144,10 @@ mod tests {
             BTreeMap::new(),
             InterestLifecycle::Tailing,
         );
-        assert_eq!(i.shape.relay_pin.as_deref(), Some("wss://groups.example.com"));
+        assert_eq!(
+            i.shape.relay_pin.as_deref(),
+            Some("wss://groups.example.com")
+        );
         assert!(i.shape.tags.get("h").unwrap().contains("room-a"));
     }
 
@@ -171,11 +179,7 @@ mod tests {
             i.shape.relay_pin.as_deref(),
             Some("wss://groups.example.com")
         );
-        for k in [
-            KIND_GROUP_METADATA,
-            KIND_GROUP_ADMINS,
-            KIND_GROUP_MEMBERS,
-        ] {
+        for k in [KIND_GROUP_METADATA, KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS] {
             assert!(i.shape.kinds.contains(&k));
         }
         // No `d` tag filter — discovery is per-relay, not per-group.

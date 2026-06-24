@@ -6,7 +6,7 @@
 //!
 //! On sign-in the bookmark runtime (`BookmarksRuntimeController`, wired by
 //! `register_bookmark_runtime`) pushes a `Tailing` demand interest
-//! (`authors=[pubkey] / kinds=[10003]`). The kernel's `PushInterest` handler
+//! (`authors=[pubkey] / kinds=[10003]`). The kernel's `EnsureInterest` handler
 //! runs a **synchronous cache-serve drain** that replays any matching event
 //! ALREADY in the local store — but NOT yet in the kernel's RAM event cache —
 //! to the kernel-event observers. So a kind:10003 bookmark list persisted in a
@@ -75,7 +75,7 @@
 //! The MANUAL red-proof for "the demand-interest push itself regressed" is to
 //! neuter the `(Some(now), None)` sign-in arm of `BookmarksRuntimeController::tick`
 //! (crates/nmp-defaults/src/runtimes/bookmarks_runtime.rs) so it stops sending
-//! `PushInterest`; `signin_surfaces_stored_bookmark_via_cold_start_cache_serve`
+//! `EnsureInterest`; `signin_surfaces_stored_bookmark_via_cold_start_cache_serve`
 //! then fails with an empty snapshot. Verified RED during authoring; restored.
 
 use std::ffi::{c_void, CString};
@@ -242,11 +242,7 @@ impl BookmarkApp {
     /// tick, until `pred` holds against the bookmarked ids or the deadline
     /// elapses. D8-compliant: re-reads ONLY on a genuine tick (a silent
     /// re-read on timeout would mask a dead reactive path).
-    fn bookmarks_when(
-        &self,
-        timeout: Duration,
-        pred: impl Fn(&[String]) -> bool,
-    ) -> Vec<String> {
+    fn bookmarks_when(&self, timeout: Duration, pred: impl Fn(&[String]) -> bool) -> Vec<String> {
         let mut last = self.bookmarked_event_ids();
         if pred(&last) {
             return last;
@@ -254,7 +250,10 @@ impl BookmarkApp {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
             let remaining = deadline.saturating_duration_since(Instant::now());
-            match self.ticks.recv_timeout(remaining.min(Duration::from_secs(1))) {
+            match self
+                .ticks
+                .recv_timeout(remaining.min(Duration::from_secs(1)))
+            {
                 Ok(()) => {
                     last = self.bookmarked_event_ids();
                     if pred(&last) {
@@ -331,7 +330,7 @@ fn signin_surfaces_stored_bookmark_via_cold_start_cache_serve() {
     //
     // This is the ONLY trigger. There is no relay, so the only way the stored
     // kind:10003 can reach the projection is the cache-serve drain that fires
-    // synchronously inside the kernel's PushInterest handler.
+    // synchronously inside the kernel's EnsureInterest handler.
     app.sign_in(ACCOUNT_NSEC);
 
     // ── Phase 3: assert the projection now carries the stored bookmark ───────
@@ -345,7 +344,7 @@ fn signin_surfaces_stored_bookmark_via_cold_start_cache_serve() {
          the demand-interest cache-serve drain — WITHOUT any relay delivery. \
          Empty/missing means the runtime did not push the demand interest, or \
          the observer-before-push ordering broke, or the cache-serve drain no \
-         longer fires synchronously on PushInterest. \
+         longer fires synchronously on EnsureInterest. \
          account={account_hex}, snapshot bookmark ids={after_signin:?}"
     );
 }

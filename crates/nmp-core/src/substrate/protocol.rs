@@ -317,9 +317,7 @@ impl<'a> ProtocolCommandContext<'a> {
     /// falls back to `None` (the genuinely-absent-handler
     /// branch) rather than unwinding the calling `ProtocolCommand::run` frame.
     #[must_use]
-    pub fn host_op_handler(
-        &self,
-    ) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
+    pub fn host_op_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {
         let h = self.host_op_handler;
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.current_handler()))
             .unwrap_or(None)
@@ -490,27 +488,44 @@ impl<'a> ProtocolCommandContext<'a> {
         correlation_id: Option<String>,
         signer_pubkey: Option<String>,
     ) {
-        self.send(ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
+        self.send(ActorCommand::Publish(
+            PublishCommand::UnsignedEventToRelays {
             event,
             relays,
             correlation_id,
             signer_pubkey,
-        }));
+            },
+        ));
     }
 
     /// Record a terminal `Accepted` stage (`ActorCommand::RecordActionSuccess`).
     /// `result_json` is the optional Decision-4 structured return payload.
     pub fn record_action_success(&self, correlation_id: String, result_json: Option<String>) {
-        self.send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
+        self.send(ActorCommand::ActionLedger(
+            ActionLedgerCommand::RecordSuccess {
             correlation_id,
             result_json,
+            },
+        ));
+    }
+
+    /// Attach one scoped owner to a [`LogicalInterest`](crate::planner::LogicalInterest).
+    pub fn ensure_interest(
+        &self,
+        identity: crate::subs::SubIdentity,
+        interest: crate::planner::LogicalInterest,
+    ) {
+        self.send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity,
+            interest,
         }));
     }
 
-    /// Push a [`LogicalInterest`](crate::planner::LogicalInterest) via
-    /// `ActorCommand::PushInterest`. Re-push with the same id is idempotent.
-    pub fn push_interest(&self, interest: crate::planner::LogicalInterest) {
-        self.send(ActorCommand::Interests(InterestsCommand::PushInterest(interest)));
+    /// Detach one scoped owner from the subscription registry.
+    pub fn drop_interest_owner(&self, identity: crate::subs::SubIdentity) {
+        self.send(ActorCommand::Interests(
+            InterestsCommand::DropInterestOwner(identity),
+        ));
     }
 }
 
@@ -529,8 +544,8 @@ pub trait ProtocolCommand: Send + fmt::Debug + 'static {
 #[path = "protocol/builders.rs"]
 mod builders;
 pub use builders::{
-    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
-    build_record_action_failure, build_record_action_success,
+    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_record_action_failure,
+    build_record_action_success, build_sign_event_for_account,
 };
 
 #[cfg(test)]

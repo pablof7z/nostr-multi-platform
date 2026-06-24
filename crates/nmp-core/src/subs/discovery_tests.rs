@@ -19,8 +19,9 @@ fn pubkey(s: &str) -> String {
 fn push_legacy(reg: &mut InterestRegistry, interest: LogicalInterest) {
     use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
     let t = RegistryWriteToken::for_test();
-    let identity = SubIdentity::from_legacy_interest(&interest);
-    reg.apply(&t, InterestWrite::Replace, identity, interest);
+    let identity =
+        crate::subs::test_identity_for_interest(("scoped-test-interest", interest.id.0), &interest);
+    let _ = reg.apply(&t, InterestWrite::Replace, identity, interest);
 }
 
 /// Single-author follow interest (kind:1 timeline).

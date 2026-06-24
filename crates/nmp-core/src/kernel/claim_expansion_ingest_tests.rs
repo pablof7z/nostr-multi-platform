@@ -338,7 +338,7 @@ mod production_ingest_tests {
     // ── T-P5: §8.2 oneshot.in_flight stays at 1 across phase transition ─────
 
     /// Verify that `oneshot.in_flight()` does NOT increase when a claim
-    /// advances from Phase 1 to Phase 2 (B2: no double-slot from registry.push).
+    /// advances from Phase 1 to Phase 2 (B2: no second owner).
     ///
     /// The §8.2 spec says Phase 2 must update hints on the EXISTING LogicalInterest,
     /// not create a new one.
@@ -393,9 +393,9 @@ mod production_ingest_tests {
 
         let oneshot_after = kernel.test_oneshot_in_flight();
         // §8.2: oneshot.in_flight must stay at 1 (B2 fix ensures no double-slot).
-        // If advance_to_phase2 calls registry.push() it creates a second slot
-        // but does NOT add a new OneshotToken — so in_flight stays 1. The real
-        // assertion is that iter_active() doesn't grow (checked via build sanity).
+        // If advance_to_phase2 installs a second owner, it still does NOT add a
+        // new OneshotToken — so in_flight stays 1. The real assertion is that
+        // iter_active() doesn't grow (checked via build sanity).
         // For the observable in_flight count: it stays 1.
         assert_eq!(
             oneshot_after, 1,

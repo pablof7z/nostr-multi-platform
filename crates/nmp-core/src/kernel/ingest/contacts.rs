@@ -5,7 +5,7 @@ use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
 use crate::stable_hash::stable_hash64;
-use crate::subs::{AccountId, CompileTrigger};
+use crate::subs::{AccountId, CompileTrigger, SubIdentity, SubKey, SubOwnerKey, SubScope};
 use std::collections::BTreeSet as BTreeSetInner;
 
 /// Deterministic `InterestId` for the SINGLE multi-author follow-feed interest,
@@ -32,6 +32,14 @@ fn follow_feed_interest_id(kinds: &BTreeSetInner<u32>) -> InterestId {
         "follow-feed-authors",
         kinds_sorted_string.as_str(),
     )))
+}
+
+fn follow_feed_identity(id: &InterestId) -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new("kernel.follow-feed"),
+        SubKey::builder("kernel.follow-feed").with(id.0).finish(),
+        SubScope::Global,
+    )
 }
 
 /// Build the SINGLE multi-author follow-feed `LogicalInterest` covering the
@@ -81,15 +89,18 @@ impl Kernel {
     /// After this call the planner's next `drain_tick` will compile the new
     /// interest set and emit the correct REQ/CLOSE diff via `drain_lifecycle_tick`.
     pub(crate) fn sync_follow_feed_interests(&mut self, follows: &[String]) {
-        // Withdraw the stale interest from the prior follow set / kinds.
-        // Use drop_slot_by_key (legacy-key bridge) to remove any scope
-        // the slot was registered under.
-        {
-            use crate::subs::InterestRegistry;
+        // Withdraw the stale interest from the prior follow set / kinds by
+        // dropping the follow-feed runtime's explicit scoped owner.
             let old_ids: Vec<InterestId> = self.follow_feed_interest_ids.iter().cloned().collect();
             for id in &old_ids {
-                let key = InterestRegistry::legacy_key(id);
-                self.lifecycle.registry_mut().drop_slot_by_key(key);
+            let identity = follow_feed_identity(id);
+            if self.lifecycle.registry_mut().drop_owner(&identity) {
+                self.lifecycle
+                    .enqueue_trigger(CompileTrigger::InvalidateCompile {
+                        reason: crate::subs::InvalidateReason::External(
+                            "follow-list-changed".to_string(),
+                        ),
+                    });
             }
         }
         self.follow_feed_interest_ids.clear();
@@ -137,9 +148,7 @@ impl Kernel {
         // `timeline_bound` flag is computed against the updated author set.
         self.timeline_authors = authors.into_iter().collect();
 
-        // Derive the legacy identity for this interest (single synthetic owner,
-        // planner-interest-id key) — matches what drop_slot_by_key used above.
-        let identity = crate::subs::SubIdentity::from_legacy_interest(&interest);
+        let identity = follow_feed_identity(&interest_id);
 
         // ADR-0045 E1 — unified front-door: register + serve in one call.
         // The collapsed shape maps to ONE `StoreQuery::AuthorsKind`, so a

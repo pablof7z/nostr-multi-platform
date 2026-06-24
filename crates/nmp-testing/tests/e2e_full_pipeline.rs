@@ -109,7 +109,9 @@ fn cold_open_profile_view_full_pipeline() {
     .expect("send PublishProfile");
 
     // Step 3: Force emit so we don't wait for the ticker.
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit))
+    tx.send(ActorCommand::Lifecycle(
+        LifecycleCommand::MarkChangedSinceEmit,
+    ))
         .expect("send MarkChangedSinceEmit");
 
     // Drain snapshots until the typed `profile` sidecar carries
@@ -145,7 +147,8 @@ fn cold_open_profile_view_full_pipeline() {
         last_profile
     );
 
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
+        .ok();
 }
 
 // ---------------------------------------------------------------------------
@@ -165,9 +168,11 @@ fn cold_open_profile_view_full_pipeline() {
 // rewiring.  The actor's update channel is opaque to outbound REQs.
 #[test]
 fn kind3_update_rewires_subscriptions() {
-    use nmp_planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
-        InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{AccountId, CompileTrigger, SubscriptionLifecycle, WireFrame};
+    use nmp_planner::{
+        InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
+        LogicalInterest, MailboxSnapshot,
+    };
     use std::collections::BTreeSet;
 
     fn pubkey(seed: &str) -> String {
@@ -202,7 +207,7 @@ fn kind3_update_rewires_subscriptions() {
     );
 
     // Register a tailing interest for alice.
-    lc.register_for_test(tailing_interest(1, &["alice"]));
+    nmp_core::subs::replace_test_interest(&mut lc, tailing_interest(1, &["alice"]));
 
     // Compile: alice's relay must receive a REQ.
     let frames1 = lc.recompile_and_diff(&mailboxes).expect("initial compile");
@@ -233,7 +238,7 @@ fn kind3_update_rewires_subscriptions() {
     );
 
     // Expand the interest to cover carol too (production view rebuild equivalent).
-    lc.register_for_test(tailing_interest(1, &["alice", "carol"]));
+    nmp_core::subs::replace_test_interest(&mut lc, tailing_interest(1, &["alice", "carol"]));
 
     // Fire the A11 FollowListChanged trigger — the canonical kind:3 rewire signal.
     lc.enqueue_trigger(CompileTrigger::FollowListChanged {
@@ -292,8 +297,8 @@ fn kind3_update_rewires_subscriptions() {
 #[test]
 fn publish_roundtrip_via_outbox() {
     use nmp_core::publish::{
-        InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishTarget,
-        RelayAck, RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
+        InMemoryPublishStore, NoopSigner, PublishAction, PublishEngine, PublishTarget, RelayAck,
+        RelayUrl, ReplayDispatcher, RetryPolicy, StaticOutbox,
     };
     use nmp_signer_iface::{SignedEvent, UnsignedEvent};
     use std::sync::Arc;
@@ -362,7 +367,11 @@ fn publish_roundtrip_via_outbox() {
 
     // Confirm the dispatched frames encode a kind:1 event.
     // Sent frames are `["EVENT", <signed-event-json>]` strings.
-    let all_text: String = sent.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join(" ");
+    let all_text: String = sent
+        .iter()
+        .map(|(_, t)| t.as_str())
+        .collect::<Vec<_>>()
+        .join(" ");
     assert!(
         all_text.contains("\"kind\":1"),
         "dispatched frame must encode kind:1; got excerpt: {}",
@@ -400,9 +409,11 @@ fn publish_roundtrip_via_outbox() {
 // This test pins the working, shipping coverage narrowing mechanism instead.
 #[test]
 fn negentropy_skips_redundant_req() {
-    use nmp_planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
-        InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{SubscriptionLifecycle, WireFrame};
+    use nmp_planner::{
+        InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
+        LogicalInterest, MailboxSnapshot,
+    };
     use std::collections::BTreeSet;
     use std::sync::Arc;
 
@@ -450,7 +461,7 @@ fn negentropy_skips_redundant_req() {
     warm_interest.shape.since = Some(1);
     let mut lc_warm = SubscriptionLifecycle::new();
     lc_warm.set_watermark_fn(Arc::new(|_shape, _relay: &str| Some(1700)));
-    lc_warm.register_for_test(warm_interest);
+    nmp_core::subs::replace_test_interest(&mut lc_warm, warm_interest);
     let frames_warm = lc_warm
         .recompile_and_diff(&mailboxes)
         .expect("warm compile");
@@ -470,7 +481,7 @@ fn negentropy_skips_redundant_req() {
     // Case 2: cold start (no watermark) → since=None stays None → REQ has no since field (full fetch).
     let mut lc_cold = SubscriptionLifecycle::new();
     lc_cold.set_watermark_fn(Arc::new(|_shape, _relay: &str| None));
-    lc_cold.register_for_test(alice_interest);
+    nmp_core::subs::replace_test_interest(&mut lc_cold, alice_interest);
     let frames_cold = lc_cold
         .recompile_and_diff(&mailboxes)
         .expect("cold compile");
@@ -507,9 +518,11 @@ fn negentropy_skips_redundant_req() {
 // BEFORE the compile so the `partition()` path captures the REQs.
 #[test]
 fn auth_required_for_read_flow() {
-    use nmp_planner::{InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope,
-        InterestShape, LogicalInterest, MailboxSnapshot};
     use nmp_core::subs::{RelayAuthState, SubscriptionLifecycle, WireFrame};
+    use nmp_planner::{
+        InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
+        LogicalInterest, MailboxSnapshot,
+    };
     use std::collections::BTreeSet;
 
     fn pubkey(seed: &str) -> String {
@@ -529,7 +542,9 @@ fn auth_required_for_read_flow() {
         },
     );
 
-    lc.register_for_test(LogicalInterest {
+    nmp_core::subs::replace_test_interest(
+        &mut lc,
+        LogicalInterest {
         id: InterestId(1),
         scope: InterestScope::Global,
         shape: InterestShape {
@@ -540,20 +555,21 @@ fn auth_required_for_read_flow() {
         hints: vec![],
         lifecycle: InterestLifecycle::Tailing,
         is_indexer_discovery: false,
-    });
+        },
+    );
 
     // Phase 1: AUTH challenge arrives BEFORE the first compile.
     // This puts the relay into the paused state so recompile_and_diff routes
     // the produced REQs through the auth-gate partition path.
-    let _pre = lc.handle_auth_state_change(
-        relay_url.to_string(),
-        RelayAuthState::ChallengeReceived,
-    );
+    let _pre =
+        lc.handle_auth_state_change(relay_url.to_string(), RelayAuthState::ChallengeReceived);
 
     // Phase 2: Compile while auth-paused.
     // REQs targeting the paused relay must be captured in the pending buffer,
     // not returned to the caller (zero wire frames for this relay).
-    let frames_paused = lc.recompile_and_diff(&mailboxes).expect("auth-paused compile");
+    let frames_paused = lc
+        .recompile_and_diff(&mailboxes)
+        .expect("auth-paused compile");
     let reqs_to_paused: Vec<_> = frames_paused
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == relay_url))
@@ -565,10 +581,8 @@ fn auth_required_for_read_flow() {
     );
 
     // Phase 3: AUTH completes — pending REQs must be flushed to the wire.
-    let flush_frames = lc.handle_auth_state_change(
-        relay_url.to_string(),
-        RelayAuthState::Authenticated,
-    );
+    let flush_frames =
+        lc.handle_auth_state_change(relay_url.to_string(), RelayAuthState::Authenticated);
     let reqs_flushed: Vec<_> = flush_frames
         .iter()
         .filter(|f| matches!(f, WireFrame::Req { relay_url: u, .. } if u == relay_url))
@@ -598,9 +612,9 @@ fn auth_required_for_read_flow() {
 // contract stress-test.
 #[test]
 fn monotonic_rev_under_concurrent_dispatch() {
-    use nmp_store::{RawEvent, VerifiedEvent};
     use nmp_core::testing::{spawn_actor, ActorCommand};
     use nmp_core::{decode_update_frame, UpdateEnvelope};
+    use nmp_store::{RawEvent, VerifiedEvent};
     use std::sync::Arc;
     use std::time::Duration;
     // PR-B: `UpdateEnvelope::Snapshot` carries the typed `SnapshotEnvelope`
@@ -636,7 +650,9 @@ fn monotonic_rev_under_concurrent_dispatch() {
                     sig: "a".repeat(128),
                 };
                 let verified = VerifiedEvent::from_raw_unchecked(raw);
-                tx.send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(vec![verified])))
+                tx.send(ActorCommand::TestSupport(
+                    TestSupportCommand::IngestPreVerifiedEvents(vec![verified]),
+                ))
                     .ok();
             })
         })
@@ -778,7 +794,9 @@ fn publish_raw_signer_pubkey_unregistered_fails_closed() {
         correlation_id: None,
     }))
     .expect("send PublishRawEvent (unregistered signer)");
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit))
+    tx.send(ActorCommand::Lifecycle(
+        LifecycleCommand::MarkChangedSinceEmit,
+    ))
         .expect("send MarkChangedSinceEmit");
 
     assert!(
@@ -788,7 +806,8 @@ fn publish_raw_signer_pubkey_unregistered_fails_closed() {
          None would have signed with the active account and raised no toast)"
     );
 
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
+        .ok();
 }
 
 // Test 8 — a REGISTERED agent key signs even with NO active account.
@@ -846,7 +865,9 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
         correlation_id: None,
     }))
     .expect("send PublishRawEvent (registered agent signer, no active account)");
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit))
+    tx.send(ActorCommand::Lifecycle(
+        LifecycleCommand::MarkChangedSinceEmit,
+    ))
         .expect("send MarkChangedSinceEmit");
 
     // The selector must let bob sign WITHOUT an active account: the
@@ -859,5 +880,6 @@ fn publish_raw_signer_pubkey_signs_with_registered_agent_key_without_active_acco
          signer_pubkey selects that key"
     );
 
-    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown)).ok();
+    tx.send(ActorCommand::Lifecycle(LifecycleCommand::Shutdown))
+        .ok();
 }

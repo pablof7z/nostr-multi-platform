@@ -64,14 +64,13 @@
 
 use std::sync::Arc;
 
-use nmp_planner::{
-    InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting,
-};
 use nmp_core::slots::ActiveAccountSlot;
-use nmp_store::VerifiedEvent;
+use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{IngestParser, ViewDependencies};
 use nmp_core::{CommandSender, KindFilter};
 use nmp_nip59::KIND_GIFT_WRAP;
+use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting};
+use nmp_store::VerifiedEvent;
 use nostr::{Event, JsonUtil};
 use serde::{Deserialize, Serialize};
 
@@ -368,8 +367,18 @@ pub fn active_giftwrap_inbox_interest_id() -> InterestId {
     ))
 }
 
+/// Scoped registry identity for the active-account gift-wrap inbox interest.
+#[must_use]
+pub fn active_giftwrap_inbox_identity() -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new("nip17.giftwrap.active"),
+        SubKey::new("nip17.giftwrap.active"),
+        SubScope::Global,
+    )
+}
+
 /// Tailing [`LogicalInterest`] for kind:1059 `#p <pubkey>` gift-wraps — the
-/// subscription a host pushes (via `NmpApp::push_interest`) so the DM inbox
+/// subscription a host ensures so the DM inbox
 /// actually receives envelopes.
 ///
 /// The filter targets a concrete `#p <pubkey>` because NIP-17 gift-wraps are

@@ -47,14 +47,14 @@ use std::sync::Arc;
 // `ActionModule` is re-exported into the `tests` module's `use super::*;` glob
 // (the namespace + executor tests call `FollowModule::NAMESPACE` / `.execute`).
 // The `ActionPayload` typed-decode impls live in `action_modules.rs`.
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::InterestsCommand;
 #[cfg_attr(not(test), allow(unused_imports))]
 use nmp_core::substrate::ActionModule;
 use nmp_core::substrate::{
     ActionRegistrar, ContactsLookup, HostCapabilities, IdentityChangeRegistrar,
     SnapshotProjectionRegistrar,
 };
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::InterestsCommand;
 use serde::{Deserialize, Serialize};
 
 // The `ActionModule` impls for the three follow verbs (split out to keep this
@@ -238,7 +238,7 @@ pub fn register_follow_state_runtime(
     // D8: channel send is non-blocking, bounded to one command.
     const CONSUMER_ID: &str = "nmp.nip02.follow_list";
 
-    let push_interest = {
+    let open_interest = {
         let tx = tx.clone();
         move |pubkey: &str| {
             let _ = tx.send(ActorCommand::Interests(InterestsCommand::OpenInterest {
@@ -261,12 +261,12 @@ pub fn register_follow_state_runtime(
         }
     };
 
-    // If there is already an active account, push the interest immediately so
+    // If there is already an active account, open the interest immediately so
     // the kernel serves the cached kind:3 before the first snapshot tick.
     {
         let maybe_pubkey = active_pubkey.lock().ok().and_then(|g| g.clone());
         if let Some(pubkey) = maybe_pubkey {
-            push_interest(&pubkey);
+            open_interest(&pubkey);
         }
     }
 
@@ -293,7 +293,7 @@ pub fn register_follow_state_runtime(
             }
             // Open a new interest for the incoming account.
             if let Some(ref pubkey) = new_pubkey {
-                push_interest(pubkey);
+                open_interest(pubkey);
             }
             *prev = new_pubkey;
         }

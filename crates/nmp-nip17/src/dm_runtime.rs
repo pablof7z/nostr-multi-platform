@@ -114,11 +114,11 @@ impl DmRuntimeState {
 #[derive(Debug, PartialEq, Eq)]
 pub enum DmRuntimeEffect {
     /// Subscribe the kernel to gift-wrap (kind:1059) envelopes addressed to
-    /// this pubkey. The host translates to `ActorCommand::PushInterest` with
+    /// this pubkey. The host translates to `InterestsCommand::EnsureInterest` with
     /// `active_giftwrap_inbox_interest(&pubkey)`.
     PushInboxInterest(String),
     /// Drop the standing gift-wrap inbox interest (account logged out or
-    /// switched). The host translates to `ActorCommand::WithdrawInterest`
+    /// switched). The host translates to `InterestsCommand::DropInterestOwner`
     /// with `active_giftwrap_inbox_interest_id()`.
     WithdrawInboxInterest,
     /// Publish the user's own kind:10050 DM relay-list. `event` is the

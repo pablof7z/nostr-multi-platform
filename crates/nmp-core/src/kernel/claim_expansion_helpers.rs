@@ -10,7 +10,6 @@ use crate::planner::{
     HintSource, InterestId, InterestLifecycle, InterestScope, LogicalInterest, RelayHint,
 };
 use crate::relay::CanonicalRelayUrl;
-use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 use super::{
     claim_expansion::{
@@ -23,9 +22,9 @@ impl Kernel {
     /// Advance a claim to Phase 2 or fill open Phase-2 slots.
     ///
     /// Rebuilds the candidate queue, takes up to `MAX_EXPANSION_CONCURRENCY`
-    /// candidates, pushes their `RelayHint`s onto the `LogicalInterest` via
-    /// `registry.push()`, and enqueues a `CompileTrigger` so the planner
-    /// emits the new REQs.
+    /// candidates, replaces the existing one-shot interest hints through the
+    /// unified registration front door, and enqueues a `CompileTrigger` so the
+    /// planner emits the new REQs.
     pub(super) fn advance_to_phase2(&mut self, iid: InterestId, now: Instant) {
         let Some(claim) = self.pending_claims.get_mut(&iid) else {
             return;
@@ -39,6 +38,8 @@ impl Kernel {
 
         let author = claim.author.clone();
         let phase = claim.phase.clone();
+        let interest_id = claim.interest_id.clone();
+        let shape = claim.shape.clone();
         let existing_attempted = claim.attempted.clone();
         let existing_queue = claim.candidate_queue.clone();
 
@@ -103,6 +104,10 @@ impl Kernel {
             })
             .collect();
 
+        let Some(identity) = self.oneshot.identity_for_interest(&interest_id) else {
+            return;
+        };
+
         // Update claim state
         if let Some(claim) = self.pending_claims.get_mut(&iid) {
             // B5: canonicalize URLs at WRITE time into attempted set
@@ -134,16 +139,12 @@ impl Kernel {
             // B2: §8.2 single-LogicalInterest — update hints on the EXISTING
             // OneshotApi slot rather than creating a second registry slot.
             //
-            // The claim's interest_id was returned by `OneshotApi::request` as
-            // `InterestId(shape_key.0)` where `shape_key =
-            // stable_hash64(("oneshot", SubScope::Global, shape))`. We
-            // reconstruct the same SubIdentity and call `set_sub` (upsert) so
-            // the slot's hints are replaced in-place.
+            // `identity_for_interest` returns the same owner+key+scope triple
+            // minted by `OneshotApi::prepare`, so `Replace` mutates the in-flight
+            // one-shot instead of attaching a planner-owned placeholder owner.
             //
             // This keeps `oneshot.in_flight() == 1` across Phase 1 → Phase 2
             // because no new OneshotToken is created — only the hints change.
-            let interest_id = claim.interest_id.clone();
-            let shape = claim.shape.clone();
             let updated_interest = LogicalInterest {
                 id: interest_id.clone(),
                 scope: InterestScope::Global,
@@ -152,18 +153,6 @@ impl Kernel {
                 lifecycle: InterestLifecycle::OneShot,
                 is_indexer_discovery: false,
             };
-            // Reconstruct the SubIdentity that OneshotApi originally used.
-            // The key is derived from (scope, shape); we must use the SAME
-            // key derivation so we update the right slot (not create a new one).
-            // OneshotApi uses: SubKey(stable_hash64(("oneshot", sub_scope, shape)))
-            // which equals InterestId(key.0) for the returned interest_id.
-            // Therefore: SubKey(interest_id.0) is the correct key.
-            let sub_key = SubKey(interest_id.0);
-            // The owner is per-token; using the same synthetic owner ensures we
-            // update rather than add a new owner. In practice `set_sub` attaches
-            // the owner AND replaces the interest — so any valid owner works here.
-            let owner = SubOwnerKey::new(("claim-expansion-hint-update", interest_id.0));
-            let identity = SubIdentity::new(owner, sub_key, SubScope::Global);
             // Unified front-door (Replace = set_sub semantics): replaces the
             // hint in place. Hints differ ⇒ plan_relevant_change == true ⇒
             // recompile fires (emits W7 hint REQs); shape unchanged ⇒ same

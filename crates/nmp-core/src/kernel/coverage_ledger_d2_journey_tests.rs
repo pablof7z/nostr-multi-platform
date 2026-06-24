@@ -101,8 +101,7 @@ impl RespondingRelay {
             .expect("relay set_nonblocking");
         let stop = Arc::new(AtomicBool::new(false));
         let stop_t = Arc::clone(&stop);
-        let handle = thread::spawn(move || {
-            loop {
+        let handle = thread::spawn(move || loop {
                 if stop_t.load(Ordering::Relaxed) {
                     return;
                 }
@@ -117,7 +116,6 @@ impl RespondingRelay {
                     }
                     Err(_) => return,
                 }
-            }
         });
         Self {
             addr,
@@ -168,7 +166,9 @@ fn serve_conn(stream: TcpStream, events: Vec<nostr::Event>, stop: Arc<AtomicBool
         let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
             continue;
         };
-        let Some(arr) = value.as_array() else { continue };
+        let Some(arr) = value.as_array() else {
+            continue;
+        };
         if arr.first().and_then(|v| v.as_str()) != Some("REQ") {
             continue;
         }
@@ -260,11 +260,7 @@ fn run_req_through_relay(kernel: &mut Kernel, relay_url: &str, req_text: &str) {
                 if text.starts_with("[\"EOSE\"") {
                     got_eose = true;
                 } else if text.starts_with("[\"EVENT\"") {
-                    kernel.handle_message(
-                        RelayRole::Content,
-                        relay_url,
-                        RelayFrame::Text(text),
-                    );
+                    kernel.handle_message(RelayRole::Content, relay_url, RelayFrame::Text(text));
                 }
             }
             Ok(_) => {}
@@ -338,14 +334,18 @@ fn scenario(keys: &Keys, relay_url: &str) -> (Kernel, String) {
     );
     {
         use crate::kernel::cache_serve::{InterestWrite, RegistryWriteToken};
-        use crate::subs::SubIdentity;
         let t = RegistryWriteToken::for_test();
         let interest = follow_feed_interest(&author_hex);
-        let identity = SubIdentity::from_legacy_interest(&interest);
-        kernel
-            .lifecycle_mut()
-            .registry_mut()
-            .apply(&t, InterestWrite::Replace, identity, interest);
+        let identity = crate::subs::test_identity_for_interest(
+            ("scoped-test-interest", interest.id.0),
+            &interest,
+        );
+        let _ = kernel.lifecycle_mut().registry_mut().apply(
+            &t,
+            InterestWrite::Replace,
+            identity,
+            interest,
+        );
     }
     let frames = kernel
         .lifecycle_mut()

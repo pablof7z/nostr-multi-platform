@@ -122,7 +122,7 @@ impl NmpApp {
     /// snapshot tick. The generic, projection-free counterpart to
     /// [`Self::register_snapshot_projection`]: it contributes no snapshot key,
     /// it is a pure per-tick side-effect seam (e.g. an active-account
-    /// subscription reconciler that enqueues `PushInterest` / `WithdrawInterest`
+    /// subscription reconciler that enqueues `EnsureInterest` / `DropInterestOwner`
     /// each tick).
     ///
     /// Like `register_snapshot_projection`, this takes `&self` (the mutation is
@@ -134,7 +134,6 @@ impl NmpApp {
             registry.register_tick_observer(f);
         }
     }
-
 }
 
 /// ADR-0055 Rung 3 — declare that this host runtime owns the NMP cache-merge
@@ -174,7 +173,7 @@ pub extern "C" fn nmp_app_declare_incremental_apply(app: *mut NmpApp) -> i32 {
 }
 
 /// ADR-0053 — declare the static set of Tier-2 built-in projection keys this
-/// host consumes (the output-side sibling of relay `push_interest`).
+/// host consumes (the output-side sibling of relay interest installs).
 ///
 /// `keys` is a host-owned array of `len` NUL-terminated UTF-8 C strings (the
 /// union of every projection key any of the app's screens reads, known at app
@@ -448,8 +447,7 @@ mod tests {
         let records_before = ledger_before["records"].as_array().expect("records array");
         let count_before = records_before.len();
         assert_eq!(
-            count_before,
-            MAX_SNAPSHOT_PROJECTIONS,
+            count_before, MAX_SNAPSHOT_PROJECTIONS,
             "ledger must have exactly {MAX_SNAPSHOT_PROJECTIONS} entries after filling to cap"
         );
 
@@ -475,7 +473,9 @@ mod tests {
         let first_key = "nmp.test.key0";
         app_ref.register_typed_snapshot_projection(first_key, || None);
         let ledger_after_replace = app_ref.composition_ledger().to_json();
-        let records_after_replace = ledger_after_replace["records"].as_array().expect("records array");
+        let records_after_replace = ledger_after_replace["records"]
+            .as_array()
+            .expect("records array");
         let replaced_entries: Vec<_> = records_after_replace
             .iter()
             .filter(|r| r["key"] == first_key)

@@ -32,9 +32,9 @@
 //!    actor releases each via [`OneshotApi::release`], dropping the registry
 //!    owner so the interest GCs when no other owner holds it.
 //!
-//! Identical oneshots **dedup**: the registry owner is derived deterministically
-//! from the `(scope, shape)` hash, so two `prepare`s for the same profile share
-//! one registry slot (notedeck's dedup-across-owners, §3.2).
+//! Identical oneshots **dedup**: the registry key is derived deterministically
+//! from the `(scope, shape)` hash while each token owns that shared slot with a
+//! distinct owner (notedeck's dedup-across-owners, §3.2).
 //!
 //! Doctrine: **D4** the registry stays the single writer (this is a thin
 //! facade — every mutation goes through the front-door or `drop_owner`).
@@ -188,6 +188,17 @@ impl OneshotApi {
         };
         let _ = registry.drop_owner(&p.identity);
         true
+    }
+
+    /// Return the active registry identity for a one-shot interest.
+    ///
+    /// Used when Phase 2 retargeting mutates hints on the existing registry
+    /// owner instead of manufacturing a second owner for the same slot.
+    pub(crate) fn identity_for_interest(&self, interest_id: &InterestId) -> Option<SubIdentity> {
+        self.pending
+            .values()
+            .find(|p| p.identity.key.0 == interest_id.0)
+            .map(|p| p.identity.clone())
     }
 
     /// Number of in-flight (registered) oneshots. Diagnostics/tests.

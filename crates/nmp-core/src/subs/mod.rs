@@ -83,6 +83,39 @@ pub use trigger::{AccountId, CompileTrigger, InvalidateReason, RelayAuthState, S
 pub use unknown_ids::UnknownIds;
 pub use wire::{filter_json_for, plan_diff, WireFrame};
 
+#[cfg(any(test, feature = "test-support"))]
+pub fn test_identity_for_interest(
+    seed: impl std::hash::Hash,
+    interest: &crate::planner::LogicalInterest,
+) -> SubIdentity {
+    let scope = match &interest.scope {
+        crate::planner::InterestScope::Account(pubkey) => SubScope::Account(pubkey.clone()),
+        crate::planner::InterestScope::ActiveAccount | crate::planner::InterestScope::Global => {
+            SubScope::Global
+        }
+    };
+    SubIdentity::new(
+        SubOwnerKey::new(("test-interest-owner", &seed)),
+        SubKey::new(("test-interest-key", seed)),
+        scope,
+    )
+}
+
+#[cfg(any(test, feature = "test-support"))]
+pub fn replace_test_interest(
+    lifecycle: &mut SubscriptionLifecycle,
+    interest: crate::planner::LogicalInterest,
+) {
+    let token = crate::kernel::cache_serve::RegistryWriteToken::for_test();
+    let identity = test_identity_for_interest(("replace-test-interest", interest.id.0), &interest);
+    let _ = lifecycle.registry.apply(
+        &token,
+        crate::kernel::cache_serve::InterestWrite::Replace,
+        identity,
+        interest,
+    );
+}
+
 /// Post-compile plan-mutation hook (negentropy coverage gate seam).
 ///
 /// The lifecycle owns a *seam* into which an external coverage-gate policy

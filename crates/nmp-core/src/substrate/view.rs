@@ -4,7 +4,7 @@
 //! `ViewDependencies` is the primary bridge type. A NIP crate's view module
 //! calls [`ViewDependencies::into_logical_interest`] to convert its declared
 //! event needs (kinds, authors, tag-refs, relay-pin, limit) into a
-//! [`crate::planner::LogicalInterest`] suitable for `NmpApp::push_interest`.
+//! [`crate::planner::LogicalInterest`] suitable for `NmpApp::ensure_interest`.
 //!
 //! `KernelEvent` is the substrate-level event representation passed to
 //! `KernelEventObserver` implementations — it carries only the fields the
@@ -56,7 +56,7 @@ pub struct ViewDependencies {
 
 impl ViewDependencies {
     /// Convert this dependency declaration into a `LogicalInterest` suitable
-    /// for `NmpApp::push_interest`. This is the canonical bridge between the
+    /// for `NmpApp::ensure_interest`. This is the canonical bridge between the
     /// substrate view contract and the planner's routing layer.
     ///
     /// `id` — a stable, deterministic `InterestId` (hash the namespace + key
