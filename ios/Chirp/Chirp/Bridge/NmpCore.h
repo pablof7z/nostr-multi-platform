@@ -721,7 +721,7 @@ void nmp_marmot_unregister(void *handle);
 
 // #1727: `nmp_marmot_fetch_key_packages(handle, pubkeys_json)` was removed —
 // it had no native caller. The kernel already fetches KeyPackage events
-// (kind:30443/443) internally whenever an invite/group action needs a peer's
+// (kind:30443) internally whenever an invite/group action needs a peer's
 // key package (the same lookup interest is pushed by the invite/group flow).
 
 // ADR-0058 §3 (step 3b) — synchronous read-only pull-page surface.

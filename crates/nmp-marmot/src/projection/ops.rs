@@ -122,7 +122,7 @@ fn resolve_write_relays(h: &InnerHandle<'_>, relays: &[String]) -> Vec<String> {
     relays.to_vec()
 }
 
-/// Pull `signed_key_package_events_json` (array of signed kind:30443/443
+/// Pull `signed_key_package_events_json` (array of signed kind:30443
 /// event JSON strings OR objects) — the KeyPackage-cache seam escape hatch.
 fn signed_key_package_events(arr: &[Value]) -> Result<Vec<nostr::Event>, String> {
     let mut out = Vec::with_capacity(arr.len());

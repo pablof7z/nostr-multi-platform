@@ -21,7 +21,7 @@
 //! | Store | Owner | Facts it is the SOLE writer of |
 //! |-------|-------|--------------------------------|
 //! | **MDK SQLite** (`mdk-sqlite-storage`, `<app_support>/marmot-mls-state.sqlite`) | [`service::MarmotService`] (this crate) | MLS ratchet state — group secrets, epoch tree, pending commits, processed-Welcome records, KeyPackage private keys. |
-//! | **Kernel LMDB** (`nmp-core`) | the kernel actor / domain modules | Nostr wire events — the signed kind:30443/443/445/1059 envelopes, with their D10 source-relay provenance. |
+//! | **Kernel LMDB** (`nmp-core`) | the kernel actor / domain modules | Nostr wire events — the signed kind:30443/445/1059 envelopes, with their D10 source-relay provenance. |
 //!
 //! The ratchet state is private cryptographic material that MUST NOT live in
 //! a shared event log; the wire events are public, replayable, and carry
@@ -71,7 +71,7 @@
 //!
 //! ## Relay routing
 //!
-//! KeyPackage events (kind:30443/443) use standard author-write outbox
+//! KeyPackage events (kind:30443) use standard author-write outbox
 //! routing. Interest helpers live in [`interest`].
 
 pub mod domain;

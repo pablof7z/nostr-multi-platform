@@ -90,8 +90,7 @@ pub const MARMOT_ACTION_NAMESPACE: &str = "nmp.marmot";
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum MarmotAction {
-    /// Publish (or rotate) the local MLS key-package — kind:30443 + legacy
-    /// kind:443 dual publish.
+    /// Publish (or rotate) the local MLS key-package as kind:30443.
     ///
     /// `relays` is the fallback write-relay set [`crate::projection::ops`]'s
     /// `resolve_write_relays` uses when the host's NIP-65 write list is
@@ -117,7 +116,7 @@ pub enum MarmotAction {
         /// bridge uses `invitee_text`).
         #[serde(default)]
         invitee_npubs: Option<Vec<String>>,
-        /// Optional pre-fetched signed kind:30443 / kind:443 key-package
+        /// Optional pre-fetched signed kind:30443 key-package
         /// events as JSON strings. Empty → fall back to the in-process
         /// cache populated by the raw-event tap.
         #[serde(default)]

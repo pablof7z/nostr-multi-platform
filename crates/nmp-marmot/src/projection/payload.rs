@@ -166,7 +166,7 @@ pub struct MarmotSnapshot {
     pub key_package: KeyPackageStatus,
     /// Pubkeys (hex) of peers whose signed KeyPackage events are cached in
     /// `MarmotService::kp_cache`. Populated by the tap when the kernel
-    /// delivers a peer's kind:30443/443 event. Native renders this as
+    /// delivers a peer's kind:30443 event. Native renders this as
     /// pending/completed state; Rust owns when lookup interests are opened.
     pub cached_kp_pubkeys: Vec<String>,
     /// `true` when this snapshot was built against a registered Marmot

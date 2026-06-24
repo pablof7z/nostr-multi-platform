@@ -201,11 +201,11 @@ pub struct KeyPackageLookupSpec {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct KeyPackageLookupPayload {
     pub owner_pubkey: String,
-    /// `true` once at least one kind:30443/443 event has arrived for this author.
+    /// `true` once at least one kind:30443 event has arrived for this author.
     pub found: bool,
 }
 
-/// Declares the kind:30443/443 relay-subscription shape for fetching a peer's
+/// Declares the kind:30443 relay-subscription shape for fetching a peer's
 /// KeyPackage from their NIP-65 write relays.
 ///
 /// ORPHANED (2026-05-31): this view was meant to be opened via
