@@ -51,10 +51,8 @@ pub(crate) mod profile_card_generated {
 // retired `author_view.fbs` / `thread_view.fbs` typed projections.
 
 // V6 Stage 1 — Swift `Decodable` emitter input surface for kernel-owned types.
-// Feature-gated:
-// `cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas`
-// dumps one JSON schema per kernel-owned pilot projection type for
-// `nmp-codegen gen swift` to consume alongside NIP-crate schema documents.
+// Feature-gated `dump_projection_schemas` emits kernel-owned pilot schemas for
+// `nmp-codegen gen swift` alongside NIP-crate schema documents.
 // Off by default — shipped artifacts never link `schemars`.
 #[cfg(feature = "codegen-schema")]
 pub mod codegen_schema;

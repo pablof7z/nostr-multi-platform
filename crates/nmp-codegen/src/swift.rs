@@ -24,48 +24,10 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
-use serde::Deserialize;
-
 use crate::swift_projections_registry::{SnapshotProjectionEntry, SNAPSHOT_PROJECTIONS};
+use schema_input::{parse_schema_documents, TypeEntry, SUPPORTED_DOCUMENT_VERSION};
 
-/// Parsed shape of each document a `dump_projection_schemas` binary writes.
-#[derive(Debug, Deserialize)]
-struct ProjectionSchemaDocument {
-    version: u32,
-    types: Vec<TypeEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct TypeEntry {
-    rust_path: String,
-    swift_name: String,
-    #[serde(default)]
-    id_field: Option<String>,
-    conformances: Vec<String>,
-    #[serde(default)]
-    render_identity_fields: Vec<String>,
-    schema: TypeSchema,
-}
-
-/// Subset of JSON Schema (draft-07) the emitter actually decodes. `schemars`
-/// produces strictly richer schemas (`$schema`, `description`, `minimum`,
-/// `format` for distinguishing `u32`/`u64`); we ignore everything we don't
-/// need so future schemars upgrades don't break the decode.
-#[derive(Debug, Deserialize)]
-struct TypeSchema {
-    #[serde(rename = "type", default)]
-    ty: Option<serde_json::Value>,
-    #[serde(default)]
-    title: Option<String>,
-    /// Map of field-name → field-schema. `serde_json::Map` with
-    /// `preserve_order` feature on keeps insertion order; schemars emits
-    /// alphabetically, so the iteration order is deterministic regardless.
-    #[serde(default)]
-    properties: serde_json::Map<String, serde_json::Value>,
-    /// JSON-Schema `required` list — fields not in here are optional.
-    #[serde(default)]
-    required: Vec<String>,
-}
+mod schema_input;
 
 /// What went wrong during Swift emission. Carries enough context that a
 /// regression in Stage 1 (Rust type took on a non-flat field shape) names
@@ -137,10 +99,6 @@ impl From<std::io::Error> for SwiftEmitError {
     }
 }
 
-/// Stage 1 supports exactly version 1 of the schema document. The Rust
-/// side bumps this in lockstep with any change to the document shape.
-const SUPPORTED_DOCUMENT_VERSION: u32 = 1;
-
 /// Header comment emitted at the top of every generated file. The regeneration
 /// command must stay accurate — CI fails on a stale generated file, so anyone
 /// hitting the failure needs the exact command to reproduce it locally.
@@ -166,23 +124,6 @@ const HEADER: &str = "\
 import Foundation
 ";
 
-fn parse_schema_documents(
-    document_json: &str,
-) -> Result<Vec<ProjectionSchemaDocument>, SwiftEmitError> {
-    let docs: Vec<ProjectionSchemaDocument> = serde_json::Deserializer::from_str(document_json)
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|err| SwiftEmitError::ParseFailed {
-            reason: err.to_string(),
-        })?;
-    if docs.is_empty() {
-        return Err(SwiftEmitError::ParseFailed {
-            reason: "no schema documents supplied".to_string(),
-        });
-    }
-    Ok(docs)
-}
-
 /// Generate the Swift source for the given schema-document JSON stream.
 ///
 /// Returns the rendered Swift as a `String`. Caller is responsible for
@@ -199,7 +140,15 @@ fn parse_schema_documents(
 /// - [`SwiftEmitError::Unsupported`] if any type has a non-flat-record
 ///   schema.
 pub fn render_swift(document_json: &str) -> Result<String, SwiftEmitError> {
-    let documents = parse_schema_documents(document_json)?;
+    let documents =
+        parse_schema_documents(document_json).map_err(|err| SwiftEmitError::ParseFailed {
+            reason: err.to_string(),
+        })?;
+    if documents.is_empty() {
+        return Err(SwiftEmitError::ParseFailed {
+            reason: "no schema documents supplied".to_string(),
+        });
+    }
 
     for document in &documents {
         if document.version != SUPPORTED_DOCUMENT_VERSION {
