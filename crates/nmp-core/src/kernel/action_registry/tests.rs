@@ -448,7 +448,7 @@ fn correlation_ids_are_unique_across_calls() {
 fn panicking_validator_is_rejected_not_unwound() {
     struct PanickingStartModule;
     impl ActionModule for PanickingStartModule {
-        const NAMESPACE: &'static str = "host.boom_start"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        const NAMESPACE: &'static str = "host.boom_start"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
         fn start(
             &self,
@@ -494,7 +494,7 @@ fn panicking_executor_returns_err_not_unwound() {
     // be caught at the validation gate).
     struct PanickingExecuteModule;
     impl ActionModule for PanickingExecuteModule {
-        const NAMESPACE: &'static str = "host.boom"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+        const NAMESPACE: &'static str = "host.boom"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
         type Action = serde_json::Value;
         fn start(
             &self,

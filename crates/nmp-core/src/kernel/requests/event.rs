@@ -372,7 +372,7 @@ impl Kernel {
             Some(interest_id),
             author,
             relay_hints,
-            Instant::now(),
+            Instant::now(), // doctrine-allow: D9 — residual claim-expansion registration time tracked in #1952
         );
         // register_interest already enqueued InvalidateCompile on install.
 

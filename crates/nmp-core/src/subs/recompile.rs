@@ -10,15 +10,15 @@
 use std::collections::BTreeSet;
 
 use crate::planner::{
-    apply_selection_with_lookup, InterestId, InterestLifecycle, MailboxCache,
-    PlannerError, SubscriptionCompiler,
+    apply_selection_with_lookup, InterestId, InterestLifecycle, MailboxCache, PlannerError,
+    SubscriptionCompiler,
 };
 use crate::stable_hash::stable_hash64;
 use nmp_planner::RelayAuthorScoreLookup;
 
 use super::trigger::CompileTrigger;
-use super::wire::{plan_diff, WireFrame};
 use super::watermark_rewrite::apply_watermark_rewrite;
+use super::wire::{plan_diff, WireFrame};
 use super::{SubscriptionLifecycle, MAILBOX_PROBE_BATCH};
 
 impl SubscriptionLifecycle {
@@ -282,12 +282,12 @@ impl SubscriptionLifecycle {
         // (`case_a_authors.rs:145-156`; `docs/wiki/profile-resolution.md`;
         // `docs/design/subscription-compilation/outbox.md:153-158`): kind:10002
         // is a plain replaceable event that any general relay serves, and the
-        // dedicated-indexer set can be empty (operator opted out) or AUTH-walled
-        // (e.g. purplepag.es rejects anonymous REQs). Without the app-relay
+        // dedicated-indexer set can be empty (operator opted out) or AUTH-walled.
+        // Without the app-relay
         // union, a Chirp install whose only indexer-role relay is AUTH-walled
         // could never fetch third-party NIP-65 lists → the outbox model would
-        // silently stall. Unioning app relays (e.g. relay.primal.net, which
-        // serves kind:10002 anonymously) keeps discovery working.
+        // silently stall. Unioning app relays keeps discovery working when an
+        // app-owned content relay serves kind:10002 anonymously.
         //
         // These frames are auxiliary: they are NOT part of `CompiledPlan` and
         // do NOT affect `plan_id`. They ARE routed through the auth gate (see

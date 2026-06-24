@@ -125,9 +125,9 @@ pub use op_feed_defaults::{
 pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use runtimes::{
     register_bookmark_runtime, register_comment_runtime, register_mute_runtime,
-    register_search_relay_runtime,
+    register_search_relay_runtime, register_search_relay_runtime_with,
 };
-pub use search_defaults::{effective_search_relays, SearchDefaults, NMP_BUILTIN_SEARCH_RELAY};
+pub use search_defaults::{effective_search_relays, SearchDefaults};
 pub use tiers::{register_substrate, NmpDefaults};
 
 /// Runtime read handles installed by [`register_defaults_with_handles`].
@@ -148,7 +148,7 @@ pub struct NmpDefaultRuntimeHandles {
     ///
     /// Pass this to [`effective_search_relays`] at search time to resolve
     /// the effective relay list (user's kind:10007 list, else the
-    /// [`SearchDefaults`] fallback).
+    /// [`SearchDefaults`] fallback, which may be empty).
     pub search_relays: Option<Arc<nmp_nip51::SearchRelayListProjection>>,
 }
 
@@ -221,13 +221,14 @@ pub fn register_defaults_with_handles(
 /// Always calls [`register_substrate`] (the correctness floor is NOT
 /// toggleable — it is correctness, not preference), then layers the
 /// social-feature defaults selected by the `social` / `dms` / `zaps` /
-/// `longform` toggles on top, and finally wires the `nostrconnect` bootstrap
-/// relay ONLY when the leaf app supplied one (`Some(url)`).
+/// `longform` toggles on top, wires NIP-50 search fallback relays ONLY from
+/// the app-supplied [`SearchDefaults`], and finally wires the `nostrconnect`
+/// bootstrap relay ONLY when the leaf app supplied one (`Some(url)`).
 ///
 /// `register_defaults(app)` ≡ `register_defaults_with(app,
 /// NmpDefaults::default())` — the default-constructed config enables every
 /// social feature and uses `CoverageGate::default()`, but owns NO operator
-/// policy: `nostrconnect_bootstrap_relay` defaults to `None` (#1493), so the
+/// policy: relay-bearing fields default empty/`None` (#1493/#1924), so the
 /// no-arg path wires no relay URL at all.
 ///
 /// See [`NmpDefaults`] for the full field set and each field's default.
@@ -243,6 +244,7 @@ fn register_defaults_inner(
         coverage_gate,
         nostrconnect_bootstrap_relay,
         nostrconnect_perms,
+        search_defaults,
         social,
         dms,
         zaps,
@@ -319,12 +321,14 @@ fn register_defaults_inner(
         // overwriting it through PublishRaw.
         let _ = runtimes::register_bookmark_runtime(app);
         // NIP-51 kind:10007 search-relay list. Registers the active-account
-        // observer and per-tick interest reconciler so the
-        // SearchRelayListProjection is populated for the signed-in account.
-        // The handle exposes `snapshot()` for the higher-order NIP-50 search
-        // crate; `effective_search_relays(&handle, &SearchDefaults::default())`
-        // resolves the effective relay list (user list → app default).
-        handles.search_relays = Some(runtimes::register_search_relay_runtime(app));
+        // observer so the SearchRelayListProjection is populated for the
+        // signed-in account. The app-provided SearchDefaults backs the
+        // higher-order NIP-50 fallback; the default value is empty, so
+        // shared NMP composition never picks a public search relay.
+        handles.search_relays = Some(runtimes::register_search_relay_runtime_with(
+            app,
+            search_defaults,
+        ));
         // NIP-22 kind:1111 comments. Installs the threaded comment-thread
         // observer and registers the `nmp.nip22.post_comment` action. The
         // `Arc<CommentThreadProjection>` is dropped here (fire-and-forget

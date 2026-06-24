@@ -1,39 +1,31 @@
-//! Negative D9 fixture — must produce zero D9 findings.
-//!
-//! Every action namespace declared here uses the `nmp.<…>.<verb>` shape, so
-//! D9 stays silent. The substrings used here deliberately avoid D0's banned
-//! tokens (`group_id`, `nip29`, `pin_to`, …) so D0 also stays silent when
-//! the staged fixture is scanned from outside the exempt path tree.
+//! Negative D9 fixture — injected time is allowed, and an explicit
+//! reasoned allow can document a narrow residual.
 
-pub struct PublishAction;
-
-impl PublishAction {
-    pub const NAMESPACE: &'static str = "nmp.publish";
+struct Kernel {
+    now_ms_value: u64,
+    now_secs_value: u64,
 }
 
-pub struct SendDmAction;
+impl Kernel {
+    fn now_ms(&self) -> u64 {
+        self.now_ms_value
+    }
 
-impl SendDmAction {
-    pub const NAMESPACE: &'static str = "nmp.nip17.send";
+    fn now_secs(&self) -> u64 {
+        self.now_secs_value
+    }
+
+    fn reducer_uses_injected_clock(&self) -> (u64, u64) {
+        (self.now_ms(), self.now_secs())
+    }
+
+    fn caller_supplies_time(&mut self, now_ms: u64) {
+        self.record(now_ms);
+    }
+
+    fn residual_with_issue(&self) {
+        let _raw = std::time::SystemTime::now(); // doctrine-allow: D9 — fixture proves reasoned residual escape
+    }
+
+    fn record(&mut self, _now_ms: u64) {}
 }
-
-pub struct ZapAction;
-
-impl ZapAction {
-    pub const NAMESPACE: &'static str = "nmp.zap";
-}
-
-pub struct KeyringCapability;
-
-impl KeyringCapability {
-    pub const NAMESPACE: &'static str = "nmp.keyring.capability";
-}
-
-// Per-line opt-out: the `// doctrine-allow: D9` escape hatch suppresses the
-// rule for a single legitimately-non-`nmp.`-prefixed literal.
-pub struct ExternalNamespaceFallback;
-
-impl ExternalNamespaceFallback {
-    pub const NAMESPACE: &'static str = "external.fallback"; // doctrine-allow: D9 — third-party-host bridge fixture
-}
-

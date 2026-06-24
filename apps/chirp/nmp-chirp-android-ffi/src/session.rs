@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::atomic::{AtomicI64, AtomicPtr, Ordering};
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(test)]
 use std::sync::mpsc::RecvTimeoutError;
+use std::sync::mpsc::{Receiver, Sender};
+use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(test)]
 use std::time::Duration;
 
 use jni::sys::jlong;
 
-use nmp_app_chirp::{nmp_app_chirp_unregister, ChirpHandle};
-use nmp_ffi::{nmp_app_free, nmp_app_set_capability_callback, nmp_app_set_update_callback, NmpApp};
+use nmp_app_chirp::{ChirpHandle, nmp_app_chirp_unregister};
+use nmp_ffi::{NmpApp, nmp_app_free, nmp_app_set_capability_callback, nmp_app_set_update_callback};
 
 use crate::capability::CapabilityHandlerSlot;
 use crate::signer_request_listener::SignerRequestListenerSlot;
@@ -235,10 +235,11 @@ impl Session {
             // branch (right after the gate) is what makes the drop UAF-safe.
             self.callback_state.clear_push_listener();
             // ADR-0048 Stage 2 — unregister the external-signer capability
-            // trampoline before the app is freed. The trampoline context is
-            // the registry handle id (not a raw pointer), so any in-flight
-            // dispatch degrades to an error envelope via the registry lookup
-            // rather than a use-after-free.
+            // trampoline before the app is freed. This call is quiescent:
+            // when it returns, no in-flight trampoline can still read the
+            // registry handle id or any listener/handler slot reached through
+            // it. The handle-id context still degrades stale dispatches to an
+            // error envelope via registry lookup rather than a use-after-free.
             nmp_app_set_capability_callback(state.app, std::ptr::null_mut(), None);
             // Issue #1284 — drop the NIP-55 signer-request push listener
             // `GlobalRef` now that the capability trampoline above is
@@ -249,16 +250,11 @@ impl Session {
             self.clear_signer_request_listener();
         }
         self.callback_state.close();
-        // Drop the synchronous capability handler GlobalRef.
-        //
-        // UAF safety is NOT the capability-socket unregister above: unlike the
-        // update-callback gate, `nmp_app_set_capability_callback(None)` does
-        // NOT quiesce an in-flight capability dispatch (the kernel capability
-        // socket clones the registration out and drops its slot lock before
-        // invoking the trampoline). The load-bearing guard is THIS `lock()`:
-        // `capability::call_sync_handler` holds `capability_handler` for the
-        // entire `handler.call()`, so the `take()` here serializes against any
-        // active dispatch and the GlobalRef is never dropped while in use.
+        // Drop the synchronous capability handler GlobalRef. Teardown safety
+        // comes from the quiescent `nmp_app_set_capability_callback(None)`
+        // above: after it returns there is no active trampoline that can call
+        // into this slot. The `capability_handler` lock still serializes
+        // explicit handler replacement/clearing against an active JNI upcall.
         if let Ok(mut slot) = self.capability_handler.lock() {
             slot.take();
         }
@@ -381,11 +377,11 @@ mod push_listener_lock_ordering_tests; // PR #1226 lock-ordering regression test
 
 #[cfg(test)]
 mod tests {
-    use std::sync::mpsc;
     use std::sync::Arc;
+    use std::sync::mpsc;
     use std::time::Duration;
 
-    use super::{insert_session, remove_session, session_arc, NextUpdate, Session};
+    use super::{NextUpdate, Session, insert_session, remove_session, session_arc};
 
     #[test]
     fn push_listener_slot_starts_empty() {

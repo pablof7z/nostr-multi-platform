@@ -90,9 +90,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published var typedZaps: ZapsAggregateSnapshot?
     @Published var typedGroupChat: GroupChatSnapshot?
     @Published var typedDiscoveredGroups: DiscoveredGroupsSnapshot?
-    /// Typed `nmp.nip29.group_defaults` sidecar (`NGDF`, #626) — the crate-owned
-    /// suggested public-group relay URL. `nil` ⇒ the `groupDefaults` accessor
-    /// collapses to `.empty` and `NewGroupSheet` seeds an empty relay field.
+    /// Typed `nmp.nip29.group_defaults` sidecar (`NGDF`, #626/#1924) — the
+    /// app/operator-owned suggested public-group relay URL. `nil` ⇒ the
+    /// `groupDefaults` accessor collapses to `.empty` and `NewGroupSheet` seeds
+    /// an empty relay field.
     @Published var typedGroupDefaults: GroupDefaultsSnapshot?
     // ADR-0063 Lane E (#1671): the profile-cluster `@Published` slots
     // (`typedProfile` / `typedClaimedProfiles` / `typedResolvedProfiles`) are
@@ -242,10 +243,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     /// fixed room for the first-consumer proof; a real multi-group app
     /// would thread a chosen `GroupId` through navigation.
     ///
-    /// D7/B1: This hardcoded relay is intentional — it's a fixed demo group
-    /// identifier for the first-consumer proof, not a bootstrap relay. The
-    /// kernel's actual relay defaults flow through the snapshot
-    /// (`relayStatuses`, `configuredRelays`) populated by nmp-core.
+    /// D7/B1: This hardcoded relay is intentional app-owned demo-group
+    /// identity for the first-consumer proof, not an NMP/shared-crate bootstrap
+    /// relay. Kernel relay defaults flow through explicit app configuration
+    /// and snapshots (`relayStatuses`, `configuredRelays`).
     static let demoGroupId = GroupId(
         hostRelayUrl: "wss://relay.groups.nip29.com",
         localId: "chirp-demo")

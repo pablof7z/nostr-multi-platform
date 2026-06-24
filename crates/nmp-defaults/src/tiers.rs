@@ -38,13 +38,13 @@
 //!
 //! **Social** (added by [`register_defaults`] on top): nip02/nip17/nip57
 //! action bundles, WOT/DM/zap runtime controllers, the long-form typed
-//! projection, and the operator-policy `nostrconnect` bootstrap relay.
+//! projection, and explicit app-supplied operator policy such as
+//! `nostrconnect` and NIP-50 search fallback relays.
 
 use std::sync::Arc;
 
 use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
-use nmp_store::EventStore;
 use nmp_core::substrate::{
     ActionRegistrar, BlockedRelayLookupRegistrar, CoverageHookRegistrar, ExternalEventSinkPolicy,
     IngestParserRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
@@ -54,6 +54,9 @@ use nmp_coverage_gate::CoverageGate;
 use nmp_router::{
     InMemoryBlockedRelayCache, IndexerRepublishPolicy, Kind10006Parser, Nip65OutboxResolver,
 };
+use nmp_store::EventStore;
+
+use crate::SearchDefaults;
 
 /// Declarative configuration for [`super::register_defaults_with`] — the
 /// config-as-fields pattern (Bevy's `.set(WindowPlugin { .. })` insight, and
@@ -61,10 +64,10 @@ use nmp_router::{
 /// knob is a named, rustdoc'd field rather than a hardcoded literal buried in
 /// the composition body).
 ///
-/// [`NmpDefaults::default()`] reproduces today's `register_defaults()`
-/// behaviour **exactly** — every field's `Default` is the value the function
-/// previously hardcoded, so `register_defaults(app)` ≡
-/// `register_defaults_with(app, NmpDefaults::default())`.
+/// [`NmpDefaults::default()`] is the no-operator-policy composition:
+/// `register_defaults(app)` ≡ `register_defaults_with(app,
+/// NmpDefaults::default())`, and leaf apps opt into relay-bearing policy by
+/// filling the named fields before registration.
 #[derive(Clone, Debug)]
 pub struct NmpDefaults {
     /// Coverage policy shared by the D2 coverage hook **and** the NIP-77
@@ -109,6 +112,15 @@ pub struct NmpDefaults {
     /// **Default:** `None`.
     pub nostrconnect_perms: Option<String>,
 
+    /// App-declared fallback search relays for NIP-50 when the active account
+    /// has no user-authored kind:10007 search-relay list. This is operator
+    /// policy, not framework policy: user kind:10007 relays remain first
+    /// authority, this field is second, and an empty list means relay search is
+    /// cache-only until the user publishes a list or the app supplies defaults.
+    ///
+    /// **Default:** empty.
+    pub search_defaults: SearchDefaults,
+
     /// Wire the NIP-02 follow/unfollow/react action bundle **and** the WOT
     /// bootstrap runtime. The social graph layer. Disable for a non-social
     /// consumer that never follows, reacts, or computes web-of-trust.
@@ -140,14 +152,15 @@ pub struct NmpDefaults {
 
 impl Default for NmpDefaults {
     /// The canonical NMP wiring: `CoverageGate::default()`, every social
-    /// feature on, and NO operator relay policy. `nostrconnect_bootstrap_relay`
-    /// is `None` — NMP ships no relay URL (#1493); a leaf app that wants a
-    /// nostrconnect fallback supplies it explicitly.
+    /// feature on, and NO operator relay policy. Relay-bearing fields are empty
+    /// or `None` — NMP ships no relay URL (#1493/#1924); a leaf app that wants
+    /// a nostrconnect or search fallback supplies it explicitly.
     fn default() -> Self {
         Self {
             coverage_gate: CoverageGate::default(),
             nostrconnect_bootstrap_relay: None,
             nostrconnect_perms: None,
+            search_defaults: SearchDefaults::default(),
             social: true,
             dms: true,
             zaps: true,
@@ -187,14 +200,14 @@ impl Default for NmpDefaults {
 /// this crate exists to prevent).
 pub fn register_substrate(
     app: &mut (impl ActionRegistrar
-          + BlockedRelayLookupRegistrar
-          + CoverageHookRegistrar
-          + IngestParserRegistrar
-          + KernelReaderRegistrar
-          + RelayConnectedHookRegistrar
-          + RelayTextInterceptorRegistrar
-          + ReqFrameInterceptorRegistrar
-          + RoutingFactoryRegistrar),
+              + BlockedRelayLookupRegistrar
+              + CoverageHookRegistrar
+              + IngestParserRegistrar
+              + KernelReaderRegistrar
+              + RelayConnectedHookRegistrar
+              + RelayTextInterceptorRegistrar
+              + ReqFrameInterceptorRegistrar
+              + RoutingFactoryRegistrar),
     gate: CoverageGate,
 ) {
     // NIP-65: kind:10002 relay-list publish. The `nmp-router` crate owns
@@ -231,7 +244,7 @@ pub fn register_substrate(
     // empty set regardless of what the user has blocked.
     let blocked_cache: Arc<InMemoryBlockedRelayCache> = Arc::new(InMemoryBlockedRelayCache::new());
     app.set_blocked_relay_lookup(
-        Arc::clone(&blocked_cache) as Arc<dyn nmp_core::substrate::BlockedRelayLookup>,
+        Arc::clone(&blocked_cache) as Arc<dyn nmp_core::substrate::BlockedRelayLookup>
     );
     let blocked_parser: Arc<dyn nmp_core::substrate::IngestParser> =
         Arc::new(Kind10006Parser::new(Arc::clone(&blocked_cache)));

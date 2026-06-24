@@ -17,18 +17,18 @@
 //!    routes to the handler; a still-present-account result succeeds silently
 //!    (no toast, no kernel mutation for a write result).
 
-use super::commands::{self, IdentityRuntime};
-use super::dispatch::{dispatch_command, ActorContext};
 use super::ActorCommand;
 use super::IdentityCommand;
-use crate::actor::capability_worker::{spawn_capability_worker, CapabilityWorkSender};
+use super::commands::{self, IdentityRuntime};
+use super::dispatch::{ActorContext, dispatch_command};
+use crate::actor::capability_worker::{CapabilityWorkSender, spawn_capability_worker};
 use crate::actor::{ActorConfigSources, ActorMail, CommandSender};
 use crate::capability_socket::{CapabilityCallbackRegistration, CapabilityCallbackSlot};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
 use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CStr, CString};
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
@@ -93,10 +93,10 @@ extern "C" fn mock_handler(_ctx: *mut c_void, request_json: *const c_char) -> *m
 
 fn registered_slot() -> CapabilityCallbackSlot {
     let slot = crate::capability_socket::new_capability_callback_slot();
-    *slot.lock().unwrap() = Some(CapabilityCallbackRegistration {
+    slot.set_registration(Some(CapabilityCallbackRegistration {
         context: 0,
         callback: mock_handler,
-    });
+    }));
     slot
 }
 

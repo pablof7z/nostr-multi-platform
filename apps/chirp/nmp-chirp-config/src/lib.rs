@@ -11,6 +11,8 @@ pub struct ChirpRelayBootstrapEntry {
 
 pub const CHIRP_CONTENT_RELAY_URL: &str = "wss://relay.primal.net";
 pub const CHIRP_INDEXER_RELAY_URL: &str = "wss://purplepag.es";
+pub const CHIRP_SEARCH_RELAY_URL: &str = "wss://relay.nostr.band";
+pub const CHIRP_PUBLIC_GROUP_RELAY_URL: &str = "wss://relay.groups.nip29.com";
 
 pub const CHIRP_RELAY_BOOTSTRAP: &[ChirpRelayBootstrapEntry] = &[
     ChirpRelayBootstrapEntry {
@@ -23,7 +25,7 @@ pub const CHIRP_RELAY_BOOTSTRAP: &[ChirpRelayBootstrapEntry] = &[
     },
 ];
 
-#[must_use] 
+#[must_use]
 pub fn chirp_default_relay_bootstrap() -> &'static [ChirpRelayBootstrapEntry] {
     CHIRP_RELAY_BOOTSTRAP
 }
@@ -34,6 +36,24 @@ pub fn chirp_default_relay_urls() -> Vec<String> {
         .iter()
         .map(|entry| entry.url.to_string())
         .collect()
+}
+
+/// Chirp's app/operator default NIP-50 search relays.
+///
+/// User-authored kind:10007 search relays remain first authority; this list is
+/// used only when the active account has not published one.
+#[must_use]
+pub fn chirp_default_search_relays() -> Vec<String> {
+    vec![CHIRP_SEARCH_RELAY_URL.to_string()]
+}
+
+/// Chirp's suggested NIP-29 public-group host relay.
+///
+/// This is Chirp operator policy, surfaced through the generic NIP-29 defaults
+/// projection so native shells do not hardcode the URL.
+#[must_use]
+pub fn chirp_public_group_relay_url() -> &'static str {
+    CHIRP_PUBLIC_GROUP_RELAY_URL
 }
 
 /// Pubkeys (hex) every fresh Chirp account auto-follows out-of-the-box (kind:3).

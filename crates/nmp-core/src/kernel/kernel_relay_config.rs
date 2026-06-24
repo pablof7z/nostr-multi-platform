@@ -112,7 +112,7 @@ impl Kernel {
                 filter_summary,
                 state: initial_state.to_string(),
                 events_rx: 0,
-                opened_at: Instant::now(),
+                opened_at: Instant::now(), // doctrine-allow: D9 — wire-sub diagnostic elapsed-time marker; not replay policy
                 last_event_at: None,
                 eose_at: None,
                 close_reason: None,

@@ -194,7 +194,7 @@ fn push_bounded<T>(q: &mut VecDeque<T>, entry: T, capacity: usize) {
 
 /// Current wall-clock ms since Unix epoch, or `0` for pre-epoch systems.
 fn now_ms() -> u64 {
-    SystemTime::now()
+    SystemTime::now() // doctrine-allow: D9 — residual routing trace timestamp tracked in #1952
         .duration_since(UNIX_EPOCH)
         .map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or(0)

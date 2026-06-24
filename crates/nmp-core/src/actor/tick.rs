@@ -420,7 +420,7 @@ mod tests {
                 profile: [("name".to_string(), "Test".to_string())]
                     .into_iter()
                     .collect(),
-                relays: vec![("wss://relay.primal.net".to_string(), "both".to_string())],
+                relays: vec![("wss://app-relay.example".to_string(), "both".to_string())],
                 initial_follows: Vec::new(),
                 mls: false,
                 make_active: true,

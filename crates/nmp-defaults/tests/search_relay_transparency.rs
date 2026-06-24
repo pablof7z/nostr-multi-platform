@@ -28,8 +28,8 @@
 //!    kind:10007 event, `effective_search_relays` returns the published relays
 //!    with ZERO app involvement — exactly what UserPreferred search reads.
 //! 3. Account switch hides the prior account's relays (no cross-account leak);
-//!    the effective list falls back to the app default until the new account's
-//!    kind:10007 arrives.
+//!    the effective list falls back to the explicit app default, or to empty
+//!    when the app supplied none, until the new account's kind:10007 arrives.
 
 use std::sync::Arc;
 
@@ -75,7 +75,9 @@ fn search_relay_event(author: &str, created_at: u64, relays: &[&str]) -> KernelE
 /// The slot is the SAME `Arc<Mutex<Option<String>>>` the kernel populates for
 /// every backend (`AppHost::active_pubkey()`), so writing it here mirrors a
 /// production sign-in / account switch exactly.
-fn boot_with_search_handle() -> (
+fn boot_with_search_handle(
+    search_defaults: nmp_defaults::SearchDefaults,
+) -> (
     *mut nmp_ffi::NmpApp,
     nmp_core::slots::ActiveAccountSlot,
     Arc<SearchRelayListProjection>,
@@ -86,9 +88,10 @@ fn boot_with_search_handle() -> (
     // SAFETY: `app` is a valid non-null pointer from `nmp_app_new`.
     let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
 
-    // App-supplied default so the fallback is observable and distinct from the
-    // user's published list.
-    let defaults = nmp_defaults::NmpDefaults::default();
+    let defaults = nmp_defaults::NmpDefaults {
+        search_defaults,
+        ..Default::default()
+    };
     // SAFETY: exclusive access; no actor thread started.
     let handles = nmp_defaults::register_defaults_with_handles(unsafe { &mut *app }, defaults);
 
@@ -103,22 +106,39 @@ fn boot_with_search_handle() -> (
 
 /// Resolve the effective search relays the way a NIP-50 search caller would,
 /// using a known app default so the user-list-vs-fallback decision is visible.
-fn effective(search_relays: &Arc<SearchRelayListProjection>) -> Vec<String> {
-    let defaults =
-        nmp_defaults::SearchDefaults::with_default_relays(vec![APP_DEFAULT_RELAY.to_string()]);
-    nmp_defaults::effective_search_relays(search_relays, &defaults)
+fn effective(
+    search_relays: &Arc<SearchRelayListProjection>,
+    defaults: &nmp_defaults::SearchDefaults,
+) -> Vec<String> {
+    nmp_defaults::effective_search_relays(search_relays, defaults)
 }
 
 #[test]
-fn register_defaults_wires_search_relay_handle() {
-    let (app, _slot, search_relays) = boot_with_search_handle();
+fn register_defaults_wires_empty_search_relay_fallback_by_default() {
+    let defaults = nmp_defaults::SearchDefaults::default();
+    let (app, _slot, search_relays) = boot_with_search_handle(defaults.clone());
 
-    // Before any kind:10007 arrives the effective list is the app default
-    // (search still works — it does not fail-closed).
+    // Before any kind:10007 arrives the no-arg/default composition remains
+    // cache-only: shared NMP crates do not choose a public search relay.
     assert_eq!(
-        effective(&search_relays),
+        effective(&search_relays, &defaults),
+        Vec::<String>::new(),
+        "with no published kind:10007 and no app default, effective search relays must be empty"
+    );
+
+    nmp_app_free(app);
+}
+
+#[test]
+fn app_supplied_search_defaults_are_used_when_user_has_no_list() {
+    let defaults =
+        nmp_defaults::SearchDefaults::with_default_relays(vec![APP_DEFAULT_RELAY.to_string()]);
+    let (app, _slot, search_relays) = boot_with_search_handle(defaults.clone());
+
+    assert_eq!(
+        effective(&search_relays, &defaults),
         vec![APP_DEFAULT_RELAY.to_string()],
-        "with no published kind:10007, effective search relays must be the app default"
+        "with no published kind:10007, explicit app defaults must be the fallback"
     );
 
     nmp_app_free(app);
@@ -126,7 +146,9 @@ fn register_defaults_wires_search_relay_handle() {
 
 #[test]
 fn ingested_kind10007_makes_effective_search_relays_the_user_list() {
-    let (app, slot, search_relays) = boot_with_search_handle();
+    let defaults =
+        nmp_defaults::SearchDefaults::with_default_relays(vec![APP_DEFAULT_RELAY.to_string()]);
+    let (app, slot, search_relays) = boot_with_search_handle(defaults.clone());
 
     // Sign in as ALICE via the shared active-account slot (the kernel populates
     // this slot for every backend; writing it here is exactly what sign-in does).
@@ -148,7 +170,7 @@ fn ingested_kind10007_makes_effective_search_relays_the_user_list() {
         "projection snapshot must carry ALICE's published kind:10007 relays"
     );
     assert_eq!(
-        effective(&search_relays),
+        effective(&search_relays, &defaults),
         vec![ALICE_SEARCH_RELAY.to_string()],
         "effective_search_relays must return ALICE's kind:10007 list (not the app default) \
          so open_search(UserPreferred) fans out to her chosen relays"
@@ -159,13 +181,15 @@ fn ingested_kind10007_makes_effective_search_relays_the_user_list() {
 
 #[test]
 fn account_switch_does_not_leak_prior_account_search_relays() {
-    let (app, slot, search_relays) = boot_with_search_handle();
+    let defaults =
+        nmp_defaults::SearchDefaults::with_default_relays(vec![APP_DEFAULT_RELAY.to_string()]);
+    let (app, slot, search_relays) = boot_with_search_handle(defaults.clone());
 
     // ALICE signs in and her kind:10007 arrives.
     *slot.lock().expect("active-account slot") = Some(ALICE.to_string());
     search_relays.on_kernel_event(&search_relay_event(ALICE, 100, &[ALICE_SEARCH_RELAY]));
     assert_eq!(
-        effective(&search_relays),
+        effective(&search_relays, &defaults),
         vec![ALICE_SEARCH_RELAY.to_string()],
         "precondition: ALICE's search relays resolve while she is active"
     );
@@ -176,7 +200,7 @@ fn account_switch_does_not_leak_prior_account_search_relays() {
     // `account_switch_retargets_kind10007_self_fetch` in nmp-core).
     *slot.lock().expect("active-account slot") = Some(BOB.to_string());
     assert_eq!(
-        effective(&search_relays),
+        effective(&search_relays, &defaults),
         vec![APP_DEFAULT_RELAY.to_string()],
         "after switching to BOB, ALICE's search relays must NOT appear; \
          effective list falls back to the app default until BOB's kind:10007 arrives"
@@ -186,7 +210,7 @@ fn account_switch_does_not_leak_prior_account_search_relays() {
     const BOB_SEARCH_RELAY: &str = "wss://bob-search.example";
     search_relays.on_kernel_event(&search_relay_event(BOB, 200, &[BOB_SEARCH_RELAY]));
     assert_eq!(
-        effective(&search_relays),
+        effective(&search_relays, &defaults),
         vec![BOB_SEARCH_RELAY.to_string()],
         "BOB's own kind:10007 must resolve to BOB's relays after switch"
     );

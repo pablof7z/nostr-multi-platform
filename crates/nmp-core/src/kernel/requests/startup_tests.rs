@@ -18,7 +18,7 @@ const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 /// `Kernel::new` tests must install them directly, matching
 /// `discovery_tests::install_bootstrap_relays`.
 ///
-/// Also clears the `cfg(test)` default `wss://purplepag.es` indexer relay
+/// Also clears the `cfg(test)` default indexer relay
 /// so assertions pin discovery REQs to the test bootstrap relay rather
 /// than collapsing onto the indexer fallback path.
 fn install_bootstrap_relays(kernel: &mut Kernel) {

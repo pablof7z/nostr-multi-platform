@@ -30,17 +30,17 @@
 use std::ffi::c_char;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::__ffi_internal::{dispatch_capability, CapabilityCallbackSlot};
-use nmp_core::substrate::{CapabilityEnvelope, CapabilityRequest};
+use nmp_core::__ffi_internal::{CapabilityCallbackSlot, dispatch_capability};
 use nmp_core::ExternalSignerHookRequest;
-use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, UnsignedEvent};
+use nmp_core::substrate::{CapabilityEnvelope, CapabilityRequest};
 use nmp_signer_iface::{
-    ExternalSignerRequest, ExternalSignerResponse, ExternalSignerTransport, SignerError, SignerOp,
-    EXTERNAL_SIGNER_NAMESPACE,
+    EXTERNAL_SIGNER_NAMESPACE, ExternalSignerRequest, ExternalSignerResponse,
+    ExternalSignerTransport, SignerError, SignerOp,
 };
+use nmp_signer_iface::{RemoteSignerHandle, SignedEvent, UnsignedEvent};
 use nmp_signers::{Nip55Connect, Nip55Signer, SignerPayload};
 
-use super::{app_ref, NmpApp};
+use super::{NmpApp, app_ref};
 
 /// Outbound transport: serialises an [`ExternalSignerRequest`] into a
 /// `CapabilityRequest { namespace: "external_signer" }` and routes it through
@@ -58,13 +58,9 @@ pub(crate) struct CapabilitySignerTransport {
 
 impl std::fmt::Debug for CapabilitySignerTransport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // `CapabilityCallbackRegistration` is a raw fn pointer + context and
-        // does not implement Debug — print only registration presence.
-        let registered = self
-            .callback
-            .lock()
-            .map(|guard| guard.is_some())
-            .unwrap_or(false);
+        // The gate intentionally hides the raw callback pointer/context; print
+        // only registration presence.
+        let registered = self.callback.is_registered();
         f.debug_struct("CapabilitySignerTransport")
             .field("callback_registered", &registered)
             .finish()

@@ -240,7 +240,7 @@ impl Kernel {
     }
 
     pub(crate) fn make_update(&mut self, running: bool) -> UpdateFrameBytes {
-        let emit_started = Instant::now();
+        let emit_started = Instant::now(); // doctrine-allow: D9 — per-emit diagnostic timing anchor; wall stamp uses injected clock below
         // Wall-clock stamp for the actor-thread liveness heartbeat. `Instant`
         // above is monotonic and cannot be compared to a shell-side clock, so a
         // separate wall-clock reading is required. D7 / D9: the kernel owns time
@@ -271,7 +271,7 @@ impl Kernel {
         let update = self.build_snapshot_struct(running, last_tick_ms, emit_started, last_event_to_emit_ms);
 
         // Capture the encode start so we can report "build" vs "encode" time.
-        let before_serialize = Instant::now();
+        let before_serialize = Instant::now(); // doctrine-allow: D9 — snapshot encode diagnostic timing anchor; not replay policy
         // ADR-0037: run every host-registered typed projection and carry its
         // opaque FlatBuffers bytes in the frame's `typed_projections` sidecar.
         // D8: these closures run on this actor thread inside the tick;

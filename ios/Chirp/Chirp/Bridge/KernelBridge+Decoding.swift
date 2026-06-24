@@ -110,11 +110,12 @@ extension KernelHandle {
             let typedZaps = TypedZapsDecoder.decode(from: envelopes)
             let typedGroupChat = TypedGroupChatDecoder.decode(from: envelopes)
             let typedDiscoveredGroups = TypedDiscoveredGroupsDecoder.decode(from: envelopes)
-            // #626: NIP-29 group-create defaults (NGDF). The crate-owned
-            // suggested public-group relay URL. Output-only projection; the
-            // producer registers it once at app init, so the sidecar is present
-            // on every tick. Nil only on an older kernel build → the generic
-            // `projections["nmp.nip29.group_defaults"]` JSON path applies.
+            // #626/#1924: NIP-29 group-create defaults (NGDF). The
+            // app/operator-owned suggested public-group relay URL. Output-only
+            // projection; the producer registers it once at app init, so the
+            // sidecar is present on every tick. Nil means the typed sidecar is
+            // absent or malformed; there is no generic JSON projection for this
+            // key.
             let typedGroupDefaults = TypedGroupDefaultsDecoder.decode(from: envelopes)
             // Profile-cluster typed sidecar (`profile` / KPRF). Returns nil when
             // its sidecar is absent/malformed. `claimed_profiles` (KCPR) and

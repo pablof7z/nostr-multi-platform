@@ -12,13 +12,20 @@
 
 use std::path::Path;
 
-use crate::rules::{a6, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d26, d27, d9};
+use crate::rules::{
+    a6, action_namespace, d10, d12, d14, d15, d16, d17, d19, d20, d21, d23, d24, d25, d26, d27, d9,
+};
 
-/// True iff D9 should scan `path` — either the file is inside a protocol/
-/// substrate crate (`d9::file_in_scope`), or the caller opted-in via
+/// True iff the action-namespace prefix rule should scan `path`.
+pub(crate) fn action_namespace_file_in_scope(path: &Path) -> bool {
+    action_namespace::file_in_scope(path)
+}
+
+/// True iff D9 should scan `path` — either the file is inside a kernel time
+/// policy path (`d9::file_in_scope`), or the caller opted-in via
 /// `--d9-extra-scope <fragment>` (the fixture smoke test uses this so a
 /// staged fixture file under `target/<label>/` is reachable without faking a
-/// `crates/nmp-*` layout).
+/// `crates/nmp-core` layout).
 pub(crate) fn d9_file_in_scope(path: &Path, extra_scopes: &[String]) -> bool {
     if d9::file_in_scope(path) {
         return true;

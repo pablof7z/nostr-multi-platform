@@ -36,17 +36,20 @@ round-trip.
 
 ## Declaring app relays in Rust
 
-Use `NmpAppBuilder::with_relay(url, role)` to declare the app's default relay
-set. The builder carries these as defaults; on first start they are written to
-the `.nmp-relay-config.json` sidecar alongside the LMDB store.
+Use `NmpAppBuilder::with_relays([(url, role), ...])` to declare the app's
+default relay set. The builder carries these as defaults; on first start they
+are written to the `.nmp-relay-config.json` sidecar alongside the LMDB store.
 
 ```rust
 use nmp_defaults::{NmpAppBuilder, RunConfig};
 
 let app = NmpAppBuilder::new()
-    .with_relay("wss://relay.primal.net", "both,indexer")  // read + write + discovery
-    .with_relay("wss://purplepag.es",     "indexer")       // discovery only
     .storage_path("/path/to/app/data")
+    .consume_all_builtin_projections()
+    .with_relays([
+        ("wss://primary-relay.example", "both,indexer"),
+        ("wss://indexer-relay.example", "indexer"),
+    ])
     .start(RunConfig::default());
 ```
 
@@ -58,20 +61,39 @@ restarts.
 
 ```rust
 let app = NmpAppBuilder::new()
-    .with_relay("wss://nos.lol", "both")
     .in_memory()
+    .consume_all_builtin_projections()
+    .with_relays([("wss://test-relay.example", "both")])
     .start(RunConfig::default());
 ```
 
 In-memory mode always uses the declared defaults; there is no sidecar.
 
-### Using built-in defaults
+### No built-in defaults
 
-Calling `.with_relay()` at least once **replaces** the built-in defaults
-entirely. If you make no `.with_relay()` calls the builder uses the
-nmp-defaults defaults (`relay.primal.net` both+indexer, `purplepag.es`
-indexer). Most apps should declare explicit relays rather than relying on
-defaults.
+`nmp-defaults` ships no real public relay URLs. Apps must make an explicit
+initial-relay decision before `start()`:
+
+- `.with_relays([...])` declares the app-owned operator defaults.
+- `.without_initial_relays()` starts with an empty `configured_relays` set for
+  offline/test/local apps.
+
+There is no framework fallback. If the app chooses no initial relays, network
+operations fail closed until the user or host adds relays at runtime.
+
+### Search and group-create defaults
+
+The same app-owned rule applies to relay-like defaults outside the main app
+relay set:
+
+- NIP-50 search relays use the user's kind:10007 list as the first authority.
+  If the user has no list, the app may pass
+  `NmpDefaults { search_defaults: SearchDefaults::with_default_relays([...]), .. }`.
+  If both are empty, search stays cache-only and does not fan out to a public
+  relay chosen by NMP.
+- NIP-29 group-create suggestions are app/operator policy. Register an app
+  value with `wire_group_defaults_with_relay(...)`; the shared
+  `wire_group_defaults(...)` helper emits an empty suggestion.
 
 ---
 
@@ -91,13 +113,13 @@ with a comma or space:
 
 ```rust
 // Both content and indexer on the same relay
-.with_relay("wss://relay.primal.net", "both,indexer")
+.with_relays([("wss://primary-relay.example", "both,indexer")])
 
 // Read-only content relay
-.with_relay("wss://nos.lol", "read")
+.with_relays([("wss://read-relay.example", "read")])
 
 // Write-only relay (outbox)
-.with_relay("wss://relay.damus.io", "write")
+.with_relays([("wss://write-relay.example", "write")])
 ```
 
 The kernel's planner uses role tags to route: indexer-role relays receive
@@ -131,8 +153,8 @@ all four steps.
 
 ```json
 [
-  { "url": "wss://relay.primal.net", "role": "both,indexer" },
-  { "url": "wss://purplepag.es",     "role": "indexer" }
+  { "url": "wss://primary-relay.example", "role": "both,indexer" },
+  { "url": "wss://indexer-relay.example", "role": "indexer" }
 ]
 ```
 
@@ -189,15 +211,16 @@ publishes and for Marmot-style protocol bridges that hold an `AppRelaySlot`.
 
 ---
 
-**4. Calling with_relay after storage is set**
+**4. Calling relay declarations after start**
 
 ```rust
-// DOES NOT COMPILE — with_relay is available on both builder states, but
-// calling it after start() is impossible (start() consumes the builder).
+// DOES NOT COMPILE — start() consumes the builder.
 let app = NmpAppBuilder::new()
     .storage_path("/data")
+    .consume_all_builtin_projections()
+    .without_initial_relays()
     .start(RunConfig::default());
-app.with_relay(...)   // ← compile error: NmpAppBuilder is gone
+app.with_relays(...)   // compile error: NmpAppBuilder is gone
 ```
 
 All relay declarations must be made before `start()`. Post-start relay changes
@@ -210,9 +233,15 @@ go through the dispatch API (`ActorCommand::AddRelay`).
 ```rust
 // Declare defaults (Rust composition root)
 NmpAppBuilder::new()
-    .with_relay(url, role)            // accumulates; first call replaces built-ins
-    .with_relays(vec![(url, role)])   // bulk variant
     .storage_path(dir)
+    .consume_all_builtin_projections()
+    .with_relays(vec![(url, role)])   // explicit app-owned initial relays
+    .start(config)
+
+NmpAppBuilder::new()
+    .in_memory()
+    .declare_consumed_projections(["profile"])
+    .without_initial_relays()         // explicit empty relay set
     .start(config)
 
 // Read configured relays from another Rust crate (e.g. a runtime controller)
@@ -223,8 +252,8 @@ for relay in guard.as_slice() {
 }
 
 // Add/remove at runtime (via action dispatch, not direct mutation — D4)
-app.dispatch_action("nmp.relay.add",   json!({ "url": "wss://…", "role": "both" }));
-app.dispatch_action("nmp.relay.remove", json!({ "url": "wss://…" }));
+app.dispatch_action("nmp.relay.add",   json!({ "url": "wss://relay.example", "role": "both" }));
+app.dispatch_action("nmp.relay.remove", json!({ "url": "wss://relay.example" }));
 ```
 
 ---

@@ -11,27 +11,30 @@
 //!    user explicitly chose these relays.
 //! 2. **App default** — a small list the APP (not NMP, not this crate)
 //!    supplies at build time via [`SearchDefaults`]. If the user has no
-//!    kind:10007 list published (new account, unconfigured), the default is
-//!    used so searches don't fail-closed.
+//!    kind:10007 list published (new account, unconfigured), this explicit
+//!    app/operator list is used.
+//! 3. **Empty** — if neither source exists, relay search is cache-only. Shared
+//!    NMP crates never pick a public operator on the app's behalf.
 //!
 //! # No operator policy in protocol crates
 //!
-//! The built-in default relay (`wss://relay.nostr.band`) lives here in
-//! `nmp-defaults`, which is a composition/operator-policy crate (step 10 of
-//! `docs/architecture/crate-boundaries.md`). It is NEVER in `nmp-core` or any
-//! NIP protocol crate. Apps that want a different default override it with
-//! [`SearchDefaults::with_default_relays`] before calling
-//! [`crate::register_defaults`].
+//! `nmp-defaults` is a shared composition crate, not a leaf app. It wires the
+//! search-relay seam but does not own a relay URL. Apps that want a default set
+//! pass one with [`SearchDefaults::with_default_relays`] before calling
+//! [`crate::register_defaults_with`]; apps that want no relay default use
+//! [`SearchDefaults::default`].
 //!
 //! # Usage
 //!
 //! ```rust,ignore
-//! // 1. Configure at build time (optional — NMP ships a sensible built-in).
-//! let search_defaults = SearchDefaults::default(); // uses wss://relay.nostr.band
-//! // or: SearchDefaults::with_default_relays(vec!["wss://my-search.example".to_string()])
+//! // 1. Configure at build time.
+//! let search_defaults = SearchDefaults::with_default_relays(vec![
+//!     "wss://my-search.example".to_string(),
+//! ]);
+//! // Or use SearchDefaults::default() to declare no app-level search relay.
 //!
 //! // 2. Register the runtime and keep the projection handle.
-//! let search_projection = register_search_relay_runtime(&mut app);
+//! let search_projection = register_search_relay_runtime_with(&mut app, search_defaults.clone());
 //!
 //! // 3. At query time, resolve the effective relay list.
 //! let relays = effective_search_relays(&search_projection, &search_defaults);
@@ -41,24 +44,14 @@ use std::sync::Arc;
 
 use nmp_nip51::SearchRelayListProjection;
 
-/// NMP's built-in fallback search relay, used when the app supplies no
-/// override and the active account has no published kind:10007 list.
-///
-/// `wss://relay.nostr.band` is a live, free, public NIP-50 full-text-search
-/// relay (the prior built-in `wss://search.nos.lol` is dead — NXDOMAIN). Apps
-/// that prefer a different relay (or wish to supply none at all) set
-/// [`SearchDefaults::default_relays`] before calling `register_defaults`. This
-/// constant is intentionally in `nmp-defaults` (the composition/operator-policy
-/// crate), not in any NIP protocol crate.
-pub const NMP_BUILTIN_SEARCH_RELAY: &str = "wss://relay.nostr.band";
-
 /// App-overridable default search-relay configuration.
 ///
-/// An app calls [`SearchDefaults::with_default_relays`] to replace the NMP
-/// built-in with its own list. The list is used when the active account has no
-/// published kind:10007 relay list (new user, unconfigured account, etc.).
+/// An app calls [`SearchDefaults::with_default_relays`] to declare its own
+/// fallback list. The list is used when the active account has no published
+/// kind:10007 relay list (new user, unconfigured account, etc.).
 ///
-/// The default-constructed value uses [`NMP_BUILTIN_SEARCH_RELAY`].
+/// The default-constructed value is empty: no shared NMP crate owns an
+/// operator relay URL.
 #[derive(Clone, Debug)]
 pub struct SearchDefaults {
     /// Relay URLs to use when the user has no kind:10007 list.
@@ -68,7 +61,7 @@ pub struct SearchDefaults {
 impl Default for SearchDefaults {
     fn default() -> Self {
         Self {
-            default_relays: vec![NMP_BUILTIN_SEARCH_RELAY.to_string()],
+            default_relays: Vec::new(),
         }
     }
 }
@@ -76,9 +69,8 @@ impl Default for SearchDefaults {
 impl SearchDefaults {
     /// Construct a [`SearchDefaults`] with an app-supplied relay list.
     ///
-    /// Pass canonical `wss://` URLs. The list replaces the NMP built-in
-    /// entirely — if you want to extend the built-in, start with
-    /// `SearchDefaults::default().default_relays` and append to it.
+    /// Pass canonical `wss://` URLs. This is app/operator policy; shared NMP
+    /// crates do not append or replace it with a built-in relay.
     #[must_use]
     pub fn with_default_relays(relays: Vec<String>) -> Self {
         Self {
@@ -92,6 +84,7 @@ impl SearchDefaults {
 /// Preference order:
 /// 1. User's kind:10007 snapshot (non-empty → authoritative)
 /// 2. App default from [`SearchDefaults::default_relays`]
+/// 3. Empty list when neither source exists
 ///
 /// A higher-order NIP-50 search crate calls this at subscription-open time to
 /// determine which relays to open a `{"search": "..."}` REQ on. The caller
@@ -103,7 +96,7 @@ impl SearchDefaults {
 ///
 /// [`SearchRelayListProjection::snapshot`] gates on the live `active_pubkey`
 /// slot — if the account changed between the last kind:10007 ingest and this
-/// call, `snapshot()` returns an empty list, so the default falls back. No
+/// call, `snapshot()` returns an empty list, so the app default falls back. No
 /// stale relay data from a prior account is ever returned.
 #[must_use]
 pub fn effective_search_relays(
@@ -121,8 +114,8 @@ pub fn effective_search_relays(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::substrate::KernelEvent;
     use nmp_core::substrate::EventId;
+    use nmp_core::substrate::KernelEvent;
     use nmp_core::KernelEventObserver;
     use std::sync::Mutex;
 
@@ -161,30 +154,33 @@ mod tests {
         let proj = make_projection(Some(ALICE));
         proj.on_kernel_event(&relay_event(ALICE, &["wss://user-relay.example"]));
 
-        let defaults = SearchDefaults::with_default_relays(vec!["wss://default.example".to_string()]);
+        let defaults =
+            SearchDefaults::with_default_relays(vec!["wss://default.example".to_string()]);
         let relays = effective_search_relays(&proj, &defaults);
 
         assert_eq!(relays, vec!["wss://user-relay.example".to_string()]);
     }
 
     #[test]
-    fn fallback_to_default_when_user_has_no_list() {
+    fn default_search_defaults_are_empty_when_user_has_no_list() {
         let proj = make_projection(Some(ALICE));
         // No kind:10007 event ingested.
 
         let defaults = SearchDefaults::default();
         let relays = effective_search_relays(&proj, &defaults);
 
-        assert_eq!(relays, vec![NMP_BUILTIN_SEARCH_RELAY.to_string()]);
+        assert!(
+            relays.is_empty(),
+            "shared defaults must not supply a public search relay"
+        );
     }
 
     #[test]
-    fn custom_app_default_is_respected() {
+    fn app_default_is_respected_when_user_has_no_list() {
         let proj = make_projection(Some(ALICE));
 
-        let defaults = SearchDefaults::with_default_relays(vec![
-            "wss://app-search.example".to_string(),
-        ]);
+        let defaults =
+            SearchDefaults::with_default_relays(vec!["wss://app-search.example".to_string()]);
         let relays = effective_search_relays(&proj, &defaults);
 
         assert_eq!(relays, vec!["wss://app-search.example".to_string()]);
@@ -200,13 +196,15 @@ mod tests {
         const BOB: &str = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
         *slot.lock().expect("slot") = Some(BOB.to_string());
 
-        let defaults = SearchDefaults::default();
+        let defaults = SearchDefaults::with_default_relays(vec![
+            "wss://bob-default-search.example".to_string(),
+        ]);
         let relays = effective_search_relays(&proj, &defaults);
 
         // Alice's relay must NOT bleed through to Bob's effective list.
         assert_eq!(
             relays,
-            vec![NMP_BUILTIN_SEARCH_RELAY.to_string()],
+            vec!["wss://bob-default-search.example".to_string()],
             "after account switch, Alice's relay must not appear in Bob's effective list"
         );
     }

@@ -249,7 +249,10 @@ impl KernelReducer {
         //    respective targets (closes the #1143 / #1009 blocker).
         //    D8: with no pending claims this is a single `is_empty()` check;
         //    no allocation, no iteration.
-        outbound.extend(self.kernel.poll_claim_expansion(crate::time::Instant::now()));
+        outbound.extend(
+            self.kernel
+                .poll_claim_expansion(crate::time::Instant::now()), // doctrine-allow: D9 — residual claim-expansion tick tracked in #1952
+        );
         // 4. Publish pump: mirrors actor/mod.rs:2161-2173.
         //    Retries in-flight publish frames whose retry deadline has elapsed.
         outbound.extend(self.kernel.tick_publish_engine_for_now());

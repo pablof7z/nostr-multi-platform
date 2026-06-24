@@ -50,7 +50,7 @@ use super::*;
 /// app crate.
 struct TestHostOpModule;
 impl nmp_core::substrate::ActionModule for TestHostOpModule {
-    const NAMESPACE: &'static str = "test.host_op"; // doctrine-allow: D9 — test-only namespace inside #[cfg(test)]; never on the wire
+    const NAMESPACE: &'static str = "test.host_op"; // doctrine-allow: action_namespace — test-only namespace inside #[cfg(test)]; never on the wire
     type Action = serde_json::Value;
     fn start(
         &self,

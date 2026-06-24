@@ -105,8 +105,8 @@ impl<T: SearchRelaySource + ?Sized> SearchRelaySource for &T {
 ///
 /// * [`SearchTargets::Explicit`] — the caller-supplied list verbatim.
 /// * [`SearchTargets::UserPreferred`] — kind:10007 search relays; when those
-///   are empty, falls back to the app default (a user with no kind:10007 still
-///   gets a working search).
+///   are empty, falls back to the app default. If the app default is also
+///   empty, the resolved relay set is empty and the host remains cache-only.
 /// * [`SearchTargets::AppDefault`] — the app default set.
 ///
 /// The result is de-duplicated preserving first-seen order. Blocked-relay
@@ -183,9 +183,9 @@ mod tests {
     fn user_preferred_reads_kind_10007() {
         let resolved = resolve_search_relays(
             &SearchTargets::UserPreferred,
-            &src(&["wss://search.nos.lol/"], &["wss://default/"]),
+            &src(&["wss://user-search.example/"], &["wss://default/"]),
         );
-        assert_eq!(resolved, vec!["wss://search.nos.lol/"]);
+        assert_eq!(resolved, vec!["wss://user-search.example/"]);
     }
 
     #[test]

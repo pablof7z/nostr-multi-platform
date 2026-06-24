@@ -41,7 +41,7 @@ fn tag(parts: &[&str]) -> Vec<String> {
 /// `identity_state::set_configured_relays`; tests that construct
 /// a bare `Kernel::new` install them directly.
 ///
-/// Also clears the `cfg(test)` default `wss://purplepag.es` indexer relay so
+/// Also clears the `cfg(test)` default indexer relay so
 /// assertions can pin discovery REQs to BOOTSTRAP_CONTENT / BOOTSTRAP_INDEXER
 /// rather than collapsing onto the default indexer fallback path.
 fn install_bootstrap_relays(kernel: &mut Kernel) {

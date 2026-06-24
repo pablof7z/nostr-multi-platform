@@ -1,5 +1,5 @@
-//! Smoke tests for D0, D6, D7, D8 (hot-path allocation + no-polling), and D9
-//! (protocol-crate action-namespace prefix).
+//! Smoke tests for D0, D6, D7, D8 (hot-path allocation + no-polling), D9
+//! (kernel-owned time), and the action_namespace prefix rule.
 //!
 //! Split out of `tests.rs` (file-size cap). Shared helpers imported from
 //! parent module via `super`.
@@ -254,7 +254,7 @@ fn d8_sleep_negative_fixture_clean() {
     );
 }
 
-// ─── D9 (protocol-crate action-namespace prefix) ────────────────────────────
+// ─── D9 (kernel-owned time) ─────────────────────────────────────────────────
 
 #[test]
 fn d9_positive_fixture_fires() {
@@ -268,8 +268,8 @@ fn d9_positive_fixture_fires() {
     std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
 
     let tmp_str = tmp.to_string_lossy().into_owned();
-    // D9 is path-scoped to `crates/nmp-*/` — the smoke fixture staged under
-    // `target/` falls outside that scope, so `--d9-extra-scope` opts it in
+    // D9 is path-scoped to kernel time-policy paths — the smoke fixture staged
+    // under `target/` falls outside that scope, so `--d9-extra-scope` opts it in
     // (mirrors `--d8-extra-scope`).
     let (code, stdout, stderr) = run_lint(&[
         "--path",
@@ -287,9 +287,10 @@ fn d9_positive_fixture_fires() {
         "d9 positive must emit ≥1 D9 finding; stdout:\n{}",
         stdout
     );
-    // Both bad namespaces in the fixture must surface in the report so a
-    // regression that silently swallows one cannot pass this test.
-    for token in ["nip29.post_chat_message", "nip29.react_in_group"] {
+    // Every raw-time shape in the fixture must surface, including bare
+    // multiline arguments and local variables whose names carry no policy
+    // marker.
+    for token in ["SystemTime::now", "Instant::now", "now_epoch_ms"] {
         assert!(
             stdout.contains(token),
             "d9 positive must name `{}`; stdout:\n{}",
@@ -327,11 +328,74 @@ fn d9_negative_fixture_clean() {
     );
 }
 
+// ─── action_namespace (protocol-crate action namespace prefix) ──────────────
+
+#[test]
+fn action_namespace_positive_fixture_fires() {
+    let workspace = workspace_root();
+    let root = workspace
+        .join("target")
+        .join("doctrine_lint_action_namespace_pos");
+    let tmp = root.join("crates").join("nmp-nip29").join("src");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let pos_src = workspace.join(fixture_path("action_namespace/pos.rs"));
+    std::fs::copy(&pos_src, tmp.join("pos.rs")).expect("copy pos fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
+    assert_eq!(
+        code, 1,
+        "action_namespace positive must exit 1; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        stdout.contains("error[action_namespace]"),
+        "positive fixture must emit action_namespace finding; stdout:\n{}",
+        stdout
+    );
+    for token in ["nip29.post_chat_message", "nip29.react_in_group"] {
+        assert!(
+            stdout.contains(token),
+            "action_namespace positive must name `{}`; stdout:\n{}",
+            token,
+            stdout
+        );
+    }
+}
+
+#[test]
+fn action_namespace_negative_fixture_clean() {
+    let workspace = workspace_root();
+    let root = workspace
+        .join("target")
+        .join("doctrine_lint_action_namespace_neg");
+    let tmp = root.join("crates").join("nmp-nip29").join("src");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&tmp).expect("create temp dir");
+    let neg_src = workspace.join(fixture_path("action_namespace/neg.rs"));
+    std::fs::copy(&neg_src, tmp.join("neg.rs")).expect("copy neg fixture");
+
+    let tmp_str = tmp.to_string_lossy().into_owned();
+    let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
+    assert_eq!(
+        code, 0,
+        "action_namespace negative must exit 0; stdout:\n{}\nstderr:\n{}",
+        stdout, stderr
+    );
+    assert!(
+        !stdout.contains("error[action_namespace]"),
+        "negative fixture must produce zero action_namespace findings; stdout:\n{}",
+        stdout
+    );
+}
+
 /// THE LIVE GUARD: every protocol crate on master must already satisfy
-/// D9 — AND, because `scan_one_file` runs every applicable rule per file,
+/// D9 and action_namespace — AND, because `scan_one_file` runs every applicable rule per file,
 /// every other applicable rule too.
 ///
-/// SCOPE — this is a full-doctrine scan (D0/D6/D7/D8/D9), not D9-only.
+/// SCOPE — this is a full-doctrine scan (D0/D6/D7/D8/D9 + action_namespace),
+/// not D9-only.
 /// `scan_one_file` has no "only this rule" mode; opening the scan to
 /// every protocol crate's `src/` means D6 (`.unwrap()` / `panic!` outside
 /// `#[cfg(test)]`) and D8's no-polling check now apply to every
@@ -356,8 +420,8 @@ fn protocol_crates_are_doctrine_clean() {
     // Scan every protocol crate. The default mode targets `nmp-core`; we
     // explicitly add the NIP crates by path so the workspace's whole
     // protocol surface is covered. (App crates under `apps/` are out of
-    // scope by D9 design — `d9::file_in_scope` excludes them — and by D0
-    // design — `d0::file_is_exempt` exempts them.)
+    // scope by action_namespace design, and by D0 design —
+    // `d0::file_is_exempt` exempts them.)
     let nip_crates = [
         "nmp-nip01",
         "nmp-nip17",
@@ -379,12 +443,17 @@ fn protocol_crates_are_doctrine_clean() {
         "protocol crates must be doctrine-lint clean; stdout:\n{}\nstderr:\n{}",
         stdout, stderr
     );
-    // Spell out D9 specifically — the rule this PR adds. A D6 / D8 hit
-    // would already fail the `code == 0` check above; an explicit D9
-    // assertion makes the intent obvious in the test name.
+    // Spell out D9 and action_namespace specifically. A D6 / D8 hit would
+    // already fail the `code == 0` check above; explicit assertions make the
+    // intent obvious in the test name.
     assert!(
         !stdout.contains("error[D9]"),
         "protocol crates must not contain D9 findings; stdout:\n{}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("error[action_namespace]"),
+        "protocol crates must not contain action_namespace findings; stdout:\n{}",
         stdout
     );
 }

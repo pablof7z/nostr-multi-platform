@@ -165,7 +165,7 @@ fn full_chirp_composition_untyped_modules_match_the_migration_allowlist() {
 /// typed-only invariant regresses; the gate must flag it.
 struct JsonOnlyAppModule;
 impl nmp_core::substrate::ActionModule for JsonOnlyAppModule {
-    const NAMESPACE: &'static str = "test.json_only_full_composition_gate"; // doctrine-allow: D9 — test-only namespace inside a #[cfg(test)] test; never on the wire
+    const NAMESPACE: &'static str = "test.json_only_full_composition_gate"; // doctrine-allow: action_namespace — test-only namespace inside a #[cfg(test)] test; never on the wire
     type Action = serde_json::Value;
     // `decode_payload` left defaulted (`None`) — the forbidden JSON-only shim.
 

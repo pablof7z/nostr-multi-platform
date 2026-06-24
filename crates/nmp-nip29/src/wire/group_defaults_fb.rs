@@ -1,12 +1,11 @@
 //! Typed FlatBuffers wire codec for [`crate::projection::GroupDefaultsSnapshot`].
 //!
-//! The canonical FFI shape is the serde JSON of `GroupDefaultsSnapshot`
-//! (`GroupDefaultsProjection::snapshot_json`). This module adds a **typed
-//! FlatBuffers** encoding of the same read model — the typed sidecar (ADR-0037)
-//! carried alongside the generic `Value` projection under the same
-//! `"nmp.nip29.group_defaults"` key. The serde shape stays authoritative; this
-//! is the typed payload a `NGDF`-aware host decodes with generated accessors
-//! instead of JSON reflection.
+//! This module encodes `GroupDefaultsSnapshot` as the typed FlatBuffers
+//! snapshot projection (`NGDF`) registered under `"nmp.nip29.group_defaults"`.
+//! No generic `Value` projection is registered for this key. The serde JSON
+//! shape (`GroupDefaultsProjection::snapshot_json`) is retained as a parity
+//! helper; this is the payload a `NGDF`-aware host decodes with generated
+//! accessors instead of JSON reflection.
 //!
 //! Raw data only (ADR-0032): `suggested_relay_url` is a raw relay URL string.
 //!

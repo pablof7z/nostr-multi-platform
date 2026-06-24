@@ -4,18 +4,16 @@ namespace nmp.nip29;
 // (`nmp_nip29::projection::GroupDefaultsSnapshot`), schema_id
 // "nmp.nip29.group_defaults".
 //
-// This is the typed sidecar (ADR-0037) carried alongside the generic
-// `serde_json::Value` projection registered under the same key in
-// `nmp_nip29::register::wire_group_defaults`. The serde shape
-// (`GroupDefaultsProjection::snapshot_json`) stays authoritative; this buffer
-// mirrors it byte-for-byte in field semantics so a host with a `NGDF` decoder
-// can read typed accessors instead of JSON reflection. An un-updated host falls
-// back to the generic `Value` subtree (the permanent fallback from ADR-0037).
+// This is the typed FlatBuffers snapshot projection registered under the key by
+// `nmp_nip29::register::wire_group_defaults`. No generic `serde_json::Value`
+// projection is registered for this key; hosts decode `NGDF` or treat the
+// defaults as absent. The serde shape (`GroupDefaultsProjection::snapshot_json`)
+// is retained as a parity helper and mirrors this buffer's field semantics.
 //
-// Issue #626: this projection moves the NIP-29 public-group default relay URL
-// out of the iOS shell (a hardcoded Swift `@State` literal) into the framework.
-// The value is sourced from the crate-owned constant
-// `DEFAULT_PUBLIC_GROUP_RELAY_URL`; a host shell pre-fills its editable relay
+// Issue #626 moved the NIP-29 public-group suggested relay URL out of the iOS
+// shell. Issue #1924 made the concrete relay app/operator policy: the shared
+// crate emits an empty suggestion unless a leaf app supplies one through
+// `wire_group_defaults_with_relay`. A host shell pre-fills its editable relay
 // field from `suggested_relay_url` and the user may overwrite it.
 //
 // Raw data only (ADR-0032): `suggested_relay_url` is a raw relay URL string,
@@ -32,7 +30,7 @@ namespace nmp.nip29;
 // The serialised create-flow defaults read model.
 table GroupDefaultsSnapshot {
   schema_version:uint32 = 1;   // mirrors GROUP_DEFAULTS_SCHEMA_VERSION
-  suggested_relay_url:string;  // crate-owned default host relay URL (#626)
+  suggested_relay_url:string;  // app/operator-supplied suggested host relay URL
 }
 
 root_type GroupDefaultsSnapshot;

@@ -70,7 +70,7 @@ impl Kernel {
     fn mark_lane_connected(&mut self, role: RelayRole) {
         let relay = self.relay_mut(role);
         relay.connection = "connected".to_string();
-        relay.connected_at = Some(Instant::now());
+        relay.connected_at = Some(Instant::now()); // doctrine-allow: D9 — relay diagnostic elapsed-time marker; not replay policy
         relay.last_error = None;
         // A fresh socket clears any prior typed error category — leaving a
         // stale `error_category` would mislead iOS into branching on an

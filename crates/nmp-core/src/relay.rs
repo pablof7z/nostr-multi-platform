@@ -50,12 +50,12 @@ pub type RelayUrl = String;
 /// diagnostic — it never silently dials an unconsented relay (V-66).
 ///
 /// These constants live behind `#[cfg(any(test, feature = "test-support"))]`
-/// so test fixtures still have well-known seed URLs without re-admitting a
+/// so test fixtures still have stable placeholder URLs without re-admitting a
 /// production hardcoded default.
 #[cfg(any(test, feature = "test-support"))]
-pub(crate) const FALLBACK_INDEXER_RELAY: &str = "wss://purplepag.es";
+pub(crate) const FALLBACK_INDEXER_RELAY: &str = "wss://indexer-relay.example";
 #[cfg(any(test, feature = "test-support"))]
-pub(crate) const FALLBACK_CONTENT_RELAY: &str = "wss://relay.primal.net";
+pub(crate) const FALLBACK_CONTENT_RELAY: &str = "wss://content-relay.example";
 
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) const BOOTSTRAP_DISCOVERY_RELAYS: &[&str] =

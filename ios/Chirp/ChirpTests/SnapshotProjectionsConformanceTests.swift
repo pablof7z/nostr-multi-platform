@@ -91,7 +91,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
             "groups": []
           },
           "nmp.nip29.group_defaults": {
-            "suggested_relay_url": "wss://relay.groups.nip29.com"
+            "suggested_relay_url": "wss://group-default.example"
           },
           "nmp.nip17.dm_inbox": {
             "conversations": []

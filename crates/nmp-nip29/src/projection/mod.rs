@@ -10,10 +10,10 @@
 //! - [`discovered`] — [`DiscoveredGroupsProjection`]: a single relay's
 //!   group catalog, accumulated from kinds 39000/39001/39002. The read-side
 //!   of `JoinGroupView` / discovery flows.
-//! - [`group_defaults`] — [`GroupDefaultsProjection`]: crate-owned defaults for
-//!   the public-group create flow (the suggested relay URL, #626). Output-only:
-//!   not a `KernelEventObserver` — its snapshot is a pure function of a
-//!   crate-owned constant.
+//! - [`group_defaults`] — [`GroupDefaultsProjection`]: app-supplied defaults
+//!   for the public-group create flow (the suggested relay URL, #626/#1924).
+//!   Output-only: not a `KernelEventObserver` — its snapshot is captured from
+//!   registration-time app config.
 //! - [`joined`] — [`JoinedGroupsProjection`]: active-account membership/admin
 //!   status derived from relay-signed 39001/39002 snapshots.
 //! - [`group_events`] — [`GroupEventsProjection`]: raw full-tag `h`-tagged

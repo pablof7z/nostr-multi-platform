@@ -108,7 +108,7 @@ impl Kernel {
     }
 
     pub(crate) fn retry_publish_now(&mut self, handle: &str) -> Vec<OutboundMessage> {
-        let now_ms = now_epoch_ms();
+        let now_ms = now_epoch_ms(); // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
         let handle = handle.to_string();
         let engine_rev_before = self.publish_engine.snapshot().rev;
         if let Err(err) = self.publish_engine.retry_now(&handle, now_ms) {
@@ -155,7 +155,7 @@ impl Kernel {
     /// already-settled or never-indexed publish), so a stale host cancel is
     /// still a benign idempotent terminal verdict (D6).
     pub(crate) fn cancel_publish(&mut self, id: &str) {
-        let now_ms = now_epoch_ms();
+        let now_ms = now_epoch_ms(); // doctrine-allow: D9 — residual publish timestamp helper tracked in #1952
         // Reverse-resolve `id` → (handle, original correlation_id). Unknown id:
         // fall back to id-as-both so an evicted/never-indexed publish still
         // clears the host spinner under the id the host handed us. The resolved
@@ -309,4 +309,3 @@ fn publish_outbox_status(per_relay: &[(String, PerRelayState)]) -> String {
     }
     "queued".to_string()
 }
-
