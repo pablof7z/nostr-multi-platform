@@ -21,17 +21,38 @@ specific deletion gate and deadline.
 
 ---
 
-## D0. The framework core knows nothing about your app's domain
+## D0. Shared NMP crates know nothing about your app's domain
 
 The shared Rust core (`nmp-core`) has no concept of a tweet, a podcast episode, a highlight, or a group chat. Those nouns belong to your app. You add them through typed extension modules (`ViewModule`, `ActionModule`, `DomainModule`, `CapabilityModule`, `IdentityModule`). Two apps can be built on the same core without either one leaking its domain concepts into the shared substrate.
+
+D0 applies to every shared NMP crate, not only `nmp-core`. `nmp-defaults`,
+protocol crates, reusable engines, binding crates, and FFI/wasm delivery
+surfaces must stay app-domain agnostic. They may expose generic Nostr
+mechanisms and extension seams; they must not own one product's records,
+ranking rules, catalog lookups, playback state, operator defaults, app-named
+commands, or compatibility shortcuts.
+
+A single consuming app is not enough evidence to add a shared feature. The
+review question is: would a second, unrelated Nostr app use this unchanged? If
+yes, build the reusable mechanism once. If no, the feature belongs in the app's
+Rust core. If the answer is ambiguous, the issue or ADR must settle ownership
+before code lands.
 
 This rules out:
 
 - The framework core becoming a grab-bag of every app's domain objects.
+- Any shared NMP crate becoming a grab-bag of one app's product needs.
+- Bespoke publish/read/projection helpers that duplicate an existing generic
+  action, projection, capability, or event-builder seam for a single app.
+- Hard-coded product/operator policy in shared crates, including relay sets,
+  seed accounts, catalog services, app defaults, ranking policy, or app-named
+  bootstrap behavior.
+- Temporary shared-crate hacks added to unblock one app instead of fixing the
+  ownership boundary.
 - Business logic written in Swift, Kotlin, or TypeScript instead of once in Rust.
 - Apps poisoning each other through the shared core.
 
-*Implementation detail: `nmp-core` enforces this via module traits. App-domain nouns, and protocol-specific nouns that smuggle app policy into the substrate, are banned from `nmp-core` by the doctrine lint. Generic protocol primitives such as shared kind constants stay in substrate-owned modules when they are reusable infrastructure. Internal test surface is gated behind `#[cfg(any(test, feature = "test-support"))]` so production builds export no actor internals.*
+*Implementation detail: `nmp-core` enforces this via module traits. App-domain nouns, and protocol-specific nouns that smuggle app policy into the substrate, are banned from `nmp-core` by the doctrine lint. Generic protocol primitives such as shared kind constants stay in substrate-owned modules when they are reusable infrastructure. Review applies the same ownership test to every shared crate even when the lint cannot prove it mechanically. Internal test surface is gated behind `#[cfg(any(test, feature = "test-support"))]` so production builds export no actor internals.*
 
 ---
 

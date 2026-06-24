@@ -255,6 +255,15 @@ If a feature would be useful to a different Nostr app, it belongs in an NMP
 crate. If it is specific to one app's product domain, it belongs under
 `apps/<app>/`.
 
+"Useful to another app" means usable unchanged as a generic Nostr mechanism,
+not merely plausible future reuse. A single app's feature request does not
+justify app-shaped code in a shared crate. Shared NMP crates must not gain
+app-named commands, bespoke projection shapes, hard-coded product defaults,
+operator policy, or temporary compatibility paths for one consumer. When a
+shared crate needs to help an app, the acceptable shape is a reusable substrate
+seam or protocol mechanism that other apps can compose. Otherwise the work
+stays in the leaf app's Rust crate.
+
 ---
 
 ## 9. App Composition
