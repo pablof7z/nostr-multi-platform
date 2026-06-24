@@ -4,6 +4,7 @@ import { OpFeedSnapshot, RelationCount, ReplyAttribution, RootCard } from "./gen
 import { RelationCountState } from "./generated/nmp/nip01/relation-count-state";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
+import { REFS_EVENT_KEY } from "./refEventStore";
 import { REFS_PROFILE_KEY } from "./refProfileStore";
 
 // ── Schema descriptor constants (ADR-0038) ──────────────────────────────────
@@ -295,6 +296,19 @@ export function findRefsProfileSidecar(snapshot: SnapshotFrame): Uint8Array | un
     if (!payloadBytes || payloadBytes.length === 0) return undefined;
     // payloadArray() is a view over the frame buffer; the cache copies the rows
     // it commits, so passing the view through is safe (no retained reference).
+    return payloadBytes;
+  }
+  return undefined;
+}
+
+export function findRefsEventSidecar(snapshot: SnapshotFrame): Uint8Array | undefined {
+  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
+    const proj = snapshot.typedProjections(i);
+    if (!proj || proj.key() !== REFS_EVENT_KEY) continue;
+    const payload = proj.payload();
+    if (!payload || payload.fileIdentifier() !== NRRD_FILE_IDENTIFIER) return undefined;
+    const payloadBytes = payload.payloadArray();
+    if (!payloadBytes || payloadBytes.length === 0) return undefined;
     return payloadBytes;
   }
   return undefined;

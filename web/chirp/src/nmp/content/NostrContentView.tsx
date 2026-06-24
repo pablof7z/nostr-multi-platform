@@ -4,7 +4,7 @@
  * Stage 0 deliverables (PR-F4):
  *   • Text, Paragraph, Heading, BlockQuote, CodeBlock, List, Rule nodes.
  *   • Inline formatting: Emphasis, Strong, InlineCode, Link, SoftBreak, HardBreak.
- *   • Mention / EventRef → `nostr:…` URI rendered as an anchor (no embed card).
+ *   • Mention chips and EventRef quote cards via component-owned ref claims.
  *   • Hashtag → `#tag` styled chip.
  *   • Url → plain anchor.
  *   • Emoji → shortcode text or <img> when emojiUrl is present.
@@ -24,6 +24,8 @@ import type { ListItem } from "../generated/nmp/content/list-item";
 import { WireNodeKind } from "../generated/nmp/content/wire-node-kind";
 import { useNostrProfileHost } from "../../components/user-avatar/NostrProfileHost";
 import { NostrMentionChip } from "../../components/content-mention-chip/NostrMentionChip";
+import { EventRefNode } from "./EventRefNode";
+import "./NostrContentView.css";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -181,17 +183,6 @@ function MentionNode(p: { node: WireNode }): JSX.Element {
     >
       {(profile) => <NostrMentionChip profile={profile()} />}
     </Show>
-  );
-}
-
-/** Stage 0: renders the raw `nostr:nevent1…` / `nostr:naddr1…` URI as a link.
- *  Embed cards (resolved_embeds projection) are deferred to a later stage. */
-function EventRefNode(p: { node: WireNode }): JSX.Element {
-  const uri = p.node.nostrUri()?.uri() ?? p.node.text() ?? "";
-  return (
-    <a class="nostr-event-ref" href={uri} rel="noopener noreferrer">
-      {uri}
-    </a>
   );
 }
 

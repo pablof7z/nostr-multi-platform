@@ -15,6 +15,10 @@ import {
   useNostrProfileHost,
   type NostrProfileHost,
 } from "../components/user-avatar/NostrProfileHost";
+import {
+  NostrEventHostProvider,
+  type NostrEventHost,
+} from "../components/content-event/NostrEventHost";
 import { NostrAvatar } from "../components/user-avatar/NostrAvatar";
 import { NostrProfileName } from "../components/user-name/NostrProfileName";
 import { NostrContentView } from "../nmp/content/NostrContentView";
@@ -22,6 +26,7 @@ import { NostrContentView } from "../nmp/content/NostrContentView";
 export function HomePanel(props: {
   rows: TimelineItem[];
   profileHost: NostrProfileHost;
+  eventHost: NostrEventHost;
   revision?: number;
   onPublish: (content: string, replyToId: string | null) => Promise<void>;
   onCommand: (command: RuntimeCommand) => Promise<void>;
@@ -45,6 +50,7 @@ export function HomePanel(props: {
   };
   return (
     <NostrProfileHostProvider host={props.profileHost}>
+    <NostrEventHostProvider host={props.eventHost}>
     <section class="feed-panel" id="feed">
       <header class="topbar">
         <div>
@@ -88,6 +94,7 @@ export function HomePanel(props: {
         </For>
       </Show>
     </section>
+    </NostrEventHostProvider>
     </NostrProfileHostProvider>
   );
 }

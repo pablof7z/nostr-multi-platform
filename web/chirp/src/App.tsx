@@ -1,8 +1,17 @@
 import { Match, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js";
-import { publishNoteAction, resolveProfileCommand, releaseProfileCommand, type RuntimeCommand } from "./nmp/actions";
+import {
+  publishNoteAction,
+  releaseEventCommand,
+  releaseProfileCommand,
+  resolveEventCommand,
+  resolveProfileCommand,
+  type RuntimeCommand,
+} from "./nmp/actions";
+import type { NostrEventHost } from "./components/content-event/NostrEventHost";
 import type { NostrProfileHost } from "./components/user-avatar/NostrProfileHost";
 import type { ProfileWire } from "./components/user-avatar/ProfileWire";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
+import type { ClaimedEventWire } from "./nmp/refEventStore";
 import {
   featureSnapshotFromEnvelope,
   feedItemsToRows,
@@ -64,6 +73,7 @@ export default function App() {
   // refs.profile materialised map (pubkey → ProfileWire). client.ts keeps the
   // reference stable across no-op frames so these memos do not churn the feed.
   const profileCards = createMemo(() => snapshot().profileCards);
+  const eventCards = createMemo(() => snapshot().eventCards);
   // Name-only join map for the feed rows, derived from the same ProfileWire set.
   const resolvedProfiles = createMemo(() => {
     const cards = profileCards();
@@ -139,10 +149,17 @@ export default function App() {
   // seam (ADR-0063) and ride the quiet dispatcher so refcount bookkeeping doesn't
   // churn the feed.
   const profileCardMap = createMemo(() => profileCards() ?? new Map<string, ProfileWire>());
+  const eventCardMap = createMemo(() => eventCards() ?? new Map<string, ClaimedEventWire>());
   const profileHost: NostrProfileHost = {
     profile: (pubkey) => profileCardMap().get(pubkey),
     claimProfile: (pubkey, consumerId) => dispatchQuiet(resolveProfileCommand(pubkey, consumerId)),
     releaseProfile: (pubkey, consumerId) => dispatchQuiet(releaseProfileCommand(pubkey, consumerId)),
+  };
+  const eventHost: NostrEventHost = {
+    event: (primaryId) => eventCardMap().get(primaryId),
+    claimEvent: (primaryId, consumerId, hints, author) =>
+      dispatchQuiet(resolveEventCommand(primaryId, consumerId, hints, author)),
+    releaseEvent: (primaryId, consumerId) => dispatchQuiet(releaseEventCommand(primaryId, consumerId)),
   };
 
   return (
@@ -154,6 +171,7 @@ export default function App() {
             <HomePanel
               rows={rows()}
               profileHost={profileHost}
+              eventHost={eventHost}
               onPublish={publish}
               onCommand={dispatch}
               onClaimCommand={dispatchQuiet}
