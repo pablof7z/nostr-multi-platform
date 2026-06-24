@@ -13,8 +13,9 @@
 //! | `cmd_lifecycle.rs` | `Lifecycle(LifecycleCommand)` arm |
 //! | `cmd_identity.rs` | `Identity(IdentityCommand)` arm |
 //! | `cmd_publish.rs` | `Publish` / `Contacts` / `Relay` / `ActionLedger` arms |
-//! | `cmd_interests.rs` | `Interests(InterestsCommand)` + `TestSupport` arms |
-//! | `cmd_protocol.rs` | `Protocol(cmd)` arm with catch-unwind + RefCell adapters |
+//! | `cmd_interests.rs` | `Interests(InterestsCommand)` + `TestSupport` arms (takes `InterestsPorts`) |
+//! | `cmd_protocol.rs` | `Protocol(cmd)` arm with catch-unwind + RefCell adapters (takes `ProtocolPorts`) |
+//! | `ports.rs` | `ProtocolPorts` / `InterestsPorts` — narrow per-family field bundles |
 //! | `relay_events.rs` | `handle_relay_event` + `resolve_handle` |
 //! | `helpers.rs` | `update_local_key_slots`, `maybe_publish_relay_list_after_edit`, … |
 //! | `substrate_adapters.rs` | Capability adapters for `ProtocolCommandContext` |
@@ -53,9 +54,13 @@ mod cmd_lifecycle;
 mod cmd_protocol;
 mod cmd_publish;
 mod helpers;
+// #1927 — narrow command-family port bundles (Protocol / Interests).
+mod ports;
 mod relay_events;
 // Debt C — capability adapters for `ProtocolCommandContext`.
 mod substrate_adapters;
+
+use ports::{InterestsPorts, ProtocolPorts};
 
 // Test-only re-export used by actor integration tests.
 #[cfg(test)]
@@ -130,6 +135,35 @@ pub(super) struct ActorContext<'a> {
     pub(super) external_event_sink_dispatcher: &'a crate::substrate::ExternalEventSinkDispatcher,
 }
 
+impl<'a> ActorContext<'a> {
+    /// #1927 — reborrow exactly the 7 fields `cmd_protocol::protocol` needs.
+    ///
+    /// Each `&mut *self.field` reborrow lives for `'_` (the `&mut self` borrow);
+    /// the kernel is the only `&mut` field, taken once, so no aliasing. The
+    /// method returns before `dispatch_command` touches `ctx` again.
+    fn protocol_ports(&mut self) -> ProtocolPorts<'_> {
+        ProtocolPorts {
+            kernel: &mut *self.kernel,
+            identity: &*self.identity,
+            command_tx_self: self.command_tx_self,
+            config: self.config,
+            update_tx: self.update_tx,
+            last_emit: &mut *self.last_emit,
+            running: *self.running,
+        }
+    }
+
+    /// #1927 — reborrow exactly the 4 fields `cmd_interests` needs.
+    fn interests_ports(&mut self) -> InterestsPorts<'_> {
+        InterestsPorts {
+            kernel: &mut *self.kernel,
+            update_tx: self.update_tx,
+            last_emit: &mut *self.last_emit,
+            running: *self.running,
+        }
+    }
+}
+
 /// Family-level dispatch delegator (ADR-0065). Matches the `ActorCommand`
 /// family first, then delegates to the per-family `dispatch` function in the
 /// matching `cmd_*.rs` sub-module.
@@ -145,9 +179,9 @@ pub(super) fn dispatch_command(
         ActorCommand::Contacts(cmd) => dispatch_contacts(cmd, ctx),
         ActorCommand::Relay(cmd) => dispatch_relay(cmd, ctx),
         ActorCommand::Refs(cmd) => dispatch_refs(cmd, ctx),
-        ActorCommand::Interests(cmd) => cmd_interests::dispatch(cmd, ctx),
+        ActorCommand::Interests(cmd) => cmd_interests::dispatch(cmd, &mut ctx.interests_ports()),
         ActorCommand::ActionLedger(cmd) => dispatch_action_ledger(cmd, ctx),
-        ActorCommand::Protocol(cmd) => cmd_protocol::protocol(cmd, ctx),
+        ActorCommand::Protocol(cmd) => cmd_protocol::protocol(cmd, &mut ctx.protocol_ports()),
         ActorCommand::Kernel(action) => {
             let _ = dispatch_kernel_action(ctx.kernel, action);
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
@@ -281,14 +315,21 @@ fn dispatch_test_support(
 ) -> Option<Vec<OutboundMessage>> {
     match cmd {
         TestSupportCommand::IngestPreVerifiedEvents(events) => {
-            cmd_interests::ingest_pre_verified_events(events, ctx)
+            cmd_interests::ingest_pre_verified_events(events, &mut ctx.interests_ports())
         }
         TestSupportCommand::IngestPreVerifiedEventsForSubId {
             sub_id,
             events,
             ack,
-        } => cmd_interests::ingest_pre_verified_events_for_sub_id(sub_id, events, ack, ctx),
-        TestSupportCommand::TriggerGcStep { ack } => cmd_interests::trigger_gc_step(ack, ctx),
+        } => cmd_interests::ingest_pre_verified_events_for_sub_id(
+            sub_id,
+            events,
+            ack,
+            &mut ctx.interests_ports(),
+        ),
+        TestSupportCommand::TriggerGcStep { ack } => {
+            cmd_interests::trigger_gc_step(ack, &mut ctx.interests_ports())
+        }
         TestSupportCommand::Barrier { ack } => {
             let _ = ack.send(());
             Some(Vec::new())

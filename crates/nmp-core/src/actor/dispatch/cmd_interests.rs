@@ -15,17 +15,17 @@ use crate::actor::KernelEventObserverId;
 use crate::relay::OutboundMessage;
 
 use super::build_open_interest;
-use super::ActorContext;
+use super::InterestsPorts;
 
 /// Dispatch `InterestsCommand::EnsureInterest`.
 pub(super) fn ensure_interest(
     identity: crate::subs::SubIdentity,
     interest: crate::planner::LogicalInterest,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     // Unified front-door — register-if-absent (EnsureAbsent). Store-serve
     // + recompile trigger fire only when the interest is newly installed.
-    ctx.kernel.register_interest(
+    ports.kernel.register_interest(
         &[crate::kernel::cache_serve::InterestRegistration {
             identity,
             interest,
@@ -39,15 +39,14 @@ pub(super) fn ensure_interest(
 /// Dispatch `InterestsCommand::DropInterestOwner`.
 pub(super) fn drop_interest_owner(
     identity: crate::subs::SubIdentity,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    let removed = ctx
-        .kernel
+    let removed = ports.kernel
         .lifecycle_mut()
         .registry_mut()
         .drop_owner(&identity);
     if removed {
-        ctx.kernel.lifecycle_mut().enqueue_trigger(
+        ports.kernel.lifecycle_mut().enqueue_trigger(
             crate::subs::CompileTrigger::InvalidateCompile {
                 reason: crate::subs::InvalidateReason::External("drop-interest-owner".to_string()),
             },
@@ -60,9 +59,9 @@ pub(super) fn drop_interest_owner(
 pub(super) fn open_pull_cursor(
     handle: crate::kernel::pull_cursor::PullCursorHandle,
     spec: crate::kernel::pull_cursor::PullCursorSpec,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    ctx.kernel.open_pull_cursor(handle, spec);
+    ports.kernel.open_pull_cursor(handle, spec);
     Some(Vec::new())
 }
 
@@ -70,18 +69,18 @@ pub(super) fn open_pull_cursor(
 pub(super) fn advance_pull_cursor(
     cursor_id: crate::kernel::pull_cursor::PullCursorId,
     after_seq: u64,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    ctx.kernel.advance_pull_cursor(cursor_id, after_seq);
+    ports.kernel.advance_pull_cursor(cursor_id, after_seq);
     Some(Vec::new())
 }
 
 /// Dispatch `ActorCommand::UnregisterPullCursor`.
 pub(super) fn unregister_pull_cursor(
     cursor_id: crate::kernel::pull_cursor::PullCursorId,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    ctx.kernel.unregister_pull_cursor(cursor_id);
+    ports.kernel.unregister_pull_cursor(cursor_id);
     Some(Vec::new())
 }
 
@@ -90,7 +89,7 @@ pub(super) fn open_interest(
     filter_json: String,
     consumer_id: String,
     scope: u32,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     // M2 (ADR-0042) — generic feed-subscription front door. Parse the
@@ -101,9 +100,9 @@ pub(super) fn open_interest(
     // surfaced a toast before sending — see `nmp_app_open_interest`).
     if let Some((identity, interest)) = build_open_interest(&filter_json, &consumer_id, scope, None)
     {
-        let _ = ctx.kernel.open_interest_sub(identity, interest);
+        let _ = ports.kernel.open_interest_sub(identity, interest);
     }
-    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
     Some(Vec::new())
 }
 
@@ -116,7 +115,7 @@ pub(super) fn open_observed_interest(
     observer_id: KernelEventObserverId,
     replay_shapes: Vec<crate::planner::InterestShape>,
     replay_limit: usize,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     // ADR-0062 — open interest + catch-up replay to a single muted observer,
@@ -129,14 +128,14 @@ pub(super) fn open_observed_interest(
             shapes: replay_shapes,
             limit: replay_limit,
         };
-        let _ = ctx.kernel.open_interest_with_observer_replay(
+        let _ = ports.kernel.open_interest_with_observer_replay(
             identity,
             interest,
             replay,
             "open-observed-interest",
         );
     }
-    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
     Some(Vec::new())
 }
 
@@ -146,7 +145,7 @@ pub(super) fn close_interest(
     consumer_id: String,
     scope: u32,
     relay_pin: Option<String>,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     // M2 (ADR-0042) — detach one owner; drop the live sub on the last
@@ -156,9 +155,9 @@ pub(super) fn close_interest(
     if let Some((identity, _interest)) =
         build_open_interest(&filter_json, &consumer_id, scope, relay_pin.as_deref())
     {
-        let _ = ctx.kernel.close_interest_sub(&identity);
+        let _ = ports.kernel.close_interest_sub(&identity);
     }
-    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
     Some(Vec::new())
 }
 
@@ -166,20 +165,20 @@ pub(super) fn close_interest(
 #[cfg(any(test, feature = "test-support"))]
 pub(super) fn ingest_pre_verified_events(
     events: Vec<crate::store::VerifiedEvent>,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     // D4: actor thread is the sole mutator. sort_timeline() deferred to
     // after the loop to avoid O(n²·log n) for large batches.
     for verified in events {
-        ctx.kernel.ingest_pre_verified_event(
+        ports.kernel.ingest_pre_verified_event(
             nmp_network::role::RelayRole::Content,
             "diag-firehose-stress",
             verified,
         );
     }
-    ctx.kernel.sort_timeline_deferred();
-    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    ports.kernel.sort_timeline_deferred();
+    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
     Some(Vec::new())
 }
 
@@ -189,15 +188,15 @@ pub(super) fn ingest_pre_verified_events_for_sub_id(
     sub_id: String,
     events: Vec<crate::store::VerifiedEvent>,
     ack: std::sync::mpsc::SyncSender<()>,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     for verified in events {
-        ctx.kernel
+        ports.kernel
             .ingest_pre_verified_event(nmp_network::role::RelayRole::Content, &sub_id, verified);
     }
-    ctx.kernel.sort_timeline_deferred();
-    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    ports.kernel.sort_timeline_deferred();
+    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
     let _ = ack.send(());
     Some(Vec::new())
 }
@@ -206,9 +205,9 @@ pub(super) fn ingest_pre_verified_events_for_sub_id(
 #[cfg(any(test, feature = "test-support"))]
 pub(super) fn trigger_gc_step(
     ack: std::sync::mpsc::SyncSender<()>,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    ctx.kernel.run_gc_step();
+    ports.kernel.run_gc_step();
     let _ = ack.send(());
     Some(Vec::new())
 }
@@ -217,26 +216,26 @@ pub(super) fn trigger_gc_step(
 /// routes each verb to its existing handler.
 pub(super) fn dispatch(
     cmd: InterestsCommand,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     match cmd {
         InterestsCommand::EnsureInterest { identity, interest } => {
-            ensure_interest(identity, interest, ctx)
+            ensure_interest(identity, interest, ports)
         }
-        InterestsCommand::DropInterestOwner(identity) => drop_interest_owner(identity, ctx),
-        InterestsCommand::OpenPullCursor { handle, spec } => open_pull_cursor(handle, spec, ctx),
+        InterestsCommand::DropInterestOwner(identity) => drop_interest_owner(identity, ports),
+        InterestsCommand::OpenPullCursor { handle, spec } => open_pull_cursor(handle, spec, ports),
         InterestsCommand::AdvancePullCursor {
             cursor_id,
             after_seq,
-        } => advance_pull_cursor(cursor_id, after_seq, ctx),
+        } => advance_pull_cursor(cursor_id, after_seq, ports),
         InterestsCommand::UnregisterPullCursor { cursor_id } => {
-            unregister_pull_cursor(cursor_id, ctx)
+            unregister_pull_cursor(cursor_id, ports)
         }
         InterestsCommand::OpenInterest {
             filter_json,
             consumer_id,
             scope,
-        } => open_interest(filter_json, consumer_id, scope, ctx),
+        } => open_interest(filter_json, consumer_id, scope, ports),
         InterestsCommand::OpenObservedInterest {
             filter_json,
             consumer_id,
@@ -253,13 +252,13 @@ pub(super) fn dispatch(
             observer_id,
             replay_shapes,
             replay_limit,
-            ctx,
+            ports,
         ),
         InterestsCommand::CloseInterest {
             filter_json,
             consumer_id,
             scope,
             relay_pin,
-        } => close_interest(filter_json, consumer_id, scope, relay_pin, ctx),
+        } => close_interest(filter_json, consumer_id, scope, relay_pin, ports),
     }
 }

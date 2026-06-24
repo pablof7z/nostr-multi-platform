@@ -8,10 +8,10 @@ use crate::relay::OutboundMessage;
 
 use super::substrate_adapters::{
     ActionStageTrackerAdapter, ErrorSurfaceAdapter, HostOpHandlerAccessAdapter, KernelClockAdapter,
-    LocalSignerAccessAdapter, RecipientRelayLookupAdapter, WalletKernelAccessAdapter,
-    ZapProfileLookupAdapter,
+    LocalSignerAccessAdapter, RecipientRelayLookupAdapter,
 };
-use super::ActorContext;
+use super::ProtocolPorts;
+use crate::kernel::wallet_access::KernelWalletAccess;
 
 /// Dispatch `ActorCommand::Protocol(cmd)`.
 ///
@@ -33,9 +33,9 @@ use super::ActorContext;
 /// without re-entering through the `send` channel.
 pub(super) fn protocol(
     cmd: Box<dyn crate::substrate::ProtocolCommand>,
-    ctx: &mut ActorContext<'_>,
+    ports: &mut ProtocolPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    let tx = ctx.command_tx_self.clone();
+    let tx = ports.command_tx_self.clone();
     let send = move |c: crate::actor::ActorCommand| {
         // D6 — disconnected sender (post-Shutdown) is a benign
         // send-failure on the worker side; swallow as a no-op.
@@ -44,22 +44,22 @@ pub(super) fn protocol(
     // Snapshot the DM-inbox lookup Arc for the duration of this
     // dispatch arm. The `Arc<dyn DmInboxRelayLookup>` is the
     // production kind:10050 cache (`nmp_nip17::DmRelayCache`).
-    let dm_lookup = ctx.kernel.dm_inbox_relays_arc();
+    let dm_lookup = ports.kernel.dm_inbox_relays_arc();
     // The kernel + identity adapters share disjoint borrows of the
     // actor context via `RefCell`. `ProtocolCommand::run` is
     // single-threaded sync, so the inner `borrow`/`borrow_mut`
     // calls serialize naturally.
     //
     // ADR-0052 §D5: ALL kernel-touching capability adapters — including
-    // the new `WalletKernelAccessAdapter` (mutating) and
-    // `ZapProfileLookupAdapter` (reading) — go through this one
-    // `kernel_cell` via per-call `try_borrow[_mut]`. The prior V-38
-    // `with_kernel` exclusive borrow (a long-lived `&mut Kernel` held
-    // for the whole `cmd.run`) is deleted: a wallet command's eight
-    // mutations now interleave with the sibling reads through the same
-    // `RefCell`, so no separate exclusive-borrow window is needed.
-    let identity_cell = std::cell::RefCell::new(&*ctx.identity);
-    let kernel_cell = std::cell::RefCell::new(&mut *ctx.kernel);
+    // the unified `KernelWalletAccess::borrowed` (mutating wallet +
+    // reading zap profile, #1927) — go through this one `kernel_cell`
+    // via per-call `try_borrow[_mut]`. The prior V-38 `with_kernel`
+    // exclusive borrow (a long-lived `&mut Kernel` held for the whole
+    // `cmd.run`) is deleted: a wallet command's eight mutations now
+    // interleave with the sibling reads through the same `RefCell`, so
+    // no separate exclusive-borrow window is needed.
+    let identity_cell = std::cell::RefCell::new(ports.identity);
+    let kernel_cell = std::cell::RefCell::new(&mut *ports.kernel);
 
     let clock = KernelClockAdapter {
         kernel: &kernel_cell,
@@ -82,26 +82,24 @@ pub(super) fn protocol(
     // Reaches no kernel/identity state, so it needs no `RefCell`
     // borrow and is safe to read inside the whole-body catch_unwind.
     let host_op_handler = HostOpHandlerAccessAdapter {
-        handler: ctx.config.host_op_handler.clone(),
+        handler: ports.config.host_op_handler.clone(),
     };
-    // ADR-0052 §D5 — narrow wallet kernel-mutation + zap-profile-read
-    // adapters replace the deleted `kernel_mut()` / `lnurl_for_pubkey`
-    // surfaces. Both borrow the SAME `kernel_cell` the read adapters
-    // use, via per-call `try_borrow_mut` / `try_borrow`, so the prior
-    // long-lived `with_kernel` exclusive borrow is gone and the wallet
-    // command's eight mutations interleave naturally with the other
-    // capability reads during `cmd.run`.
-    let wallet_kernel = WalletKernelAccessAdapter {
-        kernel: &kernel_cell,
-    };
-    let zap_profiles = ZapProfileLookupAdapter {
-        kernel: &kernel_cell,
-    };
+    // ADR-0052 §D5 + #1927 — single unified wallet/zap adapter
+    // (`KernelWalletAccess::borrowed`) replaces the deleted `kernel_mut()` /
+    // `lnurl_for_pubkey` surfaces AND the two byte-identical `*Adapter`
+    // duplicates that used to live in `substrate_adapters.rs`. It borrows the
+    // SAME `kernel_cell` the read adapters use, via per-call
+    // `try_borrow_mut` / `try_borrow`, so the prior long-lived `with_kernel`
+    // exclusive borrow is gone and the wallet command's eight mutations
+    // interleave naturally with the other capability reads during `cmd.run`.
+    // One value satisfies both the `&dyn WalletKernelAccess` and
+    // `&dyn ZapProfileLookup` slots.
+    let wallet = KernelWalletAccess::borrowed(&kernel_cell);
 
     // A second sender clone for the worker-thread surface. Cloning
     // a `mpsc::Sender` is cheap (atomic ref-count bump); the
     // dispatch arm always populates this slot in production.
-    let worker_tx = ctx.command_tx_self.clone();
+    let worker_tx = ports.command_tx_self.clone();
     let mut outbound: Vec<crate::relay::OutboundMessage> = Vec::new();
     // ADR-0052 §D4 guarantee #1 — WHOLE-BODY panic isolation. Before
     // this rung the `Protocol` arm called `cmd.run` bare; a panic in a
@@ -150,8 +148,8 @@ pub(super) fn protocol(
                 // zap-profile-read capabilities. A wallet/zap command
                 // reaches its needs through these; every other command
                 // ignores them (it holds the noop singleton's surface).
-                wallet_kernel: &wallet_kernel,
-                zap_profiles: &zap_profiles,
+                wallet_kernel: &wallet,
+                zap_profiles: &wallet,
             },
         )
         .with_outbound(&mut outbound);
@@ -172,19 +170,17 @@ pub(super) fn protocol(
         tracing::warn!(error = %e, "ProtocolCommand returned error");
     }
     // Drop the adapter borrows before the emit so `emit_now` can
-    // re-borrow `ctx.kernel` mutably. The `kernel_cell` /
+    // re-borrow `ports.kernel` mutably. The `kernel_cell` /
     // `identity_cell` `RefCell` borrows are released when the
     // adapters drop at end-of-block — explicitly drop the
     // adapters here so the `emit_now` below sees a fully
-    // released `ctx.kernel`. The `RefCell` owners themselves are
+    // released `ports.kernel`. The `RefCell` owners themselves are
     // moved at function end (no explicit `drop` needed once the
     // adapters that borrowed them are dropped).
     //
-    // ADR-0052 §D5: `wallet_kernel` / `zap_profiles` also borrow
-    // `kernel_cell`, so they too must drop before the `emit_now`
-    // re-borrow.
-    drop(zap_profiles);
-    drop(wallet_kernel);
+    // #1927: `wallet` (the unified `KernelWalletAccess::borrowed`) also borrows
+    // `kernel_cell`, so it too must drop before the `emit_now` re-borrow.
+    drop(wallet);
     drop(recipients);
     drop(stages);
     drop(errors);
@@ -197,6 +193,6 @@ pub(super) fn protocol(
     // Emit promptly so the next snapshot tick carries the visible
     // effect, mirroring the legacy `FetchLnurlInvoice` and
     // `SendGiftWrappedDm` arms' `emit_now` precedents.
-    emit_now(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    emit_now(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
     Some(outbound)
 }
