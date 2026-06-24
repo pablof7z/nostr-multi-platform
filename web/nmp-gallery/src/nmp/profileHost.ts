@@ -18,12 +18,17 @@ import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import type { NostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
-import {
-  releaseEventRefRequest,
-  releaseProfileRefRequest,
-  resolveEventEmbedRequest,
-  resolveProfileRefRequest,
-} from "./refCommands";
+
+// ADR-0063 Lane D wire codes (mirror the wasm structured `resolve_ref` /
+// `release_ref` protocol):
+//   namespace: 0 = profile, 1 = event
+//   shape:     profile → 0 = ref, 1 = card;  event → 0 = embed, 1 = raw
+//   liveness:  0 = CacheOk, 1 = Live
+const REF_NS_PROFILE = 0;
+const REF_NS_EVENT = 1;
+const REF_SHAPE_PROFILE_REF = 0;
+const REF_SHAPE_EVENT_EMBED = 0;
+const REF_LIVENESS_CACHE_OK = 0;
 
 const NRRD_FILE_IDENTIFIER = "NRRD";
 const REFS_PROFILE_PROJECTION_KEY = "refs.profile";
@@ -94,9 +99,9 @@ export type GalleryRuntime = {
   anyContentConnected: Accessor<boolean>;
   /** Reactive — number of resolved profiles currently held. */
   resolvedCount: Accessor<number>;
-  /** Claim a single event by raw event key. `hints` are optional relay hints
-   *  decoded by the app boundary from a NIP-19/NIP-21 URI. */
-  claimEvent(key: string, consumerId: string, hints?: string[]): void;
+  /** Claim a single event by raw event key. `hints` and `eventAuthor` are
+   *  optional metadata decoded by the app boundary from a NIP-19/NIP-21 URI. */
+  claimEvent(key: string, consumerId: string, hints?: string[], eventAuthor?: string): void;
   /** Release an event claim. Dropping the last consumer clears the kernel's
    *  "already requested" dedupe state, so a subsequent `claimEvent` re-issues a
    *  fresh REQ — the basis of the cold-start re-claim retry. */
@@ -376,10 +381,24 @@ export function createGalleryRuntime(): GalleryRuntime {
       return profiles[pubkey];
     },
     claimProfile(pubkey: string, consumerId: string): void {
-      void request(resolveProfileRefRequest(pubkey, consumerId, `resolve-${claimSeq++}`));
+      void request({
+        type: "resolve_ref",
+        namespace: REF_NS_PROFILE,
+        key: pubkey,
+        consumer_id: consumerId,
+        shape: REF_SHAPE_PROFILE_REF,
+        liveness: REF_LIVENESS_CACHE_OK,
+        correlation_id: `resolve-${claimSeq++}`,
+      });
     },
     releaseProfile(pubkey: string, consumerId: string): void {
-      void request(releaseProfileRefRequest(pubkey, consumerId, `release-${claimSeq++}`));
+      void request({
+        type: "release_ref",
+        namespace: REF_NS_PROFILE,
+        key: pubkey,
+        consumer_id: consumerId,
+        correlation_id: `release-${claimSeq++}`,
+      });
     },
   };
 
@@ -390,6 +409,7 @@ export function createGalleryRuntime(): GalleryRuntime {
       await request({
         type: "start",
         app_id: "nmp-gallery",
+        relays: relayList.map((relay) => relay.url),
         database_name: "nmp-gallery-web",
         correlation_id: "gallery-start",
         relay_bootstrap: relayList,
@@ -407,11 +427,27 @@ export function createGalleryRuntime(): GalleryRuntime {
         (r) => r.connection.toLowerCase() === "connected" && r.role.includes("content"),
       ),
     resolvedCount,
-    claimEvent(key: string, consumerId: string, hints: string[] = []) {
-      void request(resolveEventEmbedRequest(key, consumerId, hints, `claim-event-${claimSeq++}`));
+    claimEvent(key: string, consumerId: string, hints: string[] = [], eventAuthor?: string) {
+      void request({
+        type: "resolve_ref",
+        namespace: REF_NS_EVENT,
+        key,
+        consumer_id: consumerId,
+        shape: REF_SHAPE_EVENT_EMBED,
+        liveness: REF_LIVENESS_CACHE_OK,
+        hints,
+        event_author: eventAuthor ?? null,
+        correlation_id: `claim-event-${claimSeq++}`,
+      });
     },
     releaseEvent(key: string, consumerId: string) {
-      void request(releaseEventRefRequest(key, consumerId, `release-event-${claimSeq++}`));
+      void request({
+        type: "release_ref",
+        namespace: REF_NS_EVENT,
+        key,
+        consumer_id: consumerId,
+        correlation_id: `release-event-${claimSeq++}`,
+      });
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
     claimedEventEmbed: (primaryId: string) => claimedEventEmbeds().get(primaryId),

@@ -24,11 +24,20 @@ export class DegradedRuntime {
             correlation_id: request.correlation_id,
           },
         ];
-      case "dispatch":
+      case "resolve_ref":
         return [
           {
             type: "capability_failure",
-            capability: request.action_type,
+            capability: "nmp.kernel.resolve_ref",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
+      case "release_ref":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.kernel.release_ref",
             correlation_id: request.correlation_id,
             reason: this.unavailableReason,
           },

@@ -69,6 +69,9 @@ mod external_signer;
 // adapters; the raw resolve_ref/release_ref surface remains as the compatibility
 // boundary for generated or legacy bindings.
 mod resolve_ref;
+#[cfg(test)]
+#[path = "resolve_ref_tests.rs"]
+mod resolve_ref_tests;
 mod search;
 mod snapshot;
 mod storage;

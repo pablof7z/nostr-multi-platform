@@ -8,13 +8,13 @@
 //! # JS API surface
 //!
 //! The class name (`NmpWasmRuntime`) and the method names (`handle_json`,
-//! `set_snapshot_callback`, `recent_routing_decisions`) are stable. The
+//! `handle_dispatch_bytes`, `set_snapshot_callback`, `recent_routing_decisions`) are stable. The
 //! generated JS module file is `nmp_app_chirp_web.js` (derived from the crate
 //! name); `wasmBridge.ts` sets its `defaultModulePath` constant accordingly.
 //!
 //! ADR-0064 §5 / #1743: there is NO `dispatch_app_action_async` Promise
-//! entrypoint. Writes route through the typed `WorkerRequest::DispatchBytes`
-//! doorway (via `handle_json`); signing is the `BeginSign` capability
+//! entrypoint. Writes route through the typed `handle_dispatch_bytes` doorway;
+//! signing is the `BeginSign` capability
 //! round-trip driven by pure message re-entry — no `Arc<dyn Signer>` is awaited
 //! inside a publish flow.
 //!
@@ -44,9 +44,9 @@
 //!   in the serde impl. In both cases the JS host's catch boundary (in
 //!   `wasmBridge.ts`) converts the rejection to a synthetic `error` event so
 //!   the JS caller still sees data, not an unhandled Promise failure.
-//! * **D8** — `handle_json` is synchronous; writes (including signing) ride the
-//!   message-driven worker protocol, never an in-flow `Promise` over a
-//!   persistent signer.
+//! * **D8** — `handle_json` and `handle_dispatch_bytes` are synchronous; writes
+//!   and signing ride the message-driven worker protocol, never an in-flow
+//!   `Promise` over a persistent signer.
 
 use std::cell::RefCell;
 use std::rc::Rc;
