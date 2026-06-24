@@ -20,7 +20,7 @@ apps/nmp-gallery/tui/src/main.rs	688
 apps/nmp-gallery/tui/src/render.rs	510
 crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	599
 crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	826
-crates/nmp-codegen/src/swift.rs	613
+crates/nmp-codegen/src/swift.rs	659
 crates/nmp-codegen/src/swift_projections_registry.rs	741
 crates/nmp-core/src/actor/commands/publish.rs	740
 crates/nmp-core/src/actor/mod.rs	764
@@ -38,7 +38,7 @@ crates/nmp-core/src/kernel/state_projection_tests.rs	666
 crates/nmp-core/src/kernel/test_support.rs	519
 crates/nmp-core/src/kernel/tests.rs	708
 crates/nmp-core/src/kernel/types.rs	769
-crates/nmp-core/src/lib.rs	600
+crates/nmp-core/src/lib.rs	602
 crates/nmp-core/src/subs/lifecycle_tests.rs	963
 crates/nmp-core/tests/nip_tag_conformance.rs	554
 crates/nmp-defaults/src/builder.rs	670
