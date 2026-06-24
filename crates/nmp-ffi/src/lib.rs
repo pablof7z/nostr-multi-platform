@@ -19,6 +19,7 @@ mod app_config_intent;
 mod app_config_substrate;
 mod app_host_impl;
 mod capability;
+mod content_ffi;
 mod declared_projections; // ADR-0053/E4: `impl NmpApp` consumed-projection-intent methods (LOC ceiling).
 // `nmp_app_active_following_count` deleted (#1726): follow count is in the
 // `nmp.follow_list` typed projection (`follows.len()`). Callers that
@@ -134,6 +135,8 @@ pub use action::{
 pub use action::nmp_app_dispatch_action;
 #[cfg(feature = "native")]
 pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callback};
+#[cfg(feature = "native")]
+pub use content_ffi::nmp_content_tokenize_text;
 #[cfg(feature = "native")]
 pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
 #[cfg(feature = "native")]
