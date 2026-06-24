@@ -149,7 +149,7 @@ mod set_identity_tests {
 #[cfg(test)]
 mod resolve_no_snapshot_tests {
     //! #1436 web-feed regression guard (now on the ADR-0063 `resolve_ref` /
-    //! `release_ref` seam): a resolve / release dispatch must acknowledge with
+    //! `release_ref` seam): a resolve / release request must acknowledge with
     //! `ActionAccepted` ONLY — it must NOT push a snapshot frame. Resolve/release
     //! are refcount bookkeeping and carry no new user-visible data (the resolved
     //! kind:0 arrives via the relay-pool ingest sink). On the reactive web host, a
@@ -159,29 +159,29 @@ mod resolve_no_snapshot_tests {
     //! single-threaded wasm worker and starves the UI so the feed never paints
     //! (feed.spec.ts toBeVisible timeout).
     use super::super::WasmRuntime;
-    use crate::protocol::{ActionDispatch, WorkerEvent, WorkerRequest};
+    use crate::protocol::{ReleaseRef, ResolveRef, WorkerEvent, WorkerRequest};
 
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
     /// A `resolve_ref` profile dispatch (namespace 0, shape 0 = ref, liveness 0).
     fn resolve_dispatch() -> WorkerRequest {
-        WorkerRequest::Dispatch(ActionDispatch {
-            action_type: "nmp.kernel.resolve_ref".to_string(),
-            payload: serde_json::json!({
-                "namespace": 0, "key": PK, "consumer_id": "test-consumer",
-                "shape": 0, "liveness": 0,
-            }),
+        WorkerRequest::ResolveRef(ResolveRef {
+            namespace: 0,
+            key: PK.to_string(),
+            consumer_id: "test-consumer".to_string(),
+            shape: 0,
+            liveness: 0,
+            hints: Vec::new(),
             correlation_id: "resolve-no-snap".to_string(),
         })
     }
 
     /// A `release_ref` profile dispatch (namespace 0).
     fn release_dispatch() -> WorkerRequest {
-        WorkerRequest::Dispatch(ActionDispatch {
-            action_type: "nmp.kernel.release_ref".to_string(),
-            payload: serde_json::json!({
-                "namespace": 0, "key": PK, "consumer_id": "test-consumer",
-            }),
+        WorkerRequest::ReleaseRef(ReleaseRef {
+            namespace: 0,
+            key: PK.to_string(),
+            consumer_id: "test-consumer".to_string(),
             correlation_id: "release-no-snap".to_string(),
         })
     }

@@ -15,10 +15,25 @@ export type WorkerRequest =
       database_name: string;
       correlation_id: string;
     }
+  /** ADR-0063 structured reference-resolution control. This is not an app
+   *  write doorway and cannot carry arbitrary action namespaces. */
   | {
-      type: "dispatch";
-      action_type: string;
-      payload: unknown;
+      type: "resolve_ref";
+      namespace: number;
+      key: string;
+      consumer_id: string;
+      shape: number;
+      liveness: number;
+      /** Optional relay hints decoded from NIP-19/NIP-21 event refs. */
+      hints?: string[];
+      correlation_id: string;
+    }
+  /** ADR-0063 structured reference release. */
+  | {
+      type: "release_ref";
+      namespace: number;
+      key: string;
+      consumer_id: string;
       correlation_id: string;
     }
   /** ADR-0064 / S2 (#1750) — the typed binary write doorway. `bytes` are a

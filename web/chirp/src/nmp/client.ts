@@ -22,49 +22,10 @@ import {
   UpdateFrameDecodeError,
   type DecodedRelayStatus,
 } from "./updateFrame";
+import { makeCorrelationId } from "./correlationId";
+import { profileCardsEqual } from "./profileCards";
 
-/** Builds a unique worker-request correlation id.
- *
- * `Date.now()` has millisecond resolution, so two calls in the same tick
- * (e.g. two component `onMount` handlers that both call `dispatch`) can
- * produce the SAME string — the second `pending.set()` would silently
- * overwrite the first, leaking the first promise.  The monotonic `seq`
- * counter is appended to guarantee uniqueness regardless of timing.
- *
- * @param prefix Human-readable tag (e.g. `"web"`, `"web-signer"`).
- * @param seq    Per-client monotonic counter; caller is responsible for
- *               incrementing it on every call.
- */
-export function makeCorrelationId(prefix: string, seq: number): string {
-  return `${prefix}-${Date.now()}-${seq}`;
-}
-
-/** Structural equality of two materialised `refs.profile` maps. Decides whether
- *  to swap the `latestProfileCards` reference: a no-op frame keeps the same
- *  reference (no feed churn, #1436); ANY content change — including an
- *  identity/epoch rebaseline that shrinks the set to empty — swaps it so the UI
- *  never shows stale cards. */
-function profileCardsEqual(
-  a: Map<string, ProfileWire> | undefined,
-  b: Map<string, ProfileWire>,
-): boolean {
-  if (a === undefined || a.size !== b.size) return false;
-  for (const [key, wa] of a) {
-    const wb = b.get(key);
-    if (
-      !wb ||
-      wa.displayName !== wb.displayName ||
-      wa.pictureUrl !== wb.pictureUrl ||
-      wa.nip05 !== wb.nip05 ||
-      wa.about !== wb.about ||
-      wa.lnurl !== wb.lnurl ||
-      wa.npubShort !== wb.npubShort
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
+export { makeCorrelationId } from "./correlationId";
 
 export type RuntimeSnapshot = {
   status: RuntimeStatus;
@@ -116,7 +77,6 @@ export type NmpClient = {
   /** Start the runtime. Pass `relays` to override the built-in chirp relay
    *  list (used by the Playwright smoke test to inject the fixture relay). */
   start(relays?: string[]): Promise<RuntimeSnapshot>;
-  dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
   dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
   dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
   /** Install a NIP-07 signer. The host must call window.nostr.getPublicKey()
@@ -282,10 +242,7 @@ abstract class BaseClient implements NmpClient {
   }
 
   abstract start(relays?: string[]): Promise<RuntimeSnapshot>;
-  abstract dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot>;
-  dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot> {
-    return this.dispatch(command.actionType, command.payload);
-  }
+  abstract dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
   abstract dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
   abstract setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
   abstract beginSign(accountPubkey: string, unsignedJson: string): void;
@@ -329,28 +286,47 @@ class WorkerNmpClient extends BaseClient {
     });
   }
 
-  // ADR-0064 / #1008: app-level signed writes ride the typed `dispatch_bytes`
-  // doorway (FlatBuffers envelope, not JSON); everything else rides the generic
-  // JSON `dispatch` arm. Typed-write commands carry `buildDispatchBytes`; the
-  // client generates the correlationId here and passes it to the factory.
-  async dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot> {
-    await this.helloReady;
-    const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
-    return this.request(
-      { type: "dispatch", action_type: actionType, payload, correlation_id: correlationId },
-      correlationId,
-    );
-  }
-
   override async dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot> {
     await this.helloReady;
-    if (command.buildDispatchBytes) {
-      // Typed-write command (#1008): build FlatBuffers bytes now that we have a correlationId.
-      const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
-      const bytes = command.buildDispatchBytes(correlationId);
-      return this.request({ type: "dispatch_bytes", bytes }, correlationId);
+    const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
+    switch (command.kind) {
+      case "dispatch_bytes": {
+        const bytes = command.buildDispatchBytes(correlationId);
+        return this.request({ type: "dispatch_bytes", bytes }, correlationId);
+      }
+      case "resolve_ref":
+        return this.request(
+          {
+            type: "resolve_ref",
+            namespace: command.namespace,
+            key: command.key,
+            consumer_id: command.consumerId,
+            shape: command.shape,
+            liveness: command.liveness,
+            hints: command.hints ?? [],
+            correlation_id: correlationId,
+          },
+          correlationId,
+        );
+      case "release_ref":
+        return this.request(
+          {
+            type: "release_ref",
+            namespace: command.namespace,
+            key: command.key,
+            consumer_id: command.consumerId,
+            correlation_id: correlationId,
+          },
+          correlationId,
+        );
+      case "unsupported":
+        return this.record({
+          type: "capability_failure",
+          capability: command.capability,
+          correlation_id: correlationId,
+          reason: command.reason,
+        });
     }
-    return this.dispatch(command.actionType, command.payload);
   }
 
   async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {
@@ -444,25 +420,40 @@ class InProcessNmpClient extends BaseClient {
     });
   }
 
-  async dispatch(actionType: string, payload: unknown): Promise<RuntimeSnapshot> {
-    // Non-typed-write (kernel ops, view ops, wallet ops) ride the JSON `dispatch` arm.
-    const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
-    return this.send({
-      type: "dispatch",
-      action_type: actionType,
-      payload,
-      correlation_id: correlationId,
-    });
-  }
-
   override async dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot> {
-    if (command.buildDispatchBytes) {
-      // Typed-write command (#1008): build FlatBuffers bytes with our correlationId.
-      const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
-      const bytes = command.buildDispatchBytes(correlationId);
-      return this.send({ type: "dispatch_bytes", bytes });
+    const correlationId = makeCorrelationId("web", this.nextCorrelationId++);
+    switch (command.kind) {
+      case "dispatch_bytes": {
+        const bytes = command.buildDispatchBytes(correlationId);
+        return this.send({ type: "dispatch_bytes", bytes });
+      }
+      case "resolve_ref":
+        return this.send({
+          type: "resolve_ref",
+          namespace: command.namespace,
+          key: command.key,
+          consumer_id: command.consumerId,
+          shape: command.shape,
+          liveness: command.liveness,
+          hints: command.hints ?? [],
+          correlation_id: correlationId,
+        });
+      case "release_ref":
+        return this.send({
+          type: "release_ref",
+          namespace: command.namespace,
+          key: command.key,
+          consumer_id: command.consumerId,
+          correlation_id: correlationId,
+        });
+      case "unsupported":
+        return this.record({
+          type: "capability_failure",
+          capability: command.capability,
+          correlation_id: correlationId,
+          reason: command.reason,
+        });
     }
-    return this.dispatch(command.actionType, command.payload);
   }
 
   async dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot> {

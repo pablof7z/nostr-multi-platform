@@ -5,8 +5,9 @@
 //!
 //! - `Start` / `Stop` dispatch through `KernelReducer::reduce` and produce
 //!   real `KernelUpdate` values.
-//! - `OpenUri` routes through `resolve_open_uri` and emits the corresponding
-//!   `ViewOpened` update.
+//! - `DispatchBytes` routes typed app writes through `DispatchEnvelope` bytes.
+//! - `ResolveRef` / `ReleaseRef` route structured reference controls without
+//!   reopening the retired JSON action-dispatch surface.
 //! - Snapshot updates are produced as FlatBuffers `UpdateFrame` bytes.
 //! - **(wasm32)** Relay sockets dial on `Start`, reconnect with the same
 //!   exponential backoff + jitter constants the native worker uses, ingest
@@ -243,7 +244,8 @@ impl WasmRuntime {
                 }])
             }
             WorkerRequest::Start(config) => self.start(config),
-            WorkerRequest::Dispatch(action) => self.dispatch(action),
+            WorkerRequest::ResolveRef(request) => self.resolve_ref(request),
+            WorkerRequest::ReleaseRef(request) => self.release_ref(request),
             // ADR-0064 / S2 — the one binary write doorway. Decodes the
             // `DispatchEnvelope` and routes by `action_namespace` (same open
             // transport as the native FFI). Total — never returns `Err`.

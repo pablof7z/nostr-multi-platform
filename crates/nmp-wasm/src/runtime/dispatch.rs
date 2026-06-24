@@ -1,11 +1,11 @@
 //! Action-dispatch arm of [`super::WasmRuntime::handle`].
 //!
 //! Split out of `runtime.rs` (LOC ceiling) — the binary `dispatch_bytes`
-//! doorway and the legacy JSON `dispatch` router plus `accepted_with_snapshot`
-//! are a cohesive unit: they translate a host write command into the
-//! `KernelReducer` mutation + the `[ActionAccepted, UpdateBytes?]` reply. The
-//! relay-driven snapshot push and the `Start`/`Stop`/`SetIdentity` arms stay in
-//! `runtime.rs`; only the action-namespace routing lives here.
+//! doorway plus the structured reference-control requests are a cohesive unit:
+//! they translate a host command into the `KernelReducer` mutation + the
+//! `[ActionAccepted, UpdateBytes?]` reply. The relay-driven snapshot push and
+//! the `Start`/`Stop`/`SetIdentity` arms stay in `runtime.rs`; only the
+//! action-namespace routing lives here.
 //!
 //! The methods are defined on `impl super::WasmRuntime` so they remain ordinary
 //! private methods of the runtime — the file boundary is a size-management
@@ -15,13 +15,12 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
 
 use crate::dispatch_routing::{
-    execute_ref_dispatch, kernel_action_from_dispatch, ref_dispatch_from_action,
-    write_path_unavailable_reason,
+    execute_ref_dispatch, invalid_ref_request_reason, ref_dispatch_from_release,
+    ref_dispatch_from_resolve, signer_not_installed_reason,
 };
-use crate::protocol::{ActionDispatch, CapabilityFailure, WorkerEvent};
+use crate::protocol::{CapabilityFailure, ReleaseRef, ResolveRef, WorkerEvent};
 use nmp_core::dispatch_envelope::{decode_dispatch_envelope, DecodedDispatch};
 use nmp_core::substrate::ActionContext;
-use nmp_core::KernelUpdate;
 
 use super::{WasmRuntime, WasmRuntimeError};
 
@@ -130,7 +129,7 @@ impl WasmRuntime {
             return vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
                 capability: action_namespace,
                 correlation_id,
-                reason: write_path_unavailable_reason(false),
+                reason: signer_not_installed_reason(),
             })];
         }
 
@@ -231,7 +230,7 @@ impl WasmRuntime {
                             events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
                                 capability: action_namespace.to_string(),
                                 correlation_id: correlation_id.clone(),
-                                reason: write_path_unavailable_reason(false),
+                                reason: signer_not_installed_reason(),
                             }));
                             continue;
                         }
@@ -279,7 +278,7 @@ impl WasmRuntime {
                             events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
                                 capability: action_namespace.to_string(),
                                 correlation_id: correlation_id.clone(),
-                                reason: write_path_unavailable_reason(false),
+                                reason: signer_not_installed_reason(),
                             }));
                             continue;
                         }
@@ -368,58 +367,56 @@ impl WasmRuntime {
         ]
     }
 
-    pub(super) fn dispatch(
+    pub(super) fn resolve_ref(
         &mut self,
-        action: ActionDispatch,
+        request: ResolveRef,
     ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
-        // ADR-0063 reference-resolution arm: resolve/release refcounts via the
-        // unified seam (see execute_ref_dispatch in dispatch_routing.rs for the
-        // full rationale / `can_send` contract).
-        if let Some(ref_dispatch) = ref_dispatch_from_action(&action) {
-            let can_send = self.reducer.borrow().any_relay_connected();
-            let outbound =
-                execute_ref_dispatch(&mut self.reducer.borrow_mut(), ref_dispatch, can_send);
-            self.fan_outbound(outbound);
-            self.request_event_drain();
-            // Resolve/release are refcount bookkeeping — they carry no new
-            // user-visible data of their own (the resolved kind:0 arrives later
-            // via the relay-pool ingest sink, which pushes its OWN snapshot).
-            // Pushing a snapshot here hands the reactive web host a fresh frame
-            // on every claim; the host's feed `<For>` rebuilds its rows, which
-            // remounts the avatar/name components, which release + re-claim —
-            // an unbounded claim → snapshot → re-render → claim loop that, on
-            // the single-threaded wasm worker, floods the main thread with
-            // snapshot frames and starves (or OOM-crashes) the UI so the feed
-            // never paints (feed.spec.ts toBeVisible timeout). Only ACK the
-            // action; let the data-bearing ingest frame drive the next render.
-            return Ok(vec![WorkerEvent::ActionAccepted {
-                action_type: action.action_type,
-                correlation_id: action.correlation_id,
-            }]);
-        }
-        // #1740 step 8: the raw feed-verb dispatch arm is DELETED (see
-        // dispatch_routing.rs comment for full rationale).
-        //
-        // Kernel-namespace actions (`nmp.kernel.start`, `open_uri`, etc.) map
-        // to `KernelAction` variants and run through `KernelReducer::reduce`.
-        if let Some(kernel_action) = kernel_action_from_dispatch(&action) {
-            let update = self.reducer.borrow_mut().reduce(kernel_action);
-            match update {
-                KernelUpdate::Started { .. } => {
-                    self.meta.borrow_mut().started = true;
-                }
-                KernelUpdate::Stopped { .. } => {
-                    self.meta.borrow_mut().started = false;
-                }
-                _ => {}
-            }
-            return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));
-        }
-        let reason = write_path_unavailable_reason(self.has_active_account());
-        Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
-            capability: action.action_type,
-            correlation_id: action.correlation_id,
-            reason,
-        })])
+        self.run_ref_dispatch(
+            "nmp.kernel.resolve_ref",
+            request.correlation_id.clone(),
+            ref_dispatch_from_resolve(&request),
+        )
+    }
+
+    pub(super) fn release_ref(
+        &mut self,
+        request: ReleaseRef,
+    ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
+        self.run_ref_dispatch(
+            "nmp.kernel.release_ref",
+            request.correlation_id.clone(),
+            ref_dispatch_from_release(&request),
+        )
+    }
+
+    fn run_ref_dispatch(
+        &mut self,
+        capability: &str,
+        correlation_id: String,
+        dispatch: Option<crate::dispatch_routing::RefDispatch>,
+    ) -> Result<Vec<WorkerEvent>, WasmRuntimeError> {
+        let Some(ref_dispatch) = dispatch else {
+            return Ok(vec![WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability: capability.to_string(),
+                correlation_id,
+                reason: invalid_ref_request_reason(capability),
+            })]);
+        };
+
+        let can_send = self.reducer.borrow().any_relay_connected();
+        let outbound = execute_ref_dispatch(&mut self.reducer.borrow_mut(), ref_dispatch, can_send);
+        self.fan_outbound(outbound);
+        self.request_event_drain();
+        // Resolve/release are refcount bookkeeping — they carry no new
+        // user-visible data of their own (the resolved kind:0 arrives later
+        // via the relay-pool ingest sink, which pushes its OWN snapshot).
+        // Pushing a snapshot here hands the reactive web host a fresh frame on
+        // every claim; the host's feed `<For>` rebuilds its rows, which
+        // remounts the avatar/name components, which release + re-claim. Only
+        // ACK the action; let the data-bearing ingest frame drive rendering.
+        Ok(vec![WorkerEvent::ActionAccepted {
+            action_type: capability.to_string(),
+            correlation_id,
+        }])
     }
 }

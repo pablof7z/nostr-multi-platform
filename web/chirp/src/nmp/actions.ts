@@ -1,29 +1,38 @@
 import { GeneratedActionBuilders, type ChirpAction, type WorkerRequest } from "@nmp/runtime-web";
 
-/** An app-level write command routed through `client.dispatchCommand()`.
+/** Command routed through `client.dispatchCommand()`.
  *
- * After #1008, typed-write commands (publish, follow, react, etc.) carry a
- * `buildDispatchBytes` factory instead of a JSON payload. When present, the
- * client generates a `correlationId`, calls the factory with it, and sends the
- * result as `WorkerRequest::DispatchBytes` with FlatBuffers payload — bypassing
- * the JSON encode/decode path. Commands that don't carry `buildDispatchBytes`
- * (kernel ops, view ops, wallet ops) route through the legacy JSON `dispatch`
- * arm as before.
- *
- * `buildDispatchBytes(correlationId)` returns the FULL `DispatchEnvelope`
- * bytes as built by `GeneratedActionBuilders`. The client owns the
- * `correlationId` generation and passes it to the builder at dispatch time. */
-export type RuntimeCommand = {
-  actionType: string;
-  payload: unknown;
-  /** Typed FlatBuffers write factory (#1008 / ADR-0064). When present, the
-   *  client generates a `correlationId`, calls this factory to get the
-   *  finished `DispatchEnvelope` bytes, and sends them as
-   *  `WorkerRequest::DispatchBytes`. `dispatchBytes` factories are set by
-   *  the typed-write command builders (`publishProfileCommand`,
-   *  `followCommand`, `reactCommand`, `unfollowCommand`). */
-  buildDispatchBytes?: (correlationId: string) => Uint8Array;
-};
+ * App-level writes are only representable as `dispatch_bytes` commands carrying
+ * a generated FlatBuffers `DispatchEnvelope` factory. Reference bookkeeping is
+ * represented by structured control commands. Unsupported preview buttons
+ * produce local `capability_failure` events; they do not mint arbitrary
+ * `action_type + payload` JSON. */
+export type RuntimeCommand =
+  | {
+      kind: "dispatch_bytes";
+      actionType: string;
+      buildDispatchBytes: (correlationId: string) => Uint8Array;
+    }
+  | {
+      kind: "resolve_ref";
+      namespace: number;
+      key: string;
+      consumerId: string;
+      shape: number;
+      liveness: number;
+      hints?: string[];
+    }
+  | {
+      kind: "release_ref";
+      namespace: number;
+      key: string;
+      consumerId: string;
+    }
+  | {
+      kind: "unsupported";
+      capability: string;
+      reason: string;
+    };
 
 export function publishNoteAction(content: string, replyToId: string | null = null): ChirpAction {
   return {
@@ -84,8 +93,8 @@ export function publishProfileCommand(fields: Record<string, string>): RuntimeCo
   // #1008: typed-write command — builds FlatBuffers envelope via generated builder.
   const entries = Object.entries(fields) as Array<[string, string]>;
   return {
+    kind: "dispatch_bytes",
     actionType: "nmp.publish",
-    payload: { PublishProfile: { fields } },
     buildDispatchBytes: (correlationId) =>
       GeneratedActionBuilders.publishProfile(correlationId, entries),
   };
@@ -94,8 +103,8 @@ export function publishProfileCommand(fields: Record<string, string>): RuntimeCo
 export function reactCommand(targetEventId: string, reaction = "+"): RuntimeCommand {
   // #1008: typed-write command.
   return {
+    kind: "dispatch_bytes",
     actionType: "nmp.nip25.react",
-    payload: { target_event_id: targetEventId, reaction },
     buildDispatchBytes: (correlationId) =>
       GeneratedActionBuilders.react(correlationId, targetEventId, reaction, null),
   };
@@ -106,42 +115,42 @@ export function followCommand(pubkey: string, following: boolean): RuntimeComman
   const ns = following ? "nmp.follow" : "nmp.unfollow";
   const builder = following ? GeneratedActionBuilders.follow : GeneratedActionBuilders.unfollow;
   return {
+    kind: "dispatch_bytes",
     actionType: ns,
-    payload: { pubkey },
     buildDispatchBytes: (correlationId) => builder(correlationId, pubkey),
   };
 }
 
 export function openProfileCommand(pubkey: string): RuntimeCommand {
-  return command("nmp.view.profile", { pubkey });
+  return unsupportedCommand("nmp.view.profile", { pubkey });
 }
 
 export function openThreadCommand(eventId: string): RuntimeCommand {
-  return command("nmp.view.thread", { event_id: eventId });
+  return unsupportedCommand("nmp.view.thread", { event_id: eventId });
 }
 
 export function openTagCommand(tag: string): RuntimeCommand {
-  return command("nmp.view.tag", { tag });
+  return unsupportedCommand("nmp.view.tag", { tag });
 }
 
 export function sendDmCommand(recipientPubkey: string, content: string): RuntimeCommand {
-  return command("nmp.nip17.send", { recipient_pubkey: recipientPubkey, content });
+  return unsupportedCommand("nmp.nip17.send", { recipient_pubkey: recipientPubkey, content });
 }
 
 export function publishDmRelayListCommand(relays: string[]): RuntimeCommand {
-  return command("nmp.nip17.publish_relay_list", { relays });
+  return unsupportedCommand("nmp.nip17.publish_relay_list", { relays });
 }
 
 export function discoverGroupsCommand(relayUrl: string): RuntimeCommand {
-  return command("nmp.nip29.discover", { relay_url: relayUrl });
+  return unsupportedCommand("nmp.nip29.discover", { relay_url: relayUrl });
 }
 
 export function joinGroupCommand(hostRelayUrl: string, localId: string): RuntimeCommand {
-  return command("nmp.nip29.join", { group: group(hostRelayUrl, localId) });
+  return unsupportedCommand("nmp.nip29.join", { group: group(hostRelayUrl, localId) });
 }
 
 export function postGroupMessageCommand(hostRelayUrl: string, localId: string, content: string): RuntimeCommand {
-  return command("nmp.nip29.post_chat_message", { group: group(hostRelayUrl, localId), content });
+  return unsupportedCommand("nmp.nip29.post_chat_message", { group: group(hostRelayUrl, localId), content });
 }
 
 export function replyGroupMessageCommand(
@@ -150,7 +159,7 @@ export function replyGroupMessageCommand(
   parentEventId: string,
   content: string,
 ): RuntimeCommand {
-  return command("nmp.nip29.comment_in_group", {
+  return unsupportedCommand("nmp.nip29.comment_in_group", {
     group: group(hostRelayUrl, localId),
     parent_event_id: parentEventId,
     content,
@@ -163,7 +172,7 @@ export function reactGroupMessageCommand(
   targetEventId: string,
   reaction = "+",
 ): RuntimeCommand {
-  return command("nmp.nip29.react_in_group", {
+  return unsupportedCommand("nmp.nip29.react_in_group", {
     group: group(hostRelayUrl, localId),
     target_event_id: targetEventId,
     content: reaction,
@@ -171,19 +180,19 @@ export function reactGroupMessageCommand(
 }
 
 export function identityCommand(action: string, payload: Record<string, unknown>): RuntimeCommand {
-  return command(`nmp.identity.${action}`, payload);
+  return unsupportedCommand(`nmp.identity.${action}`, payload);
 }
 
 export function relayCommand(action: string, payload: Record<string, unknown>): RuntimeCommand {
-  return command(`nmp.relay.${action}`, payload);
+  return unsupportedCommand(`nmp.relay.${action}`, payload);
 }
 
 export function outboxCommand(action: "retry" | "cancel", handle: string): RuntimeCommand {
-  return command(`nmp.publish.${action}`, { handle });
+  return unsupportedCommand(`nmp.publish.${action}`, { handle });
 }
 
 export function walletCommand(action: string, payload: Record<string, unknown> = {}): RuntimeCommand {
-  return command(`nmp.wallet.${action}`, payload);
+  return unsupportedCommand(`nmp.wallet.${action}`, payload);
 }
 
 // ── ADR-0063 component-owned reference-resolution seam (#1671) ───────────────
@@ -199,14 +208,13 @@ export function walletCommand(action: string, payload: Record<string, unknown> =
 // `"chirp-web-author-${item.id}"`. Mirror iOS (`chirp-avatar.<uuid>`) and
 // Android (`note-author-<eventId>`) naming conventions.
 //
-// The JSON payload mirrors the Lane D FFI integer codes (apps/chirp/chirp-tui
-// runtime.rs) so the wasm dispatch recognizer (`resolve_dispatch_from_action`)
-// decodes the same `(namespace, shape, liveness)` the native C-ABI carries:
+// These fields mirror the Lane D FFI integer codes (apps/chirp/chirp-tui
+// runtime.rs) so the wasm `resolve_ref` / `release_ref` messages carry the same
+// `(namespace, shape, liveness)` the native C-ABI carries:
 //   namespace: 0 = profile, 1 = event
 //   shape:     profile → 0 = ref (avatar subset), 1 = card (full ProfileCard)
 //              event   → 0 = embed, 1 = raw
 //   liveness:  0 = CacheOk (background fetch), 1 = Live (tailing sub)
-// Route via the existing `WorkerRequest::Dispatch` path (`dispatchCommand`).
 
 /** Lane D namespace discriminants (mirror `RefNamespace`). */
 export const REF_NS_PROFILE = 0;
@@ -223,46 +231,62 @@ export const REF_LIVENESS_LIVE = 1;
 
 /** Resolve a profile reference (feed-avatar `ref` shape, CacheOk). */
 export function resolveProfileCommand(pubkey: string, consumerId: string): RuntimeCommand {
-  return command("nmp.kernel.resolve_ref", {
+  return {
+    kind: "resolve_ref",
     namespace: REF_NS_PROFILE,
     key: pubkey,
-    consumer_id: consumerId,
+    consumerId,
     shape: REF_SHAPE_PROFILE_REF,
     liveness: REF_LIVENESS_CACHE_OK,
-  });
+  };
 }
 
 /** Release a profile reference. */
 export function releaseProfileCommand(pubkey: string, consumerId: string): RuntimeCommand {
-  return command("nmp.kernel.release_ref", {
+  return {
+    kind: "release_ref",
     namespace: REF_NS_PROFILE,
     key: pubkey,
-    consumer_id: consumerId,
-  });
+    consumerId,
+  };
 }
 
 /** Resolve an event reference by raw event key (embed shape, CacheOk). */
-export function resolveEventCommand(key: string, consumerId: string): RuntimeCommand {
-  return command("nmp.kernel.resolve_ref", {
+export function resolveEventCommand(
+  key: string,
+  consumerId: string,
+  hints: string[] = [],
+): RuntimeCommand {
+  const command: RuntimeCommand = {
+    kind: "resolve_ref",
     namespace: REF_NS_EVENT,
     key,
-    consumer_id: consumerId,
+    consumerId,
     shape: REF_SHAPE_EVENT_EMBED,
     liveness: REF_LIVENESS_CACHE_OK,
-  });
+  };
+  if (hints.length > 0 && command.kind === "resolve_ref") {
+    command.hints = hints;
+  }
+  return command;
 }
 
 /** Release an event reference. */
 export function releaseEventCommand(key: string, consumerId: string): RuntimeCommand {
-  return command("nmp.kernel.release_ref", {
+  return {
+    kind: "release_ref",
     namespace: REF_NS_EVENT,
     key,
-    consumer_id: consumerId,
-  });
+    consumerId,
+  };
 }
 
-function command(actionType: string, payload: unknown): RuntimeCommand {
-  return { actionType, payload };
+function unsupportedCommand(capability: string, _payload: unknown): RuntimeCommand {
+  return {
+    kind: "unsupported",
+    capability,
+    reason: `unsupported_in_web_preview: ${capability} is not wired to a generated dispatch_bytes builder in Chirp Web yet`,
+  };
 }
 
 function group(hostRelayUrl: string, localId: string) {

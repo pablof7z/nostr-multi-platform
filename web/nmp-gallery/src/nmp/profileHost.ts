@@ -382,23 +382,21 @@ export function createGalleryRuntime(): GalleryRuntime {
     },
     claimProfile(pubkey: string, consumerId: string): void {
       void request({
-        type: "dispatch",
-        action_type: "nmp.kernel.resolve_ref",
-        payload: {
-          namespace: REF_NS_PROFILE,
-          key: pubkey,
-          consumer_id: consumerId,
-          shape: REF_SHAPE_PROFILE_REF,
-          liveness: REF_LIVENESS_CACHE_OK,
-        },
+        type: "resolve_ref",
+        namespace: REF_NS_PROFILE,
+        key: pubkey,
+        consumer_id: consumerId,
+        shape: REF_SHAPE_PROFILE_REF,
+        liveness: REF_LIVENESS_CACHE_OK,
         correlation_id: `resolve-${claimSeq++}`,
       });
     },
     releaseProfile(pubkey: string, consumerId: string): void {
       void request({
-        type: "dispatch",
-        action_type: "nmp.kernel.release_ref",
-        payload: { namespace: REF_NS_PROFILE, key: pubkey, consumer_id: consumerId },
+        type: "release_ref",
+        namespace: REF_NS_PROFILE,
+        key: pubkey,
+        consumer_id: consumerId,
         correlation_id: `release-${claimSeq++}`,
       });
     },
@@ -430,24 +428,22 @@ export function createGalleryRuntime(): GalleryRuntime {
     resolvedCount,
     claimEvent(key: string, consumerId: string, hints: string[] = []) {
       void request({
-        type: "dispatch",
-        action_type: "nmp.kernel.resolve_ref",
-        payload: {
-          namespace: REF_NS_EVENT,
-          key,
-          consumer_id: consumerId,
-          shape: REF_SHAPE_EVENT_EMBED,
-          liveness: REF_LIVENESS_CACHE_OK,
-          hints,
-        },
+        type: "resolve_ref",
+        namespace: REF_NS_EVENT,
+        key,
+        consumer_id: consumerId,
+        shape: REF_SHAPE_EVENT_EMBED,
+        liveness: REF_LIVENESS_CACHE_OK,
+        hints,
         correlation_id: `claim-event-${claimSeq++}`,
       });
     },
     releaseEvent(key: string, consumerId: string) {
       void request({
-        type: "dispatch",
-        action_type: "nmp.kernel.release_ref",
-        payload: { namespace: REF_NS_EVENT, key, consumer_id: consumerId },
+        type: "release_ref",
+        namespace: REF_NS_EVENT,
+        key,
+        consumer_id: consumerId,
         correlation_id: `release-event-${claimSeq++}`,
       });
     },

@@ -2,18 +2,12 @@
 //!
 //! Three responsibilities:
 //!
-//! 1. [`kernel_action_from_dispatch`] — map a generic
-//!    [`crate::protocol::ActionDispatch`] to a [`nmp_core::KernelAction`] if
-//!    (and only if) the `action_type` is in the kernel namespace. Returns
-//!    `None` for app-namespaced actions, which the runtime surfaces through
-//!    the write-path-unavailable error path.
+//! 1. [`ref_dispatch_from_resolve`] / [`ref_dispatch_from_release`] /
+//!    [`execute_ref_dispatch`] — parse and execute the ADR-0063 unified
+//!    reference-resolution operations (`resolve_ref` / `release_ref`, raw-key
+//!    seam) via the `KernelReducer`.
 //!
-//! 2. [`ref_dispatch_from_action`] / [`execute_ref_dispatch`] — parse and
-//!    execute the ADR-0063 unified reference-resolution operations
-//!    (`nmp.kernel.resolve_ref` / `nmp.kernel.release_ref`, raw-key seam) via
-//!    the `KernelReducer`.
-//!
-//! 3. **RETIRED (#1740 step 8):** the raw feed-verb dispatch
+//! 2. **RETIRED (#1740 step 8):** the raw feed-verb dispatch
 //!    (`interest_dispatch_from_action` / `execute_interest_dispatch` and the
 //!    `nmp.kernel.open_interest` / `close_interest` +
 //!    `nmp.feed.declare_active_follows` / `clear_active_follows` action strings)
@@ -23,10 +17,8 @@
 //!    typed `open_feed` doorway (native today — a wasm `nmp.feed.open` awaits
 //!    porting the native session registry + perspective compiler to wasm).
 //!
-//! 4. Stable, host-pattern-matchable reason strings for the two
-//!    write-unavailability states the wasm runtime can honestly report
-//!    (`signer_not_installed` — no active account; `use_dispatch_bytes` —
-//!    write arrived on the JSON path rather than the typed binary doorway)
+//! 3. Stable, host-pattern-matchable reason strings for the no-active-account
+//!    state the typed write path can honestly report (`signer_not_installed`)
 //!    plus the capability-completion failure reason
 //!    (`browser_actor_driver_missing`). The pre-#1008
 //!    `publish_not_supported_in_web_preview` disable token is retired —
@@ -37,29 +29,25 @@
 //! additions touch directly.
 
 use nmp_core::{
-    EventShape, KernelAction, KernelReducer, OutboundMessage, ProfileShape, RefLiveness,
-    RefNamespace, RefShape,
+    EventShape, KernelReducer, OutboundMessage, ProfileShape, RefLiveness, RefNamespace, RefShape,
 };
-use serde_json::Value;
 
-use crate::protocol::ActionDispatch;
+use crate::protocol::{ReleaseRef, ResolveRef};
 
-/// Decoded reference-resolution operation extracted from an `ActionDispatch`.
+/// Decoded reference-resolution operation extracted from a structured control
+/// request.
 ///
 /// The ADR-0063 unified seam (`resolve_ref` / `release_ref`) carries a RAW key
 /// (a hex pubkey for `profile`, a hex event-id / `kind:pubkey:d` coordinate for
 /// `event`) plus the namespace/shape/liveness discriminants. Event callers that
 /// decoded a NIP-19/NIP-21 URI before entering this raw-key seam may also pass
-/// `hints: string[]`; absent hints are byte-identical to the bare-key path.
+/// relay `hints`; absent hints are byte-identical to the bare-key path.
 ///
 /// Refs are NOT `KernelAction`s — they operate on the resolver's refcount table,
-/// separate from the M2 interest registry. `kernel_action_from_dispatch` returns
-/// `None` for these action types; this function handles them instead.
+/// separate from the M2 interest registry.
 ///
-/// D6 — total: a missing/non-string field OR an unknown namespace/shape/liveness
-/// discriminant returns `None` (never coerced to a default); the caller treats
-/// `None` as "not a ref dispatch" and falls through to the write-path-unavailable
-/// path. No panic.
+/// D6 — total: an unknown namespace/shape/liveness discriminant returns `None`
+/// (never coerced to a default). No panic.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum RefDispatch {
     /// Unified raw-key resolve (`nmp.kernel.resolve_ref`).
@@ -79,72 +67,32 @@ pub(crate) enum RefDispatch {
     },
 }
 
-/// Parse an `ActionDispatch` as a reference-resolution operation. Returns `None`
-/// if the `action_type` is not a ref namespace or a required field is absent /
-/// malformed (D6: malformed → `None`, never a panic, never a coerced default).
-pub(crate) fn ref_dispatch_from_action(action: &ActionDispatch) -> Option<RefDispatch> {
-    match action.action_type.as_str() {
-        "nmp.kernel.resolve_ref" => {
-            let namespace = ref_namespace_from_int(int_field(&action.payload, "namespace")?)?;
-            let key = str_field(&action.payload, "key")?;
-            let consumer_id = str_field(&action.payload, "consumer_id")?;
-            // Decode the shape against the SAME namespace so a (namespace, shape)
-            // mismatch fails closed here (rather than relying on the kernel's
-            // downstream guard). An unknown shape int returns None.
-            let shape = ref_shape_from_int(namespace, int_field(&action.payload, "shape")?)?;
-            let liveness = ref_liveness_from_int(int_field(&action.payload, "liveness")?)?;
-            let hints = optional_string_array_field(&action.payload, "hints")?;
-            Some(RefDispatch::Resolve {
-                namespace,
-                key,
-                consumer_id,
-                shape,
-                liveness,
-                hints,
-            })
-        }
-        "nmp.kernel.release_ref" => {
-            let namespace = ref_namespace_from_int(int_field(&action.payload, "namespace")?)?;
-            let key = str_field(&action.payload, "key")?;
-            let consumer_id = str_field(&action.payload, "consumer_id")?;
-            Some(RefDispatch::Release {
-                namespace,
-                key,
-                consumer_id,
-            })
-        }
-        _ => None,
-    }
+/// Parse a structured `resolve_ref` request. Returns `None` when any numeric
+/// discriminant is unknown or mismatched for its namespace (D6: fail closed,
+/// never coerce).
+pub(crate) fn ref_dispatch_from_resolve(request: &ResolveRef) -> Option<RefDispatch> {
+    let namespace = ref_namespace_from_int(request.namespace)?;
+    let shape = ref_shape_from_int(namespace, request.shape)?;
+    let liveness = ref_liveness_from_int(request.liveness)?;
+    Some(RefDispatch::Resolve {
+        namespace,
+        key: request.key.clone(),
+        consumer_id: request.consumer_id.clone(),
+        shape,
+        liveness,
+        hints: request.hints.clone(),
+    })
 }
 
-/// Extract a string-valued field from a JSON payload. Returns `None` when
-/// the payload is not a JSON object, the key is absent, or the value is not
-/// a string — all defensively treated as "not a valid ref payload" (D6).
-fn str_field(payload: &Value, key: &str) -> Option<String> {
-    payload.get(key).and_then(Value::as_str).map(str::to_string)
-}
-
-/// Extract an unsigned-int discriminant field. Returns `None` for a missing /
-/// non-integer / out-of-`u32`-range value (D6 — never a coerced default).
-fn int_field(payload: &Value, key: &str) -> Option<u32> {
-    payload
-        .get(key)
-        .and_then(Value::as_u64)
-        .and_then(|n| u32::try_from(n).ok())
-}
-
-/// Extract an optional array of strings from a JSON payload. Missing means
-/// "empty hints"; present-but-malformed fails closed.
-fn optional_string_array_field(payload: &Value, key: &str) -> Option<Vec<String>> {
-    let Some(value) = payload.get(key) else {
-        return Some(Vec::new());
-    };
-    let arr = value.as_array()?;
-    let mut out = Vec::with_capacity(arr.len());
-    for item in arr {
-        out.push(item.as_str()?.to_string());
-    }
-    Some(out)
+/// Parse a structured `release_ref` request. Returns `None` when the namespace
+/// discriminant is unknown.
+pub(crate) fn ref_dispatch_from_release(request: &ReleaseRef) -> Option<RefDispatch> {
+    let namespace = ref_namespace_from_int(request.namespace)?;
+    Some(RefDispatch::Release {
+        namespace,
+        key: request.key.clone(),
+        consumer_id: request.consumer_id.clone(),
+    })
 }
 
 /// Decode the namespace discriminant, FAILING CLOSED on an unknown value. The
@@ -182,34 +130,21 @@ fn ref_liveness_from_int(value: u32) -> Option<RefLiveness> {
     }
 }
 
-/// Single-source reason string for app-level writes that arrive on the legacy
-/// JSON `WorkerRequest::Dispatch` path rather than the correct binary
-/// `WorkerRequest::DispatchBytes` doorway.
-///
-/// The two honest failure modes:
-///
-/// - **No active account.** The host hasn't sent `SetIdentity` yet — the user has
-///   not signed in. Banner: "sign in to publish".
-/// - **Account seeded but wrong transport.** App-level writes (publish, follow,
-///   react, etc.) MUST cross the binary `dispatch_bytes` doorway (#1008 /
-///   ADR-0064). A write arriving on the JSON `dispatch` path is rejected at the
-///   routing layer — it never reaches the typed registry.
-///
-/// Both strings start with a stable underscore-snake-case prefix the JS host
-/// can pattern-match without parsing the full reason text.
-pub(crate) fn write_path_unavailable_reason(has_active_account: bool) -> String {
-    if !has_active_account {
-        return "signer_not_installed: no active account; send WorkerRequest::SetIdentity \
-                with kind = \"nip07\" and the pubkey from window.nostr.getPublicKey() \
-                before dispatching app-level writes."
-            .to_string();
-    }
-    // The JSON `dispatch` path is not a write doorway (#1008 / ADR-0064).
-    // App-level writes must use `WorkerRequest::DispatchBytes` (binary envelope).
-    "use_dispatch_bytes: app-level writes (publish, follow, react, etc.) must cross \
-     the typed `dispatch_bytes` doorway (WorkerRequest::DispatchBytes), not the JSON \
-     `dispatch` path. Build a DispatchEnvelope via encodeDispatchEnvelope()."
+/// Single-source reason string for typed app-level writes attempted before the
+/// host has seeded an active account.
+pub(crate) fn signer_not_installed_reason() -> String {
+    "signer_not_installed: no active account; send WorkerRequest::SetIdentity \
+     with kind = \"nip07\" and the pubkey from window.nostr.getPublicKey() \
+     before dispatching app-level writes."
         .to_string()
+}
+
+/// Reason string for malformed structured ref control messages.
+pub(crate) fn invalid_ref_request_reason(capability: &str) -> String {
+    format!(
+        "invalid_ref_request: {capability} carried an unknown namespace, shape, \
+         or liveness discriminant"
+    )
 }
 
 /// Reason string for non-app-action capability completions that cannot be
@@ -223,52 +158,15 @@ pub(crate) fn browser_driver_missing_reason() -> String {
         .to_string()
 }
 
-/// Map a generic `ActionDispatch` to its `KernelAction` if (and only if) the
-/// `action_type` is in the kernel namespace. Returns `None` for app-namespaced
-/// actions, which the caller surfaces via [`write_path_unavailable_reason`]
-/// until Stage 3c wires a publish path.
-///
-/// Kept narrow on purpose: only the actions whose entire implementation lives
-/// in the pure reducer are routed. Anything that needs the actor (signed-event
-/// publication, capability dispatch, planner driver) returns `None`.
-pub(crate) fn kernel_action_from_dispatch(action: &ActionDispatch) -> Option<KernelAction> {
-    match action.action_type.as_str() {
-        "nmp.kernel.start" => Some(KernelAction::Start),
-        "nmp.kernel.stop" => Some(KernelAction::Stop),
-        "nmp.kernel.diagnostics" => Some(KernelAction::RunDiagnostics),
-        "nmp.kernel.open_uri" => action
-            .payload
-            .get("uri")
-            .and_then(Value::as_str)
-            .map(|uri| KernelAction::OpenUri {
-                uri: uri.to_string(),
-            }),
-        "nmp.kernel.open_view" => {
-            let namespace = action.payload.get("namespace").and_then(Value::as_str)?;
-            let key = action.payload.get("key").and_then(Value::as_str)?;
-            Some(KernelAction::OpenView {
-                namespace: namespace.to_string(),
-                key: key.to_string(),
-            })
-        }
-        "nmp.kernel.close_view" => {
-            let namespace = action.payload.get("namespace").and_then(Value::as_str)?;
-            let key = action.payload.get("key").and_then(Value::as_str)?;
-            Some(KernelAction::CloseView {
-                namespace: namespace.to_string(),
-                key: key.to_string(),
-            })
-        }
-        _ => None,
-    }
-}
-
 // ─── ADR-0063 reference-resolution arm executor ──────────────────────────────
 //
 // The routing table and the execution logic stay co-located (dispatch_routing is
 // the single owner) so runtime.rs delegates in one line.
 //
-// Release calls always return empty vecs.
+// `_can_send` is retained only to keep the executor signature stable for the
+// runtime call site while #1946 retires the legacy URI front doors in parallel.
+// The structured raw-key `resolve_ref` seam reads relay readiness inside the
+// kernel; release calls always return empty vecs.
 
 /// Execute a decoded `RefDispatch` against the live kernel, returning any
 /// immediately-sendable `Vec<OutboundMessage>` (already `partition_auth_paused`

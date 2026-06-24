@@ -6,7 +6,15 @@ use serde_json::Value;
 pub enum WorkerRequest {
     Hello(ClientHello),
     Start(StartConfig),
-    Dispatch(ActionDispatch),
+    /// ADR-0063 reference-resolution control message.
+    ///
+    /// This is deliberately separate from the app-write doorway. It carries the
+    /// raw-key `resolve_ref` fields as typed JSON data so components can mount
+    /// profile/event interests without reopening the retired `action_type +
+    /// Value` command surface.
+    ResolveRef(ResolveRef),
+    /// ADR-0063 reference-release control message.
+    ReleaseRef(ReleaseRef),
     /// ADR-0064 / S2 (#1750) — the **binary write doorway**. The host posts the
     /// raw bytes of a finished `DispatchEnvelope` (`correlation_id` + generated
     /// `action_namespace` + typed FlatBuffers `payload`). This is the SAME open
@@ -107,10 +115,25 @@ pub struct RelayBootstrapEntry {
     pub role: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ActionDispatch {
-    pub action_type: String,
-    pub payload: Value,
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResolveRef {
+    pub namespace: u32,
+    pub key: String,
+    pub consumer_id: String,
+    pub shape: u32,
+    pub liveness: u32,
+    /// Optional relay hints decoded by the app boundary from a NIP-19/NIP-21
+    /// event reference. Missing defaults to the bare-key path.
+    #[serde(default)]
+    pub hints: Vec<String>,
+    pub correlation_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReleaseRef {
+    pub namespace: u32,
+    pub key: String,
+    pub consumer_id: String,
     pub correlation_id: String,
 }
 
