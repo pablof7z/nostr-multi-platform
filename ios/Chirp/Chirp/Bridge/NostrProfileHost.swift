@@ -8,9 +8,9 @@ import SwiftUI
 /// and re-read the current projection.
 ///
 /// ADR-0063 Lane E (#1671): the claim/read surface is the unified
-/// `resolve_ref` + `refs.profile` typed per-key accessor. `resolveProfile` /
-/// `releaseProfile` wrap `nmp_app_resolve_ref(Profile, …)` /
-/// `nmp_app_release_ref(Profile, …)`; `profileCard(forPubkey:)` reads the
+/// typed profile-ref FFI adapters + `refs.profile` typed per-key accessor.
+/// `resolveProfile` / `releaseProfile` wrap the typed adapters;
+/// `profileCard(forPubkey:)` reads the
 /// decoded `ProfileCard` from the per-key `KeyedRefCache` (the SOURCE — no
 /// app-side cache, D4); and `profileRowChanged` is the per-key Combine signal a
 /// leaf binds, filtered on its pubkey, so EXACTLY ONE avatar/name re-renders

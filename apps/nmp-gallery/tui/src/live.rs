@@ -11,7 +11,7 @@
 //! 2. `NostrContentView` calls `sink.claim(uri, consumer_id)` via the
 //!    `EventClaimSink` host bridge.
 //! 3. `LiveKernelSink::claim` forwards the raw event key plus decoded URI
-//!    metadata to `nmp_app_resolve_ref_with_metadata` (namespace=1/event) — the
+//!    metadata to the typed event-embed ref adapter — the
 //!    kernel registers a `OneshotApi` interest (D4 single writer), short-circuits
 //!    on cache hit, or compiles a wire REQ on cache miss.
 //! 4. The event arrives (cache or relay), gets surfaced in the typed
@@ -27,7 +27,6 @@
 use std::{
     collections::BTreeMap,
     ffi::{CString, c_void},
-    os::raw::c_int,
     sync::mpsc::{Receiver, Sender},
     time::Duration,
 };
@@ -37,14 +36,6 @@ use nmp_core::refs::{REFS_PROFILE_KEY, RefProfileStore};
 use nmp_core::typed_projections::{CLAIMED_EVENTS_SCHEMA_ID, ClaimedEventsModel, ProfileCardModel};
 
 use crate::data::showcase_pubkey;
-
-// ADR-0063 (#1671) FFI integer codes for `nmp_app_resolve_ref` / `release_ref`.
-/// `namespace` — the profile resolver.
-const REF_NS_PROFILE: c_int = 0;
-/// `shape` — `profile.ref` (`{pubkey, display_name, picture_url}`; feed-avatar).
-const REF_SHAPE_PROFILE_REF: c_int = 0;
-/// `liveness` — `CacheOk` (background; no per-row tailing sub).
-const REF_LIVENESS_CACHE_OK: c_int = 0;
 
 /// Hex pubkey of the gallery's primary showcase author — pablof7z, the
 /// NmpGallery showcase identity. The user-*
@@ -173,8 +164,8 @@ struct UpdateBridge {
 
 /// `EventClaimSink` impl wrapping a live kernel's app pointer. The
 /// renderer-triggered claim path (`NostrContentView::claim_sink`) calls
-/// this on each render frame; `claim` forwards to `nmp_app_resolve_ref` (namespace=1/event),
-/// `release` to `nmp_app_release_ref`. `Send + Sync` because every FFI
+/// this on each render frame; `claim` forwards to the typed event-embed adapter,
+/// `release` to the typed event-ref release adapter. `Send + Sync` because every FFI
 /// symbol forwards to the actor's command channel — the pointer is just
 /// an opaque key.
 pub struct LiveKernelSink {
@@ -197,14 +188,7 @@ impl LiveKernelSink {
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        nmp_ffi::nmp_app_resolve_ref(
-            self.app,
-            REF_NS_PROFILE,
-            pk.as_ptr(),
-            cid.as_ptr(),
-            REF_SHAPE_PROFILE_REF,
-            REF_LIVENESS_CACHE_OK,
-        );
+        nmp_ffi::nmp_app_resolve_profile_ref(self.app, pk.as_ptr(), cid.as_ptr());
     }
 
     /// Release a profile reference previously resolved via [`Self::resolve_profile`].
@@ -214,7 +198,7 @@ impl LiveKernelSink {
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        nmp_ffi::nmp_app_release_ref(self.app, REF_NS_PROFILE, pk.as_ptr(), cid.as_ptr());
+        nmp_ffi::nmp_app_release_profile_ref(self.app, pk.as_ptr(), cid.as_ptr());
     }
 
     // V-112 (ADR-0042): `open_author` deleted — it wrapped the retired
@@ -279,8 +263,7 @@ fn event_ref_from_uri(uri: &str) -> Option<EventRefFromUri> {
     })
 }
 
-// App-owned URI adapter over the raw-key resolve_ref / release_ref seams.
-// nmp_app_release_ref.
+// App-owned URI adapter over the typed event-ref resolve/release seams.
 impl EventClaimSink for LiveKernelSink {
     fn claim(&self, uri: &str, consumer_id: &str) {
         let Some(event_ref) = event_ref_from_uri(uri) else {
@@ -289,14 +272,10 @@ impl EventClaimSink for LiveKernelSink {
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        // F-TTL — embed sink claims on render → liveness = 0 (CacheOk / background).
-        nmp_ffi::nmp_app_resolve_ref_with_metadata(
+        nmp_ffi::nmp_app_resolve_event_embed_with_metadata(
             self.app,
-            1, // namespace = event
             event_ref.key.as_ptr(),
             cid.as_ptr(),
-            2, // shape = event.embed
-            0, // liveness = CacheOk
             event_ref.metadata_json.as_ptr(),
         );
     }
@@ -308,12 +287,7 @@ impl EventClaimSink for LiveKernelSink {
         let Ok(cid) = CString::new(consumer_id) else {
             return;
         };
-        nmp_ffi::nmp_app_release_ref(
-            self.app,
-            1, /*event*/
-            event_ref.key.as_ptr(),
-            cid.as_ptr(),
-        );
+        nmp_ffi::nmp_app_release_event_ref(self.app, event_ref.key.as_ptr(), cid.as_ptr());
     }
 }
 

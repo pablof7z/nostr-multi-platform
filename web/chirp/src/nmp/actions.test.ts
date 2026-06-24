@@ -8,11 +8,6 @@
 // reaches the Rust layer.
 import { describe, expect, it } from "vitest";
 import {
-  REF_LIVENESS_CACHE_OK,
-  REF_NS_EVENT,
-  REF_NS_PROFILE,
-  REF_SHAPE_EVENT_EMBED,
-  REF_SHAPE_PROFILE_REF,
   releaseEventCommand,
   releaseProfileCommand,
   resolveEventCommand,
@@ -24,11 +19,11 @@ describe("ADR-0063 resolve_ref/release_ref command builders", () => {
     expect(resolveProfileCommand("abc123pubkey", "chirp-web-author-eventid1")).toEqual({
       actionType: "nmp.kernel.resolve_ref",
       payload: {
-        namespace: REF_NS_PROFILE,
+        namespace: 0,
         key: "abc123pubkey",
         consumer_id: "chirp-web-author-eventid1",
-        shape: REF_SHAPE_PROFILE_REF,
-        liveness: REF_LIVENESS_CACHE_OK,
+        shape: 0,
+        liveness: 0,
       },
     });
   });
@@ -37,7 +32,7 @@ describe("ADR-0063 resolve_ref/release_ref command builders", () => {
     expect(releaseProfileCommand("abc123pubkey", "chirp-web-author-eventid1")).toEqual({
       actionType: "nmp.kernel.release_ref",
       payload: {
-        namespace: REF_NS_PROFILE,
+        namespace: 0,
         key: "abc123pubkey",
         consumer_id: "chirp-web-author-eventid1",
       },
@@ -48,11 +43,11 @@ describe("ADR-0063 resolve_ref/release_ref command builders", () => {
     expect(resolveEventCommand("eventidhex", "chirp-web-embed-eventid2")).toEqual({
       actionType: "nmp.kernel.resolve_ref",
       payload: {
-        namespace: REF_NS_EVENT,
+        namespace: 1,
         key: "eventidhex",
         consumer_id: "chirp-web-embed-eventid2",
-        shape: REF_SHAPE_EVENT_EMBED,
-        liveness: REF_LIVENESS_CACHE_OK,
+        shape: 0,
+        liveness: 0,
       },
     });
   });
@@ -61,7 +56,7 @@ describe("ADR-0063 resolve_ref/release_ref command builders", () => {
     expect(releaseEventCommand("eventidhex", "chirp-web-embed-eventid2")).toEqual({
       actionType: "nmp.kernel.release_ref",
       payload: {
-        namespace: REF_NS_EVENT,
+        namespace: 1,
         key: "eventidhex",
         consumer_id: "chirp-web-embed-eventid2",
       },
@@ -85,7 +80,7 @@ describe("ADR-0063 resolve_ref/release_ref command builders", () => {
     expect(resolveEventCommand("ev", "c").actionType).toBe("nmp.kernel.resolve_ref");
     const profile = resolveProfileCommand("pk", "c").payload as Record<string, unknown>;
     const event = resolveEventCommand("ev", "c").payload as Record<string, unknown>;
-    expect(profile.namespace).toBe(REF_NS_PROFILE);
-    expect(event.namespace).toBe(REF_NS_EVENT);
+    expect(profile.namespace).toBe(0);
+    expect(event.namespace).toBe(1);
   });
 });

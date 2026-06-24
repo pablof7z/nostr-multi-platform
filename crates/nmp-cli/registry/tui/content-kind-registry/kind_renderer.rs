@@ -9,13 +9,13 @@ use nmp_content::context::RenderContext;
 use nmp_content::embed_projection::EmbedKindProjection;
 use nmp_core::display::short_npub;
 
-use super::NostrKindRegistry;
 use super::super::nostr_mention_chip::NostrMentionProfileHost;
+use super::NostrKindRegistry;
 
 /// Resolve the author byline for an embed, component-owned (mirrors iOS #833).
 ///
 /// ADR-0063 (#1671): the renderer that *displays* an author's name issues the
-/// `resolve_ref(NS_PROFILE, pubkey, consumer_id, profile.ref, CacheOk)` itself
+/// typed profile-ref resolve itself
 /// — no separate hidden trigger. The resolved row arrives via the shell's
 /// `RefProfileStore` mirror and is read back through `profile_for_pubkey`.
 ///

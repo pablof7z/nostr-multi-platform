@@ -170,13 +170,11 @@ extension KernelModel {
     func resolveProfile(
         pubkey: String, consumerID: String, shape: RefShape, liveness: RefLiveness
     ) {
-        kernel.resolveRef(
-            namespace: .profile, key: pubkey, consumerID: consumerID,
-            shape: shape, liveness: liveness)
+        kernel.resolveProfile(key: pubkey, consumerID: consumerID, shape: shape, liveness: liveness)
     }
 
     func releaseProfile(pubkey: String, consumerID: String) {
-        kernel.releaseRef(namespace: .profile, key: pubkey, consumerID: consumerID)
+        kernel.releaseProfile(key: pubkey, consumerID: consumerID)
     }
 
     func profileCard(forPubkey pubkey: String) -> ProfileCard? {

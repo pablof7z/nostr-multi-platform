@@ -145,6 +145,51 @@ fn decode_metadata(metadata_json: *const c_char) -> Option<RefResolveMetadata> {
     })
 }
 
+fn resolve_ref_typed(
+    app: *mut NmpApp,
+    ns: RefNamespace,
+    key: *const c_char,
+    consumer_id: *const c_char,
+    shape: RefShape,
+    liveness: RefLiveness,
+    metadata: RefResolveMetadata,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(key) = c_string_argument(key) else {
+        return;
+    };
+    let Some(consumer_id) = c_string_argument(consumer_id) else {
+        return;
+    };
+    if ns == RefNamespace::Profile && !is_hex_pubkey(&key) {
+        return;
+    }
+    app.resolve_ref_with_metadata(ns, key, consumer_id, shape, liveness, metadata);
+}
+
+fn release_ref_typed(
+    app: *mut NmpApp,
+    ns: RefNamespace,
+    key: *const c_char,
+    consumer_id: *const c_char,
+) {
+    let Some(app) = app_ref(app) else {
+        return;
+    };
+    let Some(key) = c_string_argument(key) else {
+        return;
+    };
+    let Some(consumer_id) = c_string_argument(consumer_id) else {
+        return;
+    };
+    if ns == RefNamespace::Profile && !is_hex_pubkey(&key) {
+        return;
+    }
+    app.release_ref(ns, key, consumer_id);
+}
+
 /// ADR-0063 Lane D — unified, origin-blind reference-resolution entry point.
 ///
 /// Registers (or upgrades) a consumer's interest in the entity identified by
@@ -285,4 +330,219 @@ pub extern "C" fn nmp_app_release_ref(
     };
 
     app.release_ref(ns, key, consumer_id);
+}
+
+/// Typed profile-ref adapter for host shells.
+///
+/// Resolves `key` as `refs.profile` / `profile.ref` with `CacheOk` liveness.
+/// The caller cannot express an event/profile shape mismatch because the
+/// namespace, shape, and liveness are selected by this adapter.
+#[no_mangle]
+pub extern "C" fn nmp_app_resolve_profile_ref(
+    app: *mut NmpApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+) {
+    resolve_ref_typed(
+        app,
+        RefNamespace::Profile,
+        key,
+        consumer_id,
+        RefShape::Profile(ProfileShape::Ref),
+        RefLiveness::CacheOk,
+        RefResolveMetadata::default(),
+    );
+}
+
+/// Typed profile-card adapter for open profile screens.
+///
+/// Resolves `key` as `refs.profile` / `profile.card` with `Live` liveness.
+#[no_mangle]
+pub extern "C" fn nmp_app_resolve_profile_card_live(
+    app: *mut NmpApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+) {
+    resolve_ref_typed(
+        app,
+        RefNamespace::Profile,
+        key,
+        consumer_id,
+        RefShape::Profile(ProfileShape::Card),
+        RefLiveness::Live,
+        RefResolveMetadata::default(),
+    );
+}
+
+/// Release a profile ref acquired through a typed profile adapter.
+#[no_mangle]
+pub extern "C" fn nmp_app_release_profile_ref(
+    app: *mut NmpApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+) {
+    release_ref_typed(app, RefNamespace::Profile, key, consumer_id);
+}
+
+/// Typed event-embed adapter with `CacheOk` liveness and no URI metadata.
+#[no_mangle]
+pub extern "C" fn nmp_app_resolve_event_embed(
+    app: *mut NmpApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+) {
+    resolve_ref_typed(
+        app,
+        RefNamespace::Event,
+        key,
+        consumer_id,
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        RefResolveMetadata::default(),
+    );
+}
+
+/// Typed event-embed adapter with `Live` liveness and no URI metadata.
+#[no_mangle]
+pub extern "C" fn nmp_app_resolve_event_embed_live(
+    app: *mut NmpApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+) {
+    resolve_ref_typed(
+        app,
+        RefNamespace::Event,
+        key,
+        consumer_id,
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::Live,
+        RefResolveMetadata::default(),
+    );
+}
+
+/// Typed event-embed adapter for app-owned URI adapters.
+///
+/// `metadata_json` has the same optional `{ "hints": [...], "author": "...",
+/// "kind": n }` shape accepted by [`nmp_app_resolve_ref_with_metadata`].
+#[no_mangle]
+pub extern "C" fn nmp_app_resolve_event_embed_with_metadata(
+    app: *mut NmpApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+    metadata_json: *const c_char,
+) {
+    let Some(metadata) = decode_metadata(metadata_json) else {
+        return;
+    };
+    resolve_ref_typed(
+        app,
+        RefNamespace::Event,
+        key,
+        consumer_id,
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::CacheOk,
+        metadata,
+    );
+}
+
+/// Typed live event-embed adapter for app-owned URI adapters.
+#[no_mangle]
+pub extern "C" fn nmp_app_resolve_event_embed_live_with_metadata(
+    app: *mut NmpApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+    metadata_json: *const c_char,
+) {
+    let Some(metadata) = decode_metadata(metadata_json) else {
+        return;
+    };
+    resolve_ref_typed(
+        app,
+        RefNamespace::Event,
+        key,
+        consumer_id,
+        RefShape::Event(EventShape::Embed),
+        RefLiveness::Live,
+        metadata,
+    );
+}
+
+/// Release an event ref acquired through a typed event adapter.
+#[no_mangle]
+pub extern "C" fn nmp_app_release_event_ref(
+    app: *mut NmpApp,
+    key: *const c_char,
+    consumer_id: *const c_char,
+) {
+    release_ref_typed(app, RefNamespace::Event, key, consumer_id);
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::CString;
+    use std::sync::atomic::Ordering;
+
+    use crate::{nmp_app_free, nmp_app_new};
+
+    use super::*;
+
+    const PROFILE_KEY: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const EVENT_KEY: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+    #[test]
+    fn typed_profile_adapters_reject_malformed_keys_before_enqueue() {
+        let app = nmp_app_new();
+        let app_ref = unsafe { &*app };
+        let valid = CString::new(PROFILE_KEY).unwrap();
+        let invalid = CString::new("not-a-profile-key").unwrap();
+        let consumer = CString::new("ffi-test-profile").unwrap();
+
+        nmp_app_resolve_profile_ref(app, valid.as_ptr(), consumer.as_ptr());
+        assert_eq!(app_ref.send_cmd_count.load(Ordering::Relaxed), 1);
+
+        nmp_app_resolve_profile_ref(app, invalid.as_ptr(), consumer.as_ptr());
+        nmp_app_release_profile_ref(app, invalid.as_ptr(), consumer.as_ptr());
+        assert_eq!(
+            app_ref.send_cmd_count.load(Ordering::Relaxed),
+            1,
+            "malformed profile keys must fail closed before actor enqueue"
+        );
+
+        nmp_app_release_profile_ref(app, valid.as_ptr(), consumer.as_ptr());
+        assert_eq!(app_ref.send_cmd_count.load(Ordering::Relaxed), 2);
+
+        nmp_app_free(app);
+    }
+
+    #[test]
+    fn typed_event_metadata_adapter_rejects_malformed_metadata_before_enqueue() {
+        let app = nmp_app_new();
+        let app_ref = unsafe { &*app };
+        let key = CString::new(EVENT_KEY).unwrap();
+        let consumer = CString::new("ffi-test-event").unwrap();
+        let malformed = CString::new(r#"{"hints":[42]}"#).unwrap();
+        let metadata = CString::new(r#"{"hints":["wss://relay.example"],"kind":1}"#).unwrap();
+
+        nmp_app_resolve_event_embed_with_metadata(
+            app,
+            key.as_ptr(),
+            consumer.as_ptr(),
+            malformed.as_ptr(),
+        );
+        assert_eq!(
+            app_ref.send_cmd_count.load(Ordering::Relaxed),
+            0,
+            "malformed metadata must fail closed before actor enqueue"
+        );
+
+        nmp_app_resolve_event_embed_with_metadata(
+            app,
+            key.as_ptr(),
+            consumer.as_ptr(),
+            metadata.as_ptr(),
+        );
+        assert_eq!(app_ref.send_cmd_count.load(Ordering::Relaxed), 1);
+
+        nmp_app_free(app);
+    }
 }

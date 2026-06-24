@@ -199,43 +199,33 @@ export function walletCommand(action: string, payload: Record<string, unknown> =
 // `"chirp-web-author-${item.id}"`. Mirror iOS (`chirp-avatar.<uuid>`) and
 // Android (`note-author-<eventId>`) naming conventions.
 //
-// The JSON payload mirrors the Lane D FFI integer codes (apps/chirp/chirp-tui
-// runtime.rs) so the wasm dispatch recognizer (`resolve_dispatch_from_action`)
-// decodes the same `(namespace, shape, liveness)` the native C-ABI carries:
-//   namespace: 0 = profile, 1 = event
-//   shape:     profile → 0 = ref (avatar subset), 1 = card (full ProfileCard)
-//              event   → 0 = embed, 1 = raw
-//   liveness:  0 = CacheOk (background fetch), 1 = Live (tailing sub)
+// The adapter below is the only place this app spells the wasm ref-dispatch
+// wire discriminants. Components call typed helpers (`resolveProfileCommand`,
+// `resolveEventCommand`) so they cannot mix a profile namespace with an event
+// shape.
 // Route via the existing `WorkerRequest::Dispatch` path (`dispatchCommand`).
 
-/** Lane D namespace discriminants (mirror `RefNamespace`). */
-export const REF_NS_PROFILE = 0;
-export const REF_NS_EVENT = 1;
-/** profile shapes (mirror `ProfileShape`). */
-export const REF_SHAPE_PROFILE_REF = 0;
-export const REF_SHAPE_PROFILE_CARD = 1;
-/** event shapes (mirror `EventShape`). */
-export const REF_SHAPE_EVENT_EMBED = 0;
-export const REF_SHAPE_EVENT_RAW = 1;
-/** liveness (mirror `RefLiveness`). */
-export const REF_LIVENESS_CACHE_OK = 0;
-export const REF_LIVENESS_LIVE = 1;
+const refWire = {
+  profile: { namespace: 0, shape: { ref: 0, card: 1 } },
+  event: { namespace: 1, shape: { embed: 0, raw: 1 } },
+  liveness: { cacheOk: 0, live: 1 },
+} as const;
 
 /** Resolve a profile reference (feed-avatar `ref` shape, CacheOk). */
 export function resolveProfileCommand(pubkey: string, consumerId: string): RuntimeCommand {
   return command("nmp.kernel.resolve_ref", {
-    namespace: REF_NS_PROFILE,
+    namespace: refWire.profile.namespace,
     key: pubkey,
     consumer_id: consumerId,
-    shape: REF_SHAPE_PROFILE_REF,
-    liveness: REF_LIVENESS_CACHE_OK,
+    shape: refWire.profile.shape.ref,
+    liveness: refWire.liveness.cacheOk,
   });
 }
 
 /** Release a profile reference. */
 export function releaseProfileCommand(pubkey: string, consumerId: string): RuntimeCommand {
   return command("nmp.kernel.release_ref", {
-    namespace: REF_NS_PROFILE,
+    namespace: refWire.profile.namespace,
     key: pubkey,
     consumer_id: consumerId,
   });
@@ -244,18 +234,18 @@ export function releaseProfileCommand(pubkey: string, consumerId: string): Runti
 /** Resolve an event reference by raw event key (embed shape, CacheOk). */
 export function resolveEventCommand(key: string, consumerId: string): RuntimeCommand {
   return command("nmp.kernel.resolve_ref", {
-    namespace: REF_NS_EVENT,
+    namespace: refWire.event.namespace,
     key,
     consumer_id: consumerId,
-    shape: REF_SHAPE_EVENT_EMBED,
-    liveness: REF_LIVENESS_CACHE_OK,
+    shape: refWire.event.shape.embed,
+    liveness: refWire.liveness.cacheOk,
   });
 }
 
 /** Release an event reference. */
 export function releaseEventCommand(key: string, consumerId: string): RuntimeCommand {
   return command("nmp.kernel.release_ref", {
-    namespace: REF_NS_EVENT,
+    namespace: refWire.event.namespace,
     key,
     consumer_id: consumerId,
   });

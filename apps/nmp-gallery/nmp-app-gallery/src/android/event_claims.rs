@@ -10,7 +10,7 @@ use jni::objects::{JClass, JString};
 use jni::sys::jlong;
 
 use nmp_ffi::{
-    nmp_app_release_ref, nmp_app_resolve_ref_with_metadata, nmp_free_string,
+    nmp_app_release_event_ref, nmp_app_resolve_event_embed_with_metadata, nmp_free_string,
     nmp_nip21_decode_uri,
 };
 
@@ -72,8 +72,7 @@ fn event_ref_from_uri(uri: &CStr) -> Option<EventRefFromUri> {
 }
 
 /// App-local JNI URI adapter. Decodes the `nostr:` URI in Rust and forwards to
-/// `nmp_app_resolve_ref_with_metadata(namespace=1/event, shape=2/embed,
-/// liveness=0/CacheOk)`.
+/// the typed event-embed ref adapter.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimEvent(
     mut env: JNIEnv,
@@ -92,19 +91,16 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeClaimEvent
     let Some(event_ref) = event_ref_from_uri(&uri_cstr) else {
         return;
     };
-    nmp_app_resolve_ref_with_metadata(
+    nmp_app_resolve_event_embed_with_metadata(
         s.app,
-        1,
         event_ref.key.as_ptr(),
         consumer_id.as_ptr(),
-        2,
-        0,
         event_ref.metadata_json.as_ptr(),
     );
 }
 
 /// App-local JNI URI adapter. Decodes the `nostr:` URI in Rust and forwards to
-/// `nmp_app_release_ref(namespace=1/event)`.
+/// the typed event-ref release adapter.
 #[no_mangle]
 pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEvent(
     mut env: JNIEnv,
@@ -123,5 +119,5 @@ pub extern "system" fn Java_org_nmp_gallery_bridge_KernelBridge_nativeReleaseEve
     let Some(event_ref) = event_ref_from_uri(&uri_cstr) else {
         return;
     };
-    nmp_app_release_ref(s.app, 1, event_ref.key.as_ptr(), consumer_id.as_ptr());
+    nmp_app_release_event_ref(s.app, event_ref.key.as_ptr(), consumer_id.as_ptr());
 }

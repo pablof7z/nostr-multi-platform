@@ -15,13 +15,11 @@ use super::{content_render_data::ContentProfileRenderData, content_tree_wire::Wi
 /// resolve intent and reads the current projection each frame.
 ///
 /// ADR-0063 (#1671): `resolve_ref` replaces the old `claim_profile` — the
-/// host calls `nmp_app_resolve_ref(NS_PROFILE, pubkey, consumer_id,
-/// profile.ref, CacheOk)` and reads the resolved row from the shell's
+/// host calls a typed profile-ref adapter and reads the resolved row from the shell's
 /// `RefProfileStore` mirror, not from the old `claimed_profiles` map.
 pub trait NostrMentionProfileHost {
     fn profile_for_pubkey(&self, pubkey: &str) -> Option<ContentProfileRenderData>;
-    /// Issue a `resolve_ref(NS_PROFILE, pubkey, consumer_id, profile.ref,
-    /// CacheOk)` to the kernel. Called by the widget on every render frame for
+    /// Issue a typed profile-ref resolve to the kernel. Called by the widget on every render frame for
     /// each visible pubkey; the kernel deduplicates and refcounts.
     fn resolve_ref(&self, pubkey: &str, consumer_id: &str);
 }

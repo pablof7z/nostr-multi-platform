@@ -1,7 +1,7 @@
 import Foundation
 
 // App-owned URI adapter: claimEventUri/releaseEventUri decode the nostr: URI
-// and forward to nmp_app_resolve_ref(namespace=event) / nmp_app_release_ref.
+// and forward to the typed event-ref FFI adapters.
 extension KernelModel: EventClaimSinkProtocol {
     func claim(uri: String, consumerId: String) {
         kernel.claimEventUri(uri: uri, consumerID: consumerId)

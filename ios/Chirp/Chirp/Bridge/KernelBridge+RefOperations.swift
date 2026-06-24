@@ -4,34 +4,31 @@ import Foundation
 // Extracted from KernelBridge.swift to satisfy the 500-LOC ceiling (#962).
 
 extension KernelHandle {
-    /// ADR-0063 Lane E (#1671) — unified, origin-blind reference resolution.
-    /// Supersedes `claimProfile` / `claimEvent`: registers (or upgrades) this
-    /// `consumerID`'s interest in `(namespace, key)` at the requested `shape`
-    /// and `liveness`. The kernel surfaces the resolved entity in the matching
-    /// keyed projection (`refs.profile` / `refs.event`) keyed by `key`, which
-    /// the `keyedRefCache` consumes on the next frame. Fire-and-forget.
-    func resolveRef(
-        namespace: RefNamespace,
-        key: String,
-        consumerID: String,
-        shape: RefShape,
-        liveness: RefLiveness
-    ) {
+    /// ADR-0063 Lane E (#1671) — typed profile reference resolution.
+    /// Registers (or upgrades) this `consumerID`'s interest in `key` using one
+    /// of the supported profile adapters. Unsupported shape/liveness pairs fail
+    /// closed at the bridge rather than crossing the raw integer ABI.
+    func resolveProfile(key: String, consumerID: String, shape: RefShape, liveness: RefLiveness) {
         key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_resolve_ref(
-                    raw, namespace.rawValue, keyPtr, cidPtr,
-                    shape.rawValue, liveness.rawValue)
+                switch (shape, liveness) {
+                case (.profileRef, .cacheOk):
+                    nmp_app_resolve_profile_ref(raw, keyPtr, cidPtr)
+                case (.profileCard, .live):
+                    nmp_app_resolve_profile_card_live(raw, keyPtr, cidPtr)
+                default:
+                    break
+                }
             }
         }
     }
 
-    /// ADR-0063 Lane E (#1671) — release a reference registered via
-    /// `resolveRef`. Pass the SAME `namespace` / `key` / `consumerID`.
-    func releaseRef(namespace: RefNamespace, key: String, consumerID: String) {
+    /// ADR-0063 Lane E (#1671) — release a profile reference registered via
+    /// `resolveProfile`. Pass the SAME `key` / `consumerID`.
+    func releaseProfile(key: String, consumerID: String) {
         key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
-                nmp_app_release_ref(raw, namespace.rawValue, keyPtr, cidPtr)
+                nmp_app_release_profile_ref(raw, keyPtr, cidPtr)
             }
         }
     }
@@ -96,22 +93,23 @@ extension KernelHandle {
     }
 
     /// #1726 — Decode a `nostr:` URI and resolve the embedded event ref via the
-    /// unified ref-resolution seam.
+    /// typed event-embed adapter.
     ///
     /// Handles `nevent`/`note` URIs (hex event_id key) and `naddr` URIs
     /// (canonical `kind:pubkey:identifier` coordinate key). On decode failure or
     /// a non-event URI this is a silent no-op (D6).
     func claimEventUri(uri: String, consumerID: String, force: Bool = false) {
         guard let eventRef = eventRefFromUri(uri) else { return }
-        // Use CacheOk (0) for background, Live (1) for explicit navigation.
-        let liveness: RefLiveness = force ? .live : .cacheOk
         eventRef.key.withCString { keyPtr in
             consumerID.withCString { cidPtr in
                 eventRef.metadataJson.withCString { metadataPtr in
-                    nmp_app_resolve_ref_with_metadata(
-                        raw, RefNamespace.event.rawValue, keyPtr, cidPtr,
-                        RefShape.eventEmbed.rawValue, liveness.rawValue,
-                        metadataPtr)
+                    if force {
+                        nmp_app_resolve_event_embed_live_with_metadata(
+                            raw, keyPtr, cidPtr, metadataPtr)
+                    } else {
+                        nmp_app_resolve_event_embed_with_metadata(
+                            raw, keyPtr, cidPtr, metadataPtr)
+                    }
                 }
             }
         }
@@ -120,6 +118,10 @@ extension KernelHandle {
     /// #1726 — Release a previously-claimed event ref (mirror of `claimEventUri`).
     func releaseEventUri(uri: String, consumerID: String) {
         guard let eventRef = eventRefFromUri(uri) else { return }
-        releaseRef(namespace: .event, key: eventRef.key, consumerID: consumerID)
+        eventRef.key.withCString { keyPtr in
+            consumerID.withCString { cidPtr in
+                nmp_app_release_event_ref(raw, keyPtr, cidPtr)
+            }
+        }
     }
 }

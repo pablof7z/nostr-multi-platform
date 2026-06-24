@@ -1827,6 +1827,7 @@ dependencies = [
  "nmp-nip18",
  "nmp-nip22",
  "nmp-nip25",
+ "nmp-nip29",
  "nmp-nip47",
  "nmp-nip50",
  "nmp-nip51",
@@ -1862,6 +1863,8 @@ dependencies = [
  "nmp-content",
  "nmp-core",
  "nmp-feed",
+ "nmp-intent",
+ "nmp-nip05",
  "nmp-nip18",
  "nmp-nip50",
  "nmp-nip51",
@@ -1875,6 +1878,17 @@ dependencies = [
  "serde_json",
  "tracing",
  "zeroize",
+]
+
+[[package]]
+name = "nmp-intent"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-nip05",
+ "nmp-nip50",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1946,6 +1960,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip05"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nostr",
+ "serde",
+ "serde_json",
+ "ureq",
+]
+
+[[package]]
 name = "nmp-nip11"
 version = "0.8.0"
 dependencies = [
@@ -2011,7 +2036,6 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
- "nmp-ffi",
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-store",

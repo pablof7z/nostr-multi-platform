@@ -149,7 +149,7 @@ pub use profile_fb::{
 // Wave C event-cluster (`claimed_events`). ADR-0063 Lane H:
 // mention_profiles / claimed_profiles / resolved_profiles re-exports deleted.
 // The ClaimedEventRow type is named in builtins_profiles.rs.
-pub(crate) use claimed_events_fb::encode_claimed_events;
+pub use claimed_events_fb::encode_claimed_events;
 pub use claimed_events_fb::{
     ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID,
     CLAIMED_EVENTS_SCHEMA_VERSION,

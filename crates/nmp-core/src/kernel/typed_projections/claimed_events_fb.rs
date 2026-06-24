@@ -140,7 +140,7 @@ fn create_claimed_event<'a>(
 /// Encode a [`ClaimedEventsModel`] to typed FlatBuffers bytes (with the `KCEV`
 /// file identifier).
 #[must_use]
-pub(crate) fn encode_claimed_events(model: &ClaimedEventsModel) -> Vec<u8> {
+pub fn encode_claimed_events(model: &ClaimedEventsModel) -> Vec<u8> {
     let mut fbb = FlatBufferBuilder::new();
     let entry_offsets: Vec<WIPOffset<fb::ClaimedEventEntry<'_>>> = model
         .entries

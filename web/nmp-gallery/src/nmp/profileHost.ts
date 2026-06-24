@@ -18,17 +18,12 @@ import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import type { NostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
-
-// ADR-0063 Lane D wire codes (mirror the wasm `resolve_dispatch_from_action`
-// recognizer):
-//   namespace: 0 = profile, 1 = event
-//   shape:     profile → 0 = ref, 1 = card;  event → 0 = embed, 1 = raw
-//   liveness:  0 = CacheOk, 1 = Live
-const REF_NS_PROFILE = 0;
-const REF_NS_EVENT = 1;
-const REF_SHAPE_PROFILE_REF = 0;
-const REF_SHAPE_EVENT_EMBED = 0;
-const REF_LIVENESS_CACHE_OK = 0;
+import {
+  releaseEventRefRequest,
+  releaseProfileRefRequest,
+  resolveEventEmbedRequest,
+  resolveProfileRefRequest,
+} from "./refCommands";
 
 const NRRD_FILE_IDENTIFIER = "NRRD";
 const REFS_PROFILE_PROJECTION_KEY = "refs.profile";
@@ -381,26 +376,10 @@ export function createGalleryRuntime(): GalleryRuntime {
       return profiles[pubkey];
     },
     claimProfile(pubkey: string, consumerId: string): void {
-      void request({
-        type: "dispatch",
-        action_type: "nmp.kernel.resolve_ref",
-        payload: {
-          namespace: REF_NS_PROFILE,
-          key: pubkey,
-          consumer_id: consumerId,
-          shape: REF_SHAPE_PROFILE_REF,
-          liveness: REF_LIVENESS_CACHE_OK,
-        },
-        correlation_id: `resolve-${claimSeq++}`,
-      });
+      void request(resolveProfileRefRequest(pubkey, consumerId, `resolve-${claimSeq++}`));
     },
     releaseProfile(pubkey: string, consumerId: string): void {
-      void request({
-        type: "dispatch",
-        action_type: "nmp.kernel.release_ref",
-        payload: { namespace: REF_NS_PROFILE, key: pubkey, consumer_id: consumerId },
-        correlation_id: `release-${claimSeq++}`,
-      });
+      void request(releaseProfileRefRequest(pubkey, consumerId, `release-${claimSeq++}`));
     },
   };
 
@@ -429,27 +408,10 @@ export function createGalleryRuntime(): GalleryRuntime {
       ),
     resolvedCount,
     claimEvent(key: string, consumerId: string, hints: string[] = []) {
-      void request({
-        type: "dispatch",
-        action_type: "nmp.kernel.resolve_ref",
-        payload: {
-          namespace: REF_NS_EVENT,
-          key,
-          consumer_id: consumerId,
-          shape: REF_SHAPE_EVENT_EMBED,
-          liveness: REF_LIVENESS_CACHE_OK,
-          hints,
-        },
-        correlation_id: `claim-event-${claimSeq++}`,
-      });
+      void request(resolveEventEmbedRequest(key, consumerId, hints, `claim-event-${claimSeq++}`));
     },
     releaseEvent(key: string, consumerId: string) {
-      void request({
-        type: "dispatch",
-        action_type: "nmp.kernel.release_ref",
-        payload: { namespace: REF_NS_EVENT, key, consumer_id: consumerId },
-        correlation_id: `release-event-${claimSeq++}`,
-      });
+      void request(releaseEventRefRequest(key, consumerId, `release-event-${claimSeq++}`));
     },
     claimedEvent: (primaryId: string) => claimedEvents().get(primaryId),
     claimedEventEmbed: (primaryId: string) => claimedEventEmbeds().get(primaryId),

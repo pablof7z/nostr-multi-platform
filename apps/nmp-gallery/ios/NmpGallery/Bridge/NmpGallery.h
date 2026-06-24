@@ -38,36 +38,29 @@ void nmp_app_stop(void *app);
 
 // ── Reference resolution (ADR-0063 #1671) ────────────────────────────────
 
-// Unified, origin-blind reference-resolution entry points. The gallery resolves
-// visible profiles through these (superseding the deleted
-// nmp_app_claim_profile / nmp_app_release_profile surface). The resolved kind:0
-// flows back through the kernel's `refs.profile` row-delta projection (merged
-// host-side into the GalleryRefProfileStore; see below).
-//
-// `namespace` — 0 = profile (kind:0).
-// `key` — lowercase 64-hex pubkey.
-// `consumer_id` — opaque refcount owner key (e.g. SwiftUI view identity).
-// `shape` — 0 = profile.ref (avatar / name), 1 = profile.card (full card).
-// `liveness` — 0 = CacheOk (background / feed row), non-zero = Live (open screen).
-// D6: null/invalid args and unknown int codes are silent no-ops, never panics.
+// Typed reference-resolution entry points. The gallery resolves visible
+// profiles and event embeds through these, not through raw
+// namespace/shape/liveness integers. The resolved rows flow back through the
+// kernel's `refs.profile` / `refs.event` row-delta projections.
+// D6: null/invalid args are silent no-ops, never panics.
 // D8: fire-and-forget; the actor processes commands asynchronously.
-void nmp_app_resolve_ref(void *app, int namespace, const char *key,
-                         const char *consumer_id, int shape, int liveness);
-void nmp_app_resolve_ref_with_metadata(void *app, int namespace,
-                                       const char *key,
-                                       const char *consumer_id, int shape,
-                                       int liveness,
-                                       const char *metadata_json);
-void nmp_app_release_ref(void *app, int namespace, const char *key,
-                         const char *consumer_id);
+void nmp_app_resolve_profile_ref(void *app, const char *key,
+                                 const char *consumer_id);
+void nmp_app_release_profile_ref(void *app, const char *key,
+                                 const char *consumer_id);
+void nmp_app_resolve_event_embed_with_metadata(void *app, const char *key,
+                                               const char *consumer_id,
+                                               const char *metadata_json);
+void nmp_app_resolve_event_embed_live_with_metadata(void *app, const char *key,
+                                                    const char *consumer_id,
+                                                    const char *metadata_json);
+void nmp_app_release_event_ref(void *app, const char *key,
+                               const char *consumer_id);
 
 // ── Event claim / release (kind-dispatch embed) ──────────────────────────
 
 // Event URI front doors are removed. Callers decode the nostr: URI via
-// nmp_nip21_decode_uri and then route to
-// nmp_app_resolve_ref_with_metadata(namespace=1/*event*/, key=event-id-hex,
-// shape=2/*embed*/, liveness=0/*CacheOk*/, metadata_json) and
-// nmp_app_release_ref(namespace=1, key, consumer_id).
+// nmp_nip21_decode_uri and then route to the typed event-embed adapters above.
 
 // ── Relay management ─────────────────────────────────────────────────────
 

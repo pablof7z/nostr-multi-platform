@@ -7,12 +7,15 @@
 //! - an explicit `Cleared` row drops the row (ref released / view closed);
 //! - a garbage sidecar payload is a fail-closed no-op (prior cache retained).
 
-use super::RefProfileStore;
-use crate::refs::{encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch};
-use crate::kernel::public_typed_projections::{encode_profile, ProfileCardModel};
+use super::{RefEventStore, RefProfileStore};
+use crate::kernel::public_typed_projections::{
+    ClaimedEventRow, ClaimedEventsModel, ProfileCardModel, encode_claimed_events, encode_profile,
+};
+use crate::refs::{RefRow, RefRowDeltaBatch, encode_ref_row_delta_batch};
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const EVENT_ID: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 /// Build a KPRF row payload (what the kernel's `ref_row_source` emits per key).
 fn card_payload(pubkey: &str, display_name: &str, picture_url: &str) -> Vec<u8> {
@@ -34,6 +37,34 @@ fn sidecar(baseline: bool, rows: Vec<RefRow>) -> Vec<u8> {
     })
 }
 
+fn event_payload(primary_id: &str, content: &str) -> Vec<u8> {
+    encode_claimed_events(&ClaimedEventsModel {
+        entries: vec![(
+            primary_id.to_string(),
+            ClaimedEventRow {
+                primary_id: primary_id.to_string(),
+                id: primary_id.to_string(),
+                author_pubkey: ALICE.to_string(),
+                kind: 1,
+                created_at: 1_700_000_000,
+                content: content.to_string(),
+                tags: Vec::new(),
+                content_tree_bytes: Vec::new(),
+                signed_event_json: None,
+                ..Default::default()
+            },
+        )],
+    })
+}
+
+fn event_sidecar(baseline: bool, rows: Vec<RefRow>) -> Vec<u8> {
+    encode_ref_row_delta_batch(&RefRowDeltaBatch {
+        namespace: "event".to_string(),
+        baseline,
+        rows,
+    })
+}
+
 #[test]
 fn kind0_ingest_updates_rendered_profile_via_refs_profile() {
     let mut store = RefProfileStore::new();
@@ -42,7 +73,11 @@ fn kind0_ingest_updates_rendered_profile_via_refs_profile() {
     // First baseline: Alice resolves with her initial kind:0.
     let payload = sidecar(
         true,
-        vec![RefRow::changed(ALICE, 1, card_payload(ALICE, "Alice", "a.png"))],
+        vec![RefRow::changed(
+            ALICE,
+            1,
+            card_payload(ALICE, "Alice", "a.png"),
+        )],
     );
     store.apply_sidecar(&payload, 1, 0);
     let card = store.profile(ALICE).expect("Alice resolved after baseline");
@@ -150,4 +185,132 @@ fn profiles_map_materialises_all_live_rows() {
     assert_eq!(map.len(), 2);
     assert_eq!(map[ALICE].display_name.as_deref(), Some("Alice"));
     assert_eq!(map[BOB].display_name.as_deref(), Some("Bob"));
+}
+
+#[test]
+fn profile_card_row_preserves_full_card_fields() {
+    let mut store = RefProfileStore::new();
+    let payload = encode_profile(&ProfileCardModel {
+        pubkey: ALICE.to_string(),
+        display_name: Some("Alice".to_string()),
+        about: "full card about field".to_string(),
+        website: Some("https://alice.example".to_string()),
+        ..Default::default()
+    });
+    store.apply_sidecar(
+        &sidecar(true, vec![RefRow::changed(ALICE, 1, payload)]),
+        1,
+        0,
+    );
+
+    let card = store.profile(ALICE).expect("profile card row decoded");
+    assert_eq!(card.about, "full card about field");
+    assert_eq!(card.website.as_deref(), Some("https://alice.example"));
+}
+
+#[test]
+fn event_embed_row_updates_lookup() {
+    let mut store = RefEventStore::new();
+    store.apply_sidecar(
+        &event_sidecar(
+            true,
+            vec![RefRow::changed(
+                EVENT_ID,
+                1,
+                event_payload(EVENT_ID, "resolved event"),
+            )],
+        ),
+        1,
+        0,
+    );
+
+    let row = store.event(EVENT_ID).expect("event row decoded");
+    assert_eq!(row.content, "resolved event");
+    assert_eq!(store.events()[EVENT_ID].kind, 1);
+}
+
+#[test]
+fn event_clear_drops_the_ref() {
+    let mut store = RefEventStore::new();
+    store.apply_sidecar(
+        &event_sidecar(
+            true,
+            vec![RefRow::changed(
+                EVENT_ID,
+                3,
+                event_payload(EVENT_ID, "live"),
+            )],
+        ),
+        1,
+        0,
+    );
+    assert!(store.event(EVENT_ID).is_some());
+
+    store.apply_sidecar(
+        &event_sidecar(false, vec![RefRow::cleared(EVENT_ID, 4)]),
+        1,
+        0,
+    );
+    assert!(store.event(EVENT_ID).is_none());
+}
+
+#[test]
+fn stale_event_rev_does_not_replace_newer_row() {
+    let mut store = RefEventStore::new();
+    store.apply_sidecar(
+        &event_sidecar(
+            true,
+            vec![RefRow::changed(
+                EVENT_ID,
+                5,
+                event_payload(EVENT_ID, "newer"),
+            )],
+        ),
+        1,
+        0,
+    );
+    let outcome = store.apply_sidecar(
+        &event_sidecar(
+            false,
+            vec![RefRow::changed(
+                EVENT_ID,
+                4,
+                event_payload(EVENT_ID, "older"),
+            )],
+        ),
+        1,
+        0,
+    );
+
+    assert!(outcome.changed_keys.is_empty());
+    assert_eq!(store.event(EVENT_ID).unwrap().content, "newer");
+}
+
+#[test]
+fn malformed_event_row_payload_is_rejected_before_commit() {
+    let mut store = RefEventStore::new();
+    store.apply_sidecar(
+        &event_sidecar(
+            true,
+            vec![RefRow::changed(
+                EVENT_ID,
+                1,
+                event_payload(EVENT_ID, "live"),
+            )],
+        ),
+        1,
+        0,
+    );
+
+    let outcome = store.apply_sidecar(
+        &event_sidecar(
+            false,
+            vec![RefRow::changed(EVENT_ID, 2, b"not KCEV".to_vec())],
+        ),
+        1,
+        0,
+    );
+
+    assert!(outcome.decode_failed);
+    assert_eq!(store.event(EVENT_ID).unwrap().content, "live");
 }

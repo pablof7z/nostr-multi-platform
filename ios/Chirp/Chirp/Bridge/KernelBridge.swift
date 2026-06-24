@@ -4,47 +4,21 @@ import os.log
 
 let kbLog = Logger(subsystem: "io.f7z.chirp", category: "KernelBridge")
 
-// ADR-0063 Lane E (#1671): the legacy `ProfileLiveness` enum and the
-// `KernelHandle.claimProfile` / `KernelHandle.releaseProfile` wrappers it fed
-// are removed. The shell resolves/releases profiles through the unified
-// `resolveRef` / `releaseRef` (namespace `.profile`) seam; `RefLiveness` below
-// is its liveness intent. ADR-0063 Lane H deleted the per-kind profile C
-// symbols; profiles now resolve exclusively through `nmp_app_resolve_ref`.
+// ADR-0063 Lane E (#1671): the legacy per-kind profile C symbols and the raw
+// `resolve_ref` integer ABI are no longer exposed to Swift callers. The shell
+// states profile intent as typed values; `KernelBridge+RefOperations` selects
+// the corresponding typed FFI adapter.
 
-/// ADR-0063 Lane D (#1671) — the origin-blind reference namespace for the
-/// unified `nmp_app_resolve_ref` / `nmp_app_release_ref` C-ABI. Raw values
-/// mirror the kernel's integer encoding (`crates/nmp-ffi/src/resolve_ref.rs`):
-/// `0` = profile (kind:0), `1` = event.
-enum RefNamespace: Int32 {
-    case profile = 0
-    case event = 1
+/// ADR-0063 Lane D (#1671) — requested profile projection shape.
+enum RefShape {
+    case profileRef
+    case profileCard
 }
 
-/// ADR-0063 Lane D (#1671) — the requested projection shape for a `resolve_ref`
-/// claim. Codes are GLOBALLY UNIQUE across namespaces (the kernel fails closed
-/// on a namespace/shape mismatch). Each shape is valid with exactly one
-/// namespace:
-///   * `.profileRef`  (0) — `{pubkey, display_name, picture_url}` feed-avatar
-///     subset; namespace `.profile`. Use for feed cards / search / notifications.
-///   * `.profileCard` (1) — full `ProfileCard`; namespace `.profile`. Use for
-///     the open profile screen.
-///   * `.eventEmbed`  (2) — render-an-embed-card subset; namespace `.event`.
-///   * `.eventRaw`    (3) — full raw event; namespace `.event`.
-enum RefShape: Int32 {
-    case profileRef = 0
-    case profileCard = 1
-    case eventEmbed = 2
-    case eventRaw = 3
-}
-
-/// ADR-0063 Lane D (#1671) — liveness intent for a `resolve_ref` claim. `0`
-/// (CacheOk) serves from the store with a OneShot fill and no live sub (feed
-/// rows / background); non-zero (Live) keeps a tailing sub open while the
-/// consumer holds the key (open screen). Reuses the same semantics as the old
-/// `ProfileLiveness`, which `resolve_ref` supersedes.
-enum RefLiveness: Int32 {
-    case cacheOk = 0
-    case live = 1
+/// ADR-0063 Lane D (#1671) — liveness intent for a profile claim.
+enum RefLiveness {
+    case cacheOk
+    case live
 }
 
 /// Mirror of `KERNEL_SCHEMA_VERSION` (Rust: `crates/nmp-core/src/update_envelope.rs`).
