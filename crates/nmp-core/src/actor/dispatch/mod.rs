@@ -146,7 +146,7 @@ impl<'a> ActorContext<'a> {
             kernel: &mut *self.kernel,
             identity: &*self.identity,
             command_tx_self: self.command_tx_self,
-            config: self.config,
+            host_op_handler: self.config.host_op_handler.clone(),
             update_tx: self.update_tx,
             last_emit: &mut *self.last_emit,
             running: *self.running,

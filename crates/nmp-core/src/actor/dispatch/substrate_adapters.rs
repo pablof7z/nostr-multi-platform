@@ -27,21 +27,15 @@ fn record_dropped_mutation(what: &str) {
         false,
         "dispatch adapter kernel borrow contended during {what}"
     );
-    tracing::error!(op = what, "dispatch adapter mutation dropped: borrow contended");
+    tracing::error!(
+        op = what,
+        "dispatch adapter mutation dropped: borrow contended"
+    );
 }
 
 pub(super) struct KernelClockAdapter<'a> {
     pub(super) kernel: &'a std::cell::RefCell<&'a mut Kernel>,
 }
-
-// SAFETY: the dispatch arm constructs and drops the adapter on the actor
-// thread; the `&RefCell<&mut Kernel>` reference never crosses a thread
-// boundary. The `Send + Sync` claim is needed because the substrate trait
-// carries the bound (`dyn KernelClock` lives behind `&dyn` in
-// `ProtocolCommandContext`), but the adapter is held only for the dispatch
-// arm's stack frame.
-unsafe impl<'a> Send for KernelClockAdapter<'a> {}
-unsafe impl<'a> Sync for KernelClockAdapter<'a> {}
 
 impl<'a> crate::substrate::KernelClock for KernelClockAdapter<'a> {
     fn now_secs(&self) -> u64 {
@@ -52,9 +46,6 @@ impl<'a> crate::substrate::KernelClock for KernelClockAdapter<'a> {
 pub(super) struct LocalSignerAccessAdapter<'a> {
     pub(super) identity: &'a std::cell::RefCell<&'a IdentityRuntime>,
 }
-
-unsafe impl<'a> Send for LocalSignerAccessAdapter<'a> {}
-unsafe impl<'a> Sync for LocalSignerAccessAdapter<'a> {}
 
 impl<'a> crate::substrate::LocalSignerAccess for LocalSignerAccessAdapter<'a> {
     fn active_local_keys(&self) -> Option<nostr::Keys> {
@@ -68,9 +59,6 @@ impl<'a> crate::substrate::LocalSignerAccess for LocalSignerAccessAdapter<'a> {
 pub(super) struct ErrorSurfaceAdapter<'a> {
     pub(super) kernel: &'a std::cell::RefCell<&'a mut Kernel>,
 }
-
-unsafe impl<'a> Send for ErrorSurfaceAdapter<'a> {}
-unsafe impl<'a> Sync for ErrorSurfaceAdapter<'a> {}
 
 impl<'a> crate::substrate::ErrorSurface for ErrorSurfaceAdapter<'a> {
     fn set_last_error_toast(&self, message: Option<String>) {
@@ -97,9 +85,6 @@ pub(super) struct ActionStageTrackerAdapter<'a> {
     pub(super) kernel: &'a std::cell::RefCell<&'a mut Kernel>,
 }
 
-unsafe impl<'a> Send for ActionStageTrackerAdapter<'a> {}
-unsafe impl<'a> Sync for ActionStageTrackerAdapter<'a> {}
-
 impl<'a> crate::substrate::ActionStageTracker for ActionStageTrackerAdapter<'a> {
     fn record_requested(&self, correlation_id: &str) {
         match self.kernel.try_borrow_mut() {
@@ -122,9 +107,6 @@ pub(super) struct RecipientRelayLookupAdapter<'a> {
     pub(super) kernel: &'a std::cell::RefCell<&'a mut Kernel>,
 }
 
-unsafe impl<'a> Send for RecipientRelayLookupAdapter<'a> {}
-unsafe impl<'a> Sync for RecipientRelayLookupAdapter<'a> {}
-
 impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<'a> {
     fn recipient_publish_relays(&self, recipient: &str, kind: u32) -> Vec<String> {
         // Kernel read; no mutation required. `try_borrow` keeps the adapter
@@ -144,9 +126,6 @@ impl<'a> crate::substrate::RecipientRelayLookup for RecipientRelayLookupAdapter<
 pub(super) struct HostOpHandlerAccessAdapter {
     pub(super) handler: Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>>,
 }
-
-unsafe impl Send for HostOpHandlerAccessAdapter {}
-unsafe impl Sync for HostOpHandlerAccessAdapter {}
 
 impl crate::substrate::HostOpHandlerAccess for HostOpHandlerAccessAdapter {
     fn current_handler(&self) -> Option<std::sync::Arc<dyn crate::substrate::HostOpHandler>> {

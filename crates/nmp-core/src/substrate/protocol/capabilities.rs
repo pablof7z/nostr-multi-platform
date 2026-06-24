@@ -16,7 +16,7 @@
 
 /// D7 — kernel-owned wall clock. NIP commands MUST read time through this
 /// seam rather than calling `SystemTime::now` directly.
-pub trait KernelClock: Send + Sync {
+pub trait KernelClock {
     /// Seconds since the Unix epoch.
     fn now_secs(&self) -> u64;
 }
@@ -24,7 +24,7 @@ pub trait KernelClock: Send + Sync {
 /// Active-account local signing material. Used by NIP commands that need
 /// to mint a signature on the actor thread (NIP-57 kind:9734 signing,
 /// NIP-17 gift-wrap sealing).
-pub trait LocalSignerAccess: Send + Sync {
+pub trait LocalSignerAccess {
     /// Active account's local `nostr::Keys`, cloned. `None` for NIP-46
     /// bunker accounts (which sign through the actor's signer port) and when
     /// no account is active.
@@ -51,7 +51,7 @@ pub use crate::substrate::DmInboxRelayLookup as DmInboxLookup;
 /// D6 observable error surfaces — the `last_error_toast` projection and
 /// the `Failed` terminal action-stage recorder. NIP commands fire these
 /// on every early-exit branch so the host's spinner clears.
-pub trait ErrorSurface: Send + Sync {
+pub trait ErrorSurface {
     /// Write the `last_error_toast` projection. `None` clears the toast.
     fn set_last_error_toast(&self, message: Option<String>);
 
@@ -72,7 +72,7 @@ pub trait ErrorSurface: Send + Sync {
 
 /// Action-stage write surface — the `Requested` transition recorded
 /// against an in-flight `correlation_id`. Idempotent.
-pub trait ActionStageTracker: Send + Sync {
+pub trait ActionStageTracker {
     /// Record a `Requested` stage for `correlation_id`.
     fn record_requested(&self, correlation_id: &str);
 }
@@ -92,7 +92,7 @@ pub trait ActionStageTracker: Send + Sync {
 /// AppRelay cold-start seed. NIP crates therefore never read the
 /// substrate `MailboxCache` directly — they go through the router via
 /// this capability (Debt-A: router is the live decision authority).
-pub trait RecipientRelayLookup: Send + Sync {
+pub trait RecipientRelayLookup {
     /// Resolve the relay URLs the LN provider (or analogous downstream
     /// publisher) should publish a `kind`-typed event authored by
     /// `recipient` to. Empty `Vec` when the router returns `Unroutable`
@@ -125,7 +125,7 @@ pub trait RecipientRelayLookup: Send + Sync {
 /// `nmp-core`. The trait is consumed identically by the actor's
 /// `RelayTextInterceptor` path (which holds a real `&mut Kernel`) via
 /// [`Kernel::as_wallet_access`](crate::Kernel::as_wallet_access).
-pub trait WalletKernelAccess: Send + Sync {
+pub trait WalletKernelAccess {
     /// Wall-clock seconds since the Unix epoch (kernel-owned clock; D7).
     fn now_secs(&self) -> u64;
 
@@ -180,7 +180,7 @@ pub trait WalletKernelAccess: Send + Sync {
 /// command cannot capture it at composition time the way it captures its wallet
 /// handle — it is a narrow read capability instead (the [`RecipientRelayLookup`]
 /// shape). D0: returns a bare `Option<String>`; no zap/NIP-57 type crosses.
-pub trait ZapProfileLookup: Send + Sync {
+pub trait ZapProfileLookup {
     /// The recipient's lightning address / LNURL from their cached kind:0
     /// profile, or `None` when the profile has not arrived yet or carries no
     /// lightning address.
@@ -201,7 +201,7 @@ pub trait ZapProfileLookup: Send + Sync {
 /// It is deliberately narrow — it does NOT hand out `&mut Kernel` (rung 5.5
 /// deleted that escape hatch entirely); it returns only the opaque
 /// `Arc<dyn HostOpHandler>` (D0: no protocol type crosses).
-pub trait HostOpHandlerAccess: Send + Sync {
+pub trait HostOpHandlerAccess {
     /// Clone the configured handler, or `None` if no handler was installed
     /// before actor start. The clone is returned by value so the long-running
     /// `handle` call never depends on shared config locks.

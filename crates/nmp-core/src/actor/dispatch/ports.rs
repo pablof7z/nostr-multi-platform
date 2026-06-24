@@ -8,13 +8,14 @@
 //! cannot reach `relay_runtime`, `pool`, or any other field not named here.
 
 use std::sync::mpsc::Sender;
+use std::sync::Arc;
 use std::time::Instant;
 
 use crate::kernel::Kernel;
+use crate::substrate::HostOpHandler;
 use crate::update_envelope::UpdateFrameBytes;
 
 use super::super::commands::IdentityRuntime;
-use super::ActorConfig;
 
 /// Exactly the fields `cmd_protocol::protocol` consumes (7).
 ///
@@ -26,7 +27,7 @@ pub(super) struct ProtocolPorts<'p> {
     pub(super) kernel: &'p mut Kernel,
     pub(super) identity: &'p IdentityRuntime,
     pub(super) command_tx_self: &'p crate::actor::CommandSender,
-    pub(super) config: &'p ActorConfig,
+    pub(super) host_op_handler: Option<Arc<dyn HostOpHandler>>,
     pub(super) update_tx: &'p Sender<UpdateFrameBytes>,
     pub(super) last_emit: &'p mut Instant,
     pub(super) running: bool,
