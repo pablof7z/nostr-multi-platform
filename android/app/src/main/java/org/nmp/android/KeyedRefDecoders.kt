@@ -66,6 +66,7 @@ object KeyedRefDecoders {
             createdAt = event.createdAt.toLong(),
             content = event.content ?: "",
             tags = tags,
+            signedEventJson = if (event.hasSignedEventJson) event.signedEventJson ?: "" else null,
         )
     }
 
@@ -103,7 +104,8 @@ object KeyedRefDecoders {
  * `ClaimedEventDto`. Field-for-field the render-relevant subset of one
  * `nmp.kernel.ClaimedEvent` row (the author display-name / picture-url enrich
  * fields are reachable via the per-key `refs.profile` cache, not duplicated here,
- * matching the Swift struct).
+ * matching the Swift struct). `signedEventJson` is populated only for the
+ * generic `event.raw` row shape.
  */
 data class ClaimedEventDto(
     val id: String,
@@ -112,4 +114,5 @@ data class ClaimedEventDto(
     val createdAt: Long,
     val content: String,
     val tags: List<List<String>>,
+    val signedEventJson: String? = null,
 )

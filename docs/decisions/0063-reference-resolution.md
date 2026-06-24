@@ -150,7 +150,16 @@ consumer needs*:
 - `profile.card { full ~16-field ProfileCard }` — the profile-screen shape
   (today's `ProfileCard`: nip05, about, lnurl, banner, website, lud16/lud06, …).
 - `event.embed` — the render-an-embed-card shape.
-- `event.raw` — the full raw event.
+- `event.raw` — the canonical signed NIP-01 event for the referenced event,
+  serialized from the store-owned `RawEvent` / equivalent signed-event authority
+  and including `id`, `pubkey`, `created_at`, `kind`, `tags`, `content`, and
+  `sig`. This is exposed only through the generic `refs.event` row for
+  `EventShape::Raw`; protocol projections such as NIP-29 group chat must carry
+  event ids/render fields, not per-crate `raw_json` fields or reconstructed
+  unsigned JSON.
+
+`event.embed` stays the light render-card shape; `event.raw` must round-trip as
+a signed event with the original signature.
 
 **Per-field masks are rejected.** A mask (`{display_name, banner}` arbitrary subset)
 would: (a) leak schema internals into the wire/API; (b) create a combinatorial

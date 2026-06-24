@@ -418,14 +418,15 @@ enum TypedProjectionGlue {
     /// key-sorted `[{key, value}]` vector; this rebuilds the dictionary keyed by
     /// `primary_id`, mirroring the `claimed_profiles` precedent.
     ///
-    /// `ClaimedEventDto` (hand-declared in `EmbedHost.swift`) carries only the six
-    /// fields the embed resolver reads — `id`, `authorPubkey`, `kind`, `createdAt`,
-    /// `content`, `tags` — so the wire's `author_display_name` / `author_picture_url`
-    /// (and the redundant `primary_id` body copy) are deliberately NOT mapped; the
-    /// JSON decode drops them too, so the typed value is field-identical. `kind`
-    /// (`UInt32`) and `createdAt` (`UInt64`) narrow to the DTO's `Int` exactly as
-    /// the JSON `Int` decode does. `tags` rebuilds `[[String]]` from the nested
-    /// `[TagRow]` / `[String]` vectors.
+    /// `ClaimedEventDto` (hand-declared in `EmbedHost.swift`) carries the generic
+    /// event fields the refs.event accessor needs: `id`, `authorPubkey`, `kind`,
+    /// `createdAt`, `content`, `tags`, and optional `signedEventJson` when the
+    /// producer emitted an `event.raw` row. The wire's `author_display_name` /
+    /// `author_picture_url` (and the redundant `primary_id` body copy) are
+    /// deliberately NOT mapped; the JSON decode drops them too. `kind` (`UInt32`)
+    /// and `createdAt` (`UInt64`) narrow to the DTO's `Int` exactly as the JSON
+    /// `Int` decode does. `tags` rebuilds `[[String]]` from the nested `[TagRow]`
+    /// / `[String]` vectors.
     static func claimedEvents(
         _ reader: nmp_kernel_ClaimedEventsSnapshot
     ) -> [String: ClaimedEventDto] {
@@ -437,7 +438,8 @@ enum TypedProjectionGlue {
                 kind: Int(event.kind),
                 createdAt: Int(event.createdAt),
                 content: event.content ?? "",
-                tags: event.tags.map { row in row.values.map { $0 ?? "" } }
+                tags: event.tags.map { row in row.values.map { $0 ?? "" } },
+                signedEventJson: event.hasSignedEventJson ? (event.signedEventJson ?? "") : nil
             )
         }
     }

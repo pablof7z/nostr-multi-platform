@@ -18,6 +18,7 @@ struct ClaimedEventDto: Decodable, Equatable {
     let createdAt: Int
     let content: String
     let tags: [[String]]
+    let signedEventJson: String?
 }
 
 /// Holds the pre-resolved embed envelope map the kernel pushes on every frame.

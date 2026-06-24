@@ -24,6 +24,10 @@ fn sample() -> ClaimedEventsModel {
                     content: "hello world".to_string(),
                     // Non-empty NFCT bytes must survive the round-trip.
                     content_tree_bytes: vec![1, 2, 3, 4],
+                    signed_event_json: Some(
+                        r#"{"id":"event-id","pubkey":"author","created_at":1700000000,"kind":1,"tags":[],"content":"hello world","sig":"sig"}"#
+                            .to_string(),
+                    ),
                 },
             ),
             (
@@ -40,6 +44,7 @@ fn sample() -> ClaimedEventsModel {
                     tags: vec![vec!["d".to_string(), "slug".to_string()]],
                     content: "# Article".to_string(),
                     content_tree_bytes: Vec::new(),
+                    signed_event_json: None,
                 },
             ),
         ],
@@ -81,6 +86,7 @@ fn nested_tags_and_none_authors_preserved() {
                 tags: vec![vec![], vec!["single".to_string()]],
                 content: String::new(),
                 content_tree_bytes: Vec::new(),
+                signed_event_json: None,
             },
         )],
     };
@@ -92,6 +98,7 @@ fn nested_tags_and_none_authors_preserved() {
         row.tags,
         vec![Vec::<String>::new(), vec!["single".to_string()]]
     );
+    assert_eq!(row.signed_event_json, None);
 }
 
 #[test]

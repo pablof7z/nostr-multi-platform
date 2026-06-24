@@ -134,6 +134,8 @@ impl<'a> ClaimedEvent<'a> {
   pub const VT_TAGS: ::flatbuffers::VOffsetT = 22;
   pub const VT_CONTENT: ::flatbuffers::VOffsetT = 24;
   pub const VT_CONTENT_TREE_BYTES: ::flatbuffers::VOffsetT = 26;
+  pub const VT_HAS_SIGNED_EVENT_JSON: ::flatbuffers::VOffsetT = 28;
+  pub const VT_SIGNED_EVENT_JSON: ::flatbuffers::VOffsetT = 30;
 
   #[inline]
   pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -146,6 +148,7 @@ impl<'a> ClaimedEvent<'a> {
   ) -> ::flatbuffers::WIPOffset<ClaimedEvent<'bldr>> {
     let mut builder = ClaimedEventBuilder::new(_fbb);
     builder.add_created_at(args.created_at);
+    if let Some(x) = args.signed_event_json { builder.add_signed_event_json(x); }
     if let Some(x) = args.content_tree_bytes { builder.add_content_tree_bytes(x); }
     if let Some(x) = args.content { builder.add_content(x); }
     if let Some(x) = args.tags { builder.add_tags(x); }
@@ -155,6 +158,7 @@ impl<'a> ClaimedEvent<'a> {
     if let Some(x) = args.author_pubkey { builder.add_author_pubkey(x); }
     if let Some(x) = args.id { builder.add_id(x); }
     if let Some(x) = args.primary_id { builder.add_primary_id(x); }
+    builder.add_has_signed_event_json(args.has_signed_event_json);
     builder.add_has_author_picture_url(args.has_author_picture_url);
     builder.add_has_author_display_name(args.has_author_display_name);
     builder.finish()
@@ -245,6 +249,20 @@ impl<'a> ClaimedEvent<'a> {
     // which contains a valid value in this slot
     unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'a, u8>>>(ClaimedEvent::VT_CONTENT_TREE_BYTES, None)}
   }
+  #[inline]
+  pub fn has_signed_event_json(&self) -> bool {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<bool>(ClaimedEvent::VT_HAS_SIGNED_EVENT_JSON, Some(false)).unwrap()}
+  }
+  #[inline]
+  pub fn signed_event_json(&self) -> Option<&'a str> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(ClaimedEvent::VT_SIGNED_EVENT_JSON, None)}
+  }
 }
 
 impl ::flatbuffers::Verifiable for ClaimedEvent<'_> {
@@ -265,6 +283,8 @@ impl ::flatbuffers::Verifiable for ClaimedEvent<'_> {
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<TagRow>>>>("tags", Self::VT_TAGS, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("content", Self::VT_CONTENT, false)?
      .visit_field::<::flatbuffers::ForwardsUOffset<::flatbuffers::Vector<'_, u8>>>("content_tree_bytes", Self::VT_CONTENT_TREE_BYTES, false)?
+     .visit_field::<bool>("has_signed_event_json", Self::VT_HAS_SIGNED_EVENT_JSON, false)?
+     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>("signed_event_json", Self::VT_SIGNED_EVENT_JSON, false)?
      .finish();
     Ok(())
   }
@@ -282,6 +302,8 @@ pub struct ClaimedEventArgs<'a> {
     pub tags: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<TagRow<'a>>>>>,
     pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
     pub content_tree_bytes: Option<::flatbuffers::WIPOffset<::flatbuffers::Vector<'a, u8>>>,
+    pub has_signed_event_json: bool,
+    pub signed_event_json: Option<::flatbuffers::WIPOffset<&'a str>>,
 }
 impl<'a> Default for ClaimedEventArgs<'a> {
   #[inline]
@@ -299,6 +321,8 @@ impl<'a> Default for ClaimedEventArgs<'a> {
       tags: None,
       content: None,
       content_tree_bytes: None,
+      has_signed_event_json: false,
+      signed_event_json: None,
     }
   }
 }
@@ -357,6 +381,14 @@ impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> ClaimedEventBuilder<'a, 'b, A
     self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ClaimedEvent::VT_CONTENT_TREE_BYTES, content_tree_bytes);
   }
   #[inline]
+  pub fn add_has_signed_event_json(&mut self, has_signed_event_json: bool) {
+    self.fbb_.push_slot::<bool>(ClaimedEvent::VT_HAS_SIGNED_EVENT_JSON, has_signed_event_json, false);
+  }
+  #[inline]
+  pub fn add_signed_event_json(&mut self, signed_event_json: ::flatbuffers::WIPOffset<&'b  str>) {
+    self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(ClaimedEvent::VT_SIGNED_EVENT_JSON, signed_event_json);
+  }
+  #[inline]
   pub fn new(_fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>) -> ClaimedEventBuilder<'a, 'b, A> {
     let start = _fbb.start_table();
     ClaimedEventBuilder {
@@ -386,6 +418,8 @@ impl ::core::fmt::Debug for ClaimedEvent<'_> {
       ds.field("tags", &self.tags());
       ds.field("content", &self.content());
       ds.field("content_tree_bytes", &self.content_tree_bytes());
+      ds.field("has_signed_event_json", &self.has_signed_event_json());
+      ds.field("signed_event_json", &self.signed_event_json());
       ds.finish()
   }
 }

@@ -12,8 +12,8 @@
 //! reads, in the same tick, so the typed and JSON wire forms cannot diverge.
 
 use super::{
-    encode_claimed_events, ClaimedEventRow, ClaimedEventsModel,
-    CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
+    encode_claimed_events, ClaimedEventRow, ClaimedEventsModel, CLAIMED_EVENTS_FILE_IDENTIFIER,
+    CLAIMED_EVENTS_SCHEMA_ID, CLAIMED_EVENTS_SCHEMA_VERSION,
 };
 use crate::update_envelope::TypedProjectionData;
 
@@ -48,6 +48,7 @@ impl super::super::Kernel {
                             tags: dto.tags.clone(),
                             content: dto.content.clone(),
                             content_tree_bytes: dto.content_tree_bytes.clone(),
+                            signed_event_json: None,
                         },
                     )
                 })

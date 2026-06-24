@@ -69,6 +69,8 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
     case tags = 22
     case content = 24
     case contentTreeBytes = 26
+    case hasSignedEventJson = 28
+    case signedEventJson = 30
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
@@ -92,7 +94,10 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
   public var contentSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.content.v) }
   public var contentTreeBytes: FlatbufferVector<UInt8> { return _accessor.vector(at: VTOFFSET.contentTreeBytes.v, byteSize: 1) }
   public func withUnsafePointerToContentTreeBytes<T>(_ body: (UnsafeRawBufferPointer, Int) throws -> T) rethrows -> T? { return try _accessor.withUnsafePointerToSlice(at: VTOFFSET.contentTreeBytes.v, body: body) }
-  public static func startClaimedEvent(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 12) }
+  public var hasSignedEventJson: Bool { let o = _accessor.offset(VTOFFSET.hasSignedEventJson.v); return o == 0 ? false : _accessor.readBuffer(of: Bool.self, at: o) }
+  public var signedEventJson: String? { let o = _accessor.offset(VTOFFSET.signedEventJson.v); return o == 0 ? nil : _accessor.string(at: o) }
+  public var signedEventJsonSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.signedEventJson.v) }
+  public static func startClaimedEvent(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 14) }
   public static func add(primaryId: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: primaryId, at: VTOFFSET.primaryId.p) }
   public static func add(id: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: id, at: VTOFFSET.id.p) }
   public static func add(authorPubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: authorPubkey, at: VTOFFSET.authorPubkey.p) }
@@ -107,6 +112,9 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
   public static func addVectorOf(tags: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: tags, at: VTOFFSET.tags.p) }
   public static func add(content: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: content, at: VTOFFSET.content.p) }
   public static func addVectorOf(contentTreeBytes: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: contentTreeBytes, at: VTOFFSET.contentTreeBytes.p) }
+  public static func add(hasSignedEventJson: Bool, _ fbb: inout FlatBufferBuilder) { fbb.add(element: hasSignedEventJson, def: false,
+   at: VTOFFSET.hasSignedEventJson.p) }
+  public static func add(signedEventJson: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: signedEventJson, at: VTOFFSET.signedEventJson.p) }
   public static func endClaimedEvent(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
   public static func createClaimedEvent(
     _ fbb: inout FlatBufferBuilder,
@@ -121,7 +129,9 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
     createdAt: UInt64 = 0,
     tagsVectorOffset tags: Offset = Offset(),
     contentOffset content: Offset = Offset(),
-    contentTreeBytesVectorOffset contentTreeBytes: Offset = Offset()
+    contentTreeBytesVectorOffset contentTreeBytes: Offset = Offset(),
+    hasSignedEventJson: Bool = false,
+    signedEventJsonOffset signedEventJson: Offset = Offset()
   ) -> Offset {
     let __start = nmp_kernel_ClaimedEvent.startClaimedEvent(&fbb)
     nmp_kernel_ClaimedEvent.add(primaryId: primaryId, &fbb)
@@ -136,6 +146,8 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
     nmp_kernel_ClaimedEvent.addVectorOf(tags: tags, &fbb)
     nmp_kernel_ClaimedEvent.add(content: content, &fbb)
     nmp_kernel_ClaimedEvent.addVectorOf(contentTreeBytes: contentTreeBytes, &fbb)
+    nmp_kernel_ClaimedEvent.add(hasSignedEventJson: hasSignedEventJson, &fbb)
+    nmp_kernel_ClaimedEvent.add(signedEventJson: signedEventJson, &fbb)
     return nmp_kernel_ClaimedEvent.endClaimedEvent(&fbb, start: __start)
   }
 
@@ -153,6 +165,8 @@ public struct nmp_kernel_ClaimedEvent: FlatBufferTable, FlatbuffersVectorInitial
     try _v.visit(field: VTOFFSET.tags.p, fieldName: "tags", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_kernel_TagRow>, nmp_kernel_TagRow>>.self)
     try _v.visit(field: VTOFFSET.content.p, fieldName: "content", required: false, type: ForwardOffset<String>.self)
     try _v.visit(field: VTOFFSET.contentTreeBytes.p, fieldName: "contentTreeBytes", required: false, type: ForwardOffset<Vector<UInt8, UInt8>>.self)
+    try _v.visit(field: VTOFFSET.hasSignedEventJson.p, fieldName: "hasSignedEventJson", required: false, type: Bool.self)
+    try _v.visit(field: VTOFFSET.signedEventJson.p, fieldName: "signedEventJson", required: false, type: ForwardOffset<String>.self)
     _v.finish()
   }
 }

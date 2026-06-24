@@ -30,6 +30,7 @@ fn make_claimed_event_row(
         tags,
         content: content.to_string(),
         content_tree_bytes: Vec::new(),
+        signed_event_json: None,
     }
 }
 

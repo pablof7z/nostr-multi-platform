@@ -19,7 +19,7 @@
 use super::{ratio, Instant, Kernel, KernelSnapshot, Metrics, DEFAULT_EMIT_HZ};
 use crate::update_envelope::{encode_snapshot_with_envelope, UpdateFrameBytes};
 
-mod helpers;
+pub(in crate::kernel) mod helpers;
 mod projections;
 mod rung2_stamp;
 mod rung3_omit;
