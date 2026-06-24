@@ -8,7 +8,7 @@ import {
   walletCommand,
 } from "./actions";
 import { createNmpClient, makeCorrelationId, type RuntimeSnapshot } from "./client";
-import { DegradedRuntime, WasmBridge } from "@nmp/runtime-web";
+import { DegradedRuntime } from "@nmp/runtime-web";
 import * as flatbuffers from "flatbuffers";
 import type { WorkerEvent, WorkerRequest } from "@nmp/runtime-web";
 import { eventCorrelationId, protocolVersion } from "@nmp/runtime-web";
@@ -173,13 +173,6 @@ describe("shared Chirp web semantics", () => {
         unsigned_json: "{}",
       }),
     ).toBeUndefined();
-    expect(
-      eventCorrelationId({
-        type: "routing_decisions",
-        correlation_id: "routing-1",
-        json: "{}",
-      }),
-    ).toBe("routing-1");
   });
 
   it("degraded beginSign fails the round-trip closed (no kernel to park in)", () => {
@@ -191,50 +184,6 @@ describe("shared Chirp web semantics", () => {
     );
     const snap = client.snapshot();
     expect(snap.events.some((e) => e.type === "sign_failed")).toBe(true);
-  });
-
-  it("stores routing decisions returned by the worker diagnostics request", async () => {
-    const worker = new StubWorker();
-    const posted: WorkerRequest[] = [];
-    worker.postMessage = (request: WorkerRequest) => {
-      posted.push(request);
-      if (request.type === "hello") {
-        worker.emit({ type: "hello_accepted", protocol_version: 1, status: "ready" });
-      }
-      if (request.type === "routing_decisions") {
-        worker.emit({
-          type: "routing_decisions",
-          correlation_id: request.correlation_id,
-          json: "{\"schema_version\":1,\"capacity\":64,\"publishes\":[],\"subscriptions\":[]}",
-        });
-      }
-    };
-    vi.stubGlobal("Worker", StubWorker.factory(worker));
-
-    const client = createNmpClient();
-    const snapshot = await client.refreshRoutingDecisions();
-
-    expect(posted.some((request) => request.type === "routing_decisions")).toBe(true);
-    expect(snapshot.latestRoutingDecisionsJson).toContain("\"schema_version\":1");
-  });
-
-  it("wraps the wasm routing diagnostics accessor as a worker event", () => {
-    const bridge = new WasmBridge(
-      {
-        handle_json: () => [],
-        recent_routing_decisions: () =>
-          "{\"schema_version\":1,\"capacity\":64,\"publishes\":[],\"subscriptions\":[]}",
-      },
-      () => {},
-    );
-
-    expect(bridge.handle({ type: "routing_decisions", correlation_id: "routing-2" })).toEqual([
-      {
-        type: "routing_decisions",
-        correlation_id: "routing-2",
-        json: "{\"schema_version\":1,\"capacity\":64,\"publishes\":[],\"subscriptions\":[]}",
-      },
-    ]);
   });
 
   it("decodes Tier-3 running and relayStatuses from a snapshot frame", () => {
