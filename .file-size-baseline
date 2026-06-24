@@ -48,9 +48,9 @@ crates/nmp-defaults/src/builder.rs	670
 crates/nmp-defaults/src/runtimes.rs	539
 crates/nmp-ffi/src/action/tests.rs	721
 crates/nmp-marmot/src/ffi.rs	620
-crates/nmp-marmot/src/ffi/tests.rs	964
-crates/nmp-marmot/src/projection/ops.rs	713
-crates/nmp-marmot/src/projection/state.rs	643
+crates/nmp-marmot/src/ffi/tests.rs	948
+crates/nmp-marmot/src/projection/ops.rs	707
+crates/nmp-marmot/src/projection/state.rs	641
 crates/nmp-marmot/src/service.rs	643
 crates/nmp-marmot/src/tests.rs	750
 crates/nmp-network/src/pool/tests.rs	555
