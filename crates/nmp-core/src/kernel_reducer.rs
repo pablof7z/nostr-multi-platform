@@ -9,10 +9,10 @@
 //!
 //! [`KernelReducer`] closes that seam: it owns an encapsulated [`Kernel`] and
 //! exposes a single public method — [`KernelReducer::reduce`] — that delegates
-//! to the same hand-written reducer the actor uses. Behaviour is byte-for-byte
-//! identical with the actor path for every [`KernelAction`] variant,
-//! including [`KernelAction::OpenUri`] (which registers a subscription
-//! interest through the kernel's single-writer registry).
+//! to the same hand-written reducer the actor uses. [`KernelAction::OpenUri`]
+//! registers a subscription interest through the kernel's single-writer
+//! registry; unavailable lifecycle/view placeholders return explicit rejected
+//! update data.
 //!
 //! # V-01 Stage 3 — relay-frame ingestion surface
 //!
@@ -36,7 +36,7 @@
 //! - **D0** — the public surface deals only in app-noun-free primitives
 //!   ([`RelayFrame`], [`OutboundMessage`], [`RelayRole`] are substrate types).
 //! - **D6** — total function: never panics, never unwinds across FFI.
-//!   Failures funnel into [`KernelUpdate::UriRejected`].
+//!   Failures funnel into rejected update data.
 //! - **D8** — runs once per *action* / *frame*, not in a poll loop.
 //!
 //! This is the NMP-145 follow-up: T-NMP-145-FF.
@@ -98,8 +98,8 @@ impl KernelReducer {
     /// Reduce one [`KernelAction`] against the encapsulated kernel, returning
     /// the [`KernelUpdate`] the host app should observe.
     ///
-    /// Total and panic-free (D6): the only fallible action (`OpenUri`)
-    /// funnels its typed error into [`KernelUpdate::UriRejected`].
+    /// Total and panic-free (D6): fallible actions and unavailable placeholders
+    /// return explicit rejected update data.
     pub fn reduce(&mut self, action: KernelAction) -> KernelUpdate {
         dispatch_kernel_action(&mut self.kernel, action)
     }

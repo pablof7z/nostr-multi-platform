@@ -5,10 +5,10 @@
 //! name, but until T95 nothing on the Rust side consumed them — T80 shipped the
 //! pure [`resolve_open_uri`] handler without a dispatcher.
 //!
-//! This module is that dispatcher: a single `match` over `KernelAction` with a
-//! clean slot for every future variant. Only `OpenUri` needs a real arm today;
-//! the remaining variants map to their trivially-correct `KernelUpdate` so the
-//! seam is uniform without growing scope.
+//! This module is that dispatcher: a single `match` over `KernelAction`.
+//! `OpenUri` is the only wired public action today. Unwired variants return
+//! [`KernelUpdate::ActionRejected`] so callers never receive a success-shaped
+//! update for work the reducer did not actually perform.
 //!
 //! # Placement (V-01 Phase 1c)
 //!
@@ -23,8 +23,7 @@
 //! - **D0** — operates only on the app-noun-free `KernelAction`/`KernelUpdate`
 //!   primitives and the protocol-neutral `LogicalInterest`. No app vocabulary.
 //! - **D6** — total function: never panics, never unwinds across FFI. Every
-//!   failure path returns [`KernelUpdate::UriRejected`] with a stable,
-//!   app-noun-free reason string.
+//!   failure path returns a stable, app-noun-free rejection update.
 //! - **D8** — no per-event allocation: this runs once per *action*, not per
 //!   ingested event, and registers through the single-writer registry whose
 //!   snapshot order stays deterministic.
@@ -43,30 +42,27 @@ pub(crate) fn dispatch_kernel_action(kernel: &mut Kernel, action: KernelAction) 
     match action {
         KernelAction::OpenUri { uri } => open_uri(kernel, uri),
 
-        // Lifecycle / view variants have no resolver yet — warn loudly so
-        // callers detect the unwired seam (V-110). Real arms land as their
-        // handlers are wired (one `match` arm each, no future-proofing).
-        KernelAction::Start => KernelUpdate::Started { rev: 0 },
-        KernelAction::Stop => KernelUpdate::Stopped { rev: 0 },
-        KernelAction::OpenView { namespace, key } => {
-            tracing::warn!(
-                namespace = %namespace,
-                key = %key,
-                "OpenView has no resolver — interest not compiled; relay subscription was NOT opened"
-            );
-            KernelUpdate::ViewOpened { namespace, key }
-        }
-        KernelAction::CloseView { namespace, key } => {
-            tracing::warn!(
-                namespace = %namespace,
-                key = %key,
-                "CloseView has no resolver — view-lifecycle seam unwired"
-            );
-            KernelUpdate::ViewClosed { namespace, key }
-        }
-        KernelAction::RunDiagnostics => KernelUpdate::Diagnostics {
-            summary: String::new(),
-        },
+        KernelAction::Start => action_rejected("start", "runtime lifecycle is not a kernel action"),
+        KernelAction::Stop => action_rejected("stop", "runtime lifecycle is not a kernel action"),
+        KernelAction::OpenView { .. } => action_rejected(
+            "open_view",
+            "generic view routing is not wired; use a concrete routed action",
+        ),
+        KernelAction::CloseView { .. } => action_rejected(
+            "close_view",
+            "generic view routing is not wired; use a concrete routed action",
+        ),
+        KernelAction::RunDiagnostics => action_rejected(
+            "run_diagnostics",
+            "diagnostics are exposed through kernel-authored projections",
+        ),
+    }
+}
+
+fn action_rejected(action: &str, reason: &str) -> KernelUpdate {
+    KernelUpdate::ActionRejected {
+        action: action.to_string(),
+        reason: reason.to_string(),
     }
 }
 
@@ -280,15 +276,21 @@ mod tests {
     }
 
     #[test]
-    fn non_open_uri_variants_echo_trivially_correct_updates() {
+    fn unwired_variants_reject_without_success_or_interest() {
         let mut k = kernel();
         assert_eq!(
             dispatch_kernel_action(&mut k, KernelAction::Start),
-            KernelUpdate::Started { rev: 0 }
+            KernelUpdate::ActionRejected {
+                action: "start".into(),
+                reason: "runtime lifecycle is not a kernel action".into(),
+            }
         );
         assert_eq!(
             dispatch_kernel_action(&mut k, KernelAction::Stop),
-            KernelUpdate::Stopped { rev: 0 }
+            KernelUpdate::ActionRejected {
+                action: "stop".into(),
+                reason: "runtime lifecycle is not a kernel action".into(),
+            }
         );
         assert_eq!(
             dispatch_kernel_action(
@@ -298,12 +300,31 @@ mod tests {
                     key: "k".into()
                 }
             ),
-            KernelUpdate::ViewOpened {
-                namespace: "n".into(),
-                key: "k".into()
+            KernelUpdate::ActionRejected {
+                action: "open_view".into(),
+                reason: "generic view routing is not wired; use a concrete routed action".into(),
             }
         );
-        // No interest registered by the placeholder arms (D8 / scope hygiene).
+        assert_eq!(
+            dispatch_kernel_action(
+                &mut k,
+                KernelAction::CloseView {
+                    namespace: "n".into(),
+                    key: "k".into()
+                }
+            ),
+            KernelUpdate::ActionRejected {
+                action: "close_view".into(),
+                reason: "generic view routing is not wired; use a concrete routed action".into(),
+            }
+        );
+        assert_eq!(
+            dispatch_kernel_action(&mut k, KernelAction::RunDiagnostics),
+            KernelUpdate::ActionRejected {
+                action: "run_diagnostics".into(),
+                reason: "diagnostics are exposed through kernel-authored projections".into(),
+            }
+        );
         assert!(k.lifecycle_mut().registry_mut().iter_active().is_empty());
     }
 }

@@ -34,16 +34,11 @@
 //! * **D6** — every failure mode at the protocol layer resolves as a
 //!   `WorkerEvent::Error` or `WorkerEvent::CapabilityFailure` in the returned
 //!   JSON array, never as a Promise rejection. Promise rejection is reserved
-//!   for two catastrophic binding failures that cannot be expressed as a
-//!   `WorkerEvent` without the runtime being in an undefined state:
-//!   (a) `WasmRuntimeError::KernelContract` — a `KernelReducer` invariant was
-//!   violated (e.g. `Start` returned something other than `Started`); the
-//!   runtime is permanently broken and no further events can be trusted;
-//!   (b) `WorkerEvent` JSON serialisation failure — an in-memory value that is
+//!   for response JSON serialisation failure — an in-memory value that is
 //!   supposed to be serialisable is not, indicating a compile-time regression
-//!   in the serde impl. In both cases the JS host's catch boundary (in
-//!   `wasmBridge.ts`) converts the rejection to a synthetic `error` event so
-//!   the JS caller still sees data, not an unhandled Promise failure.
+//!   in the serde impl. The JS host's catch boundary (in `wasmBridge.ts`)
+//!   converts that rejection to a synthetic `error` event so the JS caller
+//!   still sees data, not an unhandled Promise failure.
 //! * **D8** — `handle_json` and `handle_dispatch_bytes` are synchronous; writes
 //!   and signing ride the message-driven worker protocol, never an in-flow
 //!   `Promise` over a persistent signer.
@@ -105,10 +100,8 @@ impl NmpWasmRuntime {
     /// host config errors resolve to a `WorkerEvent::Error` in the returned
     /// JSON array. The method signature `Result<JsValue, JsValue>` is kept
     /// because `wasm-bindgen` requires it for Promise-resolution; Promise
-    /// rejection (the `Err` path) is reserved for the two catastrophic cases
-    /// documented in the module-level D6 note — `KernelContract` violations
-    /// and response serialisation failures. Both are non-recoverable: the
-    /// runtime is in an undefined state and no further requests should be sent.
+    /// rejection (the `Err` path) is reserved for response serialisation
+    /// failure, documented in the module-level D6 note.
     pub fn handle_json(&mut self, request: &str) -> Result<JsValue, JsValue> {
         // D6: parse failures are protocol-layer errors — resolve as data.
         let req: WorkerRequest = match serde_json::from_str(request) {
@@ -133,13 +126,6 @@ impl NmpWasmRuntime {
                     message: msg,
                     correlation_id: None,
                 }]);
-            }
-            Err(WasmRuntimeError::KernelContract(msg)) => {
-                // Catastrophic: a KernelReducer invariant was violated. The
-                // runtime is in an undefined state; Promise rejection tells the
-                // JS host not to send further requests. The wasmBridge.ts catch
-                // boundary converts this to a synthetic error event.
-                return Err(JsValue::from_str(&format!("kernel_contract: {msg}")));
             }
         };
         if is_set_identity {

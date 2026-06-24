@@ -68,6 +68,15 @@ pub enum KernelUpdate {
         uri: String,
         reason: String,
     },
+    /// A public action was recognized but is not currently a wired kernel API.
+    ///
+    /// D6: reducers must return honest state for unavailable actions rather
+    /// than success-shaped updates. `action` is a stable snake_case token so
+    /// host telemetry can aggregate failures without parsing prose.
+    ActionRejected {
+        action: String,
+        reason: String,
+    },
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
@@ -452,5 +461,16 @@ mod open_uri_tests {
         let json = serde_json::to_string(&a).unwrap();
         let back: KernelAction = serde_json::from_str(&json).unwrap();
         assert_eq!(a, back);
+    }
+
+    #[test]
+    fn action_rejected_update_round_trips_through_serde() {
+        let update = KernelUpdate::ActionRejected {
+            action: "open_view".into(),
+            reason: "generic view routing is not wired".into(),
+        };
+        let json = serde_json::to_string(&update).unwrap();
+        let back: KernelUpdate = serde_json::from_str(&json).unwrap();
+        assert_eq!(update, back);
     }
 }
