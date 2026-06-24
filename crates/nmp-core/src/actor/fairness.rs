@@ -27,6 +27,11 @@ impl CommandDrain {
         self.drained >= self.budget
     }
 
+    /// Returns a zero wait when the budget was exhausted (so a command burst is
+    /// not penalised with a full idle delay), otherwise passes `computed_wait`
+    /// through.  Used by tests; in production the caller uses `hit_budget()`
+    /// directly (see `actor/loop_context.rs` — `drain_commands`).
+    #[cfg_attr(not(test), allow(dead_code))]
     pub(super) fn relay_wait(&self, computed_wait: Duration) -> Duration {
         if self.hit_budget() {
             Duration::ZERO
