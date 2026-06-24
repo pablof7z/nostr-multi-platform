@@ -19,6 +19,8 @@
 //! | `tests_d13_d14_d15.rs`    | D13, D14, D15                         |
 //! | `tests_d16_workspace.rs`  | D16, --workspace-d8, end-to-end clean |
 //! | `tests_d17_misc.rs`       | D17, cache-serve seal                 |
+//! | `file_size_gate_tests.rs` | file-size baseline ratchet            |
+//! | `manifest_gates.rs`       | app production dependency gates       |
 //! | `authority_rule_tests.rs` | D26                                   |
 //! | `d27_rule_tests.rs`       | D27                                   |
 //! | `event_flow_rule_tests.rs`| D23/D24/D25                           |
@@ -33,6 +35,7 @@ mod authority_rule_tests; // D26 protocol-authority gate smoke tests — sibling
 mod d27_rule_tests; // D27 projection display-helper ban smoke tests — sibling module.
 mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
 mod file_size_gate_tests; // File-size baseline ratchet smoke tests — sibling module.
+mod manifest_gates; // App Cargo.toml production dependency gates — sibling module.
 mod no_raw_tap_rule_tests; // no_raw_tap step-5 native-sink fixture tests — sibling module.
 mod recent_rule_tests; // D19/D20/D21 fixture smoke tests — sibling module (file-size cap).
 mod tests_a6; // A6 schema-less snapshot-projection lane smoke tests — sibling module.
