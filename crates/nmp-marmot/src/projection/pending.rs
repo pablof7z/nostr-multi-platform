@@ -12,7 +12,7 @@
 //!
 //! When `ops::create_group` / `ops::invite` hits `key_package_unavailable`,
 //! it stores the original action JSON + `correlation_id` + the set of still-
-//! missing pubkey hexes here. The ingest path (kind 443/30443 arm of
+//! missing pubkey hexes here. The ingest path (kind 30443 arm of
 //! `ops::ingest_signed_event_core`, actor thread) calls
 //! [`PendingOpsStore::retry_for_pubkey`] after each cache insert; any op
 //! whose missing set is now fully covered is re-executed and the terminal
@@ -28,7 +28,7 @@
 //! `key_package_unavailable` failure on the next edge that provides a
 //! `now_secs` reference. The `check_expired` helper is the single eviction
 //! mechanism; it is driven from two call sites:
-//!   * the kind:443/30443 ingest arm of `ops::ingest_signed_event_core`
+//!   * the kind:30443 ingest arm of `ops::ingest_signed_event_core`
 //!     (so an arriving KP for *another* peer still ages out stale ops), and
 //!   * the top of `MarmotProjection::snapshot` (so an op whose KP NEVER
 //!     arrives still expires within a tick of its deadline — snapshots are

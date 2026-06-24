@@ -47,7 +47,7 @@
 //!
 //! `MarmotActionModule::start` is the validator — it deserializes the
 //! action JSON into the typed `MarmotAction` enum and rejects malformed
-//! payloads at the boundary. `MarmotActionModule::execute` then re-serializes
+//! payloads at the boundary. `MarmotActionModule::execute` then serializes
 //! the typed enum and emits `ActorCommand::Protocol(HostOpCommand { action_json,
 //! correlation_id })` (ADR-0052 §D4, K2 rung 5.4 — the bespoke `DispatchHostOp`
 //! arm was merged into the single `Protocol` write seam). The `HostOpCommand`
@@ -61,8 +61,8 @@
 //! noun. The serde round-trip is sub-microsecond and only happens once per
 //! dispatch — irrelevant next to the actual MLS / SQLite work.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use nmp_core::actor::ActorCommand;
+use nmp_core::substrate::{ActionContext, ActionModule, ActionRejection};
 use serde::{Deserialize, Serialize};
 
 /// Namespace under which the [`MarmotActionModule`] registers in the
@@ -141,10 +141,7 @@ pub enum MarmotAction {
     },
     /// Send a kind:14 NIP-44 group message — MDK builds the kind:1059
     /// gift-wrap that is published to the group's relay-pinned relays.
-    Send {
-        group_id_hex: String,
-        text: String,
-    },
+    Send { group_id_hex: String, text: String },
     /// Self-remove from a group (MLS SelfRemove proposal + commit).
     Leave { group_id_hex: String },
     /// Remove other members from the group (MLS Remove proposal + commit).
@@ -157,9 +154,6 @@ pub enum MarmotAction {
     AcceptWelcome { welcome_id_hex: String },
     /// Decline a previously-cached pending Welcome.
     DeclineWelcome { welcome_id_hex: String },
-    /// Manual ingest of a signed inbound event (back-compat alias over the
-    /// raw-event tap's automatic ingest path — used by REPL / tests).
-    IngestSignedEvent { event_json: String },
     /// Explicit pending-commit clear (mdk-api.md §7.7) — exposed so a
     /// caller that detected a relay-publish failure can unwedge the group.
     ClearPending { group_id_hex: String },
@@ -211,7 +205,8 @@ impl ActionModule for MarmotActionModule {
     ///
     /// Returning `false` here would skip the `action_stages` mirror writes
     /// and the host would never see a terminal verdict for a Marmot op.
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — stage transitions are recorded by the `HostOpCommand` on the `Protocol` arm (nmp-core/src/substrate/host_op.rs), not here; this is the seam declaration so the registry routes the verdict.
+    fn is_async_completing() -> bool {
+        // doctrine-allow: D12 — stage transitions are recorded by the `HostOpCommand` on the `Protocol` arm (nmp-core/src/substrate/host_op.rs), not here; this is the seam declaration so the registry routes the verdict.
         true
     }
 
@@ -251,12 +246,11 @@ impl ActionModule for MarmotActionModule {
 mod tests {
     use super::*;
 
-    /// The typed enum's JSON shape MUST stay byte-identical with the
-    /// bespoke envelope so iOS can flip its dispatch call without
-    /// re-encoding the action body. The full set of variants the iOS
-    /// bridge produces is exercised here.
+    /// The typed enum's JSON shape MUST accept the supported host-produced
+    /// Marmot action bodies. The raw signed-event tap, not this action seam,
+    /// owns inbound event ingest.
     #[test]
-    fn ios_legacy_envelope_round_trips() {
+    fn host_action_shapes_parse_as_typed_actions() {
         let cases = &[
             r#"{"op":"publish_key_package"}"#,
             r#"{"op":"create_group","name":"engineering","description":"the eng group","invitee_text":"npub1abc npub1def","signed_key_package_events_json":[]}"#,
@@ -266,13 +260,11 @@ mod tests {
             r#"{"op":"remove","group_id_hex":"aa00bb11","member_npubs":["npub1ghi"]}"#,
             r#"{"op":"accept_welcome","welcome_id_hex":"cc22dd33"}"#,
             r#"{"op":"decline_welcome","welcome_id_hex":"cc22dd33"}"#,
-            r#"{"op":"ingest_signed_event","event_json":"{}"}"#,
             r#"{"op":"clear_pending","group_id_hex":"aa00bb11"}"#,
         ];
         for json in cases {
-            let parsed: MarmotAction = serde_json::from_str(json).unwrap_or_else(|e| {
-                panic!("typed enum must accept legacy envelope `{json}`: {e}")
-            });
+            let parsed: MarmotAction = serde_json::from_str(json)
+                .unwrap_or_else(|e| panic!("typed enum must accept host action `{json}`: {e}"));
             // Re-serializing produces a value that parses back to the same
             // variant — the round-trip is stable. We don't assert
             // byte-equality because serde may reorder fields, but the
@@ -313,10 +305,11 @@ mod tests {
             group_id_hex: "aa00bb11".to_string(),
             text: "hello, group".to_string(),
         };
-        MarmotActionModule.execute(action, "corr-test-id", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
-        .expect("execute should not fail for a valid action");
+        MarmotActionModule
+            .execute(action, "corr-test-id", &|cmd| {
+                captured.borrow_mut().push(cmd);
+            })
+            .expect("execute should not fail for a valid action");
 
         let cmds = captured.into_inner();
         assert_eq!(cmds.len(), 1, "execute must emit exactly one ActorCommand");
@@ -334,8 +327,7 @@ mod tests {
                     "must carry the registry-minted correlation_id, got: {dbg}"
                 );
                 assert!(
-                    dbg.contains("\\\"op\\\":\\\"send\\\"")
-                        || dbg.contains(r#""op":"send""#),
+                    dbg.contains("\\\"op\\\":\\\"send\\\"") || dbg.contains(r#""op":"send""#),
                     "must carry the re-serialized action JSON, got: {dbg}"
                 );
                 assert!(
@@ -356,7 +348,8 @@ mod tests {
         let err = serde_json::from_str::<MarmotAction>(r#"{"op":"nuke_everything"}"#)
             .expect_err("unknown op must be rejected by serde");
         assert!(
-            err.to_string().contains("unknown variant") || err.to_string().contains("nuke_everything"),
+            err.to_string().contains("unknown variant")
+                || err.to_string().contains("nuke_everything"),
             "expected serde to name the offending variant, got: {err}"
         );
     }

@@ -32,14 +32,14 @@ import os.log
 //   only.
 //
 //   Inbound: the kernel exposes a `RawEventObserver` tap registered for
-//   kinds [443, 444, 445, 1059, 30443]. Every accepted inbound signed
+//   kinds [444, 445, 1059, 30443]. Every accepted inbound signed
 //   event of those kinds is automatically processed by the Rust layer
 //   (welcomes / messages / key packages surface in the next snapshot).
 //
 // ── ADR-0025 PR 2 (this revision) — dispatch routing ─────────────────────
 //
 // MLS write ops (create_group, invite, send, leave, remove, accept_welcome,
-// decline_welcome, publish_key_package, ingest_signed_event, clear_pending)
+// decline_welcome, publish_key_package, clear_pending)
 // are routed through Chirp's typed byte doorway
 // `nmp_app_chirp_dispatch_action_bytes("nmp.marmot", action_json)` — the same
 // ActionModule executor path every other namespace uses after typed payload
@@ -357,14 +357,6 @@ final class MarmotStore: ObservableObject {
     /// disappears from the next snapshot tick.
     func declineWelcome(welcomeIDHex: String) {
         dispatchFireAndForget(["op": "decline_welcome", "welcome_id_hex": welcomeIDHex])
-    }
-
-    /// Ingest a relay-received signed kind:1059 / kind:445 event. Wired and
-    /// ready, but has NO caller in the current Chirp kernel surface — Chirp
-    /// does not expose a raw signed-event stream to Swift. See the header
-    /// limitation. Present so a future seam can plug in without bridge work.
-    func ingestSignedEvent(_ eventJSON: String) {
-        dispatchFireAndForget(["op": "ingest_signed_event", "event_json": eventJSON])
     }
 
     /// Publish-failure recovery: clear a group's pending MDK commit.

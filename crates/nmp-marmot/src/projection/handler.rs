@@ -1,7 +1,7 @@
 //! `MarmotMlsOpHandler` — the [`nmp_core::substrate::HostOpHandler`] impl that
 //! routes [`MarmotAction`](super::action::MarmotAction) JSON envelopes
 //! through the live [`MarmotProjection`](super::state::MarmotProjection)
-//! and the existing [`super::ops::dispatch`] handlers.
+//! and the typed [`super::ops::dispatch`] handlers.
 //!
 //! # The bridge between the kernel's generic seam and Marmot's typed ops
 //!
@@ -17,25 +17,13 @@
 //! 1. parses `action_json` back into the typed [`MarmotAction`] enum (it
 //!    was just serialized by [`super::action::MarmotActionModule::execute`];
 //!    `serde_json::from_str` cannot fail here in practice, but a D6 soft-
-//!    fail envelope is returned for the should-be-impossible case);
-//! 2. re-serializes the typed enum to the legacy `{"op": "...", ...}` JSON
-//!    shape the existing [`super::ops::dispatch`] handlers consume; and
-//! 3. invokes [`super::ops::dispatch`] under the projection's `Mutex<Inner>`
+//!    fail envelope is returned for the should-be-impossible case); and
+//! 2. invokes [`super::ops::dispatch`] under the projection's `Mutex<Inner>`
 //!    via [`MarmotProjection::with_inner`].
 //!
 //! The result `serde_json::Value` is returned verbatim — the `HostOpCommand`
 //! interprets `{"ok":true,...}` vs `{"ok":false,...}` and routes to the
 //! appropriate `RecordAction*` actor command.
-//!
-//! # Why re-serialize when we already have JSON?
-//!
-//! The action body is parsed twice (once by the registry's adapter into
-//! `MarmotAction`, once here back into the legacy envelope shape) to keep
-//! the parsing layer EXACTLY symmetric: the typed enum is the validation
-//! gate; the legacy envelope is what `ops::dispatch` consumes. Removing the
-//! round-trip would require either (a) bypassing the typed validation gate
-//! (losing the D6 shape rejection) or (b) rewriting `ops::dispatch` to take
-//! the typed enum (touching every op handler — out of scope for PR 1).
 //!
 //! # Threading
 //!
@@ -99,19 +87,7 @@ impl HostOpHandler for MarmotMlsOpHandler {
             }
         };
 
-        // (2) Re-serialize the typed enum to the legacy `{"op": "...", ...}`
-        // envelope shape `ops::dispatch` consumes. Same D6 contract.
-        let legacy_envelope = match serde_json::to_value(&typed) {
-            Ok(v) => v,
-            Err(e) => {
-                return serde_json::json!({
-                    "ok": false,
-                    "error": format!("MarmotMlsOpHandler: failed to re-serialize MarmotAction: {e}"),
-                });
-            }
-        };
-
-        // (3) Invoke the existing dispatch entry point under the
+        // (2) Invoke the typed dispatch entry point under the
         // projection's mutex. `with_inner` returns `None` if the mutex is
         // poisoned — D6 surface as a soft-fail envelope (matches the
         // soft-fail envelope the legacy bespoke `nmp_marmot_dispatch`
@@ -130,11 +106,13 @@ impl HostOpHandler for MarmotMlsOpHandler {
             .map(|d| d.as_secs())
             .unwrap_or(0);
         self.projection
-            .with_inner(|h| ops::dispatch(h, &legacy_envelope, now_secs, Some(correlation_id)))
-            .unwrap_or_else(|| serde_json::json!({
-                "ok": false,
-                "error": "MarmotMlsOpHandler: projection mutex poisoned",
-            }))
+            .with_inner(|h| ops::dispatch(h, &typed, now_secs, Some(correlation_id)))
+            .unwrap_or_else(|| {
+                serde_json::json!({
+                    "ok": false,
+                    "error": "MarmotMlsOpHandler: projection mutex poisoned",
+                })
+            })
     }
 }
 

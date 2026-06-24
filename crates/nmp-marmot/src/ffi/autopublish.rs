@@ -13,9 +13,9 @@
 //! republish.
 
 use nmp_ffi::NmpApp;
-use serde_json::json;
 
 use super::{now_secs, MarmotHandle};
+use crate::projection::action::MarmotAction;
 
 /// If the sign-in path armed the autopublish flag, consume it and publish a
 /// key package against the freshly-registered handle. A no-op when the flag is
@@ -31,7 +31,7 @@ fn publish_key_package_on_register(handle: *mut MarmotHandle) {
     let Some(handle) = (unsafe { handle.as_ref() }) else {
         return;
     };
-    let action = json!({ "op": "publish_key_package" });
+    let action = MarmotAction::PublishKeyPackage { relays: Vec::new() };
     // `correlation_id` is `None`: this auto-publish path has no action-registry
     // correlation, and publish_key_package is never KP-gated, so the deferred
     // path is irrelevant here.

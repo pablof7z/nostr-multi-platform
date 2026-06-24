@@ -54,7 +54,10 @@ fn typed_projection_carries_schema_identity_and_round_trips() {
     assert_eq!(entry.schema_id, "nmp.marmot.messages");
     assert_eq!(entry.schema_version, SCHEMA_VERSION);
     assert_eq!(entry.file_identifier, "NMMG");
-    assert_eq!(String::from_utf8_lossy(FILE_IDENTIFIER).into_owned(), "NMMG");
+    assert_eq!(
+        String::from_utf8_lossy(FILE_IDENTIFIER).into_owned(),
+        "NMMG"
+    );
     assert!(!entry.payload.is_empty());
 
     let decoded = decode_marmot_messages(&entry.payload).expect("must decode as NMMG");
@@ -105,20 +108,20 @@ fn messages_all_groups_typed_round_trip_over_real_projection() {
 
     let proj = MarmotProjection::new(in_memory(alice_keys.clone()), None);
     proj.with_inner(|h| {
-        crate::projection::ops::dispatch(
+        crate::projection::ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
+            json!({ "op": "publish_key_package", "relays": ["wss://t.relay"] }),
             1_000,
-                None,
+            None,
         )
     })
     .unwrap();
 
     let group_id_hex = proj
         .with_inner(|h| {
-            crate::projection::ops::dispatch(
+            crate::projection::ops::dispatch_json_for_tests(
                 h,
-                &json!({
+                json!({
                     "op": "create_group",
                     "name": "Marmot Wire Test",
                     "relays": ["wss://t.relay"],
@@ -126,7 +129,7 @@ fn messages_all_groups_typed_round_trip_over_real_projection() {
                     "signed_key_package_events_json": [bob_kp_json],
                 }),
                 1_001,
-                        None,
+                None,
             )
         })
         .unwrap()["group_id_hex"]
@@ -135,11 +138,11 @@ fn messages_all_groups_typed_round_trip_over_real_projection() {
         .to_string();
 
     proj.with_inner(|h| {
-        crate::projection::ops::dispatch(
+        crate::projection::ops::dispatch_json_for_tests(
             h,
-            &json!({ "op": "send", "group_id_hex": group_id_hex, "text": "hello marmot" }),
+            json!({ "op": "send", "group_id_hex": group_id_hex, "text": "hello marmot" }),
             1_003,
-                None,
+            None,
         )
     })
     .unwrap();
@@ -155,5 +158,8 @@ fn messages_all_groups_typed_round_trip_over_real_projection() {
         .expect("the created group must appear in the typed messages map");
     assert_eq!(entry.1.len(), 1, "one sent message: {:?}", entry.1);
     assert_eq!(entry.1[0].content, "hello marmot");
-    assert_eq!(entry.1[0].sender_pubkey_hex, alice_keys.public_key().to_hex());
+    assert_eq!(
+        entry.1[0].sender_pubkey_hex,
+        alice_keys.public_key().to_hex()
+    );
 }

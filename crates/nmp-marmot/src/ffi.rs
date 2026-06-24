@@ -71,9 +71,8 @@
 //! inbound verified event of those kinds to [`crate::projection::tap::MarmotIngestParser`],
 //! which reconstructs the signed `nostr::Event` from [`nmp_store::VerifiedEvent::raw`]
 //! (same pattern as `nmp-nip17::DmInboxProjection::parse`, PR-1) and drives it
-//! through the SAME `ops::ingest_signed_event_core` the back-compat
-//! `{"op":"ingest_signed_event"}` dispatch op uses — so welcomes / messages
-//! received from relays surface in the next snapshot with no Swift involvement.
+//! through `ops::ingest_signed_event_core` — so welcomes / messages received
+//! from relays surface in the next snapshot with no Swift involvement.
 //! `nmp_marmot_unregister` tears down BOTH kernel registrations (the lossy
 //! `KernelEvent` metadata observer AND all per-kind `IngestParser` slots via
 //! `unregister_ingest_parser`). This was the last open seam (raw-tap PR-2).
@@ -89,7 +88,7 @@ use serde_json::{json, Value};
 
 use crate::service::MarmotService;
 
-use crate::projection::action::MarmotActionModule;
+use crate::projection::action::{MarmotAction, MarmotActionModule};
 use crate::projection::handler::MarmotMlsOpHandler;
 use crate::projection::state::MarmotProjection;
 use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT, TAP_KINDS};
@@ -217,10 +216,10 @@ impl MarmotHandle {
     /// In-process Rust callers that hand-shuttle MLS events between
     /// `AppRuntime`s — namely `chirp-repl` / `chirp-tui` / their
     /// integration tests — depend on the synchronous envelope. This
-    /// accessor invokes the SAME [`crate::projection::ops::dispatch`]
-    /// entry point both seams reach (the kernel actor's `HostOpCommand` on
-    /// the `Protocol` arm and the legacy C symbol used) without going through
-    /// any FFI.
+    /// accessor parses the JSON into the SAME typed
+    /// [`crate::projection::action::MarmotAction`] that the kernel actor's
+    /// `HostOpCommand` handler dispatches, then invokes
+    /// [`crate::projection::ops::dispatch`] without going through any FFI.
     ///
     /// ## D0 / layering
     ///
@@ -229,12 +228,21 @@ impl MarmotHandle {
     /// and not subject to ADR-0025's bespoke-FFI prohibition (which
     /// targeted `extern "C"` cluster bloat in the iOS bridge).
     pub fn dispatch(&self, action: &Value) -> Value {
+        let action: MarmotAction = match serde_json::from_value(action.clone()) {
+            Ok(action) => action,
+            Err(e) => {
+                return json!({
+                    "ok": false,
+                    "error": format!("invalid MarmotAction: {e}"),
+                });
+            }
+        };
         // `correlation_id` is `None`: this in-process path (REPL / TUI / tests)
         // has no action-registry correlation, so the deferred-pending path
         // stays off (callers get the old terminal soft-fail); it activates only
         // for the typed `HostOpCommand` pipeline, which supplies an id.
         self.projection
-            .with_inner(|h| crate::projection::ops::dispatch(h, action, now_secs(), None))
+            .with_inner(|h| crate::projection::ops::dispatch(h, &action, now_secs(), None))
             .unwrap_or_else(|| {
                 json!({
                     "ok": false,

@@ -14,10 +14,11 @@
 use nostr::PublicKey;
 use serde_json::{json, Value};
 
-use nmp_core::actor::ActionLedgerCommand;
+use super::action::MarmotAction;
 use super::payload::{LastOpError, PendingOpRow};
 use super::pending::{PendingOp, PendingOpsStore, RetryOutcome, StoreResult};
 use super::state::{op_tag_of, InnerHandle};
+use nmp_core::actor::ActionLedgerCommand;
 
 /// Build the snapshot-visible [`PendingOpRow`]s from the pending-op store.
 /// `now_secs` drives the per-row `age_secs` (elapsed wait since the op was
@@ -58,7 +59,7 @@ impl InnerHandle<'_> {
     /// referencing the already-pending `correlation_id` — no double-create.
     pub(crate) fn park_or_report_kp_unavailable(
         &mut self,
-        action_value: &Value,
+        action: &MarmotAction,
         op_tag: &str,
         needs: Vec<String>,
         fetch_pubkeys: &[PublicKey],
@@ -67,8 +68,7 @@ impl InnerHandle<'_> {
     ) -> Value {
         // Always fire the fetch interest (idempotent at the planner level).
         let fetch_requested = self.request_key_package_fetch(fetch_pubkeys);
-        let needs_pubkeys_hex: Vec<String> =
-            fetch_pubkeys.iter().map(PublicKey::to_hex).collect();
+        let needs_pubkeys_hex: Vec<String> = fetch_pubkeys.iter().map(PublicKey::to_hex).collect();
 
         let Some(cid) = correlation_id else {
             // No correlation_id → outside the typed pipeline (REPL / tests):
@@ -83,8 +83,8 @@ impl InnerHandle<'_> {
             });
         };
 
-        let action_json = serde_json::to_string(action_value)
-            .unwrap_or_else(|_| action_value.to_string());
+        let action_json = serde_json::to_string(action)
+            .unwrap_or_else(|e| format!(r#"{{"op":"__invalid__","error":"{e}"}}"#));
         let store_result = self.park_pending_op(
             cid.to_string(),
             action_json,
@@ -99,7 +99,9 @@ impl InnerHandle<'_> {
                 "needs_pubkeys_hex": needs_pubkeys_hex,
                 "fetch_requested": fetch_requested,
             }),
-            StoreResult::Duplicate { existing_correlation_id } => json!({
+            StoreResult::Duplicate {
+                existing_correlation_id,
+            } => json!({
                 "pending": true,
                 "duplicate": true,
                 "correlation_id": existing_correlation_id,
@@ -148,7 +150,7 @@ impl InnerHandle<'_> {
 
     /// Re-dispatch every op unblocked by `pubkey_hex` (and expire stale ones),
     /// recording the terminal verdict under each op's ORIGINAL `correlation_id`
-    /// via the actor channel. Called from the kind:443/30443 ingest arm after
+    /// via the actor channel. Called from the kind:30443 ingest arm after
     /// the KP is cached. Fires exactly once per KP arrival (D8 — no polling).
     pub(crate) fn retry_unblocked_ops(&mut self, pubkey_hex: &str, now_secs: u64) {
         let ready = self.handle_key_package_cached(pubkey_hex, now_secs);
@@ -157,11 +159,21 @@ impl InnerHandle<'_> {
             // pending store only returns an op once its missing set is empty,
             // so the re-dispatch should not re-park; `{"pending":true}` is
             // handled defensively (skip the terminal write).
-            let op_value: Value = serde_json::from_str(&outcome.action_json)
-                .unwrap_or_else(|_| json!({ "op": "__invalid__" }));
-            let result = super::ops::dispatch(self, &op_value, now_secs, Some(&outcome.correlation_id));
+            let action: Result<MarmotAction, _> = serde_json::from_str(&outcome.action_json);
+            let result = match &action {
+                Ok(action) => {
+                    super::ops::dispatch(self, action, now_secs, Some(&outcome.correlation_id))
+                }
+                Err(e) => json!({
+                    "ok": false,
+                    "error": format!("stored pending MarmotAction did not parse: {e}"),
+                }),
+            };
             let ok = result.get("ok").and_then(Value::as_bool);
-            let pending = result.get("pending").and_then(Value::as_bool).unwrap_or(false);
+            let pending = result
+                .get("pending")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             if pending {
                 continue;
             }
@@ -177,11 +189,7 @@ impl InnerHandle<'_> {
                     .and_then(Value::as_str)
                     .unwrap_or("deferred op failed")
                     .to_string();
-                let op_tag = op_value
-                    .get("op")
-                    .and_then(Value::as_str)
-                    .unwrap_or("unknown")
-                    .to_string();
+                let op_tag = op_tag_of(&outcome.action_json);
                 self.record_last_op_failure(
                     op_tag,
                     reason.clone(),
@@ -217,10 +225,12 @@ impl InnerHandle<'_> {
                 op.correlation_id.clone(),
                 now_secs,
             );
-            self.push_actor_command(nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
-                correlation_id: op.correlation_id,
-                reason: "key_package_unavailable".to_string(),
-            }));
+            self.push_actor_command(nmp_core::actor::ActorCommand::ActionLedger(
+                ActionLedgerCommand::RecordFailure {
+                    correlation_id: op.correlation_id,
+                    reason: "key_package_unavailable".to_string(),
+                },
+            ));
         }
     }
 
@@ -264,12 +274,16 @@ impl InnerHandle<'_> {
         #[cfg(test)]
         {
             match &cmd {
-                nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess { correlation_id, .. }) => {
+                nmp_core::actor::ActorCommand::ActionLedger(
+                    ActionLedgerCommand::RecordSuccess { correlation_id, .. },
+                ) => {
                     self.inner
                         .captured_commands
                         .push(("success", correlation_id.clone()));
                 }
-                nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure { correlation_id, .. }) => {
+                nmp_core::actor::ActorCommand::ActionLedger(
+                    ActionLedgerCommand::RecordFailure { correlation_id, .. },
+                ) => {
                     self.inner
                         .captured_commands
                         .push(("failure", correlation_id.clone()));

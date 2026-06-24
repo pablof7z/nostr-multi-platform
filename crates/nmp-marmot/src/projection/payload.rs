@@ -82,7 +82,7 @@ pub struct MarmotGroupRow {
 ///
 /// `MarmotService` exposes no `get_pending_welcomes`, so these rows are
 /// served from the in-handle cache populated when a kind:1059 gift-wrap is
-/// fed in via the `ingest_signed_event` dispatch op (see `state.rs`).
+/// fed in via the raw signed-event tap (see `state.rs`).
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct PendingWelcomeRow {
     /// The kind:444 Welcome event id, hex. Pass back as `welcome_id_hex`
