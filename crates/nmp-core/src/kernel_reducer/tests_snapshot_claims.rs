@@ -92,7 +92,6 @@ fn publish_signed_event_rejects_forged_event_fail_closed() {
     // outbound) and the categorized `malformed_event` toast is set — never
     // routed to a relay.
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     let signed = forged_signed_note();
     let out = r.publish_signed_event(&signed, &[], None);
     assert!(
@@ -120,7 +119,6 @@ fn publish_signed_event_does_not_reject_valid_event_for_nip_shape() {
     let signed = real_signed_event(&keys, 1, "a real note", vec![]);
 
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     let _ = r.publish_signed_event(&signed, &[], Some("dispatch-1".to_string()));
     let toast = r.kernel.last_error_toast_snapshot();
     assert!(
@@ -150,7 +148,6 @@ fn publish_signed_event_does_not_reject_valid_gift_wrap_for_nip_shape() {
     );
 
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     // The verbatim path uses PublishTarget::Auto internally; the D10 gate
     // would refuse a kind:1059 with Auto, but that is a routing-policy
     // refusal, NOT the malformed-event chokepoint. We assert the
@@ -173,7 +170,6 @@ fn resolve_profile_on_fresh_reducer_parks_returns_empty() {
     // on the next drain (the reducer drains inline via `drain_lifecycle_outbound`).
     // A fresh reducer with no relay connected still returns empty from the call.
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     // any_relay_connected is false on a fresh reducer — assert the gate.
     assert!(
         !r.any_relay_connected(),
@@ -195,7 +191,6 @@ fn resolve_profile_refcount_dedup_does_not_double_fetch() {
     // interest (registry owner refcount); neither claim emits outbound directly.
     // (Detailed batch/routing/dedup assertions live in profile_claim_tests.rs.)
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
 
     let _ = r.resolve_ref(
         RefNamespace::Profile,
@@ -221,7 +216,6 @@ fn resolve_profile_refcount_dedup_does_not_double_fetch() {
 fn release_profile_is_total_no_panic() {
     // Releasing a pubkey that was never claimed is a no-op (D6).
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     let out = r.release_ref(RefNamespace::Profile, PK, "chirp-web-author-1");
     assert!(out.is_empty(), "release must emit no outbound");
 }
@@ -230,7 +224,6 @@ fn release_profile_is_total_no_panic() {
 fn resolve_event_ref_malformed_key_is_total_no_panic() {
     // D6: a malformed raw event key must be silently dropped, not a panic.
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     let out = r.resolve_ref(
         RefNamespace::Event,
         "not-a-raw-event-key".to_string(),
@@ -245,7 +238,6 @@ fn resolve_event_ref_malformed_key_is_total_no_panic() {
 fn release_event_ref_malformed_key_is_total_no_panic() {
     // D6 symmetry: release with a garbage key must not panic.
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     let out = r.release_ref(
         RefNamespace::Event,
         "not-a-raw-event-key",

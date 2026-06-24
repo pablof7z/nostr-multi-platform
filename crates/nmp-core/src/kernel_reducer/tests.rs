@@ -23,11 +23,14 @@ fn reduce_open_uri_npub_routes_to_profile_view() {
 }
 
 #[test]
-fn reduce_start_echoes_started() {
+fn reduce_start_rejects_runtime_lifecycle_placeholder() {
     let mut r = KernelReducer::new();
     assert_eq!(
         r.reduce(KernelAction::Start),
-        KernelUpdate::Started { rev: 0 }
+        KernelUpdate::ActionRejected {
+            action: "start".into(),
+            reason: "runtime lifecycle is not a kernel action".into(),
+        }
     );
 }
 
@@ -107,7 +110,6 @@ fn handle_relay_connected_first_dial_emits_startup_or_empty() {
     // The important contract: no panic and AUTH partition does not strip
     // legitimate frames.
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     let out = r.handle_relay_connected(RelayRole::Content, RELAY, false);
     // Empty is the correct answer for a kernel with no view-spec interests.
     assert!(out.is_empty(), "fresh kernel has no startup REQs");
@@ -116,7 +118,6 @@ fn handle_relay_connected_first_dial_emits_startup_or_empty() {
 #[test]
 fn handle_relay_connected_is_reconnect_does_not_panic() {
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     // First mark the relay closed so we have a valid "reconnect" state.
     r.handle_relay_closed(RelayRole::Content, RELAY);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, true);
@@ -126,7 +127,6 @@ fn handle_relay_connected_is_reconnect_does_not_panic() {
 #[test]
 fn handle_relay_failed_and_closed_are_total() {
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     r.handle_relay_failed(
         RelayRole::Content,
         RELAY,
@@ -141,7 +141,6 @@ fn tick_on_fresh_reducer_is_empty() {
     // With no in-flight publishes, `tick_publish_engine_for_now` has
     // nothing to retry. AUTH partition over an empty vec is also empty.
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     assert!(r.tick().is_empty());
 }
 
@@ -165,7 +164,6 @@ fn tick_drains_pending_view_requests_on_idle() {
     // receives AUTH-gate-deferred messages. On a quiet socket (no inbound
     // traffic) the pre-fix tick() left this buffer untouched indefinitely.
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
 
     // Push directly into the kernel's deferred_outbound ring (pub(crate) field,
     // reachable from this child module). relay_auth_paused(Content) is false on a
@@ -213,7 +211,6 @@ fn tick_drains_lifecycle_outbound_after_event_ref_resolve() {
     //   4. Assert `tick()` returns a non-empty outbound containing a REQ.
     let mut r = KernelReducer::new();
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
-    let _ = r.reduce(KernelAction::Start);
     // Step 2: connect — drains any startup lifecycle triggers.
     let startup = r.handle_relay_connected(RelayRole::Content, RELAY, false);
     let _ = startup; // may be empty or carry startup REQs; we don't assert here
@@ -254,7 +251,6 @@ fn idle_tick_does_not_set_dirty_flag() {
     //   2. Execute an idle tick (nothing pending).
     //   3. Assert `changed_since_emit()` is still false.
     let mut r = KernelReducer::new();
-    let _ = r.reduce(KernelAction::Start);
     // Clear the dirty flag by taking a snapshot.
     let _ = r.make_update_frame(true);
     assert!(
@@ -294,7 +290,6 @@ fn open_interest_with_connected_relay_emits_req_inline() {
     // wired immediately (inline drain), not deferred to the next tick.
     let mut r = KernelReducer::new();
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
-    let _ = r.reduce(KernelAction::Start);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
 
     let out = r.open_interest(FILTER_KINDS_1, CONSUMER, 0);
@@ -316,7 +311,6 @@ fn close_interest_after_open_emits_close_inline() {
     // does not need to call tick() to get the relay-side unsubscribe.
     let mut r = KernelReducer::new();
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
-    let _ = r.reduce(KernelAction::Start);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
     // Open first so there is an active owner to remove.
     let _ = r.open_interest(FILTER_KINDS_1, CONSUMER, 0);
@@ -339,7 +333,6 @@ fn open_interest_malformed_filter_is_silent_no_panic() {
     // D6 — malformed filter_json must be silently dropped, not a panic.
     let mut r = KernelReducer::new();
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
-    let _ = r.reduce(KernelAction::Start);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
     // Garbage JSON must not panic.
     let out = r.open_interest("not valid json {{{", CONSUMER, 0);
@@ -361,7 +354,6 @@ fn declare_active_follows_feed_is_total() {
 
     // After start + relay connected — must not panic.
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
-    let _ = r.reduce(KernelAction::Start);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
     let _ = r.declare_active_follows_feed([1u32, 6u32].into_iter().collect());
     let _ = r.declare_active_follows_feed(BTreeSet::new());
@@ -391,7 +383,6 @@ fn set_active_account_with_relay_does_not_panic() {
     // to fan-out) but the method must be callable at any point.
     let mut r = KernelReducer::new();
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
-    let _ = r.reduce(KernelAction::Start);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
     let _ = r.set_active_account(PK.to_string());
     // Pass: no panic.
@@ -413,7 +404,6 @@ fn tick_with_no_claims_is_noop_and_does_not_panic() {
     // on wasm32 and to `std::time::Instant` on native — neither panics.
     let mut r = KernelReducer::new();
     r.set_configured_relays(vec![(RELAY.to_string(), "content".to_string())]);
-    let _ = r.reduce(KernelAction::Start);
     // tick() with no relay connected yet and no claims registered.
     let out = r.tick();
     assert!(
@@ -430,7 +420,6 @@ fn tick_invokes_claim_expansion_drain_without_panicking_with_relay() {
     // `performance.now()` in a JS Worker and never panics.
     let mut r = KernelReducer::new();
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
-    let _ = r.reduce(KernelAction::Start);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
     // Tick after relay connect — poll_claim_expansion must run without panic.
     let _out = r.tick();

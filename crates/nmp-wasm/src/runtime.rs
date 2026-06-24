@@ -3,8 +3,8 @@
 //!
 //! # Current capabilities
 //!
-//! - `Start` / `Stop` dispatch through `KernelReducer::reduce` and produce
-//!   real `KernelUpdate` values.
+//! - `Start` / `Stop` are runtime lifecycle requests and produce
+//!   runtime-status replies.
 //! - `DispatchBytes` routes typed app writes through `DispatchEnvelope` bytes.
 //! - `ResolveRef` / `ReleaseRef` route structured reference controls without
 //!   reopening the retired JSON action-dispatch surface.
@@ -22,7 +22,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use nmp_core::substrate::ActionModule;
-use nmp_core::{ActionRegistry, KernelAction, KernelReducer, KernelUpdate, OutboundMessage};
+use nmp_core::{ActionRegistry, KernelReducer, OutboundMessage};
 
 #[cfg(target_arch = "wasm32")]
 use crate::relay_pool;
@@ -278,19 +278,6 @@ impl WasmRuntime {
             ));
         }
 
-        // Drive the pure kernel through its `Start` action — same reducer
-        // entry point `dispatch_kernel_action` calls on the native actor
-        // thread, byte-for-byte.
-        let started = self.reducer.borrow_mut().reduce(KernelAction::Start);
-        match started {
-            KernelUpdate::Started { .. } => {}
-            other => {
-                return Err(WasmRuntimeError::KernelContract(format!(
-                    "expected Started after KernelAction::Start, got {other:?}"
-                )));
-            }
-        };
-
         let relay_bootstrap =
             crate::protocol::relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
 
@@ -347,9 +334,8 @@ impl WasmRuntime {
         crate::tick::cancel_deadline(&self.maintenance_deadline);
         // Tear down every live relay driver — closing the JS sockets and
         // dropping the parked closures so the user-agent reclaims them.
-        // Order matters: close sockets BEFORE driving the kernel `Stop`,
-        // because the kernel's `Stop` arm resets the per-relay state we
-        // want to settle observers on.
+        // Order matters: close sockets before clearing runtime metadata, so
+        // callbacks settle against the state they were started from.
         #[cfg(target_arch = "wasm32")]
         relay_pool::close_drivers(&self.relays);
         // Drop the handler bag so any late callback cannot spawn a driver into
@@ -359,15 +345,6 @@ impl WasmRuntime {
             *self.handlers_slot.borrow_mut() = None;
         }
 
-        let stopped = self.reducer.borrow_mut().reduce(KernelAction::Stop);
-        match stopped {
-            KernelUpdate::Stopped { .. } => {}
-            other => {
-                return Err(WasmRuntimeError::KernelContract(format!(
-                    "expected Stopped after KernelAction::Stop, got {other:?}"
-                )));
-            }
-        };
         {
             let mut meta = self.meta.borrow_mut();
             meta.started = false;
