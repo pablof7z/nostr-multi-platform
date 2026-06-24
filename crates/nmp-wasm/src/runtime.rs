@@ -347,7 +347,7 @@ impl WasmRuntime {
         {
             self.spawn_relay_drivers()?;
         }
-        self.request_maintenance_deadline(crate::tick::WakePolicy::Event);
+        self.request_event_drain();
 
         Ok(vec![
             WorkerEvent::RuntimeStatus {
@@ -441,6 +441,10 @@ impl WasmRuntime {
         crate::tick::request_deadline_for_test(&self.maintenance_deadline, policy);
     }
 
+    fn request_event_drain(&self) {
+        self.request_maintenance_deadline(crate::tick::WakePolicy::Event);
+    }
+
     fn request_event_or_kernel_deadline(&self) {
         self.request_maintenance_deadline(crate::tick::event_or_kernel_policy(&self.reducer));
     }
@@ -457,11 +461,6 @@ impl WasmRuntime {
             self.request_event_or_kernel_deadline();
         }
     }
-
-    // `accepted_with_snapshot`, `dispatch_bytes`, and `dispatch` — the
-    // action-namespace routing arm of `handle` — live in the sibling
-    // `runtime/dispatch.rs` module (LOC ceiling). They are still private
-    // methods of `WasmRuntime` (`impl WasmRuntime` in that file).
 
     /// Build a binary `WorkerEvent::UpdateBytes` from the current kernel +
     /// meta state. Delegates to `build_snapshot_bytes` which calls

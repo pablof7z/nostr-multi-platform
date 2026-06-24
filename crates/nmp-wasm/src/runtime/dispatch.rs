@@ -12,7 +12,7 @@
 //! seam, not an API boundary.
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{PublishCommand};
+use nmp_core::actor::PublishCommand;
 
 use crate::dispatch_routing::{
     execute_ref_dispatch, kernel_action_from_dispatch, ref_dispatch_from_action,
@@ -153,9 +153,8 @@ impl WasmRuntime {
             Ok(_action_id) => {
                 // Typed payload validated. Now execute: collect ActorCommands
                 // and route each through the wasm-aware handler.
-                let commands = std::rc::Rc::new(std::cell::RefCell::new(
-                    Vec::<ActorCommand>::new(),
-                ));
+                let commands =
+                    std::rc::Rc::new(std::cell::RefCell::new(Vec::<ActorCommand>::new()));
                 let commands_clone = std::rc::Rc::clone(&commands);
                 let exec_result = self.action_registry.execute_bytes(
                     &action_namespace,
@@ -195,12 +194,17 @@ impl WasmRuntime {
             match cmd {
                 // Pre-signed event: route through the kernel publish engine.
                 // The `WasmOutboxResolver` (#1008) provides the write relay set.
-                ActorCommand::Publish(PublishCommand::SignedEvent { raw, target, correlation_id: cid }) => {
+                ActorCommand::Publish(PublishCommand::SignedEvent {
+                    raw,
+                    target,
+                    correlation_id: cid,
+                }) => {
                     let outbound = self
                         .reducer
                         .borrow_mut()
                         .publish_pre_signed(raw, target, cid);
                     self.fan_outbound(outbound);
+                    self.request_event_drain();
                     events.push(WorkerEvent::ActionAccepted {
                         action_type: action_namespace.to_string(),
                         correlation_id: correlation_id.clone(),
@@ -247,6 +251,7 @@ impl WasmRuntime {
                         .begin_sign_roundtrip(account_pubkey, &unsigned_json)
                     {
                         Ok(req) => {
+                            self.request_event_drain();
                             events.push(WorkerEvent::SignRequest {
                                 correlation_id: req.correlation_id,
                                 account_pubkey: req.account_pubkey,
@@ -264,7 +269,10 @@ impl WasmRuntime {
                 }
                 // Profile (kind:0): build the kind:0 content JSON and start the
                 // BeginSign round-trip, same as PublishRawEvent above.
-                ActorCommand::Publish(PublishCommand::Profile { fields, correlation_id: cid }) => {
+                ActorCommand::Publish(PublishCommand::Profile {
+                    fields,
+                    correlation_id: cid,
+                }) => {
                     let account_pubkey = match self.reducer.borrow().active_account_pubkey() {
                         Some(pk) => pk,
                         None => {
@@ -293,6 +301,7 @@ impl WasmRuntime {
                         .begin_sign_roundtrip(account_pubkey, &unsigned_json)
                     {
                         Ok(req) => {
+                            self.request_event_drain();
                             events.push(WorkerEvent::SignRequest {
                                 correlation_id: req.correlation_id,
                                 account_pubkey: req.account_pubkey,
@@ -328,10 +337,7 @@ impl WasmRuntime {
         // If no commands were emitted (a module with side-effects only),
         // return a plain ActionAccepted + snapshot.
         if events.is_empty() {
-            return self.accepted_with_snapshot(
-                action_namespace.to_string(),
-                correlation_id,
-            );
+            return self.accepted_with_snapshot(action_namespace.to_string(), correlation_id);
         }
         events
     }
@@ -352,8 +358,12 @@ impl WasmRuntime {
         action_type: String,
         correlation_id: String,
     ) -> Vec<WorkerEvent> {
+        self.request_event_drain();
         vec![
-            WorkerEvent::ActionAccepted { action_type, correlation_id },
+            WorkerEvent::ActionAccepted {
+                action_type,
+                correlation_id,
+            },
             self.snapshot_event(),
         ]
     }
@@ -370,6 +380,7 @@ impl WasmRuntime {
             let outbound =
                 execute_ref_dispatch(&mut self.reducer.borrow_mut(), ref_dispatch, can_send);
             self.fan_outbound(outbound);
+            self.request_event_drain();
             // Resolve/release are refcount bookkeeping — they carry no new
             // user-visible data of their own (the resolved kind:0 arrives later
             // via the relay-pool ingest sink, which pushes its OWN snapshot).
@@ -394,8 +405,12 @@ impl WasmRuntime {
         if let Some(kernel_action) = kernel_action_from_dispatch(&action) {
             let update = self.reducer.borrow_mut().reduce(kernel_action);
             match update {
-                KernelUpdate::Started { .. } => { self.meta.borrow_mut().started = true; }
-                KernelUpdate::Stopped { .. } => { self.meta.borrow_mut().started = false; }
+                KernelUpdate::Started { .. } => {
+                    self.meta.borrow_mut().started = true;
+                }
+                KernelUpdate::Stopped { .. } => {
+                    self.meta.borrow_mut().started = false;
+                }
                 _ => {}
             }
             return Ok(self.accepted_with_snapshot(action.action_type, action.correlation_id));

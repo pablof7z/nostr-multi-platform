@@ -6,13 +6,14 @@ use std::fs;
 use std::path::PathBuf;
 
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::nip19::{encode_nevent, encode_npub, NeventData};
 use nmp_core::publish::{PublishAction, PublishTarget};
 use nmp_core::substrate::ActionPayload;
 use nmp_core::RelayRole;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_wasm::{
-    DispatchBytes, RelayBootstrapEntry, SetIdentity, StartConfig, WasmRuntime, WorkerEvent,
-    WorkerRequest,
+    ActionDispatch, DispatchBytes, RelayBootstrapEntry, SetIdentity, StartConfig, WasmRuntime,
+    WorkerEvent, WorkerRequest,
 };
 
 const RELAY_URL: &str = "wss://relay.example";
@@ -82,6 +83,98 @@ fn publish_request(correlation_id: &str, event_id: &str) -> WorkerRequest {
     })
 }
 
+fn resolve_profile_request(consumer_id: &str) -> WorkerRequest {
+    WorkerRequest::Dispatch(ActionDispatch {
+        action_type: "nmp.kernel.resolve_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 0,
+            "key": ACCOUNT,
+            "consumer_id": consumer_id,
+            "shape": 0,
+            "liveness": 0,
+        }),
+        correlation_id: format!("resolve-{consumer_id}"),
+    })
+}
+
+fn release_profile_request(consumer_id: &str) -> WorkerRequest {
+    WorkerRequest::Dispatch(ActionDispatch {
+        action_type: "nmp.kernel.release_ref".to_string(),
+        payload: serde_json::json!({
+            "namespace": 0,
+            "key": ACCOUNT,
+            "consumer_id": consumer_id,
+        }),
+        correlation_id: format!("release-{consumer_id}"),
+    })
+}
+
+fn claim_event_request(consumer_id: &str, event_id: &str) -> WorkerRequest {
+    let uri = format!(
+        "nostr:{}",
+        encode_nevent(&NeventData {
+            event_id: event_id.to_string(),
+            relays: Vec::new(),
+            author: Some(ACCOUNT.to_string()),
+            kind: Some(1),
+        })
+        .expect("event id must encode as nevent")
+    );
+    WorkerRequest::Dispatch(ActionDispatch {
+        action_type: "nmp.kernel.claim_event".to_string(),
+        payload: serde_json::json!({
+            "uri": uri,
+            "consumer_id": consumer_id,
+        }),
+        correlation_id: format!("claim-{consumer_id}"),
+    })
+}
+
+fn open_uri_request() -> WorkerRequest {
+    WorkerRequest::Dispatch(ActionDispatch {
+        action_type: "nmp.kernel.open_uri".to_string(),
+        payload: serde_json::json!({
+            "uri": encode_npub(ACCOUNT).expect("account pubkey must encode as npub"),
+        }),
+        correlation_id: "open-uri-profile".to_string(),
+    })
+}
+
+fn settle_connected_runtime(rt: &mut WasmRuntime) {
+    let _ = rt.snapshot_bytes_for_test();
+    rt.inject_relay_connected_for_test(RelayRole::Content, RELAY_URL);
+    let _ = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("post-start/relay-connected event drain must be armed");
+    let _ = rt.snapshot_bytes_for_test();
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "connected runtime fixture must start from an unarmed scheduler"
+    );
+}
+
+fn assert_action_accepted(events: &[WorkerEvent], expected_action_type: &str) {
+    assert!(
+        events.iter().any(|event| {
+            matches!(
+                event,
+                WorkerEvent::ActionAccepted { action_type, .. }
+                    if action_type == expected_action_type
+            )
+        }),
+        "expected ActionAccepted for {expected_action_type}; got {events:?}"
+    );
+}
+
+fn assert_no_update_bytes(events: &[WorkerEvent]) {
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::UpdateBytes { .. })),
+        "ref dispatch bookkeeping must not emit a snapshot; got {events:?}"
+    );
+}
+
 #[test]
 fn idle_runtime_deadline_fires_once_and_does_not_rearm() {
     let mut rt = started_runtime();
@@ -108,6 +201,142 @@ fn idle_runtime_deadline_fires_once_and_does_not_rearm() {
     assert!(
         rt.fire_maintenance_deadline_for_test().is_none(),
         "no second wake exists without a new event or kernel deadline"
+    );
+}
+
+#[test]
+fn resolve_ref_empty_outbound_arms_event_drain_and_drains_lifecycle() {
+    let mut rt = started_runtime();
+    settle_connected_runtime(&mut rt);
+
+    let events = rt
+        .handle(resolve_profile_request("profile-card"))
+        .expect("resolve_ref dispatch must succeed");
+    assert_action_accepted(&events, "nmp.kernel.resolve_ref");
+    assert_no_update_bytes(&events);
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "resolve_ref returns no outbound directly but must arm one event drain"
+    );
+
+    let (outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("resolve_ref event drain must be armed");
+    assert!(
+        !outbound.is_empty(),
+        "event drain must compile the queued profile interest into outbound"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "resolve_ref drain must not leave a fixed cadence behind"
+    );
+}
+
+#[test]
+fn release_ref_empty_outbound_arms_event_drain_and_drains_lifecycle_close() {
+    let mut rt = started_runtime();
+    settle_connected_runtime(&mut rt);
+
+    let _ = rt
+        .handle(resolve_profile_request("profile-card-release"))
+        .expect("resolve_ref dispatch must succeed");
+    let (open_outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("resolve_ref event drain must be armed");
+    assert!(
+        !open_outbound.is_empty(),
+        "resolve_ref setup must open a lifecycle subscription"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "resolve_ref setup must settle before release"
+    );
+
+    let events = rt
+        .handle(release_profile_request("profile-card-release"))
+        .expect("release_ref dispatch must succeed");
+    assert_action_accepted(&events, "nmp.kernel.release_ref");
+    assert_no_update_bytes(&events);
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "release_ref returns no outbound directly but must arm one event drain"
+    );
+
+    let (close_outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("release_ref event drain must be armed");
+    assert!(
+        !close_outbound.is_empty(),
+        "release event drain must compile the queued teardown into outbound"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "release_ref drain must not leave a fixed cadence behind"
+    );
+}
+
+#[test]
+fn legacy_claim_event_empty_outbound_arms_event_drain_and_drains_lifecycle() {
+    let mut rt = started_runtime();
+    settle_connected_runtime(&mut rt);
+
+    let events = rt
+        .handle(claim_event_request("legacy-claim", &"33".repeat(32)))
+        .expect("claim_event dispatch must succeed");
+    assert_action_accepted(&events, "nmp.kernel.claim_event");
+    assert_no_update_bytes(&events);
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "legacy claim_event returns no outbound directly but must arm one event drain"
+    );
+
+    let (outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("claim_event drain must be armed");
+    assert!(
+        !outbound.is_empty(),
+        "event drain must compile the queued event claim into outbound"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "claim_event drain must not leave a fixed cadence behind"
+    );
+}
+
+#[test]
+fn kernel_open_uri_snapshot_path_arms_event_drain_for_lifecycle_work() {
+    let mut rt = started_runtime();
+    settle_connected_runtime(&mut rt);
+
+    let events = rt
+        .handle(open_uri_request())
+        .expect("open_uri dispatch must succeed");
+    assert_action_accepted(&events, "nmp.kernel.open_uri");
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::UpdateBytes { .. })),
+        "kernel open_uri still returns its accepted snapshot"
+    );
+    assert_eq!(
+        rt.maintenance_deadline_delay_for_test(),
+        Some(1_000),
+        "accepted_with_snapshot must arm a one-shot event drain"
+    );
+
+    let (outbound, _) = rt
+        .fire_maintenance_deadline_for_test()
+        .expect("open_uri event drain must be armed");
+    assert!(
+        !outbound.is_empty(),
+        "event drain must compile the queued open_uri interest into outbound"
+    );
+    assert!(
+        !rt.maintenance_deadline_armed_for_test(),
+        "open_uri drain must not leave a fixed cadence behind"
     );
 }
 

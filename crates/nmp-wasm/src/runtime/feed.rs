@@ -93,6 +93,7 @@ impl WasmRuntime {
             .borrow_mut()
             .declare_active_follows_feed(acquisition_kinds);
         self.fan_outbound(outbound);
+        self.request_event_drain();
         true
     }
 
@@ -100,6 +101,7 @@ impl WasmRuntime {
     pub fn clear_active_follows_feed(&self) {
         let outbound = self.reducer.borrow_mut().clear_active_follows_feed();
         self.fan_outbound(outbound);
+        self.request_event_drain();
     }
 }
 

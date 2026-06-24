@@ -26,7 +26,7 @@ impl super::WasmRuntime {
         let had_outbound = !outbound.is_empty();
         self.fan_outbound(outbound);
         if !had_outbound {
-            self.request_maintenance_deadline(crate::tick::WakePolicy::Event);
+            self.request_event_drain();
         }
         had_outbound
     }
@@ -46,7 +46,7 @@ impl super::WasmRuntime {
         let had_outbound = !outbound.is_empty();
         self.fan_outbound(outbound);
         if !had_outbound {
-            self.request_maintenance_deadline(crate::tick::WakePolicy::Event);
+            self.request_event_drain();
         }
         had_outbound
     }
