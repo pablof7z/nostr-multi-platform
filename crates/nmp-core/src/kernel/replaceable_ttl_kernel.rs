@@ -18,9 +18,9 @@ impl Kernel {
         d_tag: Option<String>,
         force: bool,
     ) {
-        // `is_parameterized_replaceable` is the NIP-01 addressable predicate
+        // `is_addressable` is the NIP-01 addressable predicate
         // (30000..=39999) — only those identities carry a `d`-tag.
-        let key = if crate::store::is_parameterized_replaceable(kind) {
+        let key = if crate::store::is_addressable(kind) {
             crate::store::ReplaceableKey::Parameterized {
                 kind,
                 pubkey,

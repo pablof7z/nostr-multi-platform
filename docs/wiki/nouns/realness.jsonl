@@ -63,7 +63,6 @@
 {"canonical":"infra uptime 2224 1 sec channel","name":"InfraUptime:2224.1secs Channel","signed":0,"status":"provisional"}
 {"canonical":"is addressable","name":"is_addressable","signed":1,"status":"provisional"}
 {"canonical":"is connected","name":"is_connected","signed":1,"status":"provisional"}
-{"canonical":"is parameterized replaceable","name":"is_parameterized_replaceable","signed":1,"status":"provisional"}
 {"canonical":"is replaceable","name":"is_replaceable","signed":1,"status":"provisional"}
 {"canonical":"kind 0","name":"kind:0","signed":9,"status":"real"}
 {"canonical":"kind 1","name":"kind:1","signed":3,"status":"real"}

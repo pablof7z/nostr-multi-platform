@@ -221,7 +221,7 @@ and unifying the source paths cannot land separately without a broken intermedia
 - [ ] Move kind:3 parsing to the registered parser; delete the kernel arm. **Ingest path now has ZERO kind literals.**
 
 ## 6. Doctrine constraints
-- **D0** — no NIP kind literals in kernel dispatch; gate by predicates (`is_replaceable`, `is_parameterized_replaceable`,
+- **D0** — no NIP kind literals in kernel dispatch; gate by predicates (`is_replaceable`, `is_addressable`,
   `follow_feed_kinds.contains`, parser `is_interested`). kind:1059 gift-wrap stays excluded via parser registry, not a literal.
   (Full D0 purity — zero kind literals — is reached at end of PR 3.)
 - **D4** — `store.insert` stays single writer; observers/parsers fire once, on outcome gate.

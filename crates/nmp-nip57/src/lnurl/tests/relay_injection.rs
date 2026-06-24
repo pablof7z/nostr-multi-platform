@@ -6,7 +6,7 @@ use super::*;
 fn inject_recipient_relays_preserves_existing_relays_tag() {
     let send = |_: ActorCommand| {};
     let clock = FixedClock(1_700_000_000);
-    let signers = LocalSigner::none();
+    let signers = LocalSigner;
     let stages = RecordingStages(std::sync::Mutex::new(Vec::new()));
     let recipients =
         FixedRecipientLookup::with_urls(vec!["wss://from-router.example"]);
@@ -44,7 +44,7 @@ fn inject_recipient_relays_preserves_existing_relays_tag() {
 fn inject_recipient_relays_injects_when_tag_absent() {
     let send = |_: ActorCommand| {};
     let clock = FixedClock(1_700_000_000);
-    let signers = LocalSigner::none();
+    let signers = LocalSigner;
     let stages = RecordingStages(std::sync::Mutex::new(Vec::new()));
     let recipients = FixedRecipientLookup::with_urls(vec![
         "wss://write-a.example",
@@ -85,7 +85,7 @@ fn inject_recipient_relays_treats_bare_relays_key_as_absent() {
     // the injection still fires, AND the malformed row must be discarded.
     let send = |_: ActorCommand| {};
     let clock = FixedClock(1_700_000_000);
-    let signers = LocalSigner::none();
+    let signers = LocalSigner;
     let stages = RecordingStages(std::sync::Mutex::new(Vec::new()));
     let recipients =
         FixedRecipientLookup::with_urls(vec!["wss://write.example"]);
@@ -122,7 +122,7 @@ fn inject_recipient_relays_falls_back_to_bootstrap_when_p_tag_missing() {
     // (which models the router's lane-7 fallback).
     let send = |_: ActorCommand| {};
     let clock = FixedClock(1_700_000_000);
-    let signers = LocalSigner::none();
+    let signers = LocalSigner;
     let stages = RecordingStages(std::sync::Mutex::new(Vec::new()));
     let recipients = FixedRecipientLookup::with_urls(vec![
         "wss://bootstrap.example",
@@ -163,7 +163,7 @@ fn inject_recipient_relays_emits_empty_tag_when_router_returns_no_urls() {
     // contract NIP-57 § "Appendix A" wants the tag PRESENT.
     let send = |_: ActorCommand| {};
     let clock = FixedClock(1_700_000_000);
-    let signers = LocalSigner::none();
+    let signers = LocalSigner;
     let stages = RecordingStages(std::sync::Mutex::new(Vec::new()));
     let recipients = NoopRecipientRelayLookup;
     let ctx = ctx_with(&send, &clock, &signers, &stages, &recipients);

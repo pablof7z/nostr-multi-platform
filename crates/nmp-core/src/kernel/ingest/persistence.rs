@@ -97,7 +97,7 @@ impl Kernel {
 
                 // F-TTL — replaceable/addressable event freshness hook.
                 let is_regular = crate::store::is_replaceable(event.kind);
-                let is_addressable = crate::store::is_parameterized_replaceable(event.kind);
+                let is_addressable = crate::store::is_addressable(event.kind);
                 if is_regular || is_addressable {
                     if let Some(pubkey_bytes) = crate::kernel::hex_to_pubkey_bytes(&event.pubkey) {
                         let key = if is_addressable {

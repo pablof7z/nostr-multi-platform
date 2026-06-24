@@ -42,7 +42,7 @@ fn run_and_capture_port(correlation_id: Option<String>) -> PortCapture {
     let stages = RecordingStages(Mutex::new(Vec::new()));
     let recipients = NoopRecipientRelayLookup;
     let (worker_tx, worker_rx) = std::sync::mpsc::channel::<nmp_core::ActorMail>();
-    let signers = LocalSigner::none();
+    let signers = LocalSigner;
     {
         let mut ctx = ctx_with_sender(&send, nmp_core::CommandSender::new(worker_tx), &clock, &signers, &stages, &recipients);
         let cmd = Box::new(FetchLnurlInvoiceCommand {
@@ -203,7 +203,7 @@ fn run_restamps_created_at_from_context_clock() {
     let sink = Sink::new();
     let send = |c: ActorCommand| sink.sends.lock().unwrap().push(c);
     let clock = CountingClock(AtomicU64::new(0));
-    let signers = LocalSigner::none();
+    let signers = LocalSigner;
     let stages = RecordingStages(Mutex::new(Vec::new()));
     let recipients = NoopRecipientRelayLookup;
     let mut ctx = ctx_with(&send, &clock, &signers, &stages, &recipients);
