@@ -287,7 +287,9 @@ fn d9_positive_fixture_fires() {
         "d9 positive must emit ≥1 D9 finding; stdout:\n{}",
         stdout
     );
-    // Every raw-time shape in the fixture must surface.
+    // Every raw-time shape in the fixture must surface, including bare
+    // multiline arguments and local variables whose names carry no policy
+    // marker.
     for token in ["SystemTime::now", "Instant::now", "now_epoch_ms"] {
         assert!(
             stdout.contains(token),

@@ -9,8 +9,8 @@
 //! ## What this catches
 //!
 //! - `SystemTime::now()` in D9-scoped paths.
-//! - Policy-relevant `Instant::now()` calls: deadlines, retry/expiry gates,
-//!   claim expansion, and lifecycle timestamps.
+//! - `Instant::now()` in D9-scoped paths. Diagnostic/perf timing needs an
+//!   exact-line reasoned allow, not a heuristic bypass.
 //! - `now_epoch_ms()` helper use in those same paths.
 //!
 //! ## Scope
@@ -40,29 +40,6 @@ const INSTANT_TOKENS: &[&str] = &[
     "Instant::now",
 ];
 
-const POLICY_INSTANT_MARKERS: &[&str] = &[
-    "deadline",
-    "expiration",
-    "expires",
-    "timeout",
-    "timed_out",
-    "ttl",
-    "poll_claim",
-    "claim_expansion",
-    "started_at",
-    "opened_at",
-    "eose_at",
-    "check_again",
-    "last_event_at",
-    "first_event_at",
-    "connected_at",
-    "retry",
-    "resume",
-    "unavailable",
-    "available",
-    "timing.",
-];
-
 pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     if s.contains("/bin/doctrine-lint/") {
@@ -86,9 +63,7 @@ pub fn check(line: &str, is_comment: bool, in_test_cfg: bool) -> Vec<(usize, Str
 
     let mut hits = Vec::new();
     push_system_time_hits(line, &mut hits);
-    if policy_instant_line(line) {
-        push_instant_hits(line, &mut hits);
-    }
+    push_instant_hits(line, &mut hits);
     push_helper_hits(line, &mut hits);
     hits.sort_by_key(|hit| hit.0);
     hits.dedup_by_key(|hit| hit.0);
@@ -115,8 +90,8 @@ fn push_instant_hits(line: &str, hits: &mut Vec<(usize, String, String)>) {
     push_tokens(line, INSTANT_TOKENS, hits, |token| {
         (
             format!(
-                "`{}` in a policy/deadline line violates D9: kernel time must \
-                 be injected for replayable decisions",
+                "`{}` violates D9 in reducer/replay/kernel policy paths: \
+                 kernel time must be injected for replayable decisions",
                 token
             ),
             "pass the relevant instant/timestamp in from the actor/kernel clock \
@@ -170,13 +145,6 @@ where
     }
 }
 
-fn policy_instant_line(line: &str) -> bool {
-    let lower = line.to_ascii_lowercase();
-    POLICY_INSTANT_MARKERS
-        .iter()
-        .any(|marker| lower.contains(marker))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -190,20 +158,26 @@ mod tests {
     }
 
     #[test]
-    fn flags_policy_instant_now() {
+    fn flags_deadline_instant_now() {
         let hits = check(
             "self.contacts_deadline = Some(Instant::now() + ttl);",
             false,
             false,
         );
         assert_eq!(hits.len(), 1);
-        assert!(hits[0].1.contains("policy/deadline"));
+        assert!(hits[0].1.contains("Instant::now"));
     }
 
     #[test]
-    fn ignores_measurement_instant_without_policy_marker() {
+    fn flags_bare_local_instant_now() {
         let hits = check("let started = Instant::now();", false, false);
-        assert!(hits.is_empty());
+        assert_eq!(hits.len(), 1);
+    }
+
+    #[test]
+    fn flags_multiline_argument_instant_now() {
+        let hits = check("            Instant::now(),", false, false);
+        assert_eq!(hits.len(), 1);
     }
 
     #[test]

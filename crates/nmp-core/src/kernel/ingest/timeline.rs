@@ -169,7 +169,7 @@ impl Kernel {
             self.insert_timeline_id_sorted(event.id.clone());
             self.timing
                 .timeline_first_item_at
-                .get_or_insert_with(Instant::now);
+                .get_or_insert_with(Instant::now); // doctrine-allow: D9 — timeline diagnostic elapsed-time marker; not replay policy
         }
         self.changed_since_emit = true;
     }

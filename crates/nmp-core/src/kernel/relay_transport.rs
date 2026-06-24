@@ -222,7 +222,7 @@ impl Kernel {
     /// actor's [`crate::ActorCommand::SetRelayInfo`] dispatch arm.
     pub(crate) fn set_relay_info(&mut self, relay_url: &str, doc: RelayInfoDoc) {
         self.transport_relays
-            .set_info(relay_url, doc, Instant::now());
+            .set_info(relay_url, doc, Instant::now()); // doctrine-allow: D9 — residual relay-info freshness anchor tracked in #1952
         self.changed_since_emit = true;
     }
 
