@@ -1,5 +1,5 @@
 use super::*;
-use crate::projection::action::{MARMOT_ACTION_NAMESPACE, MarmotActionModule};
+use crate::projection::action::{MarmotActionModule, MARMOT_ACTION_NAMESPACE};
 
 // ── ADR-0025 retirement / dispatch_action → MarmotProtocolCommand ───────
 //
@@ -88,6 +88,42 @@ fn wait_for_failed_action_stage(
             return row;
         }
     }
+}
+
+#[test]
+fn re_registering_marmot_action_module_dispatches_to_new_projection() {
+    let _capture_guard = ACTION_FRAME_CAPTURE_LOCK
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let rx = install_action_frame_capture();
+    let first = Arc::new(MarmotProjection::new(in_memory(Keys::generate()), None));
+    let second = Arc::new(MarmotProjection::new(in_memory(Keys::generate()), None));
+
+    let app = nmp_ffi::nmp_app_new();
+    // SAFETY: nmp_app_new never returns null.
+    let app_mut = unsafe { &mut *app };
+    first.set_actor_sender(app_mut.actor_sender());
+    second.set_actor_sender(app_mut.actor_sender());
+    register_marmot_action_module(app_mut, Arc::clone(&first));
+    register_marmot_action_module(app_mut, Arc::clone(&second));
+    nmp_ffi::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(capture_action_frame));
+    nmp_ffi::nmp_app_start(app, 256, 4);
+
+    let envelope_json = r#"{"op":"publish_key_package","relays":["wss://t.relay"]}"#;
+    let _id = dispatch_marmot_action(app, envelope_json);
+    wait_for_projection_state(&rx, &second, |snap| {
+        snap.key_package.published.then_some(())
+    });
+
+    assert!(
+        !first.snapshot(1_000).key_package.published,
+        "same-app Marmot re-registration must replace the action module; \
+         dispatch_action(nmp.marmot, ...) must not keep mutating the old account"
+    );
+    assert!(second.snapshot(1_000).key_package.published);
+
+    uninstall_action_frame_capture();
+    nmp_ffi::nmp_app_free(app);
 }
 
 /// End-to-end proof of the dispatch_action → MarmotProtocolCommand path.

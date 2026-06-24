@@ -69,19 +69,19 @@
 //! `KernelEvent` metadata observer AND all per-kind `IngestParser` slots via
 //! `unregister_ingest_parser`). This was the last open seam (raw-tap PR-2).
 
-use std::ffi::{CStr, c_char};
+use std::ffi::{c_char, CStr};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::{KernelEventObserverId, actor::ActorCommand};
+use nmp_core::{actor::ActorCommand, KernelEventObserverId};
 use nmp_ffi::NmpApp;
 use nostr::Keys;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 use crate::service::MarmotService;
 
-use crate::projection::action::{MarmotAction, MarmotActionModule, MarmotProtocolCommand};
+use crate::projection::action::{MarmotAction, MarmotProtocolCommand};
 use crate::projection::state::MarmotProjection;
-use crate::projection::tap::{MARMOT_INGEST_SLOT, MarmotIngestParser, TAP_KINDS};
+use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT, TAP_KINDS};
 
 /// Page size used by the `nmp.marmot.messages` push projection and
 /// [`MarmotHandle::messages_rust`].
@@ -91,7 +91,9 @@ const DEFAULT_MESSAGE_PAGE: usize = 200;
 pub(crate) const KEYRING_DB_KEY_ID: &str = "marmot-mls-db-key";
 const MARMOT_EXPIRY_TICK_OBSERVER_SLOT: &str = "nmp.marmot.pending_expiry";
 
+mod action_registration;
 mod slot;
+use action_registration::register_marmot_action_module;
 use slot::register_marmot_snapshot_projections;
 pub use slot::{MarmotProjectionSlot, MarmotSlotState};
 
@@ -298,7 +300,7 @@ pub(crate) fn register_with_keys(
 ) -> *mut MarmotHandle {
     // Capability slot for the probe (rationale in `credential_store::initialize`).
     // SAFETY: both callers null-check `app` before delegating here.
-    let app_ref = unsafe { &*app };
+    let app_ref = unsafe { &mut *app };
     app_ref.remove_snapshot_tick_observer(MARMOT_EXPIRY_TICK_OBSERVER_SLOT);
     let capability_slot = app_ref.capability_callback_slot();
     let Some(use_mock) = crate::credential_store::initialize(capability_slot, keyring_service_id)
@@ -351,20 +353,10 @@ pub(crate) fn register_with_keys(
     let init_error =
         use_mock.then_some(crate::projection::payload::MarmotInitError::KeyringUnavailable);
     let projection = Arc::new(MarmotProjection::new(service, init_error));
-    // SAFETY: caller guarantees `app` is non-null and valid.
-    let actor_sender = unsafe { (&*app).actor_sender() };
+    let actor_sender = app_ref.actor_sender();
     projection.set_actor_sender(actor_sender.clone());
 
-    // Register the typed Marmot action module against the kernel's action
-    // registry. The module owns the projection `Arc` and dispatches a typed
-    // `MarmotProtocolCommand`; no host-op JSON bridge or raw `NmpApp` pointer
-    // participates in protocol behavior.
-    //
-    // SAFETY: the caller guarantees `app` is a valid pointer from
-    // `nmp_app_new`. This exclusive borrow is scoped to registration.
-    unsafe { &mut *app }
-        .register_action(MarmotActionModule::new(Arc::clone(&projection)))
-        .expect("duplicate registration: nmp-marmot MarmotActionModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error
+    register_marmot_action_module(app_ref, Arc::clone(&projection));
 
     // V-107 / ADR-0039: register the two Marmot push projections onto the
     // canonical snapshot seam. Both ride the SnapshotFrame on every tick
