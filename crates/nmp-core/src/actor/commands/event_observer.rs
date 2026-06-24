@@ -64,7 +64,6 @@
 //! dropped (rate-limit backpressure, D6 best-effort). The first overflow
 //! per slot logs once so the condition is visible to ops.
 
-use crate::actor::LifecycleCommand;
 use crate::substrate::KernelEvent;
 use std::ffi::{c_char, c_void, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};

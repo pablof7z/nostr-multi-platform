@@ -20,7 +20,7 @@ use nmp_core::substrate::{
     ActionPayloadDecodeError, ActionRejection,
 };
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{ActionLedgerCommand, InterestsCommand};
+use nmp_core::actor::InterestsCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::interest::relay_discovery_interest;
@@ -87,6 +87,7 @@ impl ActionModule for DiscoverGroupsAction {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nmp_core::actor::ActionLedgerCommand;
     use std::cell::RefCell;
 
     /// Run the typed executor and capture every `ActorCommand` it sends.

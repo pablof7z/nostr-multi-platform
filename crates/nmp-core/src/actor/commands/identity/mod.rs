@@ -23,20 +23,17 @@ mod signer_state;
 // `pub` re-exports: these types are re-exported all the way to `lib.rs`
 // for `nmp-ffi`. They must stay `pub` through the entire chain.
 pub use dto::{
-    new_bunker_handshake_slot, new_signer_state_slot, BunkerHandshakeDto, BunkerHandshakeSlot,
-    SignerStateSlot,
+    new_bunker_handshake_slot, new_signer_state_slot, BunkerHandshakeSlot, SignerStateSlot,
 };
 
 // Crate-internal re-exports.
-pub(crate) use dto::{
-    build_nip46_onboarding_dto, BunkerStageKind, Nip46OnboardingDto, SignerStateDto,
-};
+pub(crate) use dto::build_nip46_onboarding_dto;
+#[cfg(test)]
+pub(crate) use dto::{BunkerHandshakeDto, BunkerStageKind, SignerStateDto};
 
-pub(crate) use runtime::{IdentityId, IdentityRuntime};
+pub(crate) use runtime::IdentityRuntime;
 
-pub(crate) use account_ops::{
-    add_signer, remove_account, retarget_timeline, switch_active, sync_kernel,
-};
+pub(crate) use account_ops::{add_signer, remove_account, switch_active};
 pub(crate) use create_account::create_account;
 
 pub(crate) use signer_state::{
@@ -44,7 +41,7 @@ pub(crate) use signer_state::{
     restore_bunker_session, restore_nip55_session,
 };
 
-pub(crate) use sign::{sign_active_nonblocking, sign_with, sign_with_account_nonblocking};
+pub(crate) use sign::{sign_active_nonblocking, sign_with_account_nonblocking};
 
 #[cfg(test)]
 #[path = "nip46_onboarding_tests.rs"]

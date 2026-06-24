@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::__ffi_internal::{register_rust_observer, register_rust_observer_muted};
+use nmp_core::__ffi_internal::register_rust_observer_muted;
 use nmp_core::{KernelEventObserver, KernelEventObserverId};
 use nmp_core::actor::{ActorCommand};
 use nmp_core::actor::{InterestsCommand};

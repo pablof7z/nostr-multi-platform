@@ -78,7 +78,6 @@ use nmp_core::substrate::ActionRegistrar;
 use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_start, NmpApp};
 
 use crate::relay_config;
-use nmp_core::actor::{LifecycleCommand};
 mod app_host_impl; // ADR-0053: `impl AppHost for NmpAppBuilder` child submodule (LOC ceiling).
 mod wallet; // `with_wallet` (NIP-47 wiring) — child submodule; see builder/wallet.rs.
 

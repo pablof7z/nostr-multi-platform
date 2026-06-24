@@ -12,7 +12,6 @@ use std::sync::Arc;
 use crate::actor::relay_mgmt::{close_relays, spawn_missing_relays};
 use crate::actor::session_persistence;
 use crate::actor::tick::{clamp_emit_hz_logged, emit_now, maybe_emit_after_dispatch};
-use crate::kernel::LifecyclePhase;
 use crate::relay::OutboundMessage;
 
 use super::helpers::update_local_key_slots;

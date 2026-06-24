@@ -54,7 +54,7 @@ use nmp_core::substrate::{
     SnapshotProjectionRegistrar,
 };
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{ContactsCommand, InterestsCommand};
+use nmp_core::actor::InterestsCommand;
 use serde::{Deserialize, Serialize};
 
 // The `ActionModule` impls for the three follow verbs (split out to keep this
@@ -349,7 +349,7 @@ pub fn typed_projection_entry(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::actor::ActorCommand;
+    use nmp_core::actor::{ActorCommand, ContactsCommand};
     use std::cell::RefCell;
 
     // ----- namespaces ------------------------------------------------------

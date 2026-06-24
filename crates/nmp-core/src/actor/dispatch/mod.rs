@@ -40,9 +40,8 @@ use super::tick::maybe_emit_after_dispatch;
 #[cfg(any(test, feature = "test-support"))]
 use super::TestSupportCommand;
 use super::{
-    ActionLedgerCommand, ActorCommand, ActorConfig, ContactsCommand, IdentityCommand,
-    InterestsCommand, LifecycleCommand, PublishCommand, RefsCommand, RelayCommand, RelayControl,
-    SignCommand,
+    ActionLedgerCommand, ActorCommand, ActorConfig, ContactsCommand, LifecycleCommand,
+    PublishCommand, RefsCommand, RelayCommand, RelayControl, SignCommand,
 };
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
@@ -58,7 +57,8 @@ mod relay_events;
 // Debt C — capability adapters for `ProtocolCommandContext`.
 mod substrate_adapters;
 
-// Re-exports needed by callers outside this module.
+// Test-only re-export used by actor integration tests.
+#[cfg(test)]
 pub(crate) use helpers::signed_event_to_json;
 pub(crate) use relay_events::handle_relay_event;
 
