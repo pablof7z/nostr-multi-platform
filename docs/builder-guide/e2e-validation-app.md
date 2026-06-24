@@ -72,7 +72,18 @@ Pulse exercises: M2 planner (timeline filter compiled to REQ), M3 EventStore (LM
 
 The capability column says "expected" / "likely" — `Nip77CapabilityProbe` (`crates/nmp-nip77/src/capability.rs`) is the source of truth at runtime. If `nostr.wine` no longer enforces NIP-42, the smoke test (§5) catches that and the user just won't see an `auth-required` badge. That's fine; M5 still has unit-test coverage.
 
-**Read-discovery fallback** for `Nip65OutboxResolver` (when a recipient's read-relays for `#p` routing are unknown): `[wss://relay.damus.io, wss://nos.lol]` — hard-coded constant in the resolver's constructor for now (proper indexer story is post-v1). **Crucially, this fallback is read-side discovery only.** Per D3 (outbox automatic), publishing requires the active account to have declared its own write-relays (kind:10002). If the active account has no kind:10002, `nmp_app_publish_note` MUST surface a `last_error_toast` ("active account has no write-relays declared — add a relay in Accounts → Relays") rather than silently posting to undeclared relays. The Accounts screen exposes "Publish my kind:10002" as the bootstrap path.
+**Read-discovery fallback** for `Nip65OutboxResolver` (when a recipient's
+read-relays for `#p` routing are unknown): validation apps may inject
+`[wss://relay.damus.io, wss://nos.lol]` as app-owned test/operator config.
+Shared NMP crates must not hard-code this as a product default; a framework
+fallback needs an accepted issue or ADR that defines the generic discovery
+mechanism. **Crucially, this fallback is read-side discovery only.** Per D3
+(outbox automatic), publishing requires the active account to have declared its
+own write-relays (kind:10002). If the active account has no kind:10002,
+`nmp_app_publish_note` MUST surface a `last_error_toast` ("active account has no
+write-relays declared - add a relay in Accounts -> Relays") rather than
+silently posting to undeclared relays. The Accounts screen exposes "Publish my
+kind:10002" as the bootstrap path.
 
 ---
 

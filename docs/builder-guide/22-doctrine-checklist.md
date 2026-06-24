@@ -26,7 +26,9 @@ reference waiving it.
 
 **D0 — kernel/extension boundary**
 
-- [ ] No new app/domain noun (`Highlight`/`Episode`/`Group`/`Project`/…) added to `crates/nmp-core`.
+- [ ] No new app/domain noun (`Highlight`/`Episode`/`Group`/`Project`/...) added to `crates/nmp-core`.
+- [ ] No app-specific product policy, operator default, bespoke helper, or compatibility hack added to any shared NMP crate (`crates/`).
+- [ ] Any new shared crate/API is useful unchanged to a second, unrelated Nostr app; otherwise it lives under `apps/<app>/`.
 - [ ] No app-specific business logic added to Swift / Kotlin / TS shell code.
 - [ ] FFI enums stay open to module-contributed variants (no closed-enum regression).
 - [ ] `spawn_actor` and other test surface still `#[cfg(any(test, feature = "test-support"))]` gated.

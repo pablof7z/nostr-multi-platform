@@ -132,6 +132,14 @@ See `docs/aim.md` §2 commandment #4 for the canonical rule. Summary: native has
 
 The line is not protocol vs. product — a product-level feature (e.g., NIP-29 group chat, Marmot MLS encrypted groups) belongs in an NMP crate if other Nostr apps would use it. The line is **generic Nostr building block vs. this app's proprietary domain**.
 
+A request from one app is evidence, not permission to specialize the framework.
+Do not add app-named helpers, bespoke publish/read commands, hard-coded product
+defaults, operator policy, compatibility shims, or "quick" shared-crate
+workarounds just because a consuming app needs them. First ask whether the
+missing piece is a reusable Nostr mechanism. If yes, add the generic mechanism
+once. If no, implement it in the app's Rust core. If the answer is unclear,
+update the owning issue or ADR before writing code.
+
 ## No polling — ever
 
 Polling is forbidden at every layer of the stack. This means no `sleep` + check loops, no `Timer.scheduledTimer` querying state, no `try_recv` + `sleep` spin loops, no `Task { while !cancelled { sleep; checkState() } }` tasks.

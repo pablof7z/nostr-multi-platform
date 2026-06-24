@@ -23,6 +23,14 @@ is ADR-0009 lines 44–62 (`docs/decisions/0009-app-extension-kernel-boundary.md
 the D0 rule (line 61): if your app needs a noun in `nmp-core`, the *kernel
 boundary* is wrong, not the app.
 
+A protocol crate may be created for an app-requested need only after the
+request has been reduced to a generic Nostr mechanism. Do not add app-named
+actions, app-specific ranking or preview policy, catalog/network lookups, media
+playback state, or one-product compatibility shims to `crates/`. If the
+implementation would still make sense with the app name removed and a second
+unrelated Nostr app consuming it, it can be a protocol/substrate crate.
+Otherwise it belongs in the app core.
+
 ## Per-seam checklist
 
 Implement only the seams your protocol needs; `register_actions()` wires them
