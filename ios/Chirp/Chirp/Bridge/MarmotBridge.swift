@@ -40,15 +40,15 @@ import os.log
 //
 // MLS write ops (create_group, invite, send, leave, remove, accept_welcome,
 // decline_welcome, publish_key_package, ingest_signed_event, clear_pending)
-// are now routed through the generic `nmp_app_dispatch_action("nmp.marmot",
-// action_json)` entry point — the same path every other ActionModule uses.
-// The Rust side (PR #363) registered a `MarmotActionModule` + `MlsOpHandler`
-// trait so the wire shape is byte-identical (`{"op":"...", ...}`) but the
-// bespoke `nmp_marmot_dispatch` C-ABI symbol is no longer reachable from
-// Swift. `dispatch_action` is non-blocking — it returns a `correlation_id`
+// are routed through Chirp's typed byte doorway
+// `nmp_app_chirp_dispatch_action_bytes("nmp.marmot", action_json)` — the same
+// ActionModule executor path every other namespace uses after typed payload
+// encoding. The Rust side (PR #363) registered a `MarmotActionModule` +
+// `MlsOpHandler` trait so the wire shape stays byte-identical
+// (`{"op":"...", ...}`), while Swift no longer reaches bespoke Marmot C-ABI
+// dispatch symbols. Dispatch is non-blocking — it returns a `correlation_id`
 // synchronously and the actual `Accepted` / `Failed` verdict arrives in the
-// next snapshot's `action_stages` projection. ADR-0025 PR 3 deletes the
-// (now-unused) `nmp_marmot_dispatch` C symbol entirely.
+// next snapshot's `action_stages` projection.
 //
 // ── Key-package fetch ─────────────────────────────────────────────────────
 //
@@ -239,9 +239,9 @@ final class MarmotStore: ObservableObject {
 
     // ── Dispatch op wrappers ──────────────────────────────────────────────
     // Each encodes the op envelope and dispatches it through the kernel's
-    // generic `nmp_app_dispatch_action("nmp.marmot", …)` entry point (ADR-0025
-    // PR 2). The next kernel snapshot pushes the refreshed Marmot view; the UI
-    // does not poll from Swift.
+    // typed `nmp_app_chirp_dispatch_action_bytes("nmp.marmot", …)` byte
+    // doorway. The next kernel snapshot pushes the refreshed Marmot view; the
+    // UI does not poll from Swift.
     //
     // `dispatch_action` is non-blocking — it validates the namespace + body,
     // mints a `correlation_id`, enqueues the op for the actor thread, and
