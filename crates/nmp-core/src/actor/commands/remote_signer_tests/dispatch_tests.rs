@@ -117,6 +117,8 @@ fn snapshot_carries_nip46_onboarding_projection() {
             external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
             kernel_clock: crate::slots::new_kernel_clock_slot(),
             gc_budget_ceiling: None,
+            user_agent: Arc::new(std::sync::Mutex::new(None)),
+            outbound_public_tags: Arc::new(std::sync::Mutex::new(None)),
         }
         .snapshot();
         run_actor_with_observers(

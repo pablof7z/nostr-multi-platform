@@ -113,6 +113,8 @@ nmp-nip57 = { path = "../../../../crates/nmp-nip57" }
 # action MODULES are wired by `register_defaults`; this dep is only the typed
 # payload encoders the host-side dispatch needs.
 nmp-router = { path = "../../../../crates/nmp-router" }
+# NIP-89 client identity — vocabulary for relay User-Agent + public client tag.
+nmp-nip89 = { path = "../../../../crates/nmp-nip89" }
 # V-38: NIP-47 NWC wallet stack moved out of `nmp-core`. Optional + gated
 # behind the `wallet` feature so the default-off build excludes it.
 nmp-nip47 = { path = "../../../../crates/nmp-nip47", optional = true }

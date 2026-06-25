@@ -11,6 +11,8 @@ use tungstenite::{Message, WebSocket};
 mod connect;
 mod io_ready;
 #[cfg(test)]
+mod jitter_tests;
+#[cfg(test)]
 mod no_polling_tests;
 mod socket_io;
 #[cfg(test)]
@@ -126,6 +128,7 @@ pub(crate) fn spawn_relay_worker_with_keepalive(
     relay_tx: Sender<RelayEvent>,
     keepalive_idle: Duration,
     keepalive_pong_timeout: Duration,
+    user_agent: Option<String>,
 ) -> Sender<RelayCommand> {
     let (control_tx, control_rx) = mpsc::channel();
     thread::spawn(move || {
@@ -137,6 +140,7 @@ pub(crate) fn spawn_relay_worker_with_keepalive(
             control_rx,
             keepalive_idle,
             keepalive_pong_timeout,
+            user_agent,
         );
     });
     control_tx
@@ -150,6 +154,7 @@ fn run_relay_worker(
     control_rx: Receiver<RelayCommand>,
     keepalive_idle: Duration,
     keepalive_pong_timeout: Duration,
+    user_agent: Option<String>,
 ) {
     let mut pending = VecDeque::new();
     let mut backoff = RELAY_RECONNECT_DELAY_INITIAL;
@@ -165,7 +170,7 @@ fn run_relay_worker(
     let mut backoff_hint: Option<BackoffClass> = None;
     let control = io_ready::spawn_control_inbox(control_rx);
     loop {
-        match open_relay_socket(&relay_url) {
+        match open_relay_socket(&relay_url, user_agent.as_deref()) {
             Ok(mut socket) => {
                 // Record when this connection attempt succeeded, for backoff reset
                 // logic (V-92 / GH #615).

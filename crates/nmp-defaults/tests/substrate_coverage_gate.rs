@@ -202,6 +202,14 @@ impl RoutingFactoryRegistrar for GateSpy {
     fn set_nostrconnect_perms(&self, _perms: String) {
         unreachable!("the nostrconnect perms are wired by register_defaults_with, not register_substrate");
     }
+
+    fn set_relay_user_agent(&self, _user_agent: String) {
+        // No-op in test; User-Agent is wired by register_defaults_with.
+    }
+
+    fn set_outbound_public_tags(&self, _tags: Vec<Vec<String>>) {
+        // No-op in test; outbound tags are wired by register_defaults_with.
+    }
 }
 
 /// A `CompiledPlan` with `n` distinct per-relay entries (the hook only reads

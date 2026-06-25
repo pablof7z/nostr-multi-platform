@@ -59,6 +59,8 @@ nmp-nip50 = { path = "../nmp-nip50" }
 # The recognizer is pure/IO-free and belongs alongside the other social-tier
 # registrations.
 nmp-nip29 = { path = "../nmp-nip29" }
+# NIP-89 client identity — vocabulary for relay User-Agent + public client tag.
+nmp-nip89 = { path = "../nmp-nip89" }
 nmp-nip77 = { path = "../nmp-nip77" }
 nmp-wot = { path = "../nmp-wot" }
 # NIP-51 mute-list adapter: `MuteListProjection` (kind:10000 observer +

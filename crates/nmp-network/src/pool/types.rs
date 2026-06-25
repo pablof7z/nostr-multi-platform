@@ -245,6 +245,9 @@ pub struct PoolConfig {
     /// Optional override for the keepalive pong timeout. `None` →
     /// production constant `KEEPALIVE_PONG_TIMEOUT` (30 s).
     pub keepalive_pong_timeout: Option<Duration>,
+    /// Optional relay handshake User-Agent override; `None`
+    /// → the built-in `nmp/<ver>` literal.
+    pub user_agent: Option<String>,
 }
 
 impl Default for PoolConfig {
@@ -253,6 +256,7 @@ impl Default for PoolConfig {
             default_role: RelayRole::Content,
             keepalive_idle: None,
             keepalive_pong_timeout: None,
+            user_agent: None,
         }
     }
 }

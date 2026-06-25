@@ -279,9 +279,6 @@ use crate::relay::{DEFAULT_EMIT_HZ, DEFAULT_VISIBLE_LIMIT};
 // on the dedicated relay-event channel below.
 #[cfg(feature = "native")]
 #[cfg(feature = "native")]
-use nmp_network::pool::{Pool, PoolConfig};
-#[cfg(feature = "native")]
-#[cfg(feature = "native")]
 use std::sync::Arc;
 #[cfg(feature = "native")]
 use std::time::{Duration, Instant};
@@ -402,7 +399,7 @@ pub fn run_actor_with_observers(
     // no longer a separate `relay_rx`: relay traffic and commands share one
     // waking channel, so a command send wakes a relay-blocked actor.
     let inbox = Inbox::new(inbox_rx);
-    let pool = Pool::new(PoolConfig::default(), command_tx_self.relay_sink());
+    let pool = config.build_pool(command_tx_self.relay_sink());
 
     // The lane scheduler (ADR-0050 §D3a). It owns the relay backlog so any
     // relay mail stashed while draining the command lane each iteration is

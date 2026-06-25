@@ -229,6 +229,14 @@ impl RoutingFactoryRegistrar for NmpApp {
     fn set_nostrconnect_perms(&self, perms: String) {
         NmpApp::set_nostrconnect_perms(self, perms);
     }
+
+    fn set_relay_user_agent(&self, user_agent: String) {
+        let _ = NmpApp::set_relay_user_agent(self, user_agent);
+    }
+
+    fn set_outbound_public_tags(&self, tags: Vec<Vec<String>>) {
+        let _ = NmpApp::set_outbound_public_tags(self, tags);
+    }
 }
 
 impl HostCapabilities for NmpApp {

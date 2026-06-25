@@ -27,6 +27,15 @@ use super::RelaySocket;
 /// comfortably covers a reachable relay's TCP+TLS handshake on a slow network.
 const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Resolve the handshake User-Agent: the configured override, or the built-in
+/// `nmp/<ver>` fallback when none was supplied.
+pub(super) fn resolve_user_agent(user_agent: Option<&str>) -> std::borrow::Cow<'static, str> {
+    match user_agent {
+        Some(ua) => std::borrow::Cow::Owned(ua.to_string()),
+        None => std::borrow::Cow::Borrowed(concat!("nmp/", env!("CARGO_PKG_VERSION"))),
+    }
+}
+
 /// Dial `relay_url`, returning a ready WebSocket.
 ///
 /// Unlike `tungstenite::connect`, we establish the TCP stream with
@@ -37,7 +46,10 @@ const TCP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// `tungstenite::connect` calls internally once it has a stream — so the
 /// upgrade behaviour, the rustls path, and the HTTP-denial error strings
 /// (`401`/`403`/`Forbidden`, classified by `is_permanent_error`) are unchanged.
-pub(super) fn open_relay_socket(relay_url: &str) -> Result<RelaySocket, String> {
+pub(super) fn open_relay_socket(
+    relay_url: &str,
+    user_agent: Option<&str>,
+) -> Result<RelaySocket, String> {
     install_rustls_provider();
 
     let mut request = relay_url
@@ -47,10 +59,14 @@ pub(super) fn open_relay_socket(relay_url: &str) -> Result<RelaySocket, String> 
     // the bare handshake with HTTP 403 unless the client sends a `User-Agent`
     // — a NIP-50 search that resolves to such a relay would otherwise fail to
     // connect at all. Sending a UA is strictly additive: no relay rejects a
-    // request *for* carrying one. `from_static` cannot fail for this literal.
+    // request *for* carrying one. The UA is either the configured override
+    // (Flow A: from ClientIdentity) or the built-in `nmp/<ver>` fallback.
+    let ua = resolve_user_agent(user_agent);
     request.headers_mut().insert(
         "User-Agent",
-        tungstenite::http::HeaderValue::from_static(concat!("nmp/", env!("CARGO_PKG_VERSION"))),
+        tungstenite::http::HeaderValue::from_str(&ua).unwrap_or_else(|_| {
+            tungstenite::http::HeaderValue::from_static(concat!("nmp/", env!("CARGO_PKG_VERSION")))
+        }),
     );
     let uri = request.uri();
     let mode = uri_mode(uri).map_err(|error| error.to_string())?;
@@ -267,5 +283,22 @@ mod tests {
             addrs.count() >= 1,
             "127.0.0.1 must resolve to at least one socket address"
         );
+    }
+
+    #[cfg(test)]
+    mod ua_tests {
+        use super::*;
+
+        #[test]
+        fn ua_fallback_when_none() {
+            let result = resolve_user_agent(None);
+            assert_eq!(result, concat!("nmp/", env!("CARGO_PKG_VERSION")));
+        }
+
+        #[test]
+        fn ua_uses_configured_value() {
+            let result = resolve_user_agent(Some("Chirp/1.2.0 (nmp/0.8.0)"));
+            assert_eq!(result, "Chirp/1.2.0 (nmp/0.8.0)");
+        }
     }
 }

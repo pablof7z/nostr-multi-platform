@@ -38,6 +38,10 @@ pub(crate) struct CompositionConfig {
     /// #1493 P9 — host-supplied NIP-46 permission request for client-initiated
     /// `nostrconnect://` handshakes.
     pub(crate) nostrconnect_perms: NostrConnectPermsSlot,
+    /// Flow A — relay-handshake User-Agent override (from ClientIdentity).
+    pub(crate) user_agent: Arc<Mutex<Option<String>>>,
+    /// Flow B — substrate-generic outbound public tag rows (NIP-89 client tag, opaque here).
+    pub(crate) outbound_public_tags: Arc<Mutex<Option<Vec<Vec<String>>>>>,
     /// Pre-start initial relay configuration.
     pub(crate) initial_relays_for_start: Mutex<Vec<(String, String)>>,
     /// D2 coverage-gate hook slot.

@@ -285,6 +285,7 @@ impl Kernel {
             dm_inbox_relays: empty_dm_inbox_relay_lookup(),
             blocked_relays: empty_blocked_relay_lookup(),
             bootstrap_self_kinds_override: None,
+            outbound_public_tags: Vec::new(),
             ingest_dispatcher: Arc::new(std::sync::RwLock::new(EventIngestDispatcher::new())),
             #[cfg(any(test, feature = "test-support"))]
             test_dm_inbox_cache: None,

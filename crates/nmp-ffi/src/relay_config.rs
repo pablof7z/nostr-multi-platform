@@ -120,4 +120,40 @@ impl NmpApp {
             NmpConfigStatus::Unavailable
         }
     }
+
+    pub(crate) fn set_relay_user_agent(&self, user_agent: String) -> NmpConfigStatus {
+        if let Err(status) =
+            self.ensure_prestart_config("relay_user_agent", "relay_user_agent", "relay_user_agent")
+        {
+            return status;
+        }
+        if let Ok(mut guard) = self.composition.user_agent.lock() {
+            self.record_slot_decision("relay_user_agent", "relay_user_agent", guard.is_some());
+            *guard = Some(user_agent);
+            NmpConfigStatus::Ok
+        } else {
+            NmpConfigStatus::Unavailable
+        }
+    }
+
+    pub(crate) fn set_outbound_public_tags(&self, tags: Vec<Vec<String>>) -> NmpConfigStatus {
+        if let Err(status) = self.ensure_prestart_config(
+            "outbound_public_tags",
+            "outbound_public_tags",
+            "outbound_public_tags",
+        ) {
+            return status;
+        }
+        if let Ok(mut guard) = self.composition.outbound_public_tags.lock() {
+            self.record_slot_decision(
+                "outbound_public_tags",
+                "outbound_public_tags",
+                guard.is_some(),
+            );
+            *guard = Some(tags);
+            NmpConfigStatus::Ok
+        } else {
+            NmpConfigStatus::Unavailable
+        }
+    }
 }

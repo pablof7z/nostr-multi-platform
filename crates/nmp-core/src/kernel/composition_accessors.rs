@@ -55,6 +55,17 @@ impl Kernel {
         self.bootstrap_self_kinds_override.as_deref()
     }
 
+    /// Set the substrate-generic outbound public tags appended to PublicRoutable
+    /// publishes (Flow B). Generic `Vec<Vec<String>>` — no NIP-89 noun (D0).
+    pub(crate) fn set_outbound_public_tags(&mut self, tags: Vec<Vec<String>>) {
+        self.outbound_public_tags = tags;
+    }
+
+    /// Read-only accessor for the outbound public tags slot.
+    pub(crate) fn outbound_public_tags(&self) -> &[Vec<String>] {
+        &self.outbound_public_tags
+    }
+
     /// Replace the kernel's shared ingest-dispatcher slot.
     pub(crate) fn set_ingest_dispatcher_slot(
         &mut self,

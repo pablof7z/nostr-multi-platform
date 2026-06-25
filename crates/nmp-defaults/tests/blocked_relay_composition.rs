@@ -133,6 +133,14 @@ impl RoutingFactoryRegistrar for CompositionSpy {
     fn set_nostrconnect_perms(&self, _perms: String) {
         unreachable!("register_substrate does not set the nostrconnect perms");
     }
+
+    fn set_relay_user_agent(&self, _user_agent: String) {
+        // No-op in test; User-Agent is wired by register_defaults_with.
+    }
+
+    fn set_outbound_public_tags(&self, _tags: Vec<Vec<String>>) {
+        // No-op in test; outbound tags are wired by register_defaults_with.
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

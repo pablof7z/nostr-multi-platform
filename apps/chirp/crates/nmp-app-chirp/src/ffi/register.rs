@@ -101,6 +101,12 @@ pub extern "C" fn nmp_app_chirp_register(
             search_defaults: nmp_defaults::SearchDefaults::with_default_relays(
                 nmp_chirp_config::chirp_default_search_relays(),
             ),
+            client_identity: Some(nmp_nip89::ClientIdentity {
+                name: "Chirp".to_string(),
+                version: Some(env!("CARGO_PKG_VERSION").to_string()),
+                handler: None,
+            }),
+            attach_client_tag: true,
             ..Default::default()
         },
     );
