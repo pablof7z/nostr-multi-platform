@@ -362,5 +362,9 @@ pub fn register_substrate(
     // time it connects (per-URL TTL) and surfaces it on the `relay_diagnostics`
     // projection. Apps get relay metadata with zero work; `nmp-core` names no
     // NIP-11 noun (D0).
+    //
+    // NIP-11-over-ureq is a native transport; the browser registers its own
+    // fetch-based RelayConnectedHook in a later issue (#2046/#2057).
+    #[cfg(feature = "native")]
     nmp_nip11::register(app);
 }

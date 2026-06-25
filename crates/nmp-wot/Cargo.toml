@@ -7,7 +7,7 @@ repository.workspace = true
 description = "Client-side web-of-trust primitives for NMP: follow/mute graph scoring plus automatic replaceable-kind bootstrap interests."
 
 [dependencies]
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", default-features = false }
 nmp-network = { path = "../nmp-network", default-features = false }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is

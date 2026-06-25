@@ -14,7 +14,7 @@ description = "NIP-17 private direct messages — kind:14 chat-message rumor bui
 # `DmInboxProjection` plugs into and the `ActionModule` substrate trait the
 # `nmp.nip17.send` action implements, plus the app-neutral `AppHost`
 # registration seam.
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is

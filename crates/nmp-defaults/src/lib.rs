@@ -108,20 +108,27 @@ use nmp_core::substrate::{
 };
 
 pub mod action_payloads;
+#[cfg(feature = "native")]
 pub mod builder;
+#[cfg(feature = "native")]
 pub mod op_feed_defaults;
+#[cfg(feature = "native")]
 pub(crate) mod relay_config;
+#[cfg(feature = "native")]
 pub mod relay_info_probe;
 pub mod runtimes;
 pub mod search_defaults;
 pub mod tiers;
 pub mod topic_articles;
 
+#[cfg(feature = "native")]
 pub use builder::{NmpAppBuilder, ProjectionsDeclared, RunConfig, StorageSet, Unstarted};
+#[cfg(feature = "native")]
 pub use op_feed_defaults::{
     compile_feed_params, register_op_feed_defaults, register_op_feed_defaults_with_mute,
     OpFeedDefaults,
 };
+#[cfg(feature = "native")]
 pub use relay_info_probe::{nmp_app_probe_relay_info, RelayInfoProbeCallback};
 pub use runtimes::{
     register_bookmark_runtime, register_comment_runtime, register_mute_runtime,

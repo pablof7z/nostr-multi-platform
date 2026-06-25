@@ -19,6 +19,10 @@ nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
 nmp-store = { path = "../nmp-store" }
 nmp-network = { path = "../nmp-network", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
+# Neutral composition entry points: `register_defaults` / `register_substrate`.
+# `default-features = false` keeps the wasm32 build free of native-only crates
+# (nmp-ffi, nmp-feed, nmp-nip01, nmp-nip47, nmp-nip11).
+nmp-defaults = { path = "../nmp-defaults", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
