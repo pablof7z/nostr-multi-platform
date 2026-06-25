@@ -203,8 +203,8 @@ after OPFS injection, so constructor-time store capture is forbidden.
 ### 5. Async OPFS open happens in the composition root, once, before Start
 
 The OPFS SAH pool is opened **async exactly once** in the composition root's
-async init hook (the wasm binding layer,
-`apps/chirp/crates/nmp-app-chirp-web/src/wasm_binding.rs`), using `database_name` from
+async init hook (the wasm binding layer, to be re-established under the new
+browser-runtime architecture — see #2052), using `database_name` from
 `StartConfig` as the file key. The opened `OpfsSqliteStore` is installed via
 `set_injected_store()`; then `start()` rebuilds the reducer (§4). The handle is
 **never re-acquired mid-session** unless the user explicitly clears it (reload,

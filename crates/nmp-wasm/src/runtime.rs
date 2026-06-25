@@ -121,7 +121,7 @@ pub struct WasmRuntime {
     /// values whose `start_bytes` runs the typed FlatBuffers `decode_payload`
     /// + the fail-closed `schema_version` gate before `start()`. Seeded with
     /// `default_registry()` (the kernel `PublishModule`, exactly like native);
-    /// the composition root (`nmp-app-chirp-web`, which CAN depend on the NIP
+    /// the composition root (the wasm composition root (see #2038), which CAN depend on the NIP
     /// crates — `nmp-wasm` cannot, D0/layering) registers the NIP-02/NIP-25
     /// write modules through [`WasmRuntime::register_action`] /
     /// [`WasmRuntime::register_default_action`], mirroring the per-NIP
@@ -161,7 +161,7 @@ impl WasmRuntime {
     ///
     /// This is the wasm twin of nmp-ffi's listener-thread
     /// `update_embed_sidecar_from_frame` hook. A composition root that depends
-    /// on `nmp-content` (e.g. `nmp-app-chirp-web`) installs an observer that
+    /// on `nmp-content` (e.g. the wasm composition root (see #2038)) installs an observer that
     /// decodes the `claimed_events` KCEV from the bytes, resolves each embed,
     /// and stores the resolved map in its own slot — keeping `nmp-wasm` itself
     /// policy-free (it owns the chokepoint, not the kind-dispatch).
@@ -248,7 +248,7 @@ impl WasmRuntime {
     /// Register a typed [`ActionModule`] under its `NAMESPACE` into the runtime's
     /// action registry. The wasm twin of `NmpApp::register_action`.
     ///
-    /// The composition root (`nmp-app-chirp-web`) calls this — directly or
+    /// The composition root (the wasm composition root (see #2038)) calls this — directly or
     /// through the per-NIP `register_actions(&mut impl ActionRegistrar)` entry
     /// points — to populate the non-publish write namespaces (NIP-02 follow /
     /// unfollow / follow_many, NIP-25 react / unreact). A typed payload
@@ -289,7 +289,7 @@ impl WasmRuntime {
 
     /// Return a shared reference to the snapshot-callback slot.
     ///
-    /// Used by composition-root crates (`nmp-app-chirp-web`) that own the
+    /// Used by composition-root crates (the wasm composition root (see #2038)) that own the
     /// `#[wasm_bindgen]` entry point and need to route `UpdateBytes` through
     /// the same callback channel as `handle_json`. The slot is `Rc<RefCell>`
     /// so cloning it gives a shared handle with zero-copy semantics.

@@ -4,14 +4,22 @@
 > This document is the single source of truth for the `crates/nmp-wasm` worker
 > protocol contract. See ADR-0047 (worker write/signing contract now defers to
 > **ADR-0064** — the unified write/command boundary).
+>
+> **Note (2026-06-25):** The wasm-bindgen entry point (`NmpWasmRuntime`,
+> `handle_json`, `handle_dispatch_bytes`) was removed from `crates/nmp-wasm`
+> together with the Chirp Web product (see #2052). The protocol contract
+> described below remains the target surface; the wasm-bindgen entry point will
+> be re-established under the new browser-runtime architecture (see #2038).
+> Until then, `crates/nmp-wasm/src/lib.rs` exposes only `WasmRuntime` and the
+> protocol types — no `#[wasm_bindgen]` class is emitted.
 
-`crates/nmp-wasm` exposes the NMP browser runtime as a `wasm-bindgen` class
+`crates/nmp-wasm` will expose the NMP browser runtime as a `wasm-bindgen` class
 (`NmpWasmRuntime`) that a dedicated Worker instantiates. The Worker event loop
 is the actor (D4): it is the single writer of kernel state in the browser host.
 TypeScript renders snapshots and executes browser capabilities; Rust owns
 policy, routing, replay, Nostr protocol behaviour, and state transitions.
 
-All production functions are on the `NmpWasmRuntime` class. The wire protocol
+All production functions will be on the `NmpWasmRuntime` class. The wire protocol
 uses three channels:
 
 1. **JSON control channel** — `handle_json(request: string): string` (sync).
@@ -113,7 +121,7 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 206–220.
 
 ### `handle_json`
 
-Source: See #2038 (nmp-browser-runtime Rust crate rebuild).
+Source: Deleted with Chirp Web (#2052); will be re-established under #2038 (nmp-browser-runtime).
 
 ```
 handle_json(request: string): Result<JsValue, JsValue>
@@ -136,7 +144,7 @@ cause.
 
 ### `handle_dispatch_bytes`
 
-Source: See #2038 (nmp-browser-runtime Rust crate rebuild).
+Source: Deleted with Chirp Web (#2052); will be re-established under #2038 (nmp-browser-runtime).
 
 ```
 handle_dispatch_bytes(bytes: Uint8Array): Result<JsValue, JsValue>
@@ -202,8 +210,7 @@ action vocabulary; the action payload carries no signer hint (V-78).
 
 ## 4. Binary snapshot callback
 
-Source: `crates/nmp-wasm/src/lib.rs` lines 123–126;
-`crates/nmp-wasm/src/runtime.rs` lines 157–159.
+Source: Deleted with Chirp Web (#2052); will be re-established under #2038.
 
 ```
 set_snapshot_callback(callback: Function | null): void
@@ -253,8 +260,7 @@ Source: `crates/nmp-wasm/src/dispatch_routing.rs`;
 
 ## 6. Routing decisions (diagnostic pull)
 
-Source: `crates/nmp-wasm/src/lib.rs` lines 141–144;
-`crates/nmp-wasm/src/runtime.rs` lines 481–483.
+Source: Deleted with Chirp Web (#2052); will be re-established under #2038.
 
 ```
 recent_routing_decisions(): string

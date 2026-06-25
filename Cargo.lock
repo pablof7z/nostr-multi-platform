@@ -4413,26 +4413,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nmp-app-chirp-web"
-version = "0.8.0"
-dependencies = [
- "console_error_panic_hook",
- "js-sys",
- "nmp-content",
- "nmp-core",
- "nmp-feed",
- "nmp-nip01",
- "nmp-nip02",
- "nmp-nip51",
- "nmp-router",
- "nmp-store",
- "nmp-substrate-defaults",
- "nmp-wasm",
- "serde_json",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "nmp-app-gallery"
 version = "0.8.0"
 dependencies = [
