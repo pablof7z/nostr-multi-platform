@@ -34,10 +34,11 @@
 
 ## Post-v1 web milestone
 
-Moved out of v1 on 2026-06-11. The web port resumes after v1 and owns:
+Moved out of v1 on 2026-06-11. The web port resumes after v1 under epic #2045 and owns:
 
+- Browser runtime composition separation per ADR-0067 (nmp-browser-runtime owns composition; nmp-wasm is ABI glue).
 - `nmp-wasm` production parity.
-- OPFS-SQLite storage backend per ADR-0054.
+- OPFS-SQLite storage backend per ADR-0054 (gated behind ADR-0067).
 - `nmp-nip07` browser-signer capability module.
 - Web shell stack TBD (React + signals / Solid / Svelte — pick at start of milestone).
 - Browser consistency coverage added to the native consistency harness.

@@ -5,6 +5,7 @@
   gates"). Stage #6 must not start until the gates marked *blocking #6* are
   resolved.
 - **Date:** 2026-06-13
+- **Blocked-by:** ADR-0067 / #2045 (browser-runtime ownership split) — OPFS store is injected via the browser builder storage decision, not constructed in nmp-wasm.
 - **Relates to:** ADR-0045 (store→projection replay), ADR-0047 (browser worker
   runtime contract), ADR-0040 (capability-worker seam), ADR-0044 (Tier-3
   snapshot envelope typing)
@@ -21,15 +22,16 @@
 
 ## Context
 
-NMP's browser runtime (`crates/nmp-wasm`) runs the `KernelReducer` on a
+NMP's browser runtime (`crates/nmp-browser-runtime`, with `crates/nmp-wasm` as
+the ABI shell per ADR-0067) runs the `KernelReducer` on a
 dedicated Worker event loop (ADR-0047). The kernel holds the single
 authoritative event store as `store: Arc<dyn EventStore>`
 (`crates/nmp-core/src/kernel/mod.rs:587`). Today the wasm build always
 constructs an in-memory `MemEventStore`: the kernel resets on every page
 reload (ADR-0047 Consequences — "IndexedDB persistence is not yet wired").
-This blocks the honest "wasm cross-platform" claim (#1008): second-launch
-render, offline-first reads, and durable offline publish all require a
-persistent store on the web target.
+This blocks the honest web persistence claim tracked by #1007 under the
+browser-runtime reset epic #2045: second-launch render, offline-first reads, and
+durable offline publish all require a persistent store on the web target.
 
 The `EventStore` trait
 (`crates/nmp-store/src/events.rs:144` — `pub trait EventStore: Send + Sync`)
@@ -259,10 +261,10 @@ the sole mitigation for #6's HIGH risk.
 
 ## Consequences
 
-- **The honest wasm cross-platform claim (#1008) becomes reachable** once #5–#9
-  land: second-launch render, offline-first reads, and durable offline publish
-  all work on the web with the same code paths as native (with the scoping
-  caveats in Risks, *Relay-author-score durability* and *Multi-tab*).
+- **The honest web persistence claim (#1007 under #2045) becomes reachable**
+  once #5–#9 land: second-launch render, offline-first reads, and durable
+  offline publish all work on the web with the same code paths as native (with
+  the scoping caveats in Risks, *Relay-author-score durability* and *Multi-tab*).
 - **One new crate, zero new Rust deps.** `crates/nmp-sqlite-wasm` is added; the
   SQLite-WASM artifact is vendored (public domain) under a manual provenance
   regime. A `Cargo.lock` entry appears only if a maintained wrapper crate is
@@ -342,9 +344,9 @@ implementation starts.
   also wires a separate `LmdbRelayAuthorScoreStore` via
   `kernel.set_relay_score_store` (`kernel/mod.rs:2039-2040`). The wasm path
   leaves relay-author scoring non-durable. This is **not a regression** (wasm is
-  already `None` today), but #9's #1008 closure wording must state that
-  relay-author-score durability is out of scope for the web target, so "same
-  code paths as native" does not imply score-store parity.
+  already `None` today), but #1007/#2045 closure wording must state that
+  relay-author-score durability is out of scope for the web target, so "same code
+  paths as native" does not imply score-store parity.
 
 - **Asset-pipeline wiring (LOW, scoped into #6).** The browser-runtime build runs
   `wasm-pack build --target web` into a public assets directory served by the

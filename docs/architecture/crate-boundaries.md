@@ -304,10 +304,12 @@ in the leaf app's Rust crate and is injected by app-owned FFI.
 
 ## 10. Binding Crates
 
-`nmp-ffi`, `nmp-android-ffi`, and `nmp-wasm` are delivery surfaces. They own ABI
-shape, panic guards, callbacks, lifecycle handles, and platform-specific bridge
-mechanics. They do not own business policy, app defaults, or example-app
-namespaces unless they are explicitly app-owned delivery crates.
+`nmp-ffi`, `nmp-android-ffi`, `nmp-wasm`, and `nmp-browser-runtime` are delivery
+surfaces. The ABI-glue binding crates own ABI shape, panic guards, callbacks,
+lifecycle handles, and platform-specific bridge mechanics. They do not own
+business policy, app defaults, or example-app namespaces unless they are
+explicitly app-owned delivery crates. `nmp-browser-runtime` is the browser
+composition-root delivery surface described in §10a.
 
 The pre-v1 ABI surface is governed, not compatibility-frozen. Net-new
 `nmp_app_*` symbols require an ADR or an accepted GitHub issue that explicitly
@@ -320,12 +322,13 @@ Temporary retention requires a staged GitHub issue with a deletion gate.
 
 ## 10a. Browser Platform Adapter (nmp-browser-runtime)
 
-`nmp-browser-runtime` is the browser platform adapter—a Layer-6 composition-root
-delivery surface, sibling to `nmp-ffi` (native C) and `nmp-android-ffi` (Android
-JNI). Unlike pure ABI-glue binding crates, it is a **composition root**: it
-composes `nmp-defaults` and protocol crates into a typed builder (`BrowserAppBuilder`),
-exactly as a native leaf app would. It thus may depend on Layer-5 composition
-crates, breaking the usual binding-crate rule that all siblings avoid each other.
+`nmp-browser-runtime` is the browser platform adapter per ADR-0067: a Layer-6
+composition-root delivery surface, sibling to `nmp-ffi` (native C) and
+`nmp-android-ffi` (Android JNI). Unlike pure ABI-glue binding crates, it is a
+**composition root**: it composes `nmp-defaults` and protocol crates into a typed
+builder (`BrowserAppBuilder`), exactly as a native leaf app would. It thus may
+depend on Layer-5 composition crates, breaking the usual binding-crate rule that
+all siblings avoid each other.
 
 `nmp-browser-runtime` owns:
 

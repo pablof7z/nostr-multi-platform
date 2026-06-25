@@ -2,6 +2,7 @@
 
 - **Status:** Accepted
 - **Date:** 2026-06-12
+- **Amended-by:** ADR-0067 (nmp-wasm is ABI glue; nmp-browser-runtime owns the worker runtime)
 - **Relates to:** ADR-0009 (app-extension kernel boundary), ADR-0024 (async capability protocol), ADR-0037 (typed FlatBuffers runtime projections), ADR-0040 (capability-worker seam)
 - **Reference:** `docs/wasm-surface.md` (living contract — the single source of truth for the wire protocol)
 
@@ -23,7 +24,8 @@ None of that execution model is available in single-threaded WebAssembly.
 ### 1. The Worker event loop IS the actor
 
 NMP's browser runtime is a `KernelReducer` driven on a dedicated Worker's
-event loop. There is no ported copy of the native thread + flume + tokio actor.
+event loop, **owned by `nmp-browser-runtime`** (see ADR-0067). `nmp-wasm` is the ABI shell only.
+There is no ported copy of the native thread + flume + tokio actor.
 The Worker thread is the single writer of kernel state (D4), and `wasm-bindgen`
 closures parked on `WebSocket::onmessage` deliver relay frames **synchronously**
 on that same event loop — the `build_on_message` handler body calls the kernel

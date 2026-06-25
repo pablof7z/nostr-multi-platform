@@ -95,3 +95,4 @@ status; if they disagree, fix the index.
 | 0064 | Unified write/command boundary: one byte transport, open FlatBuffers payloads, signing as a capability round-trip | Accepted/implemented | Extends 0027, 0050, 0040; folds in the worker write/signing contract from 0047 |
 | 0065 | `ActorCommand` sub-enum collapse | Accepted | Aligns the in-process command vocabulary with 0064 |
 | 0066 | Delegated NIP-44 decrypt sessions for bunker DM backfill | Accepted for staged implementation | Extends 0050 §D7; relies on 0031 |
+| 0067 | Browser runtime ownership split (nmp-wasm is ABI glue) | Accepted | Supersedes-in-part 0047 (amended to acknowledge nmp-browser-runtime); supersedes-in-part 0054 (OPFS store gated behind this split) |
