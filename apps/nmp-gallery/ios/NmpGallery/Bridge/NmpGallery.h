@@ -8,7 +8,7 @@
 // It links one aggregate Rust archive — `libnmp_app_gallery.a` — that bundles
 // the NMP kernel symbols plus a gallery-tailored projection. The subset of the
 // NMP C-ABI declared below is exactly what the gallery shell needs; matching
-// declarations live in `ios/Chirp/Chirp/Bridge/NmpCore.h` (kept hand-in-sync by
+// declarations live in `apps/chirp/ios/Chirp/Bridge/NmpCore.h` (kept hand-in-sync by
 // `ci/check-ffi-header-drift.sh`).
 
 // ── Kernel lifecycle ─────────────────────────────────────────────────────

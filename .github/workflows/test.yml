@@ -289,15 +289,15 @@ jobs:
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/chirp/nmp-chirp-android-ffi
+          workspaces: apps/chirp/crates/nmp-chirp-android-ffi
           key: android-ffi
 
       - name: cargo test (nmp-chirp-android-ffi standalone workspace)
-        run: cd apps/chirp/nmp-chirp-android-ffi && cargo test
+        run: cd apps/chirp/crates/nmp-chirp-android-ffi && cargo test
 
       # Marmot-feature host compile gate.
       #
-      # The cargoNdk task in android/app/build.gradle.kts passes `--features
+      # The cargoNdk task in apps/chirp/android/app/build.gradle.kts passes `--features
       # marmot` when building the APK, but CI previously only ran `cargo test`
       # (no features), so a Rust-level compile break under `--features marmot`
       # was invisible until a developer ran a full Android build locally.
@@ -310,13 +310,13 @@ jobs:
       # `providers/ml_kem` source failed to cross-compile for
       # `x86_64-linux-android` under NDK 26 while the host build stayed green.
       - name: cargo check (nmp-chirp-android-ffi --features marmot)
-        run: cd apps/chirp/nmp-chirp-android-ffi && cargo check --features marmot
+        run: cd apps/chirp/crates/nmp-chirp-android-ffi && cargo check --features marmot
 
       # Real NDK cross-compile gate — closes the #1218 blind spot.
       #
       # The host `cargo check` above cannot see vendored-OpenSSL cross-compile
       # breakage because no Android target is built. This step runs the SAME
-      # `cargo ndk` invocation the APK uses (android/app/build.gradle.kts),
+      # `cargo ndk` invocation the APK uses (apps/chirp/android/app/build.gradle.kts),
       # but scoped to a SINGLE ABI: `x86_64-linux-android`. x86_64 is the
       # cheapest ABI to build in CI (native host arch — no QEMU) AND is
       # precisely the ABI that #1218 broke, so it is the
@@ -340,5 +340,5 @@ jobs:
       # passthrough needed.
       - name: cargo ndk cross-compile (x86_64, --features marmot)
         run: |
-          cd apps/chirp/nmp-chirp-android-ffi
+          cd apps/chirp/crates/nmp-chirp-android-ffi
           cargo ndk -t x86_64 -o ./jniLibs-ci build --release --features marmot

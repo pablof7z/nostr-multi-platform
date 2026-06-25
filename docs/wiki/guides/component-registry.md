@@ -41,7 +41,9 @@ The drift test `committed_registry_json_matches_generated_output` requires that 
 The 7-step M16 component registry plan steps are: (1) Land PR #503, (2) Build `nmp update component`, (3) Freeze ContentTreeWire fixtures, (4) Replace tiny SwiftUI kit with real iOS renderer, (5) Build Android Compose parity, (6) Adopt in Chirp, (7) jsrepo export. <!-- [^45258-8] -->
 
 
-The legacy `android/gallery/` module (pre-registry bundle viewer) must be deleted when merging PR #556 to avoid `applicationId` collision with the new `apps/nmp-gallery/android/`. <!-- [^53838-3] -->
+The legacy `apps/chirp/android/gallery/` module (pre-registry bundle viewer) was
+deleted during the #976 app-layout migration to avoid `applicationId` collision
+with the standalone `apps/nmp-gallery/android/` project. <!-- [^53838-3] -->
 ## Registry Component Organization
 
 The registry site organizes components by section (Content, User) with a platform switcher (Swift, Kotlin, TUI, Web) per component page, not by platform groups in the sidebar. TUI and Web platform tabs show a 'soon' badge and are disabled since no components are built for those platforms yet. The 'compose-' prefix on component slugs was eliminated in favor of the platform-switcher design where 'Kotlin' is the user-facing label and Jetpack Compose is the implementation detail. The `user-core` component was renamed to `user-avatar` because bundling a non-visual wire type (ProfileWire) with a visual component (NostrAvatar) was architecturally inconsistent for a registry entry. (Previously: `user-core`.) ProfileWire bundles into `user-avatar` since the wire type is always needed to construct an avatar, mirroring NDK's approach of having no separate 'core' for user components. Screenshot naming convention is `{slug}-{platform}-preview.png` (e.g., `user-avatar-swift-preview.png`, `content-core-kotlin-preview.png`). Screenshots must be taken using the NmpGallery iOS and Android apps (not ad-hoc preview apps), and added to `web/registry/public/screenshots/` for the website. Registry screenshots must be full-screen iPhone Simulator captures (e.g., 1206×2622), not cropped component slices, so they display properly inside the device mockup frame. The `DeviceMockup` CSS wrapper must be kept around screenshots (not removed), and screenshots should use `object-fit: contain` with a light background (#f2f2f7) so full-device images display correctly without zooming or cropping.
@@ -58,7 +60,15 @@ Chirp iOS uses registry-equivalent content components that were copied into the 
 
 ## Android Registry Adoption
 
-A Chirp Android app directory does not exist in apps/chirp/ (which contains chirp-tui and chirp-repl only); the Android audit covers the main Android app at android/app/. The main Android app uses zero registry components; it uses custom monolithic replacements including NostrRichText (297 LOC replacing content-core + content-view), MediaViews (144 LOC replacing content-media-grid), inline Avatar (replacing user-avatar), inline display name (replacing user-name), inline Row (replacing user-card), and inline RelayRow (replacing relay-list). The gallery Android app (apps/nmp-gallery/android/) copies all registry Compose components plus gallery-quality additions (Identicon.kt and MentionChip.kt) that should be upstreamed or adopted into the main app. <!-- [^e7a1d-4] -->
+The Chirp Android app lives at `apps/chirp/android/app/`. The main Android app
+uses zero registry components; it uses custom monolithic replacements including
+NostrRichText (297 LOC replacing content-core + content-view), MediaViews (144
+LOC replacing content-media-grid), inline Avatar (replacing user-avatar), inline
+display name (replacing user-name), inline Row (replacing user-card), and inline
+RelayRow (replacing relay-list). The gallery Android app
+(`apps/nmp-gallery/android/`) copies all registry Compose components plus
+gallery-quality additions (Identicon.kt and MentionChip.kt) that should be
+upstreamed or adopted into the main app. <!-- [^e7a1d-4] -->
 
 ## Cross-Platform Identicon Parity
 

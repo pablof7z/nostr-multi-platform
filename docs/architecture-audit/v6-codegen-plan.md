@@ -50,7 +50,7 @@ no schema layer to emit *from*.
 
 ### 2a. Inventory of every hand-written Swift `Decodable`
 
-Source: `/Users/pablofernandez/Work/nostr-multi-platform/ios/Chirp/Chirp/Bridge/KernelBridge.swift`
+Source: `/Users/pablofernandez/Work/nostr-multi-platform/apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`
 (2,054 LoC total; the Decodable block runs ~571–1988).
 
 | # | Swift type (file:line) | Rust counterpart (file:line) | Visibility in Rust | Notes |
@@ -100,7 +100,7 @@ Source: `/Users/pablofernandez/Work/nostr-multi-platform/ios/Chirp/Chirp/Bridge/
 | 43 | `KernelMetrics` (KernelBridge.swift:1989) | `Metrics` (`nmp-core/src/kernel/types.rs:615`) | `pub(super)` | 42 primitive fields; pure flat record. |
 | 44 | `RelayStatus` (KernelBridge.swift:2032) | `RelayStatus` (`nmp-core/src/kernel/types.rs:265`) | `pub(super)` | |
 
-Plus, in `/Users/pablofernandez/Work/nostr-multi-platform/ios/Chirp/Chirp/Bridge/TimelineBlock.swift`:
+Plus, in `/Users/pablofernandez/Work/nostr-multi-platform/apps/chirp/ios/Chirp/Bridge/TimelineBlock.swift`:
 
 | # | Swift type | Rust counterpart |
 |---|---|---|
@@ -427,7 +427,7 @@ ADR-0030 §"Decision (b)" both. The file is **committed** to the repo so:
 - The CI gate has something stable to diff against.
 
 The Chirp iOS target includes the file directly. Xcode group path:
-`ios/Chirp/Chirp/Bridge/Generated/KernelTypes.swift` as a *folder reference*
+`apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.swift` as a *folder reference*
 (or a symlink) to `bindings/swift/KernelTypes.swift`.
 
 ### 5c. Generated-file format requirements
@@ -614,7 +614,7 @@ the hand-written version, silently losing data.
    that *deletes* it, prior to deletion) and the generated code, with
    `XCTAssertEqual` on the decoded values.
 2. The `SnapshotProjectionsConformanceTests` at
-   `ios/Chirp/ChirpTests/SnapshotProjectionsConformanceTests.swift:50`
+   `apps/chirp/ios/ChirpTests/SnapshotProjectionsConformanceTests.swift:50`
    already catches the silent-nil class of bug for `SnapshotProjections`.
    Stage 2 must run green against the generated `SnapshotProjections`.
 3. Run Chirp manually (per the user's `run` skill or

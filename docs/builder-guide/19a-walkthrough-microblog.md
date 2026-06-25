@@ -266,7 +266,7 @@ staticlib crate (`apps/microblog/nmp-app-microblog`) whose entire job is to:
 3. Call `microblog_core::register(app)`. The defaults call is already inside
    that app-core composition root.
 
-That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/nmp-app-chirp`.
+That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/crates/nmp-app-chirp`.
 
 ## Anti-patterns (scaffold phase)
 

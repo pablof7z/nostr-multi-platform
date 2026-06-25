@@ -273,7 +273,7 @@ PR-3/4/#1140.
   `start` (`chirpStartRelays` in `web/chirp/src/nmp/client.ts`). The Chirp web
   defaults (`wss://relay.primal.net`, `wss://purplepag.es`) live in
   `web/chirp/src/chirpConfig.ts` (mirrors the Rust source of truth
-  `apps/chirp/nmp-chirp-config/src/lib.rs`). A `?relay=<url>` URL-param injected
+  `apps/chirp/crates/nmp-chirp-config/src/lib.rs`). A `?relay=<url>` URL-param injected
   via `client.start(relays)` overrides those defaults. Honest and dev-useful;
   no serde defaults and no test-only forks in Rust.
 - **Boot smoke** (`web/chirp/tests/e2e/boot.spec.ts`): navigate to

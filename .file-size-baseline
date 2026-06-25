@@ -12,7 +12,7 @@
 # cleanup issue owns the remaining split. It never permits sub-500 entries.
 # Genuinely generated/output files belong in .file-size-ignore, not here.
 
-android/app/src/test/java/org/nmp/android/OpFeedDecoderTest.kt	527
+apps/chirp/android/app/src/test/java/org/nmp/android/OpFeedDecoderTest.kt	527
 apps/chirp/chirp-desktop/src/app.rs	960
 apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/NostrContentView.kt	634
 apps/nmp-gallery/desktop/src/gallery.rs	649
@@ -73,8 +73,8 @@ docs/decisions/0038-typed-op-feed-projection.md	524
 docs/design/relay-roles.md	614
 docs/research/applesauce-app-relay-model.md	535
 docs/testing/nmpui-website-screenshot-checklist.md	574
-ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift	877
-ios/Chirp/ChirpTests/OpFeedDecoderTests.swift	506
+apps/chirp/ios/Chirp/Bridge/TypedProjectionGlue.swift	877
+apps/chirp/ios/ChirpTests/OpFeedDecoderTests.swift	506
 web/chirp/docs/ux-design.md	974
 web/chirp/docs/wasm-mvp-build-plan.md	588
 web/registry/public/registry.json	1221

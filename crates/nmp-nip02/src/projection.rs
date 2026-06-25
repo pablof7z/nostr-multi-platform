@@ -47,7 +47,7 @@
 //!
 //! # Provenance
 //!
-//! Moved out of `apps/chirp/nmp-app-chirp/src/follow_list.rs` so any Nostr
+//! Moved out of `apps/chirp/crates/nmp-app-chirp/src/follow_list.rs` so any Nostr
 //! app on top of NMP can wire the NIP-02 follow-list projection without
 //! depending on the Chirp app crate (thin-shell rule — Chirp must be a
 //! zero-logic delegate to NMP crates).

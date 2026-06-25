@@ -40,7 +40,7 @@ stress-xcui-fast: build-ios
         -project ios/NmpStress/NmpStress.xcodeproj \
         -scheme StressUITests-Fast \
         -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
-        -derivedDataPath ios/DerivedData \
+        -derivedDataPath apps/chirp/ios/DerivedData \
         -resultBundlePath docs/perf/m10.5/xcui-fast.xcresult
 
 # Nightly full suite: all scenarios at full duration, includes device
@@ -58,7 +58,7 @@ stress-xcui-full: build-ios
         -project ios/NmpStress/NmpStress.xcodeproj \
         -scheme StressUITests-Full \
         -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
-        -derivedDataPath ios/DerivedData \
+        -derivedDataPath apps/chirp/ios/DerivedData \
         -resultBundlePath docs/perf/m10.5/xcui-full.xcresult
 
 stress-device:
@@ -67,7 +67,7 @@ stress-device:
         -project ios/NmpStress/NmpStress.xcodeproj \
         -scheme StressUITests-Full \
         -destination 'platform=iOS,name=iPhone 12' \
-        -derivedDataPath ios/DerivedData \
+        -derivedDataPath apps/chirp/ios/DerivedData \
         -resultBundlePath docs/perf/m10.5/xcui-device.xcresult
 
 stress-sonnet:

@@ -52,4 +52,4 @@ module behavior plus a thin Chirp render/capability surface.
 
 ## The canonical bad example
 
-`apps/chirp/nmp-app-chirp/src/marmot/ops.rs`, `state.rs`, `publish.rs`, `tap.rs`, `payload.rs` — ~1400 lines of Marmot projection logic that lived in Chirp and was later migrated to `crates/nmp-marmot/src/projection/`. Do not repeat this mistake.
+`apps/chirp/crates/nmp-app-chirp/src/marmot/ops.rs`, `state.rs`, `publish.rs`, `tap.rs`, `payload.rs` — ~1400 lines of Marmot projection logic that lived in Chirp and was later migrated to `crates/nmp-marmot/src/projection/`. Do not repeat this mistake.

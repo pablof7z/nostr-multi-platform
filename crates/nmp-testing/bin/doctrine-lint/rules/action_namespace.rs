@@ -43,6 +43,9 @@ pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     // Only the workspace `crates/` tree is scoped — app-layer crates under
     // `apps/<app>/` legitimately use app-local vocabulary.
+    if s.contains("/apps/") || s.starts_with("apps/") {
+        return false;
+    }
     let in_crates = s.contains("/crates/nmp-") || s.starts_with("crates/nmp-");
     if !in_crates {
         return false;
@@ -257,10 +260,10 @@ mod tests {
     #[test]
     fn file_in_scope_excludes_apps() {
         assert!(!file_in_scope(&PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
         )));
         assert!(!file_in_scope(&PathBuf::from(
-            "/abs/path/apps/chirp/nmp-app-chirp/src/lib.rs"
+            "/abs/path/apps/chirp/crates/nmp-app-chirp/src/lib.rs"
         )));
     }
 

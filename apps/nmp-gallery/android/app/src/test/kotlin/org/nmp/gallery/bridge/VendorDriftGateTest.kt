@@ -90,7 +90,7 @@ class VendorDriftGateTest {
      */
     private fun copyPaths(file: String): List<String> = buildList {
         if (file != "NostrLoginBlock.kt") {
-            add("android/app/src/main/java/org/nmp/android/$file")
+            add("apps/chirp/android/app/src/main/java/org/nmp/android/$file")
         }
         add("crates/nmp-cli/registry/compose/login-block/$file")
     }

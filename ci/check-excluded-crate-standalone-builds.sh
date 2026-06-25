@@ -7,37 +7,17 @@ exclude_list="$(mktemp "${TMPDIR:-/tmp}/nmp-excluded-crates.XXXXXX")"
 GENERATED_LOCKS=()
 cleanup() {
   rm -f "$exclude_list"
-  for lockfile in "${GENERATED_LOCKS[@]}"; do
-    [[ -f "$lockfile" ]] && rm -f "$lockfile"
-  done
+  if ((${#GENERATED_LOCKS[@]})); then
+    for lockfile in "${GENERATED_LOCKS[@]}"; do
+      [[ -f "$lockfile" ]] && rm -f "$lockfile"
+    done
+  fi
 }
 trap cleanup EXIT
 
-python3 - "$ROOT/Cargo.toml" > "$exclude_list" <<'PY'
-import sys
-from pathlib import Path
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    print("python3 with tomllib is required (Python 3.11+)", file=sys.stderr)
-    sys.exit(2)
-
-manifest = Path(sys.argv[1])
-data = tomllib.loads(manifest.read_text())
-workspace = data.get("workspace", {})
-excludes = workspace.get("exclude", [])
-
-if not isinstance(excludes, list):
-    print("[workspace].exclude must be a list", file=sys.stderr)
-    sys.exit(2)
-
-for item in excludes:
-    if not isinstance(item, str):
-        print("[workspace].exclude entries must be strings", file=sys.stderr)
-        sys.exit(2)
-    print(item)
-PY
+sed -n '/^exclude = \[/,/^\]/p' "$ROOT/Cargo.toml" \
+  | sed -n 's/^[[:space:]]*"\([^"]*\)".*/\1/p' \
+  > "$exclude_list"
 
 EXCLUDES=()
 while IFS= read -r excluded_path; do

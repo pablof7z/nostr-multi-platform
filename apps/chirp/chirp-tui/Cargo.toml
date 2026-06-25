@@ -14,8 +14,8 @@ name = "chirp-tui"
 path = "src/main.rs"
 
 [dependencies]
-nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
-nmp-chirp-config = { path = "../nmp-chirp-config" }
+nmp-app-chirp = { path = "../crates/nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
+nmp-chirp-config = { path = "../crates/nmp-chirp-config" }
 nmp-content = { path = "../../../crates/nmp-content" }
 # Canonical Nostr kind-integer registry (Layer-0, zero-dep). Source of the
 # `is_encrypted_content_kind` predicate the outbox preview reads instead of

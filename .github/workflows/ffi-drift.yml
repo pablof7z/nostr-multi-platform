@@ -1,6 +1,6 @@
 name: ffi-drift
 
-# Catches C-header / Rust-FFI drift: `ios/Chirp/Chirp/Bridge/NmpCore.h` must
+# Catches C-header / Rust-FFI drift: `apps/chirp/ios/Chirp/Bridge/NmpCore.h` must
 # stay in sync with every production `nmp_*` symbol exported from the Rust FFI
 # archives the Chirp shell links. The gate statically normalizes Rust extern
 # signatures and C prototypes, then compares symbols and same-name signatures.

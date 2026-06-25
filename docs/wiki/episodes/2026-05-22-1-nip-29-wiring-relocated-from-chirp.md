@@ -32,7 +32,7 @@ User rejection: 'That's a lot of chirp specific code for something that should b
 
 ## Decision
 
-Created nmp_nip29::register module with three canonical wiring functions: wire_group_chat (observer + snapshot projection), wire_group_discovery, and register_actions (binds all 5 NIP-29 action modules). Chirp's FFI symbols became one-liner delegates: null-check → GroupId parse → nmp_nip29 call. The round-trip test relocated from apps/chirp/nmp-app-chirp/tests/ to crates/nmp-nip29/tests/ with zero Chirp imports.
+Created nmp_nip29::register module with three canonical wiring functions: wire_group_chat (observer + snapshot projection), wire_group_discovery, and register_actions (binds all 5 NIP-29 action modules). Chirp's FFI symbols became one-liner delegates: null-check → GroupId parse → nmp_nip29 call. The round-trip test relocated from apps/chirp/crates/nmp-app-chirp/tests/ to crates/nmp-nip29/tests/ with zero Chirp imports.
 
 ## Consequences
 

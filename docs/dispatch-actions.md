@@ -353,4 +353,4 @@ nmp_nip29::register_actions(app);   // registers nmp.nip29.*
 // nmp.publish + nmp.wallet.pay_invoice are registered automatically by nmp_app_chirp_register
 ```
 
-The canonical example is `crates/nmp-app-chirp/src/ffi/register.rs`.
+The canonical example is `apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs`.

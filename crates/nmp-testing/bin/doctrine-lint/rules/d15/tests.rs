@@ -182,7 +182,7 @@ fn file_in_scope_excludes_protocol_crates() {
         "crates/nmp-nip29/src/action/content.rs"
     )));
     assert!(!file_in_scope(&PathBuf::from(
-        "apps/chirp/nmp-app-chirp/src/lib.rs"
+        "apps/chirp/crates/nmp-app-chirp/src/lib.rs"
     )));
 }
 

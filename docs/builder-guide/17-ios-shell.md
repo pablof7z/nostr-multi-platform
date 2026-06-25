@@ -6,7 +6,7 @@ builders
 The kernel is the brain. SwiftUI is a **dumb render of a snapshot the kernel
 hands you**. The platform never owns state, never decides retry policy, never
 gates content on "is it loaded yet?". This section shows the exact bridge that
-ships today in `ios/Chirp` (the active kernel-wired iOS app) and the rules
+ships today in `apps/chirp/ios` (the active kernel-wired iOS app) and the rules
 that keep it doctrine-clean.
 
 ## The bridge — raw C calls, FlatBuffers updates
@@ -22,7 +22,7 @@ JSON snapshot fallback.
 
 ### `KernelHandle` — the thin wrapper (annotated)
 
-`ios/Chirp/Chirp/Bridge/KernelBridge.swift`:
+`apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`:
 
 ```swift
 final class KernelHandle {
@@ -183,7 +183,7 @@ looking at this now / not anymore".
 ## Per-iOS-app status box
 
 ```
-┌─ ios/Chirp ──────────────────── ACTIVE / kernel-wired ──────────────┐
+┌─ apps/chirp/ios ──────────────────── ACTIVE / kernel-wired ──────────────┐
 │ Production Nostr client and current NMP showcase.                   │
 │ Real actor, real relays, real snapshot loop.                        │
 └─────────────────────────────────────────────────────────────────────┘

@@ -4,16 +4,16 @@
 #
 # The checked-in Kotlin bindings cover four groups, all generated with flatc
 # 25.2.10 (the Android/Kotlin runtime pin — see ci/check-flatbuffers-version-pins.sh
-# and android/app/build.gradle.kts):
-#   transport — android/app/src/main/java/nmp/transport/*.kt
+# and apps/chirp/android/app/build.gradle.kts):
+#   transport — apps/chirp/android/app/src/main/java/nmp/transport/*.kt
 #               (flatc output for crates/nmp-core/schema/nmp_update.fbs)
-#   kernel    — android/app/src/main/java/nmp/kernel/*.kt   (issue #1288)
+#   kernel    — apps/chirp/android/app/src/main/java/nmp/kernel/*.kt   (issue #1288)
 #               (flatc output for every `namespace nmp.kernel` root schema in
 #                crates/nmp-core/schema/*.fbs — signer_state, action_lifecycle,
 #                action_stages, action_results, relay_diagnostics, accounts, …)
-#   embed     — android/app/src/main/java/nmp/embed/*.kt
+#   embed     — apps/chirp/android/app/src/main/java/nmp/embed/*.kt
 #               (flatc output for crates/nmp-content/schema/embed_sidecar.fbs)
-#   nip02     — android/app/src/main/java/nmp/nip02/*.kt
+#   nip02     — apps/chirp/android/app/src/main/java/nmp/nip02/*.kt
 #               (flatc output for crates/nmp-nip02/schema/follow_list.fbs)
 #
 # This script regenerates the Kotlin bindings with the PINNED flatc version and
@@ -53,9 +53,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 source "${SCRIPT_DIR}/flatc-pins.sh"
 EXPECTED_FLATC_VERSION="${FLATC_PIN_KOTLIN}"
 SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/nmp_update.fbs"
-CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/transport"
+CHECKED_IN_DIR="${REPO_ROOT}/apps/chirp/android/app/src/main/java/nmp/transport"
 KERNEL_SCHEMA_DIR="${REPO_ROOT}/crates/nmp-core/schema"
-KERNEL_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/kernel"
+KERNEL_CHECKED_IN_DIR="${REPO_ROOT}/apps/chirp/android/app/src/main/java/nmp/kernel"
 
 # ── flatc availability + version guard ──────────────────────────────────────
 
@@ -73,7 +73,7 @@ if [[ "${ACTUAL_FLATC_VERSION}" != "${EXPECTED_FLATC_VERSION}" ]]; then
     echo "kotlin-flatc-drift: flatc ${ACTUAL_FLATC_VERSION} found, but the Kotlin" >&2
     echo "transport bindings are pinned to flatc ${EXPECTED_FLATC_VERSION}" >&2
     echo "(matching the 'flatbuffers-java:${EXPECTED_FLATC_VERSION}' runtime pin in" >&2
-    echo " android/app/build.gradle.kts)." >&2
+    echo " apps/chirp/android/app/build.gradle.kts)." >&2
     echo "" >&2
     echo "Install flatc ${EXPECTED_FLATC_VERSION} from:" >&2
     echo "  https://github.com/google/flatbuffers/releases/tag/v${EXPECTED_FLATC_VERSION}" >&2
@@ -185,7 +185,7 @@ fi
 # to the kernel check: every checked-in nmp/embed/*.kt must be byte-identical
 # to a fresh flatc run.
 EMBED_SCHEMA="${REPO_ROOT}/crates/nmp-content/schema/embed_sidecar.fbs"
-EMBED_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/embed"
+EMBED_CHECKED_IN_DIR="${REPO_ROOT}/apps/chirp/android/app/src/main/java/nmp/embed"
 
 flatc --kotlin -o "${TMP_DIR}" "${EMBED_SCHEMA}"
 EMBED_GENERATED_DIR="${TMP_DIR}/nmp/embed"
@@ -228,7 +228,7 @@ if [[ "${embed_drift}" -ne 0 ]]; then
     echo "kotlin-flatc-drift: ${embed_drift} embed binding(s) drifted from a fresh" >&2
     echo "'flatc --kotlin' run over crates/nmp-content/schema/embed_sidecar.fbs." >&2
     echo "Regenerate with:" >&2
-    echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
+    echo "  flatc --kotlin -o apps/chirp/android/app/src/main/java/ \\" >&2
     echo "      crates/nmp-content/schema/embed_sidecar.fbs" >&2
     echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
     exit 1
@@ -242,7 +242,7 @@ fi
 # it directly for profile follow-button state, so its generated Kotlin binding
 # is drift-gated with the other shell-consumed schemas.
 NIP02_SCHEMA="${REPO_ROOT}/crates/nmp-nip02/schema/follow_list.fbs"
-NIP02_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/nip02"
+NIP02_CHECKED_IN_DIR="${REPO_ROOT}/apps/chirp/android/app/src/main/java/nmp/nip02"
 
 flatc --kotlin -o "${TMP_DIR}" "${NIP02_SCHEMA}"
 NIP02_GENERATED_DIR="${TMP_DIR}/nmp/nip02"
@@ -285,7 +285,7 @@ if [[ "${nip02_drift}" -ne 0 ]]; then
     echo "kotlin-flatc-drift: ${nip02_drift} NIP-02 binding(s) drifted from a fresh" >&2
     echo "'flatc --kotlin' run over crates/nmp-nip02/schema/follow_list.fbs." >&2
     echo "Regenerate with:" >&2
-    echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
+    echo "  flatc --kotlin -o apps/chirp/android/app/src/main/java/ \\" >&2
     echo "      crates/nmp-nip02/schema/follow_list.fbs" >&2
     echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
     exit 1
@@ -298,7 +298,7 @@ fi
 # the keyed-projection row-delta payload the Android `KeyedRefCache` decodes.
 # Generated independently into `nmp/refs/`; drift assertion identical to embed.
 REFS_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/ref_rowdelta.fbs"
-REFS_CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/refs"
+REFS_CHECKED_IN_DIR="${REPO_ROOT}/apps/chirp/android/app/src/main/java/nmp/refs"
 
 flatc --kotlin -o "${TMP_DIR}" "${REFS_SCHEMA}"
 REFS_GENERATED_DIR="${TMP_DIR}/nmp/refs"
@@ -341,7 +341,7 @@ if [[ "${refs_drift}" -ne 0 ]]; then
     echo "kotlin-flatc-drift: ${refs_drift} refs binding(s) drifted from a fresh" >&2
     echo "'flatc --kotlin' run over crates/nmp-core/schema/ref_rowdelta.fbs." >&2
     echo "Regenerate with:" >&2
-    echo "  flatc --kotlin -o android/app/src/main/java/ \\" >&2
+    echo "  flatc --kotlin -o apps/chirp/android/app/src/main/java/ \\" >&2
     echo "      crates/nmp-core/schema/ref_rowdelta.fbs" >&2
     echo "(requires flatc ${EXPECTED_FLATC_VERSION} — the Kotlin runtime pin)" >&2
     exit 1

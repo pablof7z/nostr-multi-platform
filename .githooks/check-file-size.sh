@@ -204,6 +204,23 @@ baseline_loc_for() {
     return 1
 }
 
+add_rename_baseline_aliases() {
+    [[ -n "$FROM_REF" && -n "$TO_REF" ]] || return 0
+
+    local status old_rel new_rel old_baseline existing
+    while IFS=$'\t' read -r status old_rel new_rel; do
+        [[ "$status" == R* && -n "$old_rel" && -n "$new_rel" ]] || continue
+        old_baseline="$(baseline_loc_for "$old_rel" || true)"
+        [[ -n "$old_baseline" ]] || continue
+        existing="$(baseline_loc_for "$new_rel" || true)"
+        [[ -z "$existing" ]] || continue
+        BASELINE_PATHS+=("$new_rel")
+        BASELINE_LOCS+=("$old_baseline")
+    done < <(git -C "$REPO_ROOT" diff --name-status --find-renames --diff-filter=R "$FROM_REF" "$TO_REF")
+}
+
+add_rename_baseline_aliases
+
 # ── Check if a relative path is ignored ──────────────────────────────────────
 is_ignored() {
     local rel="$1"

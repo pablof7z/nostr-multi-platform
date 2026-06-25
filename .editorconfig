@@ -1,7 +1,7 @@
 # EditorConfig — https://editorconfig.org
 #
 # Scoped narrowly to one concern: the checked-in `flatc --swift` bindings under
-# ios/Chirp/Chirp/Bridge/Generated/ are byte-for-byte the raw `flatc 25.12.19`
+# apps/chirp/ios/Chirp/Bridge/Generated/ are byte-for-byte the raw `flatc 25.12.19`
 # output and are guarded by `ci/check-swift-flatc-drift.sh` as a PURE byte-diff
 # (no fuzzing, consistent with the Rust/Kotlin/TS flatc drift gates). flatc
 # emits a trailing space after the file-identifier accessor
@@ -15,6 +15,6 @@
 # the scope of the flatc-drift gate (AGENTS.md: single source of truth).
 root = true
 
-[ios/Chirp/Chirp/Bridge/Generated/**.generated.swift]
+[apps/chirp/ios/Chirp/Bridge/Generated/**.generated.swift]
 trim_trailing_whitespace = false
 insert_final_newline = false

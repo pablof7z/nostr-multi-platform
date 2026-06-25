@@ -1,6 +1,6 @@
 //! R3-S3 (ADR-0055) — generated `ProjectionMergeCache` for Swift (iOS).
 //!
-//! Generates `ios/Chirp/Chirp/Bridge/Generated/ProjectionCache.generated.swift`
+//! Generates `apps/chirp/ios/Chirp/Bridge/Generated/ProjectionCache.generated.swift`
 //! from the SAME projection registry as [`crate::swift_typed_decoders`], so the
 //! cache can never drift from the decoder set.
 //!
@@ -45,7 +45,7 @@ const HEADER: &str = "\
 //
 // Regenerate via:
 //   cargo run -p nmp-codegen -- gen projection-cache \\
-//       --out ios/Chirp/Chirp/Bridge/Generated/ProjectionCache.generated.swift
+//       --out apps/chirp/ios/Chirp/Bridge/Generated/ProjectionCache.generated.swift
 //
 // Source of truth: the typed-sidecar identities in
 // `crates/nmp-codegen/src/swift_projections_registry.rs`.

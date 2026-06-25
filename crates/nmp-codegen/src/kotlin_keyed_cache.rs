@@ -4,7 +4,7 @@
 //! the five invariants, byte-for-byte semantically identical to the Swift cache
 //! and the Rust reference model (`nmp_core::refs::RefRowCache`).
 //!
-//! Generates `android/app/src/main/java/org/nmp/android/KeyedRefCache.kt` from
+//! Generates `apps/chirp/android/app/src/main/java/org/nmp/android/KeyedRefCache.kt` from
 //! [`KEYED_PROJECTIONS`].
 
 use std::path::Path;
@@ -24,7 +24,7 @@ const HEADER: &str = "\
 //
 // Regenerate via:
 //   cargo run -p nmp-codegen -- gen keyed-ref-cache --platform kotlin \\
-//       --out android/app/src/main/java/org/nmp/android/KeyedRefCache.kt
+//       --out apps/chirp/android/app/src/main/java/org/nmp/android/KeyedRefCache.kt
 //
 // Source of truth: KEYED_PROJECTIONS in
 // `crates/nmp-codegen/src/swift_projections_registry.rs`.

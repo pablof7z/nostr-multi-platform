@@ -75,7 +75,7 @@ pub extern "C" fn nmp_extra_ping() {}
 pub extern "C" fn nmp_free_string(ptr: *mut c_char) {}
 """,
         )
-        write(tmp / "apps/chirp/nmp-app-chirp/src/ffi/mod.rs", "")
+        write(tmp / "apps/chirp/crates/nmp-app-chirp/src/ffi/mod.rs", "")
         write(tmp / "crates/nmp-marmot/src/lib.rs", "")
         write(
             tmp / "crates/nmp-ffi/src/testing.rs",
@@ -88,7 +88,7 @@ pub extern "C" fn nmp_app_test_only_not_in_header() {}
 
         expect_ok(tmp, "valid fixture")
 
-        new_surface = tmp / "apps/chirp/nmp-app-chirp/src/ffi/new_surface.rs"
+        new_surface = tmp / "apps/chirp/crates/nmp-app-chirp/src/ffi/new_surface.rs"
         write(
             new_surface,
             """\

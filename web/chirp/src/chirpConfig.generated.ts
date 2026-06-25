@@ -1,5 +1,5 @@
 // GENERATED — do not edit by hand. Run `pnpm codegen:chirp-config` to regenerate.
-// Source: apps/chirp/nmp-chirp-config/src/lib.rs (CHIRP_*_URL constants + CHIRP_RELAY_BOOTSTRAP).
+// Source: apps/chirp/crates/nmp-chirp-config/src/lib.rs (CHIRP_*_URL constants + CHIRP_RELAY_BOOTSTRAP).
 //
 // Relay defaults are HOST policy, not framework policy (#1125): the nmp-wasm
 // worker protocol carries no built-in relay defaults, so the Chirp web host

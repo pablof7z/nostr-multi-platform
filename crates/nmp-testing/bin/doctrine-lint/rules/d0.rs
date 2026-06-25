@@ -159,10 +159,10 @@ mod tests {
     fn exempts_apps_path() {
         // Per the existing rule: apps/<app>/ legitimately uses domain nouns.
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "/abs/path/apps/chirp/nmp-app-chirp/src/lib.rs"
+            "/abs/path/apps/chirp/crates/nmp-app-chirp/src/lib.rs"
         )));
     }
 
@@ -184,7 +184,7 @@ mod tests {
         // `/apps/` exemption clause covers them; these assertions pin the
         // post-step-11 (`docs/architecture/crate-boundaries.md` §5) locations.
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/actions.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/actions.rs"
         )));
         assert!(file_is_exempt(&std::path::PathBuf::from(
             "apps/chirp/chirp-tui/src/feature_snapshot.rs"
@@ -192,7 +192,7 @@ mod tests {
         // The gallery composition root lives under `apps/<app>/` — the same
         // `/apps/` exemption clause covers every app-layer crate.
         assert!(file_is_exempt(&std::path::PathBuf::from(
-            "apps/nmp-gallery/nmp-app-gallery/src/lib.rs"
+            "apps/nmp-gallery/crates/nmp-app-gallery/src/lib.rs"
         )));
     }
 

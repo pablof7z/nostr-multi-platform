@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 ///
 /// `--out` is required: the caller supplies the app-owned destination path.
 /// For Chirp the path is
-/// `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`.
+/// `apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift`.
 /// (Previously this was the hardcoded default; it is now explicit so no
 /// app identity is baked into the generic tool — issue #1613.)
 ///
@@ -91,7 +91,7 @@ pub fn run_gen_swift(args: Vec<String>, help: &str) -> Result<(), String> {
 ///
 /// `--out` is required: the caller supplies the app-owned destination path.
 /// For Chirp the path is
-/// `ios/Chirp/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift`.
+/// `apps/chirp/ios/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift`.
 /// (Previously this was the hardcoded default; it is now explicit so no
 /// app identity is baked into the generic tool — issue #1613.)
 ///
@@ -155,10 +155,10 @@ pub fn run_gen_typed_decoders(args: Vec<String>, help: &str) -> Result<(), Strin
 /// `typed-decoders`; takes no schema stdin.
 ///
 /// `--platform swift` (default): generates `ProjectionCache.generated.swift`.
-/// For Chirp: `ios/Chirp/Chirp/Bridge/Generated/ProjectionCache.generated.swift`.
+/// For Chirp: `apps/chirp/ios/Chirp/Bridge/Generated/ProjectionCache.generated.swift`.
 ///
 /// `--platform kotlin`: generates `ProjectionCache.kt`.
-/// For Chirp Android: `android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
+/// For Chirp Android: `apps/chirp/android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
 ///
 /// `--out` is required: the caller supplies the app-owned destination path.
 /// (Previously per-platform paths were hardcoded as defaults; they are now

@@ -16,8 +16,8 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 REGISTRY_REL = Path("crates/nmp-codegen/src/action_builders/registry.rs")
 SCAN_ROOT_RELS = [
-    Path("ios/Chirp/Chirp"),
-    Path("android/app/src/main/java/org/nmp/android"),
+    Path("apps/chirp/ios/Chirp"),
+    Path("apps/chirp/android/app/src/main/java/org/nmp/android"),
 ]
 
 
@@ -150,16 +150,16 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
 pub const PUBLISH_NAMESPACE: &str = "nmp.publish";
 """,
         )
-        write(tmp / "ios/Chirp/Chirp/Bridge/Generated/ActionBuilders.generated.swift", '"nmp.follow"\n')
-        write(tmp / "android/app/src/main/java/org/nmp/android/ActionBuilders.kt", '"nmp.publish"\n')
-        write(tmp / "ios/Chirp/Chirp/Bridge/KernelBridge.swift", "GeneratedActionBuilders.follow(...)\n")
-        write(tmp / "android/app/src/main/java/org/nmp/android/SocialActions.kt", "GeneratedActionBuilders.follow()\n")
-        write(tmp / "ios/Chirp/Chirp/Features/Notes.swift", '/// "nmp.follow" in docs is not executable.\n')
+        write(tmp / "apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift", '"nmp.follow"\n')
+        write(tmp / "apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt", '"nmp.publish"\n')
+        write(tmp / "apps/chirp/ios/Chirp/Bridge/KernelBridge.swift", "GeneratedActionBuilders.follow(...)\n")
+        write(tmp / "apps/chirp/android/app/src/main/java/org/nmp/android/SocialActions.kt", "GeneratedActionBuilders.follow()\n")
+        write(tmp / "apps/chirp/ios/Chirp/Features/Notes.swift", '/// "nmp.follow" in docs is not executable.\n')
         if check(tmp) != 0:
             fail("self-test valid fixture unexpectedly failed")
         print("native-action-boundary: self-test OK - generated files and comments may spell namespaces")
 
-        offender = tmp / "ios/Chirp/Chirp/Features/Bad.swift"
+        offender = tmp / "apps/chirp/ios/Chirp/Features/Bad.swift"
         write(offender, 'let namespace = "nmp.follow"\n')
         stdout = StringIO()
         stderr = StringIO()

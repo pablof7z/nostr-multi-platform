@@ -81,9 +81,9 @@ fn main() {
 
 ### 3. Build the static lib + run on the iOS simulator
 
-The reference shell is **Chirp** (`ios/Chirp/`, the active live iOS app).
+The reference shell is **Chirp** (`apps/chirp/ios/`, the active live iOS app).
 It links the Rust static lib and decodes the snapshot via
-`ios/Chirp/Chirp/Bridge/KernelBridge.swift`. For this walkthrough, point a
+`apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`. For this walkthrough, point a
 shell at your static lib and call `nmp_app_microblog_register` instead of
 `nmp_app_chirp_register`.
 
@@ -98,8 +98,8 @@ nmp_app_start(raw, 0, 80, 4)
 ```sh
 # 1. build the Rust staticlib for the sim target
 cargo build -p nmp-app-microblog --target aarch64-apple-ios-sim --release
-# 2. generate the Xcode project (Chirp uses xcodegen: ios/Chirp/project.yml)
-cd ios/Chirp && xcodegen generate
+# 2. generate the Xcode project (Chirp uses xcodegen: apps/chirp/ios/project.yml)
+cd apps/chirp/ios && xcodegen generate
 # 3. build + run on a booted simulator (see section 17 for the bridge details)
 ```
 

@@ -41,7 +41,7 @@ The current code says something different. NMP ships a hand-rolled C-ABI:
   (`crates/nmp-core/src/ffi/identity.rs:21,35,46,92,103,125,141,152`),
   `nmp_app_wallet_pay_invoice` (`crates/nmp-core/src/ffi/wallet.rs:29,45,84`),
   `nmp_app_set_update_callback` (`crates/nmp-core/src/ffi/mod.rs:1251`).
-- **Read/snapshot surface.** `ios/Chirp/Chirp/Bridge/KernelBridge.swift`
+- **Read/snapshot surface.** `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`
   carries 42 top-level `Decodable` struct mirrors of kernel projection types
   between lines 680 and 1988 — **~1,308 LoC of hand-maintained Swift** that
   duplicates the shape of every JSON projection emitted by

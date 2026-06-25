@@ -294,11 +294,11 @@ fn non_k2_crates_are_out_of_scope() {
     assert!(!file_in_scope(Path::new("crates/nmp-marmot/src/lib.rs")));
     assert!(!file_in_scope(Path::new("crates/nmp-store/src/lib.rs")));
     assert!(!file_in_scope(Path::new(
-        "apps/chirp/nmp-app-chirp/src/lib.rs"
+        "apps/chirp/crates/nmp-app-chirp/src/lib.rs"
     )));
     // The out-of-workspace android FFI crate is not in the gate scope.
     assert!(!file_in_scope(Path::new(
-        "crates/nmp-android-ffi/src/session.rs"
+        "apps/chirp/crates/nmp-chirp-android-ffi/src/session.rs"
     )));
 }
 

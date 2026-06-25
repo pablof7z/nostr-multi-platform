@@ -46,7 +46,7 @@ own a reusable projection or action; an app crate composes those modules into
 its product.
 
 `nmp-defaults` sits at the composition layer, not in the kernel. It wires
-generic Nostr defaults that many apps should inherit. `apps/chirp/nmp-app-chirp`
+generic Nostr defaults that many apps should inherit. `apps/chirp/crates/nmp-app-chirp`
 then adds product-specific Rust glue: Chirp projection registration, group
 chat/discovery surfaces, wallet feature wiring, and the home feed key.
 

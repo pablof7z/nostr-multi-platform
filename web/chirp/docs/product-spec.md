@@ -33,8 +33,8 @@ Chirp Web is an example app that proves the framework. It must be:
    TypeScript. Zero technical debt.
 
 Product reference: the existing Chirp shells —
-`apps/chirp/nmp-app-chirp` (shared app crate), `apps/chirp/chirp-desktop`,
-`apps/chirp/chirp-tui`, and `ios/Chirp`. Chirp Web is the same product on the
+`apps/chirp/crates/nmp-app-chirp` (shared app crate), `apps/chirp/chirp-desktop`,
+`apps/chirp/chirp-tui`, and `apps/chirp/ios`. Chirp Web is the same product on the
 `nmp-wasm` worker runtime, plus the diagnostics surface no other shell makes
 the hero.
 
@@ -49,7 +49,7 @@ the hero.
 ## 1. Ground truth — what `nmp-wasm` exposes today
 
 The worker protocol is `crates/nmp-wasm/src/protocol.rs`; the wasm-bindgen
-surface is `apps/chirp/nmp-app-chirp-web/src/wasm_binding.rs` (`NmpWasmRuntime`).
+surface is `apps/chirp/crates/nmp-app-chirp-web/src/wasm_binding.rs` (`NmpWasmRuntime`).
 
 | Surface | Where | Notes |
 |---|---|---|
@@ -79,7 +79,7 @@ What is **actor-only today** (native feature gate, not reachable from the
 browser runtime): identity store / account lifecycle (`nmp.sign_in_nsec`,
 `nmp.create_account`, switch/remove), NIP-46 signer broker
 (`crates/nmp-signer-broker`), NIP-17 DM runtime, NIP-29 group observers,
-NIP-47 wallet runtime (`apps/chirp/nmp-app-chirp/src/wallet_runtime.rs`),
+NIP-47 wallet runtime (`apps/chirp/crates/nmp-app-chirp/src/wallet_runtime.rs`),
 the capability socket (HTTP fetches — wasm returns
 `browser_actor_driver_missing`, `runtime.rs:208-219`), the NIP-77 reconciler
 (`crates/nmp-nip77`), OPFS-SQLite persistence (ADR-0054; the boot-time store

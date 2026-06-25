@@ -92,7 +92,7 @@ fn wildcard_kind_fan_out_to_event_observers() {
 
     // Kind:9 (NIP-29 group chat message) — hits the wildcard arm because
     // no explicit match arm above lists it. `GroupChatProjection` in
-    // `apps/chirp/nmp-app-chirp/src/ffi/register.rs` is registered as a
+    // `apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs` is registered as a
     // `KernelEventObserver` for exactly this kind.
     let value = signed_event_value(9, "hello group");
     kernel.handle_event(

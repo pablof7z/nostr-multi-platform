@@ -460,7 +460,7 @@ That is the entire iOS change. No logic, no branching, no understanding of NIP-6
 | 4 | `PublishOutboxRelay.relay_reason`; `publish_outbox_relay()` signature; call site | `nmp-core/kernel` |
 | 5 | `OutboxRelayLine`; `OutboxLine.relays`; `outbox_from()` parser | `chirp-tui` |
 | 6 | `AppState.outbox_selected`; input handling; `render_outbox()` detail mode | `chirp-tui` |
-| 7 | Swift `PublishOutboxRelay.relayReason`; `OutboxRelayRow` new line | `ios/Chirp` |
+| 7 | Swift `PublishOutboxRelay.relayReason`; `OutboxRelayRow` new line | `apps/chirp/ios` |
 
 Steps 1–4 ship as one PR (`nmp-core` + `nmp-router`). Steps 5–6 ship as a second PR (`chirp-tui`). Step 7 ships as a third PR (`ios`). Steps 5–7 depend on step 4 being merged; within each group steps are sequential.
 

@@ -3,7 +3,7 @@
 //! Calls the real production builder functions from `nmp_app_chirp::typed_api`
 //! and asserts on the actual (namespace, JSON) output they produce.  These are
 //! NOT tautological: the expected values were verified against the production
-//! code in `apps/chirp/nmp-app-chirp/src/typed_api.rs`.
+//! code in `apps/chirp/crates/nmp-app-chirp/src/typed_api.rs`.
 //!
 //! # Running
 //!

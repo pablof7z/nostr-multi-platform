@@ -3,7 +3,7 @@
 //! These assert the generator emits the correctness-critical constructs (the
 //! five invariants) and one accessor per keyed namespace. The Swift COMPILE +
 //! XCTest run is the device/CI harness's gate
-//! (`ios/Chirp/ChirpTests/KeyedRefCacheTests.swift`); these Rust tests guard the
+//! (`apps/chirp/ios/ChirpTests/KeyedRefCacheTests.swift`); these Rust tests guard the
 //! generator so the emitted shape cannot silently regress.
 
 use super::render_keyed_ref_cache;

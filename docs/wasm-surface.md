@@ -113,7 +113,7 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 206–220.
 
 ### `handle_json`
 
-Source: `apps/chirp/nmp-app-chirp-web/src/wasm_binding.rs`.
+Source: `apps/chirp/crates/nmp-app-chirp-web/src/wasm_binding.rs`.
 
 ```
 handle_json(request: string): Result<JsValue, JsValue>
@@ -136,7 +136,7 @@ cause.
 
 ### `handle_dispatch_bytes`
 
-Source: `apps/chirp/nmp-app-chirp-web/src/wasm_binding.rs`.
+Source: `apps/chirp/crates/nmp-app-chirp-web/src/wasm_binding.rs`.
 
 ```
 handle_dispatch_bytes(bytes: Uint8Array): Result<JsValue, JsValue>

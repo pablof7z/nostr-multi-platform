@@ -40,7 +40,7 @@ mkdir -p "$REPORT_DIR"
 SIM_ID=$(xcrun simctl list devices available | grep "iPhone 16 Pro" \
   | head -1 | grep -oE '[A-F0-9-]{36}')
 xcrun simctl boot "$SIM_ID" || true
-xcrun simctl install "$SIM_ID" ios/DerivedData/Build/Products/Debug-iphonesimulator/NmpStress.app
+xcrun simctl install "$SIM_ID" apps/chirp/ios/DerivedData/Build/Products/Debug-iphonesimulator/NmpStress.app
 
 # Spawn N agents in parallel
 for i in $(seq 1 "$N"); do

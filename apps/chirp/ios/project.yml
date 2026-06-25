@@ -1,0 +1,153 @@
+name: Chirp
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    GENERATE_INFOPLIST_FILE: NO
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 456SHKPP26
+packages:
+  FlatBuffers:
+    url: https://github.com/google/flatbuffers.git
+    from: 25.12.19
+targets:
+  Chirp:
+    type: application
+    platform: iOS
+    sources:
+      - path: Chirp
+    dependencies:
+      - package: FlatBuffers
+    info:
+      path: Chirp/Info.plist
+      properties:
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        CFBundleDisplayName: Chirp7z
+        UIApplicationSupportsIndirectInputEvents: true
+        # App Store upload requires an explicit icon name and orientation set
+        # (validation errors 90713 / 90474). Declared here so xcodegen does not
+        # strip them from Info.plist on the next `xcodegen generate`.
+        CFBundleIconName: AppIcon
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        LSApplicationQueriesSchemes:
+          - nostrsigner
+          - primal
+          - nostrconnect
+        CFBundleURLTypes:
+          - CFBundleURLName: io.f7z.chirp.nip46
+            CFBundleURLSchemes:
+              - chirp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.chirp
+        PRODUCT_MODULE_NAME: Chirp
+        PRODUCT_NAME: Chirp7z
+        # Monochrome global accent (black in light, white in dark) so every
+        # system-accent consumer — List/Form row icons, cursors, switches —
+        # resolves to the single black accent, not iOS default blue.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_ENTITLEMENTS: Chirp/Chirp.entitlements
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_OBJC_BRIDGING_HEADER: Chirp/Bridge/NmpCore.h
+        "LIBRARY_SEARCH_PATHS[sdk=iphoneos*]":
+          - $(SRCROOT)/../../../target/aarch64-apple-ios/debug
+          - $(SRCROOT)/../../../target/aarch64-apple-ios/release
+        "LIBRARY_SEARCH_PATHS[sdk=iphonesimulator*]":
+          - $(SRCROOT)/../../../target/aarch64-apple-ios-sim/debug
+          - $(SRCROOT)/../../../target/aarch64-apple-ios-sim/release
+        # Chirp links one aggregate Rust archive. It contains nmp-core,
+        # the NIP-46 signer broker, and the Chirp projection, keeping
+        # process-global Rust state such as the bunker hook single-copy.
+        OTHER_LDFLAGS: "$(inherited) -lnmp_app_chirp"
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # Xcode 26 beta workarounds:
+        # 1. SwiftUICore restricts allowable-clients in its SDK TBD; the debug
+        #    dylib mode hits the same restriction. Disable the debug dylib so the
+        #    linker targets the real executable, and point FRAMEWORK_SEARCH_PATHS
+        #    at /tmp/LocalFrameworks first — that directory holds a copy of the
+        #    SwiftUICore.tbd with the allowable-clients block removed (no-op at
+        #    runtime; the real dylib is loaded from /System/Library at launch).
+        # 2. UIUtilities is a new private framework auto-linked in Xcode 26; a
+        #    stub TBD lives in the same /tmp/LocalFrameworks directory.
+        # Both stubs must exist before building; see docs/dev/xcode26-workarounds.md.
+        ENABLE_DEBUG_DYLIB: NO
+        "FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]": "/tmp/LocalFrameworks $(inherited)"
+    preBuildScripts:
+      - name: Generate BuildInfo
+        basedOnDependencyAnalysis: false
+        script: |
+          BRANCH=$(git -C "$SRCROOT/../../.." rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+          COMMIT=$(git -C "$SRCROOT/../../.." rev-parse --short HEAD 2>/dev/null || echo "unknown")
+          BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
+          OUT="$SRCROOT/Chirp/App/BuildInfo.generated.swift"
+          {
+            echo "// Auto-generated at build time — do not edit"
+            echo "enum BuildInfo {"
+            echo "    static let branch = \"$BRANCH\""
+            echo "    static let commit = \"$COMMIT\""
+            echo "    static let buildTime = \"$BUILD_TIME\""
+            echo "}"
+          } > "$OUT"
+
+  ChirpTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ChirpTests
+    dependencies:
+      # Host in the Chirp app so the test bundle inherits the app's keychain
+      # entitlement context (SecItem* requires it on the iOS simulator).
+      - target: Chirp
+    settings:
+      base:
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Chirp7z.app/Chirp7z"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.chirp.tests
+        GENERATE_INFOPLIST_FILE: YES
+
+  ChirpUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ChirpUITests
+    dependencies:
+      - target: Chirp
+    settings:
+      base:
+        TEST_TARGET_NAME: Chirp
+        PRODUCT_BUNDLE_IDENTIFIER: io.f7z.chirp.uitests
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  Chirp:
+    build:
+      targets:
+        Chirp: all
+    test:
+      # Marmot credential-store paths that would otherwise touch the iOS keychain
+      # take the in-memory mock branch when `NMP_MARMOT_MOCK_KEYRING=1` is set
+      # (read by `nmp-marmot` at runtime). The ChirpTests decoder/conformance
+      # suite is hermetic and does not exercise those paths, but baking the env
+      # var into the test action makes the suite runnable headlessly on a CI
+      # macOS runner with no `SecItem*` entitlement (issue #973, Phase 2) and is a
+      # no-op for any path that never reaches the keychain.
+      environmentVariables:
+        NMP_MARMOT_MOCK_KEYRING: "1"
+      targets:
+        - ChirpTests
+        - ChirpUITests

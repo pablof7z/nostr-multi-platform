@@ -1,6 +1,6 @@
 // Codegen: single-source Chirp relay defaults from the Rust source of truth.
 //
-// Reads apps/chirp/nmp-chirp-config/src/lib.rs and emits
+// Reads apps/chirp/crates/nmp-chirp-config/src/lib.rs and emits
 // web/chirp/src/chirpConfig.generated.ts so the web host cannot drift from the
 // authoritative Rust constants (D4: one source per fact). Run via
 // `pnpm codegen:chirp-config`. No dependencies beyond Node built-ins.
@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(scriptDir, "..", "..", "..");
-const rustSourceRel = "apps/chirp/nmp-chirp-config/src/lib.rs";
+const rustSourceRel = "apps/chirp/crates/nmp-chirp-config/src/lib.rs";
 const rustSourcePath = join(repoRoot, rustSourceRel);
 const outPath = join(scriptDir, "..", "src", "chirpConfig.generated.ts");
 

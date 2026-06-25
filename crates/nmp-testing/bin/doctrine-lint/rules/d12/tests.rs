@@ -116,7 +116,7 @@ fn file_in_scope_includes_protocol_and_app_crates() {
         "crates/nmp-nip29/src/action/content.rs"
     )));
     assert!(file_in_scope(&Path::new(
-        "apps/chirp/nmp-app-chirp/src/lib.rs"
+        "apps/chirp/crates/nmp-app-chirp/src/lib.rs"
     )));
     assert!(file_in_scope(&Path::new("crates/nmp-core/src/publish.rs")));
 }

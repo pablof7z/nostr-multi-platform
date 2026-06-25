@@ -37,7 +37,7 @@ namespace nmp.kernel;
 //         crates/nmp-core/schema/signer_state.fbs
 //
 // Regenerate the checked-in Swift bindings only with the same pin:
-//   flatc --swift -o ios/Chirp/Chirp/Bridge/Generated \
+//   flatc --swift -o apps/chirp/ios/Chirp/Bridge/Generated \
 //         crates/nmp-core/schema/signer_state.fbs
 
 table SignerState {

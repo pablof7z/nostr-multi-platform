@@ -26,7 +26,7 @@ CI's cargo test job does NOT compile the apps/* crate tests (including nmp-app-c
 
 ## Trigger
 
-Codex post-hoc review of merged P1 PRs found that apps/chirp/nmp-app-chirp/tests/typed_feed_parity.rs still referenced removed fields (E0560), which CI structurally cannot detect.
+Codex post-hoc review of merged P1 PRs found that apps/chirp/crates/nmp-app-chirp/tests/typed_feed_parity.rs still referenced removed fields (E0560), which CI structurally cannot detect.
 
 ## Decision
 

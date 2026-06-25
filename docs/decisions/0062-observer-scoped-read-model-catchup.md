@@ -80,7 +80,7 @@ interest opened — isolating the failure to the cache-serve dedup + missing rep
 ### Why the app currently "works"
 
 The Chirp shell papers over the hole with `seed_author_feed_from_store` /
-`seed_thread_feed_from_store` (`apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs:344,363`),
+`seed_thread_feed_from_store` (`apps/chirp/crates/nmp-app-chirp/src/ffi/interest_feed.rs:344,363`),
 which read LMDB **directly** and feed the `FlatFeed`. Issues #1645/#1646 correctly
 identify this as an anti-pattern (the kernel, not the app, should own event
 acquisition — `store-first-interest-registration.md:37`) — but the seeds are

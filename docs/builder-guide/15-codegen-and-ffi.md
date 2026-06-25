@@ -90,7 +90,7 @@ Deleting the old `gen modules` scaffolder did not touch them.
 │ runtime snapshot fallback and no pull/drain update symbol.           │
 │ There is NO generated per-app FFI crate; the app core calls          │
 │ `nmp_defaults::register_defaults` and the raw C-ABI surface is shared. │
-│ ios/Chirp consumes NmpCore.h backed by nmp-ffi plus Chirp wrappers.    │
+│ apps/chirp/ios consumes NmpCore.h backed by nmp-ffi plus Chirp wrappers.    │
 ├─ FlatBuffers runtime transport (SHIPS) ─────────────────────────────┤
 │ One canonical transport frame carries typed SnapshotEnvelope fields  │
 │ and typed projection sidecars from Rust to frontend shells. JSON is    │

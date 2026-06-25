@@ -2,14 +2,14 @@ name: codegen-drift
 
 # V6 Stage 1 — Swift `Decodable` emitter drift gate. The Rust projection
 # types in their owning Rust crates are the single source of truth for the Swift `Decodable`
-# mirrors at `ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift`.
+# mirrors at `apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift`.
 # This workflow runs the emitter in `--check` mode and fails any PR whose
 # generated Swift differs from a fresh run.
 #
 # Regenerate locally with:
 #   cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas \
 #     | cargo run -p nmp-codegen -- gen swift \
-#       --out ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift
+#       --out apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift
 #
 # See `crates/nmp-codegen/src/swift.rs` for the emitter itself.
 #
@@ -62,7 +62,7 @@ jobs:
         run: |
           cargo run --quiet -p nmp-core --features codegen-schema --bin dump_projection_schemas \
             | cargo run --quiet -p nmp-codegen -- gen swift --check \
-                --out ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift
+                --out apps/chirp/ios/Chirp/Bridge/Generated/KernelTypes.generated.swift
 
       # V6 Stage 4 (consumer-side) — the generated typed-FlatBuffer-sidecar
       # decoders (`TypedProjectionDecoders.generated.swift`). Driven by the
@@ -73,7 +73,7 @@ jobs:
       - name: Check typed-decoder codegen is up to date
         run: |
           cargo run --quiet -p nmp-codegen -- gen typed-decoders --check \
-            --out ios/Chirp/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift
+            --out apps/chirp/ios/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift
 
       # ADR-0053 / Workstream-E4 — the kernel built-in projection key const
       # (crates/nmp-core/src/kernel/update/builtin_projection_keys.generated.rs)
@@ -136,9 +136,9 @@ jobs:
       - name: Check keyed-ref-cache codegen is up to date
         run: |
           cargo run --quiet -p nmp-codegen -- gen keyed-ref-cache --check \
-            --out ios/Chirp/Chirp/Bridge/Generated/KeyedRefCache.generated.swift
+            --out apps/chirp/ios/Chirp/Bridge/Generated/KeyedRefCache.generated.swift
           cargo run --quiet -p nmp-codegen -- gen keyed-ref-cache --platform kotlin --check \
-            --out android/app/src/main/java/org/nmp/android/KeyedRefCache.kt
+            --out apps/chirp/android/app/src/main/java/org/nmp/android/KeyedRefCache.kt
 
       # ADR-0064 §3 (#1783) — the generated typed action-builders
       # (`ActionBuilders.generated.swift` + `ActionBuilders.kt`) are DERIVED from
@@ -153,9 +153,9 @@ jobs:
       - name: Check action-builder codegen is up to date
         run: |
           cargo run --quiet -p nmp-codegen -- gen action-builders --platform swift --check \
-            --out ios/Chirp/Chirp/Bridge/Generated/ActionBuilders.generated.swift
+            --out apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift
           cargo run --quiet -p nmp-codegen -- gen action-builders --platform kotlin --check \
-            --out android/app/src/main/java/org/nmp/android/ActionBuilders.kt
+            --out apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt
           cargo run --quiet -p nmp-codegen -- gen action-builders --platform ts --check \
             --out web/packages/runtime-web/src/actionBuilders.generated.ts
 
@@ -213,7 +213,7 @@ jobs:
         run: bash ci/check-dispatch-envelope-gates.sh
 
   # Swift flatc binding drift gate. The checked-in `flatc --swift` Swift
-  # binding files at ios/Chirp/Chirp/Bridge/Generated/*.generated.swift (every
+  # binding files at apps/chirp/ios/Chirp/Bridge/Generated/*.generated.swift (every
   # `.generated.swift` EXCEPT KernelTypes.generated.swift and
   # TypedProjectionDecoders.generated.swift, which are nmp-codegen outputs
   # covered by the `swift-codegen-drift` job above) must be byte-identical to a
@@ -239,8 +239,8 @@ jobs:
         run: bash ci/check-swift-flatc-drift.sh
 
   # Issue #1093 (transport) + issue #1288 (kernel) — Kotlin flatc binding drift
-  # gate. The checked-in Kotlin bindings at android/app/src/main/java/nmp/transport/*.kt
-  # (from nmp_update.fbs) AND android/app/src/main/java/nmp/kernel/*.kt (from every
+  # gate. The checked-in Kotlin bindings at apps/chirp/android/app/src/main/java/nmp/transport/*.kt
+  # (from nmp_update.fbs) AND apps/chirp/android/app/src/main/java/nmp/kernel/*.kt (from every
   # `namespace nmp.kernel` root schema in crates/nmp-core/schema/*.fbs, derived by
   # grep — not hard-coded) must be identical to a fresh `flatc --kotlin` run, with
   # flatc pinned to the Android/Kotlin runtime pin (25.2.10, distinct from the
@@ -271,7 +271,7 @@ jobs:
         run: |
           cmp \
             crates/nmp-core/tests/fixtures/update_frame_tier3_golden_v1.fb.hex \
-            android/app/src/test/resources/fixtures/update_frame_tier3_golden_v1.fb.hex \
+            apps/chirp/android/app/src/test/resources/fixtures/update_frame_tier3_golden_v1.fb.hex \
           || { echo "golden fixture copies diverged — regenerate BOTH via tier3_golden_fixture_matches_encoder"; exit 1; }
 
   # Issue #1209 + #1512 — TypeScript flatc drift gate. Every checked-in web TS

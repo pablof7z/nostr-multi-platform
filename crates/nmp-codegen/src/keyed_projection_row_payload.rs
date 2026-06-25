@@ -25,7 +25,7 @@ pub struct RefRowPayload {
     /// (the single-entry event row is unwrapped to one `ClaimedEventDto`).
     pub swift_domain_type: &'static str,
     /// The hand-written `TypedProjectionGlue` static (in
-    /// `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift`) that maps the reader
+    /// `apps/chirp/ios/Chirp/Bridge/TypedProjectionGlue.swift`) that maps the reader
     /// struct to the domain value. For `refs.profile` this is the existing
     /// `profile(_:)` glue (reader is the SAME `ProfileSnapshot`); for
     /// `refs.event` it is the Lane-C `refRowEvent(_:)` glue that unwraps the

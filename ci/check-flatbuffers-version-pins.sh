@@ -55,12 +55,12 @@ no_stale_kotlin_gradle_pin() {
 # ── Runtime-library pins (cannot source the shell file) ─────────────────────
 # Rust + Swift.
 require_line "Cargo.toml" "flatbuffers = \"${FLATC_PIN_RUST_SWIFT}\""
-require_line "ios/Chirp/project.yml" "from: ${FLATC_PIN_RUST_SWIFT}"
-require_line "ios/Chirp/Chirp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved" "\"version\" : \"${FLATC_PIN_RUST_SWIFT}\""
+require_line "apps/chirp/ios/project.yml" "from: ${FLATC_PIN_RUST_SWIFT}"
+require_line "apps/chirp/ios/Chirp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved" "\"version\" : \"${FLATC_PIN_RUST_SWIFT}\""
 # Android/Kotlin — both gradle files, every dependency line (impl + testImpl).
-require_line "android/app/build.gradle.kts" "flatbuffers-java:${FLATC_PIN_KOTLIN}"
+require_line "apps/chirp/android/app/build.gradle.kts" "flatbuffers-java:${FLATC_PIN_KOTLIN}"
 require_line "apps/nmp-gallery/android/app/build.gradle.kts" "flatbuffers-java:${FLATC_PIN_KOTLIN}"
-no_stale_kotlin_gradle_pin "android/app/build.gradle.kts"
+no_stale_kotlin_gradle_pin "apps/chirp/android/app/build.gradle.kts"
 no_stale_kotlin_gradle_pin "apps/nmp-gallery/android/app/build.gradle.kts"
 # Web/TypeScript — every package.json that pins flatbuffers + the lockfile.
 require_line "web/chirp/package.json" "\"flatbuffers\": \"^${FLATC_PIN_TS}\""
@@ -131,14 +131,14 @@ done
 # binding; it MUST match the Kotlin runtime pin. Derive the needle from the pin.
 KOTLIN_GUARD="FLATBUFFERS_${FLATC_PIN_KOTLIN//./_}()"
 
-while IFS= read -r file; do
-    require_line "${file#"${REPO_ROOT}/"}" "${KOTLIN_GUARD}"
-done < <(grep -rl "fun validateVersion" \
-    "${REPO_ROOT}/apps/nmp-gallery/android/app/src/main/kotlin/nmp/transport" | sort)
-
-while IFS= read -r file; do
-    require_line "${file#"${REPO_ROOT}/"}" "${KOTLIN_GUARD}"
-done < <(grep -rl "fun validateVersion" \
-    "${REPO_ROOT}/android/app/src/main/java/nmp" | sort)
+for kotlin_root in \
+    "${REPO_ROOT}/apps/chirp/android/app/src/main/java/nmp" \
+    "${REPO_ROOT}/apps/nmp-gallery/android/app/src/main/kotlin/nmp/transport"
+do
+    [[ -d "${kotlin_root}" ]] || continue
+    while IFS= read -r file; do
+        require_line "${file#"${REPO_ROOT}/"}" "${KOTLIN_GUARD}"
+    done < <(grep -rl "fun validateVersion" "${kotlin_root}" | sort)
+done
 
 echo "flatbuffers-version-pins: OK (rust+swift=${FLATC_PIN_RUST_SWIFT}, kotlin=${FLATC_PIN_KOTLIN}, ts=${FLATC_PIN_TS})"

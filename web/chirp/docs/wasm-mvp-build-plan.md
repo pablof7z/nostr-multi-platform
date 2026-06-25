@@ -279,7 +279,7 @@ read-only/degraded banner.
 compile: all `nmp-core` (already true). The verbs are thin `nmp-wasm`
 routing. The `{1,6}` kind policy stays host-supplied data (D0), exactly as
 native Chirp passes `HOME_FEED_KINDS_JSON` through the generic verb
-(`apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs:272-289`).
+(`apps/chirp/crates/nmp-app-chirp/src/ffi/interest_feed.rs:272-289`).
 
 **Collision risk** — touches `nmp-core` more broadly than PR-1/2
 (`actor/dispatch.rs` move + `kernel_reducer.rs` + `contacts.rs` call paths).
@@ -303,9 +303,9 @@ Peers are running lint sweeps in `nmp-core`-adjacent crates — coordinate the
     whose output `make_update` already merges (`kernel/update.rs:243,266`).
   - `active_account_handle()` and an event-by-id lookup forwarding (for the
     OP-feed `event_lookup` closure; native uses `NmpApp::event_by_id`).
-- **New crate `apps/chirp/nmp-app-chirp-web`** (cdylib + rlib) — the wasm
+- **New crate `apps/chirp/crates/nmp-app-chirp-web`** (cdylib + rlib) — the wasm
   composition root, the web twin of
-  `apps/chirp/nmp-app-chirp/src/ffi/interest_feed.rs` and
+  `apps/chirp/crates/nmp-app-chirp/src/ffi/interest_feed.rs` and
   `nmp-defaults::register_op_feed_defaults`. `nmp-wasm` stays substrate-grade
   ("no app nouns", `snapshot.rs:18-22`); this crate is where Chirp nouns
   live, mirroring the native `nmp-ffi` ↔ `nmp-app-chirp` split. It depends on

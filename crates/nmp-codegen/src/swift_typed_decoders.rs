@@ -6,7 +6,7 @@
 //! `SnapshotFrame.typed_projections` sidecar (ADR-0037/0044) ALONGSIDE the
 //! generic JSON `payload`. Switching Chirp's consumer off the JSON path means
 //! decoding those sidecars in Swift. The hand-written precedent is
-//! `ios/Chirp/Chirp/Bridge/TypedHomeFeedDecoder.swift`: find the envelope by
+//! `apps/chirp/ios/Chirp/Bridge/TypedHomeFeedDecoder.swift`: find the envelope by
 //! `key`+`schemaId`, `getCheckedRoot(fileId:)` the bytes into the `flatc
 //! --swift` reader struct, map the reader to the Chirp domain type.
 //!
@@ -69,7 +69,7 @@ const HEADER: &str = "\
 //
 // Regenerate via:
 //   cargo run -p nmp-codegen -- gen typed-decoders \\
-//       --out ios/Chirp/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift
+//       --out apps/chirp/ios/Chirp/Bridge/Generated/TypedProjectionDecoders.generated.swift
 //
 // Source of truth: the typed-sidecar identities in
 // `crates/nmp-codegen/src/swift_projections_registry.rs`
@@ -84,7 +84,7 @@ const HEADER: &str = "\
 // in-process FFI boundary (Rust kernel → Swift shell, same process/memory);
 // running the O(buffer) FlatBuffers Verifier on the 4 Hz hot path is pure waste.
 // The reader→Chirp-domain mapping is the HAND-WRITTEN `TypedProjectionGlue` seam
-// (see `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift`).
+// (see `apps/chirp/ios/Chirp/Bridge/TypedProjectionGlue.swift`).
 //
 // Only projection keys whose `flatc --swift` reader binding is checked into the
 // Chirp target appear here. The rest need their binding generated first.

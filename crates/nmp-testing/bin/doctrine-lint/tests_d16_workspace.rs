@@ -83,10 +83,10 @@ fn d16_negative_fixture_clean() {
 /// This test confirms no bare `nip17.` / `nip29.` projection keys remain.
 #[test]
 fn chirp_app_crate_is_d16_clean() {
-    let (code, stdout, stderr) = run_lint(&["--path", "apps/chirp/nmp-app-chirp/src"]);
+    let (code, stdout, stderr) = run_lint(&["--path", "apps/chirp/crates/nmp-app-chirp/src"]);
     assert!(
         !stdout.contains("error[D16]"),
-        "apps/chirp/nmp-app-chirp/src must be D16 clean after rename; \
+        "apps/chirp/crates/nmp-app-chirp/src must be D16 clean after rename; \
          stdout:\n{}\nstderr:\n{}",
         stdout,
         stderr

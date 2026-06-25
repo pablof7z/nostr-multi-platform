@@ -143,12 +143,12 @@ real 1.72s   EXIT: 0
 - Simulator chosen: **iPhone 17 / iOS 26.5** (UUID `C380BA01-AD22-4F4A-8524-A309DA15144C`)
 - Note: Task requested iPhone 16 Pro, which is not available on this machine. Closest match used is iPhone 17 (iOS 26.5), which also matches the justfile `build-ios` recipe destination.
 - Scheme: `NmpStress`
-- DerivedData: `ios/DerivedData`
+- DerivedData: `apps/chirp/ios/DerivedData`
 
 **Linker warnings (non-fatal):** The Rust static library (`libnmp_core.a`) was compiled with `IPHONEOS_DEPLOYMENT_TARGET=26.5` (Rust default on this SDK), while the Xcode project's deployment target is `17.0`. This produces ~20 `ld: warning: object file … was built for newer 'iOS-simulator' version (26.5) than being linked (17.0)` messages for cryptographic assembly files from the `ring` crate.
 
-**Result:** Build succeeded despite warnings. App bundle at:  
-`ios/DerivedData/Build/Products/Debug-iphonesimulator/NmpStress.app`  
+**Result:** Build succeeded despite warnings. App bundle at:
+`apps/chirp/ios/DerivedData/Build/Products/Debug-iphonesimulator/NmpStress.app`
 Bundle ID: `com.example.NmpStress`
 
 ### 8. Simulator Boot / Install / Launch / Screenshot

@@ -185,7 +185,7 @@ pub fn render_swift(document_json: &str) -> Result<String, SwiftEmitError> {
 /// enum to `out`, driven by the [`SNAPSHOT_PROJECTIONS`] registry.
 ///
 /// Output shape, drop-in for the hand-written declaration in
-/// `ios/Chirp/Chirp/Bridge/KernelBridge.swift`:
+/// `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`:
 ///
 /// ```swift
 /// internal struct SnapshotProjections: Decodable, Equatable {

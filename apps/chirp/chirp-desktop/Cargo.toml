@@ -12,10 +12,10 @@ path = "src/main.rs"
 [dependencies]
 # Chirp composition root — brings in modular timeline, DM inbox, follow list,
 # action modules, and all per-app FFI symbols. Same feature set as chirp-tui.
-nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
+nmp-app-chirp = { path = "../crates/nmp-app-chirp", default-features = false, features = ["marmot", "wallet"] }
 
 # Shared Chirp app configuration — relay bootstrap defaults.
-nmp-chirp-config = { path = "../nmp-chirp-config" }
+nmp-chirp-config = { path = "../crates/nmp-chirp-config" }
 
 # C-ABI surface (NmpApp, nmp_app_* symbols).
 nmp-ffi = { path = "../../../crates/nmp-ffi" }

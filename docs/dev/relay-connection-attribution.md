@@ -4,7 +4,7 @@ Status: Proposed — Revision 2 (codex-validated). Revision 1 was found unsound 
 Author: Principal architect (design pass) + codex review
 Date: 2026-06-17
 Area: `area:core`, `area:ffi`, `area:ios`, `doctrine:d0`
-Related code: `crates/nmp-core/src/kernel/relay_diagnostics.rs`, `crates/nmp-planner`, `crates/nmp-router/src/blocked_relays.rs`, `ios/Chirp/Chirp/Features/RelayDetailView.swift`
+Related code: `crates/nmp-core/src/kernel/relay_diagnostics.rs`, `crates/nmp-planner`, `crates/nmp-router/src/blocked_relays.rs`, `apps/chirp/ios/Chirp/Features/RelayDetailView.swift`
 
 ---
 
@@ -112,7 +112,7 @@ SubscriptionCompiler — capture per-lane attribution at the lane-tag sites   [N
                        └─ Chirp renders reasonsSection + Block button         [thin shell]
 ```
 
-No new projection key, no new FFI snapshot, no app logic. We extend the **existing** `relay_diagnostics` projection (`crates/nmp-core/src/kernel/relay_diagnostics.rs`) — which already pre-rolls every relay row with raw protocol tokens (shells derive labels/tones), and is decoded by Chirp at `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift:225-291`.
+No new projection key, no new FFI snapshot, no app logic. We extend the **existing** `relay_diagnostics` projection (`crates/nmp-core/src/kernel/relay_diagnostics.rs`) — which already pre-rolls every relay row with raw protocol tokens (shells derive labels/tones), and is decoded by Chirp at `apps/chirp/ios/Chirp/Bridge/TypedProjectionGlue.swift:225-291`.
 
 ### 3.2 Planner: retain attribution (no recompute)
 
@@ -187,7 +187,7 @@ pub(super) struct RelayConnectionReason {
    - For any relay URL whose canonical form is in the blocked set, emit the raw `connection` token as `"blocked"` (the shell derives the muted hue and "Blocked" label from it — there is no kernel `connection_tone`/`connection_label`; #1802 moved tone/labels to the shells). The relay keeps its `reasons` — sourced from the diagnostic snapshot (A), which retained the would-be attribution.
    - **Seed the row order set** (`order` in `relay_diagnostics_snapshot`, `:207`) with: (a) `relay_statuses`, (b) `wire_subs`, (c) the diagnostic attribution snapshot URLs, **and (d) blocked-set URLs**. (c) guarantees a would-be-connected relay shows before a wire sub opens; (d) guarantees a blocked relay the planner never routed to is still findable for unblock.
 
-5. **FlatBuffers sidecar (ADR-0037) — full codegen chain (codex correction: NOT "just add a field").** Adding `reasons` touches the entire generated pipeline, all of which must be regenerated/kept in sync: (1) `crates/nmp-core/schema/relay_diagnostics.fbs` — add a `RelayConnectionReason` table + `reasons:[RelayConnectionReason]` on `RelayDiagnosticsRow`; (2) the generated Rust reader/writer; (3) the generated Swift reader (`ios/Chirp/Chirp/Bridge/Generated/RelayDiagnostics.generated.swift`); (4) the Rust typed model + encoder + decoder for the projection; (5) the Swift DTOs (`KernelSnapshotTypes.swift`); (6) the glue (`TypedProjectionGlue.swift`). Regenerate via `crates/nmp-codegen`. The kernel already captures the produced struct once per tick into `captured_relay_diagnostics` (`crates/nmp-core/src/kernel/update/projections.rs:274`) so JSON + typed forms stay byte-identical; add an ADR-0037 parity test for a row carrying reasons. The `builtin_projection_keys_const_matches_runtime` gate is unaffected (no new key); the **generated-code drift gate IS affected** and must pass.
+5. **FlatBuffers sidecar (ADR-0037) — full codegen chain (codex correction: NOT "just add a field").** Adding `reasons` touches the entire generated pipeline, all of which must be regenerated/kept in sync: (1) `crates/nmp-core/schema/relay_diagnostics.fbs` — add a `RelayConnectionReason` table + `reasons:[RelayConnectionReason]` on `RelayDiagnosticsRow`; (2) the generated Rust reader/writer; (3) the generated Swift reader (`apps/chirp/ios/Chirp/Bridge/Generated/RelayDiagnostics.generated.swift`); (4) the Rust typed model + encoder + decoder for the projection; (5) the Swift DTOs (`KernelSnapshotTypes.swift`); (6) the glue (`TypedProjectionGlue.swift`). Regenerate via `crates/nmp-codegen`. The kernel already captures the produced struct once per tick into `captured_relay_diagnostics` (`crates/nmp-core/src/kernel/update/projections.rs:274`) so JSON + typed forms stay byte-identical; add an ADR-0037 parity test for a row carrying reasons. The `builtin_projection_keys_const_matches_runtime` gate is unaffected (no new key); the **generated-code drift gate IS affected** and must pass.
 
 ### 3.4 Block-relay FFI action
 
@@ -205,14 +205,14 @@ Mirror the kind:10002 relay-list edit precedent (`maybe_publish_relay_list_after
 
 **Terminal verdict** lands in `action_results` via the registry-minted `correlation_id` (same as `nmp.nip65.publish_relay_list`).
 
-**Chirp dispatch:** the app sends raw intent through the existing `nmp_app_chirp_action_spec` → `nmp_app_dispatch_action` flow (`ios/Chirp/Chirp/Bridge/KernelBridge.swift:551-590`). Add `blockRelay(url:)`/`unblockRelay(url:)` factories to `ChirpActionIntent` (`ios/Chirp/Chirp/Bridge/ChirpActionSpecBridge.swift:40-178`, alongside `follow`/`unfollow`) mapping to `{namespace: "nmp.nip51.block_relay", body_json}`, plus a `model.blockRelay(url:)` convenience (`KernelModel.swift:628`). No new FFI symbol — reuses the dispatch flow `follow` uses end-to-end (`ProfileView.swift:72` → `ChirpActionSpecBridge.swift:75` → `KernelModel.swift:638` → `KernelBridge.swift:551`).
+**Chirp dispatch:** the app sends raw intent through the existing `nmp_app_chirp_action_spec` → `nmp_app_dispatch_action` flow (`apps/chirp/ios/Chirp/Bridge/KernelBridge.swift:551-590`). Add `blockRelay(url:)`/`unblockRelay(url:)` factories to `ChirpActionIntent` (`apps/chirp/ios/Chirp/Bridge/ChirpActionSpecBridge.swift:40-178`, alongside `follow`/`unfollow`) mapping to `{namespace: "nmp.nip51.block_relay", body_json}`, plus a `model.blockRelay(url:)` convenience (`KernelModel.swift:628`). No new FFI symbol — reuses the dispatch flow `follow` uses end-to-end (`ProfileView.swift:72` → `ChirpActionSpecBridge.swift:75` → `KernelModel.swift:638` → `KernelBridge.swift:551`).
 
 ### 3.5 Chirp shell (render only)
 
-- `RelayDetailView` (`ios/Chirp/Chirp/Features/RelayDetailView.swift`) gains a `reasonsSection` iterating `row.reasons` (new field on `RelayDiagnosticsRow`, `ios/Chirp/Chirp/Bridge/KernelSnapshotTypes.swift:407`), each a card rendering `reason.label` (tinted by `reason.tone` via existing `DiagnosticsColor.color(forTone:)`), the capped `author_pubkeys` + `author_total` (reuse the shared npub chip), `kinds_label`, and an optional source-event row.
+- `RelayDetailView` (`apps/chirp/ios/Chirp/Features/RelayDetailView.swift`) gains a `reasonsSection` iterating `row.reasons` (new field on `RelayDiagnosticsRow`, `apps/chirp/ios/Chirp/Bridge/KernelSnapshotTypes.swift:407`), each a card rendering `reason.label` (tinted by `reason.tone` via existing `DiagnosticsColor.color(forTone:)`), the capped `author_pubkeys` + `author_total` (reuse the shared npub chip), `kinds_label`, and an optional source-event row.
 - A **Block relay** button (and `Unblock` when `row.connectionLabel == "Blocked"`) calling `model.blockRelay(url:)`.
 - The `Blocked` status renders automatically — `connectionLabel`/`connectionTone` are already consumed (`RelayDetailView.swift:38-141`); the new `"Blocked"`/`"muted"` values need no Swift change beyond the tone map already handling `"muted"`.
-- Glue: add `reasons` mapping in `ios/Chirp/Chirp/Bridge/TypedProjectionGlue.swift:232-259` (`relayDiagnosticsRow`).
+- Glue: add `reasons` mapping in `apps/chirp/ios/Chirp/Bridge/TypedProjectionGlue.swift:232-259` (`relayDiagnosticsRow`).
 
 ---
 
@@ -283,15 +283,15 @@ Each step is independently compilable/testable. Tests are scoped per crate (`car
 
 ### Phase 5 — Chirp shell
 
-11. **`ios/Chirp/Chirp/Bridge/ChirpActionSpecBridge.swift`** (`:40-178`): add `blockRelay(url:)`/`unblockRelay(url:)` factories. **`KernelModel.swift`** (near `:628`): add `blockRelay(url:)` convenience. **`KernelBridge.swift`**: no new FFI symbol (reuses dispatch flow).
-12. **`ios/Chirp/Chirp/Bridge/KernelSnapshotTypes.swift`** (`:407`): add `reasons: [RelayConnectionReason]` + the new Swift struct. **`TypedProjectionGlue.swift`** (`:232-259`): map `reader.reasons`.
-13. **`ios/Chirp/Chirp/Features/RelayDetailView.swift`**: add `reasonsSection` + Block/Unblock button. **File-size risk:** if the view grows past the gate, extract `RelayReasonsSection.swift`.
+11. **`apps/chirp/ios/Chirp/Bridge/ChirpActionSpecBridge.swift`** (`:40-178`): add `blockRelay(url:)`/`unblockRelay(url:)` factories. **`KernelModel.swift`** (near `:628`): add `blockRelay(url:)` convenience. **`KernelBridge.swift`**: no new FFI symbol (reuses dispatch flow).
+12. **`apps/chirp/ios/Chirp/Bridge/KernelSnapshotTypes.swift`** (`:407`): add `reasons: [RelayConnectionReason]` + the new Swift struct. **`TypedProjectionGlue.swift`** (`:232-259`): map `reader.reasons`.
+13. **`apps/chirp/ios/Chirp/Features/RelayDetailView.swift`**: add `reasonsSection` + Block/Unblock button. **File-size risk:** if the view grows past the gate, extract `RelayReasonsSection.swift`.
     *Test:* iOS UI/unit test (XCTest) that decodes a fixture `relay_diagnostics` envelope with reasons and asserts the reasons render; a snapshot/UI test that the Block button dispatches the `nmp.nip51.block_relay` intent (assert via the action-spec bridge fake).
 
 ### Cross-cutting
 
 - Run `cargo test -p nmp-planner`, `-p nmp-core`, `-p nmp-router`, and `-p nmp-testing --test doctrine_lint_smoke` after each Rust phase.
-- File-size gate: this repo splits large files (AGENTS.md). The three highest-risk files are `crates/nmp-core/src/kernel/relay_diagnostics.rs`, `crates/nmp-planner/src/plan.rs`, and `ios/Chirp/Chirp/Features/RelayDetailView.swift` — pre-emptively extract submodules/subviews as noted.
+- File-size gate: this repo splits large files (AGENTS.md). The three highest-risk files are `crates/nmp-core/src/kernel/relay_diagnostics.rs`, `crates/nmp-planner/src/plan.rs`, and `apps/chirp/ios/Chirp/Features/RelayDetailView.swift` — pre-emptively extract submodules/subviews as noted.
 
 ---
 

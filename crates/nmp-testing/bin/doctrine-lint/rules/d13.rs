@@ -366,7 +366,7 @@ mod tests {
         // Any other crate or app code reading `mls_local_nsec` is the
         // exact leak Part B forbids.
         assert!(file_in_part_b_scope(&PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/marmot/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/marmot/ffi.rs"
         )));
         assert!(file_in_part_b_scope(&PathBuf::from(
             "crates/nmp-nip17/src/lib.rs"

@@ -56,7 +56,7 @@ use nmp_nip29::register::{register_actions, wire_group_chat};
 /// Dispatch a typed `PostChatMessageInput` through the ADR-0064 byte doorway
 /// ([`nmp_app_dispatch_action_bytes`]) and return the result envelope JSON.
 ///
-/// Mirrors the `apps/chirp/nmp-app-chirp::dispatch_action_bytes_for` seam
+/// Mirrors the `apps/chirp/crates/nmp-app-chirp::dispatch_action_bytes_for` seam
 /// (#1996): encode the typed [`ActionPayload`], wrap it in an open
 /// [`DispatchEnvelope`](nmp_core::dispatch_envelope) with a host-minted
 /// `correlation_id`, hand the finished bytes to the doorway, and copy the

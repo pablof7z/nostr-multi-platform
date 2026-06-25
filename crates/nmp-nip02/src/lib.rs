@@ -21,7 +21,7 @@
 //! # Why this exists
 //!
 //! Before this crate, the `Follow` / `Unfollow` `ActionModule`s lived in
-//! `apps/chirp/nmp-app-chirp/src/ffi/actions.rs` as app-local verbs. That
+//! `apps/chirp/crates/nmp-app-chirp/src/ffi/actions.rs` as app-local verbs. That
 //! placement made the wiring app-local even though follow-list edits are
 //! generic Nostr protocol primitives.
 //!

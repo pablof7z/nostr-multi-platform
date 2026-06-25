@@ -46,7 +46,7 @@ at `crates/nmp-ffi/src/lifecycle.rs:126`. Semantics:
 
 The host treats every non-`1` response as "kernel dead — surface a fatal
 error to the user". The probe is called on the existing `scenePhase == .active`
-transition in `ios/Chirp/Chirp/App/ChirpApp.swift`, alongside
+transition in `apps/chirp/ios/Chirp/App/ChirpApp.swift`, alongside
 `model.lifecycleForeground()`.
 
 ## Rationale: why not a per-verb `dispatch_action` namespace
