@@ -37,16 +37,12 @@ struct NoteContentView: View {
         content: String,
         contentTree: ContentTreeWire? = nil,
         eventCards: [String: ChirpEventCard] = [:],
-        timelineItems: [String: TimelineItem] = [:],
         renderContext: NoteRenderContext? = nil,
         font: Font = .body
     ) {
         self.content = content
         self.contentTree = contentTree
-        self.renderContext = renderContext ?? NoteRenderContext(
-            eventCards: eventCards,
-            timelineItems: timelineItems
-        )
+        self.renderContext = renderContext ?? NoteRenderContext(eventCards: eventCards)
         self.font = font
     }
 

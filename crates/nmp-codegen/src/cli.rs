@@ -68,8 +68,7 @@ pub fn run_gen_swift(args: Vec<String>, help: &str) -> Result<(), String> {
             Err(format!(
                 "Swift codegen stale at {}{where_diff}.\n\
                  Regenerate with:\n  \
-                 {{ cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas; \
-                 cargo run -p nmp-nip01 --features codegen-schema --bin dump_nip01_projection_schemas; }} \
+                 cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas \
                  | cargo run -p nmp-codegen -- gen swift --out {}",
                 out.display(),
                 out.display()

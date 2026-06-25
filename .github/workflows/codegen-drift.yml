@@ -7,10 +7,8 @@ name: codegen-drift
 # generated Swift differs from a fresh run.
 #
 # Regenerate locally with:
-#   {
-#     cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas
-#     cargo run -p nmp-nip01 --features codegen-schema --bin dump_nip01_projection_schemas
-#   } | cargo run -p nmp-codegen -- gen swift \
+#   cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas \
+#     | cargo run -p nmp-codegen -- gen swift \
 #       --out ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift
 #
 # See `crates/nmp-codegen/src/swift.rs` for the emitter itself.
@@ -55,17 +53,15 @@ jobs:
       - name: Check FlatBuffers runtime pins
         run: bash ci/check-flatbuffers-version-pins.sh
 
-      # Compile + run each schema-owner dump bin; pipe their JSON stream into
-      # the emitter's `--check` mode. The dump bins require the
-      # `codegen-schema` feature; the emitter does not.
+      # Compile + run the schema-owner dump bin; pipe its JSON stream into the
+      # emitter's `--check` mode. The dump bin requires the `codegen-schema`
+      # feature; the emitter does not.
       # `--out` is now explicit: the generic tool carries no app-specific
       # default path (issue #1613).
       - name: Check Swift codegen is up to date
         run: |
-          {
-            cargo run --quiet -p nmp-core --features codegen-schema --bin dump_projection_schemas
-            cargo run --quiet -p nmp-nip01 --features codegen-schema --bin dump_nip01_projection_schemas
-          } | cargo run --quiet -p nmp-codegen -- gen swift --check \
+          cargo run --quiet -p nmp-core --features codegen-schema --bin dump_projection_schemas \
+            | cargo run --quiet -p nmp-codegen -- gen swift --check \
                 --out ios/Chirp/Chirp/Bridge/Generated/KernelTypes.generated.swift
 
       # V6 Stage 4 (consumer-side) — the generated typed-FlatBuffer-sidecar

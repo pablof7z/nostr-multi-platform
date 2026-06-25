@@ -16,10 +16,9 @@ import UIKit
 // ─────────────────────────────────────────────────────────────────────────
 
 struct NoteRowView: View {
-    let item: TimelineItem
+    let item: NoteRowModel
     var contentTree: ContentTreeWire?
     var eventCards: [String: ChirpEventCard] = [:]
-    var timelineItems: [String: TimelineItem] = [:]
     var relationCounts: NoteRelationCounts? = nil
     let onLike: (String) -> Void
     /// NIP-18 — (eventID, authorPubkey) → dispatch kind:6 repost.
@@ -27,7 +26,7 @@ struct NoteRowView: View {
     /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. Optional
     /// so callers that don't surface zap (e.g. thread / profile views that
     /// have not yet been wired) can omit it. The actions row hides the zap
-    /// button when this is `nil` OR `item.authorLnurl == nil`.
+    /// button when this is `nil` OR the keyed profile sidecar has no lnurl.
     var onZap: ((String, String, String) -> Void)? = nil
 
     @EnvironmentObject private var router: ChirpRouter
@@ -57,9 +56,9 @@ struct NoteRowView: View {
     ///   1. `profileDisplay`  — `model.profile(forPubkey:)` reads the per-key
     ///      `keyedRefCache` (`refs.profile`), which now subsumes the former
     ///      claimed/resolved/mention rungs (ADR-0063 Lane E, #1671).
-    ///   2. `itemAuthorName`  — baked into the TimelineItem snapshot at Rust
-    ///      build time; claim-independent fallback that eliminates the
-    ///      250–500ms flicker gap (PR #823).
+    ///   2. `itemAuthorName`  — baked into the typed event card at Rust build
+    ///      time; claim-independent fallback that eliminates the 250–500ms
+    ///      flicker gap (PR #823).
     ///   3. `eventCardName`   — NOFS gap-filler from the typed decoder.
     ///   4. `shortHex`        — last-resort raw-key abbreviation.
     ///
@@ -91,21 +90,25 @@ struct NoteRowView: View {
         item.authorPubkey.pubkeyColorHex
     }
 
+    private var authorPictureUrl: String? {
+        model.profileCard(forPubkey: item.authorPubkey)?.pictureUrl
+            ?? item.authorPictureUrl
+    }
+
     var body: some View {
         Button {
             // For kind:6 reposts, the row represents the *inner* note (its
             // content + author/timestamp are the inner event's), so tapping
             // navigates to the inner note's thread, not the wrapper kind:6.
-            // Rust pre-computes `navTargetId` so the view layer doesn't parse
-            // protocol JSON (aim.md §6.9). For a kind:1 it equals `item.id`;
-            // for a kind:6 it is the inner kind:1's id with a D1 fallback to
-            // `item.id` when the embedded JSON is missing/malformed.
+            // Rust emits the typed card id as the navigation target, so the
+            // view layer never parses protocol JSON (aim.md §6.9).
             router.push(.thread(eventID: item.navTargetId))
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 rowContent
                 NoteActionsRow(
                     item: item,
+                    authorLnurl: model.profileCard(forPubkey: item.authorPubkey)?.lnurl,
                     relationCounts: relationCounts,
                     onLike: onLike,
                     onRepost: onRepost,
@@ -126,7 +129,7 @@ struct NoteRowView: View {
         }
         .buttonStyle(.plain)
         .sheet(isPresented: $showReply) {
-            ComposeView(replyTo: ChirpReplyTarget(item: item))
+            ComposeView(replyTo: ChirpReplyTarget(row: item))
         }
         .sheet(isPresented: $showRelayProvenance) {
             RelayProvenanceSheet(relays: item.relayProvenance)
@@ -155,7 +158,7 @@ struct NoteRowView: View {
         } label: {
             NostrAvatar(
                 pubkey: item.authorPubkey,
-                url: item.authorPictureUrl,
+                url: authorPictureUrl,
                 initials: authorAvatarInitials,
                 colorHex: authorAvatarColorHex,
                 size: 44
@@ -190,8 +193,7 @@ struct NoteRowView: View {
     private var noteContent: some View {
         let isRepost = item.isRepost
         let context = NoteRenderContext(
-            eventCards: eventCards,
-            timelineItems: timelineItems
+            eventCards: eventCards
         )
         let text = item.renderedContent
         let tree = context.contentTree(for: item, fallback: contentTree)
@@ -281,15 +283,16 @@ private struct RelayProvenanceSheet: View {
 // ─────────────────────────────────────────────────────────────────────────
 
 struct NoteActionsRow: View {
-    let item: TimelineItem
+    let item: NoteRowModel
+    let authorLnurl: String?
     let relationCounts: NoteRelationCounts?
     let onLike: (String) -> Void
     /// NIP-18 — (eventID, authorPubkey) → dispatch kind:6 repost.
     var onRepost: ((String, String) -> Void)? = nil
     /// NIP-57 — invoked when the user taps the zap bolt. Hidden when this is
-    /// `nil` (no zap wiring from the host) OR `item.authorLnurl == nil`
-    /// (the author has no kind:0 lud16/lud06). Rust pre-computes
-    /// `authorLnurl` so the row never parses metadata (thin-shell rule).
+    /// `nil` (no zap wiring from the host) OR `authorLnurl == nil` (the
+    /// author has no kind:0 lud16/lud06). Rust pre-computes lnurl in the keyed
+    /// profile sidecar; the row never parses metadata (thin-shell rule).
     var onZap: ((String, String, String) -> Void)? = nil
     @Binding var likeTapped: Bool
     @Binding var showReply: Bool
@@ -334,7 +337,7 @@ struct NoteActionsRow: View {
     /// regardless of whether the author has published lud16/lud06.
     @ViewBuilder
     private var zapButton: some View {
-        if let onZap, let lnurl = item.authorLnurl {
+        if let onZap, let lnurl = authorLnurl {
             Button {
                 onZap(item.id, item.authorPubkey, lnurl)
                 UIImpactFeedbackGenerator(style: .soft).impactOccurred()

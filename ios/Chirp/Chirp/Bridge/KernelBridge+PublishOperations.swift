@@ -80,7 +80,7 @@ extension KernelHandle {
     /// without a second host round-trip. The shell never sees the bolt11
     /// or parses LNURL/kind:9734 — thin-shell rule (aim.md §6.9).
     ///
-    /// `lnurl` is the pre-extracted `authorLnurl` from the timeline item.
+    /// `lnurl` is the pre-extracted value from the keyed profile sidecar.
     /// Relay selection stays kernel policy. PR-A: returns the
     /// synchronous dispatch envelope so the host can drive a spinner keyed
     /// on the minted correlation_id.

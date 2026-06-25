@@ -2,7 +2,7 @@ import SwiftUI
 
 // OWNER: Phase-2 Agent C (Compose sheet). Presented as a sheet from
 // HomeFeedView / NoteRowView. Supports ComposeView() and
-// ComposeView(replyTo: ChirpReplyTarget(item: item)).
+// ComposeView(replyTo: ChirpReplyTarget(row: row)).
 
 struct ComposeView: View {
     @EnvironmentObject private var model: KernelModel

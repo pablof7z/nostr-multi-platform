@@ -151,7 +151,7 @@ fn repost_wrapper_and_target_share_canonical_feed_item() {
 /// both carried `card.id == X` → the snapshot emitted two cards with one
 /// `card.id` → the Swift dict asserted. PR #1636 re-keyed the (now shared,
 /// generic) `nmp_feed::FlatFeed` by the **canonical item id** (`incoming.id`,
-/// which the `timeline_item_builder` sets to `card.id`) with `source_id`
+/// which the `event_card_builder` sets to `card.id`) with `source_id`
 /// tracking, so the original row and the repost wrapper now collapse into one
 /// canonical row.
 ///

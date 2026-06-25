@@ -43,9 +43,6 @@ private enum ModuleLayout {
 struct ModularBlockView: View {
     let block: TimelineBlock
     let cards: [String: ChirpEventCard]
-    /// Lookup into the remaining flat TimelineItem snapshot for author display
-    /// / avatar metadata. A missing entry falls back to the card's raw pubkey.
-    let items: [String: TimelineItem]
     let onLike: (String) -> Void
     /// NIP-18 — (eventID, authorPubkey) → dispatch kind:6 repost.
     var onRepost: ((String, String) -> Void)? = nil
@@ -71,27 +68,11 @@ struct ModularBlockView: View {
 
     @ViewBuilder
     private func standaloneRow(id: String) -> some View {
-        if let item = items[id] {
+        if let card = cards[id] {
             NoteRowView(
-                    item: item,
-                    contentTree: cards[id]?.contentTree,
-                    eventCards: cards,
-                    timelineItems: items,
-                    relationCounts: cards[id]?.relationCounts,
-                    onLike: onLike,
-                    onRepost: onRepost,
-                    onZap: onZap
-                )
-        } else if let card = cards[id] {
-            // Card without a TimelineItem: build a synthetic item so the
-            // standalone path stays consistent. This happens when an
-            // ancestor of a reply lands but isn't in the kernel's visible
-            // window (timeline_authors filter, visible_limit, etc.).
-            NoteRowView(
-                item: syntheticItem(card: card, item: nil),
+                item: NoteRowModel(card: card),
                 contentTree: card.contentTree,
                 eventCards: cards,
-                timelineItems: items,
                 relationCounts: card.relationCounts,
                 onLike: onLike,
                 onRepost: onRepost,
@@ -133,31 +114,27 @@ struct ModularBlockView: View {
     /// matching the affordance the existing `NoteRowView` provides on
     /// standalone blocks.
     private func moduleRow(id: String, isLast: Bool) -> some View {
-        let item = items[id]
         let card = cards[id]
         // ADR-0032: presentation layer derives the secondary monospaced
         // pubkey label from the raw hex pubkey it already has on hand.
         // Resolve the display name through the same lookup the rest of the
         // view uses (refs.profile → card name → shortHex). Previously
         // hardcoded `pubkey.shortHex`, which ignored every known profile.
-        let display = displayName(item: item, card: card)
-        let content = displayContent(item: item, card: card)
-        let context = NoteRenderContext(
-            eventCards: cards,
-            timelineItems: items
-        )
+        let display = displayName(card: card)
+        let content = displayContent(card: card)
+        let context = NoteRenderContext(eventCards: cards)
 
         return Button {
             router.push(.thread(eventID: id))
         } label: {
             HStack(alignment: .top, spacing: 8) {
-                avatarColumn(item: item, card: card, isLast: isLast)
+                avatarColumn(card: card, isLast: isLast)
                 VStack(alignment: .leading, spacing: 4) {
-                    authorHeader(display: display, item: item, card: card)
+                    authorHeader(display: display, card: card)
                     if !content.isEmpty {
                         NoteContentView(
                             content: truncate(content, 1_200),
-                            contentTree: displayContentTree(item: item, card: card, context: context),
+                            contentTree: card?.contentTree,
                             renderContext: context,
                             font: .body
                         )
@@ -181,12 +158,12 @@ struct ModularBlockView: View {
     /// without changing the avatar's own intrinsic height. `clipped:
     /// false` is the default on `.overlay`, so the extension renders into
     /// the inter-row gap without disturbing the parent layout.
-    private func avatarColumn(item: TimelineItem?, card: ChirpEventCard?, isLast: Bool) -> some View {
-        let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
+    private func avatarColumn(card: ChirpEventCard?, isLast: Bool) -> some View {
+        let pubkey = card?.authorPubkey ?? ""
         // ADR-0032: initials and avatar tint are derived locally from the
         // raw pubkey hex via `PubkeyFormatting.swift`. Picture URL falls
         // back to the identicon URI when no kind:0 has arrived.
-        let pictureUrl = item?.authorPictureUrl
+        let pictureUrl = model.profileCard(forPubkey: pubkey)?.pictureUrl
             ?? card?.authorPictureUrl
             ?? "identicon:\(pubkey.prefix(16))"
         return NostrAvatar(
@@ -214,24 +191,23 @@ struct ModularBlockView: View {
         .frame(width: ModuleLayout.avatarSize, alignment: .top)
     }
 
-    private func authorHeader(display: String, item: TimelineItem?, card: ChirpEventCard?) -> some View {
+    private func authorHeader(display: String, card: ChirpEventCard?) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 4) {
-            Text(displayName(item: item, card: card))
+            Text(display)
                 .font(.headline)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
 
-            Text(display)
+            Text((card?.authorPubkey ?? "").shortHex)
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
 
             Spacer(minLength: 0)
 
-            // ADR-0032: both `TimelineItem` and `ChirpEventCard` ship the
-            // raw `created_at` (Unix seconds); the presentation layer
-            // formats the relative-time label.
-            if let createdAt = item?.createdAt ?? card?.createdAt {
+            // ADR-0032: `ChirpEventCard` ships raw `created_at` (Unix seconds);
+            // the presentation layer formats the relative-time label.
+            if let createdAt = card?.createdAt {
                 Text(createdAt.relativeTimeFromUnixSeconds)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -268,8 +244,8 @@ struct ModularBlockView: View {
         root?.eventID
     }
 
-    private func displayName(item: TimelineItem?, card: ChirpEventCard?) -> String {
-        let pubkey = item?.authorPubkey ?? card?.authorPubkey ?? ""
+    private func displayName(card: ChirpEventCard?) -> String {
+        let pubkey = card?.authorPubkey ?? ""
         if !pubkey.isEmpty, let name = model.profile(forPubkey: pubkey)?.display {
             return name
         }
@@ -277,53 +253,8 @@ struct ModularBlockView: View {
         return pubkey.isEmpty ? "Unknown" : pubkey.shortHex
     }
 
-    private func displayContent(item: TimelineItem?, card: ChirpEventCard?) -> String {
-        if let item, item.isRepost {
-            return card?.content ?? item.repostInnerContent
-        }
-        return item?.content ?? card?.content ?? ""
-    }
-
-    private func displayContentTree(
-        item: TimelineItem?,
-        card: ChirpEventCard?,
-        context: NoteRenderContext
-    ) -> ContentTreeWire? {
-        guard let item else { return card?.contentTree }
-        return context.contentTree(for: item, fallback: card?.contentTree)
-    }
-
-    private func syntheticItem(card: ChirpEventCard, item: TimelineItem?) -> TimelineItem {
-        let relayProvenance = item?.relayProvenance ?? card.relayProvenance
-        // ADR-0032: `TimelineItem` now carries raw protocol data only —
-        // display formatting is the presentation layer's responsibility.
-        // `isRepost` / `navTargetId` / `repostInnerContent` keep their
-        // neutral kind:1 defaults; synthetic-from-card rows are not
-        // surfaced through the repost rendering path.
-        return TimelineItem(
-            // Inherit the snapshot-baked display name from the backing item
-            // when present; fall back to the card's own kind:0 name. `nil`
-            // when neither has a name yet — the row formats the pubkey as
-            // short hex.
-            authorDisplayName: item?.authorDisplayName ?? card.authorDisplayName,
-            // Inherit lnurl from the cached TimelineItem when present so a
-            // synthetic-from-card row still exposes the zap affordance.
-            // `nil` for cards without a backing item is correct — the row
-            // hides the zap button (no lnurl known yet).
-            authorLnurl: item?.authorLnurl,
-            authorPictureUrl: item?.authorPictureUrl ?? card.authorPictureUrl,
-            authorPubkey: card.authorPubkey,
-            content: card.content,
-            contentPreview: card.contentPreview,
-            createdAt: card.createdAt,
-            id: card.id,
-            isRepost: false,
-            kind: card.kind,
-            navTargetId: card.id,
-            relayCount: item?.relayCount ?? UInt32(relayProvenance.count),
-            relayProvenance: relayProvenance,
-            repostInnerContent: ""
-        )
+    private func displayContent(card: ChirpEventCard?) -> String {
+        card?.content ?? ""
     }
 
     private func truncate(_ s: String, _ n: Int) -> String {

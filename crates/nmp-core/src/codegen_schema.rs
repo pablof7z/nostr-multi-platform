@@ -41,8 +41,9 @@
 //! 6. `AppRelay` — Relays settings row.
 //! 7. `RelayRoleOption` — relay-role picker option.
 //!
-//! `TimelineItem` moved to `nmp-nip01` in #920's first schema-ownership slice;
-//! `nmp-codegen gen swift` consumes both schema-owner documents as one stream.
+//! The former flat `TimelineItem` pilot row was deleted in #920's native
+//! call-site cut; `nmp-codegen gen swift` now consumes only this kernel-owned
+//! schema document for Stage 1.
 //!
 //! Stage 2 (the dotted-projection-key registry — `SnapshotProjections`) is
 //! live; the remaining Stage 3 work is deferred per

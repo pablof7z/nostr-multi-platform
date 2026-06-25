@@ -107,16 +107,14 @@ const HEADER: &str = "\
 // THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
 //
 // Regenerate via:
-//   { \\
-//       cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas; \\
-//       cargo run -p nmp-nip01 --features codegen-schema --bin dump_nip01_projection_schemas; \\
-//   } | cargo run -p nmp-codegen -- gen swift --out <path>
+//   cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas \\
+//       | cargo run -p nmp-codegen -- gen swift --out <path>
 //
 // Source of truth: the Rust projection types listed in the per-struct
 // provenance comments below. The CI gate (`.github/workflows/codegen-drift.yml`)
 // fails any PR whose generated Swift differs from a fresh run.
 //
-// Stage 1 pilot — 8 flat-record types (V6, docs/architecture-audit/
+// Stage 1 pilot — 7 flat-record types (V6, docs/architecture-audit/
 // v6-codegen-plan.md §6b). Stage 2 expands to the dotted-projection-key
 // registry; Stage 3 sweeps the remaining hand-written Decodables.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -345,10 +343,9 @@ fn render_type(entry: &TypeEntry, out: &mut String) -> Result<(), SwiftEmitError
     // declaring it explicitly is required for `public` Swift types —
     // unlike `internal` types, Apple does NOT infer Sendable for public
     // structs (SE-0302 §"Sendable type inference"), and a consumer that
-    // composes the generated type into a non-Sendable wrapper (e.g.
-    // `NoteRenderContext` holding `[String: TimelineItem]` in a
-    // `static let`) hard-fails under strict concurrency. The fix is at
-    // the source: every generated struct opts in to Sendable explicitly.
+    // composes the generated type into a non-Sendable wrapper hard-fails under
+    // strict concurrency. The fix is at the source: every generated struct opts
+    // in to Sendable explicitly.
     let conformances: Vec<&str> = [
         "Decodable",
         "Equatable",

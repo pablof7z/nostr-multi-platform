@@ -85,8 +85,7 @@ struct ProfileView: View {
     /// labels read the per-key keyed-ref cache inside `NoteContentView`.
     private var noteRenderContext: NoteRenderContext {
         NoteRenderContext(
-            eventCards: Dictionary(uniqueKeysWithValues: items.map { ($0.card.id, $0.card) }),
-            timelineItems: [:]
+            eventCards: Dictionary(uniqueKeysWithValues: items.map { ($0.card.id, $0.card) })
         )
     }
 

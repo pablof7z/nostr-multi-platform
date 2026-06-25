@@ -20,7 +20,7 @@ apps/nmp-gallery/tui/src/main.rs	688
 apps/nmp-gallery/tui/src/render.rs	510
 crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	599
 crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	826
-crates/nmp-codegen/src/swift.rs	608
+crates/nmp-codegen/src/swift.rs	605
 crates/nmp-codegen/src/swift_projections_registry.rs	741
 crates/nmp-core/src/actor/commands/publish.rs	740
 crates/nmp-core/src/actor/mod.rs	764

@@ -20,12 +20,12 @@ struct ChirpReplyTarget: Codable, Equatable, Identifiable {
         self.content = content
     }
 
-    init(item: TimelineItem) {
+    init(row: NoteRowModel) {
         self.init(
-            eventID: item.id,
-            authorPubkey: item.authorPubkey,
-            createdAt: item.createdAt,
-            content: item.content
+            eventID: row.id,
+            authorPubkey: row.authorPubkey,
+            createdAt: row.createdAt,
+            content: row.content
         )
     }
 

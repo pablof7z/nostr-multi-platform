@@ -33,19 +33,19 @@ fn second_type_document() -> &'static str {
       "version": 1,
       "types": [
         {
-          "rust_path": "nmp_nip01::TimelineItem",
-          "swift_name": "TimelineItem",
+          "rust_path": "nmp_demo::OtherSample",
+          "swift_name": "OtherSample",
           "id_field": "id",
           "conformances": ["Decodable", "Equatable", "Hashable", "Sendable"],
-          "render_identity_fields": ["id", "author_pubkey"],
+          "render_identity_fields": ["id", "owner_pubkey"],
           "schema": {
             "type": "object",
-            "title": "TimelineItem",
+            "title": "OtherSample",
             "properties": {
               "id": { "type": "string" },
-              "author_pubkey": { "type": "string" }
+              "owner_pubkey": { "type": "string" }
             },
-            "required": ["id", "author_pubkey"]
+            "required": ["id", "owner_pubkey"]
           }
         }
       ]
@@ -58,13 +58,13 @@ fn renders_concatenated_schema_document_stream_in_order() {
     let out = render_swift(&stream).expect("renders schema stream");
     let sample_pos = out.find("// MARK: - Sample").expect("Sample emitted");
     let item_pos = out
-        .find("// MARK: - TimelineItem")
-        .expect("TimelineItem emitted");
+        .find("// MARK: - OtherSample")
+        .expect("OtherSample emitted");
     assert!(
         sample_pos < item_pos,
         "schema stream order must be preserved in generated Swift"
     );
-    assert!(out.contains("// Source: nmp_nip01::TimelineItem"));
+    assert!(out.contains("// Source: nmp_demo::OtherSample"));
 }
 
 #[test]

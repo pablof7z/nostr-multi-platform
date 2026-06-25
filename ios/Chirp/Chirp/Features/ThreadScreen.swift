@@ -17,9 +17,6 @@ struct ThreadScreen: View {
     private var cardLookup: [String: ChirpEventCard] {
         Dictionary(uniqueKeysWithValues: (threadFeed?.cards ?? []).map { ($0.card.id, $0.card) })
     }
-    private var itemLookup: [String: TimelineItem] {
-        [:]
-    }
     // ADR-0063 Lane E (#1671): the whole-map `mentionProfiles` dictionary is
     // gone. Inline mention labels read the per-key keyed-ref cache inside
     // `NoteContentView`; thread rows no longer thread a profile map.
@@ -80,7 +77,6 @@ struct ThreadScreen: View {
                         card: card,
                         isFocused: isFocused,
                         eventCards: cardLookup,
-                        timelineItems: itemLookup,
                         onAvatarTap: {
                             router.push(.profile(pubkey: card.authorPubkey))
                         },

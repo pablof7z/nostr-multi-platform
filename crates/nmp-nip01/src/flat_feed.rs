@@ -70,7 +70,7 @@ impl FlatFeed {
         Arc::new(Self {
             inner: GenericFlatFeed::with_merge(
                 predicate,
-                timeline_item_builder(),
+                event_card_builder(),
                 None,
                 timeline_merge(),
             ),
@@ -93,7 +93,7 @@ impl FlatFeed {
         Arc::new(Self {
             inner: GenericFlatFeed::with_merge(
                 predicate,
-                timeline_item_builder(),
+                event_card_builder(),
                 interest,
                 timeline_merge(),
             ),
@@ -173,7 +173,7 @@ impl FlatFeed {
     }
 }
 
-fn timeline_item_builder() -> FlatFeedItemBuilder<TimelineEventCard> {
+fn event_card_builder() -> FlatFeedItemBuilder<TimelineEventCard> {
     Arc::new(|event| {
         let card = TimelineEventCard::from_event_for_op_feed(event, None);
         Some(FlatFeedItem {

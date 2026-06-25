@@ -131,10 +131,10 @@ struct HomeFeedView: View {
             onLike: { model.react(targetEventID: $0, reaction: "❤") },
             onRepost: { eventID, pubkey in model.repost(eventID: eventID, authorPubkey: pubkey) },
             // NIP-57 (V-106) — tapping zap opens the amount picker rather than
-            // firing a fixed 21-sat zap. `lnurl` is the pre-extracted
-            // `authorLnurl` from the timeline item (Rust decides zapability;
-            // the row only surfaces this closure when the field is non-nil —
-            // see `NoteActionsRow`). The actual dispatch happens in the sheet's
+            // firing a fixed 21-sat zap. `lnurl` is the pre-extracted keyed
+            // profile-sidecar value (Rust decides zapability; the row only
+            // surfaces this closure when the field is non-nil — see
+            // `NoteActionsRow`). The actual dispatch happens in the sheet's
             // `onConfirm` once the user picks an amount.
             onZap: { eventID, pubkey, lnurl in
                 pendingZap = PendingZap(eventID: eventID, authorPubkey: pubkey, lnurl: lnurl)
@@ -239,9 +239,9 @@ private struct TimelineListView: View, Equatable {
     let onLike: (String) -> Void
     let onRepost: (String, String) -> Void
     /// NIP-57 — (eventID, authorPubkey, lnurl) → dispatch the zap. The row
-    /// only surfaces the button when `authorLnurl != nil`, so this closure
-    /// is always called with a non-empty `lnurl`. Threaded through alongside
-    /// `onLike` to avoid coupling the row to `KernelModel` directly.
+    /// only surfaces the button when the keyed profile sidecar has `lnurl`, so
+    /// this closure is always called with a non-empty `lnurl`. Threaded through
+    /// alongside `onLike` to avoid coupling the row to `KernelModel` directly.
     let onZap: (String, String, String) -> Void
     let onLoadMore: (TimelineWindowCursor) -> Void
 
@@ -256,15 +256,7 @@ private struct TimelineListView: View, Equatable {
     }
 
     var body: some View {
-        // The legacy `timeline` projection was removed (nmp-core #924); the home
-        // feed renders entirely from `roots` (the `nmp.feed.home` modular cards).
-        // `ModularBlockView` builds a synthetic `TimelineItem` from each card
-        // when its lookup misses, so an empty lookup is the steady state here —
-        // author/profile and thread screens now use flat-feed projections rather
-        // than legacy `TimelineItem` lookup paths.
-        let itemLookup: [String: TimelineItem] = [:]
-
-        return List {
+        List {
             ForEach(Array(roots.enumerated()), id: \.element.id) { index, root in
                 VStack(alignment: .leading, spacing: 0) {
                     // Q1 — show the most-recent replier (the engine orders the
@@ -279,7 +271,6 @@ private struct TimelineListView: View, Equatable {
                         // feeds the existing renderer.
                         block: .standalone(eventID: root.card.id, root: nil),
                         cards: [root.card.id: root.card],
-                        items: itemLookup,
                         onLike: onLike,
                         onRepost: onRepost,
                         onZap: onZap

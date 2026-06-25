@@ -78,8 +78,7 @@ final class NoteContentRenderingTests: XCTestCase {
                     relayProvenance: [],
                     isRepost: false
                 ),
-            ],
-            timelineItems: [:]
+            ]
         )
 
         let image = try renderImage(
