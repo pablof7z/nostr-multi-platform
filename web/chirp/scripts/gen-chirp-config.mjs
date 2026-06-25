@@ -3,7 +3,8 @@
 // Reads apps/chirp/crates/nmp-chirp-config/src/lib.rs and emits
 // web/chirp/src/chirpConfig.generated.ts so the web host cannot drift from the
 // authoritative Rust constants (D4: one source per fact). Run via
-// `pnpm codegen:chirp-config`. No dependencies beyond Node built-ins.
+// `npm run codegen:chirp-config -w @nmp/chirp-web`. No dependencies beyond Node
+// built-ins.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -58,7 +59,7 @@ const bootstrapLines = bootstrap.map(
   (e) => `  { url: ${e.nameRef}, role: ${JSON.stringify(e.role)} },`,
 );
 
-const out = `// GENERATED — do not edit by hand. Run \`pnpm codegen:chirp-config\` to regenerate.
+const out = `// GENERATED — do not edit by hand. Run \`npm run codegen:chirp-config -w @nmp/chirp-web\` to regenerate.
 // Source: ${rustSourceRel} (CHIRP_*_URL constants + CHIRP_RELAY_BOOTSTRAP).
 //
 // Relay defaults are HOST policy, not framework policy (#1125): the nmp-wasm
