@@ -9,6 +9,7 @@
 
 use std::collections::BTreeMap;
 
+use nmp_content::EmbedKindProjection;
 use nmp_content_fixtures::build_bundle;
 use nmp_content_fixtures::dto::{EmbedEntry, ScenarioDto, SegmentDto};
 use nmp_store::{RawEvent, VerifiedEvent};
@@ -221,5 +222,113 @@ fn dangling_and_unsupported_are_bundle_time_facts() {
             .values()
             .any(|e| e.collapse_reason.as_deref() == Some("unsupported")),
         "S-E02 must produce an unsupported-kind stub (context-independent fact)"
+    );
+}
+
+/// Every resolved event embed carries the canonical typed per-kind projection
+/// (#1998). This is the single shape native registries dispatch on, replacing
+/// the retired hand-rolled `article` / `list` fields. The variant must match
+/// the resolved kind so article → Article card, highlight → Highlight card,
+/// short note → ShortNote card, and NIP-51 lists / unknown kinds fall through
+/// to the Unknown variant (which carries the raw tags native list renderers
+/// read).
+#[test]
+fn resolved_embeds_carry_typed_kind_projection() {
+    for scenario in build_bundle().scenarios {
+        for (uri, entry) in scenario.embeds {
+            // Dangling stubs and bare profile targets have no underlying event
+            // and therefore no kind projection.
+            let Some(event) = &entry.event else {
+                assert!(
+                    entry.kind_projection.is_none(),
+                    "scenario {} embed {uri}: no event but a kind_projection present",
+                    scenario.id
+                );
+                continue;
+            };
+
+            let projection = entry.kind_projection.as_ref().unwrap_or_else(|| {
+                panic!(
+                    "scenario {} embed {uri}: resolved event missing kind_projection",
+                    scenario.id
+                )
+            });
+
+            // The dispatched variant must agree with the resolved kind — this
+            // is the kind-dispatch contract every platform registry relies on.
+            match (entry.resolved_kind, projection) {
+                (1, EmbedKindProjection::ShortNote(_))
+                | (9802, EmbedKindProjection::Highlight(_))
+                | (30023, EmbedKindProjection::Article(_))
+                | (0, EmbedKindProjection::Profile(_)) => {}
+                // NIP-51 lists (30000 / 30003 / 10002) + any other kind have no
+                // registered typed projection → Unknown carrying raw tags.
+                (_, EmbedKindProjection::Unknown(u)) => {
+                    assert_eq!(
+                        u.kind, event.kind,
+                        "scenario {} embed {uri}: Unknown projection kind mismatch",
+                        scenario.id
+                    );
+                }
+                (kind, other) => panic!(
+                    "scenario {} embed {uri}: kind {kind} dispatched to wrong projection variant {other:?}",
+                    scenario.id
+                ),
+            }
+        }
+    }
+}
+
+/// Article, list, and quote embeds each render through the typed kind-dispatch
+/// projection — a focused spec-as-code gate for the three legacy shapes
+/// (article header / NIP-51 list / short-note quote) the migration retired.
+#[test]
+fn article_list_quote_embeds_dispatch_through_typed_projection() {
+    let bundle = build_bundle();
+
+    // Article (kind:30023): S-M10 quotes a long-form article via naddr.
+    let article = bundle
+        .scenarios
+        .iter()
+        .find(|s| s.id == "S-M10")
+        .expect("S-M10 present");
+    assert!(
+        article.embeds.values().any(|e| matches!(
+            &e.kind_projection,
+            Some(EmbedKindProjection::Article(a)) if a.title.as_deref() == Some("Backpressure Is A Feature")
+        )),
+        "S-M10 article embed must dispatch to a typed Article projection"
+    );
+
+    // NIP-51 list (kind:30000): S-A03 follow set resolves to an Unknown
+    // projection whose raw tags carry the list members + title.
+    let list = bundle
+        .scenarios
+        .iter()
+        .find(|s| s.id == "S-A03")
+        .expect("S-A03 present");
+    assert!(
+        list.embeds.values().any(|e| matches!(
+            &e.kind_projection,
+            Some(EmbedKindProjection::Unknown(u))
+                if u.kind == 30000
+                    && u.tags.iter().any(|t| t.first().map(String::as_str) == Some("p"))
+                    && u.tags.iter().any(|t| t.first().map(String::as_str) == Some("title"))
+        )),
+        "S-A03 list embed must dispatch to an Unknown projection carrying raw list tags"
+    );
+
+    // Short-note quote (kind:1): S-M12 chains kind:1 notes.
+    let quote = bundle
+        .scenarios
+        .iter()
+        .find(|s| s.id == "S-M12")
+        .expect("S-M12 present");
+    assert!(
+        quote.embeds.values().any(|e| matches!(
+            &e.kind_projection,
+            Some(EmbedKindProjection::ShortNote(_))
+        )),
+        "S-M12 quote embeds must dispatch to typed ShortNote projections"
     );
 }

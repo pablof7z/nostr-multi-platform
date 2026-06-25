@@ -6,6 +6,7 @@ import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
 import { ContentTreeWire } from "./generated/nmp/content/content-tree-wire";
 import { REFS_EVENT_KEY } from "./refEventStore";
 import { REFS_PROFILE_KEY } from "./refProfileStore";
+import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 
 // ── Schema descriptor constants (ADR-0038) ──────────────────────────────────
 
@@ -20,6 +21,17 @@ const NOFS_PROJECTION_KEY = "nmp.feed.home";
 // `RefProfileStore`/`RefRowCache` merges; this module only extracts the raw
 // sidecar bytes for the client to feed into the cache.
 const NRRD_FILE_IDENTIFIER = "NRRD";
+
+// `claimed_event_embeds_json` typed projection (#1767) — the kernel-RESOLVED
+// embed envelope map. The payload is UTF-8 `serde_json` of
+// `{ [primaryId]: EmbeddedEventEnvelope }` (the `nmp-content`
+// `resolve_embed_projection` output / `EmbeddedEventEnvelope` serde shape this
+// web TS decodes). Each entry's `projection` is already kind-dispatched in Rust
+// (`{ variant, data }`), so the web renders the typed card from the resolved
+// projection instead of re-parsing NIP-23 / NIP-84 tags. (iOS decodes a
+// DIFFERENT wire format — the native `claimed_event_embeds` NEMB FlatBuffer —
+// which shares the resolution logic but not this JSON.)
+const EMBED_PROJECTION_KEY = "claimed_event_embeds_json";
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
@@ -310,6 +322,41 @@ export function findRefsEventSidecar(snapshot: SnapshotFrame): Uint8Array | unde
     const payloadBytes = payload.payloadArray();
     if (!payloadBytes || payloadBytes.length === 0) return undefined;
     return payloadBytes;
+  }
+  return undefined;
+}
+
+/**
+ * Decode the `claimed_event_embeds_json` typed projection (#1767) into a
+ * primary_id → EmbeddedEventModel map. The payload is UTF-8 `serde_json` of the
+ * resolved embed map (NOT a FlatBuffer — JSON parity with iOS's NEMB path), so
+ * it is `JSON.parse`d directly; the kernel has already kind-dispatched each
+ * `projection`. Returns `undefined` on a missing/corrupt projection so the
+ * caller keeps the last good map (D6 — never blank-reset).
+ */
+export function decodeClaimedEventEmbeds(
+  snapshot: SnapshotFrame,
+): Map<string, EmbeddedEventModel> | undefined {
+  for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
+    const proj = snapshot.typedProjections(i);
+    if (!proj || proj.key() !== EMBED_PROJECTION_KEY) continue;
+    const payload = proj.payload();
+    if (!payload) return undefined;
+    const payloadBytes = payload.payloadArray();
+    if (!payloadBytes || payloadBytes.length === 0) return undefined;
+    try {
+      const text = new TextDecoder().decode(payloadBytes);
+      const parsed = JSON.parse(text) as Record<string, EmbeddedEventModel>;
+      const out = new Map<string, EmbeddedEventModel>();
+      for (const [key, envelope] of Object.entries(parsed)) {
+        if (envelope && typeof envelope === "object" && envelope.projection) {
+          out.set(key, envelope);
+        }
+      }
+      return out;
+    } catch {
+      return undefined;
+    }
   }
   return undefined;
 }

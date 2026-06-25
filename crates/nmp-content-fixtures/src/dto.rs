@@ -8,6 +8,7 @@
 //! Rust↔Swift boundary as JSON. We import the `nmp_content` types as-is and
 //! project them here (`super::project`) — consumption, not editing.
 
+use nmp_content::EmbedKindProjection;
 use serde::{Deserialize, Serialize};
 
 /// Serde mirror of `nmp_content::ContentTree`.
@@ -183,64 +184,13 @@ pub struct EmbedEntry {
     /// `null` | `"depth"` | `"cycle"` | `"unsupported"` | `"dangling"`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub collapse_reason: Option<String>,
-    /// Article header projection when `resolved_kind == 30023`.
+    /// Typed per-kind projection from the canonical kernel resolver
+    /// (`nmp_content::resolve_embed_projection`). This is the single shape
+    /// native registries dispatch on (`article` → article card, `highlight`
+    /// → highlight card, etc.); the legacy hand-rolled `article`/`list`
+    /// fields are gone (#1998). `None` for dangling / non-event entries.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub article: Option<ArticleHeaderDto>,
-    /// NIP-51 list projection for kind:30000/30003/10002.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub list: Option<ListDto>,
-}
-
-/// Medium-like article preview header (from `nmp_nip23::ArticleRecord`).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct ArticleHeaderDto {
-    /// Article title.
-    pub title: Option<String>,
-    /// Article summary.
-    pub summary: Option<String>,
-    /// Author pubkey hex.
-    pub author: String,
-    /// `d` tag identifier.
-    pub d_tag: String,
-}
-
-/// NIP-51 list projection (follow set / bookmarks / relay list).
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-pub struct ListDto {
-    /// `title` tag, when present.
-    pub title: Option<String>,
-    /// Heterogeneous member rows.
-    pub rows: Vec<ListRowDto>,
-}
-
-/// One row of a NIP-51 list.
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
-#[serde(tag = "type", rename_all = "camelCase")]
-pub enum ListRowDto {
-    /// `p` member (resolves to a mention chip).
-    Profile {
-        /// Member pubkey hex.
-        pubkey: String,
-        /// Resolved kind:0 name, if in store.
-        name: Option<String>,
-        /// Resolved kind:0 picture, if present.
-        picture: Option<String>,
-    },
-    /// `e` member (a referenced event).
-    Event { id: String },
-    /// `a` member (an addressable coord).
-    Address { coord: String },
-    /// `t` member (a hashtag).
-    Hashtag { tag: String },
-    /// `r` member (a relay URL with read/write markers).
-    Relay {
-        /// Relay URL.
-        url: String,
-        /// `true` when read.
-        read: bool,
-        /// `true` when write.
-        write: bool,
-    },
+    pub kind_projection: Option<EmbedKindProjection>,
 }
 
 /// One showcase scenario in the bundle.

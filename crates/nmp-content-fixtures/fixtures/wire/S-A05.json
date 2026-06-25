@@ -7,9 +7,9 @@
     {
       "kind": "event_ref",
       "uri": {
-        "uri": "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqzyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnwsgqn2ln",
+        "uri": "nostr:nevent1qqst8wx77erp7n9rzh0y2ezfma49hhylsyjfnf75k0wq79wfn0h9d7szyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnws90dtzf",
         "kind": "event",
-        "primary_id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
+        "primary_id": "b3b8def6461f4ca315de456449df6a5bdc9f812499a7d4b3dc0f15c99bee56fa",
         "relays": [
           "wss://relay.nmp.test"
         ],

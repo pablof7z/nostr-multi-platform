@@ -2,76 +2,18 @@
 //!
 //! The list projection is derived from the signed list event's own tags
 //! (the relay-free truth) — follow set (kind:30000), bookmarks
-//! (kind:30003), and relay list (kind:10002).
+//! (kind:30003), and relay list (kind:10002). List kinds have no registered
+//! typed projection, so `resolve_embed_projection` emits the `Unknown`
+//! variant carrying the raw tags + content tree; native list renderers read
+//! those tags directly (no hand-rolled `ListDto` at the fixture layer).
 
-use nmp_signer_iface::SignedEvent;
-
-use crate::dto::{ListDto, ListRowDto, ScenarioDto};
+use crate::dto::ScenarioDto;
 use crate::embed_store::{EmbedStore, Target};
 use crate::identities::{naddr_uri, nevent_uri, Identities};
 
 use super::scenario;
 
 const BASE: u64 = 1_700_040_000;
-
-fn project_list(ev: &SignedEvent) -> ListDto {
-    let title = ev
-        .unsigned
-        .tags
-        .iter()
-        .find(|t| t.first().map(String::as_str) == Some("title"))
-        .and_then(|t| t.get(1).cloned());
-    let mut rows = Vec::new();
-    for t in &ev.unsigned.tags {
-        match t.first().map(String::as_str) {
-            Some("p") => {
-                if let Some(pk) = t.get(1) {
-                    rows.push(ListRowDto::Profile {
-                        pubkey: pk.clone(),
-                        name: None,
-                        picture: None,
-                    });
-                }
-            }
-            Some("e") => {
-                if let Some(id) = t.get(1) {
-                    rows.push(ListRowDto::Event { id: id.clone() });
-                }
-            }
-            Some("a") => {
-                if let Some(c) = t.get(1) {
-                    rows.push(ListRowDto::Address {
-                        coord: c.clone(),
-                    });
-                }
-            }
-            Some("t") => {
-                if let Some(tag) = t.get(1) {
-                    rows.push(ListRowDto::Hashtag {
-                        tag: tag.clone(),
-                    });
-                }
-            }
-            Some("r") => {
-                if let Some(url) = t.get(1) {
-                    let marker = t.get(2).map(String::as_str);
-                    let (read, write) = match marker {
-                        Some("read") => (true, false),
-                        Some("write") => (false, true),
-                        _ => (true, true),
-                    };
-                    rows.push(ListRowDto::Relay {
-                        url: url.clone(),
-                        read,
-                        write,
-                    });
-                }
-            }
-            _ => {}
-        }
-    }
-    ListDto { title, rows }
-}
 
 /// Build every list-category scenario.
 pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
@@ -92,13 +34,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     );
     let coord = naddr_uri(30000, &ids.carol.pubkey_hex, "nostr-core");
     let mut store = EmbedStore::default();
-    store.add(
-        coord.clone(),
-        Target::List {
-            event: follow_set.clone(),
-            list: project_list(&follow_set),
-        },
-    );
+    store.add(coord.clone(), Target::Event(follow_set.clone()));
     let e = ids.alice.sign(
         1,
         BASE + 1,
@@ -136,13 +72,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     );
     let coord = naddr_uri(30003, &ids.carol.pubkey_hex, "reading");
     let mut store = EmbedStore::default();
-    store.add(
-        coord.clone(),
-        Target::List {
-            event: bookmarks.clone(),
-            list: project_list(&bookmarks),
-        },
-    );
+    store.add(coord.clone(), Target::Event(bookmarks.clone()));
     let e = ids.alice.sign(
         1,
         BASE + 3,
@@ -164,6 +94,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
         10002,
         BASE + 4,
         vec![
+            vec!["title".into(), "Relay List".into()],
             vec!["r".into(), "wss://relay.a.nmp.test".into()],
             vec![
                 "r".into(),
@@ -175,15 +106,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     );
     let uri = nevent_uri(&relay_list.id, &ids.carol.pubkey_hex, 10002);
     let mut store = EmbedStore::default();
-    let mut list = project_list(&relay_list);
-    list.title = Some("Relay List".to_string());
-    store.add(
-        uri.clone(),
-        Target::List {
-            event: relay_list.clone(),
-            list,
-        },
-    );
+    store.add(uri.clone(), Target::Event(relay_list.clone()));
     let e = ids.alice.sign(
         1,
         BASE + 5,

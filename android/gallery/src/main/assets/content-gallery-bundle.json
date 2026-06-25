@@ -2375,20 +2375,24 @@
       "exercises": "replaceable list resolution -> titled relay list w/ markers",
       "events": [
         {
-          "id": "ad03ba9aa54c99632d0861c7a8ff27102b846d156b38d483f83d1b1a5ef30c47",
+          "id": "0b78bf04194449e2cfe9d5c5f293895f7ff3b849ab26ff5c85a968a9702b1b16",
           "pubkey": "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
           "created_at": 1700040005,
           "kind": 1,
           "tags": [],
-          "content": "caro's relays nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqzyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnwsgqn2ln",
-          "sig": "4a3178af98f790d1ae99e1abf50ab0c7ea007e4b202a9a50b7c9189ed6278632d54243678e6f6ac82d5680edae8e06aa25740b92b0d374b2749733ce7d32afd2"
+          "content": "caro's relays nostr:nevent1qqst8wx77erp7n9rzh0y2ezfma49hhylsyjfnf75k0wq79wfn0h9d7szyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnws90dtzf",
+          "sig": "a93b857e25214fe39707b1831130bbf560c7500afad236e335230e69f437ea1a92d84d38b1a96f3abd2730d368ca7413b0dd5518d7ca6cfae099f9c5016d5c08"
         },
         {
-          "id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
+          "id": "b3b8def6461f4ca315de456449df6a5bdc9f812499a7d4b3dc0f15c99bee56fa",
           "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
           "created_at": 1700040004,
           "kind": 10002,
           "tags": [
+            [
+              "title",
+              "Relay List"
+            ],
             [
               "r",
               "wss://relay.a.nmp.test"
@@ -2400,7 +2404,7 @@
             ]
           ],
           "content": "",
-          "sig": "0a98ef5a687184826f54fd1d27e3e353df2c4745ae9e9ec2d989d7693cb9b90e0ee35a27a95e4ca8010a9c9a792cc13d80fd601546fb6248ce9a9eee6180498e"
+          "sig": "2883f4594a3e5e9fbd66ab52f573d607798a07ef232c2506bc3bd596f2f8bfb9b602c3bc28fc5e7aee8f573ac9fda7c1c794717c981c3f8888d133bdca9c696e"
         }
       ],
       "rendered": {
@@ -2412,9 +2416,9 @@
           {
             "kind": "event_ref",
             "uri": {
-              "uri": "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqzyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnwsgqn2ln",
+              "uri": "nostr:nevent1qqst8wx77erp7n9rzh0y2ezfma49hhylsyjfnf75k0wq79wfn0h9d7szyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnws90dtzf",
               "kind": "event",
-              "primary_id": "741745cd14849d3aa4474058b135d176f46443bf796722d3db7628f87dcf280c",
+              "primary_id": "b3b8def6461f4ca315de456449df6a5bdc9f812499a7d4b3dc0f15c99bee56fa",
               "relays": [
                 "wss://relay.nmp.test"
               ],
@@ -2430,7 +2434,7 @@
         "mode": "Plain"
       },
       "embeds": {
-        "nostr:nevent1qqs8g969e52gf8f653r5qk93xhghdarygwlhjeez60dhv28c0h8jsrqzyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnwsgqn2ln": {
+        "nostr:nevent1qqst8wx77erp7n9rzh0y2ezfma49hhylsyjfnf75k0wq79wfn0h9d7szyrunpzspjfvvxyzfx38ct7ya2g5m2vwggkpklxdsscqlzyauuqm0jqcyqqqzwyspz3mhxue69uhhyetvv9ujumndwqh8getnws90dtzf": {
           "collapsed": false,
           "projection": {
             "variant": "unknown",
@@ -2447,6 +2451,10 @@
                 "mode": "Plain"
               },
               "tags": [
+                [
+                  "title",
+                  "Relay List"
+                ],
                 [
                   "r",
                   "wss://relay.a.nmp.test"

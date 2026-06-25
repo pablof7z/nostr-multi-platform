@@ -13,11 +13,14 @@
 
 use std::collections::BTreeMap;
 
-use nmp_content::{tokenize_with_kind, RenderMode};
+use nmp_content::{
+    resolve_embed_projection, tokenize_with_kind, EmbedKindProjection, RenderContext, RenderMode,
+};
 use nmp_core::kinds::is_addressable;
+use nmp_core::substrate::KernelEvent;
 use nmp_signer_iface::SignedEvent;
 
-use crate::dto::{ArticleHeaderDto, ContentTreeDto, EmbedEntry, ListDto, SignedEventJson};
+use crate::dto::{ContentTreeDto, EmbedEntry, SignedEventJson};
 use crate::project::project_tree;
 
 /// A target registered in the offline store, keyed by its `nostr:` URI.
@@ -29,22 +32,11 @@ pub enum Target {
         /// Picture URL, if any.
         picture: Option<String>,
     },
-    /// A resolvable event (note / article / list / unknown kind).
+    /// A resolvable event (note / article / list / highlight / unknown kind).
+    /// The typed per-kind projection is derived from the event's own tags +
+    /// content by the canonical `resolve_embed_projection` resolver — there is
+    /// no longer a hand-rolled article/list projection at the fixture layer.
     Event(SignedEvent),
-    /// An article preview (kind:30023) — header + the underlying event.
-    Article {
-        /// The signed kind:30023 event.
-        event: SignedEvent,
-        /// Projected header.
-        header: ArticleHeaderDto,
-    },
-    /// A NIP-51 list (kind:30000 / 30003 / 10002).
-    List {
-        /// The signed list event.
-        event: SignedEvent,
-        /// Projected list rows.
-        list: ListDto,
-    },
 }
 
 /// Builder for a scenario's relay-free embed store.
@@ -63,6 +55,26 @@ fn to_json(ev: &SignedEvent) -> SignedEventJson {
         content: ev.unsigned.content.clone(),
         sig: ev.sig.clone(),
     }
+}
+
+fn to_kernel_event(ev: &SignedEvent) -> KernelEvent {
+    KernelEvent {
+        id: ev.id.clone(),
+        author: ev.unsigned.pubkey.clone(),
+        kind: ev.unsigned.kind,
+        created_at: ev.unsigned.created_at,
+        tags: ev.unsigned.tags.clone(),
+        content: ev.unsigned.content.clone(),
+        relay_provenance: Vec::new(),
+    }
+}
+
+/// Derive the canonical typed per-kind projection for a resolved event using
+/// the single workspace dispatch point (`resolve_embed_projection`). The
+/// fixture store carries this so native registries dispatch on the same shape
+/// the runtime resolver emits — no parallel article/list projection here.
+fn kind_projection(ev: &SignedEvent) -> EmbedKindProjection {
+    resolve_embed_projection(&to_kernel_event(ev), &RenderContext::new())
 }
 
 fn event_cycle_key(ev: &SignedEvent) -> String {
@@ -114,8 +126,7 @@ impl EmbedStore {
                 rendered: None,
                 collapsed: true,
                 collapse_reason: Some("dangling".to_string()),
-                article: None,
-                list: None,
+                kind_projection: None,
             };
         };
 
@@ -129,24 +140,17 @@ impl EmbedStore {
                 rendered: None,
                 collapsed: false,
                 collapse_reason: None,
-                article: None,
-                list: None,
+                kind_projection: None,
             },
-            Target::Event(ev) => self.event_entry(ev, None, None),
-            Target::Article { event, header } => {
-                self.event_entry(event, Some(header.clone()), None)
-            }
-            Target::List { event, list } => self.event_entry(event, None, Some(list.clone())),
+            Target::Event(ev) => self.event_entry(ev),
         }
     }
 
-    fn event_entry(
-        &self,
-        ev: &SignedEvent,
-        article: Option<ArticleHeaderDto>,
-        list: Option<ListDto>,
-    ) -> EmbedEntry {
+    fn event_entry(&self, ev: &SignedEvent) -> EmbedEntry {
         let kind = ev.unsigned.kind;
+        // Single canonical dispatch: derive the typed per-kind projection from
+        // the event itself (article/highlight/short-note/profile/unknown).
+        let projection = kind_projection(ev);
 
         // Unknown/unsupported kind → graceful neutral card (S-E02). This
         // is a context-independent fact (a property of the event kind).
@@ -167,8 +171,7 @@ impl EmbedStore {
                 rendered: None,
                 collapsed: true,
                 collapse_reason: Some("unsupported".to_string()),
-                article,
-                list,
+                kind_projection: Some(projection),
             };
         }
 
@@ -182,8 +185,7 @@ impl EmbedStore {
             rendered: Some(rendered),
             collapsed: false,
             collapse_reason: None,
-            article,
-            list,
+            kind_projection: Some(projection),
         }
     }
 
