@@ -20,7 +20,7 @@ use nmp_ffi::FeedOpenError;
 use nmp_planner::InterestShape;
 
 use super::resolve::{empty_extra, not_supported, ResolvedScope};
-use super::session_engine::LiveShape;
+use super::session_engine::{AcquisitionInterest, LiveShape};
 
 // ── Authors { authors } — static author-set timeline ─────────────────────
 
@@ -54,8 +54,8 @@ pub(super) fn resolve_authors(
         })
     };
     // Acquisition: the authors' primary-kind (+ compiler-derived wrapper) timeline.
-    let interests = vec![(authors_filter(authors, kinds), 1u32)]; // Global scope
     let shape = InterestShape::timeline_for(authors.clone(), kinds.clone());
+    let interests = vec![AcquisitionInterest::global(shape.clone())];
     let live_shape: LiveShape = Arc::new(move || Some(shape.clone()));
 
     Ok(ResolvedScope {
@@ -77,9 +77,12 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ResolvedScope {
     // checks BOTH the tag AND author membership instead of silently admitting
     // any member's untagged note).
     let admission: RootAdmission = AdmitExpr::Tag(term.to_string()).to_root_admission();
-    let interests = vec![(tag_filter(term, kinds), 1u32)]; // Global scope
-    let shape = tag_shape(term, kinds);
-    let live_shape: LiveShape = Arc::new(move || shape.clone());
+    let shape = tag_interest_shape(term, kinds);
+    let interests = vec![AcquisitionInterest::global(shape.clone())];
+    let live_shape: LiveShape = {
+        let shape = tag_live_shape(term, kinds);
+        Arc::new(move || shape.clone())
+    };
     ResolvedScope {
         admission,
         interests,
@@ -92,24 +95,24 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ResolvedScope {
     }
 }
 
-// ── Filter JSON / shape helpers (data-driven; OpenInterest re-parses) ─────
+// ── Typed shape helpers ───────────────────────────────────────────────────
 
-fn authors_filter(authors: &BTreeSet<String>, kinds: &BTreeSet<u32>) -> String {
-    let authors: Vec<&String> = authors.iter().collect();
-    let kinds: Vec<&u32> = kinds.iter().collect();
-    serde_json::json!({ "authors": authors, "kinds": kinds }).to_string()
+fn tag_interest_shape(term: &str, kinds: &BTreeSet<u32>) -> InterestShape {
+    let mut shape = InterestShape {
+        kinds: kinds.clone(),
+        ..InterestShape::default()
+    };
+    shape
+        .tags
+        .insert("t".to_string(), [term.to_string()].into_iter().collect());
+    shape
 }
 
-fn tag_filter(term: &str, kinds: &BTreeSet<u32>) -> String {
-    let kinds: Vec<&u32> = kinds.iter().collect();
-    serde_json::json!({ "kinds": kinds, "#t": [term] }).to_string()
-}
-
-fn tag_shape(term: &str, kinds: &BTreeSet<u32>) -> Option<InterestShape> {
+fn tag_live_shape(term: &str, kinds: &BTreeSet<u32>) -> Option<InterestShape> {
     if kinds.is_empty() {
         return None;
     }
-    InterestShape::from_filter_json(&tag_filter(term, kinds))
+    Some(tag_interest_shape(term, kinds))
 }
 
 // ── Referrer { event_id } — thread/referrer scope ──────────────────────────
@@ -152,8 +155,8 @@ pub(super) fn resolve_referrer(
     // Acquisition: two shapes — the #e reply-tail shape (for load_older), plus
     // the root-by-id shape (so the root note itself is replayed into the store).
     let interests = vec![
-        (referrer_filter(&root_id, kinds), 1u32), // Global scope for #e replies
-        (root_id_filter(&root_id, kinds), 1u32),  // Global scope for the root itself
+        AcquisitionInterest::global(referrer_shape(&root_id, kinds)),
+        AcquisitionInterest::global(root_id_shape(&root_id, kinds)),
     ];
 
     // Live shape: the #e-covered reply-tail shape (re-read on load_older).
@@ -172,21 +175,30 @@ pub(super) fn resolve_referrer(
     })
 }
 
-// ── Filter JSON / shape helpers for referrer scope ──────────────────────────
+// ── Typed shape helpers for referrer scope ────────────────────────────────
 
-fn referrer_filter(root_id: &str, kinds: &BTreeSet<u32>) -> String {
-    let kinds: Vec<&u32> = kinds.iter().collect();
-    serde_json::json!({ "kinds": kinds, "#e": [root_id] }).to_string()
+fn referrer_shape(root_id: &str, kinds: &BTreeSet<u32>) -> InterestShape {
+    let mut shape = InterestShape {
+        kinds: kinds.clone(),
+        ..InterestShape::default()
+    };
+    shape
+        .tags
+        .insert("e".to_string(), [root_id.to_string()].into_iter().collect());
+    shape
 }
 
 fn referrer_live_shape(root_id: &str, kinds: &BTreeSet<u32>) -> Option<InterestShape> {
     if kinds.is_empty() {
         return None;
     }
-    InterestShape::from_filter_json(&referrer_filter(root_id, kinds))
+    Some(referrer_shape(root_id, kinds))
 }
 
-fn root_id_filter(root_id: &str, kinds: &BTreeSet<u32>) -> String {
-    let kinds: Vec<&u32> = kinds.iter().collect();
-    serde_json::json!({ "ids": [root_id], "kinds": kinds }).to_string()
+fn root_id_shape(root_id: &str, kinds: &BTreeSet<u32>) -> InterestShape {
+    InterestShape {
+        event_ids: [root_id.to_string()].into_iter().collect(),
+        kinds: kinds.clone(),
+        ..InterestShape::default()
+    }
 }

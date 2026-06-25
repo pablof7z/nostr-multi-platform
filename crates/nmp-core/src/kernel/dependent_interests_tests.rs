@@ -37,6 +37,31 @@ fn pending_triggers(kernel: &Kernel) -> usize {
 }
 
 #[test]
+fn typed_tailing_child_matches_open_interest_key_for_active_and_global() {
+    let shape = InterestShape::timeline_for(BTreeSet::from([hex(42)]), BTreeSet::from([1, 6]));
+    for (scope, raw_scope) in [
+        (InterestScope::ActiveAccount, 0_u32),
+        (InterestScope::Global, 1_u32),
+    ] {
+        let child = DependentInterestChild::tailing(shape.clone(), scope.clone());
+        let filter_json = crate::subs::wire::filter_json_for(&shape);
+        let (identity, interest) = crate::subs::interest_builder::build_interest_pair(
+            &filter_json,
+            "consumer",
+            raw_scope,
+            None,
+        )
+        .expect("canonical filter parses");
+
+        assert_eq!(child.key, identity.key);
+        assert_eq!(child.scope, identity.scope);
+        assert_eq!(child.interest.scope, interest.scope);
+        assert_eq!(child.interest.shape, interest.shape);
+        assert_eq!(child.interest.lifecycle, InterestLifecycle::Tailing);
+    }
+}
+
+#[test]
 fn replace_add_shrink_replace_and_empty_fail_closed() {
     let mut kernel = Kernel::testing_new(80);
     let owner = SubOwnerKey::new("source-owner");

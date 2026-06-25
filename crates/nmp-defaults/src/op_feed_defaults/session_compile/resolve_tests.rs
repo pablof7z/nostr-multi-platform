@@ -3,11 +3,12 @@
 //! Full open/close + admission behavior over a live `NmpApp` lives in the
 //! `nmp-testing` perspective fixture (it needs `nmp_app_new`). These cover the
 //! framework-internal, app-free pieces: the session WoT graph (reusing the
-//! #1698 ranked query) and the filter-JSON builders the interests use.
+//! #1698 ranked query) and the typed acquisition shapes the interests use.
 
 use super::resolve::*;
 use nmp_core::substrate::{EventId, KernelEvent};
 use nmp_core::KernelEventObserver;
+use nmp_planner::InterestScope;
 
 const SEED: &str = "5eed000000000000000000000000000000000000000000000000000000000001";
 const F1: &str = "f1f1000000000000000000000000000000000000000000000000000000000001";
@@ -180,10 +181,13 @@ fn authors_scope_admits_only_the_target_authors_rejects_others() {
         1,
         "one fixed acquisition interest"
     );
-    let (filter_json, scope) = &resolved.interests[0];
-    assert_eq!(*scope, 1, "Global scope (account-agnostic author pin)");
-    let shape = nmp_planner::InterestShape::from_filter_json(filter_json)
-        .expect("the author filter parses");
+    let interest = &resolved.interests[0];
+    assert_eq!(
+        interest.scope,
+        InterestScope::Global,
+        "Global scope (account-agnostic author pin)"
+    );
+    let shape = &interest.shape;
     assert_eq!(
         shape.authors, authors,
         "acquires exactly the target authors"
@@ -286,13 +290,17 @@ fn referrer_scope_opens_etag_tail_and_root_id_interests() {
         2,
         "thread scope opens #e reply-tail plus root-by-id acquisition"
     );
-    for (_, scope) in &resolved.interests {
-        assert_eq!(*scope, 1, "thread acquisition is Global/account-agnostic");
+    for interest in &resolved.interests {
+        assert_eq!(
+            interest.scope,
+            InterestScope::Global,
+            "thread acquisition is Global/account-agnostic"
+        );
     }
     let shapes: Vec<_> = resolved
         .interests
         .iter()
-        .filter_map(|(json, _)| nmp_planner::InterestShape::from_filter_json(json))
+        .map(|interest| &interest.shape)
         .collect();
     assert!(
         shapes.iter().any(|shape| {

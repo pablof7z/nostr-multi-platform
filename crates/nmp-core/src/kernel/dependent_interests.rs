@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use super::Kernel;
 use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
-use crate::planner::LogicalInterest;
+use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};
 use crate::subs::{CompileTrigger, InvalidateReason, SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 /// One child interest produced by reducing another source.
@@ -16,8 +16,44 @@ pub struct DependentInterestChild {
 }
 
 impl DependentInterestChild {
+    /// Build a tailing child interest from a typed shape.
+    ///
+    /// Active-account and global scopes intentionally share the same SubKey
+    /// derivation as `open_interest`, so a dependent child and an explicit
+    /// `OpenInterest` for the same shape/scope dedup onto one live slot.
+    #[must_use]
+    pub fn tailing(shape: nmp_planner::InterestShape, scope: nmp_planner::InterestScope) -> Self {
+        let sub_scope = match &scope {
+            InterestScope::Account(pubkey) => SubScope::Account(pubkey.clone()),
+            InterestScope::ActiveAccount | InterestScope::Global => SubScope::Global,
+        };
+        let key = SubKey::builder("open-interest")
+            .with(&shape)
+            .with(scope_key_part(&scope))
+            .finish();
+        let interest = LogicalInterest {
+            scope,
+            shape,
+            lifecycle: InterestLifecycle::Tailing,
+            ..LogicalInterest::default()
+        };
+        Self {
+            key,
+            scope: sub_scope,
+            interest,
+        }
+    }
+
     fn identity(&self, owner: SubOwnerKey) -> SubIdentity {
         SubIdentity::new(owner, self.key, self.scope.clone())
+    }
+}
+
+fn scope_key_part(scope: &InterestScope) -> u32 {
+    match scope {
+        InterestScope::ActiveAccount => 0,
+        InterestScope::Global => 1,
+        InterestScope::Account(_) => 2,
     }
 }
 

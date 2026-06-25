@@ -13,7 +13,7 @@
 //!   / set algebra) OR from a LIVE framework projection (reactive scopes). No
 //!   app closure crosses FFI. It gates which roots ENTER the feed (#1740 step 3),
 //!   not just reply attribution.
-//! * `interests` — the internal acquisition filters (NIP-01 JSON + scope u32).
+//! * `interests` — the internal typed acquisition interests.
 //! * `live_shape` — the live pull acquisition shape (re-read on `load_older`).
 //! * `reset_hooks` — closures that install a window-reset on each underlying
 //!   set's change (reactive perspective), plus the observer ids to revoke.
@@ -36,7 +36,7 @@ use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
 use nmp_wot::score::WotGraph;
 
-use super::session_engine::{ExtraAcquisition, LiveShape};
+use super::session_engine::{AcquisitionInterest, ExtraAcquisition, LiveShape};
 
 /// A closure that, given the feed-window reset trigger, installs it on the
 /// underlying set's change signal (reactive perspective).
@@ -49,8 +49,8 @@ pub(super) struct ResolvedScope {
     /// scopes compose faithfully under set algebra and the perspective gates
     /// which roots enter the feed, not just reply attribution.
     pub admission: RootAdmission,
-    /// Internal acquisition interests: `(filter_json, scope_u32)`.
-    pub interests: Vec<(String, u32)>,
+    /// Internal typed acquisition interests.
+    pub interests: Vec<AcquisitionInterest>,
     /// Live pull acquisition shape (re-read on `load_older`).
     pub live_shape: LiveShape,
     /// Extra acquisition shapes to subscribe to beyond the render shape (e.g.
@@ -133,8 +133,8 @@ fn resolve_contact_list(
     // A fresh ActiveFollowSet over the same active-account slot, registered as a
     // session observer so kind:3 ingest keeps the predicate live (reactive).
     let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
-    let observer_id = app
-        .register_event_observer(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
+    let observer_id =
+        app.register_event_observer(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
 
     // Event-aware over the author-only follow predicate: a root is admitted iff
     // its author is in the live follow set.
@@ -169,10 +169,16 @@ pub(super) fn empty_extra() -> ExtraAcquisition {
 }
 
 /// Wrap a render [`LiveShape`] as an [`ExtraAcquisition`] so the member timeline
-/// is OpenInterest'd (and re-synced as the set grows), not merely scanned.
+/// is registered as a dependent child (and re-synced as the set grows), not
+/// merely scanned.
 fn extra_from_shape(live_shape: &LiveShape) -> ExtraAcquisition {
     let live_shape = Arc::clone(live_shape);
-    Arc::new(move || live_shape().into_iter().collect())
+    Arc::new(move || {
+        live_shape()
+            .into_iter()
+            .map(AcquisitionInterest::active_account)
+            .collect()
+    })
 }
 
 // ── ListMembers { list } (NIP-51 kind:30000) ─────────────────────────────
@@ -190,9 +196,8 @@ fn resolve_list_members(
     let projection = Arc::new(nmp_nip51::PeopleListProjection::new(
         app.active_account_handle(),
     ));
-    let observer_id = app.register_event_observer(
-        Arc::clone(&projection) as Arc<dyn KernelEventObserver>
-    );
+    let observer_id =
+        app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
 
     // LIVE predicate over the projection's current members (reactive: a new
     // kind:30000 updates the set and fires on_change → window reset).
@@ -205,7 +210,9 @@ fn resolve_list_members(
     // Acquire the viewer's kind:30000 list event. The members' timeline is
     // re-synced live by the session engine as the list arrives + changes (the
     // member set is empty until the list lands).
-    let interests = vec![(viewer_list_filter(&viewer), 0u32)];
+    let interests = vec![AcquisitionInterest::active_account(viewer_list_shape(
+        &viewer,
+    ))];
 
     let live_shape: LiveShape = {
         let projection = Arc::clone(&projection);
@@ -260,7 +267,9 @@ fn resolve_wot(
     // (needed to rank second-degree candidates) and the candidates' timelines are
     // re-synced live by the session engine as the graph fills (extra_acquisition +
     // live_shape below).
-    let interests = vec![(seed_contacts_filter(seed), 0u32)];
+    let interests = vec![AcquisitionInterest::active_account(seed_contacts_shape(
+        seed,
+    ))];
 
     let live_shape: LiveShape = {
         let graph = Arc::clone(&graph);
@@ -289,13 +298,17 @@ fn resolve_wot(
             let follows = graph.direct_follows();
             if !follows.is_empty() {
                 let k: BTreeSet<u32> = [KIND_CONTACT_LIST].into_iter().collect();
-                shapes.push(InterestShape::timeline_for(follows, k));
+                shapes.push(AcquisitionInterest::active_account(
+                    InterestShape::timeline_for(follows, k),
+                ));
             }
             let candidates = graph.ranked_candidates();
             if !candidates.is_empty() && !timeline_kinds.is_empty() {
-                shapes.push(InterestShape::timeline_for(
-                    candidates.into_iter().collect(),
-                    timeline_kinds.clone(),
+                shapes.push(AcquisitionInterest::active_account(
+                    InterestShape::timeline_for(
+                        candidates.into_iter().collect(),
+                        timeline_kinds.clone(),
+                    ),
                 ));
             }
             shapes
@@ -317,14 +330,20 @@ fn resolve_wot(
     })
 }
 
-// ── Filter JSON / shape helpers (data-driven; OpenInterest re-parses) ─────
+// ── Typed acquisition shape helpers ───────────────────────────────────────
 
-fn viewer_list_filter(viewer: &str) -> String {
-    serde_json::json!({ "authors": [viewer], "kinds": [KIND_FOLLOW_SET] }).to_string()
+fn viewer_list_shape(viewer: &str) -> InterestShape {
+    InterestShape::timeline_for(
+        [viewer.to_string()].into_iter().collect(),
+        [KIND_FOLLOW_SET].into_iter().collect(),
+    )
 }
 
-fn seed_contacts_filter(seed: &str) -> String {
-    serde_json::json!({ "authors": [seed], "kinds": [KIND_CONTACT_LIST] }).to_string()
+fn seed_contacts_shape(seed: &str) -> InterestShape {
+    InterestShape::timeline_for(
+        [seed.to_string()].into_iter().collect(),
+        [KIND_CONTACT_LIST].into_iter().collect(),
+    )
 }
 
 fn follow_set_live_shape(
@@ -386,10 +405,7 @@ impl SessionWotGraph {
     }
 
     pub(super) fn admits(&self, pk: &str) -> bool {
-        self.ranked
-            .lock()
-            .map(|r| r.contains(pk))
-            .unwrap_or(false)
+        self.ranked.lock().map(|r| r.contains(pk)).unwrap_or(false)
     }
 
     fn on_change(&self, cb: Box<dyn Fn() + Send + Sync>) {

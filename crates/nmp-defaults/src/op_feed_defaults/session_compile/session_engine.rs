@@ -11,9 +11,9 @@
 //!   [`nmp_feed::RootAdmission`], built INSIDE the framework from resolved
 //!   pubkey-set DATA / `#t` tag terms — no app closure crosses the seam) that
 //!   gates which roots ENTER the feed (#1740 step 3); and
-//! * a set of INTERNAL acquisition interests (NIP-01 filter JSON), registered
-//!   via [`nmp_core::actor::ActorCommand::OpenInterest`] under the session's projection
-//!   key as `consumer_id` and withdrawn symmetrically on close.
+//! * a set of INTERNAL acquisition interests, registered via the kernel's
+//!   dependent-interest owner under the session's projection key and withdrawn
+//!   symmetrically on close.
 //!
 //! The session registers under the caller's UNIQUE [`nmp_feed::ProjectionKey`]
 //! (not the home `OP_FEED_SNAPSHOT_KEY`), so many scope sessions coexist. Close
@@ -21,26 +21,56 @@
 //! controller + projection, revoke the ingest observer + any resolver observers.
 //!
 //! Doctrine map:
-//! - D0: this names no app product — it consumes a compiled predicate + filter
-//!   JSON. The scope→predicate semantics live in `resolve.rs`.
-//! - D4: reuses `register_op_feed` + `op_feed_observer` + `OpenInterest`; no
-//!   second feed engine, no re-derived filter on close.
+//! - D0: this names no app product — it consumes a compiled predicate + typed
+//!   acquisition shapes. The scope→predicate semantics live in `resolve.rs`.
+//! - D4: reuses `register_op_feed` + `op_feed_observer` + the kernel
+//!   dependent-interest owner; no second feed engine, no re-derived filter on
+//!   close.
 //! - D8: each session's interests are withdrawn on close (symmetric teardown).
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
+use nmp_core::subs::SubOwnerKey;
 use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
+use nmp_core::DependentInterestChild;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
     FeedSessionBuild, PullFeedController, RootAdmission,
 };
 use nmp_ffi::{FeedOpenError, NmpApp};
-use nmp_planner::InterestShape;
+use nmp_planner::{InterestScope, InterestShape};
 
 use super::resolve::ResolvedScope;
+
+/// One typed acquisition child compiled by a feed scope.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct AcquisitionInterest {
+    pub shape: InterestShape,
+    pub scope: InterestScope,
+}
+
+impl AcquisitionInterest {
+    pub(super) fn active_account(shape: InterestShape) -> Self {
+        Self {
+            shape,
+            scope: InterestScope::ActiveAccount,
+        }
+    }
+
+    pub(super) fn global(shape: InterestShape) -> Self {
+        Self {
+            shape,
+            scope: InterestScope::Global,
+        }
+    }
+
+    fn into_child(self) -> DependentInterestChild {
+        DependentInterestChild::tailing(self.shape, self.scope)
+    }
+}
 
 /// Build a registered feed session for a resolved non-default scope and return
 /// its teardown recipe.
@@ -203,57 +233,40 @@ fn build_op_scope_session(
         })
     });
 
-    // ── 4+5. Open interests + reactive re-sync ───────────────────────────
+    // ── 4+5. Replace dependent acquisition set + reactive re-sync ─────────
     //
-    // A session opens INTERNAL acquisition interests via `OpenInterest` under its
-    // projection key as `consumer_id`. The seed/list interests are fixed; the
-    // MEMBER-timeline interest tracks a set that is empty until the source event
-    // (kind:30000 list / kind:3 contacts) lands. So acquisition must re-sync when
-    // the resolved set changes — exactly the home feed's `sync_follow_feed_interests`
-    // asymmetry, mirrored here.
-    //
-    // `opened` is the live log of every `(filter_json, scope)` this session has
-    // OpenInterest'd (the fixed ones now, the live member shape later). Teardown
-    // drains it so EVERY opened interest is withdrawn — no leak even for the
-    // dynamically-resolved member interest (D8).
+    // The session owns ONE dependent-interest set keyed by its projection. Fixed
+    // seed/list interests and live member timeline interests are replaced
+    // together. When a source set shrinks, the kernel withdraws disappeared
+    // children immediately; teardown sends the empty set. The session never
+    // serializes shapes to NIP-01 JSON or tracks a private open log.
     let sender = app.command_sender();
-    let opened: Arc<Mutex<Vec<(String, u32)>>> = Arc::new(Mutex::new(Vec::new()));
-    let open_interest = {
+    let owner = session_acquisition_owner(key);
+    let fixed_acquisition = Arc::new(interests);
+    let sync_acquisition = {
         let sender = sender.clone();
-        let key = key.to_string();
-        let opened = Arc::clone(&opened);
-        move |filter_json: String, scope: u32| {
-            // Idempotent at the kernel (refcount by shape+consumer+scope); we
-            // log each distinct filter once so teardown closes it exactly once.
-            if let Ok(mut log) = opened.lock() {
-                if log.iter().any(|(f, s)| *f == filter_json && *s == scope) {
-                    return;
-                }
-                log.push((filter_json.clone(), scope));
-            }
-            let _ = sender.send(ActorCommand::Interests(InterestsCommand::OpenInterest {
-                filter_json,
-                consumer_id: key.clone(),
-                scope,
-            }));
+        let fixed_acquisition = Arc::clone(&fixed_acquisition);
+        move |extra: &ExtraAcquisition| {
+            let children = acquisition_children(&fixed_acquisition, extra);
+            let _ = sender.send(ActorCommand::Interests(
+                InterestsCommand::ReplaceDependentInterestSet {
+                    owner,
+                    children,
+                    reason: "feed-session-acquisition".to_string(),
+                },
+            ));
         }
     };
-
-    // Open the fixed interests resolved at build time.
-    for (filter_json, scope) in &interests {
-        open_interest(filter_json.clone(), *scope);
-    }
-    // Open the current dynamic acquisition shapes if already populated.
-    sync_member_interest(&extra_acquisition, &open_interest);
+    sync_acquisition(&extra_acquisition);
 
     // Wire each underlying-set change to (a) re-sync acquisition for the new
     // members, then (b) reset the window so it regrows under the new perspective.
     for hook in reset_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
-        let open_interest = open_interest.clone();
+        let sync_acquisition = sync_acquisition.clone();
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            sync_member_interest(&extra, &open_interest);
+            sync_acquisition(&extra);
             let _ = controller_for_reset.reset();
         });
         hook(reset_trigger);
@@ -266,34 +279,12 @@ fn build_op_scope_session(
     //   2. revoke the engine ingest observer
     //   3. revoke each resolver observer
     //   4. remove the projection
-    //   5. close each acquisition interest      (WITHDRAW actor-owned state)
+    //   5. clear acquisition set                (WITHDRAW actor-owned state)
     //   6. mark-changed                          (the notification, runs last)
     let teardown_handle = app.feed_teardown();
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
     teardown.push(teardown_handle.mark_changed()); // exec #6 (last)
-                                                   // exec #5 — close EVERY interest this session opened, draining the live log
-                                                   // so dynamically-resolved member interests are withdrawn too (no leak, D8).
-    {
-        let sender_for_close = sender.clone();
-        let key_for_close = key.to_string();
-        let opened_for_close = Arc::clone(&opened);
-        teardown.push(Box::new(move || {
-            let drained = opened_for_close
-                .lock()
-                .map(|log| log.clone())
-                .unwrap_or_default();
-            for (filter_json, scope) in drained {
-                let _ = sender_for_close.send(ActorCommand::Interests(
-                    InterestsCommand::CloseInterest {
-                        filter_json,
-                        consumer_id: key_for_close.clone(),
-                        scope,
-                        relay_pin: None,
-                    },
-                ));
-            }
-        }));
-    }
+    teardown.push(clear_acquisition_set(sender.clone(), owner)); // exec #5
     teardown.push(teardown_handle.remove_projection(key.to_string())); // exec #4
     for id in &resolver_observer_ids {
         teardown.push(teardown_handle.revoke_observer(*id));
@@ -373,35 +364,29 @@ fn build_flat_scope_session(
     }
 
     let sender = app.command_sender();
-    let opened: Arc<Mutex<Vec<(String, u32)>>> = Arc::new(Mutex::new(Vec::new()));
-    let open_interest = {
+    let owner = session_acquisition_owner(key);
+    let fixed_acquisition = Arc::new(interests);
+    let sync_acquisition = {
         let sender = sender.clone();
-        let key = key.to_string();
-        let opened = Arc::clone(&opened);
-        move |filter_json: String, scope: u32| {
-            if let Ok(mut log) = opened.lock() {
-                if log.iter().any(|(f, s)| *f == filter_json && *s == scope) {
-                    return;
-                }
-                log.push((filter_json.clone(), scope));
-            }
-            let _ = sender.send(ActorCommand::Interests(InterestsCommand::OpenInterest {
-                filter_json,
-                consumer_id: key.clone(),
-                scope,
-            }));
+        let fixed_acquisition = Arc::clone(&fixed_acquisition);
+        move |extra: &ExtraAcquisition| {
+            let children = acquisition_children(&fixed_acquisition, extra);
+            let _ = sender.send(ActorCommand::Interests(
+                InterestsCommand::ReplaceDependentInterestSet {
+                    owner,
+                    children,
+                    reason: "feed-session-acquisition".to_string(),
+                },
+            ));
         }
     };
-    for (filter_json, scope) in &interests {
-        open_interest(filter_json.clone(), *scope);
-    }
-    sync_member_interest(&extra_acquisition, &open_interest);
+    sync_acquisition(&extra_acquisition);
     for hook in reset_hooks {
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
-        let open_interest = open_interest.clone();
+        let sync_acquisition = sync_acquisition.clone();
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
-            sync_member_interest(&extra, &open_interest);
+            sync_acquisition(&extra);
             let _ = controller_for_reset.reset();
         });
         hook(reset_trigger);
@@ -410,27 +395,7 @@ fn build_flat_scope_session(
     let teardown_handle = app.feed_teardown();
     let mut teardown: Vec<nmp_feed::TeardownAction> = Vec::new();
     teardown.push(teardown_handle.mark_changed());
-    {
-        let sender_for_close = sender.clone();
-        let key_for_close = key.to_string();
-        let opened_for_close = Arc::clone(&opened);
-        teardown.push(Box::new(move || {
-            let drained = opened_for_close
-                .lock()
-                .map(|log| log.clone())
-                .unwrap_or_default();
-            for (filter_json, scope) in drained {
-                let _ = sender_for_close.send(ActorCommand::Interests(
-                    InterestsCommand::CloseInterest {
-                        filter_json,
-                        consumer_id: key_for_close.clone(),
-                        scope,
-                        relay_pin: None,
-                    },
-                ));
-            }
-        }));
-    }
+    teardown.push(clear_acquisition_set(sender.clone(), owner));
     teardown.push(teardown_handle.remove_projection(key.to_string()));
     for id in &resolver_observer_ids {
         teardown.push(teardown_handle.revoke_observer(*id));
@@ -454,39 +419,35 @@ fn visible_flat_payload(feed: &nmp_nip01::FlatFeed) -> Vec<u8> {
     nmp_nip01::op_feed::encode_op_feed_snapshot(&snapshot)
 }
 
-/// Open an `OpenInterest` for every CURRENT dynamic acquisition shape (the
-/// member timeline, and for WoT the seed's direct follows' kind:3 whose contact
-/// lists feed the ranking). Called at build and on every underlying-set change so
-/// newly-resolved authors are actually acquired from relays — not merely
-/// admitted. `open_interest` is idempotent + logged, so repeated calls as the set
-/// grows add only the new authors and never double-open. The render/pull shape
-/// (`live_shape`) is NOT opened here — its acquisition is carried by
-/// `extra_acquisition`; `live_shape` only feeds the pull-pager store scan.
-fn sync_member_interest(extra: &ExtraAcquisition, open_interest: &impl Fn(String, u32)) {
-    for shape in extra() {
-        open_interest(filter_json_for_shape(&shape), 0);
-    }
+fn session_acquisition_owner(key: &str) -> SubOwnerKey {
+    SubOwnerKey::new(("feed-session-acquisition", key))
 }
 
-/// Serialize an [`InterestShape`]'s acquisition fields to a NIP-01 filter JSON
-/// the kernel's `OpenInterest` re-parses. Authors + kinds + `#t`/generic tags
-/// (the fields the session scopes use). `nmp-core`'s canonical `filter_json_for`
-/// is crate-private, so this mirrors the subset the perspective compiler emits.
-fn filter_json_for_shape(shape: &InterestShape) -> String {
-    let mut obj = serde_json::Map::new();
-    if !shape.authors.is_empty() {
-        let authors: Vec<&String> = shape.authors.iter().collect();
-        obj.insert("authors".into(), serde_json::json!(authors));
-    }
-    if !shape.kinds.is_empty() {
-        let kinds: Vec<&u32> = shape.kinds.iter().collect();
-        obj.insert("kinds".into(), serde_json::json!(kinds));
-    }
-    for (key, vals) in &shape.tags {
-        let vals: Vec<&String> = vals.iter().collect();
-        obj.insert(format!("#{}", key.as_str()), serde_json::json!(vals));
-    }
-    serde_json::Value::Object(obj).to_string()
+pub(super) fn acquisition_children(
+    fixed: &[AcquisitionInterest],
+    extra: &ExtraAcquisition,
+) -> Vec<DependentInterestChild> {
+    fixed
+        .iter()
+        .cloned()
+        .chain(extra())
+        .map(AcquisitionInterest::into_child)
+        .collect()
+}
+
+fn clear_acquisition_set(
+    sender: nmp_core::CommandSender,
+    owner: SubOwnerKey,
+) -> nmp_feed::TeardownAction {
+    Box::new(move || {
+        let _ = sender.send(ActorCommand::Interests(
+            InterestsCommand::ReplaceDependentInterestSet {
+                owner,
+                children: Vec::new(),
+                reason: "feed-session-acquisition-close".to_string(),
+            },
+        ));
+    })
 }
 
 // Re-export so `mod.rs` can name the live-shape type alias used by `resolve.rs`.
@@ -494,4 +455,4 @@ fn filter_json_for_shape(shape: &InterestShape) -> String {
 pub(super) type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
 /// Extra acquisition shapes a scope must subscribe to BEYOND the render shape
 /// (e.g. WoT's seed-follows kind:3, needed to build the second-degree ranking).
-pub(super) type ExtraAcquisition = Arc<dyn Fn() -> Vec<InterestShape> + Send + Sync>;
+pub(super) type ExtraAcquisition = Arc<dyn Fn() -> Vec<AcquisitionInterest> + Send + Sync>;
