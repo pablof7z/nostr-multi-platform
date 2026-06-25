@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn parse_event_frame_extracts_inner_event_json() {
-    let frame = r#"["EVENT","subA",{"id":"abc","kind":24133,"content":"x"}]"#;
+    let frame = r#"["EVENT","nmp-bunker",{"id":"abc","kind":24133,"content":"x"}]"#;
     let v = parse_event_frame(frame).expect("event frame parses");
     assert_eq!(v.get("id").and_then(|x| x.as_str()), Some("abc"));
 }
@@ -14,6 +14,18 @@ fn parse_event_frame_rejects_non_event_frames() {
     assert!(parse_event_frame(r#"["NOTICE","go away"]"#).is_none());
     assert!(parse_event_frame(r#"not json"#).is_none());
     assert!(parse_event_frame(r#"["EVENT"]"#).is_none());
+}
+
+#[test]
+fn parse_event_frame_rejects_other_subscriptions_and_kinds() {
+    assert!(
+        parse_event_frame(r#"["EVENT","other-sub",{"id":"abc","kind":24133,"content":"x"}]"#)
+            .is_none()
+    );
+    assert!(
+        parse_event_frame(r#"["EVENT","nmp-bunker",{"id":"abc","kind":1,"content":"x"}]"#)
+            .is_none()
+    );
 }
 
 #[test]

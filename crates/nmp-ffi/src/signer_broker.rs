@@ -95,6 +95,9 @@ fn handle_broker_event(tx: &nmp_core::CommandSender, event: BrokerEvent) {
         BrokerEvent::ConnectionStateChanged { state, reason } => {
             tx.bunker_connection_state_changed(state, reason);
         }
+        // Intake drops are diagnostic-only and already bounded/coalesced inside
+        // nmp-signer-broker; no actor state owns them today.
+        BrokerEvent::RelayIntakeDropped { .. } => {}
     }
 }
 

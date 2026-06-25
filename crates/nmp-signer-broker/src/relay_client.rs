@@ -48,6 +48,9 @@ use nmp_network::pool::{Pool, PoolConfig, PoolEvent, RelayFrame, RelayHandle, Wi
 /// a TLS handshake against any reachable relay.
 const CONNECT_BUDGET: Duration = Duration::from_secs(10);
 
+/// Subscription id used for the signer-broker inbound REQ.
+pub(crate) const BUNKER_SUB_ID: &str = "nmp-bunker";
+
 /// Signature of the inbound event callback. Receives the raw event JSON
 /// `Value` (the third element of `["EVENT", <sub_id>, <event_json>]`).
 /// MUST be cheap (called on the dispatcher thread); offload work if needed.
@@ -473,8 +476,9 @@ pub(crate) fn transport_error_to_state(
     (state, Some(error.message.clone()))
 }
 
-/// Parse `["EVENT", <sub_id>, <event_json>]` and return the `<event_json>`
-/// value. Other frame types return `None`.
+/// Parse the broker's `["EVENT", <sub_id>, <event_json>]` envelope and return
+/// the `<event_json>` value. Other frame types, other subscription ids, and
+/// non-kind-24133 events return `None` before they can enter the broker intake.
 fn parse_event_frame(text: &str) -> Option<Value> {
     let v: Value = serde_json::from_str(text).ok()?;
     let arr = v.as_array()?;
@@ -484,7 +488,14 @@ fn parse_event_frame(text: &str) -> Option<Value> {
     if arr.first()?.as_str()? != "EVENT" {
         return None;
     }
-    Some(arr[2].clone())
+    if arr.get(1)?.as_str()? != BUNKER_SUB_ID {
+        return None;
+    }
+    let event = arr.get(2)?.clone();
+    if event.get("kind").and_then(Value::as_u64) != Some(24133) {
+        return None;
+    }
+    Some(event)
 }
 
 #[cfg(test)]

@@ -8,6 +8,17 @@ use std::sync::Arc;
 
 use nmp_signers::Nip46Signer;
 
+/// Why the broker intentionally dropped a relay intake event.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RelayIntakeDropReason {
+    /// The bounded intake was full, so the oldest queued event was discarded
+    /// to admit a newer relay event.
+    DroppedOldest,
+    /// The bounded intake was still full after the broker tried to free one
+    /// slot, so the newest relay event was discarded.
+    DroppedNewest,
+}
+
 /// A completed broker outcome or progress update.
 #[derive(Clone, Debug)]
 pub enum BrokerEvent {
@@ -43,6 +54,17 @@ pub enum BrokerEvent {
         state: String,
         /// Optional human-readable reason (error message on disconnect).
         reason: Option<String>,
+    },
+    /// Bounded relay intake diagnostic. Emitted only at coalesced cumulative
+    /// drop counts so a hostile relay cannot flood the host event path.
+    RelayIntakeDropped {
+        /// Drop policy outcome for the event that was discarded.
+        reason: RelayIntakeDropReason,
+        /// Cumulative number of relay events intentionally dropped by this
+        /// session-local intake queue.
+        dropped_total: u64,
+        /// Fixed capacity of the session-local relay intake queue.
+        capacity: usize,
     },
 }
 

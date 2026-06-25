@@ -5,11 +5,10 @@ use crossbeam_channel::Receiver as CbReceiver;
 use nmp_signers::Nip46SignerHandle;
 use nostr::{Keys, PublicKey};
 use rand::Rng;
-use serde_json::Value;
 
 use super::{ActiveSession, BunkerBroker, NoopRelay, BUNKER_SUB_ID};
 use crate::handshake::{build_req_frame, run_nostrconnect_handshake, HandshakeOutcome};
-use crate::relay_client::{EventCallback, RelayClient, TungsteniteRelayClient};
+use crate::relay_client::{RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
 
 /// Protocol-neutral `name=` value advertised in the `nostrconnect://` URI.
@@ -109,11 +108,7 @@ impl BunkerBroker {
         cancel_rx: CbReceiver<()>,
         generation: u64,
     ) {
-        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
-        let inbound_tx_for_cb = inbound_tx.clone();
-        let event_cb: EventCallback = Arc::new(move |event| {
-            let _ = inbound_tx_for_cb.send(event);
-        });
+        let (event_cb, inbound_rx) = self.make_relay_intake();
 
         // Acquire pairs with the Release store in `BunkerBroker::cancel()`
         // (cross-thread happens-before; load-bearing on ARM — iOS/Android).
@@ -157,8 +152,7 @@ impl BunkerBroker {
             let relay_dispatcher = relay.signal_shutdown();
             self.spawn_reaper(None, None, relay_dispatcher);
             return;
-        }
-
+}
         let mut progress_emitter = |stage: &str, code: &str, msg: Option<&str>| {
             self.emit_progress_coded(stage, code, msg);
         };
@@ -217,4 +211,3 @@ impl BunkerBroker {
         );
     }
 }
-
