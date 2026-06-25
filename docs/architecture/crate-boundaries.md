@@ -45,7 +45,7 @@ implementation is injected at composition time.
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
 | 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
 | 5 | App composition | `nmp-defaults`, `apps/<app>/...` Rust crates |
-| 6 | Bindings and deliverables | `nmp-ffi`, `nmp-android-ffi`, `nmp-wasm` |
+| 6 | Bindings and deliverables | `nmp-ffi`, `nmp-android-ffi`, `nmp-browser-runtime`, `nmp-wasm` |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
 
 Sibling crates do not depend on each other unless the dependency is part of
@@ -315,6 +315,37 @@ explains why the generic action, projection, or capability seam is insufficient.
 Renames and deletions that collapse legacy wrappers, dead parameters, app-named
 generic surfaces, or duplicate paths are preferred over compatibility aliases.
 Temporary retention requires a staged GitHub issue with a deletion gate.
+
+---
+
+## 10a. Browser Platform Adapter (nmp-browser-runtime)
+
+`nmp-browser-runtime` is the browser platform adapter—a Layer-6 composition-root
+delivery surface, sibling to `nmp-ffi` (native C) and `nmp-android-ffi` (Android
+JNI). Unlike pure ABI-glue binding crates, it is a **composition root**: it
+composes `nmp-defaults` and protocol crates into a typed builder (`BrowserAppBuilder`),
+exactly as a native leaf app would. It thus may depend on Layer-5 composition
+crates, breaking the usual binding-crate rule that all siblings avoid each other.
+
+`nmp-browser-runtime` owns:
+
+- The Worker event-loop runtime driving a single `KernelReducer` (D4).
+- The browser WebSocket transport adapter (transport bridge only; no policy).
+- Browser storage initialization and lifecycle.
+- Capability provider registry and browser signer provider mapping.
+- Browser timer and clock seams for `nmp-core` injection.
+- The typed `BrowserAppBuilder` composition root (browser twin of `NmpAppBuilder`).
+
+`nmp-browser-runtime` must not own:
+
+- Routing or outbox policy (that is `nmp-router` / kernel).
+- Signing policy or signer-provider semantics (that is `nmp-signers` / `nmp-signer-broker`).
+- NIP modules, protocol defaults, app defaults, projection policy, persistence policy.
+- The wasm-bindgen ABI surface (that is the sibling `nmp-wasm` ABI shell).
+
+Dependency direction: `nmp-browser-runtime` depends on `nmp-defaults` and protocol
+crates in Layers 0–5. `nmp-wasm` and leaf web apps depend on `nmp-browser-runtime`
+for the typed builder, not vice versa. No Layer ≥ 5 crate depends on `nmp-browser-runtime`.
 
 ---
 

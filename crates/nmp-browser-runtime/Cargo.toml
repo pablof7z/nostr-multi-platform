@@ -4,10 +4,13 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Browser platform adapter for NMP: Worker event loop, browser relay transport, capability/signer provider registry, and the BrowserAppBuilder composition root. Per ADR-0065 this crate (not nmp-wasm) owns the browser runtime."
+description = "Browser platform adapter for NMP: Worker event loop, browser relay transport, capability/signer provider registry, and the BrowserAppBuilder composition root. This crate (not nmp-wasm) owns the browser runtime."
 
 [lib]
 crate-type = ["cdylib", "rlib"]
+# Native build: `cargo build -p nmp-browser-runtime`
+# WASM32 build: `cargo build -p nmp-browser-runtime --target wasm32-unknown-unknown`
+#   (requires wasm32 sysroot and secp256k1-sys wasm support; ci/test runs native only)
 
 [dependencies]
 # Kernel + composition surface. default-features=false keeps wasm32 free of mio/lmdb.
