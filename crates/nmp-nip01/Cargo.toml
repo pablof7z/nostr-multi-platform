@@ -6,9 +6,6 @@ license = { workspace = true }
 repository.workspace = true
 description = "NIP-01 short text notes (kind:1) relation surface as an NMP protocol crate — NoteRecord decoder (+ NIP-10 refs), NoteBuilder, RepliesView + ThreadView per docs/design/kind-wrappers.md §3 and view-catalog §5. Relation read-views + note builder only; kernel timeline extraction is a separate effort."
 
-[features]
-codegen-schema = ["dep:schemars"]
-
 [dependencies]
 flatbuffers = { workspace = true }
 nmp-core = { path = "../nmp-core", default-features = false }
@@ -30,7 +27,6 @@ nmp-nip18 = { path = "../nmp-nip18" }
 nmp-threading = { path = "../nmp-threading" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-schemars = { version = "0.8", optional = true }
 tracing = "0.1"
 
 [dev-dependencies]

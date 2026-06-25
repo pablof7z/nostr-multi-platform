@@ -2,16 +2,14 @@
 // THIS FILE IS GENERATED. DO NOT EDIT BY HAND.
 //
 // Regenerate via:
-//   { \
-//       cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas; \
-//       cargo run -p nmp-nip01 --features codegen-schema --bin dump_nip01_projection_schemas; \
-//   } | cargo run -p nmp-codegen -- gen swift --out <path>
+//   cargo run -p nmp-core --features codegen-schema --bin dump_projection_schemas \
+//       | cargo run -p nmp-codegen -- gen swift --out <path>
 //
 // Source of truth: the Rust projection types listed in the per-struct
 // provenance comments below. The CI gate (`.github/workflows/codegen-drift.yml`)
 // fails any PR whose generated Swift differs from a fresh run.
 //
-// Stage 1 pilot — 8 flat-record types (V6, docs/architecture-audit/
+// Stage 1 pilot — 7 flat-record types (V6, docs/architecture-audit/
 // v6-codegen-plan.md §6b). Stage 2 expands to the dotted-projection-key
 // registry; Stage 3 sweeps the remaining hand-written Decodables.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -151,42 +149,6 @@ public struct RelayRoleOption: Decodable, Equatable, Identifiable, Sendable {
     public let value: String
 
     public var id: String { value }
-}
-
-// MARK: - TimelineItem
-// Source: nmp_nip01::TimelineItem
-public struct TimelineItem: Decodable, Equatable, RenderIdentifiable, Identifiable, Hashable, Sendable {
-    public let authorDisplayName: String?
-    public let authorLnurl: String?
-    public let authorPictureUrl: String?
-    public let authorPubkey: String
-    public let content: String
-    public let contentPreview: String
-    public let createdAt: UInt64
-    public let id: String
-    public let isRepost: Bool
-    public let kind: UInt32
-    public let navTargetId: String
-    public let relayCount: UInt32
-    public let relayProvenance: [String]
-    public let repostInnerContent: String
-
-    public func rendersIdentically(_ other: Self) -> Bool {
-        self.id == other.id
-            && self.authorPubkey == other.authorPubkey
-            && self.authorDisplayName == other.authorDisplayName
-            && self.authorPictureUrl == other.authorPictureUrl
-            && self.authorLnurl == other.authorLnurl
-            && self.content == other.content
-            && self.contentPreview == other.contentPreview
-            && self.createdAt == other.createdAt
-            && self.isRepost == other.isRepost
-            && self.kind == other.kind
-            && self.navTargetId == other.navTargetId
-            && self.repostInnerContent == other.repostInnerContent
-            && self.relayCount == other.relayCount
-            && self.relayProvenance == other.relayProvenance
-    }
 }
 
 // MARK: - SnapshotProjections

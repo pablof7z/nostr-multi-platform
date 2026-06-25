@@ -7,7 +7,6 @@ struct ThreadNoteRow: View {
     let card: ChirpEventCard
     let isFocused: Bool
     let eventCards: [String: ChirpEventCard]
-    let timelineItems: [String: TimelineItem]
     let onAvatarTap: () -> Void
     let onLike: () -> Void
     let onReply: () -> Void
@@ -68,10 +67,7 @@ struct ThreadNoteRow: View {
 
     private var noteBodyContent: some View {
         let isRepost = card.isRepost
-        let context = NoteRenderContext(
-            eventCards: eventCards,
-            timelineItems: timelineItems
-        )
+        let context = NoteRenderContext(eventCards: eventCards)
         let displayContent = card.contentPreview.isEmpty ? card.content : card.contentPreview
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {

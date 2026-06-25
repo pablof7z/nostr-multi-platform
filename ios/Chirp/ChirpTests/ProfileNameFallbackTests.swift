@@ -164,7 +164,7 @@ final class ProfileNameFallbackTests: XCTestCase {
                 eventCardName: "Carol",
                 shortHex: short),
             "Bob",
-            "The TimelineItem-baked author name must outrank the event card and prevent the flicker.")
+            "The typed-card author name must outrank the event-card fallback and prevent the flicker.")
 
         // Full collapse: nothing resolves → shortHex is the last resort.
         XCTAssertEqual(

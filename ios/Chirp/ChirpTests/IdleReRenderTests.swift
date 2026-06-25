@@ -9,8 +9,8 @@ import XCTest
 /// The home feed applies a binary FlatBuffers snapshot from the Rust kernel at
 /// ≤4Hz. On a quiet feed, the snapshot may have updated KernelMetrics
 /// (bytesRx, timing) with no new events and no visible field changes.
-/// `TimelineListView.==` (HomeFeedView.swift) delegates item comparison entirely
-/// to `TimelineItem.rendersIdentically(_:)`, so correctness of the guard
+/// `TimelineListView.==` (HomeFeedView.swift) delegates row comparison entirely
+/// to `NoteRowModel.rendersIdentically(_:)`, so correctness of the guard
 /// reduces to correctness of that pure function.
 ///
 /// ## The fix
@@ -32,38 +32,32 @@ final class IdleReRenderTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Returns a baseline `TimelineItem` with all fields populated.
+    /// Returns a baseline `NoteRowModel` with all fields populated.
     private func makeItem(
         id: String = "event1",
         authorPubkey: String = "abc123def456abc123def456abc123def456abc123def456abc123def456ab12",
         authorDisplayName: String? = "Alice",
         authorPictureUrl: String? = "https://example.com/alice.jpg",
-        authorLnurl: String? = "lnurl1234567890",
         content: String = "Hello, world!",
         contentPreview: String = "Hello, world!",
         createdAt: UInt64 = 1_234_567_890,
         isRepost: Bool = false,
         kind: UInt32 = 1,
         navTargetId: String = "event1",
-        relayCount: UInt32 = 1,
-        relayProvenance: [String] = ["wss://relay.example"],
-        repostInnerContent: String = ""
-    ) -> TimelineItem {
-        TimelineItem(
-            authorDisplayName: authorDisplayName,
-            authorLnurl: authorLnurl,
-            authorPictureUrl: authorPictureUrl,
+        relayProvenance: [String] = ["wss://relay.example"]
+    ) -> NoteRowModel {
+        NoteRowModel(
+            id: id,
             authorPubkey: authorPubkey,
+            kind: kind,
+            createdAt: createdAt,
             content: content,
             contentPreview: contentPreview,
-            createdAt: createdAt,
-            id: id,
+            authorDisplayName: authorDisplayName,
+            authorPictureUrl: authorPictureUrl,
             isRepost: isRepost,
-            kind: kind,
             navTargetId: navTargetId,
-            relayCount: relayCount,
-            relayProvenance: relayProvenance,
-            repostInnerContent: repostInnerContent
+            relayProvenance: relayProvenance
         )
     }
 
@@ -82,8 +76,8 @@ final class IdleReRenderTests: XCTestCase {
     /// `relayCount` is rendered by `NoteRowView.relayChip` — a count change
     /// must cause a re-render.
     func test_rendersIdentically_falseWhenRelayCountDiffers() {
-        let a = makeItem(relayCount: 1)
-        let b = makeItem(relayCount: 3)
+        let a = makeItem(relayProvenance: ["wss://a.example"])
+        let b = makeItem(relayProvenance: ["wss://a.example", "wss://b.example", "wss://c.example"])
         XCTAssertFalse(a.rendersIdentically(b),
             "Items differing in relayCount should NOT render identically — relayChip displays the count")
     }

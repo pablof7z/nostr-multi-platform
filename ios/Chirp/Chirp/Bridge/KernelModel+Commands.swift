@@ -147,7 +147,7 @@ extension KernelModel {
     }
 
     /// Dispatch a NIP-57 zap through the `nmp.nip57.zap` ActionModule.
-    /// The recipient's `lnurl` is sourced from `TimelineItem.authorLnurl`
+    /// The recipient's `lnurl` is sourced from the keyed profile sidecar
     /// (pre-extracted from kind:0 by Rust — the shell never parses metadata).
     ///
     /// V-106: `amountMsats` is required — there is no hardcoded default. The

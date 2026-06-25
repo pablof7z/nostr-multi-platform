@@ -430,29 +430,6 @@ struct ProfileAction: Equatable {
 // `ProfileAction` above stays as
 // presentation chrome for `ProfileView`.
 
-// `TimelineItem` moved to `Generated/KernelTypes.generated.swift` (V6
-// Stage 3 partial, plan §6d — F-05). Rust source:
-// `crates/nmp-nip01/src/timeline_item.rs::TimelineItem`. Field docs live
-// alongside the Rust definitions.
-//
-// The generated struct tightens three field-level shapes the hand-written
-// version had loosened for "older kernel snapshot" tolerance. The Rust
-// kernel always emits all of them — the `decodeIfPresent ?? default`
-// fallbacks were dead code, and the schema source of truth now sits on
-// the Rust side where it belongs:
-//
-// 1. `authorPictureUrl` was `String?`; is now `String` (Rust D1 contract:
-//    the field is always non-empty — either the kind:0 picture URL or an
-//    `identicon:<prefix>` placeholder URI).
-// 2. `isRepost`, `navTargetId`, `repostInnerContent` were
-//    `decodeIfPresent ?? false / id / ""`; the generated decoder hard-fails
-//    if any is absent. Rust `TimelineItem` defines them as non-Option.
-// 3. `authorAvatarSource` is added as a non-optional `String`. The Rust
-//    field is `pub(super) author_avatar_source: String` (kind:0 ↔
-//    placeholder discriminator); the hand-written struct never decoded
-//    it, so consumers had no way to read the avatar provenance. Adding it
-//    is purely additive.
-//
 // The synthetic-construction call site `ModularBlockView.syntheticItem`
 // is updated to provide the new mandatory fields directly.
 
