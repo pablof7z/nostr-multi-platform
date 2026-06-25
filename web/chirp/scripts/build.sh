@@ -7,9 +7,10 @@
 # Rust + wasm-pack are installed if not already present.  On CI both are
 # pre-installed by earlier workflow steps so the guards are no-ops.
 #
-# Required env: CC_wasm32_unknown_unknown=clang
-#   secp256k1-sys's build.rs compiles C for wasm32; the system clang is the
-#   only cc with a wasm32 backend (GCC does not have one).
+# Required compiler: clang with wasm32 support.
+#   secp256k1-sys's build.rs compiles C for wasm32. Linux distro clang usually
+#   supports that target; Apple clang does not, so prefer Homebrew LLVM when
+#   present.
 
 set -euo pipefail
 
@@ -24,6 +25,12 @@ OUT_DIR="$WEB_CHIRP_DIR/public/nmp-wasm"
 # that tools we drop there (wasm-pack) are immediately visible.
 mkdir -p "$HOME/.cargo/bin"
 export PATH="$HOME/.cargo/bin:$PATH"
+if [ -d /opt/homebrew/opt/llvm/bin ]; then
+    export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+fi
+if [ -d /usr/local/opt/llvm/bin ]; then
+    export PATH="/usr/local/opt/llvm/bin:$PATH"
+fi
 
 # ---------------------------------------------------------------------------
 # 0. Ensure clang (required by secp256k1-sys when cross-compiling to wasm32)

@@ -11,7 +11,10 @@ Chirp snapshots for the shell to render.
 - npm, using the checked-in `package-lock.json`.
 - Rust stable + `wasm32-unknown-unknown` target (for the wasm build step).
 - `wasm-pack` 0.13.1 (`cargo install wasm-pack --version 0.13.1 --locked`).
-- `clang` (required by secp256k1-sys when cross-compiling to wasm32).
+- `clang` with wasm32 support (required by secp256k1-sys when
+  cross-compiling to wasm32). On macOS, install Homebrew LLVM; the npm and
+  deploy scripts prefer `/opt/homebrew/opt/llvm/bin` and
+  `/usr/local/opt/llvm/bin` automatically.
 
 ## Local Build
 

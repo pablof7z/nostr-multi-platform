@@ -42,13 +42,13 @@
 //!
 //! # Round-trip completion and publish
 //!
-//! S6 wires the *signing round-trip mechanism only*. The completion continuation
-//! records the signed event into an observable sink. After #1008 the wasm runtime
-//! handles `PublishRawEvent` / `PublishProfile` actor commands by calling
-//! `begin_sign_roundtrip_at`, and the signed result is delivered here — the host
-//! then dispatches a `PublishSignedEvent` command (or the future S6b continuation
-//! publishes inline). The host reads the `SignRoundTripOutcome` to confirm the
-//! signing step completed.
+//! S6 wires the signing round-trip mechanism. The completion continuation
+//! records the signed event into an observable sink, and the wasm runtime owns
+//! any publish continuation keyed by the sign correlation id. When
+//! `deliver_signer_response` observes `SignRoundTripOutcome::Completed`, the
+//! runtime routes the signed JSON through `KernelReducer::publish_pre_signed`
+//! and fans the resulting outbound frames to the relay drivers. The host never
+//! publishes inline.
 
 use std::collections::HashMap;
 use std::sync::mpsc;
@@ -93,8 +93,8 @@ pub(crate) struct SignRoundTripState {
     senders: HashMap<String, mpsc::Sender<Result<SignedEvent, SignerError>>>,
     /// Observable completion sink. The continuation pushes the outcome here so a
     /// host (and the no-polling oracle test) can confirm the round-trip
-    /// completed. After #1008 the wasm runtime publishes via a follow-up
-    /// `PublishSignedEvent` dispatch after reading this completion.
+    /// completed. Publish continuations live in `WasmRuntime` and consume the
+    /// same `SignRoundTripOutcome`; the host never publishes inline.
     completions: SharedCompletions,
 }
 
@@ -128,19 +128,24 @@ pub struct SignRoundTripRequest {
 pub enum SignRoundTripOutcome {
     /// The signed event matched a parked request and resolved it this call (the
     /// continuation ran). Carries the signed flat-NIP-01 JSON the host may log.
-    Completed { correlation_id: String, signed_json: String },
+    Completed {
+        correlation_id: String,
+        signed_json: String,
+    },
     /// The delivered response failed the round-trip (parse error, account-pin
     /// mismatch, or signer-reported error). The parked op is resolved with the
     /// error terminal so nothing is left dangling (D6).
-    Failed { correlation_id: String, reason: String },
+    Failed {
+        correlation_id: String,
+        reason: String,
+    },
     /// No parked request matched the correlation id (a stale / duplicate
     /// delivery). A no-op — nothing was parked, nothing resolved.
     Unknown { correlation_id: String },
 }
 
 /// One recorded round-trip completion, observable through
-/// [`KernelReducer::take_sign_completions`]. Behind the honest-disable gate the
-/// signed event is recorded, NOT published.
+/// [`KernelReducer::take_sign_completions`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SignRoundTripCompletion {
     pub correlation_id: String,
@@ -250,7 +255,7 @@ impl super::KernelReducer {
         let continuation = SignContinuation::new(move |outcome| {
             // Account-pinning enforcement: verify author matches the request's
             // pinned pubkey (ADR-0050 §D5), then record the signed event JSON
-            // in the completion sink for the host to dispatch `PublishSignedEvent`.
+            // in the completion sink.
             let recorded = match outcome {
                 Ok(signed) => {
                     if signed.unsigned.pubkey != pin {
@@ -274,9 +279,11 @@ impl super::KernelReducer {
         });
 
         let deadline = now + WASM_SIGN_OP_TIMEOUT;
-        self.sign_roundtrip
-            .parked
-            .push(ParkedOp::sign_continuation(SignerOp::Pending(rx), continuation, deadline));
+        self.sign_roundtrip.parked.push(ParkedOp::sign_continuation(
+            SignerOp::Pending(rx),
+            continuation,
+            deadline,
+        ));
         self.sign_roundtrip
             .senders
             .insert(correlation_id.clone(), tx);
@@ -402,9 +409,8 @@ impl super::KernelReducer {
     fn drive_sign_roundtrip_at(&mut self, now: Instant) {
         // The wasm round-trip parks only `SignContinuation` sinks, which settle
         // in-drain (no `Publish` / `Auth` obligations); the returned batch's
-        // obligation vecs are therefore always empty. The actual relay-publish
-        // happens via a follow-up `PublishSignedEvent` dispatch from the host
-        // after reading the completion sink (#1008).
+        // obligation vecs are therefore always empty. Publish continuations are
+        // owned by `WasmRuntime` after the reducer returns `Completed`.
         let _batch = self.sign_roundtrip.parked.drive_at(&mut self.kernel, now);
     }
 
@@ -418,7 +424,11 @@ impl super::KernelReducer {
                 reason: "completion sink lock poisoned".to_string(),
             };
         };
-        match sink.iter().rev().find(|c| c.correlation_id == correlation_id) {
+        match sink
+            .iter()
+            .rev()
+            .find(|c| c.correlation_id == correlation_id)
+        {
             Some(c) => match &c.outcome {
                 Ok(signed_json) => SignRoundTripOutcome::Completed {
                     correlation_id: correlation_id.to_string(),
@@ -440,9 +450,8 @@ impl super::KernelReducer {
     }
 
     /// #1753 S6 — drain and return the recorded round-trip completions. The host
-    /// reads these to confirm the signing mechanism worked and dispatches a
-    /// follow-up `PublishSignedEvent` to complete the publish (#1008). Drains
-    /// so each completion is observed once.
+    /// reads these to confirm the signing mechanism worked. Drains so each
+    /// completion is observed once.
     #[must_use]
     pub fn take_sign_completions(&mut self) -> Vec<SignRoundTripCompletion> {
         match self.sign_roundtrip.completions.lock() {

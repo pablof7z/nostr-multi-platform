@@ -87,7 +87,8 @@ impl WasmRuntime {
     ///
     /// * **`PublishRawEvent` / `PublishProfile`** — needs the `BeginSign`
     ///   capability round-trip. Builds unsigned JSON, parks a sign op via
-    ///   [`nmp_core::KernelReducer::begin_sign_roundtrip_at`], and returns
+    ///   [`nmp_core::KernelReducer::begin_sign_roundtrip_at`], records the
+    ///   publish continuation keyed by the sign correlation id, and returns
     ///   `WorkerEvent::SignRequest` for the main-thread broker.
     ///
     /// Fail-closed for no-signer (no active account) and unknown namespace /
@@ -195,13 +196,13 @@ impl WasmRuntime {
                 // start the BeginSign round-trip. The main-thread broker calls
                 // `window.nostr.signEvent` and re-enters with
                 // `DeliverSignerResponse`; from there `deliver_signer_response`
-                // emits `SignCompleted` and the host publishes via a follow-up
-                // `PublishSignedEvent` dispatch or by noting the signed JSON.
+                // emits `SignCompleted` and consumes the stored publish
+                // continuation to call `publish_pre_signed`.
                 ActorCommand::Publish(PublishCommand::RawEvent {
                     kind,
                     tags,
                     content,
-                    target: _,
+                    target,
                     signer_pubkey: _,
                     correlation_id: cid,
                 }) => {
@@ -225,16 +226,22 @@ impl WasmRuntime {
                         "created_at": created_at,
                     })
                     .to_string();
-                    match self
-                        .reducer
-                        .borrow_mut()
-                        .begin_sign_roundtrip_at(
-                            account_pubkey,
-                            &unsigned_json,
-                            nmp_core::time::Instant::now(),
-                        )
-                    {
+                    match self.reducer.borrow_mut().begin_sign_roundtrip_at(
+                        account_pubkey,
+                        &unsigned_json,
+                        nmp_core::time::Instant::now(),
+                    ) {
                         Ok(req) => {
+                            self.pending_signed_publishes.insert(
+                                req.correlation_id.clone(),
+                                super::PendingSignedPublish {
+                                    action_namespace: action_namespace.to_string(),
+                                    action_correlation_id: cid
+                                        .clone()
+                                        .unwrap_or_else(|| correlation_id.clone()),
+                                    target,
+                                },
+                            );
                             self.request_event_drain();
                             events.push(WorkerEvent::SignRequest {
                                 correlation_id: req.correlation_id,
@@ -279,16 +286,22 @@ impl WasmRuntime {
                         "created_at": created_at,
                     })
                     .to_string();
-                    match self
-                        .reducer
-                        .borrow_mut()
-                        .begin_sign_roundtrip_at(
-                            account_pubkey,
-                            &unsigned_json,
-                            nmp_core::time::Instant::now(),
-                        )
-                    {
+                    match self.reducer.borrow_mut().begin_sign_roundtrip_at(
+                        account_pubkey,
+                        &unsigned_json,
+                        nmp_core::time::Instant::now(),
+                    ) {
                         Ok(req) => {
+                            self.pending_signed_publishes.insert(
+                                req.correlation_id.clone(),
+                                super::PendingSignedPublish {
+                                    action_namespace: action_namespace.to_string(),
+                                    action_correlation_id: cid
+                                        .clone()
+                                        .unwrap_or_else(|| correlation_id.clone()),
+                                    target: nmp_core::publish::PublishTarget::Auto,
+                                },
+                            );
                             self.request_event_drain();
                             events.push(WorkerEvent::SignRequest {
                                 correlation_id: req.correlation_id,

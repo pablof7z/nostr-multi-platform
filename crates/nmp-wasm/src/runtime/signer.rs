@@ -1,10 +1,17 @@
 //! Active-identity seeding + the #1753 S6 wasm signing capability round-trip
 //! arms for [`super::WasmRuntime`].
 
-use crate::protocol::{BeginSign, CapabilityFailure, DeliverSignerResponse, SetIdentity, WorkerEvent};
+use crate::protocol::{
+    BeginSign, CapabilityFailure, DeliverSignerResponse, SetIdentity, WorkerEvent,
+};
 use crate::signer_slot;
 
 use super::WasmRuntime;
+
+fn signed_json_to_raw_event(signed_json: &str) -> Result<nmp_store::RawEvent, String> {
+    serde_json::from_str(signed_json)
+        .map_err(|e| format!("signed event JSON did not decode as RawEvent: {e}"))
+}
 
 impl WasmRuntime {
     /// Seed the kernel's active account from a [`SetIdentity`] identity request.
@@ -46,15 +53,11 @@ impl WasmRuntime {
     /// main-thread broker fulfils. Total (D6): a malformed unsigned JSON parks
     /// nothing and surfaces a [`WorkerEvent::SignFailed`].
     pub(super) fn begin_sign(&mut self, request: BeginSign) -> Vec<WorkerEvent> {
-        match self
-            .reducer
-            .borrow_mut()
-            .begin_sign_roundtrip_at(
-                request.account_pubkey,
-                &request.unsigned_json,
-                nmp_core::time::Instant::now(),
-            )
-        {
+        match self.reducer.borrow_mut().begin_sign_roundtrip_at(
+            request.account_pubkey,
+            &request.unsigned_json,
+            nmp_core::time::Instant::now(),
+        ) {
             Ok(req) => vec![WorkerEvent::SignRequest {
                 correlation_id: req.correlation_id,
                 account_pubkey: req.account_pubkey,
@@ -103,17 +106,55 @@ impl WasmRuntime {
             SignRoundTripOutcome::Completed {
                 correlation_id,
                 signed_json,
-            } => vec![WorkerEvent::SignCompleted {
-                correlation_id,
-                signed_json,
-            }],
+            } => {
+                let mut events = vec![WorkerEvent::SignCompleted {
+                    correlation_id: correlation_id.clone(),
+                    signed_json: signed_json.clone(),
+                }];
+                if let Some(pending) = self.pending_signed_publishes.remove(&correlation_id) {
+                    match signed_json_to_raw_event(&signed_json) {
+                        Ok(raw) => {
+                            let outbound = self.reducer.borrow_mut().publish_pre_signed(
+                                raw,
+                                pending.target,
+                                Some(pending.action_correlation_id.clone()),
+                            );
+                            self.fan_outbound(outbound);
+                            self.request_event_drain();
+                            events.push(WorkerEvent::ActionAccepted {
+                                action_type: pending.action_namespace,
+                                correlation_id: pending.action_correlation_id,
+                            });
+                            events.push(self.snapshot_event());
+                        }
+                        Err(reason) => {
+                            events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
+                                capability: pending.action_namespace,
+                                correlation_id: pending.action_correlation_id,
+                                reason,
+                            }));
+                        }
+                    }
+                }
+                events
+            }
             SignRoundTripOutcome::Failed {
                 correlation_id,
                 reason,
-            } => vec![WorkerEvent::SignFailed {
-                correlation_id,
-                reason,
-            }],
+            } => {
+                let mut events = vec![WorkerEvent::SignFailed {
+                    correlation_id: correlation_id.clone(),
+                    reason: reason.clone(),
+                }];
+                if let Some(pending) = self.pending_signed_publishes.remove(&correlation_id) {
+                    events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
+                        capability: pending.action_namespace,
+                        correlation_id: pending.action_correlation_id,
+                        reason,
+                    }));
+                }
+                events
+            }
             SignRoundTripOutcome::Unknown { correlation_id } => vec![WorkerEvent::SignFailed {
                 correlation_id,
                 reason: "no parked sign round-trip matched this correlation id (stale or \

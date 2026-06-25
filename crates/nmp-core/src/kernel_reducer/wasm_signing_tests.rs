@@ -3,10 +3,10 @@
 //! These run on native (`cargo test -p nmp-core`) AND wasm (`cargo test -p
 //! nmp-wasm` exercises the public `KernelReducer` seam) — the seam is
 //! target-agnostic. They pin the round-trip shape, account-pinning, the
-//! honest-disable-no-publish terminal, and the totality (D6) contracts. The
+//! sign-only reducer terminal, and the totality (D6) contracts. The
 //! NO-POLLING proof lives in the sibling `no_polling_oracle_tests` module.
 
-use super::{SignRoundTripOutcome};
+use super::SignRoundTripOutcome;
 use crate::kernel_reducer::KernelReducer;
 use nmp_signer_iface::UnsignedEvent;
 
@@ -41,7 +41,7 @@ fn signed_flat_json(pubkey: &str, content: &str) -> String {
 
 /// The happy path: begin parks a request, delivering the matching signed event
 /// resolves it via message re-entry, and the completion records the signed JSON
-/// (NOT a publish — honest-disable gate).
+/// for the owning runtime or host to consume.
 #[test]
 fn begin_then_deliver_completes_roundtrip() {
     let mut r = KernelReducer::new();
@@ -66,7 +66,11 @@ fn begin_then_deliver_completes_roundtrip() {
         }
         other => panic!("expected Completed, got {other:?}"),
     }
-    assert_eq!(r.pending_sign_roundtrips(), 0, "op dropped after completion");
+    assert_eq!(
+        r.pending_sign_roundtrips(),
+        0,
+        "op dropped after completion"
+    );
 
     let completions = r.take_sign_completions();
     assert_eq!(completions.len(), 1, "exactly one completion recorded");
@@ -97,7 +101,11 @@ fn account_pin_mismatch_is_rejected() {
         }
         other => panic!("expected Failed (pin mismatch), got {other:?}"),
     }
-    assert_eq!(r.pending_sign_roundtrips(), 0, "the op is still resolved (D6)");
+    assert_eq!(
+        r.pending_sign_roundtrips(),
+        0,
+        "the op is still resolved (D6)"
+    );
 }
 
 /// A malformed signed-event JSON resolves the op with an error terminal — the
@@ -127,7 +135,10 @@ fn explicit_failure_resolves_op() {
     let outcome = r.fail_sign_roundtrip(&req.correlation_id, "user rejected in extension");
     match outcome {
         SignRoundTripOutcome::Failed { reason, .. } => {
-            assert!(reason.contains("user rejected"), "reason propagated; got {reason:?}");
+            assert!(
+                reason.contains("user rejected"),
+                "reason propagated; got {reason:?}"
+            );
         }
         other => panic!("expected Failed, got {other:?}"),
     }
@@ -148,8 +159,14 @@ fn unknown_correlation_is_a_noop() {
     let req = r
         .begin_sign_roundtrip(ACCOUNT.to_string(), &unsigned_json(ACCOUNT))
         .unwrap();
-    let _ = r.deliver_signed_response(&req.correlation_id, &signed_flat_json(ACCOUNT, "hello from wasm sign roundtrip"));
-    let dup = r.deliver_signed_response(&req.correlation_id, &signed_flat_json(ACCOUNT, "hello from wasm sign roundtrip"));
+    let _ = r.deliver_signed_response(
+        &req.correlation_id,
+        &signed_flat_json(ACCOUNT, "hello from wasm sign roundtrip"),
+    );
+    let dup = r.deliver_signed_response(
+        &req.correlation_id,
+        &signed_flat_json(ACCOUNT, "hello from wasm sign roundtrip"),
+    );
     assert!(
         matches!(dup, SignRoundTripOutcome::Unknown { .. }),
         "duplicate delivery is Unknown, got {dup:?}"

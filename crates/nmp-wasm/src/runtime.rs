@@ -19,6 +19,7 @@
 //!   the result. The reducer never awaits the world (D7/D8).
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -101,6 +102,9 @@ pub struct WasmRuntime {
     /// `setTimeout` handle inside the scheduler; native builds keep the same
     /// state for deterministic tests.
     maintenance_deadline: Rc<RefCell<crate::tick::RuntimeDeadline>>,
+    /// NIP-07 publish continuations parked between `SignRequest` and
+    /// `DeliverSignerResponse`.
+    pending_signed_publishes: HashMap<String, PendingSignedPublish>,
     /// ADR-0064 / S3 (#1751) — the typed action registry. The wasm twin of
     /// `NmpApp::action_registry`: it owns the per-namespace `ActionModule`
     /// values whose `start_bytes` runs the typed FlatBuffers `decode_payload`
@@ -112,6 +116,13 @@ pub struct WasmRuntime {
     /// [`WasmRuntime::register_default_action`], mirroring the per-NIP
     /// `register_actions` entry points the native FFI app calls.
     action_registry: ActionRegistry,
+}
+
+#[derive(Clone, Debug)]
+struct PendingSignedPublish {
+    action_namespace: String,
+    action_correlation_id: String,
+    target: nmp_core::publish::PublishTarget,
 }
 
 impl WasmRuntime {
@@ -288,7 +299,6 @@ impl WasmRuntime {
     // `begin_sign` / `deliver_signer_response` — the #1753 S6 wasm signing
     // capability round-trip arms — live in the sibling `runtime/signer.rs`
     // module (LOC ceiling). They are still private methods on `WasmRuntime`.
-
 }
 
 // Routing diagnostics. Production code (all targets); the methods are public
