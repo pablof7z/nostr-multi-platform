@@ -23,6 +23,9 @@ For the developer-facing overview, see
 - [ADR-0073](0073-adr-reset-and-rolling-ratchets.md) - ADR directory governance
   and rolling ratchets.
 
+- [ADR-0067](0067-browser-runtime-ownership-split.md) - Browser runtime
+  ownership split (nmp-wasm is ABI glue).
+
 ## Extensions
 
 - [ADR-0074](0074-nip09-generic-deletion-ownership.md) - NIP-09 deletion
