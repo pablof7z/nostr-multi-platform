@@ -1,6 +1,8 @@
 # ADR-0064 — Unified write/command boundary: one typed byte transport, open per-crate FlatBuffers payloads, signing as a capability round-trip
 
-- **Status:** Accepted pending implementation (owner-decided 2026-06-21; staged migration).
+- **Status:** Accepted and implemented for the production binding transport
+  (owner-decided 2026-06-21; confirmed 2026-06-25 after the JSON-dispatch
+  cleanup landed).
 - **Date:** 2026-06-21
 - **Decides:** Collapse the write/command path to **one boundary shape, shared by
   the native FFI and the wasm worker**: a single generic *byte* transport doorway
@@ -49,9 +51,9 @@
 
 ## Context
 
-### The write path has three divergent shapes for one concept
+### The pre-ADR write path had three divergent shapes for one concept
 
-1. **Native FFI** reaches the `ActionModule` registry through a generic JSON
+1. **Native FFI** reached the `ActionModule` registry through a generic JSON
    doorway: `nmp_app_dispatch_action(namespace, action_json)`, where `namespace`
    is a string key (`"nmp.publish"`, `"nmp.nip25.react"`, `"nmp.follow"`) and
    `action_json` is the serde-JSON of that action's Rust enum. This is the
@@ -59,7 +61,7 @@
    `ActionModule` (`const NAMESPACE`, typed `Action`, `start()` validator,
    `execute()`), and adding an action needs zero new C symbols (no doorway bypass).
 
-2. **The wasm worker** carries that same generic envelope
+2. **The wasm worker** carried that same generic envelope
    (`WorkerRequest::Dispatch { action_type, payload, correlation_id }`) **plus** a
    redundant, hand-rolled second vocabulary `WorkerRequest::AppAction(AppAction)`
    (`{ PublishNote | React | Follow | Unfollow }`) whose only job is
@@ -68,10 +70,10 @@
    second, platform-specific typed write vocabulary, and it is the per-platform
    hand-decoder divergence the shell-layer audits repeatedly flag.
 
-3. **Signing is modeled twice.** Native signing is the ADR-0050 capability port
+3. **Signing was modeled twice.** Native signing used the ADR-0050 capability port
    (`sign` parks a `PendingSign`, the completion is mailbox-delivered, local keys
    resolve inline). The wasm path instead installs a persistent `Arc<dyn Signer>`
-   (`SetSigner`) whose `.sign(unsigned).await` is called *from inside* the publish
+   (`SetSigner`) whose `.sign(unsigned).await` was called *from inside* the publish
    flow via a Promise entrypoint (`dispatch_app_action_async`). That is a
    non-replayable side-effect awaited inside the actor — at odds with D7/D8 and a
    second implementation of a problem ADR-0050 already solved.
@@ -239,32 +241,28 @@ CI gates (extending `rust-flatc-drift` and the doctrine lint) enforce:
   control/action envelopes on wasm shrink to the lifecycle/handshake events that are
   genuinely control-plane.
 
-## Migration (staged — per ADR-0027, not big-bang)
+## Implementation State
 
-1. Add the FlatBuffers `DispatchEnvelope` + byte doorway
-   (`nmp_app_dispatch_action_bytes` / `DispatchBytes`) **alongside** the current
-   JSON dispatch.
-2. Teach the `ActionModule` registry to decode typed FlatBuffers payloads; give the
-   already-registered modules (`nmp.publish`, `nmp.nip25.*`, `nmp.follow/unfollow`)
-   a FlatBuffers payload schema.
-3. **Cut A** (issue #1743, in-repo only): Generate typed host builders for those
-   modules; move wasm callers onto them and **delete `AppAction` / `"app_action"` /
-   `into_dispatch_parts`**. No external consumers depend on this tag; it can land
-   without lockstep coordination.
-4. Route signing through the ADR-0050 capability port on wasm: introduce the
-   typed Sign request/response across the worker boundary, route **local-key**
-   signing through it first (the inline fulfiller), then retire
-   `dispatch_app_action_async` + `SetSigner`-as-install.
-5. Move NIP-07 (and confirm NIP-46/NIP-55) onto the same capability completion path.
-6. Migrate the remaining action payloads JSON → FlatBuffers per crate; fix the
-   `correlation_id`/event-id binding and the `PublishSignedEvent` validation bypass
-   in the same step.
-7. **Cut B** (issue #1756, lockstep with external consumers): Collapse the
-   event-producing C-symbol bypasses (`nmp_app_publish_signed_event`,
-   `nmp_app_publish_unsigned_event`, the direct `send_cmd` writers) into the one
-   doorway and remove them. Requires coordinated update of all external native
-   callers before deletion.
-8. Land the §6 drift gates.
+As of 2026-06-25, the production binding transport is settled:
+
+1. Native app writes use `nmp_app_dispatch_action_bytes`; wasm app writes use
+   `dispatch_bytes` / `handle_dispatch_bytes`. Both carry the same
+   `DispatchEnvelope` bytes and decode through the same Rust envelope path.
+2. The production JSON dispatch symbol, wasm `"dispatch"` write envelope,
+   wasm `"app_action"` tag, `AppAction::into_dispatch_parts`, and
+   `dispatch_app_action_async` signer path are retired. A release build must not
+   expose them as binding transports.
+3. Generated host builders are the app-facing API. App-owned helper seams may
+   still use canonical Rust serde bodies as an in-process construction detail
+   before encoding the namespace's typed `ActionPayload`; that JSON must not
+   cross the FFI/worker boundary as a runtime dispatch transport.
+4. The only remaining `nmp_app_dispatch_action` compatibility shape is gated to
+   `test-support` for legacy Marmot dispatch tests. It is not exported as a
+   production ABI, is guarded by S10 drift tests, and is not an option for the
+   binding-transport decision.
+5. Per-module payload coverage can continue to expand, but that is schema
+   coverage work inside the byte doorway, not a reason to split native and web
+   transports.
 
 Wallet **session lifecycle** (`WalletConnect` / `WalletDisconnect` /
 `WalletPayInvoice`) is explicitly **out of scope**: it does not produce a signed

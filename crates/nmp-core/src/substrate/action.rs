@@ -7,15 +7,16 @@
 //! when the bespoke `nmp_app_publish_signed_event{,_to}` /
 //! `nmp_app_publish_unsigned_event` symbols were deleted:
 //!
-//! - **Generic user/app-authored publish-engine events go through
-//!   [`crate::ffi::action::nmp_app_dispatch_action`]** under the
-//!   `nmp.publish` namespace (or a per-NIP namespace whose executor builds
-//!   `PublishAction::*` and routes via the same engine). The host hands the
-//!   action seam an `UnsignedEvent` / pre-signed `Event`; the kernel signs
-//!   (when needed), verifies, and dispatches through the publish engine
-//!   with a registry-minted `correlation_id` reported in
-//!   `action_results`. This is the single, observable, host-extensible
-//!   door for content actions.
+//! - **Generic user/app-authored publish-engine events go through the typed
+//!   byte action doorway** (`nmp_app_dispatch_action_bytes` at the native FFI
+//!   boundary, `dispatch_bytes` on wasm) under the `nmp.publish` namespace
+//!   (or a per-NIP namespace whose executor builds `PublishAction::*` and
+//!   routes via the same engine). The host hands the action seam a
+//!   `DispatchEnvelope` with a host-minted `correlation_id` and a typed
+//!   `ActionPayload`; the kernel signs (when needed), verifies, and dispatches
+//!   through the publish engine with that same `correlation_id` reported in
+//!   `action_results`. This is the single, observable, host-extensible door
+//!   for content actions.
 //!
 //! - **System-authored / lifecycle / wallet capabilities stay bespoke.**
 //!   They are not "actions a user dispatches"; they are mechanisms the
@@ -24,8 +25,8 @@
 //!       publish *handle*) and `nmp_app_cancel_action` (by operation
 //!       `correlation_id`; S7/#1754 replaced the bespoke
 //!       `nmp_app_cancel_publish` handle symbol). Neither produces events, and
-//!       neither has a `dispatch_action` equivalent (and never should — the
-//!       action seam is for content actions).
+//!       neither has a byte-dispatch equivalent (and never should — the action
+//!       seam is for content actions).
 //!     - MLS / gift-wrap publish — [`crate::NmpApp::publish_signed_explicit`]
 //!       carries events signed by an MLS group credential (kind:445) or an
 //!       ephemeral key (kind:1059 gift-wrap) that the kernel's signer
@@ -39,7 +40,7 @@
 //!
 //! > *Is this a user or app intent to author a Nostr event, where the
 //! > kernel decides which identity signs and where it lands?* If yes,
-//! > register an `ActionModule` and route through `dispatch_action`. If
+//! > register an `ActionModule` and route through the byte action doorway. If
 //! > no — it is system-authored, addresses a publish handle, or operates
 //! > on a non-content protocol — it may live on a bespoke entrypoint, but
 //! > it MUST NOT construct `ActorCommand::PublishSignedEvent` /
