@@ -69,9 +69,9 @@ use std::time::Duration;
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 use web_sys::{BinaryType, CloseEvent, ErrorEvent, MessageEvent, WebSocket};
 
+use crate::browser_timer::{BrowserTimer, ReconnectTimer};
 use crate::relay_protocol::{
-    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
-    RELAY_RECONNECT_DELAY_MAX,
+    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
 };
 use crate::role::RelayRole;
 
@@ -132,6 +132,7 @@ pub struct BrowserRelayDriver {
     url: String,
     role: RelayRole,
     state: RefCell<DriverState>,
+    timer: BrowserTimer,
     /// Kernel-touchpoint closures installed by `nmp-wasm::relay_pool`. The
     /// closures are already `Rc<dyn Fn>` internally — cheap to invoke without
     /// any `RefCell` borrow on the driver's part.
@@ -155,9 +156,10 @@ struct DriverState {
     /// Active JS closures — retained for the socket's lifetime. Replaced on
     /// every reconnect so the old socket's leaks are bounded.
     _closures: SocketClosures,
-    /// Currently-armed reconnect `setTimeout` callback. Held so the closure
-    /// is not GC'd before the timer fires. Reset on every reconnect attempt.
-    _reconnect_timer: Option<Closure<dyn FnMut()>>,
+    /// Currently-armed reconnect `setTimeout` callback and cancelable timeout
+    /// id. Held so the closure is not GC'd before the timer fires. Cleared on
+    /// timer fire, on replacement, and on runtime teardown.
+    reconnect_timer: Option<ReconnectTimer>,
     /// Frames enqueued before the socket reached `OPEN`. Drained and sent by
     /// `build_on_open` on connect. Survives reconnect attempts (so a frame
     /// buffered before the *first* successful open is not lost if the first
@@ -197,6 +199,15 @@ impl BrowserRelayDriver {
         role: RelayRole,
         kernel: BrowserKernelHandlers,
     ) -> Result<Rc<Self>, JsValue> {
+        Self::new_with_timer(url, role, kernel, BrowserTimer::global())
+    }
+
+    pub(crate) fn new_with_timer(
+        url: String,
+        role: RelayRole,
+        kernel: BrowserKernelHandlers,
+        timer: BrowserTimer,
+    ) -> Result<Rc<Self>, JsValue> {
         let driver = Rc::new(Self {
             url,
             role,
@@ -206,9 +217,10 @@ impl BrowserRelayDriver {
                 has_connected_before: false,
                 permanent_failure: false,
                 _closures: SocketClosures::default(),
-                _reconnect_timer: None,
+                reconnect_timer: None,
                 pending: VecDeque::new(),
             }),
+            timer,
             kernel,
         });
         driver.dial()?;
@@ -232,9 +244,7 @@ impl BrowserRelayDriver {
     pub fn send_text(&self, text: &str) -> Result<(), JsValue> {
         let mut state = self.state.borrow_mut();
         match &state.current_socket {
-            Some(socket) if socket.ready_state() == WebSocket::OPEN => {
-                socket.send_with_str(text)
-            }
+            Some(socket) if socket.ready_state() == WebSocket::OPEN => socket.send_with_str(text),
             // CONNECTING (socket present, not yet open) or between a close and
             // the next reconnect dial (no socket): buffer until `onopen`.
             _ => {
@@ -256,8 +266,10 @@ impl BrowserRelayDriver {
         if let Some(socket) = state.current_socket.take() {
             let _ = socket.close();
         }
+        if let Some(timer) = state.reconnect_timer.take() {
+            self.timer.clear_timeout(timer.id);
+        }
         state._closures = SocketClosures::default();
-        state._reconnect_timer = None;
         // Host-initiated teardown: no reconnect is coming, so drop any buffered
         // frames rather than leak them for the driver's remaining lifetime.
         state.pending.clear();
@@ -384,8 +396,7 @@ impl BrowserRelayDriver {
             // still fires `wasClean=true`, and the native worker reconnects on
             // both. Skipping on `was_clean` would silently strand the driver
             // every time the relay does a clean restart.
-            let permanent =
-                driver.state.borrow().permanent_failure || is_permanent_error(&reason);
+            let permanent = driver.state.borrow().permanent_failure || is_permanent_error(&reason);
             if !permanent {
                 driver.schedule_reconnect();
             }
@@ -409,25 +420,31 @@ impl BrowserRelayDriver {
         }) as Box<dyn FnMut(ErrorEvent)>)
     }
 
-    /// Schedule a reconnect via `setTimeout`. Each call doubles the backoff
+    /// Schedule a reconnect via `globalThis.setTimeout`. Each call doubles the backoff
     /// up to [`RELAY_RECONNECT_DELAY_MAX`] and applies the `jittered_backoff`
     /// spread so simultaneous failures across many relays don't all reconnect
-    /// on the same tick. The closure is retained in `state._reconnect_timer`
-    /// so the JS GC doesn't drop it before the deadline.
+    /// on the same tick. The timeout target is `globalThis`, not `window`, so
+    /// the same path works when the runtime is loaded inside a Web Worker.
     fn schedule_reconnect(self: &Rc<Self>) {
         let delay = {
             let mut s = self.state.borrow_mut();
+            if let Some(timer) = s.reconnect_timer.take() {
+                self.timer.clear_timeout(timer.id);
+            }
             let delay = jittered_backoff(s.backoff, &self.url);
             s.backoff = (s.backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
             delay
         };
-        let window = match web_sys::window() {
-            Some(w) => w,
-            None => return, // no window (e.g. worker without `self`) — give up
-        };
         let weak = Rc::downgrade(self);
         let cb = Closure::wrap(Box::new(move || {
             let Some(driver) = weak.upgrade() else { return };
+            {
+                let mut state = driver.state.borrow_mut();
+                state.reconnect_timer = None;
+                if state.permanent_failure {
+                    return;
+                }
+            }
             // Re-dial — if it fails synchronously (bad URL is rare here since
             // it worked the first time, but the user-agent may reject under
             // memory pressure), drop the timer and report the failure.
@@ -436,15 +453,11 @@ impl BrowserRelayDriver {
                 (driver.kernel.on_failed)(driver.role, &driver.url, error_str);
             }
         }) as Box<dyn FnMut()>);
-        let result = window.set_timeout_with_callback_and_timeout_and_arguments_0(
-            cb.as_ref().unchecked_ref(),
-            i32::try_from(delay.as_millis()).unwrap_or(i32::MAX),
-        );
         // Park the closure in state so JS does not GC it before firing.
         // setTimeout returning Err means the user-agent refused the schedule;
         // we drop the closure (no leak) and surface no reconnect attempt.
-        if result.is_ok() {
-            self.state.borrow_mut()._reconnect_timer = Some(cb);
+        if let Ok(id) = self.timer.set_timeout(&cb, delay) {
+            self.state.borrow_mut().reconnect_timer = Some(ReconnectTimer { id, _callback: cb });
         }
     }
 }

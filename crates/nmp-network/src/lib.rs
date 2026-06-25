@@ -130,3 +130,9 @@ pub mod pool;
 // and feeds them into `BrowserRelayDriver::new`).
 #[cfg(target_arch = "wasm32")]
 pub mod browser_driver;
+
+#[cfg(target_arch = "wasm32")]
+mod browser_timer;
+
+#[cfg(all(test, target_arch = "wasm32"))]
+mod browser_driver_tests;
