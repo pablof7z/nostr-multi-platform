@@ -137,6 +137,25 @@ export type WorkerEvent =
   | { type: "routing_decisions"; correlation_id: string; json: string }
   | { type: "error"; code: string; message: string; correlation_id?: string };
 
+export type WorkerEventSummary = {
+  type: WorkerEvent["type"];
+  correlation_id?: string;
+  status?: RuntimeStatus;
+  protocol_version?: number;
+  action_type?: string;
+  byte_length?: number;
+  revision?: string;
+  capability?: string;
+  reason_prefix?: string;
+  code?: string;
+  message_prefix?: string;
+  signer_account_prefix?: string;
+  unsigned_json_bytes?: number;
+  signed_json_bytes?: number;
+  routing_json_bytes?: number;
+  payload?: "redacted";
+};
+
 export type ChirpAction =
   | { action: "publish_note"; content: string; reply_to_id?: string | null }
   | { action: "react"; target_event_id: string; reaction?: string }
@@ -144,6 +163,113 @@ export type ChirpAction =
   | { action: "unfollow"; pubkey: string };
 
 export const protocolVersion = 1;
+const LOG_PREFIX_CHARS = 96;
+
+export function summarizeWorkerEvent(
+  event: WorkerEvent,
+  metadata: { revision?: bigint } = {},
+): WorkerEventSummary {
+  switch (event.type) {
+    case "hello_accepted":
+      return {
+        type: event.type,
+        protocol_version: event.protocol_version,
+        status: event.status,
+      };
+    case "runtime_status":
+      return {
+        type: event.type,
+        correlation_id: event.correlation_id,
+        status: event.status,
+      };
+    case "action_accepted":
+      return {
+        type: event.type,
+        correlation_id: event.correlation_id,
+        action_type: event.action_type,
+      };
+    case "update_bytes":
+      return {
+        type: event.type,
+        byte_length: event.bytes.byteLength,
+        revision: metadata.revision?.toString(),
+        payload: "redacted",
+      };
+    case "capability_failure":
+      return {
+        type: event.type,
+        correlation_id: event.correlation_id,
+        capability: event.capability,
+        reason_prefix: logPrefix(event.reason),
+      };
+    case "sign_request":
+      return {
+        type: event.type,
+        correlation_id: event.correlation_id,
+        signer_account_prefix: pubkeyPrefix(event.account_pubkey),
+        unsigned_json_bytes: utf8ByteLength(event.unsigned_json),
+        payload: "redacted",
+      };
+    case "sign_completed":
+      return {
+        type: event.type,
+        correlation_id: event.correlation_id,
+        signed_json_bytes: utf8ByteLength(event.signed_json),
+        payload: "redacted",
+      };
+    case "sign_failed":
+      return {
+        type: event.type,
+        correlation_id: event.correlation_id,
+        reason_prefix: logPrefix(event.reason),
+      };
+    case "routing_decisions":
+      return {
+        type: event.type,
+        correlation_id: event.correlation_id,
+        routing_json_bytes: utf8ByteLength(event.json),
+        payload: "redacted",
+      };
+    case "error":
+      return {
+        type: event.type,
+        correlation_id: event.correlation_id,
+        code: event.code,
+        message_prefix: logPrefix(event.message),
+      };
+  }
+}
+
+function logPrefix(value: string): string {
+  return value.length > LOG_PREFIX_CHARS ? `${value.slice(0, LOG_PREFIX_CHARS)}...` : value;
+}
+
+function pubkeyPrefix(value: string): string {
+  return value.length > 8 ? `${value.slice(0, 8)}...` : value;
+}
+
+function utf8ByteLength(value: string): number {
+  let length = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < 0x80) {
+      length += 1;
+    } else if (code < 0x800) {
+      length += 2;
+    } else if (code >= 0xd800 && code <= 0xdbff && i + 1 < value.length) {
+      const next = value.charCodeAt(i + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        length += 4;
+        i += 1;
+      } else {
+        length += 3;
+      }
+    } else {
+      length += 3;
+    }
+  }
+  return length;
+}
 
 export function eventCorrelationId(event: WorkerEvent): string | undefined {
   switch (event.type) {

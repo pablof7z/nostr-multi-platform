@@ -1,5 +1,5 @@
 import { Show } from "solid-js";
-import { labelRuntimeStatus, protocolVersion, type WorkerEvent } from "@nmp/runtime-web";
+import { labelRuntimeStatus, protocolVersion, type WorkerEventSummary } from "@nmp/runtime-web";
 import { runtimeConnection, type RuntimeSnapshot } from "../../nmp/client";
 import { type DecodedSnapshot } from "../../nmp/inspectorSnapshot";
 
@@ -75,7 +75,7 @@ export function PanelOverview(props: {
   );
 }
 
-export function PanelFrames(props: { events: WorkerEvent[] }) {
+export function PanelFrames(props: { events: WorkerEventSummary[] }) {
   return (
     <div class="ins-panel">
       <div class="ins-section-title">Worker events (last {props.events.length})</div>

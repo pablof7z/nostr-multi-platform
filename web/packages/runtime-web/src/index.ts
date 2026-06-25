@@ -2,10 +2,11 @@
 export type {
   WorkerRequest,
   WorkerEvent,
+  WorkerEventSummary,
   RuntimeStatus,
   ChirpAction,
 } from "./protocol";
-export { protocolVersion, eventCorrelationId, labelRuntimeStatus } from "./protocol";
+export { protocolVersion, eventCorrelationId, labelRuntimeStatus, summarizeWorkerEvent } from "./protocol";
 
 // ADR-0064 typed write transport — the `DispatchEnvelope` byte encoder.
 export {

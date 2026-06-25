@@ -10,8 +10,10 @@ import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
 import {
   eventCorrelationId,
   protocolVersion,
+  summarizeWorkerEvent,
   type RuntimeStatus,
   type WorkerEvent,
+  type WorkerEventSummary,
   type WorkerRequest,
   type ChirpAction,
 } from "@nmp/runtime-web";
@@ -33,7 +35,7 @@ export type RuntimeSnapshot = {
   status: RuntimeStatus;
   /** Active runtime path: real worker or in-process degraded fallback. */
   clientRuntime: "worker" | "in_process_fallback";
-  events: WorkerEvent[];
+  events: WorkerEventSummary[];
   latestUpdateBytes?: Uint8Array;
   /** Snapshot revision decoded cheaply for the Inspector pulse strip. */
   latestRev?: bigint;
@@ -117,7 +119,7 @@ export function createNmpClient(): NmpClient {
 }
 
 abstract class BaseClient implements NmpClient {
-  private events: WorkerEvent[] = [];
+  private events: WorkerEventSummary[] = [];
   private currentFrame: Partial<FrameSnapshotState> = {};
   private readonly refProfiles = new RefProfileStore();
   private readonly refEvents = new RefEventStore();
@@ -213,7 +215,10 @@ abstract class BaseClient implements NmpClient {
     if (event.type === "routing_decisions") {
       this.latestRoutingDecisionsJson = event.json;
     }
-    this.events = [event, ...this.events].slice(0, 32);
+    this.events = [
+      summarizeWorkerEvent(event, { revision: this.currentFrame.latestRev }),
+      ...this.events,
+    ].slice(0, 32);
     const snapshot = this.snapshot();
     for (const listener of this.listeners) {
       listener(snapshot);

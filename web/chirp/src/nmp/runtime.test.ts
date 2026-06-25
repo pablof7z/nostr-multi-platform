@@ -11,7 +11,7 @@ import { createNmpClient, makeCorrelationId, type RuntimeSnapshot } from "./clie
 import { DegradedRuntime } from "@nmp/runtime-web";
 import * as flatbuffers from "flatbuffers";
 import type { WorkerEvent, WorkerRequest } from "@nmp/runtime-web";
-import { eventCorrelationId, protocolVersion } from "@nmp/runtime-web";
+import { eventCorrelationId, protocolVersion, summarizeWorkerEvent } from "@nmp/runtime-web";
 import { chirpTimelineFromEnvelope, featureSnapshotFromEnvelope, kernelSnapshotFromEnvelope } from "./snapshot";
 import { FrameKind, PanicFrame, RelayStatus, SnapshotFrame, UpdateFrame } from "./generated/nmp/transport";
 import { decodeUpdateFrameBytes, UpdateFrameDecodeError } from "./updateFrame";
@@ -147,7 +147,7 @@ describe("createNmpClient fallback", () => {
     expect(dispatched.events[0]).toMatchObject({
       type: "capability_failure",
       capability: "nmp.publish",
-      reason: "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
+      reason_prefix: "Web Worker support is unavailable, so the nmp-wasm bridge cannot start",
     });
   });
 });
@@ -184,6 +184,50 @@ describe("shared Chirp web semantics", () => {
     );
     const snap = client.snapshot();
     expect(snap.events.some((e) => e.type === "sign_failed")).toBe(true);
+  });
+
+  it("summarizes worker events without retaining raw snapshots or signer payloads", () => {
+    expect(
+      summarizeWorkerEvent(
+        { type: "update_bytes", bytes: new Uint8Array([1, 2, 3, 4]) },
+        { revision: BigInt(42) },
+      ),
+    ).toEqual({
+      type: "update_bytes",
+      byte_length: 4,
+      revision: "42",
+      payload: "redacted",
+    });
+
+    const unsignedJson = JSON.stringify({ content: "private draft", tags: [["p", "secret"]] });
+    expect(
+      summarizeWorkerEvent({
+        type: "sign_request",
+        correlation_id: "sign-1",
+        account_pubkey: "aabbccddeeff",
+        unsigned_json: unsignedJson,
+      }),
+    ).toEqual({
+      type: "sign_request",
+      correlation_id: "sign-1",
+      signer_account_prefix: "aabbccdd...",
+      unsigned_json_bytes: unsignedJson.length,
+      payload: "redacted",
+    });
+
+    const signedJson = JSON.stringify({ content: "published text", sig: "sig" });
+    expect(
+      summarizeWorkerEvent({
+        type: "sign_completed",
+        correlation_id: "sign-1",
+        signed_json: signedJson,
+      }),
+    ).toEqual({
+      type: "sign_completed",
+      correlation_id: "sign-1",
+      signed_json_bytes: signedJson.length,
+      payload: "redacted",
+    });
   });
 
   it("decodes Tier-3 running and relayStatuses from a snapshot frame", () => {
@@ -364,6 +408,13 @@ describe("client schema enforcement", () => {
 
     unsubscribe();
     expect(snapshots[snapshots.length - 1]!.status).toBe("running");
+    expect(snapshots[snapshots.length - 1]!.events[0]).toMatchObject({
+      type: "update_bytes",
+      byte_length: expect.any(Number),
+      revision: "0",
+      payload: "redacted",
+    });
+    expect("bytes" in snapshots[snapshots.length - 1]!.events[0]!).toBe(false);
   });
 
   it("populates latestRelayStatuses from the Tier-3 relay_statuses field", async () => {

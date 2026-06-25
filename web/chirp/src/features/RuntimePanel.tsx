@@ -1,7 +1,7 @@
 import { For, Show, type JSX } from "solid-js";
 import { CheckCircle2, Database, HardDrive, Radio, RefreshCw, Settings, Signal } from "lucide-solid";
 import { runtimeConnection, type RuntimeSnapshot } from "../nmp/client";
-import { labelRuntimeStatus, protocolVersion, type WorkerEvent } from "@nmp/runtime-web";
+import { labelRuntimeStatus, protocolVersion, type WorkerEventSummary } from "@nmp/runtime-web";
 import type { FeatureSnapshot } from "../nmp/snapshot";
 
 export function RuntimePanel(props: {
@@ -75,7 +75,7 @@ function StatusLine(props: { icon: JSX.Element; label: string; value: string; te
   return <div class="status-line"><span class="status-icon">{props.icon}</span><span>{props.label}</span><strong data-testid={props.testId}>{props.value}</strong></div>;
 }
 
-function EventLog(props: { events: WorkerEvent[] }) {
+function EventLog(props: { events: WorkerEventSummary[] }) {
   return (
     <section class="runtime-card events">
       <h2>Runtime events</h2>
