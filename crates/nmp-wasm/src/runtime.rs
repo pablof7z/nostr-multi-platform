@@ -121,8 +121,8 @@ pub struct WasmRuntime {
     /// values whose `start_bytes` runs the typed FlatBuffers `decode_payload`
     /// + the fail-closed `schema_version` gate before `start()`. Seeded with
     /// `default_registry()` (the kernel `PublishModule`, exactly like native);
-    /// the composition root (the wasm composition root (see #2038), which CAN depend on the NIP
-    /// crates — `nmp-wasm` cannot, D0/layering) registers the NIP-02/NIP-25
+    /// the wasm composition root (see #2038), which CAN depend on the NIP
+    /// crates — `nmp-wasm` cannot, D0/layering — registers the NIP-02/NIP-25
     /// write modules through [`WasmRuntime::register_action`] /
     /// [`WasmRuntime::register_default_action`], mirroring the per-NIP
     /// `register_actions` entry points the native FFI app calls.
@@ -248,7 +248,7 @@ impl WasmRuntime {
     /// Register a typed [`ActionModule`] under its `NAMESPACE` into the runtime's
     /// action registry. The wasm twin of `NmpApp::register_action`.
     ///
-    /// The composition root (the wasm composition root (see #2038)) calls this — directly or
+    /// The wasm composition root (see #2038) calls this — directly or
     /// through the per-NIP `register_actions(&mut impl ActionRegistrar)` entry
     /// points — to populate the non-publish write namespaces (NIP-02 follow /
     /// unfollow / follow_many, NIP-25 react / unreact). A typed payload

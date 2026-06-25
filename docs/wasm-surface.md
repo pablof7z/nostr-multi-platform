@@ -5,13 +5,13 @@
 > protocol contract. See ADR-0047 (worker write/signing contract now defers to
 > **ADR-0064** — the unified write/command boundary).
 >
-> **Note (2026-06-25):** The wasm-bindgen entry point (`NmpWasmRuntime`,
-> `handle_json`, `handle_dispatch_bytes`) was removed from `crates/nmp-wasm`
-> together with the Chirp Web product (see #2052). The protocol contract
-> described below remains the target surface; the wasm-bindgen entry point will
-> be re-established under the new browser-runtime architecture (see #2038).
-> Until then, `crates/nmp-wasm/src/lib.rs` exposes only `WasmRuntime` and the
-> protocol types — no `#[wasm_bindgen]` class is emitted.
+> **Note (2026-06-25):** The wasm-bindgen composition entry point (`NmpWasmRuntime`,
+> `handle_json`, `handle_dispatch_bytes`) that lived in the deleted Chirp Web crate
+> is gone (see #2052). The protocol contract described below remains the target
+> surface; the wasm-bindgen composition entry point will be re-established under
+> the new browser-runtime architecture (see #2038). Until then, `crates/nmp-wasm/src/lib.rs`
+> exposes only `WasmRuntime` and the protocol types — no `#[wasm_bindgen]` class
+> is emitted.
 
 `crates/nmp-wasm` will expose the NMP browser runtime as a `wasm-bindgen` class
 (`NmpWasmRuntime`) that a dedicated Worker instantiates. The Worker event loop

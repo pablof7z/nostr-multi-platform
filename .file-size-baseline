@@ -74,6 +74,4 @@ docs/research/applesauce-app-relay-model.md	535
 docs/testing/nmpui-website-screenshot-checklist.md	574
 apps/chirp/ios/Chirp/Bridge/TypedProjectionGlue.swift	877
 apps/chirp/ios/ChirpTests/OpFeedDecoderTests.swift	506
-web/chirp/docs/ux-design.md	974
-web/chirp/docs/wasm-mvp-build-plan.md	580
 web/registry/public/registry.json	1221
