@@ -14,7 +14,8 @@ nmp add module <crate>             Add a protocol/app module to nmp.toml.
 nmp gen swift                      Regenerate Swift host bindings.
 nmp gen typed-decoders             Regenerate typed decoder bindings (Kotlin/TS).
 nmp gen bindings [swift|kotlin|typescript]  Regenerate all platform bindings.
-nmp gen view <name>                Scaffold a ViewModule in the app core crate.
+nmp gen projection <name>          Scaffold an observer + snapshot projection in the app core crate.
+nmp gen feed <name>                Scaffold a typed feed declaration + source/reducer wiring.
 nmp gen action <name>              Scaffold an ActionModule in the app core crate.
 nmp gen screen <name>              Scaffold a screen across all platforms.
 nmp doctor                         Diagnose toolchain / build environment.

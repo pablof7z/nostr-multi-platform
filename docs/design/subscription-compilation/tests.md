@@ -33,6 +33,22 @@ CI covers this through the workspace pre-merge gate.
 The design intent is four audit assertions plus one substrate-invariant
 assertion covering D8 address-pointer dedup:
 
+### Dependent-interest assertions for ReducedSources
+
+ReducedSource/dependent-interest work (#2092) extends the audit surface with
+these invariants:
+
+- A source replacement that removes authors/tags/ids closes the withdrawn
+  child interests before the next compile drain.
+- Empty source output fails closed and never becomes wildcard acquisition.
+- Two feed sessions whose reduced output materializes the same child interest
+  dedup to one wire REQ per relay.
+- Component/read-model dependent interests for profiles, event ids, and
+  addresses share the same planner/router/cache path as feed acquisition; no
+  out-of-band fetch path is allowed.
+- Account switch re-runs active-account source reduction and closes the prior
+  account's materialized children.
+
 ### Assertion 1 — Bug-extinction #3 surface check
 
 > "No public API path lets the developer specify relays for a publish; explicit override action exists and produces a debug warning."
@@ -264,164 +280,8 @@ fn address_pointer_dedup_across_thread_and_meta_subscribe() {
                                kinds: [30023].into(), ..Default::default() },
         lifecycle: InterestLifecycle::OneShot, ..Default::default()
     };
-    h.register_interest(mk()); // ThreadViewModule hydration
-    h.register_interest(mk()); // MetaTimelineViewModule hydration
-    let plan = h.compile().expect("compile");
-    assert_eq!(plan.per_relay.len(), 1);
-    assert_eq!(plan.per_relay[0].sub_shapes.len(), 1,
-        "Rule 8 must merge identical address sets into one SubShape");
-}
-```
-
-### Assertion 5 — Address-pointer dedup across ThreadView and MetaTimeline
-
-> "Two views registering the same `NaddrCoord` emit ONE REQ per relay (Rule 8 address-pointer union, D8 invariant)."
-
-```rust
-#[test]
-fn address_pointer_dedup_across_thread_and_meta_subscribe() {
-    let mut h = PlannerHarness::new();
-    let pk = pubkey("article_author");
-    h.ingest_nip65(&pk, ["wss://article-relay.example"]);
-    let coord = NaddrCoord { pubkey: pk, kind: 30023, d_tag: "my-post".into() };
-    let mk = || LogicalInterest {
-        scope: InterestScope::Global,
-        shape: InterestShape { addresses: [coord.clone()].into(),
-                               kinds: [30023].into(), ..Default::default() },
-        lifecycle: InterestLifecycle::OneShot, ..Default::default()
-    };
-    h.register_interest(mk()); // ThreadViewModule hydration
-    h.register_interest(mk()); // MetaTimelineViewModule hydration
-    let plan = h.compile().expect("compile");
-    assert_eq!(plan.per_relay.len(), 1);
-    assert_eq!(plan.per_relay[0].sub_shapes.len(), 1,
-        "Rule 8 must merge identical address sets into one SubShape");
-}
-```
-
-### Assertion 5 — Address-pointer dedup across ThreadView and MetaTimeline
-
-> "Two views registering the same `NaddrCoord` emit ONE REQ per relay (Rule 8 address-pointer union, D8 invariant)."
-
-```rust
-#[test]
-fn address_pointer_dedup_across_thread_and_meta_subscribe() {
-    let mut h = PlannerHarness::new();
-    let pk = pubkey("article_author");
-    h.ingest_nip65(&pk, ["wss://article-relay.example"]);
-    let coord = NaddrCoord { pubkey: pk, kind: 30023, d_tag: "my-post".into() };
-    let mk = || LogicalInterest {
-        scope: InterestScope::Global,
-        shape: InterestShape { addresses: [coord.clone()].into(),
-                               kinds: [30023].into(), ..Default::default() },
-        lifecycle: InterestLifecycle::OneShot, ..Default::default()
-    };
-    h.register_interest(mk()); // ThreadViewModule hydration
-    h.register_interest(mk()); // MetaTimelineViewModule hydration
-    let plan = h.compile().expect("compile");
-    assert_eq!(plan.per_relay.len(), 1);
-    assert_eq!(plan.per_relay[0].sub_shapes.len(), 1,
-        "Rule 8 must merge identical address sets into one SubShape");
-}
-```
-
-### Assertion 5 — Address-pointer dedup across ThreadView and MetaTimeline
-
-> "Two views registering the same `NaddrCoord` emit ONE REQ per relay (Rule 8 address-pointer union, D8 invariant)."
-
-```rust
-#[test]
-fn address_pointer_dedup_across_thread_and_meta_subscribe() {
-    let mut h = PlannerHarness::new();
-    let pk = pubkey("article_author");
-    h.ingest_nip65(&pk, ["wss://article-relay.example"]);
-    let coord = NaddrCoord { pubkey: pk, kind: 30023, d_tag: "my-post".into() };
-    let mk = || LogicalInterest {
-        scope: InterestScope::Global,
-        shape: InterestShape { addresses: [coord.clone()].into(),
-                               kinds: [30023].into(), ..Default::default() },
-        lifecycle: InterestLifecycle::OneShot, ..Default::default()
-    };
-    h.register_interest(mk()); // ThreadViewModule hydration
-    h.register_interest(mk()); // MetaTimelineViewModule hydration
-    let plan = h.compile().expect("compile");
-    assert_eq!(plan.per_relay.len(), 1);
-    assert_eq!(plan.per_relay[0].sub_shapes.len(), 1,
-        "Rule 8 must merge identical address sets into one SubShape");
-}
-```
-
-### Assertion 5 — Address-pointer dedup across ThreadView and MetaTimeline
-
-> "Two views registering the same `NaddrCoord` emit ONE REQ per relay (Rule 8 address-pointer union, D8 invariant)."
-
-```rust
-#[test]
-fn address_pointer_dedup_across_thread_and_meta_subscribe() {
-    let mut h = PlannerHarness::new();
-    let pk = pubkey("article_author");
-    h.ingest_nip65(&pk, ["wss://article-relay.example"]);
-    let coord = NaddrCoord { pubkey: pk, kind: 30023, d_tag: "my-post".into() };
-    let mk = || LogicalInterest {
-        scope: InterestScope::Global,
-        shape: InterestShape { addresses: [coord.clone()].into(),
-                               kinds: [30023].into(), ..Default::default() },
-        lifecycle: InterestLifecycle::OneShot, ..Default::default()
-    };
-    h.register_interest(mk()); // ThreadViewModule hydration
-    h.register_interest(mk()); // MetaTimelineViewModule hydration
-    let plan = h.compile().expect("compile");
-    assert_eq!(plan.per_relay.len(), 1);
-    assert_eq!(plan.per_relay[0].sub_shapes.len(), 1,
-        "Rule 8 must merge identical address sets into one SubShape");
-}
-```
-
-### Assertion 5 — Address-pointer dedup across ThreadView and MetaTimeline
-
-> "Two views registering the same `NaddrCoord` emit ONE REQ per relay (Rule 8 address-pointer union, D8 invariant)."
-
-```rust
-#[test]
-fn address_pointer_dedup_across_thread_and_meta_subscribe() {
-    let mut h = PlannerHarness::new();
-    let pk = pubkey("article_author");
-    h.ingest_nip65(&pk, ["wss://article-relay.example"]);
-    let coord = NaddrCoord { pubkey: pk, kind: 30023, d_tag: "my-post".into() };
-    let mk = || LogicalInterest {
-        scope: InterestScope::Global,
-        shape: InterestShape { addresses: [coord.clone()].into(),
-                               kinds: [30023].into(), ..Default::default() },
-        lifecycle: InterestLifecycle::OneShot, ..Default::default()
-    };
-    h.register_interest(mk()); // ThreadViewModule hydration
-    h.register_interest(mk()); // MetaTimelineViewModule hydration
-    let plan = h.compile().expect("compile");
-    assert_eq!(plan.per_relay.len(), 1);
-    assert_eq!(plan.per_relay[0].sub_shapes.len(), 1,
-        "Rule 8 must merge identical address sets into one SubShape");
-}
-```
-
-### Assertion 5 — Address-pointer dedup across ThreadView and MetaTimeline
-
-> "Two views registering the same `NaddrCoord` emit ONE REQ per relay (Rule 8 address-pointer union, D8 invariant)."
-
-```rust
-#[test]
-fn address_pointer_dedup_across_thread_and_meta_subscribe() {
-    let mut h = PlannerHarness::new();
-    let pk = pubkey("article_author");
-    h.ingest_nip65(&pk, ["wss://article-relay.example"]);
-    let coord = NaddrCoord { pubkey: pk, kind: 30023, d_tag: "my-post".into() };
-    let mk = || LogicalInterest {
-        scope: InterestScope::Global,
-        shape: InterestShape { addresses: [coord.clone()].into(),
-                               kinds: [30023].into(), ..Default::default() },
-        lifecycle: InterestLifecycle::OneShot, ..Default::default()
-    };
-    h.register_interest(mk()); // ThreadViewModule hydration
-    h.register_interest(mk()); // MetaTimelineViewModule hydration
+    h.register_interest(mk()); // thread/comment read-model hydration
+    h.register_interest(mk()); // meta-subscribe projection hydration
     let plan = h.compile().expect("compile");
     assert_eq!(plan.per_relay.len(), 1);
     assert_eq!(plan.per_relay[0].sub_shapes.len(), 1,
@@ -459,11 +319,10 @@ impl PlannerHarness {
     pub fn compile(&mut self) -> Result<CompiledPlan, CompileError>;
     pub fn last_compiled_plan(&self) -> &CompiledPlan;
     pub fn compile_audit_log(&self) -> &[CompileAuditEntry];
-    pub fn open_view<V: ViewModule>(&mut self, spec: V::Spec) -> V::Payload;
 }
 ```
 
-The harness is the *minimum* surface required for the four assertions above. It is deliberately small so it does not become its own moving target.
+The harness is deliberately small so it does not become its own moving target.
 
 ## 9.4 What this test does *not* cover
 
@@ -471,10 +330,8 @@ By design (these belong to other M2 gates or later milestones):
 
 - **Real wire frames against a relay.** That belongs to `firehose-bench live`;
   the audit test is offline and synthetic.
-- **Wire-emitter diff correctness across two plans.** That is a separate unit test inside `nmp-core::kernel::wire`, not the milestone-exit gate.
-- **NIP-77 watermarks.** M4.
-- **Per-account auth state.** M5.
-- **The publish path running end-to-end.** M6.
+- **Wire-emitter diff correctness across two plans.** Separate unit test.
+- **NIP-77 watermarks, per-account auth, and publish e2e.** M4-M6.
 
 The audit gate's job is exactly the four assertions: API shape, fan-out
 structure, recompilation on late NIP-65, and four-lane diagnostic distinctness.
@@ -482,7 +339,10 @@ This test is the verification surface for all four.
 
 ## 9.5 CI integration
 
-The test runs in the default `cargo test --workspace` job and takes < 1 second on standard hardware (no networking, no LMDB, in-memory cache only). It is the canonical regression test for "did someone re-introduce the hardcoded two-role planner?" and as such must never be skipped or `#[ignore]`d.
+The test runs in the default `cargo test --workspace` job and takes < 1 second
+on standard hardware (no networking, no LMDB, in-memory cache only). It is the
+canonical regression test for "did someone re-introduce the hardcoded two-role
+planner?" and must never be skipped or `#[ignore]`d.
 
 If the store layer later gains a durable mailbox backend, this test continues
 to exercise the substrate trait through the injected cache implementation. The

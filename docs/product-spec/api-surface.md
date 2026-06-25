@@ -315,9 +315,19 @@ Each capability is **idempotent** (`start` after `start` is a no-op) and **bound
 
 Decision captured here for `aim.md` §7.2 and §7.3:
 
-**Views are opened via `dispatch(OpenView)` with a platform-generated `ViewId`, and updates arrive as `ViewBatch` entries keyed by that id.** Materialization is lazy in `nmp-core` — view payloads live in the actor and are projected into `ViewSnapshots`/`ViewBatch` on every change.
+**App feeds are opened via `nmp_app_open_feed(FeedParams)` and closed with the
+returned handle.** `FeedParams` carries primary content kinds, a closed
+`FeedScope` / `PubkeySetExpr` acquisition source, admission, ranking, window,
+and projection key. This source expression is the app-facing ReducedSource
+model: app/protocol/defaults code owns the source meaning, and the compiler
+materializes it into planner-owned `LogicalInterest`s.
 
-The component-facing API on each platform is *not* `ViewId`-based. Per ADR-0005, generated wrappers (`useProfile(pubkey)`, `@Profile`, `rememberProfile(pubkey)`, etc.) expose a refcounted, domain-keyed surface that translates component mount/unmount into `OpenView`/`CloseView` dispatches and writes incoming payloads into typed domain-keyed dictionaries on the platform side. App developers think in domain concepts; the framework handles subscription lifecycle and refcounted sharing behind the wrapper.
+Component/read-model dependencies use dependent interests rather than app feed
+filters. A profile component claims a pubkey; an event preview claims an event
+or address; a relation-count component opens its own bounded source. The
+planner handles lifecycle, refcounting, dedup, routing, cache-serve, and close.
+Native shells never watch kind:3, expand list membership, run
+meta-subscribe-style fetch cascades, or compute a concrete author/tag/id set.
 
 Dynamic FlatFeed-backed views, such as author and thread screens, are declared
 through `nmp_app_open_feed`. The app passes `FeedParams` with
@@ -340,6 +350,10 @@ those filters. App-defined admission, ranking, and sorting are feed policy owned
 by the app/protocol composition layer; changing them resets/regrows the window
 under the current store/pull contract instead of leaving rows admitted by stale
 policy on screen.
+
+`nmp_app_open_interest` remains only a low-level non-feed/static-interest seam.
+It is not the API for feed source reduction, follow/list expansion, or dynamic
+author-set acquisition.
 
 Rationale vs. opaque `ViewHandle` reference types:
 

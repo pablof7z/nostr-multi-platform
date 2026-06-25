@@ -178,6 +178,14 @@ it. The feed primitive's job is admission, canonical row identity, bounded
 storage, ordering, and pagination over events that have arrived through the
 normal acquisition path.
 
+If the acquisition source itself is dynamic, the action does not snapshot the
+current author/tag/id set. It declares the closed source expression and lets a
+Rust ReducedSource owner materialize child interests. Active-user follows,
+NIP-51 list membership, follow packs, and pointer-event target hydration all
+have this shape: source interest/state changes, reducer replaces the derived
+set, and those children enter the same registry/planner path as the static
+`EnsureInterest` examples in this chapter.
+
 `load_older` is rendered-progress pagination. It may scan past event-log rows
 that are deleted, muted, blocked, superseded, replaced, or rejected by the
 current app admission policy. Those rows advance the cursor but do not satisfy
@@ -483,13 +491,9 @@ The subscription should close when…
 
 - [ ] Claim and Release derive the same `SubIdentity` from the same inputs.
 - [ ] `SubOwnerKey` includes `consumer_id`; `SubKey` does not.
-- [ ] The content discriminant in `SubKey` matches the filter in `LogicalInterest`.
-- [ ] `InterestId` is a stable hash of (namespace, discriminant) — not a UUID.
+- [ ] `SubKey` matches the filter; `InterestId` is a stable hash, not a UUID.
 - [ ] `is_async_completing()` is `false` (default) for subscription-only actions.
-- [ ] The event observer is registered at init time, not inside `execute`.
-- [ ] The observer is cheap, locks briefly, never panics.
-- [ ] The snapshot projection reads from the same `Arc<Mutex<…>>` as the observer.
-- [ ] Tailing subscriptions have a Release path the shell calls on view close.
+- [ ] The event observer is registered at init time, stays cheap, and never panics.
+- [ ] The snapshot projection reads from the observer state; tailing subs have Release.
 - [ ] No relay logic, WebSocket code, or `dispatch_capability("nostr_relay", …)` is in the shell.
-
-See also: [05a — Substrate traits](05a-substrate-traits.md) · [06 — Reactivity contract](06-reactivity-contract.md) · [07 — Subscription planner](07-subscription-planner.md) · [16 — Capabilities](16-capabilities.md) · [20 — Adding a protocol module](20-new-protocol-module.md) · `crates/nmp-relations/src/visible_relations.rs` · `crates/nmp-defaults/src/topic_articles.rs`
+See also: [05a](05a-substrate-traits.md) · [06](06-reactivity-contract.md) · [07](07-subscription-planner.md) · [16](16-capabilities.md) · [20](20-new-protocol-module.md).

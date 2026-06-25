@@ -194,6 +194,13 @@ uses `nmp-network` to open and send.
 The planner does not own relay sockets, event persistence, or protocol-specific
 parsing. Its output is data for the kernel actor to execute.
 
+The planner also does not own feed-source semantics. A ReducedSource such as
+active-user follows, a public people list, a mute list, or a follow pack is
+declared and reduced in app/protocol/defaults composition before planner input.
+`nmp-planner` consumes the resulting `LogicalInterest`/`InterestShape` data and
+may coalesce authors, tags, ids, and addresses, but it must not name the source
+domain that produced them.
+
 ---
 
 ## 7. Network And Store Ownership
@@ -299,6 +306,11 @@ commands.
 Native platform shells render Rust-owned state and execute capabilities only;
 they never carry operator policy (relay URLs, seed pubkeys) — that originates
 in the leaf app's Rust crate and is injected by app-owned FFI.
+
+Native shells also never expand ReducedSources or dependent interests. They do
+not compute follow/list membership, construct dynamic author filters, run
+meta-subscribe fetch cascades, or hydrate profiles/events outside Rust-owned
+ref/dependent-interest lifecycles.
 
 ---
 

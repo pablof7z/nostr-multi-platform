@@ -74,7 +74,7 @@ Conflicts resolve in listed order (D0 wins over D10).
 
 ## Card 5 — Planner pipeline + merge lattice
 
-**4-stage compiler** (`crates/nmp-core/src/planner/`,
+**4-stage compiler** (`crates/nmp-planner/src/`,
 `docs/design/subscription-compilation/compiler.md`):
 
 ```
@@ -84,7 +84,7 @@ LogicalInterest[] ─▶ 1. resolve (mailbox/NIP-65 routing)
                   ─▶ 4. plan-id (content-address → CompiledPlan)
 ```
 
-**9 merge-lattice rules** (`crates/nmp-core/src/planner/lattice/rules.rs`;
+**9 merge-lattice rules** (`crates/nmp-planner/src/lattice/rules.rs`;
 evaluated in `lattice/mod.rs` order 6, 9, 1, 2, 3, 4, 5, 7, 8):
 
 | Rule | Field | Merge behaviour |

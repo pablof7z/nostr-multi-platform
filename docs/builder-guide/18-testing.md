@@ -52,26 +52,24 @@ without a flag, while a normal `nmp-core` consumer cannot reach `testing::`. If
 a bench needs the actor, add `features = ["test-support"]` to its dev/bin dep —
 never widen the gate.
 
-## Worked example — "I added a ViewModule, what tests do I write?"
+## Worked example — "I added a feed, source reducer, or projection; what tests do I write?"
 
 Three tiers, in order. Stop at tier 2 unless tier 3's trigger fires.
 
-1. **Unit, in the owning crate's `tests/`.** Projection invariants over
-   synthetic events: open the view, feed events, assert the snapshot/delta.
-   Model on `crates/nmp-core/tests/substrate_registry.rs` (registers a module,
-   asserts registry shape). No actor, no network. Cover empty-state,
-   one-event, supersede, and remove paths — these map to the
-   `on_event_inserted` / `on_event_replaced` / `on_event_removed` callbacks
-   the view implements.
+1. **Unit, in the owning crate's `tests/`.** Reducer/projection invariants over
+   synthetic events: feed source events into the reducer, assert the
+   materialized child-interest set or projected state. No actor, no network.
+   Cover empty-state, one-event, supersede, remove, and fail-closed paths.
 
-2. **Subsystem, in `crates/nmp-testing/tests/`.** Drive the view through the
-   planner + store against `MockRelay`. Name milestone- or domain-prefixed to
-   match the existing convention: `m2_*.rs` for planner-touching,
-   `nip29_lifecycle.rs`-style for a protocol crate's end-to-end. Assert the
-   *wire frames* the view's `dependencies()` produce, not just the payload.
+2. **Subsystem, in `crates/nmp-testing/tests/`.** Drive the feed/source/ref
+   claim through the registry + planner + store against `MockRelay`. Name
+   milestone- or domain-prefixed to match the existing convention: `m2_*.rs`
+   for planner-touching, `nip29_lifecycle.rs`-style for a protocol crate's
+   end-to-end. Assert the *wire frames* the materialized interests produce, not
+   just the payload.
 
-3. **Framework-magic contract — only if the view exercises a contract
-   behavior** (kind:3-driven recompile, account-switch rebind, in-place
+3. **Framework-magic contract — only if the feature exercises a contract
+   behavior** (ReducedSource recompile, account-switch rebind, in-place
    placeholder refinement, …). Then follow the recipe below. A plain typed
    projection that does none of those does **not** get a contract test;
    forcing one inflates the suite and dilutes the meta-test.

@@ -23,7 +23,14 @@ specific deletion gate and deadline.
 
 ## D0. Shared NMP crates know nothing about your app's domain
 
-The shared Rust core (`nmp-core`) has no concept of a tweet, a podcast episode, a highlight, or a group chat. Those nouns belong to your app. You add them through typed extension modules (`ViewModule`, `ActionModule`, `DomainModule`, `CapabilityModule`, `IdentityModule`). Two apps can be built on the same core without either one leaking its domain concepts into the shared substrate.
+The shared Rust core (`nmp-core`) has no concept of a tweet, a podcast episode,
+a highlight, or a group chat. Those nouns belong to your app or to protocol
+crates. You add behavior through the live v1 seams: registered actions,
+event observers, typed projections, feed/source declarations, ref/dependent
+interest claims, and capability bridges. The removed v2
+`ViewModule`/`DomainModule`/`IdentityModule` traits are historical, not current
+extension points. Two apps can be built on the same core without either one
+leaking its domain concepts into the shared substrate.
 
 D0 applies to every shared NMP crate, not only `nmp-core`. `nmp-defaults`,
 protocol crates, reusable engines, binding crates, and FFI/wasm delivery
@@ -137,7 +144,22 @@ This rules out:
 
 *Static cluster (always present regardless of open views): identity pair (`accounts`, `active_account`), publish cluster (`publish_queue`, `publish_outbox`, `outbox_summary`, `configured_relays`, `relay_role_options`, `settings_hub`), diagnostics (`relay_diagnostics`), profile card (`profile`), mention payloads (`mention_profiles`), and claim projections (`claimed_profiles`, `claimed_events`). These keys are required for app chrome that is visible regardless of which content screen is open.*
 
-*View-dependent cluster (only present when the view is subscribed): `timeline`, `inserted`, `updated`, `removed` appear only when the app/defaults layer declares a feed of primary content kinds from the active account's reactive follows perspective. Chirp declares primary kind `[1]`; protocol adapters derive repost wrapper acquisition below that app-facing declaration. The shell does not pass concrete follow pubkeys and does not own follow-feed lifecycle policy. Author and thread screens no longer use built-in `author_view` / `thread_view` projections; Chirp opens app-owned dynamic FlatFeed sidecars keyed as `nmp.feed.author.<pubkey>` / `nmp.feed.thread.<event_id>` and unregisters them on close. Under incremental apply, omitted keys mean retain cached state and an explicit `Cleared` row means drop it. Domain empty states are encoded in their payloads, not inferred from absence. The event store, gossip cache, sync watermarks, working set, and signer state live exclusively in the Rust actor.*
+*View-dependent cluster (only present when the view is subscribed): `timeline`,
+`inserted`, `updated`, `removed` appear only when the app/defaults layer declares
+a feed of primary content kinds from a ReducedSource such as the active account's
+reactive follows perspective. Chirp declares primary kind `[1]`; protocol
+adapters derive repost wrapper acquisition below that app-facing declaration.
+The shell does not pass concrete follow pubkeys and does not own follow-feed
+lifecycle policy. Author and thread screens no longer use built-in
+`author_view` / `thread_view` projections; Chirp opens app-owned dynamic
+FlatFeed sidecars keyed as `nmp.feed.author.<pubkey>` /
+`nmp.feed.thread.<event_id>` and unregisters them on close. Secondary profile,
+event, address, and count dependencies are dependent interests owned by the
+component/read model that renders them. Under incremental apply, omitted keys
+mean retain cached state and an explicit `Cleared` row means drop it. Domain
+empty states are encoded in their payloads, not inferred from absence. The event
+store, gossip cache, sync watermarks, working set, and signer state live
+exclusively in the Rust actor.*
 
 ---
 

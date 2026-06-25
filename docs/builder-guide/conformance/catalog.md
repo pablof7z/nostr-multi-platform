@@ -54,7 +54,7 @@ scanner looks for; `semantic` = needs LLM judgment, no reliable grep).
 | ID | Rule | Origin | Layer | Sev | Detection |
 |----|------|--------|-------|-----|-----------|
 | D1 | No app-side "is this newer?" / `replaceIfNewer` supersession | C1 | any | block | `replaceIfNewer`, `created_at >`, newest-wins logic in shell |
-| D2 | No app-side kind:3 watch / `recompileSubsOnFollowChange` re-opening views | C5 | any | block | semantic + contact-list observer re-opening subs |
+| D2 | No app-side dynamic-source watch re-opening views | C5/#2092 | any | block | semantic + contact/list/pointer observer re-opening subs |
 | D3 | No `dedupeAcrossRelays` / app-side cross-relay event merge | C9 | any | block | `dedup`, `Set<EventId>` merge across relays |
 | D4 | No manual REQ historical-backfill scan; no `supports_nip77 = true` assumption | D2 | any | warn | `"REQ"` for backfill; `supportsNip77 = true` |
 | D5 | No profile-refresh poll / manual TTL timer / stale-check before render | F-TTL | any | block | `refreshProfileEvery`, `Timer.*profile`, TTL math in shell |

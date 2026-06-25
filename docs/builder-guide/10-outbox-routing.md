@@ -35,7 +35,7 @@ footgun the structure removes.
 ## How the planner implements it
 
 Read direction is `SubscriptionCompiler` Stage 1
-(`crates/nmp-core/src/planner/compiler/mod.rs:60-189`); the direction table
+(`crates/nmp-planner/src/compiler/mod.rs`); the direction table
 on `SubscriptionCompiler` (`compiler/mod.rs:52-67`) maps shape → direction.
 **The indexer set is now strictly a discovery lane** — kind:0 / kind:3 /
 kind:10002 fetches only. Content REQs (kind:1, kind:7, kind:9735, …) never
@@ -43,7 +43,7 @@ ride the indexer; `case_a_authors` / `case_b_addresses` route per author
 to *NIP-65 write relays ∪ configured app relays* (additive in both
 "NIP-65 known" and "NIP-65 unknown" cases). The app-relay lane is now
 first-class: `UserConfiguredCategory::AppRelay`, distinct from the
-`Indexer` sub-category (`crates/nmp-core/src/planner/plan.rs`).
+`Indexer` sub-category (`crates/nmp-planner/src/plan.rs`).
 
 When an author has **neither** a NIP-65 entry **nor** any configured app
 relay, the planner does not silently widen — the author is collected into
@@ -64,11 +64,11 @@ broad subs) routes to `active_account_read_relays ∪ app_relays`. Empty
 app-relay config keeps the historical behaviour intact.
 
 The mailbox seam is the `MailboxCache` trait
-(`crates/nmp-core/src/planner/compiler/mailbox.rs:54-70`):
+(`crates/nmp-planner/src/compiler/mailbox.rs`):
 `get` / `snapshot_all` / `generation` / `request_probe`. Phase-1 impls ship
 in-crate: `EmptyMailboxCache` (everything → indexer) and
 `InMemoryMailboxCache` (`mailbox.rs:89-119`). The wiring example is in the
-planner module doc (`crates/nmp-core/src/planner/mod.rs:18-25`): construct
+planner module doc (`crates/nmp-planner/src/lib.rs`): construct
 `InMemoryMailboxCache::new()`, pass `&cache` + an indexer slice to
 `SubscriptionCompiler::new`. The live `SubscriptionLifecycle` does exactly
 this (`crates/nmp-core/src/subs/mod.rs:100-114` — `InMemoryMailboxCache::new()`,
@@ -106,7 +106,7 @@ using `PublishWithOverride`, confirm:
       path — that is the anti-pattern the override audit is designed to
       surface.
 
-## Deliverable: kind:3-arrives sequence diagram
+## Deliverable: ReducedSource follow-feed sequence diagram
 
 ```
 relay ──kind:3 (active acct, follows {A,B,D})──▶ kernel.ingest
@@ -114,9 +114,9 @@ relay ──kind:3 (active acct, follows {A,B,D})──▶ kernel.ingest
    ├─ replaceable-supersession: fresher? ──no──▶ drop, no trigger
    │                                      └─yes─▶ replace stored kind:3
    │
-   ├──▶ Trigger::FollowListChanged { prev:{A,B,C}, next:{A,B,D} }
+   ├──▶ ReducedSource owner replaces child author set {A,B,C} → {A,B,D}
    │
-   ├──▶ SubscriptionCompiler re-runs interests() for follow-dependent views
+   ├──▶ SubscriptionCompiler compiles the new materialized LogicalInterests
    │      Stage 1: resolve A,B,D mailboxes
    │         (D unknown → if app_relays configured: route to app_relays;
    │                       else: D collected into unroutable_authors)
@@ -134,10 +134,11 @@ relay ──kind:3 (active acct, follows {A,B,D})──▶ kernel.ingest
          declared write relays; app_relay slice may drop out)
 ```
 
-The app writes nothing. The "following timeline" view spec names no authors;
-the view module consumes the active account's follow-set internally
-(`docs/design/framework-magic/kind3.md`). This structurally forbids the
-classic NDK-era bug: app listens for kind:3, manually closes subs, re-derives
+The app writes nothing. The following feed declaration names primary kinds and
+an active-account source expression; it does not name concrete authors. The
+NIP-02/defaults reducer consumes the active account's follow source internally.
+This structurally forbids the classic NDK-era bug: app listens for kind:3,
+manually closes subs, re-derives
 authors, re-issues REQs, and races itself or leaks the old REQ. NDK's
 `refreshRelayConnections` only adds relays and never removes stale ones;
 Applesauce's `OutboxModel` switchMaps each contact into its own mailbox sub
@@ -166,7 +167,7 @@ not assume opening a view today routes by mailbox; verify against
 
 ### `apply_selection` — landed, not yet wired
 
-`crates/nmp-core/src/planner/selection.rs` ships an applesauce-style
+`crates/nmp-planner/src/selection.rs` ships an applesauce-style
 greedy max-coverage post-compile mutator:
 `apply_selection(&mut plan, max_connections, max_per_user)`. It trims
 plans that would otherwise open too many wire connections (the

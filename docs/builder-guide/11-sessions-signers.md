@@ -150,34 +150,34 @@ SwitchAccount(id)
         └────────────────────────────────────────────────┘
                           │
                           ▼
-        Kind3RewireObserver buffers Kind3RewireEvent
+        active-account source observer buffers a rebind event
                           │
             (kernel drains on actor tick)
                           ▼
-        planner tears down old "your follows" sub,
-        rebuilds against new kind:3 + kind:10002
+        source owners close old-account children,
+        rebuild against new active-account source state
 ```
 
 `remove(active_id)` (`manager.rs:183-203`) clears `active` *before*
 firing observers, then emits one event with `current: None` /
-`current_pubkey: None` — the kind:3 / kind:10002 teardown +
+`current_pubkey: None` — active-account source teardown +
 `FullState { active_account: None }` signal.
 
 Observers run **on the actor thread** (D4 — single writer per fact) and
 must not block (`manager.rs:60-65`).
 
-### kind:3 auto-rewire
+### Active-account source rewire
 
-`crates/nmp-signers/src/identity/rewire.rs:34-70`: `Kind3RewireObserver`
-is registered as an `ActiveChangeObserver`. On every transition it
-buffers a `Kind3RewireEvent { previous, current }`; the kernel drains it
-each tick. **`nmp-signers` only signals** — the actual subscription
-teardown/rebuild is the planner's job because the planner owns the relay
-pool (D7 capability-vs-policy split). `current: None` means "tear down
-the kind:3 subscription, emit `FullState` with no active account."
+`crates/nmp-signers/src/identity/rewire.rs` is the current active-change
+signaling hook. On every transition it buffers an event; the kernel drains it
+each tick. **`nmp-signers` only signals** — ReducedSource owners and the
+planner own actual child-interest teardown/rebuild because routing and relay
+state live in Rust kernel/defaults code (D7 capability-vs-policy split).
+`current: None` means "tear down active-account source children and emit
+`FullState` with no active account."
 
-This is framework-magic contract bullet C-sessions: the app gets
-follow-set rewire for free on every account switch.
+This is framework-magic contract bullet C5/C12: the app gets source rebind for
+free on every account switch.
 
 ## `IdentityScopeKind` decision tree
 

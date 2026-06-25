@@ -219,12 +219,20 @@ a feed is `open_feed`. The `declare_active_follows_feed` /
 `clear_active_follows_feed` Rust methods stay as INTERNAL composition glue (the
 home-feed wiring + the perspective compiler's `ActiveUserFollows` arm).
 
-The active-user follow feed is **not** expressible through `open_interest` (§2):
-its author set is reactive perspective state derived from the active account's
-kind:3, re-evaluated on `FollowListChanged`, and re-routed on account switch.
-In `FeedParams`, "active-user follows" is expressed as
+The active-user follow feed is **not** expressible as one static
+`open_interest` (§2): its author set is reactive perspective state derived from
+the active account's kind:3, re-evaluated on source changes, and re-routed on
+account switch. In `FeedParams`, "active-user follows" is expressed as
 `FeedScope::ActiveUserFollows` inside `FeedParams.acquisition` — not as a
-named verb or a static author list.
+named verb, native follow snapshot, or static author list.
+
+The general model for that class is a **ReducedSource** plus dependent
+interests: app/protocol/defaults code declares a closed source expression, a
+protocol reducer turns current source state into materialized interest shapes,
+and those interests go through the same registry/planner/router/cache path as
+any other `LogicalInterest`. `open_interest` remains the low-level static
+interest seam; it is not a feed API and not a place to encode dynamic
+source-reduction policy.
 
 Apps/defaults declare via `FeedParams`:
 
@@ -268,14 +276,19 @@ The exported C symbols with the old contact-feed names were compatibility shims
 that delegated to this declaration path. They must not be used by apps; the
 current primitive is `open_feed(FeedParams)` (step 2). Likewise,
 `open_interest` / `close_interest` (§2) are substrate-level primitives used
-internally by the feed session machinery, not an app-facing feed API.
+internally by the feed session machinery and non-feed ref/read paths, not an
+app-facing feed API.
 
-### New `ActorCommand` variants
+### Historical `ActorCommand` variants
 
 - `DeclareActiveFollowsFeed { acquisition_kinds: BTreeSet<u32> }` — installs
   the adapter-derived acquisition kinds for the active-follows declared feed.
 - `ClearActiveFollowsFeed` — withdraws the declaration and closes the resulting
   follow-feed interests.
+
+These commands are historical/internal scaffolding, not the canonical model.
+They must disappear or collapse into the generic ReducedSource/dependent
+interest path when #2092 lands.
 
 > Chirp author/thread/home feeds now use the generic app-layer feed doorway:
 > construct typed `FeedParams`, call `nmp_app_open_feed`, retain the returned
@@ -302,6 +315,10 @@ correction; it is not permission to add a second follow-feed API.
 - All Chirp shells (iOS, Android, TUI, desktop) open home, author, and thread
   feeds through `nmp_app_open_feed` with typed `FeedParams`; Chirp-specific
   primary kinds are derived below that app-facing API.
+- Dynamic feed sources compile to materialized interests before planner input.
+  `nmp-core` / `nmp-planner` may carry authors, tags, ids, and addresses as
+  filter data, but they must not name contact-list, mute-list, follow-pack, or
+  app feed concepts.
 - `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`. Any
   platform-stable wrapper name that remains for binary/UI compatibility must
   call the active-follows declaration path; it must not preserve a separate

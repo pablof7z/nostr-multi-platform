@@ -55,7 +55,10 @@ The default loader queries open relays and configured sources. Users can add cus
 
 ### 7.2 Subscription planner
 
-Owns the mapping from `ViewSpec` → `Vec<Filter>` → `Vec<RelayUrl>` → on-the-wire REQ.
+Owns the mapping from materialized `LogicalInterest`s to relay-scoped wire REQs.
+Feed ReducedSources and component/read-model dependent interests compile to
+logical interests before planner input; the planner never owns app/NIP source
+semantics.
 
 Behaviors:
 
@@ -96,7 +99,8 @@ Per doctrine D3, NIP-65 routing is the long-term default policy for reads and wr
 **Per-pubkey relay-list lifecycle.**
 
 - First contact with an unknown pubkey → enqueue kind-10002 fetch from indexer relays.
-- Fresher kind-10002 arrives → invalidate dependent subscriptions, recompute relay sets, re-issue REQs as needed.
+- Fresher kind-10002 or source-list state arrives → invalidate dependent
+  subscriptions, recompute relay sets, re-issue REQs as needed.
 - Kind-10002 missing for a pubkey after N seconds → fall back to indexer set for reads only; do not publish content events to indexers.
 
 The gossip cache is the `nostr-gossip` crate; backend selection (in-memory vs SQLite) follows the storage backend choice. Watermarks (§7.1) intersect with outbox: a sync watermark is keyed by `(filter, relay)` and naturally tracks per-author per-relay coverage.

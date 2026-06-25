@@ -114,16 +114,17 @@ and publish symbols (`nmp_app_publish_note`, `nmp_app_publish_unsigned_event`,
 > `NmpApp::declare_active_follows_feed` / `clear_active_follows_feed` Rust methods
 > remain as INTERNAL composition glue, never as a public C symbol.
 
-The active-follows feed declaration is not a raw kind-list escape hatch. The
-current Rust app API is `NmpApp::declare_active_follows_feed(primary_kinds)`.
-The caller supplies primary content kinds only and selects the active account's
-reactive follows perspective; it never passes concrete follow pubkeys. The
-protocol adapter derives repost-wrapper acquisition from those primary
-declarations and rejects wrapper kinds if they are supplied as primary kinds.
-`nmp-core` never stores a default "social timeline is kind:1" policy; the
-primary-kind decision belongs above the kernel. Feed components that need
-profiles, missing repost targets, relation counts, or other secondary data claim
-those dependencies independently.
+The active-follows feed declaration is not a raw kind-list escape hatch.
+Public app code opens it through typed `FeedParams` with
+`FeedScope::ActiveUserFollows`. Internal composition may still translate that
+source into lower-level acquisition while #2092 removes the remaining bespoke
+active-follows scaffolding. The caller supplies primary content kinds only and
+never passes concrete follow pubkeys. Protocol adapters derive repost-wrapper
+acquisition from those primary declarations and reject wrapper kinds if they are
+supplied as primary kinds. `nmp-core` never stores a default "social timeline is
+kind:1" policy; the primary-kind decision belongs above the kernel. Feed
+components that need profiles, missing repost targets, relation counts, or
+other secondary data claim those dependencies independently.
 
 Threading: dispatch/enqueue symbols run on the calling thread and hand work to
 the actor asynchronously; none wait for a state result.
@@ -138,8 +139,8 @@ are fire-and-forget dispatches that cause subsequent snapshot emissions.
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_open_interest` | `(app, filter_json: *const c_char, consumer_id: *const c_char, scope: uint32_t)` | M2 (ADR-0042). Register (or attach an owner to) a generic tailing interest from a verbatim NIP-01 REQ filter. This is the raw filter escape hatch; app feed surfaces should prefer declared feeds so wrapper provenance and reactive sources stay explicit. `scope`: 0 = ActiveAccount, 1 = Global. Replaces `open_firehose_tag`; Chirp hashtag feeds now use the app-owned tag-feed seam, which declares primary `[1]`, derives NIP-18 wrapper acquisition, and opens the compiled `#t` filter at scope 1. | chirp-tui (`open_tag`); Chirp via `openInterest` | malformed filter → toast + no-op | n/a |
-| `nmp_app_close_interest` | `(app, filter_json: *const c_char, consumer_id: *const c_char, scope: uint32_t)` | M2 (ADR-0042). Detach one owner from a feed interest opened with `open_interest`; drops the live sub on the last owner's close. Same filter/consumer/scope as the open. | chirp-tui; Chirp via `closeInterest` | malformed filter → no-op | n/a |
+| `nmp_app_open_interest` | `(app, filter_json: *const c_char, consumer_id: *const c_char, scope: uint32_t)` | M2 (ADR-0042). Register (or attach an owner to) a generic tailing interest from a verbatim NIP-01 REQ filter. This is the low-level static-interest escape hatch; app feed surfaces use `nmp_app_open_feed` so wrapper provenance, source reduction, and reactive perspectives stay explicit. `scope`: 0 = ActiveAccount, 1 = Global. Replaces `open_firehose_tag`; Chirp hashtag feeds now use the app-owned tag-feed seam, which declares primary `[1]`, derives NIP-18 wrapper acquisition, and opens the compiled `#t` filter at scope 1. | chirp-tui (`open_tag`); Chirp via `openInterest` | malformed filter → toast + no-op | n/a |
+| `nmp_app_close_interest` | `(app, filter_json: *const c_char, consumer_id: *const c_char, scope: uint32_t)` | M2 (ADR-0042). Detach one owner from a low-level interest opened with `open_interest`; drops the live sub on the last owner's close. Same filter/consumer/scope as the open. | chirp-tui; Chirp via `closeInterest` | malformed filter → no-op | n/a |
 | `nmp_app_open_uri` | `(app, uri: *const c_char)` | Route a `nostr:` URI or bare NIP-19 entity. Kernel resolves the entity and pushes `ViewOpened` or `UriRejected` via snapshot. T80/T95. | declared in `NmpCore.h`; no Chirp UI caller today | null/invalid → silent no-op | D7-clean: kernel decides routing |
 | `nmp_app_claim_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char, force: int, liveness: int)` | Increment refcount for a profile (kind:0) interest. Kernel registers a kind:0 `LogicalInterest` and emits metadata while any consumer holds a claim. `force != 0` bypasses the TTL freshness gate. `liveness`: `0` = CacheOk (serve from cache; OneShot fetch on miss; no live sub), non-zero = Live (Tailing kind:0 sub for reactive profile edits). Mixed claims on one pubkey resolve to Tailing. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
 | `nmp_app_release_profile` | `(app, pubkey: *const c_char, consumer_id: *const c_char)` | Decrement refcount. When refcount reaches zero, kernel stops fetching. Validates hex pubkey. | Chirp | any invalid arg → early return | n/a |
