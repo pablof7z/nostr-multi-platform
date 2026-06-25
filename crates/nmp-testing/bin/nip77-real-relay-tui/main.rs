@@ -1,4 +1,6 @@
+mod auth;
 mod cache;
+mod codec;
 mod relay;
 mod ui;
 
@@ -223,19 +225,24 @@ fn print_report(report: &relay::RunReport) {
     println!("surface: {}", report.surface);
     if let Some(plain) = &report.plain {
         println!(
-            "plain REQ: events={} bytes_sent={} bytes_received={} elapsed_ms={}",
-            plain.events, plain.bytes_sent, plain.bytes_received, plain.elapsed_ms
+            "plain REQ: events={} auths_sent={} bytes_sent={} bytes_received={} elapsed_ms={}",
+            plain.events,
+            plain.auths_sent,
+            plain.bytes_sent,
+            plain.bytes_received,
+            plain.elapsed_ms
         );
     }
     if let Some(neg) = &report.neg {
         println!(
-            "NIP-77: cache {} -> {}, need={} fetched={} have={} rounds={} bytes_sent={} bytes_received={} elapsed_ms={}",
+            "NIP-77: cache {} -> {}, need={} fetched={} have={} rounds={} auths_sent={} bytes_sent={} bytes_received={} elapsed_ms={}",
             neg.local_before,
             neg.local_after,
             neg.need,
             neg.fetched,
             neg.have,
             neg.rounds,
+            neg.auths_sent,
             neg.bytes_sent,
             neg.bytes_received,
             neg.elapsed_ms
@@ -329,7 +336,7 @@ fn help() -> String {
          default relay: {default_relay}\n\
          default group: {DEFAULT_GROUP}\n\
          default filter: {}\n\
-         publish signer: ephemeral by default, or NMP_NIP77_DEMO_NSEC / --nsec for a group member key\n\
+         publish/auth signer: ephemeral by default, or NMP_NIP77_DEMO_NSEC / --nsec for a group member key\n\
          TUI keys: r run plain+NIP-77, n NIP-77 only, p publish demo event, c clear cache, q quit",
         group_filter_json(DEFAULT_GROUP)
     )

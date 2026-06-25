@@ -129,6 +129,7 @@ fn render_metrics(frame: &mut Frame<'_>, area: ratatui::layout::Rect, state: &Ap
         |p| {
             vec![
                 Line::from(format!("events returned: {}", p.events)),
+                Line::from(format!("auths sent: {}", p.auths_sent)),
                 Line::from(format!(
                     "wire bytes: sent {} / received {}",
                     p.bytes_sent, p.bytes_received
@@ -164,6 +165,7 @@ fn render_metrics(frame: &mut Frame<'_>, area: ratatui::layout::Rect, state: &Ap
                     n.need, n.fetched
                 )),
                 Line::from(format!("local-only ids: {} | rounds: {}", n.have, n.rounds)),
+                Line::from(format!("auths sent: {}", n.auths_sent)),
                 Line::from(format!(
                     "wire bytes: sent {} / received {}",
                     n.bytes_sent, n.bytes_received
