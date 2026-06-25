@@ -47,7 +47,7 @@ On Start and kernel-namespaced dispatch, the update_bytes postMessage fires befo
 
 No transfer list is used on postMessage for updateBytesEvent because client.ts caches latestUpdateBytes across snapshots; transferring would detach the ArrayBuffer and break the cache. Structured clone copies the ~870KB worst-case frame cheaply. <!-- [^e4861-8] -->
 
-The web golden fixture is loaded via Vite's ?raw import (not node:fs/node:url) because @types/node is intentionally absent from web/chirp; the ?raw path keeps typecheck green without adding a devDep while still failing the suite if the Rust golden fixture drifts. <!-- [^e4861-9] -->
+The web golden fixture is loaded via Vite's ?raw import as part of the browser-runtime rebuild under #2038; the ?raw path keeps typecheck green while failing the suite if the Rust golden fixture drifts. <!-- [^e4861-9] -->
 
 ## Android Client
 

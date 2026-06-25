@@ -84,6 +84,8 @@ pub fn spawn_test_actor(
         kernel_clock: crate::slots::new_kernel_clock_slot(),
         // No GC budget ceiling for test helper — production default (disabled).
         gc_budget_ceiling: None,
+        user_agent: Arc::new(Mutex::new(None)),
+        outbound_public_tags: Arc::new(Mutex::new(None)),
     }
     .snapshot();
 

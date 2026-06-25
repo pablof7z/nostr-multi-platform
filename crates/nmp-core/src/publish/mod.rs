@@ -37,9 +37,11 @@ mod fs_store;
 // maps a kind to its `PublishBehavior`. The reserved-builder / private /
 // discovery / public classification lives here, not as scattered kind literals
 // in `action.rs`.
+mod outbound_tags;
 mod policy;
 mod state;
 mod store;
+pub(crate) use outbound_tags::finalize_outbound_tags;
 // Spec §271 (2026-05-25) test-only NIP-65 resolver — see module docs for
 // why this lives in nmp-core rather than nmp-router. Gated on
 // `test-support` so production builds never link it.

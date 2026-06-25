@@ -73,6 +73,10 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     let nostrconnect_bootstrap_relay = new_nostrconnect_bootstrap_relay_slot();
     // #1493 P9 — NIP-46 perm request slot.
     let nostrconnect_perms = new_nostrconnect_perms_slot();
+    // Flow A — relay User-Agent slot.
+    let user_agent: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    // Flow B — outbound public tags slot.
+    let outbound_public_tags: Arc<Mutex<Option<Vec<Vec<String>>>>> = Arc::new(Mutex::new(None));
     // Active local (nsec) key slot.
     let mls_local_nsec = new_mls_local_nsec_slot();
     let actor_mls_local_nsec = Arc::clone(&mls_local_nsec);
@@ -104,6 +108,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // V-51 phase 5 — substrate-routing factory slot.
     let routing_substrate = new_routing_substrate_slot();
     let actor_routing_substrate = Arc::clone(&routing_substrate);
+    let actor_user_agent = Arc::clone(&user_agent);
+    let actor_outbound_public_tags = Arc::clone(&outbound_public_tags);
     // ADR-0049 Part 2 — the composition ledger.
     let composition_ledger: Arc<nmp_core::CompositionLedger> =
         Arc::new(nmp_core::CompositionLedger::new());
@@ -232,6 +238,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             external_event_sink_policy: actor_external_event_sink_policy,
             kernel_clock: actor_kernel_clock,
             gc_budget_ceiling: gc_budget_ceiling_for_config,
+            user_agent: actor_user_agent,
+            outbound_public_tags: actor_outbound_public_tags,
         }
         .snapshot();
         thread::spawn(move || {
@@ -339,6 +347,8 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
             storage_path,
             nostrconnect_bootstrap_relay,
             nostrconnect_perms,
+            user_agent,
+            outbound_public_tags,
             initial_relays_for_start: Mutex::new(Vec::new()),
             coverage_hook,
             req_frame_interceptor,

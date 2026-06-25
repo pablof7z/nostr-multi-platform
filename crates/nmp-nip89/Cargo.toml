@@ -1,0 +1,10 @@
+[package]
+name = "nmp-nip89"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "Dependency-light NIP-89 client-identity vocabulary: ClientIdentity → relay User-Agent string + optional NIP-89 `client` tag (31990:<pubkey>:<d> handler). Pure renderers, no kernel seam."
+
+[dependencies]
+nostr = { workspace = true }

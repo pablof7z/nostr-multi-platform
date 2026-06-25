@@ -15,7 +15,7 @@
 #                         `com.google.flatbuffers:flatbuffers-java:…` in
 #                         apps/chirp/android/app/build.gradle.kts.
 #   FLATC_PIN_TS          Web/TypeScript bindings — matches the `flatbuffers`
-#                         dep in web/chirp/package.json.
+#                         dep in web/nmp-gallery/package.json.
 #
 # ci/check-flatbuffers-version-pins.sh is the authority that asserts each of
 # those runtime-library pins (Cargo.toml / gradle / package.json) — and the

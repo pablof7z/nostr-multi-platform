@@ -265,6 +265,16 @@ impl<S> RoutingFactoryRegistrar for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.set_nostrconnect_perms(perms);
     }
+
+    fn set_relay_user_agent(&self, user_agent: String) {
+        let app: &NmpApp = unsafe { &*self.app };
+        let _ = app.set_relay_user_agent(user_agent);
+    }
+
+    fn set_outbound_public_tags(&self, tags: Vec<Vec<String>>) {
+        let app: &NmpApp = unsafe { &*self.app };
+        let _ = app.set_outbound_public_tags(tags);
+    }
 }
 
 impl<S> HostCapabilities for NmpAppBuilder<S> {

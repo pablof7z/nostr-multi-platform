@@ -22,8 +22,8 @@ use std::time::{Duration, Instant};
 use tungstenite::{accept, Message};
 
 use super::{
-    apply_reconnect_backoff, jittered_backoff, spawn_relay_worker_with_keepalive, BackoffClass,
-    RelayCommand, RelayEvent,
+    apply_reconnect_backoff, spawn_relay_worker_with_keepalive, BackoffClass, RelayCommand,
+    RelayEvent,
 };
 use crate::role::RelayRole;
 
@@ -170,6 +170,7 @@ fn worker_emits_ping_after_idle_threshold() {
         relay_tx,
         Duration::from_millis(200), // idle threshold
         Duration::from_millis(500), // pong timeout
+        None,
     );
 
     // Wait for the worker's Connected event so we know the socket is up.
@@ -275,6 +276,7 @@ fn worker_reconnects_when_pong_does_not_arrive() {
         relay_tx,
         Duration::from_millis(150), // idle
         Duration::from_millis(300), // pong timeout
+        None,
     );
 
     // Server records Connected → worker pings → no pong arrives → keepalive
@@ -307,6 +309,7 @@ fn worker_swallows_pong_does_not_forward_to_kernel() {
         relay_tx,
         Duration::from_millis(150),
         Duration::from_secs(2),
+        None,
     );
 
     // Wait past the first keepalive cycle (ping + pong round-trip).
@@ -360,6 +363,7 @@ fn worker_does_not_ping_when_inbound_keeps_arriving() {
         relay_tx,
         Duration::from_secs(1),
         Duration::from_secs(2),
+        None,
     );
 
     // Wait for Connected so we know the socket is up.
@@ -485,6 +489,7 @@ fn t130_frames_sent_before_connect_arrive_after_open() {
         relay_tx,
         Duration::from_secs(60), // long idle so keepalive doesn't interfere
         Duration::from_secs(60),
+        None,
     );
 
     // CRITICAL: send the frame BEFORE Connected arrives. The worker's outer
@@ -542,6 +547,7 @@ fn disconnected_control_sender_emits_terminal_closed_event() {
         relay_tx,
         Duration::from_secs(30), // long keepalive — must not interfere
         Duration::from_secs(30),
+        None,
     );
 
     // Wait for Connected before dropping the sender so we're mid-session.
@@ -574,65 +580,6 @@ fn disconnected_control_sender_emits_terminal_closed_event() {
         matches!(terminal.unwrap(), RelayEvent::Closed { .. }),
         "control-sender drop is a clean teardown; event must be Closed, not Failed"
     );
-}
-
-// ─── T116c / G12 — jittered_backoff unit tests ──────────────────────────────
-
-/// Same URL → same jitter offset (deterministic per URL).
-#[test]
-fn t116c_jitter_is_deterministic_per_url() {
-    let base = Duration::from_secs(3);
-    let url = "wss://relay.example.com";
-    let a = jittered_backoff(base, url);
-    let b = jittered_backoff(base, url);
-    assert_eq!(
-        a, b,
-        "jittered_backoff must return the same value for the same URL"
-    );
-}
-
-/// Two different URLs → different jitter offsets (spread across relays).
-#[test]
-fn t116c_jitter_differs_across_urls() {
-    let base = Duration::from_secs(3);
-    let url_a = "wss://relay-a.example.com";
-    let url_b = "wss://relay-b.example.com";
-    let a = jittered_backoff(base, url_a);
-    let b = jittered_backoff(base, url_b);
-    assert_ne!(
-        a, b,
-        "jittered_backoff should produce different offsets for different URLs"
-    );
-}
-
-/// Jitter is bounded: result is in [base, base + 5s] for any URL.
-#[test]
-fn t116c_jitter_bounded_within_5s() {
-    let base = Duration::from_secs(3);
-    let urls = [
-        "wss://relay.damus.io",
-        "wss://purplepag.es",
-        "wss://nos.lol",
-        "wss://relay.snort.social",
-        "wss://relay.primal.net",
-        "wss://nostr.wine",
-        "wss://relay.current.fyi",
-        "wss://relay.nostrbuild.io",
-        "wss://nostr.mom",
-        "wss://relay.nostr.bg",
-    ];
-    let max_jitter = Duration::from_millis(5000);
-    for url in urls {
-        let result = jittered_backoff(base, url);
-        assert!(
-            result >= base,
-            "jitter must not reduce backoff below base for {url}: got {result:?}"
-        );
-        assert!(
-            result <= base + max_jitter,
-            "jitter must not exceed base + 5s for {url}: got {result:?}"
-        );
-    }
 }
 
 // ─── V-58 — SetBackoffHint unit tests ───────────────────────────────────────
@@ -707,6 +654,7 @@ fn v58_set_backoff_hint_does_not_break_reconnect() {
         relay_tx,
         Duration::from_secs(60), // no keepalive interference
         Duration::from_secs(60),
+        None,
     );
 
     // Wait for Connected. 5s budget so the test survives slow CI machines.

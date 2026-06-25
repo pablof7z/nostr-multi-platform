@@ -327,6 +327,9 @@ pub struct Kernel {
     blocked_relays: Arc<dyn BlockedRelayLookup>,
     /// Per-app override for the active-account bootstrap self-kinds list.
     bootstrap_self_kinds_override: Option<Vec<u32>>,
+    /// Substrate-generic outbound public tags appended by the publish policy
+    /// to `PublicRoutable` events (the kernel names no NIP-89 noun — D0).
+    outbound_public_tags: Vec<Vec<String>>,
     /// Per-NIP ingest parser registry (ADR-0057, V-40).
     ingest_dispatcher: Arc<std::sync::RwLock<EventIngestDispatcher>>,
     /// Test-only handle to `TestDmInboxRelayCache`.

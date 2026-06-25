@@ -3,8 +3,6 @@
 # TypeScript flatc codegen-drift gate (issue #1209, extended by PR-F2, PR-F3).
 #
 # The checked-in TypeScript bindings at
-#   web/chirp/src/nmp/generated/nmp/
-# and, when present on a branch,
 #   web/nmp-gallery/src/nmp/generated/nmp/
 # cover schemas in five groups:
 #   transport  — crates/nmp-core/schema/nmp_update.fbs
@@ -18,7 +16,7 @@
 #   KRDG        — crates/nmp-core/schema/relay_diagnostics.fbs
 #   NRRD        — crates/nmp-core/schema/ref_rowdelta.fbs (ADR-0063 / #1671)
 # All generated with flatc 25.9.23 (the Web/TypeScript runtime pin — see
-# ci/check-flatbuffers-version-pins.sh and web/chirp/package.json).
+# ci/check-flatbuffers-version-pins.sh and web/nmp-gallery/package.json).
 #
 # This script regenerates ALL schemas with the PINNED flatc version into one
 # temp dir and fails on any file difference so checked-in bindings can never
@@ -79,11 +77,7 @@ KRDG_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/relay_diagnostics.fbs"
 # generated independently into `nmp/refs/`. The keyed-projection row-delta
 # payload every web `RefRowCache` decodes.
 REFS_SCHEMA="${REPO_ROOT}/crates/nmp-core/schema/ref_rowdelta.fbs"
-CHECKED_IN_ROOTS=("${REPO_ROOT}/web/chirp/src/nmp/generated")
-GALLERY_TS_ROOT="${REPO_ROOT}/web/nmp-gallery/src/nmp/generated"
-if [[ -d "${GALLERY_TS_ROOT}" ]]; then
-    CHECKED_IN_ROOTS+=("${GALLERY_TS_ROOT}")
-fi
+CHECKED_IN_ROOTS=("${REPO_ROOT}/web/nmp-gallery/src/nmp/generated")
 # components-web ships only the content subtree (content_tree.fbs bindings).
 # It is checked separately below with a scoped diff rather than a full-tree diff.
 COMPONENTS_WEB_CONTENT_ROOT="${REPO_ROOT}/web/packages/components-web/src/generated"
@@ -104,7 +98,7 @@ if [[ "${ACTUAL_FLATC_VERSION}" != "${EXPECTED_FLATC_VERSION}" ]]; then
     echo "ts-flatc-drift: flatc ${ACTUAL_FLATC_VERSION} found, but the TypeScript" >&2
     echo "transport bindings are pinned to flatc ${EXPECTED_FLATC_VERSION}" >&2
     echo "(matching the 'flatbuffers: ^${EXPECTED_FLATC_VERSION}' runtime pin in" >&2
-    echo " web/chirp/package.json)." >&2
+    echo " web/nmp-gallery/package.json)." >&2
     echo "" >&2
     echo "Install flatc ${EXPECTED_FLATC_VERSION} from:" >&2
     echo "  https://github.com/google/flatbuffers/releases/tag/v${EXPECTED_FLATC_VERSION}" >&2

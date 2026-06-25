@@ -22,8 +22,8 @@ crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	599
 crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	826
 crates/nmp-codegen/src/swift.rs	605
 crates/nmp-codegen/src/swift_projections_registry.rs	741
-crates/nmp-core/src/actor/commands/publish.rs	740
-crates/nmp-core/src/actor/mod.rs	764
+crates/nmp-core/src/actor/commands/publish.rs	678
+crates/nmp-core/src/actor/mod.rs	761
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565
 crates/nmp-core/src/kernel/action_registry/tests.rs	724
 crates/nmp-core/src/kernel/auth_tests.rs	762
@@ -37,7 +37,6 @@ crates/nmp-core/src/kernel/routing_trace_dto.rs	527
 crates/nmp-core/src/kernel/state_projection_tests.rs	666
 crates/nmp-core/src/kernel/test_support.rs	519
 crates/nmp-core/src/kernel/types.rs	692
-crates/nmp-core/src/lib.rs	600
 crates/nmp-core/src/subs/lifecycle_tests.rs	963
 crates/nmp-core/tests/nip_tag_conformance.rs	554
 crates/nmp-defaults/src/builder.rs	670
@@ -49,7 +48,7 @@ crates/nmp-marmot/src/projection/state.rs	615
 crates/nmp-marmot/src/service.rs	643
 crates/nmp-marmot/src/tests.rs	750
 crates/nmp-network/src/pool/tests.rs	555
-crates/nmp-network/src/relay_worker/tests.rs	864
+crates/nmp-network/src/relay_worker/tests.rs	812
 crates/nmp-nip01/src/timeline_projection.rs	576
 crates/nmp-nip17/src/dm_send/tests.rs	756
 crates/nmp-nip60/src/nip60_wallet.rs	714
@@ -75,6 +74,4 @@ docs/research/applesauce-app-relay-model.md	535
 docs/testing/nmpui-website-screenshot-checklist.md	574
 apps/chirp/ios/Chirp/Bridge/TypedProjectionGlue.swift	877
 apps/chirp/ios/ChirpTests/OpFeedDecoderTests.swift	506
-web/chirp/docs/ux-design.md	974
-web/chirp/docs/wasm-mvp-build-plan.md	580
 web/registry/public/registry.json	1221

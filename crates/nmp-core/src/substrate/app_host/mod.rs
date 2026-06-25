@@ -286,6 +286,17 @@ pub trait RoutingFactoryRegistrar {
     /// when no perms are registered the handshake omits the `&perms=` parameter
     /// entirely rather than baking in a framework-chosen kind set.
     fn set_nostrconnect_perms(&self, perms: String);
+
+    /// Register the relay-handshake User-Agent string derived from the app's
+    /// ClientIdentity. `None`/unset → the transport's built-in `nmp/<ver>`
+    /// fallback. Must be called before `nmp_app_start`. Composition-root wired
+    /// (Flow A); leaf apps may override.
+    fn set_relay_user_agent(&self, user_agent: String);
+
+    /// Register substrate-generic outbound tag rows appended to PublicRoutable
+    /// publishes (Flow B; the kernel names no NIP-89 noun — D0). Must be called
+    /// before `nmp_app_start`. Default unset → no tags appended.
+    fn set_outbound_public_tags(&self, tags: Vec<Vec<String>>);
 }
 
 /// Read-only host capability accessors — the active account identity, the

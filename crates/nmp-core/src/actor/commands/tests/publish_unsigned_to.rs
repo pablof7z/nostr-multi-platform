@@ -171,3 +171,37 @@ fn publish_unsigned_event_to_relays_invalid_relay_fails_closed() {
         kernel.last_error_toast_snapshot()
     );
 }
+
+/// Flow B (explicit arm): the app-declared `outbound_public_tags` reach the
+/// SIGNED event on the EXPLICIT-relay publish path too — proving the NIP-89
+/// client tag is appended from BOTH publish arms via the single
+/// `finalize_outbound_tags` decision site (D11 one-door), not just the Auto arm.
+#[test]
+fn explicit_arm_appends_client_tag_on_public_note() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    kernel.set_outbound_public_tags(vec![vec!["client".into(), "Chirp".into()]]);
+    let unsigned = nmp_signer_iface::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 1,
+        tags: vec![],
+        content: "a public note".into(),
+        created_at: 1_700_000_000,
+    };
+    let relays: Vec<String> = TEST_GROUP_RELAYS.iter().map(|s| s.to_string()).collect();
+    let outbound = publish_unsigned_event_to_relays(
+        &id,
+        &mut kernel,
+        unsigned,
+        relays,
+        None,
+        None,
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
+    );
+    assert!(!outbound.is_empty(), "explicit-pin publish must route");
+    assert!(
+        outbound[0].text.contains("[\"client\",\"Chirp\"]"),
+        "explicit-arm kind:1 signed event must carry the NIP-89 client tag, got: {}",
+        outbound[0].text
+    );
+}

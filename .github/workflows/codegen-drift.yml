@@ -275,11 +275,10 @@ jobs:
           || { echo "golden fixture copies diverged — regenerate BOTH via tier3_golden_fixture_matches_encoder"; exit 1; }
 
   # Issue #1209 + #1512 — TypeScript flatc drift gate. Every checked-in web TS
-  # tree (web/chirp today, plus web/nmp-gallery when that tree exists on a
-  # branch) must be byte-identical to a fresh `flatc --ts` run over the
-  # transport/feed/KRPR/KRDG schemas, with flatc pinned to the Web/TypeScript
-  # runtime pin (25.9.23, distinct from the Rust+Swift pin of 25.12.19 and the
-  # Kotlin pin of 25.2.10). Regenerate locally with
+  # tree (e.g. web/nmp-gallery) must be byte-identical to a fresh `flatc --ts`
+  # run over the transport/feed/KRPR/KRDG schemas, with flatc pinned to the
+  # Web/TypeScript runtime pin (25.9.23, distinct from the Rust+Swift pin of
+  # 25.12.19 and the Kotlin pin of 25.2.10). Regenerate locally with
   # `bash ci/regenerate-flatbuffers.sh`.
   typescript-flatc-drift:
     name: TypeScript flatc drift (web TS generated trees vs schemas)

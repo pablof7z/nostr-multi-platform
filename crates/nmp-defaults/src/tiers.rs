@@ -51,6 +51,7 @@ use nmp_core::substrate::{
     RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
 };
 use nmp_coverage_gate::CoverageGate;
+use nmp_nip89::ClientIdentity;
 use nmp_router::{
     InMemoryBlockedRelayCache, IndexerRepublishPolicy, Kind10006Parser, Nip65OutboxResolver,
 };
@@ -148,6 +149,21 @@ pub struct NmpDefaults {
     ///
     /// **Default:** `true`.
     pub longform: bool,
+
+    /// App ClientIdentity declared once at the composition root. When `Some`,
+    /// derives the relay User-Agent (always) and, if `attach_client_tag`, the
+    /// NIP-89 `client` tag on PublicRoutable publishes.
+    ///
+    /// **Default:** `None` (transport falls back to the built-in `nmp/<ver>` UA;
+    /// no client tag).
+    pub client_identity: Option<ClientIdentity>,
+
+    /// Opt-in: attach the NIP-89 public `client` tag to PublicRoutable publishes.
+    /// Privacy default is OFF (the UA is always derived, but the public tag is
+    /// opt-in). Ignored when `client_identity` is `None`.
+    ///
+    /// **Default:** `false`.
+    pub attach_client_tag: bool,
 }
 
 impl Default for NmpDefaults {
@@ -165,6 +181,8 @@ impl Default for NmpDefaults {
             dms: true,
             zaps: true,
             longform: true,
+            client_identity: None,
+            attach_client_tag: false,
         }
     }
 }

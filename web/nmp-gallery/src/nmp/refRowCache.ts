@@ -7,11 +7,9 @@
 // ground-truth snapshot carries. The Rust invariant property harness is the
 // shared oracle; this file must not diverge from it.
 //
-// DRIFT NOTE: this file is duplicated VERBATIM across the web apps
-// (web/chirp/src/nmp/refRowCache.ts and web/nmp-gallery/src/nmp/refRowCache.ts —
-// the repo vendors per-app copies, like ProfileWire.ts). The copies MUST stay
-// byte-identical; BOTH are exercised by `refRowCache.test.ts` in their own app
-// so a divergence is caught by tests.
+// DRIFT NOTE: this is the canonical copy of the RefRowCache implementation.
+// It is exercised by `refRowCache.test.ts` and serves as the authoritative
+// reference implementation across web platforms.
 //
 // It decodes the `refs.profile` / `refs.event` projection's opaque
 // `TypedPayload.payload` (an NRRD `RefRowDeltaBatch`, schema/ref_rowdelta.fbs)

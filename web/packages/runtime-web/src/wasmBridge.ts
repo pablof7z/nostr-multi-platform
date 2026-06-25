@@ -1,10 +1,10 @@
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 
-// Module path updated from `nmp_wasm.js` → `nmp_app_chirp_web.js` when the
-// build target switched from `crates/nmp-wasm` to `apps/chirp/crates/nmp-app-chirp-web`
-// (PR-F1). The JS class name (`NmpWasmRuntime`) and all method names are
-// unchanged, so no other edits to this file are required.
-const defaultModulePath = "/nmp-wasm/nmp_app_chirp_web.js";
+// Module path for the wasm composition root (see #2038).
+// The default path will be wired to the nmp-browser-runtime output when it lands.
+// Until then, this bridge is not functional — the app must pass an explicit modulePath
+// to loadWasmBridge() or the unavailable handler will take over.
+const defaultModulePath = "/nmp-wasm/nmp-browser-runtime.js";
 
 type SnapshotCallback = (bytes: Uint8Array) => void;
 

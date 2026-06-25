@@ -249,6 +249,8 @@ fn register_defaults_inner(
         dms,
         zaps,
         longform,
+        client_identity,
+        attach_client_tag,
     } = defaults;
     let mut handles = NmpDefaultRuntimeHandles::default();
 
@@ -403,6 +405,19 @@ fn register_defaults_inner(
     // `nmp-chirp-config`.
     if let Some(perms) = nostrconnect_perms {
         app.set_nostrconnect_perms(perms);
+    }
+
+    // ── Client identity → UA (Flow A, always) + NIP-89 client tag (Flow B, opt-in) ──
+    //
+    // The UA is derived whenever an identity is declared (privacy-neutral
+    // transport header). The public NIP-89 `client` tag is opt-in via
+    // `attach_client_tag` (framework default false). `set_outbound_public_tags`
+    // takes opaque `Vec<Vec<String>>` — nmp-core never sees the NIP-89 noun (D0).
+    if let Some(identity) = client_identity {
+        app.set_relay_user_agent(identity.user_agent());
+        if attach_client_tag {
+            app.set_outbound_public_tags(vec![identity.client_tag()]);
+        }
     }
 
     handles

@@ -4400,6 +4400,7 @@ dependencies = [
  "nmp-nip47",
  "nmp-nip57",
  "nmp-nip59",
+ "nmp-nip89",
  "nmp-planner",
  "nmp-relations",
  "nmp-router",
@@ -4409,26 +4410,6 @@ dependencies = [
  "serde",
  "serde_json",
  "zeroize",
-]
-
-[[package]]
-name = "nmp-app-chirp-web"
-version = "0.8.0"
-dependencies = [
- "console_error_panic_hook",
- "js-sys",
- "nmp-content",
- "nmp-core",
- "nmp-feed",
- "nmp-nip01",
- "nmp-nip02",
- "nmp-nip51",
- "nmp-router",
- "nmp-store",
- "nmp-substrate-defaults",
- "nmp-wasm",
- "serde_json",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -4577,6 +4558,7 @@ dependencies = [
  "nmp-nip59",
  "nmp-nip77",
  "nmp-nip84",
+ "nmp-nip89",
  "nmp-planner",
  "nmp-router",
  "nmp-store",
@@ -4985,6 +4967,13 @@ dependencies = [
  "nmp-signer-iface",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-nip89"
+version = "0.8.0"
+dependencies = [
+ "nostr",
 ]
 
 [[package]]
