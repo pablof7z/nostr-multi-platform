@@ -49,6 +49,10 @@ name = "nmp-wasm"
 path = "crates/nmp-wasm"
 
 [[public_crates]]
+name = "nmp-browser-runtime"
+path = "crates/nmp-browser-runtime"
+
+[[public_crates]]
 name = "nmp-substrate-defaults"
 path = "crates/nmp-substrate-defaults"
 
