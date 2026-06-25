@@ -1,4 +1,5 @@
 import { Match, Switch, createMemo, createSignal, onCleanup, onMount } from "solid-js";
+import type { IdentityRelayPermission } from "@nmp/runtime-web";
 import {
   publishNoteAction,
   releaseEventCommand,
@@ -28,12 +29,40 @@ declare global {
   interface Window {
     nostr?: {
       getPublicKey(): Promise<string>;
+      getRelays?(): Promise<Record<string, { read?: boolean; write?: boolean }>>;
       signEvent(event: Record<string, unknown>): Promise<Record<string, unknown>>;
     };
   }
 }
 
 const client = createNmpClient();
+
+function identityRelaysFromNip07(value: unknown): IdentityRelayPermission[] {
+  if (typeof value !== "object" || value === null) return [];
+  const relays: IdentityRelayPermission[] = [];
+  for (const [url, permissions] of Object.entries(value)) {
+    if (typeof url !== "string" || typeof permissions !== "object" || permissions === null) {
+      continue;
+    }
+    const raw = permissions as Record<string, unknown>;
+    relays.push({
+      url,
+      read: raw.read === true,
+      write: raw.write === true,
+    });
+  }
+  return relays;
+}
+
+async function readNip07Relays(): Promise<IdentityRelayPermission[] | undefined> {
+  if (!window.nostr?.getRelays) return undefined;
+  try {
+    const relays = identityRelaysFromNip07(await window.nostr.getRelays());
+    return relays.length > 0 ? relays : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export default function App() {
   const [snapshot, setSnapshot] = createSignal<RuntimeSnapshot>(client.snapshot());
@@ -106,7 +135,7 @@ export default function App() {
     }
     try {
       const pubkeyHex = await window.nostr.getPublicKey();
-      const snap = await client.setSigner(pubkeyHex);
+      const snap = await client.setSigner(pubkeyHex, await readNip07Relays());
       setSnapshot(snap);
       // Check if signer was accepted (not a capability_failure).
       const lastEvent = snap.events[0];

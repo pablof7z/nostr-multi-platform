@@ -41,6 +41,7 @@ fn seed_account(runtime: &mut WasmRuntime) {
             kind: "nip07".to_string(),
             pubkey_hex: ACCOUNT.to_string(),
             correlation_id: "seed-account".to_string(),
+            identity_relays: Vec::new(),
         }))
         .expect("set identity must succeed");
     assert!(

@@ -184,6 +184,7 @@ fn typed_write_routes_through_publish_module_not_legacy_disable() {
             pubkey_hex: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
                 .to_string(),
             correlation_id: "set-1".to_string(),
+            identity_relays: Vec::new(),
         }))
         .expect("SetIdentity must succeed");
 

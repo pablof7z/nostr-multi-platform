@@ -40,7 +40,7 @@ mod tick;
 
 pub use protocol::{
     BeginSign, CapabilityFailure, CapabilityResult, ClientHello, DegradedMode,
-    DeliverSignerResponse, DispatchBytes, RelayBootstrapEntry, ReleaseRef, ResolveRef,
-    RuntimeStatus, SetIdentity, StartConfig, WorkerEvent, WorkerRequest,
+    DeliverSignerResponse, DispatchBytes, IdentityRelayPermission, RelayBootstrapEntry, ReleaseRef,
+    ResolveRef, RuntimeStatus, SetIdentity, StartConfig, WorkerEvent, WorkerRequest,
 };
 pub use runtime::{WasmRuntime, WasmRuntimeError};

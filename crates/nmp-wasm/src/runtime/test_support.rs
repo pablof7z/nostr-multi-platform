@@ -196,6 +196,7 @@ mod set_identity_tests {
                 kind: "nip07".to_string(),
                 pubkey_hex: UPPER_PK.to_string(),
                 correlation_id: "set-identity-b2".to_string(),
+                identity_relays: Vec::new(),
             }))
             .expect("set_identity must succeed");
 
@@ -400,6 +401,7 @@ mod s10_nip07_event_driven_tests {
                 kind: "nip07".to_string(),
                 pubkey_hex: ACCOUNT.to_string(),
                 correlation_id: "s10-set-id".to_string(),
+                identity_relays: Vec::new(),
             }))
             .expect("set_identity must succeed");
 

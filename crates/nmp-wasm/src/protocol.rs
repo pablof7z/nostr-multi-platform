@@ -27,10 +27,10 @@ pub enum WorkerRequest {
     ///
     /// The browser host runs the asynchronous half of the handshake itself
     /// (e.g. `await window.nostr.getPublicKey()` for NIP-07) and supplies the
-    /// already-known pubkey hex in this request. The wasm runtime validates +
-    /// canonicalizes the pubkey and seeds the kernel's active account so
-    /// active-follows resolution and bootstrap interests know whose data to
-    /// load.
+    /// already-known pubkey hex in this request. When the backend also exposes
+    /// a raw relay-permission map (NIP-07 `getRelays()`), the host forwards
+    /// it as data; Rust canonicalizes/merges those relays before account
+    /// bootstrap so existing account data can load from the right relays.
     ///
     /// **No persistent signer is installed** (ADR-0064 §5): signing is the
     /// ADR-0050 capability round-trip ([`Self::BeginSign`] →
@@ -115,6 +115,21 @@ pub struct RelayBootstrapEntry {
     pub role: String,
 }
 
+/// Raw relay permission reported by an identity backend.
+///
+/// For NIP-07 this is one entry from `window.nostr.getRelays()`:
+/// `{ "<relay-url>": { read: bool, write: bool } }`. The browser host only
+/// translates the JS map into this typed wire shape. Rust owns validation,
+/// canonicalization, role mapping, and merge policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdentityRelayPermission {
+    pub url: String,
+    #[serde(default)]
+    pub read: bool,
+    #[serde(default)]
+    pub write: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResolveRef {
     pub namespace: u32,
@@ -168,6 +183,9 @@ pub struct CapabilityResult {
 /// than silently dropped. The runtime seeds the kernel's active account from
 /// the validated pubkey — it does NOT install a persistent signer (ADR-0064 §5:
 /// signing is the [`WorkerRequest::BeginSign`] capability round-trip).
+///
+/// `identity_relays` carries raw backend relay permissions, when available.
+/// Defaults to empty so older web hosts remain wire-compatible.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SetIdentity {
     /// Backend kind. Currently must be `"nip07"`.
@@ -182,6 +200,9 @@ pub struct SetIdentity {
     /// [`WorkerEvent::CapabilityFailure`] on failure) so the host can match
     /// the outcome to the request that triggered it.
     pub correlation_id: String,
+    /// Raw relay permissions reported by the identity backend.
+    #[serde(default)]
+    pub identity_relays: Vec<IdentityRelayPermission>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -100,6 +100,7 @@ mod tests {
                 "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
                     .to_string(),
             correlation_id: "set-1".to_string(),
+            identity_relays: Vec::new(),
         };
         let canonical_hex =
             canonical_pubkey_from_request(&request).expect("validation must succeed");
@@ -117,6 +118,7 @@ mod tests {
             kind: "magic".to_string(),
             pubkey_hex: String::new(),
             correlation_id: "set-1".to_string(),
+            identity_relays: Vec::new(),
         };
         let error = canonical_pubkey_from_request(&request).expect_err("must fail");
         assert_eq!(error.code(), "unsupported_signer_kind");
@@ -129,6 +131,7 @@ mod tests {
             kind: "nip07".to_string(),
             pubkey_hex: "not-hex".to_string(),
             correlation_id: "set-1".to_string(),
+            identity_relays: Vec::new(),
         };
         let error = canonical_pubkey_from_request(&request).expect_err("must fail");
         assert_eq!(error.code(), "invalid_signer_pubkey");
@@ -144,6 +147,7 @@ mod tests {
                 "3BF0C63FCB93463407AF97A5E5EE64FA883D107EF9E558472C4EB9AAAEFA459D"
                     .to_string(),
             correlation_id: "set-1".to_string(),
+            identity_relays: Vec::new(),
         };
         let canonical_hex = canonical_pubkey_from_request(&request).expect("must succeed");
         assert_eq!(
