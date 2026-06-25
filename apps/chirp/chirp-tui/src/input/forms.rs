@@ -50,9 +50,6 @@ fn dispatch_input_bar_action(
             Err(e) => state.push_toast(&format!("\u{2717} add relay failed: {e}")),
         },
         "zap-amount" => dispatch_zap_amount(value, state, runtime),
-        "dm-npub" => {
-            state.push_toast("\u{2717} DM open not yet wired");
-        }
         _ => {
             state.push_toast(&format!("unknown action: {action}"));
         }
@@ -136,7 +133,7 @@ fn dispatch_modal_action(
         super::group_forms::CREATE_GROUP_ACTION => {
             super::group_forms::dispatch_create_group(fields, state, runtime);
         }
-        _ => state.push_toast(&format!("\u{2717} modal action '{action}' not wired")),
+        _ => state.push_toast(&format!("\u{2717} unknown modal action '{action}'")),
     }
 }
 

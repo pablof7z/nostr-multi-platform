@@ -7,8 +7,8 @@ use nmp_app_chirp::ffi::{nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register
 use nmp_app_chirp::{
     follow_spec, nmp_app_chirp_close_group_discovery, nmp_app_chirp_declare_consumed_projections,
     nmp_app_chirp_identity_restore, nmp_app_chirp_register, nmp_app_chirp_unregister,
-    nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, react_spec, unfollow_spec,
-    ChirpHandle, MarmotHandle, NmpRegisterStatus,
+    nmp_marmot_unregister, nmp_signer_broker_init, publish_note_action, react_spec, repost_spec,
+    unfollow_spec, ChirpHandle, MarmotHandle, NmpRegisterStatus,
 };
 use nmp_core::tags::Nip10Refs;
 use nmp_nip01::NoteRecord;
@@ -210,6 +210,11 @@ impl AppRuntime {
 
     pub fn react(&self, event_id: &str, reaction: &str) -> Result<String> {
         let spec = react_spec(event_id, reaction);
+        self.dispatch_action(&spec.namespace, &spec.body_json)
+    }
+
+    pub fn repost(&self, event_id: &str, author_pubkey: &str) -> Result<String> {
+        let spec = repost_spec(event_id, author_pubkey);
         self.dispatch_action(&spec.namespace, &spec.body_json)
     }
 
