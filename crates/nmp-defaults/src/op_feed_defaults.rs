@@ -224,7 +224,7 @@ fn register_op_feed_defaults_inner(
     let follow_set_observer: Arc<dyn KernelEventObserver> = follow_set.clone();
     // #1740 step 2: capture the id so a feed session can revoke this observer on
     // close (was discarded — app-lifetime). Zero id ⇒ soft-fail, revoke no-ops.
-    let follow_set_observer_id = app.register_event_observer(follow_set_observer);
+    let follow_set_observer_id = app.register_live_event_tap(follow_set_observer);
 
     // ── 2. Event lookup (V-83 — real synchronous kernel event read) ──────
     //
@@ -252,7 +252,7 @@ fn register_op_feed_defaults_inner(
     let observer = op_feed_observer(engine.clone(), event_lookup_for_observer, suppression);
     let observer_for_registry: Arc<dyn KernelEventObserver> = observer.clone();
     // #1740 step 2: capture so a session can revoke the engine ingest observer.
-    let engine_observer_id = app.register_event_observer(observer_for_registry);
+    let engine_observer_id = app.register_live_event_tap(observer_for_registry);
 
     // ── 4a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
     //

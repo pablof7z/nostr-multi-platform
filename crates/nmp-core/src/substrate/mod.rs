@@ -82,8 +82,10 @@ pub use action::{
 };
 pub use app_host::{
     register_observer_projection, AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar,
-    IncrementalApplyError, IngestParserRegistrar, KernelReaderRegistrar, PreferredRelaySource,
+    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar,
+    IncrementalApplyError, IngestParserRegistrar, KernelReaderRegistrar,
+    LiveEventTapRegistrar, ObservedProjection, ObservedProjectionRegistrar,
+    PreferredRelaySource,
     RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
     RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
 };

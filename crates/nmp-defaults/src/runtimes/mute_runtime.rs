@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
-use nmp_core::substrate::{EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar};
+use nmp_core::substrate::{LiveEventTapRegistrar, HostCapabilities, SnapshotProjectionRegistrar};
 use nmp_core::KernelEventObserver;
 use nmp_nip51::{active_mute_list_identity, active_mute_list_interest, MuteListProjection};
 
@@ -50,7 +50,7 @@ use nmp_nip51::{active_mute_list_identity, active_mute_list_interest, MuteListPr
 /// observer pushes the mute-list interest on its first call, which triggers a
 /// synchronous cache-serve drain. If the event observer is not registered yet at
 /// that point, the drain delivers events to nobody. Register in this order:
-/// 1. `app.register_event_observer(...)` — FIRST
+/// 1. `app.register_live_event_tap(...)` — FIRST
 /// 2. `app.register_typed_snapshot_projection(...)` — second
 /// 3. `app.register_snapshot_tick_observer(...)` — LAST
 ///
@@ -76,7 +76,7 @@ use nmp_nip51::{active_mute_list_identity, active_mute_list_interest, MuteListPr
 /// opts out of the wholesale defaults can still wire just the mute runtime by
 /// itself.
 pub fn register_mute_runtime(
-    app: &(impl EventObserverRegistrar + HostCapabilities + SnapshotProjectionRegistrar),
+    app: &(impl LiveEventTapRegistrar + HostCapabilities + SnapshotProjectionRegistrar),
 ) -> Arc<MuteListProjection> {
     // ── 1. Active-pubkey slot ────────────────────────────────────────────────
     //
@@ -96,7 +96,7 @@ pub fn register_mute_runtime(
     // pushes the mute-list interest on its first call, which triggers a
     // synchronous cache-serve drain. If this observer is not registered yet at
     // that point, the drain delivers events to nobody.
-    app.register_event_observer(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
+    app.register_live_event_tap(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
 
     // ── 3. Snapshot projection (typed sidecar) ────────────────────────────────
     //

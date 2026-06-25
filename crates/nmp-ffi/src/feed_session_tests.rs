@@ -91,7 +91,7 @@ fn home_compiler(
         let controller: Arc<dyn FeedController> = feed.clone();
         app.register_feed(key.clone(), controller);
         let observer: Arc<dyn KernelEventObserver> = feed.clone();
-        let observer_id = app.register_event_observer(observer);
+        let observer_id = app.register_live_event_tap(observer);
         app.register_typed_snapshot_projection(key.clone(), || None);
 
         // Teardown captures the registry SLOTS (not `&app`) via `FeedTeardown`

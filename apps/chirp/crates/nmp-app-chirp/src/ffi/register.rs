@@ -170,7 +170,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // single fatal-on-failure observer (its absence breaks the timeline).
     let zaps_proj = Arc::new(nmp_nip57::ZapsAggregateProjection::new());
     let zaps_observer_id =
-        app_ref.register_event_observer(Arc::clone(&zaps_proj) as Arc<dyn KernelEventObserver>);
+        app_ref.register_live_event_tap(Arc::clone(&zaps_proj) as Arc<dyn KernelEventObserver>);
     if zaps_observer_id.0 != 0 {
         // Typed `"nmp.nip57.zaps"` sidecar (ADR-0037), emitted ALONGSIDE the
         // generic `Value` projection below — never replacing it. A host with an

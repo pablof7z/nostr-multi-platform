@@ -4,7 +4,7 @@
 //! projections into the kernel without depending on `NmpApp` (which lives in
 //! `nmp-ffi`, not available on wasm32) or the native actor thread:
 //!
-//! * `register_event_observer` — wire a `KernelEventObserver` into the fan-out slot.
+//! * `register_live_event_tap` — wire a `KernelEventObserver` into the fan-out slot.
 //! * `register_typed_snapshot_projection` — wire a typed FlatBuffers projection.
 //! * `register_feed_author_provider` — wire a feed's rendered-author provider.
 //! * `active_account_handle` — read the active-account pubkey slot.
@@ -89,8 +89,11 @@ impl super::KernelReducer {
     /// unregister later. Registration is idempotent: the same `Arc` can be
     /// registered multiple times and fires once per registration.
     ///
-    /// This is the wasm32 equivalent of `NmpApp::register_event_observer`.
-    pub fn register_event_observer(
+    /// **Live-tap semantics** — the observer receives only events ingested
+    /// AFTER registration; there is no replay of already-cached events.
+    ///
+    /// This is the wasm32 equivalent of `NmpApp::register_live_event_tap`.
+    pub fn register_live_event_tap(
         &self,
         observer: Arc<dyn KernelEventObserver>,
     ) -> KernelEventObserverId {

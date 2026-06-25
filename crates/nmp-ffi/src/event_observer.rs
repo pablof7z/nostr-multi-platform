@@ -8,7 +8,7 @@
 //! - [`nmp_app_unregister_event_observer`] — drop a registration by id.
 //!
 //! The Rust-side counterpart for in-process consumers (per-app crates) is
-//! [`crate::NmpApp::register_event_observer`] / `unregister_event_observer`
+//! [`crate::NmpApp::register_live_event_tap`] / `unregister_event_observer`
 //! — both paths funnel into the same `KernelEventObserverSlot` the kernel
 //! reads from on every `EventStore::insert` returning `Inserted | Replaced`
 //! (see `kernel/ingest/timeline.rs`).
@@ -30,7 +30,14 @@ use nmp_core::__ffi_internal::{
 use nmp_core::{KernelEventObserverFn, KernelEventObserverId};
 use std::ffi::c_void;
 
-/// Register a C-ABI kernel event observer.
+/// Register a C-ABI kernel event observer — the sanctioned live-tap C entry point.
+///
+/// This is the C-ABI equivalent of
+/// [`NmpApp::register_live_event_tap`](crate::NmpApp::register_live_event_tap):
+/// a live tap on the ingest stream with NO replay of already-cached events.
+/// Swift / C consumers that need replay should drive the Rust
+/// [`ObservedProjectionRegistrar`](nmp_core::substrate::ObservedProjectionRegistrar)
+/// seam through a thin Rust wrapper instead.
 ///
 /// `callback` fires on the actor thread once per event that has been
 /// accepted into the kernel's `EventStore` (insertions and replacements

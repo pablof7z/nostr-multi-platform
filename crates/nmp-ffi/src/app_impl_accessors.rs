@@ -2,7 +2,7 @@
 //! `lib.rs` to keep each file under the 500-LOC ceiling (AGENTS.md
 //! file-size rule).
 //!
-//! Covers: `register_event_observer`, `unregister_event_observer`,
+//! Covers: `register_live_event_tap`, `unregister_event_observer`,
 //! `event_observers_slot`, `swap_singleton_event_observer`,
 //! `ensure_interest`, `dispatch_capability`, `mls_local_nsec`,
 //! `active_local_keys`, `active_account_handle`,
@@ -33,11 +33,19 @@ use zeroize::Zeroizing;
 use crate::app_struct::NmpApp;
 
 impl NmpApp {
-    /// T146 — register a typed Rust observer. Returns an opaque id the
-    /// caller retains to unregister later via
+    /// T146 — register a typed Rust observer on the live ingest stream. Returns
+    /// an opaque id the caller retains to unregister later via
     /// [`Self::unregister_event_observer`].
+    ///
+    /// **Live-tap semantics**: the observer receives only events ingested AFTER
+    /// registration; already-cached events are NOT replayed. Use
+    /// [`ObservedProjectionRegistrar::open_observed_projection`] when replay is
+    /// required (the muted→activate seam that catches up the observer on open).
+    ///
+    /// [`ObservedProjectionRegistrar::open_observed_projection`]:
+    ///   nmp_core::substrate::ObservedProjectionRegistrar::open_observed_projection
     #[must_use]
-    pub fn register_event_observer(
+    pub fn register_live_event_tap(
         &self,
         observer: Arc<dyn KernelEventObserver>,
     ) -> KernelEventObserverId {
@@ -54,7 +62,7 @@ impl NmpApp {
     /// FFI surface uses this to plug C-ABI registrations into the same slot
     /// that backs the typed Rust API above. Crate-private because external
     /// Rust callers should go through
-    /// [`Self::register_event_observer`] / [`Self::unregister_event_observer`].
+    /// [`Self::register_live_event_tap`] / [`Self::unregister_event_observer`].
     #[must_use]
     pub(crate) fn event_observers_slot(&self) -> KernelEventObserverSlot {
         Arc::clone(&self.event_observers)

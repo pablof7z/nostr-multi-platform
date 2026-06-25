@@ -54,8 +54,7 @@
 use std::ffi::{c_char, c_int};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::__ffi_internal::register_rust_observer_muted;
-use nmp_core::substrate::PreferredRelaySource;
+use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar, PreferredRelaySource};
 use nmp_core::KernelEventObserverId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip50::{
@@ -92,11 +91,11 @@ impl nmp_core::KernelEventObserver for SearchObserver {
 pub(crate) struct SearchSession {
     /// `nmp.nip50.search.<session_id>` — the typed sidecar key.
     projection_key: String,
-    /// The muted→active kernel observer id (the result projection).
-    observer_id: KernelEventObserverId,
-    /// Per-relay `(filter_json, consumer_id, relay_pin)` close args, matching
-    /// each pinned open so the kernel reconstructs the same registry slot.
-    relay_closes: Vec<(String, String, String)>,
+    /// Per-relay `(relay_url, observer_id)` pairs: each relay's pinned interest
+    /// and its dedicated observer slot, opened via [`ObservedProjectionRegistrar`].
+    /// Closing each id via `close_observed_projection` tears down both the
+    /// interest and its observer slot independently.
+    relay_observer_ids: Vec<(String, KernelEventObserverId)>,
 }
 
 /// The snapshot-projection key for a search session.
@@ -228,43 +227,37 @@ impl NmpApp {
             });
         }
 
-        // Register the projection (via the `&self` observer adapter) as a MUTED
-        // observer; each pinned open below activates it (idempotent activation)
-        // so LIVE relay events fan out to it. The generic read-cache replay is
-        // deliberately suppressed (empty `replay_shapes` below) — cache hits are
-        // served by the search-filtered FTS scan above, never by the structural
-        // replay gate that ignores the query text (#1882).
-        let observer_id = register_rust_observer_muted(
-            &self.event_observers,
-            Arc::new(SearchObserver(Arc::clone(&projection)))
-                as Arc<dyn nmp_core::KernelEventObserver>,
-        );
-
-        // One relay-pinned observed interest per resolved relay.
+        // One relay-pinned observed projection per resolved relay.
+        //
+        // Each call to `open_observed_projection` registers an independent
+        // `Arc::clone(&observer_arc)` slot (a distinct `KernelEventObserverId`)
+        // so teardown can revoke each slot independently via
+        // `close_observed_projection(id)`. The underlying `SearchResultsProjection`
+        // is shared by all N arcs; its first-arrival-wins deduplication keeps the
+        // `Cache` tag on any event the relay later echoes. empty `replay_shapes`
+        // suppresses the generic read-cache replay — cache hits come from the FTS
+        // scan above, never from the structural replay gate that ignores the query
+        // text (#1882).
+        let observer_arc: Arc<dyn nmp_core::KernelEventObserver> =
+            Arc::new(SearchObserver(Arc::clone(&projection)));
         let plan = search_relay_plan(&request, &relays);
-        let mut relay_closes = Vec::with_capacity(plan.len());
+        let mut relay_observer_ids = Vec::with_capacity(plan.len());
         for pinned in plan {
             // `relay_pin` is a client-side-only routing hint, NEVER serialized
             // onto the wire (the relay receives only the regular filter); the
             // pin travels as the explicit `Some(relay)` argument below.
             let filter_json = nmp_core::subs::filter_json_for(&pinned.shape);
             let consumer = search_consumer(session_id, &pinned.relay);
-            // #1882 — open the LIVE relay subscription + activate the observer,
-            // but pass NO `replay_shapes`: the kernel skips the read-cache replay
-            // entirely (`replay_read_cache_to_observer` is a no-op on an empty
-            // shape set), so unfiltered cached events never reach the search
-            // projection. Cache is served above by the FTS scan; this lane is
-            // purely the live relay-hit seam (tagged `Relay(url)` by the observer).
-            self.open_observed_interest_pinned(
-                &filter_json,
-                &consumer,
-                SCOPE_GLOBAL,
-                Some(pinned.relay.clone()),
-                observer_id,
-                Vec::new(),
-                DEFAULT_FEED_WINDOW_LIMIT,
-            );
-            relay_closes.push((filter_json, consumer, pinned.relay));
+            let id = self.open_observed_projection(ObservedProjection {
+                observer: Arc::clone(&observer_arc),
+                filter_json,
+                consumer_id: consumer,
+                scope: SCOPE_GLOBAL,
+                relay_pin: Some(pinned.relay.clone()),
+                replay_shapes: Vec::new(),
+                replay_limit: DEFAULT_FEED_WINDOW_LIMIT,
+            });
+            relay_observer_ids.push((pinned.relay, id));
         }
 
         if let Ok(mut sessions) = self.search_sessions.lock() {
@@ -272,17 +265,17 @@ impl NmpApp {
                 session_id.to_string(),
                 SearchSession {
                     projection_key: key.clone(),
-                    observer_id,
-                    relay_closes,
+                    relay_observer_ids,
                 },
             );
         }
         key
     }
 
-    /// Close a NIP-50 search session: detach every per-relay pinned interest,
-    /// revoke the result observer, and remove the typed sidecar. Idempotent —
-    /// closing an unknown session is a harmless no-op (D6).
+    /// Close a NIP-50 search session: revoke each per-relay observer slot
+    /// (which closes the pinned interest and unregisters the observer) and
+    /// remove the typed sidecar. Idempotent — closing an unknown session is a
+    /// harmless no-op (D6).
     pub fn close_search(&self, session_id: &str) {
         let session = self
             .search_sessions
@@ -292,10 +285,9 @@ impl NmpApp {
         let Some(session) = session else {
             return;
         };
-        for (filter_json, consumer, relay) in &session.relay_closes {
-            self.close_interest_pinned(filter_json, consumer, SCOPE_GLOBAL, Some(relay.clone()));
+        for (_, id) in &session.relay_observer_ids {
+            self.close_observed_projection(*id);
         }
-        self.unregister_event_observer(session.observer_id);
         self.remove_snapshot_projection(&session.projection_key);
     }
 
@@ -328,9 +320,9 @@ impl NmpApp {
             .ok()
             .and_then(|sessions| {
                 sessions.get(session_id).map(|s| {
-                    s.relay_closes
+                    s.relay_observer_ids
                         .iter()
-                        .map(|(_, _, relay)| relay.clone())
+                        .map(|(relay, _)| relay.clone())
                         .collect()
                 })
             })

@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{
-    ActionRegistrar, EventObserverRegistrar, HostCapabilities, SnapshotProjectionRegistrar,
+    ActionRegistrar, LiveEventTapRegistrar, HostCapabilities, SnapshotProjectionRegistrar,
 };
 use nmp_core::KernelEventObserver;
 use nmp_nip51::{
@@ -42,7 +42,7 @@ use nmp_nip51::{
 ///    drops-then-ensures on account switch, and drops on logout.
 pub fn register_bookmark_runtime(
     app: &mut (impl ActionRegistrar
-              + EventObserverRegistrar
+              + LiveEventTapRegistrar
               + HostCapabilities
               + SnapshotProjectionRegistrar),
 ) -> Arc<BookmarkListProjection> {
@@ -50,7 +50,7 @@ pub fn register_bookmark_runtime(
     //
     // Register the observer BEFORE the first tick (ordering contract above).
     let projection = Arc::new(BookmarkListProjection::new(app.active_pubkey()));
-    app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
 
     // ── 3. Action modules ─────────────────────────────────────────────────
     nmp_nip51::register_bookmark_actions(app, Arc::clone(&projection));

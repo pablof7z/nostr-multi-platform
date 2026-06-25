@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{ActionRegistrar, EventObserverRegistrar};
+use nmp_core::substrate::{ActionRegistrar, LiveEventTapRegistrar};
 use nmp_core::KernelEventObserver;
 use nmp_nip22::CommentThreadProjection;
 
@@ -17,11 +17,11 @@ use nmp_nip22::CommentThreadProjection;
 /// comment threads can snapshot it directly; callers that only need the
 /// publish path may drop it.
 pub fn register_comment_runtime(
-    app: &mut (impl ActionRegistrar + EventObserverRegistrar),
+    app: &mut (impl ActionRegistrar + LiveEventTapRegistrar),
 ) -> Arc<CommentThreadProjection> {
     let projection = Arc::new(CommentThreadProjection::new());
 
-    app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
 
     nmp_nip22::register_actions(app);
     projection

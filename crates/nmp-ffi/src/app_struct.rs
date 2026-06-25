@@ -257,6 +257,11 @@ pub struct NmpApp {
     /// keyed by the view's (singleton) projection key. Each is a hydrating
     /// observed-interest session torn down on `close_*` (#2088).
     pub(crate) group_feed_sessions: Mutex<HashMap<String, crate::group_feed::GroupFeedSession>>,
+    /// Observed-projection sessions keyed by `KernelEventObserverId`. Each
+    /// entry maps an observer id returned by `open_observed_projection` to the
+    /// close params `(filter_json, consumer_id, scope, relay_pin)` needed to
+    /// reverse the open in `close_observed_projection`.
+    pub(crate) observed_projection_sessions: Mutex<HashMap<nmp_core::KernelEventObserverId, (String, String, u32, Option<String>)>>,
     /// Test-support GC budget ceiling.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) gc_budget_ceiling: Arc<Mutex<Option<usize>>>,

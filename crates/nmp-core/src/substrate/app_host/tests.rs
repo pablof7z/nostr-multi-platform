@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 /// Fake registrar that records which calls were made and in what order.
-/// Also stores the last observer passed to `register_event_observer` so tests
+/// Also stores the last observer passed to `register_live_event_tap` so tests
 /// can fire it and verify the observer itself was invoked.
 struct FakeRegistrar {
     calls: RefCell<Vec<&'static str>>,
@@ -46,14 +46,14 @@ impl FakeRegistrar {
     }
 }
 
-impl EventObserverRegistrar for FakeRegistrar {
-    fn register_event_observer(
+impl LiveEventTapRegistrar for FakeRegistrar {
+    fn register_live_event_tap(
         &self,
         observer: Arc<dyn KernelEventObserver>,
     ) -> KernelEventObserverId {
         let id = *self.next_id.borrow();
         *self.next_id.borrow_mut() = id + 1;
-        self.calls.borrow_mut().push("register_event_observer");
+        self.calls.borrow_mut().push("register_live_event_tap");
         *self.last_observer.borrow_mut() = Some(observer);
         KernelEventObserverId(id)
     }
@@ -157,14 +157,14 @@ fn register_observer_projection_calls_observer_then_projection() {
     let calls = reg.recorded();
     assert_eq!(
         calls,
-        vec!["register_event_observer", "register_typed_snapshot_projection"],
-        "register_event_observer must be called before register_typed_snapshot_projection"
+        vec!["register_live_event_tap", "register_typed_snapshot_projection"],
+        "register_live_event_tap must be called before register_typed_snapshot_projection"
     );
 }
 
 #[test]
 fn register_observer_projection_zero_id_skips_projection() {
-    // When register_event_observer returns id 0 (slot poisoned), the
+    // When register_live_event_tap returns id 0 (slot poisoned), the
     // projection must NOT be registered (D6 contract) — but the observer
     // itself must still be callable (it was handed to the registrar and fires
     // when the registrar dispatches events to it).
@@ -180,7 +180,7 @@ fn register_observer_projection_zero_id_skips_projection() {
     let calls = reg.recorded();
     assert_eq!(
         calls,
-        vec!["register_event_observer"],
+        vec!["register_live_event_tap"],
         "projection must not be registered when observer id is 0"
     );
 

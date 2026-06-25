@@ -14,10 +14,10 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
-    EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
-    InputScopeRegistrar, KernelReaderRegistrar, RelayConnectedHookRegistrar,
-    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
-    SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
+    InputScopeRegistrar, KernelReaderRegistrar, LiveEventTapRegistrar,
+    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_ffi::NmpApp;
 
@@ -302,13 +302,13 @@ impl<S> HostCapabilities for NmpAppBuilder<S> {
     }
 }
 
-impl<S> EventObserverRegistrar for NmpAppBuilder<S> {
-    fn register_event_observer(
+impl<S> LiveEventTapRegistrar for NmpAppBuilder<S> {
+    fn register_live_event_tap(
         &self,
         observer: Arc<dyn nmp_core::KernelEventObserver>,
     ) -> nmp_core::KernelEventObserverId {
         let app: &NmpApp = unsafe { &*self.app };
-        app.register_event_observer(observer)
+        app.register_live_event_tap(observer)
     }
 
     fn unregister_event_observer(&self, id: nmp_core::KernelEventObserverId) {
@@ -323,7 +323,6 @@ impl<S> EventObserverRegistrar for NmpAppBuilder<S> {
         let app: &NmpApp = unsafe { &*self.app };
         app.swap_singleton_event_observer(new)
     }
-
 }
 
 impl<S> IdentityChangeRegistrar for NmpAppBuilder<S> {

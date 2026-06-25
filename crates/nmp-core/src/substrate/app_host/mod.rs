@@ -109,9 +109,19 @@ pub trait IngestParserRegistrar {
     fn unregister_ingest_parser_range(&self, slot_key: &'static str);
 }
 
-/// Register / unregister kernel-event observers.
-pub trait EventObserverRegistrar {
-    fn register_event_observer(
+/// Register / unregister kernel-event observers — the **live-tap** seam.
+///
+/// `register_live_event_tap` registers an ACTIVE observer with NO replay, so a
+/// hydrated read-model registered after its interest warmed the cache silently
+/// misses already-cached events.  Callers that need replay must use
+/// [`ObservedProjectionRegistrar::open_observed_projection`] instead, which
+/// pairs the observer with a muted→activate replay sequence.
+///
+/// This trait (and its rename from `EventObserverRegistrar`) exists to surface
+/// the footgun at the call site: `register_live_event_tap` says exactly what it
+/// does — a tap on the live ingest stream, no past events.
+pub trait LiveEventTapRegistrar {
+    fn register_live_event_tap(
         &self,
         observer: Arc<dyn KernelEventObserver>,
     ) -> KernelEventObserverId;
@@ -122,7 +132,46 @@ pub trait EventObserverRegistrar {
         &self,
         new: Option<KernelEventObserverId>,
     ) -> Option<KernelEventObserverId>;
+}
 
+/// Register and close **observed projections** — the safe alternative to the
+/// live-tap seam when replay of already-cached events is required.
+///
+/// [`open_observed_projection`](ObservedProjectionRegistrar::open_observed_projection)
+/// combines observer registration (muted), an interest open, and a
+/// kernel-side muted→activate replay sequence in a single call, so the
+/// observer cannot miss events that arrived before it was registered.
+/// [`close_observed_projection`](ObservedProjectionRegistrar::close_observed_projection)
+/// reverses both registrations atomically.
+pub trait ObservedProjectionRegistrar {
+    fn open_observed_projection(&self, decl: ObservedProjection) -> KernelEventObserverId;
+    fn close_observed_projection(&self, id: KernelEventObserverId);
+}
+
+/// Declaration bundle for a single observed-projection session.
+///
+/// Passed to
+/// [`ObservedProjectionRegistrar::open_observed_projection`]. All fields mirror
+/// the parameters accepted by `open_observed_interest_pinned`; the observer is
+/// registered muted and activated kernel-side after replay.
+pub struct ObservedProjection {
+    /// The observer that will receive kernel events for this interest.
+    pub observer: Arc<dyn KernelEventObserver>,
+    /// NIP-01 REQ filter JSON selecting the events for this interest.
+    pub filter_json: String,
+    /// Refcount owner key (unique per open screen / component).
+    pub consumer_id: String,
+    /// `0` = `ActiveAccount` (re-routed on account switch),
+    /// `1` = `Global` (account-agnostic).
+    pub scope: u32,
+    /// When `Some`, pins the interest to exactly one relay (bypasses NIP-65
+    /// outbox routing).  The matching close MUST pass the same pin.
+    pub relay_pin: Option<String>,
+    /// Shapes used during the kernel-side read-cache replay before activation.
+    /// Pass `Vec::new()` to suppress replay (cache-only search, live-only tap).
+    pub replay_shapes: Vec<nmp_planner::InterestShape>,
+    /// Maximum number of cached events to replay before activation.
+    pub replay_limit: usize,
 }
 
 /// Register a Rust-side callback for active-account changes (per-account
@@ -363,19 +412,25 @@ pub trait PreferredRelaySource: Send + Sync {
     fn fallback(&self) -> Vec<String>;
 }
 
-/// Register a [`KernelEventObserver`] AND a typed snapshot projection in one
-/// call — the common `register_event_observer + register_typed_snapshot_projection`
-/// pair used by runtime crates (#1724 observer boilerplate helper).
+/// Register a [`KernelEventObserver`] (live tap) AND a typed snapshot projection
+/// in one call — the common `register_live_event_tap +
+/// register_typed_snapshot_projection` pair used by runtime crates (#1724
+/// observer boilerplate helper).
 ///
 /// This is a free function (not a trait method) because it requires BOTH
-/// [`EventObserverRegistrar`] AND [`SnapshotProjectionRegistrar`] without
+/// [`LiveEventTapRegistrar`] AND [`SnapshotProjectionRegistrar`] without
 /// changing either trait.
+///
+/// **Live-tap semantics**: the observer receives only events ingested AFTER
+/// registration.  Use [`ObservedProjectionRegistrar::open_observed_projection`]
+/// when the observer must also see already-cached events (the muted→activate
+/// replay seam).
 ///
 /// # Semantics
 ///
-/// 1. Registers `observer` as an event observer. Returns `None` (and skips the
-///    projection) when the observer slot is poisoned (D6 — zero id guard,
-///    matching the pattern in `nmp_wot::register_runtime` and
+/// 1. Registers `observer` as a live-tap event observer. Returns `None` (and
+///    skips the projection) when the observer slot is poisoned (D6 — zero id
+///    guard, matching the pattern in `nmp_wot::register_runtime` and
 ///    `nmp_defaults::register_longform_projection`).
 /// 2. On success, registers `projection_fn` as the typed snapshot projection
 ///    under `key` and returns the assigned [`KernelEventObserverId`].
@@ -392,7 +447,7 @@ pub trait PreferredRelaySource: Send + Sync {
 /// );
 /// ```
 pub fn register_observer_projection<K, F>(
-    app: &(impl EventObserverRegistrar + SnapshotProjectionRegistrar),
+    app: &(impl LiveEventTapRegistrar + SnapshotProjectionRegistrar),
     observer: Arc<dyn KernelEventObserver>,
     key: K,
     projection_fn: F,
@@ -401,7 +456,7 @@ where
     K: Into<String>,
     F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
 {
-    let id = app.register_event_observer(observer);
+    let id = app.register_live_event_tap(observer);
     if id == KernelEventObserverId(0) {
         // Observer slot poisoned — skip the projection too (D6).
         return None;
@@ -431,7 +486,7 @@ pub trait AppHost:
     ActionRegistrar
     + SnapshotProjectionRegistrar
     + IngestParserRegistrar
-    + EventObserverRegistrar
+    + LiveEventTapRegistrar
     + IdentityChangeRegistrar
     + ReqFrameInterceptorRegistrar
     + RelayTextInterceptorRegistrar
@@ -451,7 +506,7 @@ impl<T> AppHost for T where
     T: ActionRegistrar
         + SnapshotProjectionRegistrar
         + IngestParserRegistrar
-        + EventObserverRegistrar
+        + LiveEventTapRegistrar
         + IdentityChangeRegistrar
         + ReqFrameInterceptorRegistrar
         + RelayTextInterceptorRegistrar

@@ -104,7 +104,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    register_observer_projection, AppHost, EventObserverRegistrar, SnapshotProjectionRegistrar,
+    register_observer_projection, AppHost, LiveEventTapRegistrar, SnapshotProjectionRegistrar,
 };
 
 pub mod action_payloads;
@@ -456,7 +456,7 @@ fn register_defaults_inner(
 /// Called by [`register_defaults`]; `pub` so an app opting out of the wholesale
 /// defaults can still wire just this projection.
 pub fn register_longform_projection(
-    app: &(impl EventObserverRegistrar + SnapshotProjectionRegistrar),
+    app: &(impl LiveEventTapRegistrar + SnapshotProjectionRegistrar),
 ) {
     use nmp_content::LongformProjection;
     use nmp_core::KernelEventObserver;
