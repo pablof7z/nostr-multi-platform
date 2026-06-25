@@ -17,13 +17,21 @@ use std::sync::{Arc, Mutex};
 use nmp_core::__ffi_internal::ActionRegistry;
 use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection, EventId, KernelEvent};
 use nmp_core::KernelEventObserver;
-use nmp_kinds::KIND_BOOKMARK_LIST;
+use nmp_kinds::{KIND_BOOKMARK_LIST, KIND_BOOKMARK_SET};
+use nmp_nip51::wire::bookmark_set_update_fb::generated::nmp::nip_51 as set_fb;
+use nmp_nip51::wire::web_bookmark_publish_fb::generated::nmp::nip_51 as web_fb;
 use nmp_nip51::{
-    register_bookmark_actions, BookmarkItem, BookmarkListProjection, BookmarkUpdateInput,
+    register_bookmark_actions, register_bookmark_set_actions, register_web_bookmark_actions,
+    BookmarkItem, BookmarkListProjection, BookmarkSetKind, BookmarkSetUpdateInput,
+    BookmarkSetsProjection, BookmarkUpdateInput, PublishWebBookmarkInput, WebBookmarkDraft,
+    WebBookmarksProjection,
 };
 
 const ADD_NAMESPACE: &str = "nmp.nip51.add_bookmark";
 const REMOVE_NAMESPACE: &str = "nmp.nip51.remove_bookmark";
+const ADD_SET_NAMESPACE: &str = "nmp.nip51.add_bookmark_set_item";
+const REMOVE_SET_NAMESPACE: &str = "nmp.nip51.remove_bookmark_set_item";
+const PUBLISH_WEB_NAMESPACE: &str = "nmp.nip51.publish_web_bookmark";
 
 fn account() -> String {
     "ab".repeat(32)
@@ -41,6 +49,24 @@ fn registry_with_bookmark_actions() -> (ActionRegistry, Arc<BookmarkListProjecti
     (registry, projection)
 }
 
+fn active_slot() -> Arc<Mutex<Option<String>>> {
+    Arc::new(Mutex::new(Some(account())))
+}
+
+fn registry_with_bookmark_set_actions() -> (ActionRegistry, Arc<BookmarkSetsProjection>) {
+    let mut registry = ActionRegistry::new();
+    let projection = Arc::new(BookmarkSetsProjection::new(active_slot()));
+    register_bookmark_set_actions(&mut registry, Arc::clone(&projection));
+    (registry, projection)
+}
+
+fn registry_with_web_bookmark_actions() -> ActionRegistry {
+    let mut registry = ActionRegistry::new();
+    let projection = Arc::new(WebBookmarksProjection::new(active_slot()));
+    register_web_bookmark_actions(&mut registry, projection);
+    registry
+}
+
 /// Feed the projection a kind:10003 bookmark list carrying a single `e`-tagged
 /// event bookmark, so `remove_bookmark`'s presence check (run inside `start()`)
 /// can succeed.
@@ -53,6 +79,23 @@ fn seed_event_bookmark(projection: &BookmarkListProjection, event_id: &str) {
         kind: KIND_BOOKMARK_LIST,
         created_at: 1,
         tags: vec![vec!["e".to_string(), event_id.to_string()]],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    });
+}
+
+fn seed_bookmark_set_event(projection: &BookmarkSetsProjection, event_id: &str) {
+    projection.on_kernel_event(&KernelEvent {
+        id: EventId::from(
+            "0000000000000000000000000000000000000000000000000000000000000002".to_string(),
+        ),
+        author: account(),
+        kind: KIND_BOOKMARK_SET,
+        created_at: 1,
+        tags: vec![
+            vec!["d".to_string(), "reading".to_string()],
+            vec!["e".to_string(), event_id.to_string()],
+        ],
         content: String::new(),
         relay_provenance: Vec::new(),
     });
@@ -94,6 +137,54 @@ fn build_bad_version_bookmark_payload() -> Vec<u8> {
     fbb.push_slot_always(VT_ITEM, item);
     let root = fbb.end_table(payload_start);
     fbb.finish(root, Some(N51B_IDENTIFIER));
+    fbb.finished_data().to_vec()
+}
+
+fn build_bad_version_bookmark_set_payload() -> Vec<u8> {
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+    let value = fbb.create_string(&"cd".repeat(32));
+    let item = set_fb::BookmarkItem::create(
+        &mut fbb,
+        &set_fb::BookmarkItemArgs {
+            kind: set_fb::BookmarkItemKind::Event,
+            value: Some(value),
+            relay: None,
+        },
+    );
+    let account_pubkey = fbb.create_string(&account());
+    let identifier = fbb.create_string("reading");
+    let payload = set_fb::BookmarkSetUpdatePayload::create(
+        &mut fbb,
+        &set_fb::BookmarkSetUpdatePayloadArgs {
+            schema_version: 999,
+            account_pubkey: Some(account_pubkey),
+            set_kind: set_fb::BookmarkSetKindWire::BookmarkSet,
+            identifier: Some(identifier),
+            item: Some(item),
+        },
+    );
+    set_fb::finish_bookmark_set_update_payload_buffer(&mut fbb, payload);
+    fbb.finished_data().to_vec()
+}
+
+fn build_bad_version_web_bookmark_payload() -> Vec<u8> {
+    let mut fbb = flatbuffers::FlatBufferBuilder::new();
+    let account_pubkey = fbb.create_string(&account());
+    let url = fbb.create_string("https://example.com/page");
+    let payload = web_fb::WebBookmarkPublishPayload::create(
+        &mut fbb,
+        &web_fb::WebBookmarkPublishPayloadArgs {
+            schema_version: 999,
+            account_pubkey: Some(account_pubkey),
+            url: Some(url),
+            title: None,
+            description: None,
+            published_at: 0,
+            has_published_at: false,
+            hashtags: None,
+        },
+    );
+    web_fb::finish_web_bookmark_publish_payload_buffer(&mut fbb, payload);
     fbb.finished_data().to_vec()
 }
 
@@ -209,6 +300,119 @@ fn start_bytes_accepts_well_formed_remove_bookmark() {
             &bytes,
         )
         .expect("a well-formed remove of a present bookmark must be accepted");
+}
+
+#[test]
+fn start_bytes_accepts_well_formed_add_bookmark_set_item() {
+    let (registry, _projection) = registry_with_bookmark_set_actions();
+    let action = BookmarkSetUpdateInput {
+        account_pubkey: account(),
+        set_kind: BookmarkSetKind::BookmarkSet,
+        identifier: "reading".to_string(),
+        item: BookmarkItem::Url {
+            url: "https://example.com/article".to_string(),
+        },
+    };
+    registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            ADD_SET_NAMESPACE,
+            &action.encode(),
+        )
+        .expect("typed add_bookmark_set_item payload must be accepted");
+}
+
+#[test]
+fn start_bytes_accepts_well_formed_remove_bookmark_set_item() {
+    let (registry, projection) = registry_with_bookmark_set_actions();
+    let event_id = "cd".repeat(32);
+    seed_bookmark_set_event(&projection, &event_id);
+
+    let action = BookmarkSetUpdateInput {
+        account_pubkey: account(),
+        set_kind: BookmarkSetKind::BookmarkSet,
+        identifier: "reading".to_string(),
+        item: BookmarkItem::Event {
+            event_id,
+            relay: None,
+        },
+    };
+    registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            REMOVE_SET_NAMESPACE,
+            &action.encode(),
+        )
+        .expect("typed remove_bookmark_set_item payload must be accepted");
+}
+
+#[test]
+fn start_bytes_accepts_well_formed_publish_web_bookmark() {
+    let registry = registry_with_web_bookmark_actions();
+    let action = PublishWebBookmarkInput {
+        account_pubkey: account(),
+        bookmark: WebBookmarkDraft {
+            url: "https://example.com/page".to_string(),
+            title: Some("Example".to_string()),
+            description: Some("Reference".to_string()),
+            published_at: Some(1_700_000_000),
+            hashtags: vec!["nostr".to_string()],
+        },
+    };
+    registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            PUBLISH_WEB_NAMESPACE,
+            &action.encode(),
+        )
+        .expect("typed publish_web_bookmark payload must be accepted");
+}
+
+#[test]
+fn start_bytes_rejects_wrong_schema_version_for_bookmark_set_namespaces() {
+    let (registry, _projection) = registry_with_bookmark_set_actions();
+    let bad = build_bad_version_bookmark_set_payload();
+    for namespace in [ADD_SET_NAMESPACE, REMOVE_SET_NAMESPACE] {
+        let err = registry
+            .start_bytes(
+                &mut ActionContext::default(),
+                1_700_000_000_000,
+                namespace,
+                &bad,
+            )
+            .expect_err("wrong schema_version must be rejected before start()");
+        match err {
+            ActionRejection::Invalid(msg) => assert!(
+                msg.contains("schema_version mismatch"),
+                "rejection must name the version trip: {msg}"
+            ),
+            other => panic!("expected Invalid rejection, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn start_bytes_rejects_wrong_schema_version_for_publish_web_bookmark() {
+    let registry = registry_with_web_bookmark_actions();
+    let bad = build_bad_version_web_bookmark_payload();
+    let err = registry
+        .start_bytes(
+            &mut ActionContext::default(),
+            1_700_000_000_000,
+            PUBLISH_WEB_NAMESPACE,
+            &bad,
+        )
+        .expect_err("wrong schema_version must be rejected before start()");
+    match err {
+        ActionRejection::Invalid(msg) => assert!(
+            msg.contains("schema_version mismatch"),
+            "rejection must name the version trip: {msg}"
+        ),
+        other => panic!("expected Invalid rejection, got {other:?}"),
+    }
 }
 
 /// ADR-0064 / S9 (#1747) — registration is namespace-scoped: a namespace this

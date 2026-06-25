@@ -1,0 +1,27 @@
+namespace nmp.nip51;
+
+// ADR-0064 — typed FlatBuffers payload for
+// `nmp.nip51.publish_web_bookmark`.
+//
+// The OPAQUE DispatchEnvelope.payload for that namespace; the registry adapter
+// decodes against this schema, gating schema_version before start(). URL
+// normalization and protocol validation stay in the action module.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-nip51/src/wire/generated \
+//         crates/nmp-nip51/schema/web_bookmark_publish.fbs
+
+table WebBookmarkPublishPayload {
+  schema_version:uint;
+  account_pubkey:string (required);
+  url:string (required);
+  title:string;
+  description:string;
+  published_at:ulong;
+  has_published_at:bool;
+  hashtags:[string];
+}
+
+file_identifier "N51W";
+root_type WebBookmarkPublishPayload;
