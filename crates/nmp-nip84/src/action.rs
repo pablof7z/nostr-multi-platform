@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
@@ -14,8 +16,9 @@ pub const KIND_HIGHLIGHT: u32 = 9802;
 /// A user intent to publish a NIP-84 kind:9802 highlight.
 ///
 /// The highlighted text is the event `content`; every other field maps to an
-/// optional tag (`alt`, `e`, `a`, `p`, `context`) or, for [`Self::external_ids`],
-/// to a NIP-73 `i` tag per external content identifier.
+/// optional tag (`alt`, `e`, `a`, `p`, `context`) or, for [`Self::external_ids`]
+/// plus [`Self::external_kinds`], to NIP-73 `i` and `k` tags for external
+/// content identifiers.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct PublishHighlightAction {
     /// The highlighted text (kind:9802 content).
@@ -36,9 +39,13 @@ pub struct PublishHighlightAction {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub alt: Option<String>,
     /// NIP-73 external content identifiers (e.g. `"podcast:item:guid:<guid>"`,
-    /// `"web:https://example.com/article"`). Each emitted as an `i` tag.
+    /// `"https://example.com/article"`). Each emitted as an `i` tag.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub external_ids: Vec<String>,
+    /// NIP-73 external content id kinds (e.g. `"podcast:item:guid"`, `"web"`).
+    /// Each distinct value is emitted as a `k` tag.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub external_kinds: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -144,6 +151,25 @@ fn validate_highlight(action: &PublishHighlightAction) -> Result<(), ActionRejec
             "publish_highlight source_author_pubkey must be 64-hex when provided".to_string(),
         ));
     }
+    if !action.external_ids.is_empty() && action.external_kinds.is_empty() {
+        return Err(ActionRejection::Invalid(
+            "publish_highlight external_ids require at least one NIP-73 external_kind".to_string(),
+        ));
+    }
+    if action.external_ids.iter().any(|id| !valid_external_tag(id)) {
+        return Err(ActionRejection::Invalid(
+            "publish_highlight external_ids must be non-empty log-safe tag values".to_string(),
+        ));
+    }
+    if action
+        .external_kinds
+        .iter()
+        .any(|kind| !valid_external_tag(kind))
+    {
+        return Err(ActionRejection::Invalid(
+            "publish_highlight external_kinds must be non-empty log-safe tag values".to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -175,11 +201,24 @@ fn highlight_tags(action: &PublishHighlightAction) -> Option<Vec<Vec<String>>> {
     for id in &action.external_ids {
         tags.push(vec!["i".to_string(), id.clone()]);
     }
+    let mut seen_kinds = BTreeSet::new();
+    for kind in &action.external_kinds {
+        if seen_kinds.insert(kind.as_str()) {
+            tags.push(vec!["k".to_string(), kind.clone()]);
+        }
+    }
     Some(tags)
 }
 
 fn is_hex64(value: &str) -> bool {
     value.len() == 64 && value.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+fn valid_external_tag(value: &str) -> bool {
+    !value.is_empty()
+        && !value
+            .bytes()
+            .any(|byte| byte.is_ascii_control() || byte == b' ')
 }
 
 #[cfg(test)]

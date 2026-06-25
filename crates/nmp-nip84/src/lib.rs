@@ -5,7 +5,8 @@
 //! Nostr event, an addressable event, or an external NIP-73 content identifier
 //! (a podcast clip, a web page, …). The action threads the highlighted text,
 //! optional surrounding context, attribution tags, and any number of NIP-73 `i`
-//! tags into a single kind:9802 publish through the one-door publish engine.
+//! and `k` tags into a single kind:9802 publish through the one-door publish
+//! engine.
 
 mod action;
 mod wire;
