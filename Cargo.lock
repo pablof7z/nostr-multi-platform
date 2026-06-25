@@ -4463,6 +4463,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-browser-runtime"
+version = "0.8.0"
+dependencies = [
+ "console_error_panic_hook",
+ "gloo-timers",
+ "js-sys",
+ "nmp-core",
+ "nmp-network",
+ "nmp-signer-iface",
+ "nmp-store",
+ "nmp-substrate-defaults",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-test",
+]
+
+[[package]]
 name = "nmp-chirp-config"
 version = "0.8.0"
 

@@ -8,6 +8,7 @@ members = [
     "apps/nmp-gallery/desktop",
     "crates/nmp-cli",
     "crates/nmp-blossom",
+    "crates/nmp-browser-runtime",
     "crates/nmp-codegen",
     "crates/nmp-content",
     "crates/nmp-content-fixtures",
