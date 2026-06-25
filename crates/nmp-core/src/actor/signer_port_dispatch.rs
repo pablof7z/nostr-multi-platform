@@ -8,6 +8,10 @@
 
 use super::commands;
 use super::dispatch::ActorContext;
+use super::nip44_decrypt_session_port::{
+    map_batch_result, map_begin_result, map_end_result, Nip44DecryptBatchContinuation,
+    Nip44DecryptSessionBeginContinuation, Nip44DecryptSessionEndContinuation,
+};
 use super::pending_sign::ParkedOp;
 use super::tick::maybe_emit_after_dispatch;
 use super::CipherContinuation;
@@ -115,6 +119,96 @@ pub(super) fn nip44_decrypt_for_account(
         ciphertext,
     );
     dispatch_cipher_op(ctx, result, signer_pubkey.as_deref(), continuation);
+    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    Some(Vec::new())
+}
+
+pub(super) fn nip44_decrypt_session_begin(
+    ctx: &mut ActorContext,
+    request: nmp_signer_iface::Nip44DecryptSessionBeginRequest,
+    signer_pubkey: Option<String>,
+    continuation: Nip44DecryptSessionBeginContinuation,
+) -> Option<Vec<OutboundMessage>> {
+    let result = commands::nip44_decrypt_session_begin_nonblocking(
+        ctx.identity,
+        signer_pubkey.as_deref(),
+        request,
+    );
+    match result {
+        Err(reason) => continuation.call(Err(reason)),
+        Ok(mut op) => match op.poll() {
+            Some(outcome) => continuation.call(map_begin_result(outcome)),
+            None => {
+                let deadline = ctx.identity.sign_deadline_for(signer_pubkey.as_deref());
+                ctx.parked_ops.push(ParkedOp::nip44_decrypt_session_begin(
+                    op,
+                    continuation,
+                    deadline,
+                ));
+            }
+        },
+    }
+    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    Some(Vec::new())
+}
+
+pub(super) fn nip44_decrypt_batch(
+    ctx: &mut ActorContext,
+    request: nmp_signer_iface::Nip44DecryptBatchRequest,
+    signer_pubkey: Option<String>,
+    continuation: Nip44DecryptBatchContinuation,
+) -> Option<Vec<OutboundMessage>> {
+    let expected_ids = request
+        .items
+        .iter()
+        .map(|item| item.id.clone())
+        .collect::<Vec<_>>();
+    let result =
+        commands::nip44_decrypt_batch_nonblocking(ctx.identity, signer_pubkey.as_deref(), request);
+    match result {
+        Err(reason) => continuation.call(Err(reason)),
+        Ok(mut op) => match op.poll() {
+            Some(outcome) => continuation.call(map_batch_result(outcome, &expected_ids)),
+            None => {
+                let deadline = ctx.identity.sign_deadline_for(signer_pubkey.as_deref());
+                ctx.parked_ops.push(ParkedOp::nip44_decrypt_batch(
+                    op,
+                    expected_ids,
+                    continuation,
+                    deadline,
+                ));
+            }
+        },
+    }
+    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
+    Some(Vec::new())
+}
+
+pub(super) fn nip44_decrypt_session_end(
+    ctx: &mut ActorContext,
+    request: nmp_signer_iface::Nip44DecryptSessionEndRequest,
+    signer_pubkey: Option<String>,
+    continuation: Nip44DecryptSessionEndContinuation,
+) -> Option<Vec<OutboundMessage>> {
+    let result = commands::nip44_decrypt_session_end_nonblocking(
+        ctx.identity,
+        signer_pubkey.as_deref(),
+        request,
+    );
+    match result {
+        Err(reason) => continuation.call(Err(reason)),
+        Ok(mut op) => match op.poll() {
+            Some(outcome) => continuation.call(map_end_result(outcome)),
+            None => {
+                let deadline = ctx.identity.sign_deadline_for(signer_pubkey.as_deref());
+                ctx.parked_ops.push(ParkedOp::nip44_decrypt_session_end(
+                    op,
+                    continuation,
+                    deadline,
+                ));
+            }
+        },
+    }
     maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     Some(Vec::new())
 }

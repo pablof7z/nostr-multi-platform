@@ -243,6 +243,31 @@ fn dispatch_sign(cmd: SignCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<Out
             signer_pubkey,
             continuation,
         ),
+        SignCommand::Nip44DecryptSessionBegin {
+            request,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::nip44_decrypt_session_begin(
+            ctx,
+            request,
+            signer_pubkey,
+            continuation,
+        ),
+        SignCommand::Nip44DecryptBatch {
+            request,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::nip44_decrypt_batch(ctx, request, signer_pubkey, continuation),
+        SignCommand::Nip44DecryptSessionEnd {
+            request,
+            signer_pubkey,
+            continuation,
+        } => signer_port_dispatch::nip44_decrypt_session_end(
+            ctx,
+            request,
+            signer_pubkey,
+            continuation,
+        ),
     }
 }
 

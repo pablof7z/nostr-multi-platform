@@ -9,7 +9,10 @@
 //! plaintext, never raw key bytes. D8: the continuation runs on the actor
 //! thread and MUST only enqueue further work, never block.
 
-use super::super::{CipherContinuation, SignContinuation};
+use super::super::{
+    CipherContinuation, Nip44DecryptBatchContinuation, Nip44DecryptSessionBeginContinuation,
+    Nip44DecryptSessionEndContinuation, SignContinuation,
+};
 
 /// Backend-transparent signing / cipher verbs. The dispatch arm routes
 /// through `sign_active_nonblocking` / `sign_with_account_nonblocking` /
@@ -101,5 +104,31 @@ pub enum SignCommand {
         signer_pubkey: Option<String>,
         /// Invoked with the resolved plaintext (or an error string).
         continuation: CipherContinuation,
+    },
+    /// Optional scoped NIP-44 decrypt-session begin port. This is a signer
+    /// capability, not a NIP-17 backfill command. Unsupported signers resolve
+    /// as typed data so callers can keep the scalar fallback path.
+    Nip44DecryptSessionBegin {
+        request: nmp_signer_iface::Nip44DecryptSessionBeginRequest,
+        /// `None` = active account; `Some(hex)` = a named roster key.
+        signer_pubkey: Option<String>,
+        continuation: Nip44DecryptSessionBeginContinuation,
+    },
+    /// Optional scoped NIP-44 batch decrypt port. The actor validates the
+    /// returned item set against the request ids before invoking the
+    /// continuation.
+    Nip44DecryptBatch {
+        request: nmp_signer_iface::Nip44DecryptBatchRequest,
+        /// `None` = active account; `Some(hex)` = a named roster key.
+        signer_pubkey: Option<String>,
+        continuation: Nip44DecryptBatchContinuation,
+    },
+    /// Optional scoped NIP-44 decrypt-session end port. End is best-effort, but
+    /// still typed so unsupported cleanup is distinct from transport failure.
+    Nip44DecryptSessionEnd {
+        request: nmp_signer_iface::Nip44DecryptSessionEndRequest,
+        /// `None` = active account; `Some(hex)` = a named roster key.
+        signer_pubkey: Option<String>,
+        continuation: Nip44DecryptSessionEndContinuation,
     },
 }

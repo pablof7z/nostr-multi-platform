@@ -32,15 +32,18 @@
 //! key bytes.
 
 use crate::publish::PublishTarget;
-use nmp_signer_iface::SignedEvent;
 use nmp_signer_iface::SignerOp;
+use nmp_signer_iface::{Nip44DecryptBatchResult, Nip44DecryptSessionGrant, SignedEvent};
 // D20 / #1753: the parked-op path is now wasm-reachable (the wasm `KernelReducer`
 // parks sign ops here). The deadline type routes through the `crate::time` shim
 // (verbatim `std::time` on native, `web_time` on wasm32), and production timeout
 // checks receive the caller-captured `Instant` explicitly.
 use crate::time::Instant;
 
-use crate::actor::{CipherContinuation, SignContinuation};
+use crate::actor::{
+    CipherContinuation, Nip44DecryptBatchContinuation, Nip44DecryptSessionBeginContinuation,
+    Nip44DecryptSessionEndContinuation, SignContinuation,
+};
 
 /// Where a resolved [`ParkedOp`] delivers its outcome, and the in-flight op
 /// itself.
@@ -69,6 +72,22 @@ pub(crate) enum ParkedOpSink {
     CipherContinuation {
         op: SignerOp<String>,
         continuation: Option<CipherContinuation>,
+    },
+    /// Invoke the boxed NIP-44 decrypt-session begin continuation.
+    Nip44DecryptSessionBegin {
+        op: SignerOp<Nip44DecryptSessionGrant>,
+        continuation: Option<Nip44DecryptSessionBeginContinuation>,
+    },
+    /// Invoke the boxed NIP-44 batch continuation after validating result ids.
+    Nip44DecryptBatch {
+        op: SignerOp<Nip44DecryptBatchResult>,
+        expected_ids: Vec<String>,
+        continuation: Option<Nip44DecryptBatchContinuation>,
+    },
+    /// Invoke the boxed NIP-44 decrypt-session end continuation.
+    Nip44DecryptSessionEnd {
+        op: SignerOp<bool>,
+        continuation: Option<Nip44DecryptSessionEndContinuation>,
     },
     /// V-06 / #960 — route the resolved signed kind:22242 back into the kernel's
     /// NIP-42 AUTH handler. Like [`Publish`](ParkedOpSink::Publish) this sink
@@ -161,6 +180,56 @@ impl ParkedOp {
     ) -> Self {
         Self {
             sink: ParkedOpSink::CipherContinuation {
+                op,
+                continuation: Some(continuation),
+            },
+            deadline,
+        }
+    }
+
+    /// Park a NIP-44 decrypt-session begin op.
+    #[must_use]
+    pub fn nip44_decrypt_session_begin(
+        op: SignerOp<Nip44DecryptSessionGrant>,
+        continuation: Nip44DecryptSessionBeginContinuation,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            sink: ParkedOpSink::Nip44DecryptSessionBegin {
+                op,
+                continuation: Some(continuation),
+            },
+            deadline,
+        }
+    }
+
+    /// Park a NIP-44 batch decrypt op.
+    #[must_use]
+    pub fn nip44_decrypt_batch(
+        op: SignerOp<Nip44DecryptBatchResult>,
+        expected_ids: Vec<String>,
+        continuation: Nip44DecryptBatchContinuation,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            sink: ParkedOpSink::Nip44DecryptBatch {
+                op,
+                expected_ids,
+                continuation: Some(continuation),
+            },
+            deadline,
+        }
+    }
+
+    /// Park a NIP-44 decrypt-session end op.
+    #[must_use]
+    pub fn nip44_decrypt_session_end(
+        op: SignerOp<bool>,
+        continuation: Nip44DecryptSessionEndContinuation,
+        deadline: Instant,
+    ) -> Self {
+        Self {
+            sink: ParkedOpSink::Nip44DecryptSessionEnd {
                 op,
                 continuation: Some(continuation),
             },
