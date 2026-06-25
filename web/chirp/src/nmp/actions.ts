@@ -35,11 +35,10 @@ export type RuntimeCommand =
       reason: string;
     };
 
-export function publishNoteAction(content: string, replyToId: string | null = null): ChirpAction {
+export function publishNoteAction(content: string): ChirpAction {
   return {
     action: "publish_note",
     content,
-    reply_to_id: replyToId,
   };
 }
 
@@ -67,9 +66,9 @@ export function chirpActionRequest(action: ChirpAction, correlationId: string): 
   let bytes: Uint8Array;
   switch (action.action) {
     case "publish_note":
-      // NIP-10 reply-tag construction belongs to the host (#906): a kind:1 note
-      // lowers to the engine-generic `PublishRaw`. `reply_to_id` is resolved by
-      // the publish path, not forwarded into the envelope.
+      // Root notes are the only Chirp Web publish surface until the generated
+      // web builder has a Rust-authored reply contract. NIP-10 tags must not be
+      // derived in TypeScript.
       bytes = GeneratedActionBuilders.publishRaw(correlationId, 1, [], action.content);
       break;
     case "react":

@@ -248,7 +248,6 @@ describe("shared Chirp web semantics", () => {
     expect(publishNoteAction("hello web")).toEqual({
       action: "publish_note",
       content: "hello web",
-      reply_to_id: null,
     });
   });
 

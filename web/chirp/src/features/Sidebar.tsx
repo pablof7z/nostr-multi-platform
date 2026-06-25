@@ -1,13 +1,10 @@
-import { Bolt, House, MessageSquare, Radio, Settings, UsersRound } from "lucide-solid";
+import { House, Radio, Settings } from "lucide-solid";
 import type { FeatureSnapshot } from "../nmp/snapshot";
 
-export type AppTab = "home" | "chats" | "groups" | "wallet" | "settings";
+export type AppTab = "home" | "settings";
 
 const tabs = [
   { id: "home", label: "Home", icon: House },
-  { id: "chats", label: "Chats", icon: MessageSquare },
-  { id: "groups", label: "Groups", icon: UsersRound },
-  { id: "wallet", label: "Wallet", icon: Bolt },
   { id: "settings", label: "Settings", icon: Settings },
 ] as const;
 
@@ -41,14 +38,8 @@ export function Sidebar(props: {
 
 function badge(tab: AppTab, feature: FeatureSnapshot): string {
   switch (tab) {
-    case "chats":
-      return count(feature.dmConversations.length);
-    case "groups":
-      return count(feature.discoveredGroups.length + feature.groupMessages.length);
     case "settings":
       return count(feature.outbox.length);
-    case "wallet":
-      return feature.wallet.status;
     case "home":
       return "";
   }

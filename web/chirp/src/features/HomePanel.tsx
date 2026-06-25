@@ -1,10 +1,8 @@
 import { For, Show, createSignal, onCleanup, onMount } from "solid-js";
-import { MessageSquare, Reply, Send, Star, UserRound, Repeat2, CornerDownRight } from "lucide-solid";
+import { MessageSquare, Send, Star, UserRound, Repeat2, CornerDownRight } from "lucide-solid";
 import {
   resolveProfileCommand,
   followCommand,
-  openProfileCommand,
-  openThreadCommand,
   reactCommand,
   releaseProfileCommand,
   type RuntimeCommand,
@@ -28,7 +26,7 @@ export function HomePanel(props: {
   profileHost: NostrProfileHost;
   eventHost: NostrEventHost;
   revision?: number;
-  onPublish: (content: string, replyToId: string | null) => Promise<void>;
+  onPublish: (content: string) => Promise<void>;
   onCommand: (command: RuntimeCommand) => Promise<void>;
   /** Fire-and-forget dispatch for profile claim/release — does not update the
    *  snapshot signal so Post remount churn does not prevent display-name
@@ -38,15 +36,13 @@ export function HomePanel(props: {
   signerConnected?: boolean;
 }) {
   const [draft, setDraft] = createSignal("");
-  const [replyToId, setReplyToId] = createSignal<string | null>(null);
   const publish = async () => {
     const content = draft().trim();
     if (!content) {
       return;
     }
-    await props.onPublish(content, replyToId());
+    await props.onPublish(content);
     setDraft("");
-    setReplyToId(null);
   };
   return (
     <NostrProfileHostProvider host={props.profileHost}>
@@ -62,13 +58,6 @@ export function HomePanel(props: {
         </Show>
       </header>
       <div class="composer">
-        <Show when={replyToId()}>
-          {(id) => (
-            <button type="button" class="inline-token" onClick={() => setReplyToId(null)}>
-              <Reply size={14} /> Replying to {shortKey(id())}
-            </button>
-          )}
-        </Show>
         <textarea value={draft()} aria-label="Compose chirp" placeholder="What is happening on Nostr?" onInput={(event) => setDraft(event.currentTarget.value)} />
         <div class="composer-actions">
           <span>{draft().trim().length}/280</span>
@@ -82,11 +71,8 @@ export function HomePanel(props: {
           {(item) => (
             <Post
               item={item}
-              onReply={() => setReplyToId(item.id)}
               onReact={() => props.onCommand(reactCommand(item.id))}
               onFollow={() => props.onCommand(followCommand(item.authorPubkey ?? item.pubkey ?? "", true))}
-              onProfile={() => props.onCommand(openProfileCommand(item.authorPubkey ?? item.pubkey ?? ""))}
-              onThread={() => props.onCommand(openThreadCommand(item.id))}
               onCommand={props.onCommand}
               onClaimCommand={props.onClaimCommand}
             />
@@ -122,11 +108,8 @@ function ConnectPrompt(props: { onConnect: () => void }) {
 
 function Post(props: {
   item: TimelineItem;
-  onReply: () => void;
   onReact: () => void;
   onFollow: () => void;
-  onProfile: () => void;
-  onThread: () => void;
   onCommand: (command: RuntimeCommand) => Promise<void>;
   onClaimCommand?: (command: RuntimeCommand) => void;
 }) {
@@ -177,14 +160,14 @@ function Post(props: {
   const authorProfile = () => host.profile(authorPubkey) ?? { pubkey: authorPubkey };
   return (
     <article class="post">
-      <button type="button" class="avatar avatar--component" title="Open profile" onClick={props.onProfile}>
+      <div class="avatar avatar--component">
         <NostrAvatar pubkey={authorPubkey} consumerId={consumerId} size={40} />
-      </button>
+      </div>
       <div class="post-body">
-        <button type="button" class="post-meta" onClick={props.onProfile}>
+        <div class="post-meta">
           <strong data-testid="post-author"><NostrProfileName profile={authorProfile()} /></strong>
           <span>{props.item.relativeTime ?? labelTime(props.item.createdAt)}</span>
-        </button>
+        </div>
         <div data-testid="post-content">
           <NostrContentView tree={props.item.contentTree} fallback={props.item.content ?? ""} />
         </div>
@@ -209,10 +192,8 @@ function Post(props: {
           <span>{countLabel(props.item.relationCounts?.reposts)} reposts</span>
         </div>
         <div class="row-actions">
-          <button type="button" title="Open thread" onClick={props.onThread}><MessageSquare size={16} /> Thread</button>
-          <button type="button" title="Reply" onClick={props.onReply}><Reply size={16} /> Reply</button>
           <button type="button" title="React" onClick={props.onReact}><Star size={16} /> React</button>
-          <button type="button" title="Follow author" onClick={props.onFollow}><UserRound size={16} /> Follow</button>
+          <button type="button" title="Follow author" disabled={!authorPubkey} onClick={props.onFollow}><UserRound size={16} /> Follow</button>
           <span class="inline-token"><Repeat2 size={14} /> {shortKey(props.item.id)}</span>
         </div>
       </div>

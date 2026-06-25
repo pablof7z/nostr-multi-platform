@@ -192,7 +192,7 @@ action vocabulary; the action payload carries no signer hint (V-78).
 
 | Chirp `ChirpAction` | `action_namespace` | Notes |
 |---|---|---|
-| `publish_note` | `nmp.publish` | Lowers to `PublishRaw { kind: 1 }`. `reply_to_id` is host-resolved (NIP-10), not forwarded into the envelope. |
+| `publish_note` | `nmp.publish` | Chirp Web exposes root-note publishing only. It lowers to `PublishRaw { kind: 1, tags: [] }`; the UI does not offer replies until a Rust-authored web reply builder can construct NIP-10 tags. |
 | `react` | `nmp.nip25.react` | `target_event_id` + `reaction` (default `"+"`). |
 | `follow` | `nmp.follow` | `pubkey`. |
 | `unfollow` | `nmp.unfollow` | `pubkey`. |

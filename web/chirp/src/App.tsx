@@ -17,7 +17,7 @@ import {
   featureSnapshotFromEnvelope,
   feedItemsToRows,
 } from "./nmp/snapshot";
-import { ChatsPanel, GroupsPanel, SettingsPanel, WalletPanel } from "./features/FeaturePanels";
+import { SettingsPanel } from "./features/FeaturePanels";
 import { HomePanel } from "./features/HomePanel";
 import { NmpInspector } from "./features/inspector/Inspector";
 import { Sidebar, type AppTab } from "./features/Sidebar";
@@ -119,8 +119,8 @@ export default function App() {
     }
   };
 
-  const publish = async (content: string, replyToId: string | null) => {
-    setSnapshot(await client.dispatchChirp(publishNoteAction(content, replyToId)));
+  const publish = async (content: string) => {
+    setSnapshot(await client.dispatchChirp(publishNoteAction(content)));
   };
   const refreshRoutingDecisions = async () => {
     setRoutingRefreshing(true);
@@ -180,15 +180,6 @@ export default function App() {
               onConnect={connect}
               signerConnected={signerConnected()}
             />
-          </Match>
-          <Match when={tab() === "chats"}>
-            <ChatsPanel feature={feature()} onCommand={dispatch} />
-          </Match>
-          <Match when={tab() === "groups"}>
-            <GroupsPanel feature={feature()} onCommand={dispatch} />
-          </Match>
-          <Match when={tab() === "wallet"}>
-            <WalletPanel feature={feature()} onCommand={dispatch} />
           </Match>
           <Match when={tab() === "settings"}>
             <SettingsPanel feature={feature()} onCommand={dispatch} onStart={start} />
