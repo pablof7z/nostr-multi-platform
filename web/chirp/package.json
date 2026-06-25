@@ -6,9 +6,9 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "codegen:chirp-config": "node scripts/gen-chirp-config.mjs",
-    "prebuild": "pnpm codegen:chirp-config",
+    "prebuild": "npm run codegen:chirp-config",
     "build": "tsc --noEmit && vite build",
-    "build:wasm": "CC_wasm32_unknown_unknown=clang wasm-pack build --target web ../../apps/chirp/crates/nmp-app-chirp-web --out-dir ../../../web/chirp/public/nmp-wasm",
+    "build:wasm": "PATH=/opt/homebrew/opt/llvm/bin:/usr/local/opt/llvm/bin:$PATH CC_wasm32_unknown_unknown=clang wasm-pack build --target web ../../apps/chirp/crates/nmp-app-chirp-web --out-dir ../../../../web/chirp/public/nmp-wasm",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "test:e2e": "playwright test",

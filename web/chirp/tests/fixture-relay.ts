@@ -57,6 +57,10 @@ export type FixtureRelay = {
    * relay connection (DegradedRuntime never dials any relays).
    */
   connectionCount(): number;
+  /** Number of EVENT frames received from browser clients. */
+  eventCount(): number;
+  /** Snapshot of EVENT payloads received from browser clients. */
+  receivedEvents(): NostrEvent[];
   /** Gracefully close the server and resolve when all connections are gone. */
   close(): Promise<void>;
 };
@@ -115,6 +119,7 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     let connections = 0;
+    const receivedEvents: NostrEvent[] = [];
 
     wss.once("error", reject);
 
@@ -154,6 +159,9 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
           } else if (verb === "EVENT") {
             const event = rest[0] as Record<string, unknown> | undefined;
             const eventId = typeof event?.id === "string" ? event.id : "";
+            if (event !== undefined) {
+              receivedEvents.push(event as NostrEvent);
+            }
             ws.send(JSON.stringify(["OK", eventId, true, ""]));
           }
           // CLOSE: no response required per NIP-01.
@@ -171,6 +179,8 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
       resolve({
         url: `ws://127.0.0.1:${port}`,
         connectionCount: () => connections,
+        eventCount: () => receivedEvents.length,
+        receivedEvents: () => [...receivedEvents],
         close,
       });
     });

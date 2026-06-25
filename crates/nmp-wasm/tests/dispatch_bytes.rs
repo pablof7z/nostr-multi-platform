@@ -20,6 +20,8 @@ use nmp_wasm::{CapabilityFailure, SetIdentity, WasmRuntime, WorkerEvent, WorkerR
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
+const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
+
 fn envelope(namespace: &str, correlation: &str, version: u32, payload: &[u8]) -> Vec<u8> {
     encode_dispatch_envelope(correlation, namespace, version, payload)
 }
@@ -27,7 +29,6 @@ fn envelope(namespace: &str, correlation: &str, version: u32, payload: &[u8]) ->
 /// Seed an active account so a dispatch passes the fail-closed
 /// `signer_not_installed` gate and reaches the typed registry.
 fn seed_account(runtime: &mut WasmRuntime) {
-    const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
     let events = runtime
         .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "nip07".to_string(),
@@ -52,6 +53,29 @@ fn publish_raw_payload(content: &str) -> Vec<u8> {
         signer_pubkey: None,
     }
     .encode()
+}
+
+fn sign_request_correlation(events: &[WorkerEvent]) -> String {
+    events
+        .iter()
+        .find_map(|event| match event {
+            WorkerEvent::SignRequest { correlation_id, .. } => Some(correlation_id.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("expected SignRequest, got {events:?}"))
+}
+
+fn signed_event_json(content: &str) -> String {
+    serde_json::json!({
+        "id": "11".repeat(32),
+        "pubkey": PK,
+        "created_at": 1_700_001_234u64,
+        "kind": 1,
+        "tags": [],
+        "content": content,
+        "sig": "22".repeat(64),
+    })
+    .to_string()
 }
 
 #[test]
@@ -152,6 +176,74 @@ fn publish_raw_unsigned_json_uses_reducer_clock_for_created_at() {
         value["created_at"].as_u64(),
         Some(1_700_001_234),
         "PublishRaw created_at must come from the reducer-owned kernel clock"
+    );
+}
+
+#[test]
+fn publish_raw_deliver_signer_response_publishes_signed_event() {
+    let mut runtime = WasmRuntime::new();
+    seed_account(&mut runtime);
+    let start_events = runtime
+        .handle(WorkerRequest::Start(nmp_wasm::StartConfig {
+            app_id: "chirp".to_string(),
+            relays: vec!["wss://relay.example".to_string()],
+            relay_bootstrap: vec![nmp_wasm::RelayBootstrapEntry {
+                url: "wss://relay.example".to_string(),
+                role: "both".to_string(),
+            }],
+            database_name: "publish-continuation-test".to_string(),
+            correlation_id: "start".to_string(),
+        }))
+        .expect("start must succeed");
+    assert!(
+        start_events
+            .iter()
+            .any(|event| matches!(event, WorkerEvent::RuntimeStatus { .. })),
+        "Start must return runtime status; got {start_events:?}"
+    );
+    let _ = runtime
+        .fire_maintenance_deadline_for_test()
+        .expect("clear post-start event drain");
+
+    let payload = publish_raw_payload("publish continuation");
+    let bytes = envelope(
+        "nmp.publish",
+        "corr-publish",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        &payload,
+    );
+    let events = runtime.dispatch_bytes(&bytes);
+    let sign_correlation = sign_request_correlation(&events);
+
+    let completion_events = runtime
+        .handle(WorkerRequest::DeliverSignerResponse(
+            nmp_wasm::DeliverSignerResponse {
+                correlation_id: sign_correlation.clone(),
+                signed_json: Some(signed_event_json("publish continuation")),
+                error: None,
+            },
+        ))
+        .expect("deliver_signer_response must succeed");
+
+    assert!(
+        completion_events.iter().any(|event| matches!(
+            event,
+            WorkerEvent::SignCompleted { correlation_id, .. } if correlation_id == &sign_correlation
+        )),
+        "sign completion must still be observable; got {completion_events:?}"
+    );
+    assert!(
+        completion_events.iter().any(|event| matches!(
+            event,
+            WorkerEvent::ActionAccepted { action_type, correlation_id }
+                if action_type == "nmp.publish" && correlation_id == "corr-publish"
+        )),
+        "signed publish must ACK the original action correlation; got {completion_events:?}"
+    );
+    assert!(
+        runtime.next_runtime_deadline_delay_for_test().is_some(),
+        "deliver_signer_response must route the signed event through publish_pre_signed \
+         and arm the publish deadline"
     );
 }
 

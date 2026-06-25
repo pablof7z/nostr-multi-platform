@@ -125,9 +125,9 @@ export type WorkerEvent =
       account_pubkey: string;
       unsigned_json: string;
     }
-  /** #1753 S6 — a sign round-trip completed via message re-entry. NOTE: behind
-   *  the honest-disable gate the signed event is NOT published (web publish is
-   *  blocked on #1008); the host observes this to confirm the mechanism. */
+  /** #1753 S6 — a sign round-trip completed via message re-entry. For publish
+   *  dispatches the worker also consumes this completion to publish through the
+   *  Rust kernel; the main thread never publishes inline. */
   | { type: "sign_completed"; correlation_id: string; signed_json: string }
   /** #1753 S6 — a sign round-trip failed (parse, account-pin mismatch, user
    *  rejection, or unknown/stale correlation id). */

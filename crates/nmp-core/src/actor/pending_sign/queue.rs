@@ -39,9 +39,10 @@ use super::sinks::{AuthObligation, ParkedOp, PublishObligation};
 /// The obligations a single [`ParkedSignerOps::drive_at`] pass collected for its
 /// caller to execute. The drain settles projection / continuation sinks against
 /// the kernel directly; the `Publish` and `Auth` sinks return routing
-/// obligations because relay routing is the caller's concern (the native loop
-/// owns the pool; the wasm reducer keeps web publish disabled, §honest-disable
-/// gate, so it simply never parks a `Publish` op).
+/// obligations because relay routing is the caller's concern. The native loop
+/// owns the pool; the wasm reducer's sign-only round-trip parks
+/// `SignContinuation` sinks, while `WasmRuntime` owns publish continuation and
+/// relay fanout after signing completes.
 pub(crate) struct DrainBatch {
     /// Publish-routing obligations from resolved `Publish` sinks.
     pub publish: Vec<PublishObligation>,
@@ -142,8 +143,8 @@ impl ParkedSignerOps {
 mod tests {
     use super::*;
     use crate::actor::SignContinuation;
-    use nmp_signer_iface::{SignedEvent, UnsignedEvent};
     use crate::time::Instant;
+    use nmp_signer_iface::{SignedEvent, UnsignedEvent};
     use nmp_signer_iface::{SignerError, SignerOp, PENDING_SIGN_TIMEOUT};
     use std::sync::mpsc;
     use std::sync::{Arc, Mutex};

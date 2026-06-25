@@ -44,7 +44,7 @@ use nmp_wasm::{
     WorkerRequest,
 };
 
-// Imports used only by the wasm32-only typed-write honest-disable test
+// Imports used only by the wasm32-only typed-write routing guard
 // (#1202 / #1008 guard). `DispatchBytes`/`SetIdentity` are wasm32-gated here too
 // so native builds (where that test is `cfg`-compiled out) carry no unused
 // imports.
