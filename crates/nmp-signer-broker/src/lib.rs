@@ -61,7 +61,7 @@ pub mod transport;
 mod uri_encode;
 
 pub use broker::BunkerBroker;
-pub use events::{BrokerEvent, BrokerEventHandler};
+pub use events::{BrokerEvent, BrokerEventHandler, RelayIntakeDropReason};
 pub use transport::BrokerTransport;
 pub use uri_encode::percent_encode_query_value;
 

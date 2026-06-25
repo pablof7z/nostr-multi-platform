@@ -18,7 +18,7 @@ use serde_json::Value;
 use super::{BunkerBroker, BUNKER_SUB_ID};
 use crate::events::BrokerEvent;
 use crate::handshake::{build_req_frame, run_handshake, HandshakeOutcome};
-use crate::relay_client::{EventCallback, RelayClient, TungsteniteRelayClient};
+use crate::relay_client::{RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
 
 impl BunkerBroker {
@@ -65,19 +65,10 @@ impl BunkerBroker {
             }
         };
 
-        // (inbound_tx, inbound_rx) — the relay client pushes raw event JSON
-        // values on the tx; both the handshake state machine and the
-        // steady-state transport drain on the rx. We split the dispatch
-        // logic between two consumers via a fan-out: during handshake the
-        // handshake function owns the receiver; afterwards we re-tap the
-        // event callback to route directly to the transport.
-        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
-        let inbound_tx_for_cb = inbound_tx.clone();
-        let event_cb: EventCallback = Arc::new(move |event| {
-            // Best-effort: if the receiver is dropped (broker cancelled),
-            // silently drop the event.
-            let _ = inbound_tx_for_cb.send(event);
-        });
+        // Session-local bounded relay intake. During handshake the state
+        // machine owns the receiver; after success the same receiver moves to
+        // the steady-state dispatcher.
+        let (event_cb, inbound_rx) = self.make_relay_intake();
 
         // Dial the first relay. Cycle through on failure.
         let mut relay_result: Option<Arc<dyn RelayClient>> = None;

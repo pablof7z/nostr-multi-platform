@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use super::{ActiveSession, BunkerBroker, NoopRelay, BUNKER_SUB_ID};
 use crate::handshake::build_req_frame;
-use crate::relay_client::{EventCallback, RelayClient, TungsteniteRelayClient};
+use crate::relay_client::{RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
 
 impl BunkerBroker {
@@ -114,11 +114,7 @@ impl BunkerBroker {
         local_keys: &Keys,
         cancel: &AtomicBool,
     ) -> Option<(Arc<dyn RelayClient>, CbReceiver<Value>)> {
-        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
-        let inbound_tx_for_cb = inbound_tx.clone();
-        let event_cb: EventCallback = Arc::new(move |event| {
-            let _ = inbound_tx_for_cb.send(event);
-        });
+        let (event_cb, inbound_rx) = self.make_relay_intake();
 
         let conn_state_cb = self.make_connection_state_callback();
         let mut relay_result: Option<Arc<dyn RelayClient>> = None;

@@ -26,6 +26,7 @@
 //! and joins every handle off the caller's path.
 
 mod handshake_thread;
+mod intake;
 mod nostrconnect;
 mod restore;
 #[cfg(test)]
@@ -41,11 +42,8 @@ use nmp_signers::Nip46Signer;
 use nostr::Keys;
 
 use crate::events::{BrokerEvent, BrokerEventHandler};
-use crate::relay_client::RelayClient;
+use crate::relay_client::{RelayClient, BUNKER_SUB_ID};
 use crate::transport::BrokerTransport;
-
-/// Subscription id used for the inbound REQ. One per session is enough.
-const BUNKER_SUB_ID: &str = "nmp-bunker";
 
 /// Upper bound the cancel reaper waits on any single thread join before
 /// abandoning it. The relay worker's connect path has steps that are not

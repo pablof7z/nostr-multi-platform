@@ -50,6 +50,17 @@ fn actor_command_from_event(event: BrokerEvent) -> ActorCommand {
         BrokerEvent::ConnectionStateChanged { state, reason } => {
             ActorCommand::Identity(IdentityCommand::BunkerConnectionStateChanged { state, reason })
         }
+        BrokerEvent::RelayIntakeDropped {
+            reason,
+            dropped_total,
+            capacity,
+        } => ActorCommand::Identity(IdentityCommand::BunkerHandshakeProgress {
+            stage: "diagnostic".to_string(),
+            code: None,
+            message: Some(format!(
+                "relay intake drop: reason={reason:?} dropped_total={dropped_total} capacity={capacity}"
+            )),
+        }),
     }
 }
 
