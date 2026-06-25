@@ -1,0 +1,20 @@
+[package]
+name = "nmp-browser-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Browser runtime for WASM: typed capability envelope + provider registry with NIP-07, nsec/local-key, and NIP-46 providers."
+
+[lib]
+name = "nmp_browser_runtime"
+
+[dependencies]
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-signers = { path = "../nmp-signers", default-features = false }
+nmp-signer-broker = { path = "../nmp-signer-broker", default-features = false }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+zeroize = { workspace = true, features = ["serde"] }
+
+[dev-dependencies]

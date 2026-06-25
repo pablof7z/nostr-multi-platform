@@ -45,7 +45,7 @@ implementation is injected at composition time.
 | 3 | Kernel substrate contracts and actor state | `nmp-core`, `nmp-coverage-gate` |
 | 4 | Reusable Nostr protocol/product modules | `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip18`, `nmp-nip29`, `nmp-nip42`, `nmp-nip47`, `nmp-nip51`, `nmp-nip57`, `nmp-nip60`, `nmp-nip77`, `nmp-nwc`, `nmp-marmot`, `nmp-relations`, `nmp-threading`, `nmp-feed`, `nmp-wot`, `nmp-content`, `nmp-content-fixtures` |
 | 5 | App composition | `nmp-defaults`, `apps/<app>/...` Rust crates |
-| 6 | Bindings and deliverables | `nmp-ffi`, `nmp-android-ffi`, `nmp-wasm` |
+| 6 | Bindings and deliverables | `nmp-ffi`, `nmp-android-ffi`, `nmp-wasm`, `nmp-browser-runtime` |
 | Sidecars | Tooling, tests, diagnostics | `nmp-cli`, `nmp-codegen`, `nmp-testing`, app shells |
 
 Sibling crates do not depend on each other unless the dependency is part of
@@ -308,6 +308,9 @@ in the leaf app's Rust crate and is injected by app-owned FFI.
 shape, panic guards, callbacks, lifecycle handles, and platform-specific bridge
 mechanics. They do not own business policy, app defaults, or example-app
 namespaces unless they are explicitly app-owned delivery crates.
+
+**Browser runtime composition** is separated from the ABI glue (ADR-0067):
+`nmp-browser-runtime` is the composition-root delivery surface (sibling Layer-6 crate to `nmp-ffi`/`nmp-android-ffi`). It owns the Worker event loop driver, browser storage registration, capability/signer provider registry, browser timer seams, and the typed `BrowserAppBuilder` — the browser twin of `NmpAppBuilder`. `nmp-wasm` remains the ABI shell only: byte dispatch in/out, wasm-bindgen exports, callbacks, and lifecycle handles. Like `nmp-defaults` on native, `nmp-browser-runtime` calls `nmp_defaults::register_defaults` to register NMP defaults and protocol modules; it does not hand-copy them.
 
 The pre-v1 ABI surface is governed, not compatibility-frozen. Net-new
 `nmp_app_*` symbols require an ADR or an accepted GitHub issue that explicitly

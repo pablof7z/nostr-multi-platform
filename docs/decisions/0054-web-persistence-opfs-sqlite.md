@@ -5,6 +5,7 @@
   gates"). Stage #6 must not start until the gates marked *blocking #6* are
   resolved.
 - **Date:** 2026-06-13
+- **Blocked-by:** ADR-0067 / #2045 (browser-runtime ownership split) — OPFS store is injected via the browser builder storage decision, not constructed in nmp-wasm.
 - **Relates to:** ADR-0045 (store→projection replay), ADR-0047 (browser worker
   runtime contract), ADR-0040 (capability-worker seam), ADR-0044 (Tier-3
   snapshot envelope typing)
@@ -21,7 +22,8 @@
 
 ## Context
 
-NMP's browser runtime (`crates/nmp-wasm`) runs the `KernelReducer` on a
+NMP's browser runtime (`crates/nmp-browser-runtime`, with `crates/nmp-wasm` as
+the ABI shell per ADR-0067) runs the `KernelReducer` on a
 dedicated Worker event loop (ADR-0047). The kernel holds the single
 authoritative event store as `store: Arc<dyn EventStore>`
 (`crates/nmp-core/src/kernel/mod.rs:587`). Today the wasm build always

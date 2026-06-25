@@ -1,15 +1,16 @@
 # WASM Surface Reference
 
 > **Reviewed:** 2026-06-22. Sourced directly from `crates/nmp-wasm/src/`.
-> This document is the single source of truth for the `crates/nmp-wasm` worker
-> protocol contract. See ADR-0047 (worker write/signing contract now defers to
-> **ADR-0064** — the unified write/command boundary).
+> This document is the single source of truth for the `crates/nmp-wasm` ABI-glue contract.
+> `crates/nmp-wasm` is **NOT** the browser runtime owner — `crates/nmp-browser-runtime` owns the worker composition, platform adaptation, and app builder (see ADR-0047 §1 amended, ADR-0067).
+> This surface documents the byte-oriented dispatch contract only: wasm-bindgen exports, dispatch in/out, capability-result bytes, callbacks, and lifecycle handle mechanics.
+> See ADR-0047 (worker write/signing contract now defers to **ADR-0064** — the unified write/command boundary).
 
-`crates/nmp-wasm` exposes the NMP browser runtime as a `wasm-bindgen` class
-(`NmpWasmRuntime`) that a dedicated Worker instantiates. The Worker event loop
-is the actor (D4): it is the single writer of kernel state in the browser host.
+`crates/nmp-wasm` is the ABI delivery shell. It exposes a `wasm-bindgen` class
+(`NmpWasmRuntime`) that `crates/nmp-browser-runtime` instantiates on a dedicated Worker.
+The Worker event loop runs a `KernelReducer` (D4): it is the single writer of kernel state.
 TypeScript renders snapshots and executes browser capabilities; Rust owns
-policy, routing, replay, Nostr protocol behaviour, and state transitions.
+policy, routing, replay, Nostr protocol behaviour, and state transitions. The browser runtime composition, storage provider registration, signer/capability provider registry, and typed app builder live in `nmp-browser-runtime`, not `nmp-wasm`.
 
 All production functions are on the `NmpWasmRuntime` class. The wire protocol
 uses three channels:
