@@ -6,6 +6,7 @@ import type { WorkerEvent, WorkerRequest } from "./protocol";
 // to loadWasmBridge() or the unavailable handler will take over.
 const defaultModulePath = "/nmp-wasm/nmp-browser-runtime.js";
 
+type SnapshotCallback = (bytes: Uint8Array) => void;
 
 type NmpWasmRuntime = {
   handle_json(request: string): unknown;
