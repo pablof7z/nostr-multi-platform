@@ -6,12 +6,13 @@
 //! kind:0 parser; and one contacts cache shared by the kernel contacts reader
 //! and kind:3 parser.
 //!
-//! `nmp-defaults::register_substrate` remains the canonical native composition
-//! tier. It calls this crate for the cache/parser pairs, then installs the
-//! native/AppHost-only collaborators (publish resolver, raw forwarding,
-//! coverage, NIP-11). Reducer-owned web roots call the reducer installer so
-//! they get the same cache/parser construction without depending on
-//! `nmp-defaults`, `nmp-ffi`, LMDB, or native transport code.
+//! `nmp-defaults::register_substrate` remains the canonical host-backed
+//! composition tier. It calls this crate for the cache/parser pairs, then
+//! installs the AppHost-level collaborators (publish resolver, raw forwarding,
+//! coverage, NIP-11). Those collaborators are registered through substrate
+//! traits, not native handles. Reducer-owned web roots call the reducer
+//! installer so they get the same cache/parser construction without depending
+//! on `nmp-defaults`, `nmp-ffi`, LMDB, or native transport code.
 
 use std::sync::Arc;
 
