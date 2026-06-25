@@ -24,6 +24,8 @@
 //!   loop without pulling in Tokio.
 //! - [`Nip46Rpc`] + [`Nip46Transport`] — the outbound contract a NIP-46 signer
 //!   uses to ask the kernel to send a kind:24133 event on its behalf.
+//! - NIP-44 decrypt-session structs — optional NMP NIP-46 extension types for
+//!   scoped batch decrypt sessions.
 //! - [`SignedEvent`] / [`UnsignedEvent`] / [`SigningError`] — the dependency-light
 //!   NIP-01 event value types every signer and the publish pipeline exchange.
 //! - [`RemoteSignerHandle`] — the actor-facing trait for out-of-kernel signers.
@@ -37,6 +39,7 @@
 pub mod error;
 pub mod external_signer_transport;
 pub mod handle;
+pub mod nip44_session;
 pub mod nip46_transport;
 pub mod op;
 pub mod signing;
@@ -48,6 +51,13 @@ pub use external_signer_transport::{
     PENDING_SIGN_TIMEOUT,
 };
 pub use handle::RemoteSignerHandle;
+pub use nip44_session::{
+    Nip44DecryptBatchItem, Nip44DecryptBatchItemResult, Nip44DecryptBatchRequest,
+    Nip44DecryptBatchResult, Nip44DecryptSessionBeginRequest, Nip44DecryptSessionEndRequest,
+    Nip44DecryptSessionExtension, Nip44DecryptSessionGrant, NMP_NIP44_BACKFILL_SCOPE,
+    NMP_NIP44_DECRYPT_BATCH, NMP_NIP44_DECRYPT_SESSION_BEGIN, NMP_NIP44_DECRYPT_SESSION_END,
+    NMP_NIP44_DECRYPT_SESSION_EXTENSION_VERSION,
+};
 pub use nip46_transport::{Nip46Rpc, Nip46Transport};
 pub use op::SignerOp;
 pub use signing::{SignedEvent, SigningError, UnsignedEvent};
