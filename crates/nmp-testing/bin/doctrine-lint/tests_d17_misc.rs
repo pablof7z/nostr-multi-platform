@@ -188,21 +188,21 @@ fn d17_positive_rust_kind_set_literal() {
     );
 }
 
-/// N2: D17 must NOT fire on the `apps/chirp/nmp-app-chirp` path even when
+/// N2: D17 must NOT fire on the `apps/chirp/crates/nmp-app-chirp` path even when
 /// the file contains both a `"kinds":[1,6]` JSON shape and a `[1u32, 6u32]`
 /// Rust literal — that is the legitimate home of the kind policy.
 ///
 /// This is verified at the `file_in_scope` unit-test level in `d17.rs`; this
 /// smoke test confirms the same invariant holds end-to-end through the binary.
 /// We simulate it by staging the file in a directory that contains the
-/// sentinel string `apps/chirp/nmp-app-chirp` in its path (using a nested
+/// sentinel string `apps/chirp/crates/nmp-app-chirp` in its path (using a nested
 /// subdirectory whose name carries the fragment) and passing it WITHOUT
 /// `--d17-extra-scope` so the path-based gate is the sole guard.
 #[test]
 fn d17_does_not_fire_in_chirp_app_path() {
     let workspace = workspace_root();
-    // Stage the file in target/apps/chirp/nmp-app-chirp/src/ — the path
-    // contains the `apps/chirp/nmp-app-chirp` fragment that file_in_scope
+    // Stage the file in target/apps/chirp/crates/nmp-app-chirp/src/ — the path
+    // contains the `apps/chirp/crates/nmp-app-chirp` fragment that file_in_scope
     // exempts. The directory is NOT passed via --d17-extra-scope so the
     // file must be excluded by the path guard alone.
     let tmp = workspace
@@ -226,7 +226,7 @@ fn d17_does_not_fire_in_chirp_app_path() {
     let (code, stdout, stderr) = run_lint(&["--path", &tmp_str]);
     assert_eq!(
         code, 0,
-        "d17 must not fire in apps/chirp/nmp-app-chirp; stdout:\n{}\nstderr:\n{}",
+        "d17 must not fire in apps/chirp/crates/nmp-app-chirp; stdout:\n{}\nstderr:\n{}",
         stdout, stderr
     );
     assert!(

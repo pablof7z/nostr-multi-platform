@@ -280,7 +280,7 @@ cache-parser floor; they must not hand-copy that construction.
 operator policy facts** — relay URLs, nostrconnect bootstrap relay URLs, seed
 pubkeys, account auto-follow lists, or signer permission batches. Those facts
 belong only in leaf app Rust crates (`apps/<app>/...`, e.g.
-`apps/chirp/nmp-chirp-config`) or operator-provided app config (#1493). The
+`apps/chirp/crates/nmp-chirp-config`) or operator-provided app config (#1493). The
 `NmpAppBuilder` enforces this at compile time: an app must declare its initial
 relay set with `.with_relays(...)` or explicitly opt out with
 `.without_initial_relays()` before `start()` — there is no framework relay

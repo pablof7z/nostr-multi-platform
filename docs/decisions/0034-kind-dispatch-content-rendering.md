@@ -109,7 +109,7 @@ pub struct RenderContextWire {
 ### Commitment 2 — `ContentTreeWire` is the single wire format across all platforms
 
 iOS and TUI already consume `ContentTreeWire`. The Android **app module** now consumes
-`ContentTreeWire` (`android/app/src/main/java/nmp/content/ContentTreeWire.kt`) and renders
+`ContentTreeWire` (`apps/chirp/android/app/src/main/java/nmp/content/ContentTreeWire.kt`) and renders
 embeds through the kind registry. `ContentTreeDto` / `SegmentDto` / `MarkdownNodeDto`
 **remain** in `crates/nmp-content-fixtures::dto` as a fixtures-only serde mirror used to
 build deterministic golden bundles for the standalone gallery showcases — they are NOT on
@@ -194,19 +194,19 @@ Third parties can publish kind handler components to any jsrepo-compatible regis
   registries (`swiftui` / `compose` / `tui`) now ship a `content-kind-registry`
   component; the three `content-view` components depend on it and route every
   `nostr:` event ref through `EmbeddedEvent` instead of a quote card.
-- `ios/Chirp/.../NostrContentView.swift`: **DONE.** The `quoteCardProvider` closure API is
+- `apps/chirp/ios/.../NostrContentView.swift`: **DONE.** The `quoteCardProvider` closure API is
   removed; event refs render through the `NostrKindRegistry` seam, bound by the app via
   `.embedEnvelopeSource(source, claimSink:registry:)` (defined in the registry's
-  `EmbedHostEnvironment.swift`). `ios/Chirp/.../NostrQuoteCard.swift` is deleted.
+  `EmbedHostEnvironment.swift`). `apps/chirp/ios/.../NostrQuoteCard.swift` is deleted.
 - TUI `NostrQuoteCard` (`tui/content-quote-card`): **DELETED.** Markdown blockquote
   rendering moved inline into `content-view`; event refs render through the kind registry.
-- `android/gallery/.../EmbedCard.kt`: **NOT YET migrated (deferred).** The standalone
-  Android `gallery` module still renders its static `GalleryBundle` `EmbedEntry` DTOs via
-  `EmbedCard.kt`; migrating it requires regenerating the bundle format to ship
-  `EmbedKindProjection` envelopes (a separate bundle-generation change, out of F-CR-04
-  scope). The production Android **app** already routes embeds through the kind registry
-  (`android/app/.../ui/embed/EmbeddedEvent.kt` + `NostrKindRegistry.kt`). The standalone
-  iOS/desktop/web gallery showcases similarly keep their own quote-card demo surfaces.
+- `apps/nmp-gallery/android/...`: **DONE.** The legacy `apps/chirp/android/gallery`
+  copy was deleted during the #976 app-layout migration. The surviving standalone
+  Android gallery consumes a regenerated static bundle carrying `EmbedKindProjection`
+  envelopes, while the production Android app routes embeds through
+  `apps/chirp/android/app/.../ui/embed/EmbeddedEvent.kt` + `NostrKindRegistry.kt`.
+  The standalone iOS/desktop/web gallery showcases similarly keep their own demo
+  surfaces.
 
 ### What this does NOT change
 

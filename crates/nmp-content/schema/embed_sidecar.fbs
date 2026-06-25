@@ -40,7 +40,7 @@ namespace nmp.embed;
 // no `include`, so generate plainly (Rust + Swift):
 //   flatc --rust -o crates/nmp-content/src/wire/generated \
 //         crates/nmp-content/schema/embed_sidecar.fbs
-//   flatc --swift -o ios/Chirp/Chirp/Bridge/Generated \
+//   flatc --swift -o apps/chirp/ios/Chirp/Bridge/Generated \
 //         crates/nmp-content/schema/embed_sidecar.fbs
 
 // Kind discriminator for the projection payload carried in an envelope. Mirrors

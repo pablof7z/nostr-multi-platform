@@ -27,7 +27,7 @@ fn file_in_scope_excludes_other_crates() {
         "crates/nmp-nip29/src/lib.rs"
     )));
     assert!(!file_in_scope(&PathBuf::from(
-        "apps/chirp/nmp-app-chirp/src/ffi.rs"
+        "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
     )));
     assert!(!file_in_scope(&PathBuf::from(
         "crates/nmp-testing/src/lib.rs"

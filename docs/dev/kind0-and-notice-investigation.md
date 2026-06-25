@@ -34,7 +34,7 @@ All claims are grounded in `file:line`.
    those claims from the timeline row UI:
    `NoteContentView.swift:89`, `NostrAvatar.swift:129`, `NostrProfileName.swift:151`,
    `HomeFeedView.swift:357`, `ProfileView.swift:104` → `KernelModel.claimProfile`
-   (`ios/Chirp/Chirp/Bridge/KernelModel.swift:440-456`) → `nmp_app_claim_profile`.
+   (`apps/chirp/ios/Chirp/Bridge/KernelModel.swift:440-456`) → `nmp_app_claim_profile`.
 
 3. Kernel side, `claim_profile` lands in
    `crates/nmp-core/src/kernel/requests/profile.rs:113-212`
@@ -186,10 +186,10 @@ NOTICE frames **are already captured** — they are not dropped — but only the
   (`crates/nmp-core/src/kernel/tier3_encode.rs:199,215`), and the aggregate
   `Metrics.notices_rx` count is encoded too (`tier3_encode.rs:167`).
 - Chirp already renders the single last notice: list row at
-  `ios/Chirp/Chirp/Features/DiagnosticsView.swift:403` and detail at
-  `ios/Chirp/Chirp/Features/RelayDetailView.swift:122`, decoded as
+  `apps/chirp/ios/Chirp/Features/DiagnosticsView.swift:403` and detail at
+  `apps/chirp/ios/Chirp/Features/RelayDetailView.swift:122`, decoded as
   `RelayDiagnosticsRow.lastNotice`
-  (`ios/Chirp/Chirp/Bridge/KernelSnapshotTypes+RelayDiagnostics.swift:111`).
+  (`apps/chirp/ios/Chirp/Bridge/KernelSnapshotTypes+RelayDiagnostics.swift:111`).
 
 So this feature is an **extension of an existing, working capture + projection**,
 not a new pipeline.
@@ -243,7 +243,7 @@ Touch all of: `crates/nmp-core/schema/relay_diagnostics.fbs` (add
 `notices:[RelayDiagnosticsNotice]`); regenerate the Rust reader/writer and the
 Swift reader
 (`crates/nmp-core/src/kernel/typed_projections/generated/relay_diagnostics_generated.rs`,
-`ios/Chirp/Chirp/Bridge/Generated/…`); update the Rust typed model + encoder
+`apps/chirp/ios/Chirp/Bridge/Generated/…`); update the Rust typed model + encoder
 (`tier3_encode.rs` near the `last_notice` encode at `:199/:215`) + decoder; the
 Swift DTOs (`KernelSnapshotTypes+RelayDiagnostics.swift:90-139`); and the glue
 (`TypedProjectionGlue+RelayDiagnostics.swift:30`). Regenerate via

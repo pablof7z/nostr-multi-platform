@@ -93,7 +93,7 @@ Current master state: `publish/engine.rs` has `correlation_id_override: Option<S
 
 Current master state: All `NAMESPACE` constants in `crates/nmp-nip29/src/action/` now read `"nmp.nip29.post_chat_message"`, `"nmp.nip29.discover"`, `"nmp.nip29.join"`, etc. The action_namespace lint (in `crates/nmp-testing/bin/doctrine-lint/rules/action_namespace.rs`) actively bans any bare `nip29.*` NAMESPACE constant. There is no open branch or worktree touching this.
 
-**Note on remaining `"nip29.*"` strings in master:** There are still `"nip29.group_chat"` and `"nip29.discovered_groups"` strings used as *snapshot projection keys* (not action NAMESPACE constants) in `apps/chirp/nmp-app-chirp/src/ffi.rs` and iOS bridge files. action_namespace does not ban these (it only flags `NAMESPACE` constants). The `"nip29.discover"` string in `crates/nmp-nip29/src/interest.rs:80` is used as a stable hash seed for `InterestId`, not a namespace — renaming it would silently break interest de-duplication. No in-flight branch is addressing these snapshot keys.
+**Note on remaining `"nip29.*"` strings in master:** There are still `"nip29.group_chat"` and `"nip29.discovered_groups"` strings used as *snapshot projection keys* (not action NAMESPACE constants) in `apps/chirp/crates/nmp-app-chirp/src/ffi.rs` and iOS bridge files. action_namespace does not ban these (it only flags `NAMESPACE` constants). The `"nip29.discover"` string in `crates/nmp-nip29/src/interest.rs:80` is used as a stable hash seed for `InterestId`, not a namespace — renaming it would silently break interest de-duplication. No in-flight branch is addressing these snapshot keys.
 
 ---
 
@@ -116,7 +116,7 @@ Now I have a comprehensive picture. Let me compile the final findings.
 
 This is the most nuanced finding. There were *two* opposing moves in rapid succession on May 21:
 
-- **PR #154 (`chore/delete-dormant-zap-action`) — MERGED** at 16:24: Deleted the dormant `ZapModule` ActionModule + executor from `nmp-nip57/src/action.rs` (405 lines removed), cleaned `apps/chirp/nmp-app-chirp/Cargo.toml` comment. Rationale: shipped-but-inert, LNURL HTTP path was a stub, no bolt11 ever fetched.
+- **PR #154 (`chore/delete-dormant-zap-action`) — MERGED** at 16:24: Deleted the dormant `ZapModule` ActionModule + executor from `nmp-nip57/src/action.rs` (405 lines removed), cleaned `apps/chirp/crates/nmp-app-chirp/Cargo.toml` comment. Rationale: shipped-but-inert, LNURL HTTP path was a stub, no bolt11 ever fetched.
 
 - **PR #159 (`pr/nip57-lnurl-zap-C`) — CLOSED (not merged)** at 16:44: Built a full in-process LNURL executor — new `nmp-nip57/src/lnurl.rs` (~520 LoC), `fetch_invoice()` using `ureq` (2-step LNURL-pay flow per LUD-06 + NIP-57), iOS Zap button wired, `ZapModule` re-registered. 4 commits. This was CLOSED 20 minutes after #154 merged, suggesting it was superseded or conflicted with the delete. The commits (`7837bd6e`, `9ce3ede1`, `2365b45e`, `7c46fa75`) exist only on the branch — **not on master**.
 
@@ -179,7 +179,7 @@ Now I have all the information needed. Here is the complete scouting report:
 
 - **ADR-0027** (`docs/decisions/0027-unified-action-module-trait.md`) was authored in worktree branch `worktree-agent-a47a6d2abfbeabf26` and shipped as **PR #196**, which is already **MERGED** to master.
 
-- The ADR (Status: Proposed) documents exactly the fix: extend `ActionModule` with a required `fn execute(...)` method that returns an `ActorCommand`, so `NmpApp::register_action_module<M>()` becomes a single generic call that wires both halves atomically. The current `wire_action!` macro in `apps/chirp/nmp-app-chirp/src/ffi.rs:67-88` is called out as the paper-over that the trait change would make unnecessary.
+- The ADR (Status: Proposed) documents exactly the fix: extend `ActionModule` with a required `fn execute(...)` method that returns an `ActorCommand`, so `NmpApp::register_action_module<M>()` becomes a single generic call that wires both halves atomically. The current `wire_action!` macro in `apps/chirp/crates/nmp-app-chirp/src/ffi.rs:67-88` is called out as the paper-over that the trait change would make unnecessary.
 
 - Key ADR quote: *"The broader 'consolidate all write paths' question — `publish_signed_event` vs. `dispatch_action` vs. the 36 `ActorCommand` variants that bypass the action seam — is out of scope. This ADR is scoped to the **registration** seam only."*
 
@@ -237,7 +237,7 @@ let Some(keys) = identity.active_local_keys() else {
 ## Tier 2 — Shipped-but-inert (registration without consumer)
 
 ### B1. NIP-65 publish UI — `nmp.nip17.publish_relay_list` action has zero callers
-**Status: LIVE (consumer gap).** Registered at `apps/chirp/nmp-app-chirp/src/ffi.rs:678-684`. Zero hits for `publish_relay_list` / `PublishDmRelayList` in `ios/Chirp/**.swift`.
+**Status: LIVE (consumer gap).** Registered at `apps/chirp/crates/nmp-app-chirp/src/ffi.rs:678-684`. Zero hits for `publish_relay_list` / `PublishDmRelayList` in `apps/chirp/ios/**.swift`.
 **Why it matters:** Every Chirp user is invisible to other clients trying to DM them — they never publish a kind:10050. This is the "consumer pipe" pathology from review #36: action shipped, action_stages plumbed, no UI button calls it.
 
 ### B2. NIP-57 zaps — no `ZapAction` exists, much less a registered one
@@ -253,7 +253,7 @@ let Some(keys) = identity.active_local_keys() else {
 ## Tier 3 — Structural foot-guns / debt
 
 ### C1. Dual-action seam foot-gun (doctrine #3 not type-enforced)
-**Status: LIVE.** Two API calls register one logical action; the `wire_action!` macro `apps/chirp/nmp-app-chirp/src/ffi.rs:70-95` papers over the duplication for typed actions but the underlying API requires both `register_action_module` AND `register_action_executor`. Core docstring at `crates/nmp-core/src/ffi/mod.rs:679-682` admits: *"Registering only one half leaves the namespace partially wired"*.
+**Status: LIVE.** Two API calls register one logical action; the `wire_action!` macro `apps/chirp/crates/nmp-app-chirp/src/ffi.rs:70-95` papers over the duplication for typed actions but the underlying API requires both `register_action_module` AND `register_action_executor`. Core docstring at `crates/nmp-core/src/ffi/mod.rs:679-682` admits: *"Registering only one half leaves the namespace partially wired"*.
 **Why it matters:** Untyped registrations (e.g. `register_action_module(NS_REACT, …)` at `ffi.rs:563,579,592`) still split the validator from the executor — `register_action_executor` is silently called elsewhere or omitted. A typo in one of the two namespace strings is a runtime-only failure.
 
 ### C2. dispatch_action seam bypassed by ~30 of 43 ActorCommand variants
@@ -262,8 +262,8 @@ let Some(keys) = identity.active_local_keys() else {
 
 ### C3. Chirp thin-shell rule violated on BOTH sides
 **Status: LIVE.** 
-- Swift: 12,476 LOC across 52 files (`ios/Chirp/Chirp/Bridge/KernelBridge.swift` alone is 1,821 LOC). Thin-shell rule: "ZERO logic allowed."
-- Rust: `apps/chirp/nmp-app-chirp/src/ffi.rs` is 1,374 LOC; `follow_list.rs` (297) is a `KernelEventObserver` *projection impl*, `dm_runtime.rs` (253) is runtime state. The Rust shell hosts real logic, not just C-ABI delegators.
+- Swift: 12,476 LOC across 52 files (`apps/chirp/ios/Chirp/Bridge/KernelBridge.swift` alone is 1,821 LOC). Thin-shell rule: "ZERO logic allowed."
+- Rust: `apps/chirp/crates/nmp-app-chirp/src/ffi.rs` is 1,374 LOC; `follow_list.rs` (297) is a `KernelEventObserver` *projection impl*, `dm_runtime.rs` (253) is runtime state. The Rust shell hosts real logic, not just C-ABI delegators.
 
 **Why it matters:** Chirp is supposed to be a reusability proof; both sides have become a second home for app-shaped projections.
 
@@ -273,7 +273,7 @@ let Some(keys) = identity.active_local_keys() else {
 
 ### C5. `nip29.*` snapshot-projection keys leak (action namespaces clean)
 **Status: PARTIAL.** Action namespaces are all `nmp.nip29.*` (`crates/nmp-nip29/src/action/*.rs`). Bare `nip29.*` survives only as:
-- snapshot projection keys: `apps/chirp/nmp-app-chirp/src/ffi.rs:298,368` (`"nip29.group_chat"`, `"nip29.discovered_groups"`).
+- snapshot projection keys: `apps/chirp/crates/nmp-app-chirp/src/ffi.rs:298,368` (`"nip29.group_chat"`, `"nip29.discovered_groups"`).
 - interest label: `crates/nmp-nip29/src/interest.rs:80` (`"nip29.discover"`).
 
 Both sites are OUTSIDE `nmp-core`, so doctrine-lint D9 (which bans `nip29` in `nmp-core`) does not catch them.
@@ -294,7 +294,7 @@ Both sites are OUTSIDE `nmp-core`, so doctrine-lint D9 (which bans `nip29` in `n
 ### F1. correlation_id / spinner round-trip — FIXED
 - `crates/nmp-core/src/publish/engine.rs:79` carries `correlation_id_override: Option<String>`.
 - `crates/nmp-core/src/ffi/action.rs:439-447` returns `{"correlation_id":<minted-id>}`.
-- iOS consumer `ios/Chirp/Chirp/Bridge/KernelModel.swift:433-436` matches `terminal.correlationId` from `actionResults`.
+- iOS consumer `apps/chirp/ios/Chirp/Bridge/KernelModel.swift:433-436` matches `terminal.correlationId` from `actionResults`.
 
 Round-trip is end-to-end wired for `PublishNote`. The 2026-05-21 code-grounded audit was right; reviews #24/#25/#29/#30 were stale.
 
@@ -302,7 +302,7 @@ Round-trip is end-to-end wired for `PublishNote`. The 2026-05-21 code-grounded a
 `crates/nmp-core/src/kernel/types.rs:653-757`: only **15** typed `pub(super)` fields. Identity, publish, views, wallet, bunker_handshake are all in the `projections: HashMap<String, Value>` map. Review #6 was either stale or counted differently.
 
 ### F3. `action_stages` substrate (PR-G) — wired end-to-end
-`ios/Chirp/Chirp/Bridge/KernelBridge.swift:1411-1431` decodes the projection; `ios/Chirp/Chirp/Bridge/KernelModel.swift:436` calls `kernel.ackActionStage(terminal.correlationId)`. Live consumer, not shipped-inert.
+`apps/chirp/ios/Chirp/Bridge/KernelBridge.swift:1411-1431` decodes the projection; `apps/chirp/ios/Chirp/Bridge/KernelModel.swift:436` calls `kernel.ackActionStage(terminal.correlationId)`. Live consumer, not shipped-inert.
 
 ---
 

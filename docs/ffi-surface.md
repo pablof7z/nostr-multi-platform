@@ -70,7 +70,7 @@ Swift `KeychainCapability.handleJSON(_:)`) and returns a `CapabilityEnvelope`
 JSON. This is the seam for PD-019 / T96 keychain capability.
 
 These symbols exist in the Rust ABI and are declared in
-`ios/Chirp/Chirp/Bridge/NmpCore.h`. Chirp registers the keychain capability
+`apps/chirp/ios/Chirp/Bridge/NmpCore.h`. Chirp registers the keychain capability
 handler before `start()`.
 
 | Symbol | Signature | Behavior | Callers | Threading | D6 | D7 |

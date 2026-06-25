@@ -35,17 +35,17 @@ namespace nmp.nip47;
 //         crates/nmp-nip47/schema/wallet_status.fbs
 //
 // Regenerate Swift bindings (FlatBuffers 25.12.19):
-//   flatc --swift -o ios/Chirp/Chirp/Bridge/Generated \
+//   flatc --swift -o apps/chirp/ios/Chirp/Bridge/Generated \
 //         crates/nmp-nip47/schema/wallet_status.fbs
 //
 // Regenerate Kotlin bindings (FlatBuffers 25.2.10 — the Android/Kotlin runtime
-// pin set by `flatbuffers-java:25.2.10` in android/app/build.gradle.kts, and
+// pin set by `flatbuffers-java:25.2.10` in apps/chirp/android/app/build.gradle.kts, and
 // enforced by ci/check-flatbuffers-version-pins.sh's FLATBUFFERS_25_2_10()
 // guard. This is DISTINCT from the Rust/Swift pin 25.12.19 above: every Kotlin
-// binding under android/app/src/main/java/nmp must use 25.2.10 or the runtime
+// binding under apps/chirp/android/app/src/main/java/nmp must use 25.2.10 or the runtime
 // version guard call (Constants.FLATBUFFERS_25_2_10()) will not exist and the
 // Android build will fail to compile):
-//   flatc --kotlin -o android/app/src/main/java \
+//   flatc --kotlin -o apps/chirp/android/app/src/main/java \
 //         crates/nmp-nip47/schema/wallet_status.fbs
 
 // Coarse-grained NWC transport-health state (`nmp_nip47::NwcConnectionState`).

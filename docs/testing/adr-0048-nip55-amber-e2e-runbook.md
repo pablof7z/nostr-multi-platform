@@ -28,16 +28,16 @@ pubkey: 740998438b8f8e308d65554ca4d980357382cf668e57feaad75816c1beabdd27
 
 ```sh
 # Native lib (only when Rust sources change)
-cd apps/nmp-gallery/nmp-app-gallery
-cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build \
+cd apps/nmp-gallery/crates/nmp-app-gallery
+cargo ndk -t arm64-v8a -o ../../android/app/src/main/jniLibs build \
   --features android-ffi --release
-cd ..
+cd ../../android
 
 # APK (always after any Kotlin or registry.json change)
-cd android && ./gradlew :app:assembleDebug && cd ..
+./gradlew :app:assembleDebug
 
 # Install
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 The gallery splash screen takes 15–20 seconds on a cold emulator start due to ART JIT
@@ -107,9 +107,9 @@ Chirp Android (same vendored bridge, same kernel):
 ```sh
 # Chirp native lib (arm64 only; the marmot feature needs an Android-target
 # OpenSSL for sqlcipher and is irrelevant to this leg)
-cargo ndk --manifest-path crates/nmp-android-ffi/Cargo.toml \
-  -t arm64-v8a -o android/app/src/main/jniLibs build --release
-cd android && ./gradlew :app:assembleDebug -x cargoNdk
+cargo ndk --manifest-path apps/chirp/crates/nmp-chirp-android-ffi/Cargo.toml \
+  -t arm64-v8a -o apps/chirp/android/app/src/main/jniLibs build --release
+cd apps/chirp/android && ./gradlew :app:assembleDebug -x cargoNdk
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 

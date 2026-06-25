@@ -10,10 +10,10 @@
 # pin on each platform. The skew is therefore deliberate and per-platform:
 #
 #   FLATC_PIN_RUST_SWIFT  Rust + Swift bindings  — matches `flatbuffers = "…"`
-#                         in Cargo.toml and the SPM pin in ios/Chirp/project.yml.
+#                         in Cargo.toml and the SPM pin in apps/chirp/ios/project.yml.
 #   FLATC_PIN_KOTLIN      Android/Kotlin bindings — matches
 #                         `com.google.flatbuffers:flatbuffers-java:…` in
-#                         android/app/build.gradle.kts.
+#                         apps/chirp/android/app/build.gradle.kts.
 #   FLATC_PIN_TS          Web/TypeScript bindings — matches the `flatbuffers`
 #                         dep in web/chirp/package.json.
 #

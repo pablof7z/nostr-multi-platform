@@ -3,7 +3,7 @@
 # Swift flatc codegen-drift gate (Issue #1, codegen drift correctness).
 #
 # The 35 checked-in `flatc --swift` Swift binding files under
-#   ios/Chirp/Chirp/Bridge/Generated/*.generated.swift
+#   apps/chirp/ios/Chirp/Bridge/Generated/*.generated.swift
 # (every `.generated.swift` file EXCEPT KernelTypes.generated.swift and
 # TypedProjectionDecoders.generated.swift, which are emitted by the
 # nmp-codegen Swift `Decodable`/typed-decoder generators — covered by the
@@ -44,7 +44,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # shellcheck source=ci/flatc-pins.sh
 source "${SCRIPT_DIR}/flatc-pins.sh"
 EXPECTED_FLATC_VERSION="${FLATC_PIN_RUST_SWIFT}"
-GENERATED_DIR="${REPO_ROOT}/ios/Chirp/Chirp/Bridge/Generated"
+GENERATED_DIR="${REPO_ROOT}/apps/chirp/ios/Chirp/Bridge/Generated"
 mkdir -p "${GENERATED_DIR}"
 
 if ! command -v flatc >/dev/null 2>&1; then

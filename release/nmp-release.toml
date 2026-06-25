@@ -243,17 +243,17 @@ path = "crates/nmp-wot"
 
 [[private_packages]]
 name = "nmp-chirp-android-ffi"
-path = "apps/chirp/nmp-chirp-android-ffi"
+path = "apps/chirp/crates/nmp-chirp-android-ffi"
 reason = "Chirp-owned Android JNI cdylib; standalone workspace, not published through root cargo package dry-run"
 
 [[private_packages]]
 name = "nmp-app-chirp"
-path = "apps/chirp/nmp-app-chirp"
+path = "apps/chirp/crates/nmp-app-chirp"
 reason = "app composition crate"
 
 [[private_packages]]
 name = "nmp-chirp-config"
-path = "apps/chirp/nmp-chirp-config"
+path = "apps/chirp/crates/nmp-chirp-config"
 reason = "Chirp-specific configuration crate"
 
 [[private_packages]]
@@ -263,7 +263,7 @@ reason = "Chirp reference TUI application"
 
 [[private_packages]]
 name = "nmp-app-gallery"
-path = "apps/nmp-gallery/nmp-app-gallery"
+path = "apps/nmp-gallery/crates/nmp-app-gallery"
 reason = "gallery app composition crate"
 
 [[private_packages]]
@@ -283,7 +283,7 @@ reason = "Chirp reference desktop (egui) application"
 
 [[private_packages]]
 name = "nmp-app-chirp-web"
-path = "apps/chirp/nmp-app-chirp-web"
+path = "apps/chirp/crates/nmp-app-chirp-web"
 reason = "wasm32 composition root for the Chirp web client"
 
 [[private_packages]]

@@ -80,7 +80,7 @@ jobs:
           echo "Booted simulator UDID: $DEVICE"
 
       # Run ONLY the ChirpUITests target on the booted simulator. The scheme's
-      # test action exports `NMP_MARMOT_MOCK_KEYRING=1` (see ios/Chirp/project.yml)
+      # test action exports `NMP_MARMOT_MOCK_KEYRING=1` (see apps/chirp/ios/project.yml)
       # so Marmot credential paths take the mock branch headlessly. Tests whose
       # external resource (bunker URI / live relay / resolvable author) is absent
       # self-`XCTSkip` — a skip is the explicit "resource unavailable" signal, not
@@ -94,11 +94,11 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild test \
-            -project ios/Chirp/Chirp.xcodeproj \
+            -project apps/chirp/ios/Chirp.xcodeproj \
             -scheme Chirp \
             -only-testing:ChirpUITests \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
-            -derivedDataPath ios/DerivedData \
+            -derivedDataPath apps/chirp/ios/DerivedData \
             | tee ios_ui_output.txt
 
       - name: Upload test output on failure

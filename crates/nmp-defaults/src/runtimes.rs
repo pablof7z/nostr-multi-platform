@@ -35,7 +35,7 @@
 //! The DM projection closure is a PURE READ that never reconciles — keeping
 //! side-effect and data-projection concerns on separate, independently-owned seams.
 //!
-//! Originally lived in `apps/chirp/nmp-app-chirp/src/{dm,zap_receipts}_runtime.rs`.
+//! Originally lived in `apps/chirp/crates/nmp-app-chirp/src/{dm,zap_receipts}_runtime.rs`.
 //! Lifted here so any NMP-based app gets canonical DM + zap subscription
 //! behaviour through one `register_defaults` call. The DM keys also emit typed
 //! FlatBuffers sidecars (ADR-0037, Wave A): `nmp.nip17.dm_inbox` (`NDMI`) and

@@ -257,10 +257,10 @@ mod tests {
     #[test]
     fn file_in_scope_excludes_apps() {
         assert!(!file_in_scope(&PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
         )));
         assert!(!file_in_scope(&PathBuf::from(
-            "/abs/path/apps/chirp/nmp-app-chirp/src/lib.rs"
+            "/abs/path/apps/chirp/crates/nmp-app-chirp/src/lib.rs"
         )));
     }
 

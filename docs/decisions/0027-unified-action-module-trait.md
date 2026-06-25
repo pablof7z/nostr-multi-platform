@@ -119,7 +119,7 @@ The decision: **the unified `register_action_module<M>` is Rust-only.** A
 non-Rust host that wants a custom action namespace registers a typed
 `ActionModule` impl from a Rust shim crate it controls, or stays on the
 existing built-in namespaces. This is consistent with how the Marmot cluster
-is structured today (Rust-side composition root in `apps/chirp/nmp-app-chirp`)
+is structured today (Rust-side composition root in `apps/chirp/crates/nmp-app-chirp`)
 and with ADR-0010's generated-app-enum direction.
 
 The two C-ABI symbols (`nmp_app_register_action_executor`,

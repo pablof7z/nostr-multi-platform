@@ -31,7 +31,7 @@ rust-ios-device:
 gen-buildinfo:
     #!/usr/bin/env zsh
     set -eu
-    OUT="ios/Chirp/Chirp/App/BuildInfo.generated.swift"
+    OUT="apps/chirp/ios/Chirp/App/BuildInfo.generated.swift"
     BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
     COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
     BUILD_TIME=$(date -u +"%Y-%m-%d %H:%M UTC")
@@ -45,14 +45,14 @@ gen-buildinfo:
     } > "$OUT"
 
 gen-ios: gen-buildinfo
-    xcodegen generate --spec ios/Chirp/project.yml
+    xcodegen generate --spec apps/chirp/ios/project.yml
 
 build-ios: rust-ios-sim gen-ios
-    xcodebuild -project ios/Chirp/Chirp.xcodeproj -scheme Chirp -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath ios/DerivedData build
+    xcodebuild -project apps/chirp/ios/Chirp.xcodeproj -scheme Chirp -destination 'platform=iOS Simulator,name=iPhone 17,OS=26.5' -derivedDataPath apps/chirp/ios/DerivedData build
 
 run-ios: build-ios
-    xcrun simctl install booted ios/DerivedData/Build/Products/Debug-iphonesimulator/Chirp.app
-    xcrun simctl launch booted com.example.Chirp
+    xcrun simctl install booted apps/chirp/ios/DerivedData/Build/Products/Debug-iphonesimulator/Chirp.app
+    xcrun simctl launch booted io.f7z.chirp
 
 # === FFI hardening (M10.5 phase 1) ===
 # Runs S1..S5 Rust harness scenarios against nmp_app_* C symbols.

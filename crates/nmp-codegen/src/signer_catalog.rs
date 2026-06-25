@@ -68,7 +68,7 @@ pub struct IosSpec {
 
 // ── Output targets (relative to the repo root, the codegen cwd) ───────────────
 //
-// Same posture as `gen swift` (writes `ios/Chirp/...`): the binary runs from the
+// Same posture as `gen swift` (writes `apps/chirp/ios/...`): the binary runs from the
 // workspace root, so these relative paths resolve against the checkout root both
 // in CI and locally.
 
@@ -85,9 +85,9 @@ const KOTLIN_TARGETS: &[KotlinTarget] = &[
         path: "apps/nmp-gallery/android/app/src/main/kotlin/org/nmp/gallery/registry/KnownSigners.generated.kt",
         package: "org.nmp.gallery.registry",
     },
-    // The standalone `android/` host app copy.
+    // Chirp Android host app copy.
     KotlinTarget {
-        path: "android/app/src/main/java/org/nmp/android/KnownSigners.generated.kt",
+        path: "apps/chirp/android/app/src/main/java/org/nmp/android/KnownSigners.generated.kt",
         package: "org.nmp.android",
     },
     // The CLI install registry copy (vendored into consumer apps).
@@ -105,7 +105,7 @@ const SWIFT_TARGETS: &[&str] = &[
 ];
 
 const ANDROID_MANIFEST: &str = "apps/nmp-gallery/android/app/src/main/AndroidManifest.xml";
-const IOS_PLIST: &str = "ios/Chirp/Chirp/Info.plist";
+const IOS_PLIST: &str = "apps/chirp/ios/Chirp/Info.plist";
 
 // ── Generated-file headers ────────────────────────────────────────────────────
 

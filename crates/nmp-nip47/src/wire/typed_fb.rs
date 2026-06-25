@@ -2,7 +2,7 @@
 //!
 //! The authoritative FFI shape of the `"wallet"` projection is the serde JSON
 //! of [`WalletStatus`] (registered via `register_snapshot_projection` in
-//! `apps/chirp/nmp-app-chirp/src/wallet_runtime.rs`). This module adds a
+//! `apps/chirp/crates/nmp-app-chirp/src/wallet_runtime.rs`). This module adds a
 //! **typed FlatBuffers** encoding of the same struct — a self-describing,
 //! schema-versioned, language-neutral binary the host platforms (Swift /
 //! Kotlin / TypeScript) can decode with generated accessors instead of JSON

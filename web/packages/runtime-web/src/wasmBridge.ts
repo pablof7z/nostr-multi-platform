@@ -1,7 +1,7 @@
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 
 // Module path updated from `nmp_wasm.js` → `nmp_app_chirp_web.js` when the
-// build target switched from `crates/nmp-wasm` to `apps/chirp/nmp-app-chirp-web`
+// build target switched from `crates/nmp-wasm` to `apps/chirp/crates/nmp-app-chirp-web`
 // (PR-F1). The JS class name (`NmpWasmRuntime`) and all method names are
 // unchanged, so no other edits to this file are required.
 const defaultModulePath = "/nmp-wasm/nmp_app_chirp_web.js";

@@ -17,7 +17,7 @@ Four layers, strict ownership. Built from the bottom up:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ PLATFORM SHELL          ios/Chirp + Android Chirp/gallery shells       │
+│ PLATFORM SHELL          apps/chirp/ios + Android Chirp/gallery shells       │
 │  owns: rendering, OS handle execution, generated binding wrappers      │
 │  D5 ► consumes ONE bounded FlatBuffers update frame; no policy nouns     │
 └────────────────────────────────▲───────────────────────────────────────┘
@@ -49,7 +49,7 @@ Four layers, strict ownership. Built from the bottom up:
 
 Representative shipped crates are labelled in their layer above:
 `nmp-core` (kernel), `nmp-nip29` / `nmp-nip42` / `nmp-nip77` / `nmp-signers`
-(protocol modules), `apps/chirp/nmp-app-chirp` + `microblog-core` (app cores),
+(protocol modules), `apps/chirp/crates/nmp-app-chirp` + `microblog-core` (app cores),
 `nmp-defaults` (canonical composition root), and `nmp-ffi` (shared C-ABI).
 `nmp-codegen` still emits host bindings (`gen swift`, `gen typed-decoders`);
 it no longer generates per-app composition crates (ADR-0046). Chirp is the
@@ -248,7 +248,7 @@ capabilities, but it no longer carries JSON runtime snapshots (see
 | NIP-77 sync reconciler | `nmp-nip77` | protocol noun |
 | `NoteRecord`, feed store | `microblog-core` | app noun (walkthrough app) |
 | App-owned store (`Arc<Mutex<T>>`) | app-core crate | D4: app owns its state |
-| SwiftUI list cell, OS audio handle | `ios/Chirp` / shell | rendering / OS execution |
+| SwiftUI list cell, OS audio handle | `apps/chirp/ios` / shell | rendering / OS execution |
 
 The single test of correctness: a future app module can be added with **zero
 changes to `nmp-core`**.

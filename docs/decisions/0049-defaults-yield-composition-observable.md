@@ -21,7 +21,7 @@ The action registry installed modules with a bare `HashMap::insert`
 app registering its own module under a default namespace **before** the defaults
 run was silently clobbered when `register_defaults` ran afterward. Chirp worked
 only by accident of call order — it calls `register_defaults` first
-(`apps/chirp/nmp-app-chirp/src/ffi/register.rs:108`), so the defaults install and
+(`apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs:108`), so the defaults install and
 nothing later overrides them.
 
 This is exactly inverted from how a composition framework must behave. **Spring
@@ -125,7 +125,7 @@ One FFI symbol, **`nmp_app_composition_report(app) -> *mut c_char`**, returns
 the ledger as JSON, mirroring `nmp_app_recent_routing_decisions` exactly
 (heap-owned C string freed via `nmp_free_string`; empty well-formed document for
 a null app or a serialisation failure — D6). The symbol is declared in
-`ios/Chirp/Chirp/Bridge/NmpCore.h` to satisfy the `ffi-drift` CI gate.
+`apps/chirp/ios/Chirp/Bridge/NmpCore.h` to satisfy the `ffi-drift` CI gate.
 
 The ledger is a `Vec` behind a `Mutex`, written only during registration
 (host-init) and the rare runtime slot replacement — **zero hot-path cost; no

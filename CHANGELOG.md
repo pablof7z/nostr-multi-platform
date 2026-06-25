@@ -359,7 +359,7 @@ delivers a single event.
   part of #1093). `tier3_golden_fixture_matches_encoder` asserts the Rust
   encoder output matches `update_frame_tier3_golden_v1.fb.hex` byte-for-byte.
   `ci/check-kotlin-flatc-drift.sh` mirrors the Rust flatc-drift gate for the
-  Kotlin transport bindings (`android/app/src/main/java/nmp/transport/*.kt`),
+  Kotlin transport bindings (`apps/chirp/android/app/src/main/java/nmp/transport/*.kt`),
   requiring flatc v25.2.10 (the Android/Kotlin runtime pin); wired into
   `codegen-drift.yml` as a new `kotlin-flatc-drift` job.
 

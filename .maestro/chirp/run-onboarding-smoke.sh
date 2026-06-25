@@ -7,7 +7,7 @@ DEVICE_NAME="${CHIRP_MAESTRO_DEVICE:-iPhone 17}"
 RELAY_PORT="${CHIRP_MAESTRO_RELAY_PORT:-10547}"
 RELAY_URL="${CHIRP_MAESTRO_RELAY_URL:-ws://127.0.0.1:${RELAY_PORT}}"
 DISPLAY_NAME="${CHIRP_MAESTRO_DISPLAY_NAME:-Maestro Chirp Smoke}"
-DERIVED_DATA="${CHIRP_MAESTRO_DERIVED_DATA:-${ROOT}/ios/Chirp/DerivedData-maestro}"
+DERIVED_DATA="${CHIRP_MAESTRO_DERIVED_DATA:-${ROOT}/apps/chirp/ios/DerivedData-maestro}"
 APP_PATH="${DERIVED_DATA}/Build/Products/Debug-iphonesimulator/Chirp.app"
 RELAY_LOG="${TMPDIR:-/tmp}/chirp-maestro-nak-${RELAY_PORT}.log"
 RELAY_PID=""
@@ -134,7 +134,7 @@ main() {
   cargo build -p nmp-app-chirp --target aarch64-apple-ios-sim
 
   xcodebuild \
-    -project "${ROOT}/ios/Chirp/Chirp.xcodeproj" \
+    -project "${ROOT}/apps/chirp/ios/Chirp.xcodeproj" \
     -scheme Chirp \
     -destination "platform=iOS Simulator,id=${udid}" \
     -derivedDataPath "$DERIVED_DATA" \

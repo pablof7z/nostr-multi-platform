@@ -1,6 +1,6 @@
 //! Structural unit tests for the generated Kotlin `KeyedRefCache` (ADR-0063).
 //! The Kotlin compile + JUnit run is the CI harness's gate
-//! (`android/app/src/test/java/org/nmp/android/KeyedRefCacheTest.kt`); these
+//! (`apps/chirp/android/app/src/test/java/org/nmp/android/KeyedRefCacheTest.kt`); these
 //! Rust tests guard the generator's emitted shape.
 
 use super::render_kotlin_keyed_ref_cache;

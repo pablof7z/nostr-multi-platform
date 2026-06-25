@@ -69,13 +69,13 @@ of `encode_modular_timeline_snapshot` and `register_typed_snapshot_projection`
 are tests and golden-wire fixtures:
 
 - `crates/nmp-nip01/tests/golden_wire_fixtures.rs`
-- `apps/chirp/nmp-app-chirp/tests/typed_feed_parity.rs`
+- `apps/chirp/crates/nmp-app-chirp/tests/typed_feed_parity.rs`
 - `crates/nmp-core/src/kernel/snapshot_registry_tests.rs`
 
 ADR-0037 shipped the *codec, schema, decoders, and registration seam*, but the
 live emission wiring into Chirp's producer never landed — and PR #747
 explicitly declined to re-wire it (see the comment at
-`apps/chirp/nmp-app-chirp/src/ffi/register.rs:155-159`: "ADR-0037 typed sidecar
+`apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs:155-159`: "ADR-0037 typed sidecar
 for nmp.feed.home is intentionally NOT re-wired here … A follow-up PR will add
 the `RootFeedSnapshot` typed-FB schema").
 
@@ -374,7 +374,7 @@ file_identifier "NOFS";
   RootFeedSnapshot<ChirpEventCard, ChirpReplyAttribution>` where
   `ChirpEventCard` / `ChirpReplyAttribution` are `pub use ... as` aliases of
   `nmp_nip01::TimelineEventCard` / `Nip10ReplyAttribution`
-  (`apps/chirp/nmp-app-chirp/src/lib.rs:53,62`). So the engine snapshot the
+  (`apps/chirp/crates/nmp-app-chirp/src/lib.rs:53,62`). So the engine snapshot the
   typed closure encodes IS `RootFeedSnapshot<TimelineEventCard,
   Nip10ReplyAttribution>` — the `encode_op_feed_snapshot` signature in
   Commitment 5 is exact, no wrapper conversion needed.
@@ -403,14 +403,14 @@ live emission to stop. "Retiring NFTS-for-feed" collapses to:
 1. **Decoders — rebind from NFTS to NOFS** (T2/T3/T4):
    - chirp-tui `apps/chirp/chirp-tui/src/snapshot.rs:74-93`
      (`typed_home_feed_from_projections`, `merge_home_feed_projection`).
-   - iOS `ios/Chirp/Chirp/Bridge/TypedHomeFeedDecoder.swift` (descriptor
+   - iOS `apps/chirp/ios/Chirp/Bridge/TypedHomeFeedDecoder.swift` (descriptor
      constants + `nmp_nip01_ModularTimelineSnapshot` → `nmp_nip01_OpFeedSnapshot`).
-   - Android `android/app/src/main/java/org/nmp/android/TypedHomeFeedDecoder.kt`
+   - Android `apps/chirp/android/app/src/main/java/org/nmp/android/TypedHomeFeedDecoder.kt`
      and the gallery decoder under
      `apps/nmp-gallery/android/app/src/main/kotlin/nmp/transport/` (the live
      consumer the pin script guards).
 2. **Feed-keyed parity test — reshape, do not keep**:
-   - `apps/chirp/nmp-app-chirp/tests/typed_feed_parity.rs` asserts the NFTS
+   - `apps/chirp/crates/nmp-app-chirp/tests/typed_feed_parity.rs` asserts the NFTS
      descriptor at `nmp.feed.home`. Replace its body with the `NOFS` round-trip
      through `encode_snapshot_with_typed` / `decode_snapshot_with_typed`.
 3. **NFTS codec itself — KEEP as available-but-unused infrastructure**:

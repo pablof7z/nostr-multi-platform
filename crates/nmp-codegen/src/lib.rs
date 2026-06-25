@@ -23,7 +23,7 @@ mod diff_report;
 pub mod swift;
 // V6 Stage 2 — dotted-projection-key registry for `SnapshotProjections` +
 // `CodingKeys`. Hand-transcribed from the existing Swift declaration in
-// `ios/Chirp/Chirp/Bridge/KernelBridge.swift`; the renderer in `swift.rs`
+// `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`; the renderer in `swift.rs`
 // appends `SnapshotProjections` to the generated file using this slice.
 // Lives in `nmp-codegen` (D0-exempt) so the registry can name dotted host
 // keys like `"nmp.nip29.group_chat"` without tripping doctrine-lint on
@@ -56,7 +56,7 @@ pub mod swift_projection_cache;
 // ADR-0055 R3-S4 — generated `ProjectionMergeCache` (Android/Kotlin). Sourced
 // from the SAME projection registry as `swift_projection_cache` so the cache
 // is byte-for-byte semantically identical to the iOS implementation. Generates
-// `android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
+// `apps/chirp/android/app/src/main/java/org/nmp/android/ProjectionCache.kt`.
 pub mod kotlin_projection_cache;
 // ADR-0053 / Workstream-E4 — projection-tier classification + the codegen-derived
 // kernel built-in projection key set (derived from `swift_projections_registry`).

@@ -32,12 +32,12 @@ Items are ordered by **(architectural severity × blast radius)**. Items where a
 
 The `nostr_kind_registry.rs` gap (446 vs 826 lines) means the registry ships a component that is missing ~380 lines of rendering logic, including author byline, rounded-box card layout, and live-profile resolution that the CLI version gained via `author_byline()` / `NostrMentionProfileHost`.
 
-**Diverged SwiftUI files (web/registry vendor vs ios/Chirp):**  
+**Diverged SwiftUI files (web/registry vendor vs apps/chirp/ios):**
 23 matching filenames; those confirmed diverged: `HighlightEmbed.swift`, `NostrRelayList.swift`, `NostrContentView.swift`, `NostrUserCard.swift`, `NostrMinimalContentView.swift`, `ArticleEmbed.swift`, `RenderIdentifiable.swift`, `ProfileWire.swift`, `NostrAvatar.swift`, `NostrProfileHost.swift`, `NostrNpubChip.swift`, `ContentTreeWire.swift`, `NostrNip05Badge.swift`, `NostrProfileName.swift`, `EmbeddedEvent.swift`, `EmbedKindProjection.swift`, `NostrKindRegistry.swift`, `EmbedChromeContainer.swift`, `NostrQuoteCard.swift`.
 
 **Canonical paths:**
 - TUI Rust: `crates/nmp-cli/registry/tui/…` (always-canonical; CLI builds and tests it)
-- SwiftUI: `ios/Chirp/Chirp/Components/…` (always-canonical; iOS builds and tests it)
+- SwiftUI: `apps/chirp/ios/Chirp/Components/…` (always-canonical; iOS builds and tests it)
 
 **Legacy path:** `web/registry/src/vendor/tui/…` and `web/registry/src/vendor/swiftui/…`
 

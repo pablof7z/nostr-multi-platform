@@ -7,4 +7,4 @@
 # output exactly. The companion .editorconfig disables editor trailing-
 # whitespace trimming for the same path (flatc emits a trailing space after
 # the file-identifier accessor; trimming it re-drifts the gate).
-ios/Chirp/Chirp/Bridge/Generated/*.generated.swift -text linguist-generated=true
+apps/chirp/ios/Chirp/Bridge/Generated/*.generated.swift -text linguist-generated=true

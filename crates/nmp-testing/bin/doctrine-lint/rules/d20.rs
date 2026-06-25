@@ -299,7 +299,7 @@ mod tests {
         assert!(!file_in_scope(Path::new("crates/nmp-marmot/src/lib.rs")));
         assert!(!file_in_scope(Path::new("crates/nmp-ffi/src/lib.rs")));
         assert!(!file_in_scope(Path::new(
-            "apps/chirp/nmp-app-chirp/src/lib.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/lib.rs"
         )));
     }
 

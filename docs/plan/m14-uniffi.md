@@ -15,7 +15,7 @@
 **Subsystem deliverables.**
 
 - `nmp-codegen` extended to produce UniFFI scaffolding via `gen swift` / `gen typed-decoders`.
-- `apps/chirp/nmp-app-chirp` as the reference per-app crate demonstrating the library composition model.
+- `apps/chirp/crates/nmp-app-chirp` as the reference per-app crate demonstrating the library composition model.
 - `xcframework` build pipeline for `nmp-app-chirp`.
 - Generated Swift wrappers: `useProfile`, `@Profile`, `useTimeline`, `@Wallet`, etc.
 - Generated FlatBuffers readers/writers for the canonical `AppUpdate` schema used by Swift/Kotlin/TS shells.

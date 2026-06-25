@@ -11,14 +11,14 @@ from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
-HEADER_REL = Path("ios/Chirp/Chirp/Bridge/NmpCore.h")
+HEADER_REL = Path("apps/chirp/ios/Chirp/Bridge/NmpCore.h")
 UPDATE_CALLBACK_HEADER_RELS = [
     HEADER_REL,
     Path("apps/nmp-gallery/ios/NmpGallery/Bridge/NmpGallery.h"),
 ]
 FFI_ROOT_RELS = [
     Path("crates/nmp-ffi/src"),
-    Path("apps/chirp/nmp-app-chirp/src/ffi"),
+    Path("apps/chirp/crates/nmp-app-chirp/src/ffi"),
     Path("crates/nmp-marmot/src"),
 ]
 

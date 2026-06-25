@@ -274,7 +274,7 @@ pub extern "C" fn nmp_app_remove_account(app: *mut NmpApp, identity_id: *const c
 // `nmp-app-chirp` and reach the kernel through the generic
 // `nmp_app_dispatch_action` path under the host-registered `chirp.react` /
 // `nmp.follow` / `nmp.unfollow` namespaces (see
-// `apps/chirp/nmp-app-chirp/src/ffi.rs::register_chirp_actions`). The
+// `apps/chirp/crates/nmp-app-chirp/src/ffi.rs::register_chirp_actions`). The
 // `ActorCommand` variants themselves stay in `actor/mod.rs` — they are the
 // generic command shape the host executors enqueue.
 

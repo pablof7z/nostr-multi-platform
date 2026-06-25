@@ -154,7 +154,7 @@ PR #1550 (relays/pubkeys out of NMP) merges to master as the P9 headline breakin
 
 docs/architecture/crate-boundaries.md §9 and the builder guide must be updated so that nmp-defaults is documented as a reusable NMP composition library — NOT a leaf app — that may wire generic mechanisms but must not own operator policy facts such as relay URLs, bootstrap relay URLs, seed pubkeys, auto-follow lists, or signer permission batches.
 
-This is a correctly breaking change with no compat aliases or shims; migration involves moving Chirp relay URLs, bootstrap relay, seed follows, and signer permissions into apps/chirp/nmp-app-chirp, updating nmp-ffi/actor command surfaces to require app-provided values, and updating nmp-cli to create app-owned config placeholders.
+This is a correctly breaking change with no compat aliases or shims; migration involves moving Chirp relay URLs, bootstrap relay, seed follows, and signer permissions into apps/chirp/crates/nmp-app-chirp, updating nmp-ffi/actor command surfaces to require app-provided values, and updating nmp-cli to create app-owned config placeholders.
 
 <!-- citations: [^019ed-36] [^11850-31] [^11850-132] [^11850-187] -->
 ## Deferred Findings (Post-v1)

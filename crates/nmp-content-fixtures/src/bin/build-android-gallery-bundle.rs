@@ -24,7 +24,8 @@ use nmp_core::nip21::{parse_nostr_uri, NostrUri};
 use nmp_core::substrate::KernelEvent;
 use serde::Serialize;
 
-const ANDROID_BUNDLE_PATH: &str = "android/gallery/src/main/assets/content-gallery-bundle.json";
+const ANDROID_BUNDLE_PATH: &str =
+    "apps/nmp-gallery/android/app/src/main/assets/content-gallery-bundle.json";
 /// Bump to 3 to signal the new embed shape; decoders must upgrade.
 const ANDROID_BUNDLE_VERSION: u32 = 3;
 

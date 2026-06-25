@@ -20,12 +20,12 @@ name: native-tests
 #   Phase 3: ChirpUITests (XCUITest) nightly on macOS + booted simulator —
 #                        see `.github/workflows/ios-ui-nightly.yml`.
 #
-# Why path-filtered: `android/**` and `apps/chirp/nmp-chirp-android-ffi/**` are
+# Why path-filtered: `android/**` and `apps/chirp/crates/nmp-chirp-android-ffi/**` are
 # the obvious Android triggers; `ios/**` and `crates/nmp-ffi/**` are the iOS triggers;
 # `crates/nmp-codegen/**` and `crates/nmp-core/**` are included on both because
 # the nmp-core projection types are the single source of truth the native
 # decoders mirror — a change there is precisely when the consumer tests must run.
-# `apps/nmp-gallery/android/**` and `crates/nmp-app-gallery/**` are included so
+# `apps/nmp-gallery/android/**` and `apps/nmp-gallery/crates/nmp-app-gallery/**` are included so
 # the gallery JUnit suite (VendorDriftGateTest + NIP-55 login-block tests) runs
 # whenever the gallery's Kotlin or Rust code changes.
 
@@ -36,8 +36,8 @@ on:
       - ".github/workflows/native-tests.yml"
       - "android/**"
       - "apps/nmp-gallery/android/**"
-      - "apps/chirp/nmp-chirp-android-ffi/**"
-      - "crates/nmp-app-gallery/**"
+      - "apps/chirp/crates/nmp-chirp-android-ffi/**"
+      - "apps/nmp-gallery/crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
       - "ios/**"
@@ -48,8 +48,8 @@ on:
       - ".github/workflows/native-tests.yml"
       - "android/**"
       - "apps/nmp-gallery/android/**"
-      - "apps/chirp/nmp-chirp-android-ffi/**"
-      - "crates/nmp-app-gallery/**"
+      - "apps/chirp/crates/nmp-chirp-android-ffi/**"
+      - "apps/nmp-gallery/crates/nmp-app-gallery/**"
       - "crates/nmp-codegen/**"
       - "crates/nmp-core/**"
       - "ios/**"
@@ -79,13 +79,13 @@ jobs:
 
       # Pure-JVM unit tests only. We explicitly exclude `cargoNdk` so the runner
       # never invokes `cargo ndk` to cross-compile the JNI `.so`:
-      # `android/app/build.gradle.kts` wires `preBuild dependsOn cargoNdk`, but
+      # `apps/chirp/android/app/build.gradle.kts` wires `preBuild dependsOn cargoNdk`, but
       # `testDebugUnitTest` does not load the native library — the decoder /
       # dispatch / model tests are hermetic FlatBuffers/JSON contract tests. This
       # keeps the job Rust-free, fast (~15s cold), and emulator-free. Verified
       # locally: 5 suites / 22 tests green with `-x cargoNdk`.
       - name: Run Android JVM unit tests
-        working-directory: android
+        working-directory: apps/chirp/android
         run: ./gradlew :app:testDebugUnitTest -x cargoNdk --stacktrace
 
       # Surface the JUnit XML/HTML report on failure so a red run is debuggable
@@ -96,8 +96,8 @@ jobs:
         with:
           name: android-junit-report
           path: |
-            android/app/build/reports/tests/testDebugUnitTest
-            android/app/build/test-results/testDebugUnitTest
+            apps/chirp/android/app/build/reports/tests/testDebugUnitTest
+            apps/chirp/android/app/build/test-results/testDebugUnitTest
           if-no-files-found: ignore
 
   gallery-android-junit:
@@ -178,7 +178,7 @@ jobs:
     # hermetic decoder tests never depend on a real `SecItem*` entitlement that a
     # CI runner cannot satisfy. It is exported into the test runner's process
     # environment via the Chirp scheme's test-action `environmentVariables`
-    # (see ios/Chirp/project.yml), so it is present whenever the scheme runs.
+    # (see apps/chirp/ios/project.yml), so it is present whenever the scheme runs.
     #
     # NOTE (#1293): the ChirpTests target must compile for this lane to be
     # meaningful. #1293 (stale `ProfileCard.npub` references + missing
@@ -252,11 +252,11 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild test \
-            -project ios/Chirp/Chirp.xcodeproj \
+            -project apps/chirp/ios/Chirp.xcodeproj \
             -scheme Chirp \
             -only-testing:ChirpTests \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
-            -derivedDataPath ios/DerivedData \
+            -derivedDataPath apps/chirp/ios/DerivedData \
             | tee ios_unit_output.txt
 
       - name: Upload test output on failure

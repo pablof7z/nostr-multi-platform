@@ -33,7 +33,7 @@ fun interface KernelSignerRequestListener {
  * Doctrine: no business logic or cached state (D5/D8). Errors never cross
  * FFI (D6) — natives return only a handle / bytes / void; outcomes arrive
  * in the next FlatBuffers update frame. The Rust side is in
- * `apps/nmp-gallery/nmp-app-gallery`; it MUST export
+ * `apps/nmp-gallery/crates/nmp-app-gallery`; it MUST export
  * JNI symbols named `Java_org_nmp_gallery_bridge_KernelBridge_<methodName>`
  * to match this Kotlin class.
  *

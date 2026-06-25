@@ -7,8 +7,8 @@
 #   crates/nmp-marmot/schema/marmot_messages.fbs
 # drive checked-in bindings on three platforms:
 #   Rust   crates/nmp-marmot/src/wire/generated/marmot_{snapshot,messages}_generated.rs
-#   Swift  ios/Chirp/Chirp/Bridge/Generated/Marmot{Snapshot,Messages}.generated.swift
-#   Kotlin android/app/src/main/java/nmp/marmot/*.kt
+#   Swift  apps/chirp/ios/Chirp/Bridge/Generated/Marmot{Snapshot,Messages}.generated.swift
+#   Kotlin apps/chirp/android/app/src/main/java/nmp/marmot/*.kt
 #
 # Until #1240 these were NOT gated, so a hand-edit to a schema (or a stale
 # checked-in binding) could silently drift from the generated output — exactly
@@ -115,7 +115,7 @@ rust)
 #    Rename the fresh output before diffing. ─────────────────────────────────
 swift)
     require_flatc_version "${FLATC_PIN_RUST_SWIFT}"
-    GENERATED_DIR="${REPO_ROOT}/ios/Chirp/Chirp/Bridge/Generated"
+    GENERATED_DIR="${REPO_ROOT}/apps/chirp/ios/Chirp/Bridge/Generated"
 
     TMP_DIR="$(mktemp -d)"
     trap 'rm -rf "${TMP_DIR}"' EXIT
@@ -167,7 +167,7 @@ swift)
 # ── Kotlin: flatc --kotlin 25.2.10; dir diff against nmp/marmot. ────────────
 kotlin)
     require_flatc_version "${FLATC_PIN_KOTLIN}"
-    CHECKED_IN_DIR="${REPO_ROOT}/android/app/src/main/java/nmp/marmot"
+    CHECKED_IN_DIR="${REPO_ROOT}/apps/chirp/android/app/src/main/java/nmp/marmot"
 
     TMP_DIR="$(mktemp -d)"
     trap 'rm -rf "${TMP_DIR}"' EXIT

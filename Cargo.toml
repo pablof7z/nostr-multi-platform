@@ -1,9 +1,9 @@
 [workspace]
 members = [
-    "apps/chirp/nmp-app-chirp",
-    "apps/chirp/nmp-app-chirp-web",
+    "apps/chirp/crates/*",
     "apps/chirp/chirp-tui",
-    "apps/chirp/nmp-chirp-config",
+    "apps/chirp/chirp-desktop",
+    "apps/nmp-gallery/crates/*",
     "apps/nmp-gallery/tui",
     "apps/nmp-gallery/desktop",
     "crates/nmp-cli",
@@ -37,7 +37,6 @@ members = [
     "crates/nmp-nip68",
     "crates/nmp-nip59",
     "crates/nmp-nip59-decrypt-only",
-    "apps/nmp-gallery/nmp-app-gallery",
     "crates/nmp-nip77",
     "crates/nmp-nip78",
     "crates/nmp-relay-url",
@@ -58,7 +57,6 @@ members = [
     "crates/nmp-signers",
     "crates/nmp-testing",
     "crates/nmp-threading",
-    "apps/chirp/chirp-desktop",
     "crates/nmp-wasm",
 ]
 # PARKED CRATES — excluded from the default workspace build.
@@ -80,6 +78,7 @@ members = [
 # To build a parked crate on demand:
 #   cargo build --manifest-path crates/nmp-nip60/Cargo.toml
 exclude = [
+    "apps/chirp/crates/nmp-chirp-android-ffi",
     "crates/nmp-nip60",
 ]
 resolver = "2"

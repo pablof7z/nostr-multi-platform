@@ -1,0 +1,82 @@
+# Standalone workspace root (empty [workspace] table) so the parent workspace
+# at ../../../../Cargo.toml does NOT pull this crate in. The parent `members` list
+# is explicit (no glob); this detachment keeps Android territory file-disjoint
+# and avoids editing the shared root manifest.
+[workspace]
+
+[package]
+name = "nmp-chirp-android-ffi"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Chirp-owned Android JNI delivery surface (Layer 6, Chirp app)."
+
+[lib]
+name = "nmp_android_ffi"
+crate-type = ["cdylib"]
+
+[features]
+# Marmot (MLS-over-Nostr encrypted groups). Mirrors the iOS posture: `marmot`
+# is opt-in via the build flag — the `cargoNdk` task in
+# `apps/chirp/android/app/build.gradle.kts` passes `--features marmot`, it is NOT
+# hardcoded on the dependency — so `cargo build` (no features) still yields a
+# Marmot-free .so for CI / non-Marmot consumers. Forwards to
+# `nmp-app-chirp/marmot`, which activates `nmp-marmot` + its `ffi` feature
+# and makes the `nmp_marmot_*` C-ABI symbols reachable through Rust paths from
+# the JNI shim (the same symbol-retention mechanism documented at the top of
+# `src/lib.rs`).
+marmot = ["nmp-app-chirp/marmot", "dep:libsqlite3-sys", "dep:openssl-src"]
+
+[dependencies]
+# Path-dep on the SAME kernel the iOS app consumes.
+nmp-core = { path = "../../../../crates/nmp-core" }
+# C-ABI surface owner (extracted from `nmp-core::ffi` in step 11-final of
+# `docs/architecture/crate-boundaries.md` §5). The JNI shim consumes the
+# `nmp_app_*` Rust paths through this crate.
+nmp-ffi = { path = "../../../../crates/nmp-ffi", features = ["android-ffi"] }
+nmp-feed = { path = "../../../../crates/nmp-feed" }
+# Chirp app composition: registers the modular timeline observer, provides
+# Chirp-specific account creation with product seed follows, and re-exports
+# Marmot/wallet symbols when features are enabled.
+nmp-app-chirp = { path = "../nmp-app-chirp", default-features = false }
+# Chirp reference-client relay bootstrap shared with the TUI/REPL surfaces.
+nmp-chirp-config = { path = "../nmp-chirp-config" }
+jni = "0.21"
+serde_json = "1.0"
+# Secret zeroization for the restored nsec that crosses the JNI seam (D13).
+# This is a standalone workspace (empty `[workspace]` table above), so the
+# dep is pinned explicitly rather than inherited; the version tracks the parent
+# workspace constraint. The `std` feature is required for the `Zeroize for
+# CString` impl used in identity.rs (the impl is gated behind `feature = "std"`
+# in the zeroize crate).
+zeroize = { version = "1", features = ["std"] }
+# Android has no system sqlcipher and no CommonCrypto (which Apple targets
+# use), so the bundled sqlcipher in mdk-sqlite-storage's rusqlite needs a
+# vendored OpenSSL when cross-compiling for the NDK. Feature unification
+# applies this to the whole graph; only active when `marmot` is enabled.
+libsqlite3-sys = { version = "0.35", features = ["bundled-sqlcipher-vendored-openssl"], optional = true }
+
+[build-dependencies]
+# Pin the vendored-OpenSSL source consumed (transitively) by
+# `libsqlite3-sys/bundled-sqlcipher-vendored-openssl` -> `openssl-sys/vendored`.
+#
+# `openssl-sys 0.9.117` only constrains `openssl-src >= 300.2.0`, so the
+# resolver otherwise picks the newest `300.6.x+3.6.3`. OpenSSL >= 3.5.0
+# ships the post-quantum providers (`providers/ml_kem`, `ml_dsa`, `slh_dsa`),
+# and the `ml_kem` provider source fails to cross-compile for
+# `x86_64-linux-android` under NDK 26 / clang-17 (build exits 2 in the
+# `providers/ml_kem` phase) — see #1218. SQLCipher only uses AES + SHA, never
+# the PQ providers, so this is dead weight we don't ship.
+#
+# `=300.4.2+3.4.1` is the last pre-3.5 line (OpenSSL 3.4.1): it has no
+# ml_kem/ml_dsa/slh_dsa providers at all, so it cross-compiles cleanly for
+# ALL shipped ABIs (arm64-v8a AND x86_64) under NDK 26. This is a direct
+# `build-dependency` pin rather than a `[patch]` so the version floor is
+# enforced by the resolver (manifest), not merely the lockfile (which any
+# `cargo update` could lift). Declaring it here unifies `openssl-sys`'s
+# transitive build-dep onto this exact version. The `legacy` feature mirrors
+# what `openssl-sys/vendored` itself requests, so feature unification is a
+# no-op rather than a surprise toggle. Gated behind `marmot` (via
+# `dep:openssl-src`) so non-Marmot builds, which never pull
+# `libsqlite3-sys`/`openssl-sys`, are completely unaffected.
+openssl-src = { version = "=300.4.2", features = ["legacy"], optional = true }

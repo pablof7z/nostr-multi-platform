@@ -15,10 +15,10 @@ use nmp_codegen::ActionBuilderPlatform;
 /// doorway from the `ACTION_BUILDERS` registry; takes no schema stdin.
 ///
 /// `--platform swift`: generates `ActionBuilders.generated.swift`.
-/// For Chirp: `ios/Chirp/Chirp/Bridge/Generated/ActionBuilders.generated.swift`.
+/// For Chirp: `apps/chirp/ios/Chirp/Bridge/Generated/ActionBuilders.generated.swift`.
 ///
 /// `--platform kotlin`: generates `ActionBuilders.kt`.
-/// For Chirp Android: `android/app/src/main/java/org/nmp/android/ActionBuilders.kt`.
+/// For Chirp Android: `apps/chirp/android/app/src/main/java/org/nmp/android/ActionBuilders.kt`.
 ///
 /// `--platform ts`: generates `actionBuilders.generated.ts`.
 /// For Chirp Web: `web/packages/runtime-web/src/actionBuilders.generated.ts`.

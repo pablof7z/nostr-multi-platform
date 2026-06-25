@@ -2,7 +2,7 @@
 //!
 //! This module owns the single source of truth that replaces the hand-written
 //! `SnapshotProjections` struct + `CodingKeys` enum at the bottom of
-//! `ios/Chirp/Chirp/Bridge/KernelBridge.swift`. The renderer in
+//! `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift`. The renderer in
 //! [`crate::swift`] reads this slice and emits the equivalent Swift.
 //!
 //! ## Why the registry lives in `nmp-codegen`, not `nmp-core`
@@ -65,7 +65,7 @@ pub use keyed_projection_row_payload::{
 /// One entry in the dotted-projection-key registry.
 ///
 /// The hand-written `SnapshotProjections` declaration in
-/// `ios/Chirp/Chirp/Bridge/KernelBridge.swift` is the byte-for-byte target
+/// `apps/chirp/ios/Chirp/Bridge/KernelBridge.swift` is the byte-for-byte target
 /// the renderer must reproduce. Every field on that struct corresponds to
 /// exactly one entry here, in declaration order.
 pub struct SnapshotProjectionEntry {
@@ -163,7 +163,7 @@ pub struct TypedSidecar {
     /// target.
     ///
     /// Only **six** `flatc --swift` bindings ship in
-    /// `ios/Chirp/Chirp/Bridge/Generated/` today (op_feed, timeline_snapshot,
+    /// `apps/chirp/ios/Chirp/Bridge/Generated/` today (op_feed, timeline_snapshot,
     /// content_tree, feed_home, nmp_update — plus the two proof-key bindings
     /// this PR adds: `accounts`, `active_account`). The remaining ~29 sidecar
     /// schemas have no Swift reader yet, so their `swift_reader_type` is `None`
@@ -605,7 +605,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
     // from the kernel's claimed-event set (see
     // `crates/nmp-core/src/kernel/types.rs::ClaimedEventDto`). The Swift
     // value type `ClaimedEventDto` is hand-declared (Stage-3 value types are
-    // not schema-reflected) in `ios/Chirp/Chirp/Bridge/EmbedHost.swift`, its
+    // not schema-reflected) in `apps/chirp/ios/Chirp/Bridge/EmbedHost.swift`, its
     // sole consumer. Drives `EmbedHost.update(from:)` for the NMP embed
     // system.
     SnapshotProjectionEntry {
@@ -645,7 +645,7 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             // Producer sets `key == schema_id == "claimed_event_embeds"`
             // (`embed_sidecar::install_embed_sidecar_projection`).
             // `flatc --swift` reader from `crates/nmp-content/schema/embed_sidecar.fbs`
-            // (`ios/Chirp/Chirp/Bridge/Generated/ClaimedEventEmbeds.generated.swift`).
+            // (`apps/chirp/ios/Chirp/Bridge/Generated/ClaimedEventEmbeds.generated.swift`).
             // The `[EmbeddedEventEnvelope]` (key-sorted on `primary_id`) →
             // `[String: EmbeddedEventEnvelope]` map + the kind-discriminated
             // `EmbedKindProjection` mapping is `TypedProjectionGlue.claimedEventEmbeds`.

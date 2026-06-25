@@ -133,7 +133,7 @@ pub fn replace_test_interest(
 ///
 // D2 hook: installed at production-kernel-construction time by the per-app
 // crate via `NmpApp::set_coverage_hook` (see `actor/mod.rs::run_actor_with_observers`
-// and `apps/chirp/nmp-app-chirp/src/ffi/register.rs`).
+// and `apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs`).
 pub type PlanCoverageHook = Arc<dyn Fn(&mut CompiledPlan) + Send + Sync>;
 
 /// T129 watermark resolver — returns the floor base (unix seconds) for events

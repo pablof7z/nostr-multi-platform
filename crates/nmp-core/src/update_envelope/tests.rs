@@ -7,7 +7,7 @@ use super::*;
 /// the Rust encoder, or `golden_envelope()` will cause this test to **fail**
 /// with the new hex printed to stdout — forcing an explicit, reviewed fixture
 /// regeneration in BOTH the Rust tree (`crates/nmp-core/tests/fixtures/`) and
-/// the Android tree (`android/app/src/test/resources/fixtures/`).
+/// the Android tree (`apps/chirp/android/app/src/test/resources/fixtures/`).
 ///
 /// To regenerate after an intentional schema change:
 ///   1. Run this test with `--nocapture` and copy the printed hex line into
@@ -28,7 +28,7 @@ fn tier3_golden_fixture_matches_encoder() {
     assert_eq!(
         wire, expected,
         "update_frame_tier3_golden_v1.fb.hex drifted from the encoder — regenerate both \
-         crates/nmp-core/tests/fixtures/ and android/app/src/test/resources/fixtures/ copies"
+         crates/nmp-core/tests/fixtures/ and apps/chirp/android/app/src/test/resources/fixtures/ copies"
     );
     // Golden sanity: the frame must carry the NMPU identifier.
     assert!(fb::update_frame_buffer_has_identifier(&wire));

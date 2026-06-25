@@ -168,7 +168,7 @@ fn public_open_feed_doorway_symbols_exist() {
     // The POSITIVE companion: the ONE public doorway must be DEFINED. This guards
     // against an over-zealous future cleanup deleting the replacement along with
     // the retired lanes (which would leave NO public way to open a feed).
-    let feed_rs = repo_root().join("apps/chirp/nmp-app-chirp/src/ffi/feed.rs");
+    let feed_rs = repo_root().join("apps/chirp/crates/nmp-app-chirp/src/ffi/feed.rs");
     let text = fs::read_to_string(&feed_rs)
         .unwrap_or_else(|e| panic!("the public feed doorway file must exist: {e}"));
     for sym in ["nmp_app_open_feed", "nmp_app_close_feed"] {

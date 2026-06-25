@@ -69,7 +69,7 @@ pub fn file_is_exempt(path: &Path) -> bool {
 ///
 /// `.rs` files: within `crates/` or `apps/`, not the doctrine-lint tree.
 /// `.h` header files: within `ios/` — catches C-ABI symbol reappearance in
-/// native bridge headers (e.g. `ios/Chirp/Chirp/Bridge/NmpCore.h`) that the
+/// native bridge headers (e.g. `apps/chirp/ios/Chirp/Bridge/NmpCore.h`) that the
 /// `.rs`-only walker would silently miss.
 pub fn file_in_scope(path: &Path) -> bool {
     if file_is_exempt(path) {
@@ -252,7 +252,7 @@ mod tests {
     fn in_repo_production_crate_is_in_scope() {
         assert!(file_in_scope(&PathBuf::from("crates/nmp-nip29/src/register.rs")));
         assert!(file_in_scope(&PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi/register.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs"
         )));
     }
 
@@ -272,20 +272,20 @@ mod tests {
     ///
     /// This is the coverage-gap fix: before this change, `file_in_scope` only
     /// matched `crates/` and `apps/` paths and would silently skip
-    /// `ios/Chirp/Chirp/Bridge/NmpCore.h`. A reappearance of the banned
+    /// `apps/chirp/ios/Chirp/Bridge/NmpCore.h`. A reappearance of the banned
     /// C-ABI symbol in the header would pass the lint undetected.
     #[test]
     fn ios_header_is_in_scope_for_a6() {
         assert!(
             file_in_scope(&PathBuf::from(
-                "ios/Chirp/Chirp/Bridge/NmpCore.h"
+                "apps/chirp/ios/Chirp/Bridge/NmpCore.h"
             )),
             "ios/.h files must be in A6 scope (C-ABI symbol reappearance guard)"
         );
         // The specific file the blocker names.
         assert!(
             file_in_scope(&PathBuf::from(
-                "/repo/ios/Chirp/Chirp/Bridge/NmpCore.h"
+                "/repo/apps/chirp/ios/Chirp/Bridge/NmpCore.h"
             )),
             "absolute path to NmpCore.h must be in scope"
         );

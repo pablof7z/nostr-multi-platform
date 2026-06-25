@@ -80,7 +80,7 @@ fn native_publish_policy_envelope_fires() {
     let root = fake_native_root(
         "doctrine_native_publish_policy",
         &[(
-            "android/app/src/main/java/example/Composer.kt",
+            "apps/chirp/android/app/src/main/java/example/Composer.kt",
             "fun publish(bridge: Bridge) {\n    bridge.dispatchAction(\"nmp.publish\", \"\"\"{\"PublishRaw\":{\"kind\":1,\"tags\":[],\"content\":\"hi\",\"target\":\"Auto\"}}\"\"\")\n}\n",
         )],
     );

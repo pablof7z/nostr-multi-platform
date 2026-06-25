@@ -60,7 +60,7 @@ Why the reversal held up in practice:
 
 - **Kernel:** `crates/nmp-core/src/substrate/http.rs` (the `HttpRequest` /
   `HttpResult` vocabulary and `HttpCapabilityWiring`) — no longer exists.
-- **iOS host:** `ios/Chirp/Chirp/Capabilities/HttpCapability.swift` (the
+- **iOS host:** `apps/chirp/ios/Chirp/Capabilities/HttpCapability.swift` (the
   `URLSession`-backed implementation) and the `nmp.http.capability` routing arm
   in `ChirpCapabilities` — deleted. `nmp.http.capability` had **zero** Rust
   dispatchers, so the host code was orphaned. (`KeychainCapability` remains; it

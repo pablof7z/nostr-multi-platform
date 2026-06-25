@@ -1,7 +1,7 @@
 //! ADR-0063 Lane A (#1671) — generated per-key (row-keyed) reference cache for
 //! Swift (iOS).
 //!
-//! Generates `ios/Chirp/Chirp/Bridge/Generated/KeyedRefCache.generated.swift`
+//! Generates `apps/chirp/ios/Chirp/Bridge/Generated/KeyedRefCache.generated.swift`
 //! from [`KEYED_PROJECTIONS`]. This is the host-side half of FULL per-key
 //! reactivity: where `ProjectionMergeCache` caches one value per projection key,
 //! this cache caches `rowKey -> payload` WITHIN a keyed projection
@@ -35,7 +35,7 @@ const HEADER: &str = "\
 //
 // Regenerate via:
 //   cargo run -p nmp-codegen -- gen keyed-ref-cache \\
-//       --out ios/Chirp/Chirp/Bridge/Generated/KeyedRefCache.generated.swift
+//       --out apps/chirp/ios/Chirp/Bridge/Generated/KeyedRefCache.generated.swift
 //
 // Source of truth: KEYED_PROJECTIONS in
 // `crates/nmp-codegen/src/swift_projections_registry.rs`.

@@ -2,7 +2,7 @@
 //!
 //! A6 bans the schema-less JSON snapshot-projection lane. The banned C-ABI
 //! symbol `nmp_app_register_snapshot_projection` can reappear in Rust sources
-//! *and* in C/Obj-C header prototypes (e.g. `ios/Chirp/Chirp/Bridge/NmpCore.h`),
+//! *and* in C/Obj-C header prototypes (e.g. `apps/chirp/ios/Chirp/Bridge/NmpCore.h`),
 //! which a `.rs`-only walker would silently miss. This module owns the entire
 //! A6 sweep — both the `.rs` walk and the `.h` header walk — so `main.rs` only
 //! carries a single call site ([`scan_root_for_a6`]).

@@ -30,7 +30,7 @@ about NIP-10 replies, reposts, author profiles, or Chirp ranking.
 counts, author display facts, content render data, repost attribution, and an
 embedded `nmp-feed` window buffer.
 
-`apps/chirp/nmp-app-chirp` composes the projection into the running app and
+`apps/chirp/crates/nmp-app-chirp` composes the projection into the running app and
 registers the feed key.
 
 ## Typed Sidecar Chain

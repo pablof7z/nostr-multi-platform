@@ -44,7 +44,7 @@
 //!   firing site in `main.rs` (mirrors D14).
 //! - Test-only files (`tests.rs`, `*_tests.rs`, …) — handled via
 //!   `d6::file_is_test_only` in the `main.rs` driver block.
-//! - `apps/chirp/nmp-app-chirp/` — this is the **legitimate home** of the
+//! - `apps/chirp/crates/nmp-app-chirp/` — this is the **legitimate home** of the
 //!   kind policy literal; it must not fire there.
 //! - Files outside `crates/nmp-core/src/` and `crates/nmp-ffi/src/` (the
 //!   substrate scope) — gated by `file_in_scope`; `--d17-extra-scope` opts a
@@ -60,7 +60,7 @@ use std::path::Path;
 pub const ID: &str = "D17";
 
 /// True iff the file lives under `crates/nmp-core/src/` or
-/// `crates/nmp-ffi/src/`. `apps/chirp/nmp-app-chirp/` is the **legitimate
+/// `crates/nmp-ffi/src/`. `apps/chirp/crates/nmp-app-chirp/` is the **legitimate
 /// home** of the kind-policy literal and is explicitly excluded. The
 /// doctrine-lint binary's own source tree is also excluded to avoid
 /// meta-false-positives from the string constants in these rule files.
@@ -70,8 +70,8 @@ pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
 
     // Chirp app is the legitimate home of the kind policy — always out of scope.
-    if s.contains("/apps/chirp/nmp-app-chirp/")
-        || s.starts_with("apps/chirp/nmp-app-chirp/")
+    if s.contains("/apps/chirp/crates/nmp-app-chirp/")
+        || s.starts_with("apps/chirp/crates/nmp-app-chirp/")
     {
         return false;
     }
@@ -447,13 +447,13 @@ mod tests {
 
     #[test]
     fn scope_chirp_app_is_out_of_scope() {
-        // apps/chirp/nmp-app-chirp is the legitimate home of the kind-policy
+        // apps/chirp/crates/nmp-app-chirp is the legitimate home of the kind-policy
         // literal — must always be out of scope.
         assert!(!file_in_scope(&std::path::PathBuf::from(
-            "apps/chirp/nmp-app-chirp/src/ffi.rs"
+            "apps/chirp/crates/nmp-app-chirp/src/ffi.rs"
         )));
         assert!(!file_in_scope(&std::path::PathBuf::from(
-            "/abs/path/apps/chirp/nmp-app-chirp/src/ffi/mod.rs"
+            "/abs/path/apps/chirp/crates/nmp-app-chirp/src/ffi/mod.rs"
         )));
     }
 

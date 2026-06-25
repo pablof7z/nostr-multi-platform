@@ -1,6 +1,6 @@
 //! R3-S4 (ADR-0055) — generated `ProjectionMergeCache` for Kotlin (Android).
 //!
-//! Generates `android/app/src/main/java/org/nmp/android/ProjectionCache.kt`
+//! Generates `apps/chirp/android/app/src/main/java/org/nmp/android/ProjectionCache.kt`
 //! from the SAME projection registry as [`crate::swift_projection_cache`], so
 //! the cache can never drift from the decoder set.
 //!
@@ -46,7 +46,7 @@ const HEADER: &str = "\
 //
 // Regenerate via:
 //   cargo run -p nmp-codegen -- gen projection-cache --platform kotlin \\
-//       --out android/app/src/main/java/org/nmp/android/ProjectionCache.kt
+//       --out apps/chirp/android/app/src/main/java/org/nmp/android/ProjectionCache.kt
 //
 // Source of truth: the typed-sidecar identities in
 // `crates/nmp-codegen/src/swift_projections_registry.rs`.

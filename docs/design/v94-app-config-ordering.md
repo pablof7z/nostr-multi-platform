@@ -39,7 +39,7 @@ C-ABI symbols (`nmp_app_set_update_callback` :2148, `nmp_app_set_storage_path`
 :2188, `nmp_app_start` :2204, `nmp_app_configure` :2221). The rest are `AppHost`
 **Rust trait methods** (substrate/app_host.rs) invoked from the Rust composition
 root — `nmp_defaults::register_defaults` (crates/nmp-defaults/src/lib.rs)
-and per-app `register.rs` (apps/chirp/nmp-app-chirp/src/ffi/register.rs:53). So
+and per-app `register.rs` (apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs:53). So
 the enforcement surface splits cleanly in two.
 
 V-95 is the same root shape: `nmp_nip47::install_wallet_runtime` must run before
