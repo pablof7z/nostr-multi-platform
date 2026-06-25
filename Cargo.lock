@@ -4424,11 +4424,13 @@ dependencies = [
  "nmp-nip02",
  "nmp-nip51",
  "nmp-router",
+ "nmp-sqlite-wasm",
  "nmp-store",
  "nmp-substrate-defaults",
  "nmp-wasm",
  "serde_json",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -5102,6 +5104,21 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "zeroize",
+]
+
+[[package]]
+name = "nmp-sqlite-wasm"
+version = "0.8.0"
+dependencies = [
+ "js-sys",
+ "nmp-store",
+ "nostr",
+ "serde_json",
+ "tracing",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-test",
+ "web-sys",
 ]
 
 [[package]]

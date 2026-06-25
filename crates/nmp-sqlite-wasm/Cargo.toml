@@ -1,0 +1,32 @@
+[package]
+name = "nmp-sqlite-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "wasm32-only EventStore backend over OPFS SyncAccessHandle pool VFS (vendored sqlite.org WASM). ADR-0054 Stage #6."
+
+[lib]
+name = "nmp_sqlite_wasm"
+path = "src/lib.rs"
+
+[dependencies]
+nostr = { workspace = true, features = ["std"] }
+serde_json = { workspace = true, features = ["raw_value"] }
+tracing = "0.1"
+
+# EventStore trait — required for impl.
+# Located under [target.'cfg(target_arch="wasm32")'.dependencies] in nmp-store/Cargo.toml
+# so on native builds this dep is not pulled. On wasm32, nmp-store's optional feature
+# gate (opfs-sqlite-backend) controls whether nmp-sqlite-wasm is built. The cycle
+# (nmp-store optionally depends on nmp-sqlite-wasm, nmp-sqlite-wasm depends on nmp-store)
+# is broken because the target table guards the nmp-store->nmp-sqlite-wasm edge.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+nmp-store = { path = "../nmp-store" }
+wasm-bindgen = "0.2.121"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3.98"
+web-sys = { version = "0.3.98", features = ["console"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"

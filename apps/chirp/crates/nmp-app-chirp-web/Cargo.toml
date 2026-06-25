@@ -15,6 +15,7 @@ crate-type = ["cdylib", "rlib"]
 # `default-features = false` because the wasm32 target has no mio/lmdb.
 nmp-core = { path = "../../../../crates/nmp-core", default-features = false }
 # Public EventStore trait path used by the wasm publish resolver factory.
+# On wasm32, opfs-sqlite-backend feature enables the OpfsSqliteStore backend.
 nmp-store = { path = "../../../../crates/nmp-store" }
 # Wasm-safe default cache/parser wiring: production router/mailbox,
 # kind:10002, kind:0, and kind:3 pairs shared with nmp-defaults.
@@ -56,3 +57,7 @@ console_error_panic_hook = "0.1"
 # `js_sys::Function` (snapshot callback) + `js_sys::Uint8Array` (binary snapshot
 # push through the callback channel).
 js-sys = "0.3.98"
+# OPFS-SQLite backend for EventStore on wasm32.
+nmp-sqlite-wasm = { path = "../../../../crates/nmp-sqlite-wasm" }
+# Async setup for the OPFS-SQLite open() call.
+wasm-bindgen-futures = "0.4"

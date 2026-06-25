@@ -50,6 +50,7 @@ members = [
     "crates/nmp-nostr-lmdb",
     "crates/nmp-planner",
     "crates/nmp-router",
+    "crates/nmp-sqlite-wasm",
     "crates/nmp-store",
     "crates/nmp-nwc",
     "crates/nmp-signer-broker",
