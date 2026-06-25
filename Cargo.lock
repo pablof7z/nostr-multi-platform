@@ -4790,6 +4790,8 @@ name = "nmp-nip18"
 version = "0.8.0"
 dependencies = [
  "nmp-core",
+ "nmp-kinds",
+ "nmp-planner",
  "serde",
  "serde_json",
 ]
