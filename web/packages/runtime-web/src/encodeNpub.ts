@@ -11,9 +11,9 @@
 // (aim.md §6.9).
 //
 // The wasm module path must match the path the worker loads — both point at
-// /nmp-wasm/nmp_app_chirp_web.js, which is the output of `wasm-pack build`.
+// the wasm composition root (see #2038) output.
 
-const defaultModulePath = "/nmp-wasm/nmp_app_chirp_web.js";
+const defaultModulePath = "/nmp-wasm/nmp-browser-runtime.js";
 
 type EncodeNpubFn = (hex: string) => string | undefined | null;
 

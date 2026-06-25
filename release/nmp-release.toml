@@ -286,11 +286,6 @@ path = "apps/chirp/chirp-desktop"
 reason = "Chirp reference desktop (egui) application"
 
 [[private_packages]]
-name = "nmp-app-chirp-web"
-path = "apps/chirp/crates/nmp-app-chirp-web"
-reason = "wasm32 composition root for the Chirp web client"
-
-[[private_packages]]
 name = "nmp-example-login-timeline"
 path = "crates/nmp-example-login-timeline"
 reason = "DX worked example (login → following-timeline) proving aim §1; not published"

@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
-    "build:wasm": "CC_wasm32_unknown_unknown=clang wasm-pack build --target web ../../apps/chirp/crates/nmp-app-chirp-web --out-dir ../../../web/nmp-gallery/public/nmp-wasm",
+    "build:wasm": "echo 'wasm build deferred to #2038 (nmp-browser-runtime composition root)' && exit 1",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "test:e2e": "playwright test",

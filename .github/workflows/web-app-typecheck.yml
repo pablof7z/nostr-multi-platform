@@ -40,24 +40,3 @@ jobs:
       - name: Typecheck nmp-gallery
         run: npm run typecheck
         working-directory: web/nmp-gallery
-
-  typecheck-chirp:
-    name: typecheck chirp
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-
-      - name: Install web dependencies
-        run: npm ci
-        working-directory: web/chirp
-
-      - name: Typecheck chirp
-        run: npm run typecheck
-        working-directory: web/chirp

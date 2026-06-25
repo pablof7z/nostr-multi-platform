@@ -218,7 +218,7 @@ pub fn following_count_from_store(slot: &EventStoreSlot, author_hex: &str) -> Op
 /// already extracted an `Arc<dyn EventStore>` handle (e.g. via
 /// `KernelReducer::event_store_handle`) that must be captured into a closure
 /// outliving any `RefCell` borrow. The wasm32 `EventLookup` closure pattern
-/// in `nmp-app-chirp-web` is the primary caller; the native
+/// in the wasm composition root (see #2038) is the primary caller; the native
 /// `KernelReducer::event_by_id` seam also delegates here so both paths
 /// share one body (no duplication per ADR-rule §4-B).
 ///
