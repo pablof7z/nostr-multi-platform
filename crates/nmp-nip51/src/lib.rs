@@ -11,6 +11,9 @@
 //! | 10000     | Public mute      | NIP-51 | Shipped  |
 //! | 10003     | Global bookmarks | NIP-51 | Shipped as raw projection + safe RMW builders |
 //! | 10007     | Search relays    | NIP-51 | Shipped as active-account facts |
+//! | 30003     | Bookmark sets    | NIP-51 | Shipped as raw projection + safe RMW builders |
+//! | 30004     | Curation sets    | NIP-51 | Shipped as raw projection + safe RMW builders |
+//! | 39701     | Web bookmarks    | NIP-B0 | Shipped as raw projection + safe publish builder |
 //! | 10001+    | Other lists      | NIP-51 | Post-v1 unless named above |
 //!
 //! # Architecture
@@ -30,6 +33,12 @@
 //! kind:10003 global bookmark list. The projection stays raw: event ids,
 //! address coordinates, URLs, hashtags, and NIP-51 metadata. App-specific
 //! vault organization, privacy language, and UI flows stay in app crates.
+//!
+//! It also exposes [`BookmarkSetsProjection`] for kind:30003 bookmark sets and
+//! kind:30004 curation sets, plus [`WebBookmarksProjection`] for NIP-B0
+//! kind:39701 web bookmarks. These projections are explicit-author read
+//! surfaces: products decide which authors to subscribe to, while this crate
+//! only parses the protocol facts it receives.
 //!
 //! The substrate-generic [`SuppressionLookup`] trait lives in `nmp-core` so
 //! `nmp-nip01`'s `ModularTimelineProjection` can depend on it without creating
@@ -67,18 +76,27 @@
 //! require `nmp-wot` to depend on `nmp-nip51` — a legal Layer-4 sibling edge
 //! per the spec. That consolidation is a future clean-up step, not v1 scope.
 
+pub mod bookmark_sets;
 pub mod bookmarks;
 pub mod interests;
 pub mod people_list;
 pub mod projection;
 pub mod search_relays;
+pub mod web_bookmarks;
 pub mod wire;
 
 pub use interests::{
     active_bookmark_list_identity, active_bookmark_list_interest, active_bookmark_list_interest_id,
     active_mute_list_identity, active_mute_list_interest, active_mute_list_interest_id,
+    bookmark_sets_identity, bookmark_sets_interest, bookmark_sets_interest_id,
+    web_bookmarks_identity, web_bookmarks_interest, web_bookmarks_interest_id,
 };
 
+pub use bookmark_sets::{
+    build_bookmark_set_event, register_bookmark_set_actions, AddBookmarkSetItemAction,
+    BookmarkSetKind, BookmarkSetSnapshot, BookmarkSetUpdateInput, BookmarkSetsProjection,
+    BookmarkSetsSnapshot, RemoveBookmarkSetItemAction,
+};
 pub use bookmarks::{
     build_bookmark_list_event, register_bookmark_actions, AddBookmarkAction, BookmarkItem,
     BookmarkListMetadata, BookmarkListProjection, BookmarkListSnapshot, BookmarkUpdateInput,
@@ -87,6 +105,11 @@ pub use bookmarks::{
 pub use people_list::{PeopleListProjection, PeopleListSnapshot};
 pub use projection::{MuteListProjection, MuteListSnapshot};
 pub use search_relays::{SearchRelayListProjection, SearchRelayListSnapshot};
+pub use web_bookmarks::{
+    build_web_bookmark_event, register_web_bookmark_actions, PublishWebBookmarkAction,
+    PublishWebBookmarkInput, WebBookmarkDraft, WebBookmarkSnapshot, WebBookmarksProjection,
+    WebBookmarksSnapshot,
+};
 pub use wire::mute_list_fb::{
     decode_mute_list, encode_mute_list, MUTE_LIST_FILE_IDENTIFIER, MUTE_LIST_SCHEMA_ID,
     MUTE_LIST_SCHEMA_VERSION,

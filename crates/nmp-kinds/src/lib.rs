@@ -178,6 +178,18 @@ pub const KIND_SEARCH_RELAYS: u32 = 10_007;
 /// `d`-tag value.
 pub const KIND_FOLLOW_SET: u32 = 30_000;
 
+/// NIP-51 bookmark set (kind:30003). An addressable bookmark category keyed by
+/// `d`, carrying public `e` / `a` references and optional list metadata.
+pub const KIND_BOOKMARK_SET: u32 = 30_003;
+
+/// NIP-51 article/note curation set (kind:30004). An addressable curation keyed
+/// by `d`, carrying public `e` / `a` references and optional list metadata.
+pub const KIND_ARTICLE_CURATION_SET: u32 = 30_004;
+
+/// NIP-B0 web bookmark (kind:39701). An addressable HTTP(S) bookmark keyed by
+/// a scheme-less `d` tag.
+pub const KIND_WEB_BOOKMARK: u32 = 39_701;
+
 // ─── Blossom (BUD-02) — blob-server upload authorization ───────────────────
 
 /// Blossom BUD-01/BUD-02 authorization event (kind:24242). A short-lived,
@@ -338,6 +350,9 @@ mod tests {
         assert_eq!(KIND_LONG_FORM_ARTICLE, 30_023);
         assert_eq!(KIND_LONG_FORM_DRAFT, 30_024);
         assert_eq!(KIND_WIKI_ARTICLE, 30_818);
+        assert_eq!(KIND_BOOKMARK_SET, 30_003);
+        assert_eq!(KIND_ARTICLE_CURATION_SET, 30_004);
+        assert_eq!(KIND_WEB_BOOKMARK, 39_701);
     }
 
     #[test]

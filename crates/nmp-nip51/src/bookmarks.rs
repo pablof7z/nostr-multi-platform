@@ -8,15 +8,15 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, KernelEvent,
 };
-use nmp_signer_iface::UnsignedEvent;
 use nmp_core::{canonical_relay_url, KernelEventObserver};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{PublishCommand};
 use nmp_kinds::KIND_BOOKMARK_LIST;
+use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 /// NIP-51 metadata tags carried by a bookmark list.
@@ -333,7 +333,7 @@ fn parse_bookmark_list(event: &KernelEvent) -> BookmarkListSnapshot {
     dedupe_snapshot(BookmarkListSnapshot { items, metadata })
 }
 
-fn tag_to_item(tag: &[String]) -> Option<BookmarkItem> {
+pub(crate) fn tag_to_item(tag: &[String]) -> Option<BookmarkItem> {
     let value = tag.get(1)?;
     match tag.first().map(String::as_str)? {
         "e" if is_hex64(value) => Some(BookmarkItem::Event {
@@ -352,7 +352,7 @@ fn tag_to_item(tag: &[String]) -> Option<BookmarkItem> {
     }
 }
 
-fn normalize_item(item: &BookmarkItem) -> Result<BookmarkItem, String> {
+pub(crate) fn normalize_item(item: &BookmarkItem) -> Result<BookmarkItem, String> {
     match item {
         BookmarkItem::Event { event_id, relay } => {
             if !is_hex64(event_id) {
@@ -414,7 +414,7 @@ fn same_item(left: &BookmarkItem, right: &BookmarkItem) -> bool {
     item_key(left) == item_key(right)
 }
 
-fn action_rejection_message(rejection: ActionRejection) -> String {
+pub(crate) fn action_rejection_message(rejection: ActionRejection) -> String {
     match rejection {
         ActionRejection::Invalid(message)
         | ActionRejection::Unauthorized(message)
@@ -423,7 +423,7 @@ fn action_rejection_message(rejection: ActionRejection) -> String {
     }
 }
 
-fn item_key(item: &BookmarkItem) -> (u8, String) {
+pub(crate) fn item_key(item: &BookmarkItem) -> (u8, String) {
     match item {
         BookmarkItem::Event { event_id, .. } => (0, event_id.to_ascii_lowercase()),
         BookmarkItem::Address { coordinate, .. } => (1, normalize_address_coordinate(coordinate)),
@@ -433,7 +433,7 @@ fn item_key(item: &BookmarkItem) -> (u8, String) {
 }
 
 impl BookmarkItem {
-    fn to_tag(&self) -> Vec<String> {
+    pub(crate) fn to_tag(&self) -> Vec<String> {
         match self {
             Self::Event { event_id, relay } => tag_with_optional_relay("e", event_id, relay),
             Self::Address { coordinate, relay } => tag_with_optional_relay("a", coordinate, relay),
@@ -478,16 +478,16 @@ fn valid_http_url(value: &str) -> bool {
     trimmed.starts_with("https://") || trimmed.starts_with("http://")
 }
 
-fn normalize_hashtag(value: &str) -> Option<String> {
+pub(crate) fn normalize_hashtag(value: &str) -> Option<String> {
     let hashtag = nonempty_trimmed(value)?.trim_start_matches('#');
     (!hashtag.is_empty()).then(|| hashtag.to_string())
 }
 
-fn nonempty_trimmed(value: &str) -> Option<&str> {
+pub(crate) fn nonempty_trimmed(value: &str) -> Option<&str> {
     nonempty_option(Some(value.trim()))
 }
 
-fn nonempty_option(value: Option<&str>) -> Option<&str> {
+pub(crate) fn nonempty_option(value: Option<&str>) -> Option<&str> {
     value.and_then(|value| (!value.trim().is_empty()).then_some(value.trim()))
 }
 
