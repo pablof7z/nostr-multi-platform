@@ -4,9 +4,11 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "NIP-18 repost decoding primitives for NMP protocol projections."
+description = "NIP-18 repost decoding and read-surfacing projections for NMP."
 
 [dependencies]
 nmp-core = { path = "../nmp-core", default-features = false }
+nmp-kinds = { path = "../nmp-kinds" }
+nmp-planner = { path = "../nmp-planner", default-features = false }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

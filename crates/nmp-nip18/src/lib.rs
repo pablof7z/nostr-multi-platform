@@ -1,4 +1,4 @@
-//! `nmp-nip18` — NIP-18 repost decoding primitives.
+//! `nmp-nip18` — NIP-18 repost decoding and read-surfacing primitives.
 //!
 //! This crate owns generic repost wire interpretation. It does not render UI,
 //! choose relay policy, or depend on any app crate.
@@ -9,12 +9,17 @@ use serde::Deserialize;
 mod coordinate;
 mod delete;
 mod primary_kind;
+mod repost_projection;
 
 pub use coordinate::{is_addressable_kind, AddressCoordinate};
 pub use delete::{DeleteRecord, KIND_DELETE};
 pub use primary_kind::{
     acquisition_kinds_for_primary, try_acquisition_kinds_for_primary, validate_primary_kinds,
     PrimaryKindError,
+};
+pub use repost_projection::{
+    repost_activity_interest_shape, RepostActivity, RepostActivityProjection, RepostObservation,
+    RepostTarget,
 };
 
 /// NIP-18 repost event kind for kind:1 short-text notes.
