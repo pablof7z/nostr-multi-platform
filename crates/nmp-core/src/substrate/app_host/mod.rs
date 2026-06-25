@@ -418,6 +418,15 @@ where
 /// `nmp-ffi` / builder wiring) names it because it genuinely wires the whole
 /// surface. Narrow protocol modules MUST take the specific narrow trait(s) they
 /// use, never `AppHost`.
+///
+/// This is the shared composition target for host-backed NMP runtimes, not a
+/// native shell trait. Native storage, OS keychains, browser WebSocket handles,
+/// and other platform capabilities stay outside this surface. The methods here
+/// register Rust-owned facts only: action modules, ingest parsers, snapshot
+/// projections, event observers, routing factories, capability seams, and
+/// read-only kernel slots. A browser builder that implements the same narrow
+/// registrars receives this trait through the blanket impl and can call the
+/// same `nmp-defaults` composition path without exposing reducer internals.
 pub trait AppHost:
     ActionRegistrar
     + SnapshotProjectionRegistrar

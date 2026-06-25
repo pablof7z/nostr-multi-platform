@@ -203,6 +203,16 @@ impl Default for NmpDefaults {
 /// without desyncing them). [`super::register_defaults`] passes
 /// `CoverageGate::default()`.
 ///
+/// # Shared host target
+///
+/// The substrate tier is intentionally expressed only in terms of narrow
+/// `nmp_core::substrate` registrar traits. It does not require `nmp-ffi`,
+/// native storage, OS handles, or reducer internals. Host-backed browser and
+/// native builders can therefore implement the same registrars and receive the
+/// same routing/mailbox/profile/contact floor through this function; reducer-
+/// owned web harnesses still use `nmp-substrate-defaults` for the cache/parser
+/// helper until they grow a full host-backed composition root.
+///
 /// # `app` borrow
 ///
 /// Takes `&mut impl AppHost` because `nmp_router::register_actions` needs the
