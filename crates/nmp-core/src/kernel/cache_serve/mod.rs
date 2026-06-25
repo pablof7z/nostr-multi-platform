@@ -215,11 +215,29 @@ impl Kernel {
     pub(crate) fn register_interest(
         &mut self,
         items: &[InterestRegistration],
-        reason: &'static str,
+        reason: &str,
+    ) -> Vec<RegistrationOutcome> {
+        let outcomes = self.apply_interest_registrations(items);
+        if outcomes.iter().any(|outcome| outcome.changed) {
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
+                    reason: crate::subs::InvalidateReason::External(reason.to_string()),
+                });
+            self.run_cache_serve_step();
+        }
+        outcomes
+    }
+
+    /// Apply registry writes and enqueue cache-serves for changed shapes, but
+    /// leave compile invalidation and the synchronous cache-serve drain to the
+    /// caller. This keeps multi-step owners on the same sealed front-door
+    /// without forcing separate invalidations for withdraw + upsert phases.
+    pub(in crate::kernel) fn apply_interest_registrations(
+        &mut self,
+        items: &[InterestRegistration],
     ) -> Vec<RegistrationOutcome> {
         let token = RegistryWriteToken::new();
         let mut outcomes = Vec::with_capacity(items.len());
-        let mut any_changed = false;
         for item in items {
             let serve_key = item.identity.key;
             let serve_shape = item.interest.shape.clone();
@@ -230,17 +248,9 @@ impl Kernel {
                 item.interest.clone(),
             );
             if outcome.changed {
-                any_changed = true;
                 self.enqueue_interest_cache_serve_deferred(&serve_key, &serve_shape);
             }
             outcomes.push(outcome);
-        }
-        if any_changed {
-            self.lifecycle
-                .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
-                    reason: crate::subs::InvalidateReason::External(reason.to_string()),
-                });
-            self.run_cache_serve_step();
         }
         outcomes
     }
@@ -261,6 +271,18 @@ impl Kernel {
     ) {
         let completion_key = completion_key_for_interest(key, shape);
         self.enqueue_cache_serve(shape, completion_key);
+    }
+
+    pub(in crate::kernel) fn cancel_pending_interest_cache_serve(
+        &mut self,
+        key: &crate::subs::SubKey,
+        shape: &InterestShape,
+    ) -> bool {
+        let completion_key = completion_key_for_interest(key, shape);
+        let before = self.pending_cache_serves.len();
+        self.pending_cache_serves
+            .retain(|pending| pending.completion_key != completion_key);
+        self.pending_cache_serves.len() != before
     }
 
     /// Serve depth for one interest: 1× the consumer's visible window.
