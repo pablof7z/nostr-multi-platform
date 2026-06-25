@@ -34,6 +34,10 @@ impl WasmRuntime {
         if let Some(store) = self.injected_store.borrow_mut().take() {
             self.reducer.borrow_mut().replace_store_for_start(store);
         }
+        let before_start_hooks = std::mem::take(&mut self.before_start_hooks);
+        for hook in before_start_hooks {
+            hook(self);
+        }
 
         let relay_bootstrap =
             crate::protocol::relay_bootstrap_from_config(config.relays, config.relay_bootstrap);

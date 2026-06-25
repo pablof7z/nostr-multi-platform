@@ -112,6 +112,68 @@ impl super::WasmRuntime {
 }
 
 #[cfg(test)]
+mod before_start_hook_tests {
+    //! ADR-0054 ordering guard: web app composition may capture
+    //! `event_store_handle()` for projections and observers. Those captures
+    //! must happen after boot-time store injection, otherwise the future
+    //! OPFS-SQLite backend would be injected into the reducer while app
+    //! projections kept reading the original `MemEventStore`.
+
+    use std::cell::Cell;
+    use std::rc::Rc;
+    use std::sync::Arc;
+
+    use nmp_store::{EventStore, MemEventStore};
+
+    use super::super::WasmRuntime;
+    use crate::protocol::{RelayBootstrapEntry, StartConfig, WorkerRequest};
+
+    fn start_request() -> WorkerRequest {
+        WorkerRequest::Start(StartConfig {
+            app_id: "chirp".to_string(),
+            relays: vec!["wss://relay.example".to_string()],
+            relay_bootstrap: vec![RelayBootstrapEntry {
+                url: "wss://relay.example".to_string(),
+                role: "both".to_string(),
+            }],
+            database_name: "pre-start-hook-test".to_string(),
+            correlation_id: "start-pre-hook".to_string(),
+        })
+    }
+
+    #[test]
+    fn before_start_hook_observes_injected_store_handle() {
+        let mut runtime = WasmRuntime::new();
+        let injected: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
+        let expected = Arc::clone(&injected);
+        let hook_ran = Rc::new(Cell::new(false));
+        let hook_ran_for_closure = Rc::clone(&hook_ran);
+
+        runtime
+            .install_before_start_hook(move |runtime| {
+                let observed = runtime.reducer_handle().borrow().event_store_handle();
+                assert!(
+                    Arc::ptr_eq(&observed, &expected),
+                    "pre-start composition must capture the injected store, \
+                     not the reducer's original default MemEventStore"
+                );
+                hook_ran_for_closure.set(true);
+            })
+            .expect("fresh runtime accepts pre-start hook");
+
+        runtime
+            .set_injected_store(injected)
+            .expect("store injection before Start must succeed");
+
+        runtime
+            .handle(start_request())
+            .expect("Start must run the pre-start hook");
+
+        assert!(hook_ran.get(), "pre-start hook must run during Start");
+    }
+}
+
+#[cfg(test)]
 mod set_identity_tests {
     //! B2 — canonicalization guard: `set_identity` with an uppercase pubkey hex
     //! must store a canonical (lowercase) active account so active-follows REQs

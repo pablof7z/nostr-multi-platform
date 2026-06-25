@@ -20,6 +20,7 @@ impl Default for WasmRuntime {
             handlers_slot: Rc::new(RefCell::new(None)),
             maintenance_deadline: Rc::new(RefCell::new(crate::tick::RuntimeDeadline::default())),
             pending_signed_publishes: Default::default(),
+            before_start_hooks: Vec::new(),
             action_registry: default_registry(),
         }
     }
