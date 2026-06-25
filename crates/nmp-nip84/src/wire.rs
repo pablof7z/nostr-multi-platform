@@ -66,6 +66,16 @@ impl ActionPayload for PublishHighlightAction {
                 .collect();
             Some(fbb.create_vector(&offsets))
         };
+        let external_kinds = if self.external_kinds.is_empty() {
+            None
+        } else {
+            let offsets: Vec<_> = self
+                .external_kinds
+                .iter()
+                .map(|s| fbb.create_string(s))
+                .collect();
+            Some(fbb.create_vector(&offsets))
+        };
         let payload = highlight_fb::PublishHighlightPayload::create(
             &mut fbb,
             &highlight_fb::PublishHighlightPayloadArgs {
@@ -77,6 +87,7 @@ impl ActionPayload for PublishHighlightAction {
                 source_author_pubkey,
                 alt,
                 external_ids,
+                external_kinds,
             },
         );
         highlight_fb::finish_publish_highlight_payload_buffer(&mut fbb, payload);
@@ -102,6 +113,10 @@ impl ActionPayload for PublishHighlightAction {
             .external_ids()
             .map(|v| v.iter().map(str::to_string).collect())
             .unwrap_or_default();
+        let external_kinds = root
+            .external_kinds()
+            .map(|v| v.iter().map(str::to_string).collect())
+            .unwrap_or_default();
         Ok(PublishHighlightAction {
             content: root.content().to_string(),
             context: non_empty(root.context()),
@@ -110,6 +125,7 @@ impl ActionPayload for PublishHighlightAction {
             source_author_pubkey: non_empty(root.source_author_pubkey()),
             alt: non_empty(root.alt()),
             external_ids,
+            external_kinds,
         })
     }
 }

@@ -12,9 +12,10 @@ fn sample() -> PublishHighlightAction {
         source_author_pubkey: None,
         alt: None,
         external_ids: vec![
-            "web:https://example.com".to_string(),
+            "https://example.com".to_string(),
             "podcast:item:guid:9".to_string(),
         ],
+        external_kinds: vec!["web".to_string(), "podcast:item:guid".to_string()],
     }
 }
 
@@ -36,6 +37,7 @@ fn encode_decode_minimal_round_trips() {
         source_author_pubkey: None,
         alt: None,
         external_ids: Vec::new(),
+        external_kinds: Vec::new(),
     };
     let bytes = action.encode();
     let decoded = PublishHighlightAction::decode(&bytes).expect("decode succeeds");
