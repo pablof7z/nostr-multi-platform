@@ -230,6 +230,8 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
   const noteContent = "hello from fixture relay";
   const followADisplayName = "Alice Fixture";
   const followBDisplayName = "Bob Fixture";
+  const followAFallbackName = "Alice Fallback";
+  const followBFallbackName = "Bob Fallback";
   // A real, self-contained 1×1 PNG so the avatar component genuinely loads an
   // image (naturalWidth > 0) without a network dependency — proving NostrAvatar
   // renders the resolved kind:0 `picture` in Chirp's feed card. (The deployed
@@ -247,14 +249,26 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
       kind: 0,
       created_at: now - 100,
       tags: [],
-      content: JSON.stringify({ name: followADisplayName, picture: followAPictureUrl }),
+      content: JSON.stringify({
+        display_name: followADisplayName,
+        name: followAFallbackName,
+        picture: followAPictureUrl,
+      }),
     },
     followASk,
   ) as NostrEvent;
 
   // kind:0 — Bob's profile
   const profileB = finalizeEvent(
-    { kind: 0, created_at: now - 100, tags: [], content: JSON.stringify({ name: followBDisplayName }) },
+    {
+      kind: 0,
+      created_at: now - 100,
+      tags: [],
+      content: JSON.stringify({
+        display_name: followBDisplayName,
+        name: followBFallbackName,
+      }),
+    },
     followBSk,
   ) as NostrEvent;
 

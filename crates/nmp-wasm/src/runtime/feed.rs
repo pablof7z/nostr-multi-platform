@@ -19,7 +19,7 @@ use super::WasmRuntime;
 // Primary-kind validation (which kinds are derived acquisition vs. primary
 // input) is protocol knowledge and is NOT in `nmp-feed`; it rides on the single
 // `nmp_nip18` transform, composed at this boundary (D0).
-use nmp_feed::FeedParams;
+use nmp_feed::{FeedAuthorRefs, FeedParams, FeedRenderSource};
 
 /// Typed error for the wasm-boundary `FeedParams` decode + validation
 /// (D6 — no panic; the wasm worker reports the variant, never throws).
@@ -69,6 +69,57 @@ pub fn decode_and_validate_feed_params(
 }
 
 impl WasmRuntime {
+    /// Register a typed feed sidecar and its rendered-author provider together.
+    ///
+    /// This is the wasm twin of `NmpApp::register_feed_render_source`. A single
+    /// [`FeedRenderSource`] materializes the visible feed window once per kernel
+    /// tick, then the author provider and typed producer both read that same
+    /// materialization. That keeps `refs.profile` demand aligned with the feed
+    /// rows the browser receives.
+    pub fn register_feed_render_source<S>(
+        &self,
+        feed_key: impl Into<String>,
+        source: std::sync::Arc<FeedRenderSource<S>>,
+        encode: impl Fn(&S) -> Option<nmp_core::TypedProjectionData> + Send + Sync + 'static,
+    ) where
+        S: FeedAuthorRefs + Send + Sync + 'static,
+    {
+        use std::sync::atomic::Ordering;
+
+        let feed_key = feed_key.into();
+        let consumer_id = format!("feed-author:{feed_key}");
+        let Some((tick_rev, emitted_sink)) = self.reducer.borrow().feed_render_source_handles()
+        else {
+            return;
+        };
+
+        let source_for_typed = std::sync::Arc::clone(&source);
+        let tick_rev_for_typed = std::sync::Arc::clone(&tick_rev);
+        let consumer_for_typed = consumer_id;
+        self.reducer
+            .borrow()
+            .register_typed_snapshot_projection(feed_key.clone(), move || {
+                let rev = tick_rev_for_typed.load(Ordering::Acquire);
+                let snapshot = source_for_typed.snapshot_for_tick(rev);
+                nmp_core::record_emitted_feed_authors(
+                    &emitted_sink,
+                    rev,
+                    consumer_for_typed.clone(),
+                    snapshot.visible_author_keys(),
+                );
+                encode(&snapshot)
+            });
+
+        let source_for_provider = source;
+        let tick_rev_for_provider = tick_rev;
+        self.reducer
+            .borrow()
+            .register_feed_author_provider(feed_key, move || {
+                let rev = tick_rev_for_provider.load(Ordering::Acquire);
+                source_for_provider.author_keys_for_tick(rev)
+            });
+    }
+
     /// Declare an active-follows feed from app-owned primary content kinds.
     ///
     /// This is the wasm twin of `NmpApp::declare_active_follows_feed`.
