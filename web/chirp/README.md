@@ -22,9 +22,10 @@ The wasm package is generated at build time and **not checked in**
 (`public/nmp-wasm/` is gitignored).  Build it first, then build the web app:
 
 ```sh
-npm ci
-npm run build:wasm   # compiles apps/chirp/crates/nmp-app-chirp-web → public/nmp-wasm/
-npm run build        # TypeScript check + Vite bundle → dist/
+cd web
+npm install
+npm run build:wasm -w @nmp/chirp-web   # compiles apps/chirp/crates/nmp-app-chirp-web -> chirp/public/nmp-wasm/
+npm run build -w @nmp/chirp-web        # codegen + TypeScript check + Vite bundle -> chirp/dist/
 ```
 
 `build:wasm` requires `wasm-pack` on `$PATH` and `CC_wasm32_unknown_unknown=clang`
@@ -36,9 +37,10 @@ npm run build        # TypeScript check + Vite bundle → dist/
 Build first, then serve the production bundle:
 
 ```sh
-npm run build:wasm
-npm run build
-npm run preview -- --host 127.0.0.1 --port 4173
+cd web
+npm run build:wasm -w @nmp/chirp-web
+npm run build -w @nmp/chirp-web
+npm run preview -w @nmp/chirp-web -- --host 127.0.0.1 --port 4173
 ```
 
 Open `http://127.0.0.1:4173/`.
@@ -46,7 +48,8 @@ Open `http://127.0.0.1:4173/`.
 For active development, run the wasm build once, then use:
 
 ```sh
-npm run dev
+cd web
+npm run dev -w @nmp/chirp-web
 ```
 
 ## Static Deploy
@@ -60,7 +63,7 @@ For other static hosts:
 
 | Setting | Value |
 | --- | --- |
-| Install command | `cd web/chirp && npm ci` |
+| Install command | `cd web && npm install` |
 | Build command | `cd web/chirp && bash scripts/build.sh` |
 | Output directory | `web/chirp/dist` |
 | Node version | `20` or newer |

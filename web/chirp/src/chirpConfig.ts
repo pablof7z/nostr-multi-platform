@@ -3,7 +3,8 @@
 // Relay defaults are HOST policy, not framework policy (#1125). The authoritative
 // values live in apps/chirp/crates/nmp-chirp-config/src/lib.rs; chirpConfig.generated.ts
 // is produced from them by scripts/gen-chirp-config.mjs so the web host can never
-// drift (#1546 F6). Run `pnpm codegen:chirp-config` to regenerate.
+// drift (#1546 F6). Run `npm run codegen:chirp-config -w @nmp/chirp-web` to
+// regenerate.
 //
 // This module is a re-export shim so existing import paths keep working.
 export {
