@@ -248,6 +248,71 @@ fn publish_raw_deliver_signer_response_publishes_signed_event() {
     );
 }
 
+#[test]
+fn publish_raw_lost_signer_response_times_out_and_cleans_continuation() {
+    let mut runtime = WasmRuntime::new();
+    seed_account(&mut runtime);
+    let payload = publish_raw_payload("lost signer response");
+    let bytes = envelope(
+        "nmp.publish",
+        "corr-timeout",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        &payload,
+    );
+    let events = runtime.dispatch_bytes(&bytes);
+    let sign_correlation = sign_request_correlation(&events);
+    assert!(
+        runtime.maintenance_deadline_armed_for_test(),
+        "dispatch must arm a wake for signer timeout cleanup"
+    );
+
+    let timeout_events = runtime.force_signer_timeout_for_test();
+    assert!(
+        timeout_events.iter().any(|event| matches!(
+            event,
+            WorkerEvent::SignFailed { correlation_id, reason }
+                if correlation_id == &sign_correlation && reason.contains("signing timed out")
+        )),
+        "lost response must fail the sign round-trip; got {timeout_events:?}"
+    );
+    assert!(
+        timeout_events.iter().any(|event| matches!(
+            event,
+            WorkerEvent::CapabilityFailure(CapabilityFailure { capability, correlation_id, reason })
+                if capability == "nmp.publish"
+                    && correlation_id == "corr-timeout"
+                    && reason.contains("signing timed out")
+        )),
+        "lost response must fail and remove the publish continuation; got {timeout_events:?}"
+    );
+
+    let duplicate = runtime
+        .handle(WorkerRequest::DeliverSignerResponse(
+            nmp_wasm::DeliverSignerResponse {
+                correlation_id: sign_correlation.clone(),
+                signed_json: Some(signed_event_json("lost signer response")),
+                error: None,
+            },
+        ))
+        .expect("stale deliver_signer_response must still be a data event");
+    assert!(
+        duplicate.iter().any(|event| matches!(
+            event,
+            WorkerEvent::SignFailed { correlation_id, reason }
+                if correlation_id == &sign_correlation && reason.contains("stale or duplicate")
+        )),
+        "late broker delivery must not find a parked continuation; got {duplicate:?}"
+    );
+    assert!(
+        !duplicate.iter().any(|event| matches!(
+            event,
+            WorkerEvent::ActionAccepted { action_type, correlation_id }
+                if action_type == "nmp.publish" && correlation_id == "corr-timeout"
+        )),
+        "late broker delivery must not publish after timeout cleanup; got {duplicate:?}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // ADR-0064 / S3 (#1751 / #1008) — the typed-payload DECODE arm.
 // ---------------------------------------------------------------------------

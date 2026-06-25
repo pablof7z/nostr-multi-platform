@@ -131,6 +131,23 @@ impl ParkedSignerOps {
         }
     }
 
+    /// Earliest parked-op deadline, as a delay from the caller-supplied clock.
+    /// A due or overdue op reports `0` so schedulers can fail it closed on the
+    /// next explicit wake without a polling cadence.
+    #[must_use]
+    pub(crate) fn next_deadline_delay_ms(&self, now: crate::time::Instant) -> Option<u32> {
+        self.ops
+            .iter()
+            .map(|op| {
+                op.deadline
+                    .checked_duration_since(now)
+                    .unwrap_or_default()
+                    .as_millis()
+                    .min(u128::from(u32::MAX)) as u32
+            })
+            .min()
+    }
+
     /// Test-support convenience wrapper. Production drive sites capture time at
     /// the actor/runtime boundary and call [`Self::drive_at`].
     #[cfg(test)]

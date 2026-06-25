@@ -368,6 +368,7 @@ class WorkerNmpClient extends BaseClient {
       void fulfilSignRequestViaExtension(
         (request) => this.worker.postMessage(request),
         event.correlation_id,
+        event.account_pubkey,
         event.unsigned_json,
       );
       return;

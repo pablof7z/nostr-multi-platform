@@ -73,9 +73,30 @@ impl super::WasmRuntime {
         crate::tick::fire_deadline_for_test(
             &self.maintenance_deadline,
             &self.reducer,
+            &self.pending_signed_publishes,
             &self.post_tick_drain,
         )
         .map(|outcome| (outcome.outbound, outcome.dirty))
+    }
+
+    /// Fire the current runtime deadline and return async control events
+    /// produced by the deadline callback path.
+    pub fn fire_maintenance_deadline_events_for_test(&mut self) -> Option<Vec<crate::WorkerEvent>> {
+        crate::tick::fire_deadline_for_test(
+            &self.maintenance_deadline,
+            &self.reducer,
+            &self.pending_signed_publishes,
+            &self.post_tick_drain,
+        )
+        .map(|outcome| outcome.worker_events)
+    }
+
+    /// Deterministically drive signer timeout cleanup at a future instant.
+    pub fn force_signer_timeout_for_test(&mut self) -> Vec<crate::WorkerEvent> {
+        let completions = self.reducer.borrow_mut().drive_sign_roundtrip_timeouts_at(
+            nmp_core::time::Instant::now() + std::time::Duration::from_secs(61),
+        );
+        crate::tick::signer_completion_events(completions, &self.pending_signed_publishes)
     }
 
     pub fn maintenance_deadline_armed_for_test(&self) -> bool {
@@ -102,7 +123,7 @@ impl super::WasmRuntime {
     }
 
     pub fn next_runtime_deadline_delay_for_test(&self) -> Option<u32> {
-        self.reducer.borrow().next_runtime_deadline_delay_ms()
+        crate::tick::next_runtime_deadline_delay_ms(&self.reducer, nmp_core::time::Instant::now())
     }
 
     /// Pin the reducer clock for deterministic native integration tests.

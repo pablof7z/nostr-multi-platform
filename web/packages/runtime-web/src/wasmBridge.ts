@@ -18,6 +18,7 @@ type NmpWasmRuntime = {
   handle_dispatch_bytes?(bytes: Uint8Array): unknown;
   recent_routing_decisions?(): string;
   set_snapshot_callback?(callback: SnapshotCallback | null): void;
+  set_event_callback?(callback: ((eventJson: string) => void) | null): void;
 };
 
 /** Free function exported by the wasm module: hex pubkey → JSON `{npub, npubShort}`
@@ -49,11 +50,13 @@ export type WasmBridgeLoadResult =
 /// synchronously from inside `handle_json` (for `Start`/dispatch-driven
 /// snapshots) and from the relay-pool sink (for inbound-driven snapshots).
 export type UpdateBytesSink = (bytes: Uint8Array) => void;
+export type WorkerEventSink = (event: WorkerEvent) => void;
 
 export class WasmBridge {
   constructor(
     private readonly runtime: NmpWasmRuntime,
     private readonly onUpdateBytes: UpdateBytesSink,
+    private readonly onWorkerEvent: WorkerEventSink,
     private readonly encodeNpubFn?: EncodeNpubFn,
   ) {
     runtime.set_snapshot_callback?.((bytes) => {
@@ -62,6 +65,9 @@ export class WasmBridge {
       // into JS memory). Forwarding the same instance is safe; the sink
       // is responsible for any further copy/transfer semantics.
       this.onUpdateBytes(bytes);
+    });
+    runtime.set_event_callback?.((eventJson) => {
+      this.onWorkerEvent(decodeWorkerEventJson(eventJson));
     });
   }
 
@@ -132,6 +138,7 @@ export class WasmBridge {
 
 export async function loadWasmBridge(
   onUpdateBytes: UpdateBytesSink,
+  onWorkerEvent: WorkerEventSink,
   modulePath = defaultModulePath,
 ): Promise<WasmBridgeLoadResult> {
   try {
@@ -148,7 +155,12 @@ export async function loadWasmBridge(
     }
     return {
       type: "loaded",
-      bridge: new WasmBridge(new wasmModule.NmpWasmRuntime(), onUpdateBytes, wasmModule.nmp_encode_npub),
+      bridge: new WasmBridge(
+        new wasmModule.NmpWasmRuntime(),
+        onUpdateBytes,
+        onWorkerEvent,
+        wasmModule.nmp_encode_npub,
+      ),
     };
   } catch (error) {
     return unavailable(`nmp-wasm module could not be loaded from ${modulePath}`);
@@ -191,6 +203,14 @@ function decodeWorkerEvents(value: unknown): WorkerEvent[] {
     }
   }
   return events;
+}
+
+function decodeWorkerEventJson(value: string): WorkerEvent {
+  const event = JSON.parse(value) as unknown;
+  if (!isWorkerEvent(event)) {
+    throw new Error("nmp-wasm returned an invalid async worker event");
+  }
+  return event;
 }
 
 function isWorkerEvent(event: unknown): event is WorkerEvent {

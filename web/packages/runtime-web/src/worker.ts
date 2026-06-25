@@ -49,7 +49,7 @@ async function initializeRuntime(): Promise<{
   runtime: Runtime;
   startupEvents: WorkerEvent[];
 }> {
-  const loaded = await loadWasmBridge(emitUpdateBytes);
+  const loaded = await loadWasmBridge(emitUpdateBytes, (event) => scope.postMessage(event));
   if (loaded.type === "loaded") {
     return { runtime: loaded.bridge, startupEvents: [] };
   }

@@ -22,14 +22,13 @@
 //!
 //! # D8 — no polling, no tick-dependence, no blocking recv
 //!
-//! There is NO timer, NO poll loop, and NO [`SignerOp::wait`] (blocking recv)
-//! anywhere in this path. The parked op is resolved because the inbound
-//! `deliver_signed_response` message arrived and drove the queue once — not
-//! because anything polled for it. This is the *same mechanism* the native
-//! NIP-46 broker uses (the broker resolves the op's channel out of band; the
-//! drain picks the value up with a single non-blocking `poll`), reusing the ONE
-//! `ParkedSignerOps::drive_at` driver. The only difference is the drive trigger:
-//! the native idle tick vs. the wasm completion message. The
+//! There is NO poll loop and NO [`SignerOp::wait`] (blocking recv) anywhere in
+//! this path. Normal completion is resolved because the inbound
+//! `deliver_signed_response` message arrived and drove the queue once. Lost
+//! broker responses are resolved by the runtime's one-shot deadline wake, which
+//! drives the same `ParkedSignerOps::drive_at` timeout gate once. Both triggers
+//! reuse the ONE parked-op driver and its single non-blocking `poll`; neither
+//! polls the browser or spins a cadence. The
 //! [`crate::kernel_reducer::wasm_signing::no_polling_oracle_tests`] module
 //! proves completion happens via message re-entry rather than any poll/sleep.
 //!
@@ -412,6 +411,25 @@ impl super::KernelReducer {
         // obligation vecs are therefore always empty. Publish continuations are
         // owned by `WasmRuntime` after the reducer returns `Completed`.
         let _batch = self.sign_roundtrip.parked.drive_at(&mut self.kernel, now);
+    }
+
+    /// Drive signer round-trips from an explicit runtime deadline wake. This is
+    /// the lost-response path: no broker value was delivered, so only overdue
+    /// parked ops resolve, and they resolve through the same D6 timeout terminal
+    /// as the canonical parked-op queue.
+    #[must_use]
+    pub fn drive_sign_roundtrip_timeouts_at(
+        &mut self,
+        now: Instant,
+    ) -> Vec<SignRoundTripCompletion> {
+        self.drive_sign_roundtrip_at(now);
+        self.take_sign_completions()
+    }
+
+    /// Earliest parked signer deadline, as a delay from `now`.
+    #[must_use]
+    pub fn next_sign_roundtrip_deadline_delay_ms(&self, now: Instant) -> Option<u32> {
+        self.sign_roundtrip.parked.next_deadline_delay_ms(now)
     }
 
     /// Build the [`SignRoundTripOutcome`] for `correlation_id` from the most

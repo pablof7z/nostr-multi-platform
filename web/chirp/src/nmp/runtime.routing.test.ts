@@ -66,6 +66,7 @@ describe("routing diagnostics runtime flow", () => {
         recent_routing_decisions: () => routingJson,
       },
       () => {},
+      () => {},
     );
 
     expect(bridge.handle({ type: "routing_decisions", correlation_id: "routing-2" })).toEqual([

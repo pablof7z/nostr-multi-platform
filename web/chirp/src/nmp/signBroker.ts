@@ -17,6 +17,7 @@ import type { WorkerRequest } from "@nmp/runtime-web";
 export async function fulfilSignRequestViaExtension(
   post: (request: WorkerRequest) => void,
   correlationId: string,
+  accountPubkey: string,
   unsignedJson: string,
 ): Promise<void> {
   const deliver = (signedJson: string | null, error: string | null) => {
@@ -39,6 +40,14 @@ export async function fulfilSignRequestViaExtension(
     return;
   }
   try {
+    const currentPubkey = await window.nostr.getPublicKey();
+    if (currentPubkey.toLowerCase() !== accountPubkey.toLowerCase()) {
+      deliver(
+        null,
+        `window.nostr account mismatch: request pinned to ${accountPubkey}, extension is ${currentPubkey}`,
+      );
+      return;
+    }
     const signed = await window.nostr.signEvent(unsigned);
     deliver(JSON.stringify(signed), null);
   } catch (e) {

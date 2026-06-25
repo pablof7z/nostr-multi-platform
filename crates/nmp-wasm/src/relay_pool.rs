@@ -25,10 +25,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use nmp_core::{KernelReducer, OutboundMessage, RelayFrame};
-use nmp_network::role::RelayRole;
 use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
+use nmp_network::role::RelayRole;
 
 use crate::protocol::RelayBootstrapEntry;
+use crate::runtime::PendingSignedPublish;
 use crate::runtime::WasmRuntimeError;
 use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 
@@ -104,6 +105,8 @@ fn request_runtime_deadline(
     handlers_slot: &Rc<RefCell<Option<BrowserKernelHandlers>>>,
     snapshot_callback: &Rc<RefCell<Option<js_sys::Function>>>,
     meta: &Rc<RefCell<RuntimeMeta>>,
+    pending_signed_publishes: &Rc<RefCell<std::collections::HashMap<String, PendingSignedPublish>>>,
+    event_callback: &Rc<RefCell<Option<js_sys::Function>>>,
     post_event_drain: &Rc<RefCell<Option<Rc<dyn Fn()>>>>,
 ) {
     crate::tick::request_runtime_deadline(
@@ -114,6 +117,8 @@ fn request_runtime_deadline(
         Rc::clone(handlers_slot),
         Rc::clone(snapshot_callback),
         Rc::clone(meta),
+        Rc::clone(pending_signed_publishes),
+        Rc::clone(event_callback),
         Rc::clone(post_event_drain),
     );
 }
@@ -152,6 +157,8 @@ pub(crate) fn build_handlers(
     meta: Rc<RefCell<RuntimeMeta>>,
     handlers_slot: Rc<RefCell<Option<BrowserKernelHandlers>>>,
     deadline: Rc<RefCell<crate::tick::RuntimeDeadline>>,
+    pending_signed_publishes: Rc<RefCell<std::collections::HashMap<String, PendingSignedPublish>>>,
+    event_callback: Rc<RefCell<Option<js_sys::Function>>>,
     post_event_drain: Rc<RefCell<Option<Rc<dyn Fn()>>>>,
 ) -> BrowserKernelHandlers {
     // Each closure clones the `Rc` handles it needs. The driver invokes them
@@ -170,6 +177,8 @@ pub(crate) fn build_handlers(
         let meta = Rc::clone(&meta);
         let handlers_slot = Rc::clone(&handlers_slot);
         let deadline = Rc::clone(&deadline);
+        let pending_signed_publishes = Rc::clone(&pending_signed_publishes);
+        let event_callback = Rc::clone(&event_callback);
         let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, is_reconnect: bool| {
             let outbound = reducer.borrow_mut().handle_relay_connected_at(
@@ -188,6 +197,8 @@ pub(crate) fn build_handlers(
                 &handlers_slot,
                 &snapshot_callback,
                 &meta,
+                &pending_signed_publishes,
+                &event_callback,
                 &post_event_drain,
             );
         }) as Rc<dyn Fn(RelayRole, &str, bool)>
@@ -200,6 +211,8 @@ pub(crate) fn build_handlers(
         let meta = Rc::clone(&meta);
         let handlers_slot = Rc::clone(&handlers_slot);
         let deadline = Rc::clone(&deadline);
+        let pending_signed_publishes = Rc::clone(&pending_signed_publishes);
+        let event_callback = Rc::clone(&event_callback);
         let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, text: String| {
             let outbound = reducer.borrow_mut().handle_relay_frame_at(
@@ -218,6 +231,8 @@ pub(crate) fn build_handlers(
                 &handlers_slot,
                 &snapshot_callback,
                 &meta,
+                &pending_signed_publishes,
+                &event_callback,
                 &post_event_drain,
             );
         }) as Rc<dyn Fn(RelayRole, &str, String)>
@@ -230,6 +245,8 @@ pub(crate) fn build_handlers(
         let meta = Rc::clone(&meta);
         let handlers_slot = Rc::clone(&handlers_slot);
         let deadline = Rc::clone(&deadline);
+        let pending_signed_publishes = Rc::clone(&pending_signed_publishes);
+        let event_callback = Rc::clone(&event_callback);
         let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, bytes: Vec<u8>| {
             let outbound = reducer.borrow_mut().handle_relay_frame_at(
@@ -248,6 +265,8 @@ pub(crate) fn build_handlers(
                 &handlers_slot,
                 &snapshot_callback,
                 &meta,
+                &pending_signed_publishes,
+                &event_callback,
                 &post_event_drain,
             );
         }) as Rc<dyn Fn(RelayRole, &str, Vec<u8>)>
@@ -260,6 +279,8 @@ pub(crate) fn build_handlers(
         let drivers = Rc::clone(&drivers);
         let handlers_slot = Rc::clone(&handlers_slot);
         let deadline = Rc::clone(&deadline);
+        let pending_signed_publishes = Rc::clone(&pending_signed_publishes);
+        let event_callback = Rc::clone(&event_callback);
         let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, reason: Option<String>| {
             // `RelayFrame::Close` always returns an empty outbound — we drop
@@ -279,6 +300,8 @@ pub(crate) fn build_handlers(
                 &handlers_slot,
                 &snapshot_callback,
                 &meta,
+                &pending_signed_publishes,
+                &event_callback,
                 &post_event_drain,
             );
         }) as Rc<dyn Fn(RelayRole, &str, Option<String>)>
@@ -291,6 +314,8 @@ pub(crate) fn build_handlers(
         let drivers = Rc::clone(&drivers);
         let handlers_slot = Rc::clone(&handlers_slot);
         let deadline = Rc::clone(&deadline);
+        let pending_signed_publishes = Rc::clone(&pending_signed_publishes);
+        let event_callback = Rc::clone(&event_callback);
         let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str| {
             reducer.borrow_mut().handle_relay_closed(role, url);
@@ -303,6 +328,8 @@ pub(crate) fn build_handlers(
                 &handlers_slot,
                 &snapshot_callback,
                 &meta,
+                &pending_signed_publishes,
+                &event_callback,
                 &post_event_drain,
             );
         }) as Rc<dyn Fn(RelayRole, &str)>
@@ -315,6 +342,8 @@ pub(crate) fn build_handlers(
         let drivers = Rc::clone(&drivers);
         let handlers_slot = Rc::clone(&handlers_slot);
         let deadline = Rc::clone(&deadline);
+        let pending_signed_publishes = Rc::clone(&pending_signed_publishes);
+        let event_callback = Rc::clone(&event_callback);
         let post_event_drain = Rc::clone(&post_event_drain);
         Rc::new(move |role: RelayRole, url: &str, error: String| {
             reducer.borrow_mut().handle_relay_failed(role, url, error);
@@ -327,6 +356,8 @@ pub(crate) fn build_handlers(
                 &handlers_slot,
                 &snapshot_callback,
                 &meta,
+                &pending_signed_publishes,
+                &event_callback,
                 &post_event_drain,
             );
         }) as Rc<dyn Fn(RelayRole, &str, String)>

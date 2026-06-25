@@ -47,7 +47,8 @@ fn sign_messages_round_trip_through_json() {
         account_pubkey: ACCOUNT.to_string(),
         unsigned_json: unsigned_json(ACCOUNT),
     });
-    let decoded: WorkerRequest = serde_json::from_str(&serde_json::to_string(&begin).unwrap()).unwrap();
+    let decoded: WorkerRequest =
+        serde_json::from_str(&serde_json::to_string(&begin).unwrap()).unwrap();
     assert_eq!(decoded, begin);
 
     let deliver = WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
@@ -87,11 +88,13 @@ fn begin_sign_then_deliver_completes() {
     // The main-thread broker calls window.nostr.signEvent and posts the result
     // back. (Here we synthesize what the bridge would return.)
     let events = runtime
-        .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
-            correlation_id: correlation_id.clone(),
-            signed_json: Some(signed_json(ACCOUNT)),
-            error: None,
-        }))
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id: correlation_id.clone(),
+                signed_json: Some(signed_json(ACCOUNT)),
+                error: None,
+            },
+        ))
         .unwrap();
     match events.as_slice() {
         [WorkerEvent::SignCompleted {
@@ -99,10 +102,64 @@ fn begin_sign_then_deliver_completes() {
             signed_json,
         }] => {
             assert_eq!(*cid, correlation_id);
-            assert!(signed_json.contains("\"sig\":\"2222"), "carries the signed event");
+            assert!(
+                signed_json.contains("\"sig\":\"2222"),
+                "carries the signed event"
+            );
         }
         other => panic!("expected SignCompleted, got {other:?}"),
     }
+}
+
+#[test]
+fn begin_sign_arms_deadline_and_lost_response_times_out() {
+    let mut runtime = WasmRuntime::new();
+    let events = runtime
+        .handle(WorkerRequest::BeginSign(BeginSign {
+            account_pubkey: ACCOUNT.to_string(),
+            unsigned_json: unsigned_json(ACCOUNT),
+        }))
+        .unwrap();
+    let correlation_id = match &events[0] {
+        WorkerEvent::SignRequest { correlation_id, .. } => correlation_id.clone(),
+        other => panic!("expected SignRequest, got {other:?}"),
+    };
+    assert!(
+        runtime.maintenance_deadline_armed_for_test(),
+        "begin_sign must arm an explicit runtime wake for lost broker responses"
+    );
+    assert!(
+        runtime.next_runtime_deadline_delay_for_test().is_some(),
+        "parked sign op must declare a signer deadline"
+    );
+
+    let timeout_events = runtime.force_signer_timeout_for_test();
+    assert!(
+        timeout_events.iter().any(|event| matches!(
+            event,
+            WorkerEvent::SignFailed { correlation_id: c, reason }
+                if c == &correlation_id && reason.contains("signing timed out")
+        )),
+        "lost response must fail the sign round-trip closed; got {timeout_events:?}"
+    );
+
+    let duplicate = runtime
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id: correlation_id.clone(),
+                signed_json: Some(signed_json(ACCOUNT)),
+                error: None,
+            },
+        ))
+        .unwrap();
+    assert!(
+        duplicate.iter().any(|event| matches!(
+            event,
+            WorkerEvent::SignFailed { correlation_id: c, reason }
+                if c == &correlation_id && reason.contains("stale or duplicate")
+        )),
+        "post-timeout delivery must be stale; got {duplicate:?}"
+    );
 }
 
 /// Account-pinning across the bridge: a signature authored by a different
@@ -121,12 +178,14 @@ fn account_pin_enforced_across_the_bridge() {
         other => panic!("expected SignRequest, got {other:?}"),
     };
     let events = runtime
-        .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
-            correlation_id,
-            // Broker returns a signature from the WRONG account.
-            signed_json: Some(signed_json(OTHER)),
-            error: None,
-        }))
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id,
+                // Broker returns a signature from the WRONG account.
+                signed_json: Some(signed_json(OTHER)),
+                error: None,
+            },
+        ))
         .unwrap();
     match &events[0] {
         WorkerEvent::SignFailed { reason, .. } => {
@@ -152,11 +211,13 @@ fn broker_reported_rejection_fails_closed() {
         other => panic!("expected SignRequest, got {other:?}"),
     };
     let events = runtime
-        .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
-            correlation_id,
-            signed_json: None,
-            error: Some("user rejected in extension".to_string()),
-        }))
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id,
+                signed_json: None,
+                error: Some("user rejected in extension".to_string()),
+            },
+        ))
         .unwrap();
     match &events[0] {
         WorkerEvent::SignFailed { reason, .. } => {
@@ -164,6 +225,55 @@ fn broker_reported_rejection_fails_closed() {
         }
         other => panic!("expected SignFailed, got {other:?}"),
     }
+}
+
+#[test]
+fn duplicate_delivery_after_success_is_stale() {
+    let mut runtime = WasmRuntime::new();
+    let events = runtime
+        .handle(WorkerRequest::BeginSign(BeginSign {
+            account_pubkey: ACCOUNT.to_string(),
+            unsigned_json: unsigned_json(ACCOUNT),
+        }))
+        .unwrap();
+    let correlation_id = match &events[0] {
+        WorkerEvent::SignRequest { correlation_id, .. } => correlation_id.clone(),
+        other => panic!("expected SignRequest, got {other:?}"),
+    };
+    let first = runtime
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id: correlation_id.clone(),
+                signed_json: Some(signed_json(ACCOUNT)),
+                error: None,
+            },
+        ))
+        .unwrap();
+    assert!(
+        first.iter().any(|event| matches!(
+            event,
+            WorkerEvent::SignCompleted { correlation_id: c, .. } if c == &correlation_id
+        )),
+        "first delivery must complete; got {first:?}"
+    );
+
+    let second = runtime
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id: correlation_id.clone(),
+                signed_json: Some(signed_json(ACCOUNT)),
+                error: None,
+            },
+        ))
+        .unwrap();
+    assert!(
+        second.iter().any(|event| matches!(
+            event,
+            WorkerEvent::SignFailed { correlation_id: c, reason }
+                if c == &correlation_id && reason.contains("stale or duplicate")
+        )),
+        "duplicate delivery must fail closed; got {second:?}"
+    );
 }
 
 /// NO-POLLING at the runtime boundary: the periodic `tick` request equivalent
@@ -190,11 +300,13 @@ fn only_the_delivery_message_completes_the_roundtrip() {
     // is gated solely on the delivery message (D8, no polling).
     for _ in 0..50 {
         let events = runtime
-            .handle(WorkerRequest::CapabilityResult(nmp_wasm::CapabilityResult {
-                capability: "unrelated".to_string(),
-                correlation_id: "unrelated".to_string(),
-                payload: json!({}),
-            }))
+            .handle(WorkerRequest::CapabilityResult(
+                nmp_wasm::CapabilityResult {
+                    capability: "unrelated".to_string(),
+                    correlation_id: "unrelated".to_string(),
+                    payload: json!({}),
+                },
+            ))
             .unwrap();
         assert!(
             !events.iter().any(|e| matches!(
@@ -209,11 +321,13 @@ fn only_the_delivery_message_completes_the_roundtrip() {
 
     // Now the delivery message — and ONLY now — completes it.
     let events = runtime
-        .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
-            correlation_id: correlation_id.clone(),
-            signed_json: Some(signed_json(ACCOUNT)),
-            error: None,
-        }))
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id: correlation_id.clone(),
+                signed_json: Some(signed_json(ACCOUNT)),
+                error: None,
+            },
+        ))
         .unwrap();
     assert!(
         events.iter().any(|e| matches!(

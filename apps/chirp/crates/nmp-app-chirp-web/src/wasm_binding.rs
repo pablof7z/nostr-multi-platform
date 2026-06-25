@@ -8,9 +8,10 @@
 //! # JS API surface
 //!
 //! The class name (`NmpWasmRuntime`) and the method names (`handle_json`,
-//! `handle_dispatch_bytes`, `set_snapshot_callback`, `recent_routing_decisions`) are stable. The
-//! generated JS module file is `nmp_app_chirp_web.js` (derived from the crate
-//! name); `wasmBridge.ts` sets its `defaultModulePath` constant accordingly.
+//! `handle_dispatch_bytes`, `set_snapshot_callback`, `set_event_callback`,
+//! `recent_routing_decisions`) are stable. The generated JS module file is
+//! `nmp_app_chirp_web.js` (derived from the crate name); `wasmBridge.ts` sets
+//! its `defaultModulePath` constant accordingly.
 //!
 //! ADR-0064 §5 / #1743: there is NO `dispatch_app_action_async` Promise
 //! entrypoint. Writes route through the typed `handle_dispatch_bytes` doorway;
@@ -195,6 +196,13 @@ impl NmpWasmRuntime {
     #[wasm_bindgen]
     pub fn set_snapshot_callback(&mut self, callback: Option<js_sys::Function>) {
         self.runtime.set_snapshot_callback(callback);
+    }
+
+    /// Install (or clear) the JS callback the runtime invokes for async
+    /// control events produced outside a synchronous `handle_*` call.
+    #[wasm_bindgen]
+    pub fn set_event_callback(&mut self, callback: Option<js_sys::Function>) {
+        self.runtime.set_event_callback(callback);
     }
 
     /// JSON snapshot of the kernel's recent routing decisions.

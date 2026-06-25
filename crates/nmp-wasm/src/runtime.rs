@@ -46,6 +46,10 @@ const PROTOCOL_VERSION: u16 = 1;
 type SnapshotCallback = js_sys::Function;
 #[cfg(not(target_arch = "wasm32"))]
 type SnapshotCallback = ();
+#[cfg(target_arch = "wasm32")]
+type EventCallback = js_sys::Function;
+#[cfg(not(target_arch = "wasm32"))]
+type EventCallback = ();
 
 /// Browser-side runtime backed by a real `KernelReducer` plus the
 /// snapshot-callback push channel.
@@ -87,6 +91,12 @@ pub struct WasmRuntime {
     /// warning the symmetric struct layout otherwise triggers there.
     #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
     snapshot_callback: Rc<RefCell<Option<SnapshotCallback>>>,
+    /// Async control-event callback used by deadline wakes. Synchronous
+    /// `handle()` callers still receive control events directly; timeout
+    /// callbacks use this slot to post D6 signer failures without waiting for
+    /// unrelated host traffic.
+    #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+    event_callback: Rc<RefCell<Option<EventCallback>>>,
     /// PR-4 post-event drain — fired AFTER the reducer maintenance borrow
     /// drops. Kept source-compatible with composition roots that installed the
     /// old post-tick hook; the production scheduler now invokes it from event
@@ -112,7 +122,7 @@ pub struct WasmRuntime {
     maintenance_deadline: Rc<RefCell<crate::tick::RuntimeDeadline>>,
     /// NIP-07 publish continuations parked between `SignRequest` and
     /// `DeliverSignerResponse`.
-    pending_signed_publishes: HashMap<String, PendingSignedPublish>,
+    pending_signed_publishes: Rc<RefCell<HashMap<String, PendingSignedPublish>>>,
     /// Boot-time composition hooks that must observe the final event-store
     /// handle, after store injection and before relay drivers start.
     before_start_hooks: Vec<Box<dyn FnOnce(&mut WasmRuntime)>>,
@@ -130,10 +140,10 @@ pub struct WasmRuntime {
 }
 
 #[derive(Clone, Debug)]
-struct PendingSignedPublish {
-    action_namespace: String,
-    action_correlation_id: String,
-    target: nmp_core::publish::PublishTarget,
+pub(crate) struct PendingSignedPublish {
+    pub(crate) action_namespace: String,
+    pub(crate) action_correlation_id: String,
+    pub(crate) target: nmp_core::publish::PublishTarget,
 }
 
 impl WasmRuntime {
@@ -296,6 +306,14 @@ impl WasmRuntime {
     #[cfg(target_arch = "wasm32")]
     pub fn snapshot_callback_handle(&self) -> &Rc<RefCell<Option<js_sys::Function>>> {
         &self.snapshot_callback
+    }
+
+    /// Install (or clear) the async control-event callback. Used by one-shot
+    /// deadline callbacks to report signer timeout failures as normal
+    /// `WorkerEvent` data.
+    #[cfg(target_arch = "wasm32")]
+    pub fn set_event_callback(&mut self, callback: Option<js_sys::Function>) {
+        *self.event_callback.borrow_mut() = callback;
     }
 
     /// Process one `WorkerRequest` and return the events to forward back to

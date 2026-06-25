@@ -233,7 +233,7 @@ impl WasmRuntime {
                         nmp_core::time::Instant::now(),
                     ) {
                         Ok(req) => {
-                            self.pending_signed_publishes.insert(
+                            self.pending_signed_publishes.borrow_mut().insert(
                                 req.correlation_id.clone(),
                                 super::PendingSignedPublish {
                                     action_namespace: action_namespace.to_string(),
@@ -293,7 +293,7 @@ impl WasmRuntime {
                         nmp_core::time::Instant::now(),
                     ) {
                         Ok(req) => {
-                            self.pending_signed_publishes.insert(
+                            self.pending_signed_publishes.borrow_mut().insert(
                                 req.correlation_id.clone(),
                                 super::PendingSignedPublish {
                                     action_namespace: action_namespace.to_string(),

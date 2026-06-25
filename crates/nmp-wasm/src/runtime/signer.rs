@@ -184,11 +184,14 @@ impl WasmRuntime {
             &request.unsigned_json,
             nmp_core::time::Instant::now(),
         ) {
-            Ok(req) => vec![WorkerEvent::SignRequest {
-                correlation_id: req.correlation_id,
-                account_pubkey: req.account_pubkey,
-                unsigned_json: req.unsigned_json,
-            }],
+            Ok(req) => {
+                self.request_event_drain();
+                vec![WorkerEvent::SignRequest {
+                    correlation_id: req.correlation_id,
+                    account_pubkey: req.account_pubkey,
+                    unsigned_json: req.unsigned_json,
+                }]
+            }
             // No correlation id was minted (begin failed before parking); echo
             // an empty id so the host can still surface the failure.
             Err(reason) => vec![WorkerEvent::SignFailed {
@@ -228,6 +231,7 @@ impl WasmRuntime {
                 ),
             }
         };
+        let _ = self.reducer.borrow_mut().take_sign_completions();
         match outcome {
             SignRoundTripOutcome::Completed {
                 correlation_id,
@@ -237,7 +241,12 @@ impl WasmRuntime {
                     correlation_id: correlation_id.clone(),
                     signed_json: signed_json.clone(),
                 }];
-                if let Some(pending) = self.pending_signed_publishes.remove(&correlation_id) {
+                let pending = {
+                    self.pending_signed_publishes
+                        .borrow_mut()
+                        .remove(&correlation_id)
+                };
+                if let Some(pending) = pending {
                     match signed_json_to_raw_event(&signed_json) {
                         Ok(raw) => {
                             let outbound = self.reducer.borrow_mut().publish_pre_signed(
@@ -272,7 +281,12 @@ impl WasmRuntime {
                     correlation_id: correlation_id.clone(),
                     reason: reason.clone(),
                 }];
-                if let Some(pending) = self.pending_signed_publishes.remove(&correlation_id) {
+                let pending = {
+                    self.pending_signed_publishes
+                        .borrow_mut()
+                        .remove(&correlation_id)
+                };
+                if let Some(pending) = pending {
                     events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
                         capability: pending.action_namespace,
                         correlation_id: pending.action_correlation_id,

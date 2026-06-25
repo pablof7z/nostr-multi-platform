@@ -112,6 +112,8 @@ impl WasmRuntime {
             Rc::clone(&self.meta),
             Rc::clone(&self.handlers_slot),
             Rc::clone(&self.maintenance_deadline),
+            Rc::clone(&self.pending_signed_publishes),
+            Rc::clone(&self.event_callback),
             Rc::clone(&self.post_tick_drain),
         );
         *self.handlers_slot.borrow_mut() = Some(handlers.clone());
@@ -131,6 +133,8 @@ impl WasmRuntime {
             Rc::clone(&self.handlers_slot),
             Rc::clone(&self.snapshot_callback),
             Rc::clone(&self.meta),
+            Rc::clone(&self.pending_signed_publishes),
+            Rc::clone(&self.event_callback),
             Rc::clone(&self.post_tick_drain),
         );
         #[cfg(not(target_arch = "wasm32"))]

@@ -13,13 +13,14 @@ impl Default for WasmRuntime {
             publish_resolver_factory: Rc::new(RefCell::new(None)),
             meta: Rc::new(RefCell::new(RuntimeMeta::new())),
             snapshot_callback: Rc::new(RefCell::new(None)),
+            event_callback: Rc::new(RefCell::new(None)),
             post_tick_drain: Rc::new(RefCell::new(None)),
             #[cfg(target_arch = "wasm32")]
             relays: Rc::new(RefCell::new(Vec::new())),
             #[cfg(target_arch = "wasm32")]
             handlers_slot: Rc::new(RefCell::new(None)),
             maintenance_deadline: Rc::new(RefCell::new(crate::tick::RuntimeDeadline::default())),
-            pending_signed_publishes: Default::default(),
+            pending_signed_publishes: Rc::new(RefCell::new(Default::default())),
             before_start_hooks: Vec::new(),
             action_registry: default_registry(),
         }
