@@ -78,7 +78,7 @@ status; if they disagree, fix the index.
 | 0047 | NMP browser worker runtime contract | Accepted | Write/signing contract → 0064 |
 | 0048 | NIP-55 Android signer (Amber) via `ExternalSignerCapability` | Accepted (shipped) | — |
 | 0049 | Defaults yield; composition is observable | Accepted | — |
-| 0050 | Signer-session capability port | Accepted pending implementation | §D5 supersedes 0026 seal-exec model |
+| 0050 | Signer-session capability port | Implemented | §D5 supersedes 0026 seal-exec model; §D7 extended by 0066 |
 | 0051 | First-class NIP-11 relay-information documents in NMP | Proposed | — |
 | 0052 | Instance-scoped extension seams — register values, not types | Proposed | — |
 | 0053 | Host-declared projection subscriptions | Accepted | Amends / partially supersedes 0039 |
@@ -92,4 +92,6 @@ status; if they disagree, fix the index.
 | 0061 | NIP-22 comments | Accepted pending implementation | — |
 | 0062 | Observer-scoped read-model catch-up | Proposed | — |
 | 0063 | Reference resolution: unified keyed `RefResolver` primitive | Accepted | Supersedes/amends 0042; extends 0053, 0055 |
-| 0064 | Unified write/command boundary: one byte transport, open FlatBuffers payloads, signing as a capability round-trip | Accepted pending implementation | Extends 0027, 0050, 0040; folds in the worker write/signing contract from 0047 |
+| 0064 | Unified write/command boundary: one byte transport, open FlatBuffers payloads, signing as a capability round-trip | Accepted/implemented | Extends 0027, 0050, 0040; folds in the worker write/signing contract from 0047 |
+| 0065 | `ActorCommand` sub-enum collapse | Accepted | Aligns the in-process command vocabulary with 0064 |
+| 0066 | Delegated NIP-44 decrypt sessions for bunker DM backfill | Accepted for staged implementation | Extends 0050 §D7; relies on 0031 |

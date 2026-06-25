@@ -83,13 +83,12 @@ handshake path — it has no counterpart in `nostr-connect`.
 
 Remote-signer flows (NIP-42 AUTH challenges, DM decryption) need NIP-46 verbs
 that `nostr-connect` may not support. Owning the broker lets NMP extend the
-verb set without depending on upstream merges. The concrete shape of those
-extensions is decided by **ADR-0050** (signer-session capability port): the
-broker exposes a session capability that the relevant flows ride, rather than
-issuing per-envelope remote-signer RPCs. (An earlier sketch — per-envelope
-`unwrap_gift_wrap` via remote-signer RPC — was rejected as unviable, since each
-kind:1059 unseal is two sequential interactive NIP-46 decrypts; see ADR-0050
-and git history for the superseded design.)
+verb set without depending on upstream merges. **ADR-0050** landed the scalar
+signer-session port (`sign | nip44_encrypt | nip44_decrypt`) and the bounded
+remote-signer DM fallback. **ADR-0066** decides the optional delegated
+batch-decrypt session for bunkers that negotiate it. The older per-envelope
+`unwrap_gift_wrap` sketch was rejected as unviable, since each kind:1059 unseal
+is two sequential interactive NIP-46 decrypts.
 
 ## Decision
 
