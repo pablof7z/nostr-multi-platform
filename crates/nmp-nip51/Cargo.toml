@@ -4,7 +4,7 @@ version = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
 repository.workspace = true
-description = "NIP-51 list projections for NMP: kind:10000 public mute suppression, kind:10003 bookmark facts/builders, and kind:10007 active-account search-relay facts. Protocol parsing stays here; generic routing/search policy stays in substrate/search owners."
+description = "NIP-51 list projections for NMP: mute suppression, global bookmarks, bookmark/curation sets, web bookmarks, and search-relay facts. Protocol parsing stays here; generic routing/search policy stays in substrate/search owners."
 
 [lib]
 crate-type = ["rlib"]

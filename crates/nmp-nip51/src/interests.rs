@@ -25,7 +25,10 @@ use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::ViewDependencies;
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest, PTagRouting};
 
-use nmp_kinds::{KIND_BOOKMARK_LIST, KIND_MUTE_LIST};
+use nmp_kinds::{
+    KIND_ARTICLE_CURATION_SET, KIND_BOOKMARK_LIST, KIND_BOOKMARK_SET, KIND_MUTE_LIST,
+    KIND_WEB_BOOKMARK,
+};
 
 // ── Bookmark list (kind:10003) ────────────────────────────────────────────────
 
@@ -72,6 +75,107 @@ pub fn active_bookmark_list_interest(pubkey: &str) -> LogicalInterest {
     };
     let mut interest = deps.into_logical_interest(
         active_bookmark_list_interest_id(),
+        InterestScope::Global,
+        InterestLifecycle::Tailing,
+    );
+    interest.shape.p_tag_routing = PTagRouting::Nip65ReadRelays;
+    interest
+}
+
+// ── Bookmark and curation sets (kind:30003 / kind:30004) ─────────────────────
+
+/// Stable id for bookmark/curation set interests over an explicit author set.
+///
+/// The id is intentionally independent of the author list so a controller can
+/// replace the active author set in one standing slot.
+#[must_use]
+pub fn bookmark_sets_interest_id() -> InterestId {
+    InterestId(nmp_planner::stable_hash::stable_hash64(
+        "nmp.nip51.bookmark_sets",
+    ))
+}
+
+/// Scoped registry identity for bookmark/curation set interests.
+#[must_use]
+pub fn bookmark_sets_identity() -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new("nmp.nip51.bookmark_sets"),
+        SubKey::new("nmp.nip51.bookmark_sets"),
+        SubScope::Global,
+    )
+}
+
+/// Tailing [`LogicalInterest`] for kind:30003 and kind:30004 sets authored by
+/// an explicit author set.
+///
+/// Shape:
+/// - `lifecycle = Tailing`
+/// - `scope = Global`
+/// - `kinds = [30003, 30004]`
+/// - `authors = <provided authors>`
+/// - `p_tag_routing = Nip65ReadRelays`
+#[must_use]
+pub fn bookmark_sets_interest<I, S>(authors: I) -> LogicalInterest
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let deps = ViewDependencies {
+        kinds: vec![KIND_BOOKMARK_SET, KIND_ARTICLE_CURATION_SET],
+        authors: authors.into_iter().map(Into::into).collect(),
+        ..Default::default()
+    };
+    let mut interest = deps.into_logical_interest(
+        bookmark_sets_interest_id(),
+        InterestScope::Global,
+        InterestLifecycle::Tailing,
+    );
+    interest.shape.p_tag_routing = PTagRouting::Nip65ReadRelays;
+    interest
+}
+
+// ── Web bookmarks (kind:39701) ───────────────────────────────────────────────
+
+/// Stable id for web bookmark interests over an explicit author set.
+#[must_use]
+pub fn web_bookmarks_interest_id() -> InterestId {
+    InterestId(nmp_planner::stable_hash::stable_hash64(
+        "nmp.nip51.web_bookmarks",
+    ))
+}
+
+/// Scoped registry identity for web bookmark interests.
+#[must_use]
+pub fn web_bookmarks_identity() -> SubIdentity {
+    SubIdentity::new(
+        SubOwnerKey::new("nmp.nip51.web_bookmarks"),
+        SubKey::new("nmp.nip51.web_bookmarks"),
+        SubScope::Global,
+    )
+}
+
+/// Tailing [`LogicalInterest`] for kind:39701 web bookmarks authored by an
+/// explicit author set.
+///
+/// Shape:
+/// - `lifecycle = Tailing`
+/// - `scope = Global`
+/// - `kinds = [39701]`
+/// - `authors = <provided authors>`
+/// - `p_tag_routing = Nip65ReadRelays`
+#[must_use]
+pub fn web_bookmarks_interest<I, S>(authors: I) -> LogicalInterest
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
+    let deps = ViewDependencies {
+        kinds: vec![KIND_WEB_BOOKMARK],
+        authors: authors.into_iter().map(Into::into).collect(),
+        ..Default::default()
+    };
+    let mut interest = deps.into_logical_interest(
+        web_bookmarks_interest_id(),
         InterestScope::Global,
         InterestLifecycle::Tailing,
     );
@@ -187,6 +291,52 @@ mod tests {
             interest.shape.authors
         );
         assert_eq!(interest.id, active_bookmark_list_interest_id());
+    }
+
+    #[test]
+    fn bookmark_sets_interest_shape_matches_explicit_author_contract() {
+        let alice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let bob = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let interest = bookmark_sets_interest([alice, bob]);
+
+        assert!(matches!(interest.lifecycle, InterestLifecycle::Tailing));
+        assert!(matches!(interest.scope, InterestScope::Global));
+        assert!(matches!(
+            interest.shape.p_tag_routing,
+            PTagRouting::Nip65ReadRelays
+        ));
+        assert_eq!(
+            interest.shape.kinds,
+            std::collections::BTreeSet::from([KIND_BOOKMARK_SET, KIND_ARTICLE_CURATION_SET])
+        );
+        assert_eq!(
+            interest.shape.authors,
+            std::collections::BTreeSet::from([alice.to_string(), bob.to_string()])
+        );
+        assert_eq!(interest.id, bookmark_sets_interest_id());
+    }
+
+    #[test]
+    fn web_bookmarks_interest_shape_matches_explicit_author_contract() {
+        let alice = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let bob = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let interest = web_bookmarks_interest([alice, bob]);
+
+        assert!(matches!(interest.lifecycle, InterestLifecycle::Tailing));
+        assert!(matches!(interest.scope, InterestScope::Global));
+        assert!(matches!(
+            interest.shape.p_tag_routing,
+            PTagRouting::Nip65ReadRelays
+        ));
+        assert_eq!(
+            interest.shape.kinds,
+            std::collections::BTreeSet::from([KIND_WEB_BOOKMARK])
+        );
+        assert_eq!(
+            interest.shape.authors,
+            std::collections::BTreeSet::from([alice.to_string(), bob.to_string()])
+        );
+        assert_eq!(interest.id, web_bookmarks_interest_id());
     }
 
     // ── mute tests ────────────────────────────────────────────────────────
