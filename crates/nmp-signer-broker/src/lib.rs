@@ -55,6 +55,7 @@
 pub mod broker;
 pub mod events;
 pub mod handshake;
+pub mod intake;
 pub mod progress_codes;
 pub mod relay_client;
 pub mod transport;
@@ -62,6 +63,7 @@ mod uri_encode;
 
 pub use broker::BunkerBroker;
 pub use events::{BrokerEvent, BrokerEventHandler};
+pub use intake::{IntakeAdmission, SIGNER_BROKER_INTAKE_CAP};
 pub use transport::BrokerTransport;
 pub use uri_encode::percent_encode_query_value;
 
