@@ -4574,6 +4574,7 @@ dependencies = [
  "nmp-nip57",
  "nmp-nip59",
  "nmp-nip77",
+ "nmp-nip84",
  "nmp-planner",
  "nmp-router",
  "nmp-store",
@@ -4967,6 +4968,17 @@ dependencies = [
 name = "nmp-nip78"
 version = "0.8.0"
 dependencies = [
+ "nmp-core",
+ "nmp-kinds",
+ "nmp-signer-iface",
+ "serde",
+]
+
+[[package]]
+name = "nmp-nip84"
+version = "0.8.0"
+dependencies = [
+ "flatbuffers",
  "nmp-core",
  "nmp-kinds",
  "nmp-signer-iface",

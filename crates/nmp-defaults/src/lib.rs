@@ -23,6 +23,7 @@
 //!    * `nmp.nip25.react` / `nmp.nip25.unreact` — [`nmp_nip25`]
 //!    * `nmp.nip17.send` / `nmp.nip17.publish_relay_list` — [`nmp_nip17`]
 //!    * `nmp.nip57.zap` — [`nmp_nip57`]
+//!    * `nmp.nip84.publish_highlight` — [`nmp_nip84`]
 //!    * `nmp.nip65.publish_relay_list` — [`nmp_router`]
 //!    * `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark` — [`nmp_nip51`]
 //! 2. **Ingest parsers** for the kinds NMP knows how to decode into
@@ -299,6 +300,9 @@ fn register_defaults_inner(
         // NIP-25: public kind:7 reactions and kind:5 unreact deletion.
         // Uses the typed descriptor (#1724 criterion 6).
         nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
+        // NIP-84: public kind:9802 highlights, including generic NIP-73
+        // external `i`/`k` source references for non-Nostr media.
+        nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip84::Nip84Descriptor, app);
         // NIP-29 group input-scope recognizer (#1804, S7).
         //
         // Register the `nip29.groups` `InputScopeRecognizer` so the

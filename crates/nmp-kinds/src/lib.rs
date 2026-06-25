@@ -139,6 +139,13 @@ pub const KIND_ZAP_REQUEST: u32 = 9734;
 /// invoice settles. Decode-only — clients never construct kind:9735 directly.
 pub const KIND_ZAP_RECEIPT: u32 = 9735;
 
+// ─── NIP-84 — highlights ─────────────────────────────────────────────────
+
+/// NIP-84 highlight event (kind:9802). The event content is the highlighted
+/// text; source references live in `e`/`a`/`r`/NIP-73 `i` tags. Build logic
+/// lives in `nmp-nip84`; this constant is only Layer-0 vocabulary.
+pub const KIND_HIGHLIGHT: u32 = 9802;
+
 // ─── NIP-78 — arbitrary custom app data ───────────────────────────────────
 
 /// NIP-78 arbitrary custom app data (kind:30078). Addressable by

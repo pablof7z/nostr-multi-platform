@@ -1,0 +1,51 @@
+namespace nmp.nip84;
+
+// ADR-0064-style typed FlatBuffers payload for `nmp.nip84.publish_highlight`.
+// The OPAQUE `DispatchEnvelope.payload` for this namespace is decoded by the
+// action registry before `start()` runs, including the fail-closed
+// schema_version gate.
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip84/src/wire/generated \
+//         crates/nmp-nip84/schema/highlight.fbs
+
+enum HighlightSourceKind:ubyte {
+  Event = 0,
+  Address = 1,
+  Url = 2,
+  External = 3,
+}
+
+table HighlightSource {
+  // Tagged-table discriminator for the Rust HighlightSource enum.
+  kind:HighlightSourceKind;
+  // Event=event id, Address=kind:pubkey:d, Url=http(s) URL,
+  // External=NIP-73 i-tag value.
+  value:string (required);
+  // Optional relay hint for Event/Address sources.
+  relay:string;
+  // NIP-73 k-tag value for External sources.
+  external_kind:string;
+  // Optional NIP-73 URL hint for External sources.
+  hint_url:string;
+}
+
+table HighlightAttribution {
+  pubkey:string (required);
+  relay:string;
+  role:string;
+}
+
+table PublishHighlightPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  highlighted_text:string (required);
+  context:string;
+  comment:string;
+  source_refs:[HighlightSource];
+  attributions:[HighlightAttribution];
+}
+
+file_identifier "N84H";
+root_type PublishHighlightPayload;

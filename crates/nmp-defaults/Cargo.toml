@@ -42,6 +42,7 @@ nmp-nip17 = { path = "../nmp-nip17" }
 # (V-95 / issue #619 — install-before-dispatch enforced by move semantics).
 nmp-nip47 = { path = "../nmp-nip47" }
 nmp-nip57 = { path = "../nmp-nip57" }
+nmp-nip84 = { path = "../nmp-nip84" }
 # NIP-50 public full-text search scopes (#1811): `register_search_scopes`
 # installs the `nip50.profiles` / `nip50.notes` / `nip50.longform`
 # crate-owned `SearchScopeProvider`s into the shared FTS scope registry so the

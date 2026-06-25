@@ -1,0 +1,20 @@
+[package]
+name = "nmp-nip84"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-84 kind:9802 highlight publish action for NMP apps."
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+nmp-core = { path = "../nmp-core", default-features = false }
+nmp-kinds = { path = "../nmp-kinds" }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+flatbuffers = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }

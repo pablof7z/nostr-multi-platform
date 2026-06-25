@@ -32,4 +32,5 @@ pub use nmp_nip22::PostCommentAction;
 pub use nmp_nip25::{ReactAction, UnreactAction};
 pub use nmp_nip51::BookmarkUpdateInput;
 pub use nmp_nip57::ZapInput;
+pub use nmp_nip84::PublishHighlightInput;
 pub use nmp_router::{BlockRelayInput, PublishRelayListInput, UnblockRelayInput};

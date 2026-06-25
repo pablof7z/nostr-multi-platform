@@ -21,26 +21,13 @@ pub use variants::{
 };
 
 use nmp_core::substrate::KernelEvent;
+use nmp_kinds::{KIND_HIGHLIGHT, KIND_PROFILE_METADATA, KIND_SHORT_TEXT_NOTE};
 
 use crate::context::RenderContext;
 use crate::longform::KIND_LONG_FORM_ARTICLE;
 use crate::mode::RenderMode;
 use crate::tokenize_with_kind;
 use crate::wire::ContentTreeWire;
-
-// Kinds this rendering sidecar dispatches on. Named so the `match event.kind`
-// arms below read as protocol concepts rather than bare numeric literals.
-// `KIND_LONG_FORM_ARTICLE` is re-used from [`crate::longform`].
-//
-// TODO(#1493): migrate these kind constants to `nmp-kinds` once that crate
-// owns the shared kind registry (another lane owns `nmp-kinds`; do not edit it
-// from here).
-/// NIP-01 profile-metadata kind (`0`).
-const KIND_PROFILE_METADATA: u32 = 0;
-/// NIP-01 short text note kind (`1`).
-const KIND_SHORT_NOTE: u32 = 1;
-/// NIP-84 highlight kind (`9802`).
-const KIND_HIGHLIGHT: u32 = 9_802;
 
 /// Resolve a known event into the correct `EmbedKindProjection` variant.
 /// This is the single `match event.kind` dispatch point for embed content
@@ -84,7 +71,7 @@ pub fn resolve_embed_projection(event: &KernelEvent, _ctx: &RenderContext) -> Em
             // kernel's `parse_profile` in `nmp-core::kernel::nostr`).
             EmbedKindProjection::Profile(parse_profile_metadata(&event.content, author_pubkey))
         }
-        KIND_SHORT_NOTE => {
+        KIND_SHORT_TEXT_NOTE => {
             // Short note
             // Media extraction is a best-effort helper (URLs that look like media).
             // For a more complete implementation this can delegate to an existing
