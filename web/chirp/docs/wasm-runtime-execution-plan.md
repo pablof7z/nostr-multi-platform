@@ -270,12 +270,14 @@ PR-3/4/#1140.
   nightly later.)
 - **Relay override hook** — relay policy is host policy, not framework default
   (#1125): the web client always sends explicit `relays` + `relay_bootstrap` on
-  `start` (`chirpStartRelays` in `web/chirp/src/nmp/client.ts`). The Chirp web
+  `start` (`chirpStartRelays` in `web/chirp/src/chirpConfig.ts`). The Chirp web
   defaults (`wss://relay.primal.net`, `wss://purplepag.es`) live in
   `web/chirp/src/chirpConfig.ts` (mirrors the Rust source of truth
-  `apps/chirp/crates/nmp-chirp-config/src/lib.rs`). A `?relay=<url>` URL-param injected
-  via `client.start(relays)` overrides those defaults. Honest and dev-useful;
-  no serde defaults and no test-only forks in Rust.
+  `apps/chirp/crates/nmp-chirp-config/src/lib.rs`). `?relay_bootstrap=<json>`
+  accepts the same role-preserving `[[url, role], ...]` shape iOS/Android test
+  seams use; `?relay=<url>` remains a legacy single-relay smoke override that
+  maps each URL to `both,indexer`. Honest and dev-useful; no serde defaults and
+  no test-only forks in Rust.
 - **Boot smoke** (`web/chirp/tests/e2e/boot.spec.ts`): navigate to
   `/?relays=<fixture>`; the app auto-starts (`web/chirp/src/App.tsx:28`).
   Assert, in order: (1) **no** `wasm_bridge_unavailable` / `worker_exception`

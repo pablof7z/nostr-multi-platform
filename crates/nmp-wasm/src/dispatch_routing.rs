@@ -21,8 +21,8 @@
 //!    state the typed write path can honestly report (`signer_not_installed`)
 //!    plus the capability-completion failure reason
 //!    (`browser_actor_driver_missing`). The pre-#1008
-//!    `publish_not_supported_in_web_preview` disable token is retired —
-//!    publish routing is live via `WasmOutboxResolver`.
+//!    `publish_not_supported_in_web_preview` disable token is retired. App
+//!    composition installs the shared router publish resolver.
 //!
 //! Split out of `runtime.rs` so the file stays under the 500-LOC ceiling and
 //! the routing table has a single owner that codegen / kernel-namespace

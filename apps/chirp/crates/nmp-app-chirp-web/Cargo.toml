@@ -14,9 +14,13 @@ crate-type = ["cdylib", "rlib"]
 # Kernel seams: KernelReducer composition methods + substrate types.
 # `default-features = false` because the wasm32 target has no mio/lmdb.
 nmp-core = { path = "../../../../crates/nmp-core", default-features = false }
+# Public EventStore trait path used by the wasm publish resolver factory.
+nmp-store = { path = "../../../../crates/nmp-store" }
 # Wasm-safe default cache/parser wiring: production router/mailbox,
 # kind:10002, kind:0, and kind:3 pairs shared with nmp-defaults.
 nmp-substrate-defaults = { path = "../../../../crates/nmp-substrate-defaults", default-features = false }
+# Shared NIP-65 publish/outbox resolver used by native composition too.
+nmp-router = { path = "../../../../crates/nmp-router", default-features = false }
 # NIP-10 OP-feed engine.
 # `default-features = false` → nmp-nip57 ureq omitted on wasm32.
 nmp-nip01 = { path = "../../../../crates/nmp-nip01", default-features = false }

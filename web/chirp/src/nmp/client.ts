@@ -16,7 +16,7 @@ import {
   type ChirpAction,
 } from "@nmp/runtime-web";
 import { chirpActionRequest, type RuntimeCommand } from "./actions";
-import { chirpStartRelays } from "../chirpConfig";
+import { chirpStartRelays, type ChirpRelayStartOverride } from "../chirpConfig";
 import { fulfilSignRequestViaExtension } from "./signBroker";
 import {
   decodeUpdateFrameBytes,
@@ -72,7 +72,7 @@ export type NmpClient = {
   snapshot(): RuntimeSnapshot;
   subscribe(listener: (snapshot: RuntimeSnapshot) => void): () => void;
   /** Start the runtime; optional relays override Chirp defaults for tests/dev. */
-  start(relays?: string[]): Promise<RuntimeSnapshot>;
+  start(relays?: ChirpRelayStartOverride): Promise<RuntimeSnapshot>;
   dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
   dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
   /** Install a NIP-07 signer. The host must call window.nostr.getPublicKey()
@@ -224,7 +224,7 @@ abstract class BaseClient implements NmpClient {
     return snapshot;
   }
 
-  abstract start(relays?: string[]): Promise<RuntimeSnapshot>;
+  abstract start(relays?: ChirpRelayStartOverride): Promise<RuntimeSnapshot>;
   abstract dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
   abstract dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
   abstract setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
@@ -257,7 +257,7 @@ class WorkerNmpClient extends BaseClient {
     } satisfies WorkerRequest);
   }
 
-  async start(relays?: string[]): Promise<RuntimeSnapshot> {
+  async start(relays?: ChirpRelayStartOverride): Promise<RuntimeSnapshot> {
     await this.helloReady;
     const { relays: startRelays, relay_bootstrap } = chirpStartRelays(relays);
     return this.request({
@@ -397,7 +397,7 @@ class InProcessNmpClient extends BaseClient {
     });
   }
 
-  async start(relays?: string[]): Promise<RuntimeSnapshot> {
+  async start(relays?: ChirpRelayStartOverride): Promise<RuntimeSnapshot> {
     // Degraded runtime ignores relays — relay connectivity is not available —
     // but the wire type still requires explicit host relay policy (#1125).
     const { relays: startRelays, relay_bootstrap } = chirpStartRelays(relays);

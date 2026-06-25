@@ -4423,6 +4423,8 @@ dependencies = [
  "nmp-nip01",
  "nmp-nip02",
  "nmp-nip51",
+ "nmp-router",
+ "nmp-store",
  "nmp-substrate-defaults",
  "nmp-wasm",
  "serde_json",

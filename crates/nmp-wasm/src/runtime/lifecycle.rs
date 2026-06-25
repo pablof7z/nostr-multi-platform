@@ -45,9 +45,16 @@ impl WasmRuntime {
                 .collect(),
         );
 
-        {
-            let relay_urls: Vec<String> = relay_bootstrap.iter().map(|e| e.url.clone()).collect();
-            let resolver = crate::publish_path::build_wasm_outbox_resolver(relay_urls);
+        if let Some(factory) = self.publish_resolver_factory.borrow().clone() {
+            let resolver = {
+                let reducer = self.reducer.borrow();
+                factory(
+                    reducer.event_store_handle(),
+                    reducer.indexer_relays_handle(),
+                    reducer.local_write_relays_handle(),
+                    reducer.active_account_handle(),
+                )
+            };
             self.reducer.borrow_mut().set_publish_resolver(resolver);
         }
 
