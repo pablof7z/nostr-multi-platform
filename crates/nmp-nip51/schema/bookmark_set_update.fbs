@@ -1,0 +1,44 @@
+namespace nmp.nip51;
+
+// ADR-0064 — typed FlatBuffers payload for
+// `nmp.nip51.add_bookmark_set_item` /
+// `nmp.nip51.remove_bookmark_set_item`. Both namespaces carry the same
+// BookmarkSetUpdateInput { account_pubkey, set_kind, identifier, item } shape,
+// so they share this one schema.
+//
+// The OPAQUE DispatchEnvelope.payload for those namespaces; the registry
+// adapter decodes against this schema, gating schema_version before start().
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh:
+//   flatc --rust -o crates/nmp-nip51/src/wire/generated \
+//         crates/nmp-nip51/schema/bookmark_set_update.fbs
+
+enum BookmarkSetKindWire:ubyte {
+  BookmarkSet = 0,
+  CurationSet = 1,
+}
+
+enum BookmarkItemKind:ubyte {
+  Event = 0,
+  Address = 1,
+  Url = 2,
+  Hashtag = 3,
+}
+
+table BookmarkItem {
+  kind:BookmarkItemKind;
+  value:string (required);
+  relay:string;
+}
+
+table BookmarkSetUpdatePayload {
+  schema_version:uint;
+  account_pubkey:string (required);
+  set_kind:BookmarkSetKindWire;
+  identifier:string (required);
+  item:BookmarkItem (required);
+}
+
+file_identifier "N51S";
+root_type BookmarkSetUpdatePayload;

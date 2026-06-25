@@ -10,7 +10,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, KernelEvent,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection, KernelEvent,
 };
 use nmp_core::KernelEventObserver;
 use nmp_kinds::KIND_WEB_BOOKMARK;
@@ -217,6 +218,10 @@ impl PublishWebBookmarkAction {
 impl ActionModule for PublishWebBookmarkAction {
     const NAMESPACE: &'static str = "nmp.nip51.publish_web_bookmark";
     type Action = PublishWebBookmarkInput;
+
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         normalize_web_bookmark_draft(&action.bookmark).map_err(ActionRejection::Invalid)?;

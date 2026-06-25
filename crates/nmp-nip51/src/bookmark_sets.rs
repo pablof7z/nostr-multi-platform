@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
-    ActionContext, ActionModule, ActionRegistrar, ActionRejection, KernelEvent,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection, KernelEvent,
 };
 use nmp_core::KernelEventObserver;
 use nmp_kinds::{KIND_ARTICLE_CURATION_SET, KIND_BOOKMARK_SET};
@@ -258,6 +259,10 @@ impl ActionModule for AddBookmarkSetItemAction {
     const NAMESPACE: &'static str = "nmp.nip51.add_bookmark_set_item";
     type Action = BookmarkSetUpdateInput;
 
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
+
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         let input = normalize_update_input(&action).map_err(ActionRejection::Invalid)?;
         self.projection
@@ -319,6 +324,10 @@ impl RemoveBookmarkSetItemAction {
 impl ActionModule for RemoveBookmarkSetItemAction {
     const NAMESPACE: &'static str = "nmp.nip51.remove_bookmark_set_item";
     type Action = BookmarkSetUpdateInput;
+
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+        Some(<Self::Action as ActionPayload>::decode(bytes))
+    }
 
     fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         let input = normalize_update_input(&action).map_err(ActionRejection::Invalid)?;
