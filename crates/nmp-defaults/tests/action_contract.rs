@@ -62,6 +62,10 @@ fn contract_matches_modules_and_default_payload_reexports() {
             action_payloads::PublishDmRelayListInput,
         >("nmp.nip17.publish_relay_list"),
         assert_contract::<nmp_nip57::ZapAction, action_payloads::ZapInput>("nmp.nip57.zap"),
+        assert_contract::<
+            nmp_nip84::PublishHighlightModule,
+            action_payloads::PublishHighlightAction,
+        >("nmp.nip84.publish_highlight"),
     ];
 
     let checked: BTreeSet<&str> = checked.into_iter().collect();

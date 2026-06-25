@@ -31,6 +31,9 @@ nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
 # `register_defaults` wholesale.
 nmp-nip02 = { path = "../nmp-nip02" }
 nmp-nip25 = { path = "../nmp-nip25" }
+# NIP-84 kind:9802 highlights: `Nip84Descriptor::register_actions` installs the
+# `nmp.nip84.publish_highlight` action module (yielding default).
+nmp-nip84 = { path = "../nmp-nip84" }
 # NIP-22 comments: `register_comment_runtime` installs the kind:1111
 # `CommentThreadProjection` observer + the `nmp.nip22.post_comment` action.
 nmp-nip22 = { path = "../nmp-nip22" }

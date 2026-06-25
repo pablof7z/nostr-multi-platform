@@ -299,6 +299,9 @@ fn register_defaults_inner(
         // NIP-25: public kind:7 reactions and kind:5 unreact deletion.
         // Uses the typed descriptor (#1724 criterion 6).
         nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip25::Nip25Descriptor, app);
+        // NIP-84: public kind:9802 highlight publish (`nmp.nip84.publish_highlight`).
+        // Yielding default via the typed descriptor.
+        nmp_core::substrate::ProtocolDescriptor::register_actions(&nmp_nip84::Nip84Descriptor, app);
         // NIP-29 group input-scope recognizer (#1804, S7).
         //
         // Register the `nip29.groups` `InputScopeRecognizer` so the
