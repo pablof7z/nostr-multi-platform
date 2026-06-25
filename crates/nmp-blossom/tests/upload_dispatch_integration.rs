@@ -1,23 +1,28 @@
 //! Crate-level integration: register `UploadAction` on a real FFI app, sign in
-//! a local nsec, and dispatch `nmp.blossom.upload` through the generic
-//! `nmp_app_dispatch_action` registry seam.
+//! a local nsec, and dispatch `nmp.blossom.upload` through the typed byte
+//! doorway `nmp_app_dispatch_action_bytes` (ADR-0064 / Cut-B, #1756).
 //!
 //! This proves the action seam end-to-end up to the `Protocol(BlossomUploadCommand)`
-//! emission (the dispatch is accepted and a `correlation_id` is minted) and that
-//! `start()` validation rejects malformed input through the real registry. The
-//! Build → Sign → Transport leg (streaming sha256, kind:24242 build, the
-//! backend-transparent sign hop, BUD-02 PUT, and multi-server aggregation) is
-//! pinned by the unit tests in `auth.rs`, `upload/http.rs`, `upload/mod.rs`, and
-//! `nmp-core`'s `sign_event_for_account_tests.rs` — including a real SHA-256 over
-//! a known blob and a local mock Blossom server. (An async-completing action's
-//! `action_results` terminal lands on a later snapshot tick via the update
-//! stream; pinning the synchronous descriptor/aggregation shape over a real
-//! mock server in `upload/mod.rs` + `http.rs` is the non-flaky equivalent.)
+//! emission (the dispatch is accepted and the host-supplied `correlation_id` is
+//! echoed back) and that `start()` validation rejects malformed input through the
+//! real registry. The Build → Sign → Transport leg (streaming sha256, kind:24242
+//! build, the backend-transparent sign hop, BUD-02 PUT, and multi-server
+//! aggregation) is pinned by the unit tests in `auth.rs`, `upload/http.rs`,
+//! `upload/mod.rs`, and `nmp-core`'s `sign_event_for_account_tests.rs` —
+//! including a real SHA-256 over a known blob and a local mock Blossom server.
+//! (An async-completing action's `action_results` terminal lands on a later
+//! snapshot tick via the update stream; pinning the synchronous
+//! descriptor/aggregation shape over a real mock server in `upload/mod.rs` +
+//! `http.rs` is the non-flaky equivalent.)
 
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 
+use nmp_blossom::UploadInput;
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::substrate::ActionPayload as _;
 use nmp_ffi::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_app_signin_nsec, nmp_free_string,
+    nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new, nmp_app_signin_nsec, nmp_free_string,
     NmpApp,
 };
 
@@ -30,18 +35,34 @@ fn guard() -> std::sync::MutexGuard<'static, ()> {
     G.lock().unwrap_or_else(|p| p.into_inner())
 }
 
-fn dispatch(app: *mut NmpApp, namespace: &str, body: &str) -> serde_json::Value {
-    let ns = CString::new(namespace).unwrap();
-    let b = CString::new(body).unwrap();
-    let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), b.as_ptr());
-    assert!(!ptr.is_null(), "dispatch_action never returns null");
+/// Mint a unique, process-local host correlation_id. The byte doorway echoes
+/// this back verbatim (it is NOT a kernel-minted 32-hex id).
+fn next_correlation_id() -> String {
+    static N: AtomicU64 = AtomicU64::new(0);
+    format!("blossom-test-{}", N.fetch_add(1, Ordering::Relaxed))
+}
+
+/// Encode `input` into a typed `nmp.blossom.upload` dispatch envelope, push it
+/// through the byte doorway, free the returned C string, and return the parsed
+/// `{"correlation_id":...}` / `{"error":...}` JSON.
+fn dispatch(app: *mut NmpApp, input: &UploadInput) -> serde_json::Value {
+    let correlation_id = next_correlation_id();
+    let payload = input.encode();
+    let envelope = encode_dispatch_envelope(
+        &correlation_id,
+        "nmp.blossom.upload",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        &payload,
+    );
+    let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
+    assert!(!ptr.is_null(), "dispatch_action_bytes never returns null");
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
     nmp_free_string(ptr);
     serde_json::from_str(&out).unwrap()
 }
 
 fn signin(app: *mut NmpApp) {
-    let nsec = CString::new(TEST_NSEC).unwrap();
+    let nsec = std::ffi::CString::new(TEST_NSEC).unwrap();
     nmp_app_signin_nsec(app, nsec.as_ptr(), 1);
 }
 
@@ -62,25 +83,25 @@ fn dispatch_well_formed_blossom_upload_is_accepted_through_registry() {
     std::fs::write(&path, b"\x89PNG\r\n\x1a\n fake png bytes").unwrap();
 
     // Point at an unroutable local address: this test asserts only that the
-    // dispatch is ACCEPTED (a correlation_id is minted) and the Protocol command
+    // dispatch is ACCEPTED (a correlation_id is echoed) and the Protocol command
     // is emitted. If the off-thread worker wins the post-test file-delete race
     // it would otherwise fire a real PUT at a public host (60s timeout);
     // `http://127.0.0.1:1` makes any such PUT fail instantly instead.
-    let body = serde_json::json!({
-        "file_path": path.to_str().unwrap(),
-        "content_type": "image/png",
-        "servers": ["http://127.0.0.1:1"],
-    })
-    .to_string();
+    let input = UploadInput {
+        file_path: path.to_str().unwrap().to_string(),
+        content_type: Some("image/png".to_string()),
+        servers: vec!["http://127.0.0.1:1".to_string()],
+        signer_pubkey: None,
+    };
 
-    let parsed = dispatch(app, "nmp.blossom.upload", &body);
+    let parsed = dispatch(app, &input);
     let cid = parsed
         .get("correlation_id")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| panic!("expected correlation_id, got {parsed}"));
     assert!(
         !cid.is_empty(),
-        "a well-formed dispatch mints a correlation_id"
+        "a well-formed dispatch echoes a correlation_id"
     );
     assert!(
         parsed.get("error").is_none(),
@@ -99,12 +120,13 @@ fn dispatch_rejects_empty_servers_through_registry() {
     nmp_blossom::register_actions(unsafe { &mut *app });
     signin(app);
 
-    let body = serde_json::json!({
-        "file_path": "/tmp/whatever.png",
-        "servers": [],
-    })
-    .to_string();
-    let parsed = dispatch(app, "nmp.blossom.upload", &body);
+    let input = UploadInput {
+        file_path: "/tmp/whatever.png".to_string(),
+        content_type: None,
+        servers: vec![],
+        signer_pubkey: None,
+    };
+    let parsed = dispatch(app, &input);
     let err = parsed
         .get("error")
         .and_then(|v| v.as_str())
@@ -125,12 +147,13 @@ fn dispatch_rejects_empty_file_path_through_registry() {
     nmp_blossom::register_actions(unsafe { &mut *app });
     signin(app);
 
-    let body = serde_json::json!({
-        "file_path": "   ",
-        "servers": ["https://blossom.example"],
-    })
-    .to_string();
-    let parsed = dispatch(app, "nmp.blossom.upload", &body);
+    let input = UploadInput {
+        file_path: "   ".to_string(),
+        content_type: None,
+        servers: vec!["https://blossom.example".to_string()],
+        signer_pubkey: None,
+    };
+    let parsed = dispatch(app, &input);
     let err = parsed
         .get("error")
         .and_then(|v| v.as_str())

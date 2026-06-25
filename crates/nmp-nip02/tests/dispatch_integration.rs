@@ -1,33 +1,58 @@
 //! Integration test: prove the compatibility `register_actions` helper wires
 //! follow/unfollow plus delegated NIP-25 reaction namespaces against a real
-//! `NmpApp` and that each one round-trips through `nmp_app_dispatch_action`.
+//! `NmpApp` and that each one round-trips through the typed byte doorway
+//! `nmp_app_dispatch_action_bytes` (ADR-0064 / S4, #1996).
 //!
 //! This is the migration-success contract — the same shape the chirp
 //! `social_verbs_dispatch_through_action_registry` test enforces, lifted
 //! into the substrate crate that now owns the modules.
 
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_free_string};
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::substrate::ActionPayload;
+use nmp_ffi::{
+    nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new, nmp_free_string, NmpApp,
+};
 
-/// Drive `nmp_app_dispatch_action` for `namespace`/`action_json` and return
-/// the parsed JSON result. The returned C string is freed.
-fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> serde_json::Value {
-    let ns = CString::new(namespace).unwrap();
-    let body = CString::new(action_json).unwrap();
-    let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
-    assert!(!ptr.is_null(), "dispatch_action must never return null");
-    // SAFETY: `ptr` is a valid C string from `nmp_app_dispatch_action`.
+/// Mint a process-local unique host correlation id. On the byte lane the host
+/// supplies the id and the doorway echoes it back verbatim (ADR-0064 §4) — it
+/// is NOT a kernel-minted 32-hex id.
+fn next_correlation_id() -> String {
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    format!("nip02-test-{}", COUNTER.fetch_add(1, Ordering::Relaxed))
+}
+
+/// Wrap pre-encoded typed `payload` bytes in a `DispatchEnvelope` routed at
+/// `namespace`, drive it through `nmp_app_dispatch_action_bytes`, and return the
+/// parsed JSON result. The returned C string is freed. The host-supplied
+/// correlation id is returned alongside so callers can assert the echo.
+fn dispatch_bytes(
+    app: *mut NmpApp,
+    namespace: &str,
+    payload: &[u8],
+) -> (String, serde_json::Value) {
+    let correlation_id = next_correlation_id();
+    let envelope = encode_dispatch_envelope(
+        &correlation_id,
+        namespace,
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        payload,
+    );
+    let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
+    assert!(!ptr.is_null(), "dispatch_action_bytes must never return null");
+    // SAFETY: `ptr` is a valid C string from `nmp_app_dispatch_action_bytes`.
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
     nmp_free_string(ptr);
-    serde_json::from_str(&out).unwrap()
+    (correlation_id, serde_json::from_str(&out).unwrap())
 }
 
 /// After `nmp_nip02::register_actions`, the old public social bundle is
-/// reachable through the generic `dispatch_action` path. Each accepted
-/// dispatch returns a 32-hex `correlation_id`, proving BOTH the
-/// shape-validating module (consumed by `ActionRegistry::start`) AND the
-/// `ActorCommand`-enqueuing executor (consumed by `ActionRegistry::execute`)
+/// reachable through the typed byte doorway. Each accepted dispatch echoes the
+/// host-supplied `correlation_id` with no `error`, proving BOTH the
+/// shape-validating module (consumed by `ActionRegistry::start_bytes`) AND the
+/// `ActorCommand`-enqueuing executor (consumed by `ActionRegistry::execute_bytes`)
 /// are wired under each namespace.
 #[test]
 fn register_actions_wires_compat_social_bundle() {
@@ -41,51 +66,70 @@ fn register_actions_wires_compat_social_bundle() {
     }
 
     let event_id = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-    for (namespace, body) in [
-        ("nmp.follow", r#"{"pubkey":"deadbeef"}"#),
-        ("nmp.unfollow", r#"{"pubkey":"deadbeef"}"#),
-        (
-            "nmp.nip25.react",
-            r#"{"target_event_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","reaction":"+"}"#,
-        ),
-        (
-            "nmp.nip25.unreact",
-            r#"{"reaction_event_id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#,
-        ),
+
+    // Build the typed payload for each routing namespace. The envelope's
+    // routing namespace is what the registry uses to find the module — it MAY
+    // differ from the payload type's `ActionPayload::SCHEMA_ID`; the bytes are
+    // that module's typed payload encoded.
+    let follow = nmp_nip02::PubkeyAction {
+        pubkey: "deadbeef".to_string(),
+    }
+    .encode();
+    let react = nmp_nip25::ReactAction {
+        target_event_id: event_id.to_string(),
+        reaction: "+".to_string(),
+        target_author_pubkey: None,
+    }
+    .encode();
+    let unreact = nmp_nip25::UnreactAction {
+        reaction_event_id: event_id.to_string(),
+        reason: String::new(),
+    }
+    .encode();
+
+    for (namespace, payload) in [
+        ("nmp.follow", &follow),
+        ("nmp.unfollow", &follow),
+        ("nmp.nip25.react", &react),
+        ("nmp.nip25.unreact", &unreact),
     ] {
-        let parsed = dispatch(app, namespace, body);
+        let (sent_id, parsed) = dispatch_bytes(app, namespace, payload);
+        assert!(
+            parsed.get("error").is_none(),
+            "{namespace}: must be accepted, got {parsed}"
+        );
         let id = parsed
             .get("correlation_id")
             .and_then(|v| v.as_str())
             .unwrap_or_else(|| panic!("{namespace}: expected correlation_id, got {parsed}"));
         assert_eq!(
-            id.len(),
-            32,
-            "{namespace}: correlation id must be 32 hex chars"
-        );
-        assert!(
-            id.chars().all(|c| c.is_ascii_hexdigit()),
-            "{namespace}: correlation id must be lowercase hex, got {id}"
+            id, sent_id,
+            "{namespace}: byte doorway must echo the host-supplied correlation id"
         );
     }
 
-    // `nmp.nip25.react` accepts a body missing `reaction` (defaults to "+").
-    let parsed = dispatch(
-        app,
-        "nmp.nip25.react",
-        &format!(r#"{{"target_event_id":"{event_id}"}}"#),
-    );
+    // `nmp.nip25.react` with `reaction: "+"` built directly (the serde JSON
+    // default is irrelevant on the typed path) is accepted.
+    let default_react = nmp_nip25::ReactAction {
+        target_event_id: event_id.to_string(),
+        reaction: "+".to_string(),
+        target_author_pubkey: None,
+    }
+    .encode();
+    let (_id, parsed) = dispatch_bytes(app, "nmp.nip25.react", &default_react);
     assert!(
-        parsed.get("correlation_id").is_some(),
-        "nmp.nip25.react without `reaction` should default to '+' and succeed: {parsed}"
+        parsed.get("correlation_id").is_some() && parsed.get("error").is_none(),
+        "nmp.nip25.react with default '+' reaction should succeed: {parsed}"
     );
 
-    // Wrong-shape body is rejected by the module's shape validator (the
-    // serde decoder), surfaced as `{"error":...}` (D6 — never a crash).
-    let parsed = dispatch(app, "nmp.follow", r#"{"not_pubkey":"x"}"#);
+    // Malformed payload bytes are rejected by the module's `decode_payload`
+    // (the byte-lane equivalent of a JSON decode failure), surfaced as
+    // `{"error":...}` (D6 — never a crash). nip02 `FollowModule::start` is a
+    // no-op accept, so the rejection comes from the typed decode, not `start`.
+    let (_id, parsed) = dispatch_bytes(app, "nmp.follow", b"not a flatbuffer payload");
     assert!(
         parsed.get("error").is_some(),
-        "wrong-shape nmp.follow must be rejected: {parsed}"
+        "malformed nmp.follow payload bytes must be rejected: {parsed}"
     );
 
     nmp_app_free(app);
@@ -287,7 +331,11 @@ fn unregistered_namespace_is_rejected_even_after_register_actions() {
     unsafe {
         nmp_nip02::register_actions(&mut *app);
     }
-    let parsed = dispatch(app, "nmp.nip02.not_a_real_verb", r#"{}"#);
+    let payload = nmp_nip02::PubkeyAction {
+        pubkey: "deadbeef".to_string(),
+    }
+    .encode();
+    let (_id, parsed) = dispatch_bytes(app, "nmp.nip02.not_a_real_verb", &payload);
     assert!(
         parsed.get("error").is_some(),
         "unknown namespace must surface an error: {parsed}"
