@@ -1,14 +1,8 @@
 import * as flatbuffers from "flatbuffers";
 
 import { DegradedRuntime } from "@nmp/runtime-web";
-import {
-  decodeClaimedEventEmbeds,
-  decodeHomeFeed,
-  findRefsEventSidecar,
-  findRefsProfileSidecar,
-  type FeedItem,
-} from "./feedProjection";
-import { claimedEventsEqual, RefEventStore, type ClaimedEventWire } from "./refEventStore";
+import { type FeedItem } from "./feedProjection";
+import { RefEventStore, type ClaimedEventWire } from "./refEventStore";
 import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
@@ -31,7 +25,7 @@ import {
   type DecodedRelayStatus,
 } from "./updateFrame";
 import { makeCorrelationId } from "./correlationId";
-import { profileCardsEqual } from "./profileCards";
+import { applySnapshotSidecars } from "./clientSnapshotSidecars";
 
 export { makeCorrelationId } from "./correlationId";
 
@@ -187,41 +181,17 @@ abstract class BaseClient implements NmpClient {
                 if (frame.kind() === FrameKind.Snapshot) {
                   const snap = frame.snapshot();
                   if (snap) {
-                    const feedResult = decodeHomeFeed(snap);
-                    if (feedResult !== undefined) {
-                      this.latestFeedItems = feedResult.items;
-                    }
-                    const refsPayload = findRefsProfileSidecar(snap);
-                    if (refsPayload !== undefined) {
-                      this.refProfiles.applySidecar(
-                        refsPayload,
-                        snap.sessionId(),
-                        snap.snapshotEpoch(),
-                      );
-                      const next = this.refProfiles.profiles();
-                      if (!profileCardsEqual(this.latestProfileCards, next)) {
-                        this.latestProfileCards = next;
-                      }
-                    }
-                    const eventPayload = findRefsEventSidecar(snap);
-                    if (eventPayload !== undefined) {
-                      this.refEvents.applySidecar(
-                        eventPayload,
-                        snap.sessionId(),
-                        snap.snapshotEpoch(),
-                      );
-                      const next = this.refEvents.events();
-                      if (!claimedEventsEqual(this.latestEventCards, next)) {
-                        this.latestEventCards = next;
-                      }
-                    }
-                    // #1767 — kernel-resolved embed envelopes (kind-dispatched in
-                    // Rust). Keep-last-good: a frame without the sidecar leaves the
-                    // prior map intact (D6 — never blank-reset).
-                    const embeds = decodeClaimedEventEmbeds(snap);
-                    if (embeds !== undefined) {
-                      this.latestEventEmbeds = embeds;
-                    }
+                    const sidecarState = {
+                      latestFeedItems: this.latestFeedItems,
+                      latestProfileCards: this.latestProfileCards,
+                      latestEventCards: this.latestEventCards,
+                      latestEventEmbeds: this.latestEventEmbeds,
+                    };
+                    applySnapshotSidecars(snap, this.refProfiles, this.refEvents, sidecarState);
+                    this.latestFeedItems = sidecarState.latestFeedItems;
+                    this.latestProfileCards = sidecarState.latestProfileCards;
+                    this.latestEventCards = sidecarState.latestEventCards;
+                    this.latestEventEmbeds = sidecarState.latestEventEmbeds;
                     // #1768 — relay-status hue is derived shell-side from the
                     // raw `status` / `auth` / `role` tokens in the inspector
                     // panels (see `relayDiagnosticsTone`); no KRDG tone decode.
