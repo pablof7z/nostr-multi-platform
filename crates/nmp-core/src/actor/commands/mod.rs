@@ -82,6 +82,8 @@ mod lifecycle;
 #[cfg(feature = "native")]
 mod publish;
 #[cfg(feature = "native")]
+mod publish_failures;
+#[cfg(feature = "native")]
 mod relays;
 
 // ADR-0065 — `ActorCommand` sub-enum families. Each sub-enum groups cohesive
