@@ -175,13 +175,11 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
                 state.load_older_timeline(runtime);
             }
         }
-        KeyCode::Enter => {
-            if state.tab == FeatureTab::Settings {
-                outbox::open_or_focus(state);
-            } else {
-                open_selected_thread(state, runtime);
-            }
-        }
+        KeyCode::Enter => match state.tab {
+            FeatureTab::Home => open_selected_thread(state, runtime),
+            FeatureTab::Settings => outbox::open_or_focus(state),
+            _ => {}
+        },
         KeyCode::Char('r') if state.tab == FeatureTab::Settings && outbox::is_open(state) => {
             outbox::retry_selected(state, runtime);
         }
@@ -202,15 +200,10 @@ pub fn handle_key(state: &mut AppState, runtime: &AppRuntime, key: KeyEvent) -> 
                     state.open_note_details_modal(row.note_details_text());
                 }
             }
-            FeatureTab::Chats => {
-                state.chat_composing = !state.chat_composing;
-            }
-            FeatureTab::Groups => {
-                state.group_composing = !state.group_composing;
-            }
             _ => {}
         },
         KeyCode::Char('r') => state.start_reply(),
+        KeyCode::Char('R') if state.tab == FeatureTab::Home => repost_selected(state, runtime),
         KeyCode::Char('z') => handle_z_key(state, runtime),
         KeyCode::Char('+') => react_to_selected(state, runtime),
         KeyCode::Char('f') => follow_selected(state, runtime, true),
@@ -304,6 +297,23 @@ fn react_to_selected(state: &mut AppState, runtime: &AppRuntime) {
     }
 }
 
+fn repost_selected(state: &mut AppState, runtime: &AppRuntime) {
+    let Some(row) = state.selected_row().cloned() else {
+        state.status = "select a note before reposting".to_string();
+        return;
+    };
+    repost_note(state, runtime, &row.id, &row.author_pubkey);
+}
+
+fn repost_note(state: &mut AppState, runtime: &AppRuntime, note_id: &str, author_pubkey: &str) {
+    match runtime.repost(note_id, author_pubkey) {
+        Ok(correlation_id) => {
+            state.track_action(correlation_id, &format!("repost {}", short(note_id)))
+        }
+        Err(error) => state.status = format!("repost failed: {error}"),
+    }
+}
+
 fn follow_selected(state: &mut AppState, runtime: &AppRuntime, add: bool) {
     let Some(row) = state.selected_row().cloned() else {
         state.status = "select a note before changing follows".to_string();
@@ -387,7 +397,7 @@ fn dispatch_palette_action(action: &str, state: &mut AppState, runtime: &AppRunt
             Ok(cid) => state.track_action(cid, "unfollow"),
             Err(e) => state.status = format!("unfollow failed: {e}"),
         },
-        "Repost" => state.status = "repost not yet wired (post-v1)".to_string(),
+        "Repost" => repost_note(state, runtime, &note_id, &author_pubkey),
         "Reply" => state.start_reply(),
         "View note details" => state.open_note_details_modal(row.note_details_text()),
         "Zap" => {
@@ -436,10 +446,19 @@ fn handle_n_key(state: &mut AppState, _runtime: &AppRuntime) {
     }
     match state.tab {
         FeatureTab::Home => state.start_compose(),
-        FeatureTab::Chats => state.start_input_bar("New DM to", false, "dm-npub"),
+        FeatureTab::Chats => {}
         FeatureTab::Groups => group_forms::start_create_group(state),
         FeatureTab::Wallet => state.start_input_bar("NWC URI", false, "nwc"),
-        FeatureTab::Settings => state.push_toast("\u{2717} add relay/account not yet wired"),
+        FeatureTab::Settings => handle_settings_n_key(state),
+    }
+}
+
+fn handle_settings_n_key(state: &mut AppState) {
+    match state.settings_cursor {
+        0 => state.start_modal("Create account", vec!["Display name"], "create-account"),
+        1 => state.start_input_bar("Relay URL", false, "relay"),
+        2 => state.status = "outbox has no create action; press Enter for details".to_string(),
+        _ => {}
     }
 }
 

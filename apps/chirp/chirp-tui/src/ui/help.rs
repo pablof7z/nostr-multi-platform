@@ -73,7 +73,7 @@ fn left_column() -> Vec<Line<'static>> {
     let mut lines = Vec::new();
 
     section_header(&mut lines, "Global");
-    binding(&mut lines, "1-5", "switch to tab 1-5");
+    binding(&mut lines, "h/c/g/w/s", "switch tabs");
     binding(&mut lines, "Tab / BackTab", "next / previous tab");
     binding(&mut lines, "?", "toggle this help");
     binding(&mut lines, "/", "open command palette");
@@ -84,7 +84,7 @@ fn left_column() -> Vec<Line<'static>> {
 
     section_header(&mut lines, "Navigation");
     binding(&mut lines, "j / k", "move selection down / up");
-    binding(&mut lines, "gg / G", "jump to top / bottom");
+    binding(&mut lines, "Home / End", "jump to top / bottom");
     binding(&mut lines, "h / l", "focus left / right pane");
     binding(&mut lines, "PageUp / PageDn", "page through feed");
     lines.push(Line::raw(""));
@@ -98,14 +98,12 @@ fn left_column() -> Vec<Line<'static>> {
     binding(&mut lines, "z", "zap selected note");
     binding(&mut lines, "i", "inspect selected note");
     binding(&mut lines, "f", "follow author");
-    binding(&mut lines, "o", "open author profile");
-    binding(&mut lines, "F", "filter feed");
+    binding(&mut lines, "p", "open author profile");
+    binding(&mut lines, "F", "unfollow author");
     lines.push(Line::raw(""));
 
     section_header(&mut lines, "Chats tab");
-    binding(&mut lines, "n", "start new DM");
-    binding(&mut lines, "i", "compose message");
-    binding(&mut lines, "Enter", "open conversation");
+    binding(&mut lines, "j / k", "select conversation");
 
     lines
 }
@@ -115,15 +113,11 @@ fn right_column() -> Vec<Line<'static>> {
 
     section_header(&mut lines, "Groups tab");
     binding(&mut lines, "n", "create NIP-29 or MLS group");
-    binding(&mut lines, "i", "compose group message");
-    binding(&mut lines, "+", "react to message");
-    binding(&mut lines, "L", "leave group");
     lines.push(Line::raw(""));
 
     section_header(&mut lines, "Wallet tab");
     binding(&mut lines, "n", "connect wallet");
     binding(&mut lines, "p", "pay invoice");
-    binding(&mut lines, "d", "disconnect wallet");
     lines.push(Line::raw(""));
 
     section_header(&mut lines, "Settings tab");
@@ -143,7 +137,6 @@ fn right_column() -> Vec<Line<'static>> {
     section_header(&mut lines, "Palette");
     binding(&mut lines, "j / k", "move selection");
     binding(&mut lines, "Enter", "run command");
-    binding(&mut lines, "type", "filter commands");
     binding(&mut lines, "Esc", "close palette");
 
     lines

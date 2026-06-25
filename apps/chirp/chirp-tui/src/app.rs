@@ -113,7 +113,7 @@ pub struct AppState {
     pub input_bar_value: String,
     pub input_bar_masked: bool,
     /// Tag identifying which dispatch handler runs on Enter, e.g. "nsec",
-    /// "nwc", "bolt11", "relay", "zap-amount", "dm-npub".
+    /// "nwc", "bolt11", "relay", "zap-amount".
     pub input_bar_action: String,
 
     // Modal form (Pattern D) — multi-field centered overlay.
@@ -130,12 +130,6 @@ pub struct AppState {
     /// Toast queue: each entry is `(message, ttl_ticks)`. TTL counts down from
     /// 50 (~5s at 10 Hz). Expired toasts are dropped by `tick_toasts`.
     pub toasts: Vec<(String, u8)>,
-
-    // Inline compose for chats/groups tabs.
-    pub chat_composing: bool,
-    pub chat_compose_buf: String,
-    pub group_composing: bool,
-    pub group_compose_buf: String,
 
     /// Settings section cursor (0=Accounts, 1=Relays, 2=Outbox).
     pub settings_cursor: usize,
@@ -203,10 +197,6 @@ impl Default for AppState {
             modal_action: String::new(),
             account_switcher_cursor: 0,
             toasts: Vec::new(),
-            chat_composing: false,
-            chat_compose_buf: String::new(),
-            group_composing: false,
-            group_compose_buf: String::new(),
             settings_cursor: 0,
             outbox_selected: None,
             pending_zap_pubkey: None,
