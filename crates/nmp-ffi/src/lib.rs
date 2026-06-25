@@ -42,6 +42,7 @@ mod external_signer;
 mod feed;
 mod feed_session;
 mod free;
+mod group_feed;
 mod identity;
 mod incremental_apply;
 mod intent_ffi;
@@ -158,6 +159,12 @@ pub use feed_session::{
 };
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
+// #2088 — the NIP-29 per-open read-view opaque handle (group discovery). The
+// `open_group_*` / `close_group_*` methods are inherent `NmpApp` methods reached
+// through the `NmpApp` type itself; only the handle type needs hoisting so the
+// Chirp C-ABI shell can name it.
+#[cfg(feature = "native")]
+pub use group_feed::GroupFeedHandle;
 #[cfg(feature = "native")]
 pub use identity::{
     create_new_account_with_initial_follows, nmp_app_add_relay, nmp_app_create_new_account,

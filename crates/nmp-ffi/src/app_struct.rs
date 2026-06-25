@@ -253,6 +253,10 @@ pub struct NmpApp {
     pub(crate) external_signer_driver: Arc<Mutex<Option<Arc<crate::external_signer::Nip55Driver>>>>,
     /// Live NIP-50 search sessions, keyed by host session id.
     pub(crate) search_sessions: Mutex<HashMap<String, crate::search::SearchSession>>,
+    /// Live NIP-29 per-open read views (group chat / discovered / joined),
+    /// keyed by the view's (singleton) projection key. Each is a hydrating
+    /// observed-interest session torn down on `close_*` (#2088).
+    pub(crate) group_feed_sessions: Mutex<HashMap<String, crate::group_feed::GroupFeedSession>>,
     /// Test-support GC budget ceiling.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) gc_budget_ceiling: Arc<Mutex<Option<usize>>>,

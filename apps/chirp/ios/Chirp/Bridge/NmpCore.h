@@ -556,25 +556,32 @@ void nmp_app_chirp_unregister(void *handle);
 // ── NIP-29 group-chat read projection ────────────────────────────────────
 //
 // Wires a single NIP-29 group's chat-message read model into the kernel.
-// Pure consumption — the read side of a group-chat screen.
+// Pure consumption — the read side of a group-chat screen. HYDRATING (#2088):
+// a screen opened AFTER the group's events were already cached catches up on
+// the cached tail, then tails live.
 //
 //   • `group_id_json` is a JSON object naming the target group:
 //       {"host_relay_url":"wss://groups.example.com","local_id":"room"}
-//   • Returns void — registers no handle and exports no companion
-//     `unregister`. The group's chat messages surface on every kernel
+//   • Returns void. The group's chat messages surface on every kernel
 //     snapshot tick under the `projections` key `"nmp.nip29.group_chat"`,
 //     shaped `{ "messages": [ { id, pubkey, content, created_at, kind } ] }`
 //     ordered newest-first.
-//   • Single-screen scope: calling it twice overwrites the snapshot key
-//     with the newer projection and leaves the older event observer
-//     registered for the life of `app` (a small, bounded leak). A
-//     multi-group host would need a handle-returning variant.
+//   • Singleton scope: calling it again replaces the prior view (the prior
+//     hydrating session is closed first — no leak). Because the view now holds
+//     a relay interest, tear it down with `nmp_app_chirp_unregister_group_chat`
+//     when the screen is dismissed.
 //   • Fire-and-forget (D6): a null `app`, null / invalid-UTF-8
 //     `group_id_json`, or a JSON shape that does not deserialize to a
 //     `GroupId` all degrade to a silent no-op.
 //   • `app` MUST outlive the registration; it is borrowed only for the
 //     duration of this call.
 void nmp_app_chirp_register_group_chat(void *app, const char *group_id_json);
+
+// Tear down the group-chat read view opened by
+// `nmp_app_chirp_register_group_chat`: detaches the relay interest, revokes the
+// observer, and removes the `"nmp.nip29.group_chat"` snapshot projection.
+// Idempotent; a null `app` is a silent no-op (D6).
+void nmp_app_chirp_unregister_group_chat(void *app);
 
 // ── NIP-29 group-discovery open/close lifecycle ──────────────────────────
 //

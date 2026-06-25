@@ -70,6 +70,27 @@ impl GroupId {
         format!("{host}'{}", self.local_id)
     }
 
+    /// NIP-01 REQ filter JSON for this group's chat surface: kinds 9 / 11
+    /// (chat + discussion/artifact) constrained to this group's `local_id` via
+    /// a `#h` generic-tag query.
+    ///
+    /// The client-side host-relay pin is NOT part of this filter — the wire
+    /// `REQ` a relay sees carries only `kinds` + `#h`. The composition root
+    /// (`nmp-ffi`) attaches the pin as a separate `relay_pin` argument when it
+    /// opens the observed interest. This keeps `nmp-nip29` NmpApp-free (D0): it
+    /// produces the wire filter shape; routing is the composer's concern.
+    #[must_use]
+    pub fn chat_filter_json(&self) -> String {
+        serde_json::json!({
+            "kinds": [
+                crate::kinds::KIND_CHAT_MESSAGE,
+                crate::kinds::KIND_DISCUSSION_OR_ARTIFACT,
+            ],
+            "#h": [self.local_id],
+        })
+        .to_string()
+    }
+
     /// Parse from the NIP-29 URI shape `<host>'<local-id>`.
     ///
     /// Returns `None` if the string does not contain exactly one `'`, has an
@@ -87,6 +108,30 @@ impl GroupId {
         }
         Some(Self::new(format!("wss://{host}"), local))
     }
+}
+
+/// NIP-01 REQ filter JSON for relay-signed group metadata
+/// (kind:39000 / 39001 / 39002), with no `d` filter so every group a relay
+/// hosts surfaces.
+///
+/// Shared by the discovery view (Global scope, host-relay-pinned) and the
+/// joined-groups view (ActiveAccount scope). NmpApp-free and noun-free of the
+/// FFI host: the composition root (`nmp-ffi`) passes the result to
+/// `NmpApp::open_observed_interest_pinned`, attaching the client-side relay
+/// pin as a separate argument (the pin is never serialized onto the wire).
+///
+/// `39003` (roles) is intentionally excluded — the read projections fold only
+/// 39000/39001/39002.
+#[must_use]
+pub fn group_metadata_filter_json() -> String {
+    serde_json::json!({
+        "kinds": [
+            crate::kinds::KIND_GROUP_METADATA,
+            crate::kinds::KIND_GROUP_ADMINS,
+            crate::kinds::KIND_GROUP_MEMBERS,
+        ],
+    })
+    .to_string()
 }
 
 fn strip_ws_scheme(url: &str) -> &str {
@@ -144,6 +189,27 @@ mod tests {
     fn require_routable_rejects_empty_local_id() {
         let g = GroupId::new("wss://h", "");
         assert!(g.require_routable().is_err());
+    }
+
+    #[test]
+    fn chat_filter_json_constrains_kinds_and_h_tag() {
+        let g = GroupId::new("wss://groups.example.com", "room-a");
+        let v: serde_json::Value = serde_json::from_str(&g.chat_filter_json()).unwrap();
+        assert_eq!(v["kinds"], serde_json::json!([9, 11]));
+        assert_eq!(v["#h"], serde_json::json!(["room-a"]));
+        // The relay pin is a client-side routing hint, never serialized here.
+        assert!(v.get("relay_pin").is_none());
+        // A valid NIP-01 filter that the planner accepts.
+        assert!(nmp_planner::InterestShape::from_filter_json(&g.chat_filter_json()).is_some());
+    }
+
+    #[test]
+    fn group_metadata_filter_json_targets_three_metadata_kinds_no_d() {
+        let v: serde_json::Value = serde_json::from_str(&group_metadata_filter_json()).unwrap();
+        assert_eq!(v["kinds"], serde_json::json!([39000, 39001, 39002]));
+        // Discovery is per-relay, not per-group — no `d` (or `#d`) constraint.
+        assert!(v.get("#d").is_none() && v.get("d").is_none());
+        assert!(nmp_planner::InterestShape::from_filter_json(&group_metadata_filter_json()).is_some());
     }
 
     #[test]

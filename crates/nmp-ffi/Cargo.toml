@@ -78,6 +78,13 @@ nmp-store = { path = "../nmp-store" }
 nmp-content = { path = "../nmp-content" }
 nmp-feed = { path = "../nmp-feed" }
 nmp-nip18 = { path = "../nmp-nip18" }
+# #2088 — `nmp-ffi` is the composition root for the NIP-29 per-open read views
+# (group chat / discovery / joined groups): it owns the `NmpApp` actor handle, so
+# the hydrating open/close composition lives here (`group_feed.rs`), mirroring the
+# NIP-50 `search.rs` role. `nmp-nip29` owns the projection types, the typed
+# sidecar codecs, and the NmpApp-free wire-filter builders. The edge is acyclic —
+# `nmp-nip29` never names `nmp-ffi` (D0).
+nmp-nip29 = { path = "../nmp-nip29" }
 # Higher-order NIP-50 search: `nmp-ffi` is the composition root that owns the
 # `NmpApp` actor handle, so `nmp_app_search_*` lives here (the same role the
 # chirp interest_feed plays, but reusable by every NmpApp host — hl + Chirp).

@@ -1,11 +1,11 @@
-//! NIP-29 joined-groups typed-projection sidecar proof.
+//! NIP-29 joined-groups typed-projection sidecar proof
+//! (`NmpApp::open_joined_groups`, #2088).
 
 mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
 use nmp_store::VerifiedEvent;
-use nmp_nip29::register::wire_joined_groups;
 use nmp_nip29::{
     decode_joined_groups_snapshot, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
 };
@@ -16,7 +16,7 @@ fn joined_groups_typed_sidecar_round_trips_membership_and_admin_status() {
     let app = boot();
     let active = "a".repeat(64);
 
-    wire_joined_groups(unsafe { &*app }, active.clone(), HOST.to_string());
+    unsafe { (*app).open_joined_groups(active.clone(), HOST.to_string()) };
 
     let meta = VerifiedEvent::from_raw_unchecked(raw_event(
         &"1".repeat(64),
@@ -106,7 +106,7 @@ fn joined_groups_sidecar_reflects_latest_relay_snapshot_only() {
     let app = boot();
     let active = "a".repeat(64);
 
-    wire_joined_groups(unsafe { &*app }, active.clone(), HOST.to_string());
+    unsafe { (*app).open_joined_groups(active.clone(), HOST.to_string()) };
 
     let add_request = VerifiedEvent::from_raw_unchecked(raw_event(
         &"5".repeat(64),

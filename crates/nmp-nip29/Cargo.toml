@@ -27,5 +27,9 @@ serde_json = "1"
 # `native` enables `ActionRegistry` (via `__ffi_internal`) for the registry-level
 # bad-version trip tests (ADR-0064 / S9 #1747). `test-support` enables store
 # harness helpers.
+# The NIP-29 read-view integration tests that drove an `NmpApp` (the typed
+# sidecar + group-chat round-trip proofs) moved to `crates/nmp-ffi/tests` in the
+# #2088 fix — the hydrating open/close composition is an `NmpApp` method that
+# lives in `nmp-ffi`, so the tests live next to it. `nmp-nip29` no longer names
+# `nmp-ffi` (and the dev-dep edge is dropped, keeping the dep graph clean).
 nmp-core = { path = "../nmp-core", features = ["test-support", "native"] }
-nmp-ffi = { path = "../nmp-ffi", features = ["test-support"] }

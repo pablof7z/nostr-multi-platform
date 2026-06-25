@@ -1,18 +1,17 @@
-//! NIP-29 discovered-groups typed-projection sidecar proof (Wave A producer-typing).
+//! NIP-29 discovered-groups typed-projection sidecar proof.
 //!
-//! Proves `nmp_nip29::register::open_group_discovery` emits a typed
-//! FlatBuffers sidecar (ADR-0037, `NDGS`) ALONGSIDE the existing generic
-//! `serde_json::Value` projection under `"nmp.nip29.discovered_groups"`. Drives
-//! the full FFI snapshot path, decodes the frame with `decode_snapshot_typed_projections`,
-//! and asserts the typed payload bytes land in the `typed_projections` sidecar,
-//! round-tripping back through the generated bindings.
+//! Proves `NmpApp::open_group_discovery` (#2088) emits a typed FlatBuffers
+//! sidecar (ADR-0037, `NDGS`) under `"nmp.nip29.discovered_groups"`. Drives the
+//! full FFI snapshot path, decodes the frame with
+//! `decode_snapshot_typed_projections`, and asserts the typed payload bytes land
+//! in the `typed_projections` sidecar, round-tripping back through the generated
+//! bindings. (Live-ingest path: events injected AFTER open.)
 
 mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
 use nmp_store::VerifiedEvent;
-use nmp_nip29::register::open_group_discovery;
 use nmp_nip29::{
     decode_discovered_groups_snapshot, DISCOVERED_GROUPS_FILE_IDENTIFIER,
     DISCOVERED_GROUPS_SCHEMA_ID,
@@ -27,7 +26,7 @@ fn discovered_groups_typed_sidecar_round_trips() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
 
-    let _handle = open_group_discovery(unsafe { &*app }, HOST.to_string());
+    let _handle = unsafe { (*app).open_group_discovery(HOST.to_string()) };
 
     let meta = VerifiedEvent::from_raw_unchecked(raw_event(
         &"1".repeat(64),
@@ -95,7 +94,7 @@ fn discovered_groups_typed_sidecar_reflects_superseding() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
 
-    let _handle = open_group_discovery(unsafe { &*app }, HOST.to_string());
+    let _handle = unsafe { (*app).open_group_discovery(HOST.to_string()) };
 
     let older = VerifiedEvent::from_raw_unchecked(raw_event(
         &"3".repeat(64),
@@ -156,7 +155,7 @@ fn discovered_groups_typed_sidecar_carries_subgroup_tags() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
 
-    let _handle = open_group_discovery(unsafe { &*app }, HOST.to_string());
+    let _handle = unsafe { (*app).open_group_discovery(HOST.to_string()) };
 
     // Parent "tech" with two children, and the child "nostr" pointing back at
     // "tech" — mirrors the spec's tree example.

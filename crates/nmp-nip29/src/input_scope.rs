@@ -31,7 +31,8 @@
 //! ```
 //!
 //! The dispatch layer (shell / FFI) deserializes this back into a [`GroupId`] and
-//! routes to the group-open lane (`wire_group_chat` / `open_group_discovery`).
+//! routes to the group-open lane (the hydrating `NmpApp::open_group_chat` /
+//! `open_group_discovery` composers in `nmp-ffi`, #2088).
 //!
 //! # D0 compliance
 //!

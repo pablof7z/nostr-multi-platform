@@ -1,15 +1,19 @@
-//! Shared harness for the NIP-29 typed-projection sidecar proof tests
-//! (`typed_group_chat_sidecar.rs`, `typed_discovered_groups_sidecar.rs`).
+//! Shared harness for the NIP-29 read-view proof tests in `nmp-ffi`
+//! (`nip29_group_chat_sidecar.rs`, `nip29_discovered_groups_sidecar.rs`,
+//! `nip29_joined_groups_sidecar.rs`, `nip29_group_chat_round_trip.rs`,
+//! `nip29_hydration.rs`).
 //!
 //! Drives the full FFI snapshot path — boot an `NmpApp`, run the actor, collect
 //! every emitted `UpdateFrame`, decode each with `decode_snapshot_typed_projections`,
 //! and surface the typed sidecar entry for a key once a predicate accepts it.
-//! This is the same path any host shell reads from; the projections are wired by
-//! `nmp_nip29::register::{wire_group_chat, open_group_discovery}`, which emit
-//! a typed FlatBuffers sidecar (ADR-0037) alongside the generic `Value` tree.
+//! This is the same path any host shell reads from; the views are opened by the
+//! hydrating composition methods `NmpApp::open_group_chat` /
+//! `open_group_discovery` / `open_joined_groups` (#2088, `crate::group_feed`),
+//! which register the projection muted, route ingest through the read-cache
+//! replay door, and emit a typed FlatBuffers sidecar (ADR-0037).
 //!
-//! Split out of a single test file so each test file stays under the AGENTS.md
-//! 300-LoC ceiling.
+//! These tests live in `nmp-ffi` (not `nmp-nip29`) because the open methods are
+//! `NmpApp` methods and `nmp-nip29` may not name `NmpApp` (D0).
 
 use std::ffi::c_void;
 use std::sync::Mutex;
@@ -19,7 +23,10 @@ use nmp_store::{RawEvent, VerifiedEvent};
 use nmp_core::{decode_snapshot_typed_projections, TypedProjectionData};
 use nmp_core::actor::{ActorCommand};
 use nmp_core::actor::{TestSupportCommand};
-use nmp_ffi::{nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, NmpApp};
+use nmp_ffi::{
+    nmp_app_consume_all_builtin_projections, nmp_app_free, nmp_app_new,
+    nmp_app_set_update_callback, nmp_app_start, NmpApp,
+};
 
 /// NmpApp instances spawn global actor threads that do not cleanly isolate
 /// across parallel test processes — every test in either file serialises on
@@ -110,6 +117,12 @@ pub fn boot() -> *mut NmpApp {
     FRAMES.lock().unwrap_or_else(|p| p.into_inner()).clear();
     let app = nmp_app_new();
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(collect_frame));
+    // Declare projection-consumption intent like a real host (ADR-0053 / E4).
+    // Without it `nmp_app_start` trips its forgotten-declaration guard in a
+    // non-`test-support` build — which is how `nmp-ffi`'s own integration tests
+    // link the lib (the prior `nmp-nip29` location enabled test-support via its
+    // dev-dep; here the production guard is live, so we satisfy it honestly).
+    nmp_app_consume_all_builtin_projections(app);
     nmp_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
     app
 }

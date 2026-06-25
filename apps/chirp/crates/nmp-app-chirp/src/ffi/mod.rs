@@ -6,16 +6,18 @@
 //!   an opaque handle for later snapshots / unregister.
 //! - [`nmp_app_open_feed`] / [`nmp_app_close_feed`] — the single typed feed
 //!   session doorway for home, author, thread, and other declared feeds.
-//! - [`nmp_app_chirp_register_group_chat`] — wire a NIP-29
-//!   `GroupChatProjection` for one group into the kernel: an event observer
-//!   (ingest) plus a `"nmp.nip29.group_chat"` snapshot projection (output). Pure
-//!   consumption — no handle, no actions, no unregister.
+//! - [`nmp_app_chirp_register_group_chat`] /
+//!   [`nmp_app_chirp_unregister_group_chat`] — open/close a NIP-29 group-chat
+//!   read view (`"nmp.nip29.group_chat"`, `NGCS`). The view is now a HYDRATING
+//!   observed interest (#2088): a screen opened after the group's events were
+//!   cached catches up on the cached tail. Singleton; `register` replaces a
+//!   prior view, `unregister` tears it down on screen dismissal.
 //! - [`nmp_app_chirp_open_group_discovery`] /
 //!   [`nmp_app_chirp_close_group_discovery`] — open/close lifecycle for the
-//!   NIP-29 group-discovery session (replaces the removed fire-and-forget
-//!   the removed fire-and-forget `nmp_app_chirp_register_group_discovery`). Returns a heap-owned handle
-//!   that MUST be freed via `close`; `close` unregisters the observer and
-//!   removes the `"nmp.nip29.discovered_groups"` snapshot projection.
+//!   NIP-29 group-discovery session (`"nmp.nip29.discovered_groups"`, `NDGS`),
+//!   also hydrating (#2088). Returns a heap-owned `GroupFeedHandle` that MUST be
+//!   freed via `close`; `close` detaches the interest, unregisters the observer,
+//!   and removes the snapshot projection.
 //! - [`nmp_app_chirp_register_dm_inbox`] — host entry point for the NIP-17 DM
 //!   runtime. `nmp_app_chirp_register` wires it eagerly: a kind:1059
 //!   `IngestParser` (slot `"nip17.dm_inbox"`, fires on live ingest and
@@ -78,7 +80,7 @@ pub use declared_projections::nmp_app_chirp_declare_consumed_projections;
 pub use feed::{nmp_app_close_feed, nmp_app_open_feed};
 pub use group::{
     nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
-    nmp_app_chirp_register_group_chat,
+    nmp_app_chirp_register_group_chat, nmp_app_chirp_unregister_group_chat,
 };
 pub use handle::ChirpHandle;
 #[cfg(feature = "marmot")]

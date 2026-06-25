@@ -3,25 +3,31 @@
 //! Extracted from `ffi/register.rs` to keep each file under the 500-LOC cap
 //! (AGENTS.md). Exported from `ffi/mod.rs` alongside the rest of the
 //! `pub extern "C"` surface.
+//!
+//! ## Thin shell over the `nmp-ffi` composition root (#2088)
+//!
+//! These symbols hold ZERO logic: they parse C strings and delegate to the
+//! hydrating `NmpApp::open_group_*` / `close_group_*` methods that live in
+//! `nmp-ffi` (`group_feed.rs`). The composition — register the projection
+//! muted, route ingest through `open_observed_interest_pinned` for read-cache
+//! replay, record a teardown handle — lives there, not here, because it must
+//! name `NmpApp` (the FFI host type `nmp-nip29` may not name, D0).
 
 use std::ffi::c_char;
 
-use nmp_ffi::NmpApp;
+use nmp_ffi::{GroupFeedHandle, NmpApp};
 use nmp_nip29::group_id::GroupId;
-use nmp_nip29::register::{close_group_discovery, open_group_discovery, wire_group_chat};
-use nmp_nip29::register::GroupDiscoveryHandle;
 
 use super::helpers::c_string_opt;
 
-/// Wire a NIP-29 `GroupChatProjection` for a single group into `app`.
+/// Open a NIP-29 group-chat read view for one group into `app`.
 ///
 /// This is **pure consumption** — the read-side of a group-chat screen. It
-/// adds no new C-ABI handle type and registers no actions: it constructs a
-/// [`GroupChatProjection`] scoped to the supplied group, plugs it into the
-/// kernel as a [`KernelEventObserver`] (ingest), and registers its
-/// [`GroupChatProjection::snapshot_json`] read under the snapshot key
-/// `"nmp.nip29.group_chat"` (output). The group's chat messages then surface in
-/// every snapshot tick under that key.
+/// constructs a `GroupChatProjection` scoped to the supplied group and routes
+/// its ingest through the hydrating observed-interest door
+/// ([`NmpApp::open_group_chat`]): a screen opened AFTER the group's kind:9/11
+/// events were already cached now catches up on the cached tail (#2088), then
+/// tails live. Its snapshot surfaces under `"nmp.nip29.group_chat"` (`NGCS`).
 ///
 /// `group_id_json` is a JSON object naming the target group:
 ///
@@ -29,25 +35,17 @@ use super::helpers::c_string_opt;
 /// {"host_relay_url":"wss://groups.example.com","local_id":"room"}
 /// ```
 ///
-/// D6 — fire-and-forget. A null `app`, a null/invalid-UTF-8 `group_id_json`,
-/// a JSON shape that does not deserialize to a [`GroupId`], or a poisoned
-/// observer slot all degrade to a silent return — nothing is registered and
-/// no error crosses the FFI.
+/// D6 — fire-and-forget. A null `app`, a null/invalid-UTF-8 `group_id_json`, or
+/// a JSON shape that does not deserialize to a [`GroupId`] degrades to a silent
+/// return — nothing is registered and no error crosses the FFI.
 ///
-/// SCOPE — single-screen, no unregister. Unlike [`nmp_app_chirp_register`]
-/// this returns no handle, so there is no companion `unregister`.
+/// SCOPE — singleton: a subsequent call replaces the prior group-chat view
+/// (the prior hydrating session is closed first, leak-free). Because the view
+/// now holds a relay interest, the companion
+/// [`nmp_app_chirp_unregister_group_chat`] tears it down when the screen is
+/// dismissed.
 ///
-/// Re-invocation is **idempotent**: a subsequent call unregisters the previous
-/// projection's observer before registering the new one (via the per-app
-/// `swap_singleton_event_observer` slot on `NmpApp`), and overwrites the
-/// `"nmp.nip29.group_chat"` snapshot key with the newer projection. The
-/// per-account re-invocation case (the only re-invocation Chirp actually
-/// performs) is leak-free. A multi-group host that wants to keep N projections
-/// live in parallel would still need a handle-returning variant — single-slot
-/// idempotency does not generalize to N concurrent groups.
-///
-/// `app` MUST outlive the registration. It is only borrowed for the duration
-/// of this call; the projection it registers is owned by the kernel.
+/// `app` MUST outlive the call (it is only borrowed for its duration).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn nmp_app_chirp_register_group_chat(
@@ -70,31 +68,41 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
         return;
     };
 
-    // Delegate the observer + snapshot-projection wiring (and the
-    // singleton-slot idempotency dance) to `nmp_nip29::register::wire_group_chat`.
-    // Thin-shell rule: this FFI symbol only parses C strings and calls the
-    // typed host-wiring helper that lives in the protocol crate.
-    wire_group_chat(app_ref, group_id);
+    // Thin-shell rule: parse C string, delegate to the hydrating composer.
+    app_ref.open_group_chat(group_id);
+}
+
+/// Tear down the NIP-29 group-chat read view opened by
+/// [`nmp_app_chirp_register_group_chat`].
+///
+/// Detaches the relay interest, revokes the observer, and removes the
+/// `"nmp.nip29.group_chat"` typed snapshot projection so no stale chat log is
+/// emitted after the screen is dismissed. Idempotent — closing an unopened
+/// view is a harmless no-op. D6 — a null `app` is a silent no-op.
+#[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+pub extern "C" fn nmp_app_chirp_unregister_group_chat(app: *mut NmpApp) {
+    if app.is_null() {
+        return;
+    }
+    // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`.
+    let app_ref = unsafe { &*app };
+    app_ref.close_group_chat();
 }
 
 /// Open a NIP-29 group-discovery session for one host relay.
 ///
-/// This is the **read side** of the NIP-29 group-discovery flow. It
-/// constructs a [`DiscoveredGroupsProjection`] scoped to the supplied relay
-/// URL, plugs it in as a [`KernelEventObserver`] (ingest), and registers its
-/// snapshot read under `"nmp.nip29.discovered_groups"` (output).
-/// Kind:39000/39001/39002 events for that relay then surface on every
-/// snapshot tick under that key.
+/// This is the **read side** of the NIP-29 group-discovery flow. It constructs
+/// a `DiscoveredGroupsProjection` scoped to the supplied relay URL and routes
+/// its ingest through the hydrating observed-interest door
+/// ([`NmpApp::open_group_discovery`]): a discover screen opened AFTER the
+/// relay's kind:39000/39001/39002 catalog was cached catches it up (#2088),
+/// then tails live. Its snapshot surfaces under
+/// `"nmp.nip29.discovered_groups"` (`NDGS`).
 ///
-/// The companion publish side is the `nmp.nip29.discover` action — its
-/// executor pushes a relay-pinned `LogicalInterest` so the kernel opens a
-/// REQ and metadata events actually arrive. This FFI symbol registers only
-/// the *read* side; both halves are needed for events to surface (the read
-/// projection is inert without the dispatch).
-///
-/// Returns a heap-allocated opaque handle the caller MUST free via
-/// `nmp_app_chirp_close_group_discovery`. A null `app`, null/non-UTF-8
-/// `host_relay_url`, or poisoned observer slot returns NULL (D6).
+/// Returns a heap-allocated opaque [`GroupFeedHandle`] the caller MUST free via
+/// `nmp_app_chirp_close_group_discovery`. A null `app`, null/non-UTF-8 /
+/// empty `host_relay_url` returns NULL (D6).
 ///
 /// `app` MUST outlive the handle. Call `nmp_app_chirp_close_group_discovery`
 /// before `nmp_app_free`.
@@ -103,7 +111,7 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
 pub extern "C" fn nmp_app_chirp_open_group_discovery(
     app: *mut NmpApp,
     host_relay_url: *const c_char,
-) -> *mut GroupDiscoveryHandle {
+) -> *mut GroupFeedHandle {
     if app.is_null() {
         return std::ptr::null_mut();
     }
@@ -115,32 +123,30 @@ pub extern "C" fn nmp_app_chirp_open_group_discovery(
         return std::ptr::null_mut();
     };
 
-    // Thin-shell rule: parse C string, delegate to typed protocol helper.
-    match open_group_discovery(app_ref, relay_url) {
-        Some(handle) => Box::into_raw(Box::new(handle)),
-        None => std::ptr::null_mut(),
-    }
+    // Thin-shell rule: parse C string, delegate to the hydrating composer.
+    Box::into_raw(Box::new(app_ref.open_group_discovery(relay_url)))
 }
 
 /// Close a NIP-29 group-discovery session opened by
 /// `nmp_app_chirp_open_group_discovery`.
 ///
-/// Unregisters the event observer and removes the
-/// `"nmp.nip29.discovered_groups"` typed snapshot projection so no stale
-/// group catalog is emitted after the discover screen is dismissed. The
-/// handle memory is reclaimed; the pointer MUST NOT be used after this call.
+/// Detaches the relay interest, revokes the observer, and removes the
+/// `"nmp.nip29.discovered_groups"` typed snapshot projection so no stale group
+/// catalog is emitted after the discover screen is dismissed. The handle memory
+/// is reclaimed; the pointer MUST NOT be used after this call.
 ///
 /// D6 — a null `handle` is a silent no-op.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_close_group_discovery(handle: *mut GroupDiscoveryHandle) {
+pub extern "C" fn nmp_app_chirp_close_group_discovery(handle: *mut GroupFeedHandle) {
     if handle.is_null() {
         return;
     }
     // SAFETY: `handle` is a valid pointer returned by
     // `nmp_app_chirp_open_group_discovery` and must not be used after this
-    // call. `Box::from_raw` takes ownership; `close_group_discovery` tears
-    // down the observer + projection before the box is dropped.
+    // call. `Box::from_raw` takes ownership; `GroupFeedHandle::close` tears
+    // down the interest + observer + projection (the app it references must
+    // still be alive — the caller's documented contract).
     let handle = unsafe { *Box::from_raw(handle) };
-    close_group_discovery(handle);
+    unsafe { handle.close() };
 }

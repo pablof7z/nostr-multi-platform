@@ -12,13 +12,12 @@ use nmp_app_chirp::{
 };
 use nmp_core::tags::Nip10Refs;
 use nmp_nip01::NoteRecord;
-use nmp_nip29::register::GroupDiscoveryHandle;
 
 use crate::app::ReplyTarget;
 use nmp_ffi::{
     nmp_app_free, nmp_app_load_older_feed, nmp_app_release_profile_ref,
-    nmp_app_resolve_profile_card_live, nmp_app_resolve_profile_ref, nmp_app_start, NmpApp,
-    NmpConfigStatus,
+    nmp_app_resolve_profile_card_live, nmp_app_resolve_profile_ref, nmp_app_start, GroupFeedHandle,
+    NmpApp, NmpConfigStatus,
 };
 use serde_json::{json, Value};
 
@@ -42,7 +41,7 @@ pub struct AppRuntime {
     pub(crate) marmot: Cell<*mut MarmotHandle>,
     /// Open group-discovery handle; closed (and replaced) on each `discover_groups`
     /// call, then finally freed in `Drop`. `null_mut()` when inactive.
-    pub(crate) discovery: Cell<*mut GroupDiscoveryHandle>,
+    pub(crate) discovery: Cell<*mut GroupFeedHandle>,
     feed_handles: RefCell<feed::FeedHandles>,
     update_bridge: Option<Box<NmpUpdateBridge>>,
 }
