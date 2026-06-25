@@ -15,7 +15,6 @@ fn sample() -> PublishHighlightAction {
             "https://example.com".to_string(),
             "podcast:item:guid:9".to_string(),
         ],
-        external_kinds: vec!["web".to_string(), "podcast:item:guid".to_string()],
     }
 }
 
@@ -37,7 +36,6 @@ fn encode_decode_minimal_round_trips() {
         source_author_pubkey: None,
         alt: None,
         external_ids: Vec::new(),
-        external_kinds: Vec::new(),
     };
     let bytes = action.encode();
     let decoded = PublishHighlightAction::decode(&bytes).expect("decode succeeds");
@@ -60,7 +58,7 @@ fn decode_rejects_schema_version_mismatch() {
     let bytes = fbb.finished_data().to_vec();
     assert!(matches!(
         PublishHighlightAction::decode(&bytes),
-        Err(ActionPayloadDecodeError::SchemaVersionMismatch { expected: 1, .. })
+        Err(ActionPayloadDecodeError::SchemaVersionMismatch { expected: 2, .. })
     ));
 }
 

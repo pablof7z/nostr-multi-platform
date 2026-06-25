@@ -27,9 +27,8 @@ table PublishHighlightPayload {
   // Human-readable `alt` tag; empty when absent.
   alt:string;
   // NIP-73 external content identifiers, each emitted as an `i` tag.
+  // The corresponding deduplicated `k` tags are derived from these values.
   external_ids:[string];
-  // NIP-73 external content id kinds, each emitted as a deduplicated `k` tag.
-  external_kinds:[string];
 }
 
 file_identifier "N84H";

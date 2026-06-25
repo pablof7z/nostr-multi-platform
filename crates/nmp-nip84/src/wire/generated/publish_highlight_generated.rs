@@ -34,7 +34,6 @@ pub mod nmp {
             pub const VT_SOURCE_AUTHOR_PUBKEY: ::flatbuffers::VOffsetT = 14;
             pub const VT_ALT: ::flatbuffers::VOffsetT = 16;
             pub const VT_EXTERNAL_IDS: ::flatbuffers::VOffsetT = 18;
-            pub const VT_EXTERNAL_KINDS: ::flatbuffers::VOffsetT = 20;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
@@ -51,9 +50,6 @@ pub mod nmp {
                 args: &'args PublishHighlightPayloadArgs<'args>,
             ) -> ::flatbuffers::WIPOffset<PublishHighlightPayload<'bldr>> {
                 let mut builder = PublishHighlightPayloadBuilder::new(_fbb);
-                if let Some(x) = args.external_kinds {
-                    builder.add_external_kinds(x);
-                }
                 if let Some(x) = args.external_ids {
                     builder.add_external_ids(x);
                 }
@@ -178,20 +174,6 @@ pub mod nmp {
                     >>(PublishHighlightPayload::VT_EXTERNAL_IDS, None)
                 }
             }
-            #[inline]
-            pub fn external_kinds(
-                &self,
-            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
-            {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
-                    >>(PublishHighlightPayload::VT_EXTERNAL_KINDS, None)
-                }
-            }
         }
 
         impl ::flatbuffers::Verifiable for PublishHighlightPayload<'_> {
@@ -235,9 +217,6 @@ pub mod nmp {
                     .visit_field::<::flatbuffers::ForwardsUOffset<
                         ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
                     >>("external_ids", Self::VT_EXTERNAL_IDS, false)?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
-                    >>("external_kinds", Self::VT_EXTERNAL_KINDS, false)?
                     .finish();
                 Ok(())
             }
@@ -255,11 +234,6 @@ pub mod nmp {
                     ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
                 >,
             >,
-            pub external_kinds: Option<
-                ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
-                >,
-            >,
         }
         impl<'a> Default for PublishHighlightPayloadArgs<'a> {
             #[inline]
@@ -273,7 +247,6 @@ pub mod nmp {
                     source_author_pubkey: None,
                     alt: None,
                     external_ids: None,
-                    external_kinds: None,
                 }
             }
         }
@@ -355,18 +328,6 @@ pub mod nmp {
                 );
             }
             #[inline]
-            pub fn add_external_kinds(
-                &mut self,
-                external_kinds: ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
-                >,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PublishHighlightPayload::VT_EXTERNAL_KINDS,
-                    external_kinds,
-                );
-            }
-            #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             ) -> PublishHighlightPayloadBuilder<'a, 'b, A> {
@@ -396,7 +357,6 @@ pub mod nmp {
                 ds.field("source_author_pubkey", &self.source_author_pubkey());
                 ds.field("alt", &self.alt());
                 ds.field("external_ids", &self.external_ids());
-                ds.field("external_kinds", &self.external_kinds());
                 ds.finish()
             }
         }

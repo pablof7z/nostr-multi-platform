@@ -9,6 +9,7 @@
 //! engine.
 
 mod action;
+mod external_id;
 mod wire;
 
 pub use action::{

@@ -38,11 +38,6 @@ fn highlight_with_all_fields_emits_expected_tags() {
             "podcast:item:guid:1234".to_string(),
             "https://example.com/article".to_string(),
         ],
-        external_kinds: vec![
-            "podcast:item:guid".to_string(),
-            "web".to_string(),
-            "podcast:item:guid".to_string(),
-        ],
     };
     let cmd = capture_execute(|send| {
         PublishHighlightModule
@@ -94,7 +89,6 @@ fn empty_content_is_rejected() {
                 source_author_pubkey: None,
                 alt: None,
                 external_ids: Vec::new(),
-                external_kinds: Vec::new(),
             },
         ),
         Err(ActionRejection::Invalid(_))
@@ -115,7 +109,6 @@ fn invalid_source_event_id_is_rejected() {
                 source_author_pubkey: None,
                 alt: None,
                 external_ids: Vec::new(),
-                external_kinds: Vec::new(),
             },
         ),
         Err(ActionRejection::Invalid(_))
@@ -133,7 +126,6 @@ fn external_only_highlight_emits_nip73_i_and_k_tags_with_no_attribution() {
         source_author_pubkey: None,
         alt: None,
         external_ids: vec!["podcast:item:guid:xyz".to_string()],
-        external_kinds: vec!["podcast:item:guid".to_string()],
     };
     PublishHighlightModule
         .start(&mut ctx, action.clone())
@@ -159,22 +151,142 @@ fn external_only_highlight_emits_nip73_i_and_k_tags_with_no_attribution() {
 }
 
 #[test]
-fn external_ids_require_external_kind() {
-    let mut ctx = ActionContext::default();
-    assert!(matches!(
-        PublishHighlightModule.start(
-            &mut ctx,
-            PublishHighlightAction {
-                content: "clip text".to_string(),
-                context: None,
-                source_event_id: None,
-                source_address: None,
-                source_author_pubkey: None,
-                alt: None,
-                external_ids: vec!["podcast:item:guid:xyz".to_string()],
-                external_kinds: Vec::new(),
-            },
+fn blockchain_external_ids_derive_chain_selector_kind() {
+    let action = PublishHighlightAction {
+        content: "chain reference".to_string(),
+        context: None,
+        source_event_id: None,
+        source_address: None,
+        source_author_pubkey: None,
+        alt: None,
+        external_ids: vec![
+            "bitcoin:tx:a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d"
+                .to_string(),
+            "ethereum:1:address:0xd8da6bf26964af9d7eed9e03e53415d37aa96045".to_string(),
+        ],
+    };
+    match run_one_protocol(capture_execute(|send| {
+        PublishHighlightModule
+            .execute(action, "chain-cid", send)
+            .expect("execute succeeds");
+    })) {
+        ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) => assert_eq!(
+            event.tags,
+            vec![
+                vec![
+                    "i".to_string(),
+                    "bitcoin:tx:a1075db55d416d3ca199f55b6084e2115b9345e16c5cf302fc80e9d5fbf5d48d"
+                        .to_string()
+                ],
+                vec![
+                    "i".to_string(),
+                    "ethereum:1:address:0xd8da6bf26964af9d7eed9e03e53415d37aa96045".to_string()
+                ],
+                vec!["k".to_string(), "bitcoin:tx".to_string()],
+                vec!["k".to_string(), "ethereum:address".to_string()],
+            ]
         ),
-        Err(ActionRejection::Invalid(_))
+        other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+    }
+}
+
+#[test]
+fn malformed_external_ids_are_rejected() {
+    for external_id in [
+        "",
+        "https://",
+        "podcast:item:guid:",
+        "not-a-nip73-id",
+        "doi:bad value",
+        "doi:bad\nvalue",
+        "geo:EZS42E44YX96",
+        "iso3166:us-ca",
+        "bitcoin:tx:",
+        "ethereum::tx:abc",
+        "bitcoin:block:abc",
+    ] {
+        let mut ctx = ActionContext::default();
+        assert!(
+            matches!(
+                PublishHighlightModule.start(
+                    &mut ctx,
+                    PublishHighlightAction {
+                        content: "clip text".to_string(),
+                        context: None,
+                        source_event_id: None,
+                        source_address: None,
+                        source_author_pubkey: None,
+                        alt: None,
+                        external_ids: vec![external_id.to_string()],
+                    },
+                ),
+                Err(ActionRejection::Invalid(_))
+            ),
+            "{external_id:?} should be rejected"
+        );
+    }
+}
+
+#[test]
+fn duplicate_derived_k_tags_are_deduped_from_ids() {
+    let action = PublishHighlightAction {
+        content: "references".to_string(),
+        context: None,
+        source_event_id: None,
+        source_address: None,
+        source_author_pubkey: None,
+        alt: None,
+        external_ids: vec![
+            "https://example.com/one".to_string(),
+            "http://example.com/two".to_string(),
+            "isbn:9780765382030".to_string(),
+        ],
+    };
+    match run_one_protocol(capture_execute(|send| {
+        PublishHighlightModule
+            .execute(action, "dedupe-cid", send)
+            .expect("execute succeeds");
+    })) {
+        ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) => assert_eq!(
+            event.tags,
+            vec![
+                vec!["i".to_string(), "https://example.com/one".to_string()],
+                vec!["i".to_string(), "http://example.com/two".to_string()],
+                vec!["i".to_string(), "isbn:9780765382030".to_string()],
+                vec!["k".to_string(), "web".to_string()],
+                vec!["k".to_string(), "isbn".to_string()],
+            ]
+        ),
+        other => panic!("expected PublishUnsignedEvent, got {other:?}"),
+    }
+}
+
+#[test]
+fn direct_protocol_run_rejects_malformed_external_id_defensively() {
+    let cmd = capture_execute(|send| {
+        PublishHighlightModule
+            .execute(
+                PublishHighlightAction {
+                    content: "clip text".to_string(),
+                    context: None,
+                    source_event_id: None,
+                    source_address: None,
+                    source_author_pubkey: None,
+                    alt: None,
+                    external_ids: vec!["not-a-nip73-id".to_string()],
+                },
+                "bad-cid",
+                send,
+            )
+            .expect("execute enqueues protocol command");
+    });
+    let ActorCommand::Protocol(cmd) = cmd else {
+        panic!("expected protocol command");
+    };
+    let send = |_cmd| panic!("malformed command must not publish");
+    let mut ctx = ProtocolCommandContext::with_send_only(&send);
+    assert!(matches!(
+        cmd.run(&mut ctx),
+        Err(err) if err.message().contains("malformed highlight fields")
     ));
 }

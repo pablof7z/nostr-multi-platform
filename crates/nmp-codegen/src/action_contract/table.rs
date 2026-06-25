@@ -160,7 +160,7 @@ pub const ACTION_CONTRACT: &[ActionContract] = &[
         schema_id: "nmp.nip84.publish_highlight",
         schema_path: "crates/nmp-nip84/schema/publish_highlight.fbs",
         root_type: "PublishHighlightPayload",
-        schema_version: 1,
+        schema_version: 2,
         file_identifier: "N84H",
         default_tier: ActionDefaultTier::Social,
         builder_support: NO_GENERATED_BUILDER,

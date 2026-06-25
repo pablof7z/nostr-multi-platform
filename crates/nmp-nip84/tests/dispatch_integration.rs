@@ -17,7 +17,7 @@ fn registry_with_nip84() -> ActionRegistry {
 }
 
 #[test]
-fn start_bytes_accepts_podcast_external_id_with_kind_tag() {
+fn start_bytes_accepts_podcast_external_id_and_derives_kind_tag() {
     let registry = registry_with_nip84();
     let action = PublishHighlightAction {
         content: "quoted clip".to_string(),
@@ -27,7 +27,6 @@ fn start_bytes_accepts_podcast_external_id_with_kind_tag() {
         source_author_pubkey: None,
         alt: None,
         external_ids: vec!["podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f".to_string()],
-        external_kinds: vec!["podcast:item:guid".to_string()],
     };
     let payload = action.encode();
     let id = registry
@@ -37,12 +36,12 @@ fn start_bytes_accepts_podcast_external_id_with_kind_tag() {
             NAMESPACE,
             &payload,
         )
-        .expect("podcast external identifier with NIP-73 kind must be accepted");
+        .expect("recognized podcast external identifier must be accepted");
     assert_eq!(id.len(), 32, "minted correlation_id must be 32 hex chars");
 }
 
 #[test]
-fn start_bytes_rejects_external_id_without_kind_tag() {
+fn start_bytes_rejects_unknown_external_id_scheme() {
     let registry = registry_with_nip84();
     let action = PublishHighlightAction {
         content: "quoted clip".to_string(),
@@ -51,8 +50,7 @@ fn start_bytes_rejects_external_id_without_kind_tag() {
         source_address: None,
         source_author_pubkey: None,
         alt: None,
-        external_ids: vec!["podcast:item:guid:d98d189b-dc7b-45b1-8720-d4b98690f31f".to_string()],
-        external_kinds: Vec::new(),
+        external_ids: vec!["not-a-nip73-id".to_string()],
     };
     let payload = action.encode();
     let err = registry
@@ -62,11 +60,11 @@ fn start_bytes_rejects_external_id_without_kind_tag() {
             NAMESPACE,
             &payload,
         )
-        .expect_err("external identifiers require matching NIP-73 kind tags");
+        .expect_err("unknown external identifiers fail closed");
     match err {
         ActionRejection::Invalid(msg) => assert!(
-            msg.contains("external_ids require"),
-            "rejection must name the missing NIP-73 kind: {msg}"
+            msg.contains("recognized NIP-73"),
+            "rejection must name NIP-73 validation: {msg}"
         ),
         other => panic!("expected Invalid rejection, got {other:?}"),
     }
