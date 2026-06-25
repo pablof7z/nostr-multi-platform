@@ -351,6 +351,43 @@ crates in Layers 0–5. `nmp-wasm` and leaf web apps depend on `nmp-browser-runt
 for the typed builder, not vice versa. No Layer 0-5 crate depends on
 `nmp-browser-runtime`.
 
+### Shared composition target: reuse `AppHost` (#2059, ADR-0067)
+
+`BrowserAppBuilder` composes through the **existing** `nmp_core::substrate::AppHost`
+super-trait — no browser-specific composition trait is introduced. `AppHost` is
+already platform-neutral: it is the blanket-impl union of the narrow D6 registrar
+traits, every method registers a Rust-owned fact (action modules, ingest parsers,
+snapshot projections, event observers, routing/publish factories, kernel-reader
+slots, capability seams), and platform capabilities (storage, sockets, OS
+keychains) are deliberately excluded. Native (`NmpAppBuilder`) and browser
+(`BrowserAppBuilder`) implement the same narrow registrars and obtain `AppHost`
+through the blanket impl; only a composition root names `AppHost`, while protocol
+modules continue to take the narrow trait(s) they use.
+
+Layer ownership of registered facts (all browser-relevant; none native-only):
+
+- Action modules / protocol commands → protocol crates (Layers 1–4) via `ActionRegistrar`.
+- Ingest parsers and kernel-reader slots (profile / contacts / mailbox / DM-inbox / blocked-relay) → protocol crates; the reducer reads, never names the wire format (D0).
+- Snapshot projections, event observers, identity-change hooks → runtime crates.
+- Routing / publish / raw-forward factories, nostrconnect bootstrap, relay User-Agent, outbound tags → `nmp-router` + composition root.
+- `HostCapabilities` (active pubkey, actor command sender, configured-relays slot, preferred-relay source) → composition root / kernel.
+
+Two implementation seams are deferred to their owning issues (they do **not**
+justify a narrower trait):
+
+1. **Command sender (#2046 / #2057).** `HostCapabilities::actor_sender()` returns a
+   `CommandSender`, whose constructor is currently `feature = "native"`-gated.
+   `nmp-browser-runtime` owns the single-writer Worker loop driving the
+   `KernelReducer` (D4), so it constructs the inbox and `CommandSender` itself;
+   the resolution is a wasm-safe headless inbox constructor in `nmp-core` plus the
+   builder's Worker loop — not a trait change.
+2. **wasm-safe defaults (#2047 / #2060).** §10a sets the target dependency
+   `nmp-browser-runtime → nmp-defaults`, but `nmp-defaults` currently hard-depends
+   on `nmp-ffi` (it names `NmpApp` for `register_op_feed_defaults`), which does not
+   build for wasm32. That native-only composition must be `native`-feature-gated so
+   the neutral `register_defaults` registrations compile for the browser. Until
+   that lands, the browser builder uses the `nmp-substrate-defaults` floor (§9).
+
 ---
 
 ## 11. Change Policy
