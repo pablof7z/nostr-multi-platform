@@ -1,4 +1,5 @@
 //! Runtime start/stop, maintenance scheduling, and snapshot emission helpers.
+//! Internal API.
 
 #[cfg(target_arch = "wasm32")]
 use std::rc::Rc;
@@ -8,9 +9,9 @@ use nmp_core::OutboundMessage;
 use crate::protocol::{RuntimeStatus, StartConfig, WorkerEvent};
 use crate::snapshot::build_snapshot_bytes;
 
-use super::{WasmRuntime, WasmRuntimeError};
+use super::{RawWasmAbiAdapter, WasmRuntimeError};
 
-impl WasmRuntime {
+impl RawWasmAbiAdapter {
     pub(super) fn start(
         &mut self,
         config: StartConfig,

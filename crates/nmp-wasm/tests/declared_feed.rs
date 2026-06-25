@@ -1,10 +1,10 @@
-use nmp_wasm::WasmRuntime;
+use nmp_wasm::RawWasmAbiAdapter;
 
 const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
 
 #[test]
 fn runtime_declares_active_follows_feed_from_primary_kinds() {
-    let runtime = WasmRuntime::new();
+    let runtime = RawWasmAbiAdapter::new();
 
     assert!(
         runtime.declare_active_follows_feed([1]),
@@ -26,7 +26,7 @@ fn runtime_declares_active_follows_feed_from_primary_kinds() {
 
 #[test]
 fn runtime_rejects_repost_wrappers_as_primary_feed_kinds() {
-    let runtime = WasmRuntime::new();
+    let runtime = RawWasmAbiAdapter::new();
 
     assert!(
         !runtime.declare_active_follows_feed([1, 6]),
@@ -50,7 +50,7 @@ fn runtime_rejects_repost_wrappers_as_primary_feed_kinds() {
 
 #[test]
 fn runtime_clears_active_follows_feed_declaration() {
-    let runtime = WasmRuntime::new();
+    let runtime = RawWasmAbiAdapter::new();
 
     assert!(runtime.declare_active_follows_feed([1]));
     runtime

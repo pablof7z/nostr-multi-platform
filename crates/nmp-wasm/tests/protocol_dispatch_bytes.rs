@@ -1,5 +1,5 @@
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
-use nmp_wasm::{DispatchBytes, SetIdentity, WasmRuntime, WorkerEvent, WorkerRequest};
+use nmp_wasm::{DispatchBytes, SetIdentity, RawWasmAbiAdapter, WorkerEvent, WorkerRequest};
 
 /// Build a `WorkerRequest::DispatchBytes` carrying a finished `DispatchEnvelope`
 /// for `action_namespace` with an opaque payload. This is the only wasm write
@@ -20,7 +20,7 @@ fn dispatch_bytes_request(
 
 #[test]
 fn typed_write_routes_through_dispatch_envelope_not_app_action() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(dispatch_bytes_request(
             "follow-1",
@@ -45,7 +45,7 @@ fn typed_write_routes_through_dispatch_envelope_not_app_action() {
 
 #[test]
 fn dispatch_bytes_rejects_non_envelope_buffer() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::DispatchBytes(DispatchBytes {
             bytes: b"not a flatbuffer".to_vec(),
@@ -61,7 +61,7 @@ fn dispatch_bytes_rejects_non_envelope_buffer() {
 
 #[test]
 fn typed_write_without_active_account_returns_signer_not_installed() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
 
     let events = runtime
         .handle(dispatch_bytes_request("pub-1", "nmp.publish", b"opaque"))
@@ -83,7 +83,7 @@ fn typed_write_without_active_account_returns_signer_not_installed() {
 
 #[test]
 fn typed_write_after_set_identity_fails_at_decode_after_1008() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
 
     let set_events = runtime
         .handle(WorkerRequest::SetIdentity(SetIdentity {

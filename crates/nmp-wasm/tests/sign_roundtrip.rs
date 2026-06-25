@@ -1,7 +1,7 @@
 //! #1753 S6 — wasm signing capability round-trip (pure message re-entry).
 //!
 //! These run on native (`cargo test -p nmp-wasm`) through the same
-//! `WasmRuntime::handle` path the wasm32 worker uses. They exercise the full
+//! `RawWasmAbiAdapter::handle` path the wasm32 worker uses. They exercise the full
 //! protocol round-trip — `BeginSign` → `SignRequest` (broker request) →
 //! `DeliverSignerResponse` (broker fulfilment) → `SignCompleted` — and pin the
 //! no-polling property at the runtime boundary: only the delivery message
@@ -10,7 +10,7 @@
 //! The LIVE `window.nostr` browser call is CI/manual-gated (no browser here);
 //! these tests cover the Rust/wasm core + the JS-bridge message contract.
 
-use nmp_wasm::{BeginSign, DeliverSignerResponse, WasmRuntime, WorkerEvent, WorkerRequest};
+use nmp_wasm::{BeginSign, DeliverSignerResponse, RawWasmAbiAdapter, WorkerEvent, WorkerRequest};
 use serde_json::json;
 
 const ACCOUNT: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -64,7 +64,7 @@ fn sign_messages_round_trip_through_json() {
 /// signed bytes back emits SignCompleted carrying the signed JSON.
 #[test]
 fn begin_sign_then_deliver_completes() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::BeginSign(BeginSign {
             account_pubkey: ACCOUNT.to_string(),
@@ -109,7 +109,7 @@ fn begin_sign_then_deliver_completes() {
 /// account than the round-trip was begun for is rejected (ADR-0050 §D5).
 #[test]
 fn account_pin_enforced_across_the_bridge() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::BeginSign(BeginSign {
             account_pubkey: ACCOUNT.to_string(),
@@ -140,7 +140,7 @@ fn account_pin_enforced_across_the_bridge() {
 /// closed with that reason (D6).
 #[test]
 fn broker_reported_rejection_fails_closed() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::BeginSign(BeginSign {
             account_pubkey: ACCOUNT.to_string(),
@@ -173,7 +173,7 @@ fn broker_reported_rejection_fails_closed() {
 /// round-trip stays open — only `DeliverSignerResponse` closes it.
 #[test]
 fn only_the_delivery_message_completes_the_roundtrip() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::BeginSign(BeginSign {
             account_pubkey: ACCOUNT.to_string(),

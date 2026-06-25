@@ -1,6 +1,6 @@
-//! App-facing feed declaration helpers for [`super::WasmRuntime`].
+//! Feed declaration helpers for [`super::RawWasmAbiAdapter`]. Internal API.
 //!
-//! The public surface accepts primary content kinds. Protocol wrapper
+//! The surface accepts primary content kinds. Protocol wrapper
 //! acquisition is derived here, below app composition and above the pure
 //! reducer, so apps do not compile repost shapes themselves.
 //!
@@ -9,7 +9,7 @@
 //! Step 1 is types + decode + validation only; the `open_feed` dispatch
 //! and the public re-export surface land in step 2.
 
-use super::WasmRuntime;
+use super::RawWasmAbiAdapter;
 
 // Import the protocol-agnostic typed feed-session model. The full public
 // re-export surface (CustomPerspectiveId, FeedAdmission, FeedHandle, etc.) will
@@ -68,15 +68,15 @@ pub fn decode_and_validate_feed_params(
     Ok((params, acquisition_kinds))
 }
 
-impl WasmRuntime {
+impl RawWasmAbiAdapter {
     /// Register a typed feed sidecar and its rendered-author provider together.
+    /// Internal API.
     ///
-    /// This is the wasm twin of `NmpApp::register_feed_render_source`. A single
-    /// [`FeedRenderSource`] materializes the visible feed window once per kernel
-    /// tick, then the author provider and typed producer both read that same
-    /// materialization. That keeps `refs.profile` demand aligned with the feed
-    /// rows the browser receives.
-    pub fn register_feed_render_source<S>(
+    /// A single [`FeedRenderSource`] materializes the visible feed window once
+    /// per kernel tick, then the author provider and typed producer both read
+    /// that same materialization. That keeps `refs.profile` demand aligned with
+    /// the feed rows the browser receives.
+    pub(crate) fn register_feed_render_source<S>(
         &self,
         feed_key: impl Into<String>,
         source: std::sync::Arc<FeedRenderSource<S>>,

@@ -31,14 +31,14 @@ use nmp_core::{
     },
 };
 use nmp_network::role::RelayRole;
-use nmp_wasm::{RelayBootstrapEntry, StartConfig, WasmRuntime, WorkerRequest};
+use nmp_wasm::{RelayBootstrapEntry, StartConfig, RawWasmAbiAdapter, WorkerRequest};
 
 const RELAY_URL_A: &str = "wss://nos.lol";
 const RELAY_URL_B: &str = "wss://relay.damus.io";
 
 #[test]
 fn snapshot_carries_kernel_authored_relay_statuses() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
 
     // Start with TWO bootstrap relays so the configured_relays sidecar
     // assertion below must contain both URLs (not just a single-entry list).

@@ -1,5 +1,7 @@
-//! Browser-side runtime (`WasmRuntime`) backed by `KernelReducer`, the
-//! wasm32 relay pool, and the snapshot-callback push channel.
+//! Internal ABI adapter (`RawWasmAbiAdapter`) backed by `KernelReducer`, the
+//! wasm32 relay pool, and the snapshot-callback push channel. This is NOT a
+//! composition API — do not use directly. The browser runtime is
+//! `nmp-browser-runtime` (Wave 3).
 //!
 //! # Current capabilities
 //!
@@ -47,13 +49,14 @@ type SnapshotCallback = js_sys::Function;
 #[cfg(not(target_arch = "wasm32"))]
 type SnapshotCallback = ();
 
-/// Browser-side runtime backed by a real `KernelReducer` plus the
-/// snapshot-callback push channel.
+/// Internal ABI adapter backed by a real `KernelReducer` plus the
+/// snapshot-callback push channel. Not a composition API — do not use
+/// directly. The browser runtime is `nmp-browser-runtime`.
 ///
 /// `Default::default()` constructs the reducer eagerly — the kernel is cheap
 /// to allocate (no I/O, no threads) and constructing it lazily would complicate
 /// the snapshot path that runs before `Start` arrives.
-pub struct WasmRuntime {
+pub struct RawWasmAbiAdapter {
     /// Pure protocol kernel — the same reducer the native actor loop uses.
     /// Held behind `Rc<RefCell>` so the wasm32 relay-driver closures can
     /// share it without unsafe lifetime gymnastics.
@@ -115,7 +118,7 @@ pub struct WasmRuntime {
     pending_signed_publishes: HashMap<String, PendingSignedPublish>,
     /// Boot-time composition hooks that must observe the final event-store
     /// handle, after store injection and before relay drivers start.
-    before_start_hooks: Vec<Box<dyn FnOnce(&mut WasmRuntime)>>,
+    before_start_hooks: Vec<Box<dyn FnOnce(&mut RawWasmAbiAdapter)>>,
     /// ADR-0064 / S3 (#1751) — the typed action registry. The wasm twin of
     /// `NmpApp::action_registry`: it owns the per-namespace `ActionModule`
     /// values whose `start_bytes` runs the typed FlatBuffers `decode_payload`
@@ -136,7 +139,7 @@ struct PendingSignedPublish {
     target: nmp_core::publish::PublishTarget,
 }
 
-impl WasmRuntime {
+impl RawWasmAbiAdapter {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
@@ -144,48 +147,35 @@ impl WasmRuntime {
 
     /// Install the post-event drain hook — fires AFTER the scheduler's reducer
     /// maintenance borrow is released, so the drain can safely call
-    /// `reducer.borrow_mut()`. Subsequent calls replace the prior drain.
-    pub fn install_post_tick_drain(&self, drain: Rc<dyn Fn()>) {
+    /// `reducer.borrow_mut()`. Internal API; composition lives in
+    /// nmp-browser-runtime.
+    pub(crate) fn install_post_tick_drain(&self, drain: Rc<dyn Fn()>) {
         *self.post_tick_drain.borrow_mut() = Some(drain);
     }
 
     /// Install a post-encode frame observer (issue #1767).
     ///
-    /// The closure is invoked from `build_snapshot_bytes` with the
-    /// just-encoded FlatBuffers frame bytes, on EVERY snapshot path
-    /// (deadline wake, relay-push, synchronous `handle` return, publish
-    /// fan-out) — because that builder is the single chokepoint all of them
-    /// funnel through. The
-    /// callback runs AFTER `make_update_frame` returns and receives only
-    /// `&[u8]`, so it never re-enters the reducer.
-    ///
-    /// This is the wasm twin of nmp-ffi's listener-thread
-    /// `update_embed_sidecar_from_frame` hook. A composition root that depends
-    /// on `nmp-content` (e.g. `nmp-app-chirp-web`) installs an observer that
-    /// decodes the `claimed_events` KCEV from the bytes, resolves each embed,
-    /// and stores the resolved map in its own slot — keeping `nmp-wasm` itself
-    /// policy-free (it owns the chokepoint, not the kind-dispatch).
-    ///
-    /// Subsequent calls replace the prior observer.
-    pub fn install_frame_observer(&self, observer: Rc<dyn Fn(&[u8])>) {
+    /// Internal API; composition lives in nmp-browser-runtime.
+    pub(crate) fn install_frame_observer(&self, observer: Rc<dyn Fn(&[u8])>) {
         self.meta.borrow_mut().frame_observer = Some(observer);
     }
 
-    /// Return an `Rc` clone of the reducer for composition-root closures.
+    /// Return an `Rc` clone of the reducer for internal use only.
+    /// Internal API; composition lives in nmp-browser-runtime.
     #[must_use]
-    pub fn reducer_handle(&self) -> Rc<RefCell<KernelReducer>> {
+    pub(crate) fn reducer_handle(&self) -> Rc<RefCell<KernelReducer>> {
         Rc::clone(&self.reducer)
     }
 
     /// Install an externally-opened event store to be consumed by the next
-    /// `Start`.
+    /// `Start`. Internal API; composition lives in nmp-browser-runtime.
     ///
     /// This is intentionally a boot-time seam. The store backend must already
     /// be open and synchronous; the kernel's [`EventStore`](nmp_store::EventStore)
     /// contract remains unchanged. Calling after `Start` is rejected because
     /// existing relay, publish, projection, and query handles would otherwise
     /// split across old and new stores.
-    pub fn set_injected_store(
+    pub(crate) fn set_injected_store(
         &mut self,
         store: Arc<dyn nmp_store::EventStore>,
     ) -> Result<(), WasmRuntimeError> {
@@ -198,13 +188,14 @@ impl WasmRuntime {
         Ok(())
     }
 
-    /// Install the app composition publish resolver factory.
+    /// Install the app composition publish resolver factory. Internal API;
+    /// composition lives in nmp-browser-runtime.
     ///
     /// The factory receives the kernel-owned event store, indexer relay slot,
     /// local-write relay slot, and active-account slot every time `Start`
     /// installs a resolver. This mirrors the native `NmpApp` composition seam
     /// without making `nmp-wasm` depend on `nmp-router`.
-    pub fn set_publish_resolver_factory<F>(&mut self, factory: F) -> Result<(), WasmRuntimeError>
+    pub(crate) fn set_publish_resolver_factory<F>(&mut self, factory: F) -> Result<(), WasmRuntimeError>
     where
         F: Fn(
                 Arc<dyn nmp_store::EventStore>,
@@ -225,16 +216,17 @@ impl WasmRuntime {
         Ok(())
     }
 
-    /// Register a boot-time composition hook.
+    /// Register a boot-time composition hook. Internal API; composition lives
+    /// in nmp-browser-runtime.
     ///
     /// Hooks run at the top of `Start`, after any injected store has rebuilt
     /// the reducer and before relay drivers, publish routing, or app
     /// projections capture reducer/store handles. This keeps ADR-0054 store
     /// injection honest: app composition that needs `event_store_handle()` must
     /// observe the final backend, not the default in-memory store.
-    pub fn install_before_start_hook(
+    pub(crate) fn install_before_start_hook(
         &mut self,
-        hook: impl FnOnce(&mut WasmRuntime) + 'static,
+        hook: impl FnOnce(&mut RawWasmAbiAdapter) + 'static,
     ) -> Result<(), WasmRuntimeError> {
         if self.meta.borrow().started {
             return Err(WasmRuntimeError::InvalidConfig(
@@ -246,19 +238,15 @@ impl WasmRuntime {
     }
 
     /// Register a typed [`ActionModule`] under its `NAMESPACE` into the runtime's
-    /// action registry. The wasm twin of `NmpApp::register_action`.
+    /// action registry. Internal API; composition lives in nmp-browser-runtime.
     ///
-    /// The composition root (`nmp-app-chirp-web`) calls this — directly or
-    /// through the per-NIP `register_actions(&mut impl ActionRegistrar)` entry
-    /// points — to populate the non-publish write namespaces (NIP-02 follow /
-    /// unfollow / follow_many, NIP-25 react / unreact). A typed payload
-    /// dispatched through `dispatch_bytes` for a registered namespace then
-    /// reaches the module's typed `start_bytes` decode (S3 / #1751) instead of
-    /// the generic write-path `CapabilityFailure`. `nmp-wasm` itself cannot
-    /// depend on the NIP crates (D0 / layering), so registration is the
-    /// composition root's job — exactly as the native FFI app delegates to each
-    /// crate's `register_actions`.
-    pub fn register_action<M: ActionModule + 'static>(
+    /// The composition root calls this — directly or through the per-NIP
+    /// `register_actions(&mut impl ActionRegistrar)` entry points — to populate
+    /// the non-publish write namespaces (NIP-02 follow / unfollow / follow_many,
+    /// NIP-25 react / unreact). A typed payload dispatched through `dispatch_bytes`
+    /// for a registered namespace then reaches the module's typed `start_bytes`
+    /// decode (S3 / #1751) instead of the generic write-path `CapabilityFailure`.
+    pub(crate) fn register_action<M: ActionModule + 'static>(
         &mut self,
         module: M,
     ) -> Result<(), nmp_core::substrate::RegistrationError> {
@@ -268,33 +256,30 @@ impl WasmRuntime {
     }
 
     /// Register a typed [`ActionModule`] **only if** its namespace is not
-    /// already claimed (returns `true` on first registration). The wasm twin of
-    /// `NmpApp::register_default_action`; the per-NIP `register_actions`
-    /// helpers call this through the [`ActionRegistrar`] impl below.
-    pub fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
+    /// already claimed (returns `true` on first registration). Internal API;
+    /// composition lives in nmp-browser-runtime.
+    pub(crate) fn register_default_action<M: ActionModule + 'static>(&mut self, module: M) -> bool {
         self.action_registry.register_default(module)
     }
 
-    /// Install (or clear, with `None`) the snapshot push callback. Wasm32
-    /// only — native targets have no `js_sys::Function` to install.
+    /// Install (or clear, with `None`) the snapshot push callback. Internal API.
+    /// Wasm32 only — native targets have no `js_sys::Function` to install.
     ///
     /// Calling this with `Some(f)` replaces any previously-installed
     /// callback atomically (the slot is swapped under a single `RefMut`
     /// borrow). Calling with `None` clears the slot; subsequent relay
     /// frames will not push, and the host falls back to pull-by-dispatch.
     #[cfg(target_arch = "wasm32")]
-    pub fn set_snapshot_callback(&mut self, callback: Option<js_sys::Function>) {
+    pub(crate) fn set_snapshot_callback(&mut self, callback: Option<js_sys::Function>) {
         *self.snapshot_callback.borrow_mut() = callback;
     }
 
-    /// Return a shared reference to the snapshot-callback slot.
+    /// Return a shared reference to the snapshot-callback slot. Internal API.
     ///
-    /// Used by composition-root crates (`nmp-app-chirp-web`) that own the
-    /// `#[wasm_bindgen]` entry point and need to route `UpdateBytes` through
-    /// the same callback channel as `handle_json`. The slot is `Rc<RefCell>`
-    /// so cloning it gives a shared handle with zero-copy semantics.
+    /// The slot is `Rc<RefCell>` so cloning it gives a shared handle with
+    /// zero-copy semantics.
     #[cfg(target_arch = "wasm32")]
-    pub fn snapshot_callback_handle(&self) -> &Rc<RefCell<Option<js_sys::Function>>> {
+    pub(crate) fn snapshot_callback_handle(&self) -> &Rc<RefCell<Option<js_sys::Function>>> {
         &self.snapshot_callback
     }
 

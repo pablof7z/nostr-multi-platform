@@ -3,9 +3,9 @@ use std::rc::Rc;
 
 use nmp_core::{default_registry, KernelReducer};
 
-use super::{RuntimeMeta, WasmRuntime};
+use super::{RuntimeMeta, RawWasmAbiAdapter};
 
-impl Default for WasmRuntime {
+impl Default for RawWasmAbiAdapter {
     fn default() -> Self {
         Self {
             reducer: Rc::new(RefCell::new(KernelReducer::new())),

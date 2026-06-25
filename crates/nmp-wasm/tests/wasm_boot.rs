@@ -1,7 +1,7 @@
 //! W1 acceptance test — the wasm runtime EXECUTES in a headless browser.
 //!
 //! This is the first test in the repository that actually *runs* the
-//! `NmpWasmRuntime` inside a real browser (Chrome headless via wasm-pack).
+//! `NmpRawWasmAbiAdapter` inside a real browser (Chrome headless via wasm-pack).
 //! It proves:
 //!
 //! 1. The `Instant::now()` / `SystemTime::now()` time panics (§1 of
@@ -40,7 +40,7 @@ use nmp_core::{
     typed_projections::{decode_configured_relays, CONFIGURED_RELAYS_SCHEMA_ID},
 };
 use nmp_wasm::{
-    ClientHello, RelayBootstrapEntry, RuntimeStatus, StartConfig, WasmRuntime, WorkerEvent,
+    ClientHello, RelayBootstrapEntry, RuntimeStatus, StartConfig, RawWasmAbiAdapter, WorkerEvent,
     WorkerRequest,
 };
 
@@ -60,7 +60,7 @@ use nmp_wasm::{CapabilityFailure, DispatchBytes, SetIdentity};
 ///   proving the PR-1 kernel-authored snapshot pipeline fired.
 #[wasm_bindgen_test]
 fn wasm_runtime_boots_without_panicking() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
 
     // ── Step 1: Hello ────────────────────────────────────────────────────────
     let hello_events = runtime
@@ -177,7 +177,7 @@ fn typed_write_routes_through_publish_module_not_legacy_disable() {
     // Seed the active identity so the gate cannot be attributed to a missing
     // account (we want to reach the typed-decode gate, not `signer_not_installed`).
     // ADR-0064 §5: no persistent signer.
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     runtime
         .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "nip07".to_string(),

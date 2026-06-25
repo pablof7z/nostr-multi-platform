@@ -1,6 +1,6 @@
 use nmp_wasm::{
     ClientHello, RelayBootstrapEntry, ResolveRef, RuntimeStatus, SetIdentity, StartConfig,
-    WasmRuntime, WorkerEvent, WorkerRequest,
+    RawWasmAbiAdapter, WorkerEvent, WorkerRequest,
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ fn hello_round_trips_through_json() {
 
 #[test]
 fn start_runs_browser_wasm_facade_with_shared_relay_defaults() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
 
     let events = runtime
         .handle(WorkerRequest::Start(StartConfig {
@@ -52,7 +52,7 @@ fn start_runs_browser_wasm_facade_with_shared_relay_defaults() {
 #[test]
 fn start_consumes_injected_event_store_before_snapshot() {
     let store: Arc<dyn nmp_store::EventStore> = Arc::new(nmp_store::MemEventStore::new());
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     runtime
         .set_injected_store(Arc::clone(&store))
         .expect("pre-start event-store injection must succeed");
@@ -80,7 +80,7 @@ fn start_consumes_injected_event_store_before_snapshot() {
 
 #[test]
 fn event_store_injection_after_start_is_rejected() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     runtime
         .handle(WorkerRequest::Start(StartConfig {
             app_id: "chirp".to_string(),
@@ -120,7 +120,7 @@ fn update_bytes_event_round_trips_without_json_snapshot_envelope() {
 
 #[test]
 fn invalid_protocol_is_rejected_before_start() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
 
     let events = runtime
         .handle(WorkerRequest::Hello(ClientHello {
@@ -170,7 +170,7 @@ fn retired_json_dispatch_envelope_does_not_deserialize() {
     );
 }
 
-// V-01 Stage 2: `WasmRuntime` no longer keeps a local `Vec<LocalNote>` and no
+// V-01 Stage 2: `RawWasmAbiAdapter` no longer keeps a local `Vec<LocalNote>` and no
 // longer fabricates a snapshot that "contains" the published note. The pure
 // `KernelReducer` runs in WASM, but the actor + relay_worker (and therefore
 // every signed-event publish path) are `#[cfg(feature = "native")]` and
@@ -180,7 +180,7 @@ fn retired_json_dispatch_envelope_does_not_deserialize() {
 
 #[test]
 fn start_emits_flatbuffer_snapshot_update_from_real_kernel() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::Start(StartConfig {
             app_id: "chirp".to_string(),
@@ -212,7 +212,7 @@ fn start_emits_flatbuffer_snapshot_update_from_real_kernel() {
 
 #[test]
 fn set_identity_with_unknown_kind_returns_unsupported_signer_kind() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "magic".to_string(),
@@ -237,7 +237,7 @@ fn set_identity_with_unknown_kind_returns_unsupported_signer_kind() {
 
 #[test]
 fn set_identity_with_garbage_hex_returns_invalid_signer_pubkey() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "nip07".to_string(),
@@ -361,7 +361,7 @@ fn release_ref_round_trips_through_json() {
 
 #[test]
 fn resolve_ref_routes_through_structured_control_message() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
 
     let events = runtime
         .handle(WorkerRequest::ResolveRef(ResolveRef {
@@ -387,7 +387,7 @@ fn resolve_ref_routes_through_structured_control_message() {
 
 #[test]
 fn invalid_resolve_ref_returns_data_failure() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
 
     let events = runtime
         .handle(WorkerRequest::ResolveRef(ResolveRef {
@@ -417,7 +417,7 @@ fn invalid_resolve_ref_returns_data_failure() {
 // web Chirp shell (phase 3) can render the same routing inspector.
 #[test]
 fn recent_routing_decisions_returns_schema_versioned_json() {
-    let runtime = WasmRuntime::new();
+    let runtime = RawWasmAbiAdapter::new();
     let json = runtime.recent_routing_decisions();
     let value: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
     assert_eq!(value["schema_version"], 1);
