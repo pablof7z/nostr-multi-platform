@@ -1,7 +1,7 @@
 use std::ffi::c_char;
 
 const KOTLIN_BRIDGE: &str =
-    include_str!("../../../../apps/chirp/android/app/src/main/java/org/nmp/android/KernelBridge.kt");
+    include_str!("../../../../../apps/chirp/android/app/src/main/java/org/nmp/android/KernelBridge.kt");
 const LIB_RS: &str = include_str!("../src/lib.rs");
 const ACTION_RS: &str = include_str!("../src/action.rs");
 const PLATFORM_RS: &str = include_str!("../src/platform.rs");
