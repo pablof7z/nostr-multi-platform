@@ -230,12 +230,13 @@ pub(crate) fn request_runtime_deadline(
     let timeout = gloo_timers::callback::Timeout::new(delay_ms, move || {
         callback_deadline.borrow_mut().begin_fire();
         let outcome = drain_once(&callback_reducer, &callback_post_drain);
-        crate::relay_pool::fan_out_outbound(
+        let recorded_rejection = crate::relay_pool::fan_out_outbound(
             &callback_drivers,
             &callback_handlers,
+            &callback_reducer,
             &outcome.outbound,
         );
-        if outcome.dirty {
+        if outcome.dirty || recorded_rejection {
             crate::snapshot::push_snapshot_if_callback(
                 &callback_snapshot,
                 &callback_reducer,

@@ -5,8 +5,8 @@
 //!
 //! The native relay pool keys sockets by URL alone: `nmp_network::pool`'s
 //! `ensure_open` returns the *existing* handle and **ignores the role** when a
-//! URL is already open, and the actor's `relay_controls` map is keyed by
-//! `CanonicalRelayUrl`. So a `"both,indexer"` relay is **one** socket on
+//! URL is already open, and the actor's relay maps are keyed by the
+//! `nmp-relay-url` canonical form. So a `"both,indexer"` relay is **one** socket on
 //! native, recorded under the first role to claim it.
 //!
 //! The wasm32 transport previously spawned one `BrowserRelayDriver` per
@@ -29,9 +29,45 @@
 //! in `WasmRuntime::start`), independent of the driver pool — so role badges
 //! are unaffected.
 
+use std::fmt;
+
 use nmp_network::role::RelayRole;
 
 use crate::protocol::RelayBootstrapEntry;
+
+/// Upper bound for host-supplied startup relays on either startup relay list.
+pub(crate) const MAX_STARTUP_RELAY_COUNT: usize = 32;
+/// Upper bound for one host-supplied relay URL string before canonicalization.
+pub(crate) const MAX_RELAY_URL_BYTES: usize = 512;
+/// Browser-wide relay socket budget for startup + kernel-discovered targets.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) const MAX_BROWSER_RELAY_SOCKETS: usize = 64;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RelayAdmissionError {
+    reason: String,
+}
+
+impl RelayAdmissionError {
+    fn new(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+        }
+    }
+
+    #[must_use]
+    pub(crate) fn reason(&self) -> &str {
+        &self.reason
+    }
+}
+
+impl fmt::Display for RelayAdmissionError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.reason)
+    }
+}
+
+impl std::error::Error for RelayAdmissionError {}
 
 /// One planned driver: a distinct relay URL, the role its socket reports
 /// inbound frames under (native-parity primary), and the full set of roles the
@@ -47,20 +83,43 @@ pub(crate) struct DriverPlan {
 
 /// Expand a bootstrap role string into the role lanes it declares.
 ///
-/// Case-insensitive; surrounding whitespace trimmed. Unrecognized tokens fall
-/// back to `Content` so a typo or future-protocol role token never drops the
-/// relay from the pool (substrate-grade D0: the helper rejects nothing).
-fn roles_for_entry(role_str: &str) -> &'static [RelayRole] {
+/// Case-insensitive; surrounding whitespace trimmed. Unrecognized tokens fail
+/// closed so a typo or hostile startup config cannot silently create a content
+/// relay.
+fn roles_for_entry(role_str: &str) -> Result<&'static [RelayRole], RelayAdmissionError> {
     const CONTENT_ONLY: &[RelayRole] = &[RelayRole::Content];
     const INDEXER_ONLY: &[RelayRole] = &[RelayRole::Indexer];
     const BOTH_LANES: &[RelayRole] = &[RelayRole::Content, RelayRole::Indexer];
 
     match role_str.trim().to_ascii_lowercase().as_str() {
-        "indexer" => INDEXER_ONLY,
-        "both" | "both,indexer" => BOTH_LANES,
-        // "content" and every unrecognized value — safe fallback.
-        _ => CONTENT_ONLY,
+        "content" => Ok(CONTENT_ONLY),
+        "indexer" => Ok(INDEXER_ONLY),
+        "both" | "both,indexer" => Ok(BOTH_LANES),
+        "" => Err(RelayAdmissionError::new("relay role is required")),
+        other => Err(RelayAdmissionError::new(format!(
+            "unknown relay role `{other}`"
+        ))),
     }
+}
+
+fn role_label(roles: &[RelayRole]) -> &'static str {
+    let has_content = roles.contains(&RelayRole::Content);
+    let has_indexer = roles.contains(&RelayRole::Indexer);
+    match (has_content, has_indexer) {
+        (true, true) => "both",
+        (false, true) => "indexer",
+        _ => "content",
+    }
+}
+
+fn canonicalize_relay_url(raw: &str) -> Result<String, RelayAdmissionError> {
+    if raw.len() > MAX_RELAY_URL_BYTES {
+        return Err(RelayAdmissionError::new(format!(
+            "relay URL exceeds {MAX_RELAY_URL_BYTES} bytes"
+        )));
+    }
+    nmp_relay_url::canonicalize(raw)
+        .ok_or_else(|| RelayAdmissionError::new("relay URL must be ws:// or wss:// with a host"))
 }
 
 /// Native-parity primary role for a URL's declared role set: the first of
@@ -68,6 +127,7 @@ fn roles_for_entry(role_str: &str) -> &'static [RelayRole] {
 /// for `both` / `both,indexer`, matching the native pool's first-role-wins
 /// slot. Empty sets cannot occur (`roles_for_entry` never returns `[]`), but
 /// fall back to `Content` defensively.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 fn primary_role(roles: &[RelayRole]) -> RelayRole {
     RelayRole::all()
         .into_iter()
@@ -78,17 +138,11 @@ fn primary_role(roles: &[RelayRole]) -> RelayRole {
 /// Collapse bootstrap entries to one [`DriverPlan`] per distinct relay URL,
 /// unioning declared roles across duplicate entries and preserving first-seen
 /// URL order.
-///
-/// URLs are matched by exact string — the same key `fan_out_outbound` uses
-/// (`driver.url() == message.relay_url()`) and the same string the kernel's
-/// `configured_relays` were seeded from, so a planned driver always matches the
-/// kernel's outbound targeting. (URL canonicalization — trailing slash, case —
-/// is a separate concern handled kernel-side by `CanonicalRelayUrl`; it is not
-/// the cause of the duplicate-socket bug, which was exact-string role doubling.)
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 pub(crate) fn plan_drivers(bootstrap: &[RelayBootstrapEntry]) -> Vec<DriverPlan> {
     let mut plans: Vec<DriverPlan> = Vec::with_capacity(bootstrap.len());
     for entry in bootstrap {
-        let lanes = roles_for_entry(&entry.role);
+        let lanes = roles_for_entry(&entry.role).expect("startup bootstrap is admitted first");
         if let Some(existing) = plans.iter_mut().find(|plan| plan.url == entry.url) {
             for &role in lanes {
                 if !existing.roles.contains(&role) {
@@ -111,72 +165,91 @@ pub(crate) fn plan_drivers(bootstrap: &[RelayBootstrapEntry]) -> Vec<DriverPlan>
     plans
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Admit and canonicalize host-supplied startup relay configuration.
+///
+/// The returned entries are canonical URL keys, deduplicated by URL, with role
+/// unions collapsed to the canonical host-facing role strings (`content`,
+/// `indexer`, `both`). Any off-contract URL, role, list length, or missing
+/// accepted relay fails the whole `Start` closed so the runtime never silently
+/// dials an unintended socket.
+pub(crate) fn admit_startup_relays(
+    relays: Vec<String>,
+    relay_bootstrap: Vec<RelayBootstrapEntry>,
+) -> Result<Vec<RelayBootstrapEntry>, RelayAdmissionError> {
+    if relays.len() > MAX_STARTUP_RELAY_COUNT {
+        return Err(RelayAdmissionError::new(format!(
+            "relays exceeds {MAX_STARTUP_RELAY_COUNT} entries"
+        )));
+    }
+    if relays.iter().any(|url| url.len() > MAX_RELAY_URL_BYTES) {
+        return Err(RelayAdmissionError::new(format!(
+            "relays contains a URL over {MAX_RELAY_URL_BYTES} bytes"
+        )));
+    }
+    if relay_bootstrap.len() > MAX_STARTUP_RELAY_COUNT {
+        return Err(RelayAdmissionError::new(format!(
+            "relay_bootstrap exceeds {MAX_STARTUP_RELAY_COUNT} entries"
+        )));
+    }
 
-    fn entry(url: &str, role: &str) -> RelayBootstrapEntry {
-        RelayBootstrapEntry {
-            url: url.to_string(),
-            role: role.to_string(),
+    let raw = crate::protocol::relay_bootstrap_from_config(relays, relay_bootstrap);
+    if raw.is_empty() {
+        return Err(RelayAdmissionError::new("at least one relay is required"));
+    }
+
+    let mut plans: Vec<DriverPlan> = Vec::with_capacity(raw.len());
+    for (idx, entry) in raw.into_iter().enumerate() {
+        let url = canonicalize_relay_url(&entry.url).map_err(|err| {
+            RelayAdmissionError::new(format!("relay[{idx}] rejected: {}", err.reason()))
+        })?;
+        let lanes = roles_for_entry(&entry.role).map_err(|err| {
+            RelayAdmissionError::new(format!("relay[{idx}] rejected: {}", err.reason()))
+        })?;
+        if let Some(existing) = plans.iter_mut().find(|plan| plan.url == url) {
+            for &role in lanes {
+                if !existing.roles.contains(&role) {
+                    existing.roles.push(role);
+                }
+            }
+        } else {
+            plans.push(DriverPlan {
+                url,
+                primary_role: RelayRole::Content,
+                roles: lanes.to_vec(),
+            });
         }
     }
 
-    #[test]
-    fn both_indexer_collapses_to_one_driver_recorded_as_content() {
-        // The exact shape that produced duplicate WebSockets in the browser:
-        // a `both,indexer` relay must yield ONE driver, not two.
-        let plans = plan_drivers(&[entry("wss://relay.primal.net", "both,indexer")]);
-        assert_eq!(plans.len(), 1, "both,indexer must be a single socket");
-        assert_eq!(plans[0].url, "wss://relay.primal.net");
-        // Native first-role-wins: Content precedes Indexer in RelayRole::all().
-        assert_eq!(plans[0].primary_role, RelayRole::Content);
-        assert_eq!(plans[0].roles, vec![RelayRole::Content, RelayRole::Indexer]);
+    if plans.is_empty() {
+        return Err(RelayAdmissionError::new("at least one relay is required"));
     }
 
-    #[test]
-    fn indexer_only_relay_is_one_indexer_driver() {
-        let plans = plan_drivers(&[entry("wss://purplepag.es", "indexer")]);
-        assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].primary_role, RelayRole::Indexer);
-        assert_eq!(plans[0].roles, vec![RelayRole::Indexer]);
-    }
+    Ok(plans
+        .into_iter()
+        .map(|plan| RelayBootstrapEntry {
+            url: plan.url,
+            role: role_label(&plan.roles).to_string(),
+        })
+        .collect())
+}
 
-    #[test]
-    fn duplicate_url_distinct_roles_unions_into_one_driver() {
-        // Two bootstrap entries for the same URL (one Content, one Indexer)
-        // must collapse to a single driver whose role union is [Content,
-        // Indexer] and whose primary is Content.
-        let plans = plan_drivers(&[
-            entry("wss://nos.lol", "content"),
-            entry("wss://nos.lol", "indexer"),
-        ]);
-        assert_eq!(plans.len(), 1, "same URL must not open two sockets");
-        assert_eq!(plans[0].primary_role, RelayRole::Content);
-        assert_eq!(plans[0].roles, vec![RelayRole::Content, RelayRole::Indexer]);
-    }
+/// Admit a kernel-targeted on-demand outbound URL before matching or spawning a
+/// browser driver.
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) fn admit_on_demand_url(raw: &str) -> Result<String, RelayAdmissionError> {
+    canonicalize_relay_url(raw)
+}
 
-    #[test]
-    fn distinct_urls_get_distinct_drivers_in_first_seen_order() {
-        let plans = plan_drivers(&[
-            entry("wss://relay.primal.net", "both,indexer"),
-            entry("wss://purplepag.es", "indexer"),
-            entry("wss://nos.lol", "both,indexer"),
-        ]);
-        let urls: Vec<&str> = plans.iter().map(|p| p.url.as_str()).collect();
-        assert_eq!(
-            urls,
-            vec!["wss://relay.primal.net", "wss://purplepag.es", "wss://nos.lol"],
-        );
-        // The reported bug: primal/nos.lol doubled, purplepag once. Now all are
-        // single sockets.
-        assert_eq!(plans.len(), 3);
-    }
-
-    #[test]
-    fn unrecognized_role_falls_back_to_content() {
-        let plans = plan_drivers(&[entry("wss://relay.example", "totally-new-role")]);
-        assert_eq!(plans.len(), 1);
-        assert_eq!(plans[0].primary_role, RelayRole::Content);
+#[must_use]
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+pub(crate) fn diagnostic_target_for(raw: &str) -> String {
+    if raw.len() > MAX_RELAY_URL_BYTES {
+        "<relay-url-too-long>".to_string()
+    } else {
+        raw.trim().to_string()
     }
 }
+
+#[cfg(test)]
+#[path = "relay_plan/tests.rs"]
+mod tests;

@@ -40,7 +40,8 @@ impl WasmRuntime {
         }
 
         let relay_bootstrap =
-            crate::protocol::relay_bootstrap_from_config(config.relays, config.relay_bootstrap);
+            crate::relay_plan::admit_startup_relays(config.relays, config.relay_bootstrap)
+                .map_err(|err| WasmRuntimeError::InvalidConfig(err.to_string()))?;
 
         self.reducer.borrow_mut().set_configured_relays(
             relay_bootstrap
@@ -148,12 +149,20 @@ impl WasmRuntime {
     pub(super) fn fan_outbound(&self, outbound: Vec<OutboundMessage>) {
         let has_outbound = !outbound.is_empty();
         #[cfg(target_arch = "wasm32")]
-        crate::relay_pool::fan_out_outbound(&self.relays, &self.handlers_slot, &outbound);
+        let recorded_rejection = crate::relay_pool::fan_out_outbound(
+            &self.relays,
+            &self.handlers_slot,
+            &self.reducer,
+            &outbound,
+        );
         #[cfg(not(target_arch = "wasm32"))]
         let _ = outbound;
+        #[cfg(not(target_arch = "wasm32"))]
+        let recorded_rejection = false;
         if has_outbound {
             self.request_event_or_kernel_deadline();
         }
+        let _ = recorded_rejection;
     }
 
     pub(super) fn snapshot_event(&mut self) -> WorkerEvent {

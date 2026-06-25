@@ -5198,6 +5198,7 @@ dependencies = [
  "nmp-feed",
  "nmp-network",
  "nmp-nip18",
+ "nmp-relay-url",
  "nmp-signer-iface",
  "nmp-store",
  "nostr",

@@ -28,6 +28,7 @@ nmp-nip18 = { path = "../nmp-nip18" }
 # `nmp-core::relay_protocol` to `nmp-network::relay_protocol`. Wasm32 uses the
 # pure-Rust `native = false` slice of nmp-network (no tungstenite/mio/rustls).
 nmp-network = { path = "../nmp-network", default-features = false }
+nmp-relay-url = { path = "../nmp-relay-url" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 nostr = { workspace = true, features = ["std"] }
 serde = { workspace = true, features = ["derive"] }

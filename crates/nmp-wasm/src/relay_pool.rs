@@ -25,16 +25,16 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use nmp_core::{KernelReducer, OutboundMessage, RelayFrame};
-use nmp_network::role::RelayRole;
 use nmp_network::browser_driver::{BrowserKernelHandlers, BrowserRelayDriver};
+use nmp_network::role::RelayRole;
 
 use crate::protocol::RelayBootstrapEntry;
 use crate::runtime::WasmRuntimeError;
 use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 
-/// Fan an outbound batch to the driver whose URL matches each message,
-/// spawning a driver on demand for any kernel-targeted URL not yet in the
-/// pool. Used by every kernel-handler closure (connected/text/binary), the
+/// Fan an outbound batch to the driver whose canonical URL matches each
+/// message, spawning a driver on demand for any kernel-targeted URL not yet in
+/// the pool. Used by every kernel-handler closure (connected/text/binary), the
 /// event/deadline runtime wake, and the write publish path.
 ///
 /// One driver per URL (relay pool is now URL-keyed — see
@@ -51,12 +51,11 @@ use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 /// native: the kernel discovers relays (NIP-65 mailboxes, event-tag hints)
 /// and targets them; the transport merely obeys.
 ///
-/// The transport trusts the URL without re-checking admission: the router
-/// already applies `RelayAdmissionPolicy` on the untrusted lanes (NIP-65
-/// mailbox, hints, provenance) and filters per-account blocked relays BEFORE
-/// an `OutboundMessage` exists, so every URL reaching here is already
-/// admissible. (Native's `send_outbound` likewise carries no admission check.)
-/// The spawned driver reports inbound frames under the message's role.
+/// The transport still performs a final browser admission check before dialing:
+/// URL canonicalization must succeed, matching happens on the canonical key,
+/// and on-demand growth stops at [`crate::relay_plan::MAX_BROWSER_RELAY_SOCKETS`].
+/// Rejections are recorded as relay-failure diagnostics through the kernel
+/// rather than being silently dropped.
 ///
 /// A spawn needs the `handlers` slot populated — the runtime fills it in
 /// `spawn_relay_drivers` before any callback can fire. If it is empty (pool
@@ -72,27 +71,69 @@ use crate::snapshot::{push_snapshot_if_callback, RuntimeMeta};
 pub(crate) fn fan_out_outbound(
     drivers: &Rc<RefCell<Vec<Rc<BrowserRelayDriver>>>>,
     handlers: &Rc<RefCell<Option<BrowserKernelHandlers>>>,
+    reducer: &Rc<RefCell<KernelReducer>>,
     outbound: &[OutboundMessage],
-) {
+) -> bool {
+    let mut recorded_rejection = false;
     for message in outbound {
-        let url = message.relay_url();
-        let known = drivers.borrow().iter().any(|driver| driver.url() == url);
+        let raw_url = message.relay_url();
+        let url = match crate::relay_plan::admit_on_demand_url(raw_url) {
+            Ok(url) => url,
+            Err(err) => {
+                let target = crate::relay_plan::diagnostic_target_for(raw_url);
+                reducer.borrow_mut().handle_relay_failed(
+                    message.role(),
+                    &target,
+                    format!("relay_admission_rejected: {}", err.reason()),
+                );
+                recorded_rejection = true;
+                continue;
+            }
+        };
+        let known = drivers
+            .borrow()
+            .iter()
+            .any(|driver| driver.url() == url.as_str());
         if !known {
+            if drivers.borrow().len() >= crate::relay_plan::MAX_BROWSER_RELAY_SOCKETS {
+                reducer.borrow_mut().handle_relay_failed(
+                    message.role(),
+                    &url,
+                    format!(
+                        "relay_admission_rejected: browser socket budget {} exhausted",
+                        crate::relay_plan::MAX_BROWSER_RELAY_SOCKETS
+                    ),
+                );
+                recorded_rejection = true;
+                continue;
+            }
             // Spawn-on-miss: the kernel targeted a URL not yet in the pool.
             let Some(handlers) = handlers.borrow().as_ref().cloned() else {
                 // Pool not started (no handler bag) — preserve drop semantics.
                 continue;
             };
-            match BrowserRelayDriver::new(url.to_string(), message.role(), handlers) {
+            match BrowserRelayDriver::new(url.clone(), message.role(), handlers) {
                 Ok(driver) => drivers.borrow_mut().push(driver),
-                // Unparseable/invalid URL — nothing safe to dial; drop it.
-                Err(_err) => continue,
+                Err(err) => {
+                    reducer.borrow_mut().handle_relay_failed(
+                        message.role(),
+                        &url,
+                        format!("relay_admission_rejected: failed to open WebSocket: {err:?}"),
+                    );
+                    recorded_rejection = true;
+                    continue;
+                }
             }
         }
-        for driver in drivers.borrow().iter().filter(|driver| driver.url() == url) {
+        for driver in drivers
+            .borrow()
+            .iter()
+            .filter(|driver| driver.url() == url.as_str())
+        {
             let _ = driver.send_text(message.text());
         }
     }
+    recorded_rejection
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -178,7 +219,7 @@ pub(crate) fn build_handlers(
                 is_reconnect,
                 nmp_core::time::Instant::now(),
             );
-            fan_out_outbound(&drivers, &handlers_slot, &outbound);
+            fan_out_outbound(&drivers, &handlers_slot, &reducer, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,
@@ -208,7 +249,7 @@ pub(crate) fn build_handlers(
                 RelayFrame::Text(text),
                 nmp_core::time::Instant::now(),
             );
-            fan_out_outbound(&drivers, &handlers_slot, &outbound);
+            fan_out_outbound(&drivers, &handlers_slot, &reducer, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,
@@ -238,7 +279,7 @@ pub(crate) fn build_handlers(
                 RelayFrame::Binary(bytes),
                 nmp_core::time::Instant::now(),
             );
-            fan_out_outbound(&drivers, &handlers_slot, &outbound);
+            fan_out_outbound(&drivers, &handlers_slot, &reducer, &outbound);
             push_snapshot_if_callback(&snapshot_callback, &reducer, &meta);
             request_runtime_deadline(
                 &deadline,
