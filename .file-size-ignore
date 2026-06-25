@@ -38,6 +38,7 @@ ios/*/Sources/*/Core/Generated/*.swift
 # FlatBuffers generated bindings (machine-generated, not hand-authored)
 crates/**/src/**/generated/*.rs
 ios/*/*/Bridge/Generated/*.swift
+apps/*/ios/*/Bridge/Generated/*.swift
 apps/chirp/android/app/src/main/java/nmp/**
 apps/*/android/app/src/main/kotlin/nmp/transport/**
 web/chirp/src/nmp/generated/**
