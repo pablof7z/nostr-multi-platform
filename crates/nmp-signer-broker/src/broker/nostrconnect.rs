@@ -182,6 +182,20 @@ impl BunkerBroker {
             }
         };
 
+        // Emit diagnostics if any frames were dropped due to intake overflow.
+        // Use "connected" (non-terminal) stage so observers do not interpret
+        // this as handshake completion.
+        let dropped_count = intake.dropped_count();
+        if dropped_count > 0 {
+            self.emit_progress(
+                "connected",
+                Some(&format!(
+                    "warning: dropped {} relay EVENT frames due to intake overflow",
+                    dropped_count
+                )),
+            );
+        }
+
         let signer_pk = match PublicKey::from_hex(&outcome.signer_pubkey_hex) {
             Ok(pk) => pk,
             Err(e) => {
@@ -222,4 +236,3 @@ impl BunkerBroker {
         );
     }
 }
-

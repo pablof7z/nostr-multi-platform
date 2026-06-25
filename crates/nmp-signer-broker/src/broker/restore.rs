@@ -87,9 +87,23 @@ impl BunkerBroker {
                 return;
             }
         };
-        let Some((relay, inbound_rx)) = self.connect_session(&payload.relays, &local_keys, &cancel) else {
+        let Some((relay, inbound_rx, dropped_count)) = self.connect_session(&payload.relays, &local_keys, &cancel) else {
             return;
         };
+
+        // Emit diagnostics if any frames were dropped due to intake overflow.
+        // Use "connected" (non-terminal) stage so observers do not interpret
+        // this as session completion.
+        if dropped_count > 0 {
+            self.emit_progress(
+                "connected",
+                Some(&format!(
+                    "warning: dropped {} relay EVENT frames due to intake overflow",
+                    dropped_count
+                )),
+            );
+        }
+
         let transport = BrokerTransport::new(Arc::clone(&relay), local_keys, remote_pubkey);
         // No-op if superseded (detached cancel + newer session staged while we
         // dialed). Tear our own relay down off-path and stop.
@@ -114,7 +128,7 @@ impl BunkerBroker {
         relays: &[String],
         local_keys: &Keys,
         cancel: &AtomicBool,
-    ) -> Option<(Arc<dyn RelayClient>, CbReceiver<Value>)> {
+    ) -> Option<(Arc<dyn RelayClient>, CbReceiver<Value>, u64)> {
         // Bounded to SIGNER_BROKER_INTAKE_CAP to prevent unbounded growth
         // against a noisy/hostile relay (D5/D8).
         let intake = Arc::new(BoundedIntake::new());
@@ -171,6 +185,7 @@ impl BunkerBroker {
             return None;
         }
 
-        Some((relay, inbound_rx))
+        let dropped_count = intake.dropped_count();
+        Some((relay, inbound_rx, dropped_count))
     }
 }

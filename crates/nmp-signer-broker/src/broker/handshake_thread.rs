@@ -77,10 +77,6 @@ impl BunkerBroker {
             intake_for_cb.try_admit(event)
         });
 
-        // Keep a reference to the intake's drop counter for diagnostics.
-        // We'll emit this when the handshake completes.
-        let dropped_counter = intake.drop_counter();
-
         // Dial the first relay. Cycle through on failure.
         let mut relay_result: Option<Arc<dyn RelayClient>> = None;
         let mut last_err: Option<String> = None;
@@ -168,11 +164,14 @@ impl BunkerBroker {
             }
         };
 
-                // Emit diagnostics if any frames were dropped due to intake overflow.
-        let dropped_count = dropped_counter.load(Ordering::Relaxed);
+        // Emit diagnostics if any frames were dropped due to intake overflow.
+        // Use "connected" (non-terminal) stage so observers do not interpret
+        // this as handshake completion. The terminal "ready" signal is emitted
+        // only after the signer is installed via install_completed_signer.
+        let dropped_count = intake.dropped_count();
         if dropped_count > 0 {
             self.emit_progress(
-                "ready",
+                "connected",
                 Some(&format!(
                     "warning: dropped {} relay EVENT frames due to intake overflow",
                     dropped_count

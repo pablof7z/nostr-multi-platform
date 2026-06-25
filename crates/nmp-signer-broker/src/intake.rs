@@ -63,11 +63,6 @@ impl BoundedIntake {
         self.receiver.clone()
     }
 
-    /// Return a clone of the sender for the event callback.
-    pub fn sender(&self) -> Sender<Value> {
-        self.sender.clone()
-    }
-
     /// Return a cloneable handle to the drop counter for diagnostics emission.
     pub fn drop_counter(&self) -> Arc<AtomicU64> {
         Arc::clone(&self.dropped_frames)
