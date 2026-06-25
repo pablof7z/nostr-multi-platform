@@ -50,7 +50,7 @@ use nmp_signer_iface::UnsignedEvent;
 pub(crate) fn publish_unsigned_event(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
-    unsigned: UnsignedEvent,
+    mut unsigned: UnsignedEvent,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
     parked_ops: &mut ParkedSignerOps,
@@ -65,6 +65,7 @@ pub(crate) fn publish_unsigned_event(
         // `Failed` terminal so the spinner clears, and is a no-op for `None`.
         return toast_no_account(kernel, "publish", correlation_id);
     }
+    crate::publish::finalize_outbound_tags(unsigned.kind, &mut unsigned.tags, kernel);
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op that is parked in `parked_ops` and `poll()`ed
     // by the actor's idle section — the actor thread never blocks (D8).
@@ -149,7 +150,7 @@ pub(crate) fn publish_unsigned_event(
 pub(crate) fn publish_unsigned_event_to_relays(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,
-    unsigned: UnsignedEvent,
+    mut unsigned: UnsignedEvent,
     relays: Vec<crate::publish::RelayUrl>,
     correlation_id: Option<String>,
     signer_pubkey: Option<String>,
@@ -169,6 +170,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
     if let Err(reason) = validate_explicit_relays(&relays) {
         return fail_invalid_target(kernel, reason, correlation_id);
     }
+    crate::publish::finalize_outbound_tags(unsigned.kind, &mut unsigned.tags, kernel);
     let target = PublishTarget::Explicit { relays };
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op parked in `parked_ops` with the explicit

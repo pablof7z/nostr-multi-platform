@@ -220,6 +220,7 @@ impl PoolInner {
             self.worker_event_tx.clone(),
             keepalive_idle,
             keepalive_pong,
+            self.config.user_agent.clone(),
         )
     }
 

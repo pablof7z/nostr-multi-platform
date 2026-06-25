@@ -4400,6 +4400,7 @@ dependencies = [
  "nmp-nip47",
  "nmp-nip57",
  "nmp-nip59",
+ "nmp-nip89",
  "nmp-planner",
  "nmp-relations",
  "nmp-router",
@@ -4577,6 +4578,7 @@ dependencies = [
  "nmp-nip59",
  "nmp-nip77",
  "nmp-nip84",
+ "nmp-nip89",
  "nmp-planner",
  "nmp-router",
  "nmp-store",
@@ -4985,6 +4987,13 @@ dependencies = [
  "nmp-signer-iface",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "nmp-nip89"
+version = "0.8.0"
+dependencies = [
+ "nostr",
 ]
 
 [[package]]

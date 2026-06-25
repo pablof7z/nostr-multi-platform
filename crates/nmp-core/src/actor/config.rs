@@ -80,6 +80,8 @@ pub struct ActorConfigSources {
     /// kernel only through the `#[cfg(test-support)]`-gated
     /// `Kernel::set_gc_budget_ceiling` method in `apply_to_kernel`.
     pub gc_budget_ceiling: Option<usize>,
+    pub user_agent: Arc<Mutex<Option<String>>>,
+    pub outbound_public_tags: Arc<Mutex<Option<Vec<Vec<String>>>>>,
 }
 
 impl ActorConfigSources {
@@ -164,6 +166,13 @@ impl ActorConfigSources {
                 .ok()
                 .and_then(|guard| guard.as_ref().map(Arc::clone)),
             gc_budget_ceiling: self.gc_budget_ceiling,
+            user_agent: self.user_agent.lock().ok().and_then(|g| g.clone()),
+            outbound_public_tags: self
+                .outbound_public_tags
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+                .unwrap_or_default(),
         }
     }
 }
@@ -191,9 +200,25 @@ pub struct ActorConfig {
     /// Test-support only — see `ActorConfigSources::gc_budget_ceiling`.
     /// Always `None` in production builds.
     pub gc_budget_ceiling: Option<usize>,
+    pub user_agent: Option<String>,
+    pub outbound_public_tags: Vec<Vec<String>>,
 }
 
 impl ActorConfig {
+    /// Construct the relay `Pool`, threading the app-configured relay
+    /// User-Agent (Flow A) into the handshake. `None` → the transport's
+    /// built-in `nmp/<ver>` fallback.
+    #[must_use]
+    pub fn build_pool(&self, events: impl nmp_network::pool::PoolEventSink) -> nmp_network::pool::Pool {
+        nmp_network::pool::Pool::new(
+            nmp_network::pool::PoolConfig {
+                user_agent: self.user_agent.clone(),
+                ..Default::default()
+            },
+            events,
+        )
+    }
+
     #[must_use]
     pub fn kernel_with_account_slot(
         &self,
@@ -239,6 +264,7 @@ impl ActorConfig {
         kernel.set_contacts_lookup(Arc::clone(&self.contacts_lookup));
         kernel.set_blocked_relay_lookup(Arc::clone(&self.blocked_relays));
         kernel.set_bootstrap_self_kinds_override(self.bootstrap_self_kinds.clone());
+        kernel.set_outbound_public_tags(self.outbound_public_tags.clone());
         if let Some(hook) = &self.coverage_hook {
             kernel.lifecycle_mut().set_coverage_hook(Arc::clone(hook));
         }

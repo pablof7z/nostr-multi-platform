@@ -175,6 +175,8 @@ fn dispatch_capability_result(
         external_event_sink_policy: crate::slots::new_external_event_sink_policy_slot(),
         kernel_clock: crate::slots::new_kernel_clock_slot(),
         gc_budget_ceiling: None,
+        user_agent: Arc::new(Mutex::new(None)),
+        outbound_public_tags: Arc::new(Mutex::new(None)),
     }
     .snapshot();
 

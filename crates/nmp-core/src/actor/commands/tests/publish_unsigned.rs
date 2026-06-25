@@ -209,3 +209,65 @@ fn publish_unsigned_event_valid_tags_pass_through() {
     assert!(outbound[0].text.contains("test-slug"));
     assert!(outbound[0].text.contains("\"title\""));
 }
+
+/// Flow B (auto arm): when the kernel carries app-declared
+/// `outbound_public_tags`, a PublicRoutable publish (kind:1 note) gets the tag
+/// appended to the SIGNED event. Proves `finalize_outbound_tags` is wired into
+/// the Auto (NIP-65 outbox) publish arm, not just the helper unit.
+#[test]
+fn auto_arm_appends_client_tag_on_public_note() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    kernel.set_outbound_public_tags(vec![vec!["client".into(), "Chirp".into()]]);
+    let unsigned = nmp_signer_iface::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 1,
+        tags: vec![],
+        content: "a public note".into(),
+        created_at: 1_700_000_000,
+    };
+    let outbound = publish_unsigned_event(
+        &id,
+        &mut kernel,
+        unsigned,
+        None,
+        None,
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
+    );
+    assert!(!outbound.is_empty());
+    // The client tag is in the signed payload (so it is covered by the sig).
+    assert!(
+        outbound[0].text.contains("[\"client\",\"Chirp\"]"),
+        "kind:1 signed event must carry the NIP-89 client tag, got: {}",
+        outbound[0].text
+    );
+}
+
+/// Flow B negative (auto arm): with NO app-declared tags, a kind:1 note carries
+/// no client tag — proves the tag is kernel-driven, never spuriously injected.
+#[test]
+fn auto_arm_no_client_tag_when_kernel_has_none() {
+    let (mut id, mut kernel) = fresh();
+    sign_in_with_nip65(&mut id, &mut kernel);
+    let unsigned = nmp_signer_iface::UnsignedEvent {
+        pubkey: String::new(),
+        kind: 1,
+        tags: vec![],
+        content: "a public note".into(),
+        created_at: 1_700_000_000,
+    };
+    let outbound = publish_unsigned_event(
+        &id,
+        &mut kernel,
+        unsigned,
+        None,
+        None,
+        &mut crate::actor::pending_sign::ParkedSignerOps::new(),
+    );
+    assert!(!outbound.is_empty());
+    assert!(
+        !outbound[0].text.contains("client"),
+        "no app-declared tags → no client tag, got: {}",
+        outbound[0].text
+    );
+}
