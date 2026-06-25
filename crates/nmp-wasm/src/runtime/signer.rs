@@ -2,18 +2,140 @@
 //! arms for [`super::WasmRuntime`].
 
 use crate::protocol::{
-    BeginSign, CapabilityFailure, DeliverSignerResponse, SetIdentity, WorkerEvent,
+    BeginSign, CapabilityFailure, DeliverSignerResponse, IdentityRelayPermission,
+    RelayBootstrapEntry, SetIdentity, WorkerEvent,
 };
 use crate::signer_slot;
 
 use super::WasmRuntime;
+
+const MAX_IDENTITY_RELAYS: usize = 32;
 
 fn signed_json_to_raw_event(signed_json: &str) -> Result<nmp_store::RawEvent, String> {
     serde_json::from_str(signed_json)
         .map_err(|e| format!("signed event JSON did not decode as RawEvent: {e}"))
 }
 
+#[derive(Default)]
+struct RoleFlags {
+    read: bool,
+    write: bool,
+    indexer: bool,
+}
+
+fn role_flags(role: &str) -> RoleFlags {
+    let mut flags = RoleFlags::default();
+    for token in role.split(',').map(|part| part.trim().to_ascii_lowercase()) {
+        match token.as_str() {
+            "read" => flags.read = true,
+            "write" => flags.write = true,
+            "both" => {
+                flags.read = true;
+                flags.write = true;
+            }
+            "indexer" => flags.indexer = true,
+            // Legacy/bootstrap transport token. Treat it as read+write for
+            // merge purposes so a signer relay does not erase content reach.
+            "content" => {
+                flags.read = true;
+                flags.write = true;
+            }
+            _ => {}
+        }
+    }
+    flags
+}
+
+fn role_from_flags(flags: RoleFlags) -> Option<String> {
+    let mut parts = Vec::new();
+    match (flags.read, flags.write) {
+        (true, true) => parts.push("both"),
+        (true, false) => parts.push("read"),
+        (false, true) => parts.push("write"),
+        (false, false) => {}
+    }
+    if flags.indexer {
+        parts.push("indexer");
+    }
+    (!parts.is_empty()).then(|| parts.join(","))
+}
+
+fn merge_roles(existing: &str, incoming: &str) -> String {
+    let mut flags = role_flags(existing);
+    let add = role_flags(incoming);
+    flags.read |= add.read;
+    flags.write |= add.write;
+    flags.indexer |= add.indexer;
+    role_from_flags(flags).unwrap_or_else(|| existing.to_string())
+}
+
+fn role_for_identity_relay(relay: &IdentityRelayPermission) -> Option<&'static str> {
+    match (relay.read, relay.write) {
+        (true, true) => Some("both,indexer"),
+        (true, false) => Some("read,indexer"),
+        // A write relay is where this account's already-published events are
+        // likely to live, so it must be a bootstrap read candidate too.
+        (false, true) => Some("both,indexer"),
+        (false, false) => None,
+    }
+}
+
+fn identity_relay_entry(relay: &IdentityRelayPermission) -> Option<RelayBootstrapEntry> {
+    let role = role_for_identity_relay(relay)?;
+    let url = nmp_core::canonical_relay_url(&relay.url)?.to_string();
+    Some(RelayBootstrapEntry {
+        url,
+        role: role.to_string(),
+    })
+}
+
 impl WasmRuntime {
+    fn merge_identity_relays(&mut self, relays: &[IdentityRelayPermission]) -> bool {
+        if relays.is_empty() {
+            return false;
+        }
+
+        let mut merged = self.meta.borrow().relay_bootstrap.clone();
+        let mut changed = false;
+        for relay in relays.iter().take(MAX_IDENTITY_RELAYS) {
+            let Some(entry) = identity_relay_entry(relay) else {
+                continue;
+            };
+            match merged.iter_mut().find(|existing| {
+                nmp_core::canonical_relay_url(&existing.url)
+                    .map(|url| url.to_string())
+                    .as_deref()
+                    == Some(entry.url.as_str())
+            }) {
+                Some(existing) => {
+                    let role = merge_roles(&existing.role, &entry.role);
+                    if role != existing.role || existing.url != entry.url {
+                        existing.url = entry.url;
+                        existing.role = role;
+                        changed = true;
+                    }
+                }
+                None => {
+                    merged.push(entry);
+                    changed = true;
+                }
+            }
+        }
+
+        if !changed {
+            return false;
+        }
+
+        self.reducer.borrow_mut().set_configured_relays(
+            merged
+                .iter()
+                .map(|entry| (entry.url.clone(), entry.role.clone()))
+                .collect(),
+        );
+        self.meta.borrow_mut().relay_bootstrap = merged;
+        true
+    }
+
     /// Seed the kernel's active account from a [`SetIdentity`] identity request.
     ///
     /// Pure: no I/O, no JS-event-loop interaction. Validation failure surfaces
@@ -32,11 +154,15 @@ impl WasmRuntime {
                 // Use the canonical lowercase hex from the parsed key, not the
                 // raw wire string. Uppercase input must not seed a non-canonical
                 // active_account (B2).
+                let relay_config_changed = self.merge_identity_relays(&request.identity_relays);
                 let outbound = self
                     .reducer
                     .borrow_mut()
                     .set_active_account(canonical_pubkey);
                 self.fan_outbound(outbound);
+                if relay_config_changed {
+                    self.request_event_drain();
+                }
                 self.accepted_with_snapshot("nmp.set_identity".to_string(), request.correlation_id)
             }
             Err(error) => vec![WorkerEvent::CapabilityFailure(CapabilityFailure {

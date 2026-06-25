@@ -218,6 +218,7 @@ fn set_identity_with_unknown_kind_returns_unsupported_signer_kind() {
             kind: "magic".to_string(),
             pubkey_hex: String::new(),
             correlation_id: "set-1".to_string(),
+            identity_relays: Vec::new(),
         }))
         .unwrap();
     match &events[0] {
@@ -242,6 +243,7 @@ fn set_identity_with_garbage_hex_returns_invalid_signer_pubkey() {
             kind: "nip07".to_string(),
             pubkey_hex: "not-hex".to_string(),
             correlation_id: "set-1".to_string(),
+            identity_relays: Vec::new(),
         }))
         .unwrap();
     match &events[0] {

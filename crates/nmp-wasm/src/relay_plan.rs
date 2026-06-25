@@ -47,20 +47,35 @@ pub(crate) struct DriverPlan {
 
 /// Expand a bootstrap role string into the role lanes it declares.
 ///
-/// Case-insensitive; surrounding whitespace trimmed. Unrecognized tokens fall
-/// back to `Content` so a typo or future-protocol role token never drops the
-/// relay from the pool (substrate-grade D0: the helper rejects nothing).
-fn roles_for_entry(role_str: &str) -> &'static [RelayRole] {
-    const CONTENT_ONLY: &[RelayRole] = &[RelayRole::Content];
-    const INDEXER_ONLY: &[RelayRole] = &[RelayRole::Indexer];
-    const BOTH_LANES: &[RelayRole] = &[RelayRole::Content, RelayRole::Indexer];
-
-    match role_str.trim().to_ascii_lowercase().as_str() {
-        "indexer" => INDEXER_ONLY,
-        "both" | "both,indexer" => BOTH_LANES,
-        // "content" and every unrecognized value — safe fallback.
-        _ => CONTENT_ONLY,
+/// Case-insensitive; surrounding whitespace trimmed. Supports the kernel's
+/// NIP-65 role vocabulary (`read`, `write`, `both`, `indexer` and composites).
+/// Unrecognized tokens fall back to `Content` so a typo or future-protocol role
+/// token never drops the relay from the pool (substrate-grade D0: the helper
+/// rejects nothing).
+fn roles_for_entry(role_str: &str) -> Vec<RelayRole> {
+    let mut roles = Vec::new();
+    for token in role_str
+        .split(',')
+        .map(|part| part.trim().to_ascii_lowercase())
+    {
+        match token.as_str() {
+            "read" | "write" | "both" | "content" => {
+                if !roles.contains(&RelayRole::Content) {
+                    roles.push(RelayRole::Content);
+                }
+            }
+            "indexer" => {
+                if !roles.contains(&RelayRole::Indexer) {
+                    roles.push(RelayRole::Indexer);
+                }
+            }
+            _ => {}
+        }
     }
+    if roles.is_empty() {
+        roles.push(RelayRole::Content);
+    }
+    roles
 }
 
 /// Native-parity primary role for a URL's declared role set: the first of
@@ -90,7 +105,7 @@ pub(crate) fn plan_drivers(bootstrap: &[RelayBootstrapEntry]) -> Vec<DriverPlan>
     for entry in bootstrap {
         let lanes = roles_for_entry(&entry.role);
         if let Some(existing) = plans.iter_mut().find(|plan| plan.url == entry.url) {
-            for &role in lanes {
+            for role in lanes {
                 if !existing.roles.contains(&role) {
                     existing.roles.push(role);
                 }
@@ -101,7 +116,7 @@ pub(crate) fn plan_drivers(bootstrap: &[RelayBootstrapEntry]) -> Vec<DriverPlan>
                 // Provisional — finalized below once the full role union for
                 // this URL is known.
                 primary_role: RelayRole::Content,
-                roles: lanes.to_vec(),
+                roles: lanes,
             });
         }
     }
@@ -166,7 +181,11 @@ mod tests {
         let urls: Vec<&str> = plans.iter().map(|p| p.url.as_str()).collect();
         assert_eq!(
             urls,
-            vec!["wss://relay.primal.net", "wss://purplepag.es", "wss://nos.lol"],
+            vec![
+                "wss://relay.primal.net",
+                "wss://purplepag.es",
+                "wss://nos.lol"
+            ],
         );
         // The reported bug: primal/nos.lol doubled, purplepag once. Now all are
         // single sockets.
@@ -178,5 +197,21 @@ mod tests {
         let plans = plan_drivers(&[entry("wss://relay.example", "totally-new-role")]);
         assert_eq!(plans.len(), 1);
         assert_eq!(plans[0].primary_role, RelayRole::Content);
+    }
+
+    #[test]
+    fn nip65_read_indexer_role_keeps_both_transport_lanes() {
+        let plans = plan_drivers(&[entry("wss://relay.example", "read,indexer")]);
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].primary_role, RelayRole::Content);
+        assert_eq!(plans[0].roles, vec![RelayRole::Content, RelayRole::Indexer]);
+    }
+
+    #[test]
+    fn nip65_write_role_is_content_lane() {
+        let plans = plan_drivers(&[entry("wss://relay.example", "write")]);
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].primary_role, RelayRole::Content);
+        assert_eq!(plans[0].roles, vec![RelayRole::Content]);
     }
 }

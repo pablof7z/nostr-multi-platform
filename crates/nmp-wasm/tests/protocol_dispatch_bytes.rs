@@ -91,6 +91,7 @@ fn typed_write_after_set_identity_fails_at_decode_after_1008() {
             pubkey_hex: "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
                 .to_string(),
             correlation_id: "set-1".to_string(),
+            identity_relays: Vec::new(),
         }))
         .unwrap();
     match &set_events[0] {

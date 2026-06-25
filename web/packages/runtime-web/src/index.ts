@@ -4,6 +4,7 @@ export type {
   WorkerEvent,
   RuntimeStatus,
   ChirpAction,
+  IdentityRelayPermission,
 } from "./protocol";
 export { protocolVersion, eventCorrelationId, labelRuntimeStatus } from "./protocol";
 

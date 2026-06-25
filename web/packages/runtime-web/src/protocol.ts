@@ -63,6 +63,9 @@ export type WorkerRequest =
       kind: string;
       pubkey_hex: string;
       correlation_id: string;
+      /** Raw relay permissions reported by the identity backend, e.g. NIP-07
+       *  getRelays(). The worker owns canonicalization and role mapping. */
+      identity_relays?: IdentityRelayPermission[];
     }
   /** #1753 S6 — begin a NIP-07 sign capability round-trip. The worker parks a
    *  sign op (ADR-0050 §D1) and emits a `sign_request` event the MAIN THREAD
@@ -103,6 +106,12 @@ export type RuntimeStatus =
         | "capability_rejected"
         | "protocol_mismatch";
     };
+
+export type IdentityRelayPermission = {
+  url: string;
+  read?: boolean;
+  write?: boolean;
+};
 
 export type WorkerEvent =
   | { type: "hello_accepted"; protocol_version: number; status: RuntimeStatus }

@@ -9,6 +9,7 @@ import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
 import {
   eventCorrelationId,
+  type IdentityRelayPermission,
   protocolVersion,
   type RuntimeStatus,
   type WorkerEvent,
@@ -89,7 +90,7 @@ export type NmpClient = {
   /** Install a NIP-07 signer. The host must call window.nostr.getPublicKey()
    *  first and supply the resulting hex pubkey. The wasm runtime installs the
    *  signer synchronously; subsequent write actions use it. */
-  setSigner(pubkeyHex: string): Promise<RuntimeSnapshot>;
+  setSigner(pubkeyHex: string, identityRelays?: IdentityRelayPermission[]): Promise<RuntimeSnapshot>;
   /** S6 — parks a NIP-07 sign op and emits sign_request for the main thread. */
   beginSign(accountPubkey: string, unsignedJson: string): void;
   /** #968 — request the kernel-owned routing diagnostics snapshot. */
@@ -317,10 +318,16 @@ class WorkerNmpClient extends BaseClient {
     return this.request(chirpActionRequest(action, correlationId), correlationId);
   }
 
-  async setSigner(pubkeyHex: string): Promise<RuntimeSnapshot> {
+  async setSigner(pubkeyHex: string, identityRelays?: IdentityRelayPermission[]): Promise<RuntimeSnapshot> {
     await this.helloReady;
     const correlation_id = makeCorrelationId("web-signer", this.nextCorrelationId++);
-    return this.request({ type: "set_identity", kind: "nip07", pubkey_hex: pubkeyHex, correlation_id });
+    return this.request({
+      type: "set_identity",
+      kind: "nip07",
+      pubkey_hex: pubkeyHex,
+      correlation_id,
+      identity_relays: identityRelays,
+    });
   }
 
   beginSign(accountPubkey: string, unsignedJson: string): void {
@@ -450,12 +457,13 @@ class InProcessNmpClient extends BaseClient {
     return this.send(chirpActionRequest(action, correlationId));
   }
 
-  async setSigner(pubkeyHex: string): Promise<RuntimeSnapshot> {
+  async setSigner(pubkeyHex: string, identityRelays?: IdentityRelayPermission[]): Promise<RuntimeSnapshot> {
     return this.send({
       type: "set_identity",
       kind: "nip07",
       pubkey_hex: pubkeyHex,
       correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),
+      identity_relays: identityRelays,
     });
   }
 
