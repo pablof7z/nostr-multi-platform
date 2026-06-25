@@ -1,11 +1,12 @@
 //! PR-4 composition seams for `KernelReducer`.
 //!
-//! These four methods let a wasm32 composition root wire the OP-feed engine
-//! into the kernel without depending on `NmpApp` (which lives in `nmp-ffi`,
-//! not available on wasm32) or the native actor thread:
+//! These methods let a wasm32 composition root wire feed engines and protocol
+//! projections into the kernel without depending on `NmpApp` (which lives in
+//! `nmp-ffi`, not available on wasm32) or the native actor thread:
 //!
 //! * `register_event_observer` — wire a `KernelEventObserver` into the fan-out slot.
 //! * `register_typed_snapshot_projection` — wire a typed FlatBuffers projection.
+//! * `register_feed_author_provider` — wire a feed's rendered-author provider.
 //! * `active_account_handle` — read the active-account pubkey slot.
 //! * `event_store_handle` — read the kernel event-store `Arc`.
 //!
@@ -22,6 +23,7 @@
 //!   caller never panics.
 //! * **D8** — all methods are O(n-observers) at worst; no I/O, no blocking.
 
+use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use crate::actor::register_rust_observer;
@@ -30,7 +32,9 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::slots::ActiveAccountSlot;
 use crate::store::EventStore;
 use crate::substrate::{ContactsLookup, IngestParser, ProfileLookup};
-use crate::{KernelEventObserver, KernelEventObserverId, TypedProjectionData};
+use crate::{
+    EmittedFeedAuthorsSlot, KernelEventObserver, KernelEventObserverId, TypedProjectionData,
+};
 
 impl super::KernelReducer {
     /// Construct a reducer around an externally-opened event store.
@@ -114,6 +118,63 @@ impl super::KernelReducer {
         // Poisoned mutex: D6 silent fail. The projection simply never
         // appears in snapshots — same graceful-degrade as a missing
         // registration.
+    }
+
+    /// Register the rendered-author provider for a feed projection.
+    ///
+    /// This is the reducer-owned twin of `NmpApp::register_feed_author_provider`.
+    /// The caller should normally use a higher-level helper that pairs this
+    /// provider with the feed's typed sidecar, so rendered author rows are always
+    /// resolved through `refs.profile` in the same frame.
+    pub fn register_feed_author_provider(
+        &self,
+        feed_key: impl Into<String>,
+        f: impl Fn() -> Vec<String> + Send + Sync + 'static,
+    ) {
+        if let Ok(mut guard) = self.snapshot_slot.lock() {
+            guard.register_feed_author_provider(feed_key, f);
+        }
+    }
+
+    /// Return the registered feed-author-provider keys without running them.
+    ///
+    /// Used by composition tests to prove a typed feed sidecar is structurally
+    /// paired with an author provider under the same key.
+    #[must_use]
+    pub fn registered_feed_author_provider_keys(&self) -> Vec<String> {
+        self.snapshot_slot
+            .lock()
+            .map(|registry| {
+                registry
+                    .registered_feed_author_provider_keys()
+                    .map(String::from)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// Run one feed-author provider by key for structural tests.
+    #[must_use]
+    pub fn run_feed_author_provider_for_test(&self, feed_key: &str) -> Vec<String> {
+        self.snapshot_slot
+            .lock()
+            .map(|registry| registry.run_feed_author_provider(feed_key))
+            .unwrap_or_default()
+    }
+
+    /// Return the registry handles needed by a paired feed render source.
+    ///
+    /// The typed producer records emitted authors through the sink while the
+    /// registry mutex is held by `run_typed`, so it must capture the sink handle
+    /// up front instead of re-locking the registry from inside the closure.
+    #[must_use]
+    pub fn feed_render_source_handles(&self) -> Option<(Arc<AtomicU64>, EmittedFeedAuthorsSlot)> {
+        self.snapshot_slot.lock().ok().map(|registry| {
+            (
+                registry.frame_tick_rev_handle(),
+                registry.emitted_feed_authors_handle(),
+            )
+        })
     }
 
     // ── Kernel handle pass-throughs ───────────────────────────────────────

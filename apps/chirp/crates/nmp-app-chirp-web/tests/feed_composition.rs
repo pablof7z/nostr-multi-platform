@@ -278,6 +278,14 @@ fn setup_chirp_web_feeds_projection_appears_in_snapshot() {
 
     let mut runtime = WasmRuntime::new();
     let _setup = setup_chirp_web_feeds(&mut runtime);
+    let provider_keys = runtime
+        .reducer_handle()
+        .borrow()
+        .registered_feed_author_provider_keys();
+    assert!(
+        provider_keys.contains(&OP_FEED_SNAPSHOT_KEY.to_string()),
+        "nmp.feed.home typed projection must be paired with a feed-author provider; got {provider_keys:?}",
+    );
 
     // `snapshot_bytes_for_test` builds the FlatBuffers update frame the same
     // way the wasm32 relay-pool sink does (via `make_update_frame`), which
@@ -306,6 +314,33 @@ fn setup_chirp_web_feeds_projection_appears_in_snapshot() {
         mute_proj.schema_id,
         nmp_nip51::MUTE_LIST_SCHEMA_ID,
         "mute projection must carry the NIP-51 mute-list schema id"
+    );
+}
+
+#[test]
+fn paired_feed_author_provider_reports_visible_author() {
+    let mut runtime = WasmRuntime::new();
+    let setup = setup_chirp_web_feeds(&mut runtime);
+
+    runtime
+        .reducer_handle()
+        .borrow_mut()
+        .set_active_account(ALICE.to_string());
+    setup.notify_account_changed();
+
+    let note = make_kind1(OP_ID, ALICE, "author provider note");
+    runtime
+        .reducer_handle()
+        .borrow()
+        .fire_event_observers_for_test(&note);
+
+    let authors = runtime
+        .reducer_handle()
+        .borrow()
+        .run_feed_author_provider_for_test(OP_FEED_SNAPSHOT_KEY);
+    assert!(
+        authors.contains(&ALICE.to_string()),
+        "nmp.feed.home author provider must report visible feed authors for refs.profile demand; got {authors:?}",
     );
 }
 

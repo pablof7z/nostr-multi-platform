@@ -12,8 +12,8 @@
 //! 8. Registers the follow set and mute projection as event observers.
 //! 9. Registers `on_change` callbacks that reset the engine on every
 //!    follow-set perspective change.
-//! 10. Registers the typed `nmp.feed.home` and `nmp.nip51.mute_list` snapshot
-//!    projections.
+//! 10. Registers the paired `nmp.feed.home` feed render source and the
+//!     `nmp.nip51.mute_list` typed snapshot projection.
 //!
 //! The returned [`ChirpWebFeedSetup`] gives the caller handles to:
 //!
@@ -40,14 +40,14 @@
 
 use std::sync::{Arc, Mutex};
 
-use nmp_core::KernelEventObserver;
-use nmp_core::TypedProjectionData;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::SuppressionLookup;
-use nmp_feed::FeedRequest;
+use nmp_core::KernelEventObserver;
+use nmp_core::TypedProjectionData;
+use nmp_feed::FeedRenderSource;
 use nmp_nip01::op_feed::{
+    encode_op_feed_snapshot, op_feed_observer, register_op_feed, OpFeedEngine,
     OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID, OP_FEED_SCHEMA_VERSION, OP_FEED_SNAPSHOT_KEY,
-    OpFeedEngine, encode_op_feed_snapshot, op_feed_observer, register_op_feed,
 };
 use nmp_nip02::ActiveFollowSet;
 use nmp_nip51::MuteListProjection;
@@ -238,21 +238,23 @@ pub fn setup_chirp_web_feeds(runtime: &mut WasmRuntime) -> ChirpWebFeedSetup {
         engine_for_mute.reset_for_perspective_change();
     }));
 
-    // 10. Register the typed snapshot projection under "nmp.feed.home".
+    // 10. Register the feed render source under "nmp.feed.home".
+    //
+    // The wasm runtime pairs the typed sidecar with the feed-author provider
+    // from the same per-tick materialization, so `refs.profile` demand covers
+    // exactly the author rows this feed emits.
     let engine_for_projection = Arc::clone(&engine);
-    reducer
-        .borrow()
-        .register_typed_snapshot_projection(OP_FEED_SNAPSHOT_KEY, move || {
-            let snapshot = engine_for_projection.snapshot(&FeedRequest::default());
-            Some(TypedProjectionData {
-                key: OP_FEED_SNAPSHOT_KEY.to_string(),
-                schema_id: OP_FEED_SCHEMA_ID.to_string(),
-                schema_version: OP_FEED_SCHEMA_VERSION,
-                file_identifier: String::from_utf8_lossy(OP_FEED_FILE_IDENTIFIER).into_owned(),
-                payload: encode_op_feed_snapshot(&snapshot),
-                ..Default::default()
-            })
-        });
+    let source = FeedRenderSource::new(move || engine_for_projection.snapshot_current_window());
+    runtime.register_feed_render_source(OP_FEED_SNAPSHOT_KEY, source, move |snapshot| {
+        Some(TypedProjectionData {
+            key: OP_FEED_SNAPSHOT_KEY.to_string(),
+            schema_id: OP_FEED_SCHEMA_ID.to_string(),
+            schema_version: OP_FEED_SCHEMA_VERSION,
+            file_identifier: String::from_utf8_lossy(OP_FEED_FILE_IDENTIFIER).into_owned(),
+            payload: encode_op_feed_snapshot(snapshot),
+            ..Default::default()
+        })
+    });
     let mute_for_projection = Arc::clone(&mute);
     reducer
         .borrow()
