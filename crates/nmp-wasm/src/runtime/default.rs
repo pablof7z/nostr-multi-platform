@@ -10,6 +10,7 @@ impl Default for WasmRuntime {
         Self {
             reducer: Rc::new(RefCell::new(KernelReducer::new())),
             injected_store: Rc::new(RefCell::new(None)),
+            publish_resolver_factory: Rc::new(RefCell::new(None)),
             meta: Rc::new(RefCell::new(RuntimeMeta::new())),
             snapshot_callback: Rc::new(RefCell::new(None)),
             post_tick_drain: Rc::new(RefCell::new(None)),

@@ -167,6 +167,13 @@ app.launchEnvironment["NMP_TEST_NSEC"] = "nsec1..."
 app.launchEnvironment["NMP_TEST_RELAYS"] = #"[["ws://127.0.0.1:10547","both"]]"#
 ```
 
+### Web — query parameters (Playwright + local preview)
+
+| Query parameter | Format | Behaviour |
+|---|---|---|
+| `relay_bootstrap` | JSON array of `[url, role]` pairs, for example `[[\"ws://127.0.0.1:1001\",\"indexer\"],[\"ws://127.0.0.1:1002\",\"both,indexer\"]]` | Replaces Chirp web's default relay bootstrap while preserving relay roles. Use this for outbox tests that must prove pure indexers stay discovery-only and write-capable relays seed the local publish lane. |
+| `relay` | repeated URL param | Legacy one-relay smoke override. Each URL is treated as `both,indexer` so the single fixture can serve discovery and writes. |
+
 ### Android — intent extras (`adb shell am start`)
 
 | Extra key | Type | Behaviour |

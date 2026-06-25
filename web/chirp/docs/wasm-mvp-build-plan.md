@@ -115,11 +115,8 @@ error toasts (`last_error_toast`/`category` now ride the envelope), D9
 store/cache metrics, D10 negentropy badge, D6 wire-sub inspector data, and —
 because the Tier-2 sidecar now ships — M4 resolved-profile read-back
 (`nmp.profile.resolved` / `claimed_profiles` are unconditional builtins), M7 +
-D4 publish queue/outbox/summary with per-relay verdicts (the
-`publish_path.rs:244-247` comment already promises "per-relay terminal
-verdicts arrive via the `action_results` projection on the next snapshot
-push" — this PR is what makes that true), D7 claim registry, D11 signer panel
-data (`signed_events`).
+D4 publish queue/outbox/summary with per-relay verdicts, D7 claim registry,
+D11 signer panel data (`signed_events`).
 
 **Dependencies / degraded mode** — no dependencies; this is the lead PR.
 Absent: the snapshot stays the current honest-but-empty
@@ -154,9 +151,8 @@ divergence risk, it doesn't add one.
   ceiling demands) — a timer started on `Start`, cancelled on `Stop`:
   every interval (1 Hz; retry deadlines are seconds-scale per the
   `tick()` doc, `kernel_reducer.rs:177-185`) call `reducer.tick()`, fan the
-  outbound through `publish_path::fan_out_outbound`
-  (`publish_path.rs:100-110`), and push a snapshot **iff outbound was
-  non-empty** (no 1 Hz snapshot spam; D8 — the host supplies the timer, the
+  outbound through the runtime relay pool, and push a snapshot **iff outbound
+  was non-empty** (no 1 Hz snapshot spam; D8 — the host supplies the timer, the
   kernel owns what happens per tick). Timer primitive: `gloo-timers`
   `Interval` (already used by `BrowserRelayDriver`'s ping cadence via
   `nmp-network`) or `setInterval` via `js-sys`; wasm32-only, native shim
@@ -376,26 +372,24 @@ is a classic merge-conflict line; trivial to resolve).
 
 **What it builds**
 
-- Verified baseline: the wasm write path is `PublishNote` kind:1 top-level
-  only — variant gate `publish_path.rs:158-172`, NIP-07-only backend gate
-  `:174-182`, reply fail-closed `:190-196`; correlation-id threading into the
-  engine already works (`:232-235`,
-  `kernel_reducer.rs:228-238`).
+- Verified baseline: the wasm write path supports top-level kind:1 through
+  `dispatch_bytes` + the shared router resolver; reply composition still needs
+  typed Rust-owned NIP-10 tag construction. Correlation-id threading into the
+  engine already works through `runtime/dispatch.rs` and
+  `kernel_reducer/composition_seams.rs`.
 - `crates/nmp-core` — extract the native reply-tag builder from
-  `actor/commands/publish.rs::publish_note` (it "walks the kernel's events
-  read-cache for NIP-10 root/parent reply tags", per the comment at
-  `publish_path.rs:185-189`) into an always-compiled shared builder (e.g.
+  `actor/commands/publish.rs::publish_note` (it walks the kernel's events
+  read-cache for NIP-10 root/parent reply tags) into an always-compiled shared builder (e.g.
   `publish/builders.rs`) callable with a kernel event lookup; native command
   path calls the moved code (move, don't duplicate — same rule as PR-3's
   `build_open_interest`). Expose
   `KernelReducer::build_reply_tags(reply_to_id) -> Option<Vec<Vec<String>>>`
   (or fold into a `build_unsigned_note` helper) so tag derivation never
   leaves Rust.
-- `crates/nmp-wasm/src/publish_path.rs` — replace the `reply_to_id`
-  fail-closed arm: resolve root/parent through the reducer **before** the
-  sign `.await` (borrow discipline at `:133-142` — nothing borrowed across
-  the await), build the unsigned kind:1 with NIP-10 marker tags, then the
-  existing sign → `publish_signed_event` → fan-out → push flow unchanged.
+- `crates/nmp-wasm/src/runtime/dispatch.rs` — route a typed reply action:
+  resolve root/parent through the reducer before signing, build the unsigned
+  kind:1 with NIP-10 marker tags, then the existing sign →
+  `publish_pre_signed` → fan-out → push flow unchanged.
   Unknown `reply_to_id` (event not in the store) stays fail-closed with a
   stable reason (`reply_target_unknown:`-prefixed) — never publish a reply
   with fabricated markers (honest degraded mode).
@@ -405,10 +399,9 @@ is a classic merge-conflict line; trivial to resolve).
 - Builder tests pinning byte-identical tags with the native `publish_note`
   path for: reply-to-root, reply-to-reply (root+parent markers), missing
   target.
-- `publish_path.rs` reason-string tests updated: replies no longer return
+- Reason-string tests updated: replies no longer return the legacy
   `publish_path_not_wired_for_kind`; the unknown-target reason has a stable
-  prefix (the existing prefix-pinning test pattern at
-  `publish_path.rs:261-277`).
+  prefix.
 
 **What it unblocks** — M6 write half: reply from the thread view. Completes
 the MVP loop (post → thread → reply).
@@ -430,8 +423,7 @@ peers' lint sweeps touch (cf. recent `nmp-signers`/`nmp-planner` lint PRs).
 
 ### PR-6 — Async write path: React / Follow / Unfollow (G5 remainder; v1, immediately post-MVP)
 
-**What it builds** — same seam as PR-5, kind by kind (the PR-boundary note at
-`publish_path.rs:25-34` explicitly anticipates this): extract the native
+**What it builds** — same seam as PR-5, kind by kind: extract the native
 NIP-25 `k`-tag derivation (react command) and the kind:3 follow-set merge
 (**from kernel contact state** — `Kernel::seed_contacts`, never the shell)
 into the shared builders; route the typed `nmp.nip25.react`/`nmp.follow`/`nmp.unfollow`
@@ -582,7 +574,7 @@ a wasm-test rig is justified — proposing that rig is out of MVP scope.
    (`kernel/mod.rs:2714`), `set_follow_feed_kinds` wrapper
    (`actor/commands/publish.rs:698-731`; kernel method
    `ingest/contacts.rs:293`), FlatFeed twin (`interest_feed.rs`),
-   write-path fail-closed arms (`publish_path.rs:158-196`), F-TTL `force`
+   write-path fail-closed arms (`runtime/dispatch.rs`), F-TTL `force`
    hardcoded false (`runtime.rs:398,404`), no wasm-bindgen-test infra
    (`lib.rs:199-201`), `register_op_feed` is `NmpApp`-free
    (`nmp-nip01/src/op_feed/wiring.rs:117`).

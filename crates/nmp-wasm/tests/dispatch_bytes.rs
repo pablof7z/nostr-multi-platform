@@ -455,11 +455,11 @@ mod typed_decode {
         }
     }
 
-    /// After #1008: `nmp.publish` now routes through the typed registry and
-    /// `WasmOutboxResolver` is wired in. A non-FlatBuffers payload (like the
-    /// `PROBE_PAYLOAD` marker bytes) reaches `PublishModule::decode_payload`
-    /// which rejects it as malformed — NOT the old "outbox resolver not wired"
-    /// token. This proves the publish short-circuit skip is GONE.
+    /// After #1008: `nmp.publish` now routes through the typed registry. A
+    /// non-FlatBuffers payload (like the `PROBE_PAYLOAD` marker bytes) reaches
+    /// `PublishModule::decode_payload` which rejects it as malformed — NOT the
+    /// old "outbox resolver not wired" token. This proves the publish
+    /// short-circuit skip is GONE.
     #[test]
     fn publish_malformed_payload_fails_closed_at_decode_after_1008() {
         let mut runtime = WasmRuntime::new();

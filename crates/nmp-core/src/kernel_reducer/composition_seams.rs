@@ -9,6 +9,8 @@
 //! * `register_feed_author_provider` — wire a feed's rendered-author provider.
 //! * `active_account_handle` — read the active-account pubkey slot.
 //! * `event_store_handle` — read the kernel event-store `Arc`.
+//! * `indexer_relays_handle` / `local_write_relays_handle` — read the relay
+//!   slots shared with the publish resolver.
 //!
 //! All methods delegate either to `self.kernel` (for slot handles that are
 //! already `pub` there) or to `self.observer_slot` / `self.snapshot_slot`
@@ -29,7 +31,7 @@ use std::sync::Arc;
 use crate::actor::register_rust_observer;
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use crate::slots::ActiveAccountSlot;
+use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
 use crate::substrate::{ContactsLookup, IngestParser, ProfileLookup};
 use crate::{
@@ -202,6 +204,26 @@ impl super::KernelReducer {
         self.kernel.event_store_handle()
     }
 
+    /// Return the kernel-owned indexer relay slot.
+    ///
+    /// Production publish resolver composition passes this to
+    /// `nmp_router::Nip65OutboxResolver` so discovery-kind publish fanout reads
+    /// the same slot `set_configured_relays` writes.
+    #[must_use]
+    pub fn indexer_relays_handle(&self) -> IndexerRelaysSlot {
+        self.kernel.indexer_relays_handle()
+    }
+
+    /// Return the kernel-owned local write relay slot.
+    ///
+    /// Production publish resolver composition passes this to
+    /// `nmp_router::Nip65OutboxResolver` so active-account cold-start publish
+    /// fallback reads the same role-filtered write set as native.
+    #[must_use]
+    pub fn local_write_relays_handle(&self) -> LocalWriteRelaysSlot {
+        self.kernel.local_write_relays_handle()
+    }
+
     /// Install the profile lookup used by kernel profile readers.
     ///
     /// Wasm composition roots cannot go through the native `AppHost`
@@ -286,11 +308,10 @@ impl super::KernelReducer {
 
     /// Install the publish outbox resolver on the wrapped kernel.
     ///
-    /// The wasm composition root calls this after `Start` to swap the kernel's
-    /// default `NoopOutboxResolver` (which resolves zero relay targets) for a
-    /// real resolver that returns the configured relay URLs as write targets.
-    /// Without this, every `PublishTarget::Auto` resolves to no relays and
-    /// events are silently dropped.
+    /// App composition roots call this to swap the kernel's default
+    /// `NoopOutboxResolver` (which resolves zero relay targets) for the
+    /// production router resolver. Without this, every `PublishTarget::Auto`
+    /// resolves to no relays and fails closed with `NoTargets`.
     pub fn set_publish_resolver(&mut self, resolver: Arc<dyn crate::publish::OutboxResolver>) {
         self.kernel.set_publish_resolver(resolver);
     }
@@ -314,8 +335,8 @@ impl super::KernelReducer {
     ) -> Vec<crate::relay::OutboundMessage> {
         use nmp_signer_iface::SignedEvent;
         // Reconstruct the `SignedEvent` shape the kernel publish path expects.
-        // `p_tags` drives the recipient-inbox fanout in `OutboxResolver::resolve`
-        // (#1008 WasmOutboxResolver honours this by filtering the `#p` list).
+        // `p_tags` drives the recipient-inbox fanout in
+        // `OutboxResolver::resolve`.
         let p_tags: Vec<String> = raw
             .tags
             .iter()

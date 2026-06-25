@@ -23,6 +23,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use nmp_core::slots::PublishResolverFactory;
 use nmp_core::substrate::ActionModule;
 use nmp_core::{ActionRegistry, KernelReducer};
 
@@ -65,6 +66,13 @@ pub struct WasmRuntime {
     /// drivers/deadlines capture it. Empty means the default in-memory reducer
     /// stays in place.
     injected_store: Rc<RefCell<Option<Arc<dyn nmp_store::EventStore>>>>,
+    /// App composition publish-resolver factory.
+    ///
+    /// `nmp-wasm` owns browser transport and protocol framing, not relay
+    /// routing policy. App composition roots that can depend on `nmp-router`
+    /// install the same resolver factory native uses; `Start` invokes it
+    /// against the fresh kernel slots after store/configured-relay setup.
+    publish_resolver_factory: Rc<RefCell<Option<Arc<PublishResolverFactory>>>>,
     /// Runtime metadata mirrored into every snapshot update. Shared with
     /// the relay-pool sink via `Rc<RefCell>` so the sink can build a fresh
     /// snapshot from kernel + meta without holding a reference to the
@@ -184,6 +192,33 @@ impl WasmRuntime {
             ));
         }
         *self.injected_store.borrow_mut() = Some(store);
+        Ok(())
+    }
+
+    /// Install the app composition publish resolver factory.
+    ///
+    /// The factory receives the kernel-owned event store, indexer relay slot,
+    /// local-write relay slot, and active-account slot every time `Start`
+    /// installs a resolver. This mirrors the native `NmpApp` composition seam
+    /// without making `nmp-wasm` depend on `nmp-router`.
+    pub fn set_publish_resolver_factory<F>(&mut self, factory: F) -> Result<(), WasmRuntimeError>
+    where
+        F: Fn(
+                Arc<dyn nmp_store::EventStore>,
+                nmp_core::slots::IndexerRelaysSlot,
+                nmp_core::slots::LocalWriteRelaysSlot,
+                nmp_core::slots::ActiveAccountSlot,
+            ) -> Arc<dyn nmp_core::publish::OutboxResolver>
+            + Send
+            + Sync
+            + 'static,
+    {
+        if self.meta.borrow().started {
+            return Err(WasmRuntimeError::InvalidConfig(
+                "publish resolver factory must be installed before Start".to_string(),
+            ));
+        }
+        *self.publish_resolver_factory.borrow_mut() = Some(Arc::new(factory));
         Ok(())
     }
 

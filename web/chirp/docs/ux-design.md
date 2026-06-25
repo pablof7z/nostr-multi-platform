@@ -942,7 +942,7 @@ lands.
 | GAP-5 | **No negentropy session-stats projection anywhere** (rounds, ranges compared, have/need counts, est. bytes avoided) | Sync panel session block — NMP's most persuasive number | new kernel projection (`nmp-nip77` → typed sidecar) |
 | GAP-6 | No OPFS-SQLite browser backend yet; ADR-0054 Stage #5 adds the store-injection seam, but `database_name` is still only a handshake/store-selection input until the backend lands | Store panel persistence block, offline copy | `nmp-wasm` store binding + `nmp-sqlite-wasm` backend |
 | GAP-7 | No source attribution for resolved profiles (store-hit vs. live relay) | profile whisper strip detail | optional kernel projection field |
-| GAP-8 | Reply path fails closed (`publish_path_not_wired_for_kind`); NIP-10 tag construction is host-side per issue #906 but unwired in wasm | Reply compose happy path | `nmp-wasm/src/publish_path.rs` |
+| GAP-8 | Reply composition still needs a typed NIP-10 action so tag construction stays in Rust rather than the host | Reply compose happy path | `nmp-wasm/src/runtime/dispatch.rs` + NIP-10 action module |
 | GAP-9 | Closed by the read-only `routing_decisions` worker request; the panel now consumes Rust-rendered routing DTO JSON from `recent_routing_decisions()` | Inspector ▸ Routing (lane waterfall) | keep renderer thin; do not recreate routing logic in TS |
 | GAP-10 | No per-event "seen on relays" provenance list (only `claimed_events.relay_count`) | provenance chip popover with relay names | kernel feed-projection field |
 

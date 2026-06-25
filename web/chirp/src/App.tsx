@@ -21,6 +21,7 @@ import { ChatsPanel, GroupsPanel, SettingsPanel, WalletPanel } from "./features/
 import { HomePanel } from "./features/HomePanel";
 import { NmpInspector } from "./features/inspector/Inspector";
 import { Sidebar, type AppTab } from "./features/Sidebar";
+import { chirpRelayOverrideFromSearch } from "./chirpConfig";
 
 // NIP-07 browser extension interface (window.nostr — EIP-1193-style extension).
 declare global {
@@ -95,12 +96,7 @@ export default function App() {
 
   const start = async () => {
     setStarting(true);
-    // Allow the Playwright smoke test (and local dev) to inject a custom relay
-    // via ?relay=ws://... query params. Multiple ?relay= values are collected.
-    // Production deployments omit the param; the wasm uses its built-in defaults.
-    const params = new URLSearchParams(window.location.search);
-    const relays = params.getAll("relay").filter(Boolean);
-    setSnapshot(await client.start(relays.length > 0 ? relays : undefined));
+    setSnapshot(await client.start(chirpRelayOverrideFromSearch(window.location.search)));
     setStarting(false);
   };
 

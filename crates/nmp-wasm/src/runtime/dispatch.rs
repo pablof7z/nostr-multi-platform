@@ -81,9 +81,10 @@ impl WasmRuntime {
     /// each `ActorCommand` variant:
     ///
     /// * **`PublishSignedEvent`** — routes directly to the kernel publish engine
-    ///   via [`nmp_core::KernelReducer::publish_pre_signed`]. The
-    ///   `WasmOutboxResolver` wired at `Start` (#1008) provides the write relay
-    ///   set. Returns `ActionAccepted + UpdateBytes`.
+    ///   via [`nmp_core::KernelReducer::publish_pre_signed`]. App composition
+    ///   installs the shared publish resolver before `Start`; otherwise the
+    ///   kernel fails closed with `NoTargets`. Returns `ActionAccepted +
+    ///   UpdateBytes`.
     ///
     /// * **`PublishRawEvent` / `PublishProfile`** — needs the `BeginSign`
     ///   capability round-trip. Builds unsigned JSON, parks a sign op via
@@ -174,7 +175,7 @@ impl WasmRuntime {
         for cmd in commands {
             match cmd {
                 // Pre-signed event: route through the kernel publish engine.
-                // The `WasmOutboxResolver` (#1008) provides the write relay set.
+                // App composition provides the shared publish resolver.
                 ActorCommand::Publish(PublishCommand::SignedEvent {
                     raw,
                     target,

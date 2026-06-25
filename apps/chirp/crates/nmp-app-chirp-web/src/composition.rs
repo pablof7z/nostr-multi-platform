@@ -40,6 +40,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use nmp_core::publish::OutboxResolver;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::SuppressionLookup;
 use nmp_core::KernelEventObserver;
@@ -51,6 +52,7 @@ use nmp_nip01::op_feed::{
 };
 use nmp_nip02::ActiveFollowSet;
 use nmp_nip51::MuteListProjection;
+use nmp_store::EventStore;
 use nmp_wasm::WasmRuntime;
 
 const MUTE_LIST_SNAPSHOT_KEY: &str = "nmp.nip51.mute_list";
@@ -138,10 +140,11 @@ fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
 /// will observe kernel events as soon as relays are connected.
 ///
 /// Takes `&mut` so it can register the non-publish write modules (ADR-0064 / S3,
-/// #1751 / #1008) into the runtime's typed action registry: `nmp-wasm` cannot
-/// depend on the NIP crates (D0 / layering), so this composition root — which
-/// CAN — is where the per-NIP `register_actions` entry points run, exactly as
-/// the native FFI app delegates to each crate's `register_actions`.
+/// #1751 / #1008) and the shared publish resolver into the runtime:
+/// `nmp-wasm` cannot depend on the NIP/router crates (D0 / layering), so this
+/// composition root — which CAN — is where the per-NIP `register_actions`
+/// entry points and router resolver are installed, exactly as the native FFI
+/// app delegates to each crate's composition entry points.
 #[must_use]
 pub fn setup_chirp_web_feeds(runtime: &mut WasmRuntime) -> ChirpWebFeedSetup {
     // S3 — register the typed write modules so a typed FlatBuffers payload
@@ -151,9 +154,9 @@ pub fn setup_chirp_web_feeds(runtime: &mut WasmRuntime) -> ChirpWebFeedSetup {
     // NIP-02 follow verbs (`nmp.follow` / `nmp.unfollow` / `nmp.follow_many`)
     // AND, transitively, the NIP-25 reaction verbs (`nmp.nip25.react` /
     // `nmp.nip25.unreact`) via `nmp_nip25::register_actions`. The terminal write
-    // (execute → ActorCommand → kind:N publish) routes through the
-    // `WasmOutboxResolver` wired at `Start` (#1008) — publish is live, not
-    // disabled.
+    // (execute → ActorCommand → kind:N publish) routes through the shared
+    // `nmp_router::Nip65OutboxResolver` installed below — publish is live, not
+    // disabled, and wasm does not own a parallel outbox policy.
     nmp_nip02::register_actions(runtime);
 
     let reducer = runtime.reducer_handle();
@@ -165,6 +168,23 @@ pub fn setup_chirp_web_feeds(runtime: &mut WasmRuntime) -> ChirpWebFeedSetup {
     //    by the profile lookup and kind:0 parser, and one contacts cache shared
     //    by the contacts lookup and kind:3 parser.
     nmp_substrate_defaults::install_on_reducer(&mut reducer.borrow_mut());
+
+    runtime
+        .set_publish_resolver_factory(
+            |store: Arc<dyn EventStore>,
+             indexer_relays,
+             local_write_relays,
+             active_account|
+             -> Arc<dyn OutboxResolver> {
+                Arc::new(nmp_router::Nip65OutboxResolver::with_local_relays(
+                    store,
+                    indexer_relays,
+                    local_write_relays,
+                    active_account,
+                ))
+            },
+        )
+        .expect("Chirp web composition must install publish resolver before Start");
 
     // 0b. Install the content-parser seam so the `claimed_events` projection
     //     carries a parsed NFCT content tree. nmp-core can't depend on

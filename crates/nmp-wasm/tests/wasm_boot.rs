@@ -158,8 +158,8 @@ fn wasm_runtime_boots_without_panicking() {
 /// `nmp.publish` write over `DispatchBytes` was intercepted before reaching
 /// the `PublishModule` and returned a `CapabilityFailure` with the
 /// `publish_not_supported_in_web_preview:` token. That hard-disable is now
-/// REMOVED (#1008). The `PublishModule` is live in the default action registry
-/// and the `WasmOutboxResolver` provides relay targets after `Start`.
+/// REMOVED (#1008). The `PublishModule` is live in the default action registry;
+/// app composition is responsible for installing the shared publish resolver.
 ///
 /// This test sends a structurally invalid publish payload (opaque bytes that
 /// will fail FlatBuffers decode) to prove:

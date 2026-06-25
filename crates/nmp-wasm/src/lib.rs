@@ -31,14 +31,6 @@ mod runtime;
 // it is `cfg(target_arch = "wasm32")`-gated, with a native no-op shim so call
 // sites stay shim-free.
 mod dispatch_routing;
-// `WasmOutboxResolver` (#1008) — concrete OutboxResolver that resolves
-// `PublishTarget::Auto` to the configured relay URLs, replacing the default
-// `NoopOutboxResolver`. ADR-0064 §5: the wasm signer is the `BeginSign` →
-// `SignRequest` → `DeliverSignerResponse` capability round-trip; there is no
-// `Arc<dyn Signer>` slot. Always-compiled — the resolver and the
-// `signer_not_installed` reason string are used on both wasm32 and native test
-// paths.
-mod publish_path;
 mod signer_slot;
 mod snapshot;
 // #1937 — event/deadline runtime drain. Always-compiled so native tests can
