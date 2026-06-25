@@ -12,6 +12,7 @@ import type { NostrProfileHost } from "./components/user-avatar/NostrProfileHost
 import type { ProfileWire } from "./components/user-avatar/ProfileWire";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
 import type { ClaimedEventWire } from "./nmp/refEventStore";
+import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 import {
   featureSnapshotFromEnvelope,
   feedItemsToRows,
@@ -74,6 +75,9 @@ export default function App() {
   // reference stable across no-op frames so these memos do not churn the feed.
   const profileCards = createMemo(() => snapshot().profileCards);
   const eventCards = createMemo(() => snapshot().eventCards);
+  // #1767/#1998 — kernel-resolved, kind-dispatched embed envelopes (article /
+  // highlight / quote). client.ts keeps the reference stable across no-op frames.
+  const eventEmbeds = createMemo(() => snapshot().eventEmbeds);
   // Name-only join map for the feed rows, derived from the same ProfileWire set.
   const resolvedProfiles = createMemo(() => {
     const cards = profileCards();
@@ -150,6 +154,7 @@ export default function App() {
   // churn the feed.
   const profileCardMap = createMemo(() => profileCards() ?? new Map<string, ProfileWire>());
   const eventCardMap = createMemo(() => eventCards() ?? new Map<string, ClaimedEventWire>());
+  const eventEmbedMap = createMemo(() => eventEmbeds() ?? new Map<string, EmbeddedEventModel>());
   const profileHost: NostrProfileHost = {
     profile: (pubkey) => profileCardMap().get(pubkey),
     claimProfile: (pubkey, consumerId) => dispatchQuiet(resolveProfileCommand(pubkey, consumerId)),
@@ -157,6 +162,7 @@ export default function App() {
   };
   const eventHost: NostrEventHost = {
     event: (primaryId) => eventCardMap().get(primaryId),
+    embed: (primaryId) => eventEmbedMap().get(primaryId),
     claimEvent: (primaryId, consumerId, hints, author) =>
       dispatchQuiet(resolveEventCommand(primaryId, consumerId, hints, author)),
     releaseEvent: (primaryId, consumerId) => dispatchQuiet(releaseEventCommand(primaryId, consumerId)),

@@ -2,12 +2,14 @@ import * as flatbuffers from "flatbuffers";
 
 import { DegradedRuntime } from "@nmp/runtime-web";
 import {
+  decodeClaimedEventEmbeds,
   decodeHomeFeed,
   findRefsEventSidecar,
   findRefsProfileSidecar,
   type FeedItem,
 } from "./feedProjection";
 import { claimedEventsEqual, RefEventStore, type ClaimedEventWire } from "./refEventStore";
+import type { EmbeddedEventModel } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 import { RefProfileStore } from "./refProfileStore";
 import type { ProfileWire } from "../components/user-avatar/ProfileWire";
 import { FrameKind, UpdateFrame } from "./generated/nmp/transport";
@@ -52,8 +54,14 @@ export type RuntimeSnapshot = {
   /** Kernel-authored routing diagnostics JSON, undefined until requested. */
   latestRoutingDecisionsJson?: string;
   /** Materialised `refs.event` map: primary_id -> resolved KCEV event row.
-   *  Event-ref content nodes claim these rows and render them as quote cards. */
+   *  Event-ref content nodes claim these rows; the raw row is the quote-card
+   *  fallback when the typed embed projection has not yet surfaced. */
   eventCards?: Map<string, ClaimedEventWire>;
+  /** #1767 — kernel-RESOLVED embed envelopes keyed by primary_id, decoded from
+   *  the `claimed_event_embeds_json` sidecar. The `projection` is already
+   *  kind-dispatched in Rust; event-ref content nodes render the typed card
+   *  (article / highlight / quote) from it without re-parsing tags. */
+  eventEmbeds?: Map<string, EmbeddedEventModel>;
 };
 
 export type RuntimeConnection = {
@@ -114,6 +122,7 @@ abstract class BaseClient implements NmpClient {
   private latestProfileCards: Map<string, ProfileWire> | undefined;
   private latestRoutingDecisionsJson: string | undefined;
   private latestEventCards: Map<string, ClaimedEventWire> | undefined;
+  private latestEventEmbeds: Map<string, EmbeddedEventModel> | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -131,6 +140,7 @@ abstract class BaseClient implements NmpClient {
       profileCards: this.latestProfileCards,
       latestRoutingDecisionsJson: this.latestRoutingDecisionsJson,
       eventCards: this.latestEventCards,
+      eventEmbeds: this.latestEventEmbeds,
     };
   }
 
@@ -204,6 +214,13 @@ abstract class BaseClient implements NmpClient {
                       if (!claimedEventsEqual(this.latestEventCards, next)) {
                         this.latestEventCards = next;
                       }
+                    }
+                    // #1767 — kernel-resolved embed envelopes (kind-dispatched in
+                    // Rust). Keep-last-good: a frame without the sidecar leaves the
+                    // prior map intact (D6 — never blank-reset).
+                    const embeds = decodeClaimedEventEmbeds(snap);
+                    if (embeds !== undefined) {
+                      this.latestEventEmbeds = embeds;
                     }
                     // #1768 — relay-status hue is derived shell-side from the
                     // raw `status` / `auth` / `role` tokens in the inspector

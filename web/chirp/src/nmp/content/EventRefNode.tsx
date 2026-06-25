@@ -6,6 +6,7 @@ import {
   NostrQuoteCard,
   type NostrQuoteCardModel,
 } from "../../components/content-quote-card/NostrQuoteCard";
+import { NostrEmbeddedEvent } from "@nmp/components-web/src/content-kind-registry/NostrKindRegistry";
 import type { ClaimedEventWire } from "../refEventStore";
 import { shortKey } from "../snapshot";
 import type { ContentTreeWire } from "../generated/nmp/content/content-tree-wire";
@@ -23,9 +24,32 @@ export function EventRefNode(props: { node: WireNode }): JSX.Element {
     onMount(() => host.claimEvent(primaryId, consumerId, hints, author));
     onCleanup(() => host.releaseEvent(primaryId, consumerId));
   }
+  // Prefer the kernel-resolved, kind-dispatched embed envelope (#1767/#1998):
+  // it routes article → NostrArticleCard, highlight → NostrHighlightCard, and
+  // every other kind → the NostrQuoteCard fallback inside NostrEmbeddedEvent —
+  // the same typed dispatch the gallery and native shells use. The raw KCEV
+  // event is only the cold-start fallback before the embed sidecar surfaces.
+  const embed = () => (primaryId ? host.embed(primaryId) : undefined);
   const resolved = () => (primaryId ? host.event(primaryId) : undefined);
   return (
-    <Show when={resolved()} fallback={<EventRefLink uri={uri} />}>
+    <Show when={embed()} fallback={<RawEventRef resolved={resolved()} uri={uri} />}>
+      {(model) => (
+        <NostrEmbeddedEvent event={model()} nowSeconds={Math.floor(Date.now() / 1000)} />
+      )}
+    </Show>
+  );
+}
+
+/**
+ * Cold-start fallback before the typed embed projection arrives: render the raw
+ * claimed event as a quote card, or a plain link when nothing has resolved yet.
+ */
+function RawEventRef(props: {
+  resolved: ClaimedEventWire | undefined;
+  uri: string;
+}): JSX.Element {
+  return (
+    <Show when={props.resolved} fallback={<EventRefLink uri={props.uri} />}>
       {(event) => (
         <NostrQuoteCard
           quote={quoteModel(event())}

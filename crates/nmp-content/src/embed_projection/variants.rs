@@ -15,7 +15,7 @@ use crate::wire::ContentTreeWire;
 /// Typed data envelope emitted by the Rust resolver for one embedded event.
 /// The variant tag drives native widget dispatch; the variant payload is the
 /// complete typed data the widget renders — it never re-parses the raw event.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "variant", content = "data", rename_all = "camelCase")]
 pub enum EmbedKindProjection {
     /// Kind:1 short text note projection.
@@ -31,7 +31,7 @@ pub enum EmbedKindProjection {
 }
 
 /// Projection payload for a kind:1 short text note embed.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShortNoteProjection {
     /// 64-character hex event id.
@@ -77,7 +77,7 @@ pub struct ArticleProjection {
 }
 
 /// Projection payload for a kind:9802 highlight embed.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HighlightProjection {
     /// 64-character hex event id.
@@ -101,7 +101,7 @@ pub struct HighlightProjection {
 }
 
 /// Projection payload for a kind:0 profile embed.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProfileProjection {
     /// 64-character hex profile pubkey.
@@ -121,7 +121,7 @@ pub struct ProfileProjection {
 }
 
 /// Projection payload for an embed kind without a registered Rust projection.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UnknownProjection {
     /// Raw Nostr event kind.

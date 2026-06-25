@@ -143,16 +143,7 @@ pub fn build(ids: &Identities) -> Vec<ScenarioDto> {
     );
     let coord = naddr_uri(30000, &ids.carol.pubkey_hex, "empty");
     let mut store = EmbedStore::default();
-    store.add(
-        coord.clone(),
-        Target::List {
-            event: empty_set.clone(),
-            list: crate::dto::ListDto {
-                title: Some("Empty Set".to_string()),
-                rows: vec![],
-            },
-        },
-    );
+    store.add(coord.clone(), Target::Event(empty_set.clone()));
     let e = ids.alice.sign(
         1,
         BASE + 8,
