@@ -146,12 +146,6 @@ export type WorkerEvent =
   | { type: "routing_decisions"; correlation_id: string; json: string }
   | { type: "error"; code: string; message: string; correlation_id?: string };
 
-export type ChirpAction =
-  | { action: "publish_note"; content: string; reply_to_id?: string | null }
-  | { action: "react"; target_event_id: string; reaction?: string }
-  | { action: "follow"; pubkey: string }
-  | { action: "unfollow"; pubkey: string };
-
 export const protocolVersion = 1;
 
 export function eventCorrelationId(event: WorkerEvent): string | undefined {

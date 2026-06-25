@@ -113,7 +113,7 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 206–220.
 
 ### `handle_json`
 
-Source: `apps/chirp/crates/nmp-app-chirp-web/src/wasm_binding.rs`.
+Source: See #2038 (nmp-browser-runtime Rust crate rebuild).
 
 ```
 handle_json(request: string): Result<JsValue, JsValue>
@@ -136,7 +136,7 @@ cause.
 
 ### `handle_dispatch_bytes`
 
-Source: `apps/chirp/crates/nmp-app-chirp-web/src/wasm_binding.rs`.
+Source: See #2038 (nmp-browser-runtime Rust crate rebuild).
 
 ```
 handle_dispatch_bytes(bytes: Uint8Array): Result<JsValue, JsValue>
@@ -155,12 +155,13 @@ object shape.
 App-level writes cross as raw `DispatchEnvelope` bytes (ADR-0064 §1). The host
 builds the envelope through generated/typed builders
 (`web/packages/runtime-web/src/dispatchEnvelope.ts` → `encodeDispatchEnvelope`;
-the Chirp `action_namespace` lowering lives in `web/chirp/src/nmp/actions.ts`).
-The `action_namespace` is a generated discriminant — no human spells it at a
-call site — and is identical to the native `ActionModule` registry key. The
-wasm runtime decodes the envelope (`runtime/dispatch.rs::dispatch_bytes`) and
-routes by namespace; the opaque payload is carried verbatim (the per-crate typed
-payload decode is the `ActionModule`'s job).
+see #2038 for the rebuilt nmp-browser-runtime Rust crate and rebuilt web app's
+`action_namespace` lowering). The `action_namespace` is a generated discriminant
+— no human spells it at a call site — and is identical to the native
+`ActionModule` registry key. The wasm runtime decodes the envelope
+(`runtime/dispatch.rs::dispatch_bytes`) and routes by namespace; the opaque
+payload is carried verbatim (the per-crate typed payload decode is the
+`ActionModule`'s job).
 
 A decode rejection (bad file identifier, schema_version tripwire mismatch,
 oversize, missing routing fields) fails CLOSED with a data-shaped
