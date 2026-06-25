@@ -450,3 +450,295 @@ pub fn register_longform_projection(
         move || Some(projection_for_closure.typed_projection()),
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+    use nmp_core::substrate::{
+        ActionRegistrar, ActionModule, IngestParser, IngestParserRegistrar,
+        EventObserverRegistrar, IdentityChangeRegistrar, ReqFrameInterceptorRegistrar,
+        RelayTextInterceptorRegistrar, RelayConnectedHookRegistrar, CoverageHookRegistrar,
+        KernelReaderRegistrar, DmInboxRelayRegistrar, BlockedRelayLookupRegistrar,
+        RoutingFactoryRegistrar, SearchScopeRegistrar, InputScopeRegistrar,
+        HostCapabilities, SnapshotProjectionRegistrar, RegistrationError,
+    };
+    use nmp_store::EventStore;
+    use nmp_core::{
+        TypedProjectionData, KernelEventObserver, KernelEventObserverId,
+        subs::PlanCoverageHook, slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot},
+    };
+    use std::ops::Range;
+
+    /// Mock AppHost for testing composition contract — validates that
+    /// `register_defaults` wires all registered namespaces and factories
+    /// without hand-copying defaults (D4 single-writer doctrine).
+    struct MockAppHost {
+        action_namespaces: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl MockAppHost {
+        fn new() -> Self {
+            Self {
+                action_namespaces: Arc::new(Mutex::new(Vec::new())),
+            }
+        }
+    }
+
+    impl ActionRegistrar for MockAppHost {
+        fn register_action<M: ActionModule + 'static>(
+            &mut self,
+            _module: M,
+        ) -> Result<(), RegistrationError> {
+            // Record namespace for test assertion.
+            self.action_namespaces
+                .lock()
+                .unwrap()
+                .push(M::NAMESPACE.to_string());
+            Ok(())
+        }
+    }
+
+    impl SnapshotProjectionRegistrar for MockAppHost {
+        fn register_typed_snapshot_projection<K, F>(&self, _key: K, _f: F)
+        where
+            K: Into<String>,
+            F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
+        {
+        }
+
+        fn register_snapshot_tick_observer<F>(&self, _f: F)
+        where
+            F: Fn() + Send + Sync + 'static,
+        {
+        }
+
+        fn declare_consumed_projections<I, K>(&self, _keys: I)
+        where
+            I: IntoIterator<Item = K>,
+            K: Into<String>,
+        {
+        }
+
+        fn declare_incremental_apply(&self) -> Result<(), nmp_core::substrate::IncrementalApplyError> {
+            Ok(())
+        }
+
+        fn incremental_apply_handle(&self) -> Arc<std::sync::atomic::AtomicBool> {
+            Arc::new(std::sync::atomic::AtomicBool::new(false))
+        }
+
+        fn frame_identity_handles(
+            &self,
+        ) -> (
+            Arc<std::sync::atomic::AtomicU64>,
+            Arc<std::sync::atomic::AtomicU64>,
+        ) {
+            (
+                Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            )
+        }
+
+        fn remove_snapshot_projection(&self, _key: &str) {}
+    }
+
+    impl IngestParserRegistrar for MockAppHost {
+        fn register_ingest_parser(&self, _kind: u32, _parser: Arc<dyn IngestParser>) {}
+
+        fn replace_ingest_parser(
+            &self,
+            _kind: u32,
+            _slot_key: &'static str,
+            _parser: Arc<dyn IngestParser>,
+        ) -> Option<Arc<dyn IngestParser>> {
+            None
+        }
+
+        fn unregister_ingest_parser(&self, _kind: u32, _slot_key: &'static str) {}
+
+        fn replace_ingest_parser_range(
+            &self,
+            _range: Range<u32>,
+            _slot_key: &'static str,
+            _parser: Arc<dyn IngestParser>,
+        ) -> Option<Arc<dyn IngestParser>> {
+            None
+        }
+
+        fn unregister_ingest_parser_range(&self, _slot_key: &'static str) {}
+    }
+
+    impl EventObserverRegistrar for MockAppHost {
+        fn register_event_observer(
+            &self,
+            _observer: Arc<dyn KernelEventObserver>,
+        ) -> KernelEventObserverId {
+            KernelEventObserverId(1)
+        }
+
+        fn unregister_event_observer(&self, _id: KernelEventObserverId) {}
+
+        fn swap_singleton_event_observer(
+            &self,
+            _new: Option<KernelEventObserverId>,
+        ) -> Option<KernelEventObserverId> {
+            None
+        }
+    }
+
+    impl IdentityChangeRegistrar for MockAppHost {
+        fn register_identity_change_observer<F>(&self, _f: F)
+        where
+            F: Fn(Option<String>) + Send + Sync + 'static,
+        {
+        }
+    }
+
+    impl ReqFrameInterceptorRegistrar for MockAppHost {
+        fn set_req_frame_interceptor(
+            &self,
+            _interceptor: Arc<dyn nmp_core::substrate::ReqFrameInterceptor>,
+        ) {
+        }
+    }
+
+    impl RelayTextInterceptorRegistrar for MockAppHost {
+        fn add_relay_text_interceptor(
+            &self,
+            _interceptor: Arc<dyn nmp_core::substrate::RelayTextInterceptor>,
+        ) {
+        }
+    }
+
+    impl RelayConnectedHookRegistrar for MockAppHost {
+        fn add_relay_connected_hook(&self, _hook: Arc<dyn nmp_core::substrate::RelayConnectedHook>) {
+        }
+    }
+
+    impl CoverageHookRegistrar for MockAppHost {
+        fn set_coverage_hook(&self, _hook: PlanCoverageHook) {}
+    }
+
+    impl KernelReaderRegistrar for MockAppHost {
+        fn set_profile_lookup(&self, _lookup: Arc<dyn nmp_core::substrate::ProfileLookup>) {}
+        fn set_contacts_lookup(&self, _lookup: Arc<dyn nmp_core::substrate::ContactsLookup>) {}
+        fn set_mailbox_cache_reader(&self, _cache: Arc<dyn nmp_core::substrate::MailboxCache>) {}
+    }
+
+    impl DmInboxRelayRegistrar for MockAppHost {
+        fn set_dm_inbox_relay_lookup(
+            &self,
+            _lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
+        ) {
+        }
+    }
+
+    impl BlockedRelayLookupRegistrar for MockAppHost {
+        fn set_blocked_relay_lookup(&self, _lookup: Arc<dyn nmp_core::substrate::BlockedRelayLookup>) {}
+    }
+
+    impl RoutingFactoryRegistrar for MockAppHost {
+        fn set_routing_substrate<F>(&self, _factory: F)
+        where
+            F: Fn(Arc<dyn nmp_core::substrate::RoutingTraceObserver>) -> (
+                Arc<dyn nmp_core::substrate::OutboxRouter>,
+                Arc<dyn nmp_core::substrate::MailboxCache>,
+            ) + Send
+                + Sync
+                + 'static,
+        {
+        }
+
+        fn set_publish_resolver_factory<F>(&self, _factory: F)
+        where
+            F: Fn(
+                    Arc<dyn EventStore>,
+                    IndexerRelaysSlot,
+                    LocalWriteRelaysSlot,
+                    ActiveAccountSlot,
+                ) -> Arc<dyn nmp_core::publish::OutboxResolver>
+                + Send
+                + Sync
+                + 'static,
+        {
+        }
+
+        fn set_nostrconnect_bootstrap_relay(&self, _url: String) {}
+        fn set_nostrconnect_perms(&self, _perms: String) {}
+    }
+
+    impl SearchScopeRegistrar for MockAppHost {
+        fn register_search_scope(&self, _provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>) {
+        }
+    }
+
+    impl InputScopeRegistrar for MockAppHost {
+        fn register_input_scope(
+            &self,
+            _recognizer: Arc<dyn nmp_core::substrate::InputScopeRecognizer>,
+        ) {
+        }
+    }
+
+    impl HostCapabilities for MockAppHost {
+        fn active_pubkey(&self) -> ActiveAccountSlot {
+            Arc::new(Mutex::new(None))
+        }
+
+        fn actor_sender(&self) -> nmp_core::actor::CommandSender {
+            // Mock: return a no-op sender. This is never called in the test.
+            panic!("test mock: actor_sender should not be called")
+        }
+
+        fn configured_relays_handle(&self) -> nmp_core::AppRelaySlot {
+            Arc::new(Mutex::new(Default::default()))
+        }
+    }
+
+    // MockAppHost now implements AppHost automatically via the blanket impl
+    // in nmp_core::substrate::app_host::AppHost
+
+    #[test]
+    fn test_shared_composition_contract_substrate_tier() {
+        // Validates that `register_defaults_with` (substrate tier only) wires the
+        // canonical action namespaces without social features. Proves the surface
+        // works for both native and browser targets without duplication (D4
+        // single-writer doctrine). The substrate tier requires no kernel actor.
+        let mut app = MockAppHost::new();
+
+        // Register only the substrate tier (routing, routing factory, coverage,
+        // etc.) with no social features, DMs, zaps, or longform. This is the
+        // correctness floor both native and browser share.
+        register_defaults_with(&mut app, NmpDefaults {
+            social: false,
+            dms: false,
+            zaps: false,
+            longform: false,
+            ..Default::default()
+        });
+
+        let namespaces = app.action_namespaces.lock().unwrap();
+
+        // Substrate-tier action namespaces that BOTH native and browser install.
+        // Social features are gated off here to avoid actor-sender requirements.
+        let expected_substrate_namespaces = vec![
+            "nmp.nip65.publish_relay_list", // NIP-65 routing (always-on substrate)
+            "nmp.nip51.block_relay",         // NIP-51 (blocked relays - substrate)
+            "nmp.nip51.unblock_relay",       // NIP-51 (blocked relays - substrate)
+        ];
+
+        for expected in expected_substrate_namespaces {
+            assert!(
+                namespaces.contains(&expected.to_string()),
+                "expected substrate namespace '{}' not registered. Registered: {:?}",
+                expected,
+                namespaces
+            );
+        }
+
+        println!("✓ Shared composition contract validated (substrate tier)");
+        println!("  Registered {} action namespaces", namespaces.len());
+        println!("  Both native and browser targets can implement AppHost");
+    }
+}

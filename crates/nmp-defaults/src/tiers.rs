@@ -185,6 +185,25 @@ impl Default for NmpDefaults {
 /// without desyncing them). [`super::register_defaults`] passes
 /// `CoverageGate::default()`.
 ///
+/// # Shared composition target (issues #2059/#2060)
+///
+/// This is the **native tier** of the shared `AppHost` composition contract.
+/// The browser builder calls the same registrar methods (through trait bounds)
+/// and receives `AppHost` via blanket impl. Both targets install:
+/// * **Routing substrate** via [`nmp_substrate_defaults::install_on_app_host`]
+///   (wasm-safe crate shared with `nmp_substrate_defaults::install_on_reducer`)
+/// * **Kind:10002, Kind:0, Kind:3 parsers** (shared cache+parser pairs)
+/// * **Publish-resolver factory** (NIP-65 targeting)
+/// * **Coverage gate + NIP-77 negentropy hooks**
+/// * **NIP-11 relay information** (generic transport infrastructure)
+///
+/// All these are **substrate-agnostic** — they wire behavior through host-provided
+/// registrars without requiring native I/O or OS capability handles. The browser
+/// target implements the same narrow registrar traits and gets the same substrate
+/// floor (correctness, not preference). Per D4 single-writer doctrine (#2082):
+/// the browser builder MUST NOT hand-copy any default; instead it calls
+/// [`super::register_defaults`] exactly once for the canonical composition.
+///
 /// # `app` borrow
 ///
 /// Takes `&mut impl AppHost` because `nmp_router::register_actions` needs the

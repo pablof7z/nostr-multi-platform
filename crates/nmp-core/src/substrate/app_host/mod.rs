@@ -407,6 +407,22 @@ where
 /// `nmp-ffi` / builder wiring) names it because it genuinely wires the whole
 /// surface. Narrow protocol modules MUST take the specific narrow trait(s) they
 /// use, never `AppHost`.
+///
+/// # Substrate-generic design
+///
+/// `AppHost` is the **shared composition-target trait** used by both native and
+/// browser runtimes (ADR-0046 §5 step 10, issues #2059/#2060). All registered
+/// methods are **substrate-agnostic** — they wire behavior through host-provided
+/// factories and observers without requiring native I/O or OS capability handles.
+/// The browser builder must implement the same narrow registrar traits (`ActionRegistrar`,
+/// `IngestParserRegistrar`, etc.) and receives `AppHost` for free via this blanket impl,
+/// exactly as the native `NmpAppBuilder` does.
+///
+/// Native-only behaviors (e.g., LMDB storage, OS keychain) are gated outside
+/// `register_defaults` at the composition root level, not here. Platform-eligible
+/// action modules/parsers/observers are installed conditionally (e.g., `#[cfg(feature = "native")]`)
+/// in [`nmp_defaults::register_defaults`] so the browser receives the canonical
+/// router/mailbox/profile/contact floor + platform-eligible defaults without duplication.
 pub trait AppHost:
     ActionRegistrar
     + SnapshotProjectionRegistrar

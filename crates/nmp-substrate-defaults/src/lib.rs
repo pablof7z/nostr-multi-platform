@@ -6,12 +6,28 @@
 //! kind:0 parser; and one contacts cache shared by the kernel contacts reader
 //! and kind:3 parser.
 //!
-//! `nmp-defaults::register_substrate` remains the canonical native composition
-//! tier. It calls this crate for the cache/parser pairs, then installs the
-//! native/AppHost-only collaborators (publish resolver, raw forwarding,
-//! coverage, NIP-11). Reducer-owned web roots call the reducer installer so
-//! they get the same cache/parser construction without depending on
-//! `nmp-defaults`, `nmp-ffi`, LMDB, or native transport code.
+//! # Shared composition target (issues #2059/#2060)
+//!
+//! This is an **internal helper crate** — both the native and browser builders
+//! wiring happens through a single door: `nmp_defaults::register_defaults`.
+//! The browser builder MUST NOT call this crate's functions directly (the D4
+//! doctrine gate #2082 will enforce it). Instead:
+//!
+//! 1. Browser builder implements the narrow `AppHost` registrar traits
+//! 2. Browser builder calls `nmp_defaults::register_defaults(app: &mut impl AppHost)`
+//! 3. `register_defaults` internally calls `nmp_substrate_defaults::install_on_app_host`
+//!    for both native and browser (same code path, substrate-agnostic)
+//! 4. Browser builder receives the canonical floor: routing/mailbox/profile/contact
+//!    caches + kind:10002/0/3 parsers + publish-resolver + coverage hooks, all
+//!    installed exactly once with zero hand-copied defaults.
+//!
+//! The reducer-owned web (`KernelReducer` browser harness) calls the reducer
+//! installer `install_on_reducer` to populate the reducer without an AppHost.
+//!
+//! `nmp-defaults::register_substrate` calls this crate for the cache/parser pairs,
+//! then installs the native-specific collaborators (publish resolver, raw forwarding,
+//! coverage, NIP-11). This separation preserves the single-sourced un-copyable block
+//! while keeping native-only I/O out of the wasm-safe path.
 
 use std::sync::Arc;
 
