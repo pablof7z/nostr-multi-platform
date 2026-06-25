@@ -11,6 +11,10 @@ use nmp_signer_iface::{
     Nip44DecryptBatchItemResult, Nip44DecryptBatchResult, Nip44DecryptSessionGrant, SignerError,
 };
 
+#[cfg(all(test, feature = "native"))]
+#[path = "nip44_decrypt_session_port_tests.rs"]
+mod tests;
+
 /// Outcome of a decrypt-session begin request.
 #[derive(Clone, Eq, PartialEq)]
 pub enum Nip44DecryptSessionBeginPortResult {

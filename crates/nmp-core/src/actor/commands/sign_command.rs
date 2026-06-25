@@ -9,10 +9,11 @@
 //! plaintext, never raw key bytes. D8: the continuation runs on the actor
 //! thread and MUST only enqueue further work, never block.
 
-use super::super::{
-    CipherContinuation, Nip44DecryptBatchContinuation, Nip44DecryptSessionBeginContinuation,
-    Nip44DecryptSessionEndContinuation, SignContinuation,
+use super::super::nip44_decrypt_session_port::{
+    Nip44DecryptBatchContinuation, Nip44DecryptSessionBeginContinuation,
+    Nip44DecryptSessionEndContinuation,
 };
+use super::super::{CipherContinuation, SignContinuation};
 
 /// Backend-transparent signing / cipher verbs. The dispatch arm routes
 /// through `sign_active_nonblocking` / `sign_with_account_nonblocking` /

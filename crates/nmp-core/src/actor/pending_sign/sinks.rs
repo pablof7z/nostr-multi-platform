@@ -40,10 +40,11 @@ use nmp_signer_iface::{Nip44DecryptBatchResult, Nip44DecryptSessionGrant, Signed
 // checks receive the caller-captured `Instant` explicitly.
 use crate::time::Instant;
 
-use crate::actor::{
-    CipherContinuation, Nip44DecryptBatchContinuation, Nip44DecryptSessionBeginContinuation,
-    Nip44DecryptSessionEndContinuation, SignContinuation,
+use crate::actor::nip44_decrypt_session_port::{
+    Nip44DecryptBatchContinuation, Nip44DecryptSessionBeginContinuation,
+    Nip44DecryptSessionEndContinuation,
 };
+use crate::actor::{CipherContinuation, SignContinuation};
 
 /// Where a resolved [`ParkedOp`] delivers its outcome, and the in-flight op
 /// itself.

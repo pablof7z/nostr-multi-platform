@@ -64,7 +64,7 @@ mod inbox_lane_tests;
 // Always-compiled port continuations (named by the always-compiled
 // `ActorCommand` sign / cipher verbs; not `native`-gated).
 mod continuations;
-mod nip44_decrypt_session_port;
+pub mod nip44_decrypt_session_port;
 // Generic raw signed-event forwarding dispatch. Native-only: depends on
 // `nmp_network::pool::Pool` for outbound `["EVENT", ...]` frames. Policy
 // crates provide target selection through a substrate trait object.
@@ -74,8 +74,6 @@ mod app_managed_signer_tests;
 mod cipher_for_account_tests;
 #[cfg(all(test, feature = "native"))]
 mod nip42_async_auth_tests;
-#[cfg(all(test, feature = "native"))]
-mod nip44_decrypt_session_port_tests;
 #[cfg(feature = "native")]
 mod outbound;
 // #1753 S6 — the parked-signer-op queue + drain is target-agnostic: the native
@@ -247,7 +245,6 @@ use capability_worker::spawn_capability_worker;
 pub use config::{ActorChannels, ActorConfig, ActorConfigSources, ActorRuntimeSlots};
 #[cfg(feature = "native")]
 use pending_sign::ParkedSignerOps;
-
 // ADR-0050 §D3a — always-compiled inbox transport types. `CommandSender` is the
 // single command-send seam handed to host code, protocol/capability workers,
 // the broker adapter, and the actor's self-feedback path; `ActorMail` is what
@@ -256,12 +253,6 @@ pub use inbox::{ActorMail, CommandSendError, CommandSender};
 // ADR-0050 §D1 — always-compiled port continuations named by the (always-
 // compiled) `ActorCommand` sign / cipher verbs.
 pub use continuations::{CipherContinuation, SignContinuation};
-pub use nip44_decrypt_session_port::{
-    Nip44DecryptBatchContinuation, Nip44DecryptBatchItemPortOutcome, Nip44DecryptBatchPortOutcome,
-    Nip44DecryptBatchPortResult, Nip44DecryptSessionBeginContinuation,
-    Nip44DecryptSessionBeginPortResult, Nip44DecryptSessionEndContinuation,
-    Nip44DecryptSessionEndPortResult,
-};
 // Native-only relay-lane scheduler + receiver wrapper. (`RelayMailSink` is
 // constructed via `CommandSender::relay_sink()`, never named here.)
 #[cfg(feature = "native")]

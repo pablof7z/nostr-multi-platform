@@ -12,14 +12,15 @@ use nmp_signer_iface::{
 };
 use nostr::Keys;
 
-use super::commands::{self, IdentityRuntime};
-use super::pending_sign::resolve_parked_op;
-use super::signer_port_test_harness::dispatch_one;
+use super::super::commands::{self, IdentityRuntime};
+use super::super::pending_sign::resolve_parked_op;
+use super::super::signer_port_test_harness::dispatch_one;
+use super::super::{ActorCommand, IdentityCommand, SignCommand};
 use super::{
-    ActorCommand, IdentityCommand, Nip44DecryptBatchContinuation, Nip44DecryptBatchItemPortOutcome,
-    Nip44DecryptBatchPortResult, Nip44DecryptSessionBeginContinuation,
-    Nip44DecryptSessionBeginPortResult, Nip44DecryptSessionEndContinuation,
-    Nip44DecryptSessionEndPortResult, SignCommand,
+    Nip44DecryptBatchContinuation, Nip44DecryptBatchItemPortOutcome,
+    Nip44DecryptBatchPortOutcome, Nip44DecryptBatchPortResult,
+    Nip44DecryptSessionBeginContinuation, Nip44DecryptSessionBeginPortResult,
+    Nip44DecryptSessionEndContinuation, Nip44DecryptSessionEndPortResult,
 };
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
@@ -448,7 +449,7 @@ fn session_end_acknowledgement_is_typed() {
 
 #[test]
 fn debug_output_redacts_secret_bearing_session_values() {
-    let batch = Nip44DecryptBatchPortResult::Batch(crate::actor::Nip44DecryptBatchPortOutcome {
+    let batch = Nip44DecryptBatchPortResult::Batch(Nip44DecryptBatchPortOutcome {
         items: vec![Nip44DecryptBatchItemPortOutcome::Plaintext {
             id: "item-a".to_string(),
             plaintext: "plain-a".to_string(),
