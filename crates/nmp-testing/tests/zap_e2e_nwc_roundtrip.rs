@@ -14,7 +14,8 @@
 //!    end at runtime: the full Chirp app (built via `nmp_app_new` +
 //!    `nmp_app_chirp_register`, the exact composition the iOS shell ships)
 //!    connects its `RelayRole::Wallet` socket to a live `nak serve` relay,
-//!    `nmp.wallet.connect` (via `nmp_app_dispatch_action`) binds an NWC
+//!    `nmp.wallet.connect` (via the typed `nmp_app_dispatch_action_bytes`
+//!    byte doorway) binds an NWC
 //!    connection pointed at that relay, and `nmp.wallet.pay_invoice` dispatches a real kind:23194
 //!    `pay_invoice` request. The fake wallet decrypts it, replies with a
 //!    kind:23195 success over the relay, and the kernel's
@@ -52,10 +53,13 @@ use std::ffi::CString;
 use std::time::{Duration, Instant};
 
 use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_dispatch_action, nmp_app_free, nmp_app_inject_signed_event_json,
-    nmp_app_new, nmp_app_start, nmp_free_string,
+    nmp_app_add_relay, nmp_app_free, nmp_app_inject_signed_event_json,
+    nmp_app_new, nmp_app_start,
 };
-use nmp_app_chirp::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus};
+use nmp_app_chirp::{
+    dispatch_action_bytes_for, nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle,
+    NmpRegisterStatus,
+};
 use nostr::{Keys, ToBech32};
 
 use zap_e2e_common::{
@@ -108,15 +112,16 @@ fn nwc_pay_invoice_round_trip_over_live_relay() {
     nmp_app_start(app, 200, 4);
 
     // Connect the NWC wallet, pointed at the same relay.
-    // #1607: use nmp_app_dispatch_action directly — nmp_app_wallet_connect deleted.
+    // #1996: dispatch through the typed ADR-0064 byte doorway via the Chirp
+    // `dispatch_action_bytes_for` seam (the JSON `nmp_app_dispatch_action`
+    // doorway is retired). The helper encodes the canonical action JSON into the
+    // typed `WalletConnectAction` payload + open envelope.
     let uri = nwc_uri(&wallet_pubkey, &relay_url, client_secret);
     {
         let action_json = serde_json::to_string(&serde_json::json!({ "Connect": { "uri": uri } }))
             .expect("connect action JSON must serialize");
-        let ns = CString::new("nmp.wallet.connect").expect("ns NUL-free");
-        let body = CString::new(action_json).expect("body NUL-free");
-        let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
-        if !ptr.is_null() { nmp_free_string(ptr); }
+        let result = dispatch_action_bytes_for(app, "nmp.wallet.connect", &action_json);
+        assert!(result.is_ok(), "nmp.wallet.connect dispatch must be accepted: {result:?}");
     }
 
     // Wait for the wallet to report "ready" (get_info / get_balance probe
@@ -136,16 +141,16 @@ fn nwc_pay_invoice_round_trip_over_live_relay() {
 
     // Dispatch the pay_invoice through the action seam (D11). This is the
     // exact path the iOS shell takes when the user taps a zap's confirm.
-    // #1607: nmp_app_wallet_pay_invoice deleted — callers use dispatch_action.
+    // #1996: dispatch through the typed ADR-0064 byte doorway via the Chirp
+    // `dispatch_action_bytes_for` seam (the JSON `nmp_app_dispatch_action`
+    // doorway is retired).
     {
         let action_json = serde_json::to_string(&serde_json::json!({
             "PayInvoice": { "bolt11": TEST_BOLT11, "amount_msats": serde_json::Value::Null }
         }))
         .expect("pay_invoice action JSON must serialize");
-        let ns = CString::new("nmp.wallet.pay_invoice").expect("ns NUL-free");
-        let body = CString::new(action_json).expect("body NUL-free");
-        let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
-        if !ptr.is_null() { nmp_free_string(ptr); }
+        let result = dispatch_action_bytes_for(app, "nmp.wallet.pay_invoice", &action_json);
+        assert!(result.is_ok(), "nmp.wallet.pay_invoice dispatch must be accepted: {result:?}");
     }
 
     // FORWARD HALF (kernel → relay → wallet): block until the fake wallet has

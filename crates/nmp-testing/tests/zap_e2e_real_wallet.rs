@@ -12,14 +12,11 @@
 
 mod zap_e2e_common;
 
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::time::{Duration, Instant};
 
-use nmp_ffi::{
-    nmp_app_add_relay, nmp_app_dispatch_action, nmp_app_free, nmp_app_start,
-    nmp_free_string,
-};
-use nmp_app_chirp::nmp_app_chirp_unregister;
+use nmp_ffi::{nmp_app_add_relay, nmp_app_free, nmp_app_start};
+use nmp_app_chirp::{dispatch_action_bytes_for, nmp_app_chirp_unregister};
 use nostr::{Keys, ToBech32};
 use serde_json;
 
@@ -102,17 +99,15 @@ fn real_wallet_zap_e2e() {
     }
     nmp_app_start(app, 200, 4);
 
-    // #1607: use nmp_app_dispatch_action directly — nmp_app_wallet_connect deleted.
+    // #1996: dispatch through the typed ADR-0064 byte doorway via the Chirp
+    // `dispatch_action_bytes_for` seam (the JSON `nmp_app_dispatch_action`
+    // doorway is retired).
     let action_json = serde_json::to_string(&serde_json::json!({
         "Connect": { "uri": nwc_uri_str }
     }))
     .expect("connect action JSON must serialize");
-    let ns = CString::new("nmp.wallet.connect").expect("namespace NUL-free");
-    let body = CString::new(action_json).expect("action_json NUL-free");
-    let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr());
-    if !ptr.is_null() {
-        nmp_free_string(ptr);
-    }
+    let connect = dispatch_action_bytes_for(app, "nmp.wallet.connect", &action_json);
+    assert!(connect.is_ok(), "nmp.wallet.connect dispatch must be accepted: {connect:?}");
 
     // Wait for the real wallet to report ready.
     let connect_deadline = Instant::now() + Duration::from_secs(30);
@@ -139,22 +134,10 @@ fn real_wallet_zap_e2e() {
     }
     let body_json = body.to_string();
 
-    let ns_c = CString::new("nmp.nip57.zap").expect("ns NUL-free");
-    let body_c = CString::new(body_json).expect("body NUL-free");
-    let out_ptr = nmp_app_dispatch_action(app, ns_c.as_ptr(), body_c.as_ptr());
-    assert!(!out_ptr.is_null(), "dispatch must return a result envelope");
-    // SAFETY: out_ptr is a heap-owned NUL-terminated C string from the FFI.
-    let out = unsafe { CStr::from_ptr(out_ptr) }
-        .to_str()
-        .expect("dispatch result utf8")
-        .to_owned();
-    nmp_free_string(out_ptr);
-    let parsed: serde_json::Value = serde_json::from_str(&out).expect("dispatch result json");
-    let correlation_id = parsed
-        .get("correlation_id")
-        .and_then(|v| v.as_str())
-        .unwrap_or_else(|| panic!("zap dispatch must mint a correlation_id, got {parsed}"))
-        .to_string();
+    // #1996: typed ADR-0064 byte doorway. The helper returns the host-supplied
+    // correlation_id echoed by the doorway on accept, or an error string.
+    let correlation_id = dispatch_action_bytes_for(app, "nmp.nip57.zap", &body_json)
+        .unwrap_or_else(|err| panic!("zap dispatch must be accepted, got error: {err}"));
     eprintln!("[zap-e2e real] dispatched zap correlation_id={correlation_id}");
 
     // Block until the action lifecycle shows a terminal for this correlation,

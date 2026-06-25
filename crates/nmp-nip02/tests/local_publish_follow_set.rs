@@ -32,10 +32,12 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::substrate::ActionPayload;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_ffi::{
-    nmp_app_dispatch_action, nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new,
+    nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new,
     nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
 };
 use nostr::prelude::*;
@@ -62,13 +64,23 @@ impl KernelEventObserver for KindSignal {
     }
 }
 
-/// Dispatch `namespace`/`body` through the generic action door and assert the
-/// synchronous accept (a 32-hex `correlation_id`, NOT publish completion — that
-/// settles later on the actor thread).
-fn dispatch_ok(app: *mut NmpApp, namespace: &str, body: &str) {
-    let ns = CString::new(namespace).unwrap();
-    let payload = CString::new(body).unwrap();
-    let ptr = nmp_app_dispatch_action(app, ns.as_ptr(), payload.as_ptr());
+/// Dispatch a follow/unfollow `pubkey` action at `namespace` through the typed
+/// byte doorway and assert the synchronous accept (the doorway echoes the
+/// host-supplied `correlation_id`, NOT publish completion — that settles later
+/// on the actor thread).
+fn dispatch_ok(app: *mut NmpApp, namespace: &str, pubkey: &str) {
+    let payload = nmp_nip02::PubkeyAction {
+        pubkey: pubkey.to_string(),
+    }
+    .encode();
+    let correlation_id = format!("{namespace}-{pubkey}");
+    let envelope = encode_dispatch_envelope(
+        &correlation_id,
+        namespace,
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        &payload,
+    );
+    let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
     assert!(!ptr.is_null(), "{namespace}: dispatch must not return null");
     // SAFETY: `ptr` is a valid heap C string from the FFI; copied then freed.
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
@@ -219,7 +231,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     );
 
     // ── Follow BOB ────────────────────────────────────────────────────────────
-    dispatch_ok(app, "nmp.follow", &format!(r#"{{"pubkey":"{bob}"}}"#));
+    dispatch_ok(app, "nmp.follow", &bob);
     await_kind(&rx, 3);
     assert!(
         follow_set.predicate()(&bob),
@@ -239,7 +251,7 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
     clock.advance_secs(1);
 
     // ── Unfollow BOB (the important regression) ────────────────────────────────
-    dispatch_ok(app, "nmp.unfollow", &format!(r#"{{"pubkey":"{bob}"}}"#));
+    dispatch_ok(app, "nmp.unfollow", &bob);
     await_kind(&rx, 3);
     assert!(
         !follow_set.predicate()(&bob),

@@ -1,15 +1,16 @@
 //! Integration test for [`nmp_defaults::register_defaults`].
 //!
 //! Spins up a real [`NmpApp`] via `nmp_app_new`, calls `register_defaults`,
-//! and asserts that every canonical action namespace is reachable through
-//! the standard FFI dispatch seam (`nmp_app_dispatch_action`). A registered
-//! namespace round-trips a `correlation_id`; an unregistered namespace
-//! comes back with an `error` field. That asymmetry is the lightest proof
-//! the template actually wires what it claims to wire.
+//! and asserts that every canonical action namespace is registered. #1996:
+//! registration presence is read directly from the action registry via the
+//! `registered_action_namespaces()` test-support introspection probe — the
+//! authoritative registration view — rather than dispatching an empty `{}`
+//! body through the retired JSON `nmp_app_dispatch_action` doorway. A
+//! registered namespace appears in that set; an unregistered one does not.
+//! That asymmetry is the lightest proof the template actually wires what it
+//! claims to wire.
 
-use std::ffi::{CStr, CString};
-
-use nmp_ffi::{nmp_app_dispatch_action, nmp_app_free, nmp_app_new, nmp_free_string};
+use nmp_ffi::{nmp_app_free, nmp_app_new};
 
 #[test]
 fn register_defaults_wires_every_canonical_namespace() {
@@ -20,37 +21,17 @@ fn register_defaults_wires_every_canonical_namespace() {
     nmp_defaults::register_defaults(unsafe { &mut *app });
 
     for ns in nmp_codegen::canonical_default_action_namespaces() {
-        let result = dispatch(app, ns, "{}");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&result).expect("dispatch returned non-JSON");
-
-        // A registered namespace either accepts (correlation_id) or
-        // rejects on input-shape validation (error). The single failure
-        // mode that proves NON-registration is "unknown namespace" — the
-        // registry returns an error whose message contains the namespace
-        // and the phrase "unknown". So: anything OTHER than
-        // unknown-namespace counts as "registered".
-        if let Some(err) = parsed.get("error").and_then(|e| e.as_str()) {
-            assert!(
-                !err.to_ascii_lowercase().contains("unknown"),
-                "namespace `{ns}` was not registered by `register_defaults` \
-                 (dispatch error: {err})"
-            );
-        }
-        // If we got a correlation_id, registration is unambiguously proven.
+        assert!(
+            is_registered(app, ns),
+            "namespace `{ns}` was not registered by `register_defaults`"
+        );
     }
 
-    // Confirm a genuinely-unregistered namespace surfaces the
-    // unknown-namespace error — proves our above test is not vacuous.
-    let bogus = dispatch(app, "nmp.template.never.registered", "{}");
-    let parsed: serde_json::Value = serde_json::from_str(&bogus).expect("bogus reply not JSON");
-    let err = parsed
-        .get("error")
-        .and_then(|e| e.as_str())
-        .expect("unregistered namespace must surface an error");
+    // Confirm a genuinely-unregistered namespace is absent from the registry —
+    // proves the above test is not vacuous.
     assert!(
-        err.to_ascii_lowercase().contains("unknown"),
-        "control case: expected unknown-namespace error, got: {err}"
+        !is_registered(app, "nmp.template.never.registered"),
+        "control case: an unregistered namespace must NOT appear in the action registry"
     );
 
     nmp_app_free(app);
@@ -415,18 +396,20 @@ fn register_defaults_with_accepts_custom_nostrconnect_perms() {
     nmp_app_free(app);
 }
 
-/// `true` when dispatching `namespace` does NOT surface an unknown-namespace
-/// error — i.e. the namespace is registered (it may still reject `{}` on input
-/// shape, which still proves registration).
+/// `true` when `namespace` is present in the app's action registry — read
+/// directly from the authoritative `registered_action_namespaces()` probe
+/// (#1996: replaces the retired `nmp_app_dispatch_action("{}")` registration
+/// probe). Registration presence is exactly what every caller asserts, so the
+/// introspection view is both more direct and more correct than inferring it
+/// from a dispatch error envelope.
 fn is_registered(app: *mut nmp_ffi::NmpApp, namespace: &str) -> bool {
-    let result = dispatch(app, namespace, "{}");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&result).expect("dispatch returned non-JSON");
-    if let Some(err) = parsed.get("error").and_then(|e| e.as_str()) {
-        return !err.to_ascii_lowercase().contains("unknown");
-    }
-    // A correlation_id (no error) is unambiguous registration.
-    true
+    // SAFETY: `app` is a valid non-null pointer from `nmp_app_new`, live for
+    // the duration of this read; no aliasing `&mut` is held at the call sites.
+    let app_ref: &nmp_ffi::NmpApp = unsafe { &*app };
+    app_ref
+        .registered_action_namespaces()
+        .iter()
+        .any(|ns| ns == namespace)
 }
 
 /// Check typed projection registry for key presence — replaces deleted JSON lane (rule A6).
@@ -441,15 +424,3 @@ fn read_projection(app: *mut nmp_ffi::NmpApp, key: &str) -> Option<String> {
     }
 }
 
-fn dispatch(app: *mut nmp_ffi::NmpApp, namespace: &str, action_json: &str) -> String {
-    let ns_c = CString::new(namespace).unwrap();
-    let json_c = CString::new(action_json).unwrap();
-    let raw = nmp_app_dispatch_action(app, ns_c.as_ptr(), json_c.as_ptr());
-    assert!(!raw.is_null(), "dispatch returned null for `{namespace}`");
-    // SAFETY: `raw` is a fresh non-null C string owned by `nmp-core`.
-    let s = unsafe { CStr::from_ptr(raw) }
-        .to_string_lossy()
-        .into_owned();
-    nmp_free_string(raw);
-    s
-}
