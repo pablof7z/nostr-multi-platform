@@ -251,8 +251,8 @@ this**: it executes on the page main thread
 (`crates/nmp-wasm/tests/wasm_boot.rs:36`) where `createSyncAccessHandle` does
 not exist (OPFS SAH is dedicated-Worker-only — Context fact 1). The conformance
 gate therefore runs the backend **inside a real dedicated Worker**, driven by
-the Playwright harness already shipped for web/chirp
-(`web/chirp/playwright.config.ts`), which spawns the nmp-wasm Worker and reports
+the Playwright harness in the browser-runtime composition layer
+(see #2052/#2038), which spawns the nmp-wasm Worker and reports
 results back to the test runner; a bespoke Worker test runner is the only
 alternative. This vehicle must be scoped and stood up *before* #6 begins — it is
 the sole mitigation for #6's HIGH risk.
@@ -346,10 +346,10 @@ implementation starts.
   relay-author-score durability is out of scope for the web target, so "same
   code paths as native" does not imply score-store parity.
 
-- **Asset-pipeline wiring (LOW, scoped into #6).** The web build runs
-  `wasm-pack build --target web` into `web/chirp/public/nmp-wasm`
-  (`web/chirp/package.json:9`). The vendored sqlite3 `.wasm`+JS must also be
-  placed under `web/chirp/public`, imported by the hand-written shim
+- **Asset-pipeline wiring (LOW, scoped into #6).** The browser-runtime build runs
+  `wasm-pack build --target web` into a public assets directory served by the
+  browser-runtime composition root (see #2052/#2038). The vendored sqlite3 `.wasm`+JS
+  must also be placed in that directory, imported by the hand-written shim
   (`#[wasm_bindgen(module = ...)]`), and instantiated async-once. *Resolution:*
   add a #6 sub-task for vendoring the assets, wiring the shim import URL, and
   verifying async-once pool init under `--target web`. Confirm the SAH-pool

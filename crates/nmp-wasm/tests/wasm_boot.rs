@@ -4,8 +4,7 @@
 //! `NmpWasmRuntime` inside a real browser (Chrome headless via wasm-pack).
 //! It proves:
 //!
-//! 1. The `Instant::now()` / `SystemTime::now()` time panics (§1 of
-//!    `web/chirp/docs/wasm-runtime-execution-plan.md`) are all fixed — the
+//! 1. The `Instant::now()` / `SystemTime::now()` time concerns are addressed — the
 //!    runtime boots without aborting on `wasm32-unknown-unknown`.
 //! 2. `Kernel::start()` completes and returns `RuntimeStatus::Running`.
 //! 3. At least one `UpdateBytes` frame (a real FlatBuffers snapshot) is
