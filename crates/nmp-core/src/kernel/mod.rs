@@ -56,6 +56,7 @@ pub(crate) mod closed_reason;
 mod coverage_ledger;
 #[cfg(test)] mod coverage_ledger_d1_tests;
 #[cfg(test)] mod coverage_ledger_d2_tests;
+mod dependent_interests;
 mod diagnostic_counters;
 mod discovery;
 #[cfg(test)] mod discovery_tests;
@@ -74,8 +75,10 @@ mod event_observer;
 #[cfg(test)] mod event_observer_tests;
 mod observer_replay; // ADR-0062 — observer-scoped read-model catch-up.
 pub(crate) use observer_replay::ObserverReplayRequest;
+pub use dependent_interests::DependentInterestChild;
 #[cfg(test)] mod observer_replay_tests;
 #[cfg(test)] mod observer_replay_store_tests;
+#[cfg(test)] mod dependent_interests_tests;
 mod identity_state;
 mod ingest;
 #[cfg(test)] mod ingest_pre_verified_dispatcher_tests;
@@ -342,6 +345,11 @@ pub struct Kernel {
     #[cfg(any(test, feature = "test-support"))]
     test_contacts_cache: Arc<crate::substrate::TestContactsCache>,
     pub(crate) timeline_authors: BTreeSet<String>,
+    /// Source owner -> complete current set of child interests it produced.
+    dependent_interest_sets: BTreeMap<
+        crate::subs::SubOwnerKey,
+        BTreeMap<crate::subs::SubIdentity, crate::planner::LogicalInterest>,
+    >,
     /// T140 M2 — currently-registered follow-feed interest IDs.
     pub(crate) follow_feed_interest_ids: BTreeSet<crate::planner::InterestId>,
     /// Compiled acquisition kinds for the active-follows subscription.

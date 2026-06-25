@@ -1,8 +1,9 @@
 //! Interest, pull-cursor, and test-support dispatch arms.
 //!
-//! Covers: `EnsureInterest`, `DropInterestOwner`, `OpenPullCursor`, `AdvancePullCursor`,
-//! `UnregisterPullCursor`, `OpenInterest`, `OpenObservedInterest`,
-//! `CloseInterest`, and the `#[cfg(test)]` ingest/GC arms.
+//! Covers: `EnsureInterest`, `ReplaceDependentInterestSet`, `DropInterestOwner`,
+//! `OpenPullCursor`, `AdvancePullCursor`, `UnregisterPullCursor`,
+//! `OpenInterest`, `OpenObservedInterest`, `CloseInterest`, and the
+//! `#[cfg(test)]` ingest/GC arms.
 //!
 //! Extracted from `dispatch/mod.rs` to keep it under the 500-LOC ceiling.
 //! No behaviour change — all logic is verbatim from the original file.
@@ -33,6 +34,19 @@ pub(super) fn ensure_interest(
         }],
         "ensure-interest",
     );
+    Some(Vec::new())
+}
+
+/// Dispatch `InterestsCommand::ReplaceDependentInterestSet`.
+pub(super) fn replace_dependent_interest_set(
+    owner: crate::subs::SubOwnerKey,
+    children: Vec<crate::kernel::DependentInterestChild>,
+    reason: String,
+    ports: &mut InterestsPorts<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    use crate::actor::tick::maybe_emit_after_dispatch;
+    ports.kernel.replace_dependent_interest_set(owner, children, &reason);
+    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
     Some(Vec::new())
 }
 
@@ -222,6 +236,11 @@ pub(super) fn dispatch(
         InterestsCommand::EnsureInterest { identity, interest } => {
             ensure_interest(identity, interest, ports)
         }
+        InterestsCommand::ReplaceDependentInterestSet {
+            owner,
+            children,
+            reason,
+        } => replace_dependent_interest_set(owner, children, reason, ports),
         InterestsCommand::DropInterestOwner(identity) => drop_interest_owner(identity, ports),
         InterestsCommand::OpenPullCursor { handle, spec } => open_pull_cursor(handle, spec, ports),
         InterestsCommand::AdvancePullCursor {

@@ -11,9 +11,10 @@ use super::super::KernelEventObserverId;
 ///
 /// The kernel's subscription lifecycle registry is the single writer for live
 /// relay subscriptions (D4). Each variant either mutates the registry
-/// (`EnsureInterest` / `DropInterestOwner` / `OpenInterest` /
-/// `OpenObservedInterest` / `CloseInterest`) or the pull-cursor registry
-/// (`OpenPullCursor` / `AdvancePullCursor` / `UnregisterPullCursor`).
+/// (`EnsureInterest` / `ReplaceDependentInterestSet` /
+/// `DropInterestOwner` / `OpenInterest` / `OpenObservedInterest` /
+/// `CloseInterest`) or the pull-cursor registry (`OpenPullCursor` /
+/// `AdvancePullCursor` / `UnregisterPullCursor`).
 #[derive(Debug)]
 pub enum InterestsCommand {
     /// Attach one owner to a logical interest using the registry's
@@ -22,6 +23,15 @@ pub enum InterestsCommand {
     EnsureInterest {
         identity: crate::subs::SubIdentity,
         interest: crate::planner::LogicalInterest,
+    },
+    /// Replace every child interest owned by one reduced source. This is the
+    /// substrate-generic form behind dynamic filters: a reducer computes zero
+    /// or more child `LogicalInterest`s; the kernel owns withdrawal, upsert,
+    /// cache-serve, and one compile invalidation for the complete set.
+    ReplaceDependentInterestSet {
+        owner: crate::subs::SubOwnerKey,
+        children: Vec<crate::kernel::DependentInterestChild>,
+        reason: String,
     },
     /// Detach one owner from a logical interest registered through
     /// [`Self::EnsureInterest`].
