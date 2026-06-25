@@ -10,9 +10,13 @@ use nostr::{ClientMessage, Event, EventBuilder, EventId, Filter, RelayMessage};
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{connect, Message, WebSocket};
 
+use crate::auth::{
+    append_auth_count, auth_required_error, send_auth, strip_auth_required, take_auth_required,
+};
 use crate::cache::{default_cache_path, CachedEvent, EventCache};
+use crate::codec::{hex_decode, hex_encode};
 
-type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
+pub(crate) type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 
 #[derive(Clone)]
 pub struct Config {
@@ -44,11 +48,19 @@ impl Config {
             read_budget: Duration::from_secs(10),
         }
     }
+
+    pub fn signing_keys(&self) -> Result<Keys, String> {
+        match self.publish_secret.as_deref() {
+            Some(secret) => Keys::parse(secret).map_err(|e| format!("invalid --nsec/secret: {e}")),
+            None => Ok(Keys::generate()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct PlainReport {
     pub events: usize,
+    pub auths_sent: usize,
     pub bytes_sent: usize,
     pub bytes_received: usize,
     pub elapsed_ms: u128,
@@ -62,6 +74,7 @@ pub struct NegReport {
     pub need: usize,
     pub fetched: usize,
     pub rounds: usize,
+    pub auths_sent: usize,
     pub bytes_sent: usize,
     pub bytes_received: usize,
     pub elapsed_ms: u128,
@@ -115,10 +128,7 @@ pub fn clear_cache(config: &Config) -> Result<(), String> {
 }
 
 pub fn publish_demo_event(config: &Config) -> Result<PublishReport, String> {
-    let keys = match config.publish_secret.as_deref() {
-        Some(secret) => Keys::parse(secret).map_err(|e| format!("invalid --nsec/secret: {e}"))?,
-        None => Keys::generate(),
-    };
+    let keys = config.signing_keys()?;
     let pubkey = keys.public_key().to_hex();
     let content = format!(
         "NMP NIP-77 demo event {} #{tag}",
@@ -169,28 +179,45 @@ fn run_plain_req(config: &Config) -> Result<PlainReport, String> {
     let sub = SubscriptionId::new("nmp-demo-plain");
     let req = ClientMessage::req(sub.clone(), filter).as_json();
     let mut report = PlainReport {
-        bytes_sent: req.len(),
         ..PlainReport::default()
     };
-    send_text(&mut socket, &req)?;
-    let deadline = Instant::now() + config.read_budget;
-    while Instant::now() < deadline {
-        let Some(frame) = read_text(&mut socket)? else {
-            continue;
-        };
-        report.bytes_received += frame.len();
-        match RelayMessage::from_json(&frame) {
-            Ok(RelayMessage::Event {
-                subscription_id, ..
-            }) if *subscription_id == sub => report.events += 1,
-            Ok(RelayMessage::EndOfStoredEvents(subscription_id)) if *subscription_id == sub => {
-                break
+    for attempt in 0..2 {
+        report.bytes_sent += req.len();
+        send_text(&mut socket, &req)?;
+        let deadline = Instant::now() + config.read_budget;
+        while Instant::now() < deadline {
+            let Some(frame) = read_text(&mut socket)? else {
+                continue;
+            };
+            report.bytes_received += frame.len();
+            match RelayMessage::from_json(&frame) {
+                Ok(RelayMessage::Auth { challenge }) => send_auth(
+                    &mut socket,
+                    config,
+                    &challenge,
+                    &mut report.bytes_sent,
+                    &mut report.auths_sent,
+                )?,
+                Ok(RelayMessage::Event {
+                    subscription_id, ..
+                }) if *subscription_id == sub => report.events += 1,
+                Ok(RelayMessage::EndOfStoredEvents(subscription_id)) if *subscription_id == sub => {
+                    report.elapsed_ms = started.elapsed().as_millis();
+                    return Ok(report);
+                }
+                Ok(RelayMessage::Closed { message, .. })
+                    if message.contains("auth-required") && attempt == 0 =>
+                {
+                    break;
+                }
+                Ok(RelayMessage::Closed { message, .. }) => {
+                    return Err(format!("plain REQ closed: {message}"))
+                }
+                Ok(RelayMessage::Notice(message)) => {
+                    return Err(format!("relay notice: {message}"))
+                }
+                _ => {}
             }
-            Ok(RelayMessage::Closed { message, .. }) => {
-                return Err(format!("plain REQ closed: {message}"))
-            }
-            Ok(RelayMessage::Notice(message)) => return Err(format!("relay notice: {message}")),
-            _ => {}
         }
     }
     let close = ClientMessage::close(sub).as_json();
@@ -204,19 +231,38 @@ fn run_negentropy(config: &Config) -> Result<NegReport, String> {
     let started = Instant::now();
     let mut cache = EventCache::load(&config.cache_path, &config.relay, &config.filter_json);
     let local_before = cache.events.len();
-    let mut reconciler = Reconciler::client(cache.synced_items()).map_err(|e| e.to_string())?;
-    let initial = reconciler.initiate().map_err(|e| e.to_string())?;
     let mut socket = open(&config.relay)?;
     let filter = parse_filter(&config.filter_json)?;
-    let sub = SubscriptionId::new("nmp-demo-neg");
-    let open = ClientMessage::neg_open(sub.clone(), filter, hex_encode(&initial)).as_json();
     let mut report = NegReport {
         local_before,
-        bytes_sent: open.len(),
         ..NegReport::default()
     };
-    send_text(&mut socket, &open)?;
-    let (have, need) = reconcile_loop(config, &mut socket, &sub, &mut reconciler, &mut report)?;
+    let mut auth_retry = false;
+    let (sub, have, need) = loop {
+        let mut reconciler = Reconciler::client(cache.synced_items()).map_err(|e| e.to_string())?;
+        let initial = reconciler.initiate().map_err(|e| e.to_string())?;
+        let sub = SubscriptionId::new(if auth_retry {
+            "nmp-demo-neg-auth"
+        } else {
+            "nmp-demo-neg"
+        });
+        let open =
+            ClientMessage::neg_open(sub.clone(), filter.clone(), hex_encode(&initial)).as_json();
+        report.bytes_sent += open.len();
+        send_text(&mut socket, &open)?;
+        match reconcile_loop(config, &mut socket, &sub, &mut reconciler, &mut report) {
+            Ok((have, need)) => break (sub, have, need),
+            Err(e) if take_auth_required(&e).is_some() && !auth_retry => {
+                auth_retry = true;
+            }
+            Err(e) => {
+                return Err(append_auth_count(
+                    strip_auth_required(&e).to_string(),
+                    report.auths_sent,
+                ))
+            }
+        }
+    };
     report.have = have.len();
     report.need = need.len();
     if !need.is_empty() {
@@ -252,9 +298,19 @@ fn reconcile_loop(
         };
         report.bytes_received += frame.len();
         if let Some(message) = neg_error_message(&frame, sub) {
+            if message.contains("auth-required") {
+                return Err(auth_required_error(&message));
+            }
             return Err(message);
         }
         match RelayMessage::from_json(&frame) {
+            Ok(RelayMessage::Auth { challenge }) => send_auth(
+                socket,
+                config,
+                &challenge,
+                &mut report.bytes_sent,
+                &mut report.auths_sent,
+            )?,
             Ok(RelayMessage::NegMsg {
                 subscription_id,
                 message,
@@ -277,7 +333,10 @@ fn reconcile_loop(
             Ok(RelayMessage::NegErr { message, .. }) => return Err(format!("NEG-ERR: {message}")),
             Ok(RelayMessage::Notice(message)) => return Err(format!("relay notice: {message}")),
             Ok(RelayMessage::Closed { message, .. }) => {
-                return Err(format!("NEG closed: {message}"))
+                if message.contains("auth-required") {
+                    return Err(auth_required_error(&message));
+                }
+                return Err(format!("NEG closed: {message}"));
             }
             _ => {}
         }
@@ -414,7 +473,7 @@ fn read_text(socket: &mut RelaySocket) -> Result<Option<String>, String> {
     }
 }
 
-fn send_text(socket: &mut RelaySocket, text: &str) -> Result<(), String> {
+pub(crate) fn send_text(socket: &mut RelaySocket, text: &str) -> Result<(), String> {
     socket
         .send(Message::Text(text.to_string()))
         .map_err(|e| e.to_string())
@@ -425,37 +484,6 @@ fn now_s() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    static HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for b in bytes {
-        out.push(HEX[(b >> 4) as usize] as char);
-        out.push(HEX[(b & 0x0f) as usize] as char);
-    }
-    out
-}
-
-fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
-    if !s.len().is_multiple_of(2) {
-        return Err("odd-length hex payload".to_string());
-    }
-    let mut out = Vec::with_capacity(s.len() / 2);
-    for pair in s.as_bytes().chunks(2) {
-        let byte = (hex_nibble(pair[0])? << 4) | hex_nibble(pair[1])?;
-        out.push(byte);
-    }
-    Ok(out)
-}
-
-fn hex_nibble(b: u8) -> Result<u8, String> {
-    match b {
-        b'0'..=b'9' => Ok(b - b'0'),
-        b'a'..=b'f' => Ok(b - b'a' + 10),
-        b'A'..=b'F' => Ok(b - b'A' + 10),
-        _ => Err("invalid hex nibble".to_string()),
-    }
 }
 
 pub fn id_prefix(id: &str) -> &str {
