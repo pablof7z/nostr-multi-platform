@@ -51,10 +51,7 @@ const CONNECT_BUDGET: Duration = Duration::from_secs(10);
 /// Signature of the inbound event callback. Receives the raw event JSON
 /// `Value` (the third element of `["EVENT", <sub_id>, <event_json>]`).
 /// MUST be cheap (called on the dispatcher thread); offload work if needed.
-/// Returns `true` if the event was accepted, `false` if the intake is full
-/// and the event was dropped. Callers should record overflow diagnostics
-/// on `false` returns (D10/D13 — never log frame bytes).
-pub type EventCallback = Arc<dyn Fn(Value) -> bool + Send + Sync>;
+pub type EventCallback = Arc<dyn Fn(Value) + Send + Sync>;
 
 /// Signature of the connection-state callback. Called on the dispatcher
 /// thread when the relay-layer connection transitions between
@@ -414,10 +411,7 @@ fn handle_pool_event(
             ..
         } => {
             if let Some(value) = parse_event_frame(&text) {
-                // Ignore the return value here; diagnostics are recorded by
-                // the callback's caller (e.g., the broker). We only care about
-                // accepting or dropping the frame.
-                let _ = on_event(value);
+                on_event(value);
             }
         }
         // Binary/Ping/Pong/Close — NIP-01 is text-only; keepalive is

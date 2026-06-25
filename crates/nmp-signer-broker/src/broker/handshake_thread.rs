@@ -7,7 +7,7 @@
 //! install helpers are `pub(super)` because the sibling `nostrconnect` and
 //! `restore` workers reuse them.
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use crossbeam_channel::Receiver as CbReceiver;
@@ -71,26 +71,12 @@ impl BunkerBroker {
         // logic between two consumers via a fan-out: during handshake the
         // handshake function owns the receiver; afterwards we re-tap the
         // event callback to route directly to the transport.
-        // Bounded to SIGNER_BROKER_INTAKE_CAP to prevent unbounded growth
-        // against a noisy/hostile relay (D5/D8).
-        let (inbound_tx, inbound_rx) = crossbeam_channel::bounded::<Value>(crate::SIGNER_BROKER_INTAKE_CAP);
+        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
         let inbound_tx_for_cb = inbound_tx.clone();
-        let dropped_frames = Arc::new(AtomicU64::new(0));
-        let dropped_for_cb = Arc::clone(&dropped_frames);
         let event_cb: EventCallback = Arc::new(move |event| {
-            // Non-blocking try-send: on Full, drop the frame and record it.
-            // D8: no blocking the relay dispatcher thread.
-            match inbound_tx_for_cb.try_send(event) {
-                Ok(()) => true,
-                Err(crossbeam_channel::TrySendError::Full(_)) => {
-                    dropped_for_cb.fetch_add(1, Ordering::Relaxed);
-                    false
-                }
-                Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
-                    // Receiver dropped (broker cancelled); silently drop.
-                    false
-                }
-            }
+            // Best-effort: if the receiver is dropped (broker cancelled),
+            // silently drop the event.
+            let _ = inbound_tx_for_cb.send(event);
         });
 
         // Dial the first relay. Cycle through on failure.
@@ -179,18 +165,6 @@ impl BunkerBroker {
                 return;
             }
         };
-
-        // Emit diagnostics if any frames were dropped due to intake overflow.
-        let dropped_count = dropped_frames.load(Ordering::Relaxed);
-        if dropped_count > 0 {
-            self.emit_progress(
-                "ready",
-                Some(&format!(
-                    "dropped {} relay EVENT frames due to intake overflow",
-                    dropped_count
-                )),
-            );
-        }
 
         self.complete_handshake(handle, transport, inbound_rx, outcome, generation);
     }

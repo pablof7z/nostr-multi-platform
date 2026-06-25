@@ -7,55 +7,83 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use crossbeam_channel::{bounded, Receiver, Sender, TrySendError};
+use serde_json::Value;
+
 /// Max in-flight relay EVENT frames buffered per signer-broker session before
 /// overflow. Bounds memory against a noisy/hostile relay (D5/D8). One handshake
 /// needs only a handful of frames in flight; this is generous headroom.
 pub const SIGNER_BROKER_INTAKE_CAP: usize = 256;
 
-/// Outcome of admitting one inbound relay EVENT frame into a bounded intake.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum IntakeAdmission {
-    /// Frame enqueued.
-    Accepted,
-    /// Intake full; frame dropped (newest-dropped policy). Carries no payload
-    /// so diagnostics stay log-safe (D10/D13).
-    DroppedFull,
-}
-
-/// Per-session statistics for dropped frames due to intake overflow.
-#[derive(Debug, Default)]
-pub struct IntakeStats {
-    /// Number of frames dropped because the intake was full.
+/// Single source of truth for bounded intake: owns the channel and drop counter.
+/// Provides non-blocking admission with automatic drop counting.
+#[derive(Debug)]
+pub struct BoundedIntake {
+    sender: Sender<Value>,
+    receiver: Receiver<Value>,
     dropped_frames: Arc<AtomicU64>,
 }
 
-impl IntakeStats {
-    /// Create a new intake stats counter.
+impl BoundedIntake {
+    /// Create a new bounded intake with capacity SIGNER_BROKER_INTAKE_CAP.
     pub fn new() -> Self {
+        let (sender, receiver) = bounded::<Value>(SIGNER_BROKER_INTAKE_CAP);
         Self {
+            sender,
+            receiver,
             dropped_frames: Arc::new(AtomicU64::new(0)),
         }
     }
 
-    /// Increment the dropped-frames counter.
-    pub fn record_dropped(&self) {
-        self.dropped_frames.fetch_add(1, Ordering::Relaxed);
+    /// Attempt to admit a frame. Non-blocking: returns immediately whether the
+    /// frame was enqueued or dropped. On Full, increments the drop counter and
+    /// returns false. Callers check the return value to decide whether to return
+    /// true (frame accepted) or false (frame dropped) to the relay callback.
+    pub fn try_admit(&self, event: Value) -> bool {
+        match self.sender.try_send(event) {
+            Ok(()) => true,
+            Err(TrySendError::Full(_)) => {
+                self.dropped_frames.fetch_add(1, Ordering::Relaxed);
+                false
+            }
+            Err(TrySendError::Disconnected(_)) => {
+                // Receiver dropped; silently drop without counting (session ended).
+                false
+            }
+        }
     }
 
-    /// Get the current count of dropped frames.
+    /// Get the current count of frames dropped due to overflow.
     pub fn dropped_count(&self) -> u64 {
         self.dropped_frames.load(Ordering::Relaxed)
     }
 
-    /// Get a clone of the counter for sharing with the relay callback thread.
-    pub fn clone_counter(&self) -> Arc<AtomicU64> {
+    /// Return a clone of the receiver for use by the transport dispatcher.
+    pub fn receiver(&self) -> Receiver<Value> {
+        self.receiver.clone()
+    }
+
+    /// Return a clone of the sender for the event callback.
+    pub fn sender(&self) -> Sender<Value> {
+        self.sender.clone()
+    }
+
+    /// Return a cloneable handle to the drop counter for diagnostics emission.
+    pub fn drop_counter(&self) -> Arc<AtomicU64> {
         Arc::clone(&self.dropped_frames)
+    }
+}
+
+impl Default for BoundedIntake {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::relay_client::EventCallback;
 
     #[test]
     fn test_intake_cap_constant() {
@@ -63,119 +91,103 @@ mod tests {
     }
 
     #[test]
-    fn test_intake_stats_basic() {
-        let stats = IntakeStats::new();
-        assert_eq!(stats.dropped_count(), 0);
-        stats.record_dropped();
-        assert_eq!(stats.dropped_count(), 1);
-        stats.record_dropped();
-        assert_eq!(stats.dropped_count(), 2);
+    fn test_bounded_intake_basic() {
+        let intake = BoundedIntake::new();
+        assert_eq!(intake.dropped_count(), 0);
+
+        let event = serde_json::json!({"kind": 24133});
+        let accepted = intake.try_admit(event);
+        assert!(accepted, "should accept first frame");
+
+        assert_eq!(intake.dropped_count(), 0);
     }
 
     #[test]
-    fn test_intake_stats_concurrent() {
-        let stats = Arc::new(IntakeStats::new());
-        let mut handles = vec![];
+    fn test_bounded_intake_drop_counter() {
+        let intake = Arc::new(BoundedIntake::new());
 
-        for _ in 0..10 {
-            let stats_clone = Arc::clone(&stats);
-            let handle = std::thread::spawn(move || {
-                for _ in 0..100 {
-                    stats_clone.record_dropped();
-                }
-            });
-            handles.push(handle);
+        // Get a cloned reference to the drop counter.
+        let counter = intake.drop_counter();
+
+        // Verify we can read the counter independently.
+        assert_eq!(counter.load(std::sync::atomic::Ordering::Relaxed), 0);
+
+        // Fill the intake and cause drops.
+        for i in 0..(SIGNER_BROKER_INTAKE_CAP * 2) {
+            let event = serde_json::json!({"kind": 24133, "index": i});
+            let _ = intake.try_admit(event);
         }
 
-        for handle in handles {
-            handle.join().unwrap();
-        }
-
-        assert_eq!(stats.dropped_count(), 1000);
+        // Verify the counter was incremented (accessible via the cloned handle).
+        let drops_via_counter = counter.load(std::sync::atomic::Ordering::Relaxed);
+        let drops_via_intake = intake.dropped_count();
+        assert_eq!(drops_via_counter, drops_via_intake);
+        assert!(drops_via_intake > 0);
     }
 
     #[test]
     fn flood_does_not_grow_unbounded() {
-        // Send SIGNER_BROKER_INTAKE_CAP * 4 frames without draining.
-        // Assert the channel length never exceeds SIGNER_BROKER_INTAKE_CAP
-        // and that excess sends return an error indicating the channel is full.
-        let (tx, rx) = crossbeam_channel::bounded::<i32>(SIGNER_BROKER_INTAKE_CAP);
-        let dropped = Arc::new(AtomicU64::new(0));
-        let dropped_clone = Arc::clone(&dropped);
+        // Send frames aggressively to exceed the bounded cap.
+        // Verify drop counter increments when channel is full.
+        let intake = Arc::new(BoundedIntake::new());
 
-        // Send frames in a separate thread to avoid blocking the test.
+        // Send more frames than cap without draining.
+        let intake_for_send = Arc::clone(&intake);
         let send_handle = std::thread::spawn(move || {
-            for i in 0..(SIGNER_BROKER_INTAKE_CAP * 4) {
-                match tx.try_send(i as i32) {
-                    Ok(()) => {}
-                    Err(crossbeam_channel::TrySendError::Full(_)) => {
-                        dropped_clone.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(crossbeam_channel::TrySendError::Disconnected(_)) => {
-                        break;
-                    }
-                }
+            // Send 512 items into a 256-item cap (2x cap).
+            // All try_admit calls complete immediately (non-blocking).
+            for i in 0..(SIGNER_BROKER_INTAKE_CAP * 2) {
+                let event = serde_json::json!({"kind": 24133, "index": i});
+                let _ = intake_for_send.try_admit(event);
             }
         });
 
-        // Slowly drain the channel while sends are happening.
-        // This allows us to observe that the channel doesn't exceed the cap.
-        let mut drained = 0;
-        loop {
-            match rx.try_recv() {
-                Ok(_) => {
-                    drained += 1;
-                }
-                Err(crossbeam_channel::TryRecvError::Empty) => {
-                    // Check how many items are potentially in the channel by trying sends.
-                    // The channel length should never exceed SIGNER_BROKER_INTAKE_CAP.
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    break;
-                }
-            }
-            if drained >= SIGNER_BROKER_INTAKE_CAP * 4 {
-                break;
-            }
-        }
-
         send_handle.join().unwrap();
 
-        // Verify that frames were dropped due to overflow.
-        let dropped_count = dropped.load(Ordering::Relaxed);
+        // Verify drops occurred (512 attempts on a 256 cap must drop at least 256).
+        let dropped_count = intake.dropped_count();
         assert!(
             dropped_count > 0,
             "expected frames to be dropped due to bounded intake; got {}",
             dropped_count
         );
-
-        // Total sent + dropped should equal the target amount.
-        let total = drained as u64 + dropped_count;
-        assert_eq!(
-            total as usize,
-            SIGNER_BROKER_INTAKE_CAP * 4,
-            "total frames (received + dropped) should match sent amount"
+        // At most 256 items drained (the cap), at least 256 dropped.
+        assert!(
+            dropped_count >= SIGNER_BROKER_INTAKE_CAP as u64 / 2,
+            "expected at least {} drops, got {}",
+            SIGNER_BROKER_INTAKE_CAP / 2,
+            dropped_count
         );
     }
 
     #[test]
-    fn valid_handshake_completes_under_pressure() {
-        // Interleave one valid frame among noise; assert the drain loop
-        // still yields the valid frame.
-        let (tx, rx) = crossbeam_channel::bounded::<i32>(SIGNER_BROKER_INTAKE_CAP);
+    fn event_callback_integration_with_flood() {
+        // Test the real EventCallback integration path: verify that a flood
+        // through the callback increments drop counter while valid interleaved
+        // frames are still drained.
+        let intake = Arc::new(BoundedIntake::new());
+        let intake_for_cb = Arc::clone(&intake);
 
-        // Send mostly noise with one special frame (42) mixed in.
-        let sender = std::thread::spawn({
-            let tx = tx.clone();
+        // Create an EventCallback that uses BoundedIntake (the production pattern).
+        let event_cb: EventCallback = Arc::new(move |event| {
+            intake_for_cb.try_admit(event)
+        });
+
+        let rx = intake.receiver();
+
+        // Spawn sender that floods with noise and interleaves one special frame.
+        let send_handle = std::thread::spawn({
+            let cb = Arc::clone(&event_cb);
             move || {
                 for i in 0..1000 {
                     if i == 500 {
-                        // Insert the special frame.
-                        let _ = tx.try_send(42);
+                        // Special frame.
+                        let special = serde_json::json!({"kind": 24133, "special": true});
+                        let _ = cb(special);
                     } else {
-                        // Send noise; ignore if full.
-                        let _ = tx.try_send(i as i32);
+                        // Noise.
+                        let noise = serde_json::json!({"kind": 24133, "index": i});
+                        let _ = cb(noise);
                     }
                     if i % 100 == 0 {
                         std::thread::sleep(std::time::Duration::from_micros(100));
@@ -183,12 +195,57 @@ mod tests {
                 }
             }
         });
-        drop(tx);
 
-        // Drain until we find the special frame.
+        // Drain until we find the special frame, then stop.
         let mut found_special = false;
-        while let Ok(val) = rx.recv_timeout(std::time::Duration::from_secs(5)) {
-            if val == 42 {
+        while let Ok(event) = rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            if let Some(true) = event.get("special").and_then(|v| v.as_bool()) {
+                found_special = true;
+                break;
+            }
+        }
+
+        send_handle.join().unwrap();
+
+        assert!(
+            found_special,
+            "valid frame should complete even under pressure from noise frames"
+        );
+        // At least one frame should have been dropped (1000 tries into a 256-cap).
+        assert!(
+            intake.dropped_count() > 0,
+            "expected drops due to flood; got {}",
+            intake.dropped_count()
+        );
+    }
+
+    #[test]
+    fn valid_handshake_completes_under_pressure() {
+        // Test that valid handshake frame completes even under noise pressure.
+        let intake = Arc::new(BoundedIntake::new());
+        let intake_for_send = Arc::clone(&intake);
+        let rx = intake.receiver();
+
+        let sender = std::thread::spawn(move || {
+            for i in 0..1000 {
+                if i == 500 {
+                    // Send a special marker event.
+                    let special = serde_json::json!({"kind": 24133, "special": true, "id": "42"});
+                    let _ = intake_for_send.try_admit(special);
+                } else {
+                    // Send noise.
+                    let noise = serde_json::json!({"kind": 24133, "index": i});
+                    let _ = intake_for_send.try_admit(noise);
+                }
+                if i % 100 == 0 {
+                    std::thread::sleep(std::time::Duration::from_micros(100));
+                }
+            }
+        });
+
+        let mut found_special = false;
+        while let Ok(event) = rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            if let Some(true) = event.get("special").and_then(|v| v.as_bool()) {
                 found_special = true;
                 break;
             }

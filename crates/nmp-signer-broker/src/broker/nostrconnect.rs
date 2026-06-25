@@ -109,18 +109,10 @@ impl BunkerBroker {
         cancel_rx: CbReceiver<()>,
         generation: u64,
     ) {
-        // Bounded to SIGNER_BROKER_INTAKE_CAP to prevent unbounded growth
-        // against a noisy/hostile relay (D5/D8).
-        let (inbound_tx, inbound_rx) = crossbeam_channel::bounded::<Value>(crate::SIGNER_BROKER_INTAKE_CAP);
+        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
         let inbound_tx_for_cb = inbound_tx.clone();
         let event_cb: EventCallback = Arc::new(move |event| {
-            // Non-blocking try-send: on Full, drop the frame and record it.
-            // D8: no blocking the relay dispatcher thread.
-            match inbound_tx_for_cb.try_send(event) {
-                Ok(()) => true,
-                Err(crossbeam_channel::TrySendError::Full(_)) => false,
-                Err(crossbeam_channel::TrySendError::Disconnected(_)) => false,
-            }
+            let _ = inbound_tx_for_cb.send(event);
         });
 
         // Acquire pairs with the Release store in `BunkerBroker::cancel()`
