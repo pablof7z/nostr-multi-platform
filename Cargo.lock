@@ -4451,6 +4451,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "nmp-core",
+ "nmp-defaults",
  "nmp-network",
  "nmp-signer-iface",
  "nmp-store",

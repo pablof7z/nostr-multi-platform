@@ -42,6 +42,22 @@ mod smoke_tests {
         // Callable on native; wasm32 test harness validates it sets the hook.
         // This test merely verifies the symbol exists and compiles.
     }
+
+    /// Smoke test: the neutral `nmp-defaults` symbols (`register_defaults`,
+    /// `register_substrate`, `NmpDefaults`) are reachable from
+    /// `nmp-browser-runtime` with `default-features = false`, proving the
+    /// wasm-safe composition path links without pulling in nmp-ffi or other
+    /// native-only crates (#2047).
+    #[test]
+    fn nmp_defaults_neutral_symbols_accessible() {
+        // Construct the neutral defaults config to prove the symbol is in scope
+        // and the crate compiles without native-only deps.
+        let _ = nmp_defaults::NmpDefaults::default();
+        // Use-path references prove register_defaults and register_substrate are
+        // visible without calling them (calling requires a concrete AppHost).
+        #[allow(unused_imports)]
+        use nmp_defaults::{register_defaults, register_substrate};
+    }
 }
 
 #[cfg(all(test, target_arch = "wasm32"))]

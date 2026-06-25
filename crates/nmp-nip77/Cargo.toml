@@ -10,7 +10,7 @@ description = "NIP-77 negentropy reconciliation primitives and runtime adapter f
 name = "nmp_nip77"
 
 [dependencies]
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", default-features = false }
 nmp-network = { path = "../nmp-network", default-features = false }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle —
 # the nmp_core::planner compat facade is deleted (#1608).

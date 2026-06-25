@@ -6,10 +6,30 @@ license.workspace = true
 repository.workspace = true
 description = "The framework's default composition for an NMP-based Nostr application (ADR-0046 — composition is a library, not a generator). One call (`register_defaults`) wires the default action modules (NIP-01 publish, NIP-02 follow/react, NIP-17 send + DM-relay-list publish, NIP-57 zap, NIP-65 publish_relay_list), the default ingest parsers (kind:10050 → `DmRelayCache`), the production routing substrate (`GenericOutboxRouter` + `InMemoryMailboxCache`), indexer-republish policy, the canonical DM-inbox + zap-receipts runtimes, and the D2 coverage hook. The Bevy-`DefaultPlugins` / Spring-Boot-starter pattern. Closes V-48 (step 10 of `docs/architecture/crate-boundaries.md` §5)."
 
+[features]
+# Default-on so existing native consumers (nmp-app-chirp, nmp-ffi shells,
+# etc.) are byte-for-byte unchanged. Disable with `default-features = false`
+# for wasm32 / pure-Rust compilation: the neutral
+# `register_defaults`/`register_substrate` path compiles without the
+# native-only crates (nmp-ffi, nmp-feed, nmp-nip01, nmp-nip47, nmp-nip11).
+default = ["native"]
+native = [
+    "dep:nmp-ffi",
+    "dep:nmp-feed",
+    "dep:nmp-nip01",
+    "dep:nmp-nip47",
+    "dep:nmp-nip11",
+    "nmp-core/native",
+    "nmp-router/native",
+    "nmp-nip57/native",
+]
+
 [dependencies]
 # Kernel substrate — `ActorCommand`, observer traits, the routing
 # substrate factory seam, and the app-neutral `AppHost` registration trait.
-nmp-core = { path = "../nmp-core" }
+# `default-features = false` keeps wasm32 free of mio/lmdb; `nmp-core/native`
+# is re-enabled by the `native` feature above.
+nmp-core = { path = "../nmp-core", default-features = false }
 # Canonical Nostr kind-integer registry used by default action modules.
 nmp-kinds = { path = "../nmp-kinds" }
 # Direct dep on nmp-planner for InterestShape / InterestId / InterestLifecycle /
@@ -21,7 +41,10 @@ nmp-planner = { path = "../nmp-planner" }
 nmp-store = { path = "../nmp-store" }
 # Layer-2 routing: `GenericOutboxRouter`, `InMemoryMailboxCache`, and the
 # `nmp.nip65.publish_relay_list` action module the template registers.
-nmp-router = { path = "../nmp-router" }
+# `default-features = false` prevents nmp-router's `native` passthrough from
+# silently re-enabling nmp-core/native on wasm32; `nmp-router/native` is
+# re-enabled by the `native` feature above.
+nmp-router = { path = "../nmp-router", default-features = false }
 # Wasm-safe default cache/parser wiring shared by this native AppHost
 # composition root and reducer-owned web roots.
 nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
@@ -37,14 +60,19 @@ nmp-nip84 = { path = "../nmp-nip84" }
 # NIP-22 comments: `register_comment_runtime` installs the kind:1111
 # `CommentThreadProjection` observer + the `nmp.nip22.post_comment` action.
 nmp-nip22 = { path = "../nmp-nip22" }
-nmp-nip11 = { path = "../nmp-nip11" }
+# NIP-11 relay information document fetcher — native transport (ureq). Made
+# optional so the neutral wasm path does not require native I/O.
+nmp-nip11 = { path = "../nmp-nip11", optional = true }
 nmp-nip17 = { path = "../nmp-nip17" }
 # NIP-47 Nostr Wallet Connect: `register_wallet` is wired through the
 # `NmpAppBuilder::with_wallet` typed builder step so the wallet runtime is
 # installed during the config phase, before `start()` consumes the builder
 # (V-95 / issue #619 — install-before-dispatch enforced by move semantics).
-nmp-nip47 = { path = "../nmp-nip47" }
-nmp-nip57 = { path = "../nmp-nip57" }
+# Optional — used only in the `builder` module (native feature).
+nmp-nip47 = { path = "../nmp-nip47", optional = true }
+# `default-features = false` keeps wasm32 free of ureq; `nmp-nip57/native`
+# re-enables it via the `native` feature above.
+nmp-nip57 = { path = "../nmp-nip57", default-features = false }
 # NIP-50 public full-text search scopes (#1811): `register_search_scopes`
 # installs the `nip50.profiles` / `nip50.notes` / `nip50.longform`
 # crate-owned `SearchScopeProvider`s into the shared FTS scope registry so the
@@ -84,10 +112,11 @@ nmp-coverage-gate = { path = "../nmp-coverage-gate" }
 # inversion rungs 4/5 rejected. `nmp-nip01` supplies the NIP-10 OP-feed
 # instance (`register_op_feed`); `nmp-feed` supplies the `FeedController` /
 # `EventLookup` types the engine is cast to.
-nmp-ffi = { path = "../nmp-ffi" }
-nmp-nip01 = { path = "../nmp-nip01" }
+# All three are optional — only compiled when the `native` feature is on.
+nmp-ffi = { path = "../nmp-ffi", optional = true }
+nmp-nip01 = { path = "../nmp-nip01", optional = true }
 nmp-nip18 = { path = "../nmp-nip18" }
-nmp-feed = { path = "../nmp-feed" }
+nmp-feed = { path = "../nmp-feed", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = "1.0"
 nostr = { version = "0.44", default-features = false, features = ["std"] }

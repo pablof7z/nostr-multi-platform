@@ -7,7 +7,7 @@ repository.workspace = true
 description = "NIP-29 relay-based groups as an NMP protocol crate. Owns every h-tagged event regardless of kind; declares host-relay-pinned routing via the third lane (Rule 9)."
 
 [dependencies]
-nmp-core = { path = "../nmp-core" }
+nmp-core = { path = "../nmp-core", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
 # Direct dep on nmp-planner for InterestId / InterestLifecycle / InterestScope /
 # LogicalInterest / stable_hash64 — the nmp_core::planner compat facade is
