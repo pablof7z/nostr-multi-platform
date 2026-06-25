@@ -1,26 +1,33 @@
 # WASM Surface Reference
 
 > **Reviewed:** 2026-06-22. Sourced directly from `crates/nmp-wasm/src/`.
-> This document is the single source of truth for the `crates/nmp-wasm` worker
-> protocol contract. See ADR-0047 (worker write/signing contract now defers to
+> This document is the single source of truth for the `crates/nmp-wasm`
+> ABI-glue contract. `crates/nmp-wasm` is **not** the browser runtime owner:
+> `crates/nmp-browser-runtime` owns worker composition, platform adaptation,
+> and the typed app builder (ADR-0067). This surface documents byte-oriented
+> dispatch in/out, capability-result bytes, callbacks, and lifecycle handle
+> mechanics only. See ADR-0047 (worker write/signing contract now defers to
 > **ADR-0064** — the unified write/command boundary).
 >
 > **Note (2026-06-25):** The wasm-bindgen composition entry point (`NmpWasmRuntime`,
 > `handle_json`, `handle_dispatch_bytes`) that lived in the deleted Chirp Web crate
 > is gone (see #2052). The protocol contract described below remains the target
 > surface; the wasm-bindgen composition entry point will be re-established under
-> the new browser-runtime architecture (see #2038). Until then, `crates/nmp-wasm/src/lib.rs`
-> exposes only the hidden `RawWasmAbiAdapter` and the protocol types — no
-> `#[wasm_bindgen]` class is emitted.
+> the new `nmp-browser-runtime` architecture (see #2038). Until then,
+> `crates/nmp-wasm/src/lib.rs` exposes only the hidden `RawWasmAbiAdapter` and
+> the protocol types — no `#[wasm_bindgen]` class is emitted.
 
-`crates/nmp-wasm` will expose the NMP browser runtime as a `wasm-bindgen` class
-(`NmpWasmRuntime`) that a dedicated Worker instantiates. The Worker event loop
-is the actor (D4): it is the single writer of kernel state in the browser host.
+`crates/nmp-wasm` is the ABI delivery shell. The rebuilt browser runtime will
+instantiate this ABI surface from `crates/nmp-browser-runtime` on a dedicated
+Worker. That Worker event loop drives a `KernelReducer` (D4): it is the single
+writer of kernel state, but composition, storage registration, signer/capability
+provider registration, and app-builder policy live in `nmp-browser-runtime`, not
+`nmp-wasm`.
 TypeScript renders snapshots and executes browser capabilities; Rust owns
 policy, routing, replay, Nostr protocol behaviour, and state transitions.
 
-All production functions will be on the `NmpWasmRuntime` class. The wire protocol
-uses three channels:
+The target ABI functions will be restored on the `NmpWasmRuntime` class. The
+wire protocol uses three channels:
 
 1. **JSON control channel** — `handle_json(request: string): string` (sync).
    Accepts JSON-serialised structured controls (`hello`, `start`,
