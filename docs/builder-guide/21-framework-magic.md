@@ -33,7 +33,7 @@ the design doc's index table — that mismatch is recorded in
 | C2 | Parameterized replaceable supersession (30000–39999) by `(pubkey, kind, d-tag)` | Per-`d`-tag slots stay independent; no app-side keying logic | D1 | `c2_parameterized_replaceable_supersedes_by_dtag` | **[DONE]** (active; doc table says `[PENDING M3]` — drift §27) |
 | C3 | Kind:5 delete: referenced events removed, tombstone persisted | Deletes propagate; cross-author deletes ignored; no app delete-by-id | spec §7.1 | `c3_kind5_delete_removes_referenced_and_tombstones` | **[DONE]** (active; doc says `[PENDING M3]` — drift §27) |
 | C4 | NIP-40 expiration auto-removes at expiry; survives actor restart | Expired events vanish on schedule, even across restart; no app timer | spec §7.1 | `c4_nip40_expiration_removes_and_persists_schedule` | **[DONE]** (active; doc says `[PENDING M3]` — drift §27) |
-| C5 | Kind:3 auto-tracking: follow-list change recompiles dependent subs | Follow someone → their notes appear; no Svelte rune / React dep wiring | D3 | `c5_kind3_change_recompiles_follow_dependent_subs` | **[DONE]** (active; doc says `[PENDING M2]` — drift §27) |
+| C5 | ReducedSource auto-tracking: active-user follow-source changes recompile dependent feed interests | Follow someone → their notes appear; no Svelte rune / React dep wiring | D3/D4 | `c5_kind3_change_recompiles_follow_dependent_subs` | **[DONE]** for kind:3 follow feed; #2092 generalizes the primitive beyond follows |
 | C6 | Outbox read routing: `authors` filters fan out to write relays, deduped | Reads reach the right relays; no relay-set bookkeeping in the app | D3 | `c6_authors_subscription_routes_to_per_author_write_relays` | **[DONE]** (active; doc says `[PENDING M2]` — drift §27) |
 | C7 | Outbox write routing + private events fail closed on unknown inbox | Publishes reach author write + `#p` inbox; gift-wrap fails safe | D3 | `c7_publish_routes_outbox_and_private_fails_closed` | **[DONE]** (active; doc says `[PENDING M2→M6]` — drift §27) |
 | C8 | Planner dedups overlapping interests, auto-closes on EOSE/last-drop, buffers ≤60Hz/view | One wire REQ per relay; views close themselves; no manual dedup | spec §7.2 | `c8_subscriptions_coalesce_autoclose_and_buffer` | **[DONE]** (active; doc says `[PENDING M2]` — drift §27) |
@@ -71,7 +71,7 @@ until that chapter's "framework-magic delta" lands — also noted in
 
 The contract's value to a builder is negative: it is the list of code you must
 **not** write. There is no `if event_is_newer { replace }` (C1), no
-`recompileSubsOnFollowChange()` (C5), no `dedupeAcrossRelays()` (C9), no
+`recompileSubsOnSourceChange()` (C5), no `dedupeAcrossRelays()` (C9), no
 `if (!profile) showSpinner()` (C13). The API does not expose the question that
 would justify the fallback. Writing it anyway is the anti-pattern; it will
 diverge from the kernel's authoritative behavior and reintroduce exactly the
@@ -121,9 +121,10 @@ an ADR (`docs/design/framework-magic/intro.md` §4). To add C14:
 - **App-side fallback "just in case".** A `dedupeAcrossRelays()` or
   `replaceIfNewer()` helper in app code. C1/C9 already do this in the kernel;
   the app copy will drift and double-handle.
-- **Re-implementing kind:3 watch in SwiftUI.** A `@StateObject` that subscribes
-  to the contact list and re-opens views on change. C5 does this in the kernel;
-  the SwiftUI copy fights the planner's recompile.
+- **Re-implementing source watches in SwiftUI.** A `@StateObject` that
+  subscribes to a contact list, mute list, follow pack, or pointer source and
+  re-opens views on change. C5/#2092 keep source reduction in Rust; the SwiftUI
+  copy fights the planner's recompile.
 - **Renaming a contract test to fit the milestone-prefix convention.**
   `framework_magic_contract.rs` is intentionally *not* milestone-prefixed
   (`test-scaffolding.md` §1); renaming it or its tests breaks the meta-test and

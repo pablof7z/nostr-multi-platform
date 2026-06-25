@@ -89,13 +89,11 @@ display, reaction counts) live in **store projections**, not view-on-view
 subscriptions, so a kind:0 arrival does a targeted O(items-by-that-author)
 patch rather than a per-view scan (`view-deltas-and-projections.md:110-164`).
 
-> **Note — the push frame also carries a `projections` map.** Beyond the
-> ViewModule view-deltas described in this chapter, each pushed snapshot also
-> carries a `projections` map of named app/module state slices populated by
-> registered *snapshot projectors* (keyed `nmp.*`, e.g. `nmp.follow_list`). That
-> is a **distinct mechanism** from the ViewModule typed-reactive-view-delta
-> projections discussed here — see
-> [15 — How to add a snapshot projection](15-codegen-and-ffi.md).
+> **Note — the push frame also carries a `projections` map.** Each pushed
+> snapshot carries named app/module state slices populated by registered
+> *snapshot projectors* (keyed `nmp.*`, e.g. `nmp.follow_list`). That is
+> distinct from typed `ViewBatch` payloads and from feed/dependent-interest
+> acquisition — see [15 — How to add a snapshot projection](15-codegen-and-ffi.md).
 
 ## reactivity-bench validation (run 002, report 1779051783)
 
@@ -122,16 +120,24 @@ coalesced 168,978 → 115,308 raw deltas, still under per-view budget. Memory in
 `working_set_100_views` (1M cached / 10k hot / 100 views) ≈ 19.8 MB,
 well under the 100 MB ADR-0003 gate. (`run-002.md:7-50`.)
 
-## How a ViewModule plugs in
+## How reactive modules plug in
 
-A view kind is a Rust module with a `State` struct and free functions — **no
-trait** (closed v1 set; enum dispatch is simpler to debug,
-`view-deltas-and-projections.md:5-64`). On `open` it returns
-`(State, Dependencies, payload)`; the registry derives the most-specific
-composite registration from `Dependencies` — the view never enumerates the
-cartesian product itself. `on_event_inserted` / `on_event_removed` /
-`on_projection_changed` each return `Option<ViewDelta>`: return `None` when
-nothing changed so the buffer stays empty.
+Current v1 code uses explicit Rust seams, not a `ViewModule` trait. A module
+can register:
+
+- a typed feed session (`open_feed(FeedParams)`) whose source compiles to
+  materialized `LogicalInterest`s;
+- `KernelEventObserver` + `register_snapshot_projection` for read models that
+  maintain their own app-owned state slice;
+- ref/dependent-interest claims for profiles, events, addresses, and other
+  secondary facts a mounted component/read model needs.
+
+For each path, the module declares the most specific event dependencies it can.
+The reverse index chooses composite keys, and callbacks return no update when
+their visible state did not change. Dynamic sources such as active-user follows
+or NIP-51 list membership do not run native watchers; a Rust ReducedSource owner
+replaces the materialized child-interest set and the existing planner/reactivity
+machinery carries the result.
 
 ## Anti-patterns
 

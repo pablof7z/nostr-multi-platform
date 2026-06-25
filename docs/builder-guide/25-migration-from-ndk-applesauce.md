@@ -25,12 +25,12 @@ an actor-owned value that produces a bounded JSON slice pushed to the host at
 | NDK term | Applesauce term | NMP term |
 |---|---|---|
 | `NDKRelaySet` / per-author relay calc | relay-map / `selectOptimalRelays` | `CompiledPlan` — the planner resolves relays from a `LogicalInterest`; you never assemble relay sets (`07-subscription-planner.md`) |
-| `ndk.subscribe(filters, opts)` | `eventStore.timeline(filters)` | `OpenView(spec)` dispatched as an action → kernel registers a `LogicalInterest`; you pass *intent*, not filters/relays |
+| `ndk.subscribe(filters, opts)` | `eventStore.timeline(filters)` | `open_feed(FeedParams)` / action-dispatched claim → Rust registers `LogicalInterest`s; you pass *intent*, not filters/relays |
 | `NDKEvent` + manual derive | `eventStore.model(...)` (RxJS) | `KernelEventObserver` + `register_snapshot_projection` — actor-owned projection pushed as a JSON slice in every snapshot; **not** a stream you subscribe to |
 | build event → `signer.sign` → `ndk.publish` | `ActionRunner` + `ctx.publish(event, relays?)` | `ActionModule` + the publish engine — one action signs, publishes (outbox-routed), and updates the store atomically |
 | `NDKPrivateKeySigner` / `NDKNip46Signer` / NIP-55 | `SimpleSigner` / `ExtensionSigner` / `AmberClipboardSigner` | `nmp-signers::Signer` (Local / NIP-46 / NIP-07) + Keyring capability; iOS Keychain SHIPS, iOS external-signer is a capability hook not turnkey |
 | `@nostr-dev-kit/sessions` store + `activePubkey` | `AccountManager` + `IAccount` | kernel `AppState.session` + `nmp-signers::AccountManager`; account is identity-only, derived state lives in app-owned stores |
-| kind:3 watcher in sessions pkg + Svelte runes / React deps to rewire | consumer manually re-subscribes | **framework-magic** — kernel watches active account's kind:3, auto-recompiles every dependent interest on the wire; app dispatches **zero** code |
+| kind:3 watcher in sessions pkg + Svelte runes / React deps to rewire | consumer manually re-subscribes | **ReducedSource / framework-magic** — Rust owns source reduction and dependent-interest replacement; app dispatches **zero** rewire code |
 
 ## What NMP handles for you
 
@@ -39,9 +39,9 @@ Each item below is code you wrote in NDK/Applesauce that NMP **owns**:
 - **Outbox routing.** No `calculateRelaySetFromEvent`, no passing `relays?`
   to publish. The planner resolves author write-relays + recipient
   inbox-relays automatically; manual relay selection is an audited opt-out.
-- **kind:3 auto-rewire.** In NDK you needed Svelte runes or a React
-  `[follows]` dep; in NMP the kernel restarts the wire subscription on
-  kind:3 arrival with zero app code.
+- **Dynamic-source auto-rewire.** In NDK you needed Svelte runes or a React
+  `[follows]` dep; in NMP the Rust owner of a ReducedSource replaces the
+  materialized child interests when the source changes, with zero app code.
 - **Subscription coalescing + lifecycle.** Applesauce dedupes by model hash
   but still sends one REQ per filter; NMP coalesces overlapping interests
   into minimal wire REQs and auto-closes on last consumer drop.
@@ -73,8 +73,10 @@ Each item below is code you wrote in NDK/Applesauce that NMP **owns**:
 - **Do not reinvent Applesauce's `claimLatest` / refcount GC in app code.**
   The kernel's claim-based GC tracks which views reference which events and
   prunes automatically; an app-side parallel cache is a D4 violation.
-- **Do not hand-roll kind:3 watching in SwiftUI/Compose.** That is exactly
-  the NDK trap; the kernel does it.
+- **Do not hand-roll dynamic source watching in SwiftUI/Compose.** Contact
+  lists, mute lists, follow packs, and pointer cascades reduce in Rust and
+  materialize normal interests through the registry/planner. Native only
+  declares the feed/action/ref claim and renders snapshots.
 - **Do not expect NDK feature parity.** NDK ships DMs and a Wallet today;
   NMP defers both to post-v1 (`01-what-nmp-is.md`). Do not plan a migration
   that depends on them.

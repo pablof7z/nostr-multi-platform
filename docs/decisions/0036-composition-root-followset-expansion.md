@@ -22,7 +22,10 @@ different admission/ranking rules.
 ## Decision
 
 The active follow set has one producer. Feed declarations, not a special
-kernel-owned home-feed API, consume it:
+kernel-owned home-feed API, consume it. The general pattern is a
+**ReducedSource**: a closed, serializable source expression in the
+app/protocol/defaults layer that is reduced into materialized
+`LogicalInterest`s before it reaches the planner.
 
 - `nmp-nip02::ActiveFollowSet` produces a reactive pubkey set and a closure
   predicate.
@@ -35,6 +38,12 @@ kernel-owned home-feed API, consume it:
 
 The composition root wires consumers and declares the feed. It does not pass a
 static follow list snapshot to the kernel or to native code.
+
+Follow-set expansion is therefore one ReducedSource instance, not a special
+framework exception. Other protocol crates may define their own reducers for
+public list, mute-list, follow-pack, or similar pubkey sources, but `nmp-core`
+and `nmp-planner` see only generic source ownership and materialized interest
+shapes.
 
 ## Producer
 
@@ -71,7 +80,8 @@ The app/defaults layer declares a feed as a typed `FeedParams`
 - an acquisition source (`FeedParams.acquisition: FeedScope`); for this ADR the
   active account's follows is `FeedScope::ActiveUserFollows` — a closed-algebra
   variant, **not** a `declare_active_follows_feed` helper verb and **not** a
-  static copy of the follow set;
+  static copy of the follow set. `FeedScope` / `PubkeySetExpr` is the current
+  app-facing ReducedSource expression model;
 - an admission policy, a ranking/order, a window, and a projection key
   (`FeedParams.admission` / `.ranking` / `.window` / `.projection`) that select
   which acquired rows render, how they are ordered and bounded, and how they are
@@ -98,6 +108,11 @@ or to the kernel. It selects a reactive source such as active-user follows.
 The active-follow producer and kernel subscription machinery react to kind `3`,
 list, account, mute/block, delete, and replacement changes and reset/regrow the
 declared feed without UI code re-declaring it.
+
+Secondary facts are not part of the source expression. Profiles, event refs,
+address refs, relation counts, repost targets, and meta-target hydration are
+dependent interests owned by the component/read model that renders them. They
+use normal planner lifecycle, dedup, close, diagnostics, and cache behavior.
 
 ## Composition Root
 
@@ -128,6 +143,8 @@ duplicate wire subscriptions.
 - app Rust crates choose feed keys, primary kinds, source expressions,
   admission/ranking policy, and row projections.
 - native shells render snapshots and execute capabilities only.
+- native shells never expand follow/list sources, run meta-subscribe cascades,
+  or compute dependent hydration filters.
 
 This document is the current rule. If the implementation changes, edit this
 document in place instead of adding a later correction document.

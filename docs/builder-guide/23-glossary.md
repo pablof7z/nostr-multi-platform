@@ -40,7 +40,12 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
   `crates/nmp-core/src/store/types/gc.rs:10` (`ClaimerId`).
 - **CompiledPlan** — the planner output: a per-relay map of exactly which REQ
   frames to emit, plus a content-addressed `plan_id` for diagnostic
-  continuity. *defined in:* `crates/nmp-core/src/planner/plan.rs:166`.
+  continuity. *defined in:* `crates/nmp-planner/src/plan.rs`.
+- **dependent interest** — a `LogicalInterest` or ref claim whose desired shape
+  is derived from another source result rather than declared directly by native
+  UI code. It is still a normal registry/planner input: refcounted, cache-first,
+  deduped, and closed when its owner/source withdraws. *defined by:* #2092 and
+  `docs/design/subscription-compilation/intro.md` §2.2.
 - **DomainModule** — **[removed]** proposed v2 trait for kernel-owned durable
   records. Never shipped. Use an app-owned `Arc<Mutex<T>>` store +
   `register_snapshot_projection` instead. See [05a](05a-substrate-traits.md)
@@ -83,7 +88,7 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
   `crates/nmp-core/src/substrate/view.rs`.
 - **LogicalInterest** — what a consumer wants alive on the wire (id, scope,
   shape, hints, lifecycle). Compiler input — *not* a Nostr filter. *defined
-  in:* `crates/nmp-core/src/planner/interest.rs:227`.
+  in:* `crates/nmp-planner/src/interest.rs`.
 - **MailboxCache** — the trait the compiler consults for a pubkey's NIP-65
   relay list. *defined in:* `crates/nmp-core/src/substrate/routing.rs`
   (`MailboxCache` trait).
@@ -95,7 +100,7 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
   `nmp_defaults::register_defaults(app)` once, then app-specific registrations.
 - **plan-id (`plan_id`)** — content-addressed hash over
   `(sorted_interests, mailbox_snapshot, lattice_version)`; stable across
-  no-op recompiles. *defined in:* `crates/nmp-core/src/planner/plan.rs:171`.
+  no-op recompiles. *defined in:* `crates/nmp-planner/src/plan.rs`.
 - **PublishEngine** — the per-(event, relay) state machine driving the
   durable retry queue; native never decides retry policy (D7). *defined in:*
   `crates/nmp-core/src/publish/engine.rs:62`.
@@ -105,7 +110,7 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
 - **`relay_pin`** — hard routing override on `InterestShape`: when `Some`, the
   four-lane outbox dispatch is suppressed and the interest goes to exactly
   that host (third routing lane; NIP-29 groups). Never serialized onto the
-  wire. *defined in:* `crates/nmp-core/src/planner/interest.rs:140`.
+  wire. *defined in:* `crates/nmp-planner/src/interest.rs`.
 - **RelayAck** — the D7 publish envelope (`ok`, `code`, `message`, `details`)
   describing one relay's response to one event. *defined in:*
   `crates/nmp-core/src/publish/state.rs:48`.
@@ -115,9 +120,15 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
 - **rev** — the monotonic `u64` carried on every `AppState`/update; platforms
   enforce a stale-guard (drop updates with `rev` ≤ last seen). *defined in:*
   `crates/nmp-core/src/app.rs:28`.
+- **ReducedSource** — an app/protocol-owned source expression plus deterministic
+  reducer that turns source events/state into materialized interest shapes
+  (authors, tags, ids, or addresses). Core/planner see only the resulting
+  `LogicalInterest`s; NIP nouns such as contact list or mute list stay in the
+  protocol/defaults crate that owns the reducer. *defined by:* #2092 and
+  ADR-0036/ADR-0042 amendments.
 - **scope** — `InterestScope`: the account context for mailbox resolution
   (`ActiveAccount` / `Account(id)` / `Global`). Distinct from *session* and
-  *account*. *defined in:* `crates/nmp-core/src/planner/interest.rs:181`.
+  *account*. *defined in:* `crates/nmp-planner/src/interest.rs`.
 - **snapshot** — the default emit unit: a full view payload recomputed in the
   actor and pushed on change; granular deltas are an optimization. *defined
   in:* `crates/nmp-core/src/substrate/view.rs` (`ViewDependencies` +
@@ -135,7 +146,7 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
   `crates/nmp-nip77/src/coverage_gate.rs:49`.
 - **RoutingSource** — diagnostic record of which lane put a relay in the plan
   (`Nip65` / `Hint` / `Provenance` / `UserConfigured`). *defined in:*
-  `crates/nmp-core/src/planner/plan.rs:61`.
+  `crates/nmp-planner/src/plan.rs`.
 - **TombstoneRow** — the suppression record for a deleted/expired event
   (`Kind5` / `NIP40Expiry` / `AdminPurge`). *defined in:*
   `crates/nmp-core/src/store/types/mod.rs:17` (re-export; source

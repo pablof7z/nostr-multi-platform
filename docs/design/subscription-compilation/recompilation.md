@@ -98,21 +98,36 @@ Outbox routing implication: if `pubkey` was previously routed to the indexer fal
 
 Comparison with NDK: `refreshRelayConnections` (`docs/research/ndk/outbox.md` §"Live subscription refresh", `core/src/subscription/index.ts:787-812`) **only adds** newly-discovered relays on kind:10002 arrival — it never removes the stale indexer route. NMP's compiler must close the stale REQ and open the new one in the same diff pass; the wire-emitter's diff semantics guarantee this. The `a912a2c2` timing race (`docs/research/ndk/gotchas.md`) documents that outbox bootstrap timing can leave relay lists empty — NMP handles this by staying on the indexer fallback until A1 fires, rather than blocking the interest registration.
 
-### A2 — ViewOpened
+### A2 — Interest Owner Opened
 
-Emitted by the view registry when a `ViewModule::open` returns a non-empty `Vec<LogicalInterest>` (per [intro.md](intro.md) §2.2). May fire in batches when a screen opens many rows at once.
+Emitted when a typed feed session, ref claim, read model, or protocol/defaults
+composition registers one or more `LogicalInterest`s or dependent-interest
+children (per [intro.md](intro.md) §2.2). May fire in batches when a screen
+opens many rows or a ReducedSource expands to a new child set.
 
-Batching contract: the actor's planner inbox coalesces consecutive `ViewOpened` triggers within one actor tick into a single recompile pass. This is the existing reactivity batching (`docs/design/reactivity/scheduling-and-data-model.md`) extended to the planner; the M2 implementation respects the same `≤60Hz/view` budget from ADR-0002 by capping recompiles at one per tick regardless of trigger fan-in.
+Batching contract: the actor's planner inbox coalesces consecutive
+owner-opened triggers within one actor tick into a single recompile pass. This
+is the existing reactivity batching
+(`docs/design/reactivity/scheduling-and-data-model.md`) extended to the
+planner; the M2 implementation respects the same `≤60Hz/view` budget from
+ADR-0002 by capping recompiles at one per tick regardless of trigger fan-in.
 
-### A3 — ViewClosed
+### A3 — Interest Owner Closed
 
-Emitted by the view registry after the warmth grace expires for an interest with refcount = 0. The warmth window is configurable (`AppConfig.view_warmth_ms`, default 30,000 — matching the doctrine in `docs/product-spec/subsystems.md` §7.6 "View warmth"). Closing an interest mid-warmth (e.g. account switch invalidates the prior account's interests) is a separate `ActiveAccountChanged` trigger, not this one.
+Emitted after a feed session/ref/read-model owner closes and warmth grace
+expires for an interest with refcount = 0. Closing a dependent child early
+because a ReducedSource shrank, or because account switch invalidated the prior
+account's source, is a source-change/account-change trigger, not this one.
 
 ### A4 — ActiveAccountChanged
 
 M2 establishes the trigger; M8 wires the multi-account state machine that actually emits it. For M2, the trigger fires once at startup with `from: None, to: Some(active)` so the test surface can exercise account-scope binding without waiting for M8.
 
 Compiler effect: every `InterestScope::ActiveAccount` interest is re-resolved as if newly opened. `InterestScope::Account(specific)` interests are untouched. `InterestScope::Global` interests are untouched.
+
+ReducedSources scoped to the active account must also re-run their reducers and
+replace their materialized child-interest sets. The old account's child
+interests close before the new account's children are installed.
 
 ### A5 — RelayReconnected
 
@@ -157,10 +172,15 @@ Idempotence: running the compiler twice in a row with the same inputs yields ide
 
 Explicit non-triggers (so future code does not accidentally over-couple):
 
-- **An EVENT arrival on an existing REQ.** The compiler does not care; the view-modules' projections do.
-- **An EOSE on a one-shot interest.** The interest closes via lifecycle; that flows through `ViewClosed`-equivalent path (the registry drops the interest, fires `ViewClosed`).
+- **An EVENT arrival on an existing REQ.** The compiler does not care; observers,
+  feed controllers, and projections do.
+- **An EOSE on a one-shot interest.** The interest closes via lifecycle; that
+  flows through the owner-closed path after the registry drops the interest.
 - **A profile-claim refcount delta that does not cross 0↔1.** Going from refcount 5 → 4 is invisible to the compiler.
 - **A relay's RTT or bytes-rx counter ticking.** Diagnostics-only.
-- **A new event id surfacing inside a `ThreadView`'s reduce.** The view module re-invokes `interests()` and returns the augmented set; that emits `ViewOpened` for the *new* `InterestId`s, not a full thread-view recompile. The compiler sees only the additive delta.
+- **A new target id/address surfacing in a read model.** The dependent-interest
+  owner adds the new materialized child; that emits an owner-opened trigger for
+  the new `InterestId`, not a full projection recompile. The compiler sees only
+  the additive delta.
 
 These non-triggers keep the recompile cadence aligned with material routing changes, not with event throughput. That is what protects against the "subscription churn under firehose load" failure mode the NDK/Applesauce lessons explicitly warn against (`docs/design/ndk-applesauce-lessons.md` §7 "should recompile" paragraph, lines 92–94).

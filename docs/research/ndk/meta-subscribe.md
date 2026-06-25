@@ -45,108 +45,99 @@ Reactive lifecycle (`:174-206`): the `$derived` over `config()` rebuilds `filter
 
 **Architectural smell:** the second-stage fetch uses `ndk.guardrailOff().fetchEvents(filters)` (`:295`) — an **out-of-band call that bypasses the planner**, outbox routing, and dedup. If three views all want the same article (one from highlights, one from comments, one from reposts), NDK issues three separate `fetchEvents` calls. The pointer subscriptions are also untouched by outbox routing on the pointer side. Errors are swallowed silently (`:308-310`).
 
-## 5. The NMP-side equivalent: already covered by `ViewModule` + compiler
+## 5. The NMP-side equivalent: dependent interests, not out-of-band fetches
 
-The five-family kernel substrate (`docs/design/kernel-substrate.md` §1) intentionally has **five** trait families; `ViewModule` covers all reactive projections including hydration cascades. The existing M2 design already specifies this exact pattern for threads (`docs/design/subscription-compilation/compiler.md` §3.5 row "open_thread"):
+The original research mapped this to a proposed runtime reducer trait. That
+surface did not ship. Current NMP uses typed feed sessions,
+event observers, projections, ref claims, and the interest registry.
 
-> *"Move to a `ThreadViewModule` in `nmp-nip10`. The hydration cascade is `view_module.reduce(...)` returning additional interests as new event ids surface in store."*
+A meta-subscription is still the right shape, but the NMP implementation target
+is **dependent interests**:
 
-A meta-subscription is structurally **a sibling of `ThreadViewModule`**: pointer filter is `interests()[0]`; each pointer arrival surfaces new `EventId`/`NaddrCoord` references; `reduce(...)` returns a second `LogicalInterest { event_ids: ..., lifecycle: OneShot }`; the compiler dedups it across views and against the cache (compiler §3 stage 3 merge lattice). The bidirectional `pointedBy` index, the four sort modes, and the placeholder rendering are **State + Payload + Delta** concerns local to one view module — not new substrate.
+- the pointer stream is one normal `LogicalInterest`;
+- each pointer event surfaces `EventId` / `NaddrCoord` / tag references;
+- the referenced targets become dependent interests or refs owned by the
+  read model/component that needs them;
+- those interests go through the existing registry, planner, router, cache, and
+  close lifecycle;
+- the bidirectional `pointedBy` index and sort modes are local projection/read
+  model state.
+
+This is the same architectural family as ReducedSource feed acquisition (#2092),
+but event/address hydration should build on the ref/dependent-interest path. It
+must not overload pubkey `FeedScope` or reintroduce out-of-band fetches.
 
 | `$metaSubscribe` concern | NMP substrate location |
 |---|---|
-| Pointer subscription | `LogicalInterest { shape, lifecycle: Tailing }` registered at `open()` |
-| Tag extraction + reference set | `ViewModule::on_event_inserted` returning `Option<Delta>` + emitting new interests via `ctx.register_interest()` |
-| Batch fetch of pointed-to events | A second `LogicalInterest { event_ids, lifecycle: OneShot }` re-emitted on `reduce`; compiler routes/dedups/merges with overlapping interests from other views |
-| `pointedBy` map | `Self::State` (an in-memory `BTreeMap<TagId, Vec<EventId>>`) |
-| Sort modes | `Self::Payload` rendering, recomputed on `on_event_inserted` |
-| Re-sort on caller toggle | `sort` is a `Self::Spec` field; key changes ⇒ view reopens; hydration interest sees full cache hit (no relay round-trip); pointer interest re-merges via compiler dedup (no relay churn either) |
-| Reactive on `$follows` | `InterestScope::ActiveAccount` + Trigger A1 (`Nip65Arrived`) and the proposed `Trigger::FollowListChanged` (framework-magic §C5) already recompile dependent interests |
+| Pointer subscription | `LogicalInterest { shape, lifecycle: Tailing }` registered by the read model/session |
+| Tag extraction + reference set | Event observer/projection logic derives target ids/addresses from stored pointer events |
+| Batch fetch of pointed-to events | Dependent interests or `resolve_ref` claims for ids/addresses; compiler routes/dedups/merges with overlapping consumers |
+| `pointedBy` map | Read-model/projection state keyed by target id/address |
+| Sort modes | Projection rendering, recomputed from pointer + target state |
+| Re-sort on caller toggle | App/read-model state change; target interests remain deduped and cache-first |
+| Reactive on `$follows` | `FeedScope` / ReducedSource source changes replace materialized pointer interests; target dependencies stay planner-owned |
 | Outbox routing on pointer fetch | Free, via compiler §3.1 Stage 1 — `$metaSubscribe` does **not** get this; NMP does |
 | Cross-view dedup of hydration | Free, via compiler §3.3 merge lattice — `$metaSubscribe` does **not** get this |
 
-The architectural win NMP gets for free: when a `RepostedContentTimeline`, a `HighlightedArticles` view, and a `ProfileClaim` for the same author's note are all open, **NMP issues one merged REQ** per relay covering all three; NDK's `$metaSubscribe` issues an unbounded number of `fetchEvents` calls outside the planner.
+The architectural win NMP gets for free: when a reposted-content feed, a
+highlighted-articles read model, and a profile/event ref all need the same
+target, **NMP issues one merged REQ** per relay covering all consumers; NDK's
+`$metaSubscribe` issues unbounded `fetchEvents` calls outside the planner.
 
-## 6. Recommendation: partial — reference `MetaTimelineViewModule`, no new trait, slot in M2
+## 6. Recommendation: use the existing registry/ref/dependent-interest seams
 
-**Build it as one reference view module** in `nmp-nip01` (proposed `meta_timeline.rs`, ~200 LOC). **Do not** introduce a sixth trait family — the framework-magic contract explicitly forbids new types (`framework-magic.md` "Non-goals" line 91). **Slot: M2** — the compiler already needs `ThreadView`-style hydration cascades for thread building, so meta-subscribe is the second consumer that proves the cascade generalises.
+Do not introduce a new trait family and do not revive `ViewModule`. Build
+meta-timeline style features as protocol/read-model code that registers a
+pointer interest and dependent target interests/refs through existing seams.
 
-Cost: ~200 LOC view module + ~50 LOC payload types + ~30 LOC compiler change for the `addresses: BTreeSet<NaddrCoord>` field on `InterestShape` (decided in §7, no longer optional — without it parameterized-replaceable hydration cannot dedup across views) + 1 contract test file with ~6 sub-tests (enumerated in §7). The compiler change is in M2 scope by construction: M2 owns `InterestShape`, and a thread view module needs the same address-hydration capability anyway (a NIP-22 comment thread on a NIP-23 article addresses by `kind:30023:pubkey:dtag`).
+If address/event target hydration needs more substrate, add it as a
+dependent-interest/ref capability with the same lifecycle rules as feed source
+reduction: one owner, fail closed, planner-routed, cache-first, deduped, and
+closed when the consumer/source withdraws.
 
-Benefit: every reposted-feed / highlighted-articles / commented-articles / engagement-aggregator UI in every NMP app becomes one `useMetaTimeline(spec)` call. The five social-feed patterns that NDK ships as a single API (`$metaSubscribe`) become a single API for NMP too — without giving up planner-level dedup, outbox routing, or warmth-grace lifecycle.
+Benefit: reposted-feed, highlighted-articles, commented-articles, and
+engagement-aggregator UIs can be expressed without giving up planner-level
+dedup, outbox routing, cache-serve, or close semantics.
 
-Sketch (NOT prescriptive — view module shape, not new substrate):
+## 7. Current NMP sketch
 
-```rust
-// crates/nmp-nip01/src/meta_timeline.rs (proposed)
-pub struct MetaTimelineViewModule;
+The implementation shape is a read-model/protocol module, not a new substrate
+trait:
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct MetaTimelineSpec {
-    pub pointer_filter: InterestShape,     // e.g. {kinds: [6,16], authors: <follows>}
-    pub sort: MetaSort,                    // Time | Count | TagTime | UniqueAuthors
-}
-
-#[derive(Clone, Serialize)]
-pub struct MetaTimelinePayload {
-    pub items: Vec<MetaItem>,              // pointed-to events, sorted
-}
-
-#[derive(Clone, Serialize)]
-pub struct MetaItem {
-    pub event: EventPayload,               // best-effort per D1
-    pub pointer_count: u32,
-    pub unique_authors: u32,
-    pub latest_pointer_at: UnixSeconds,
-}
-
-#[derive(Clone, Serialize)]
-pub enum MetaDelta {
-    NewTarget { item: MetaItem },                       // pointed-to event arrived
-    NewPointer { target_id: TagId, by: Pubkey },        // additional pointer for existing target
-    TargetReordered { from: usize, to: usize },         // sort changed
-    SortChanged { sort: MetaSort },
-}
-
-impl ViewModule for MetaTimelineViewModule {
-    type Spec = MetaTimelineSpec;
-    type Payload = MetaTimelinePayload;
-    type Delta = MetaDelta;
-    type State = MetaState;       // holds targets, pointersByTarget, sort
-    type Key = blake3::Hash;      // hash(pointer_filter, sort)
-
-    // open() registers ONE pointer interest; on_event_inserted on a pointer
-    // collects refs, returns the hydration interest set via ctx.register_interest()
-}
+```text
+open pointer source
+  -> register one normal tailing LogicalInterest
+ingest pointer events
+  -> reducer extracts event ids / naddr coords / tag refs
+  -> dependent-interest owner replaces the materialized target set
+targets arrive or cache serves
+  -> projection recomputes pointed-to items and pointedBy index
+sort changes
+  -> projection state changes; target interests stay deduped and cache-first
+close consumer
+  -> owner releases pointer interest and dependent target children
 ```
 
-The two `LogicalInterest`s the module emits:
+The existing `InterestShape` already has `event_ids` and `addresses`, so the
+event/address flavor of metaSubscribe composes with the planner today. #2092
+extends the same family of mechanics to source reductions whose output is an
+author or tag-value set, so home/follow feeds, mute-list feeds, follow-pack
+feeds, and pointer-target hydration stop being separate bespoke paths.
 
-```
-pointer:    { shape: spec.pointer_filter, lifecycle: Tailing, scope: ActiveAccount }
-hydrate:    { shape: { event_ids: <refs>, addresses: <addrs> }, lifecycle: OneShot,
-              scope: Global }
-```
+## 8. Test surface
 
-The compiler's existing dedup makes "three views asking for the same article" emit one REQ. The existing warmth grace (compiler §3 line 26 / `subsystems.md` §7.6) keeps the hydration REQ alive 30s after the last view drops.
+The correctness tests should assert the substrate properties, not a view trait:
 
-## 7. M2 decisions and test surface
-
-### Decisions (not deferrable)
-
-- **Address-pointer shape in `InterestShape`: add the field.** `meta-subscription.svelte.ts:264-290` builds per-author filters `{kinds, authors:[pk], "#d":dtags}` from `a`-tag references. NMP's `InterestShape` (`subscription-compilation/intro.md` §2.1) must grow `pub addresses: BTreeSet<NaddrCoord>`, where `NaddrCoord { kind: u32, pubkey: Pubkey, d_tag: String }` is a named record (not a tuple — it will surface in `ViewSpec` payloads and needs a stable generated FFI shape per ADR-0010). Stage-3 merge lattice (compiler.md §3.3) adds one mergeability rule (`addresses` union per relay, capped after decomposition by the relay's per-filter tag-value limit on `#d` and by the per-author filter-count limit). The wire-emitter decomposes each `NaddrCoord` into a per-author `{kinds, authors:[pk], "#d":[dtags]}` filter at REQ-emit time. Without this, parameterized-replaceable hydration cannot dedup across views (highlights of a NIP-23 article + comments on the same article would issue two separate per-author REQs instead of one merged one). M2 owner: track as a follow-up sub-task in the M2 exit gate; the same field is required for `ThreadViewModule` when threads address replaceable parents.
-- **Re-sort semantics: sort is a `Spec` field, not a runtime setter.** A change to `sort` changes `Self::Key` (which hashes the spec); the view registry treats it as a new view open. The pointer `LogicalInterest` is identical across sort modes, so compiler dedup merges it with the prior REQ (zero relay churn). The hydration interest is identical too (same pointed-to event ids), so the cache satisfies it without a relay round-trip. The old payload is dropped on warmth-grace expiry. **This is consistent with the current `ViewModule` trait** (no mutable-spec contract exists, and we do not propose one). The cost is one extra `ViewBatch::FullState` payload on sort change; the benefit is no new trait surface. NDK's "re-sort without restart" optimisation is a UX win only when sort changes are frequent — for the typical meta-feed UI ("sort by reposts | sort by recency"), one full state per user-driven toggle is acceptable.
-- **WoT-rank parity: out of v1.** NDK's `SubscribeConfig` includes `wot` / `wotRank` (`subscription.svelte.ts:30-34`); `$metaSubscribe` inherits via `extends Omit<SubscribeConfig, "dedupeKey">`. NMP's WoT module is post-v1 (not in `kernel-substrate.md` §11 v1 module list); the reference `MetaTimelineViewModule` ships without WoT rank in v1. When WoT lands as a module, it surfaces as a `ProjectionCache` consumed via `on_projection_changed` — view-module-local addition, no further substrate change.
-
-### Test surface for `c14_meta_timeline_hydrates_pointed_to_via_compiler`
-
-Six sub-tests in one `#[test] fn`, all using the `PlannerHarness` (`subscription-compilation/tests.md` §9.3):
-
-1. **Hydration via event-ids.** Open a meta view with `pointer_filter: {kinds: [6], authors: [A]}`; ingest one kind:6 with an `e`-tag to event `X`. Assert one pointer REQ on A's write relay AND one hydration REQ `{ids: [X]}`. Ingest `X`; assert payload contains one `MetaItem { event: X, pointer_count: 1 }`.
-2. **Hydration via addresses.** Ingest one kind:6 with an `a`-tag `30023:B:my-article`. Assert the hydration REQ shape decomposes to `{kinds:[30023], authors:[B], "#d":["my-article"]}` routed to B's write relays (Stage 1 outbox).
-3. **Cross-view hydration dedup.** Open two meta views whose pointer interests would produce the same hydration ref set (e.g. a highlight view and a comment view both touching the same article). Assert one merged hydration REQ per relay, not two — the property NDK's `guardrailOff().fetchEvents()` cannot provide.
-4. **All four sort modes.** With a fixed pointer event set (3 pointers from 3 distinct authors to 2 targets), assert payload `items` ordering matches each of `Time`, `Count`, `TagTime`, `UniqueAuthors`. Same `State`, four distinct `Payload`s.
-5. **Sort change is a reopen, not a restart.** Open with `sort: Time`; capture the wire-frame audit log. Change spec to `sort: Count` (new view-handle, new Key); assert zero new wire frames issued (pointer REQ merges via dedup; hydration is fully cache-hit). One additional `ViewBatch::FullState` payload arrives with the resorted items.
-6. **Placeholder for missing target — D1 rendering.** Two sub-cases (per D1: no loading gates; every field non-`Option`):
-   - **`e`-tag pointer (no known author).** Ingest a pointer to event `Y` not in the store; assert payload contains `MetaItem { event: EventPayload::placeholder(id=Y, author_pubkey=Pubkey::ZERO, content=""), pointer_count: 1 }`. The author placeholder field renders as the shortened-`Y` identifier (the only stable handle available); author_pubkey stays zero so `on_projection_changed` on a later kind:0 arrival is a no-op for this item.
-   - **`a`-tag pointer (author known via address coord).** Ingest a pointer to `30023:B:my-article` not in the store; assert payload contains `MetaItem { event: EventPayload::placeholder(coord=Naddr, author_pubkey=B, content=""), pointer_count: 1 }`. Then ingest `B`'s kind:0; assert `on_projection_changed` refines the author display fields in place. Then ingest the article; assert `on_event_inserted` refines `content` + replaces `id` placeholder with real id, same item position (no list reordering unless sort dictates).
+1. **Hydration via event ids.** Pointer event with an `e` tag materializes one
+   dependent `{ids:[X]}` interest, routed and deduped through the planner.
+2. **Hydration via addresses.** Pointer event with an `a` tag materializes one
+   dependent `addresses:{coord}` interest routed to the addressed author's
+   write relays.
+3. **Cross-consumer dedup.** Two projections that need the same target produce
+   one merged REQ per relay.
+4. **Source shrink closes.** When the pointer/source reducer removes a target,
+   the dependent child closes after normal owner/warmth rules.
+5. **Empty output fails closed.** An empty pointer/source reduction produces no
+   wildcard target query.
+6. **Sort is projection state.** Changing sort recomputes payload order without
+   rebuilding unchanged pointer/target interests.

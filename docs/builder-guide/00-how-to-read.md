@@ -8,8 +8,8 @@ caught by a linter, but ruled out by the type system, the actor model, and
 the FFI surface.
 
 - **Builders** — you came from NDK, Applesauce, or raw `nostr-sdk` and want to
-  ship a Nostr app without re-implementing outbox routing, kind:3 tracking,
-  reconnect replay, and reactivity for the hundredth time.
+  ship a Nostr app without re-implementing outbox routing, dynamic source
+  tracking, reconnect replay, and reactivity for the hundredth time.
 - **Agents** — you are an LLM extending the kernel. The doctrine D0–D10 is the
   contract you cannot violate; every section ties its claims to enforced code
   or marks them aspirational.

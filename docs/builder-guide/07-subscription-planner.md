@@ -1,7 +1,7 @@
 # 07 — Subscription planner: Interest → CompiledPlan → wire
 
 > Status: **SHIPS**. Audience: builders + agents.
-> The planner module ships at `crates/nmp-core/src/planner/`. The
+> The planner crate ships at `crates/nmp-planner/`. The
 > `SubscriptionLifecycle` (07/14) drives it; the legacy kernel REQ emitters do
 > not yet consume its output — see the reality-check at the end of [10 — Outbox
 > routing (NIP-65)](10-outbox-routing.md).
@@ -12,43 +12,44 @@ A naive Nostr client formats one REQ per `subscribe()` call at the call site.
 Three things go wrong: (1) 1000 timeline avatars become 1000 profile REQs;
 (2) a kind:10002 arriving late never re-routes the open subscription;
 (3) the app hand-rolls relay fan-out and leaks the old REQ on follow-list
-change. NMP turns "what a view wants" into a `LogicalInterest` and runs a pure
-4-stage **compiler** that produces a `CompiledPlan`. Recompilation is safe on
-every trigger because the wire-emitter diffs plans — a no-op recompile is zero
-wire effect (`docs/design/subscription-compilation/recompilation.md` §4).
+change. NMP turns "what a consumer wants alive on the wire" into a
+`LogicalInterest` and runs a pure 4-stage **compiler** that produces a
+`CompiledPlan`. Recompilation is safe on every trigger because the wire-emitter
+diffs plans — a no-op recompile is zero wire effect
+(`docs/design/subscription-compilation/recompilation.md` §4).
 
-`LogicalInterest` (`crates/nmp-core/src/planner/interest.rs:226-242`) is *not*
-a Nostr filter. It carries: `id` (registry-assigned, survives recompile),
+`LogicalInterest` (`crates/nmp-planner/src/interest.rs`) is *not* a Nostr
+filter. It carries: `id` (registry-assigned, survives recompile),
 `scope` (`ActiveAccount` / `Account` / `Global`), `shape`
 (`InterestShape`), `hints`, and `lifecycle`
 (`Tailing` / `OneShot` / `BoundedTime`). `InterestShape`
-(`interest.rs:74-141`) mirrors a filter but uses sorted containers
+(`crates/nmp-planner/src/interest.rs`) mirrors a filter but uses sorted containers
 (`BTreeSet` / `BTreeMap`) so equality and hashing are deterministic — that
 determinism is what makes plan-id stable.
 
 ## The 4-stage pipeline
 
-`SubscriptionCompiler` (`crates/nmp-core/src/planner/compiler/mod.rs:60-189`)
+`SubscriptionCompiler` (`crates/nmp-planner/src/compiler/mod.rs`)
 runs (design: `docs/design/subscription-compilation/compiler.md` §3):
 
 1. **Resolve** — each author/`#p`/address → mailboxes via `MailboxCache`
-   (`planner/compiler/mailbox.rs:54-70`). Direction is decided by shape:
+   (`crates/nmp-planner/src/compiler/mailbox.rs`). Direction is decided by shape:
    `authors` → Outbox (write relays); `#p` → Inbox (read relays);
    `addresses` → Outbox keyed on `NaddrCoord::pubkey`; none → active-account
    read relays.
 2. **Indexer fallback** — authors with no known mailbox route to the
    configured indexer set (read-only; never for publish, per D3). Surfaced as
    `RoutingSource::UserConfigured(Indexer)` — a sub-category of lane 4, **not**
-   a fifth lane (`planner/plan.rs:28-74`).
+   a fifth lane (`crates/nmp-planner/src/plan.rs`).
 3. **Per-relay merge** — group by relay URL; `lattice::merge()`
-   (`planner/lattice/mod.rs:54-125`) folds compatible shapes. Author sets are
-   partitioned per relay (`planner/compiler/partition/mod.rs:97-174`): each
+   (`crates/nmp-planner/src/lattice/mod.rs`) folds compatible shapes. Author sets are
+   partitioned per relay (`crates/nmp-planner/src/compiler/partition/mod.rs`): each
    relay's sub-shape carries only the authors that declared it.
 4. **Plan-id binding** — `compute_plan_id` content-addresses
    `(sorted interests, referenced mailbox snapshot, lattice version)`. Same
    inputs → same `plan_id`; the platform reads it for diagnostic continuity.
 
-The 9 merge-lattice rules live in `planner/lattice/rules.rs:22-162` — equality
+The 9 merge-lattice rules live in `crates/nmp-planner/src/lattice/rules.rs` — equality
 on `kinds`/`since`/`until`/`lifecycle`/`relay_pin`, union on
 `tags`/`event_ids`/`addresses`, refuse on any `limit`. **Rule 9** (`relay_pin`)
 is the third routing lane (see Case E below). Read `compiler.md` §3.3 for the
@@ -97,26 +98,57 @@ subset:
 | ID | Source | Trigger | What it carries | M-scope |
 |---|---|---|---|---|
 | A1 | ingest | `Nip65Arrived` | a kind:10002 landed for a pubkey | M2 |
-| A2 | view registry | `ViewOpened` | interests just registered | M2 |
-| A3 | view registry | `ViewClosed` | warmth grace expired; interests dropped | M2 |
+| A2 | interest owner | `OwnerOpened` | interests or child interests just registered | M2 |
+| A3 | interest owner | `OwnerClosed` | warmth grace expired; interests dropped | M2 |
 | A4 | session | `ActiveAccountChanged` | account switch | M8 |
 | A5 | relay worker | `RelayReconnected` | socket re-established (replay only) | M2 |
 | A6 | operator | `InvalidateCompile` | external force-recompile (the one public action dispatch) | M2 |
-| — | ingest | `FollowListChanged` | active account's kind:3 changed (symmetric to A1) | M2 |
+| — | source owner | `ReducedSourceChanged` | a source reducer replaced its materialized child-interest set | #2092 |
 
 Non-triggers (do **not** recompile): an EVENT arriving on an existing REQ; an
 EOSE on a one-shot (lifecycle closes it); a refcount delta not crossing 0↔1;
 RTT/byte counters. This keeps recompile cadence tied to routing change, not
 event throughput.
 
-## Deliverable: worked example — kind:3 arrives → CLOSE/REQ deltas
+## ReducedSources and dependent interests
 
-`FollowingTimelineView` open. Stored kind:3 follows `{A,B,C}`; mailbox cache
-seeded A→relay1, B→relay2, C→relay3. Plan v1 opens REQs on
-`{relay1, relay2, relay3}`. A fresher kind:3 arrives with follows `{A,B,D}`
-(D→relay4). The kernel replaces the stored kind:3 (replaceable-supersession),
-fires `FollowListChanged`, the compiler re-runs `interests()`, the
-wire-emitter diffs:
+The planner consumes **materialized** `LogicalInterest`s. It does not know what
+"following", "mute list", "follow pack", or any other protocol/app source
+means. Dynamic feeds are expressed one layer above the planner as a
+**ReducedSource**:
+
+```
+source interest -> deterministic reducer -> materialized child interests
+```
+
+App feed code opens `FeedParams` with primary content kinds and a closed
+`FeedScope` / `PubkeySetExpr` source expression. Protocol/defaults code owns
+the NIP-specific reducer, replaces the full child-interest set when the source
+changes, and sends those children through the same registry and compiler as
+ordinary claims. Component/read-model dependencies use the same lifecycle:
+avatars claim profiles, target previews claim events/addresses, and pointer
+feeds claim the targets they render.
+
+Three invariants matter:
+
+- Empty reduced output fails closed. It never becomes wildcard `authors`,
+  `ids`, or tag filters.
+- Source replacement withdraws stale children before installing the new set,
+  so removed authors/tags/ids close on the wire.
+- `ActiveAccountChanged` re-runs active-account sources; children derived from
+  the old account do not survive the switch.
+
+## Deliverable: worked example — ReducedSource change → CLOSE/REQ deltas
+
+An active-user follow feed is open. The app declared primary kinds `{1}` and
+the NIP-02/defaults reducer has reduced the active account's current source
+event to child author interest `{A,B,C}`. Mailbox cache is seeded
+A→relay1, B→relay2, C→relay3. Plan v1 opens REQs on `{relay1, relay2,
+relay3}`.
+
+A fresher source event arrives and reduces to `{A,B,D}` (D→relay4). The source
+owner replaces the materialized child set, the compiler sees the new
+`LogicalInterest` set, and the wire-emitter diffs:
 
 ```
 plan v1: relay1{A}  relay2{B}  relay3{C}
@@ -126,13 +158,12 @@ diff   : —          —          CLOSE c…r3  REQ c…r4
 
 Exactly two wire frames: `CLOSE` on the relay3 slice (C dropped) and `REQ` on
 relay4 (D added). **Zero churn** on relay1 (A unchanged) or relay2 (B
-unchanged). The view handle is not destroyed; refcount unchanged; one
-additional payload emitted. A stale kind:3 (older `created_at`) is rejected
-and fires no trigger. (`docs/design/framework-magic/kind3.md` §1; the
-`c5_kind3_change_recompiles_follow_dependent_subs` contract test.)
+unchanged). The feed handle is not destroyed. A stale source event rejected by
+replaceable-supersession fires no source replacement.
 
-If D's kind:10002 is unknown, D routes to the indexer fallback first; the
-concurrent kind:10002 fetch later fires `Nip65Arrived`, recompiling D onto
+If D's kind:10002 is unknown, D routes according to the current content policy:
+configured app relays if present, otherwise `unroutable_authors` diagnostics.
+The concurrent kind:10002 fetch later fires `Nip65Arrived`, recompiling D onto
 its declared relay — a *second* delta the M2 NIP-65 gate covers separately.
 
 ## Callout: `relay_pin` / Case E (the third routing lane)

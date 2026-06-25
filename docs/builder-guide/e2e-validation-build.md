@@ -164,7 +164,7 @@ The reactor talks to the kernel through a **core-neutral command surface** the k
 **Responsibility.** Subscribes to `AccountManager`'s `ActiveChangeObserver`. On `ActiveChangeEvent { previous, current }`:
 1. Adapt the new active signer (`AccountManager::signer_active()`) into an `AuthSignerFn`.
 2. Send ONE `ActorMsg::ActiveAccountSwitched { from, to, signer: AuthSignerFn }` to the kernel actor.
-3. Actor handles the message atomically in one tick: closes account-A subs (kind:3 / kind:10000 / kind:10002 author=A + any `FollowingTimeline` rooted at A), rebinds `bind_auth_signer` to the new signer + pubkey, opens equivalent subs for account-B, and emits ONE snapshot after all rebuilds. The single-tick atomicity satisfies D4 (single writer per fact: the actor is the sole writer of subscription state) — D5 (snapshot boundedness) is a property of the snapshot itself, not the switch transaction.
+3. Actor handles the message atomically in one tick: closes account-A active-source children, rebinds `bind_auth_signer` to the new signer + pubkey, re-runs active-account ReducedSources for account-B, and emits ONE snapshot after all rebuilds. The single-tick atomicity satisfies D4 (single writer per fact: the actor is the sole writer of subscription state) — D5 (snapshot boundedness) is a property of the snapshot itself, not the switch transaction.
 
 **Signature.**
 ```rust

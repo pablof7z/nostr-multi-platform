@@ -76,8 +76,8 @@ pub enum InterestScope {
 ///   `fn to_naddr_bech32(&self, relay_hint: Option<&RelayUrl>) -> String`
 ///
 /// Used in D8 substrate invariant: the composite reverse index extends to
-/// address pointers so view modules for NIP-22 thread comments and
-/// MetaTimelineViewModule highlights share one REQ per relay.
+/// address pointers so thread/comment read models and meta-subscribe-style
+/// projections share one REQ per relay.
 #[derive(Clone, Debug, Hash, Eq, PartialEq, Ord, PartialOrd,
          Serialize, Deserialize)]
 pub struct NaddrCoord {
@@ -95,8 +95,8 @@ pub struct InterestShape {
     pub limit:      Option<u32>,
     pub event_ids:  BTreeSet<EventId>,       // for pointer/thread hydration
     /// Parameterized-replaceable event coordinates for address-pointer hydration.
-    /// Non-empty when a view needs to resolve a specific `naddr` (e.g. a NIP-23
-    /// article in ThreadViewModule or MetaTimelineViewModule). The compiler routes
+    /// Non-empty when a read model needs to resolve a specific `naddr` (e.g. a
+    /// NIP-23 article referenced by a thread/comment projection). The compiler routes
     /// each coordinate to the addressed author's write relays (Stage 1 Outbox
     /// direction keyed on `NaddrCoord::pubkey`). See §3.3 Rule 8 and §7.
     /// Rationale: T21 research (NDK `$metaSubscribe` / svelte subscription
@@ -116,35 +116,32 @@ pub enum InterestLifecycle {
 
 `InterestShape` mirrors the Nostr filter shape closely on purpose: most logical interests correspond directly to a single filter, and the kernel ships canonical normalisation (sort, dedup, fold ranges) so equality and hashing are deterministic. The compiler is then free to merge two shapes (or refuse to) on the basis of structural compatibility (§3 step 3).
 
-### 2.2 How view modules express interests
+### 2.2 How current code expresses interests
 
-Every `ViewModule` (per `docs/design/kernel-substrate.md` §3) declares its dependencies via the existing `ViewDependencies` mechanism. M2 adds one new method:
+The proposed runtime `ViewModule` registry did not ship. Current NMP code opens
+interests through typed feed sessions, ref/dependent-interest claims, event
+observers, and registered projections. The planner still receives the same
+kind of normalized `LogicalInterest` data; the ownership boundary changed.
 
-```rust
-pub trait ViewModule {
-    // ... existing methods ...
+Concrete current examples:
 
-    /// Translate a view spec into the logical interests required to keep it
-    /// live. Called by the planner when the view opens; re-called on
-    /// recompilation triggers that the view module opts into (account-switch,
-    /// mailbox refresh).
-    fn interests(spec: &Self::Spec, ctx: &InterestContext)
-        -> Vec<LogicalInterest>;
-}
-```
-
-`InterestContext` exposes read access to the mailbox cache and to the active account but **not** to the relay set; the view module never names relays. That keeps `nmp-aim.md` doctrine 5 ("outbox routing automatic; manual relay selection is the opt-out, not the default") structurally enforced — there is no place for a view module to write a URL.
-
-Concrete examples for the existing seed-timeline path:
-
-- `TimelineView { source: ActiveUserFollows, primary_kinds: {1} }` returns one declared feed. The NIP-01/NIP-18 adapter compiles that declaration into acquisition interests over followed authors with kinds `{1, 6}` and `limit: 200`.
-- `AuthorView { pubkey, primary_kinds: {1} }` returns three interests: kind:10002 (Indexer fallback policy, see §3), kind:0 (one-shot), and an author feed declaration. The adapter compiles the feed declaration into `{ authors: [pubkey], kinds: {1, 6}, limit: 100 }` (Tailing).
-- `ProfileClaim { pubkey }` (the refcounted UI path from `crates/nmp-core/src/kernel/requests.rs:202-237`) returns one interest: `{ authors: [pubkey], kinds: {0}, limit: 1, lifecycle: OneShot }`.
-- `ThreadView { event_id, primary_reply_kinds: {1} }` returns up to two interests: `{ ids: [...] }` for context, plus a declared reply feed. The adapter compiles the reply feed into `{ kinds: {1, 6}, tags: { #e: [...] } }`.
-- `ThreadViewModule` for a NIP-22 comment thread on a NIP-23 article returns an additional hydration interest:
-  `{ addresses: {NaddrCoord { pubkey: article_pk, kind: 30023, d_tag: "slug" }}, kinds: {30023}, lifecycle: OneShot }`.
-- `MetaTimelineViewModule` highlights-of-article registers the same coordinate:
-  `{ addresses: {NaddrCoord { pubkey: article_pk, kind: 30023, d_tag: "slug" }}, lifecycle: OneShot }`.
+- `FeedParams { primary_kinds: {1}, acquisition:
+  FeedScope::ActiveUserFollows, ... }` is an app-facing feed declaration. The
+  NIP-02/NIP-18/defaults composition reduces that source into acquisition
+  interests over the active account's current follows with derived wrapper
+  kinds. The app declares `{1}`, not `{1, 6}` and not a concrete follow list.
+- `FeedScope::Authors { ... }` and `FeedScope::Referrer { ... }` compile to
+  dynamic FlatFeed sidecars through `open_feed`, with close-by-handle teardown.
+- `resolve_ref` / profile and event claims express component/read-model
+  dependent interests. They are refcounted and deduped by the kernel; native
+  components do not construct filters.
+- Future NIP-51 list, mute-list, and follow-pack feeds are additional
+  ReducedSource reducers above the planner: protocol/defaults code reduces the
+  source event(s) to pubkeys/tags/ids, then materializes normal interests.
+- Pointer/meta-subscribe-style views should follow the same rule: pointer
+  streams and referenced targets become dependent interests or refs that route
+  through the planner. They must not use out-of-band fetches or revive the
+  removed runtime reducer surface.
 
 The app-facing feed declarations name primary content kinds (`{1}` here) and a
 reactive source. The `{1, 6}` shapes above are compiled acquisition output, not
@@ -153,9 +150,9 @@ what the app asks for and not substrate defaults.
 **Worked example — address-pointer dedup across ThreadView and MetaTimeline:**
 
 ```
-ThreadViewModule for kind:1111 comment on kind:30023 article →
+Thread/read-model code for kind:1111 comment on kind:30023 article →
   hydrate interest { addresses: {(article_pk, 30023, "slug")} }
-MetaTimelineViewModule highlights-of-article →
+Meta-timeline/highlights read model →
   hydrate interest { addresses: {(article_pk, 30023, "slug")} }
 Compiler Stage 1: both coords resolve to article_pk's write relays.
 Compiler Stage 3: Rule 7 (§3.3) unions the address sets (identical here).

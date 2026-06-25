@@ -335,6 +335,9 @@ Concrete list, exhaustive:
 - Schedule background relay reconnection.
 - Cache profile metadata.
 - Maintain a follow-graph cache.
+- Expand a feed source into concrete authors, tags, ids, or relays.
+- Reopen downstream subscriptions when a source list changes.
+- Run `$metaSubscribe`-style fetch cascades around the planner.
 - Implement zap receipt verification.
 - Implement NWC request/response correlation.
 - Implement Blossom upload chunking.
@@ -398,5 +401,11 @@ Registry components promise:
 This is binding on every registry family: `user-*`, `content-*`, embedded-event
 kind handlers, relay/provenance widgets, and future app blocks. A registry API
 that requires every feature screen to hand-roll hydration is not complete.
+
+Feed APIs follow the same rule. App authors declare `FeedParams` with primary
+content kinds and a closed `FeedScope` / `PubkeySetExpr` source. Protocol and
+defaults code reduce that source into planner-owned interests. Secondary facts
+that a rendered component needs are dependent interests claimed by that
+component or read model, never native-owned caches or ad hoc relay fetches.
 
 ---
