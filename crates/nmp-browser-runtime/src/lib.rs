@@ -12,18 +12,15 @@
 //! - signing policy or signer-provider choice semantics (that is `nmp-signers`/`nmp-signer-broker`);
 //! - NIP modules, protocol defaults, app defaults, projection policy, persistence policy;
 //! - the wasm-bindgen ABI surface (that is the sibling `nmp-wasm` ABI shell).
+//!
+//! Issue #2056 defines this boundary scaffold, so the initial public API is
+//! limited to boundary-owned browser setup. Issue #2057 adds `BrowserAppBuilder`.
 #![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 #[cfg(target_arch = "wasm32")]
 pub fn install_panic_hook() {
     console_error_panic_hook::set_once();
 }
-
-/// Placeholder marker so the crate compiles before the builder/runtime land in
-/// later tracks (#2046/#2057/#2058). Replaced by `BrowserAppBuilder` in Wave 3.
-/// This scaffold proves browser-runtime can depend on composition/protocol crates
-/// without inverting the dependency graph to nmp-wasm.
-pub struct BrowserRuntimePlaceholder;
 
 #[cfg(test)]
 mod smoke_tests {

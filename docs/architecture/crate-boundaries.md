@@ -345,7 +345,8 @@ crates, breaking the usual binding-crate rule that all siblings avoid each other
 
 Dependency direction: `nmp-browser-runtime` depends on `nmp-defaults` and protocol
 crates in Layers 0–5. `nmp-wasm` and leaf web apps depend on `nmp-browser-runtime`
-for the typed builder, not vice versa. No Layer ≥ 5 crate depends on `nmp-browser-runtime`.
+for the typed builder, not vice versa. No Layer 0-5 crate depends on
+`nmp-browser-runtime`.
 
 ---
 
