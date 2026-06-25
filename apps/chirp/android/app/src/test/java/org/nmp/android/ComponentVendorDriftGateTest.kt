@@ -23,9 +23,9 @@ class ComponentVendorDriftGateTest {
 
     private val repoRoot: File by lazy {
         var dir = File(System.getProperty("user.dir")!!).absoluteFile
-        while (!File(dir, "AGENTS.md").exists()) {
+        while (!File(dir, "Cargo.lock").isFile || !File(dir, "crates/nmp-cli").isDirectory) {
             dir = dir.parentFile
-                ?: error("repo root (AGENTS.md) not found above ${System.getProperty("user.dir")}")
+                ?: error("repo root not found above ${System.getProperty("user.dir")}")
         }
         dir
     }

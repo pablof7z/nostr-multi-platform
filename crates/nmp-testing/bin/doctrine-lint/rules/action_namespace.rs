@@ -43,6 +43,9 @@ pub fn file_in_scope(path: &Path) -> bool {
     let s = path.to_string_lossy().replace('\\', "/");
     // Only the workspace `crates/` tree is scoped — app-layer crates under
     // `apps/<app>/` legitimately use app-local vocabulary.
+    if s.contains("/apps/") || s.starts_with("apps/") {
+        return false;
+    }
     let in_crates = s.contains("/crates/nmp-") || s.starts_with("crates/nmp-");
     if !in_crates {
         return false;
