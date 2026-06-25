@@ -15,7 +15,7 @@ writer of kernel state, and composition, storage registration,
 signer/capability provider registration, and app-builder policy all live in
 `nmp-browser-runtime`.
 TypeScript renders snapshots and executes browser capabilities; Rust owns
-policy, routing, replay, Nostr protocol behaviour, and state transitions.
+policy, routing, replay, Nostr protocol behaviour, and state transitions. The browser runtime composition, storage provider registration, signer/capability provider registry, and typed app builder live in `nmp-browser-runtime`, not `nmp-wasm`.
 
 This is the browser binding lane. Public browser onboarding uses
 `nmp-browser-runtime` wasm-bindgen exports. Public native onboarding uses
