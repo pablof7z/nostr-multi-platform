@@ -22,8 +22,9 @@ export type SidecarState = {
 
 /**
  * Second-pass over a decoded Snapshot FlatBuffer: materialises feed items,
- * profile-ref cards, event-ref cards, and embed envelopes.  Keep-last-good
- * semantics: fields not present in this frame leave the prior value intact.
+ * profile-ref cards, event-ref cards, and embed envelopes. Projection
+ * Changed/Cleared retention is Rust-owned before this frame crosses the worker
+ * boundary, so this helper only decodes the current frame's sidecars.
  *
  * Extracted from BaseClient.record() so that client.ts stays below the
  * 500-LOC ceiling (#1998).
@@ -58,7 +59,6 @@ export function applySnapshotSidecars(
   }
 
   // #1767 — kernel-resolved embed envelopes (kind-dispatched in Rust).
-  // Keep-last-good: a frame without the sidecar leaves the prior map intact.
   const embeds = decodeClaimedEventEmbeds(snap);
   if (embeds !== undefined) {
     state.latestEventEmbeds = embeds;

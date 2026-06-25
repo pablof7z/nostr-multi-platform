@@ -201,8 +201,8 @@ function decodeRootCard(rootCard: RootCard): FeedItem | null {
     item.repostedBy = repostedBy;
   }
   // Decode the NFCT content tree when the card ships `content_tree_bytes`.
-  // Keep-last-good (honest-empty) on missing bytes / bad identifier / decode
-  // error — the caller falls back to the raw `content` string.
+  // On missing bytes / bad identifier / decode error, the caller falls back to
+  // the raw `content` string.
   const ctBytes = card.contentTreeBytesArray();
   if (ctBytes && ctBytes.length > 0) {
     try {
@@ -253,12 +253,11 @@ export function decodeOpFeedSnapshot(bytes: Uint8Array): { items: FeedItem[] } |
  * Find the `nmp.feed.home` typed projection in a decoded `SnapshotFrame`,
  * validate its NOFS descriptor, and decode it to a feed-item list.
  *
- * Returns `undefined` when the projection is absent (kernel feed composition
- * not yet wired — expected until PR-F1 lands), when the descriptor mismatches
- * (`schema_id`, `schema_version`, or `file_identifier` differ from the pinned
- * values), or when the inner NOFS buffer is corrupt. Callers should keep the
- * last-good feed rows — this mirrors the `schema_version_mismatch` degradation
- * in `updateFrame.ts`.
+ * Returns `undefined` when the projection is absent in the already-merged
+ * worker frame, when the descriptor mismatches (`schema_id`, `schema_version`,
+ * or `file_identifier` differ from the pinned values), or when the inner NOFS
+ * buffer is corrupt. Projection Changed/Cleared/absent retention is owned by
+ * Rust before this frame reaches TypeScript.
  */
 export function decodeHomeFeed(snapshot: SnapshotFrame): { items: FeedItem[] } | undefined {
   for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
@@ -295,8 +294,9 @@ export function decodeHomeFeed(snapshot: SnapshotFrame): { items: FeedItem[] } |
  * NRRD `RefRowDeltaBatch` that MUST be merged into the stateful `RefProfileStore`
  * (`RefRowCache`), not decoded in isolation. This function only returns the bytes;
  * the client feeds them to `RefProfileStore.applySidecar(payload, sessionId,
- * snapshotEpoch)`. A frame with NO `refs.profile` entry returns `undefined` and
- * the caller leaves the persistent cache untouched (keep-last-good).
+ * snapshotEpoch)`. Projection-entry retention is owned by Rust before this
+ * frame reaches TypeScript; the persistent `RefRowCache` remains the row-delta
+ * cache for the NRRD payload itself.
  */
 export function findRefsProfileSidecar(snapshot: SnapshotFrame): Uint8Array | undefined {
   for (let i = 0; i < snapshot.typedProjectionsLength(); i += 1) {
@@ -331,8 +331,9 @@ export function findRefsEventSidecar(snapshot: SnapshotFrame): Uint8Array | unde
  * primary_id → EmbeddedEventModel map. The payload is UTF-8 `serde_json` of the
  * resolved embed map (NOT a FlatBuffer — JSON parity with iOS's NEMB path), so
  * it is `JSON.parse`d directly; the kernel has already kind-dispatched each
- * `projection`. Returns `undefined` on a missing/corrupt projection so the
- * caller keeps the last good map (D6 — never blank-reset).
+ * `projection`. Projection-entry retention is owned by Rust before this frame
+ * reaches TypeScript; a missing/corrupt projection returns `undefined` for the
+ * current decoded frame.
  */
 export function decodeClaimedEventEmbeds(
   snapshot: SnapshotFrame,
