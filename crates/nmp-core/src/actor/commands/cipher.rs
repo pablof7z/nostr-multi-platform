@@ -14,7 +14,10 @@
 //! `IdentityRuntime::resolve_cipher_account` so the private key maps stay
 //! encapsulated in `identity.rs`.
 
-use nmp_signer_iface::{SignerError, SignerOp};
+use nmp_signer_iface::{
+    Nip44DecryptBatchRequest, Nip44DecryptBatchResult, Nip44DecryptSessionBeginRequest,
+    Nip44DecryptSessionEndRequest, Nip44DecryptSessionGrant, SignerError, SignerOp,
+};
 use nostr::PublicKey;
 
 use super::identity::IdentityRuntime;
@@ -68,10 +71,69 @@ pub(crate) fn nip44_decrypt_nonblocking(
     }
 }
 
+/// Begin a scoped NIP-44 decrypt session with a remote signer. Local signers
+/// deliberately report unsupported so callers can keep scalar decrypt fallback.
+pub(crate) fn nip44_decrypt_session_begin_nonblocking(
+    identity: &IdentityRuntime,
+    signer_pubkey: Option<&str>,
+    request: Nip44DecryptSessionBeginRequest,
+) -> Result<SignerOp<Nip44DecryptSessionGrant>, String> {
+    let (remote, local) = identity.resolve_cipher_account(signer_pubkey);
+    if let Some(handle) = remote {
+        return Ok(handle.nip44_decrypt_session_begin(request));
+    }
+    if local.is_some() {
+        return Ok(unsupported_session_op(
+            "nip44 decrypt sessions require a remote signer",
+        ));
+    }
+    Err(no_account_error(signer_pubkey))
+}
+
+/// Decrypt a batch inside a scoped NIP-44 decrypt session.
+pub(crate) fn nip44_decrypt_batch_nonblocking(
+    identity: &IdentityRuntime,
+    signer_pubkey: Option<&str>,
+    request: Nip44DecryptBatchRequest,
+) -> Result<SignerOp<Nip44DecryptBatchResult>, String> {
+    let (remote, local) = identity.resolve_cipher_account(signer_pubkey);
+    if let Some(handle) = remote {
+        return Ok(handle.nip44_decrypt_batch(request));
+    }
+    if local.is_some() {
+        return Ok(unsupported_session_op(
+            "nip44 decrypt batches require a remote signer",
+        ));
+    }
+    Err(no_account_error(signer_pubkey))
+}
+
+/// End a scoped NIP-44 decrypt session.
+pub(crate) fn nip44_decrypt_session_end_nonblocking(
+    identity: &IdentityRuntime,
+    signer_pubkey: Option<&str>,
+    request: Nip44DecryptSessionEndRequest,
+) -> Result<SignerOp<bool>, String> {
+    let (remote, local) = identity.resolve_cipher_account(signer_pubkey);
+    if let Some(handle) = remote {
+        return Ok(handle.nip44_decrypt_session_end(request));
+    }
+    if local.is_some() {
+        return Ok(unsupported_session_op(
+            "nip44 decrypt session cleanup requires a remote signer",
+        ));
+    }
+    Err(no_account_error(signer_pubkey))
+}
+
 /// Uniform "no account" error wording for the cipher helpers (D6 toast).
 fn no_account_error(signer_pubkey: Option<&str>) -> String {
     match signer_pubkey {
         Some(pk) => format!("no signer for account {pk} — add it first"),
         None => "no active account — sign in first".to_string(),
     }
+}
+
+fn unsupported_session_op<T: Send + 'static>(message: &str) -> SignerOp<T> {
+    SignerOp::err(SignerError::Unsupported(message.to_string()))
 }

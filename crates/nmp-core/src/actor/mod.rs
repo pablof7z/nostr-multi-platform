@@ -64,6 +64,7 @@ mod inbox_lane_tests;
 // Always-compiled port continuations (named by the always-compiled
 // `ActorCommand` sign / cipher verbs; not `native`-gated).
 mod continuations;
+pub mod nip44_decrypt_session_port;
 // Generic raw signed-event forwarding dispatch. Native-only: depends on
 // `nmp_network::pool::Pool` for outbound `["EVENT", ...]` frames. Policy
 // crates provide target selection through a substrate trait object.
@@ -244,7 +245,6 @@ use capability_worker::spawn_capability_worker;
 pub use config::{ActorChannels, ActorConfig, ActorConfigSources, ActorRuntimeSlots};
 #[cfg(feature = "native")]
 use pending_sign::ParkedSignerOps;
-
 // ADR-0050 §D3a — always-compiled inbox transport types. `CommandSender` is the
 // single command-send seam handed to host code, protocol/capability workers,
 // the broker adapter, and the actor's self-feedback path; `ActorMail` is what

@@ -156,7 +156,11 @@ pub(super) use identity::{sign_active_nonblocking, sign_with_account_nonblocking
 // the cipher siblings of the sign helpers above (in the `cipher` submodule to
 // keep `identity.rs` within budget).
 #[cfg(feature = "native")]
-pub(super) use cipher::{nip44_decrypt_nonblocking, nip44_encrypt_nonblocking};
+pub(super) use cipher::{
+    nip44_decrypt_batch_nonblocking, nip44_decrypt_nonblocking,
+    nip44_decrypt_session_begin_nonblocking, nip44_decrypt_session_end_nonblocking,
+    nip44_encrypt_nonblocking,
+};
 // `new_bunker_handshake_slot` + `BunkerHandshakeSlot` reach `nmp-ffi` through
 // `nmp_core::__ffi_internal::*`. The slot type is `#[doc(hidden)] pub` (the
 // inner `BunkerHandshakeDto` likewise) so `nmp_app_new` can construct an

@@ -18,6 +18,10 @@
 
 use nmp_signer_iface::SignerOp;
 
+use crate::actor::nip44_decrypt_session_port::{
+    map_batch_result, map_begin_result, map_end_result,
+};
+
 use super::sinks::{AuthObligation, ParkedOp, ParkedOpSink, PublishObligation};
 
 /// What the actor loop must do after [`resolve_parked_op_at`] handled one op.
@@ -149,6 +153,46 @@ pub(crate) fn resolve_parked_op_at(
             // call invariant and on-actor-thread / non-blocking contract as the
             // sign continuation; D13 — only ciphertext/plaintext crosses, never
             // key material.
+            if let Some(continuation) = continuation.take() {
+                continuation.call(outcome);
+            }
+            DrainOutcome::resolved()
+        }
+        ParkedOpSink::Nip44DecryptSessionBegin { op, continuation } => {
+            let outcome = match poll(op, timed_out) {
+                Resolved::Pending => return DrainOutcome::keep(),
+                Resolved::Ok(grant) => map_begin_result(Ok(grant)),
+                Resolved::BrokerErr(e) => Err(e),
+                Resolved::TimedOut => Err("nip44 decrypt session begin timed out".to_string()),
+            };
+            if let Some(continuation) = continuation.take() {
+                continuation.call(outcome);
+            }
+            DrainOutcome::resolved()
+        }
+        ParkedOpSink::Nip44DecryptBatch {
+            op,
+            expected_ids,
+            continuation,
+        } => {
+            let outcome = match poll(op, timed_out) {
+                Resolved::Pending => return DrainOutcome::keep(),
+                Resolved::Ok(batch) => map_batch_result(Ok(batch), expected_ids),
+                Resolved::BrokerErr(e) => Err(e),
+                Resolved::TimedOut => Err("nip44 decrypt batch timed out".to_string()),
+            };
+            if let Some(continuation) = continuation.take() {
+                continuation.call(outcome);
+            }
+            DrainOutcome::resolved()
+        }
+        ParkedOpSink::Nip44DecryptSessionEnd { op, continuation } => {
+            let outcome = match poll(op, timed_out) {
+                Resolved::Pending => return DrainOutcome::keep(),
+                Resolved::Ok(acknowledged) => map_end_result(Ok(acknowledged)),
+                Resolved::BrokerErr(e) => Err(e),
+                Resolved::TimedOut => Err("nip44 decrypt session end timed out".to_string()),
+            };
             if let Some(continuation) = continuation.take() {
                 continuation.call(outcome);
             }
