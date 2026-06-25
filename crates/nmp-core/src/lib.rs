@@ -253,6 +253,7 @@ pub use kernel::routing_trace_dto::{projection_to_json, ROUTING_TRACE_SCHEMA_VER
 // Substrate-grade (D0): no app/protocol nouns.
 pub use kernel::{RelayFrame, kernel_ports::{FollowPort, IdentityPort, InterestPort, KernelPorts, ProtocolDispatchPort, PublishPort, PullCursorPort, ReferencePort, RelayLifecyclePort, UiPort}};
 pub use kernel_reducer::{KernelReducer, SignRoundTripCompletion, SignRoundTripOutcome, SignRoundTripRequest}; // #1753 S6 wasm signing DTOs
+pub use kernel_reducer::CommandApplyOutcome; // #2045 PR-A narrow headless interpreter outcome
 pub use relay::canonical_relay_url;
 // V-01 Stage 3 — the per-frame outbound type (`role`, `relay_url`, `text`) the
 // kernel produces and any transport (native `relay_worker`, wasm

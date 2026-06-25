@@ -258,6 +258,11 @@ impl KernelReducer {
     }
 }
 
+// #2045 PR-A — narrow headless command interpreter: `apply_actor_command` +
+// `CommandApplyOutcome`. Shared by the wasm runtime and any future headless
+// runtime so there is one command-application path.
+mod command_apply;
+pub use command_apply::CommandApplyOutcome;
 mod composition_seams;
 mod feed_verbs;
 mod follow;
@@ -300,3 +305,7 @@ mod tests_react;
 #[cfg(test)]
 #[path = "kernel_reducer/tests_follow.rs"]
 mod tests_follow;
+
+#[cfg(test)]
+#[path = "kernel_reducer/command_apply_tests.rs"]
+mod command_apply_tests;

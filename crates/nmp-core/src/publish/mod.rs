@@ -58,9 +58,13 @@ mod view;
 // registry's typed-dispatch trip tests can build a known-bad-version buffer.
 pub(crate) mod wire;
 
-// Validation helpers called only from native actor command handlers.
+// `validate_publish_target` is used by `Kernel::publish_externally_signed` on
+// ALL targets (wasm + native): the headless command interpreter calls it for
+// every pre-signed publish. `validate_explicit_relays` is only needed by
+// native actor command handlers.
+pub(crate) use action::validate_publish_target;
 #[cfg(feature = "native")]
-pub(crate) use action::{validate_explicit_relays, validate_publish_target};
+pub(crate) use action::validate_explicit_relays;
 // Workstream C publish-policy one-door: the typed routing/builder gate every
 // publish path consults. `validate_publish_routing` enforces the D10
 // private-envelope invariant at the typed-target boundary (private kinds require

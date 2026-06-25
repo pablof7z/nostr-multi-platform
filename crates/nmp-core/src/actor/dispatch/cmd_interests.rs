@@ -23,16 +23,9 @@ pub(super) fn ensure_interest(
     interest: crate::planner::LogicalInterest,
     ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    // Unified front-door — register-if-absent (EnsureAbsent). Store-serve
-    // + recompile trigger fire only when the interest is newly installed.
-    ports.kernel.register_interest(
-        &[crate::kernel::cache_serve::InterestRegistration {
-            identity,
-            interest,
-            policy: crate::kernel::cache_serve::InterestWrite::EnsureAbsent,
-        }],
-        "ensure-interest",
-    );
+    // Delegates to the shared Kernel::ensure_interest helper (#2045 PR-A)
+    // so the headless `apply_actor_command` interpreter uses the same path.
+    ports.kernel.ensure_interest(identity, interest);
     Some(Vec::new())
 }
 
@@ -41,17 +34,8 @@ pub(super) fn drop_interest_owner(
     identity: crate::subs::SubIdentity,
     ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
-    let removed = ports.kernel
-        .lifecycle_mut()
-        .registry_mut()
-        .drop_owner(&identity);
-    if removed {
-        ports.kernel.lifecycle_mut().enqueue_trigger(
-            crate::subs::CompileTrigger::InvalidateCompile {
-                reason: crate::subs::InvalidateReason::External("drop-interest-owner".to_string()),
-            },
-        );
-    }
+    // Delegates to the shared Kernel::drop_interest_owner helper (#2045 PR-A).
+    ports.kernel.drop_interest_owner(identity);
     Some(Vec::new())
 }
 

@@ -66,15 +66,45 @@ fn sign_request_correlation(events: &[WorkerEvent]) -> String {
         .unwrap_or_else(|| panic!("expected SignRequest, got {events:?}"))
 }
 
-fn signed_event_json(content: &str) -> String {
+/// Seed an active account using an explicit pubkey (for tests that generate
+/// fresh test keys instead of using the shared `PK` constant).
+fn seed_account_with_pubkey(runtime: &mut RawWasmAbiAdapter, pubkey_hex: &str) {
+    let events = runtime
+        .handle(WorkerRequest::SetIdentity(SetIdentity {
+            kind: "nip07".to_string(),
+            pubkey_hex: pubkey_hex.to_string(),
+            correlation_id: "seed".to_string(),
+            identity_relays: Vec::new(),
+        }))
+        .expect("set_identity must succeed");
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, WorkerEvent::ActionAccepted { .. })),
+        "seed_account_with_pubkey: SetIdentity must ACK; got {events:?}"
+    );
+}
+
+/// Build a properly Schnorr-signed event JSON for the `deliver_signer_response`
+/// flow. `publish_pre_signed` now verifies signatures (#2045 PR-A), so tests
+/// exercising that path need a real signed event rather than a placeholder.
+///
+/// The pubkey in the returned JSON is `keys.public_key()` — callers MUST seed
+/// the active account with the same pubkey so the account-pin check in
+/// `deliver_signed_response_at` passes.
+fn real_signed_event_json(keys: &nostr::Keys, content: &str) -> String {
+    let event = nostr::EventBuilder::new(nostr::Kind::from(1u16), content)
+        .custom_created_at(nostr::Timestamp::from_secs(1_700_001_234))
+        .sign_with_keys(keys)
+        .expect("test keys sign");
     serde_json::json!({
-        "id": "11".repeat(32),
-        "pubkey": PK,
-        "created_at": 1_700_001_234u64,
-        "kind": 1,
-        "tags": [],
-        "content": content,
-        "sig": "22".repeat(64),
+        "id": event.id.to_hex(),
+        "pubkey": event.pubkey.to_hex(),
+        "created_at": event.created_at.as_secs(),
+        "kind": 1u16,
+        "tags": serde_json::Value::Array(vec![]),
+        "content": event.content,
+        "sig": event.sig.to_string(),
     })
     .to_string()
 }
@@ -182,8 +212,12 @@ fn publish_raw_unsigned_json_uses_reducer_clock_for_created_at() {
 
 #[test]
 fn publish_raw_deliver_signer_response_publishes_signed_event() {
+    // Use generated test keys so the account-pin check and Schnorr signature
+    // verification both pass (#2045 PR-A: `publish_pre_signed` now verifies
+    // signatures, closing the forged-event gap on the wasm path).
+    let test_keys = nostr::Keys::generate();
     let mut runtime = RawWasmAbiAdapter::new();
-    seed_account(&mut runtime);
+    seed_account_with_pubkey(&mut runtime, &test_keys.public_key().to_hex());
     let start_events = runtime
         .handle(WorkerRequest::Start(nmp_wasm::StartConfig {
             app_id: "chirp".to_string(),
@@ -220,7 +254,7 @@ fn publish_raw_deliver_signer_response_publishes_signed_event() {
         .handle(WorkerRequest::DeliverSignerResponse(
             nmp_wasm::DeliverSignerResponse {
                 correlation_id: sign_correlation.clone(),
-                signed_json: Some(signed_event_json("publish continuation")),
+                signed_json: Some(real_signed_event_json(&test_keys, "publish continuation")),
                 error: None,
             },
         ))

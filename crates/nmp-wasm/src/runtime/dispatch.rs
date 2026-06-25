@@ -12,7 +12,6 @@
 //! size-management seam, not an API boundary.
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::PublishCommand;
 
 use crate::dispatch_routing::{
     execute_ref_dispatch, invalid_ref_request_reason, ref_dispatch_from_release,
@@ -160,31 +159,31 @@ impl RawWasmAbiAdapter {
     }
 
     /// Route collected [`ActorCommand`]s from a validated typed dispatch to
-    /// the wasm-aware publish handlers.
+    /// the shared headless interpreter, then adapt the outcome to wasm events.
     ///
     /// Called only after `start_bytes` + `execute_bytes` have both succeeded.
-    /// Returns `ActionAccepted + UpdateBytes` for synchronous pre-signed paths,
-    /// or `SignRequest + UpdateBytes` for the async signing path.
+    /// Delegates each command to [`nmp_core::KernelReducer::apply_actor_command`]
+    /// (#2045 PR-A) and adapts the three outcomes:
+    ///
+    /// - `Applied(outbound)` → fan frames + `ActionAccepted` + snapshot.
+    /// - `NeedsSign{request, target, action_correlation_id}` → park in
+    ///   `pending_signed_publishes` + `SignRequest` event.
+    /// - `Unsupported{reason}` → `CapabilityFailure` with the reason string.
     fn execute_actor_commands(
         &mut self,
         commands: Vec<ActorCommand>,
         action_namespace: &str,
         correlation_id: String,
     ) -> Vec<WorkerEvent> {
+        use nmp_core::CommandApplyOutcome;
+
         let mut events: Vec<WorkerEvent> = Vec::new();
         for cmd in commands {
-            match cmd {
-                // Pre-signed event: route through the kernel publish engine.
-                // App composition provides the shared publish resolver.
-                ActorCommand::Publish(PublishCommand::SignedEvent {
-                    raw,
-                    target,
-                    correlation_id: cid,
-                }) => {
-                    let outbound = self
-                        .reducer
-                        .borrow_mut()
-                        .publish_pre_signed(raw, target, cid);
+            // `borrow_mut()` temporary drops at the semicolon so `self` is
+            // free for `fan_outbound` / `snapshot_event` in the match arms.
+            let outcome = self.reducer.borrow_mut().apply_actor_command(cmd);
+            match outcome {
+                CommandApplyOutcome::Applied(outbound) => {
                     self.fan_outbound(outbound);
                     self.request_event_drain();
                     events.push(WorkerEvent::ActionAccepted {
@@ -193,145 +192,35 @@ impl RawWasmAbiAdapter {
                     });
                     events.push(self.snapshot_event());
                 }
-                // Unsigned event (arbitrary kind): build the unsigned JSON and
-                // start the BeginSign round-trip. The main-thread broker calls
-                // `window.nostr.signEvent` and re-enters with
-                // `DeliverSignerResponse`; from there `deliver_signer_response`
-                // emits `SignCompleted` and consumes the stored publish
-                // continuation to call `publish_pre_signed`.
-                ActorCommand::Publish(PublishCommand::RawEvent {
-                    kind,
-                    tags,
-                    content,
+                CommandApplyOutcome::NeedsSign {
+                    request,
                     target,
-                    signer_pubkey: _,
-                    correlation_id: cid,
-                }) => {
-                    let account_pubkey = match self.reducer.borrow().active_account_pubkey() {
-                        Some(pk) => pk,
-                        None => {
-                            events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
-                                capability: action_namespace.to_string(),
-                                correlation_id: correlation_id.clone(),
-                                reason: signer_not_installed_reason(),
-                            }));
-                            continue;
-                        }
-                    };
-                    let created_at = self.reducer.borrow().now_secs();
-                    let unsigned_json = serde_json::json!({
-                        "pubkey": account_pubkey,
-                        "kind": kind,
-                        "tags": tags,
-                        "content": content,
-                        "created_at": created_at,
-                    })
-                    .to_string();
-                    match self.reducer.borrow_mut().begin_sign_roundtrip_at(
-                        account_pubkey,
-                        &unsigned_json,
-                        nmp_core::time::Instant::now(),
-                    ) {
-                        Ok(req) => {
-                            self.pending_signed_publishes.insert(
-                                req.correlation_id.clone(),
-                                super::PendingSignedPublish {
-                                    action_namespace: action_namespace.to_string(),
-                                    action_correlation_id: cid
-                                        .clone()
-                                        .unwrap_or_else(|| correlation_id.clone()),
-                                    target,
-                                },
-                            );
-                            self.request_event_drain();
-                            events.push(WorkerEvent::SignRequest {
-                                correlation_id: req.correlation_id,
-                                account_pubkey: req.account_pubkey,
-                                unsigned_json: req.unsigned_json,
-                            });
-                        }
-                        Err(reason) => {
-                            events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
-                                capability: action_namespace.to_string(),
-                                correlation_id: cid.unwrap_or(correlation_id.clone()),
-                                reason,
-                            }));
-                        }
-                    }
+                    action_correlation_id,
+                } => {
+                    // Park the publish continuation under the sign correlation
+                    // id.  When `deliver_signer_response` fires the broker
+                    // uses `action_correlation_id` to settle the action result.
+                    self.pending_signed_publishes.insert(
+                        request.correlation_id.clone(),
+                        super::PendingSignedPublish {
+                            action_namespace: action_namespace.to_string(),
+                            action_correlation_id: action_correlation_id
+                                .unwrap_or_else(|| correlation_id.clone()),
+                            target,
+                        },
+                    );
+                    self.request_event_drain();
+                    events.push(WorkerEvent::SignRequest {
+                        correlation_id: request.correlation_id,
+                        account_pubkey: request.account_pubkey,
+                        unsigned_json: request.unsigned_json,
+                    });
                 }
-                // Profile (kind:0): build the kind:0 content JSON and start the
-                // BeginSign round-trip, same as PublishRawEvent above.
-                ActorCommand::Publish(PublishCommand::Profile {
-                    fields,
-                    correlation_id: cid,
-                }) => {
-                    let account_pubkey = match self.reducer.borrow().active_account_pubkey() {
-                        Some(pk) => pk,
-                        None => {
-                            events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
-                                capability: action_namespace.to_string(),
-                                correlation_id: correlation_id.clone(),
-                                reason: signer_not_installed_reason(),
-                            }));
-                            continue;
-                        }
-                    };
-                    let content =
-                        serde_json::to_string(&fields).unwrap_or_else(|_| "{}".to_string());
-                    let created_at = self.reducer.borrow().now_secs();
-                    let unsigned_json = serde_json::json!({
-                        "pubkey": account_pubkey,
-                        "kind": 0u32,
-                        "tags": serde_json::Value::Array(vec![]),
-                        "content": content,
-                        "created_at": created_at,
-                    })
-                    .to_string();
-                    match self.reducer.borrow_mut().begin_sign_roundtrip_at(
-                        account_pubkey,
-                        &unsigned_json,
-                        nmp_core::time::Instant::now(),
-                    ) {
-                        Ok(req) => {
-                            self.pending_signed_publishes.insert(
-                                req.correlation_id.clone(),
-                                super::PendingSignedPublish {
-                                    action_namespace: action_namespace.to_string(),
-                                    action_correlation_id: cid
-                                        .clone()
-                                        .unwrap_or_else(|| correlation_id.clone()),
-                                    target: nmp_core::publish::PublishTarget::Auto,
-                                },
-                            );
-                            self.request_event_drain();
-                            events.push(WorkerEvent::SignRequest {
-                                correlation_id: req.correlation_id,
-                                account_pubkey: req.account_pubkey,
-                                unsigned_json: req.unsigned_json,
-                            });
-                        }
-                        Err(reason) => {
-                            events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
-                                capability: action_namespace.to_string(),
-                                correlation_id: cid.unwrap_or(correlation_id.clone()),
-                                reason,
-                            }));
-                        }
-                    }
-                }
-                // Any other ActorCommand variant: the wasm runtime has no
-                // actor thread to handle it. Surface a CapabilityFailure so
-                // the host sees an honest "not handled" signal rather than a
-                // silent drop.
-                other => {
+                CommandApplyOutcome::Unsupported { reason } => {
                     events.push(WorkerEvent::CapabilityFailure(CapabilityFailure {
                         capability: action_namespace.to_string(),
                         correlation_id: correlation_id.clone(),
-                        reason: format!(
-                            "wasm_actor_command_unhandled: ActorCommand variant {:?} is not \
-                             handled by the wasm runtime — it requires the native actor thread.",
-                            std::mem::discriminant(&other)
-                        ),
+                        reason,
                     }));
                 }
             }
