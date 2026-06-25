@@ -182,54 +182,6 @@ pub(super) fn scan_by_kind_dtag<'a>(
     Ok(Box::new(results.into_iter().map(Ok)))
 }
 
-pub(super) fn scan_by_etag<'a>(
-    store: &'a MemEventStore,
-    target: &EventId,
-    kinds: &[u32],
-    limit: usize,
-) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-    let target_hex = bytes_to_hex(target);
-    let st = store.lock()?;
-    let mut results: Vec<StoredEvent> = st
-        .events
-        .values()
-        .filter(|ev| kinds.contains(&ev.raw.kind) && ev.raw.e_tags().contains(&target_hex))
-        .cloned()
-        .collect();
-    results.sort_by(|a, b| {
-        b.raw
-            .created_at
-            .cmp(&a.raw.created_at)
-            .then(a.raw.id.cmp(&b.raw.id))
-    });
-    results.truncate(limit);
-    Ok(Box::new(results.into_iter().map(Ok)))
-}
-
-pub(super) fn scan_by_ptag<'a>(
-    store: &'a MemEventStore,
-    target: &PubKey,
-    kinds: &[u32],
-    limit: usize,
-) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-    let target_hex = bytes_to_hex(target);
-    let st = store.lock()?;
-    let mut results: Vec<StoredEvent> = st
-        .events
-        .values()
-        .filter(|ev| kinds.contains(&ev.raw.kind) && ev.raw.p_tags().contains(&target_hex))
-        .cloned()
-        .collect();
-    results.sort_by(|a, b| {
-        b.raw
-            .created_at
-            .cmp(&a.raw.created_at)
-            .then(a.raw.id.cmp(&b.raw.id))
-    });
-    results.truncate(limit);
-    Ok(Box::new(results.into_iter().map(Ok)))
-}
-
 pub(super) fn scan_by_kind_time<'a>(
     store: &'a MemEventStore,
     kinds: &[u32],
@@ -305,14 +257,13 @@ fn matches(ev: &StoredEvent, query: &StoreQuery) -> bool {
                     .is_some_and(|d| String::from_utf8_lossy(&d).into_owned() == want)
                 && in_range(*since, *until)
         }
-        StoreQuery::Etag { target, kinds } => {
-            (kinds.is_empty() || kinds.contains(&ev.raw.kind))
-                && ev.raw.e_tags().contains(&bytes_to_hex(target))
-        }
-        StoreQuery::Ptag { target, kinds } => {
-            (kinds.is_empty() || kinds.contains(&ev.raw.kind))
-                && ev.raw.p_tags().contains(&bytes_to_hex(target))
-        }
+        StoreQuery::Tags {
+            authors,
+            kinds,
+            tags,
+            since,
+            until,
+        } => super::query_tags::event_matches_tag_query(ev, authors, kinds, tags, *since, *until),
     }
 }
 

@@ -57,6 +57,7 @@ pub(super) mod insert;
 pub(super) mod ingest_log;
 pub(super) mod insert_kind5;
 pub(super) mod query;
+pub(super) mod query_tags;
 mod store_impl;
 #[cfg(test)]
 mod tests;

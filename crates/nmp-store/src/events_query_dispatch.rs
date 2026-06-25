@@ -45,8 +45,13 @@ pub(crate) fn query_visit_default<S: EventStore + ?Sized>(
             since,
             until,
         } => store.scan_by_kind_dtag(*kind, d_tag, *since, *until, limit)?,
-        StoreQuery::Etag { target, kinds } => store.scan_by_etag(target, kinds, limit)?,
-        StoreQuery::Ptag { target, kinds } => store.scan_by_ptag(target, kinds, limit)?,
+        StoreQuery::Tags {
+            authors,
+            kinds,
+            tags,
+            since,
+            until,
+        } => store.scan_by_tags(authors, kinds, tags, *since, *until, limit)?,
     };
     for item in iter {
         let ev = item?;

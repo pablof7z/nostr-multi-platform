@@ -29,6 +29,21 @@ fn run() {
         format!("{:02x}{}", (i % 256) as u8, "0".repeat(62))
     }
 
+    fn tags_query(letter: char, value: &str, kinds: Vec<u32>) -> StoreQuery {
+        let mut tags = std::collections::BTreeMap::new();
+        tags.insert(
+            nostr::SingleLetterTag::from_char(letter).unwrap(),
+            BTreeSet::from([value.to_string()]),
+        );
+        StoreQuery::Tags {
+            authors: BTreeSet::new(),
+            kinds,
+            tags,
+            since: None,
+            until: None,
+        }
+    }
+
     fn measure(store: &dyn EventStore, q: &StoreQuery, limit: usize) -> (usize, u128, u128) {
         let mut returned = 0usize;
         // warmup
@@ -119,7 +134,6 @@ fn run() {
         let root_hex = "a".repeat(64);
         let root_ev = h.make_event_with_id(&root_hex, ALICE_HEX, 1, 500);
         h.insert_raw(root_ev, "bench", 500_000);
-        let root_id = hex_to_id(&root_hex);
         let n = 2000usize;
         for i in 0..n as u64 {
             let reply = h.make_event_with_tags(
@@ -130,10 +144,7 @@ fn run() {
             );
             h.insert_raw(reply, "bench", (600 + i) * 1000);
         }
-        let q = StoreQuery::Etag {
-            target: root_id,
-            kinds: vec![1],
-        };
+        let q = tags_query('e', &root_hex, vec![1]);
         let (ret, mean, min) = measure(&*h.store, &q, 500);
         println!(
             "{:<25} {:>10} {:>10} {:>7} {:>9} {:>9}",
@@ -154,10 +165,7 @@ fn run() {
             );
             h.insert_raw(ev, "bench", (1000 + i) * 1000);
         }
-        let q = StoreQuery::Ptag {
-            target: hex_to_id(ALICE_HEX),
-            kinds: vec![1],
-        };
+        let q = tags_query('p', ALICE_HEX, vec![1]);
         let (ret, mean, min) = measure(&*h.store, &q, 500);
         println!(
             "{:<25} {:>10} {:>10} {:>7} {:>9} {:>9}",
@@ -230,10 +238,7 @@ fn run() {
             );
             h.insert_raw(ev, "bench", (1000 + i as u64) * 1000);
         }
-        let q = StoreQuery::Ptag {
-            target: ALICE_PUBKEY,
-            kinds: vec![3, 10002],
-        };
+        let q = tags_query('p', ALICE_HEX, vec![3, 10002]);
         let (ret, mean, min) = measure(&*h.store, &q, 200);
         println!(
             "{:<25} {:>10} {:>10} {:>7} {:>9} {:>9}",

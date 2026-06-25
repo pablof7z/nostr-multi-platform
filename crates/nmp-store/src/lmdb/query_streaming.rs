@@ -127,23 +127,57 @@ pub(crate) fn build_filter(query: &StoreQuery) -> Option<Filter> {
             }
             Some(f)
         }
-        StoreQuery::Etag { target, kinds } => {
-            let target = nostr::EventId::from_slice(target).ok()?;
-            let mut f = Filter::new().event(target);
-            if !kinds.is_empty() {
-                f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
-            }
-            Some(f)
-        }
-        StoreQuery::Ptag { target, kinds } => {
-            let pk = PublicKey::from_slice(target).ok()?;
-            let mut f = Filter::new().pubkey(pk);
-            if !kinds.is_empty() {
-                f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
-            }
-            Some(f)
-        }
+        StoreQuery::Tags {
+            authors,
+            kinds,
+            tags,
+            since,
+            until,
+        } => build_tags_filter(authors, kinds, tags, *since, *until),
     }
+}
+
+/// Build the `nostr::Filter` for a [`StoreQuery::Tags`] scan.
+///
+/// Returns `None` (visit nothing) when `tags` is empty or any value set is
+/// empty, or when an author hex fails to decode. `authors`/`kinds` are added
+/// only when non-empty (empty = wildcard, per the `Tags` contract). Each tag
+/// dimension is added via `Filter::custom_tags`, which populates the fork's
+/// `generic_tags` so the `tci`/`atci`/`ktci` indexes serve the read.
+pub(crate) fn build_tags_filter(
+    authors: &std::collections::BTreeSet<crate::types::PubKey>,
+    kinds: &[u32],
+    tags: &std::collections::BTreeMap<SingleLetterTag, std::collections::BTreeSet<String>>,
+    since: Option<u64>,
+    until: Option<u64>,
+) -> Option<Filter> {
+    if tags.is_empty() || tags.values().any(std::collections::BTreeSet::is_empty) {
+        return None;
+    }
+    let mut f = Filter::new();
+    if !authors.is_empty() {
+        let pks: Vec<PublicKey> = authors
+            .iter()
+            .filter_map(|a| PublicKey::from_slice(a).ok())
+            .collect();
+        if pks.len() != authors.len() {
+            return None;
+        }
+        f = f.authors(pks);
+    }
+    if !kinds.is_empty() {
+        f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
+    }
+    for (tag, values) in tags {
+        f = f.custom_tags(*tag, values.iter().cloned());
+    }
+    if let Some(s) = since {
+        f = f.since(Timestamp::from_secs(s));
+    }
+    if let Some(u) = until {
+        f = f.until(Timestamp::from_secs(u));
+    }
+    Some(f)
 }
 
 // ─── Streaming visitor ───────────────────────────────────────────────────────

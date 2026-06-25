@@ -45,6 +45,22 @@ fn author_pubkey(i: u8) -> [u8; 32] {
     hex_to_id(&author_hex(i))
 }
 
+/// Build a single-letter `StoreQuery::Tags` (one tag dimension, one value).
+fn tags_query(letter: char, value: &str, kinds: Vec<u32>) -> StoreQuery {
+    let mut tags = std::collections::BTreeMap::new();
+    tags.insert(
+        nostr::SingleLetterTag::from_char(letter).unwrap(),
+        BTreeSet::from([value.to_string()]),
+    );
+    StoreQuery::Tags {
+        authors: BTreeSet::new(),
+        kinds,
+        tags,
+        since: None,
+        until: None,
+    }
+}
+
 // ─── tests ───────────────────────────────────────────────────────────────────
 
 /// Global feed: KindTime over kinds [1, 6, 16] — 150 events, newest-first.
@@ -153,7 +169,6 @@ fn thread_etag() {
     let root_hex = "a".repeat(64);
     let root_ev = h.make_event_with_id(&root_hex, ALICE_HEX, 1, 500);
     h.insert_raw(root_ev, "relay-fixture", 500_000);
-    let root_id = hex_to_id(&root_hex);
     for i in 0..80u64 {
         let reply = h.make_event_with_tags(
             BOB_HEX,
@@ -167,10 +182,7 @@ fn thread_etag() {
     for i in 0..40u64 {
         h.insert(ALICE_HEX, 1, 1000 + i, "relay-fixture");
     }
-    let q = StoreQuery::Etag {
-        target: root_id,
-        kinds: vec![1],
-    };
+    let q = tags_query('e', &root_hex, vec![1]);
     let results = h.store.query(&q, 200).unwrap();
     assert_eq!(results.len(), 80);
     assert_newest_first(&results);
@@ -200,10 +212,7 @@ fn mentions_ptag() {
         );
         h.insert_raw(ev, "relay-fixture", (2000 + i) * 1000);
     }
-    let q = StoreQuery::Ptag {
-        target: hex_to_id(ALICE_HEX),
-        kinds: vec![1],
-    };
+    let q = tags_query('p', ALICE_HEX, vec![1]);
     let results = h.store.query(&q, 200).unwrap();
     assert_eq!(results.len(), 70);
     assert_newest_first(&results);
@@ -304,10 +313,7 @@ fn relay_provenance_candidates_ptag() {
         );
         h.insert_raw(ev, "relay-fixture", (3000 + i as u64) * 1000);
     }
-    let q = StoreQuery::Ptag {
-        target: ALICE_PUBKEY,
-        kinds: vec![3, 10002],
-    };
+    let q = tags_query('p', ALICE_HEX, vec![3, 10002]);
     let results = h.store.query(&q, 100).unwrap();
     assert_eq!(results.len(), 50);
     for ev in &results {

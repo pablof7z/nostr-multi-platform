@@ -81,12 +81,34 @@ pub(super) fn raw_matches_store_query(raw: &RawEvent, query: &StoreQuery) -> boo
             // `pubkey_guard_for_address` check in addition.
         }
 
-        StoreQuery::Etag { target, kinds } => {
-            kinds.contains(&raw.kind) && raw.e_tags().contains(&bytes_to_hex(target))
-        }
-
-        StoreQuery::Ptag { target, kinds } => {
-            kinds.contains(&raw.kind) && raw.p_tags().contains(&bytes_to_hex(target))
+        StoreQuery::Tags {
+            authors,
+            kinds,
+            tags,
+            since,
+            until,
+        } => {
+            // Mirrors `nmp_store::mem::query::event_matches_tag_query`: empty
+            // tags / empty value set → no match; empty authors = any author;
+            // empty kinds = any kind; each `(tag, values)` needs ≥1 matching row
+            // (AND across keys, OR within values); `since`/`until` inclusive.
+            if tags.is_empty() || tags.values().any(std::collections::BTreeSet::is_empty) {
+                return false;
+            }
+            if !authors.is_empty() && !authors.iter().any(|a| bytes_to_hex(a) == raw.pubkey) {
+                return false;
+            }
+            if !kinds.is_empty() && !kinds.contains(&raw.kind) {
+                return false;
+            }
+            in_range(raw, *since, *until)
+                && tags.iter().all(|(tag, values)| {
+                    let key = tag.as_str();
+                    raw.tags.iter().any(|row| {
+                        row.first().is_some_and(|k| k == key)
+                            && row.get(1).is_some_and(|val| values.contains(val))
+                    })
+                })
         }
     }
 }
