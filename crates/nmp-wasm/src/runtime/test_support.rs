@@ -1,4 +1,4 @@
-//! Native-only helpers for [`super::WasmRuntime`].
+//! Native-only helpers for [`super::RawWasmAbiAdapter`]. Internal API.
 //!
 //! Wasm32 drives relay events through `BrowserRelayDriver` callbacks.
 //! Native protocol-conformance tests call these synchronous helpers to
@@ -6,12 +6,40 @@
 //! up a real WebSocket. Included into `runtime.rs` via `#[path]` when
 //! `not(target_arch = "wasm32")`.
 
-impl super::WasmRuntime {
+impl super::RawWasmAbiAdapter {
     /// Native test-side shim — the wasm-bindgen `NmpWasmRuntime` only
     /// exposes the `wasm32` method, but the protocol-conformance tests run
     /// on native CI and need a no-op equivalent so the test target compiles
     /// without `#[cfg]` fences in every fixture.
-    pub fn set_snapshot_callback(&mut self, _callback: Option<()>) {}
+    pub(crate) fn set_snapshot_callback(&mut self, _callback: Option<()>) {}
+
+    /// Install an event store before `Start` (native test helper).
+    pub fn set_injected_store_for_test(
+        &mut self,
+        store: std::sync::Arc<dyn nmp_store::EventStore>,
+    ) -> Result<(), super::WasmRuntimeError> {
+        self.set_injected_store(store)
+    }
+
+    /// Return the reducer handle for native white-box protocol tests.
+    pub fn reducer_handle_for_test(
+        &self,
+    ) -> std::rc::Rc<std::cell::RefCell<nmp_core::KernelReducer>> {
+        self.reducer_handle()
+    }
+
+    /// Return routing diagnostics JSON for native tests.
+    pub fn recent_routing_decisions_for_test(&self) -> String {
+        self.recent_routing_decisions()
+    }
+
+    /// Register an action module for native dispatch doorway tests.
+    pub fn register_action_for_test<M: nmp_core::substrate::ActionModule + 'static>(
+        &mut self,
+        module: M,
+    ) -> Result<(), nmp_core::substrate::RegistrationError> {
+        self.register_action(module)
+    }
 
     /// Inject a relay-connected event into the kernel (native test helper).
     pub fn inject_relay_connected_for_test(
@@ -125,7 +153,7 @@ mod before_start_hook_tests {
 
     use nmp_store::{EventStore, MemEventStore};
 
-    use super::super::WasmRuntime;
+    use super::super::RawWasmAbiAdapter;
     use crate::protocol::{RelayBootstrapEntry, StartConfig, WorkerRequest};
 
     fn start_request() -> WorkerRequest {
@@ -143,7 +171,7 @@ mod before_start_hook_tests {
 
     #[test]
     fn before_start_hook_observes_injected_store_handle() {
-        let mut runtime = WasmRuntime::new();
+        let mut runtime = RawWasmAbiAdapter::new();
         let injected: Arc<dyn EventStore> = Arc::new(MemEventStore::new());
         let expected = Arc::clone(&injected);
         let hook_ran = Rc::new(Cell::new(false));
@@ -178,7 +206,7 @@ mod set_identity_tests {
     //! B2 — canonicalization guard: `set_identity` with an uppercase pubkey hex
     //! must store a canonical (lowercase) active account so active-follows REQs
     //! carry the correct key in their author filters.
-    use super::super::WasmRuntime;
+    use super::super::RawWasmAbiAdapter;
     use crate::protocol::{SetIdentity, WorkerRequest};
 
     const LOWER_PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -190,7 +218,7 @@ mod set_identity_tests {
         // before being stored as active_account. Without the fix the kernel
         // holds an uppercase active_account key, and active-follows REQs carry
         // an uppercase `authors` filter — breaking NIP-01 relay compliance.
-        let mut runtime = WasmRuntime::new();
+        let mut runtime = RawWasmAbiAdapter::new();
         let result = runtime
             .handle(WorkerRequest::SetIdentity(SetIdentity {
                 kind: "nip07".to_string(),
@@ -229,7 +257,7 @@ mod resolve_no_snapshot_tests {
     //! resolve → snapshot → re-render → resolve loop that floods the
     //! single-threaded wasm worker and starves the UI so the feed never paints
     //! (feed.spec.ts toBeVisible timeout).
-    use super::super::WasmRuntime;
+    use super::super::RawWasmAbiAdapter;
     use crate::protocol::{ReleaseRef, ResolveRef, WorkerEvent, WorkerRequest};
 
     const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -272,7 +300,7 @@ mod resolve_no_snapshot_tests {
 
     #[test]
     fn resolve_ref_dispatch_emits_no_snapshot() {
-        let mut runtime = WasmRuntime::new();
+        let mut runtime = RawWasmAbiAdapter::new();
         let events = runtime
             .handle(resolve_dispatch())
             .expect("resolve_ref dispatch must succeed");
@@ -288,7 +316,7 @@ mod resolve_no_snapshot_tests {
 
     #[test]
     fn release_ref_dispatch_emits_no_snapshot() {
-        let mut runtime = WasmRuntime::new();
+        let mut runtime = RawWasmAbiAdapter::new();
         // Resolve first so the release has something to drop (irrelevant to the
         // no-snapshot contract, but mirrors the real lifecycle).
         let _ = runtime.handle(resolve_dispatch());
@@ -323,7 +351,7 @@ mod s10_nip07_event_driven_tests {
     //! returned events from `handle(DeliverSignerResponse)` would be empty
     //! (no `SignCompleted`), and the assertion `has_sign_completed` would fail.
 
-    use super::super::WasmRuntime;
+    use super::super::RawWasmAbiAdapter;
     use crate::protocol::{
         BeginSign, DeliverSignerResponse, SetIdentity, WorkerEvent, WorkerRequest,
     };
@@ -392,7 +420,7 @@ mod s10_nip07_event_driven_tests {
     /// and the `has_sign_completed` assertion would trip.
     #[test]
     fn deliver_signer_response_completes_synchronously_without_tick() {
-        let mut runtime = WasmRuntime::new();
+        let mut runtime = RawWasmAbiAdapter::new();
 
         // Seed the kernel with an active account so `begin_sign_roundtrip`
         // can validate the account-pinning contract.

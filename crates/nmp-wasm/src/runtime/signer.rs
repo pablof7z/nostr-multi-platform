@@ -1,5 +1,5 @@
 //! Active-identity seeding + the #1753 S6 wasm signing capability round-trip
-//! arms for [`super::WasmRuntime`].
+//! arms for [`super::RawWasmAbiAdapter`]. Internal API.
 
 use crate::protocol::{
     BeginSign, CapabilityFailure, DeliverSignerResponse, IdentityRelayPermission,
@@ -7,7 +7,7 @@ use crate::protocol::{
 };
 use crate::signer_slot;
 
-use super::WasmRuntime;
+use super::RawWasmAbiAdapter;
 
 const MAX_IDENTITY_RELAYS: usize = 32;
 
@@ -89,7 +89,7 @@ fn identity_relay_entry(relay: &IdentityRelayPermission) -> Option<RelayBootstra
     })
 }
 
-impl WasmRuntime {
+impl RawWasmAbiAdapter {
     fn merge_identity_relays(&mut self, relays: &[IdentityRelayPermission]) -> bool {
         if relays.is_empty() {
             return false;

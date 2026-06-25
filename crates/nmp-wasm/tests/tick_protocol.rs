@@ -11,15 +11,15 @@ use nmp_core::substrate::ActionPayload;
 use nmp_network::role::RelayRole;
 use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_wasm::{
-    DispatchBytes, RelayBootstrapEntry, ReleaseRef, ResolveRef, SetIdentity, StartConfig,
-    WasmRuntime, WorkerEvent, WorkerRequest,
+    DispatchBytes, RawWasmAbiAdapter, RelayBootstrapEntry, ReleaseRef, ResolveRef, SetIdentity,
+    StartConfig, WorkerEvent, WorkerRequest,
 };
 
 const RELAY_URL: &str = "wss://relay.example";
 const ACCOUNT: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
 
-fn started_runtime() -> WasmRuntime {
-    let mut runtime = WasmRuntime::new();
+fn started_runtime() -> RawWasmAbiAdapter {
+    let mut runtime = RawWasmAbiAdapter::new();
     runtime
         .handle(WorkerRequest::Start(StartConfig {
             app_id: "chirp".to_string(),
@@ -35,7 +35,7 @@ fn started_runtime() -> WasmRuntime {
     runtime
 }
 
-fn seed_account(runtime: &mut WasmRuntime) {
+fn seed_account(runtime: &mut RawWasmAbiAdapter) {
     let events = runtime
         .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "nip07".to_string(),
@@ -118,7 +118,7 @@ fn resolve_event_request(consumer_id: &str, event_id: &str) -> WorkerRequest {
     })
 }
 
-fn settle_connected_runtime(rt: &mut WasmRuntime) {
+fn settle_connected_runtime(rt: &mut RawWasmAbiAdapter) {
     let _ = rt.snapshot_bytes_for_test();
     rt.inject_relay_connected_for_test(RelayRole::Content, RELAY_URL);
     let _ = rt

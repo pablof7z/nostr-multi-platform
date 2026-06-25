@@ -1,6 +1,6 @@
-//! App-facing feed declaration helpers for [`super::WasmRuntime`].
+//! Feed declaration helpers for [`super::RawWasmAbiAdapter`]. Internal API.
 //!
-//! The public surface accepts primary content kinds. Protocol wrapper
+//! The surface accepts primary content kinds. Protocol wrapper
 //! acquisition is derived here, below app composition and above the pure
 //! reducer, so apps do not compile repost shapes themselves.
 //!
@@ -9,7 +9,7 @@
 //! Step 1 is types + decode + validation only; the `open_feed` dispatch
 //! and the public re-export surface land in step 2.
 
-use super::WasmRuntime;
+use super::RawWasmAbiAdapter;
 
 // Import the protocol-agnostic typed feed-session model. The full public
 // re-export surface (CustomPerspectiveId, FeedAdmission, FeedHandle, etc.) will
@@ -58,7 +58,7 @@ fn validate_feed_params(
 /// typed [`FeedParams`] and runs fail-closed primary-kind validation (rejecting
 /// wrapper kinds 6/16 and delete kind 5). It performs **no** dispatch — step 2
 /// wires `open_feed` on top of this.
-pub fn decode_and_validate_feed_params(
+pub(crate) fn decode_and_validate_feed_params(
     json: &str,
 ) -> Result<(FeedParams, std::collections::BTreeSet<u32>), FeedParamsDecodeError> {
     let params: FeedParams =
@@ -68,15 +68,15 @@ pub fn decode_and_validate_feed_params(
     Ok((params, acquisition_kinds))
 }
 
-impl WasmRuntime {
+impl RawWasmAbiAdapter {
     /// Register a typed feed sidecar and its rendered-author provider together.
+    /// Internal API.
     ///
-    /// This is the wasm twin of `NmpApp::register_feed_render_source`. A single
-    /// [`FeedRenderSource`] materializes the visible feed window once per kernel
-    /// tick, then the author provider and typed producer both read that same
-    /// materialization. That keeps `refs.profile` demand aligned with the feed
-    /// rows the browser receives.
-    pub fn register_feed_render_source<S>(
+    /// A single [`FeedRenderSource`] materializes the visible feed window once
+    /// per kernel tick, then the author provider and typed producer both read
+    /// that same materialization. That keeps `refs.profile` demand aligned with
+    /// the feed rows the browser receives.
+    pub(crate) fn register_feed_render_source<S>(
         &self,
         feed_key: impl Into<String>,
         source: std::sync::Arc<FeedRenderSource<S>>,
@@ -131,7 +131,7 @@ impl WasmRuntime {
     /// Returns `false` when a caller supplies a wrapper kind as primary input
     /// or otherwise fails NIP-18 primary-kind validation. The reducer is left
     /// unchanged on failure.
-    pub fn declare_active_follows_feed<I>(&self, primary_kinds: I) -> bool
+    pub(crate) fn declare_active_follows_feed<I>(&self, primary_kinds: I) -> bool
     where
         I: IntoIterator<Item = u32>,
     {
@@ -149,7 +149,7 @@ impl WasmRuntime {
     }
 
     /// Clear the active-follows feed declaration.
-    pub fn clear_active_follows_feed(&self) {
+    pub(crate) fn clear_active_follows_feed(&self) {
         let outbound = self.reducer.borrow_mut().clear_active_follows_feed();
         self.fan_outbound(outbound);
         self.request_event_drain();
@@ -160,6 +160,8 @@ impl WasmRuntime {
 mod feed_params_decode_tests {
     use super::*;
     use nmp_feed::PubkeySetExpr;
+
+    const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
 
     fn params_json(primary_kinds: &str) -> String {
         format!(
@@ -204,6 +206,81 @@ mod feed_params_decode_tests {
         assert_eq!(
             decode_and_validate_feed_params("{ not json"),
             Err(FeedParamsDecodeError::MalformedJson)
+        );
+    }
+
+    #[test]
+    fn runtime_declares_active_follows_feed_from_primary_kinds() {
+        let runtime = RawWasmAbiAdapter::new();
+
+        assert!(
+            runtime.declare_active_follows_feed([1]),
+            "primary kind 1 is a valid app-facing feed declaration"
+        );
+        runtime
+            .reducer_handle()
+            .borrow_mut()
+            .set_active_account(ALICE.to_string());
+
+        let authors = runtime.reducer_handle().borrow().active_timeline_authors();
+        assert_eq!(
+            authors,
+            vec![ALICE.to_string()],
+            "pre-sign-in declaration must prime the active-follows feed so sign-in \
+             installs the active account as the first author"
+        );
+    }
+
+    #[test]
+    fn runtime_rejects_repost_wrappers_as_primary_feed_kinds() {
+        let runtime = RawWasmAbiAdapter::new();
+
+        assert!(
+            !runtime.declare_active_follows_feed([1, 6]),
+            "kind 6 is derived from primary kind 1; apps must not declare it"
+        );
+        assert!(
+            !runtime.declare_active_follows_feed([16]),
+            "kind 16 is derived for non-kind-1 primaries; apps must not declare it"
+        );
+        runtime
+            .reducer_handle()
+            .borrow_mut()
+            .set_active_account(ALICE.to_string());
+
+        let authors = runtime.reducer_handle().borrow().active_timeline_authors();
+        assert!(
+            authors.is_empty(),
+            "rejected wrapper-kind declarations must leave the active-follows feed inert"
+        );
+    }
+
+    #[test]
+    fn runtime_clears_active_follows_feed_declaration() {
+        let runtime = RawWasmAbiAdapter::new();
+
+        assert!(runtime.declare_active_follows_feed([1]));
+        runtime
+            .reducer_handle()
+            .borrow_mut()
+            .set_active_account(ALICE.to_string());
+        assert!(
+            !runtime
+                .reducer_handle()
+                .borrow()
+                .active_timeline_authors()
+                .is_empty(),
+            "test setup must install the active-follows feed before clearing"
+        );
+
+        runtime.clear_active_follows_feed();
+        assert!(
+            runtime
+                .reducer_handle()
+                .borrow()
+                .active_timeline_authors()
+                .is_empty(),
+            "clear must withdraw the active-follows declaration"
         );
     }
 }

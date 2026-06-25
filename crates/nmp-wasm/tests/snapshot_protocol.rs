@@ -31,14 +31,14 @@ use nmp_core::{
     },
 };
 use nmp_network::role::RelayRole;
-use nmp_wasm::{RelayBootstrapEntry, StartConfig, WasmRuntime, WorkerRequest};
+use nmp_wasm::{RawWasmAbiAdapter, RelayBootstrapEntry, StartConfig, WorkerRequest};
 
 const RELAY_URL_A: &str = "wss://nos.lol";
 const RELAY_URL_B: &str = "wss://relay.damus.io";
 
 #[test]
 fn snapshot_carries_kernel_authored_relay_statuses() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
 
     // Start with TWO bootstrap relays so the configured_relays sidecar
     // assertion below must contain both URLs (not just a single-entry list).
@@ -113,13 +113,10 @@ fn snapshot_carries_kernel_authored_relay_statuses() {
         .find(|p| p.schema_id == CONFIGURED_RELAYS_SCHEMA_ID)
         .unwrap_or_else(|| {
             let keys: Vec<_> = projections.iter().map(|p| &p.schema_id).collect();
-            panic!(
-                "configured_relays sidecar must be present; got keys: {keys:?}"
-            )
+            panic!("configured_relays sidecar must be present; got keys: {keys:?}")
         });
 
-    let model =
-        decode_configured_relays(&cr_entry.payload).expect("configured_relays must decode");
+    let model = decode_configured_relays(&cr_entry.payload).expect("configured_relays must decode");
 
     for url in &[RELAY_URL_A, RELAY_URL_B] {
         assert!(
@@ -136,7 +133,11 @@ fn snapshot_carries_kernel_authored_relay_statuses() {
     // by `builtin_typed_projections` on every make_update tick (even on a
     // fresh kernel with no accounts). Their presence confirms the full Tier-2
     // typed-projection pipeline fired, not just the relay-specific path.
-    for schema_id in &[ACCOUNTS_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_ID, PROFILE_SCHEMA_ID] {
+    for schema_id in &[
+        ACCOUNTS_SCHEMA_ID,
+        ACTIVE_ACCOUNT_SCHEMA_ID,
+        PROFILE_SCHEMA_ID,
+    ] {
         assert!(
             projections.iter().any(|p| p.schema_id == *schema_id),
             "unconditional profile-cluster sidecar '{}' must be present; got keys: {:?}",

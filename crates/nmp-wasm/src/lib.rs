@@ -1,8 +1,16 @@
-//! Browser-facing surface for NMP.
+//! Browser-facing ABI surface for NMP (ADR-0065).
 //!
-//! This crate keeps the wire contract host-testable while the browser actor
-//! driver grows behind it. Web hosts render snapshots and execute capabilities;
-//! Rust remains responsible for policy and state transitions.
+//! # Purpose
+//!
+//! `nmp-wasm` is ABI glue only — it does **not** own:
+//! - Routing, signing policy, or signer-provider choice (Wave 3 provider registry)
+//! - NIP modules, protocol defaults, or app defaults
+//! - Projection policy, persistence policy, retry policy, or account state
+//!
+//! The browser runtime (composition, lifecycle, and policy) is owned by
+//! `nmp-browser-runtime`. This crate owns only the wire contract: typed
+//! dispatch bytes in, typed update-frame bytes out, capability-result bytes,
+//! callback registration, and lifecycle shaping (`ClientHello`, `RuntimeStatus`).
 
 pub mod protocol;
 // V-01 Stage 3 — `BrowserRelayDriver`, the wasm32 transport that closes the
@@ -43,4 +51,10 @@ pub use protocol::{
     DeliverSignerResponse, DispatchBytes, IdentityRelayPermission, RelayBootstrapEntry, ReleaseRef,
     ResolveRef, RuntimeStatus, SetIdentity, StartConfig, WorkerEvent, WorkerRequest,
 };
-pub use runtime::{WasmRuntime, WasmRuntimeError};
+pub use runtime::WasmRuntimeError;
+
+// RawWasmAbiAdapter is internal — do not use for composition. This is the
+// ABI glue backing the JS host interface; composition lives in
+// nmp-browser-runtime (Wave 3).
+#[doc(hidden)]
+pub use runtime::RawWasmAbiAdapter;

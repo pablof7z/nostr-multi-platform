@@ -7,7 +7,7 @@
 //! data-shaped `WorkerEvent::Error` — never a panic, never a silent accept.
 //!
 //! S3 (#1751 / #1008) proves the OPAQUE per-crate payload now routes into the
-//! runtime's typed [`nmp_wasm::WasmRuntime`] action registry: a registered
+//! runtime's typed [`nmp_wasm::RawWasmAbiAdapter`] action registry: a registered
 //! non-publish namespace's typed FlatBuffers payload DECODES (via the module's
 //! `decode_payload`) and reaches the module's `start()` validator, instead of
 //! returning the generic envelope-level write-path `CapabilityFailure` the S2
@@ -16,7 +16,7 @@
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::publish::{PublishAction, PublishTarget};
 use nmp_core::substrate::ActionPayload;
-use nmp_wasm::{CapabilityFailure, SetIdentity, WasmRuntime, WorkerEvent, WorkerRequest};
+use nmp_wasm::{CapabilityFailure, RawWasmAbiAdapter, SetIdentity, WorkerEvent, WorkerRequest};
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -28,7 +28,7 @@ fn envelope(namespace: &str, correlation: &str, version: u32, payload: &[u8]) ->
 
 /// Seed an active account so a dispatch passes the fail-closed
 /// `signer_not_installed` gate and reaches the typed registry.
-fn seed_account(runtime: &mut WasmRuntime) {
+fn seed_account(runtime: &mut RawWasmAbiAdapter) {
     let events = runtime
         .handle(WorkerRequest::SetIdentity(SetIdentity {
             kind: "nip07".to_string(),
@@ -81,7 +81,7 @@ fn signed_event_json(content: &str) -> String {
 
 #[test]
 fn binary_doorway_decodes_and_routes_by_namespace() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     // Opaque payload — the binary lane carries it verbatim, never interpreted.
     let bytes = envelope(
         "nmp.publish",
@@ -106,7 +106,7 @@ fn binary_doorway_decodes_and_routes_by_namespace() {
 
 #[test]
 fn binary_doorway_rejects_schema_version_mismatch_fail_closed() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let bad = envelope(
         "nmp.publish",
         "corr-2",
@@ -125,7 +125,7 @@ fn binary_doorway_rejects_schema_version_mismatch_fail_closed() {
 
 #[test]
 fn binary_doorway_rejects_wrong_file_identifier_fail_closed() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let mut bytes = envelope("nmp.publish", "c", DISPATCH_ENVELOPE_SCHEMA_VERSION, b"p");
     bytes[4..8].copy_from_slice(b"NMPU"); // read-direction magic
     let events = runtime.dispatch_bytes(&bytes);
@@ -137,7 +137,7 @@ fn binary_doorway_rejects_wrong_file_identifier_fail_closed() {
 
 #[test]
 fn binary_doorway_rejects_garbage_fail_closed() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime.dispatch_bytes(b"not a flatbuffer");
     assert!(matches!(
         &events[..],
@@ -147,7 +147,7 @@ fn binary_doorway_rejects_garbage_fail_closed() {
 
 #[test]
 fn publish_raw_unsigned_json_uses_reducer_clock_for_created_at() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     seed_account(&mut runtime);
     runtime.set_kernel_clock_for_test(Arc::new(nmp_core::MonotonicSecondClock::new(
         UNIX_EPOCH + Duration::from_secs(1_700_001_234),
@@ -182,7 +182,7 @@ fn publish_raw_unsigned_json_uses_reducer_clock_for_created_at() {
 
 #[test]
 fn publish_raw_deliver_signer_response_publishes_signed_event() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     seed_account(&mut runtime);
     let start_events = runtime
         .handle(WorkerRequest::Start(nmp_wasm::StartConfig {
@@ -344,10 +344,10 @@ mod typed_decode {
     #[test]
     fn typed_payload_decodes_and_reaches_start_not_capability_failure() {
         let started = Arc::new(AtomicBool::new(false));
-        let mut runtime = WasmRuntime::new();
+        let mut runtime = RawWasmAbiAdapter::new();
         // The composition root registers per-NIP modules; here the test plays
         // that role via the same public `register_action` seam.
-        let _ = runtime.register_action(ProbeModule {
+        let _ = runtime.register_action_for_test(ProbeModule {
             started: Arc::clone(&started),
         });
         // An active account is required (fail-closed: no signer → no write).
@@ -403,8 +403,8 @@ mod typed_decode {
     #[test]
     fn malformed_typed_payload_fails_closed_at_decode() {
         let started = Arc::new(AtomicBool::new(false));
-        let mut runtime = WasmRuntime::new();
-        let _ = runtime.register_action(ProbeModule {
+        let mut runtime = RawWasmAbiAdapter::new();
+        let _ = runtime.register_action_for_test(ProbeModule {
             started: Arc::clone(&started),
         });
         seed_account(&mut runtime);
@@ -436,7 +436,7 @@ mod typed_decode {
     /// still rejects through `start_bytes` as unknown — never a silent accept.
     #[test]
     fn unknown_namespace_fails_closed() {
-        let mut runtime = WasmRuntime::new();
+        let mut runtime = RawWasmAbiAdapter::new();
         seed_account(&mut runtime);
         let bytes = envelope(
             "nmp.test.never_registered",
@@ -463,7 +463,7 @@ mod typed_decode {
     /// short-circuit skip is GONE.
     #[test]
     fn publish_malformed_payload_fails_closed_at_decode_after_1008() {
-        let mut runtime = WasmRuntime::new();
+        let mut runtime = RawWasmAbiAdapter::new();
         seed_account(&mut runtime);
         let bytes = envelope(
             "nmp.publish",

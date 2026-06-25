@@ -26,7 +26,7 @@
 //! kernel ingests events identically regardless of role and routes outbound
 //! purely by URL. The host's full declared role set still reaches the UI via
 //! the kernel's `configured_relays` projection (seeded from the same bootstrap
-//! in `WasmRuntime::start`), independent of the driver pool — so role badges
+//! in the raw ABI adapter's `start` path), independent of the driver pool — so role badges
 //! are unaffected.
 
 use nmp_network::role::RelayRole;

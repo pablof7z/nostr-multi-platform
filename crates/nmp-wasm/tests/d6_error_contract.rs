@@ -1,6 +1,6 @@
-//! D6 error-as-data contract tests for `WasmRuntime::handle`.
+//! D6 error-as-data contract tests for `RawWasmAbiAdapter::handle`.
 //!
-//! These tests verify that `WasmRuntime::handle` never returns a
+//! These tests verify that `RawWasmAbiAdapter::handle` never returns a
 //! `WasmRuntimeError::InvalidConfig` when the host supplies valid-but-wrong
 //! configuration, and that the `wasm_binding.rs` composition root has a clear
 //! contract for which errors are protocol-layer data vs. catastrophic.
@@ -12,7 +12,8 @@
 //! binding layer a stable set of inputs to classify.
 
 use nmp_wasm::{
-    RelayBootstrapEntry, StartConfig, WasmRuntime, WasmRuntimeError, WorkerEvent, WorkerRequest,
+    RawWasmAbiAdapter, RelayBootstrapEntry, StartConfig, WasmRuntimeError, WorkerEvent,
+    WorkerRequest,
 };
 
 // ── InvalidConfig surfaces — each triggers a parse_error or invalid_config
@@ -20,7 +21,7 @@ use nmp_wasm::{
 
 #[test]
 fn start_with_empty_app_id_returns_invalid_config() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let result = runtime.handle(WorkerRequest::Start(StartConfig {
         app_id: "".to_string(),
         relays: vec!["wss://relay.example".to_string()],
@@ -33,13 +34,16 @@ fn start_with_empty_app_id_returns_invalid_config() {
         "empty app_id must produce InvalidConfig, got {result:?}"
     );
     if let Err(WasmRuntimeError::InvalidConfig(msg)) = result {
-        assert!(msg.contains("app_id"), "message must name the failing field: {msg}");
+        assert!(
+            msg.contains("app_id"),
+            "message must name the failing field: {msg}"
+        );
     }
 }
 
 #[test]
 fn start_with_whitespace_only_app_id_returns_invalid_config() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let result = runtime.handle(WorkerRequest::Start(StartConfig {
         app_id: "   ".to_string(),
         relays: vec!["wss://relay.example".to_string()],
@@ -55,7 +59,7 @@ fn start_with_whitespace_only_app_id_returns_invalid_config() {
 
 #[test]
 fn start_with_empty_database_name_returns_invalid_config() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let result = runtime.handle(WorkerRequest::Start(StartConfig {
         app_id: "chirp".to_string(),
         relays: vec!["wss://relay.example".to_string()],
@@ -77,7 +81,7 @@ fn start_with_empty_database_name_returns_invalid_config() {
 
 #[test]
 fn start_with_no_relays_returns_invalid_config() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let result = runtime.handle(WorkerRequest::Start(StartConfig {
         app_id: "chirp".to_string(),
         relays: vec![],
@@ -103,7 +107,7 @@ fn start_with_no_relays_returns_invalid_config() {
 #[test]
 fn protocol_mismatch_hello_resolves_as_error_event_not_err() {
     use nmp_wasm::ClientHello;
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     // Version 2 does not exist; the runtime must resolve as WorkerEvent::Error
     // (data), not Err(WasmRuntimeError). This is the existing D6 path in
     // runtime.rs; this test is a regression guard.
@@ -126,7 +130,7 @@ fn protocol_mismatch_hello_resolves_as_error_event_not_err() {
 fn valid_start_still_succeeds_after_d6_refactor() {
     // Smoke test: a correct Start still works after the D6 changes in
     // wasm_binding.rs — the runtime's Ok path is unaffected.
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let result = runtime.handle(WorkerRequest::Start(StartConfig {
         app_id: "chirp".to_string(),
         relays: vec!["wss://relay.example".to_string()],
