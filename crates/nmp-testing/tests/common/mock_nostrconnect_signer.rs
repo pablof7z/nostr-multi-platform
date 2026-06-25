@@ -27,13 +27,16 @@
 //! ## Threading model
 //!
 //! The relay runs an acceptor thread + per-connection worker threads. Workers
-//! share a broadcast channel via `Arc<Mutex<Vec<Sender<String>>>>` so any
-//! published EVENT is forwarded to all connected subscribers.
+//! share a broadcast registry so any published EVENT is forwarded to each
+//! subscribed connection under that connection's relay subscription id.
 
 use std::io::ErrorKind;
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::mpsc::{self, Sender};
+mod relay;
+
+use relay::{run_relay_connection, BroadcastSenders};
+
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::thread::JoinHandle;
@@ -42,9 +45,6 @@ use std::time::Duration;
 use nostr::nips::nip44;
 use nostr::{EventBuilder, Keys, Kind, Tag, Timestamp};
 use serde_json::{json, Value};
-
-/// Shared broadcast state: list of per-connection event senders.
-type BroadcastSenders = Arc<Mutex<Vec<Sender<String>>>>;
 
 /// Mock NIP-46 relay + signer-app combo.
 pub struct MockNostrConnectSigner {
@@ -175,6 +175,13 @@ impl MockNostrConnectSigner {
                 }
             };
 
+            let signer_sub_id = "mock-nostrconnect-signer";
+            let signer_req = json!(["REQ", signer_sub_id, {"kinds": [24133]}]).to_string();
+            if ws.send(tungstenite::Message::Text(signer_req)).is_err() {
+                eprintln!("mock signer: send signer REQ failed");
+                return;
+            }
+
             // Build the connect RPC: params = [signer_pubkey, secret, ""].
             let connect_id = format!("nc-connect-{}", &client_pubkey[..8]);
             let rpc = json!({
@@ -303,113 +310,6 @@ impl Drop for MockNostrConnectSigner {
             if let Some(j) = guard.take() {
                 let _ = j.join();
             }
-        }
-    }
-}
-
-// ─── Broadcast relay connection handler ─────────────────────────────────────
-
-/// Per-connection relay handler. Accepts REQ (registers subscription + sends
-/// EOSE) and EVENT (broadcasts to all registered senders so every subscriber
-/// receives the event).
-fn run_relay_connection(
-    stream: std::net::TcpStream,
-    shutdown: Arc<AtomicBool>,
-    broadcast_senders: BroadcastSenders,
-    subscription_count: Arc<AtomicUsize>,
-) {
-    let mut ws = match tungstenite::accept(stream) {
-        Ok(w) => w,
-        Err(_) => return,
-    };
-
-    // Register a broadcast receiver for this connection.
-    let (tx, rx) = mpsc::channel::<String>();
-    broadcast_senders.lock().unwrap().push(tx);
-
-    let mut subscription_id: Option<String> = None;
-
-    loop {
-        if shutdown.load(Ordering::Relaxed) {
-            let _ = ws.close(None);
-            return;
-        }
-
-        // Drain broadcast messages and forward to this client.
-        while let Ok(frame) = rx.try_recv() {
-            if ws.send(tungstenite::Message::Text(frame)).is_err() {
-                return;
-            }
-        }
-
-        // Read one inbound frame (short timeout).
-        let msg = match ws.read() {
-            Ok(m) => m,
-            Err(tungstenite::Error::Io(io_err))
-                if matches!(io_err.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) =>
-            {
-                continue;
-            }
-            Err(_) => return,
-        };
-
-        let text = match msg {
-            tungstenite::Message::Text(t) => t,
-            tungstenite::Message::Ping(p) => {
-                let _ = ws.send(tungstenite::Message::Pong(p));
-                continue;
-            }
-            tungstenite::Message::Close(_) => return,
-            _ => continue,
-        };
-
-        let parsed: Value = match serde_json::from_str(&text) {
-            Ok(v) => v,
-            Err(_) => continue,
-        };
-        let arr = match parsed.as_array() {
-            Some(a) => a,
-            None => continue,
-        };
-
-        let kind_str = arr.first().and_then(|v| v.as_str()).unwrap_or("");
-        match kind_str {
-            "REQ" => {
-                if let Some(sub) = arr.get(1).and_then(|v| v.as_str()) {
-                    subscription_id = Some(sub.to_string());
-                }
-                // Increment the subscription counter so the signer mock knows
-                // the broker is subscribed and it's safe to send the connect EVENT.
-                subscription_count.fetch_add(1, Ordering::Relaxed);
-
-                // Reply EOSE so the broker knows the subscription is active.
-                if let Some(sub) = &subscription_id {
-                    let eose = json!(["EOSE", sub]).to_string();
-                    let _ = ws.send(tungstenite::Message::Text(eose));
-                }
-            }
-            "EVENT" => {
-                let event = match arr.get(1) {
-                    Some(e) => e.clone(),
-                    None => continue,
-                };
-                let event_id = event.get("id").and_then(|v| v.as_str()).unwrap_or("?");
-
-                // Broadcast to ALL connections (broker + signer will both receive it).
-                let sub_id = subscription_id.clone().unwrap_or_else(|| "0".to_string());
-                let broadcast_frame = json!(["EVENT", sub_id, event]).to_string();
-                let senders = broadcast_senders.lock().unwrap();
-                for s in senders.iter() {
-                    let _ = s.send(broadcast_frame.clone());
-                }
-                drop(senders);
-
-                // Also reply OK to the sender.
-                let ok_frame = json!(["OK", event_id, true, ""]).to_string();
-                let _ = ws.send(tungstenite::Message::Text(ok_frame));
-            }
-            "CLOSE" => return,
-            _ => {}
         }
     }
 }

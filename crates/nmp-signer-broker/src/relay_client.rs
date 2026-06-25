@@ -32,14 +32,20 @@
 //! impl is replaced. [`TungsteniteRelayClient`] is kept as a type alias
 //! to [`PoolRelayClient`] for legacy spelling.
 
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
+mod dispatch;
+
+#[cfg(test)]
+pub(crate) use dispatch::{closed_reason_to_state, parse_event_frame, transport_error_to_state};
+use dispatch::{run_dispatcher, wait_for_first_open};
+
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use serde_json::Value;
 
-use nmp_network::pool::{Pool, PoolConfig, PoolEvent, RelayFrame, RelayHandle, WireFrame};
+use nmp_network::pool::{Pool, PoolConfig, PoolEvent, RelayHandle, WireFrame};
 
 /// How long [`PoolRelayClient::connect`] waits for the worker's first
 /// `PoolEvent::Opened` (or `Failed`) before returning. The Pool dials
@@ -237,55 +243,6 @@ impl PoolRelayClient {
     }
 }
 
-/// Block on `events` until `Opened` (Ok), first `Failed` (Err — broker
-/// pivots to next URL), or budget elapses (Err). Non-terminal events seen
-/// during the wait are appended to `buffered` so the dispatcher can
-/// replay them after it spins up.
-///
-/// We bail on the first `Failed` because the broker's `connect_session`
-/// loop is the authority on URL ordering; if we let the Pool's internal
-/// jittered retry kick in (3 s → 6 s → …) the broker couldn't pivot to
-/// its second relay until a full backoff cycle elapsed.
-fn wait_for_first_open(
-    events: &Receiver<PoolEvent>,
-    buffered: &mut Vec<PoolEvent>,
-    budget: Duration,
-) -> Result<(), RelayError> {
-    let deadline = std::time::Instant::now() + budget;
-    loop {
-        let remaining = deadline
-            .checked_duration_since(std::time::Instant::now())
-            .unwrap_or(Duration::ZERO);
-        if remaining.is_zero() {
-            return Err(RelayError::Connect(format!(
-                "no relay open within {budget:?}"
-            )));
-        }
-        match events.recv_timeout(remaining) {
-            Ok(ev) => match ev {
-                PoolEvent::Opened { .. } => {
-                    buffered.push(ev);
-                    return Ok(());
-                }
-                PoolEvent::Failed { ref error, .. } => {
-                    return Err(RelayError::Connect(error.message.clone()));
-                }
-                other => buffered.push(other),
-            },
-            Err(RecvTimeoutError::Timeout) => {
-                return Err(RelayError::Connect(format!(
-                    "no relay open within {budget:?}"
-                )));
-            }
-            Err(RecvTimeoutError::Disconnected) => {
-                return Err(RelayError::Connect(
-                    "pool translator disconnected before open".to_string(),
-                ));
-            }
-        }
-    }
-}
-
 impl RelayClient for PoolRelayClient {
     fn send(&self, frame: String) -> Result<(), RelayError> {
         if self.pool.send(self.handle, WireFrame::Text(frame)) {
@@ -356,147 +313,6 @@ impl std::fmt::Debug for PoolRelayClient {
 /// tungstenite-backed implementation continue to compile. New code should
 /// use [`PoolRelayClient`] directly.
 pub type TungsteniteRelayClient = PoolRelayClient;
-
-// ─── Dispatcher: PoolEvent → EventCallback ──────────────────────────────────
-
-/// Pool-event dispatcher. Blocks on `pool_events_rx` (D8: no polling) until
-/// the Pool's translator drops its sender (triggered indirectly by
-/// `Pool::shutdown`). On `Opened` replays every stored subscription (V-14)
-/// and fires `on_connection_state("connected", None)`. On `Closed`/`Failed`
-/// fires `on_connection_state("reconnecting"|"failed", reason)` (V-14 step b).
-/// On `Frame(Text)` parses the NIP-01 EVENT envelope and fires `on_event`.
-fn run_dispatcher(
-    pool_events_rx: Receiver<PoolEvent>,
-    pool: Pool,
-    handle: RelayHandle,
-    subscriptions: Arc<Mutex<Vec<String>>>,
-    on_event: EventCallback,
-    on_connection_state: Option<ConnectionStateCallback>,
-    buffered: Vec<PoolEvent>,
-) {
-    // Replay events that arrived during the connect-wait first — the
-    // Opened we waited for is in here too, so its subscription-replay
-    // pass fires before we enter the recv loop.
-    for ev in buffered {
-        handle_pool_event(ev, &pool, handle, &subscriptions, &on_event, &on_connection_state);
-    }
-    while let Ok(ev) = pool_events_rx.recv() {
-        handle_pool_event(ev, &pool, handle, &subscriptions, &on_event, &on_connection_state);
-    }
-}
-
-fn handle_pool_event(
-    ev: PoolEvent,
-    pool: &Pool,
-    handle: RelayHandle,
-    subscriptions: &Arc<Mutex<Vec<String>>>,
-    on_event: &EventCallback,
-    on_connection_state: &Option<ConnectionStateCallback>,
-) {
-    match ev {
-        PoolEvent::Opened { .. } => {
-            // V-14: replay every installed REQ on each fresh open so the
-            // inbound subscription survives a reconnect.
-            let frames: Vec<String> = subscriptions
-                .lock()
-                .map(|g| g.clone())
-                .unwrap_or_default();
-            for frame in frames {
-                let _ = pool.send(handle, WireFrame::Text(frame));
-            }
-            // V-14 step b: relay connected (or reconnected after a flap).
-            if let Some(cb) = on_connection_state {
-                cb("connected", None);
-            }
-        }
-        PoolEvent::Frame {
-            frame: RelayFrame::Text(text),
-            ..
-        } => {
-            if let Some(value) = parse_event_frame(&text) {
-                on_event(value);
-            }
-        }
-        // Binary/Ping/Pong/Close — NIP-01 is text-only; keepalive is
-        // handled inside the Pool's translator.
-        PoolEvent::Frame { .. } => {}
-        // V-14 step b: relay closed — map reason to connection-state token
-        // using the pure discriminator (Permanent→failed, Requested→reconnecting,
-        // Shutdown→no-emit so session-replace doesn't flash a spurious failure).
-        PoolEvent::Closed { reason, .. } => {
-            if let Some(state) = closed_reason_to_state(&reason) {
-                if let Some(cb) = on_connection_state {
-                    cb(state, None);
-                }
-            }
-        }
-        // V-14 step b: transport failed — transient triggers Pool reconnect;
-        // permanent (HTTP 401/403) bricks the session.
-        PoolEvent::Failed { error, .. } => {
-            let (state, reason) = transport_error_to_state(&error);
-            if let Some(cb) = on_connection_state {
-                cb(state, reason.as_deref());
-            }
-        }
-        // Health snapshots carry no state change — they aggregate counters
-        // already reflected in Opened/Closed/Failed.
-        PoolEvent::Health { .. } => {}
-    }
-}
-
-/// Classify a `ClosedReason` as a connection-state string for V-14 step b.
-///
-/// - `Permanent` → `"failed"` (relay rejected the client; Pool stops retrying)
-/// - `Requested` → `"reconnecting"` (cancelled via `cancel()`; the broker
-///   tears down the session intentionally, so this is treated as transient
-///   from the reconnect FSM's point of view — a fresh session would start from
-///   "connecting")
-///
-/// `Shutdown` is `Pool::shutdown()` — intentional teardown, not a relay
-/// failure. It never reaches this path in practice (the dispatcher's `recv`
-/// exits when the Pool drops its sender before emitting Closed{Shutdown}), so
-/// it returns `None` to avoid a spurious "failed" flash on session-replace.
-pub(crate) fn closed_reason_to_state(reason: &nmp_network::pool::ClosedReason) -> Option<&'static str> {
-    use nmp_network::pool::ClosedReason;
-    match reason {
-        ClosedReason::Permanent => Some("failed"),
-        ClosedReason::Requested => Some("reconnecting"),
-        ClosedReason::Shutdown => None,
-    }
-}
-
-/// Classify a `TransportError` as a connection-state string + reason for V-14.
-///
-/// - `permanent == true` → `("failed", Some(message))` (HTTP 401/403; Pool stops)
-/// - `permanent == false` → `("reconnecting", Some(message))` (transient; Pool retries)
-pub(crate) fn transport_error_to_state(
-    error: &nmp_network::pool::TransportError,
-) -> (&'static str, Option<String>) {
-    let state = if error.permanent { "failed" } else { "reconnecting" };
-    (state, Some(error.message.clone()))
-}
-
-/// Parse the broker's `["EVENT", <sub_id>, <event_json>]` envelope and return
-/// the `<event_json>` value. Other frame types, other subscription ids, and
-/// non-kind-24133 events return `None` before they can enter the broker intake.
-fn parse_event_frame(text: &str) -> Option<Value> {
-    let v: Value = serde_json::from_str(text).ok()?;
-    let arr = v.as_array()?;
-    if arr.len() < 3 {
-        return None;
-    }
-    if arr.first()?.as_str()? != "EVENT" {
-        return None;
-    }
-    if arr.get(1)?.as_str()? != BUNKER_SUB_ID {
-        return None;
-    }
-    let event = arr.get(2)?.clone();
-    if event.get("kind").and_then(Value::as_u64) != Some(24133) {
-        return None;
-    }
-    Some(event)
-}
 
 #[cfg(test)]
 mod tests;

@@ -81,7 +81,10 @@ fn default_subscribe_forwards_to_send() {
 #[test]
 fn permanent_close_reason_maps_to_failed() {
     use nmp_network::pool::ClosedReason;
-    assert_eq!(closed_reason_to_state(&ClosedReason::Permanent), Some("failed"));
+    assert_eq!(
+        closed_reason_to_state(&ClosedReason::Permanent),
+        Some("failed")
+    );
 }
 
 #[test]
@@ -129,11 +132,11 @@ fn permanent_transport_error_maps_to_failed() {
 
 #[test]
 fn relay_client_uses_pool_not_polling() {
-    let full = include_str!("../relay_client.rs");
-    let production = full
-        .split("#[cfg(test)]")
-        .next()
-        .expect("source has a production half");
+    let production = [
+        include_str!("../relay_client.rs"),
+        include_str!("dispatch.rs"),
+    ]
+    .join("\n");
     for forbidden in [
         "set_read_timeout",
         "Duration::from_millis(100)",
