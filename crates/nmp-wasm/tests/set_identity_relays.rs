@@ -1,11 +1,11 @@
 use nmp_wasm::{
-    IdentityRelayPermission, RelayBootstrapEntry, SetIdentity, StartConfig, WasmRuntime,
+    IdentityRelayPermission, RawWasmAbiAdapter, RelayBootstrapEntry, SetIdentity, StartConfig,
     WorkerEvent, WorkerRequest,
 };
 
 #[test]
 fn set_identity_merges_nip07_relays_before_snapshot() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     runtime
         .handle(WorkerRequest::Start(StartConfig {
             app_id: "chirp".to_string(),

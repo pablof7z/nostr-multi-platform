@@ -10,8 +10,8 @@
 > is gone (see #2052). The protocol contract described below remains the target
 > surface; the wasm-bindgen composition entry point will be re-established under
 > the new browser-runtime architecture (see #2038). Until then, `crates/nmp-wasm/src/lib.rs`
-> exposes only `WasmRuntime` and the protocol types — no `#[wasm_bindgen]` class
-> is emitted.
+> exposes only the hidden `RawWasmAbiAdapter` and the protocol types — no
+> `#[wasm_bindgen]` class is emitted.
 
 `crates/nmp-wasm` will expose the NMP browser runtime as a `wasm-bindgen` class
 (`NmpWasmRuntime`) that a dedicated Worker instantiates. The Worker event loop
@@ -135,7 +135,7 @@ whether they were produced by a relay-inbound frame or by a
 `Start`/`ResolveRef`/`ReleaseRef` request.
 
 **D6:** Returns `Err(JsValue)` for JSON deserialisation failure *and* for any
-`WasmRuntimeError` from `WasmRuntime::handle` — concretely: `InvalidConfig`
+`WasmRuntimeError` from `RawWasmAbiAdapter::handle` — concretely: `InvalidConfig`
 (empty `app_id`, `database_name`, or `relays` on `Start`; relay-spawn failure
 on wasm32) or `KernelContract` (unexpected `KernelUpdate` variant returned by
 the pure reducer). All other runtime failures surface as `CapabilityFailure`

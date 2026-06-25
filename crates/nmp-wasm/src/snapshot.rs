@@ -2,8 +2,9 @@
 //!
 //! Split out of `runtime.rs` so the relay-pool sink can build and push a
 //! snapshot directly from its outbound-fanout closure — no detour back through
-//! `WasmRuntime` (which it doesn't own, and which is `!Send`-by-design because
-//! the wasm runtime is single-threaded under the JS event loop).
+//! `RawWasmAbiAdapter` (which it doesn't own, and which is
+//! `!Send`-by-design because the wasm runtime is single-threaded under the JS
+//! event loop).
 //!
 //! # Why a separate file
 //!
@@ -66,7 +67,7 @@ pub(crate) struct RuntimeMeta {
     /// runtime before `Start`.
     pub(crate) relay_bootstrap: Vec<crate::protocol::RelayBootstrapEntry>,
     /// Optional post-encode frame observer (issue #1767). Installed by a
-    /// composition root via [`crate::WasmRuntime::install_frame_observer`] and
+    /// composition root via the raw ABI adapter's frame observer and
     /// fired from [`build_snapshot_bytes`] with the just-encoded frame bytes —
     /// AFTER `make_update_frame` returns, so the callback sees only `&[u8]`
     /// and never re-enters the reducer. This is the wasm twin of nmp-ffi's
@@ -133,7 +134,7 @@ pub(crate) fn build_snapshot_bytes(reducer: &mut KernelReducer, meta: &mut Runti
 /// pool's sink after every kernel-mutating inbound frame.
 ///
 /// `wasm32`-only: native targets don't own a `js_sys::Function`. The native
-/// path uses the synchronous return value of `WasmRuntime::handle` instead;
+/// path uses the synchronous return value of `RawWasmAbiAdapter::handle` instead;
 /// no async push surface exists on native because there's no out-of-band
 /// kernel mutation source (the native crate uses its own `relay_worker`).
 ///

@@ -1,7 +1,7 @@
 //! #1753 S6 — wasm signing capability round-trip (pure message re-entry).
 //!
 //! These run on native (`cargo test -p nmp-wasm`) through the same
-//! `WasmRuntime::handle` path the wasm32 worker uses. They exercise the full
+//! `RawWasmAbiAdapter::handle` path the wasm32 worker uses. They exercise the full
 //! protocol round-trip — `BeginSign` → `SignRequest` (broker request) →
 //! `DeliverSignerResponse` (broker fulfilment) → `SignCompleted` — and pin the
 //! no-polling property at the runtime boundary: only the delivery message
@@ -10,7 +10,7 @@
 //! The LIVE `window.nostr` browser call is CI/manual-gated (no browser here);
 //! these tests cover the Rust/wasm core + the JS-bridge message contract.
 
-use nmp_wasm::{BeginSign, DeliverSignerResponse, WasmRuntime, WorkerEvent, WorkerRequest};
+use nmp_wasm::{BeginSign, DeliverSignerResponse, RawWasmAbiAdapter, WorkerEvent, WorkerRequest};
 use serde_json::json;
 
 const ACCOUNT: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -47,7 +47,8 @@ fn sign_messages_round_trip_through_json() {
         account_pubkey: ACCOUNT.to_string(),
         unsigned_json: unsigned_json(ACCOUNT),
     });
-    let decoded: WorkerRequest = serde_json::from_str(&serde_json::to_string(&begin).unwrap()).unwrap();
+    let decoded: WorkerRequest =
+        serde_json::from_str(&serde_json::to_string(&begin).unwrap()).unwrap();
     assert_eq!(decoded, begin);
 
     let deliver = WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
@@ -64,7 +65,7 @@ fn sign_messages_round_trip_through_json() {
 /// signed bytes back emits SignCompleted carrying the signed JSON.
 #[test]
 fn begin_sign_then_deliver_completes() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::BeginSign(BeginSign {
             account_pubkey: ACCOUNT.to_string(),
@@ -87,11 +88,13 @@ fn begin_sign_then_deliver_completes() {
     // The main-thread broker calls window.nostr.signEvent and posts the result
     // back. (Here we synthesize what the bridge would return.)
     let events = runtime
-        .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
-            correlation_id: correlation_id.clone(),
-            signed_json: Some(signed_json(ACCOUNT)),
-            error: None,
-        }))
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id: correlation_id.clone(),
+                signed_json: Some(signed_json(ACCOUNT)),
+                error: None,
+            },
+        ))
         .unwrap();
     match events.as_slice() {
         [WorkerEvent::SignCompleted {
@@ -99,7 +102,10 @@ fn begin_sign_then_deliver_completes() {
             signed_json,
         }] => {
             assert_eq!(*cid, correlation_id);
-            assert!(signed_json.contains("\"sig\":\"2222"), "carries the signed event");
+            assert!(
+                signed_json.contains("\"sig\":\"2222"),
+                "carries the signed event"
+            );
         }
         other => panic!("expected SignCompleted, got {other:?}"),
     }
@@ -109,7 +115,7 @@ fn begin_sign_then_deliver_completes() {
 /// account than the round-trip was begun for is rejected (ADR-0050 §D5).
 #[test]
 fn account_pin_enforced_across_the_bridge() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::BeginSign(BeginSign {
             account_pubkey: ACCOUNT.to_string(),
@@ -121,12 +127,14 @@ fn account_pin_enforced_across_the_bridge() {
         other => panic!("expected SignRequest, got {other:?}"),
     };
     let events = runtime
-        .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
-            correlation_id,
-            // Broker returns a signature from the WRONG account.
-            signed_json: Some(signed_json(OTHER)),
-            error: None,
-        }))
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id,
+                // Broker returns a signature from the WRONG account.
+                signed_json: Some(signed_json(OTHER)),
+                error: None,
+            },
+        ))
         .unwrap();
     match &events[0] {
         WorkerEvent::SignFailed { reason, .. } => {
@@ -140,7 +148,7 @@ fn account_pin_enforced_across_the_bridge() {
 /// closed with that reason (D6).
 #[test]
 fn broker_reported_rejection_fails_closed() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::BeginSign(BeginSign {
             account_pubkey: ACCOUNT.to_string(),
@@ -152,11 +160,13 @@ fn broker_reported_rejection_fails_closed() {
         other => panic!("expected SignRequest, got {other:?}"),
     };
     let events = runtime
-        .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
-            correlation_id,
-            signed_json: None,
-            error: Some("user rejected in extension".to_string()),
-        }))
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id,
+                signed_json: None,
+                error: Some("user rejected in extension".to_string()),
+            },
+        ))
         .unwrap();
     match &events[0] {
         WorkerEvent::SignFailed { reason, .. } => {
@@ -173,7 +183,7 @@ fn broker_reported_rejection_fails_closed() {
 /// round-trip stays open — only `DeliverSignerResponse` closes it.
 #[test]
 fn only_the_delivery_message_completes_the_roundtrip() {
-    let mut runtime = WasmRuntime::new();
+    let mut runtime = RawWasmAbiAdapter::new();
     let events = runtime
         .handle(WorkerRequest::BeginSign(BeginSign {
             account_pubkey: ACCOUNT.to_string(),
@@ -190,11 +200,13 @@ fn only_the_delivery_message_completes_the_roundtrip() {
     // is gated solely on the delivery message (D8, no polling).
     for _ in 0..50 {
         let events = runtime
-            .handle(WorkerRequest::CapabilityResult(nmp_wasm::CapabilityResult {
-                capability: "unrelated".to_string(),
-                correlation_id: "unrelated".to_string(),
-                payload: json!({}),
-            }))
+            .handle(WorkerRequest::CapabilityResult(
+                nmp_wasm::CapabilityResult {
+                    capability: "unrelated".to_string(),
+                    correlation_id: "unrelated".to_string(),
+                    payload: json!({}),
+                },
+            ))
             .unwrap();
         assert!(
             !events.iter().any(|e| matches!(
@@ -209,11 +221,13 @@ fn only_the_delivery_message_completes_the_roundtrip() {
 
     // Now the delivery message — and ONLY now — completes it.
     let events = runtime
-        .handle(WorkerRequest::DeliverSignerResponse(DeliverSignerResponse {
-            correlation_id: correlation_id.clone(),
-            signed_json: Some(signed_json(ACCOUNT)),
-            error: None,
-        }))
+        .handle(WorkerRequest::DeliverSignerResponse(
+            DeliverSignerResponse {
+                correlation_id: correlation_id.clone(),
+                signed_json: Some(signed_json(ACCOUNT)),
+                error: None,
+            },
+        ))
         .unwrap();
     assert!(
         events.iter().any(|e| matches!(

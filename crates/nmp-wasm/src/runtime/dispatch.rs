@@ -1,4 +1,4 @@
-//! Action-dispatch arm of [`super::WasmRuntime::handle`].
+//! Action-dispatch arm of [`super::RawWasmAbiAdapter::handle`]. Internal API.
 //!
 //! Split out of `runtime.rs` (LOC ceiling) — the binary `dispatch_bytes`
 //! doorway plus the structured reference-control requests are a cohesive unit:
@@ -7,9 +7,9 @@
 //! the `Start`/`Stop`/`SetIdentity` arms stay in `runtime.rs`; only the
 //! action-namespace routing lives here.
 //!
-//! The methods are defined on `impl super::WasmRuntime` so they remain ordinary
-//! private methods of the runtime — the file boundary is a size-management
-//! seam, not an API boundary.
+//! The methods are defined on `impl super::RawWasmAbiAdapter` so they remain
+//! ordinary private methods of the runtime — the file boundary is a
+//! size-management seam, not an API boundary.
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::PublishCommand;
@@ -22,7 +22,7 @@ use crate::protocol::{CapabilityFailure, ReleaseRef, ResolveRef, WorkerEvent};
 use nmp_core::dispatch_envelope::{decode_dispatch_envelope, DecodedDispatch};
 use nmp_core::substrate::ActionContext;
 
-use super::{WasmRuntime, WasmRuntimeError};
+use super::{RawWasmAbiAdapter, WasmRuntimeError};
 
 /// Render an [`ActionRejection`](nmp_core::substrate::ActionRejection) into the
 /// host-facing reason string carried by a fail-closed `CapabilityFailure`. The
@@ -40,7 +40,7 @@ fn rejection_reason(rejection: nmp_core::substrate::ActionRejection) -> String {
     }
 }
 
-impl WasmRuntime {
+impl RawWasmAbiAdapter {
     /// ADR-0064 / S2 (#1750) — the **binary write doorway**.
     ///
     /// The host posts the write command as a transferable `Uint8Array` (NOT a

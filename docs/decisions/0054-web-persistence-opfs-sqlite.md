@@ -170,10 +170,10 @@ The kernel's innermost constructor is split into a store-agnostic
 native path (`build_event_store` in
 `crates/nmp-core/src/kernel/store_init.rs:41`). `KernelReducer` gains a
 `with_store(Arc<dyn EventStore>)` constructor
-(`crates/nmp-core/src/kernel_reducer.rs:72`). `WasmRuntime` gains an
+(`crates/nmp-core/src/kernel_reducer.rs:72`). The hidden raw wasm ABI adapter gains an
 `injected_store: Rc<RefCell<Option<Arc<dyn EventStore>>>>` slot
 (`crates/nmp-wasm/src/runtime.rs:65,108`) and a `set_injected_store()` setter.
-At the **top** of `WasmRuntime::start()` — before relay drivers and the tick
+At the **top** of the raw wasm ABI adapter's `start()` path — before relay drivers and the tick
 loop capture `Rc` clones of the reducer (`runtime.rs:264-271`) and before
 `reduce(Start)` (`runtime.rs:229`) — if a store was injected, the reducer cell
 is rebuilt:
@@ -194,7 +194,7 @@ byte unchanged, and the seam lands and is tested with `MemEventStore` *before*
 the OPFS backend (#6) exists.
 
 App composition that captures `event_store_handle()` must run through
-`WasmRuntime`'s pre-start hook. The hook runs after the injected store has
+the raw wasm ABI adapter's pre-start hook. The hook runs after the injected store has
 rebuilt the reducer and before relay drivers, publish routing, observers, or
 typed projections capture handles. A composition root that registers feed
 engines at constructor time would keep reading the original `MemEventStore`

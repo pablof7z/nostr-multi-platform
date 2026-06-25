@@ -12,7 +12,7 @@
 //!    `nmp.kernel.open_interest` / `close_interest` +
 //!    `nmp.feed.declare_active_follows` / `clear_active_follows` action strings)
 //!    is DELETED from this public router. The web app drives the kernel
-//!    reducer's feed methods directly through the `WasmRuntime` Rust facade
+//!    reducer's feed methods directly through the raw ABI adapter
 //!    (internal composition glue); the only public way to open a feed is the
 //!    typed `open_feed` doorway (native today — a wasm `nmp.feed.open` awaits
 //!    porting the native session registry + perspective compiler to wasm).
@@ -230,7 +230,7 @@ pub(crate) fn execute_ref_dispatch(
 // `open_feed` doorway (native today; a wasm `nmp.feed.open` awaits porting the
 // native session registry + perspective compiler — see #1740). The wasm
 // reducer's `open_interest` / `declare_active_follows_feed` methods remain as
-// INTERNAL composition glue the web app's `WasmRuntime` facade drives directly.
+// internal composition glue driven by the raw ABI adapter.
 
 #[cfg(test)]
 #[path = "dispatch_routing_tests.rs"]
