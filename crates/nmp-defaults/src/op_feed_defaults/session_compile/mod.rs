@@ -38,6 +38,8 @@ mod set_algebra;
 #[cfg(test)]
 #[path = "resolve_tests.rs"]
 mod tests;
+#[cfg(test)]
+mod session_engine_tests;
 
 /// Compile a [`FeedParams`] into a registered feed session over the EXISTING
 /// op-feed mechanics, returning the teardown recipe `open_feed` records.

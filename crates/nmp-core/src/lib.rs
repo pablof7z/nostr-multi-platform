@@ -187,8 +187,8 @@ pub use external_signer_hook::{install_external_signer_hook, new_external_signer
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.
 pub use kernel::{
-    read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, Kernel, ProfileLiveness,
-    KERNEL_BUILTIN_PROJECTION_KEYS,
+    read_eligible_relay_urls, AppRelay, AppRelayList, AppRelaySlot, DependentInterestChild, Kernel,
+    ProfileLiveness, KERNEL_BUILTIN_PROJECTION_KEYS,
 };
 // ADR-0063 Lane D — closed typed `resolve_ref`/`release_ref` surface at the crate root.
 pub use kernel::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};

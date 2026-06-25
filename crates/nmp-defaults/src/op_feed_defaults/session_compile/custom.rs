@@ -47,10 +47,7 @@ fn not_supported(scope: &'static str) -> FeedOpenError {
 /// perspective's ranking, which is itself validated the same way — an
 /// unregistered id, or a registered ranking the engine cannot honor, fails
 /// closed rather than silently mis-ordering (D6).
-pub(super) fn resolve_ranking(
-    app: &NmpApp,
-    ranking: &FeedRanking,
-) -> Result<(), FeedOpenError> {
+pub(super) fn resolve_ranking(app: &NmpApp, ranking: &FeedRanking) -> Result<(), FeedOpenError> {
     match ranking {
         FeedRanking::ChronologicalDesc => Ok(()),
         FeedRanking::ChronologicalAsc => Err(not_supported("custom-ranking")),
@@ -247,11 +244,11 @@ mod tests {
     //! gate's DEPENDENCY acquisition is preserved (so a `ListMembers`/`Wot` gate
     //! predicate can go live on a cold open).
 
+    use super::super::session_engine::AcquisitionInterest;
     use super::*;
-    use std::collections::BTreeSet;
-
     use nmp_core::substrate::{EventId, KernelEvent};
     use nmp_feed::AdmitExpr;
+    use nmp_planner::{InterestScope, InterestShape};
 
     const ACQ_MEMBER: &str = "acac000000000000000000000000000000000000000000000000000000000001";
     const GATE_MEMBER: &str = "9a7e000000000000000000000000000000000000000000000000000000000001";
@@ -272,19 +269,26 @@ mod tests {
 
     /// A resolved scope admitting exactly `authors`, carrying the given fixed
     /// acquisition interest (so we can assert the gate's acquisition survives).
-    fn scope(authors: &[&str], interest: Option<(&str, u32)>) -> ResolvedScope {
-        let admission =
-            AdmitExpr::Authors(authors.iter().map(|s| (*s).to_string()).collect())
-                .to_root_admission();
+    fn scope(authors: &[&str], interest: Option<AcquisitionInterest>) -> ResolvedScope {
+        let admission = AdmitExpr::Authors(authors.iter().map(|s| (*s).to_string()).collect())
+            .to_root_admission();
         ResolvedScope {
             admission,
-            interests: interest
-                .map(|(f, s)| vec![(f.to_string(), s)])
-                .unwrap_or_default(),
+            interests: interest.into_iter().collect(),
             live_shape: Arc::new(|| None),
             extra_acquisition: Arc::new(Vec::new),
             reset_hooks: Vec::new(),
             resolver_observer_ids: Vec::new(),
+        }
+    }
+
+    fn kind_interest(kind: u32, scope: InterestScope) -> AcquisitionInterest {
+        AcquisitionInterest {
+            shape: InterestShape {
+                kinds: [kind].into_iter().collect(),
+                ..InterestShape::default()
+            },
+            scope,
         }
     }
 
@@ -318,17 +322,29 @@ mod tests {
         // a `ListMembers` gate must fetch to populate its predicate). The combine
         // MUST keep it — dropping it would leave the gate admitting nobody on a
         // cold open. Both sides' interests survive.
-        let acquisition = scope(&[ACQ_MEMBER], Some(("{\"kinds\":[1]}", 1)));
-        let gate = scope(&[GATE_MEMBER], Some(("{\"kinds\":[30000]}", 0)));
+        let acquisition = scope(&[ACQ_MEMBER], Some(kind_interest(1, InterestScope::Global)));
+        let gate = scope(
+            &[GATE_MEMBER],
+            Some(kind_interest(30_000, InterestScope::ActiveAccount)),
+        );
         let combined = combine_admission_gate(acquisition, gate);
 
-        let interests: BTreeSet<(String, u32)> = combined.interests.into_iter().collect();
         assert!(
-            interests.contains(&("{\"kinds\":[1]}".to_string(), 1)),
+            combined
+                .interests
+                .iter()
+                .any(|interest| interest.shape.kinds == [1].into_iter().collect()
+                    && interest.scope == InterestScope::Global),
             "acquisition interest preserved"
         );
         assert!(
-            interests.contains(&("{\"kinds\":[30000]}".to_string(), 0)),
+            combined
+                .interests
+                .iter()
+                .any(
+                    |interest| interest.shape.kinds == [30_000].into_iter().collect()
+                        && interest.scope == InterestScope::ActiveAccount
+                ),
             "gate DEPENDENCY interest preserved (predicate can go live on a cold open)"
         );
     }
