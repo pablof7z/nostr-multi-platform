@@ -1,0 +1,34 @@
+namespace nmp.nip84;
+
+// #1649 — typed FlatBuffers payload for the `nmp.nip84.publish_highlight`
+// `ActionModule` (NIP-84 kind:9802 highlights). The OPAQUE
+// `DispatchEnvelope.payload` for that namespace; the registry adapter decodes
+// against THIS schema, gating `schema_version` BEFORE `start()` (fail-closed on
+// mismatch).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19):
+//   flatc --rust -o crates/nmp-nip84/src/wire/generated \
+//         crates/nmp-nip84/schema/publish_highlight.fbs
+
+table PublishHighlightPayload {
+  // Fail-closed schema_version tripwire (read RAW before decode).
+  schema_version:uint;
+  // Highlighted text (kind:9802 content).
+  content:string (required);
+  // Surrounding context (`context` tag); empty when absent.
+  context:string;
+  // Source Nostr event id for the `e` tag; empty when absent.
+  source_event_id:string;
+  // Source addressable event (`<kind>:<pubkey>:<d>`) for the `a` tag.
+  source_address:string;
+  // Source author pubkey for the `p` tag; empty when absent.
+  source_author_pubkey:string;
+  // Human-readable `alt` tag; empty when absent.
+  alt:string;
+  // NIP-73 external content identifiers, each emitted as an `i` tag.
+  external_ids:[string];
+}
+
+file_identifier "N84H";
+root_type PublishHighlightPayload;
