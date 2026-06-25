@@ -5,12 +5,12 @@ use crossbeam_channel::Receiver as CbReceiver;
 use nmp_signers::Nip46SignerHandle;
 use nostr::{Keys, PublicKey};
 use rand::Rng;
-use serde_json::Value;
 
 use super::{ActiveSession, BunkerBroker, NoopRelay, BUNKER_SUB_ID};
 use crate::handshake::{build_req_frame, run_nostrconnect_handshake, HandshakeOutcome};
 use crate::relay_client::{EventCallback, RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
+use crate::intake::BoundedIntake;
 
 /// Protocol-neutral `name=` value advertised in the `nostrconnect://` URI.
 ///
@@ -109,10 +109,15 @@ impl BunkerBroker {
         cancel_rx: CbReceiver<()>,
         generation: u64,
     ) {
-        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
-        let inbound_tx_for_cb = inbound_tx.clone();
+        // Bounded to SIGNER_BROKER_INTAKE_CAP to prevent unbounded growth
+        // against a noisy/hostile relay (D5/D8).
+        let intake = Arc::new(BoundedIntake::new());
+        let inbound_rx = intake.receiver();
+        let intake_for_cb = Arc::clone(&intake);
         let event_cb: EventCallback = Arc::new(move |event| {
-            let _ = inbound_tx_for_cb.send(event);
+            // Non-blocking try-admit: on Full, drop the frame and record it.
+            // D8: no blocking the relay dispatcher thread.
+            intake_for_cb.try_admit(event)
         });
 
         // Acquire pairs with the Release store in `BunkerBroker::cancel()`

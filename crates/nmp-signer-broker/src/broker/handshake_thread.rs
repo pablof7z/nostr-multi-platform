@@ -7,7 +7,7 @@
 //! install helpers are `pub(super)` because the sibling `nostrconnect` and
 //! `restore` workers reuse them.
 
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crossbeam_channel::Receiver as CbReceiver;
@@ -16,6 +16,7 @@ use nostr::{Keys, PublicKey};
 use serde_json::Value;
 
 use super::{BunkerBroker, BUNKER_SUB_ID};
+use crate::intake::BoundedIntake;
 use crate::events::BrokerEvent;
 use crate::handshake::{build_req_frame, run_handshake, HandshakeOutcome};
 use crate::relay_client::{EventCallback, RelayClient, TungsteniteRelayClient};
@@ -65,19 +66,20 @@ impl BunkerBroker {
             }
         };
 
-        // (inbound_tx, inbound_rx) — the relay client pushes raw event JSON
-        // values on the tx; both the handshake state machine and the
-        // steady-state transport drain on the rx. We split the dispatch
-        // logic between two consumers via a fan-out: during handshake the
-        // handshake function owns the receiver; afterwards we re-tap the
-        // event callback to route directly to the transport.
-        let (inbound_tx, inbound_rx) = crossbeam_channel::unbounded::<Value>();
-        let inbound_tx_for_cb = inbound_tx.clone();
+        // Bounded to SIGNER_BROKER_INTAKE_CAP to prevent unbounded growth
+        // against a noisy/hostile relay (D5/D8).
+        let intake = Arc::new(BoundedIntake::new());
+        let inbound_rx = intake.receiver();
+        let intake_for_cb = Arc::clone(&intake);
         let event_cb: EventCallback = Arc::new(move |event| {
-            // Best-effort: if the receiver is dropped (broker cancelled),
-            // silently drop the event.
-            let _ = inbound_tx_for_cb.send(event);
+            // Non-blocking try-admit: on Full, drop the frame and record it.
+            // D8: no blocking the relay dispatcher thread.
+            intake_for_cb.try_admit(event)
         });
+
+        // Keep a reference to the intake's drop counter for diagnostics.
+        // We'll emit this when the handshake completes.
+        let dropped_counter = intake.drop_counter();
 
         // Dial the first relay. Cycle through on failure.
         let mut relay_result: Option<Arc<dyn RelayClient>> = None;
@@ -165,6 +167,18 @@ impl BunkerBroker {
                 return;
             }
         };
+
+                // Emit diagnostics if any frames were dropped due to intake overflow.
+        let dropped_count = dropped_counter.load(Ordering::Relaxed);
+        if dropped_count > 0 {
+            self.emit_progress(
+                "ready",
+                Some(&format!(
+                    "warning: dropped {} relay EVENT frames due to intake overflow",
+                    dropped_count
+                )),
+            );
+        }
 
         self.complete_handshake(handle, transport, inbound_rx, outcome, generation);
     }

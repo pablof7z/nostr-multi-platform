@@ -56,6 +56,7 @@ pub mod broker;
 pub mod events;
 pub mod handshake;
 pub mod progress_codes;
+pub mod intake;
 pub mod relay_client;
 pub mod transport;
 mod uri_encode;
