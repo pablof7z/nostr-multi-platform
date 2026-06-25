@@ -12,6 +12,7 @@
 
 use std::fmt;
 
+use nmp_signer_iface::Nip44DecryptSessionExtension;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroizing;
 
@@ -97,6 +98,10 @@ pub struct Nip46Payload {
     /// Cached remote user pubkey.  Set after first successful handshake; lets
     /// us produce `pubkey()` synchronously on restore without a round-trip.
     pub cached_remote_user_pubkey_hex: Option<String>,
+    /// Non-secret negotiated NMP extension metadata.  The session id and
+    /// decrypted material are never persisted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nip44_decrypt_session_extension: Option<Nip44DecryptSessionExtension>,
 }
 
 /// NIP-07 payload — empty modulo the discriminator.  The extension itself is
@@ -166,6 +171,10 @@ impl fmt::Debug for Nip46Payload {
             .field(
                 "cached_remote_user_pubkey_hex",
                 &self.cached_remote_user_pubkey_hex,
+            )
+            .field(
+                "nip44_decrypt_session_extension",
+                &self.nip44_decrypt_session_extension,
             )
             .finish()
     }

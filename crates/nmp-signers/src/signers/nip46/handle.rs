@@ -14,11 +14,17 @@
 //! Per **D6** (no panics across FFI), this file never `unwrap()`s or panics on
 //! malformed input — bad JSON is logged and dropped.
 
-use nmp_signer_iface::{SignedEvent, UnsignedEvent};
 use nmp_signer_iface::RemoteSignerHandle;
+use nmp_signer_iface::{
+    Nip44DecryptBatchRequest, Nip44DecryptBatchResult, Nip44DecryptSessionBeginRequest,
+    Nip44DecryptSessionEndRequest, Nip44DecryptSessionExtension, Nip44DecryptSessionGrant,
+    SignedEvent, UnsignedEvent, NMP_NIP44_DECRYPT_BATCH, NMP_NIP44_DECRYPT_SESSION_BEGIN,
+    NMP_NIP44_DECRYPT_SESSION_END,
+};
 use nmp_signer_iface::{SignerError, SignerOp};
 use nostr::PublicKey;
 
+use super::result_map::{map_response, parse_json_result};
 use super::Nip46Signer;
 use crate::signers::traits::{Nip44, Signer};
 
@@ -64,6 +70,55 @@ impl RemoteSignerHandle for Nip46Signer {
         <Self as Nip44>::decrypt(self, &sender, ciphertext)
     }
 
+    fn nip44_decrypt_session_begin(
+        &self,
+        request: Nip44DecryptSessionBeginRequest,
+    ) -> SignerOp<Nip44DecryptSessionGrant> {
+        let params_json = match params_json(&request) {
+            Ok(s) => s,
+            Err(e) => return SignerOp::err(e),
+        };
+        let extension = self.decrypt_session_extension.clone();
+        map_response(
+            self.enqueue(NMP_NIP44_DECRYPT_SESSION_BEGIN, &params_json),
+            move |result| {
+                let grant = parse_json_result::<Nip44DecryptSessionGrant>(
+                    &result,
+                    NMP_NIP44_DECRYPT_SESSION_BEGIN,
+                )?;
+                if let Ok(mut slot) = extension.lock() {
+                    *slot = Some(Nip44DecryptSessionExtension::default());
+                }
+                Ok(grant)
+            },
+        )
+    }
+
+    fn nip44_decrypt_batch(
+        &self,
+        request: Nip44DecryptBatchRequest,
+    ) -> SignerOp<Nip44DecryptBatchResult> {
+        let params_json = match params_json(&request) {
+            Ok(s) => s,
+            Err(e) => return SignerOp::err(e),
+        };
+        map_response(
+            self.enqueue(NMP_NIP44_DECRYPT_BATCH, &params_json),
+            |result| parse_json_result(&result, NMP_NIP44_DECRYPT_BATCH),
+        )
+    }
+
+    fn nip44_decrypt_session_end(&self, request: Nip44DecryptSessionEndRequest) -> SignerOp<bool> {
+        let params_json = match params_json(&request) {
+            Ok(s) => s,
+            Err(e) => return SignerOp::err(e),
+        };
+        map_response(
+            self.enqueue(NMP_NIP44_DECRYPT_SESSION_END, &params_json),
+            |result| parse_json_result(&result, NMP_NIP44_DECRYPT_SESSION_END),
+        )
+    }
+
     fn deliver_response(&self, response_json: &str) {
         self.ingest_rpc_response(response_json);
     }
@@ -72,6 +127,16 @@ impl RemoteSignerHandle for Nip46Signer {
         self.drain_pending_with_error("signer disconnected");
     }
 }
+
+fn params_json<T: serde::Serialize>(request: &T) -> Result<String, SignerError> {
+    serde_json::to_string(request)
+        .map(|payload| format!("[{payload}]"))
+        .map_err(|e| SignerError::Backend(format!("serialize nip44 decrypt-session request: {e}")))
+}
+
+#[cfg(test)]
+#[path = "handle/decrypt_session_tests.rs"]
+mod decrypt_session_tests;
 
 #[cfg(test)]
 #[path = "handle/tests.rs"]

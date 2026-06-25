@@ -29,19 +29,20 @@
 
 mod handle;
 pub(crate) mod mapper;
+pub(crate) mod result_map;
 
 use std::collections::HashMap;
 use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 
-use nmp_signer_iface::{SignedEvent, SignerError, UnsignedEvent};
+use nmp_signer_iface::{Nip44DecryptSessionExtension, SignedEvent, SignerError, UnsignedEvent};
 use nostr::{Keys, PublicKey, SecretKey};
 use zeroize::Zeroizing;
 
 use super::payload::{Nip46Payload, SignerPayload};
 use super::traits::{Nip04, Nip44, Signer, SignerBackend};
-use nmp_signer_iface::SignerOp;
 use crate::bunker::{parse_bunker_uri, BunkerParseError, BunkerUri};
+use nmp_signer_iface::SignerOp;
 
 // `Nip46Rpc` and `Nip46Transport` are defined in the leaf
 // [`nmp_signer_iface`] crate so the kernel side can refer to them
@@ -116,6 +117,7 @@ impl Nip46SignerHandle {
             remote_user_pubkey,
             transport,
             pending: Arc::new(Mutex::new(HashMap::new())),
+            decrypt_session_extension: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -128,6 +130,7 @@ pub struct Nip46Signer {
     transport: Arc<dyn Nip46Transport>,
     /// Pending request id → response channel.
     pending: Arc<Mutex<PendingMap>>,
+    decrypt_session_extension: Arc<Mutex<Option<Nip44DecryptSessionExtension>>>,
 }
 
 impl std::fmt::Debug for Nip46Signer {
@@ -138,6 +141,14 @@ impl std::fmt::Debug for Nip46Signer {
             .field(
                 "pending_count",
                 &self.pending.lock().map(|m| m.len()).unwrap_or(0),
+            )
+            .field(
+                "decrypt_session_extension",
+                &self
+                    .decrypt_session_extension
+                    .lock()
+                    .ok()
+                    .and_then(|slot| slot.clone()),
             )
             .finish_non_exhaustive()
     }
@@ -179,6 +190,9 @@ impl Nip46Signer {
             remote_user_pubkey,
             transport,
             pending: Arc::new(Mutex::new(HashMap::new())),
+            decrypt_session_extension: Arc::new(Mutex::new(
+                p.nip44_decrypt_session_extension.clone(),
+            )),
         })
     }
 
@@ -219,9 +233,14 @@ impl Nip46Signer {
             }
         }
 
-        // No usable `result` — drop and let the pending op time out.
-        if let Some(result) = v.get("result").and_then(|x| x.as_str()) {
-            self.resolve_response(id, Ok(result.to_string()));
+        // No usable `result` — drop and let the pending op time out.  String
+        // results stay unquoted for standard NIP-46 methods; extension
+        // object/bool results are forwarded as JSON for typed parsing.
+        if let Some(result) = v.get("result") {
+            let result = result
+                .as_str()
+                .map_or_else(|| result.to_string(), str::to_string);
+            self.resolve_response(id, Ok(result));
         }
     }
 
@@ -324,6 +343,11 @@ impl Signer for Nip46Signer {
             secret: self.uri.secret.clone(),
             permissions: self.uri.permissions.clone(),
             cached_remote_user_pubkey_hex: Some(self.remote_user_pubkey.to_hex()),
+            nip44_decrypt_session_extension: self
+                .decrypt_session_extension
+                .lock()
+                .ok()
+                .and_then(|slot| slot.clone()),
         })
     }
 }

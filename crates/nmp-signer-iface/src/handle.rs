@@ -10,6 +10,11 @@
 
 use std::time::Duration;
 
+use crate::error::SignerError;
+use crate::nip44_session::{
+    Nip44DecryptBatchRequest, Nip44DecryptBatchResult, Nip44DecryptSessionBeginRequest,
+    Nip44DecryptSessionEndRequest, Nip44DecryptSessionGrant,
+};
 use crate::op::SignerOp;
 use crate::signing::{SignedEvent, UnsignedEvent};
 use crate::PENDING_SIGN_TIMEOUT;
@@ -79,6 +84,45 @@ pub trait RemoteSignerHandle: Send + Sync + std::fmt::Debug {
     /// `sender_pubkey` is lowercase hex. See [`Self::nip44_encrypt`] for the
     /// `&str`-vs-`&PublicKey` and `SignerOp` rationale.
     fn nip44_decrypt(&self, sender_pubkey: &str, ciphertext: &str) -> SignerOp<String>;
+
+    /// Begin an optional scoped NIP-44 decrypt session.
+    ///
+    /// Non-capable signers return [`SignerError::Unsupported`] by default so
+    /// the actor can keep using the ADR-0050 scalar fallback.  Implementations
+    /// that support the NMP NIP-46 extension should return a signer-owned
+    /// grant and keep reusable conversation secrets inside the signer boundary.
+    fn nip44_decrypt_session_begin(
+        &self,
+        _request: Nip44DecryptSessionBeginRequest,
+    ) -> SignerOp<Nip44DecryptSessionGrant> {
+        SignerOp::err(SignerError::Unsupported(
+            "nip44 decrypt sessions are not supported by this signer".to_string(),
+        ))
+    }
+
+    /// Decrypt a batch of NIP-44 ciphertexts inside a scoped session.
+    ///
+    /// The request and result are secret-bearing; implementations must not log
+    /// raw ciphertexts, plaintexts, or session ids.
+    fn nip44_decrypt_batch(
+        &self,
+        _request: Nip44DecryptBatchRequest,
+    ) -> SignerOp<Nip44DecryptBatchResult> {
+        SignerOp::err(SignerError::Unsupported(
+            "nip44 decrypt batches are not supported by this signer".to_string(),
+        ))
+    }
+
+    /// End a scoped NIP-44 decrypt session.
+    ///
+    /// Session end is best-effort.  Non-capable signers return unsupported by
+    /// default; capable signers should ask the remote signer to release any
+    /// grant state but must also rely on signer-side expiry.
+    fn nip44_decrypt_session_end(&self, _request: Nip44DecryptSessionEndRequest) -> SignerOp<bool> {
+        SignerOp::err(SignerError::Unsupported(
+            "nip44 decrypt session cleanup is not supported by this signer".to_string(),
+        ))
+    }
 
     /// Hand an inbound response to the signer for correlation-keyed dispatch.
     ///
