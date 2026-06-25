@@ -157,7 +157,8 @@ impl WasmRuntime {
     }
 
     pub(super) fn snapshot_event(&mut self) -> WorkerEvent {
-        let bytes = build_snapshot_bytes(&mut self.reducer.borrow_mut(), &self.meta.borrow());
+        let bytes =
+            build_snapshot_bytes(&mut self.reducer.borrow_mut(), &mut self.meta.borrow_mut());
         WorkerEvent::UpdateBytes { bytes }
     }
 }

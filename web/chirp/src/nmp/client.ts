@@ -25,7 +25,7 @@ import {
   type DecodedRelayStatus,
 } from "./updateFrame";
 import { makeCorrelationId } from "./correlationId";
-import { applySnapshotSidecars } from "./clientSnapshotSidecars";
+import { applySnapshotSidecars, type SidecarState } from "./clientSnapshotSidecars";
 
 export { makeCorrelationId } from "./correlationId";
 
@@ -62,6 +62,17 @@ export type RuntimeConnection = {
   appId: string;
   databaseName: string;
 };
+
+type FrameSnapshotState = Pick<
+  RuntimeSnapshot,
+  | "latestUpdateBytes"
+  | "latestRev"
+  | "latestRelayStatuses"
+  | "feedItems"
+  | "profileCards"
+  | "eventCards"
+  | "eventEmbeds"
+>;
 
 export const runtimeConnection: RuntimeConnection = {
   appId: "chirp",
@@ -107,16 +118,10 @@ export function createNmpClient(): NmpClient {
 
 abstract class BaseClient implements NmpClient {
   private events: WorkerEvent[] = [];
-  private latestUpdateBytes: Uint8Array | undefined;
-  private latestRev: bigint | undefined;
-  private latestRelayStatuses: DecodedRelayStatus[] | undefined;
-  private latestFeedItems: FeedItem[] | undefined;
+  private currentFrame: Partial<FrameSnapshotState> = {};
   private readonly refProfiles = new RefProfileStore();
   private readonly refEvents = new RefEventStore();
-  private latestProfileCards: Map<string, ProfileWire> | undefined;
   private latestRoutingDecisionsJson: string | undefined;
-  private latestEventCards: Map<string, ClaimedEventWire> | undefined;
-  private latestEventEmbeds: Map<string, EmbeddedEventModel> | undefined;
   private status: RuntimeStatus = "ready";
   private listeners = new Set<(snapshot: RuntimeSnapshot) => void>();
 
@@ -127,14 +132,8 @@ abstract class BaseClient implements NmpClient {
       status: this.status,
       clientRuntime: this.clientRuntime,
       events: [...this.events],
-      latestUpdateBytes: this.latestUpdateBytes,
-      latestRev: this.latestRev,
-      latestRelayStatuses: this.latestRelayStatuses,
-      feedItems: this.latestFeedItems,
-      profileCards: this.latestProfileCards,
+      ...this.currentFrame,
       latestRoutingDecisionsJson: this.latestRoutingDecisionsJson,
-      eventCards: this.latestEventCards,
-      eventEmbeds: this.latestEventEmbeds,
     };
   }
 
@@ -150,23 +149,16 @@ abstract class BaseClient implements NmpClient {
     }
     if (event.type === "update_bytes") {
       const bytes = event.bytes instanceof Uint8Array ? event.bytes : new Uint8Array(event.bytes);
-      this.latestUpdateBytes = bytes;
+      this.currentFrame = { latestUpdateBytes: bytes };
       try {
-        // Hot path: lite=true keeps inspector-only arrays lazy while feed,
-        // relay, and ref-row sidecars still process on every frame.
+        // Hot path: lite=true keeps inspector-only arrays lazy. The worker
+        // boundary already applies projection Changed/Cleared retention, so
+        // this client decodes the current frame instead of owning merge policy.
         const decoded = decodeUpdateFrameBytes(bytes, { lite: true });
         if (decoded.type === "snapshot") {
-          // Envelope schema version mismatch: the kernel's wire layout moved
-          // under us. Mirror iOS (KernelBridge.swift:525-528): keep the last
-          // good snapshot so the UI degrades without flashing empty.
           if (decoded.schemaVersion !== SNAPSHOT_SCHEMA_VERSION) {
             this.status = { degraded: "protocol_mismatch" };
           } else {
-            // Tier-3 relay statuses: surfaced directly from the FlatBuffers
-            // envelope without going through the typed-projection sidecar.
-            this.latestRelayStatuses = decoded.relayStatuses;
-            // Rev exposed for the Inspector's collapsed pulse strip.
-            this.latestRev = decoded.rev;
             // running() mirrors the kernel's run-state; prefer the explicit
             // Tier-3 field over waiting for a separate runtime_status event
             // so the UI reflects live kernel state on every frame.
@@ -181,17 +173,22 @@ abstract class BaseClient implements NmpClient {
                 if (frame.kind() === FrameKind.Snapshot) {
                   const snap = frame.snapshot();
                   if (snap) {
-                    const sidecarState = {
-                      latestFeedItems: this.latestFeedItems,
-                      latestProfileCards: this.latestProfileCards,
-                      latestEventCards: this.latestEventCards,
-                      latestEventEmbeds: this.latestEventEmbeds,
+                    const sidecarState: SidecarState = {
+                      latestFeedItems: undefined as FeedItem[] | undefined,
+                      latestProfileCards: undefined,
+                      latestEventCards: undefined,
+                      latestEventEmbeds: undefined as Map<string, EmbeddedEventModel> | undefined,
                     };
                     applySnapshotSidecars(snap, this.refProfiles, this.refEvents, sidecarState);
-                    this.latestFeedItems = sidecarState.latestFeedItems;
-                    this.latestProfileCards = sidecarState.latestProfileCards;
-                    this.latestEventCards = sidecarState.latestEventCards;
-                    this.latestEventEmbeds = sidecarState.latestEventEmbeds;
+                    this.currentFrame = {
+                      latestUpdateBytes: bytes,
+                      latestRelayStatuses: decoded.relayStatuses,
+                      latestRev: decoded.rev,
+                      feedItems: sidecarState.latestFeedItems,
+                      profileCards: sidecarState.latestProfileCards,
+                      eventCards: sidecarState.latestEventCards,
+                      eventEmbeds: sidecarState.latestEventEmbeds,
+                    };
                     // #1768 — relay-status hue is derived shell-side from the
                     // raw `status` / `auth` / `role` tokens in the inspector
                     // panels (see `relayDiagnosticsTone`); no KRDG tone decode.
@@ -199,7 +196,7 @@ abstract class BaseClient implements NmpClient {
                 }
               }
             } catch {
-              // Corrupt inner buffer: keep last-good feed items.
+              // Bytes-only currentFrame was installed before decode.
             }
           }
         } else {

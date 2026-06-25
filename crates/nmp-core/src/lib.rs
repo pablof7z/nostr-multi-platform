@@ -262,9 +262,9 @@ pub use relay::canonical_relay_url;
 pub use relay::OutboundMessage;
 pub use update_envelope::{
     decode_snapshot_envelope, decode_snapshot_typed_projections, decode_update_frame, encode_panic,
-    encode_snapshot_frame, panic_message, PanicFrame, RelayStatusEntry, SnapshotEnvelope,
-    TypedProjectionData, UpdateEnvelope, UpdateFrameBytes, UpdateFrameDecodeError,
-    WireProjectionState, WireSubscriptionEntry, SNAPSHOT_SCHEMA_VERSION,
+    encode_snapshot_frame, panic_message, PanicFrame, ProjectionMergeCache, RelayStatusEntry,
+    SnapshotEnvelope, TypedProjectionData, UpdateEnvelope, UpdateFrameBytes,
+    UpdateFrameDecodeError, WireProjectionState, WireSubscriptionEntry, SNAPSHOT_SCHEMA_VERSION,
 };
 
 /// Public decode surface for the kernel-owned (Tier-2) typed-projection

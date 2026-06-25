@@ -59,7 +59,7 @@ impl super::WasmRuntime {
     /// native tests pull explicitly via this method.
     pub fn snapshot_bytes_for_test(&mut self) -> Vec<u8> {
         use crate::snapshot::build_snapshot_bytes;
-        build_snapshot_bytes(&mut self.reducer.borrow_mut(), &self.meta.borrow())
+        build_snapshot_bytes(&mut self.reducer.borrow_mut(), &mut self.meta.borrow_mut())
     }
 
     /// Fire the currently armed runtime deadline (native test helper).

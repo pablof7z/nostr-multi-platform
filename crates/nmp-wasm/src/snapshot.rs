@@ -35,7 +35,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use nmp_core::KernelReducer;
+use nmp_core::{KernelReducer, ProjectionMergeCache};
 
 /// Shared metadata the runtime and the relay-pool sink BOTH read from when
 /// building a snapshot envelope.
@@ -82,6 +82,10 @@ pub(crate) struct RuntimeMeta {
     /// event loop is single-threaded, and the callback runs synchronously on
     /// the same thread that built the frame.
     pub(crate) frame_observer: Option<Rc<dyn Fn(&[u8])>>,
+    /// Rust-owned projection merge cache. Every outbound snapshot frame passes
+    /// through this before crossing to JS, so TS renders a current full sidecar
+    /// frame and never owns Changed/Cleared/absent retention policy.
+    pub(crate) projection_merge_cache: ProjectionMergeCache,
 }
 
 impl RuntimeMeta {
@@ -91,6 +95,7 @@ impl RuntimeMeta {
             database_name: String::new(),
             relay_bootstrap: Vec::new(),
             frame_observer: None,
+            projection_merge_cache: ProjectionMergeCache::default(),
         }
     }
 }
@@ -106,8 +111,12 @@ impl RuntimeMeta {
 ///
 /// `meta.started` is forwarded as the `running` flag so the envelope reflects
 /// the current lifecycle state.
-pub(crate) fn build_snapshot_bytes(reducer: &mut KernelReducer, meta: &RuntimeMeta) -> Vec<u8> {
+pub(crate) fn build_snapshot_bytes(reducer: &mut KernelReducer, meta: &mut RuntimeMeta) -> Vec<u8> {
     let bytes = reducer.make_update_frame(meta.started);
+    let bytes = meta
+        .projection_merge_cache
+        .merge_update_frame(&bytes)
+        .unwrap_or(bytes);
     // #1767 — fire the post-encode frame observer (if a composition root
     // installed one) AFTER the bytes are produced. The callback receives only
     // `&[u8]`; it must not touch the reducer (which is mutably borrowed by this
@@ -145,7 +154,7 @@ pub(crate) fn push_snapshot_if_callback(
     reducer: &Rc<RefCell<KernelReducer>>,
     meta: &Rc<RefCell<RuntimeMeta>>,
 ) {
-    let bytes = build_snapshot_bytes(&mut reducer.borrow_mut(), &meta.borrow());
+    let bytes = build_snapshot_bytes(&mut reducer.borrow_mut(), &mut meta.borrow_mut());
     push_bytes_if_callback(callback, &bytes);
 }
 
