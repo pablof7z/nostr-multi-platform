@@ -51,17 +51,8 @@ impl CapabilityProvider for Nip07Provider {
     }
 
     fn execute(&self, req: &CapabilityRequest) -> CapabilityDispatch {
-        // The shell (main-thread broker) receives this request via a channel,
-        // calls window.nostr.signEvent(...) or window.nostr.getPublicKey(),
-        // and re-enters the Worker with result bytes in a CapabilityOutcome.
-        //
-        // For now, return a placeholder. The actual wasm-browser bridge is
-        // defined in `crates/nmp-signers/src/signers/nip07.rs` and reused here
-        // as an adapter. See the full NIP-07 signer implementation for the
-        // Promise/await semantics and error handling.
-
-        if req.capability != CapabilityId::Sign && req.capability != CapabilityId::GetPublicKey
-        {
+        // Validate capability is supported.
+        if req.capability != CapabilityId::Sign && req.capability != CapabilityId::GetPublicKey {
             return CapabilityDispatch {
                 correlation_id: req.correlation_id,
                 capability: req.capability,
@@ -69,7 +60,7 @@ impl CapabilityProvider for Nip07Provider {
             };
         }
 
-        // Validate payload is not empty (minimal check).
+        // Validate payload is not empty.
         if req.payload.is_empty() {
             return CapabilityDispatch {
                 correlation_id: req.correlation_id,
@@ -78,12 +69,18 @@ impl CapabilityProvider for Nip07Provider {
             };
         }
 
-        // In production: dispatch to main-thread broker, await result.
-        // Placeholder returns success for testing; real impl is in nmp-signers.
+        // In production: dispatch to main-thread broker that calls window.nostr.*
+        // via correlation-id callback. The shell (main-thread) receives this request,
+        // calls window.nostr.signEvent(...) or window.nostr.getPublicKey(),
+        // and re-enters the Worker with result bytes.
+        //
+        // For now, return Unavailable until the browser transport is integrated.
+        // This prevents hardcoded-success test artifacts; real impl delegates to
+        // nmp-signers Nip07Signer semantics via the browser bridge.
         CapabilityDispatch {
             correlation_id: req.correlation_id,
             capability: req.capability,
-            outcome: CapabilityOutcome::Success(vec![]),
+            outcome: CapabilityOutcome::Failure(CapabilityFailureKind::Unavailable),
         }
     }
 }
@@ -132,9 +129,12 @@ mod tests {
 
         assert_eq!(dispatch.correlation_id, 3);
         assert_eq!(dispatch.capability, CapabilityId::Sign);
+        // Until browser transport integration: valid requests return Unavailable.
+        // Real production impl will delegate to main-thread broker and return Success
+        // with signed event bytes from window.nostr.signEvent(...).
         match dispatch.outcome {
-            CapabilityOutcome::Success(_) => {},
-            _ => panic!("Expected Success"),
+            CapabilityOutcome::Failure(CapabilityFailureKind::Unavailable) => {},
+            _ => panic!("Expected Unavailable (browser transport not integrated)"),
         }
     }
 }

@@ -57,6 +57,7 @@ impl CapabilityProvider for Nip46Provider {
 
     fn execute(&self, req: &CapabilityRequest) -> CapabilityDispatch {
         // Validate capability is supported (Sign, GetPublicKey, Decrypt).
+        // Fail closed for unsupported capabilities.
         match req.capability {
             CapabilityId::Sign | CapabilityId::GetPublicKey | CapabilityId::Decrypt => {},
             _ => {
@@ -77,14 +78,18 @@ impl CapabilityProvider for Nip46Provider {
             };
         }
 
-        // In production: dispatch to `nmp_signer_broker::SignerBroker::execute()`.
-        // The broker sends the capability request over the relay transport and
-        // awaits the signing result. Timeout and retry are handled by the broker.
-        // Placeholder returns success for testing; full impl is in nmp-signer-broker.
+        // In production: dispatch to `nmp_signer_broker::SignerBroker` for
+        // session/handshake/RPC policy. The broker sends the capability request
+        // over the relay transport and awaits the signing result via correlation-id
+        // callback. Timeout and retry are handled by the broker.
+        //
+        // For now, return Unavailable until broker integration is complete.
+        // This prevents hardcoded-success test artifacts; real impl composes
+        // nmp-signer-broker per #2033.
         CapabilityDispatch {
             correlation_id: req.correlation_id,
             capability: req.capability,
-            outcome: CapabilityOutcome::Success(vec![]),
+            outcome: CapabilityOutcome::Failure(CapabilityFailureKind::Unavailable),
         }
     }
 }
@@ -132,9 +137,12 @@ mod tests {
         let dispatch = provider.execute(&req);
 
         assert_eq!(dispatch.correlation_id, 3);
+        // Until broker integration: valid requests return Unavailable.
+        // Real production impl will dispatch to nmp_signer_broker and return Success
+        // with signed event bytes from the remote bunker signer.
         match dispatch.outcome {
-            CapabilityOutcome::Success(_) => {},
-            _ => panic!("Expected Success"),
+            CapabilityOutcome::Failure(CapabilityFailureKind::Unavailable) => {},
+            _ => panic!("Expected Unavailable (broker not integrated)"),
         }
     }
 
@@ -145,9 +153,10 @@ mod tests {
         let dispatch = provider.execute(&req);
 
         assert_eq!(dispatch.correlation_id, 4);
+        // Until broker integration: valid requests return Unavailable.
         match dispatch.outcome {
-            CapabilityOutcome::Success(_) => {},
-            _ => panic!("Expected Success"),
+            CapabilityOutcome::Failure(CapabilityFailureKind::Unavailable) => {},
+            _ => panic!("Expected Unavailable (broker not integrated)"),
         }
     }
 
@@ -158,9 +167,10 @@ mod tests {
         let dispatch = provider.execute(&req);
 
         assert_eq!(dispatch.correlation_id, 5);
+        // Until broker integration: valid requests return Unavailable.
         match dispatch.outcome {
-            CapabilityOutcome::Success(_) => {},
-            _ => panic!("Expected Success"),
+            CapabilityOutcome::Failure(CapabilityFailureKind::Unavailable) => {},
+            _ => panic!("Expected Unavailable (broker not integrated)"),
         }
     }
 }
