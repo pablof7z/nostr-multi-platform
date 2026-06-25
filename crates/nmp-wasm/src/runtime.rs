@@ -113,6 +113,9 @@ pub struct WasmRuntime {
     /// NIP-07 publish continuations parked between `SignRequest` and
     /// `DeliverSignerResponse`.
     pending_signed_publishes: HashMap<String, PendingSignedPublish>,
+    /// Boot-time composition hooks that must observe the final event-store
+    /// handle, after store injection and before relay drivers start.
+    before_start_hooks: Vec<Box<dyn FnOnce(&mut WasmRuntime)>>,
     /// ADR-0064 / S3 (#1751) — the typed action registry. The wasm twin of
     /// `NmpApp::action_registry`: it owns the per-namespace `ActionModule`
     /// values whose `start_bytes` runs the typed FlatBuffers `decode_payload`
@@ -219,6 +222,26 @@ impl WasmRuntime {
             ));
         }
         *self.publish_resolver_factory.borrow_mut() = Some(Arc::new(factory));
+        Ok(())
+    }
+
+    /// Register a boot-time composition hook.
+    ///
+    /// Hooks run at the top of `Start`, after any injected store has rebuilt
+    /// the reducer and before relay drivers, publish routing, or app
+    /// projections capture reducer/store handles. This keeps ADR-0054 store
+    /// injection honest: app composition that needs `event_store_handle()` must
+    /// observe the final backend, not the default in-memory store.
+    pub fn install_before_start_hook(
+        &mut self,
+        hook: impl FnOnce(&mut WasmRuntime) + 'static,
+    ) -> Result<(), WasmRuntimeError> {
+        if self.meta.borrow().started {
+            return Err(WasmRuntimeError::InvalidConfig(
+                "before-start hooks must be installed before Start".to_string(),
+            ));
+        }
+        self.before_start_hooks.push(Box::new(hook));
         Ok(())
     }
 

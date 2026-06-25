@@ -193,6 +193,13 @@ plumbing**: with no injected store the default `MemEventStore` path is byte-for-
 byte unchanged, and the seam lands and is tested with `MemEventStore` *before*
 the OPFS backend (#6) exists.
 
+App composition that captures `event_store_handle()` must run through
+`WasmRuntime`'s pre-start hook. The hook runs after the injected store has
+rebuilt the reducer and before relay drivers, publish routing, observers, or
+typed projections capture handles. A composition root that registers feed
+engines at constructor time would keep reading the original `MemEventStore`
+after OPFS injection, so constructor-time store capture is forbidden.
+
 ### 5. Async OPFS open happens in the composition root, once, before Start
 
 The OPFS SAH pool is opened **async exactly once** in the composition root's

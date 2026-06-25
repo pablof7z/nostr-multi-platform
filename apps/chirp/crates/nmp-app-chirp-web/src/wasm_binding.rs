@@ -1,9 +1,9 @@
 //! wasm32 composition-root entry point for the Chirp web client.
 //!
 //! Exposes `NmpWasmRuntime` — a `#[wasm_bindgen]` struct that wraps
-//! [`nmp_wasm::WasmRuntime`] and calls [`setup_chirp_web_feeds`] at
-//! construction so the `nmp.feed.home` typed projection is registered and
-//! produced in every snapshot frame that leaves the wasm module.
+//! [`nmp_wasm::WasmRuntime`] and installs [`setup_chirp_web_feeds`] as a
+//! pre-start composition hook so it observes the final event store selected by
+//! ADR-0054 boot-time injection.
 //!
 //! # JS API surface
 //!
@@ -22,10 +22,10 @@
 //!
 //! `handle_json` detects a `SetIdentity` request and calls
 //! [`ChirpWebFeedSetup::notify_account_changed`] after `WasmRuntime::handle`
-//! returns. The call is unconditional: on a failed identity install the active
-//! account slot is unchanged, so `notify_account_changed` short-circuits with
-//! no engine reset. On success the follow set is re-seeded and the perspective
-//! reset clears the prior account's roots from the engine.
+//! returns once the pre-start setup has run. On a failed identity install the
+//! active account slot is unchanged, so `notify_account_changed` short-circuits
+//! with no engine reset. On success the follow set is re-seeded and the
+//! perspective reset clears the prior account's roots from the engine.
 //!
 //! # Doctrine
 //!
@@ -54,14 +54,14 @@ use crate::composition::{setup_chirp_web_feeds, ChirpWebFeedSetup};
 
 /// wasm32 composition root for the Chirp web client.
 ///
-/// Constructs a [`WasmRuntime`], calls [`setup_chirp_web_feeds`] to register
-/// the `nmp.feed.home` typed projection, and exposes the same JS API the prior
-/// `nmp-wasm` entry point provided. The JS class name is intentionally
-/// preserved so `wasmBridge.ts` needs only a single import-path update.
+/// Constructs a [`WasmRuntime`], defers [`setup_chirp_web_feeds`] until the
+/// runtime's pre-start hook, and exposes the same JS API the prior `nmp-wasm`
+/// entry point provided. The JS class name is intentionally preserved so
+/// `wasmBridge.ts` needs only a single import-path update.
 #[wasm_bindgen]
 pub struct NmpWasmRuntime {
     runtime: WasmRuntime,
-    setup: ChirpWebFeedSetup,
+    setup: Rc<RefCell<Option<ChirpWebFeedSetup>>>,
 }
 
 #[wasm_bindgen]
@@ -69,15 +69,21 @@ impl NmpWasmRuntime {
     /// Construct the composition root.
     ///
     /// Installs the console panic hook (idempotent), creates a fresh
-    /// `WasmRuntime`, and wires the `nmp.feed.home` OP-feed projection by
-    /// calling [`setup_chirp_web_feeds`]. The feed observer and post-tick
-    /// drain are live from this point; they fire on the first relay frame
-    /// after `Start`.
+    /// `WasmRuntime`, and registers a pre-start hook that wires the
+    /// `nmp.feed.home` OP-feed projection after ADR-0054 store injection has
+    /// selected the final backend. The feed observer and post-tick drain are
+    /// live before relay drivers start.
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
         console_error_panic_hook::set_once();
         let mut runtime = WasmRuntime::new();
-        let setup = setup_chirp_web_feeds(&mut runtime);
+        let setup = Rc::new(RefCell::new(None));
+        let setup_slot = Rc::clone(&setup);
+        runtime
+            .install_before_start_hook(move |runtime| {
+                *setup_slot.borrow_mut() = Some(setup_chirp_web_feeds(runtime));
+            })
+            .expect("fresh runtime accepts pre-start composition hook");
         Self { runtime, setup }
     }
 
@@ -90,9 +96,9 @@ impl NmpWasmRuntime {
     /// return value — same contract as the prior `nmp-wasm` entry point.
     ///
     /// A `SetIdentity` request additionally triggers
-    /// [`ChirpWebFeedSetup::notify_account_changed`] so the follow set is
-    /// re-seeded from the newly-active account and the engine resets on a
-    /// real perspective change.
+    /// [`ChirpWebFeedSetup::notify_account_changed`] after the pre-start setup
+    /// has run, so the follow set is re-seeded from the newly-active account
+    /// and the engine resets on a real perspective change.
     ///
     /// # D6 — errors as data
     ///
@@ -129,10 +135,12 @@ impl NmpWasmRuntime {
             }
         };
         if is_set_identity {
-            // Unconditional: a failed identity install leaves the slot unchanged,
-            // so notify_account_changed is a no-op. Successful install
-            // re-seeds the follow set and resets the feed perspective.
-            self.setup.notify_account_changed();
+            if let Some(setup) = self.setup.borrow().as_ref() {
+                // A failed identity install leaves the slot unchanged, so this
+                // is a no-op. Successful install re-seeds the follow set and
+                // resets the feed perspective.
+                setup.notify_account_changed();
+            }
         }
         // Route UpdateBytes through the callback channel; collect control events.
         let callback_handle = self.runtime.snapshot_callback_handle().clone();
