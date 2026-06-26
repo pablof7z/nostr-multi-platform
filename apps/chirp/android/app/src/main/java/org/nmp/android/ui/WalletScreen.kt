@@ -200,9 +200,7 @@ fun WalletScreen(model: KernelModel, modifier: Modifier = Modifier) {
                     onClick = {
                         if (nwcUri.isNotBlank()) {
                             isConnecting = true
-                            val actionJson =
-                                """{"Connect":{"uri":"${escapeJsonString(nwcUri)}"}}"""
-                            model.dispatchWalletConnect(actionJson)
+                            model.dispatchWalletConnect(nwcUri)
                             // Reset UI after a brief delay
                             isConnecting = false
                             nwcUri = ""
@@ -249,16 +247,4 @@ private fun colorForTone(tone: String?): Color = when (tone) {
     "warning" -> Color(0xFFFFC107)   // amber — mirrors ChirpColor.zap
     "error"   -> Color(0xFFF44336)   // red   — mirrors ChirpColor.danger
     else      -> Color(0xFF9E9E9E)   // neutral grey
-}
-
-/**
- * Escape JSON string special characters.
- * Mirrors the escapeJson pattern from TimelineScreen.
- */
-private fun escapeJsonString(s: String): String {
-    return s.replace("\\", "\\\\")
-        .replace("\"", "\\\"")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
 }

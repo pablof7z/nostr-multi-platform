@@ -36,28 +36,6 @@ extension KernelHandle {
         correlationID.withCString { nmp_app_cancel_action(raw, $0) }
     }
 
-    /// Dispatch an already-authored JSON action through the Chirp byte doorway.
-    /// Common Chirp social/write actions use `dispatchChirpIntent` so Rust owns
-    /// the protocol envelope; this helper remains for existing Rust-authored
-    /// specs and action families that still accept a small host DTO.
-    ///
-    /// PR-A: returns a `DispatchResult` parsed from the Rust-supplied JSON
-    /// envelope so a host can drive a spinner keyed on the synchronous
-    /// `correlation_id` (or surface the dispatch-rejection error). The
-    /// terminal verdict — `"published"` / `"failed"` / `"cancelled"` — arrives
-    /// asynchronously through `projections["action_results"]` on a later
-    /// snapshot tick (match the `correlation_id` to clear the spinner).
-    /// Before this change the Rust pointer was freed unread, leaving the host
-    /// to race the next snapshot tick to discover the dispatch outcome.
-    @discardableResult
-    func dispatchAction(namespace: String, body: [String: Any]) -> DispatchResult {
-        guard let data = try? JSONSerialization.data(withJSONObject: body),
-              let jsonStr = String(data: data, encoding: .utf8) else {
-            return .failure("failed to serialize action body")
-        }
-        return dispatchRawActionBytes(namespace: namespace, bodyJson: jsonStr)
-    }
-
     @discardableResult
     func react(targetEventID: String, reaction: String) -> DispatchResult {
         dispatchChirpIntent(.react(eventID: targetEventID, reaction: reaction))
@@ -126,39 +104,6 @@ extension KernelHandle {
         }
         guard let envelope else {
             return .failure("intent dispatch returned a null envelope")
-        }
-        return DispatchResult.parse(envelope: envelope)
-    }
-
-    /// Generic dispatch entry-point keyed on a kernel-supplied
-    /// `ProfileDispatchSpec`. The shell does NOT pick the namespace or build
-    /// the body — Rust authored both inside `profile_action_for` (aim.md
-    /// §2 #4: writes flow through registered ActionModules, the shell binds
-    /// blindly). `bodyJson` is the verbatim string the executor validates,
-    /// passed through the Chirp byte doorway without re-serialisation.
-    @discardableResult
-    func dispatchRawAction(namespace: String, bodyJson: String) -> DispatchResult {
-        dispatchRawActionBytes(namespace: namespace, bodyJson: bodyJson)
-    }
-
-    /// Dispatch a verbatim `(namespace, bodyJson)` pair through the Chirp byte
-    /// doorway `nmp_app_chirp_dispatch_action_bytes`. Rust converts the verbatim
-    /// body to the namespace's typed payload bytes and routes it; only typed
-    /// bytes cross to the kernel (no JSON). For typed namespaces whose body the
-    /// shell already holds as a string.
-    @discardableResult
-    func dispatchRawActionBytes(namespace: String, bodyJson: String) -> DispatchResult {
-        let envelope: String? = bodyJson.withCString { jsonPtr in
-            namespace.withCString { nsPtr in
-                guard let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) else {
-                    return nil
-                }
-                defer { nmp_free_string(ptr) }
-                return String(cString: ptr)
-            }
-        }
-        guard let envelope else {
-            return .failure("dispatch returned a null envelope")
         }
         return DispatchResult.parse(envelope: envelope)
     }

@@ -122,35 +122,10 @@ class KernelBridge {
     }
 
     /**
-     * Dispatch a named action through the typed byte doorway (ADR-0064 / Cut-B
-     * #1756). Rust encodes the verbatim [actionJson] body into typed FlatBuffers
-     * bytes for [namespace] and dispatches through
-     * `nmp_app_dispatch_action_bytes`. Returns `Accepted(correlation_id)` on
-     * accept or `Failure(message)` on rejection / null handle.
-     *
-     * Note: `nmp.marmot` returns `Failure("no typed payload encoder…")` until
-     * nmp-marmot migrates to a typed FlatBuffers payload (#1782). Marmot writes
-     * are fail-closed (the error surfaces on `action_stages`) but never a crash.
-     */
-    fun dispatchAction(namespace: String, actionJson: String): DispatchResult =
-        if (handle != 0L) DispatchResult.parse(nativeDispatchAction(handle, namespace, actionJson))
-        else DispatchResult.Failure("dispatch returned a null handle")
-
-    /**
-     * Typed direct-path dispatch through the Rust byte doorway. Rust converts
-     * the verbatim body JSON to typed bytes; Kotlin passes the SAME strings as
-     * [dispatchAction], only the JNI method differs. Used by namespaces with a
-     * Rust byte encoder (wallet, NIP-65 / NIP-17 relay lists).
-     */
-    fun dispatchActionBytes(namespace: String, actionJson: String): DispatchResult =
-        if (handle != 0L) DispatchResult.parse(nativeDispatchActionBytes(handle, namespace, actionJson))
-        else DispatchResult.Failure("dispatch returned a null handle")
-
-    /**
      * Typed Chirp action-intent dispatch through the Rust byte doorway. Takes
      * the SAME `ChirpActionIntent` JSON the host built for the action spec; Rust
      * does intent → typed-bytes → byte dispatch in ONE call (collapsing the
-     * former two-step round-trip). Same envelope shape as [dispatchAction].
+     * former two-step round-trip). Returns the standard dispatch envelope.
      */
     fun dispatchIntentBytes(intentJson: String): DispatchResult =
         if (handle != 0L) DispatchResult.parse(nativeDispatchIntentBytes(handle, intentJson))
@@ -457,8 +432,7 @@ class KernelBridge {
         liveness: Int,
     )
     internal external fun nativeReleaseRef(handle: Long, namespace: Int, key: String, consumerId: String)
-    private external fun nativeDispatchAction(handle: Long, namespace: String, actionJson: String): String
-    private external fun nativeDispatchActionBytes(handle: Long, namespace: String, actionJson: String): String
+    internal external fun nativeDispatchActionBytes(handle: Long, namespace: String, actionJson: String): String
     private external fun nativeDispatchIntentBytes(handle: Long, intentJson: String): String
     private external fun nativeAckActionStage(handle: Long, correlationId: String)
     // Outbox control-plane (parity GAP 4). `internal` so the cohesive

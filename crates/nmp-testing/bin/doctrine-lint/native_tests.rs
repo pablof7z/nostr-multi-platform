@@ -92,6 +92,53 @@ fn native_publish_policy_envelope_fires() {
 }
 
 #[test]
+fn native_transport_dispatch_api_fires() {
+    let root = fake_native_root(
+        "doctrine_native_transport_dispatch",
+        &[(
+            "apps/chirp/android/app/src/main/java/example/Wallet.kt",
+            "fun connect(bridge: Bridge, json: String) {\n    bridge.dispatchActionBytes(\"nmp.wallet.connect\", json)\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-native", "--workspace-native-root", &root_str]);
+    assert_eq!(code, 1, "stdout:\n{}\nstderr:\n{}", stdout, stderr);
+    assert!(stdout.contains("error[D18]") && stdout.contains("dispatchActionBytes"));
+}
+
+#[test]
+fn native_swift_raw_dispatch_api_fires() {
+    let root = fake_native_root(
+        "doctrine_native_swift_raw_dispatch",
+        &[(
+            "apps/chirp/ios/Chirp/Bridge/LeakyBridge.swift",
+            "func join(json: String) {\n    dispatchRawActionBytes(namespace: \"nmp.nip29.join\", bodyJson: json)\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-native", "--workspace-native-root", &root_str]);
+    assert_eq!(code, 1, "stdout:\n{}\nstderr:\n{}", stdout, stderr);
+    assert!(stdout.contains("error[D18]") && stdout.contains("dispatchRawActionBytes"));
+}
+
+#[test]
+fn native_typed_action_wrapper_is_allowed() {
+    let root = fake_native_root(
+        "doctrine_native_typed_action_wrapper",
+        &[(
+            "apps/chirp/android/app/src/main/java/example/Wallet.kt",
+            "fun connect(model: Model, uri: String) {\n    model.dispatchWalletConnect(uri)\n}\n",
+        )],
+    );
+    let root_str = root.to_string_lossy().into_owned();
+    let (code, stdout, stderr) =
+        run_lint(&["--workspace-native", "--workspace-native-root", &root_str]);
+    assert_eq!(code, 0, "stdout:\n{}\nstderr:\n{}", stdout, stderr);
+}
+
+#[test]
 fn native_scheduled_timer_fires() {
     let root = fake_native_root(
         "doctrine_native_timer",

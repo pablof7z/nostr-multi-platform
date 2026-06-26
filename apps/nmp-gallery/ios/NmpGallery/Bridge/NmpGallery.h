@@ -74,12 +74,13 @@ void nmp_app_release_event_ref(void *app, const char *key,
 void nmp_app_add_relay(void *app, const char *url, const char *role);
 void nmp_app_remove_relay(void *app, const char *url);
 
-// ── Generic action dispatch (phase 2 / ADR-0064 Cut-B #1756) ────────────
+// ── Bridge-private action dispatch (phase 2 / ADR-0064 Cut-B #1756) ──────
 
-// Typed byte doorway for gallery writes. Rust encodes `body_json` into the
-// typed `ActionPayload` FlatBuffers bytes for `namespace` and dispatches
-// through `nmp_app_dispatch_action_bytes`. No JSON crosses the FFI to the
-// kernel. Returns a heap-allocated JSON envelope (`{"correlation_id":"<id>"}` or
+// Compatibility doorway for gallery bridge internals. App code should expose
+// typed write methods rather than `(namespace, body_json)` dispatch. Rust
+// encodes `body_json` into typed `ActionPayload` FlatBuffers bytes for
+// `namespace` and dispatches through `nmp_app_dispatch_action_bytes`. Returns a
+// heap-allocated JSON envelope (`{"correlation_id":"<id>"}` or
 // `{"error":"…"}`) the caller MUST free via `nmp_free_string`.
 char *nmp_app_gallery_dispatch_action_bytes(void *app, const char *namespace, const char *body_json);
 

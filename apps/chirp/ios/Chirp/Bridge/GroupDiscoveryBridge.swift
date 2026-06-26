@@ -80,8 +80,7 @@ extension KernelHandle {
     /// interest, but no Swift consumer mirrors it).
     func discoverGroups(relayUrl: String) {
         let payload: [String: Any] = ["relay_url": relayUrl]
-        dispatchNip29Discovery(
-            "nmp.nip29.discover", payload: payload, label: "discoverGroups")
+        dispatchDiscoverGroups(payload: payload)
     }
 
     /// Dispatch a `nmp.nip29.join` action — publish a kind:9021 join
@@ -104,18 +103,22 @@ extension KernelHandle {
         if let reason, !reason.isEmpty {
             payload["reason"] = reason
         }
-        dispatchNip29Discovery(
-            "nmp.nip29.join", payload: payload, label: "joinGroup")
+        dispatchJoinGroup(payload: payload)
     }
 
-    /// Shared fire-and-forget marshal for the discover / join action
-    /// dispatches. Encodes `payload` to JSON and routes it through the Chirp
-    /// byte doorway `nmp_app_chirp_dispatch_action_bytes`; the returned
-    /// correlation JSON is freed and ignored (outcomes surface through the
-    /// next snapshot tick). D6: a JSON-encode failure degrades to a logged
-    /// no-op.
-    private func dispatchNip29Discovery(
-        _ namespace: String, payload: [String: Any], label: String
+    private func dispatchDiscoverGroups(payload: [String: Any]) {
+        dispatchGroupDiscoveryAction(
+            "nmp.nip29.discover", payload: payload, label: "discoverGroups")
+    }
+
+    private func dispatchJoinGroup(payload: [String: Any]) {
+        dispatchGroupDiscoveryAction("nmp.nip29.join", payload: payload, label: "joinGroup")
+    }
+
+    private func dispatchGroupDiscoveryAction(
+        _ namespace: String,
+        payload: [String: Any],
+        label: String
     ) {
         guard
             let data = try? JSONSerialization.data(withJSONObject: payload),

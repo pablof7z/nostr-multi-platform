@@ -7,6 +7,8 @@
 //! - native timers that periodically query framework state;
 //! - native construction of raw publish envelopes (`PublishRaw`,
 //!   `PublishProfile`);
+//! - app-facing namespace/body action dispatch helpers that leak the ADR-0064
+//!   byte transport vocabulary above generated or bridge-internal code;
 //! - lifecycle debt markers that justify leaks instead of modelling ownership.
 
 use std::fs;
@@ -31,6 +33,17 @@ const SLEEP_TOKENS: &[&str] = &[
 
 const TIMER_TOKENS: &[&str] = &[".scheduledTimer("];
 const PUBLISH_POLICY_TOKENS: &[&str] = &["PublishRaw", "PublishProfile"];
+const TRANSPORT_DISPATCH_TOKENS: &[&str] = &[
+    "fun dispatchAction(",
+    "fun dispatchActionBytes(",
+    "func dispatchAction(namespace:",
+    "func dispatchRawAction(",
+    "func dispatchRawActionBytes(",
+    "dispatchActionBytes(",
+    "dispatchRawActionBytes(",
+    "dispatchRawAction(namespace:",
+    "dispatchAction(namespace:",
+];
 const LEAK_DEBT_MARKERS: &[&str] = &[
     "small bounded leak",
     "bounded leak",
@@ -147,6 +160,22 @@ fn check_line(path: &Path, line: &str, is_comment: bool, in_loop: bool) -> Vec<H
         }
         for token in PUBLISH_POLICY_TOKENS {
             push_token_hits(&mut hits, line, token, "native publish-envelope construction violates D18 - Rust owns event kind, tag, target, and publish policy");
+        }
+        for token in TRANSPORT_DISPATCH_TOKENS {
+            push_token_hits(
+                &mut hits,
+                line,
+                token,
+                "transport-shaped action dispatch violates D18 - app-facing native code must expose typed intent methods, not namespace/body dispatch",
+            );
+        }
+        if line.contains("dispatchAction(") && line.contains("\"nmp.") {
+            push_token_hits(
+                &mut hits,
+                line,
+                "dispatchAction(",
+                "with a literal action namespace violates D18 - wrap the write in a typed native method or generated builder",
+            );
         }
     }
 

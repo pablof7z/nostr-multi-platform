@@ -20,8 +20,24 @@ extension KernelHandle {
             pgLog.error("createPublicGroup: failed to encode action payload")
             return .failure("failed to encode public group create payload")
         }
-        return dispatchRawActionBytes(
-            namespace: "nmp.nip29.create_public_group",
-            bodyJson: json)
+        return dispatchCreatePublicGroup(bodyJson: json)
+    }
+
+    @discardableResult
+    private func dispatchCreatePublicGroup(bodyJson: String) -> DispatchResult {
+        let namespace = "nmp.nip29.create_public_group"
+        let envelope: String? = bodyJson.withCString { jsonPtr in
+            namespace.withCString { nsPtr in
+                guard let ptr = nmp_app_chirp_dispatch_action_bytes(raw, nsPtr, jsonPtr) else {
+                    return nil
+                }
+                defer { nmp_free_string(ptr) }
+                return String(cString: ptr)
+            }
+        }
+        guard let envelope else {
+            return .failure("dispatch returned a null envelope")
+        }
+        return DispatchResult.parse(envelope: envelope)
     }
 }

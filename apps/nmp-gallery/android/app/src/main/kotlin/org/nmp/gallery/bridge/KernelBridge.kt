@@ -118,14 +118,6 @@ class KernelBridge {
     }
 
     /**
-     * Dispatch a typed action through the kernel's action seam. Payload is
-     * an action-specific JSON object; return value is the JSON envelope the
-     * action handler produced (or null on transport failure).
-     */
-    fun dispatchAction(action: String, payload: String): String? =
-        if (handle != 0L) nativeDispatchAction(handle, action, payload) else null
-
-    /**
      * ADR-0048 Stage 2 — begin a NIP-55 sign-in routed to `signerPackage`
      * (null = let the OS resolver pick). Rust builds the `get_public_key` +
      * permission-batch request and dispatches it through the capability socket;
@@ -200,7 +192,6 @@ class KernelBridge {
     private external fun nativeReleaseEvent(handle: Long, uri: String, consumerId: String)
     private external fun nativeSetUpdateListener(handle: Long, listener: KernelUpdateListener)
     private external fun nativeClearUpdateListener(handle: Long)
-    private external fun nativeDispatchAction(handle: Long, action: String, payload: String): String?
     private external fun nativeSignInNip55(handle: Long, signerPackage: String?)
     private external fun nativeSetSignerRequestListener(handle: Long, listener: KernelSignerRequestListener)
     private external fun nativeClearSignerRequestListener(handle: Long)
