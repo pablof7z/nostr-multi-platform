@@ -1,5 +1,4 @@
 //! Pull-cursor registry — ADR-0058 §10, step 3a.
-//!
 //! Non-durable registry of pull cursors.  Single writer: the actor thread via
 //! `OpenPullCursor` / `AdvancePullCursor` / `UnregisterPullCursor` dispatch arms.
 //! Shared behind `Arc<RwLock<…>>` so the FFI `pull_page` read path can snapshot
@@ -11,12 +10,9 @@
 //! layer calls it under a brief write lock before dispatching
 //! [`crate::actor::ActorCommand::OpenPullCursor`]; the actor validates and stores
 //! the row; the host stores the returned [`PullCursorHandle`].
-//!
 //! ## Wake interplay
-//!
 //! Register and advance arm an immediate wake whenever `after_seq <
 //! latest_ingest_seq`. Unregister removes the row and any pending wake entry.
-
 use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock};
 
@@ -27,10 +23,7 @@ use super::Kernel;
 /// Registrations past the cap (for a *new* `cursor_id`) are loud no-ops.
 pub const MAX_PULL_CURSORS: usize = 128;
 
-// ─── Identifier types ────────────────────────────────────────────────────────
-
 /// Internal cursor id.  `0` is reserved/invalid (never armed, never stored).
-///
 /// Allocated only by [`PullCursorRegistry::alloc_handle`] — external code
 /// should hold a [`PullCursorHandle`] instead of constructing this directly.
 /// The inner `u64` remains `pub` only for the FlatBuffers wire codec and FFI
@@ -40,7 +33,6 @@ pub struct PullCursorId(pub u64);
 
 /// Opaque handle returned to the caller by
 /// [`PullCursorRegistry::alloc_handle`].
-///
 /// Hosts store this value and pass it to `AdvancePullCursor` /
 /// `UnregisterPullCursor`.  The inner [`PullCursorId`] is accessible only via
 /// [`id()`](PullCursorHandle::id) to prevent accidental raw-integer casting at

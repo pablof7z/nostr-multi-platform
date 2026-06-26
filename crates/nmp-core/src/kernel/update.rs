@@ -1,6 +1,5 @@
 //! Snapshot emission: encodes kernel state into the FlatBuffers update frame
 //! that drives every UI update.
-//!
 //! `Kernel::make_update` is the hot path called at up to 4 Hz. It:
 //! 1. Assembles `KernelSnapshot` with `Metrics` counters and all projections.
 //! 2. Encodes the snapshot once and hands the binary frame to the caller.

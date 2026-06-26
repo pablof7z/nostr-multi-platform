@@ -12,8 +12,8 @@ use std::time::{Duration, Instant};
 
 use tungstenite::{accept, Message};
 
-use super::{RelayCommand, RelayEvent, spawn_relay_worker_with_keepalive};
 use super::tests::drain_until;
+use super::{spawn_relay_worker_with_keepalive, RelayCommand, RelayEvent};
 use crate::role::RelayRole;
 
 /// Pins the structural guarantee: a preamble registered via
@@ -68,10 +68,7 @@ fn reconnect_preamble_arrives_before_queued_send() {
                 Ok(Message::Close(_)) => break,
                 Ok(_) => {}
                 Err(tungstenite::Error::Io(e))
-                    if matches!(
-                        e.kind(),
-                        ErrorKind::WouldBlock | ErrorKind::TimedOut
-                    ) => {}
+                    if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}
                 Err(_) => break,
             }
         }
@@ -128,7 +125,7 @@ fn reconnect_preamble_arrives_before_queued_send() {
 
     control_tx
         .send(RelayCommand::SetReconnectPreamble(vec![
-            preamble_frame.clone(),
+            preamble_frame.clone()
         ]))
         .expect("SetReconnectPreamble must be accepted in wait_before_reconnect");
     control_tx

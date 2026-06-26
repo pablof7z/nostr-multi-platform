@@ -1,23 +1,17 @@
 //! `ActionLedger` — the single per-`correlation_id` record of action state.
-//!
 //! # Why this exists (S11, #1758 / #1684)
-//!
 //! Action outcomes used to be recorded into FOUR overlapping surfaces, each
 //! with its own writer and its own retained state:
-//!
 //! * `action_results` — per-tick drain of terminal verdicts (engine-owned).
 //! * `action_stages` — bounded full transition history (own `HashMap`).
 //! * `action_lifecycle` — collapsed `{in_flight, recent_terminal}` display
 //!   view (a SECOND, parallel `HashMap` that mirrored every stage edge).
 //! * publish-terminal status — the `publish_queue` entry status.
-//!
 //! The S11 convergence collapses these into ONE ledger keyed by
 //! `correlation_id` that signing-return, publish, and cancel all record into,
 //! with the prior surfaces becoming *derived projections* of the ledger rather
 //! than parallel sources of truth (D4 — single writer of action state).
-//!
 //! # First slice (#1847): `action_lifecycle` derives from the ledger
-//!
 //! That slice resolved #1684: `action_lifecycle` is no longer an independent
 //! store. The ledger owns the substrate stage history (the [`StageHistory`]
 //! storage) plus the per-`correlation_id` curated failure reason code (#1735),
@@ -26,15 +20,12 @@
 //! `in_flight` / `recent_terminal` arrays are derived from the same per-stage
 //! history the `action_stages` projection serialises, collapsed to the latest
 //! stage per `correlation_id`.
-//!
 //! # Second slice (this change): `action_results` derives from the ledger
-//!
 //! `action_results` is the per-tick *drain* of terminal verdicts the host reads
 //! to clear an action spinner. It used to be serialised from a PARALLEL source —
 //! the publish engine's `pending_terminals` `Vec`, which every terminal-recording
 //! path also pushed onto in addition to mirroring the stage into the ledger. That
 //! made the engine `Vec` a SECOND source of truth for terminal verdicts.
-//!
 //! This slice inverts the source: the ledger is now the SINGLE writer of terminal
 //! verdicts. Every terminal — an engine relay-settlement drained from
 //! `pending_terminals`, a sign-step failure, a cancel, an off-band NWC success —

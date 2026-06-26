@@ -4,23 +4,6 @@
 //! `dispatch_command` resolves an [`ActorCommand`] into outbound relay
 //! messages (or `None` for shutdown); `handle_relay_event` folds a
 //! [`nmp_network::pool::PoolEvent`] into the kernel + connection bookkeeping.
-//!
-//! ## Sub-module layout
-//!
-//! | File | Contents |
-//! |------|----------|
-//! | `mod.rs` | `ActorContext`, `build_open_interest`, `dispatch_command` (family-level delegator) |
-//! | `cmd_lifecycle.rs` | `Lifecycle(LifecycleCommand)` arm |
-//! | `cmd_identity.rs` | `Identity(IdentityCommand)` arm |
-//! | `cmd_publish.rs` | `Publish` / `Contacts` / `Relay` / `ActionLedger` arms |
-//! | `cmd_interests.rs` | `Interests(InterestsCommand)` + `TestSupport` arms (takes `InterestsPorts`) |
-//! | `cmd_protocol.rs` | `Protocol(cmd)` arm with catch-unwind + RefCell adapters (takes `ProtocolPorts`) |
-//! | `ports.rs` | `ProtocolPorts` / `InterestsPorts` — narrow per-family field bundles |
-//! | `relay_events.rs` | `handle_relay_event` + `resolve_handle` |
-//! | `helpers.rs` | `update_local_key_slots`, `maybe_publish_relay_list_after_edit`, … |
-//! | `substrate_adapters.rs` | Capability adapters for `ProtocolCommandContext` |
-//! | `open_interest_tests.rs` | `OpenInterest` / `CloseInterest` kernel-side tests |
-//! | `nip65_tests.rs` | NIP-65 auto-publish end-to-end tests |
 
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};

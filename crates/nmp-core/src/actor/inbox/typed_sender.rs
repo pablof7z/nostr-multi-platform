@@ -147,7 +147,11 @@ impl CommandSender {
         relay_url: String,
         frames: Vec<String>,
     ) {
-        let _ = self.send(ActorCommand::SetReconnectPreamble { role, relay_url, frames });
+        let _ = self.send(ActorCommand::SetReconnectPreamble {
+            role,
+            relay_url,
+            frames,
+        });
     }
 
     /// Unregister a persistent NIP-46 subscription.

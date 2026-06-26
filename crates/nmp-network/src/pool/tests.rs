@@ -1,7 +1,5 @@
 //! Unit tests for the push-model [`super::Pool`] API.
-//!
 //! Two layers of test:
-//!
 //! 1. **Pure structural** — slot allocation, generational handle
 //!    rejection, snapshot shape, "no send-to-all" surface. No real
 //!    socket; the worker's spawn call is exercised but the URL is a
@@ -10,11 +8,9 @@
 //! 2. **Real socket** — boot a `tungstenite::server::accept` on a
 //!    loopback port, drive `ensure_open` + `send` + assert a
 //!    `PoolEvent::Opened` then `PoolEvent::Frame` arrives.
-//!
 //! The full keepalive / reconnect / jitter behaviour is already
 //! exercised by [`crate::relay_worker::tests`] (22 tests, all green
 //! after phase A). These tests focus on the new push-model surface.
-
 use std::net::TcpListener;
 use std::sync::mpsc;
 use std::thread;
@@ -46,7 +42,6 @@ fn canonicalize_normalizes_and_fails_closed() {
 }
 
 /// Two `ensure_open` calls for the same URL share a slot.
-///
 /// Without a real socket, the worker thread will keep retrying the
 /// dial, but the pool-side state (slot map, handle generation) is
 /// observable synchronously.

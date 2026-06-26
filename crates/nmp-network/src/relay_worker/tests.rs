@@ -1,5 +1,4 @@
 //! T120b / G4 — end-to-end keepalive wiring tests.
-//!
 //! These exercise the production `run_relay_worker` against a hermetic
 //! loopback WebSocket server. The keepalive FSM itself is unit-tested in
 //! `crate::keepalive`; these tests pin the **wiring** — that the worker
@@ -8,10 +7,8 @@
 //!   2. emits `RelayEvent::Failed` and reconnects when no pong arrives
 //!      within `keepalive_pong_timeout`,
 //!   3. swallows inbound `Message::Pong(_)` (does not forward to ingest).
-//!
 //! We use [`spawn_relay_worker_with_keepalive`] to pin millisecond intervals
 //! so tests run in <1s, not 30s+.
-
 use std::io::ErrorKind;
 use std::net::TcpListener;
 use std::sync::mpsc;
@@ -21,10 +18,9 @@ use std::time::{Duration, Instant};
 
 use tungstenite::{accept, Message};
 
-use crate::relay_protocol::apply_reconnect_backoff;
 use super::{spawn_relay_worker_with_keepalive, BackoffClass, RelayCommand, RelayEvent};
+use crate::relay_protocol::apply_reconnect_backoff;
 use crate::role::RelayRole;
-
 /// What the server-side WebSocket observed. Kept narrow so test assertions
 /// don't have to match on `Message` variants the test doesn't care about.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,7 +37,6 @@ struct LocalServer {
     _shutdown_tx: Sender<()>,
     _thread: JoinHandle<()>,
 }
-
 impl LocalServer {
     /// Spawn a server that auto-Pongs (tungstenite default) and reports
     /// every frame it sees on `observed_rx`. Used by tests that exercise
@@ -56,7 +51,6 @@ impl LocalServer {
 
         let (observed_tx, observed_rx) = mpsc::channel();
         let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
-
         let thread = thread::spawn(move || {
             listener.set_nonblocking(false).expect("blocking listener");
             let (stream, _) = match listener.accept() {
@@ -92,9 +86,8 @@ impl LocalServer {
                         if is_close {
                             return;
                         }
-                        // Auto-pong path: tungstenite's `read` already buffers
-                        // an automatic Pong reply to inbound Pings; the next
-                        // `socket.read()` iteration internally flushes it.
+                        // tungstenite buffers auto-Pong on read; the next read
+                        // iteration internally flushes it.
                     }
                     Err(tungstenite::Error::Io(e))
                         if matches!(e.kind(), ErrorKind::WouldBlock | ErrorKind::TimedOut) => {}

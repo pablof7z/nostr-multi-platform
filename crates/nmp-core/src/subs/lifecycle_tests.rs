@@ -1,6 +1,5 @@
 //! Lifecycle smoke, `apply_selection` wiring, dead-relay exclusion, and
 //! `drain_tick` actor-idle-loop driver tests.
-
 use super::*;
 use crate::planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,
@@ -48,8 +47,6 @@ fn empty_tick_does_not_compile() {
     assert!(frames.is_empty());
     assert_eq!(l.compile_count(), 0);
 }
-
-// ─── apply_selection wiring ──────────────────────────────────────────────
 
 /// With 10 follows each declaring a unique write relay (no shared
 /// coverage), the naive plan would carry 10 relay entries. Bound
