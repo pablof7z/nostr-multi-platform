@@ -12,8 +12,8 @@ use super::*;
 use crate::{nmp_app_free, nmp_app_new, nmp_app_start};
 use nostr::prelude::*;
 use std::ffi::c_void;
-use std::sync::Arc;
 use std::sync::mpsc::{channel, Sender};
+use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -282,4 +282,41 @@ fn identity_change_observer_runs_after_slot_update() {
     );
 
     nmp_app_free(app);
+}
+
+#[test]
+fn identity_change_observer_can_be_unregistered() {
+    let _g = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let update_rx = install_update_signal();
+    let app = nmp_app_new();
+    super::nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app_ref = super::app_ref(app).expect("app");
+    let slot = app_ref.active_account_handle();
+    let (observer_tx, observer_rx) = channel::<Option<String>>();
+
+    let observer_id = app_ref.register_identity_change_observer(move |active| {
+        let _ = observer_tx.send(active);
+    });
+    app_ref.unregister_identity_change_observer(observer_id);
+
+    nmp_app_start(app, 256, 4);
+    let secret = std::ffi::CString::new(TEST_NSEC).unwrap();
+    super::nmp_app_signin_nsec(app, secret.as_ptr(), 1);
+
+    let expected = hex_pubkey(TEST_NSEC);
+    assert_eq!(
+        wait_for_slot(&update_rx, &slot, |v| v.as_deref()
+            == Some(expected.as_str())),
+        Ok(Some(expected)),
+        "sign-in must still update the active-account slot"
+    );
+    assert!(
+        observer_rx
+            .recv_timeout(Duration::from_millis(100))
+            .is_err(),
+        "unregistered identity observer must not fire"
+    );
+
+    nmp_app_free(app);
+    uninstall_update_signal();
 }

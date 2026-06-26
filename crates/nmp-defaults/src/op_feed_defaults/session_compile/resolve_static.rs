@@ -65,6 +65,7 @@ pub(super) fn resolve_authors(
         extra_acquisition: empty_extra(),
         reset_hooks: Vec::new(),
         resolver_observer_ids: Vec::new(),
+        identity_observer_ids: Vec::new(),
     })
 }
 
@@ -92,6 +93,7 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ReducedSource {
         extra_acquisition: empty_extra(),
         reset_hooks: Vec::new(),
         resolver_observer_ids: Vec::new(),
+        identity_observer_ids: Vec::new(),
     }
 }
 
@@ -172,6 +174,7 @@ pub(super) fn resolve_referrer(
         extra_acquisition: empty_extra(),
         reset_hooks: Vec::new(),
         resolver_observer_ids: Vec::new(),
+        identity_observer_ids: Vec::new(),
     })
 }
 

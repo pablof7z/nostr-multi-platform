@@ -26,27 +26,22 @@
 //! * `CustomPerspectiveId` — step 4 (the registration mechanism).
 
 use std::collections::BTreeSet;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::RootAdmission;
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
-use nmp_wot::score::WotGraph;
 
-use super::source::{
-    extra_from_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource,
-    ResetHook,
-};
+use super::source::{AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook};
+use super::wot_graph::SessionWotGraph;
 
 const KIND_CONTACT_LIST: u32 = 3;
 /// NIP-51 follow set / people list (kind:30000). Named locally because
 /// `nmp-defaults` does not depend on `nmp-kinds`; the canonical constant is
 /// `nmp_kinds::KIND_FOLLOW_SET` (the projection in `nmp-nip51` uses that).
 const KIND_FOLLOW_SET: u32 = 30_000;
-/// WoT ranked-candidate cap (the #1698 query takes a limit; 0 = unlimited).
-const WOT_CANDIDATE_LIMIT: usize = 500;
 
 /// Resolve a non-default, non-set-algebra scope. Set algebra is handled by
 /// [`super::set_algebra`]; `ActiveUserFollows` / `CustomPerspectiveId` are
@@ -112,6 +107,25 @@ fn resolve_contact_list(
     let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
     let observer_id =
         app.register_event_observer(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
+    let follow_set_for_identity = Arc::clone(&follow_set);
+    let follow_set_for_replay = Arc::clone(&follow_set);
+    let replay_slot = app.active_account_handle();
+    let replay_pull = app.feed_pull_fn();
+    let identity_observer_id = app.register_identity_change_observer(move |_| {
+        follow_set_for_identity.notify_account_changed();
+        if let Some(viewer) = super::super::read_active(&replay_slot) {
+            super::source_replay::replay_source_shape_with_pull(
+                &replay_pull,
+                follow_set_for_replay.as_ref(),
+                seed_contacts_shape(&viewer),
+            );
+        }
+    });
+    super::source_replay::replay_source_shape(
+        app,
+        follow_set.as_ref(),
+        seed_contacts_shape(&viewer),
+    );
 
     // Event-aware over the author-only follow predicate: a root is admitted iff
     // its author is in the live follow set.
@@ -120,9 +134,9 @@ fn resolve_contact_list(
         Arc::new(move |event: &KernelEvent| pred(&event.author))
     };
     let live_shape = follow_set_live_shape(&app.active_account_handle(), &follow_set, kinds);
-    // No fixed member interest: the follow set grows as kind:3 arrives, so the
-    // members' timeline acquisition is re-synced live (extra_acquisition).
     let interests = Vec::new();
+    let extra_acquisition =
+        active_contact_list_extra_acquisition(app.active_account_handle(), &live_shape);
 
     let reset_set = Arc::clone(&follow_set);
     let reset_hook: ResetHook = Box::new(move |reset| {
@@ -132,10 +146,11 @@ fn resolve_contact_list(
     Ok(ReducedSource {
         admission,
         interests,
-        extra_acquisition: extra_from_live_shape(&live_shape),
+        extra_acquisition,
         live_shape,
         reset_hooks: vec![reset_hook],
         resolver_observer_ids: vec![observer_id],
+        identity_observer_ids: vec![identity_observer_id],
     })
 }
 
@@ -156,6 +171,21 @@ fn resolve_list_members(
     ));
     let observer_id =
         app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    let projection_for_identity = Arc::clone(&projection);
+    let projection_for_replay = Arc::clone(&projection);
+    let replay_slot = app.active_account_handle();
+    let replay_pull = app.feed_pull_fn();
+    let identity_observer_id = app.register_identity_change_observer(move |_| {
+        projection_for_identity.notify_account_changed();
+        if let Some(viewer) = super::super::read_active(&replay_slot) {
+            super::source_replay::replay_source_shape_with_pull(
+                &replay_pull,
+                projection_for_replay.as_ref(),
+                viewer_list_shape(&viewer),
+            );
+        }
+    });
+    super::source_replay::replay_source_shape(app, projection.as_ref(), viewer_list_shape(&viewer));
 
     // LIVE predicate over the projection's current members (reactive: a new
     // kind:30000 updates the set and fires on_change → window reset).
@@ -165,12 +195,7 @@ fn resolve_list_members(
         Arc::new(move |event: &KernelEvent| projection.members(&list_id).contains(&event.author))
     };
 
-    // Acquire the viewer's kind:30000 list event. The members' timeline is
-    // re-synced live by the session engine as the list arrives + changes (the
-    // member set is empty until the list lands).
-    let interests = vec![AcquisitionInterest::active_account(viewer_list_shape(
-        &viewer,
-    ))];
+    let interests = Vec::new();
 
     let live_shape: LiveShape = {
         let projection = Arc::clone(&projection);
@@ -192,14 +217,22 @@ fn resolve_list_members(
     let reset_hook: ResetHook = Box::new(move |reset| {
         reset_proj.on_change(Box::new(move || reset()));
     });
+    let extra_acquisition = list_members_extra_acquisition(
+        app.active_account_handle(),
+        &projection,
+        list_id,
+        kinds,
+        &live_shape,
+    );
 
     Ok(ReducedSource {
         admission,
         interests,
-        extra_acquisition: extra_from_live_shape(&live_shape),
+        extra_acquisition,
         live_shape,
         reset_hooks: vec![reset_hook],
         resolver_observer_ids: vec![observer_id],
+        identity_observer_ids: vec![identity_observer_id],
     })
 }
 
@@ -212,7 +245,7 @@ fn resolve_wot(
 ) -> Result<ReducedSource, FeedOpenError> {
     // A session-scoped WoT graph observer, reusing `WotGraph` (the #1698 ranked
     // second-degree query) — we do NOT touch the singleton bootstrap runtime.
-    let graph = Arc::new(SessionWotGraph::new(seed.to_string()));
+    let graph = Arc::new(SessionWotGraph::new(seed.to_string(), KIND_CONTACT_LIST));
     let observer_id =
         app.register_event_observer(Arc::clone(&graph) as Arc<dyn KernelEventObserver>);
 
@@ -285,6 +318,7 @@ fn resolve_wot(
         extra_acquisition,
         reset_hooks: vec![reset_hook],
         resolver_observer_ids: vec![observer_id],
+        identity_observer_ids: Vec::new(),
     })
 }
 
@@ -323,101 +357,48 @@ fn follow_set_live_shape(
     })
 }
 
-// ── Session-scoped WoT graph observer (reuses WotGraph ranked query) ───────
-
-/// A minimal kind:3-ingesting WoT graph for ONE feed session, reusing
-/// [`nmp_wot::score::WotGraph`]'s ranked second-degree query (#1698). It does
-/// not duplicate the ranking logic — it owns a `WotGraph`, feeds it kind:3
-/// edges, and reads `ranked_second_degree_candidates`.
-pub(super) struct SessionWotGraph {
-    seed: String,
-    graph: Mutex<WotGraph>,
-    /// The seed's DIRECT follows (from the seed's own kind:3), tracked so the
-    /// session can acquire their contact lists for second-degree ranking.
-    direct: Mutex<BTreeSet<String>>,
-    /// Cached ranked candidate set — recomputed once per graph change, not once
-    /// per admission test (the predicate is hit once per candidate root).
-    ranked: Mutex<BTreeSet<String>>,
-    on_change: Mutex<Vec<Box<dyn Fn() + Send + Sync>>>,
+fn active_contact_list_extra_acquisition(
+    slot: nmp_core::slots::ActiveAccountSlot,
+    live_shape: &LiveShape,
+) -> ExtraAcquisition {
+    let live_shape = Arc::clone(live_shape);
+    Arc::new(move || {
+        let mut shapes = Vec::new();
+        if let Some(viewer) = super::super::read_active(&slot) {
+            shapes.push(AcquisitionInterest::active_account(seed_contacts_shape(
+                &viewer,
+            )));
+        }
+        if let Some(shape) = live_shape() {
+            shapes.push(AcquisitionInterest::active_account(shape));
+        }
+        shapes
+    })
 }
 
-impl SessionWotGraph {
-    pub(super) fn new(seed: String) -> Self {
-        Self {
-            seed,
-            graph: Mutex::new(WotGraph::default()),
-            direct: Mutex::new(BTreeSet::new()),
-            ranked: Mutex::new(BTreeSet::new()),
-            on_change: Mutex::new(Vec::new()),
+fn list_members_extra_acquisition(
+    slot: nmp_core::slots::ActiveAccountSlot,
+    projection: &Arc<nmp_nip51::PeopleListProjection>,
+    list_id: &str,
+    kinds: &BTreeSet<u32>,
+    live_shape: &LiveShape,
+) -> ExtraAcquisition {
+    let projection = Arc::clone(projection);
+    let list_id = list_id.to_string();
+    let kinds = kinds.clone();
+    let live_shape = Arc::clone(live_shape);
+    Arc::new(move || {
+        let mut shapes = Vec::new();
+        if let Some(viewer) = super::super::read_active(&slot) {
+            shapes.push(AcquisitionInterest::active_account(viewer_list_shape(
+                &viewer,
+            )));
         }
-    }
-
-    /// The current ranked second-degree candidate set (cached).
-    pub(super) fn ranked_candidates(&self) -> BTreeSet<String> {
-        self.ranked.lock().map(|r| r.clone()).unwrap_or_default()
-    }
-
-    /// The seed's direct follows (their kind:3 feeds the ranking).
-    pub(super) fn direct_follows(&self) -> BTreeSet<String> {
-        self.direct.lock().map(|d| d.clone()).unwrap_or_default()
-    }
-
-    pub(super) fn admits(&self, pk: &str) -> bool {
-        self.ranked.lock().map(|r| r.contains(pk)).unwrap_or(false)
-    }
-
-    fn on_change(&self, cb: Box<dyn Fn() + Send + Sync>) {
-        if let Ok(mut cbs) = self.on_change.lock() {
-            cbs.push(cb);
-        }
-    }
-
-    fn fire(&self) {
-        if let Ok(cbs) = self.on_change.lock() {
-            for cb in cbs.iter() {
-                cb();
+        if !projection.members(&list_id).is_empty() && !kinds.is_empty() {
+            if let Some(shape) = live_shape() {
+                shapes.push(AcquisitionInterest::active_account(shape));
             }
         }
-    }
-}
-
-impl KernelEventObserver for SessionWotGraph {
-    fn on_kernel_event(&self, event: &KernelEvent) {
-        if event.kind != KIND_CONTACT_LIST {
-            return;
-        }
-        // Track the seed's direct follows from the seed's own kind:3.
-        if event.author == self.seed {
-            let follows: BTreeSet<String> = event
-                .tags
-                .iter()
-                .filter_map(|tag| {
-                    if tag.first().is_some_and(|t| t == "p") {
-                        tag.get(1).cloned()
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            if let Ok(mut direct) = self.direct.lock() {
-                *direct = follows;
-            }
-        }
-        // Ingest the edge and recompute the cached ranked set ONCE per change.
-        let ranked: BTreeSet<String> = {
-            let Ok(mut graph) = self.graph.lock() else {
-                return;
-            };
-            graph.ingest_event(&event.author, event.kind, &event.tags);
-            graph
-                .ranked_second_degree_candidates(&self.seed, WOT_CANDIDATE_LIMIT)
-                .into_iter()
-                .map(|(pk, _)| pk)
-                .collect()
-        };
-        if let Ok(mut cache) = self.ranked.lock() {
-            *cache = ranked;
-        }
-        self.fire();
-    }
+        shapes
+    })
 }

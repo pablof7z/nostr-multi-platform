@@ -116,11 +116,28 @@ pub(crate) fn new_update_callback_slot() -> UpdateCallbackSlot {
     Arc::new(UpdateCallbackGate::new())
 }
 
+pub type IdentityChangeObserverId = u64;
 pub(crate) type IdentityChangeCallback = Arc<dyn Fn(Option<String>) + Send + Sync>;
-pub(crate) type IdentityChangeObserverSlot = Arc<Mutex<Vec<IdentityChangeCallback>>>;
+
+#[derive(Clone)]
+pub(crate) struct IdentityChangeObserverRegistration {
+    pub(crate) id: IdentityChangeObserverId,
+    pub(crate) callback: IdentityChangeCallback,
+}
+
+pub(crate) type IdentityChangeObserverSlot = Arc<Mutex<Vec<IdentityChangeObserverRegistration>>>;
 
 pub(crate) fn new_identity_change_observer_slot() -> IdentityChangeObserverSlot {
     Arc::new(Mutex::new(Vec::new()))
+}
+
+pub(crate) fn unregister_identity_change_observer(
+    observers: &IdentityChangeObserverSlot,
+    id: IdentityChangeObserverId,
+) {
+    if let Ok(mut registrations) = observers.lock() {
+        registrations.retain(|registration| registration.id != id);
+    }
 }
 
 /// Host-installed preferred-relay source (the substrate-generic
@@ -158,9 +175,14 @@ pub(crate) fn notify_identity_change_observers(
         *last = current.clone();
     }
 
-    let callbacks = observers
+    let callbacks: Vec<IdentityChangeCallback> = observers
         .lock()
-        .map(|guard| guard.clone())
+        .map(|guard| {
+            guard
+                .iter()
+                .map(|registration| Arc::clone(&registration.callback))
+                .collect()
+        })
         .unwrap_or_default();
     for callback in callbacks {
         let current = current.clone();
@@ -179,6 +201,7 @@ pub struct NmpApp {
     /// callbacks after the actor has written `active_account_handle` and before
     /// it forwards the same update frame to the native callback.
     pub(crate) identity_change_observers: IdentityChangeObserverSlot,
+    pub(crate) next_identity_change_observer_id: AtomicU64,
     pub(crate) capability_callback: CapabilityCallbackSlot,
     /// T118 / G3 — lifecycle observer slot.
     pub(crate) lifecycle_observer: LifecycleObserverSlot,

@@ -166,6 +166,7 @@ pub(super) fn combine_admission_gate(
         extra_acquisition: acq_extra,
         mut reset_hooks,
         mut resolver_observer_ids,
+        mut identity_observer_ids,
     } = acquisition;
 
     // AND the two LIVE, EVENT-AWARE predicates: a root renders iff the
@@ -198,6 +199,7 @@ pub(super) fn combine_admission_gate(
     // its exclusion follows the live list/graph).
     reset_hooks.extend(gate.reset_hooks);
     resolver_observer_ids.extend(gate.resolver_observer_ids);
+    identity_observer_ids.extend(gate.identity_observer_ids);
 
     ReducedSource {
         admission: combined,
@@ -206,6 +208,7 @@ pub(super) fn combine_admission_gate(
         extra_acquisition,
         reset_hooks,
         resolver_observer_ids,
+        identity_observer_ids,
     }
 }
 
@@ -232,6 +235,9 @@ fn merge_live_shapes(left: &LiveShape, right: &LiveShape) -> Option<InterestShap
 fn revoke_observers(app: &NmpApp, resolved: &ReducedSource) {
     for id in &resolved.resolver_observer_ids {
         app.unregister_event_observer(*id);
+    }
+    for id in &resolved.identity_observer_ids {
+        app.unregister_identity_change_observer(*id);
     }
 }
 
@@ -279,6 +285,7 @@ mod tests {
             extra_acquisition: Arc::new(Vec::new),
             reset_hooks: Vec::new(),
             resolver_observer_ids: Vec::new(),
+            identity_observer_ids: Vec::new(),
         }
     }
 

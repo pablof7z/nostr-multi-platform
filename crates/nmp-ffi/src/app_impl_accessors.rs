@@ -13,6 +13,7 @@
 //! `remove_account`, `recall_local_nsec`, `register_action_result_observer`,
 //! and the `impl ActionRegistrar for NmpApp` block.
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use nmp_core::__ffi_internal::{
@@ -128,13 +129,29 @@ impl NmpApp {
     ///
     /// The callback runs on the update-listener thread after the actor has
     /// written [`Self::active_account_handle`] and emitted an update frame.
-    pub fn register_identity_change_observer<F>(&self, callback: F)
+    pub fn register_identity_change_observer<F>(
+        &self,
+        callback: F,
+    ) -> crate::IdentityChangeObserverId
     where
         F: Fn(Option<String>) + Send + Sync + 'static,
     {
+        let id = self
+            .next_identity_change_observer_id
+            .fetch_add(1, Ordering::Relaxed);
         if let Ok(mut observers) = self.identity_change_observers.lock() {
-            observers.push(Arc::new(callback));
+            observers.push(crate::app_struct::IdentityChangeObserverRegistration {
+                id,
+                callback: Arc::new(callback),
+            });
         }
+        id
+    }
+
+    /// Revoke a Rust-side active-account callback registered by
+    /// [`Self::register_identity_change_observer`]. Idempotent for unknown ids.
+    pub fn unregister_identity_change_observer(&self, id: crate::IdentityChangeObserverId) {
+        crate::app_struct::unregister_identity_change_observer(&self.identity_change_observers, id);
     }
 
     /// V-83 — clone of the kernel's `EventStore` publish-back slot (`Arc`).

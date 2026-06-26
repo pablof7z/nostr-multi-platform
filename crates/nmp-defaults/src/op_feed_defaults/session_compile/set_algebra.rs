@@ -43,6 +43,9 @@ pub(super) fn resolve_set_op(
             for id in &l.resolver_observer_ids {
                 app.unregister_event_observer(*id);
             }
+            for id in &l.identity_observer_ids {
+                app.unregister_identity_change_observer(*id);
+            }
             return Err(e);
         }
     };
@@ -109,6 +112,8 @@ pub(super) fn resolve_set_op(
     reset_hooks.extend(r.reset_hooks);
     let mut resolver_observer_ids = l.resolver_observer_ids;
     resolver_observer_ids.extend(r.resolver_observer_ids);
+    let mut identity_observer_ids = l.identity_observer_ids;
+    identity_observer_ids.extend(r.identity_observer_ids);
 
     Ok(ReducedSource {
         admission,
@@ -117,6 +122,7 @@ pub(super) fn resolve_set_op(
         extra_acquisition,
         reset_hooks,
         resolver_observer_ids,
+        identity_observer_ids,
     })
 }
 
