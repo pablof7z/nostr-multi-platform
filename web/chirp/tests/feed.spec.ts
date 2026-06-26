@@ -69,7 +69,9 @@ test("@wasm feed: real signed events from the fixture relay reach a snapshot aft
     // Install the viewer identity via the shell's connect affordance. This sends
     // set_identity(nip07) with the viewer pubkey; the kernel then grows the
     // active-follows feed and ingests the seeded contact list + notes.
-    const connect = page.locator('[data-slot="signing"] .connect-btn');
+    // SigningPanel uses data-action="connect-nip07" on the NIP-07 button;
+    // there is no .connect-btn class in the real DOM.
+    const connect = page.locator('[data-slot="signing"] [data-action="connect-nip07"]');
     await expect(connect).toBeVisible({ timeout: 10_000 });
     await connect.click();
 

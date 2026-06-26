@@ -34,7 +34,8 @@
 //! * [`conv`] — wire ⇆ row codec (target-agnostic; native-tested).
 //! * [`outcome`] — insert-outcome + id types.
 //! * `insert` — transactional event write path.
-//! * `query` — filter → SQL query path (later PR).
+//! * `query` — scan / streaming-query read paths (#1007 PR-4): the materializing
+//!   `scan_by_*` methods + the index-served `query_visit` budget loop.
 //! * `gc` — bounded-store garbage collection (later PR).
 //! * `domain` — NMP domain rows (watermarks, claims) (later PR).
 //! * `provenance` — source-relay rows, written in the insert txn.
@@ -98,6 +99,9 @@ pub use conv::{EngineEvent, StoredEngineEvent};
 /// Insert outcomes and id types (mirror `nmp_store::{EventId, PubKey,
 /// InsertOutcome, RejectReason, TombstoneOrigin}`).
 pub use outcome::{EventId, InsertOutcome, PubKey, RejectReason, TombstoneOrigin};
+/// The crate-local read query for [`OpfsSqliteStore::query_visit`] (mirror of
+/// `nmp_store::StoreQuery`; the `nmp-store` wrapper maps the two at the seam).
+pub use query::EngineQuery;
 
 /// Handle to the OPFS-backed SQLite event store.
 ///
