@@ -21,6 +21,7 @@
 //! - [`PumpOutcome`] / [`BrowserRuntimeEvent`] — the result of one `pump()` turn.
 
 mod builder;
+pub mod wasm;
 pub(crate) mod relay;
 mod runtime;
 // `signer` is `pub` so that `CapabilityEnvelope` can be re-exported from the

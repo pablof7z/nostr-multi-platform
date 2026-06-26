@@ -78,11 +78,14 @@ fn deliver_signer_response_failure_enqueues_fires_wake_and_applies_on_pump() {
         0,
         "pump must apply the enqueued completion and clear the parked publish"
     );
+    // Failure must surface as SignFailed (not CommandFailed) so the
+    // main-thread broker can resolve any pending sign promise keyed on
+    // the correlation id (#2139 BLOCKER 2 — was incorrectly CommandFailed).
     assert!(
         out.events
             .iter()
-            .any(|e| matches!(e, BrowserRuntimeEvent::CommandFailed { .. })),
-        "failure delivery must surface CommandFailed on the applying pump: {:?}",
+            .any(|e| matches!(e, BrowserRuntimeEvent::SignFailed { .. })),
+        "failure delivery must surface SignFailed on the applying pump: {:?}",
         out.events
     );
 }
