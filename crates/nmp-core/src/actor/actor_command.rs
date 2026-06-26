@@ -117,6 +117,20 @@ pub enum ActorCommand {
         /// Fully-formed wire frames to inject on every (re)connect.
         frames: Vec<String>,
     },
+    /// Cancel a persistent NIP-46 subscription.
+    ///
+    /// Sent by the NIP-46 runtime teardown path when clearing a session (e.g.
+    /// account removal). The actor thread removes `sub_id` from the persistent
+    /// sub registry for `relay_url` so the relay worker no longer prevents
+    /// EOSE-triggered CLOSE for this subscription.
+    ///
+    /// D0-clean: carries only generic strings; no NIP protocol noun.
+    UnregisterPersistentSub {
+        /// Canonical relay URL where the subscription was registered.
+        relay_url: String,
+        /// The subscription id (`"nip46-<pubkey_prefix>"` pattern).
+        sub_id: String,
+    },
     /// Test-support-only actor verbs (cfg-gated). See [`TestSupportCommand`].
     #[cfg(any(test, feature = "test-support"))]
     TestSupport(TestSupportCommand),

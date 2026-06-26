@@ -1,32 +1,48 @@
 //! Core runtime state for the NIP-46 actor-lane driver.
 //!
 //! [`Nip46Runtime`] owns the transport-agnostic [`SessionState`] reducer and
-//! all session metadata (relay URL, subscription ID, local keypair, remote
+//! all session metadata (relay URLs, subscription ID, local keypair, remote
 //! pubkey). It is held behind a [`Nip46RuntimeHandle`] so the interceptor,
 //! connected hook, and actor-lane transport can each hold an `Arc` clone and
 //! lock it independently.
 //!
+//! ## Multi-relay support
+//!
+//! A `bunker://` URI may include multiple relay URLs.  The runtime stores all
+//! of them in `relay_urls`.  Inbound frames are accepted from any relay in the
+//! list; outbound frames are fanned to ALL relays via
+//! [`crate::transport::ActorLaneTransport::new_multi`].
+//!
+//! ## Steady-state decode
+//!
+//! Once the handshake completes (`Phase::Done`), the reducer ignores all
+//! further relay inputs.  `on_relay_text` therefore also tries
+//! `nmp_nip46::decode_inbound_response` on any EVENT frame addressed to our
+//! subscription and returns the decrypted body as the second element of its
+//! `(effects, decoded)` pair.  The caller (`Nip46Interceptor`) delivers the
+//! decoded body via `CommandSender::deliver_signer_response`.
+//!
 //! ## Session lifecycle
 //!
-//! 1. **Start**: call [`Nip46Runtime::init_bunker`] or
-//!    [`Nip46Runtime::init_nostrconnect`].  These store the [`SessionState`]
-//!    and return the initial [`Effect`]s (Subscribe + Progress + SendFrame).
-//!    The caller (a `ProtocolCommand` body in production; a test helper in
-//!    isolation tests) must
-//!    - call `kernel.register_persistent_sub(relay_url, sub_id)` so the
-//!      subscription survives EOSE auto-CLOSE, and
-//!    - send the initial outbound frames.
-//! 2. **Relay text**: [`Nip46Runtime::on_relay_text`] — called by the
-//!    interceptor on every inbound frame from the bunker relay.
-//! 3. **Tick**: [`Nip46Runtime::tick`] — called from `on_idle_tick` to
-//!    enforce the 60s per-step deadline.
-//! 4. **Reconnect**: [`Nip46Runtime::on_relay_connected`] — called by the
-//!    connected hook; returns REQ replay effects.
-//! 5. **Reset**: [`Nip46Runtime::clear`] — clears session state.
+//! 1. **Start**: call [`init_bunker`] or [`init_nostrconnect`]. These store
+//!    the [`SessionState`] and return the initial [`Effect`]s (Subscribe +
+//!    Progress + SendFrame). The caller must register the persistent sub and
+//!    send the initial outbound frames.
+//! 2. **Restore**: call [`init_restore`] to reseed from a `SignerPayload::Nip46`
+//!    without re-running the handshake. Posts REQ to each relay and expects the
+//!    caller to install the signer via `add_signer`.
+//! 3. **Relay text**: [`Nip46Runtime::on_relay_text`] — called by the
+//!    interceptor on every inbound frame from any bunker relay.
+//! 4. **Tick**: [`Nip46Runtime::tick`] — called from `on_idle_tick` to
+//!    enforce the 60 s per-step deadline.
+//! 5. **Reconnect**: [`Nip46Runtime::on_relay_connected`] — called by the
+//!    connected hook; returns REQ replay effects for the SPECIFIC relay.
+//! 6. **Clear**: [`clear_runtime`] — drops session state (PR-B2 teardown).
 
+use nmp_nip46::decode_inbound_response;
 use nmp_nip46::reducer::SessionState;
 use nmp_nip46::Effect;
-use nmp_nip46::{start_bunker, start_nostrconnect};
+use nmp_nip46::{build_req_frame, start_bunker, start_restore, start_nostrconnect};
 use nostr::{Keys, PublicKey};
 use std::sync::{Arc, Mutex};
 
@@ -38,8 +54,8 @@ use std::sync::{Arc, Mutex};
 pub struct Nip46Runtime {
     /// Transport-agnostic handshake state machine.
     pub(crate) state: SessionState,
-    /// Bunker relay URL (filters inbound frames in the interceptor).
-    pub(crate) relay_url: String,
+    /// All bunker relay URLs — frames from any of these are accepted.
+    pub(crate) relay_urls: Vec<String>,
     /// Subscription id used in REQ frames.
     pub(crate) sub_id: String,
     /// Local ephemeral keypair (NIP-44 encrypt/decrypt + event signing).
@@ -58,39 +74,80 @@ impl Nip46Runtime {
         self.state.tick(now_secs)
     }
 
-    /// Feed a raw relay text frame from the bunker relay.
+    /// Feed a raw relay text frame from any of the bunker relays.
     ///
-    /// Filters by `relay_url`; stray frames from other relays are silently
-    /// ignored (empty `Vec`).
-    pub fn on_relay_text(&mut self, relay_url: &str, text: &str, now_secs: u64) -> Vec<Effect> {
-        if relay_url != self.relay_url {
-            return Vec::new();
+    /// Returns `(effects, decoded)`:
+    /// - `effects`: reducer output (handshake progress, SignerReady, etc.).
+    /// - `decoded`: `Some(body)` when the frame is a kind:24133 EVENT addressed
+    ///   to our subscription in `Done` phase and NIP-44 decryption succeeds.
+    ///   The caller must deliver this via `CommandSender::deliver_signer_response`.
+    ///
+    /// Frames from relays NOT in `relay_urls` return `([], None)` (D6 — silent
+    /// ignore).
+    pub fn on_relay_text(
+        &mut self,
+        relay_url: &str,
+        text: &str,
+        now_secs: u64,
+    ) -> (Vec<Effect>, Option<String>) {
+        // Compare canonical forms: `relay_urls` are stored canonical (init), and
+        // inbound frames arrive with the pool's canonical URL.  A raw-string
+        // compare would drop responses on a non-canonical bunker URI (e.g.
+        // `WSS://Relay.Ex/`).
+        let incoming = canonicalize_relay(relay_url);
+        if !self.relay_urls.contains(&incoming) {
+            return (Vec::new(), None);
         }
-        self.state.on_relay_text(text, now_secs)
+        let effects = self.state.on_relay_text(text, now_secs);
+
+        // Steady-state decode: when the reducer returns empty (Done phase or
+        // non-matching frame), try to decode a kind:24133 EVENT addressed to
+        // our subscription so the registered Nip46Signer can resolve its parked
+        // sign operation.  Non-EVENT frames and frames for other sub_ids return
+        // None quickly.
+        if effects.is_empty() {
+            let decoded =
+                try_decode_steady_state(text, &self.sub_id, &self.local_keys, self.remote_pubkey);
+            return (Vec::new(), decoded);
+        }
+        (effects, None)
     }
 
-    /// React to the bunker relay (re)connecting.
+    /// React to a bunker relay (re)connecting.
     ///
-    /// Returns the REQ subscription replay effects so the connected hook can
-    /// register them as the worker's reconnect preamble via
-    /// `CommandSender::set_reconnect_preamble`.
+    /// Returns one [`Effect::Subscribe`] for the SPECIFIC reconnecting relay
+    /// (not just the primary) so every relay in the session gets its own REQ
+    /// on reconnect.  The connected hook registers each such frame as the
+    /// worker's reconnect preamble for that relay.
     ///
-    /// The 60 s step deadline is NO LONGER armed here (Guardrail 2).  It is
-    /// armed by `on_relay_text` when the relay sends `EOSE` for our
-    /// subscription, i.e. the point at which the relay is actually ready to
-    /// deliver matching EVENTs.  The handshake-start deadline set by
-    /// `start_bunker` / `start_nostrconnect` remains as a fallback floor so a
-    /// relay that never sends EOSE still bounds a stuck handshake.
-    pub fn on_relay_connected(&mut self, relay_url: &str, is_reconnect: bool, now_secs: u64) -> Vec<Effect> {
-        if relay_url != self.relay_url {
+    /// Frames from relays NOT in `relay_urls` return empty (D6).
+    pub fn on_relay_connected(
+        &mut self,
+        relay_url: &str,
+        _is_reconnect: bool,
+        now_secs: u64,
+    ) -> Vec<Effect> {
+        let incoming = canonicalize_relay(relay_url);
+        if !self.relay_urls.contains(&incoming) {
             return Vec::new();
         }
-        self.state.on_relay_connected(is_reconnect, now_secs)
+        // Bypass state.on_relay_connected (which hardcodes the primary relay URL).
+        // Generate the Subscribe effect directly for the SPECIFIC reconnecting
+        // relay (canonical form, so the reconnect preamble keys the same pool row).
+        let pubkey_hex = self.local_keys.public_key().to_hex();
+        let frame = build_req_frame(&self.sub_id, &pubkey_hex, now_secs);
+        vec![Effect::Subscribe { relay_url: incoming, frame }]
     }
 
-    /// The relay URL this session is bound to.
+    /// The primary bunker relay URL (first in `relay_urls`, or empty string if
+    /// the list is empty).  For single-relay sessions this is the only URL.
     pub fn relay_url(&self) -> &str {
-        &self.relay_url
+        self.relay_urls.first().map(String::as_str).unwrap_or("")
+    }
+
+    /// All bunker relay URLs for this session.
+    pub fn relay_urls(&self) -> &[String] {
+        &self.relay_urls
     }
 
     /// The subscription id (e.g. `"nip46-<local_pubkey_prefix>"`).
@@ -129,39 +186,75 @@ pub fn new_nip46_runtime_handle() -> Nip46RuntimeHandle {
 
 /// Initialise the handle with a `bunker://` session.
 ///
-/// Returns the initial [`Effect`]s (Subscribe + Progress + SendFrame).
+/// `relay_urls` is the FULL relay list from the parsed bunker URI
+/// (`BunkerUri::relays` supports multiple relays). The session subscribes
+/// (REQ) and publishes the `connect` EVENT to EVERY relay, and accepts inbound
+/// responses from any of them. Every URL is canonicalized at this boundary so
+/// inbound/reconnect filtering matches the pool's canonical keys.
+///
+/// Returns the initial [`Effect`]s — a Subscribe + Progress + SendFrame for the
+/// primary relay, plus a Subscribe + SendFrame fanned to each additional relay.
 /// The caller MUST:
 ///
-/// 1. Call `kernel.register_persistent_sub(relay_url, sub_id)` (or set
-///    `persistent_sub_registered = false` so the interceptor registers on
-///    first idle tick).
+/// 1. Call `kernel.register_persistent_sub(relay_url, sub_id)` for each
+///    Subscribe (or leave `persistent_sub_registered = false` so the
+///    interceptor registers on first idle tick).
 /// 2. Convert the [`Effect::Subscribe`] and [`Effect::SendFrame`] results
 ///    into `OutboundMessage`s and deliver them to the relay.
 ///
-/// Returns `Err(String)` when the existing session would be silently dropped
-/// (caller must cancel it first) or when the URI is malformed.
+/// Returns `Err(String)` when the runtime mutex is poisoned or `relay_urls` is
+/// empty.
+#[allow(clippy::too_many_arguments)]
 pub fn init_bunker(
     handle: &Nip46RuntimeHandle,
     sub_id: String,
     local_keys: Keys,
     remote_pubkey: PublicKey,
-    relay_url: String,
+    relay_urls: Vec<String>,
     secret: Option<&str>,
     perms: Option<&str>,
     now_secs: u64,
 ) -> Result<Vec<Effect>, String> {
-    let (state, effects) = start_bunker(
+    let relay_urls = canonicalize_relays(&relay_urls);
+    let Some(primary) = relay_urls.first().cloned() else {
+        return Err("init_bunker: relay_urls must not be empty".to_string());
+    };
+    let (state, mut effects) = start_bunker(
         &sub_id,
         local_keys.clone(),
         remote_pubkey,
-        relay_url.clone(),
+        primary,
         secret,
         perms,
         now_secs,
     );
+
+    // Fan the REQ + connect EVENT to every additional relay.  The REQ frame and
+    // the (already-signed) connect EVENT are identical across relays — both are
+    // addressed to the bunker pubkey, not to a specific relay — so we reuse the
+    // frames built by `start_bunker` for the primary.
+    if relay_urls.len() > 1 {
+        let req_frame = effects.iter().find_map(|e| match e {
+            Effect::Subscribe { frame, .. } => Some(frame.clone()),
+            _ => None,
+        });
+        let connect_frame = effects.iter().find_map(|e| match e {
+            Effect::SendFrame { text, .. } => Some(text.clone()),
+            _ => None,
+        });
+        for relay in &relay_urls[1..] {
+            if let Some(frame) = &req_frame {
+                effects.push(Effect::Subscribe { relay_url: relay.clone(), frame: frame.clone() });
+            }
+            if let Some(text) = &connect_frame {
+                effects.push(Effect::SendFrame { relay_url: relay.clone(), text: text.clone() });
+            }
+        }
+    }
+
     let rt = Nip46Runtime {
         state,
-        relay_url,
+        relay_urls,
         sub_id,
         local_keys,
         remote_pubkey,
@@ -184,6 +277,7 @@ pub fn init_bunker(
 /// Returns `Ok((uri, effects))` where `uri` is the `nostrconnect://` URI to
 /// display as a QR code and `effects` are the initial protocol effects
 /// (Subscribe + Progress).
+#[allow(clippy::too_many_arguments)]
 pub fn init_nostrconnect(
     handle: &Nip46RuntimeHandle,
     sub_id: String,
@@ -194,10 +288,12 @@ pub fn init_nostrconnect(
     name: &str,
     now_secs: u64,
 ) -> Result<(String, Vec<Effect>), String> {
+    let relay_url = canonicalize_relay(&relay_url);
+    let relay_urls = vec![relay_url.clone()];
     let (uri, state, effects) = start_nostrconnect(
         &sub_id,
         local_keys.clone(),
-        relay_url.clone(),
+        relay_url,
         expected_secret,
         perms,
         name,
@@ -209,7 +305,7 @@ pub fn init_nostrconnect(
     let local_pk = local_keys.public_key();
     let rt = Nip46Runtime {
         state,
-        relay_url,
+        relay_urls,
         sub_id,
         local_keys,
         remote_pubkey: local_pk, // placeholder; overwritten on SignerReady
@@ -222,4 +318,127 @@ pub fn init_nostrconnect(
         }
         Err(_) => Err("runtime handle mutex poisoned".to_string()),
     }
+}
+
+/// Restore the handle from a persisted `SignerPayload::Nip46` without
+/// re-running the handshake.
+///
+/// The restored session is in the `Done` phase so the reducer ignores all
+/// further relay inputs.  The caller must:
+///
+/// 1. Process each returned [`Effect::Subscribe`] (register persistent sub +
+///    set reconnect preamble).
+/// 2. Call `CommandSender::add_signer(SignerSource::RemoteHandle(signer))` to
+///    install the signer built from the payload.
+///
+/// `remote_pubkey` is the bunker's signing key (NIP-44 decrypt); `relay_urls`
+/// are the relay URLs from the payload; `sub_id` is the persisted subscription
+/// id.  `now_secs` is used to set the `since` filter in the REQ frame.
+///
+/// Returns `Err(String)` when the runtime mutex is poisoned.
+pub fn init_restore(
+    handle: &Nip46RuntimeHandle,
+    sub_id: String,
+    local_keys: Keys,
+    remote_pubkey: PublicKey,
+    relay_urls: Vec<String>,
+    now_secs: u64,
+) -> Result<Vec<Effect>, String> {
+    let relay_urls = canonicalize_relays(&relay_urls);
+    let (state, effects) = start_restore(&sub_id, local_keys.clone(), &relay_urls, now_secs);
+    let rt = Nip46Runtime {
+        state,
+        relay_urls,
+        sub_id,
+        local_keys,
+        remote_pubkey,
+        persistent_sub_registered: false,
+    };
+    match handle.lock() {
+        Ok(mut guard) => {
+            *guard = Some(rt);
+            Ok(effects)
+        }
+        Err(_) => Err("runtime handle mutex poisoned".to_string()),
+    }
+}
+
+/// Drop the session state from the handle.
+///
+/// Called on account removal or session cancellation (PR-B2 teardown path).
+/// Sets the handle to `None` so subsequent relay frames and connected-hook
+/// calls are no-ops.  Does NOT send `UnregisterPersistentSub` — the caller
+/// is responsible for cleaning up the kernel subscription registration.
+pub fn clear_runtime(handle: &Nip46RuntimeHandle) {
+    if let Ok(mut guard) = handle.lock() {
+        *guard = None;
+    }
+}
+
+/// Persist the remote signer pubkey learned during the handshake.
+///
+/// Called on [`Effect::SignerReady`] (by the interceptor) so steady-state
+/// decode ([`Nip46Runtime::on_relay_text`]) decrypts with the correct key.
+///
+/// - **bunker**: this equals the pubkey already stored from the URI — a no-op
+///   write.
+/// - **nostrconnect**: the remote signer pubkey is unknown until the signer's
+///   `connect` event arrives, so [`init_nostrconnect`] stores the local pubkey
+///   as a placeholder.  Without this write-back, `decode_inbound_response`
+///   would reject every steady-state response (pubkey mismatch) and sign would
+///   hang.  This is the BLOCKER-1 fix.
+///
+/// No-op when the handle is empty or the mutex is poisoned.
+pub fn record_signer_ready(handle: &Nip46RuntimeHandle, remote_pubkey: PublicKey) {
+    if let Ok(mut guard) = handle.lock() {
+        if let Some(rt) = guard.as_mut() {
+            rt.remote_pubkey = remote_pubkey;
+        }
+    }
+}
+
+// ─── relay canonicalization ───────────────────────────────────────────────────
+
+/// Canonicalize a single relay URL using the same authority the actor's pool
+/// uses ([`nmp_core::canonical_relay_url`]).  Falls back to the raw string when
+/// the URL does not parse as `ws`/`wss` (mirrors `CanonicalRelayUrl::parse_or_raw`).
+fn canonicalize_relay(raw: &str) -> String {
+    nmp_core::canonical_relay_url(raw).unwrap_or_else(|| raw.to_string())
+}
+
+/// Canonicalize every relay URL, preserving order and de-duplicating canonical
+/// collisions (e.g. `WSS://R/` and `wss://r` collapse to one entry).
+fn canonicalize_relays(urls: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(urls.len());
+    for u in urls {
+        let c = canonicalize_relay(u);
+        if !out.contains(&c) {
+            out.push(c);
+        }
+    }
+    out
+}
+
+// ─── steady-state decode helper ──────────────────────────────────────────────
+
+/// Try to NIP-44 decrypt a steady-state kind:24133 response.
+///
+/// Only processes `["EVENT", sub_id, event]` frames addressed to our
+/// subscription.  All other frames return `None` quickly.
+fn try_decode_steady_state(
+    text: &str,
+    sub_id: &str,
+    local_keys: &Keys,
+    remote_pubkey: PublicKey,
+) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    let arr = v.as_array()?;
+    if arr.first()?.as_str()? != "EVENT" {
+        return None;
+    }
+    if arr.get(1)?.as_str()? != sub_id {
+        return None;
+    }
+    let event = arr.get(2)?;
+    decode_inbound_response(event, local_keys, remote_pubkey)
 }

@@ -115,6 +115,8 @@ nmp-signer-iface = { path = "../nmp-signer-iface" }
 # NIP-46 reconnect-ordering integration test (#2119): pool API + session reducer.
 nmp-network = { path = "../nmp-network", features = ["native"] }
 nmp-nip46 = { path = "../nmp-nip46" }
+# T121 — actor-lane sign-ready end-to-end test (#2119 PR-B1).
+nmp-nip46-runtime = { path = "../nmp-nip46-runtime" }
 # Real-relay smoke test dependencies (real_relay_smoke.rs).
 # NIP-46 mock-bunker integration test (nip46_bunker_signing.rs) needs nip04/nip44.
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
@@ -413,3 +415,12 @@ path = "tests/dx_scaffold_gate.rs"
 [[test]]
 name = "nip46_req_before_event_on_reconnect"
 path = "tests/nip46_req_before_event_on_reconnect.rs"
+
+# T121 — NIP-46 actor-lane sign-ready end-to-end (#2119 PR-B1).
+# Proves: handshake → SignerReady → Nip46Signer built → sign_event RPC routed via
+# ActorLaneTransport → MockBunkerRelay signs → decode_inbound_response decodes →
+# ingest_rpc_response resolves → SignerOp::wait returns a Schnorr-valid event.
+# `cargo test -p nmp-testing --test nip46_actor_lane_signing`
+[[test]]
+name = "nip46_actor_lane_signing"
+path = "tests/nip46_actor_lane_signing.rs"
