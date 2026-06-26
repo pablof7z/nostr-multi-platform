@@ -13,7 +13,7 @@ use nmp_nip29::group_id::GroupId;
 
 use super::super::{
     nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
-    nmp_app_chirp_register_group_chat,
+    nmp_app_chirp_register_group_chat, nmp_app_chirp_unregister_group_chat,
 };
 
 /// THE DISCOVERY REGISTRATION WIRING PROOF: `nmp_app_chirp_open_group_discovery`
@@ -79,30 +79,47 @@ fn register_group_chat_group_id_wire_shape_matches_serde() {
     );
 }
 
-/// THE GROUP-CHAT WIRING PROOF: `nmp_app_chirp_register_group_chat`
-/// registers a `GroupChatProjection` against `app` for a well-formed
-/// group id — it runs to completion (event-observer + snapshot-projection
-/// registration) without panicking. The snapshot closure surfacing under
-/// `"nmp.nip29.group_chat"` is proven end-to-end by the generic seam tests in
-/// `nmp-core` (`snapshot_registry_tests.rs`) and the projection's own
-/// tests in `nmp-nip29`; this asserts the Chirp-side wiring call is sound.
+/// THE GROUP-CHAT WIRING PROOF: `nmp_app_chirp_register_group_chat` opens a
+/// hydrating `GroupChatProjection` read view against `app` for a well-formed
+/// group id — it runs to completion (typed sidecar registration + muted
+/// observer + relay-pinned observed interest) without panicking, and the
+/// `"nmp.nip29.group_chat"` snapshot key is synchronously registered. The
+/// hydration end-to-end is proven by the `nmp-ffi` integration tests; this
+/// asserts the Chirp-side delegation is sound, and that `unregister` removes
+/// the key again (#2088 teardown).
 #[test]
 fn register_group_chat_runs_for_well_formed_group() {
     let app = nmp_app_new();
+    // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this test.
+    let app_ref = unsafe { &*app };
     let group =
         CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#).unwrap();
-    // Must register both halves (observer + snapshot projection) without
-    // panicking across the FFI boundary.
     nmp_app_chirp_register_group_chat(app, group.as_ptr());
+    assert!(
+        app_ref
+            .registered_typed_projection_keys()
+            .iter()
+            .any(|k| k == "nmp.nip29.group_chat"),
+        "register_group_chat must synchronously register the group_chat snapshot key"
+    );
+    // Teardown removes the key (no stale chat log after screen dismissal).
+    nmp_app_chirp_unregister_group_chat(app);
+    assert!(
+        !app_ref
+            .registered_typed_projection_keys()
+            .iter()
+            .any(|k| k == "nmp.nip29.group_chat"),
+        "unregister_group_chat must remove the group_chat snapshot key"
+    );
     nmp_app_free(app);
 }
 
-/// THE IDEMPOTENCY PROOF — group-chat variant. Same shape as the
-/// DM-inbox test: two consecutive `register_group_chat` calls leave
-/// exactly one `KernelEventObserverId` in the per-app
-/// `singleton_event_observer_id` slot, with the second register's id
-/// distinct from the first (proving the slot was overwritten and the
-/// previous observer was unregistered against the kernel).
+/// THE IDEMPOTENCY PROOF — group-chat variant. Two consecutive
+/// `register_group_chat` calls (the multi-screen navigation case that
+/// previously leaked the prior observer) leave EXACTLY ONE
+/// `"nmp.nip29.group_chat"` snapshot projection registered: the singleton open
+/// path closes the prior hydrating session before installing the replacement,
+/// so there is no leak and no duplicate key.
 #[test]
 fn register_group_chat_is_idempotent_on_re_invoke() {
     let app = nmp_app_new();
@@ -110,10 +127,14 @@ fn register_group_chat_is_idempotent_on_re_invoke() {
     // duration of this test.
     let app_ref = unsafe { &*app };
 
-    assert!(
-        app_ref.swap_singleton_event_observer(None).is_none(),
-        "slot must start empty (no group chat registered yet)"
-    );
+    let key_count = |a: &nmp_ffi::NmpApp| {
+        a.registered_typed_projection_keys()
+            .iter()
+            .filter(|k| *k == "nmp.nip29.group_chat")
+            .count()
+    };
+
+    assert_eq!(key_count(app_ref), 0, "no group chat registered yet");
 
     let group_a =
         CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-a"}"#)
@@ -122,26 +143,19 @@ fn register_group_chat_is_idempotent_on_re_invoke() {
         CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-b"}"#)
             .unwrap();
 
-    // First registration.
     nmp_app_chirp_register_group_chat(app, group_a.as_ptr());
-    let id1 = app_ref
-        .swap_singleton_event_observer(None)
-        .expect("first register must install a kernel-observer id in the per-app slot");
-    let prev = app_ref.swap_singleton_event_observer(Some(id1));
-    assert!(prev.is_none(), "we just swap-took, slot was empty");
+    assert_eq!(key_count(app_ref), 1, "first register installs one view");
 
-    // Second registration with a different group — the multi-screen
-    // navigation case that previously leaked the prior observer.
+    // Second registration with a different group — re-open must close the
+    // prior session first, leaving exactly one live group_chat view.
     nmp_app_chirp_register_group_chat(app, group_b.as_ptr());
-    let id2 = app_ref
-        .swap_singleton_event_observer(None)
-        .expect("second register must install a fresh id in the per-app slot");
-    assert_ne!(
-        id1, id2,
-        "second register must produce a fresh kernel-observer id (got {id1:?} both times)"
+    assert_eq!(
+        key_count(app_ref),
+        1,
+        "re-register must keep exactly one group_chat view (no leak, no duplicate)"
     );
 
-    app_ref.unregister_event_observer(id2);
+    nmp_app_chirp_unregister_group_chat(app);
     nmp_app_free(app);
 }
 

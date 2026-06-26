@@ -462,8 +462,8 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         typed_sidecar: Some(TypedSidecar {
             // Wave B Tier-1 #4: the `flatc --swift` reader
             // (`nmp_nip29_GroupChatSnapshot`) ships in this PR. Host-registered
-            // producer in `apps/chirp/.../crates/nmp-nip29/src/register.rs`
-            // (`register_typed_snapshot_projection("nmp.nip29.group_chat", …)`).
+            // producer in `crates/nmp-ffi/src/group_feed.rs` (#2088):
+            // `NmpApp::open_group_chat` → `register_typed_snapshot_projection`.
             // Flat field-for-field copy: `{ messages: [GroupChatMessage] }`,
             // each row `{ id, pubkey, content, created_at, kind }`. See
             // `TypedProjectionGlue.groupChat`.
@@ -512,8 +512,8 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
         typed_sidecar: Some(TypedSidecar {
             // Wave B Tier-1 #4: the `flatc --swift` reader
             // (`nmp_nip29_DiscoveredGroupsSnapshot`) ships in this PR.
-            // Host-registered producer in `crates/nmp-nip29/src/register.rs`
-            // (`register_typed_snapshot_projection("nmp.nip29.discovered_groups", …)`).
+            // Host-registered producer in `crates/nmp-ffi/src/group_feed.rs`
+            // (#2088): `NmpApp::open_group_discovery` → typed snapshot projection.
             // Flat copy: `{ host_relay_url, groups: [DiscoveredGroup] }`. The
             // `name`/`picture`/`about` wire strings are bare (absent == None) and
             // map to the domain's `String?` preserving nil — NOT `?? ""` — so

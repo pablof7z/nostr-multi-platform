@@ -313,7 +313,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     ProjectionContract {
         key: "nmp.nip29.group_chat",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-nip29 register",
+        producer: "nmp-ffi group_feed (NmpApp::open_group_chat, #2088)",
         schema_id: "nmp.nip29.group_chat",
         file_identifier: "NGCS",
         // nmp-nip29 wire/group_chat_fb::GROUP_CHAT_SCHEMA_VERSION
@@ -325,7 +325,7 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
     ProjectionContract {
         key: "nmp.nip29.discovered_groups",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-nip29 register",
+        producer: "nmp-ffi group_feed (NmpApp::open_group_discovery, #2088)",
         schema_id: "nmp.nip29.discovered_groups",
         file_identifier: "NDGS",
         // nmp-nip29 wire/discovered_groups_fb::DISCOVERED_GROUPS_SCHEMA_VERSION
@@ -347,31 +347,17 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        // Registered by `nmp_nip29::wire_joined_groups` under this key. Was
-        // missing from the contract — a real Tier-1 projection key, not an
-        // internal wire type (the earlier #1723 investigation misclassified it).
+        // Registered by `NmpApp::open_joined_groups` (nmp-ffi `group_feed`,
+        // #2088 — moved off the prior bare-observer `nmp_nip29::wire_joined_groups`
+        // so the view hydrates already-cached membership snapshots). A real
+        // Tier-1 projection key with no iOS Swift consumer yet.
         key: "nmp.nip29.joined_groups",
         tier: ProjectionTier::HostRegistered,
-        producer: "nmp-nip29 register::wire_joined_groups",
+        producer: "nmp-ffi group_feed (NmpApp::open_joined_groups, #2088)",
         schema_id: "nmp.nip29.joined_groups",
         file_identifier: "NJGS",
         // nmp-nip29 wire/joined_groups_fb::JOINED_GROUPS_SCHEMA_VERSION
         version: 2,
-        declaration_policy: DeclarationPolicy::RegistrationGated,
-        dependency_versions: &[],
-        presence_policy: PresencePolicy::None,
-    },
-    ProjectionContract {
-        // Registered by `nmp_nip29::wire_group_events` under this key. Was
-        // missing from the contract — a real Tier-1 projection key, not an
-        // internal wire type (the earlier #1723 investigation misclassified it).
-        key: "nmp.nip29.group_events",
-        tier: ProjectionTier::HostRegistered,
-        producer: "nmp-nip29 register::wire_group_events",
-        schema_id: "nmp.nip29.group_events",
-        file_identifier: "NGES",
-        // nmp-nip29 wire/group_events_fb::GROUP_EVENTS_SCHEMA_VERSION
-        version: 1,
         declaration_policy: DeclarationPolicy::RegistrationGated,
         dependency_versions: &[],
         presence_policy: PresencePolicy::None,

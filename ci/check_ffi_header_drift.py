@@ -206,7 +206,7 @@ def normalize_rust_type(value: str) -> str:
         "*mut NmpApp": "void *",
         "*const NmpApp": "const void *",
         "*mut ChirpHandle": "void *",
-        "*mut GroupDiscoveryHandle": "void *",
+        "*mut GroupFeedHandle": "void *",
         "*mut MarmotHandle": "void *",
     }
     aliases = {

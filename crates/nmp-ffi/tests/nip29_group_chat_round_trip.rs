@@ -23,7 +23,7 @@
 //! `ActorCommand::IngestPreVerifiedEvents`. This is bit-for-bit identical to
 //! the path a relay worker follows when it delivers a verified event into the
 //! actor loop. The actor fans it out through `notify_event_observers`;
-//! `GroupChatProjection` (wired by `nmp_nip29::register::wire_group_chat`)
+//! `GroupChatProjection` (opened by `NmpApp::open_group_chat`, #2088)
 //! accumulates it and surfaces it under
 //! `projections["nmp.nip29.group_chat"]["messages"]` on the next snapshot tick.
 //! The test reads that snapshot via `nmp_app_set_update_callback` — the same
@@ -46,12 +46,12 @@ use nmp_core::actor::{TestSupportCommand};
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
 use nmp_ffi::{
-    nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new, nmp_app_set_update_callback,
-    nmp_app_start, nmp_free_string, NmpApp,
+    nmp_app_consume_all_builtin_projections, nmp_app_dispatch_action_bytes, nmp_app_free,
+    nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_free_string, NmpApp,
 };
 use nmp_nip29::action::{PostChatMessageInput};
 use nmp_nip29::group_id::GroupId;
-use nmp_nip29::register::{register_actions, wire_group_chat};
+use nmp_nip29::register::register_actions;
 
 /// Dispatch a typed `PostChatMessageInput` through the ADR-0064 byte doorway
 /// ([`nmp_app_dispatch_action_bytes`]) and return the result envelope JSON.
@@ -218,7 +218,7 @@ fn post_chat_message_dispatch_returns_correlation_id() {
 
 /// Proves the receive-side seam is live end-to-end:
 ///
-/// 1. `nmp_nip29::register::wire_group_chat` wires a `GroupChatProjection` for
+/// 1. `NmpApp::open_group_chat` opens a hydrating `GroupChatProjection` for
 ///    `"test-room"` as a `KernelEventObserver` (ingest) + snapshot projection
 ///    under `"nmp.nip29.group_chat"` (output).
 /// 2. A kind:9 event carrying `["h", "test-room"]` is injected via
@@ -238,6 +238,11 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
     // Register the update callback before start so no snapshot tick is missed.
     nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(collect_snapshot));
 
+    // Declare projection-consumption intent like a real host (ADR-0053 / E4) so
+    // `nmp_app_start` does not trip its forgotten-declaration guard in this
+    // non-`test-support` integration-test build of nmp-ffi.
+    nmp_app_consume_all_builtin_projections(app);
+
     // nmp_app_start sends ActorCommand::Start; the actor enters its main loop
     // and begins emitting snapshot ticks at emit_hz rate.
     nmp_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
@@ -245,10 +250,7 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
     // Wire the GroupChatProjection for "test-room".
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
     let app_ref = unsafe { &*app };
-    wire_group_chat(
-        app_ref,
-        GroupId::new("wss://groups.example.com", "test-room"),
-    );
+    app_ref.open_group_chat(GroupId::new("wss://groups.example.com", "test-room"));
 
     // Inject the target event: kind:9 with h-tag "test-room".
     let target = VerifiedEvent::from_raw_unchecked(raw_chat_event(

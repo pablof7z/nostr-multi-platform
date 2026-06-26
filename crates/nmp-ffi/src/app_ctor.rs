@@ -342,6 +342,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         #[cfg(feature = "external-signer")]
         external_signer_driver: Arc::new(Mutex::new(None)),
         search_sessions: Mutex::new(std::collections::HashMap::new()),
+        group_feed_sessions: Mutex::new(std::collections::HashMap::new()),
         #[cfg(any(test, feature = "test-support"))]
         gc_budget_ceiling,
         composition: CompositionConfig {

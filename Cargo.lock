@@ -4625,6 +4625,7 @@ dependencies = [
  "nmp-intent",
  "nmp-nip05",
  "nmp-nip18",
+ "nmp-nip29",
  "nmp-nip50",
  "nmp-nip51",
  "nmp-planner",
@@ -4832,7 +4833,6 @@ version = "0.8.0"
 dependencies = [
  "flatbuffers",
  "nmp-core",
- "nmp-ffi",
  "nmp-planner",
  "nmp-signer-iface",
  "nmp-store",

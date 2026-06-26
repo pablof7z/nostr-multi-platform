@@ -1,11 +1,12 @@
-//! NIP-29 group-chat typed-projection sidecar proof (Wave A producer-typing).
+//! NIP-29 group-chat typed-projection sidecar proof.
 //!
-//! Proves `nmp_nip29::register::wire_group_chat` now emits a typed FlatBuffers
-//! sidecar (ADR-0037, `NGCS`) ALONGSIDE the existing generic `serde_json::Value`
-//! projection under `"nmp.nip29.group_chat"`. Drives the full FFI snapshot path,
-//! decodes the frame with `decode_snapshot_typed_projections`, and asserts the typed
-//! payload bytes land in the `typed_projections` sidecar (not only
-//! `payload:Value`), round-tripping back through the generated bindings.
+//! Proves `NmpApp::open_group_chat` (#2088) emits a typed FlatBuffers sidecar
+//! (ADR-0037, `NGCS`) under `"nmp.nip29.group_chat"`. Drives the full FFI
+//! snapshot path, decodes the frame with `decode_snapshot_typed_projections`,
+//! and asserts the typed payload bytes land in the `typed_projections` sidecar,
+//! round-tripping back through the generated bindings. (Live-ingest path:
+//! events injected AFTER open. The catch-up / hydration path — events injected
+//! BEFORE open — is covered by `nip29_hydration.rs`.)
 
 mod common;
 
@@ -13,7 +14,6 @@ use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
 use nmp_store::VerifiedEvent;
 use nmp_nip29::group_id::GroupId;
-use nmp_nip29::register::wire_group_chat;
 use nmp_nip29::{decode_group_chat_snapshot, GROUP_CHAT_FILE_IDENTIFIER, GROUP_CHAT_SCHEMA_ID};
 
 /// A kind:9 event h-tagged for the wired group surfaces in the
@@ -25,7 +25,7 @@ fn group_chat_typed_sidecar_round_trips() {
     let app = boot();
 
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
-    wire_group_chat(unsafe { &*app }, GroupId::new(HOST, "test-room"));
+    unsafe { (*app).open_group_chat(GroupId::new(HOST, "test-room")) };
 
     let target = VerifiedEvent::from_raw_unchecked(raw_event(
         &"a".repeat(64),
@@ -76,7 +76,7 @@ fn group_chat_typed_sidecar_empty_decodes() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
 
-    wire_group_chat(unsafe { &*app }, GroupId::new(HOST, "empty-room"));
+    unsafe { (*app).open_group_chat(GroupId::new(HOST, "empty-room")) };
 
     let entry = wait_for_typed("nmp.nip29.group_chat", |t| {
         decode_group_chat_snapshot(&t.payload).is_ok()
