@@ -25,7 +25,6 @@ crates/nmp-codegen/src/swift_projections_registry.rs	722
 crates/nmp-core/src/actor/commands/publish.rs	550
 crates/nmp-core/src/actor/mod.rs	750
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565
-crates/nmp-core/src/kernel/action_registry/tests.rs	724
 crates/nmp-core/src/kernel/auth_tests.rs	762
 crates/nmp-core/src/kernel/cache_serve_universal_tests.rs	576
 crates/nmp-core/src/kernel/claim_expansion_ingest_tests.rs	707
@@ -40,7 +39,6 @@ crates/nmp-core/src/subs/lifecycle_tests.rs	963
 crates/nmp-core/tests/nip_tag_conformance.rs	554
 crates/nmp-defaults/src/builder.rs	670
 crates/nmp-defaults/src/runtimes.rs	535
-crates/nmp-ffi/src/action/tests.rs	721
 crates/nmp-marmot/src/ffi.rs	607
 crates/nmp-marmot/src/projection/ops.rs	594
 crates/nmp-marmot/src/projection/state.rs	615

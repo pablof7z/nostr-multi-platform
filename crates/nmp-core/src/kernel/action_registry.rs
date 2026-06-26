@@ -34,7 +34,7 @@
 //! `Action` type via serde.
 
 use std::collections::HashMap;
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Mutex};
 
 use super::composition_ledger::{CompositionLedger, Disposition};
@@ -411,6 +411,9 @@ pub fn default_registry() -> ActionRegistry {
     registry
 }
 
+#[cfg(test)]
+#[path = "action_registry/lifecycle_tests.rs"]
+mod lifecycle_tests;
 #[cfg(test)]
 #[path = "action_registry/registration_error_tests.rs"]
 mod registration_error_tests;

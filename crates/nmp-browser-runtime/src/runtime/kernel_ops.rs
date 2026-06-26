@@ -172,7 +172,8 @@ impl BrowserRuntimeHandle {
 
         // S3 — run the typed decode + fail-closed schema_version gate + start().
         let now_ms = self.runtime.reducer.now_ms();
-        let mut ctx = ActionContext {};
+        let store = self.runtime.reducer.event_store_handle();
+        let mut ctx = ActionContext::with_event_store(store);
         let start_result =
             self.runtime
                 .action_registry
@@ -189,6 +190,7 @@ impl BrowserRuntimeHandle {
         // Execute: collect ActorCommands synchronously (execute_bytes is sync).
         let collected = RefCell::new(Vec::new());
         let exec_result = self.runtime.action_registry.execute_bytes(
+            &ctx,
             &action_namespace,
             &payload,
             &correlation_id,

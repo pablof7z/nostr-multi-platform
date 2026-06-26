@@ -486,7 +486,6 @@ The subscription should close when…
     → InterestLifecycle::Tailing
     → Dispatch Release when the view closes; the shell owns the trigger, Rust owns the subscription.
 ```
-
 ## Checklist
 
 - [ ] Claim and Release derive the same `SubIdentity` from the same inputs.

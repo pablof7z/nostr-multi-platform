@@ -58,9 +58,9 @@
 //! * **D8** — the FFI thread never blocks. Dispatch is a non-blocking
 //!   channel send.
 
-use std::ffi::{CString, c_char};
+use std::ffi::{c_char, CString};
 
-use super::{NmpApp, app_ref, c_string_argument};
+use super::{app_ref, c_string_argument, NmpApp};
 use nmp_core::actor::ActionLedgerCommand;
 #[cfg(any(test, feature = "test-support"))]
 use nmp_core::substrate::ActionContext;
@@ -435,6 +435,10 @@ fn json_string(s: &str) -> String {
 #[cfg(test)]
 #[path = "action/tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "action/host_registration_tests.rs"]
+mod host_registration_tests;
 
 #[cfg(test)]
 #[path = "action/tests_host_op.rs"]

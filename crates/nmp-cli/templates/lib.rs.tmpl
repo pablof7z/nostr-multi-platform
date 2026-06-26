@@ -192,6 +192,7 @@ impl ActionModule for EntryActionModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),
