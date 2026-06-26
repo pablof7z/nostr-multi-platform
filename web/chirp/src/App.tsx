@@ -26,6 +26,8 @@ import type { IdentityRelayPermission } from "@nmp/runtime-web";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
 import { NmpClientProvider } from "./nmp/context";
 import { chirpRelayOverrideFromSearch } from "./chirpConfig";
+// Item C — feed / publish / profile UI (FeedPanel owns its own store + provider).
+import { FeedPanel } from "./features/feed/FeedPanel";
 
 // NIP-07 browser extension interface (window.nostr — EIP-1193-style extension).
 declare global {
@@ -139,7 +141,9 @@ export default function App() {
           Item C imports its panel components and renders them here via
           NmpClientContext. Do not add logic to this slot — zero protocol TS.
         */}
-        <section data-slot="feed" aria-label="Feed" />
+        <section data-slot="feed" aria-label="Feed">
+          <FeedPanel />
+        </section>
 
         {/*
           MOUNT POINT — Item D: signing / onboarding UI.
