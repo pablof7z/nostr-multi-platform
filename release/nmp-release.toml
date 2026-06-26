@@ -148,6 +148,10 @@ name = "nmp-nip89"
 path = "crates/nmp-nip89"
 
 [[public_crates]]
+name = "nmp-nip46"
+path = "crates/nmp-nip46"
+
+[[public_crates]]
 name = "nmp-nip47"
 path = "crates/nmp-nip47"
 

@@ -1,0 +1,22 @@
+[package]
+name = "nmp-nip46"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Transport-agnostic NIP-46 protocol core (remote-signer handshake + RPC helpers)."
+
+[lib]
+name = "nmp_nip46"
+crate-type = ["rlib"]
+
+[dependencies]
+nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# STEP-1-only carry: the blocking handshake state machine (`await_response`,
+# `recv_inbound_or_cancel`) relies on `crossbeam_channel::select_biased!` for
+# its event-driven cancel/deadline wait (D8 — no polling). STEP 2 rewrites the
+# handshake to a reducer that the caller drives, at which point this dep and
+# `crossbeam-channel` are removed from this crate.
+crossbeam-channel = "0.5"

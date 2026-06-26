@@ -14,9 +14,10 @@
 
 use std::sync::{Arc, Mutex, Weak};
 
+use nmp_nip46::build_event_frame;
 use nmp_signer_iface::{Nip46Rpc, Nip46Transport, SignerError};
 use nmp_signers::Nip46Signer;
-use nostr::{EventBuilder, Keys, Kind, PublicKey, Tag, Timestamp};
+use nostr::{Keys, PublicKey};
 use serde_json::Value;
 
 use crate::handshake::decode_inbound_response;
@@ -120,37 +121,19 @@ impl Nip46Transport for BrokerTransport {
     fn send_rpc(&self, rpc: Nip46Rpc) -> Result<(), SignerError> {
         // `rpc.body_json_to_encrypt` is plaintext JSON per the contract in
         // `nmp_signers::signers::nip46` (the signer defers NIP-44 encryption
-        // to the transport, which is us). Wrap, encrypt, sign, publish.
-        let ciphertext = nostr::nips::nip44::encrypt(
-            self.local_keys.secret_key(),
-            &self.remote_pubkey,
-            rpc.body_json_to_encrypt.as_bytes(),
-            nostr::nips::nip44::Version::V2,
-        )
-        .map_err(|e| SignerError::Backend(format!("nip44 encrypt: {e}")))?;
-        let event = EventBuilder::new(Kind::from_u16(24133), ciphertext)
-            .tags(vec![Tag::parse(["p", &self.remote_pubkey.to_hex()])
-                .map_err(|e| {
-                    SignerError::Backend(format!("tag parse: {e}"))
-                })?])
-            .custom_created_at(Timestamp::from(now_secs()))
-            .sign_with_keys(&self.local_keys)
-            .map_err(|e| SignerError::Backend(format!("sign event: {e}")))?;
-        let serialized = serde_json::to_string(&event)
-            .map_err(|e| SignerError::Backend(format!("serialize event: {e}")))?;
-        let frame = format!(r#"["EVENT",{serialized}]"#);
+        // to the transport, which is us). Delegate to the single authoritative
+        // NIP-44 V2 kind:24133 frame builder in nmp-nip46.
+        // `RpcBuildError`'s `Display` reproduces the exact prior inline strings
+        // ("nip44 encrypt: …", "tag parse: …", "sign event: …", "serialize
+        // event: …"), so forward it verbatim with no added prefix to keep the
+        // surfaced error text byte-identical to the pre-extraction code.
+        let frame =
+            build_event_frame(&self.local_keys, self.remote_pubkey, &rpc.body_json_to_encrypt)
+                .map_err(|e| SignerError::Backend(e.to_string()))?;
         self.relay
             .send(frame)
             .map_err(|e| SignerError::Backend(format!("relay send: {e}")))
     }
-}
-
-fn now_secs() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 #[cfg(test)]
