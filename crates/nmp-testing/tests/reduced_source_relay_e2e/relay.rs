@@ -89,14 +89,21 @@ impl RecordingRelay {
                 }
             }
             let now = Instant::now();
-            assert!(now < deadline, "timed out waiting for {label}");
+            assert!(
+                now < deadline,
+                "timed out waiting for {label}; observed backlog = {:?}",
+                self.observed
+            );
             let remaining = deadline.saturating_duration_since(now);
             match self
                 .observed_rx
                 .recv_timeout(remaining.min(Duration::from_millis(500)))
             {
                 Ok(frame) => self.observed.push(frame),
-                Err(_) => panic!("timed out waiting for {label}"),
+                Err(_) => panic!(
+                    "timed out waiting for {label}; observed backlog = {:?}",
+                    self.observed
+                ),
             }
         }
     }
@@ -111,14 +118,21 @@ impl RecordingRelay {
                 return;
             }
             let now = Instant::now();
-            assert!(now < deadline, "timed out waiting for {label}");
+            assert!(
+                now < deadline,
+                "timed out waiting for {label}; observed backlog = {:?}",
+                self.observed
+            );
             let remaining = deadline.saturating_duration_since(now);
             match self
                 .observed_rx
                 .recv_timeout(remaining.min(Duration::from_millis(500)))
             {
                 Ok(frame) => self.observed.push(frame),
-                Err(_) => panic!("timed out waiting for {label}"),
+                Err(_) => panic!(
+                    "timed out waiting for {label}; observed backlog = {:?}",
+                    self.observed
+                ),
             }
         }
     }
