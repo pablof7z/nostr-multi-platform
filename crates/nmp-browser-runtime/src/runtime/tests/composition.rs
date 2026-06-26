@@ -9,9 +9,49 @@
 //! namespaces; signer/capability provider implementations remain an explicit
 //! app/provider decision and are not installed by `register_defaults`.
 
+use std::sync::Arc;
+
 use crate::{BrowserAppBuilder, BrowserRunConfig};
 
 use super::started_handle;
+
+/// #1007 PR-7 — injection identity: a store handed to `inject_store` must be the
+/// exact `Arc` the kernel reducer holds after `start()` (no wrapping, no swap).
+///
+/// This is the native, always-runnable analog of the wasm OPFS injection: the
+/// async hook (`NmpWasmRuntime::prepare_store`) parks an `Arc<dyn EventStore>`
+/// that `handle_start` feeds straight into this same `inject_store` seam, so
+/// proving the seam preserves pointer identity proves the OPFS store reaches the
+/// reducer intact.
+#[test]
+fn inject_store_reaches_reducer_with_pointer_identity() {
+    let custom: Arc<dyn nmp_store::EventStore> = Arc::new(nmp_store::MemEventStore::new());
+
+    let handle = BrowserAppBuilder::new()
+        .inject_store(Arc::clone(&custom))
+        .consume_all_builtin_projections()
+        .without_initial_relays()
+        .decide_providers(BrowserRunConfig::default())
+        .start();
+
+    assert!(
+        Arc::ptr_eq(&custom, &handle.event_store_handle()),
+        "inject_store must hand the exact Arc to the kernel reducer — \
+         the store the OPFS hook opens (#1007 PR-7) must reach the reducer unwrapped"
+    );
+}
+
+/// Control: the default `in_memory()` start path must NOT alias an unrelated
+/// injected store — guards the identity assertion above against a false positive.
+#[test]
+fn in_memory_start_does_not_alias_an_injected_store() {
+    let unrelated: Arc<dyn nmp_store::EventStore> = Arc::new(nmp_store::MemEventStore::new());
+    let handle = started_handle();
+    assert!(
+        !Arc::ptr_eq(&unrelated, &handle.event_store_handle()),
+        "in_memory() start must use its own store, not some unrelated Arc"
+    );
+}
 
 #[test]
 fn browser_start_registers_every_canonical_default_action_namespace() {

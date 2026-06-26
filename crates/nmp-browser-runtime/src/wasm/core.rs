@@ -65,6 +65,11 @@ pub struct NmpRuntimeCore {
     /// yet been delivered to the JS host. Drained and prepended to the next
     /// `handle_json_request` response (#2139 BLOCKER 2).
     pub(super) pending_host_events: Vec<WorkerEvent>,
+    /// Durable store opened by the async pre-`Start` hook
+    /// (`NmpWasmRuntime::prepare_store`, #1007 PR-7), parked for `handle_start` to
+    /// inject. `None` → `handle_start` falls back to `.in_memory()`. Native keeps
+    /// it `None`: only the wasm32 OPFS hook populates it.
+    pub(super) injected_store: Option<std::sync::Arc<dyn nmp_store::EventStore>>,
 }
 
 impl NmpRuntimeCore {
@@ -74,7 +79,16 @@ impl NmpRuntimeCore {
             handle: None,
             snapshot_sink: None,
             pending_host_events: Vec::new(),
+            injected_store: None,
         }
+    }
+
+    /// Stash the durable `EventStore` opened by the async pre-`Start` hook
+    /// (`NmpWasmRuntime::prepare_store`) so the next synchronous `Start` injects
+    /// it instead of `.in_memory()` (#1007 PR-7 — the async-open-before-`Start`
+    /// seam). `handle_start` consumes it via `injected_store.take()`.
+    pub fn set_injected_store(&mut self, store: std::sync::Arc<dyn nmp_store::EventStore>) {
+        self.injected_store = Some(store);
     }
 
     /// Install (or clear, with `None`) the snapshot push sink.
@@ -170,6 +184,21 @@ impl NmpRuntimeCore {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+/// Compose the per-app OPFS-SQLite database name (#1007 PR-7).
+///
+/// `app_id` namespaces durable storage so two NMP apps in one origin's OPFS never
+/// collide; `database_name` is the app's logical store. Both trimmed; empty parts
+/// collapse (no stray separator); a fully empty pair degrades to a stable `"nmp"`
+/// (D6 — total: always a usable, deterministic name, never panics).
+pub(super) fn opfs_database_name(app_id: &str, database_name: &str) -> String {
+    match (app_id.trim(), database_name.trim()) {
+        ("", "") => "nmp".to_string(),
+        (app, "") => app.to_string(),
+        ("", db) => db.to_string(),
+        (app, db) => format!("{app}-{db}"),
+    }
+}
+
 /// Map `BrowserRuntimeEvent`s from a pump turn to `WorkerEvent`s.
 pub(super) fn map_pump_events(events: Vec<crate::BrowserRuntimeEvent>) -> Vec<WorkerEvent> {
     use crate::BrowserRuntimeEvent;
@@ -249,6 +278,26 @@ mod tests {
     fn new_core_has_no_handle() {
         let core = NmpRuntimeCore::new();
         assert!(core.handle.is_none());
+    }
+
+    #[test]
+    fn new_core_has_no_injected_store() {
+        let core = NmpRuntimeCore::new();
+        assert!(
+            core.injected_store.is_none(),
+            "fresh core must default to no durable store (→ in_memory at start)"
+        );
+    }
+
+    // ── #1007 PR-7: per-app OPFS database-name composition ────────────────────
+
+    #[test]
+    fn opfs_database_name_namespaces_by_app_id() {
+        assert_eq!(super::opfs_database_name("chirp", "feed"), "chirp-feed");
+        assert_eq!(super::opfs_database_name("  chirp ", " feed "), "chirp-feed");
+        assert_eq!(super::opfs_database_name("chirp", ""), "chirp");
+        assert_eq!(super::opfs_database_name("", "feed"), "feed");
+        assert_eq!(super::opfs_database_name("", ""), "nmp");
     }
 
     #[test]

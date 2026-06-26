@@ -91,9 +91,20 @@ impl NmpRuntimeCore {
         let bootstrap = relay_bootstrap_from_config(config.relays.clone(), config.relay_bootstrap);
 
         // Build the typed BrowserRuntimeHandle through the builder typestate.
-        let builder = BrowserAppBuilder::new()
-            .in_memory()
-            .consume_all_builtin_projections();
+        //
+        // Storage gate (#1007 PR-7): if the async pre-`Start` hook
+        // (`NmpWasmRuntime::prepare_store`) already opened a durable OPFS-SQLite
+        // store and parked it on the core, inject it. Otherwise fall back to the
+        // explicit in-memory store. The fallback is honest — when the OPFS open
+        // failed, durability is OFF and that was already logged at the open site;
+        // PR-8 adds the D6 degraded-mode diagnostics + Tier-3 `store_open_failure`
+        // snapshot. Both arms land on `BrowserAppBuilder<StorageSet>`.
+        let storage = BrowserAppBuilder::new();
+        let builder = match self.injected_store.take() {
+            Some(store) => storage.inject_store(store),
+            None => storage.in_memory(),
+        }
+        .consume_all_builtin_projections();
 
         let builder = if bootstrap.is_empty() {
             builder.without_initial_relays()
