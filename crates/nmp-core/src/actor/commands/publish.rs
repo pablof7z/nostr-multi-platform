@@ -18,12 +18,6 @@ use crate::publish::{validate_explicit_relays, PublishTarget};
 use crate::relay::OutboundMessage;
 use nmp_signer_iface::UnsignedEvent;
 
-// Workstream C (2026-06-15) — the private-envelope D10 guard no longer keys off
-// a raw `kind == KIND_GIFT_WRAP` literal here; the gift-wrap (kind:1059) AND
-// sealed-chat (kind:14) policy lives in the publish-policy table
-// (`crate::publish::policy`), consulted via `validate_publish_routing`. The
-// workspace-canonical kind integers remain declared once in [`crate::kinds`].
-
 fn stamp_unsigned_if_needed(kernel: &Kernel, unsigned: &mut UnsignedEvent) {
     if unsigned.created_at == 0 {
         unsigned.created_at = kernel.now_secs();
@@ -47,12 +41,6 @@ fn stamp_unsigned_if_needed(kernel: &Kernel, unsigned: &mut UnsignedEvent) {
 /// signing derives the pubkey from the active identity's keys and writes it
 /// onto the returned `SignedEvent`. There is no path for an app to publish
 /// under another author's identity through this command.
-///
-/// Stepping stone, not destination. The doctrine path is per-protocol-crate
-/// `ActionModule` impls that own the full Build → Sign → Publish pipeline
-/// (`kind-wrappers.md` §8 Phase 1). Once those land kind-by-kind, this
-/// generic command deprecates gracefully — typed `AppAction::NmpNipNN(...)`
-/// dispatches replace it.
 pub(crate) fn publish_unsigned_event(
     identity: &IdentityRuntime,
     kernel: &mut Kernel,

@@ -1,20 +1,4 @@
 //! Publish, follow, relay-mutation, and action-record dispatch arms.
-//!
-//! Covers: `PublishRawEvent`, `PublishProfile`, `PublishUnsignedEvent`,
-//! `PublishUnsignedEventToRelays`, `PublishSignedEvent`, `RetryPublish`,
-//! `CancelPublish`, `Follow`, `Unfollow`, `FollowMany`,
-//! `AddRelay`, `RemoveRelay`, `ReconnectRelays`,
-//! `RecordActionFailure`, `RecordActionSuccess`, `AckActionStage`,
-//! `SetRelayInfo`.
-//!
-//! Extracted from `dispatch.rs` to keep `mod.rs` under the LOC ceiling.
-//! No behaviour change — all logic is verbatim from the original file.
-//!
-//! ADR-0065 — the `dispatch_publish` / `dispatch_contacts` /
-//! `dispatch_relay` / `dispatch_action_ledger` functions below match the
-//! `PublishCommand` / `ContactsCommand` / `RelayCommand` /
-//! `ActionLedgerCommand` sub-enums and route each verb to its existing
-//! handler.
 
 use crate::actor::commands;
 use crate::actor::relay_mgmt::{ensure_relay_worker, shutdown_relay_worker};
