@@ -47,9 +47,6 @@ struct KernelUpdateResult {
     /// `nmp.follow_list`, schema_id `nmp.nip02.follow_list`). `nil` ⇒ generic
     /// `projections["nmp.follow_list"]` JSON fallback.
     let typedFollowList: FollowListSnapshot?
-    /// Typed `nmp.nip57.zaps` projection decode (`NZAP`). `nil` ⇒ generic
-    /// `projections["nmp.nip57.zaps"]` JSON fallback.
-    let typedZaps: ZapsAggregateSnapshot?
     /// Typed `nmp.nip29.group_chat` projection decode (`NGCS`). `nil` ⇒ generic
     /// `projections["nmp.nip29.group_chat"]` JSON fallback.
     let typedGroupChat: GroupChatSnapshot?

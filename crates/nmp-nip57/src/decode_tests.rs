@@ -1,9 +1,9 @@
 //! Tests for [`super`] — the kind:9735 zap-receipt decoder.
 //!
 //! Split out of `decode.rs` to keep that file under the hard LOC cap; wired
-//! back in via `#[path = "decode_tests.rs"] mod tests;` (the same pattern
-//! `wire::typed_fb` uses). `use super::*` still resolves to the `decode`
-//! module, so the tests reach the private `decode_borrowed` /
+//! back in via `#[path = "decode_tests.rs"] mod tests;`. `use super::*` still
+//! resolves to the `decode` module, so the tests reach the private
+//! `decode_borrowed` /
 //! `amount_from_embedded_request` helpers unchanged.
 
 use super::*;

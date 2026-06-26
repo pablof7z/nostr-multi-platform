@@ -113,7 +113,6 @@ final class ProjectionMergeCache {
         case "nmp.follow_list": return TypedFollowListDecoder.decode(bytes: bytes) != nil
         case "nmp.nip29.discovered_groups": return TypedDiscoveredGroupsDecoder.decode(bytes: bytes) != nil
         case "nmp.nip29.group_defaults": return TypedGroupDefaultsDecoder.decode(bytes: bytes) != nil
-        case "nmp.nip57.zaps": return TypedZapsDecoder.decode(bytes: bytes) != nil
         case "nmp.nip17.dm_relay_list": return TypedDmRelayListDecoder.decode(bytes: bytes) != nil
         case "relay_diagnostics": return TypedRelayDiagnosticsDecoder.decode(bytes: bytes) != nil
         case "claimed_events": return TypedClaimedEventsDecoder.decode(bytes: bytes) != nil

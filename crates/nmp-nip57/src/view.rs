@@ -79,7 +79,7 @@ impl ZapsState {
 pub struct ZapsView;
 
 impl ZapsView {
-    pub const NAMESPACE: &'static str = "nmp.nip57.zaps";
+    pub const NAMESPACE: &'static str = "nmp.nip57.event_zaps";
 
     #[must_use] 
     pub fn key(spec: &ZapsSpec) -> EventId {

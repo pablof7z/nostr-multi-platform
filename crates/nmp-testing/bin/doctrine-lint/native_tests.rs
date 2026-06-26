@@ -12,20 +12,11 @@ fn workspace_root() -> PathBuf {
 
 fn run_lint(args: &[&str]) -> (i32, String, String) {
     let root = workspace_root();
-    let output = Command::new(env!("CARGO"))
+    let output = Command::new(env!("CARGO_BIN_EXE_doctrine-lint"))
         .current_dir(&root)
-        .args([
-            "run",
-            "--quiet",
-            "-p",
-            "nmp-testing",
-            "--bin",
-            "doctrine-lint",
-            "--",
-        ])
         .args(args)
         .output()
-        .expect("cargo run must spawn");
+        .expect("doctrine-lint binary must spawn");
     (
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stdout).into_owned(),

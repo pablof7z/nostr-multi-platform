@@ -19,9 +19,8 @@
 //!      **per-tick observer** seam (`register_snapshot_tick_observer`): it
 //!      ensures / drops the active-account kind:9735 `#p` subscription on
 //!      sign-in / account switch / sign-out and contributes NO snapshot data
-//!      (the `nmp.nip57.zaps` aggregate projection is registered separately by
-//!      an app crate that wants the per-target counts; the template ships only
-//!      the subscription reconciler).
+//!      (visible card zap counts are acquired through
+//!      `nmp.nip01.visible_note_relations`, not a global zap aggregate).
 //!
 //! # Both controllers
 //!
@@ -393,9 +392,9 @@ impl DmRuntimeController {
 /// projection registry (which it previously abused by returning a `Value::Null`
 /// projection purely to obtain the per-tick callback).
 ///
-/// The per-target zap aggregate read (`"nmp.nip57.zaps"`, fed by
-/// [`nmp_nip57::ZapsAggregateProjection`]) is registered separately by the
-/// per-app crate that wants it; the template ships only this reconciler.
+/// Visible-card zap counts are acquired through the scoped
+/// `nmp.nip01.visible_note_relations` action/interest path; the template ships
+/// only this active-account receipt reconciler.
 ///
 /// Called by [`super::register_defaults`]; exposed `pub` so an app crate
 /// that opts out of the wholesale defaults can still wire just the zap

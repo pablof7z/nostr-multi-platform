@@ -15,7 +15,7 @@
 
 NMP persists every accepted event to LMDB (`EventStore::insert`, D4
 single-writer). But **no code path replays stored events into projections.**
-Projections (timeline, DM inbox, group chat, zap aggregate) are fed
+Projections (timeline, DM inbox, group chat, scoped note relations) are fed
 *exclusively* by live relay deliveries through one funnel:
 
 ```

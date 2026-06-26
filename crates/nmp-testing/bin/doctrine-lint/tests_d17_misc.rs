@@ -209,6 +209,7 @@ fn d17_does_not_fire_in_chirp_app_path() {
         .join("target")
         .join("apps")
         .join("chirp")
+        .join("crates")
         .join("nmp-app-chirp")
         .join("src");
     let _ = std::fs::remove_dir_all(&tmp);

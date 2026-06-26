@@ -3,11 +3,9 @@
 //! list) and action namespaces into an [`NmpApp`].
 
 use std::ffi::c_char;
-use std::sync::Arc;
 
 use nmp_core::__ffi_internal::is_hex_pubkey;
 use nmp_core::substrate::RoutingFactoryRegistrar;
-use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
 
@@ -153,36 +151,6 @@ pub extern "C" fn nmp_app_chirp_register(
     // borrow past this function.
     let app_ref = unsafe { &*app };
 
-    // Wire the NIP-57 `ZapsAggregateProjection` — a `KernelEventObserver`
-    // that indexes incoming kind:9735 zap receipts by their `["e", target]`
-    // tag so a timeline surface can show per-row zap counts + total msats
-    // without opening a per-target `ZapsView` for every visible note.
-    //
-    // Pure consumption — registers as an event observer (ingest) and exposes
-    // its `snapshot_json` read under `"nmp.nip57.zaps"` (output). No
-    // action, no handle, no swap slot: `nmp_app_chirp_register` is called
-    // once at app init, so a fire-and-forget registration is sufficient.
-    // Mirrors `register_inbox_projection` in `dm_runtime.rs`.
-    //
-    // D6 — silent skip on a poisoned observer slot. Zap counts are a
-    // non-essential feed affordance; their absence must not fail the whole
-    // Chirp registration. The `ModularTimelineProjection` below remains the
-    // single fatal-on-failure observer (its absence breaks the timeline).
-    let zaps_proj = Arc::new(nmp_nip57::ZapsAggregateProjection::new());
-    let zaps_observer_id =
-        app_ref.register_live_event_tap(Arc::clone(&zaps_proj) as Arc<dyn KernelEventObserver>);
-    if zaps_observer_id.0 != 0 {
-        // Typed `"nmp.nip57.zaps"` sidecar (ADR-0037), emitted ALONGSIDE the
-        // generic `Value` projection below — never replacing it. A host with an
-        // `NZAP` decoder prefers the typed payload; an un-updated host falls
-        // back to the generic subtree. The extra `Arc` clone goes to the typed
-        // closure; the last clone is consumed by the generic `move` closure.
-        let typed_zaps_proj = Arc::clone(&zaps_proj);
-        app_ref.register_typed_snapshot_projection("nmp.nip57.zaps", move || {
-            zaps_typed_projection(&typed_zaps_proj)
-        });
-    }
-
     // #626: wire the NIP-29 group-create defaults projection so Chirp's
     // app-owned suggested public-group relay URL surfaces under
     // `"nmp.nip29.group_defaults"` as the typed `NGDF` projection instead of
@@ -318,25 +286,4 @@ pub extern "C" fn nmp_app_chirp_register_follow_list(
     let contacts_lookup = app_ref.contacts_lookup();
 
     register_follow_state_runtime(app_ref, contacts_lookup);
-}
-
-/// Build the typed `"nmp.nip57.zaps"` sidecar entry from the live zaps
-/// projection. Always emits (parity with the generic projection, which always
-/// contributes `{"totals":{}}`): an empty session yields an empty typed buffer.
-///
-/// Extracted from the `register_typed_snapshot_projection` closure so the
-/// registration's schema identity (`key` / `schema_id` / `file_identifier`) and
-/// the encode are unit-testable without spinning the actor (Wave A proof test).
-pub(crate) fn zaps_typed_projection(
-    proj: &nmp_nip57::ZapsAggregateProjection,
-) -> Option<nmp_core::TypedProjectionData> {
-    let snapshot = proj.snapshot();
-    Some(nmp_core::TypedProjectionData {
-        key: "nmp.nip57.zaps".to_string(),
-        schema_id: nmp_nip57::ZAPS_SCHEMA_ID.to_string(),
-        schema_version: nmp_nip57::ZAPS_SCHEMA_VERSION,
-        file_identifier: String::from_utf8_lossy(nmp_nip57::ZAPS_FILE_IDENTIFIER).into_owned(),
-        payload: nmp_nip57::encode_zaps_snapshot(&snapshot),
-        ..Default::default()
-    })
 }

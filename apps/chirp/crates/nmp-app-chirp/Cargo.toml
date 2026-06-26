@@ -101,7 +101,7 @@ nmp-nip17 = { path = "../../../../crates/nmp-nip17" }
 # Chirp's own social verbs. D0-clean: `nmp-core` gains no group nouns.
 nmp-nip29 = { path = "../../../../crates/nmp-nip29" }
 # NIP-57 lightning zaps — direct dep for the Chirp-specific
-# `ZapsAggregateProjection` event observer + `"nmp.nip57.zaps"` snapshot
+# NIP-57 zap action/runtime support.
 # projection (per-target zap-count aggregate read for the timeline). The
 # `nmp.nip57.zap` action module + kind:9734 builder + LNURL fetcher are
 # wired by `nmp-defaults::register_defaults` (transitively).

@@ -66,6 +66,18 @@ fn relation_counts_include_reactions_reposts_and_zaps() {
         content: String::new(),
         relay_provenance: Vec::new(),
     });
+    proj.on_kernel_event(&KernelEvent {
+        id: "unrelated-zap".into(),
+        author: "ln".into(),
+        kind: nmp_nip57::KIND_ZAP_RECEIPT,
+        created_at: 5,
+        tags: vec![
+            vec!["p".into(), "recipient".into()],
+            vec!["e".into(), "OTHER".into()],
+        ],
+        content: String::new(),
+        relay_provenance: Vec::new(),
+    });
 
     let snap = proj.snapshot();
     let root = snap

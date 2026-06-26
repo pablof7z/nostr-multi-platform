@@ -46,9 +46,9 @@ import XCTest
 /// None for the JSON `Decodable` path — every registered Rust projection that
 /// ships as a JSON `SnapshotProjections` field (`nmp.nip29.group_chat`,
 /// `nmp.nip29.discovered_groups`, `nmp.nip29.group_defaults`,
-/// `nmp.nip17.dm_inbox`, `nmp.follow_list`, `nmp.nip57.zaps`,
-/// `nmp.nip17.dm_relay_list`, `nmp.marmot.snapshot`,
-/// `nmp.marmot.messages`) has its decoder covered by this conformance test
+/// `nmp.nip17.dm_inbox`, `nmp.follow_list`, `nmp.nip17.dm_relay_list`,
+/// `nmp.marmot.snapshot`, `nmp.marmot.messages`) has its decoder covered by
+/// this conformance test
 /// (V-107 / ADR-0039).
 ///
 /// One registered dotted key is DELIBERATELY out of scope here: `nmp.feed.home`
@@ -98,9 +98,6 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
           },
           "nmp.follow_list": {
             "follows": []
-          },
-          "nmp.nip57.zaps": {
-            "totals": {}
           },
           "nmp.nip17.dm_relay_list": {
             "active_pubkey": null,
@@ -164,9 +161,6 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
             projections.followList,
             "SnapshotProjections.followList decoded nil — check CodingKeys.followList raw value matches \"nmp.followList\" (post-convertFromSnakeCase of \"nmp.follow_list\")")
         XCTAssertNotNil(
-            projections.zaps,
-            "SnapshotProjections.zaps decoded nil — check CodingKeys.zaps raw value matches \"nmp.nip57.zaps\"")
-        XCTAssertNotNil(
             projections.dmRelayList,
             "SnapshotProjections.dmRelayList decoded nil — check CodingKeys.dmRelayList raw value matches \"nmp.nip17.dmRelayList\" (post-convertFromSnakeCase of \"nmp.nip17.dm_relay_list\")")
         // ADR-0063 Lane H: claimedProfiles (KCPR) deleted from SnapshotProjections.
@@ -203,7 +197,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
             "MarmotMessage.epoch must decode from Rust \"epoch\"")
     }
 
-    /// Sanity check: all seven projection fields default to nil when the
+    /// Sanity check: all snapshot projection fields default to nil when the
     /// kernel emits an empty projections map (an older kernel build that
     /// predates the projections, or a fresh actor with no registrations yet).
     /// This is the steady-state any new field MUST tolerate (D1 — never
@@ -216,7 +210,6 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         XCTAssertNil(projections.groupDefaults)
         XCTAssertNil(projections.dmInbox)
         XCTAssertNil(projections.followList)
-        XCTAssertNil(projections.zaps)
         XCTAssertNil(projections.dmRelayList)
         // ADR-0063 Lane H: claimedProfiles (KCPR) deleted from SnapshotProjections.
         // V-107 / ADR-0039: Marmot push projections also nil on empty map.

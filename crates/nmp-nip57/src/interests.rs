@@ -64,7 +64,7 @@ pub fn self_zap_receipts_identity() -> SubIdentity {
 
 /// Tailing [`LogicalInterest`] for kind:9735 `#p <pubkey>` zap receipts — the
 /// subscription a host runtime controller ensures so a
-/// `ZapsAggregateProjection` actually receives receipts.
+/// scoped visible-card relation readers can receive receipts.
 ///
 /// Shape — read by the planner's cold-start bootstrap gate at
 /// `crates/nmp-core/src/planner/compiler/partition/mod.rs`:
@@ -119,7 +119,7 @@ mod tests {
     /// The interest shape matches the planner cold-start bootstrap gate
     /// (`partition/mod.rs`: Tailing + Global + #p + Nip65ReadRelays). Without
     /// this exact shape, the cold-start fallback would not fire and
-    /// `ZapsAggregateProjection` would receive no receipts until kind:10002
+    /// scoped visible-card relation readers would receive no receipts until kind:10002
     /// arrives for the active account.
     #[test]
     fn interest_shape_matches_planner_bootstrap_gate() {

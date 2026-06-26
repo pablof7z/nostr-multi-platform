@@ -117,14 +117,18 @@ evaluated in `lattice/mod.rs` order 6, 9, 1, 2, 3, 4, 5, 7, 8):
 | **What** | A named `nmp.*` slice of app/module state delivered in `typed_projections[key]` |
 | **Register** | `register_typed_snapshot_projection(key, Fn() -> Option<TypedProjectionData>)` seam (`crates/nmp-ffi/src/snapshot.rs`) |
 | **Delivery** | Appended to the reactive push frame every emit tick — no pull symbol, no polling |
-| **Read** | generated typed projection decoder in the host `apply()` |
-| **Exemplar** | `nmp-nip29/src/register.rs:66`; Chirp `register.rs:371` (`nmp.follow_list`); `nmp-nip57` (`nmp.nip57.zaps`) |
-| **Status** | Production host-rendered projection lane |
+| **Read** | `snapshot.projections[key]` in the host `apply()` (e.g. `projections?.followList`, `KernelBridge.swift:884`) |
+| **Exemplar** | `nmp-nip29/src/register.rs:66`; Chirp `register.rs:371` (`nmp.follow_list`); NIP-29 group defaults (`nmp.nip29.group_defaults`) |
+| **Typed sibling** | `register_typed_snapshot_projection` → `snapshot.typedProjections` (ADR-0037), **not** `projections[key]` |
+| **Status** | Structural permanent — `ffi-deprecation-calendar.md:61` ("keep, freeze-locked") |
 
 **Distinct from `KernelEventObserver`-driven view updates** (Card 2 seam 3) —
 those push typed view deltas via `ViewBatch`; this is a named JSON state slice
 in the snapshot's `projections` map. See [15](15-codegen-and-ffi.md) /
 [17](17-ios-shell.md).
+
+Zap counts are not a global snapshot projection. They are visible-note relation
+state claimed through `nmp.nip01.visible_note_relations`.
 
 ## Anti-patterns
 

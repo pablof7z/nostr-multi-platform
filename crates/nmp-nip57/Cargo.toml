@@ -31,7 +31,6 @@ nmp-store = { path = "../nmp-store" }
 # Layer-0 kind-constant registry — re-exports KIND_ZAP_REQUEST / KIND_ZAP_RECEIPT
 # so this crate no longer duplicates those values (V-57).
 nmp-kinds = { path = "../nmp-kinds" }
-# Typed FlatBuffers codec for the `nmp.nip57.zaps` snapshot sidecar (ADR-0037).
 flatbuffers = { workspace = true }
 # #1728: zap-pay chain — after fetching the bolt11, `FetchLnurlInvoiceCommand`
 # emits a payment through the injected `nmp_core::substrate::PaymentPort`
