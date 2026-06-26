@@ -228,12 +228,15 @@
   }
 
   .rail-nav {
+    display: grid;
     width: 100%;
-    overflow-x: auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .rail-link {
-    white-space: nowrap;
+    justify-content: center;
+    padding: 0 8px;
+    font-size: 13px;
   }
 
   .rail-status {

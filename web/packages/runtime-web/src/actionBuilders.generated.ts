@@ -168,6 +168,41 @@ export const GeneratedActionBuilders = {
     return encodeDispatchEnvelope(correlationId, "nmp.publish", payload);
   },
 
+  /** Sign-and-publish a kind:1 reply; Rust derives NIP-10 tags from the stored parent event. */
+  publishReply(
+    correlationId: string,
+    content: string,
+    replyToEventId: string,
+    relays: string[] | null = null,
+    signerPubkey: string | null = null,
+  ): Uint8Array {
+    const fbb = new flatbuffers.Builder(64);
+    const contentOffset = fbb.createString(content);
+    const replyToEventIdOffset = fbb.createString(replyToEventId);
+    const signerPubkeyOffset = signerPubkey === null ? 0 : fbb.createString(signerPubkey);
+    const targetRelays = relays ?? [];
+    const explicit = targetRelays.length > 0;
+    const targetRelaysVec = stringVector(fbb, targetRelays);
+    fbb.startObject(2);
+    fbb.addFieldInt8(0, explicit ? 1 : 0, 0); // slot 0: explicit
+    fbb.addFieldOffset(1, targetRelaysVec, 0); // slot 1: relays
+    const targetOffset = fbb.endObject();
+    fbb.startObject(4);
+    fbb.addFieldOffset(0, contentOffset, 0); // slot 0: content
+    fbb.addFieldOffset(1, replyToEventIdOffset, 0); // slot 1: reply_to_event_id
+    fbb.addFieldOffset(2, targetOffset, 0); // slot 2: target
+    if (signerPubkeyOffset !== 0) fbb.addFieldOffset(3, signerPubkeyOffset, 0); // slot 3: signer_pubkey
+    const bodyOffset = fbb.endObject();
+    fbb.startObject(3);
+    fbb.addFieldInt32(0, 1, 0); // slot 0: schema_version
+    fbb.addFieldInt8(1, 4, 0); // slot 1: body_type
+    fbb.addFieldOffset(2, bodyOffset, 0); // slot 2: body
+    const payloadRoot = fbb.endObject();
+    fbb.finish(payloadRoot, "NPUB");
+    const payload = fbb.asUint8Array();
+    return encodeDispatchEnvelope(correlationId, "nmp.publish", payload);
+  },
+
   /** Sign-and-publish a kind:0 profile metadata event for the active account. */
   publishProfile(
     correlationId: string,

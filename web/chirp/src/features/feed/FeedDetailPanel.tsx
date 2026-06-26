@@ -1,7 +1,7 @@
-import { For, Show, createMemo } from "solid-js";
+import { For, Show, createMemo, createSignal } from "solid-js";
 import type { FeedRow } from "../../nmp/feedDecoder";
 import { useNmpClient } from "../../nmp/context";
-import { followCommand } from "../../nmp/actions";
+import { followCommand, publishNoteAction } from "../../nmp/actions";
 import { displayLabel, shortHex } from "@nmp/components-web/src/user-avatar/ProfileWire";
 import { useNostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrProfileHost";
 import { NostrAvatar } from "@nmp/components-web/src/user-avatar/NostrAvatar";
@@ -49,7 +49,7 @@ export function FeedDetailPanel(props: {
 
       <Show
         when={props.selection.kind === "profile"}
-        fallback={<ThreadPreview row={props.selection.row} />}
+        fallback={<ThreadPreview row={props.selection.row} canPublish={props.canPublish} />}
       >
         <div class="profile-preview">
           <NostrAvatar
@@ -81,7 +81,10 @@ export function FeedDetailPanel(props: {
   );
 }
 
-function ThreadPreview(props: { row: FeedRow }) {
+function ThreadPreview(props: { row: FeedRow; canPublish: boolean }) {
+  const { client } = useNmpClient();
+  const [reply, setReply] = createSignal("");
+  const [submitting, setSubmitting] = createSignal(false);
   const stats = () => [
     { label: "Replies", value: props.row.relationCounts.replies },
     { label: "Likes", value: props.row.relationCounts.reactions },
@@ -89,6 +92,19 @@ function ThreadPreview(props: { row: FeedRow }) {
     { label: "Zaps", value: props.row.relationCounts.zaps },
     { label: "Comments", value: props.row.relationCounts.comments },
   ];
+  const canSubmit = () => props.canPublish && reply().trim().length > 0 && !submitting();
+
+  const publishReply = async () => {
+    const content = reply().trim();
+    if (!content || !props.canPublish || submitting()) return;
+    setSubmitting(true);
+    try {
+      await client.dispatchChirp(publishNoteAction(content, props.row.id));
+      setReply("");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div class="thread-preview">
@@ -113,9 +129,32 @@ function ThreadPreview(props: { row: FeedRow }) {
           </For>
         </Show>
       </div>
-      <button class="detail-secondary" disabled>
-        Reply requires runtime thread publishing
-      </button>
+      <form
+        class="thread-reply-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void publishReply();
+        }}
+      >
+        <textarea
+          aria-label="Reply to thread"
+          data-testid="thread-reply-input"
+          placeholder={props.canPublish ? "Reply to this thread" : "Sign in to reply"}
+          value={reply()}
+          onInput={(event) => setReply(event.currentTarget.value)}
+          disabled={!props.canPublish || submitting()}
+          rows={3}
+          maxLength={280}
+        />
+        <button
+          class="detail-secondary"
+          data-testid="thread-reply-submit"
+          type="submit"
+          disabled={!canSubmit()}
+        >
+          {submitting() ? "Replying..." : "Reply"}
+        </button>
+      </form>
     </div>
   );
 }

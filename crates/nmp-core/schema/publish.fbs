@@ -57,6 +57,18 @@ table PublishRaw {
   signer_pubkey:string;
 }
 
+// --- Sign-and-publish a reply to a stored kind:1 event -----------------------
+table PublishReply {
+  // Reply body. The kernel owns timestamps and NIP-10 tag assembly.
+  content:string (required);
+  // Direct parent event id. The reducer looks it up in the event store and
+  // derives root/reply/p tags; missing/non-note parents fail closed.
+  reply_to_event_id:string (required);
+  target:PublishTarget (required);
+  // `None` (empty) = active account; otherwise the registered signer pubkey.
+  signer_pubkey:string;
+}
+
 // A NIP-01 tag row (`["e", "<id>", ...]`).
 table TagRow {
   values:[string];
@@ -71,9 +83,9 @@ table PublishTarget {
   relays:[string];
 }
 
-// The three DISPATCHABLE publish variants (Cancel is engine-internal and not
+// The four DISPATCHABLE publish variants (Cancel is engine-internal and not
 // part of the typed dispatch payload — it rides the dedicated FFI symbol).
-union PublishPayloadBody { PublishSigned, PublishProfile, PublishRaw }
+union PublishPayloadBody { PublishSigned, PublishProfile, PublishRaw, PublishReply }
 
 table PublishPayload {
   // Fail-closed schema_version tripwire (ADR-0064 §1, read RAW before decode).

@@ -140,6 +140,20 @@ fn publish_profile_round_trips() {
     }
 }
 
+#[test]
+fn publish_reply_round_trips() {
+    let action = PublishAction::PublishReply {
+        content: "reply body".to_string(),
+        reply_to_event_id: "d".repeat(64),
+        target: PublishTarget::Explicit {
+            relays: vec!["wss://relay.example".to_string()],
+        },
+        signer_pubkey: Some("e".repeat(64)),
+    };
+    let decoded = PublishAction::decode(&action.encode()).expect("decodes");
+    assert_eq!(decoded, action);
+}
+
 // ---- Fail CLOSED: schema_version tripwire -----------------------------------
 
 #[test]

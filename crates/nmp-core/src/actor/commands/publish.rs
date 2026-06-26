@@ -24,6 +24,12 @@ use nmp_signer_iface::UnsignedEvent;
 // (`crate::publish::policy`), consulted via `validate_publish_routing`. The
 // workspace-canonical kind integers remain declared once in [`crate::kinds`].
 
+fn stamp_unsigned_if_needed(kernel: &Kernel, unsigned: &mut UnsignedEvent) {
+    if unsigned.created_at == 0 {
+        unsigned.created_at = kernel.now_secs();
+    }
+}
+
 /// Generic, kind-agnostic publish path.
 ///
 /// Takes an `UnsignedEvent` already built by any protocol-crate builder
@@ -65,6 +71,7 @@ pub(crate) fn publish_unsigned_event(
         // `Failed` terminal so the spinner clears, and is a no-op for `None`.
         return toast_no_account(kernel, "publish", correlation_id);
     }
+    stamp_unsigned_if_needed(kernel, &mut unsigned);
     crate::publish::finalize_outbound_tags(unsigned.kind, &mut unsigned.tags, kernel);
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer
     // returns a `Pending` op that is parked in `parked_ops` and `poll()`ed
@@ -170,6 +177,7 @@ pub(crate) fn publish_unsigned_event_to_relays(
     if let Err(reason) = validate_explicit_relays(&relays) {
         return fail_invalid_target(kernel, reason, correlation_id);
     }
+    stamp_unsigned_if_needed(kernel, &mut unsigned);
     crate::publish::finalize_outbound_tags(unsigned.kind, &mut unsigned.tags, kernel);
     let target = PublishTarget::Explicit { relays };
     // Non-blocking sign: a local key resolves now; a remote (NIP-46) signer

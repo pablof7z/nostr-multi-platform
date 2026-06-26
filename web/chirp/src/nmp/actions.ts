@@ -84,10 +84,11 @@ export function chirpActionRequest(action: ChirpAction, correlationId: string): 
   let bytes: Uint8Array;
   switch (action.action) {
     case "publish_note":
-      // NIP-10 reply-tag construction belongs to the host (#906): a kind:1 note
-      // lowers to the engine-generic `PublishRaw`. `reply_to_id` is resolved by
-      // the publish path, not forwarded into the envelope.
-      bytes = GeneratedActionBuilders.publishRaw(correlationId, 1, [], action.content);
+      // Top-level notes use the generic kind:1 publish builder. Replies carry
+      // only user intent; Rust resolves NIP-10 tags from the stored parent.
+      bytes = action.reply_to_id
+        ? GeneratedActionBuilders.publishReply(correlationId, action.content, action.reply_to_id)
+        : GeneratedActionBuilders.publishRaw(correlationId, 1, [], action.content);
       break;
     case "react":
       bytes = GeneratedActionBuilders.react(

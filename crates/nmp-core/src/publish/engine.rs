@@ -192,6 +192,9 @@ impl PublishEngine {
             PublishAction::PublishRaw { .. } => Err(PublishEngineError::UnsupportedAction(
                 "PublishRaw is published via ActorCommand::PublishRawEvent, not the publish engine",
             )),
+            PublishAction::PublishReply { .. } => Err(PublishEngineError::UnsupportedAction(
+                "PublishReply is published via ActorCommand::PublishReply, not the publish engine",
+            )),
         }
     }
 

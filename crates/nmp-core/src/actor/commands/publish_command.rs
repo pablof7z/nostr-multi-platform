@@ -34,6 +34,17 @@ pub enum PublishCommand {
         signer_pubkey: Option<String>,
         correlation_id: Option<String>,
     },
+    /// Sign-and-publish a kind:1 reply to an event already present in the
+    /// kernel store. The caller supplies only user intent (`content` +
+    /// direct parent id); the headless/native reducer derives NIP-10
+    /// root/reply/p tags from the stored parent before the sign boundary.
+    Reply {
+        content: String,
+        reply_to_event_id: String,
+        target: crate::publish::PublishTarget,
+        signer_pubkey: Option<String>,
+        correlation_id: Option<String>,
+    },
     /// T66a publish — sign a kind:0 profile metadata event with the active
     /// account and emit it to the NIP-65 outbox-resolved write relays (D3).
     ///

@@ -10,6 +10,29 @@
 use crate::relay::OutboundMessage;
 use nmp_signer_iface::SignedEvent;
 
+/// Build NIP-10 marked-form reply tags for a stored kind:1 parent event.
+///
+/// Shared by the native actor publish path and the browser/headless reducer
+/// path so there is one Rust owner for the parent lookup + tag assembly
+/// contract.
+#[must_use]
+pub(crate) fn build_reply_tags_from_kernel(
+    kernel: &crate::kernel::Kernel,
+    reply_to_id: &str,
+) -> Option<Vec<Vec<String>>> {
+    use crate::kernel::hex_to_pubkey_bytes;
+    use crate::tags::{parse_nip10, reply_tags};
+
+    let id_bytes = hex_to_pubkey_bytes(reply_to_id)?;
+    let store = kernel.event_store_handle();
+    let stored = store.get_by_id(&id_bytes).ok()??;
+    if stored.raw.kind != 1 {
+        return None;
+    }
+    let refs = parse_nip10(&stored.raw.tags);
+    Some(reply_tags(reply_to_id, &stored.raw.pubkey, &refs, None))
+}
+
 impl super::KernelReducer {
     /// V-01 Stage 3c — public publish-from-signed-event surface for non-actor
     /// consumers (today: the wasm32 `WasmRuntime` write path after the
@@ -90,16 +113,6 @@ impl super::KernelReducer {
     /// (wasm `RefCell` borrow discipline).
     #[must_use]
     pub fn build_reply_tags(&self, reply_to_id: &str) -> Option<Vec<Vec<String>>> {
-        use crate::kernel::hex_to_pubkey_bytes;
-        use crate::tags::{parse_nip10, reply_tags};
-
-        let id_bytes = hex_to_pubkey_bytes(reply_to_id)?;
-        let store = self.kernel.event_store_handle();
-        let stored = store.get_by_id(&id_bytes).ok()??;
-        if stored.raw.kind != 1 {
-            return None;
-        }
-        let refs = parse_nip10(&stored.raw.tags);
-        Some(reply_tags(reply_to_id, &stored.raw.pubkey, &refs, None))
+        build_reply_tags_from_kernel(&self.kernel, reply_to_id)
     }
 }

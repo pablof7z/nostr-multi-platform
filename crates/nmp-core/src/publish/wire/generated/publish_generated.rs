@@ -17,17 +17,18 @@ pub mod nmp {
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
-        pub const ENUM_MAX_PUBLISH_PAYLOAD_BODY: u8 = 3;
+        pub const ENUM_MAX_PUBLISH_PAYLOAD_BODY: u8 = 4;
         #[deprecated(
             since = "2.0.0",
             note = "Use associated constants instead. This will no longer be generated in 2021."
         )]
         #[allow(non_camel_case_types)]
-        pub const ENUM_VALUES_PUBLISH_PAYLOAD_BODY: [PublishPayloadBody; 4] = [
+        pub const ENUM_VALUES_PUBLISH_PAYLOAD_BODY: [PublishPayloadBody; 5] = [
             PublishPayloadBody::NONE,
             PublishPayloadBody::PublishSigned,
             PublishPayloadBody::PublishProfile,
             PublishPayloadBody::PublishRaw,
+            PublishPayloadBody::PublishReply,
         ];
 
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -39,14 +40,16 @@ pub mod nmp {
             pub const PublishSigned: Self = Self(1);
             pub const PublishProfile: Self = Self(2);
             pub const PublishRaw: Self = Self(3);
+            pub const PublishReply: Self = Self(4);
 
             pub const ENUM_MIN: u8 = 0;
-            pub const ENUM_MAX: u8 = 3;
+            pub const ENUM_MAX: u8 = 4;
             pub const ENUM_VALUES: &'static [Self] = &[
                 Self::NONE,
                 Self::PublishSigned,
                 Self::PublishProfile,
                 Self::PublishRaw,
+                Self::PublishReply,
             ];
             /// Returns the variant's name or "" if unknown.
             pub fn variant_name(self) -> Option<&'static str> {
@@ -55,6 +58,7 @@ pub mod nmp {
                     Self::PublishSigned => Some("PublishSigned"),
                     Self::PublishProfile => Some("PublishProfile"),
                     Self::PublishRaw => Some("PublishRaw"),
+                    Self::PublishReply => Some("PublishReply"),
                     _ => None,
                 }
             }
@@ -812,6 +816,229 @@ pub mod nmp {
                 ds.finish()
             }
         }
+        pub enum PublishReplyOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct PublishReply<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PublishReply<'a> {
+            type Inner = PublishReply<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PublishReply<'a> {
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 4;
+            pub const VT_REPLY_TO_EVENT_ID: ::flatbuffers::VOffsetT = 6;
+            pub const VT_TARGET: ::flatbuffers::VOffsetT = 8;
+            pub const VT_SIGNER_PUBKEY: ::flatbuffers::VOffsetT = 10;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PublishReply { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PublishReplyArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PublishReply<'bldr>> {
+                let mut builder = PublishReplyBuilder::new(_fbb);
+                if let Some(x) = args.signer_pubkey {
+                    builder.add_signer_pubkey(x);
+                }
+                if let Some(x) = args.target {
+                    builder.add_target(x);
+                }
+                if let Some(x) = args.reply_to_event_id {
+                    builder.add_reply_to_event_id(x);
+                }
+                if let Some(x) = args.content {
+                    builder.add_content(x);
+                }
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn content(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(PublishReply::VT_CONTENT, None)
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn reply_to_event_id(&self) -> &'a str {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
+                            PublishReply::VT_REPLY_TO_EVENT_ID,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn target(&self) -> PublishTarget<'a> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab
+                        .get::<::flatbuffers::ForwardsUOffset<PublishTarget>>(
+                            PublishReply::VT_TARGET,
+                            None,
+                        )
+                        .unwrap()
+                }
+            }
+            #[inline]
+            pub fn signer_pubkey(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishReply::VT_SIGNER_PUBKEY,
+                        None,
+                    )
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for PublishReply<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "content",
+                        Self::VT_CONTENT,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "reply_to_event_id",
+                        Self::VT_REPLY_TO_EVENT_ID,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<PublishTarget>>(
+                        "target",
+                        Self::VT_TARGET,
+                        true,
+                    )?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
+                        "signer_pubkey",
+                        Self::VT_SIGNER_PUBKEY,
+                        false,
+                    )?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct PublishReplyArgs<'a> {
+            pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub reply_to_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
+            pub target: Option<::flatbuffers::WIPOffset<PublishTarget<'a>>>,
+            pub signer_pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
+        }
+        impl<'a> Default for PublishReplyArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                PublishReplyArgs {
+                    content: None,           // required field
+                    reply_to_event_id: None, // required field
+                    target: None,            // required field
+                    signer_pubkey: None,
+                }
+            }
+        }
+
+        pub struct PublishReplyBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishReplyBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishReply::VT_CONTENT,
+                    content,
+                );
+            }
+            #[inline]
+            pub fn add_reply_to_event_id(
+                &mut self,
+                reply_to_event_id: ::flatbuffers::WIPOffset<&'b str>,
+            ) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishReply::VT_REPLY_TO_EVENT_ID,
+                    reply_to_event_id,
+                );
+            }
+            #[inline]
+            pub fn add_target(&mut self, target: ::flatbuffers::WIPOffset<PublishTarget<'b>>) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<PublishTarget>>(
+                        PublishReply::VT_TARGET,
+                        target,
+                    );
+            }
+            #[inline]
+            pub fn add_signer_pubkey(&mut self, signer_pubkey: ::flatbuffers::WIPOffset<&'b str>) {
+                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
+                    PublishReply::VT_SIGNER_PUBKEY,
+                    signer_pubkey,
+                );
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> PublishReplyBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                PublishReplyBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishReply<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                self.fbb_.required(o, PublishReply::VT_CONTENT, "content");
+                self.fbb_
+                    .required(o, PublishReply::VT_REPLY_TO_EVENT_ID, "reply_to_event_id");
+                self.fbb_.required(o, PublishReply::VT_TARGET, "target");
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for PublishReply<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("PublishReply");
+                ds.field("content", &self.content());
+                ds.field("reply_to_event_id", &self.reply_to_event_id());
+                ds.field("target", &self.target());
+                ds.field("signer_pubkey", &self.signer_pubkey());
+                ds.finish()
+            }
+        }
         pub enum TagRowOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
@@ -1211,6 +1438,20 @@ pub mod nmp {
                     None
                 }
             }
+
+            #[inline]
+            #[allow(non_snake_case)]
+            pub fn body_as_publish_reply(&self) -> Option<PublishReply<'a>> {
+                if self.body_type() == PublishPayloadBody::PublishReply {
+                    let u = self.body();
+                    // Safety:
+                    // Created from a valid Table for this object
+                    // Which contains a valid union in this slot
+                    Some(unsafe { PublishReply::init_from_table(u) })
+                } else {
+                    None
+                }
+            }
         }
 
         impl ::flatbuffers::Verifiable for PublishPayload<'_> {
@@ -1226,6 +1467,7 @@ pub mod nmp {
           PublishPayloadBody::PublishSigned => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<PublishSigned>>("PublishPayloadBody::PublishSigned", pos),
           PublishPayloadBody::PublishProfile => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<PublishProfile>>("PublishPayloadBody::PublishProfile", pos),
           PublishPayloadBody::PublishRaw => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<PublishRaw>>("PublishPayloadBody::PublishRaw", pos),
+          PublishPayloadBody::PublishReply => v.verify_union_variant::<::flatbuffers::ForwardsUOffset<PublishReply>>("PublishPayloadBody::PublishReply", pos),
           _ => Ok(()),
         }
      })?
@@ -1321,6 +1563,16 @@ pub mod nmp {
                     }
                     PublishPayloadBody::PublishRaw => {
                         if let Some(x) = self.body_as_publish_raw() {
+                            ds.field("body", &x)
+                        } else {
+                            ds.field(
+                                "body",
+                                &"InvalidFlatbuffer: Union discriminant does not match value.",
+                            )
+                        }
+                    }
+                    PublishPayloadBody::PublishReply => {
+                        if let Some(x) = self.body_as_publish_reply() {
                             ds.field("body", &x)
                         } else {
                             ds.field(

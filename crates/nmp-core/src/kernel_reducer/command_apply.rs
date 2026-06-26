@@ -23,7 +23,8 @@
 //! `Publish(SignedEvent)`.
 //!
 //! **Group B → `NeedsSign`:**
-//! `Publish(UnsignedEvent)`, `Publish(RawEvent)`, `Publish(Profile)`.
+//! `Publish(UnsignedEvent)`, `Publish(RawEvent)`, `Publish(Reply)`,
+//! `Publish(Profile)`.
 //!
 //! **Group C → `Unsupported`:** every other variant.
 
@@ -234,6 +235,49 @@ impl super::KernelReducer {
                 let unsigned_json = serde_json::json!({
                     "pubkey": account_pubkey,
                     "kind": kind,
+                    "tags": tags,
+                    "content": content,
+                    "created_at": created_at,
+                })
+                .to_string();
+                match self.begin_sign_roundtrip_at(
+                    account_pubkey,
+                    &unsigned_json,
+                    crate::time::Instant::now(),
+                ) {
+                    Ok(request) => NeedsSign {
+                        request,
+                        target,
+                        action_correlation_id: cid,
+                    },
+                    Err(reason) => Unsupported { reason },
+                }
+            }
+
+            // Reply: derive NIP-10 tags from the stored parent, then build the
+            // same unsigned kind:1 JSON path as RawEvent. The host never
+            // constructs protocol tags.
+            ActorCommand::Publish(PublishCommand::Reply {
+                content,
+                reply_to_event_id,
+                target,
+                signer_pubkey: _,
+                correlation_id: cid,
+            }) => {
+                let Some(tags) = self.build_reply_tags(&reply_to_event_id) else {
+                    return Unsupported {
+                        reason: format!("reply_target_unknown: {reply_to_event_id}"),
+                    };
+                };
+                let Some(account_pubkey) = self.active_account_pubkey() else {
+                    return Unsupported {
+                        reason: "no active account for Reply sign round-trip".to_string(),
+                    };
+                };
+                let created_at = self.now_secs();
+                let unsigned_json = serde_json::json!({
+                    "pubkey": account_pubkey,
+                    "kind": 1u32,
                     "tags": tags,
                     "content": content,
                     "created_at": created_at,

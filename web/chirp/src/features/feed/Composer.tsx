@@ -1,7 +1,7 @@
 // Composer.tsx — note compose + publish box for Chirp Web.
 //
 // Zero Nostr protocol logic: the `publish_note` action is lowered by
-// `chirpActionRequest` via `GeneratedActionBuilders.publishRaw` in actions.ts.
+// `chirpActionRequest` via generated typed publish builders in actions.ts.
 // No event JSON construction, no signing, no relay framing in TS — all that lives
 // behind the wasm seam. This component is pure presentation + UX around a textarea.
 

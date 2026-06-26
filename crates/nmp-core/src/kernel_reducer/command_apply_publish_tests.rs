@@ -244,6 +244,107 @@ fn raw_event_needs_sign_with_correlation_id() {
 }
 
 #[test]
+fn reply_needs_sign_with_nip10_tags_from_stored_parent() {
+    let parent_id = "a1".repeat(32);
+    let parent_author = "b2".repeat(32);
+    let root_id = "c3".repeat(32);
+    let mut r = KernelReducer::new();
+    let _ = r.set_active_account(PK.to_string());
+    r.kernel
+        .event_store_handle()
+        .insert(
+            crate::store::VerifiedEvent::from_raw_unchecked(RawEvent {
+                id: parent_id.clone(),
+                pubkey: parent_author.clone(),
+                created_at: 1_700_000_000,
+                kind: 1,
+                tags: vec![vec![
+                    "e".to_string(),
+                    root_id.clone(),
+                    "".to_string(),
+                    "root".to_string(),
+                ]],
+                content: "parent".to_string(),
+                sig: "0".repeat(128),
+            }),
+            &RELAY.to_string(),
+            0,
+        )
+        .expect("seed parent");
+
+    let cid = Some("reply-cid".to_string());
+    let outcome = r.apply_actor_command(ActorCommand::Publish(PublishCommand::Reply {
+        content: "reply body".to_string(),
+        reply_to_event_id: parent_id.clone(),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+        correlation_id: cid.clone(),
+    }));
+
+    match outcome {
+        CommandApplyOutcome::NeedsSign {
+            request,
+            target: PublishTarget::Auto,
+            action_correlation_id,
+        } => {
+            assert_eq!(request.account_pubkey, PK);
+            assert_eq!(action_correlation_id, cid);
+            let unsigned: serde_json::Value =
+                serde_json::from_str(&request.unsigned_json).expect("unsigned json");
+            assert_eq!(unsigned["kind"], 1);
+            assert_eq!(unsigned["content"], "reply body");
+            let tags = unsigned["tags"].as_array().expect("tags array");
+            assert!(
+                tags.iter().any(|tag| tag
+                    .as_array()
+                    .is_some_and(|row| row.get(0) == Some(&serde_json::json!("e"))
+                        && row.get(1) == Some(&serde_json::json!(root_id))
+                        && row.get(3) == Some(&serde_json::json!("root")))),
+                "reply must carry root e-tag: {}",
+                request.unsigned_json
+            );
+            assert!(
+                tags.iter().any(|tag| tag
+                    .as_array()
+                    .is_some_and(|row| row.get(0) == Some(&serde_json::json!("e"))
+                        && row.get(1) == Some(&serde_json::json!(parent_id))
+                        && row.get(3) == Some(&serde_json::json!("reply")))),
+                "reply must carry direct reply e-tag: {}",
+                request.unsigned_json
+            );
+            assert!(
+                tags.iter().any(|tag| tag
+                    .as_array()
+                    .is_some_and(|row| row.get(0) == Some(&serde_json::json!("p"))
+                        && row.get(1) == Some(&serde_json::json!(parent_author)))),
+                "reply must p-tag the parent author: {}",
+                request.unsigned_json
+            );
+        }
+        other => panic!("expected NeedsSign(Auto), got {other:?}"),
+    }
+}
+
+#[test]
+fn reply_missing_parent_returns_unsupported() {
+    let mut r = KernelReducer::new();
+    let _ = r.set_active_account(PK.to_string());
+
+    let outcome = r.apply_actor_command(ActorCommand::Publish(PublishCommand::Reply {
+        content: "reply body".to_string(),
+        reply_to_event_id: "a1".repeat(32),
+        target: PublishTarget::Auto,
+        signer_pubkey: None,
+        correlation_id: Some("reply-missing".to_string()),
+    }));
+
+    assert!(
+        matches!(outcome, CommandApplyOutcome::Unsupported { ref reason } if reason.contains("reply_target_unknown")),
+        "missing parent must fail closed; got {outcome:?}"
+    );
+}
+
+#[test]
 fn profile_needs_sign_with_correlation_id() {
     // Profile (kind:0) → NeedsSign with target Auto and the command's cid.
     let mut r = KernelReducer::new();

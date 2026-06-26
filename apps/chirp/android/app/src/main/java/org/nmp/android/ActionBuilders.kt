@@ -233,6 +233,51 @@ object GeneratedActionBuilders {
         )
     }
 
+    /// Sign-and-publish a kind:1 reply; Rust derives NIP-10 tags from the stored parent event.
+    /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishReply`) for the byte doorway.
+    fun publishReply(
+        correlationId: String,
+        content: String,
+        replyToEventId: String,
+        relays: List<String>? = null,
+        signerPubkey: String? = null,
+    ): ByteArray {
+        val fbb = FlatBufferBuilder()
+        val contentOffset = fbb.createString(content)
+        val replyToEventIdOffset = fbb.createString(replyToEventId)
+        val signerPubkeyOffset = signerPubkey?.let { fbb.createString(it) } ?: 0
+        val targetRelays = relays ?: emptyList()
+        val explicit = targetRelays.isNotEmpty()
+        val targetRelaysVec = run {
+            val offsets = IntArray(targetRelays.size) { i -> fbb.createString(targetRelays[i]) }
+            fbb.startVector(4, offsets.size, 4)
+            for (i in offsets.size - 1 downTo 0) fbb.addOffset(offsets[i])
+            fbb.endVector()
+        }
+        fbb.startTable(2)
+        fbb.addBoolean(0, explicit, false) // slot 0: explicit
+        fbb.addOffset(1, targetRelaysVec, 0) // slot 1: relays
+        val targetOffset = fbb.endTable()
+        fbb.startTable(4)
+        fbb.addOffset(0, contentOffset, 0) // slot 0: content
+        fbb.addOffset(1, replyToEventIdOffset, 0) // slot 1: reply_to_event_id
+        fbb.addOffset(2, targetOffset, 0) // slot 2: target
+        if (signerPubkeyOffset != 0) fbb.addOffset(3, signerPubkeyOffset, 0) // slot 3: signer_pubkey
+        val bodyOffset = fbb.endTable()
+        fbb.startTable(3)
+        fbb.addInt(0, 1, 0) // slot 0: schema_version
+        fbb.addByte(1, 4.toByte(), 0) // slot 1: body_type
+        fbb.addOffset(2, bodyOffset, 0) // slot 2: body
+        val payloadRoot = fbb.endTable()
+        fbb.finish(payloadRoot, "NPUB")
+        val payload = fbb.sizedByteArray()
+        return encodeDispatchEnvelope(
+            correlationId = correlationId,
+            actionNamespace = "nmp.publish",
+            payload = payload,
+        )
+    }
+
     /// Sign-and-publish a kind:0 profile metadata event for the active account.
     /// Builds the `nmp.publish` `DispatchEnvelope` bytes (body `PublishProfile`) for the byte doorway.
     fun publishProfile(

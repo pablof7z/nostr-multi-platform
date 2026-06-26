@@ -159,6 +159,17 @@ pub enum PublishAction {
         #[serde(default)]
         signer_pubkey: Option<String>,
     },
+    /// Sign-and-publish a kind:1 reply. Hosts provide only the direct parent
+    /// event id and content; the reducer resolves the parent from the kernel
+    /// store and builds NIP-10 marked tags in Rust.
+    PublishReply {
+        content: String,
+        reply_to_event_id: String,
+        #[serde(default)]
+        target: PublishTarget,
+        #[serde(default)]
+        signer_pubkey: Option<String>,
+    },
 }
 
 /// Final outcome reported to the action ledger when the engine finishes.
@@ -263,6 +274,27 @@ impl ActionModule for PublishModule {
                     .map_err(ActionRejection::Invalid)?;
                 Ok(())
             }
+            PublishAction::PublishReply {
+                content,
+                reply_to_event_id,
+                target,
+                ..
+            } => {
+                if content.trim().is_empty() {
+                    return Err(ActionRejection::Invalid(
+                        "reply content must not be empty".to_string(),
+                    ));
+                }
+                if reply_to_event_id.len() != 64
+                    || !reply_to_event_id.bytes().all(|b| b.is_ascii_hexdigit())
+                {
+                    return Err(ActionRejection::Invalid(
+                        "reply_to_event_id must be a 64-character hex event id".to_string(),
+                    ));
+                }
+                validate_publish_target(&target).map_err(ActionRejection::Invalid)?;
+                Ok(())
+            }
         }
     }
 
@@ -300,6 +332,21 @@ impl ActionModule for PublishModule {
                     kind,
                     tags,
                     content,
+                    target,
+                    signer_pubkey,
+                    correlation_id: Some(correlation_id.to_string()),
+                }));
+                Ok(())
+            }
+            PublishAction::PublishReply {
+                content,
+                reply_to_event_id,
+                target,
+                signer_pubkey,
+            } => {
+                send(ActorCommand::Publish(PublishCommand::Reply {
+                    content,
+                    reply_to_event_id,
                     target,
                     signer_pubkey,
                     correlation_id: Some(correlation_id.to_string()),

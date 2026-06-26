@@ -391,6 +391,20 @@ fn dispatch_publish(
             correlation_id,
             ctx,
         ),
+        PublishCommand::Reply {
+            content,
+            reply_to_event_id,
+            target,
+            signer_pubkey,
+            correlation_id,
+        } => cmd_publish::publish_reply(
+            content,
+            reply_to_event_id,
+            target,
+            signer_pubkey,
+            correlation_id,
+            ctx,
+        ),
         PublishCommand::Profile {
             fields,
             correlation_id,

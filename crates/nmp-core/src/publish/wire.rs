@@ -185,6 +185,27 @@ fn encode_publish_payload(action: &PublishAction) -> Vec<u8> {
             let (raw, _) = build_publish_raw(&mut fbb, *kind, tags, content, target, signer_pubkey);
             (fb::PublishPayloadBody::PublishRaw, raw.as_union_value())
         }
+        PublishAction::PublishReply {
+            content,
+            reply_to_event_id,
+            target,
+            signer_pubkey,
+        } => {
+            let content = fbb.create_string(content);
+            let reply_to_event_id = fbb.create_string(reply_to_event_id);
+            let target = build_target(&mut fbb, target);
+            let signer_pubkey = signer_pubkey.as_ref().map(|s| fbb.create_string(s));
+            let reply = fb::PublishReply::create(
+                &mut fbb,
+                &fb::PublishReplyArgs {
+                    content: Some(content),
+                    reply_to_event_id: Some(reply_to_event_id),
+                    target: Some(target),
+                    signer_pubkey,
+                },
+            );
+            (fb::PublishPayloadBody::PublishReply, reply.as_union_value())
+        }
     };
 
     let payload = fb::PublishPayload::create(
@@ -322,6 +343,17 @@ fn decode_publish_payload(bytes: &[u8]) -> Result<PublishAction, ActionPayloadDe
                 content: raw.content().to_string(),
                 target: read_target(raw.target()),
                 signer_pubkey,
+            })
+        }
+        fb::PublishPayloadBody::PublishReply => {
+            let reply = root
+                .body_as_publish_reply()
+                .ok_or_else(|| malformed("body_type=PublishReply but body absent"))?;
+            Ok(PublishAction::PublishReply {
+                content: reply.content().to_string(),
+                reply_to_event_id: reply.reply_to_event_id().to_string(),
+                target: read_target(reply.target()),
+                signer_pubkey: reply.signer_pubkey().map(|s| s.to_string()),
             })
         }
         other => Err(malformed(format!(

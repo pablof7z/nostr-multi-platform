@@ -194,10 +194,12 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
 //     schema_version:uint;        // slot 0 — fail-closed tripwire (vtable 4)
 //     body:PublishPayloadBody (required); // union → body_type at slot 1
 //   }                                     //         body offset at slot 2
-//   union PublishPayloadBody { PublishSigned, PublishProfile, PublishRaw }
+//   union PublishPayloadBody { PublishSigned, PublishProfile, PublishRaw,
+//                              PublishReply }
 //
 // A FlatBuffers union expands to TWO root fields: a `*_type` ubyte discriminant
-// (declaration-order: NONE=0, PublishSigned=1, PublishProfile=2, PublishRaw=3)
+// (declaration-order: NONE=0, PublishSigned=1, PublishProfile=2, PublishRaw=3,
+// PublishReply=4)
 // and the body table offset. The emitters build the nested body table first,
 // then stamp `(schema_version, body_type, body)` into the root — the byte-for-
 // byte twin of `encode_publish_payload` in `nmp-core/src/publish/wire.rs`.
@@ -217,6 +219,8 @@ pub const ACTION_BUILDERS: &[ActionBuilder] = &[
 pub const PUBLISH_BODY_PUBLISH_PROFILE: u8 = 2;
 /// See [`PUBLISH_BODY_PUBLISH_PROFILE`].
 pub const PUBLISH_BODY_PUBLISH_RAW: u8 = 3;
+/// See [`PUBLISH_BODY_PUBLISH_PROFILE`].
+pub const PUBLISH_BODY_PUBLISH_REPLY: u8 = 4;
 
 /// One `nmp.publish` union-bodied builder.
 ///
@@ -245,6 +249,9 @@ pub enum BodyShape {
     PublishRaw,
     /// `PublishProfile { fields:[ProfileField] }`.
     PublishProfile,
+    /// `PublishReply { content:string, reply_to_event_id:string,
+    /// target:PublishTarget, signer_pubkey:string }`.
+    PublishReply,
 }
 
 /// The `nmp.publish` builders. See [`PublishBuilder`].
@@ -254,6 +261,12 @@ pub const PUBLISH_BUILDERS: &[PublishBuilder] = &[
         body_type: PUBLISH_BODY_PUBLISH_RAW,
         body: BodyShape::PublishRaw,
         doc: "Sign-and-publish an arbitrary event kind (generic publish path; NIP-65 outbox or explicit relays).",
+    },
+    PublishBuilder {
+        method: "publishReply",
+        body_type: PUBLISH_BODY_PUBLISH_REPLY,
+        body: BodyShape::PublishReply,
+        doc: "Sign-and-publish a kind:1 reply; Rust derives NIP-10 tags from the stored parent event.",
     },
     PublishBuilder {
         method: "publishProfile",

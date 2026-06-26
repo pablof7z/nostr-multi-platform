@@ -80,6 +80,33 @@
   gap: 12px;
 }
 
+.thread-reply-form {
+  display: grid;
+  gap: 10px;
+}
+
+.thread-reply-form textarea {
+  min-height: 84px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 11px;
+  background: var(--bg-inset);
+  color: var(--ink);
+  font: inherit;
+  line-height: 1.45;
+}
+
+.thread-reply-form textarea:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
+}
+
+.thread-reply-form textarea:disabled {
+  color: var(--ink-3);
+  cursor: not-allowed;
+}
+
 .thread-stats,
 .thread-relays {
   flex-wrap: wrap;
@@ -133,6 +160,21 @@
 .detail-primary:disabled {
   background: var(--bg-inset);
   color: var(--ink-3);
+  cursor: not-allowed;
+}
+
+.detail-secondary:not(:disabled) {
+  background: var(--bg-raised);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.detail-secondary:not(:disabled):hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.detail-secondary:disabled {
   cursor: not-allowed;
 }
 

@@ -1,7 +1,11 @@
 import { createSignal, For, Show } from "solid-js";
 import type { WorkerEvent } from "@nmp/runtime-web";
 import { useNmpClient } from "../../nmp/context";
-import type { PublishOutboxRuntimeItem, RuntimeProjection } from "../../nmp/runtimeProjection";
+import type {
+  ActionResultRuntimeRow,
+  PublishOutboxRuntimeItem,
+  RuntimeProjection,
+} from "../../nmp/runtimeProjection";
 import { OutboxDiagnostics } from "./OutboxDiagnostics";
 import "./diagnostics.css";
 
@@ -69,6 +73,7 @@ function writeDetail(event: WorkerEvent | undefined): string {
 function writeSummary(
   event: WorkerEvent | undefined,
   outbox: readonly PublishOutboxRuntimeItem[],
+  results: readonly ActionResultRuntimeRow[],
 ): WriteSummary {
   if (outbox.length > 0) {
     const relayCount = outbox.reduce((sum, item) => sum + item.targetRelays, 0);
@@ -76,6 +81,29 @@ function writeSummary(
       state: "publish_in_flight",
       label: "Publish in flight",
       detail: `${outbox.length} active publish${outbox.length === 1 ? "" : "es"} across ${relayCount} relay target${relayCount === 1 ? "" : "s"}.`,
+    };
+  }
+  const latestResult = results[0];
+  if (latestResult) {
+    const eventLabel = latestResult.eventId ? `event ${latestResult.eventId.slice(0, 8)}...` : "write";
+    if (latestResult.status === "published") {
+      return {
+        state: "published",
+        label: "Last write published",
+        detail: `${eventLabel} reached a terminal relay verdict.`,
+      };
+    }
+    if (latestResult.status === "failed") {
+      return {
+        state: "failed",
+        label: "Last write failed",
+        detail: latestResult.error ?? `${eventLabel} was rejected by its relay target.`,
+      };
+    }
+    return {
+      state: latestResult.status,
+      label: "Last write updated",
+      detail: `${eventLabel} is ${latestResult.status}.`,
     };
   }
   if (event) {
@@ -136,7 +164,8 @@ export function DiagnosticsPanel(props: {
   const wireSubscriptions = () => props.diagnostics?.wireSubscriptions ?? [];
   const writeEvent = () => latestWriteEvent(props.events);
   const publishOutbox = () => props.diagnostics?.publishOutbox ?? [];
-  const currentWriteSummary = () => writeSummary(writeEvent(), publishOutbox());
+  const actionResults = () => props.diagnostics?.actionResults ?? [];
+  const currentWriteSummary = () => writeSummary(writeEvent(), publishOutbox(), actionResults());
 
   return (
     <section class="diagnostics-panel" aria-label="Runtime diagnostics">
