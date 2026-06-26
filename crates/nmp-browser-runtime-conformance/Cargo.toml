@@ -1,0 +1,48 @@
+[package]
+name = "nmp-browser-runtime-conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Dedicated-Worker OPFS durability conformance vehicle for nmp-browser-runtime (#1007 PR-9): hydration/reload + offline-publish-queue survival over the real OPFS-SQLite store. Test harness only — never published."
+
+# cdylib so `wasm-bindgen --target web` can emit browser-loadable glue; rlib so
+# the crate still participates in normal workspace `cargo check`/metadata on
+# native (where it compiles to nothing — see the `#![cfg]` guard in lib.rs).
+[lib]
+name = "nmp_browser_runtime_conformance"
+crate-type = ["cdylib", "rlib"]
+
+# wasm32-only by construction: the harness drives the wasm32-only OPFS-SQLite
+# store through the real browser-runtime composition. On native there are no
+# deps and no items, so the workspace build of this crate is ~free off-wasm
+# (mirrors nmp-sqlite-wasm-conformance's own gating).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The real browser-runtime composition root + handle. `opfs-sqlite-backend`
+# exposes `nmp_store::OpfsSqliteEventStore`. The harness injects its own
+# `Arc<dyn EventStore>` clone, which `inject_store` hands to the kernel reducer
+# verbatim (pointer-identity proven in nmp-browser-runtime's native composition
+# test), so querying that clone IS querying the running reducer's store — no
+# `test-support` seam needed.
+nmp-browser-runtime = { path = "../nmp-browser-runtime", features = [
+  "opfs-sqlite-backend",
+] }
+# The durable OPFS-SQLite EventStore + the read/insert surface the proofs assert.
+nmp-store = { path = "../nmp-store", features = ["opfs-sqlite-backend"] }
+# The durable publish queue (DomainPublishStore / PublishStore / PublishRecord).
+# default-features = false keeps the wasm32 build free of native-only crates,
+# matching nmp-browser-runtime's own nmp-core dependency.
+nmp-core = { path = "../nmp-core", default-features = false }
+# SignedEvent / UnsignedEvent for the durable publish record.
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+wasm-bindgen = "0.2.121"
+# `#[wasm_bindgen] pub async fn` lowers to `wasm_bindgen_futures::future_to_promise`,
+# so the async entry point needs this crate in the graph directly.
+wasm-bindgen-futures = "0.4.72"
+# `js_sys::Date::now()` gives each run a fresh OPFS database name so repeated
+# runs in the same browser origin do not collide on persisted state.
+js-sys = "0.3.98"
+# Surface a Rust panic inside the Worker as a real console error instead of an
+# opaque `RuntimeError: unreachable` swallowed by the Worker boundary.
+console_error_panic_hook = "0.1"

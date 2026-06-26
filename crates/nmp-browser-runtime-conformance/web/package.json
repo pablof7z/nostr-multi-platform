@@ -1,0 +1,13 @@
+{
+  "name": "nmp-browser-runtime-conformance-harness",
+  "private": true,
+  "type": "module",
+  "description": "Dedicated-Worker OPFS durability driver for nmp-browser-runtime (#1007 PR-9): hydration/reload + offline-publish-queue survival.",
+  "scripts": {
+    "build": "bash ./build.sh",
+    "test": "bash ./build.sh && node ./run-conformance.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

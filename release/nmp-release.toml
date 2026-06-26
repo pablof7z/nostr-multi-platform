@@ -267,6 +267,11 @@ path = "crates/nmp-sqlite-wasm-conformance"
 reason = "Dedicated-Worker OPFS conformance test vehicle for nmp-sqlite-wasm (#1007 PR-6); a wasm-bindgen cdylib test harness, never published"
 
 [[private_packages]]
+name = "nmp-browser-runtime-conformance"
+path = "crates/nmp-browser-runtime-conformance"
+reason = "Dedicated-Worker OPFS durability conformance vehicle for nmp-browser-runtime (#1007 PR-9); a wasm-bindgen cdylib test harness driving hydration/reload + offline-publish-queue survival, never published"
+
+[[private_packages]]
 name = "nmp-chirp-android-ffi"
 path = "apps/chirp/crates/nmp-chirp-android-ffi"
 reason = "Chirp-owned Android JNI cdylib; standalone workspace, not published through root cargo package dry-run"

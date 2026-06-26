@@ -1,0 +1,95 @@
+name: browser-runtime-conformance
+
+# Dedicated-Worker OPFS DURABILITY conformance for the full browser runtime
+# (issue #1007, PR-9): hydration/reload + offline-publish-queue survival over the
+# real OPFS-SQLite store, driven through the BrowserAppBuilder → BrowserRuntimeHandle
+# composition inside a dedicated Web Worker.
+#
+# NON-BLOCKING BY CONSTRUCTION (honest constraint — do NOT silently skip):
+#   Unlike sqlite-wasm-conformance.yml (a genuinely BLOCKING gate, because
+#   nmp-sqlite-wasm has NO C dependency and builds with the stock wasm32
+#   toolchain), this harness drives the FULL runtime, which pulls secp256k1-sys
+#   through nmp-core. Compiling secp256k1-sys to wasm32 needs a C-to-wasm
+#   toolchain (clang's wasm backend + lld). ubuntu-latest ships neither by
+#   default — the SAME constraint documented in browser-runtime.yml's
+#   non-blocking wasm32 job and chirp-web-acceptance.yml's full-e2e-wasm job.
+#   Installing the toolchain + a wasm build of nmp-core adds minutes to every
+#   run, so this runs on a NIGHTLY schedule + manual dispatch rather than
+#   blocking every PR. The coverage is NOT skipped — it runs nightly and can be
+#   triggered on any branch via workflow_dispatch.
+
+on:
+  schedule:
+    - cron: "30 4 * * *" # 04:30 UTC, after chirp-web-acceptance (04:00).
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  opfs-durability-conformance:
+    name: OPFS durability (full runtime, headless Chromium) — non-blocking
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain (wasm32 target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: browser-runtime-conformance
+
+      # secp256k1-sys needs a C compiler that can target wasm32. clang ships a
+      # wasm backend; lld provides wasm-ld. Point the wasm32 C build at them.
+      - name: Install wasm C toolchain (clang + lld)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # wasm-bindgen-cli MUST match the wasm-bindgen runtime version baked into
+      # the compiled wasm (a mismatch fails with a schema-version error). Derive
+      # the exact version from Cargo.lock so a future lock bump cannot silently
+      # break this gate.
+      - name: Install wasm-bindgen-cli (version pinned to Cargo.lock)
+        run: |
+          WBG_VER="$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock \
+            | grep '^version' | head -1 | sed 's/.*"\(.*\)".*/\1/')"
+          echo "wasm-bindgen runtime version from Cargo.lock: $WBG_VER"
+          cargo install wasm-bindgen-cli --version "$WBG_VER" --locked \
+            || cargo install wasm-bindgen-cli --version "$WBG_VER"
+
+      - name: Install harness dependencies (Playwright)
+        run: npm install --no-audit --no-fund
+        working-directory: crates/nmp-browser-runtime-conformance/web
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: crates/nmp-browser-runtime-conformance/web
+
+      # build.sh: cargo build (wasm32, with clang for secp256k1-sys) →
+      # wasm-bindgen --target web → stage the vendored sqlite engine next to the
+      # copied shim snippet → copy the Worker entry + host page into pkg/.
+      - name: Build conformance harness bundle
+        env:
+          CC_wasm32_unknown_unknown: clang
+          AR_wasm32_unknown_unknown: llvm-ar
+        run: bash ./build.sh
+        working-directory: crates/nmp-browser-runtime-conformance/web
+
+      # Drives headless Chromium: serves pkg/ on http://127.0.0.1 (secure context
+      # for OPFS), spawns the dedicated Worker, runs the full runtime over OPFS,
+      # asserts every durability step. Exits non-zero on any failure — never a
+      # faked pass.
+      - name: Run OPFS durability conformance
+        run: node ./run-conformance.mjs
+        working-directory: crates/nmp-browser-runtime-conformance/web
