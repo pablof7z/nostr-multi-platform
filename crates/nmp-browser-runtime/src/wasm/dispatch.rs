@@ -18,14 +18,17 @@ use crate::{BrowserAppBuilder, BrowserRunConfig};
 use super::core::NmpRuntimeCore;
 use super::identity::canonical_pubkey_from_kind;
 use super::protocol::{
-    relay_bootstrap_from_config, BeginSign, ClientHello, DeliverSignerResponse, ReleaseRef,
-    ResolveRef, RuntimeStatus, SetIdentity, StartConfig, WorkerEvent, WorkerRequest,
-    PROTOCOL_VERSION,
+    relay_bootstrap_from_config, BeginSign, ClientHello, DeliverSignerResponse,
+    IdentityRelayPermission, ReleaseRef, ResolveRef, RuntimeStatus, SetIdentity, StartConfig,
+    WorkerEvent, WorkerRequest, PROTOCOL_VERSION,
 };
 use super::ref_routing::{
     invalid_ref_request_reason, ref_dispatch_from_release, ref_dispatch_from_resolve,
     signer_not_installed_reason, RefDispatch,
 };
+
+/// Maximum number of identity-provided relays merged into the configured list.
+const MAX_IDENTITY_RELAYS: usize = 30;
 
 impl NmpRuntimeCore {
     pub(super) fn dispatch_request(&mut self, request: WorkerRequest) -> Vec<WorkerEvent> {
@@ -124,6 +127,14 @@ impl NmpRuntimeCore {
 
         match canonical_pubkey_from_kind(&req.kind, &req.pubkey_hex) {
             Ok(canonical_hex) => {
+                // Merge identity-provided relays BEFORE seeding the active account
+                // (#2139 HIGH 4: restores nmp-wasm signer.rs:151 behaviour).
+                if !req.identity_relays.is_empty() {
+                    let rows = identity_relays_to_rows(&req.identity_relays);
+                    if !rows.is_empty() {
+                        handle.apply_identity_relays(rows);
+                    }
+                }
                 let outbound = handle.apply_set_active_account(canonical_hex);
                 handle.fan_out_outbound(outbound);
                 vec![WorkerEvent::ActionAccepted {
@@ -253,9 +264,16 @@ impl NmpRuntimeCore {
             }
         };
 
+        // Enqueue the completion and fire the wake (#2139 BLOCKER 2 fix step 1).
+        // NLL ends the `handle` borrow at this statement's semicolon, which allows
+        // the `self.pump_once()` call below to take `&mut self` without conflict.
         handle.deliver_signer_response(resp.correlation_id.clone(), result);
-        // Events from the settled sign completion surface on the next pump turn.
-        Vec::new()
+
+        // Pump synchronously to drain the completion channel and collect the
+        // sign terminal events (sign_completed / sign_failed) so they return to
+        // the JS host from THIS handle_json call rather than being deferred to
+        // the async wake timer and subsequently discarded (#2139 BLOCKER 2).
+        self.pump_once()
     }
 
     pub(super) fn dispatch_dispatch_bytes(&mut self, bytes: &[u8]) -> Vec<WorkerEvent> {
@@ -324,4 +342,28 @@ pub(super) fn not_started_error(correlation_id: Option<String>) -> Vec<WorkerEve
         message: "runtime not started — send WorkerRequest::Start first".to_string(),
         correlation_id,
     }]
+}
+
+/// Map identity relay permissions to canonical `(url, role)` pairs for merging
+/// into the kernel's configured relay list (#2139 HIGH 4).
+///
+/// Mirrors `nmp-wasm/src/runtime/signer.rs`'s `identity_relay_entry` and
+/// `role_for_identity_relay`. Skips entries with no read/write permissions and
+/// skips non-canonical URLs.
+fn identity_relays_to_rows(relays: &[IdentityRelayPermission]) -> Vec<(String, String)> {
+    relays
+        .iter()
+        .take(MAX_IDENTITY_RELAYS)
+        .filter_map(|r| {
+            // A write relay is where this account's events are likely published,
+            // so it must be a bootstrap read candidate too (mirrors nmp-wasm).
+            let role = match (r.read, r.write) {
+                (true, true) | (false, true) => "both,indexer",
+                (true, false) => "read,indexer",
+                (false, false) => return None,
+            };
+            let url = nmp_core::canonical_relay_url(&r.url)?.to_string();
+            Some((url, role.to_string()))
+        })
+        .collect()
 }

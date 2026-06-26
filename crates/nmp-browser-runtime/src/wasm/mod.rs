@@ -56,7 +56,7 @@ mod wasm_impl {
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    use js_sys::{Function, Uint8Array};
+    use js_sys::Function;
     use wasm_bindgen::prelude::*;
 
     use super::core::NmpRuntimeCore;
@@ -70,6 +70,11 @@ mod wasm_impl {
         core: NmpRuntimeCore,
         /// JS function to call with `(bytes: Uint8Array)` on snapshot push.
         snapshot_cb: Option<Function>,
+        /// Wake closure built by `set_snapshot_callback` but not yet installed
+        /// because the handle did not exist at that point (#2139 BLOCKER 1).
+        /// Installed onto the handle the next time a request (notably Start)
+        /// populates `core.handle`.
+        pending_wake: Option<Rc<dyn Fn()>>,
     }
 
     impl Inner {
@@ -77,6 +82,18 @@ mod wasm_impl {
             Self {
                 core: NmpRuntimeCore::new(),
                 snapshot_cb: None,
+                pending_wake: None,
+            }
+        }
+
+        /// If a wake closure was stored before `Start`, install it now that the
+        /// handle exists (#2139 BLOCKER 1 — prevents relay events and signer
+        /// completions from being silently dropped on the default NO-OP wake).
+        fn try_install_pending_wake(&mut self) {
+            if let (Some(wake), Some(h)) =
+                (self.pending_wake.take(), self.core.handle.as_mut())
+            {
+                h.set_wake(wake);
             }
         }
 
@@ -96,15 +113,14 @@ mod wasm_impl {
             }
         }
 
-        /// Drive one pump turn and push the snapshot if data arrived.
+        /// Drive one pump turn, buffer any sign terminal events for the next
+        /// `handle_json` call, and push the snapshot (#2139 BLOCKER 2 — was
+        /// `let _ = events` which silently discarded sign terminals).
         fn pump_and_push_snapshot(&mut self) {
             let events = self.core.pump_once();
-            // Sign-request events from async pump turns (relay-driven wakes) need
-            // to reach the host. For now there is no deferred event buffer; those
-            // events surface synchronously from handle_json only. The pump here is
-            // relay-inbound-only (no new sign round-trips are started mid-turn).
-            // Future: buffer in `pending_host_events` and deliver on next handle_json.
-            let _ = events; // consumed; future: post to a JS event queue
+            // Buffer sign terminal events so they are delivered on the next
+            // handle_json call rather than being silently dropped.
+            self.core.buffer_host_events(events);
             self.push_snapshot_via_js();
         }
     }
@@ -139,6 +155,10 @@ mod wasm_impl {
         /// Handle a JSON-serialised `WorkerRequest` and return a JSON array
         /// of `WorkerEvent`s.
         ///
+        /// After the request runs, attempts to install any pending wake closure
+        /// (deferred from a `set_snapshot_callback` call that preceded `Start`),
+        /// then pushes the updated snapshot (#2139 BLOCKER 1).
+        ///
         /// The return value is `unknown` from the JS side; the bridge casts it
         /// via `parseWorkerEvents`. Large binary payloads should go through
         /// `handle_dispatch_bytes` instead.
@@ -146,7 +166,8 @@ mod wasm_impl {
             let result = {
                 let mut inner = self.inner.borrow_mut();
                 let json = inner.core.handle_json_request(request);
-                // Push snapshot after every mutable request.
+                // Install pending wake if Start just populated core.handle.
+                inner.try_install_pending_wake();
                 inner.push_snapshot_via_js();
                 json
             };
@@ -161,6 +182,7 @@ mod wasm_impl {
             let result = {
                 let mut inner = self.inner.borrow_mut();
                 let json = inner.core.handle_dispatch_bytes_raw(bytes);
+                inner.try_install_pending_wake();
                 inner.push_snapshot_via_js();
                 json
             };
@@ -183,22 +205,35 @@ mod wasm_impl {
         /// relay pool fires a 0ms timer that calls `pump_and_push_snapshot()` on
         /// the shared inner state, which drains inbox + pushes snapshot without
         /// holding the borrow at JS boundary.
+        ///
+        /// # Wake ordering fix (#2139 BLOCKER 1)
+        ///
+        /// `wasmBridge.ts` calls `set_snapshot_callback` in its constructor,
+        /// BEFORE the host sends `Start`. The handle does not exist yet, so the
+        /// wake closure cannot be installed immediately. Instead it is stored in
+        /// `pending_wake` and installed onto the handle the next time
+        /// `handle_json` (or `handle_dispatch_bytes`) is called after `Start`
+        /// creates the handle.
         pub fn set_snapshot_callback(&mut self, cb: Option<Function>) {
             let mut inner = self.inner.borrow_mut();
             inner.snapshot_cb = cb;
 
-            // Wire the relay wake hook: arm a 0ms gloo_timers callback that
-            // pumps and pushes the snapshot. Uses a weak-Rc so the timer
-            // doesn't prevent the runtime from being garbage-collected.
+            // Build the wake closure. Captures a clone of the Rc so the timer
+            // callback can borrow the Inner without holding the current borrow.
             let inner_rc = Rc::clone(&self.inner);
-            let wake = Rc::new(move || {
-                // `inner_rc` keeps the `Inner` alive long enough to pump.
+            let wake: Rc<dyn Fn()> = Rc::new(move || {
                 if let Ok(mut guard) = inner_rc.try_borrow_mut() {
                     guard.pump_and_push_snapshot();
                 }
             });
+
+            // If the handle already exists, install immediately.
+            // Otherwise store for deferred installation after Start (#2139 BLOCKER 1).
             if let Some(h) = inner.core.handle.as_mut() {
-                h.set_wake(wake);
+                h.set_wake(Rc::clone(&wake));
+                inner.pending_wake = None;
+            } else {
+                inner.pending_wake = Some(wake);
             }
         }
     }
@@ -211,17 +246,30 @@ mod wasm_impl {
 
     // ── Free function: nmp_encode_npub ────────────────────────────────────────
 
-    /// Encode a 32-byte secp256k1 public key (64 hex chars) as an `npub1…` bech32
-    /// string.
+    /// Encode a 32-byte secp256k1 public key (64 hex chars) as a JSON object
+    /// `{"npub":"npub1…","npubShort":"npub1abc…xyz"}`.
     ///
-    /// Returns the bech32-encoded npub on success, or an empty string if `hex`
-    /// is not valid 64-char lowercase-hex (D6: total on JS boundary — never
-    /// throws).
+    /// Returns the JSON string on success, or an empty string if `hex` is not
+    /// valid 64-char hex (D6: total on JS boundary — never throws).
+    ///
+    /// The bridge (`wasmBridge.ts` line 74) calls `JSON.parse(json)` expecting
+    /// exactly the `{npub, npubShort}` shape (#2139 BLOCKER 3 — was returning
+    /// a bare `npub1…` string which caused `JSON.parse` to throw on the object
+    /// destructure).
     ///
     /// Exported to JS as `nmp_encode_npub(hex: string): string`.
     #[wasm_bindgen]
     pub fn nmp_encode_npub(hex: &str) -> String {
-        nmp_core::nip19::encode_npub(hex).unwrap_or_default()
+        match nmp_core::nip19::encode_npub(hex) {
+            Ok(npub) => {
+                let npub_short = nmp_core::display::short_npub(hex);
+                // serde_json::to_string cannot fail on a simple object literal;
+                // unwrap_or_default is a belt-and-suspenders guard only.
+                serde_json::json!({ "npub": npub, "npubShort": npub_short })
+                    .to_string()
+            }
+            Err(_) => String::new(),
+        }
     }
 }
 
@@ -230,14 +278,23 @@ pub use wasm_impl::{nmp_encode_npub, NmpWasmRuntime};
 
 // ── Non-wasm stubs (native CI / doc builds) ───────────────────────────────────
 
-/// Encode a 32-byte secp256k1 public key hex as `npub1…` bech32.
+/// Encode a 32-byte secp256k1 public key hex as a JSON object
+/// `{"npub":"npub1…","npubShort":"npub1abc…xyz"}`.
 ///
 /// On native this is a plain Rust function (no `#[wasm_bindgen]`); the wasm
 /// target exports it via `nmp_encode_npub` above. Returns an empty string on
 /// invalid input (D6: total — no panic, no error value on the JS boundary).
+///
+/// (#2139 BLOCKER 3 — was returning a bare `npub1…` string).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn nmp_encode_npub(hex: &str) -> String {
-    nmp_core::nip19::encode_npub(hex).unwrap_or_default()
+    match nmp_core::nip19::encode_npub(hex) {
+        Ok(npub) => {
+            let npub_short = nmp_core::display::short_npub(hex);
+            serde_json::json!({ "npub": npub, "npubShort": npub_short }).to_string()
+        }
+        Err(_) => String::new(),
+    }
 }
 
 #[cfg(test)]
@@ -245,10 +302,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn encode_npub_valid() {
+    fn encode_npub_returns_json_object() {
         let hex = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
-        let npub = nmp_encode_npub(hex);
-        assert!(npub.starts_with("npub1"), "npub={npub}");
+        let json = nmp_encode_npub(hex);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("must be valid JSON");
+        assert!(
+            parsed["npub"].as_str().unwrap_or("").starts_with("npub1"),
+            "npub field must start with npub1"
+        );
+        assert!(
+            !parsed["npubShort"].as_str().unwrap_or("").is_empty(),
+            "npubShort field must be non-empty"
+        );
     }
 
     #[test]

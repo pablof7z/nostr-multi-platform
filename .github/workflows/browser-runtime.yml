@@ -159,4 +159,4 @@ jobs:
       - name: Build (wasm32-unknown-unknown)
         run: |
           rustup target add wasm32-unknown-unknown
-          cargo build -p nmp-browser-runtime --target wasm32-unknown-unknown
+          cargo build -p nmp-browser-runtime --target wasm32-unknown-unknown --features wasm

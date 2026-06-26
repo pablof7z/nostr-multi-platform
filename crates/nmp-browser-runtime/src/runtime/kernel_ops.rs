@@ -253,6 +253,50 @@ impl BrowserRuntimeHandle {
             correlation_id,
         }
     }
+
+    /// Merge identity-provided relay URLs into the kernel's configured relay list
+    /// and apply the result (#2139 HIGH 4 — restores nmp-wasm signer.rs:151 behaviour).
+    ///
+    /// Reads the current list from the relay slot, merges incoming rows (adds new
+    /// entries, upgrades roles of existing ones by unioning read/write/indexer flags),
+    /// and calls `set_configured_relays`. Called from `wasm::dispatch::handle_set_identity`
+    /// before seeding the active account so the kernel's relay discovery is seeded
+    /// from identity-provided relays at the same moment the account activates.
+    ///
+    /// No-op when `new_rows` is empty (avoids a redundant kernel write).
+    pub(crate) fn apply_identity_relays(&mut self, new_rows: Vec<(String, String)>) {
+        if new_rows.is_empty() {
+            return;
+        }
+        let mut merged: Vec<(String, String)> = self
+            .configured_relays
+            .lock()
+            .map(|g| {
+                g.as_slice()
+                    .iter()
+                    .map(|r| (r.url().to_string(), r.role().to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        let mut changed = false;
+        for (url, role) in new_rows {
+            if let Some(existing) = merged.iter_mut().find(|(eu, _)| eu == &url) {
+                let merged_role = merge_relay_roles(&existing.1, &role);
+                if merged_role != existing.1 {
+                    existing.1 = merged_role;
+                    changed = true;
+                }
+            } else {
+                merged.push((url, role));
+                changed = true;
+            }
+        }
+
+        if changed {
+            self.runtime.reducer.set_configured_relays(merged);
+        }
+    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -264,4 +308,51 @@ fn format_rejection(rejection: ActionRejection) -> String {
         ActionRejection::Unauthorized(s) => format!("unauthorized: {s}"),
         ActionRejection::Conflict(s) => format!("conflict: {s}"),
     }
+}
+
+/// Merge two relay role strings by unioning their read/write/indexer flags.
+///
+/// Parses both role strings (comma-separated "read", "write", "both", "indexer"),
+/// ORs the flags, and returns a canonical combined string.
+fn merge_relay_roles(existing: &str, incoming: &str) -> String {
+    let (er, ew, ei) = parse_role_flags(existing);
+    let (ir, iw, ii) = parse_role_flags(incoming);
+    let r = er || ir;
+    let w = ew || iw;
+    let i = ei || ii;
+    let mut parts: Vec<&str> = Vec::new();
+    match (r, w) {
+        (true, true) => parts.push("both"),
+        (true, false) => parts.push("read"),
+        (false, true) => parts.push("write"),
+        (false, false) => {}
+    }
+    if i {
+        parts.push("indexer");
+    }
+    if parts.is_empty() {
+        existing.to_string()
+    } else {
+        parts.join(",")
+    }
+}
+
+/// Parse a comma-separated relay role string into (read, write, indexer) flags.
+fn parse_role_flags(role: &str) -> (bool, bool, bool) {
+    let mut read = false;
+    let mut write = false;
+    let mut indexer = false;
+    for part in role.split(',') {
+        match part.trim() {
+            "read" => read = true,
+            "write" => write = true,
+            "both" => {
+                read = true;
+                write = true;
+            }
+            "indexer" => indexer = true,
+            _ => {}
+        }
+    }
+    (read, write, indexer)
 }

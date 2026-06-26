@@ -59,10 +59,12 @@ pub(super) fn deliver_one_completion(
 /// Map a `SignRoundTripOutcome` to outbound frames + host events.
 ///
 /// On `Completed`: pops the parked publish, parses the signed JSON into a
-/// `RawEvent`, and calls `reducer.publish_pre_signed`. On `Failed`: pops
-/// the parked entry and surfaces a `CommandFailed` event. On `Unknown`
-/// (stale/duplicate delivery): surfaces a `SignFailed` event (D6 — never a
-/// silent drop; mirrors `nmp-wasm`'s `WorkerEvent::SignFailed`).
+/// `RawEvent`, calls `reducer.publish_pre_signed`, and emits `SignCompleted`
+/// so the main-thread broker can resolve its pending promise (#2139 BLOCKER 2).
+/// On `Failed`: emits `SignFailed` (not `CommandFailed`) — the wire protocol
+/// expects a correlation-keyed sign terminal the main-thread broker can resolve.
+/// On `Unknown` (stale/duplicate delivery): surfaces a `SignFailed` event
+/// (D6 — never a silent drop; mirrors `nmp-wasm`'s `WorkerEvent::SignFailed`).
 fn settle_outcome(
     reducer: &mut KernelReducer,
     pending: &mut HashMap<String, PendingSignedPublish>,
@@ -78,7 +80,13 @@ fn settle_outcome(
                 (Some(p), Ok(raw)) => {
                     let outbound =
                         reducer.publish_pre_signed(raw, p.target, p.action_correlation_id);
-                    (outbound, Vec::new())
+                    // Emit SignCompleted so the main-thread broker knows the
+                    // round-trip settled (#2139 BLOCKER 2 — was Vec::new()).
+                    let events = vec![BrowserRuntimeEvent::SignCompleted {
+                        correlation_id,
+                        signed_json,
+                    }];
+                    (outbound, events)
                 }
                 (Some(_), Err(reason)) => {
                     // Signed JSON came back but doesn't decode as RawEvent — fail closed.
@@ -86,10 +94,13 @@ fn settle_outcome(
                     (Vec::new(), events)
                 }
                 (None, _) => {
-                    // No parked entry for this correlation id. The kernel already
-                    // resolved the completion; the publish continuation was absent
-                    // (e.g. a bare sign-only round-trip). Safe to ignore.
-                    (Vec::new(), Vec::new())
+                    // No parked entry: bare sign-only round-trip or already resolved.
+                    // Still emit SignCompleted so the main thread can settle (#2139).
+                    let events = vec![BrowserRuntimeEvent::SignCompleted {
+                        correlation_id,
+                        signed_json,
+                    }];
+                    (Vec::new(), events)
                 }
             }
         }
@@ -98,7 +109,10 @@ fn settle_outcome(
             reason,
         } => {
             pending.remove(&correlation_id);
-            let events = vec![BrowserRuntimeEvent::CommandFailed { reason }];
+            // Emit SignFailed (not CommandFailed) — the wire protocol expects a
+            // correlation-keyed sign terminal the main-thread broker can resolve
+            // (#2139 BLOCKER 2 — was CommandFailed which breaks broker settlement).
+            let events = vec![BrowserRuntimeEvent::SignFailed { correlation_id, reason }];
             (Vec::new(), events)
         }
         SignRoundTripOutcome::Unknown { correlation_id } => {

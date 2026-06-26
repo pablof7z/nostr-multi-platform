@@ -39,6 +39,18 @@ pub enum BrowserRuntimeEvent {
         /// `browser_command_unsupported: ActorCommand::Identity(..) ...`).
         reason: String,
     },
+    /// A sign round-trip completed successfully. Emitted so the main-thread
+    /// broker knows the round-trip settled and can resolve any pending UI
+    /// promises keyed on `correlation_id`. The worker has already applied the
+    /// signed event to the kernel (publish path) before emitting this.
+    ///
+    /// Mirrors `nmp-wasm`'s `WorkerEvent::SignCompleted` (#2139 BLOCKER 2).
+    SignCompleted {
+        /// The sign correlation id (echoes the id from the original `SignRequest`).
+        correlation_id: String,
+        /// The flat NIP-01 signed event JSON that was delivered to the kernel.
+        signed_json: String,
+    },
     /// A sign round-trip settled but could not be matched to a parked publish,
     /// or the kernel reported an unknown/stale correlation id. Surfaced so a
     /// stranded or duplicate sign delivery is observable rather than silently
