@@ -19,6 +19,7 @@ use crate::error::SqliteWasmError;
 use crate::outcome::EventId;
 use crate::shim::SqliteConn;
 use crate::store_impl::{exec_write, SqlVal};
+use crate::OpfsSqliteStore;
 
 /// Maximum provenance entries kept per event. Mirrors the other backends.
 pub(crate) const MAX_PROVENANCE_ENTRIES: usize = 32;
@@ -123,4 +124,82 @@ fn sort_entries(entries: &mut [Entry]) {
             .cmp(&b.first_seen_ms)
             .then_with(|| a.relay_url.cmp(&b.relay_url))
     });
+}
+
+// ─── Read side (#1007 PR-4) ────────────────────────────────────────────────────
+
+impl OpfsSqliteStore {
+    /// V-52 — ids of events whose provenance includes `relay_url`.
+    ///
+    /// Index-served by `idx_prov_relay` (`relay_url, event_id`), joined to
+    /// `events` so only events **still present** in the store appear (every
+    /// removal path prunes provenance, but the join makes the contract explicit
+    /// and immune to a stray orphan row).
+    pub fn list_events_seen_on(&self, relay_url: &str) -> Result<Vec<EventId>, SqliteWasmError> {
+        let conn = self.conn().borrow();
+        let stmt = conn.prepare(
+            "SELECT p.event_id FROM provenance p \
+             JOIN events e ON e.id = p.event_id \
+             WHERE p.relay_url = ?1",
+        )?;
+        stmt.bind_text(1, relay_url)?;
+        let mut out = Vec::new();
+        while stmt.step()? {
+            let bytes = stmt.column_blob(0)?;
+            match <EventId>::try_from(bytes.as_slice()) {
+                Ok(id) => out.push(id),
+                Err(_) => {
+                    return Err(SqliteWasmError::Column(
+                        "provenance event_id not 32 bytes".into(),
+                    ))
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// #1518 — the distinct kinds `relay_url` has served, ascending.
+    ///
+    /// Derived from the per-event provenance × `events.kind` projection (the
+    /// reverse index the LMDB backend keeps as a dedicated sub-db is subsumed by
+    /// `idx_prov_relay` + the join). Privacy-gated kinds never appear because
+    /// they are excluded at write time, not here.
+    pub fn relay_kind_coverage(&self, relay_url: &str) -> Result<Vec<u32>, SqliteWasmError> {
+        let conn = self.conn().borrow();
+        let stmt = conn.prepare(
+            "SELECT DISTINCT e.kind FROM provenance p \
+             JOIN events e ON e.id = p.event_id \
+             WHERE p.relay_url = ?1 ORDER BY e.kind ASC",
+        )?;
+        stmt.bind_text(1, relay_url)?;
+        let mut out = Vec::new();
+        while stmt.step()? {
+            out.push(stmt.column_int64(0)? as u32);
+        }
+        Ok(out)
+    }
+
+    /// #1518 — how many distinct events of `kind` `relay_url` has served.
+    ///
+    /// `(event_id, relay_url)` is the provenance primary key, so each event is
+    /// counted once. Same projection as [`Self::relay_kind_coverage`].
+    pub fn relay_kind_count(
+        &self,
+        relay_url: &str,
+        kind: u32,
+    ) -> Result<u64, SqliteWasmError> {
+        let conn = self.conn().borrow();
+        let stmt = conn.prepare(
+            "SELECT COUNT(*) FROM provenance p \
+             JOIN events e ON e.id = p.event_id \
+             WHERE p.relay_url = ?1 AND e.kind = ?2",
+        )?;
+        stmt.bind_text(1, relay_url)?;
+        stmt.bind_int64(2, i64::from(kind))?;
+        if stmt.step()? {
+            Ok(stmt.column_int64(0)? as u64)
+        } else {
+            Ok(0)
+        }
+    }
 }

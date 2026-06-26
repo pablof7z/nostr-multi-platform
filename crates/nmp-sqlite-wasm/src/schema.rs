@@ -71,6 +71,10 @@ CREATE INDEX IF NOT EXISTS idx_events_akci ON events (pubkey, kind, created_at D
 CREATE INDEX IF NOT EXISTS idx_events_kci  ON events (kind, created_at DESC, id ASC);
 -- Parameterized-replaceable lookup (kind + pubkey + d-tag, newest wins).
 CREATE INDEX IF NOT EXISTS idx_events_dtag ON events (pubkey, kind, d_tag, created_at DESC);
+-- Cross-author addressable scan (kind + d-tag, newest-first) — the
+-- `idx_kind_dtag_time` access path. `idx_events_dtag` leads with `pubkey`, so it
+-- cannot seek a `(kind, d_tag)` scan that spans authors; this one can.
+CREATE INDEX IF NOT EXISTS idx_events_kind_dtag ON events (kind, d_tag, created_at DESC, id ASC);
 -- NIP-40 expiry reaper (ascending).
 CREATE INDEX IF NOT EXISTS idx_events_expires ON events (expires_at) WHERE expires_at IS NOT NULL;
 
@@ -206,6 +210,7 @@ mod tests {
             "idx_events_akci",
             "idx_events_kci",
             "idx_events_dtag",
+            "idx_events_kind_dtag",
             "idx_events_expires",
             "idx_tags_tci",
             "idx_tags_atci",
