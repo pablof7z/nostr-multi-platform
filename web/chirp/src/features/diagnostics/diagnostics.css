@@ -66,6 +66,10 @@
   border-color: color-mix(in srgb, var(--tone-warn) 42%, var(--line));
 }
 
+.outbox-state[data-state="publish_in_flight"] {
+  border-color: color-mix(in srgb, var(--tone-warn) 42%, var(--line));
+}
+
 .outbox-state[data-state="sign_completed"],
 .outbox-state[data-state="action_accepted"] {
   border-color: color-mix(in srgb, var(--tone-ok) 42%, var(--line));

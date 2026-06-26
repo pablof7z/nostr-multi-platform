@@ -1,12 +1,18 @@
 import { createSignal, For, Show } from "solid-js";
 import type { WorkerEvent } from "@nmp/runtime-web";
 import { useNmpClient } from "../../nmp/context";
-import type { RuntimeProjection } from "../../nmp/runtimeProjection";
+import type { PublishOutboxRuntimeItem, RuntimeProjection } from "../../nmp/runtimeProjection";
 import { OutboxDiagnostics } from "./OutboxDiagnostics";
 import "./diagnostics.css";
 
 type RoutingSummary = {
   title: string;
+  detail: string;
+};
+
+type WriteSummary = {
+  state: string;
+  label: string;
   detail: string;
 };
 
@@ -60,6 +66,28 @@ function writeDetail(event: WorkerEvent | undefined): string {
   }
 }
 
+function writeSummary(
+  event: WorkerEvent | undefined,
+  outbox: readonly PublishOutboxRuntimeItem[],
+): WriteSummary {
+  if (outbox.length > 0) {
+    const relayCount = outbox.reduce((sum, item) => sum + item.targetRelays, 0);
+    return {
+      state: "publish_in_flight",
+      label: "Publish in flight",
+      detail: `${outbox.length} active publish${outbox.length === 1 ? "" : "es"} across ${relayCount} relay target${relayCount === 1 ? "" : "s"}.`,
+    };
+  }
+  if (event) {
+    return { state: event.type, label: writeLabel(event), detail: writeDetail(event) };
+  }
+  return {
+    state: "idle",
+    label: "No write attempted",
+    detail: "Publish to see signer and outbox activity here.",
+  };
+}
+
 function summarizeRouting(json: string): RoutingSummary {
   try {
     const parsed = JSON.parse(json) as unknown;
@@ -107,6 +135,8 @@ export function DiagnosticsPanel(props: {
   const interests = () => props.diagnostics?.interests ?? [];
   const wireSubscriptions = () => props.diagnostics?.wireSubscriptions ?? [];
   const writeEvent = () => latestWriteEvent(props.events);
+  const publishOutbox = () => props.diagnostics?.publishOutbox ?? [];
+  const currentWriteSummary = () => writeSummary(writeEvent(), publishOutbox());
 
   return (
     <section class="diagnostics-panel" aria-label="Runtime diagnostics">
@@ -125,13 +155,13 @@ export function DiagnosticsPanel(props: {
         </button>
       </div>
 
-      <div class="outbox-state" data-state={writeEvent()?.type ?? "idle"}>
-        <strong>{writeLabel(writeEvent())}</strong>
-        <span>{writeDetail(writeEvent())}</span>
+      <div class="outbox-state" data-state={currentWriteSummary().state}>
+        <strong>{currentWriteSummary().label}</strong>
+        <span>{currentWriteSummary().detail}</span>
       </div>
 
       <OutboxDiagnostics
-        outbox={props.diagnostics?.publishOutbox ?? []}
+        outbox={publishOutbox()}
         results={props.diagnostics?.actionResults ?? []}
         stages={props.diagnostics?.actionStages ?? []}
       />
