@@ -21,6 +21,7 @@ use super::pump::{drain_inbox, BROWSER_COMMAND_DRAIN_BUDGET};
 use crate::relay::WakeCell;
 use crate::signer::{CapabilityProviderRegistry, SignerCompletion, SignerCompletionTx};
 
+mod composition;
 mod contract;
 mod pump;
 mod signer;
