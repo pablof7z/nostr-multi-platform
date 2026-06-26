@@ -27,6 +27,13 @@ pub(crate) enum DomainHandleInner {
         namespace: &'static str,
         backend: Arc<Inner>,
     },
+    // OPFS-SQLite variant (#1007) — namespace + a shared engine handle. The
+    // storage ops are the engine's namespace-keyed `domain_*` inherent methods.
+    #[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
+    Opfs {
+        namespace: &'static str,
+        backend: Arc<nmp_sqlite_wasm::OpfsSqliteStore>,
+    },
 }
 
 /// Type alias for domain scan iterators.
@@ -56,6 +63,10 @@ impl DomainHandle {
             DomainHandleInner::Lmdb { namespace, backend } => {
                 crate::lmdb::domain::put(backend, namespace, key, value)
             }
+            #[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
+            DomainHandleInner::Opfs { namespace, backend } => {
+                backend.domain_put(namespace, key, value).map_err(crate::opfs::store_err)
+            }
         }
     }
 
@@ -71,6 +82,10 @@ impl DomainHandle {
             DomainHandleInner::Lmdb { namespace, backend } => {
                 crate::lmdb::domain::get(backend, namespace, key)
             }
+            #[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
+            DomainHandleInner::Opfs { namespace, backend } => {
+                backend.domain_get(namespace, key).map_err(crate::opfs::store_err)
+            }
         }
     }
 
@@ -85,6 +100,10 @@ impl DomainHandle {
             #[cfg(feature = "lmdb-backend")]
             DomainHandleInner::Lmdb { namespace, backend } => {
                 crate::lmdb::domain::delete(backend, namespace, key)
+            }
+            #[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
+            DomainHandleInner::Opfs { namespace, backend } => {
+                backend.domain_delete(namespace, key).map_err(crate::opfs::store_err)
             }
         }
     }
@@ -105,6 +124,13 @@ impl DomainHandle {
             #[cfg(feature = "lmdb-backend")]
             DomainHandleInner::Lmdb { namespace, backend } => {
                 let rows = crate::lmdb::domain::scan_prefix(backend, namespace, prefix)?;
+                Ok(Box::new(rows.into_iter().map(Ok)))
+            }
+            #[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
+            DomainHandleInner::Opfs { namespace, backend } => {
+                let rows = backend
+                    .domain_scan_prefix(namespace, prefix)
+                    .map_err(crate::opfs::store_err)?;
                 Ok(Box::new(rows.into_iter().map(Ok)))
             }
         }

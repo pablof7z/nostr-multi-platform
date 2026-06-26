@@ -14,14 +14,72 @@
 #![cfg(target_arch = "wasm32")]
 
 use crate::error::SqliteWasmError;
-use crate::outcome::{EventId, PubKey, TombstoneOrigin};
-use crate::shim::SqliteConn;
+use crate::outcome::{EventId, PubKey, TombstoneOrigin, TombstoneRow};
+use crate::shim::{SqliteConn, SqliteStmt};
 use crate::store_impl::{blob32, exec_write, SqlVal};
+use crate::OpfsSqliteStore;
 
 // Stored `origin` codes.
 const ORIGIN_KIND5: i64 = 0;
 const ORIGIN_NIP40: i64 = 1;
 const ORIGIN_ADMIN: i64 = 2;
+
+// ─── Read side (the EventStore wrapper's tombstones_for / list_tombstones) ───────
+
+impl OpfsSqliteStore {
+    /// The per-id tombstone(s) referencing `target` — at most one row in this
+    /// engine (the `tombstones` primary key is `target_id`). Empty when absent.
+    pub fn tombstones_for(&self, target: &EventId) -> Result<Vec<TombstoneRow>, SqliteWasmError> {
+        let conn = self.conn().borrow();
+        let stmt = conn.prepare(
+            "SELECT target_id, kind5_event_id, deleter_pubkey, deleted_at, origin, source \
+             FROM tombstones WHERE target_id = ?1",
+        )?;
+        stmt.bind_blob(1, target)?;
+        let mut out = Vec::new();
+        while stmt.step()? {
+            out.push(decode_tombstone_row(&stmt)?);
+        }
+        Ok(out)
+    }
+
+    /// Every per-id tombstone row, ordered by `target_id` (used by `nmp dump` and
+    /// the wrapper's `list_tombstones`).
+    pub fn list_tombstones(&self) -> Result<Vec<TombstoneRow>, SqliteWasmError> {
+        let conn = self.conn().borrow();
+        let stmt = conn.prepare(
+            "SELECT target_id, kind5_event_id, deleter_pubkey, deleted_at, origin, source \
+             FROM tombstones ORDER BY target_id ASC",
+        )?;
+        let mut out = Vec::new();
+        while stmt.step()? {
+            out.push(decode_tombstone_row(&stmt)?);
+        }
+        Ok(out)
+    }
+}
+
+/// Decode a `SELECT target_id, kind5_event_id, deleter_pubkey, deleted_at,
+/// origin, source` row into a [`TombstoneRow`]. The `source` column is `None`
+/// (empty `sources`) when NULL/empty.
+fn decode_tombstone_row(stmt: &SqliteStmt<'_>) -> Result<TombstoneRow, SqliteWasmError> {
+    let target_id = blob32(&stmt.column_blob(0)?)
+        .ok_or_else(|| SqliteWasmError::Column("tombstone target_id not 32 bytes".into()))?;
+    let kind5_event_id = blob32(&stmt.column_blob(1)?);
+    let deleter_pubkey = blob32(&stmt.column_blob(2)?);
+    let deleted_at = stmt.column_int64(3)? as u64;
+    let origin = origin_from_code(stmt.column_int64(4)?);
+    let source = stmt.column_text(5)?;
+    let sources = if source.is_empty() { Vec::new() } else { vec![source] };
+    Ok(TombstoneRow {
+        target_id,
+        kind5_event_id,
+        deleter_pubkey,
+        deleted_at,
+        sources,
+        origin,
+    })
+}
 
 fn origin_from_code(code: i64) -> TombstoneOrigin {
     match code {

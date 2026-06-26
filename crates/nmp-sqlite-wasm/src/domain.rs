@@ -112,6 +112,49 @@ mod wasm_impl {
             Ok(out)
         }
 
+        /// The stored schema version for `namespace`, or `0` if never migrated.
+        ///
+        /// The `nmp-store` `EventStore` wrapper reads this before running the
+        /// kernel's `nmp_store::DomainMigration` closures (which write through
+        /// the wrapper's own `MigrationTx`, a distinct type from this crate's),
+        /// then persists the staged result via [`Self::apply_domain_migration`].
+        pub fn domain_version(&self, namespace: &str) -> Result<u32, SqliteWasmError> {
+            let conn = self.db.borrow();
+            read_version(&conn, namespace)
+        }
+
+        /// Atomically apply a migration's already-staged namespace-relative
+        /// `writes` and stamp `domain_versions[namespace] = target_version`.
+        ///
+        /// The companion to [`Self::domain_version`]: the wrapper runs the kernel
+        /// migration closures itself (it cannot hand this crate a foreign-typed
+        /// `fn(&mut MigrationTx)`), then commits the staged rows + the version
+        /// bump in one transaction so a partial migration can never persist.
+        pub fn apply_domain_migration(
+            &self,
+            namespace: &str,
+            target_version: u32,
+            writes: &[(Vec<u8>, Vec<u8>)],
+        ) -> Result<(), SqliteWasmError> {
+            let conn = self.db.borrow();
+            with_txn(&conn, |c| {
+                for (k, v) in writes {
+                    exec_write(
+                        c,
+                        "INSERT INTO domain_data (namespace, user_key, value) VALUES (?1, ?2, ?3)
+                         ON CONFLICT(namespace, user_key) DO UPDATE SET value = excluded.value",
+                        &[SqlVal::Text(namespace), SqlVal::Blob(k), SqlVal::Blob(v)],
+                    )?;
+                }
+                exec_write(
+                    c,
+                    "INSERT INTO domain_versions (namespace, version) VALUES (?1, ?2)
+                     ON CONFLICT(namespace) DO UPDATE SET version = excluded.version",
+                    &[SqlVal::Text(namespace), SqlVal::Int(i64::from(target_version))],
+                )
+            })
+        }
+
         /// Run schema migrations for `namespace` up to `target_version`.
         ///
         /// Errors [`SqliteWasmError::Migration`] if the on-disk version is newer

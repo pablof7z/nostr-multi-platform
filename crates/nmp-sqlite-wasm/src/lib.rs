@@ -108,6 +108,9 @@ pub use conv::{EngineEvent, StoredEngineEvent};
 /// Insert outcomes and id types (mirror `nmp_store::{EventId, PubKey,
 /// InsertOutcome, RejectReason, TombstoneOrigin}`).
 pub use outcome::{EventId, InsertOutcome, PubKey, RejectReason, TombstoneOrigin};
+/// Read-side tombstone / provenance rows (mirror `nmp_store::{TombstoneRow,
+/// ProvenanceEntry}`) returned by the `EventStore` wrapper's read methods.
+pub use outcome::{ProvenanceRow, TombstoneRow};
 /// The crate-local read query for [`OpfsSqliteStore::query_visit`] (mirror of
 /// `nmp_store::StoreQuery`; the `nmp-store` wrapper maps the two at the seam).
 pub use query::EngineQuery;
