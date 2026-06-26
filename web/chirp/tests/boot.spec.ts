@@ -87,6 +87,14 @@ test.describe("boot", () => {
       await expect
         .poll(() => relay.connectionCount(), { timeout: 20_000 })
         .toBeGreaterThanOrEqual(1);
+
+      // Product readiness surface: first-run checklist + relay diagnostics must
+      // render from runtime-owned state, not just hidden data attributes.
+      await expect(page.locator(".onboarding-panel")).toBeVisible();
+      await expect(page.locator(".diagnostics-panel")).toBeVisible();
+      await expect(page.locator(".relay-row").first()).toBeVisible();
+      await page.getByRole("button", { name: /routing/i }).click();
+      await expect(page.locator('[data-testid="routing-trace"]')).toBeVisible();
     } finally {
       await relay.close();
     }

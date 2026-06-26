@@ -162,16 +162,21 @@
 
 .content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 680px) minmax(300px, 360px);
+  grid-template-columns: minmax(0, 700px) minmax(330px, 390px);
   gap: 20px;
   align-items: start;
-  max-width: 1120px;
+  max-width: 1160px;
   margin: 0 auto;
 }
 
 [data-slot="feed"],
 [data-slot="signing"] {
   min-width: 0;
+}
+
+.side-stack {
+  display: grid;
+  gap: 14px;
 }
 
 @media (max-width: 1040px) {

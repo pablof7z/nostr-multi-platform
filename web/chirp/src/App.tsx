@@ -21,11 +21,15 @@
 //   the NmpClientContext.Provider tree (useSnapshot / useNmpClient).
 // Item D: import and render signing/onboarding UI inside [data-slot="signing"].
 
-import { createSignal, onCleanup, onMount } from "solid-js";
+import { createMemo, createSignal, onCleanup, onMount } from "solid-js";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
 import { NmpClientProvider } from "./nmp/context";
 import { SigningPanel } from "./features/signing/SigningPanel";
 import { chirpRelayOverrideFromSearch } from "./chirpConfig";
+import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
+import { DiagnosticsPanel } from "./features/diagnostics/DiagnosticsPanel";
+import { decodeUpdateFrame } from "./nmp/feedDecoder";
+import { decodeRuntimeProjection } from "./nmp/runtimeProjection";
 // Item C — feed / publish / profile UI (FeedPanel owns its own store + provider).
 import { FeedPanel } from "./features/feed/FeedPanel";
 
@@ -74,6 +78,13 @@ export default function App() {
   const isConnected = () => hasSnapshot();
   const runtimeModeLabel = () =>
     snapshot().clientRuntime === "worker" ? "worker runtime" : "degraded runtime";
+  const runtimeProjection = createMemo(() => decodeRuntimeProjection(snapshot().latestUpdateBytes));
+  const feedFrame = createMemo(() => {
+    const bytes = snapshot().latestUpdateBytes;
+    return bytes ? decodeUpdateFrame(bytes) : undefined;
+  });
+  const feedReady = () => feedFrame() !== undefined;
+  const feedCount = () => feedFrame()?.rows.length ?? 0;
 
   return (
     <NmpClientProvider client={client} snapshot={snapshot}>
@@ -99,8 +110,9 @@ export default function App() {
           </div>
           <nav class="rail-nav" aria-label="Primary">
             <a class="rail-link rail-link--active" href="/" aria-current="page">Home</a>
-            <span class="rail-link rail-link--disabled">Threads</span>
-            <span class="rail-link rail-link--disabled">Profiles</span>
+            <span class="rail-link rail-link--disabled" aria-disabled="true">Threads</span>
+            <span class="rail-link rail-link--disabled" aria-disabled="true">Profiles</span>
+            <span class="rail-link rail-link--disabled" aria-disabled="true">Relays</span>
           </nav>
           <div class="rail-status" aria-live="polite">
             <span class="status-dot" data-connected={isConnected() ? "true" : "false"} />
@@ -146,8 +158,19 @@ export default function App() {
               signer status, and the pending-sign overlay. All signing logic lives in
               features/signing/ and reads the runtime via NmpClientContext.
             */}
-            <section data-slot="signing" aria-label="Signing">
+            <section class="side-stack" data-slot="signing" aria-label="Signing">
+              <OnboardingPanel
+                state={{
+                  runtimeConnected: isConnected(),
+                  signerConnected: signerConnected(),
+                  feedReady: feedReady(),
+                  feedCount: feedCount(),
+                  runtimeMode: bridgeKind(),
+                  diagnostics: runtimeProjection(),
+                }}
+              />
               <SigningPanel onConnectionChange={setSignerConnected} />
+              <DiagnosticsPanel diagnostics={runtimeProjection()} events={snapshot().events} />
             </section>
           </div>
         </div>

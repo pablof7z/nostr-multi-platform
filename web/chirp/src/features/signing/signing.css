@@ -104,6 +104,26 @@
   color: var(--ink-3);
 }
 
+.signing-blocked {
+  display: grid;
+  gap: 4px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  background: var(--bg-panel);
+}
+
+.signing-blocked strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.signing-blocked span {
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .signing-degraded,
 .signing-pending {
   color: var(--tone-warn);

@@ -8,7 +8,7 @@
     "codegen:chirp-config": "node scripts/gen-chirp-config.mjs",
     "prebuild": "npm run codegen:chirp-config",
     "build": "tsc --noEmit && vite build",
-    "build:wasm": "bash ../../crates/nmp-browser-runtime/scripts/build-wasm.sh && mkdir -p public && rm -rf public/nmp-wasm && cp -R ../../pkg/nmp-browser-runtime public/nmp-wasm",
+    "build:wasm": "bash ../../crates/nmp-browser-runtime/scripts/build-wasm.sh && mkdir -p public && rm -rf public/nmp-wasm && cp -R ../../pkg/nmp-browser-runtime public/nmp-wasm && cp public/nmp-wasm/nmp_browser_runtime.js public/nmp-wasm/nmp-browser-runtime.js",
     "preview": "vite preview --host 0.0.0.0",
     "test": "vitest run",
     "test:e2e": "playwright test",
