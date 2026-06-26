@@ -179,9 +179,10 @@ impl InterestRegistry {
     /// (`completion_key_for_interest(sub_key, shape)`). `iter_active` drops it
     /// because most callers only need the interest; the K3 truncated-serve read
     /// path (#1380) needs it to recover each interest's `completion_key` so it
-    /// can ask "is THIS interest's cursor-less serve currently truncated?"
-    /// without conflating two interests that share an Etag/Ptag shape but differ
-    /// only by `SubKey`.
+    /// can ask "is THIS interest's serve currently truncated at the budget?"
+    /// without conflating two interests that share the same single-letter tag
+    /// shape (now a time-bounded, since/until-cursored `StoreQuery::Tags`) but
+    /// differ only by `SubKey`.
     #[must_use]
     pub fn iter_active_with_keys(&self) -> Vec<(SubKey, LogicalInterest)> {
         self.slots

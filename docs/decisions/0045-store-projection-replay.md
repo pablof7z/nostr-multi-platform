@@ -150,8 +150,8 @@ by an existing secondary index. The mapping (no new index required):
 |---|---|---|---|
 | ≥1 author + ≥1 kind | `AuthorKind` per author, merge newest-first | `idx_author_kind` | timeline, profile feeds |
 | 0 authors + ≥1 kind | `KindTime` | `idx_kind_time` | hashtag/global feeds |
-| `#e` target + kinds | `Etag` | `idx_etag_time` | thread replies |
-| `#p` target + kinds | `Ptag` | `idx_ptag_time` | **DM inbox (kind:1059 `#p`=me)**, mentions |
+| `#e` target + kinds | `Tags` (`#e`) | `idx_etag_time` | thread replies |
+| `#p` target + kinds | `Tags` (`#p`) | `idx_ptag_time` | **DM inbox (kind:1059 `#p`=me)**, mentions |
 | addressable coord | `KindDtag` | `idx_kind_dtag_time` | long-form, lists |
 
 Every shape maps onto an existing index — **no new index is needed.** The
@@ -236,7 +236,8 @@ floor *render-complete*.
 ## 7. Marmot / DM special cases
 
 - **DM inbox (NIP-17 gift-wraps, kind:1059):** the inbox interest is a
-  `#p = me` + kind:1059 shape → `StoreQuery::Ptag` (§3). Replayed kind:1059
+  `#p = me` + kind:1059 shape → `StoreQuery::Tags` (with the `#p` tag) (§3).
+  Replayed kind:1059
   events **must go through the same decrypt-on-ingest seam** the live path
   uses (the `EventIngestParser` / DM-inbox projection that unwraps the
   gift-wrap — the cold-start path #1080 wired). Cache-serve feeds the stored
