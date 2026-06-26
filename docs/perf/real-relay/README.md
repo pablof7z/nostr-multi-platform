@@ -23,6 +23,7 @@ the captured output.
 | `marmot-roundtrip` | Marmot roundtrip | `relay.damus.io` | `cargo test -p nmp-testing --test real_relay_marmot_roundtrip marmot_kind445_roundtrip_over_damus -- --ignored --nocapture --test-threads=1` |
 | `feed-matrix` | declared feed matrix | `relay.damus.io`, `nos.lol`, `relay.primal.net`, `purplepag.es` | `cargo test -p nmp-testing --test real_relay_feed_matrix -- --ignored --nocapture --test-threads=1` |
 | `subscription-replan` | follow-list replan | `relay.damus.io`, `relay.primal.net`, `purplepag.es` | `cargo test -p nmp-testing --test real_relay_replan -- --ignored --nocapture --test-threads=1` |
+| `reduced-source-feed` | ReducedSource feed acquisition | `relay.damus.io`, `relay.primal.net`, `nos.lol` | `cargo test -p nmp-testing --test real_relay_reduced_source -- --ignored --nocapture --test-threads=1` |
 | `nip50-search` | NIP-50 search relay | `nostr.wine`, `nos.lol` | `cargo test -p nmp-testing --features real-relay --test real_relay_nip50_search -- --ignored --nocapture --test-threads=1` |
 | `relay-search-a1-cold-claim` | relay-search radius A1 | `relay.primal.net`, `purplepag.es` | `cargo test -p nmp-testing --features real-relay --test relay_search_radius_a1_cold_claim -- --ignored --nocapture --test-threads=1` |
 | `relay-search-a2-warm-path` | relay-search radius A2 | `relay.primal.net`, `purplepag.es` | `cargo test -p nmp-testing --features real-relay --test relay_search_radius_a2_warm_path -- --ignored --nocapture --test-threads=1` |
