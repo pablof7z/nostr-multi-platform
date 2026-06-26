@@ -148,6 +148,22 @@ pub struct NmpDefaultRuntimeHandles {
     /// the effective relay list (user's kind:10007 list, else the
     /// [`SearchDefaults`] fallback).
     pub search_relays: Option<Arc<nmp_nip51::SearchRelayListProjection>>,
+    /// NMP-owned NIP-65 (kind:10002) mailbox cache read handle (#2085).
+    ///
+    /// Always present after [`register_defaults_with_handles`] — the substrate
+    /// tier unconditionally installs it, so unlike the social handles above this
+    /// is never `None` in practice; it is `Option` only so the struct can keep
+    /// `#[derive(Default)]` (a trait-object `Arc` has no `Default`).
+    ///
+    /// This is the **same** `Arc` instance wired into the kind:10002 parser
+    /// writer, the routing-substrate factory, and the NIP-19 encoder reader, so
+    /// reads observe exactly what the parser ingests. App-core crates (e.g.
+    /// Highlighter's relay-import preview) read one author's importable relay
+    /// list via [`snapshot`](nmp_core::substrate::MailboxCache::snapshot), which
+    /// preserves the read/write/both role shape and exposes no raw event
+    /// history. Do NOT construct a fresh `InMemoryMailboxCache` — a divergent
+    /// instance is never written by the parser and reads empty.
+    pub mailbox_cache: Option<Arc<dyn nmp_core::substrate::MailboxCache>>,
 }
 
 /// Wire the canonical NMP composition into `app`.
@@ -254,7 +270,12 @@ fn register_defaults_inner(
     // mailbox-cache reader, publish-resolver factory, raw-event forward policy,
     // and the `CoverageGate` coverage hook + NIP-77 negentropy runtime (one
     // shared `coverage_gate` feeds both). See [`register_substrate`].
-    register_substrate(app, coverage_gate);
+    //
+    // `register_substrate` returns the shared NIP-65 mailbox cache read handle
+    // (#2085) — the same `Arc` it wires into the kind:10002 parser writer, the
+    // routing factory, and the NIP-19 encoder reader. Surface it on the handles
+    // struct so app-core crates get an instance-identical read handle.
+    handles.mailbox_cache = Some(register_substrate(app, coverage_gate));
 
     // ── NIP-50 public full-text search scopes (#1811) ────────────────────
     //

@@ -239,7 +239,7 @@ fn kind10002_event(author: &str) -> VerifiedEvent {
 #[test]
 fn register_substrate_installs_shared_cache_parser_floor() {
     let mut spy = GateSpy::default();
-    nmp_defaults::register_substrate(&mut spy, CoverageGate::default());
+    let returned_handle = nmp_defaults::register_substrate(&mut spy, CoverageGate::default());
 
     let mut parser_kinds = spy.parser_kinds.lock().unwrap().clone();
     parser_kinds.sort_unstable();
@@ -280,6 +280,17 @@ fn register_substrate_installs_shared_cache_parser_floor() {
         .cloned()
         .expect("register_substrate must install the kind:10002 parser");
 
+    // #2085 — the returned handle must be the SAME `Arc` instance installed as
+    // the NIP-19 encoder reader (and, by construction, the routing factory cache
+    // and kind:10002 parser writer). `Arc::ptr_eq` proves instance identity, not
+    // mere structural equality, so a regression that hands back a fresh
+    // `InMemoryMailboxCache` fails here.
+    assert!(
+        Arc::ptr_eq(&returned_handle, &mailbox_reader),
+        "register_substrate must return the SAME mailbox cache Arc it installs as \
+         the encoder reader"
+    );
+
     let author = "aaaa000000000000000000000000000000000000000000000000000000000001";
     parser.parse(&kind10002_event(author));
 
@@ -292,6 +303,21 @@ fn register_substrate_installs_shared_cache_parser_floor() {
         routing_cache.write_relays(&author.to_string()),
         Some(vec!["wss://alice.write.example".to_string()]),
         "the routing factory cache must be the same cache written by the parser"
+    );
+    // #2085 — a read through the returned handle observes the parser's write,
+    // preserving the read/write/both role shape via `snapshot`. This is the
+    // exact path an app-core relay-import preview takes.
+    let snapshot = returned_handle
+        .snapshot(&author.to_string())
+        .expect("the returned handle must see the parser's kind:10002 write");
+    assert_eq!(
+        snapshot.write,
+        vec!["wss://alice.write.example".to_string()],
+        "the returned handle must preserve the write-role relay from the parsed kind:10002"
+    );
+    assert!(
+        snapshot.read.is_empty() && snapshot.both.is_empty(),
+        "a write-only kind:10002 must leave the read/both roles empty in the handle snapshot"
     );
 }
 
