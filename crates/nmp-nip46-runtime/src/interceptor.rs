@@ -219,6 +219,12 @@ impl Nip46Interceptor {
             return;
         };
 
+        // BLOCKER 1: persist the learned remote signer pubkey so steady-state
+        // decode (`Nip46Runtime::on_relay_text`) decrypts with the correct key.
+        // For bunker this is a no-op (URI already carried it); for nostrconnect
+        // it replaces the local-pubkey placeholder.
+        crate::runtime::record_signer_ready(&self.runtime, remote_signer_pubkey);
+
         // Capture session transport params from the runtime handle.
         let (relay_urls, local_keys) = {
             let Ok(guard) = self.runtime.lock() else { return };

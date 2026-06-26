@@ -90,7 +90,12 @@ impl Nip46Runtime {
         text: &str,
         now_secs: u64,
     ) -> (Vec<Effect>, Option<String>) {
-        if !self.relay_urls.iter().any(|u| u == relay_url) {
+        // Compare canonical forms: `relay_urls` are stored canonical (init), and
+        // inbound frames arrive with the pool's canonical URL.  A raw-string
+        // compare would drop responses on a non-canonical bunker URI (e.g.
+        // `WSS://Relay.Ex/`).
+        let incoming = canonicalize_relay(relay_url);
+        if !self.relay_urls.contains(&incoming) {
             return (Vec::new(), None);
         }
         let effects = self.state.on_relay_text(text, now_secs);
@@ -122,14 +127,16 @@ impl Nip46Runtime {
         _is_reconnect: bool,
         now_secs: u64,
     ) -> Vec<Effect> {
-        if !self.relay_urls.iter().any(|u| u == relay_url) {
+        let incoming = canonicalize_relay(relay_url);
+        if !self.relay_urls.contains(&incoming) {
             return Vec::new();
         }
         // Bypass state.on_relay_connected (which hardcodes the primary relay URL).
-        // Generate the Subscribe effect directly for the SPECIFIC reconnecting relay.
+        // Generate the Subscribe effect directly for the SPECIFIC reconnecting
+        // relay (canonical form, so the reconnect preamble keys the same pool row).
         let pubkey_hex = self.local_keys.public_key().to_hex();
         let frame = build_req_frame(&self.sub_id, &pubkey_hex, now_secs);
-        vec![Effect::Subscribe { relay_url: relay_url.to_string(), frame }]
+        vec![Effect::Subscribe { relay_url: incoming, frame }]
     }
 
     /// The primary bunker relay URL (first in `relay_urls`, or empty string if
@@ -179,40 +186,72 @@ pub fn new_nip46_runtime_handle() -> Nip46RuntimeHandle {
 
 /// Initialise the handle with a `bunker://` session.
 ///
-/// `relay_url` is the single relay URL from the parsed bunker URI. For
-/// multi-relay URIs, pass the slice-derived `relay_urls` vector instead.
+/// `relay_urls` is the FULL relay list from the parsed bunker URI
+/// (`BunkerUri::relays` supports multiple relays). The session subscribes
+/// (REQ) and publishes the `connect` EVENT to EVERY relay, and accepts inbound
+/// responses from any of them. Every URL is canonicalized at this boundary so
+/// inbound/reconnect filtering matches the pool's canonical keys.
 ///
-/// Returns the initial [`Effect`]s (Subscribe + Progress + SendFrame).
+/// Returns the initial [`Effect`]s — a Subscribe + Progress + SendFrame for the
+/// primary relay, plus a Subscribe + SendFrame fanned to each additional relay.
 /// The caller MUST:
 ///
-/// 1. Call `kernel.register_persistent_sub(relay_url, sub_id)` (or leave
-///    `persistent_sub_registered = false` so the interceptor registers on
-///    first idle tick).
+/// 1. Call `kernel.register_persistent_sub(relay_url, sub_id)` for each
+///    Subscribe (or leave `persistent_sub_registered = false` so the
+///    interceptor registers on first idle tick).
 /// 2. Convert the [`Effect::Subscribe`] and [`Effect::SendFrame`] results
 ///    into `OutboundMessage`s and deliver them to the relay.
 ///
-/// Returns `Err(String)` when the runtime mutex is poisoned or the URI is
-/// malformed.
+/// Returns `Err(String)` when the runtime mutex is poisoned or `relay_urls` is
+/// empty.
+#[allow(clippy::too_many_arguments)]
 pub fn init_bunker(
     handle: &Nip46RuntimeHandle,
     sub_id: String,
     local_keys: Keys,
     remote_pubkey: PublicKey,
-    relay_url: String,
+    relay_urls: Vec<String>,
     secret: Option<&str>,
     perms: Option<&str>,
     now_secs: u64,
 ) -> Result<Vec<Effect>, String> {
-    let relay_urls = vec![relay_url.clone()];
-    let (state, effects) = start_bunker(
+    let relay_urls = canonicalize_relays(&relay_urls);
+    let Some(primary) = relay_urls.first().cloned() else {
+        return Err("init_bunker: relay_urls must not be empty".to_string());
+    };
+    let (state, mut effects) = start_bunker(
         &sub_id,
         local_keys.clone(),
         remote_pubkey,
-        relay_url,
+        primary,
         secret,
         perms,
         now_secs,
     );
+
+    // Fan the REQ + connect EVENT to every additional relay.  The REQ frame and
+    // the (already-signed) connect EVENT are identical across relays — both are
+    // addressed to the bunker pubkey, not to a specific relay — so we reuse the
+    // frames built by `start_bunker` for the primary.
+    if relay_urls.len() > 1 {
+        let req_frame = effects.iter().find_map(|e| match e {
+            Effect::Subscribe { frame, .. } => Some(frame.clone()),
+            _ => None,
+        });
+        let connect_frame = effects.iter().find_map(|e| match e {
+            Effect::SendFrame { text, .. } => Some(text.clone()),
+            _ => None,
+        });
+        for relay in &relay_urls[1..] {
+            if let Some(frame) = &req_frame {
+                effects.push(Effect::Subscribe { relay_url: relay.clone(), frame: frame.clone() });
+            }
+            if let Some(text) = &connect_frame {
+                effects.push(Effect::SendFrame { relay_url: relay.clone(), text: text.clone() });
+            }
+        }
+    }
+
     let rt = Nip46Runtime {
         state,
         relay_urls,
@@ -238,6 +277,7 @@ pub fn init_bunker(
 /// Returns `Ok((uri, effects))` where `uri` is the `nostrconnect://` URI to
 /// display as a QR code and `effects` are the initial protocol effects
 /// (Subscribe + Progress).
+#[allow(clippy::too_many_arguments)]
 pub fn init_nostrconnect(
     handle: &Nip46RuntimeHandle,
     sub_id: String,
@@ -248,6 +288,7 @@ pub fn init_nostrconnect(
     name: &str,
     now_secs: u64,
 ) -> Result<(String, Vec<Effect>), String> {
+    let relay_url = canonicalize_relay(&relay_url);
     let relay_urls = vec![relay_url.clone()];
     let (uri, state, effects) = start_nostrconnect(
         &sub_id,
@@ -303,6 +344,7 @@ pub fn init_restore(
     relay_urls: Vec<String>,
     now_secs: u64,
 ) -> Result<Vec<Effect>, String> {
+    let relay_urls = canonicalize_relays(&relay_urls);
     let (state, effects) = start_restore(&sub_id, local_keys.clone(), &relay_urls, now_secs);
     let rt = Nip46Runtime {
         state,
@@ -331,6 +373,50 @@ pub fn clear_runtime(handle: &Nip46RuntimeHandle) {
     if let Ok(mut guard) = handle.lock() {
         *guard = None;
     }
+}
+
+/// Persist the remote signer pubkey learned during the handshake.
+///
+/// Called on [`Effect::SignerReady`] (by the interceptor) so steady-state
+/// decode ([`Nip46Runtime::on_relay_text`]) decrypts with the correct key.
+///
+/// - **bunker**: this equals the pubkey already stored from the URI — a no-op
+///   write.
+/// - **nostrconnect**: the remote signer pubkey is unknown until the signer's
+///   `connect` event arrives, so [`init_nostrconnect`] stores the local pubkey
+///   as a placeholder.  Without this write-back, `decode_inbound_response`
+///   would reject every steady-state response (pubkey mismatch) and sign would
+///   hang.  This is the BLOCKER-1 fix.
+///
+/// No-op when the handle is empty or the mutex is poisoned.
+pub fn record_signer_ready(handle: &Nip46RuntimeHandle, remote_pubkey: PublicKey) {
+    if let Ok(mut guard) = handle.lock() {
+        if let Some(rt) = guard.as_mut() {
+            rt.remote_pubkey = remote_pubkey;
+        }
+    }
+}
+
+// ─── relay canonicalization ───────────────────────────────────────────────────
+
+/// Canonicalize a single relay URL using the same authority the actor's pool
+/// uses ([`nmp_core::canonical_relay_url`]).  Falls back to the raw string when
+/// the URL does not parse as `ws`/`wss` (mirrors `CanonicalRelayUrl::parse_or_raw`).
+fn canonicalize_relay(raw: &str) -> String {
+    nmp_core::canonical_relay_url(raw).unwrap_or_else(|| raw.to_string())
+}
+
+/// Canonicalize every relay URL, preserving order and de-duplicating canonical
+/// collisions (e.g. `WSS://R/` and `wss://r` collapse to one entry).
+fn canonicalize_relays(urls: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::with_capacity(urls.len());
+    for u in urls {
+        let c = canonicalize_relay(u);
+        if !out.contains(&c) {
+            out.push(c);
+        }
+    }
+    out
 }
 
 // ─── steady-state decode helper ──────────────────────────────────────────────
