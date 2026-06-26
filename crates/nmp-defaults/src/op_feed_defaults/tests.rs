@@ -33,7 +33,7 @@ fn provider_fails_closed_when_slot_is_none_even_with_stale_follow_set() {
     let slot: ActiveAccountSlot = Arc::new(Mutex::new(Some(alice.clone())));
     let follow_set = ActiveFollowSet::new(slot.clone());
     // Populate a real, non-empty follow set for the active account.
-    KernelEventObserver::on_kernel_event(&*follow_set, &kind3(&alice, &[&bob]));
+    ObservedProjectionSink::on_kernel_event(&*follow_set, &kind3(&alice, &[&bob]));
     assert!(
         follow_set.follows().contains(&bob),
         "follow set seeded with a stale follow"

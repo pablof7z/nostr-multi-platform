@@ -10,7 +10,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     EventLookup, FeedRequest, FlatFeed as GenericFlatFeed, FlatFeedItem, FlatFeedItemBuilder,
     FlatFeedMerge, RootFeedSnapshot,
@@ -127,7 +127,7 @@ impl LongformFeed {
     }
 }
 
-impl KernelEventObserver for LongformFeed {
+impl ObservedProjectionSink for LongformFeed {
     fn on_kernel_event(&self, event: &KernelEvent) {
         // NIP-09: a kind:5 deletion suppresses rows it can prove (issue #1740
         // step 5). Apply it before normal ingest; a non-delete event flows to
@@ -289,9 +289,7 @@ fn article_item_from_repost(
     let coordinate = article
         .as_ref()
         .map(|article| article.address.clone())
-        .or_else(|| {
-            longform_target_coordinate(&record).map(|coord| coord.to_wire())
-        })?;
+        .or_else(|| longform_target_coordinate(&record).map(|coord| coord.to_wire()))?;
 
     // A topic feed cannot prove topic membership for a body-less coordinate row;
     // only admit it once a target article (embedded/local) confirms the topic.

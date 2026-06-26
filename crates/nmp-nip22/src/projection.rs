@@ -1,6 +1,6 @@
 //! Threaded NIP-22 comment projection.
 //!
-//! [`CommentThreadProjection`] is a [`KernelEventObserver`] (the same in-memory
+//! [`CommentThreadProjection`] is a [`ObservedProjectionSink`] (the same in-memory
 //! read-model shape `nmp-nip25` reactions and `nmp-nip51` bookmarks use). It
 //! ingests kind:1111 events, buckets them by root scope value, and on demand
 //! builds the parent/child forest for one root.
@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use serde::{Deserialize, Serialize};
 
 use crate::decode::{try_from_kernel_event, CommentRecord};
@@ -93,7 +93,7 @@ impl Default for CommentThreadProjection {
     }
 }
 
-impl KernelEventObserver for CommentThreadProjection {
+impl ObservedProjectionSink for CommentThreadProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.ingest(event);
     }

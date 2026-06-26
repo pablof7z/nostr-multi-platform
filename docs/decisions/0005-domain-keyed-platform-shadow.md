@@ -18,7 +18,7 @@ For each view kind, the platform cache key is one of:
 - **Single domain key** (pubkey, event_id, peer pubkey) — for view kinds that reduce to a single target.
 - **Spec hash** — for view kinds with richer parameters (timelines, threads, searches).
 
-The live mechanism is `KernelEventObserver`: the platform subscribes to kernel-emitted projection batches and writes them into the keyed cache; components read from the cache via the platform's native idiom. Subscription lifecycle (open/close, refcount, warm-close grace) is driven from that observer seam, not by per-component FFI calls.
+The live mechanism is `ObservedProjectionSink`: the platform subscribes to kernel-emitted projection batches and writes them into the keyed cache; components read from the cache via the platform's native idiom. Subscription lifecycle (open/close, refcount, warm-close grace) is driven from that observer seam, not by per-component FFI calls.
 
 ## Consequences
 

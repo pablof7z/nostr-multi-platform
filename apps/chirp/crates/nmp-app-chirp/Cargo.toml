@@ -3,7 +3,7 @@ name = "nmp-app-chirp"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Per-app Chirp glue. Owns the Nip10ModularTimelineView instance, drives it from KernelEventObserver fan-out, and surfaces the projected blocks over a static-lib FFI for the iOS shell."
+description = "Per-app Chirp glue. Owns the home feed composition, drives it from declared observed projections, and surfaces projected blocks over a static-lib FFI for the iOS shell."
 
 [lib]
 name = "nmp_app_chirp"
@@ -140,7 +140,7 @@ zeroize.workspace = true
 
 [dev-dependencies]
 # Test-support gates expose `nmp_app_new` / `nmp_app_free` (and the
-# `nmp_app_register_event_observer` FFI symbol via Rust path) so the FFI
+# observer/projection test helpers via Rust path so the FFI
 # smoke tests in `src/ffi.rs` can spin up a real `NmpApp` rather than mocking
 # the slot. Matches the pattern in the other protocol crates (e.g. `nmp-nip01`).
 nmp-core = { path = "../../../../crates/nmp-core", features = ["test-support"] }

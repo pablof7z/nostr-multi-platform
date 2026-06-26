@@ -14,7 +14,7 @@ use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, KernelEvent,
 };
-use nmp_core::{canonical_relay_url, KernelEventObserver};
+use nmp_core::{canonical_relay_url, ObservedProjectionSink};
 use nmp_kinds::KIND_BOOKMARK_LIST;
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
@@ -131,7 +131,7 @@ impl BookmarkListProjection {
     }
 }
 
-impl KernelEventObserver for BookmarkListProjection {
+impl ObservedProjectionSink for BookmarkListProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != KIND_BOOKMARK_LIST {
             return;

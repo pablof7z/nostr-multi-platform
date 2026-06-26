@@ -1,13 +1,13 @@
 import Foundation
 
 // ─────────────────────────────────────────────────────────────────────────
-// T146 — Modular-timeline FFI bridge.
+// Modular-timeline FFI bridge.
 //
 // Extracted from `KernelBridge.swift` to keep that file under the
 // AGENTS.md 500-LOC hard cap. Public surface:
 //
 //   • `KernelHandle.registerChirpProjection()` — invoked from `init` to
-//     plug `nmp_app_chirp_register` into the kernel event observer slot.
+//     plug `nmp_app_chirp_register` into declared observed projections.
 //     Idempotent: safe to call when `chirpHandle` is nil OR already set.
 //   • `KernelHandle.unregisterChirpProjectionIfNeeded()` — drops the
 //     projection before `nmp_app_free` (FFI contract).
@@ -22,8 +22,8 @@ import Foundation
 // ─────────────────────────────────────────────────────────────────────────
 
 extension KernelHandle {
-    /// Register the Chirp modular timeline projection on the kernel event
-    /// observer slot. Viewer pubkey is `nil` on cold boot — `addSigner`
+    /// Register the Chirp modular timeline projection through declared
+    /// observed projections. Viewer pubkey is `nil` on cold boot — `addSigner`
     /// etc. retarget the projection once an account becomes active
     /// (`Spec.viewer` is currently only used for future personalization
     /// keys; the grouper accepts every kind:1 the kernel ingests
@@ -48,7 +48,7 @@ extension KernelHandle {
         }
     }
 
-    /// Drop the projection's observer registration if one exists. Called
+    /// Drop the projection registration if one exists. Called
     /// from `deinit` before `nmp_app_free`. Idempotent (no-op when
     /// `chirpHandle == nil`).
     func unregisterChirpProjectionIfNeeded() {

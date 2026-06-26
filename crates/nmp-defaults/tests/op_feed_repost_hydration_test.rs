@@ -21,8 +21,8 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
 use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
-// `on_kernel_event` is a `KernelEventObserver` method (the engine impls it).
-use nmp_core::KernelEventObserver as _;
+// `on_kernel_event` is a `ObservedProjectionSink` method (the engine impls it).
+use nmp_core::ObservedProjectionSink as _;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────

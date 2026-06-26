@@ -25,4 +25,4 @@ The nmp.nip25 react action validation must reject short placeholder event IDs an
 
 Public NIP-25 reaction publishing must reach core only as a generic unsigned event through the publish one-door, not through a dedicated ActorCommand::React path. <!-- [^019ed-157] -->
 
-The NIP-25 projection must be exposed as a bounded KernelEventObserver plus Rust snapshot API, with FlatBuffers/host projection wiring deferred to a later issue. <!-- [^019ed-158] -->
+The NIP-25 projection must be exposed as a bounded observed projection plus Rust snapshot API, with FlatBuffers/host projection wiring deferred to a later issue. <!-- [^019ed-158] -->

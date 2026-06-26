@@ -285,7 +285,7 @@ where
     /// ADR-0058 §8 step-6B: this is the viewport step of the single pull paging
     /// path — it is called ONLY by [`crate::PullFeedController`] after a
     /// successful seq-ordered pull drain has ingested a page of (possibly older)
-    /// events through [`nmp_core::KernelEventObserver::on_kernel_event`]. It is
+    /// events through [`nmp_core::ObservedProjectionSink::on_kernel_event`]. It is
     /// NOT a standalone `created_at` window-grow `load_older` (that parallel path
     /// was deleted in 6B; the engine is no longer a `FeedController`).
     ///
@@ -373,7 +373,7 @@ where
     }
 }
 
-impl<R, A, C> nmp_core::KernelEventObserver for RootIndexedFeed<R, A, C>
+impl<R, A, C> nmp_core::ObservedProjectionSink for RootIndexedFeed<R, A, C>
 where
     R: ParentResolver,
     A: AttributionPayload + serde::Serialize,

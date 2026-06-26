@@ -48,7 +48,9 @@ The swap-style observer slot on `NmpApp` does not generalize to N concurrent obs
 
 The stale comment at KernelBridge.swift:368 claiming 'auto-dispatches ActorCommand::WalletPayInvoice' describes V-41 deleted behavior that was never restored.
 
-Observer IDs of `0` from `nmp_app_register_event_observer` are silently poisoned — unregistering `0` is a no-op — and callers must check for zero to detect registration failure.
+The former raw event-observer FFI lane was removed. Hosts must consume typed
+snapshots, action results, update callbacks, and declared observed projections
+rather than registering arbitrary event taps.
 
 Registering a `nmp.*`-prefixed namespace via `nmp_app_register_action_executor` silently no-ops without returning an error, giving the caller no way to detect the rejection.
 

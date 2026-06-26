@@ -17,7 +17,7 @@
 
 use std::collections::BTreeSet;
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{KernelEvent, ObservedProjectionRegistrar};
 use nmp_feed::RootAdmission;
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
@@ -41,7 +41,7 @@ pub(super) fn resolve_set_op(
         Ok(r) => r,
         Err(e) => {
             for id in &l.resolver_observer_ids {
-                app.unregister_event_observer(*id);
+                app.close_observed_projection(*id);
             }
             for id in &l.identity_observer_ids {
                 app.unregister_identity_change_observer(*id);

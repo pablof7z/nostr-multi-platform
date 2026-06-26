@@ -3,7 +3,7 @@
 //!
 //! Unlike [`super::group_timeline::GroupTimelineProjection`] and
 //! [`super::discovered::DiscoveredGroupsProjection`], this projection is **not**
-//! event-driven: it carries no [`nmp_core::KernelEventObserver`] and observes no
+//! event-driven: it carries no [`nmp_core::ObservedProjectionSink`] and observes no
 //! kernel events. It is a pure **output** projection that surfaces the
 //! app/operator-supplied suggested host relay URL a host shell pre-fills into
 //! its "new public group" form.

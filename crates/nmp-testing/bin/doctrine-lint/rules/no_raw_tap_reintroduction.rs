@@ -1,5 +1,6 @@
 //! No-raw-tap-reintroduction — guards against re-introducing the deleted raw
-//! event tap escape hatch AND the #1552-deleted native push C-ABI sink.
+//! event tap escape hatch, the public filterless accepted-event observer lane,
+//! AND the #1552-deleted native push C-ABI sink.
 //!
 //! ## What was deleted
 //!
@@ -25,7 +26,15 @@
 //! call `nmp_app_pull_page` → apply the page → persist `after_seq` →
 //! `AdvancePullCursor`. See `docs/architecture/external-consumers.md`.
 //!
-//! Because the pull cursor exists, neither old shape may be re-introduced —
+//! ### 3. Public filterless accepted-event observers (#2089)
+//! The public `KernelEventObserver` / `register_live_event_tap` lane let app
+//! and product code subscribe to every accepted event with no declared shape.
+//! Production read models now use `ObservedProjectionRegistrar` with a concrete
+//! `ObservedProjection` declaration: shape, scope, owner, replay, then scoped
+//! future delivery. Blanket all-event fan-out is kernel-internal only.
+//!
+//! Because scoped projections and the pull cursor exist, none of these old
+//! shapes may be re-introduced —
 //! not even as a "compatibility shim", an "interim bridge", or a "legacy mode".
 //!
 //! ## What this catches
@@ -58,6 +67,17 @@
 //! - `NativeEventSinkCallback`      (C-ABI callback type for the deleted sink)
 //! - `event_sink_watermark`         (created_at resync watermark for the deleted sink)
 //!
+//! ### Deleted public filterless observer symbols
+//! - `KernelEventObserver`
+//! - `LiveEventTapRegistrar`
+//! - `register_live_event_tap`
+//! - `register_event_observer`
+//! - `unregister_event_observer`
+//! - `nmp_app_register_event_observer`
+//! - `nmp_app_unregister_event_observer`
+//! - `NmpEventObserverCallback`
+//! - `ObservedProjectionCallbackFn`
+//!
 //! ## Scope
 //!
 //! Workspace-wide: production Rust source in `crates/*/src/` and `apps/*/src/`.
@@ -83,6 +103,7 @@
 //! | `nmp_app_register_event_sink` (C-ABI) | `nmp_app_pull_page` + `GlobalLog` cursor     |
 //! | `retain_until_ack` cursor             | pull cursor `Protected { max_lag_entries }`  |
 //! | `event_sink_watermark` resync         | `after_seq` persisted by pull consumer       |
+//! | `register_live_event_tap`             | `open_observed_projection` with a shape      |
 
 pub const ID: &str = "no_raw_tap";
 
@@ -111,12 +132,22 @@ const BANNED_TOKENS: &[&str] = &[
     "unregister_raw_observer",
     "raw_event_tap",
     // ── #1552 native push C-ABI sink (deleted) ────────────────────────────────
-    "nmp_app_register_event_sink",   // C-ABI register for the deleted native sink
-    "nmp_app_ack_event_sink_batch",  // C-ABI ack for the deleted native sink
-    "retain_until_ack",              // retain-until-ack cursor — deleted pattern
-    "native_sink_cursor",            // native push sink position tracker
-    "NativeEventSinkCallback",       // C-ABI callback type for the deleted sink
-    "event_sink_watermark",          // created_at resync watermark for the deleted sink
+    "nmp_app_register_event_sink", // C-ABI register for the deleted native sink
+    "nmp_app_ack_event_sink_batch", // C-ABI ack for the deleted native sink
+    "retain_until_ack",            // retain-until-ack cursor — deleted pattern
+    "native_sink_cursor",          // native push sink position tracker
+    "NativeEventSinkCallback",     // C-ABI callback type for the deleted sink
+    "event_sink_watermark",        // created_at resync watermark for the deleted sink
+    // ── #2089 public filterless accepted-event observers (deleted) ───────────
+    "nmp_app_unregister_event_observer",
+    "nmp_app_register_event_observer",
+    "NmpEventObserverCallback",
+    "ObservedProjectionCallbackFn",
+    "unregister_event_observer",
+    "register_live_event_tap",
+    "register_event_observer",
+    "LiveEventTapRegistrar",
+    "KernelEventObserver",
 ];
 
 /// Per-line check. Returns `(col, message, suggested)` tuples for each hit.

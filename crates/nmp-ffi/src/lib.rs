@@ -36,7 +36,6 @@ mod debug_info;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
-mod event_observer;
 #[cfg(feature = "external-signer")]
 mod external_signer;
 mod feed;
@@ -52,6 +51,7 @@ mod interest_feed_tests;
 mod lifecycle;
 mod nip19_ffi;
 mod nip21_ffi;
+mod observed_projection_handle;
 mod passive_start;
 mod prestart_config;
 mod publish;
@@ -144,8 +144,6 @@ pub use capability::{nmp_app_dispatch_capability, nmp_app_set_capability_callbac
 #[cfg(feature = "native")]
 pub use content_ffi::nmp_content_tokenize_text;
 #[cfg(feature = "native")]
-pub use event_observer::{nmp_app_register_event_observer, nmp_app_unregister_event_observer};
-#[cfg(feature = "native")]
 pub use feed::nmp_app_load_older_feed;
 #[cfg(feature = "native")]
 pub use feed::{
@@ -159,6 +157,8 @@ pub use feed_session::{
 };
 #[cfg(feature = "native")]
 pub use free::nmp_free_string;
+#[cfg(feature = "native")]
+pub use observed_projection_handle::ObservedProjectionHandle;
 // #2088 — the NIP-29 per-open read-view opaque handle (group discovery). The
 // `open_group_*` / `close_group_*` methods are inherent `NmpApp` methods reached
 // through the `NmpApp` type itself; only the handle type needs hoisting so the

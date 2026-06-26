@@ -228,7 +228,7 @@ fn publish_group_event_dispatch_returns_correlation_id() {
 /// Proves the receive-side seam is live end-to-end:
 ///
 /// 1. `NmpApp::open_group_timeline` opens a hydrating `GroupTimelineProjection` for
-///    `"test-room"` as a `KernelEventObserver` (ingest) + snapshot projection
+///    `"test-room"` as an `ObservedProjectionSink` (ingest) + snapshot projection
 ///    under `"nmp.nip29.group_timeline"` (output).
 /// 2. A kind:9 event carrying `["h", "test-room"]` is injected via
 ///    `IngestPreVerifiedEvents` — the same actor path a relay worker uses.

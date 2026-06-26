@@ -32,7 +32,8 @@ presentation state only.
 The shipped seams are:
 
 - `ActionModule` plus `register_action` for typed write intents.
-- `register_event_observer` for event-driven in-process projection updates.
+- declared observed projections for event-driven, scope-bound read-model updates
+  with cache replay before activation.
 - `register_typed_snapshot_projection` and typed projection registration for host
   state output.
 - `CapabilityModule` and capability sockets for native facts.

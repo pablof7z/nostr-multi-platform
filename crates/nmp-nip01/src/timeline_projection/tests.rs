@@ -311,7 +311,7 @@ fn ordinary_notes_have_no_repost_attribution() {
 
 #[test]
 fn observer_trait_object_drives_grouper() {
-    let proj: Arc<dyn KernelEventObserver> = Arc::new(ModularTimelineProjection::new(&spec()));
+    let proj: Arc<dyn ObservedProjectionSink> = Arc::new(ModularTimelineProjection::new(&spec()));
     proj.on_kernel_event(&note("X", 1, vec![]));
 }
 

@@ -30,18 +30,21 @@
 
 use std::sync::Arc;
 
+use nmp_core::ObservedProjectionSink;
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::subs::SubOwnerKey;
-use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::substrate::{KernelEvent, empty_suppression_lookup};
 use nmp_feed::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
     FeedSessionBuild, PullFeedController, RootAdmission,
 };
 use nmp_ffi::{FeedOpenError, NmpApp};
+use nmp_planner::InterestScope;
 
-use super::source::{acquisition_children, ExtraAcquisition, OpSessionIdentity, ReducedSource};
+use super::source::{
+    AcquisitionInterest, ExtraAcquisition, OpSessionIdentity, ReducedSource, acquisition_children,
+};
 
 /// Build a registered feed session for a reduced non-default source and return
 /// its teardown recipe.
@@ -141,8 +144,16 @@ fn build_op_scope_session(
         event_lookup_for_observer,
         empty_suppression_lookup(),
     );
-    let observer_for_registry: Arc<dyn KernelEventObserver> = observer.clone();
-    let engine_observer_id = app.register_live_event_tap(observer_for_registry);
+    let observer_for_registry: Arc<dyn ObservedProjectionSink> = observer.clone();
+    let engine_observer = super::super::dynamic_observer::DynamicObservedProjection::new(
+        app.observed_projection_handle(),
+        observer_for_registry,
+        format!("{key}.observer"),
+        observed_projection_scope(&interests),
+        live_shape.clone(),
+        512,
+    );
+    engine_observer.sync();
 
     // ── 3. Pull controller over the live acquisition shape ───────────────
     let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
@@ -245,8 +256,10 @@ fn build_op_scope_session(
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
         let sync_acquisition = sync_acquisition.clone();
+        let sync_observer = engine_observer.clone();
         let notify = sender.clone();
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            sync_observer.sync();
             sync_acquisition(&extra);
             let reset = controller_for_reset.reset();
             let replayed = controller_for_reset.load_older();
@@ -277,7 +290,7 @@ fn build_op_scope_session(
     for id in &identity_observer_ids {
         teardown.push(teardown_handle.revoke_identity_observer(*id));
     } // exec #3
-    teardown.push(teardown_handle.revoke_observer(engine_observer_id)); // exec #2
+    teardown.push(engine_observer.teardown_action()); // exec #2
     teardown.push(teardown_handle.unregister_feed(key.to_string())); // exec #1 (first)
 
     Ok(FeedSessionBuild {
@@ -303,8 +316,16 @@ fn build_flat_scope_session(
     } = resolved;
 
     let feed = nmp_nip01::FlatFeed::new(admission);
-    let observer_for_registry: Arc<dyn KernelEventObserver> = feed.clone();
-    let engine_observer_id = app.register_live_event_tap(observer_for_registry);
+    let observer_for_registry: Arc<dyn ObservedProjectionSink> = feed.clone();
+    let engine_observer = super::super::dynamic_observer::DynamicObservedProjection::new(
+        app.observed_projection_handle(),
+        observer_for_registry,
+        format!("{key}.observer"),
+        observed_projection_scope(&interests),
+        live_shape.clone(),
+        512,
+    );
+    engine_observer.sync();
 
     let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
         let live_shape = live_shape.clone();
@@ -375,8 +396,10 @@ fn build_flat_scope_session(
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
         let sync_acquisition = sync_acquisition.clone();
+        let sync_observer = engine_observer.clone();
         let notify = sender.clone();
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
+            sync_observer.sync();
             sync_acquisition(&extra);
             let reset = controller_for_reset.reset();
             let replayed = controller_for_reset.load_older();
@@ -398,7 +421,7 @@ fn build_flat_scope_session(
     for id in &identity_observer_ids {
         teardown.push(teardown_handle.revoke_identity_observer(*id));
     }
-    teardown.push(teardown_handle.revoke_observer(engine_observer_id));
+    teardown.push(engine_observer.teardown_action());
     teardown.push(teardown_handle.unregister_feed(key.to_string()));
 
     Ok(FeedSessionBuild {
@@ -419,6 +442,17 @@ fn visible_flat_payload(feed: &nmp_nip01::FlatFeed) -> Vec<u8> {
 
 fn session_acquisition_owner(key: &str) -> SubOwnerKey {
     SubOwnerKey::new(("feed-session-acquisition", key))
+}
+
+fn observed_projection_scope(interests: &[AcquisitionInterest]) -> u32 {
+    if interests
+        .iter()
+        .any(|interest| matches!(interest.scope, InterestScope::Global))
+    {
+        1
+    } else {
+        0
+    }
 }
 
 fn clear_acquisition_set(

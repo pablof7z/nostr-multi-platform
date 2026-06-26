@@ -9,8 +9,8 @@
 //!
 //! The four per-open read views — group chat, discovered groups, joined groups,
 //! and the (deleted) raw group-events collector — used to be wired here via
-//! bare `register_event_observer` calls. That made a view opened AFTER its
-//! events were already cached hydrate live-only: it missed the cached tail
+//! an ambient all-event observer. That made a view opened AFTER its events
+//! were already cached hydrate live-only: it missed the cached tail
 //! (#2088). The hydrating composition now lives in `nmp-ffi`
 //! (`crate::group_feed`), which registers the projection MUTED and routes its
 //! ingest through `NmpApp::open_observed_interest_pinned` (the ADR-0062
@@ -46,7 +46,7 @@ use crate::projection::{GroupDefaultsProjection, GroupDefaultsSnapshot};
 /// public relay/operator policy.
 ///
 /// Output-only: this projection observes no kernel events — its snapshot is a
-/// pure function of the registration-time config — so no `KernelEventObserver`
+/// pure function of the registration-time config — so no `ObservedProjectionSink`
 /// is registered. `app` must outlive the registration.
 pub fn wire_group_defaults(app: &impl SnapshotProjectionRegistrar) {
     wire_group_defaults_with_snapshot(app, GroupDefaultsSnapshot::from_defaults());

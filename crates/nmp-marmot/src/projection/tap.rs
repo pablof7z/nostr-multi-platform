@@ -13,7 +13,7 @@
 //! The `RawEventObserver` tap was the ONLY way MDK (which requires a signed
 //! `nostr::Event` with `sig` present for gift-wrap unwrapping and kind:445
 //! decryption) could ride the kernel ingest path — the lossy
-//! `KernelEventObserver` strips the signature. PR-1 of the raw-tap ladder
+//! `ObservedProjectionSink` strips the signature. PR-1 of the raw-tap ladder
 //! proved the pattern: `DmInboxProjection` serialises the `VerifiedEvent`'s
 //! `RawEvent` to JSON and parses a `nostr::Event` from it, recovering the
 //! `sig` field that MDK needs. This module applies the same technique to

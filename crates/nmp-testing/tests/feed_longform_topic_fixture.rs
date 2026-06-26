@@ -14,7 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::FeedRequest;
 use nmp_planner::LogicalInterest;
 use nostr::{Event, EventBuilder, JsonUtil as _, Keys, Kind, Tag, Timestamp};

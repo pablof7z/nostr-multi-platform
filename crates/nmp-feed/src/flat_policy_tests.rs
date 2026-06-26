@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_planner::InterestShape;
 
 use super::super::*;

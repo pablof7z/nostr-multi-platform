@@ -38,7 +38,7 @@
 //! mirroring the sibling [`crate::projection::FollowListProjection`] — is to
 //! take the [`ActiveAccountSlot`] (re-exported through `nmp_core::slots`)
 //! directly. The composition root registers this struct as a
-//! `KernelEventObserver` separately, exactly as it already does for
+//! `ObservedProjectionSink` separately, exactly as it already does for
 //! `FollowListProjection`. No new crate edge in either direction (verified:
 //! `cargo tree -p nmp-nip02` carries `nmp-core`, `nostr`, `serde`,
 //! `serde_json` only — no `nmp-feed`, no `nmp-ffi`).
@@ -72,7 +72,7 @@
 //! touches which kinds the contact-list-authors REQ carries; it does **not**
 //! touch the kind:3 ingest fan-out that `ActiveFollowSet` observes. The
 //! sibling `FollowListProjection` (untouched by `2f06cc66`) is the living
-//! proof: kind:3 events still fan out to `KernelEventObserver`s gated purely on
+//! proof: kind:3 events still fan out to `ObservedProjectionSink`s gated purely on
 //! `event.kind == 3` and author == active, regardless of the compiled
 //! follow-feed acquisition kind set.
 //!
@@ -83,7 +83,7 @@
 //!   `nmp-feed` type appears in this crate's surface.
 //! * **D5** — the set is the full kind:3 follow set (uncapped, #1497
 //!   amendment 6). The kernel fans the *raw* kind:3 event (all `p` tags) to
-//!   every `KernelEventObserver`, so this observer derives membership itself.
+//!   every `ObservedProjectionSink`, so this observer derives membership itself.
 //!   It does so by routing the event's tags through the one shared pure function
 //!   [`nmp_core::tags::contact_follows`] — the IDENTICAL recipe
 //!   `Kernel::ingest_contacts` uses (every valid-hex-`p`-tag in document
@@ -109,7 +109,7 @@
 //!   the `ContactsLookup` is the single source of truth written by
 //!   `nmp_nip01::Kind3Parser`. Demand interest (kind:3 acquisition) is driven
 //!   by `register_follow_state_runtime` via `ActorCommand::OpenInterest` /
-//!   `CloseInterest` — no `KernelEventObserver` registration is needed for the
+//!   `CloseInterest` — no `ObservedProjectionSink` registration is needed for the
 //!   projection itself.
 //! * **D6** — poisoned locks and a `None` active account degrade to an empty
 //!   set / a `false` predicate, never a panic.
@@ -126,7 +126,7 @@ use nmp_core::kinds::KIND_CONTACT_LIST;
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::KernelEvent;
 use nmp_core::tags::contact_follows;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 
 /// A registered change callback. Fires on every follow-set transition
 /// (kind:3 update, account switch, logout).
@@ -137,7 +137,7 @@ type ChangeCallback = Box<dyn Fn() + Send + Sync>;
 /// Construct with [`ActiveFollowSet::new`] passing the kernel's
 /// [`ActiveAccountSlot`] (clone of `Kernel::active_account_handle()`). The
 /// composition root registers the returned `Arc<Self>` as a
-/// [`KernelEventObserver`] so kind:3 events are ingested, and calls
+/// [`ObservedProjectionSink`] so kind:3 events are ingested, and calls
 /// [`ActiveFollowSet::notify_account_changed`] on identity change.
 ///
 /// All state is `Arc`-internal so the struct is shared as `Arc<Self>` between
@@ -160,7 +160,7 @@ impl ActiveFollowSet {
     /// Construct an `ActiveFollowSet` over the kernel's active-account slot.
     ///
     /// Returns `Arc<Self>` because the same value is shared three ways: as a
-    /// [`KernelEventObserver`] in the kernel's observer registry, as the
+    /// [`ObservedProjectionSink`] in the kernel's observer registry, as the
     /// owner of the `on_change` registry the composition root drives, and as
     /// the source of the captured `Arc<RwLock<…>>` inside every handed-out
     /// predicate.
@@ -292,7 +292,7 @@ fn active_pubkey(slot: &ActiveAccountSlot) -> Option<String> {
     }
 }
 
-impl KernelEventObserver for ActiveFollowSet {
+impl ObservedProjectionSink for ActiveFollowSet {
     /// Called by the kernel once per accepted kind:3 event.
     ///
     /// Gate by `kind == 3` **and** author == active pubkey, then rebuild the

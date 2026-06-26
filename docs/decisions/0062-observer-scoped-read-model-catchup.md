@@ -17,15 +17,12 @@
   ADR-0053 (host-declared projections — observers self-gate by registration),
   `docs/wiki/guides/store-first-interest-registration.md`,
   `docs/wiki/guides/lmdb-event-store.md`.
-- **API naming update (#2089, historical mapping):** the API names below are
-  preserved as written at decision time. In current code: the live-event tap
-  registrar method `register_event_observer` is now `register_live_event_tap`
-  (trait `EventObserverRegistrar` → `LiveEventTapRegistrar`), and the
-  `register_feed_with_observer` per-open feed seam has been **removed** — its
-  muted→activate-with-read-cache-replay role is now the
+- **Current rule (#2089):** production app/product read models MUST NOT
+  subscribe to a public, filterless accepted-event observer. A read model must
+  declare shape/scope/owner/replay before receiving events. The
   `ObservedProjectionRegistrar::open_observed_projection` /
-  `close_observed_projection` door (the canonical realization of this ADR's
-  delivery invariant). Read the names in this document as those current APIs.
+  `close_observed_projection` door is the canonical realization of this ADR's
+  delivery invariant.
 
 ---
 
@@ -56,12 +53,10 @@ Two facts combine into a hole:
      deliberately re-visits boundary-timestamp events and relies on the dedup to
      swallow them.
 
-2. **A live tap is a one-shot broadcast, while an observed projection must be
-   interest-scoped.** The live-tap seam (`register_live_event_tap`) replays
-   nothing to a newly-registered observer and intentionally has no interest
-   shape. The observed-projection seam
-   (`ObservedProjectionRegistrar::open_observed_projection`) carries the filter
-   and replay shapes required for kernel-owned catch-up and scoped live delivery.
+2. **A production read model is declared, replayed, then scoped.** The
+   observed-projection seam (`ObservedProjectionRegistrar::open_observed_projection`)
+   carries the filter and replay shapes required for kernel-owned catch-up and
+   scoped live delivery. A blanket all-event observer is not an app primitive.
 
 **Consequence.** An observer registered *after* an interest's read-model is warm —
 which a per-open feed (Chirp author/thread profile, `interest_feed.rs`) **always**
@@ -153,9 +148,8 @@ hand-off point between *replay (catch-up)* and *live (broadcast)*.
    notified.
 4. Kernel replays the matching `self.events` to **only** that observer id.
 5. Kernel calls `activate_observer_scoped` with the registered interest shape —
-   it now receives only future events matching that observed projection. The
-   legacy `activate_observer` function remains for explicit live taps that need
-   unfiltered all-event delivery.
+   it now receives only future events matching that observed projection. Future
+   delivery MUST NOT join an all-event fanout.
 
 Because the observer is muted through steps 3–4, no live event can reach it before
 the replay, so the replay cannot duplicate a live delivery; and because replay runs
@@ -170,21 +164,21 @@ still needs hydration.
 ```rust
 // Observer slot (crates/nmp-core/src/actor/commands/event_observer.rs)
 pub fn register_rust_observer_muted(
-    slot: &KernelEventObserverSlot,
-    observer: Arc<dyn KernelEventObserver>,
-) -> KernelEventObserverId;
+    slot: &ObservedProjectionSinkSlot,
+    observer: Arc<dyn ObservedProjectionSink>,
+) -> ObservedProjectionId;
 pub(crate) fn notify_observer_by_id(
-    slot: &KernelEventObserverSlot, id: KernelEventObserverId, event: &KernelEvent,
+    slot: &ObservedProjectionSinkSlot, id: ObservedProjectionId, event: &KernelEvent,
 );
 pub fn activate_observer_scoped(
-    slot: &KernelEventObserverSlot,
-    id: KernelEventObserverId,
+    slot: &ObservedProjectionSinkSlot,
+    id: ObservedProjectionId,
     shape: InterestShape,
 ) -> bool;
 
 // Kernel (crates/nmp-core/src/kernel/...)
 pub(crate) struct ObserverReplayRequest {
-    pub observer_id: KernelEventObserverId,
+    pub observer_id: ObservedProjectionId,
     pub shapes: Vec<InterestShape>,   // plural — see thread-root below
     pub limit: usize,
 }
@@ -246,9 +240,9 @@ The replay **must not** mutate `self.events`, metrics, parser caches,
 - **Remove the dedup / re-serve cached events globally.** Reintroduces the
   double-count, re-fires the parser + transition sweep, and re-notifies every
   observer — the exact single-fire violation the dedup exists to prevent.
-- **Replay hook on `register_event_observer`.** The observer has no shape; there
-  is nothing to filter `self.events` against. Rejected as structurally impossible
-  without the interest context.
+- **Replay hook on a filterless observer.** The observer has no shape; there is
+  nothing to filter `self.events` against. Rejected as structurally impossible
+  without the interest context and now forbidden as an app/product API.
 - **Thread `observer_id` into `register_interest` and replay there, gated on
   `changed`.** Misses the multi-owner `changed:false` case, and leaves a
   live↔replay double-delivery window because the observer is globally active
@@ -281,7 +275,7 @@ The replay **must not** mutate `self.events`, metrics, parser caches,
 
 - **Positive:** one kernel invariant replaces three app-side hacks; per-open feeds
   populate correctly regardless of cache warmth; D0 stays clean (the kernel names
-  only `KernelEventObserverId` + `InterestShape`); the seeds (#1645/#1646) become
+  only `ObservedProjectionId` + `InterestShape`); the seeds (#1645/#1646) become
   safe to delete.
 - **Cost:** a real FFI-surface change — observer mute/active state + a new combined
   command — not a local patch. This is precisely why the issues' "just delete the

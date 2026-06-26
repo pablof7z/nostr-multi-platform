@@ -24,40 +24,43 @@
 //! `open` / `on_event_*` / `snapshot` inherent methods are reached via
 //! static dispatch; `ViewDependencies` survives as the planner bridge.
 //!
-//! ## v1 extension mechanism: `KernelEventObserver`
+//! ## v1 read-model mechanism: declared observed projections
 //!
-//! The mechanism the kernel *actually* drives in v1 is
-//! [`KernelEventObserver`](crate::KernelEventObserver) — a flat raw-event
-//! fan-out. Per-app crates register `Arc<dyn KernelEventObserver>`
-//! observers; the kernel fans every accepted event (`Inserted | Replaced`)
-//! to all registered observers. The modular timeline projection and the
-//! MLS group-messaging projection are the canonical live consumers.
+//! The mechanism the kernel drives in v1 is a declared observed projection:
+//! a host supplies an [`ObservedProjection`](app_host::ObservedProjection)
+//! containing the sink, owner, scope, relay pin, replay shapes, and replay
+//! limit before the sink can receive events. The kernel replays matching
+//! cached/store rows into that muted sink, then activates scoped future
+//! delivery for the declared shapes.
+//!
+//! This deliberately replaced the former public filterless accepted-event
+//! observer. Product read models must not subscribe to every accepted event
+//! and self-filter later.
 //!
 //! Canonical pattern:
 //! - the slot + registration helpers: `actor/commands/event_observer.rs`
 //! - the kernel fan-out integration: `kernel/event_observer.rs`
-//! - a per-app crate registering an observer: `nmp-app-chirp/src/ffi.rs`
+//! - a host registering `ObservedProjection` through `ObservedProjectionRegistrar`
 
 mod action;
 mod app_host;
 mod blocked_relays;
 mod bounded;
-mod suppression;
 mod capability;
 mod contacts_lookup;
+pub mod content_parser;
 mod dm_inbox_relays;
 mod empty_routing;
+pub mod external_event_sink;
 mod host_op;
 mod host_op_handler;
 mod identity;
 mod ingest;
 mod keyring;
 mod payment;
-mod profile_lookup;
-pub mod content_parser;
 pub mod placeholder;
+mod profile_lookup;
 mod protocol;
-pub mod external_event_sink;
 mod raw_event_forwarding;
 mod relay_connected;
 mod relay_info;
@@ -66,6 +69,7 @@ mod relay_score_store;
 mod req_intercept;
 mod routing;
 mod routing_trace;
+mod suppression;
 // #1811 — crate-registered full-text search scopes (protocol-aware
 // SearchIndexSpec + SearchScopeProvider; compiled into nmp-store's noun-free
 // CompiledIndexSpec at composition time).
@@ -82,11 +86,10 @@ pub use action::{
     ActionRegistrar, ActionRejection, ActionResult, RegistrationError,
 };
 pub use app_host::{
-    register_observer_projection, AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar,
-    DmInboxRelayRegistrar, HostCapabilities, IdentityChangeRegistrar,
-    IncrementalApplyError, IngestParserRegistrar, KernelReaderRegistrar,
-    LiveEventTapRegistrar, ObservedProjection, ObservedProjectionRegistrar,
-    PreferredRelaySource,
+    AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
+    HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError, IngestParserRegistrar,
+    KernelReaderRegistrar, ObservedProjection, ObservedProjectionCommandHandle,
+    ObservedProjectionRegistrar, ObservedProjectionSessionMap, PreferredRelaySource,
     RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
     RoutingFactoryRegistrar, SnapshotProjectionRegistrar,
 };
@@ -97,32 +100,42 @@ pub use search::{
     SearchScopeProvider, SearchScopeRegistrar, SearchScopeRegistry,
 };
 // #1804 — input-intent recognizer substrate surface.
+pub use bounded::{BoundedMessageMap, BoundedRing, MAX_PROJECTION_MESSAGES};
+pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
+pub use contacts_lookup::{
+    empty_contacts_lookup, ContactsLookup, ContactsView, EmptyContactsLookup,
+};
+#[cfg(any(test, feature = "test-support"))]
+pub use contacts_lookup::{TestContactsCache, TestKind3Parser};
+#[cfg(any(test, feature = "test-support"))]
+pub use dm_inbox_relays::TestDmInboxRelayCache;
+pub use dm_inbox_relays::{
+    empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyDmInboxRelayLookup,
+};
 pub use intent::{
     InputIntentCandidate, InputIntentClassification, InputIntentRejection, InputIntentRequest,
     InputIntentTarget, InputScopeDisposition, InputScopeId, InputScopeRecognizer,
     InputScopeRegistrar, InputScopeRegistry, ResolvedInput, ResolvedInputKind, TextSearchTargets,
     INPUT_SCOPE_LEDGER_SEAM,
 };
-pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};
-pub use bounded::{BoundedMessageMap, BoundedRing, MAX_PROJECTION_MESSAGES};
-pub use capability::{CapabilityEnvelope, CapabilityModule, CapabilityRequest};
-#[cfg(any(test, feature = "test-support"))]
-pub use dm_inbox_relays::TestDmInboxRelayCache;
-pub use dm_inbox_relays::{
-    empty_dm_inbox_relay_lookup, DmInboxRelayLookup, EmptyDmInboxRelayLookup,
-};
 pub use payment::{PaymentIntent, PaymentPort};
-pub use profile_lookup::{
-    empty_profile_lookup, EmptyProfileLookup, ProfileLookup, ProfileView,
-};
+pub use profile_lookup::{empty_profile_lookup, EmptyProfileLookup, ProfileLookup, ProfileView};
 #[cfg(any(test, feature = "test-support"))]
 pub use profile_lookup::{TestKind0Parser, TestProfileCache};
-pub use contacts_lookup::{
-    empty_contacts_lookup, ContactsLookup, ContactsView, EmptyContactsLookup,
-};
-#[cfg(any(test, feature = "test-support"))]
-pub use contacts_lookup::{TestContactsCache, TestKind3Parser};
+pub use suppression::{empty_suppression_lookup, EmptySuppressionLookup, SuppressionLookup};
 
+pub use content_parser::{ContentParser, NoopContentParser};
+#[cfg(any(test, feature = "test-support"))]
+pub use empty_routing::TestInMemoryMailboxCache;
+pub use empty_routing::{EmptyMailboxCache, EmptyOutboxRouter};
+pub use external_event_sink::{
+    dispatcher::{
+        new_external_event_sink_dispatcher_slot, ExternalEventSinkDispatcher,
+        ExternalEventSinkDispatcherSlot,
+    },
+    ExternalEventSinkPolicy, IngestOutcomeKind, SignedEventFrame, SinkDestination,
+};
+pub use host_op::{host_op_command, HostOpCommand};
 pub use host_op_handler::{new_host_op_handler_slot, HostOpHandler, HostOpHandlerSlot};
 pub use ingest::{EventIngestDispatcher, IngestParser};
 pub use keyring::{
@@ -130,22 +143,15 @@ pub use keyring::{
     MALFORMED_RESULT,
 };
 pub use nmp_store::{DomainMigration, MigrationTx};
-pub use content_parser::{ContentParser, NoopContentParser};
 pub use placeholder::{picture_placeholder, Placeholder};
-pub use host_op::{host_op_command, HostOpCommand};
 pub use protocol::{
-    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_sign_event_for_account,
-    build_record_action_failure, build_record_action_success,
-    ActionStageTracker, DmInboxLookup, ErrorSurface, HostOpHandlerAccess, KernelClock,
-    LocalSignerAccess, NoopActionStageTracker, NoopErrorSurface, NoopHostOpHandlerAccess,
-    NoopKernelClock, NoopLocalSignerAccess, NoopRecipientRelayLookup, NoopWalletKernelAccess,
-    NoopZapProfileLookup, ProtocolCommand, ProtocolCommandContext, ProtocolCommandContextParts,
-    ProtocolCommandError, RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
-};
-pub use external_event_sink::{
-    dispatcher::{ExternalEventSinkDispatcher, ExternalEventSinkDispatcherSlot,
-        new_external_event_sink_dispatcher_slot},
-    ExternalEventSinkPolicy, IngestOutcomeKind, SignedEventFrame, SinkDestination,
+    build_nip44_decrypt_for_account, build_nip44_encrypt_for_account, build_record_action_failure,
+    build_record_action_success, build_sign_event_for_account, ActionStageTracker, DmInboxLookup,
+    ErrorSurface, HostOpHandlerAccess, KernelClock, LocalSignerAccess, NoopActionStageTracker,
+    NoopErrorSurface, NoopHostOpHandlerAccess, NoopKernelClock, NoopLocalSignerAccess,
+    NoopRecipientRelayLookup, NoopWalletKernelAccess, NoopZapProfileLookup, ProtocolCommand,
+    ProtocolCommandContext, ProtocolCommandContextParts, ProtocolCommandError,
+    RecipientRelayLookup, WalletKernelAccess, ZapProfileLookup,
 };
 pub use raw_event_forwarding::{RawEventForwardPolicyContext, RawEventForwardTarget};
 pub use relay_connected::{
@@ -156,15 +162,12 @@ pub use relay_info::RelayInfoDoc;
 pub use relay_intercept::{
     new_relay_text_interceptor_slot, RelayTextInterceptor, RelayTextInterceptorSlot,
 };
-pub use req_intercept::{
-    new_req_frame_interceptor_slot, ReqFrameContext, ReqFrameInterceptor, ReqFrameInterceptorSlot,
-};
-#[cfg(any(test, feature = "test-support"))]
-pub use empty_routing::TestInMemoryMailboxCache;
-pub use empty_routing::{EmptyMailboxCache, EmptyOutboxRouter};
 #[cfg(feature = "lmdb-backend")]
 pub use relay_score_store::LmdbRelayAuthorScoreStore;
 pub use relay_score_store::{NoopRelayAuthorScoreStore, RelayAuthorScoreStore, ScoreCell};
+pub use req_intercept::{
+    new_req_frame_interceptor_slot, ReqFrameContext, ReqFrameInterceptor, ReqFrameInterceptorSlot,
+};
 pub use routing::{
     canonicalize_relay_url, AppRelayMode, BlockedRelaySet, ClassRoutingPath, Direction, EventClass,
     MailboxCache, OutboxRouter, ParsedRelayList, Pubkey as RoutingPubkey,
@@ -172,8 +175,8 @@ pub use routing::{
     SessionKeySet, UserConfiguredCategory,
 };
 pub use routing_trace::{
-    truncate_event_id, LaneOutcome, PublishTrace, RouteAttempt, RoutingLane,
-    RoutingTraceObserver, SubscriptionTrace,
+    truncate_event_id, LaneOutcome, PublishTrace, RouteAttempt, RoutingLane, RoutingTraceObserver,
+    SubscriptionTrace,
 };
 pub use view::{EventId, KernelEvent, ProjectionChange, ViewContext, ViewDependencies};
 

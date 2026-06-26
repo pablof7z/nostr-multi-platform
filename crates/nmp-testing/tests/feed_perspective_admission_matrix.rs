@@ -22,7 +22,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::AdmitExpr;
 
 const VIEWER: &str = "11ee000000000000000000000000000000000000000000000000000000000001";
@@ -182,7 +182,10 @@ fn difference_excludes_right_side() {
         Box::new(authors(&[MEMBER, MEMBER2])),
         Box::new(authors(&[MEMBER2])),
     );
-    assert!(admit.matches(&note(MEMBER, &[])), "left-only member admitted");
+    assert!(
+        admit.matches(&note(MEMBER, &[])),
+        "left-only member admitted"
+    );
     assert!(
         !admit.matches(&note(MEMBER2, &[])),
         "right-side member excluded"
@@ -236,7 +239,10 @@ fn mixed_difference_contact_list_minus_tag() {
         Box::new(authors(&[MEMBER, MEMBER2])),
         Box::new(AdmitExpr::Tag("spoiler".to_string())),
     );
-    assert!(admit.matches(&note(MEMBER, &["nostr"])), "member, untagged → admitted");
+    assert!(
+        admit.matches(&note(MEMBER, &["nostr"])),
+        "member, untagged → admitted"
+    );
     assert!(
         !admit.matches(&note(MEMBER, &["spoiler"])),
         "member but #spoiler → excluded by the right side"

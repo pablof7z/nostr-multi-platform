@@ -1,5 +1,5 @@
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_nip01::{
     ModularTimelineProjection, ModularTimelineSpec, NoteRelationCounts, RelationCount,
 };

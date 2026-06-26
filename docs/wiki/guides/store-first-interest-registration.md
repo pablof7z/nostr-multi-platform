@@ -76,6 +76,9 @@ A post-serve live event may invalidate a completed shape. The cache-serve wakeup
 - Serve → live: a relay re-delivers a store-served event → `store.insert` sees `Duplicate`, no observer fan-out.
 - Live → serve: events already in the read-cache are skipped at visit time in `feed_served_event`.
 
-`feed_served_event` calls `project_accepted_event` → `notify_event_observers`, so cache-served events do reach observers. The `KernelEventObserver` is not live-only.
+`feed_served_event` calls `project_accepted_event` → `notify_event_observers`,
+so cache-served events do reach declared observers. Late-opening views must use
+observed projections because the public raw event-observer lane is not a
+supported app surface.
 
 <!-- citations: [^e6b44-10] -->

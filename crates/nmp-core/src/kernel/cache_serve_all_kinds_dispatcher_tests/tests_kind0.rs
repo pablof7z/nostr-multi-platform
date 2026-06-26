@@ -74,7 +74,7 @@ fn cache_served_kind0_bumps_profiles_ver_and_populates_cache() {
 /// NOW + 9_999.
 #[test]
 fn cache_served_future_dated_event_is_clamped_in_fan_out() {
-    use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+    use crate::actor::{new_event_observer_slot, register_rust_observer, ObservedProjectionSink};
     use crate::kernel::clock::FixedClock;
     use crate::substrate::KernelEvent;
     use std::collections::HashMap;
@@ -83,7 +83,7 @@ fn cache_served_future_dated_event_is_clamped_in_fan_out() {
     struct CapturingObserver {
         seen: Mutex<HashMap<String, u64>>,
     }
-    impl KernelEventObserver for CapturingObserver {
+    impl ObservedProjectionSink for CapturingObserver {
         fn on_kernel_event(&self, event: &KernelEvent) {
             self.seen
                 .lock()

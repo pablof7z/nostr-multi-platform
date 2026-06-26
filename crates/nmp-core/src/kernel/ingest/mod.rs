@@ -15,7 +15,7 @@
 //!   raw-tap → provenance → TTL) and returns the `(InsertOutcome, VerifiedEvent)`.
 //!   The shared [`Kernel::project_accepted_event`] then fires BOTH the NIP-parser
 //!   [`crate::substrate::EventIngestDispatcher`] dispatch AND the app-facing
-//!   `KernelEventObserver` notify on the canonical accepted outcome
+//!   `ObservedProjectionSink` notify on the canonical accepted outcome
 //!   (`Inserted | Replaced | Ephemeral`) — so an ephemeral reaches both the
 //!   parsers and the app observers (ADR-0057 §1 latent-bug fix), and a
 //!   `Duplicate` (incl. the relay echo of a local publish) is projection-silent

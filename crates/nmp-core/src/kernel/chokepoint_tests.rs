@@ -10,7 +10,7 @@
 //! when `record_local_publish_intent` / `local_publish_intent.rs` were deleted.)
 
 use super::*;
-use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+use crate::actor::{new_event_observer_slot, register_rust_observer, ObservedProjectionSink};
 use crate::publish::PublishTarget;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use {crate::substrate::KernelEvent, nmp_signer_iface::{SignedEvent, UnsignedEvent}};
@@ -128,7 +128,7 @@ fn local_kind3_publish_updates_contacts_set() {
     );
 }
 
-/// A `KernelEventObserver` that records every event it receives.
+/// A `ObservedProjectionSink` that records every event it receives.
 struct CapturingObserver {
     count: AtomicU32,
     last: Mutex<Option<KernelEvent>>,
@@ -143,7 +143,7 @@ impl CapturingObserver {
     }
 }
 
-impl KernelEventObserver for CapturingObserver {
+impl ObservedProjectionSink for CapturingObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.count.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.last.lock() {
@@ -153,7 +153,7 @@ impl KernelEventObserver for CapturingObserver {
 }
 
 /// FINDING A (read-your-writes): a locally published kind:3 contact list must
-/// fan out to registered `KernelEventObserver`s — the SAME seam the relay
+/// fan out to registered `ObservedProjectionSink`s — the SAME seam the relay
 /// ingest arm uses — so sidecar projections (`FollowListProjection`,
 /// `ActiveFollowSet`) update immediately, without waiting for the relay echo
 /// (which dedups to `Duplicate` and never re-fires fan-out) or an account
@@ -253,7 +253,7 @@ fn relay_echo_of_local_kind3_does_not_double_fire_observers() {
 }
 
 /// #1193 (read-your-writes for kind:0): a locally published kind:0 profile
-/// must fan out to registered `KernelEventObserver`s — the SAME seam the
+/// must fan out to registered `ObservedProjectionSink`s — the SAME seam the
 /// relay ingest arm uses — AND populate the kernel's profile projection
 /// immediately, without waiting for the relay echo (which dedups to
 /// `Duplicate` and never re-fires fan-out). Retires the
@@ -359,7 +359,7 @@ fn relay_echo_of_local_kind0_does_not_double_fire_observers() {
 }
 
 /// #1193 (generic replaceable arm): a locally published kind:10002 relay list
-/// must notify registered `KernelEventObserver`s immediately — the SAME seam
+/// must notify registered `ObservedProjectionSink`s immediately — the SAME seam
 /// the relay wildcard ingest arm uses — so routing/mailbox-driven projections
 /// react to the local edit without waiting for the relay echo.
 #[test]

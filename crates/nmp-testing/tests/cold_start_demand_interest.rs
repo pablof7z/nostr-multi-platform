@@ -9,11 +9,11 @@
 //! (`authors=[pubkey] / kinds=[10003]`). The kernel's `EnsureInterest` handler
 //! runs a **synchronous cache-serve drain** that replays any matching event
 //! ALREADY in the local store — but NOT yet in the kernel's RAM event cache —
-//! to the kernel-event observers. So a kind:10003 bookmark list persisted in a
+//! to the observed-projection sinks. So a kind:10003 bookmark list persisted in a
 //! prior session surfaces into the `BookmarkListProjection` snapshot WITHOUT any
 //! relay delivery.
 //!
-//! That contract was previously proven only at the kernel-observer level
+//! That contract was previously proven only at the observed-projection level
 //! (`crates/nmp-core/src/kernel/bookmark_cold_start_tests.rs`, using a
 //! `CapturingObserver` and `pub(crate)` kernel APIs). This test lifts it to the
 //! **full sign-in → cache-serve → projection-snapshot pipeline** an app actually

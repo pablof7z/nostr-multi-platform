@@ -101,19 +101,22 @@ Registers a typed sidecar pushed under `typed_projections["nmp.myapp.items"]` on
 every snapshot tick. The closure runs on the **actor thread**; it must be
 cheap and non-blocking (D8). Registered under dotted `nmp.*` namespaces.
 
-### Seam 3 — `register_live_event_tap(arc)`
+### Seam 3 — `open_observed_projection(decl)`
 
 ```rust
-app.register_live_event_tap(Arc::new(MyObserver { store: Arc::clone(&store) }));
+app.open_observed_projection(ObservedProjection::from_kinds(
+    Arc::new(MyObserver { store: Arc::clone(&store) }),
+    "nmp.myapp.items",
+    0,
+    [KIND_NOTE],
+    128,
+));
 ```
 
-Registers a `KernelEventObserver` (`actor/commands/event_observer.rs:189`)
-for event-driven view updates. `on_event_inserted` / `on_event_replaced` fire
-on the actor thread for every accepted ingest. Use this in in-process
-consumers (`nmp-app-chirp`, per-app projection crates) that build typed views
-from raw `KernelEvent`s and are live before their events arrive. If the view is
-per-open or late-joining, use `ObservedProjectionRegistrar::open_observed_projection`
-so the kernel owns read-cache replay and scoped live delivery.
+Registers a `ObservedProjectionSink` behind a declared shape. The kernel opens
+the matching interest, replays cached/store-backed rows to the muted sink, then
+activates future delivery scoped to that shape. App/product read models do not
+subscribe to a public filterless accepted-event observer.
 
 ### The two kernel-defined extension traits
 
@@ -182,7 +185,13 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     nmp_defaults::register_defaults(app);
     // App-specific seams.
     app.register_action(NoteActionModule);
-    app.register_live_event_tap(Arc::new(FeedObserver { store: Arc::clone(&store) }));
+    app.open_observed_projection(ObservedProjection::from_kinds(
+        Arc::new(FeedObserver { store: Arc::clone(&store) }),
+        FEED_SNAPSHOT_KEY,
+        0,
+        [KIND_NOTE],
+        128,
+    ));
     let projector = Arc::clone(&store);
     app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
         match projector.lock() {
@@ -251,13 +260,13 @@ changes to `nmp-core`**.
    into a junk drawer of every consumer's domain concepts. App nouns go in
    app-core crates; protocol nouns in `nmp-nip*` crates.
 2. **Bypassing the shipped seams.** Use `register_typed_snapshot_projection` for
-   named read output, `KernelEventObserver` for event-driven in-process
-   projections, and `register_action` for the write path.
+   named read output, `open_observed_projection` for declared event-driven
+   read models, and `register_action` for the write path.
 3. **Bypassing `register_typed_snapshot_projection` to render raw events in
    SwiftUI.** Decoding `kind:1` JSON in Swift re-implements the kernel's
    reactive contract in the shell, duplicates state ownership (D4 violation),
    and breaks D5 bounding. Every read goes through a registered projection or
-   a `KernelEventObserver`-driven view.
+   an `ObservedProjectionSink`-driven view with a declared shape.
 4. **Adding a 4th registration seam without an ADR.** The three seams are the
    extension contract. A new seam is a kernel change that requires its own ADR.
 

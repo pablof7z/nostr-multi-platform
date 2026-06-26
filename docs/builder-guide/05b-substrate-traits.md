@@ -85,14 +85,14 @@ Key teaching points:
   The `execute` body is a static method (no `&self`), so it reads the store
   from the process-wide slot that `register()` initializes.
 
-### The event observer
+### The observed projection sink
 
 ```rust
 pub struct FeedObserver {
     store: FeedStore,
 }
 
-impl KernelEventObserver for FeedObserver {
+impl ObservedProjectionSink for FeedObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != 1 { return; }
         let record = NoteRecord {
@@ -108,9 +108,11 @@ impl KernelEventObserver for FeedObserver {
 }
 ```
 
-The observer fires on every accepted kind:1 ingest and appends to the feed
-store. This is the same seam `nmp-app-chirp` uses to drive the live timeline
-projection.
+Register the sink through `ObservedProjection::from_kinds(..., [1], ...)`.
+The kernel replays matching cached rows first, then delivers only accepted
+kind:1 events that match the declared shape. This is the same contract
+`nmp-app-chirp` uses to drive the live timeline projection; it is not a
+filterless all-event observer.
 
 ### The snapshot projection
 
@@ -156,7 +158,8 @@ See [19b](19b-walkthrough-microblog.md) for the shell.
 ### What `microblog-core` proves
 
 1. A complete app module with writes (`ActionModule`), event-driven view
-   (`KernelEventObserver`), and read output (`register_typed_snapshot_projection`)
+   (`ObservedProjectionSink`), and read output (`register_snapshot_projection`
+   or `register_typed_snapshot_projection`)
    — **without touching `nmp-core`**.
 2. App state is app-owned (`Arc<Mutex<Vec<NoteRecord>>>`). The kernel never
    stores, migrates, or indexes `NoteRecord`. The module owns its data.
@@ -274,13 +277,14 @@ namespace collisions remain a bug and are recorded in the composition ledger
    collaborators with the same instance; copying the block by hand desyncs
    them (V-48).
 6. **Bypassing the shipped seams.** Use `ActionModule`,
-   `KernelEventObserver`, snapshot/typed projection registration, and
-   capabilities as shown in [05a](05a-substrate-traits.md).
+   `ObservedProjectionSink` through `open_observed_projection`,
+   snapshot/typed projection registration, and capabilities as shown in
+   [05a](05a-substrate-traits.md).
 
 ## Deliverables (this half)
 
 - **Annotated `microblog-core` walkthrough** (above) — the copyable three-seam
-  template: ActionModule + event observer + snapshot projection.
+  template: ActionModule + declared observed projection + snapshot projection.
 - **`nmp-nip29` sidebar** (above) — how the same seams scale to a real
   protocol with zero kernel nouns; plus the ADR-0046 composition pattern.
 

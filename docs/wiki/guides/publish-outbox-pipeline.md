@@ -129,4 +129,6 @@ Nip17DmRelay (RoutingSource::Nip17DmRelay) must be included in relay_bypasses_se
 
 ## Local Publish Consistency
 
-A locally-published event must flow through the same EventIngestDispatcher → KernelEventObserver::on_kernel_event pipeline as relay-received events, ensuring read-your-writes consistency from the moment a signed event hits the local store. <!-- [^e6b44-4] -->
+A locally-published event must flow through the same EventIngestDispatcher →
+projection fan-out pipeline as relay-received events, ensuring read-your-writes
+consistency from the moment a signed event hits the local store. <!-- [^e6b44-4] -->

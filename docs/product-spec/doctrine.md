@@ -25,10 +25,12 @@ specific deletion gate and deadline.
 
 The shared Rust core (`nmp-core`) has no concept of a tweet, a podcast episode,
 a highlight, or a group chat. Those nouns belong to your app or to protocol
-crates. You add behavior through the live seams: registered actions, event
-observers, typed projections, feed/source declarations, ref/dependent interest
-claims, and capability bridges. Two apps can be built on the same core without
-either one leaking its domain concepts into the shared substrate.
+crates. You add behavior through the live v1 seams: registered actions,
+declared observed projections, typed projections, feed/source declarations,
+ref/dependent interest claims, and capability bridges. The removed v2
+`ViewModule`/`DomainModule`/`IdentityModule` traits are historical, not current
+extension points. Two apps can be built on the same core without either one
+leaking its domain concepts into the shared substrate.
 
 D0 applies to every shared NMP crate, not only `nmp-core`. `nmp-defaults`,
 protocol crates, reusable engines, binding crates, and FFI/wasm delivery
@@ -158,6 +160,18 @@ mean retain cached state and an explicit `Cleared` row means drop it. Domain
 empty states are encoded in their payloads, not inferred from absence. The event
 store, gossip cache, sync watermarks, working set, and signer state live
 exclusively in the Rust actor.*
+
+*Read-model declaration rule: production app/product read models are declared
+resources, not ambient event taps. A read model MUST NOT subscribe to a public,
+filterless accepted-event observer. If it can name the events it needs by kind,
+author, id, tag, relay pin, search shape, source reducer, or bounded dependency,
+it must declare that shape before receiving events. Opening an observed
+projection is ordered as: register muted sink, open declared interest, replay
+matching cached/store-backed rows to that sink, then activate future delivery
+scoped to the declared shapes. Future delivery MUST NOT join an all-event fanout.
+Any remaining event slot is kernel-internal plumbing for parsers, tests, or
+migration and must not be exported through Rust, C ABI, JNI, WASM, builder
+guides, or app templates.*
 
 ---
 

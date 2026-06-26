@@ -36,7 +36,8 @@ concepts live in app Rust crates. Native shells render and report native facts.
 The shipped extension seams are:
 
 - `ActionModule` plus `register_action` for write intents,
-- `register_event_observer` for event-driven Rust projections,
+- `open_observed_projection` for event-driven Rust projections that declare
+  shape, scope, owner, and replay before receiving events,
 - `register_typed_snapshot_projection` for host
   state,
 - `CapabilityModule` and capability sockets for native facts,

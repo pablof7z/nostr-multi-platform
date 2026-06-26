@@ -16,9 +16,9 @@ use nmp_nip01::OpFeedEngine;
 /// template registration through `NmpApp`'s Rust-side identity observer.
 ///
 /// The engine and follow set are registered with the kernel by
-/// [`nmp_defaults::register_op_feed_defaults`], which plugs their observers
-/// into the kernel's standard `KernelEventObserver` registry (not a single
-/// swappable slot). Those registrations live for the life of the `NmpApp`:
+/// [`nmp_defaults::register_op_feed_defaults`], which plugs their declared
+/// observed projections into the kernel's standard `ObservedProjectionSink`
+/// registry (not a single swappable slot). Those registrations live for the life of the `NmpApp`:
 /// [`super::nmp_app_chirp_unregister`] no longer holds a single `observer_id`
 /// to revoke — the `nmp_app_free` actor join is the fence that makes any
 /// in-flight callback safe (see the `unsafe impl` rationale below).
@@ -62,8 +62,7 @@ pub struct ChirpHandle {
 // CALLER CONTRACT: `nmp_app_free` must not be invoked while any kernel
 // callback that reaches this handle's engine is still in flight. The
 // in-process Rust-trait registration path used here gets that fence for free
-// (the actor join). A hypothetical C-ABI observer would NOT — its drain
-// thread is separate and is not joined by `nmp_app_free`.
+// (the actor join). There is no C-ABI event observer path.
 unsafe impl Send for ChirpHandle {}
 unsafe impl Sync for ChirpHandle {}
 

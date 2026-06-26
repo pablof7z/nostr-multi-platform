@@ -5,10 +5,16 @@
 
 pub struct LegacyIntegration {
     observer: RawEventObserver,
+    kernel_observer: KernelEventObserver,
 }
 
 impl LegacyIntegration {
     pub fn setup(&mut self) {
         self.register_raw_event_observer(|_event| {});
+        self.register_live_event_tap(self.kernel_observer);
     }
 }
+
+pub type LegacyObserverCallback = NmpEventObserverCallback;
+
+pub unsafe extern "C" fn nmp_app_register_event_observer() {}

@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     EventLookup, FeedController, FeedInterestShape, FeedRequest, FlatFeed as GenericFlatFeed,
     FlatFeedItem, FlatFeedItemBuilder, FlatFeedMerge, RootFeedSnapshot,
@@ -133,7 +133,7 @@ impl PictureFeed {
     }
 }
 
-impl KernelEventObserver for PictureFeed {
+impl ObservedProjectionSink for PictureFeed {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.inner.on_kernel_event(event);
     }

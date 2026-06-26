@@ -13,7 +13,7 @@ use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, KernelEvent,
 };
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_WEB_BOOKMARK;
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
@@ -133,7 +133,7 @@ impl WebBookmarksProjection {
     }
 }
 
-impl KernelEventObserver for WebBookmarksProjection {
+impl ObservedProjectionSink for WebBookmarksProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != KIND_WEB_BOOKMARK {
             return;

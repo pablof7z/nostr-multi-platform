@@ -104,8 +104,8 @@ final class KernelHandle {
             kbLog.fault("nmp_app_declare_incremental_apply returned \(iaResult) — incremental apply NOT active; init logic error")
             assertionFailure("nmp_app_declare_incremental_apply failed with code \(iaResult)")
         }
-        // T146 — register the modular timeline projection on the kernel
-        // event observer slot. See `Bridge/ModularTimelineBridge.swift`.
+        // Register the modular timeline projection through declared observed
+        // projections. See `Bridge/ModularTimelineBridge.swift`.
         registerChirpProjection()
     }
 

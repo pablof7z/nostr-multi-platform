@@ -6,7 +6,7 @@
 //! generic (`serde_json::Value`) lane has been removed; only typed projections
 //! remain.
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::{Arc, Mutex};
 
@@ -465,7 +465,7 @@ impl SnapshotRegistry {
 /// threaded to the actor thread and bound onto the kernel via
 /// [`Kernel::set_snapshot_projection_handle`]. Registrations made through the
 /// `NmpApp` clone are visible to the kernel without crossing the FFI boundary
-/// on each tick — the same shared-`Arc` pattern as the kernel event observer
+/// on each tick — the same shared-`Arc` pattern as the observed-projection sink
 /// slot.
 pub type SnapshotProjectionSlot = Arc<Mutex<SnapshotRegistry>>;
 

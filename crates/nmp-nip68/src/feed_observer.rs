@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{EventLookup, FlatFeedItem};
 
 use super::{PictureFeed, PictureFeedEntry};
@@ -27,7 +27,7 @@ pub fn picture_feed_observer(
     })
 }
 
-impl KernelEventObserver for PictureFeedObserver {
+impl ObservedProjectionSink for PictureFeedObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
             // kind:20 picture events are not addressable, so only the `e`-tag
@@ -37,8 +37,9 @@ impl KernelEventObserver for PictureFeedObserver {
             // SOURCE level so removing a deleted repost does not leave (or
             // reanimate) the row from another contribution.
             for target_id in &record.event_targets {
-                self.feed
-                    .remove_sources_if(|item| e_tag_delete_matches(item, target_id, &record.author));
+                self.feed.remove_sources_if(|item| {
+                    e_tag_delete_matches(item, target_id, &record.author)
+                });
             }
             return;
         }

@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{canonical_relay_url, KernelEventObserver};
+use nmp_core::{canonical_relay_url, ObservedProjectionSink};
 use nmp_kinds::KIND_SEARCH_RELAYS;
 use serde::Serialize;
 
@@ -63,7 +63,7 @@ impl SearchRelayListProjection {
     }
 }
 
-impl KernelEventObserver for SearchRelayListProjection {
+impl ObservedProjectionSink for SearchRelayListProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != KIND_SEARCH_RELAYS {
             return;

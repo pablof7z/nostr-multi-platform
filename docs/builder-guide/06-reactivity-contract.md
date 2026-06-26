@@ -126,7 +126,8 @@ Current v1 code uses explicit Rust seams. A module can register:
 
 - a typed feed session (`open_feed(FeedParams)`) whose source compiles to
   materialized `LogicalInterest`s;
-- `KernelEventObserver` + `register_typed_snapshot_projection` for read models that
+- `ObservedProjectionSink` + `register_snapshot_projection` or
+  `register_typed_snapshot_projection` for read models that
   maintain their own app-owned state slice;
 - ref/dependent-interest claims for profiles, events, addresses, and other
   secondary facts a mounted component/read model needs.

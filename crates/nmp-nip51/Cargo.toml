@@ -10,7 +10,7 @@ description = "NIP-51 list projections for NMP: mute suppression, global bookmar
 crate-type = ["rlib"]
 
 [dependencies]
-# `nmp-core` supplies `KernelEventObserver` (the ingest seam) and
+# `nmp-core` supplies `ObservedProjectionSink` (the ingest seam) and
 # `SuppressionLookup` (the substrate-generic trait the timeline projection
 # reads). No NIP nouns enter nmp-core through this crate.
 nmp-core = { path = "../nmp-core", default-features = false }

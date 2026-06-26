@@ -20,11 +20,11 @@
 //!      acquisition;
 //!    * **card builder** — supplied inside `register_op_feed` itself
 //!      (`TimelineEventCard::from_event_for_op_feed`).
-//! 3. Registers the returned `Arc<OpFeedEngine>` as a
-//!    [`KernelEventObserver`](nmp_core::KernelEventObserver) (ingest) **and** as
-//!    a [`FeedController`](nmp_feed::FeedController) under
+//! 3. Registers the returned `Arc<OpFeedEngine>` as an
+//!    [`ObservedProjectionSink`](nmp_core::ObservedProjectionSink) (ingest) and a
+//!    [`FeedController`](nmp_feed::FeedController) under
 //!    `"nmp.feed.home"` (output).
-//! 4. Registers the `ActiveFollowSet` as its own `KernelEventObserver` (so
+//! 4. Registers the `ActiveFollowSet` as its own `ObservedProjectionSink` (so
 //!    kind:3 ingest keeps the follow set current — exactly the pattern the
 //!    sibling `FollowListProjection` already uses).
 //! 5. Registers an `on_change` callback that resets the engine on every
@@ -64,7 +64,7 @@
 //! through it on every call, so a `Reset` is observed without re-capturing.
 //! `EventStore::get_by_id` is a `&self` read; the actor reducer is the sole
 //! writer (D4) and the store insert is ordered before the observer fan-out, so
-//! a read from a `KernelEventObserver` callback (actor thread) sees the
+//! a read from a `ObservedProjectionSink` callback (actor thread) sees the
 //! just-ingested event without re-entrancy. Before `nmp_app_start` the slot is
 //! empty → `None`, which is exactly the prior no-op behaviour (still
 //! correctness-preserving: the L-2 fallback re-keys on a later observer arrival
@@ -107,9 +107,10 @@ use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use nmp_core::slots::ActiveAccountSlot;
-use nmp_core::substrate::{empty_suppression_lookup, KernelEvent, SuppressionLookup};
-use nmp_core::KernelEventObserver;
+use nmp_core::substrate::{
+    empty_suppression_lookup, KernelEvent, ObservedProjectionRegistrar, SuppressionLookup,
+};
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{ClosureInterestShape, FeedAdvance, FeedApply, FeedController, PullFeedController};
 use nmp_ffi::NmpApp;
 use nmp_nip01::meta_timeline::Pubkey;
@@ -119,6 +120,14 @@ use nmp_nip02::ActiveFollowSet;
 use nmp_nip51::MuteListProjection;
 use nmp_planner::InterestShape;
 
+mod active_shape;
+use crate::runtimes::active_observed_projection::ActiveObservedProjection;
+mod dynamic_observer;
+use active_shape::{live_active_follows_shape, read_active};
+
+#[cfg(test)]
+use nmp_core::slots::ActiveAccountSlot;
+
 /// What [`register_op_feed_defaults`] hands back to the composition caller.
 ///
 /// Returns both registered pieces so tests and diagnostic callers can inspect
@@ -126,7 +135,7 @@ use nmp_planner::InterestShape;
 /// driven through the `NmpApp` observer registered inside
 /// [`register_op_feed_defaults`]; callers do not manually notify the follow set.
 pub struct OpFeedDefaults {
-    /// The registered OP-feed engine — already wired as a `KernelEventObserver`
+    /// The registered OP-feed engine — already wired as a `ObservedProjectionSink`
     /// (ingest) and a `FeedController` under `"nmp.feed.home"` (output).
     pub engine: Arc<OpFeedEngine>,
     /// The registered feed controller under `"nmp.feed.home"`.
@@ -134,28 +143,26 @@ pub struct OpFeedDefaults {
     /// Perspective-change producers call this controller's `reset` path so the
     /// visible OP-feed state and the seq pull cursor move together.
     pub controller: Arc<dyn FeedController>,
-    /// The follow-set producer — already wired as a `KernelEventObserver` for
+    /// The follow-set producer — already wired as a `ObservedProjectionSink` for
     /// kind:3 updates and as an `NmpApp` identity observer for sign-in, switch,
     /// logout, and reset.
     pub follow_set: Arc<ActiveFollowSet>,
-    /// #1740 step 2 — the observer ids the wiring installed so a feed SESSION can
-    /// revoke them on `close_feed` (was app-lifetime). `[follow_set, engine]`; a
-    /// zero id (poisoned slot at install) revokes as a harmless no-op.
-    pub observer_ids: [nmp_core::KernelEventObserverId; 2],
+    /// Diagnostic observer ids for `[follow_set, engine]` after initial sync.
+    /// The follow-set observer is active-account dynamic, so it is `0` until a
+    /// signed-in account opens the concrete `authors=[active]` observer.
+    pub observer_ids: [nmp_core::ObservedProjectionId; 2],
 }
 
 /// Wire the OP-centric home feed into `app`.
 ///
 /// Constructs the [`nmp_nip02::ActiveFollowSet`] over the app's active-account slot,
-/// builds the engine via [`nmp_nip01::op_feed::register_op_feed`], and
-/// registers the engine as both a [`KernelEventObserver`] (ingest) and a
-/// [`FeedController`] under `"nmp.feed.home"` (output). Also registers a typed
+/// builds the engine, and registers it as both an [`ObservedProjectionSink`] and
+/// a [`FeedController`] under `"nmp.feed.home"`. Also registers a typed
 /// `NOFS` sidecar projection under the same key (ADR-0038 T1) ALONGSIDE the
 /// generic `Value` `FeedController` — a host with a `NOFS` decoder prefers the
 /// typed payload, others fall back to the generic `Value` subtree. Finally
-/// registers the `ActiveFollowSet` as its own `KernelEventObserver` and an
-/// `on_change` callback that resets the engine on any follow-set perspective
-/// change.
+/// registers the `ActiveFollowSet` as its own `ObservedProjectionSink` and an
+/// `on_change` callback that resets on any follow-set perspective change.
 ///
 /// Returns an [`OpFeedDefaults`] carrying the `Arc<OpFeedEngine>` and
 /// `Arc<ActiveFollowSet>` for direct tests/diagnostics. Both are already
@@ -216,15 +223,27 @@ fn register_op_feed_defaults_inner(
     let active_account_slot = app.active_account_handle();
     let follow_set = nmp_nip02::ActiveFollowSet::new(active_account_slot.clone());
 
-    // Register the follow-set as its own `KernelEventObserver` so the active
-    // account's kind:3 ingest keeps the set current. Mirrors the sibling
-    // `FollowListProjection` registration in Chirp. A zero id means the
-    // observer slot was poisoned — a soft-fail (the predicate degrades to the
-    // self-seeded set), so we drop the id rather than abort the whole wiring.
-    let follow_set_observer: Arc<dyn KernelEventObserver> = follow_set.clone();
-    // #1740 step 2: capture the id so a feed session can revoke this observer on
-    // close (was discarded — app-lifetime). Zero id ⇒ soft-fail, revoke no-ops.
-    let follow_set_observer_id = app.register_live_event_tap(follow_set_observer);
+    // Register the follow-set as its own active observed projection so the
+    // active account's kind:3 ingest keeps the set current. No observer opens
+    // before sign-in; once the active pubkey is known the observer is opened
+    // with `authors=[active] / kinds=[3]`, replaying matching cached events
+    // before live activation.
+    let follow_set_observer: Arc<dyn ObservedProjectionSink> = follow_set.clone();
+    let follow_set_observer = Arc::new(ActiveObservedProjection::new(
+        active_account_slot.clone(),
+        app.observed_projection_registrar_handle(),
+        follow_set_observer,
+        "nmp.feed.home.follow_set",
+        1,
+        64,
+        Arc::new(|pubkey| nmp_planner::InterestShape {
+            kinds: [nmp_kinds::KIND_CONTACT_LIST].into_iter().collect(),
+            authors: [pubkey.to_string()].into_iter().collect(),
+            ..Default::default()
+        }),
+    ));
+    let follow_set_observer_tick = Arc::clone(&follow_set_observer);
+    app.register_snapshot_tick_observer(move || follow_set_observer_tick.sync());
 
     // ── 2. Event lookup (V-83 — real synchronous kernel event read) ──────
     //
@@ -250,16 +269,13 @@ fn register_op_feed_defaults_inner(
 
     // ── 4. Register the engine (ingest + output) ─────────────────────────
     let observer = op_feed_observer(engine.clone(), event_lookup_for_observer, suppression);
-    let observer_for_registry: Arc<dyn KernelEventObserver> = observer.clone();
-    // #1740 step 2: capture so a session can revoke the engine ingest observer.
-    let engine_observer_id = app.register_live_event_tap(observer_for_registry);
 
     // ── 4a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
     //
     // Pull uses the same live active-follows shape as acquisition, the in-process
     // event-store scan, and the suppression/delete-aware observer used by relay
     // fan-out. `advance` only grows the render viewport after visible progress.
-    let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
+    let live_shape: Arc<dyn Fn() -> Option<InterestShape> + Send + Sync> = {
         let follow_set = follow_set.clone();
         // Capture the live active-account slot so logout/switch fail closed and
         // account changes work without re-registering the controller.
@@ -269,10 +285,23 @@ fn register_op_feed_defaults_inner(
         let kinds: BTreeSet<u32> =
             nmp_nip18::try_acquisition_kinds_for_primary(primary_feed_kinds.iter().copied())
                 .unwrap_or_default();
-        Arc::new(ClosureInterestShape::new(move || {
-            live_active_follows_shape(&account_slot, &follow_set, &kinds)
-        }))
+        Arc::new(move || live_active_follows_shape(&account_slot, &follow_set, &kinds))
     };
+    let provider: Arc<dyn nmp_feed::FeedInterestShape + Send + Sync> = {
+        let live_shape = live_shape.clone();
+        Arc::new(ClosureInterestShape::new(move || live_shape()))
+    };
+    let observer_for_registry: Arc<dyn ObservedProjectionSink> = observer.clone();
+    let engine_observer = dynamic_observer::DynamicObservedProjection::new(
+        app.observed_projection_handle(),
+        observer_for_registry,
+        "nmp.feed.home.engine",
+        0,
+        live_shape,
+        512,
+    );
+    engine_observer.sync();
+    let engine_observer_id = engine_observer.current_id();
     let pull = app.feed_pull_fn();
     let apply: FeedApply = {
         let observer = Arc::clone(&observer);
@@ -413,60 +442,27 @@ fn register_op_feed_defaults_inner(
     // the typed closure reads. Follow-list changes emit new feed bytes because
     // the engine state changes.
     let controller_for_cb = controller.clone();
+    let engine_observer_for_cb = engine_observer.clone();
     follow_set.on_change(Box::new(move || {
+        engine_observer_for_cb.sync();
         let _ = controller_for_cb.reset();
     }));
 
     let follow_set_for_identity = follow_set.clone();
+    let follow_set_observer_for_identity = Arc::clone(&follow_set_observer);
     // Identity changes are pushed from `NmpApp` after the actor has written the
     // active-account slot. This is the canonical app/FFI composition seam for
     // OP-feed account reset; hosts do not call `notify_account_changed` manually.
     app.register_identity_change_observer(move |_| {
         follow_set_for_identity.notify_account_changed();
+        follow_set_observer_for_identity.sync();
     });
 
     OpFeedDefaults {
         engine,
         controller,
         follow_set,
-        observer_ids: [follow_set_observer_id, engine_observer_id],
-    }
-}
-
-/// Build the LIVE active-follows pull [`InterestShape`], or `None` to fail closed.
-///
-/// B1 — race-free fail-close. The active-account slot is read **first**: on
-/// logout / account-switch the actor can null the slot BEFORE the async identity
-/// observer clears [`ActiveFollowSet`]
-/// (`crates/nmp-ffi/src/lib.rs` `update_listener`), so a synchronous
-/// `load_older` can observe `slot == None` while `follow_set.follows()` is still
-/// stale. Reading the slot first means no live active account ⇒ `None` ⇒ no
-/// shape ⇒ no pull (never a stale-viewer pull, never a broad-scan; D5). Only
-/// when there IS a live active account do we form the shape from
-/// `viewer = active account pubkey` + its follows; the viewer is always a member
-/// (self-inclusion), so the author set is never empty.
-fn live_active_follows_shape(
-    account_slot: &ActiveAccountSlot,
-    follow_set: &ActiveFollowSet,
-    kinds: &BTreeSet<u32>,
-) -> Option<InterestShape> {
-    if kinds.is_empty() {
-        return None; // host declared no active-follows kinds => fail closed
-    }
-    // Prove a LIVE active account BEFORE touching the (possibly stale) follow
-    // set. `None` here is the logout/switch fail-closed path.
-    let viewer = read_active(account_slot)?;
-    let mut authors: BTreeSet<String> = follow_set.follows().into_iter().collect();
-    authors.insert(viewer);
-    Some(InterestShape::timeline_for(authors, kinds.clone()))
-}
-
-/// Read the active account's hex pubkey from the slot, or `None` when no
-/// account is signed in or the lock is poisoned (D6).
-pub(crate) fn read_active(slot: &ActiveAccountSlot) -> Option<String> {
-    match slot.lock() {
-        Ok(guard) => guard.clone(),
-        Err(_) => None,
+        observer_ids: [follow_set_observer.current_id(), engine_observer_id],
     }
 }
 

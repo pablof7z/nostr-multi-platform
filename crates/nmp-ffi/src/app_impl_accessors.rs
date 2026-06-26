@@ -1,10 +1,8 @@
-//! Accessor + identity + observer `impl NmpApp` methods — extracted from
+//! Accessor + identity `impl NmpApp` methods — extracted from
 //! `lib.rs` to keep each file under the 500-LOC ceiling (AGENTS.md
 //! file-size rule).
 //!
-//! Covers: `register_live_event_tap`, `unregister_event_observer`,
-//! `event_observers_slot`, `swap_singleton_event_observer`,
-//! `ensure_interest`, `dispatch_capability`, `mls_local_nsec`,
+//! Covers: `ensure_interest`, `dispatch_capability`, `mls_local_nsec`,
 //! `active_local_keys`, `active_account_handle`,
 //! `register_identity_change_observer`, `event_store_handle`,
 //! `pull_cursor_registry_handle`, `event_observers_handle`,
@@ -16,9 +14,7 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use nmp_core::__ffi_internal::{
-    dispatch_capability, register_rust_observer, unregister_observer, KernelEventObserverSlot,
-};
+use nmp_core::__ffi_internal::{dispatch_capability, unregister_observer};
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::{
     IdentityCommand, InterestsCommand, PublishCommand, RefsCommand, RelayCommand, SignCommand,
@@ -27,63 +23,19 @@ use nmp_core::slots::{
     event_by_id_from_store, ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot,
     PullCursorRegistryHandleSlot,
 };
-use nmp_core::{KernelEventObserver, KernelEventObserverId};
+use nmp_core::ObservedProjectionId;
 use zeroize::Zeroizing;
 
 use crate::app_struct::NmpApp;
 
 impl NmpApp {
-    /// T146 — register a typed Rust observer on the live ingest stream. Returns
-    /// an opaque id the caller retains to unregister later via
-    /// [`Self::unregister_event_observer`].
+    /// Remove an internal observed-projection sink by id.
     ///
-    /// **Live-tap semantics**: the observer receives only events ingested AFTER
-    /// registration; already-cached events are NOT replayed. Use
-    /// [`ObservedProjectionRegistrar::open_observed_projection`] when replay is
-    /// required (the muted→activate seam that catches up the observer on open).
-    ///
-    /// [`ObservedProjectionRegistrar::open_observed_projection`]:
-    ///   nmp_core::substrate::ObservedProjectionRegistrar::open_observed_projection
-    #[must_use]
-    pub fn register_live_event_tap(
-        &self,
-        observer: Arc<dyn KernelEventObserver>,
-    ) -> KernelEventObserverId {
-        register_rust_observer(&self.event_observers, observer)
-    }
-
-    /// T146 — unregister a previously-registered observer. Idempotent;
-    /// unknown ids are silent no-ops (D6).
-    pub fn unregister_event_observer(&self, id: KernelEventObserverId) {
+    /// Crate-private because production app code must close declarations
+    /// through `ObservedProjectionRegistrar::close_observed_projection`, which
+    /// also withdraws the paired interest.
+    pub(crate) fn revoke_observed_projection_sink(&self, id: ObservedProjectionId) {
         unregister_observer(&self.event_observers, id);
-    }
-
-    /// T146 — clone of the kernel event observer slot. The `ffi::event_observer`
-    /// FFI surface uses this to plug C-ABI registrations into the same slot
-    /// that backs the typed Rust API above. Crate-private because external
-    /// Rust callers should go through
-    /// [`Self::register_live_event_tap`] / [`Self::unregister_event_observer`].
-    #[must_use]
-    pub(crate) fn event_observers_slot(&self) -> KernelEventObserverSlot {
-        Arc::clone(&self.event_observers)
-    }
-
-    /// Atomically swap the per-app's singleton kernel-event observer-id slot:
-    /// store `new` and return whatever was previously installed there.
-    ///
-    /// Idempotent-re-invoke contract: a per-app crate that wires exactly one
-    /// auxiliary `KernelEventObserver` per app uses this slot to ensure a
-    /// second registration unregisters the first one before installing itself.
-    /// A poisoned mutex degrades to `None` (D6).
-    #[must_use]
-    pub fn swap_singleton_event_observer(
-        &self,
-        new: Option<KernelEventObserverId>,
-    ) -> Option<KernelEventObserverId> {
-        let mut guard = self.singleton_event_observer_id.lock().ok()?;
-        let prev = guard.take();
-        *guard = new;
-        prev
     }
 
     /// Attach one scoped owner to a `LogicalInterest`.

@@ -1,7 +1,7 @@
 //! #2088 acceptance — NIP-29 per-open views HYDRATE already-cached events.
 //!
 //! The bug: the four NIP-29 per-open views registered their projection as a
-//! bare, already-active `KernelEventObserver`, which only sees the global
+//! bare, already-active `ObservedProjectionSink`, which only sees the global
 //! fan-out of LIVE ingest. A view opened AFTER its events were accepted +
 //! cached hydrated live-only and silently dropped the cached tail.
 //!
@@ -25,9 +25,9 @@ mod common;
 
 use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
-use nmp_store::VerifiedEvent;
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::{decode_discovered_groups_snapshot, decode_group_timeline_snapshot};
+use nmp_store::VerifiedEvent;
 
 /// THE #2088 FIX (group chat): kind:9/11 events for a group, cached BEFORE the
 /// chat view opens, surface in the view's first snapshot — the catch-up the bare

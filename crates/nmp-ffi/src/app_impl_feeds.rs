@@ -9,11 +9,10 @@
 
 use std::sync::Arc;
 
-use nmp_core::__ffi_internal::register_rust_observer_muted;
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
-use nmp_core::{KernelEventObserver, KernelEventObserverId};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{InterestsCommand};
+use nmp_core::ObservedProjectionId;
 
 use crate::app_struct::NmpApp;
 
@@ -92,7 +91,7 @@ impl NmpApp {
         filter_json: &str,
         consumer_id: &str,
         scope: u32,
-        observer_id: KernelEventObserverId,
+        observer_id: ObservedProjectionId,
         replay_shapes: Vec<nmp_planner::InterestShape>,
         replay_limit: usize,
     ) {
@@ -123,7 +122,7 @@ impl NmpApp {
         consumer_id: &str,
         scope: u32,
         relay_pin: Option<String>,
-        observer_id: KernelEventObserverId,
+        observer_id: ObservedProjectionId,
         replay_shapes: Vec<nmp_planner::InterestShape>,
         replay_limit: usize,
     ) {
@@ -132,15 +131,17 @@ impl NmpApp {
             // D6: invalid filter is a no-op.
             return;
         }
-        self.send_cmd(ActorCommand::Interests(InterestsCommand::OpenObservedInterest {
-            filter_json: filter_json.to_string(),
-            consumer_id: consumer_id.to_string(),
-            scope,
-            relay_pin,
-            observer_id,
-            replay_shapes,
-            replay_limit,
-        }));
+        self.send_cmd(ActorCommand::Interests(
+            InterestsCommand::OpenObservedInterest {
+                filter_json: filter_json.to_string(),
+                consumer_id: consumer_id.to_string(),
+                scope,
+                relay_pin,
+                observer_id,
+                replay_shapes,
+                replay_limit,
+            },
+        ));
     }
 
     /// Send a relay-pinned `CloseInterest` matching a
@@ -238,13 +239,13 @@ impl NmpApp {
         Arc::clone(&self.snapshot_projections)
     }
 
-    /// #1740 step 2 — clone the kernel-event-observer registry slot.
+    /// #1740 step 2 — clone the observed-projection sink registry slot.
     ///
     /// Captured into a feed-session teardown closure to revoke the session's
-    /// ingest observer by id on `close_feed`. Same slot
-    /// [`Self::register_live_event_tap`] writes into (D4).
+    /// observed-projection sink by id on `close_feed`. Same slot
+    /// [`Self::open_observed_projection`] writes into (D4).
     #[must_use]
-    pub fn event_observers_handle(&self) -> nmp_core::__ffi_internal::KernelEventObserverSlot {
+    pub fn event_observers_handle(&self) -> nmp_core::__ffi_internal::ObservedProjectionSinkSlot {
         Arc::clone(&self.event_observers)
     }
 
@@ -314,7 +315,7 @@ impl ObservedProjectionRegistrar for NmpApp {
     /// 2. `open_observed_interest_pinned` — sends `OpenObservedInterest` to the
     ///    actor, which replays the in-memory read-cache to the observer and then
     ///    activates it (unmutes the slot and hooks it into the live fan-out).
-    /// 3. Returns the `KernelEventObserverId` (the observer's slot id), which
+    /// 3. Returns the `ObservedProjectionId` (the observer's slot id), which
     ///    the caller passes to [`close_observed_projection`] for cleanup.
     ///
     /// The close params are recorded in `observed_projection_sessions` so
@@ -324,53 +325,22 @@ impl ObservedProjectionRegistrar for NmpApp {
     /// D6 fail-closed on two poison paths:
     ///
     /// * `register_rust_observer_muted` returns the reserved sentinel
-    ///   `KernelEventObserverId(0)` when the observer slot mutex is poisoned. A
+    ///   `ObservedProjectionId(0)` when the observer slot mutex is poisoned. A
     ///   real id is always `>= 1` (the allocator starts at 1). On the sentinel
     ///   we do NOT track the session and do NOT open the interest — opening
     ///   against id 0 would route fan-out to an unaddressable slot, and tracking
     ///   it would collapse every poisoned open onto the single `0` key so the
     ///   first close leaks every other session's interests. We return id 0; the
     ///   caller treats it as "no session opened".
+    /// * a declaration with no concrete shape is rejected before registration.
+    ///   Production app read models must not recreate the deleted filterless
+    ///   all-event observer path through an empty observed projection.
     /// * a poisoned `observed_projection_sessions` mutex means we cannot record
     ///   the close params, so `close_observed_projection` could never reverse
     ///   this open. Rather than leak the just-registered observer + a live
     ///   interest, we unregister the observer and return id 0 without opening.
-    fn open_observed_projection(&self, decl: ObservedProjection) -> KernelEventObserverId {
-        let observer_id = register_rust_observer_muted(&self.event_observers, decl.observer);
-        // Fail closed on the poisoned-observer-slot sentinel: never open an
-        // interest against id 0 (unaddressable) nor track it (would alias every
-        // poisoned open onto one key and leak interests on the first close).
-        if observer_id.0 == 0 {
-            return observer_id;
-        }
-        // Store close params before sending the interest command so a concurrent
-        // close (D6 poison path) doesn't see a dangling id. If the sessions mutex
-        // is poisoned we cannot record the teardown recipe, so we fail closed:
-        // unregister the observer and return without opening (no silent leak).
-        let Ok(mut sessions) = self.observed_projection_sessions.lock() else {
-            self.unregister_event_observer(observer_id);
-            return KernelEventObserverId(0);
-        };
-        sessions.insert(
-            observer_id,
-            (
-                decl.filter_json.clone(),
-                decl.consumer_id.clone(),
-                decl.scope,
-                decl.relay_pin.clone(),
-            ),
-        );
-        drop(sessions);
-        self.open_observed_interest_pinned(
-            &decl.filter_json,
-            &decl.consumer_id,
-            decl.scope,
-            decl.relay_pin,
-            observer_id,
-            decl.replay_shapes,
-            decl.replay_limit,
-        );
-        observer_id
+    fn open_observed_projection(&self, decl: ObservedProjection) -> ObservedProjectionId {
+        self.observed_projection_handle().open(decl)
     }
 
     /// Close a single observed-projection session opened via
@@ -383,16 +353,13 @@ impl ObservedProjectionRegistrar for NmpApp {
     ///
     /// Idempotent: closing an unknown or already-closed id is a harmless no-op
     /// (D6 — the sessions map lookup returns `None`).
-    fn close_observed_projection(&self, id: KernelEventObserverId) {
-        let params = self
-            .observed_projection_sessions
-            .lock()
-            .ok()
-            .and_then(|mut sessions| sessions.remove(&id));
-        let Some((filter_json, consumer_id, scope, relay_pin)) = params else {
-            return;
-        };
-        self.close_interest_pinned(&filter_json, &consumer_id, scope, relay_pin);
-        self.unregister_event_observer(id);
+    fn close_observed_projection(&self, id: ObservedProjectionId) {
+        self.observed_projection_handle().close(id);
+    }
+
+    fn observed_projection_registrar_handle(
+        &self,
+    ) -> Arc<dyn nmp_core::substrate::ObservedProjectionRegistrar + Send + Sync> {
+        Arc::new(self.observed_projection_handle())
     }
 }

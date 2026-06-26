@@ -1,7 +1,7 @@
 //! Cold-start regression test for issue #1643.
 //!
 //! **The bug**: on cold start, a user's kind:10003 bookmark list already in the
-//! local store was never surfaced to the `KernelEventObserver` fan-out because
+//! local store was never surfaced to the `ObservedProjectionSink` fan-out because
 //! nothing pushed a demand interest (`authors=[pubkey]` + `kinds=[10003]`).
 //!
 //! **The fix**: `BookmarksRuntimeController` pushes `active_bookmark_list_interest`
@@ -12,7 +12,7 @@
 //!
 //! # What this test proves
 //!
-//! A kind:10003 event stored in the local event store reaches a `KernelEventObserver`
+//! A kind:10003 event stored in the local event store reaches a `ObservedProjectionSink`
 //! via the cache-serve drain when an `authors=[pubkey] / kinds=[10003]` interest is
 //! registered — WITHOUT any relay delivery.  It also proves that if the observer is
 //! registered AFTER the interest, the observer receives nothing (the ordering
@@ -24,13 +24,13 @@
 //! `clear_served_interest_shapes`, and `set_event_observers_handle` — are all
 //! `pub(crate)` within this crate.  Using a `CapturingObserver` (instead of the
 //! production `BookmarkListProjection`) is intentional: the
-//! `KernelEventObserver::on_kernel_event` call is the SAME path both use, so
+//! `ObservedProjectionSink::on_kernel_event` call is the SAME path both use, so
 //! proving the observer fires proves the projection would fire.
 
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+use crate::actor::{new_event_observer_slot, register_rust_observer, ObservedProjectionSink};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::KernelEvent;
 
@@ -72,7 +72,7 @@ impl CapturingBookmarkObserver {
     }
 }
 
-impl KernelEventObserver for CapturingBookmarkObserver {
+impl ObservedProjectionSink for CapturingBookmarkObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != KIND_BOOKMARK_LIST {
             return;
@@ -132,7 +132,7 @@ fn push_bookmark_interest(kernel: &mut Kernel) {
 /// # Cold-start regression test (#1643)
 ///
 /// Proves that a kind:10003 event stored in the local store is delivered to a
-/// `KernelEventObserver` via the cache-serve drain when an `authors=[active_pubkey]
+/// `ObservedProjectionSink` via the cache-serve drain when an `authors=[active_pubkey]
 /// / kinds=[10003]` interest is registered, WITHOUT any relay delivery.
 ///
 /// **Observer-before-push ordering (the load-bearing contract)**:

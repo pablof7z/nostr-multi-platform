@@ -17,13 +17,12 @@ use std::sync::Arc;
 
 use crate::Clock;
 
-use crate::actor::unregister_observer_internal as unregister_observer;
 use crate::relay::OutboundMessage;
+use crate::substrate::IncrementalApplyError;
 use crate::substrate::{
     BlockedRelayLookup, DmInboxRelayLookup, IngestParser, RelayTextInterceptor, ReqFrameInterceptor,
 };
-use crate::substrate::IncrementalApplyError;
-use crate::{AppRelaySlot, KernelEventObserverId};
+use crate::AppRelaySlot;
 
 impl super::KernelReducer {
     // ── Browser relay-interceptor composition seams (#2050) ───────────────────
@@ -82,7 +81,9 @@ impl super::KernelReducer {
     ///
     /// `BrowserAppBuilder` forwards `ReqFrameInterceptorRegistrar` here.
     pub fn set_req_frame_interceptor(&mut self, interceptor: Arc<dyn ReqFrameInterceptor>) {
-        self.kernel.lifecycle_mut().set_req_frame_interceptor(interceptor);
+        self.kernel
+            .lifecycle_mut()
+            .set_req_frame_interceptor(interceptor);
     }
 
     /// Install the DM-inbox relay lookup. Deferred to start() from the builder.
@@ -182,14 +183,6 @@ impl super::KernelReducer {
         if let Ok(mut guard) = self.snapshot_slot.lock() {
             guard.register_tick_observer(f);
         }
-    }
-
-    // ── Observer-slot bridges (&self, via Arc<Mutex<ObserverInner>>) ──────────
-
-    /// Unregister an event observer by id (Rust or C-ABI).
-    /// Bridges `LiveEventTapRegistrar::unregister_event_observer`.
-    pub fn unregister_event_observer(&self, id: KernelEventObserverId) {
-        unregister_observer(&self.observer_slot, id);
     }
 
     // ── Ingest-dispatcher bridges (&self, via Arc<RwLock<EventIngestDispatcher>>) ──

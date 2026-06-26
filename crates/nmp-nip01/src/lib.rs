@@ -58,12 +58,12 @@ mod timeline_snapshot_generated {
 mod op_feed_generated;
 
 pub mod build;
-pub mod decode;
 pub mod contacts_cache;
+pub mod decode;
 pub mod flat_feed;
-pub mod kinds;
 pub mod kind0_parser;
 pub mod kind3_parser;
+pub mod kinds;
 pub mod meta_timeline;
 pub mod note_relations;
 pub mod op_feed;
@@ -74,16 +74,15 @@ pub mod typed_wire;
 pub mod view;
 
 pub use build::{Note, NoteBuildError, NoteBuilder};
+pub use contacts_cache::ContactsCache;
 pub use decode::{try_from_event, try_from_kernel_event, NoteRecord};
 pub use flat_feed::{
     author_feed_predicate, author_feed_shape, thread_feed_predicate, thread_feed_shape, FlatFeed,
     FlatFeedPredicate,
 };
-pub use contacts_cache::ContactsCache;
 pub use kind0_parser::Kind0Parser;
 pub use kind3_parser::Kind3Parser;
 pub use kinds::KIND_SHORT_TEXT_NOTE;
-pub use profile_cache::ProfileCache;
 pub use meta_timeline::{
     ModularTimelineDelta, ModularTimelinePayload, ModularTimelineSpec, ModularTimelineState,
     Nip10ModularTimelineView, Nip10Resolver,
@@ -97,6 +96,7 @@ pub use op_feed::{
     OpFeedEngine, OpFeedSnapshot, OP_FEED_FILE_IDENTIFIER, OP_FEED_SCHEMA_ID,
     OP_FEED_SCHEMA_VERSION,
 };
+pub use profile_cache::ProfileCache;
 pub use profile_display::{AuthorDisplay, ProfileDisplay};
 pub use timeline_projection::{
     ModularTimelineProjection, ModularTimelineSnapshot, TimelineEventCard, TimelineWindowCursor,
@@ -123,4 +123,4 @@ pub use view::{
 // dispatch — the `ViewModule` trait and the former
 // `register(&mut ModuleRegistry)` entry point were both deleted because no
 // kernel-side registry ever drove them. The live extension path is
-// `KernelEventObserver` — see `nmp_core::substrate` module docs.
+// `ObservedProjectionSink` — see `nmp_core::substrate` module docs.

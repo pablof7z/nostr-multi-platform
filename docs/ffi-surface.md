@@ -160,8 +160,9 @@ V-68 / V-112 (ADR-0042): `nmp_app_open_author`, `nmp_app_close_author`,
 v0.3.1). Author/thread feeds go through `nmp_app_open_feed` with
 `FeedScope::Authors` / `FeedScope::Referrer`, and close by passing the returned
 handle to `nmp_app_close_feed`. The feed compiler registers the flat projection,
-event observer, typed sidecar, acquisition interests, and cached replay under
-the declared projection key; handle close tears down that whole session.
+observed-projection sink, typed sidecar, acquisition interests, and cached
+replay under the declared projection key; handle close tears down that whole
+session.
 Profile hydration uses `nmp_app_claim_profile`.
 
 ---
@@ -330,12 +331,12 @@ the Rust action modules derive signing identity and routing policy.
 
 2. **This reference still needs a generated symbol audit.** The live tree now
    exports more symbols than the old T143 count, including app-specific Chirp,
-   Marmot, event observer, raw tap, action dispatch, and snapshot projection
-   helpers.
+   Marmot, action dispatch, and snapshot projection helpers.
 
 3. **RESOLVED (V-68 / V-112, ADR-0042):** `nmp_app_open_author`,
    `nmp_app_close_author`, `nmp_app_open_thread`, and `nmp_app_close_thread`
    were removed in v0.3.1. The prior open-without-close subscription-leak gap
    is structurally closed by `nmp_app_open_feed` / `nmp_app_close_feed`: the
-   opaque feed handle owns the registered projection, observer, acquisition
-   interests, and teardown recipe, so close never re-derives a raw filter.
+   opaque feed handle owns the registered projection, observed-projection sink,
+   acquisition interests, and teardown recipe, so close never re-derives a raw
+   filter.

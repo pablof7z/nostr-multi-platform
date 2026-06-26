@@ -20,8 +20,8 @@ use crate::substrate::{
 use crate::update_envelope::UpdateFrameBytes;
 
 use super::{
-    ActorMail, BunkerHandshakeSlot, CommandSender, KernelEventObserverSlot, LifecycleObserverSlot,
-    SignerStateSlot,
+    ActorMail, BunkerHandshakeSlot, CommandSender, LifecycleObserverSlot,
+    ObservedProjectionSinkSlot, SignerStateSlot,
 };
 
 pub struct ActorChannels {
@@ -32,7 +32,7 @@ pub struct ActorChannels {
 
 pub struct ActorRuntimeSlots {
     pub lifecycle_observer: LifecycleObserverSlot,
-    pub event_observers: KernelEventObserverSlot,
+    pub event_observers: ObservedProjectionSinkSlot,
     pub snapshot_projections: crate::kernel::SnapshotProjectionSlot,
     pub bunker_handshake: BunkerHandshakeSlot,
     pub signer_state: SignerStateSlot,
@@ -209,7 +209,10 @@ impl ActorConfig {
     /// User-Agent (Flow A) into the handshake. `None` → the transport's
     /// built-in `nmp/<ver>` fallback.
     #[must_use]
-    pub fn build_pool(&self, events: impl nmp_network::pool::PoolEventSink) -> nmp_network::pool::Pool {
+    pub fn build_pool(
+        &self,
+        events: impl nmp_network::pool::PoolEventSink,
+    ) -> nmp_network::pool::Pool {
         nmp_network::pool::Pool::new(
             nmp_network::pool::PoolConfig {
                 user_agent: self.user_agent.clone(),

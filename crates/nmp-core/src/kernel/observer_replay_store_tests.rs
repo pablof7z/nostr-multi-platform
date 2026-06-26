@@ -10,7 +10,7 @@
 
 use super::*;
 use crate::actor::{
-    new_event_observer_slot, register_rust_observer_muted, KernelEventObserver,
+    new_event_observer_slot, register_rust_observer_muted, ObservedProjectionSink,
 };
 use crate::kernel::observer_replay::ObserverReplayRequest;
 use crate::kernel::ram_eviction::EVENTS_RAM_HWM;
@@ -46,7 +46,7 @@ impl CapturingObserver {
     }
 }
 
-impl KernelEventObserver for CapturingObserver {
+impl ObservedProjectionSink for CapturingObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.events.lock().unwrap().push(event.clone());
     }

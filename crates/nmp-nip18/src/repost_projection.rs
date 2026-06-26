@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_LONG_FORM_ARTICLE;
 use nmp_planner::InterestShape;
 
@@ -81,7 +81,7 @@ pub struct RepostActivity {
 
 /// In-process projection of accepted NIP-18 repost wrappers.
 ///
-/// Register this as a [`KernelEventObserver`] and keep the same `Arc` for read
+/// Register this as a [`ObservedProjectionSink`] and keep the same `Arc` for read
 /// queries. The projection is bounded by event id and holds only facts delivered
 /// through active interests; it never scans storage or relay history.
 pub struct RepostActivityProjection {
@@ -235,7 +235,7 @@ impl RepostActivityProjection {
     }
 }
 
-impl KernelEventObserver for RepostActivityProjection {
+impl ObservedProjectionSink for RepostActivityProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.ingest_event(event);
     }

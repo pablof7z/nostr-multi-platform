@@ -23,13 +23,13 @@ use nmp_core::substrate::PreferredRelaySource;
 use nmp_core::substrate::SearchScopeRegistry;
 use nmp_core::substrate::{
     BlockedRelayLookup, ContactsLookup, DmInboxRelayLookup, ExternalEventSinkPolicy, MailboxCache,
-    OutboxRouter, ProfileLookup, RawEventForwardPolicyContext, RelayConnectedHook,
-    RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
+    ObservedProjectionSessionMap, OutboxRouter, ProfileLookup, RawEventForwardPolicyContext,
+    RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 use nmp_core::{
     publish::OutboxResolver,
     slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot},
-    ActionRegistry, AppRelaySlot, Clock, KernelEventObserverId, KernelReducer,
+    ActionRegistry, AppRelaySlot, Clock, KernelReducer,
 };
 
 // Type aliases matching AppHost factory shapes.
@@ -78,14 +78,10 @@ pub(crate) struct BrowserBuilderInner {
     #[allow(dead_code)]
     pub(crate) preferred_relay_source: Option<Arc<dyn PreferredRelaySource>>,
 
-    // ── Singleton event-observer id slot (swap_singleton_event_observer) ──────
-    /// Mirrors NmpApp's `singleton_event_observer_id` slot. Managed entirely
-    /// in the builder; not stored in the kernel.
-    pub(crate) singleton_event_observer_id: Option<KernelEventObserverId>,
-
     // ── Registries (held as Arc for install_into at start()) ─────────────────
     pub(crate) search_scope_registry: Arc<SearchScopeRegistry>,
     pub(crate) input_scope_registry: Arc<InputScopeRegistry>,
+    pub(crate) observed_projection_sessions: ObservedProjectionSessionMap,
 
     // ── Deferred &mut-kernel settings (applied in start()) ───────────────────
     pub(crate) coverage_hook: Option<PlanCoverageHook>,
@@ -157,9 +153,9 @@ impl BrowserBuilderInner {
             inbox_rx,
             configured_relays_slot,
             preferred_relay_source: None,
-            singleton_event_observer_id: None,
             search_scope_registry: Arc::new(SearchScopeRegistry::new()),
             input_scope_registry: Arc::new(InputScopeRegistry::new()),
+            observed_projection_sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
             coverage_hook: None,
             req_frame_interceptor: None,
             profile_lookup: None,

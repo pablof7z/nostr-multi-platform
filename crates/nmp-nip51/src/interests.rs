@@ -239,15 +239,10 @@ pub fn active_mute_list_interest(pubkey: &str) -> LogicalInterest {
     interest
 }
 
-// kind:10007 (NIP-51 search-relay list) is intentionally NOT a host-pushed
-// interest. Like kind:10006 (blocked relays), it is an account-specific
-// replaceable list whose self-fetch rides the kernel's proven self-kinds
-// tailing bundle (`SELF_KINDS_TAILING` in `nmp-core`'s
-// `kernel/requests/startup.rs`). A bespoke `authors=[active] / kinds=[10007]`
-// EnsureInterest never reached the wire (#1817), leaving `effective_search_relays`
-// empty; routing it through the self-kinds bundle is the fix. The
-// `SearchRelayListProjection` only needs to be registered as a kernel event
-// observer (see `nmp_defaults::register_search_relay_runtime`).
+// kind:10007 (NIP-51 search-relay list) is opened by the defaults runtime as a
+// concrete observed projection over `authors=[active] / kinds=[10007]`. The NIP
+// crate owns the parser/projection; the composition runtime owns the
+// active-account subscription lifecycle.
 
 #[cfg(test)]
 mod tests {

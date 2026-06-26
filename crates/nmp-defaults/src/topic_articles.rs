@@ -14,7 +14,7 @@
 //!    generic-repost lane. On the next planner tick the kernel emits REQs to
 //!    the relay(s). No relay logic is in the shell.
 //! 3. **Events arrive reactively.** Matching kind:30023 events and kind:16
-//!    wrappers flow through any registered `KernelEventObserver` into the app's
+//!    wrappers flow through any registered `ObservedProjectionSink` into the app's
 //!    read model, then into the push projection the shell reads off each
 //!    snapshot frame. The shell does not poll; the kernel pushes.
 //! 4. **Shell dispatches Release.** When the view closes the shell dispatches
@@ -276,8 +276,8 @@ impl ActionModule for TopicArticlesModule {
                 ));
                 send(ActorCommand::Interests(
                     InterestsCommand::DropInterestOwner(topic_article_reposts_identity(
-                    topic,
-                    consumer_id,
+                        topic,
+                        consumer_id,
                     )),
                 ));
             }

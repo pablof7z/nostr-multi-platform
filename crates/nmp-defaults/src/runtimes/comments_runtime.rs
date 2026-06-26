@@ -7,9 +7,9 @@
 
 use std::sync::Arc;
 
-use nmp_core::substrate::{ActionRegistrar, LiveEventTapRegistrar};
-use nmp_core::KernelEventObserver;
-use nmp_nip22::CommentThreadProjection;
+use nmp_core::substrate::{ActionRegistrar, ObservedProjection, ObservedProjectionRegistrar};
+use nmp_core::ObservedProjectionSink;
+use nmp_nip22::{CommentThreadProjection, KIND_COMMENT};
 
 /// Wire the kind:1111 comment-thread projection and the post-comment action.
 ///
@@ -17,11 +17,17 @@ use nmp_nip22::CommentThreadProjection;
 /// comment threads can snapshot it directly; callers that only need the
 /// publish path may drop it.
 pub fn register_comment_runtime(
-    app: &mut (impl ActionRegistrar + LiveEventTapRegistrar),
+    app: &mut (impl ActionRegistrar + ObservedProjectionRegistrar),
 ) -> Arc<CommentThreadProjection> {
     let projection = Arc::new(CommentThreadProjection::new());
 
-    app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    app.open_observed_projection(ObservedProjection::from_kinds(
+        Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
+        "nmp.nip22.comments",
+        1,
+        [KIND_COMMENT],
+        512,
+    ));
 
     nmp_nip22::register_actions(app);
     projection

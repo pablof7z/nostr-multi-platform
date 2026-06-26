@@ -5,7 +5,7 @@
 //! mute-list support with timeline suppression.
 //!
 //! The test wires `nmp-nip51::MuteListProjection` as both a
-//! `KernelEventObserver` and a `SuppressionLookup` into an
+//! `ObservedProjectionSink` and a `SuppressionLookup` into an
 //! `nmp-nip01::ModularTimelineProjection`. It exercises:
 //!
 //! 1. The ingest path: a kind:10000 event from the active account arrives
@@ -22,7 +22,7 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{EventId, KernelEvent, SuppressionLookup};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec, TimelineEventCard};
 use nmp_nip51::MuteListProjection;
 use nmp_threading::ModulePolicy;

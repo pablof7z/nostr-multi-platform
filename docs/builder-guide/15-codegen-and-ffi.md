@@ -125,7 +125,7 @@ for the update stream.
 ## How to add a snapshot projection to your app
 
 > **Disambiguation — read this first.** This guide uses the word *projection*
-> in two senses. The `KernelEventObserver`-driven view system (a reactive event
+> in two senses. The `ObservedProjectionSink`-driven view system (a reactive event
 > fan-out into an app-owned store, described in [05a](05a-substrate-traits.md) +
 > [06](06-reactivity-contract.md)) is one sense. **This section** is the other:
 > a **snapshot projection** — an app/module-owned slice of state emitted inside
@@ -135,7 +135,8 @@ for the update stream.
 
 **What it is.** A snapshot projection is a named slice of app- or module-owned
 state, keyed by a dotted `nmp.*` namespace (e.g. `nmp.feed.home`,
-`nmp.nip29.group_chat`, `nmp.follow_list`), that rides the kernel's reactive snapshot
+`nmp.nip29.group_chat`, `nmp.follow_list`, scoped relation-count projections),
+that rides the kernel's reactive snapshot
 push frame ([06 — Reactivity contract](06-reactivity-contract.md)) into the host.
 The kernel pushes a **whole frame every emit tick when state changed**; hosts
 decode the binary `UpdateFrame`, apply its `SnapshotEnvelope` fields, then read

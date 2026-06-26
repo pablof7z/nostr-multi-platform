@@ -45,6 +45,7 @@ use crate::app::{KernelAction, KernelUpdate};
 use crate::kernel::{Kernel, SnapshotProjectionSlot};
 use crate::kernel_action::dispatch_kernel_action;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
+use std::collections::HashMap;
 
 /// Encapsulated kernel + public pure reducer.
 ///
@@ -55,9 +56,12 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 pub struct KernelReducer {
     kernel: Kernel,
     /// Headless event-observer slot (no drain thread — wasm32 safe).
-    observer_slot: crate::actor::KernelEventObserverSlot,
+    observer_slot: crate::actor::ObservedProjectionSinkSlot,
     /// Typed snapshot-projection slot.
     snapshot_slot: SnapshotProjectionSlot,
+    /// Close recipes for browser/wasm observed-projection sessions.
+    observed_projection_sessions:
+        HashMap<crate::ObservedProjectionId, (String, String, u32, Option<String>)>,
     /// #1753 S6 — wasm signing round-trip state: the shared `ParkedSignerOps`
     /// queue + drain driver (the SAME component the native actor loop uses), the
     /// per-correlation value-delivery senders, the account-pin map, and the
@@ -73,9 +77,9 @@ impl KernelReducer {
     /// to what the actor loop uses at startup.
     ///
     /// On all targets (including wasm32) this binds a headless
-    /// [`KernelEventObserverSlot`] and a [`SnapshotProjectionSlot`] into the
-    /// kernel so that composition roots can register event observers and typed
-    /// projections without spawning background threads.
+    /// [`ObservedProjectionSinkSlot`] and a [`SnapshotProjectionSlot`] into the
+    /// kernel so that composition roots can register observed projections and
+    /// typed projections without spawning background threads.
     #[must_use]
     pub fn new() -> Self {
         use crate::actor::new_event_observer_slot_headless;
@@ -91,6 +95,7 @@ impl KernelReducer {
             kernel,
             observer_slot,
             snapshot_slot,
+            observed_projection_sessions: HashMap::new(),
             sign_roundtrip: wasm_signing::SignRoundTripState::default(),
         }
     }

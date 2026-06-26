@@ -5,7 +5,7 @@
 //! crates, which the base note crate no longer depends on.
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec, RelationCount};
 use nmp_relations::default_note_relation_classifier;
 
@@ -33,8 +33,8 @@ fn note(id: &str, ts: u64) -> KernelEvent {
 #[test]
 fn relation_counts_include_reactions_reposts_and_zaps() {
     let target = "R";
-    let proj =
-        ModularTimelineProjection::new(&spec()).with_relation_classifier(default_note_relation_classifier());
+    let proj = ModularTimelineProjection::new(&spec())
+        .with_relation_classifier(default_note_relation_classifier());
     proj.on_kernel_event(&note(target, 1));
     proj.on_kernel_event(&KernelEvent {
         id: "react".into(),

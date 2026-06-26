@@ -65,8 +65,8 @@ pub fn register(app: &mut impl AppHost) {
 /// Step 2 — open the FOLLOWING timeline.
 ///
 /// One framework call wires the OP-centric home feed (`nmp.feed.home`): the
-/// engine is registered as a kernel event observer (ingest) AND as the feed
-/// controller + typed projection (output). The follow-set predicate is read
+/// engine is registered as a declared observed projection (ingest) AND as the
+/// feed controller + typed projection (output). The follow-set predicate is read
 /// LIVE from the active account's contact list, so once the user signs in and
 /// their kind:3 is known, the timeline shows exactly their follows' notes — the
 /// shell does not select relays, build filters, open subscriptions, or

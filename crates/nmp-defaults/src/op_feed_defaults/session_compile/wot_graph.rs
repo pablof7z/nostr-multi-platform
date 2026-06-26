@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Mutex;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_wot::score::WotGraph;
 
 /// WoT ranked-candidate cap (the #1698 query takes a limit; 0 = unlimited).
@@ -66,7 +66,7 @@ impl SessionWotGraph {
     }
 }
 
-impl KernelEventObserver for SessionWotGraph {
+impl ObservedProjectionSink for SessionWotGraph {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != self.contact_kind {
             return;

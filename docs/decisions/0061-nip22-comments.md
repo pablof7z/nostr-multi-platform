@@ -67,7 +67,7 @@ scope tag decodes to `None`.
 
 ### 3. Projection — `CommentThreadProjection`
 
-An in-memory `KernelEventObserver` (the same read-model shape nip25 reactions
+An in-memory `ObservedProjectionSink` (the same read-model shape nip25 reactions
 and nip51 bookmarks use — chosen over a typed FlatBuffers sidecar because
 comments are consumed like reactions/bookmarks, not rendered as a standalone
 feed). It buckets kind:1111 by root scope value into a bounded map

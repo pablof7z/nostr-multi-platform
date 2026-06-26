@@ -2,8 +2,8 @@
 //! (#1740 step 2).
 //!
 //! The compiler used here drives the SAME primitives the home feed uses
-//! (`register_feed_with_observer` + `register_typed_snapshot_projection` +
-//! the event-observer registry), so these prove the session wrapper composes
+//! (`register_feed` + `open_observed_projection` +
+//! `register_typed_snapshot_projection`), so these prove the session wrapper composes
 //! over real registrations: open returns a handle with a projection key + id,
 //! the registered controller is reachable, and `close_feed(handle)` tears down
 //! the controller, the projection, and the observer — proven released, not
@@ -16,8 +16,8 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     FeedAdmission, FeedController, FeedParams, FeedRanking, FeedRender, FeedScope,
     FeedSessionBuild, FeedSessionRegistry, FeedWindow, ProjectionKey, TeardownAction,
@@ -44,7 +44,7 @@ impl FeedController for StubFeed {
         true
     }
 }
-impl KernelEventObserver for StubFeed {
+impl ObservedProjectionSink for StubFeed {
     fn on_kernel_event(&self, _event: &KernelEvent) {
         self.observed.fetch_add(1, Ordering::SeqCst);
     }
@@ -86,12 +86,18 @@ fn home_compiler(
         }
         let key = params.projection.0.clone();
         // Register over the EXISTING mechanics, exactly as the home feed does:
-        // a permanent controller (output) + an ingest observer (returns an id) +
-        // a typed sidecar projection under the same key.
+        // a permanent controller (output) + a declared observed projection
+        // (returns an id) + a typed sidecar projection under the same key.
         let controller: Arc<dyn FeedController> = feed.clone();
         app.register_feed(key.clone(), controller);
-        let observer: Arc<dyn KernelEventObserver> = feed.clone();
-        let observer_id = app.register_live_event_tap(observer);
+        let observer: Arc<dyn ObservedProjectionSink> = feed.clone();
+        let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
+            observer,
+            format!("{key}.observer"),
+            0,
+            params.primary_kinds.iter().copied(),
+            params.window.initial_limit,
+        ));
         app.register_typed_snapshot_projection(key.clone(), || None);
 
         // Teardown captures the registry SLOTS (not `&app`) via `FeedTeardown`
@@ -345,11 +351,11 @@ fn teardown_runs_notify_last_after_removals_and_interest_clear() {
                 rec("remove_projection", teardown.remove_projection(key)),
                 rec(
                     "revoke_source",
-                    teardown.revoke_observer(nmp_core::KernelEventObserverId(7)),
+                    teardown.revoke_observer(nmp_core::ObservedProjectionId(7)),
                 ),
                 rec(
                     "revoke_engine",
-                    teardown.revoke_observer(nmp_core::KernelEventObserverId(8)),
+                    teardown.revoke_observer(nmp_core::ObservedProjectionId(8)),
                 ),
                 rec("unregister_feed", teardown.unregister_feed(key)),
             ],

@@ -32,10 +32,8 @@
 //! typed `PublishPlan::pin_to: Some(host)` carrier and never derives routing
 //! from raw tag strings.
 //!
-//! The former `domain` (13 per-kind domain modules) and `view` (7 reactive
-//! views) modules were deleted: they had zero non-test consumers. The live
 //! read-side extension path is `projection::GroupTimelineProjection` via
-//! `KernelEventObserver` — see `nmp_core::substrate` module docs.
+//! `ObservedProjectionSink` — see `nmp_core::substrate` module docs.
 
 pub mod action;
 pub mod cache;
@@ -49,20 +47,17 @@ pub mod search;
 pub mod wire;
 
 pub use group_id::GroupId;
+pub use input_scope::{
+    register_input_scopes, GroupIdentPayload, GroupInputScopeRecognizer, GROUP_INPUT_SCOPE_LABEL,
+};
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
 pub use projection::{
     DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupTimelineEvent,
     GroupTimelineProjection, GroupTimelineSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
     JoinedGroup, JoinedGroupsProjection, JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
-pub use input_scope::{
-    register_input_scopes, GroupIdentPayload, GroupInputScopeRecognizer,
-    GROUP_INPUT_SCOPE_LABEL,
-};
 pub use register::register_actions;
-pub use search::{
-    register_search_scopes, GroupMetadataSearchScope, GROUP_SEARCH_SCOPE_LABEL,
-};
+pub use search::{register_search_scopes, GroupMetadataSearchScope, GROUP_SEARCH_SCOPE_LABEL};
 pub use wire::discovered_groups_fb::{
     decode_discovered_groups_snapshot, encode_discovered_groups_snapshot,
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,

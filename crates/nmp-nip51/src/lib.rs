@@ -19,7 +19,7 @@
 //! # Architecture
 //!
 //! The crate exposes [`MuteListProjection`], which is both a
-//! [`nmp_core::KernelEventObserver`] (the write side — ingest kind:10000
+//! [`nmp_core::ObservedProjectionSink`] (the write side — ingest kind:10000
 //! events) and a [`nmp_core::substrate::SuppressionLookup`] implementation
 //! (the read side — answer "is this author/event muted?" queries from the
 //! timeline projection).
@@ -48,7 +48,13 @@
 //!
 //! ```text
 //! let mute = Arc::new(MuteListProjection::new(Arc::clone(&active_pubkey_slot)));
-//! app.register_live_event_tap(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
+//! app.open_observed_projection(ObservedProjection::from_kinds(
+//!     Arc::clone(&mute) as Arc<dyn ObservedProjectionSink>,
+//!     "nmp.nip51.mutes",
+//!     0,
+//!     [KIND_MUTE_LIST],
+//!     128,
+//! ));
 //! timeline.set_suppression(Arc::clone(&mute) as Arc<dyn SuppressionLookup>);
 //! ```
 //!

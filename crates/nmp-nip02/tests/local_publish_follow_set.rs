@@ -3,7 +3,7 @@
 //! Proves the full production path: a locally-dispatched `nmp.follow` /
 //! `nmp.unfollow` against a real signed-in [`NmpApp`] builds, signs, and
 //! publishes a kind:3 contact list whose acceptance fans out to a registered
-//! [`KernelEventObserver`] — so [`ActiveFollowSet`] reflects the follow AND the
+//! [`ObservedProjectionSink`] — so [`ActiveFollowSet`] reflects the follow AND the
 //! unfollow *immediately*, without a relay round-trip or an account switch.
 //!
 //! Before the fix, `Kernel::record_local_contacts_intent` ingested the locally
@@ -20,7 +20,7 @@
 //! `nmp_app_new` runs the actor on a background thread, and every host command
 //! (`AddSigner`, the dispatched `Follow`) is fire-and-forget over the actor's
 //! command channel. The only deterministic edge back to the test is the
-//! observer fan-out itself: a second `KernelEventObserver` signals an
+//! observer fan-out itself: a second `ObservedProjectionSink` signals an
 //! `mpsc::Sender` from the actor thread when an accepted kind:3 arrives, and the
 //! test blocks on `recv_timeout` (an OS-event wait, never a `sleep`+check spin).
 //! `ActiveFollowSet` is registered on the SAME slot, so once the signal lands
@@ -33,9 +33,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
-use nmp_core::substrate::ActionPayload;
-use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::substrate::{
+    ActionPayload, KernelEvent, ObservedProjection, ObservedProjectionRegistrar,
+};
+use nmp_core::ObservedProjectionSink;
 use nmp_ffi::{
     nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_inject_signed_event_json, nmp_app_new,
     nmp_app_signin_nsec, nmp_app_start, nmp_free_string, NmpApp,
@@ -53,7 +54,7 @@ struct KindSignal {
     kind3_count: AtomicU32,
 }
 
-impl KernelEventObserver for KindSignal {
+impl ObservedProjectionSink for KindSignal {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind == 3 {
             self.kind3_count.fetch_add(1, Ordering::SeqCst);
@@ -155,13 +156,19 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
         },
     );
 
-    // Register both observers on the app's shared slot BEFORE start. ADR-0049:
+    // Register both observed projections BEFORE start. ADR-0049:
     // the actor reads every wiring slot once at kernel construction
     // (`ActorCommand::Start`); a registration after start would be recorded as
-    // `DroppedLateWiring` and never bound onto the kernel. The follow-set
-    // producer is wired exactly as the composition root (nmp-defaults) does.
+    // `DroppedLateWiring` and never bound onto the kernel. Each observer
+    // declares the event kinds it needs before receiving fan-out.
     let follow_set = nmp_nip02::ActiveFollowSet::new(unsafe { &*app }.active_account_handle());
-    let _set_id = unsafe { &*app }.register_live_event_tap(follow_set.clone());
+    let _set_id = unsafe { &*app }.open_observed_projection(ObservedProjection::from_kinds(
+        follow_set.clone(),
+        "test.local_publish_follow_set",
+        0,
+        [3],
+        16,
+    ));
 
     // The test's synchronization edge: signal each accepted fan-out with its
     // kind, so we can wait for the kind:10002 relay list (publish targets) and
@@ -171,7 +178,13 @@ fn local_follow_then_unfollow_updates_active_follow_set_live() {
         tx: Mutex::new(tx),
         kind3_count: AtomicU32::new(0),
     });
-    let _sig_id = unsafe { &*app }.register_live_event_tap(signal.clone());
+    let _sig_id = unsafe { &*app }.open_observed_projection(ObservedProjection::from_kinds(
+        signal.clone(),
+        "test.local_publish_signal",
+        1,
+        [3, 10002],
+        16,
+    ));
 
     // Install a deterministic, advanceable kernel clock BEFORE start. The
     // kernel stamps every published event's `created_at` from this clock

@@ -79,7 +79,7 @@ per-kind ladders that drift:
   `Inserted | Replaced | Ephemeral` (`ingest/mod.rs:486-490`), but the wildcard
   arm's `notify_event_observers` fires only on `Inserted | Replaced`
   (`ingest/mod.rs:389-404`). So an ephemeral reaches the NIP parser registry but
-  **not** the app-facing `KernelEventObserver` seam — apps cannot react to
+  **not** the app-facing `ObservedProjectionSink` seam — apps cannot react to
   ephemeral events they never store.
 - Two stores exist: the authoritative `EventStore` (`self.store`) vs the in-memory
   read-caches (`self.profiles`, `self.events`, `self.timeline`). The volatile
@@ -146,13 +146,12 @@ def `crates/nmp-store/src/types/outcomes.rs:11-33`) is
   Tombstoned | Rejected` are likewise not new canonical writes. Persistence stays
   exactly where it is, at the store layer.
 - **Delivery** = both `EventIngestDispatcher.dispatch` (to the NIP `IngestParser`s)
-  **and** `notify_event_observers` (the app-facing `KernelEventObserver` delivery
-  slot), fired on the **canonical accepted store outcome `Inserted | Replaced |
-  Ephemeral`** — NOT on `Duplicate | Superseded | Tombstoned | Rejected`.
-  `notify_event_observers` is the single live delivery site for both explicit
-  all-event live taps and ADR-0062 observed projections; observed projections are
-  filtered by their declared `InterestShape` at the observer slot, not by adding
-  another ingest path. The dispatcher already uses exactly this gate
+  **and** the internal observed-projection sink slot, fired on the **canonical
+  accepted store outcome `Inserted | Replaced | Ephemeral`** — NOT on
+  `Duplicate | Superseded | Tombstoned | Rejected`. The sink slot is not a public
+  all-event app primitive: production app/product read models receive future
+  delivery only through ADR-0062 declarations filtered by their `InterestShape`.
+  The dispatcher already uses exactly this gate
   (`ingest/mod.rs:486`); the fix was to move `notify_event_observers` inside the
   chokepoint under the **same** gate. That gate including `Ephemeral` **closes the
   latent bug**: an ephemeral reaches both the parsers and the app observers, so
@@ -360,7 +359,7 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
   active-account kind:3 enqueues the source recompile trigger without inlining
   feed-interest expansion in the parser or ingest arm.
 - An ephemeral event (20000–29999) does **NOT** persist (store-layer exclusion
-  intact) **BUT still reaches NIP parsers AND app `KernelEventObserver`s** — the
+  intact) **BUT still reaches NIP parsers AND app `ObservedProjectionSink`s** — the
   latent-bug fix: an app can react to an ephemeral event it never stores.
 - `pre_kind3_buffer` deletion does **NOT** lose later timeline visibility — a follow
   added later still surfaces prior events from the store.

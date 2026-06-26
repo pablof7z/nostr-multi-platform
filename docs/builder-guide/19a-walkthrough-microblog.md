@@ -23,7 +23,8 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 ## The structural model
 
 Two seams are wired in `register()`: `register_action` for the write path and
-`register_typed_snapshot_projection` for the read path. A `KernelEventObserver` feeds
+`register_snapshot_projection` or `register_typed_snapshot_projection` for the
+read path. An `ObservedProjectionSink` feeds
 raw kind:1 events into an app-owned feed store. The difference from the old
 fixture model is that `register()` is the app-core composition root: it **first
 inherits the canonical NMP composition** through
@@ -163,16 +164,15 @@ impl ActionModule for NoteActionModule {
 > return carries a `correlation_id`; the host polls `action_stages[id]` for
 > `Publishing → Accepted/Failed`.
 
-## KernelEventObserver — building the feed
+## ObservedProjectionSink — building the feed
 
-The app builds its always-on feed by implementing `KernelEventObserver` and
-registering it as a live tap. Every accepted kind:1 event fires
-`on_kernel_event`; the observer appends it to the store. Per-open views that may
-join after matching events are already cached use `open_observed_projection`
-instead.
+The app builds its feed by implementing `ObservedProjectionSink` and opening a
+declared observed projection. Matching kind:1 events fire `on_kernel_event`
+after the kernel has replayed cached/store-backed rows and activated scoped
+future delivery.
 
 ```rust
-use nmp_core::{KernelEventObserver, KernelEvent};
+use nmp_core::{ObservedProjectionSink, KernelEvent};
 
 static FEED_STORE: OnceLock<FeedStore> = OnceLock::new();
 
@@ -180,7 +180,7 @@ pub struct FeedObserver {
     store: FeedStore,
 }
 
-impl KernelEventObserver for FeedObserver {
+impl ObservedProjectionSink for FeedObserver {
     // Fires for every Inserted | Replaced ingest on the actor thread.
     // Duplicates and rejections never reach here.
     fn on_kernel_event(&self, event: &KernelEvent) {
@@ -217,8 +217,14 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     // 2. Write path.
     app.register_action(NoteActionModule);
 
-    // 3. Event-driven view — populates the feed store on every ingest.
-    app.register_live_event_tap(Arc::new(FeedObserver { store: Arc::clone(&store) }));
+    // 3. Event-driven view — declared shape, replay, then scoped delivery.
+    app.open_observed_projection(ObservedProjection::from_kinds(
+        Arc::new(FeedObserver { store: Arc::clone(&store) }),
+        FEED_SNAPSHOT_KEY,
+        0,
+        [KIND_NOTE],
+        128,
+    ));
 
     // 4. Read output — projects the feed into the snapshot.
     let projector = Arc::clone(&store);
@@ -278,7 +284,7 @@ That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/crates/nmp-a
   `register_substrate`.** The shared `Arc<InMemoryMailboxCache>` and coverage
   gate must reach multiple collaborators with the same instance; copying the
   block by hand desyncs them (V-48).
-- **Skipping `register_live_event_tap`/`open_observed_projection` and rendering raw events in Swift.**
+- **Skipping `open_observed_projection` and rendering raw events in Swift.**
   The feed store is the source of truth; the snapshot projection carries it.
   Raw event arrays across FFI violate D5.
 - **Inventing a new extension family.** Use the shipped action, observer,

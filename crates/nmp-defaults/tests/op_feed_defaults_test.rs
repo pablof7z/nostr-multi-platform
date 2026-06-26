@@ -28,7 +28,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 
 // ─── Test-isolation guard ────────────────────────────────────────────────────
@@ -252,7 +252,7 @@ fn account_switch_clears_then_kind3_repopulates() {
     }));
 
     // ALICE's kind:3 lands → follows BOB. This changes the feed perspective.
-    let observer: &dyn KernelEventObserver = &*follow_set;
+    let observer: &dyn ObservedProjectionSink = &*follow_set;
     observer.on_kernel_event(&kind3(ALICE, &[BOB]));
     assert!(
         follow_set.predicate()(BOB),
@@ -310,10 +310,10 @@ fn kind3_replacement_resets_visible_feed_immediately() {
     let defaults =
         nmp_defaults::register_op_feed_defaults(unsafe { &*app }, ALICE.to_string(), vec![1]);
 
-    let follow_observer: &dyn KernelEventObserver = &*defaults.follow_set;
+    let follow_observer: &dyn ObservedProjectionSink = &*defaults.follow_set;
     follow_observer.on_kernel_event(&kind3(ALICE, &[BOB]));
 
-    let engine_observer: &dyn KernelEventObserver = &*defaults.engine;
+    let engine_observer: &dyn ObservedProjectionSink = &*defaults.engine;
     engine_observer.on_kernel_event(&op_event(OP_ID, BOB, 200, "bob note"));
     assert_eq!(
         defaults
@@ -401,7 +401,7 @@ fn load_older_typed_sidecar_reflects_grown_window() {
 
     // Ingest 90 root events from ALICE (the viewer, so all are in-feed).
     // Each event gets a unique 64-hex id.
-    let observer: &dyn KernelEventObserver = &**engine;
+    let observer: &dyn ObservedProjectionSink = &**engine;
     for i in 0u64..90 {
         let id = format!("{:0>64}", i);
         let ev = KernelEvent {

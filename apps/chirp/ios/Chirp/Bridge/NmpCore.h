@@ -245,22 +245,6 @@ char *nmp_app_intent_dispatch(void *app, const char *request_json,
 void nmp_app_retry_publish(void *app, const char *handle);
 void nmp_app_cancel_action(void *app, const char *correlation_id);
 
-// ── T146 — kernel event observer ─────────────────────────────────────────
-//
-// `nmp_app_register_event_observer` registers a callback that fires on the
-// actor thread once per event accepted into the kernel `EventStore`
-// (insertions/replacements only). The callback receives a nul-terminated
-// JSON encoding of `KernelEvent` `{id,author,kind,created_at,tags,content}`;
-// the pointer is borrowed for the callback's duration only — copy any bytes
-// you need. Returns a non-zero `u64` id on success, `0` on failure (null
-// app, null callback, poisoned mutex). The id is required to unregister.
-//
-// `nmp_app_unregister_event_observer` drops a registration by id.
-// Idempotent (D6): unknown ids / null app are silent no-ops.
-typedef void (*NmpEventObserverCallback)(void *context, const char *event_json);
-uint64_t nmp_app_register_event_observer(void *app, void *context, NmpEventObserverCallback callback);
-void nmp_app_unregister_event_observer(void *app, uint64_t id);
-
 // #1607: nmp_app_wallet_{connect,disconnect,pay_invoice} deleted.
 // iOS app code uses typed KernelHandle wallet methods. Those methods keep the
 // ADR-0064 namespace/body compatibility route private to the bridge layer while
@@ -600,7 +584,7 @@ void nmp_app_chirp_unregister_group_timeline(void *app);
 //     `nmp_app_chirp_close_group_discovery` before `nmp_app_free`.
 //
 // `nmp_app_chirp_close_group_discovery`:
-//   • Unregisters the event observer and removes the
+//   • Unregisters the observed projection and removes the
 //     `"nmp.nip29.discovered_groups"` snapshot projection so no stale
 //     group catalog is emitted after the screen is dismissed.
 //   • Reclaims the handle; the pointer MUST NOT be used after this call.

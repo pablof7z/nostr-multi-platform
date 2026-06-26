@@ -36,7 +36,7 @@
 //!
 //! MDK is synchronous; `MarmotService` is sync and this projection invents
 //! no threading. It IS accessed from two threads — the kernel actor thread
-//! (`KernelEventObserver` fan-out + the ingest parser) and the host FFI
+//! (`ObservedProjectionSink` fan-out + the ingest parser) and the host FFI
 //! entry points (`snapshot` / dispatch) — so the inner `Mutex` is
 //! load-bearing for that concurrent access, not a belt-and-braces extra.
 //!
@@ -47,7 +47,7 @@
 //!    takes the secret key directly. Replace with a `KeyringCapability`
 //!    seam when one lands on `NmpApp`.
 //! 2. **Lossy-observer seam — RESOLVED (inbound ingest CLOSED).** The
-//!    `KernelEventObserver` fan-out carries no signature, so
+//!    `ObservedProjectionSink` fan-out carries no signature, so
 //!    `on_kernel_event` uses it for *metadata* only. Actual MLS ingest of
 //!    kind:445 / kind:1059 is driven by
 //!    [`crate::projection::tap::MarmotIngestParser`] (slot `"marmot"`,
@@ -68,10 +68,10 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use mdk_core::prelude::group_types::GroupState;
-use nmp_core::KernelEventObserver;
 use nmp_core::actor::{ActorCommand, CommandSender, InterestsCommand, PublishCommand};
 use nmp_core::publish::PublishTarget;
 use nmp_core::substrate::KernelEvent;
+use nmp_core::ObservedProjectionSink;
 use nmp_store::RawEvent;
 use nostr::{Event, JsonUtil, PublicKey, RelayUrl};
 
@@ -538,7 +538,7 @@ impl<'a> InnerHandle<'a> {
     }
 }
 
-impl KernelEventObserver for MarmotProjection {
+impl ObservedProjectionSink for MarmotProjection {
     /// Metadata-only `KernelEvent` observer (see module rustdoc): a
     /// [`KernelEvent`] has no signature so we cannot feed kind:445 /
     /// kind:1059 into MDK from here — that is now done automatically by

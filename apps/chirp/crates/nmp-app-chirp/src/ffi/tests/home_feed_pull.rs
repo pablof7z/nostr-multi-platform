@@ -41,11 +41,11 @@
 
 use std::sync::Arc;
 
-use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 use nmp_nip01::op_feed::{decode_op_feed_snapshot, OP_FEED_SNAPSHOT_KEY};
+use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
 use super::super::ChirpHandle;
 use super::helpers::register_app;
@@ -96,7 +96,11 @@ fn store_note(store: &MemEventStore, id: &str, created_at: u64) {
         sig: "a".repeat(128),
     };
     store
-        .insert(VerifiedEvent::from_raw_unchecked(raw), &RELAY.to_string(), 1_000)
+        .insert(
+            VerifiedEvent::from_raw_unchecked(raw),
+            &RELAY.to_string(),
+            1_000,
+        )
         .expect("store insert must succeed");
 }
 
@@ -134,7 +138,7 @@ fn home_has_more(handle: *mut ChirpHandle) -> bool {
     snap.page.map(|p| p.has_more).unwrap_or(false)
 }
 
-/// Seed the engine's first page directly through its `KernelEventObserver`
+/// Seed the engine's first page directly through its `ObservedProjectionSink`
 /// ingest path — the SAME path the live relay fan-out (and the pager's apply
 /// closure) uses. This stands in for the live-push history a home feed
 /// accumulates before the user scrolls; it does NOT touch the seam under test.
@@ -198,9 +202,15 @@ fn chirp_home_load_older_engages_pull_with_active_account() {
     while app_ref.load_older_feed(OP_FEED_SNAPSHOT_KEY) {
         progressed = true;
         drains += 1;
-        assert!(drains < 16, "pager must exhaust in a bounded number of drains");
+        assert!(
+            drains < 16,
+            "pager must exhaust in a bounded number of drains"
+        );
     }
-    assert!(progressed, "load_older must engage the pull pager at least once");
+    assert!(
+        progressed,
+        "load_older must engage the pull pager at least once"
+    );
 
     // ── GROW + late-old INCLUDED ─────────────────────────────────────────────
     let grown = home_projection_ids(app_ref).expect("nmp.feed.home projection after load_older");

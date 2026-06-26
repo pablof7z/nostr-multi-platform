@@ -150,7 +150,7 @@ impl ModularTimelineState {
 ///
 /// Once an `impl ViewModule`; now a plain type whose inherent methods are
 /// reached via static dispatch — `ModularTimelineProjection` (the live
-/// `KernelEventObserver` consumer) drives `open` / `snapshot` /
+/// `ObservedProjectionSink` consumer) drives `open` / `snapshot` /
 /// `on_event_inserted` directly.
 pub struct Nip10ModularTimelineView;
 

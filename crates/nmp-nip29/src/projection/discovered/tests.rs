@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 
 use super::{DiscoveredGroupsProjection, DiscoveredGroupsSnapshot};
 use crate::kinds::{KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS, KIND_GROUP_METADATA};
@@ -269,10 +269,9 @@ fn snapshot_json_round_trips_through_serde() {
 
 #[test]
 fn drives_through_observer_trait_object() {
-    // Same trait-object usage the host registers with
-    // `register_event_observer`.
+    // Same trait-object usage the host passes into an observed projection.
     let proj = Arc::new(DiscoveredGroupsProjection::new(HOST));
-    let observer: Arc<dyn KernelEventObserver> = Arc::clone(&proj) as _;
+    let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&proj) as _;
     observer.on_kernel_event(&event(
         "meta",
         KIND_GROUP_METADATA,

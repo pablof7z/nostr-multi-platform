@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::RootAdmission;
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_kinds::KIND_MUTE_LIST;
@@ -23,8 +23,13 @@ pub(super) fn resolve_active_mute_list_members(
     let projection = Arc::new(nmp_nip51::MuteListProjection::new(
         app.active_account_handle(),
     ));
-    let observer_id =
-        app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    let observer_id = app.open_observed_projection(ObservedProjection::from_shape(
+        Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
+        "nmp.feed.resolver.active_mute_list",
+        0,
+        active_mute_list_shape(&viewer),
+        64,
+    ));
     let projection_for_identity = Arc::clone(&projection);
     let projection_for_replay = Arc::clone(&projection);
     let replay_slot = app.active_account_handle();

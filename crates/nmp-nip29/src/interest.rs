@@ -44,7 +44,7 @@ pub fn host_pinned_interest(
 
 /// Build a one-shot interest for the relay-signed metadata snapshot of a single
 /// group (39000-39003, filtered by `d` tag).
-#[must_use] 
+#[must_use]
 pub fn metadata_interest(id: u64, group: &GroupId) -> LogicalInterest {
     ViewDependencies {
         kinds: vec![
@@ -71,12 +71,12 @@ pub fn metadata_interest(id: u64, group: &GroupId) -> LogicalInterest {
 /// This is the read-side companion to the `nmp.nip29.discover` action: the
 /// action enqueues this interest via `InterestsCommand::EnsureInterest`, the relay
 /// streams its metadata catalog back, and the `DiscoveredGroupsProjection`
-/// (a `KernelEventObserver`) accumulates it into a flat list.
+/// (a `ObservedProjectionSink`) accumulates it into a flat list.
 ///
 /// `InterestId` is derived deterministically from `host_relay_url` so a
 /// repeated discover on the same relay is idempotent (the kernel de-dupes by
 /// id and the REQ filter is identical).
-#[must_use] 
+#[must_use]
 pub fn relay_discovery_interest(host_relay_url: &str) -> LogicalInterest {
     let id = InterestId(nmp_planner::stable_hash::stable_hash64((
         "nip29.discover",
@@ -108,12 +108,8 @@ pub fn relay_discovery_identity(host_relay_url: &str) -> SubIdentity {
 /// events embed members as `p` tags), so we encode the membership filter as
 /// a `#p` tag dimension — the relay returns all 39001/39002 mentioning the
 /// user, which is the correct surface.
-#[must_use] 
-pub fn joined_groups_for_host(
-    id: u64,
-    user_pubkey: &str,
-    host_relay_url: &str,
-) -> LogicalInterest {
+#[must_use]
+pub fn joined_groups_for_host(id: u64, user_pubkey: &str, host_relay_url: &str) -> LogicalInterest {
     ViewDependencies {
         kinds: vec![KIND_GROUP_ADMINS, KIND_GROUP_MEMBERS],
         tag_refs: vec![("p".to_string(), user_pubkey.to_string())],

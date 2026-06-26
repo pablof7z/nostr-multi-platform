@@ -20,7 +20,7 @@ use common::{
     PURPLEPAG_ES,
 };
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{FeedRequest, FlatFeed, FlatFeedItem};
 use nmp_planner::{
     InMemoryMailboxCache, InterestId, InterestLifecycle, InterestScope, InterestShape,

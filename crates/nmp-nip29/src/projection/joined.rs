@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::RelayUrl;
@@ -208,7 +208,7 @@ fn has_p_tag(tags: &[Vec<String>], pubkey: &str) -> bool {
             .any(|t| t.len() >= 2 && t[0] == "p" && t[1] == pubkey)
 }
 
-impl KernelEventObserver for JoinedGroupsProjection {
+impl ObservedProjectionSink for JoinedGroupsProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if !Self::accepts(event) {
             return;

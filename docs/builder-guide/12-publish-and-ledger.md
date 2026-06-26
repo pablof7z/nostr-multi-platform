@@ -70,7 +70,7 @@ appears on `PublishAction` itself.
 | **Write** an event | dispatch `PublishAction::Publish` | action only — no direct relay/store call |
 | **Cancel** a publish | dispatch `PublishAction::Cancel { handle }` | action only |
 | **Observe** publish status | open `PublishStatusView` | store/view subscription — never a return value |
-| **Read** events back | snapshot projection / `KernelEventObserver` | store subscription |
+| **Read** events back | snapshot projection / `ObservedProjectionSink` | store subscription |
 | Pick relays | `OutboxResolver` (D3 automatic) | engine-internal; app only via `Explicit` opt-out |
 | Decide retry | `classify_ack` in the engine | engine-internal; never the dispatcher, never native (D7) |
 

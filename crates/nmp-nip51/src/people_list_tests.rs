@@ -2,7 +2,7 @@
 
 use super::PeopleListProjection;
 use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use std::sync::{Arc, Mutex};
 
 fn projection_for(active: Option<&str>) -> PeopleListProjection {

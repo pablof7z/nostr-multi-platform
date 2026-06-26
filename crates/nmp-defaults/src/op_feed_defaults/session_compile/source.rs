@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use nmp_core::{DependentInterestChild, KernelEventObserverId};
+use nmp_core::{DependentInterestChild, ObservedProjectionId};
 use nmp_feed::RootAdmission;
 use nmp_planner::{InterestScope, InterestShape};
 
@@ -83,7 +83,7 @@ pub(super) struct ReducedSource {
     /// Reactive-reset installers.
     pub reset_hooks: Vec<ResetHook>,
     /// Resolver observer ids the session must revoke on close.
-    pub resolver_observer_ids: Vec<KernelEventObserverId>,
+    pub resolver_observer_ids: Vec<ObservedProjectionId>,
     /// Identity-change observer ids the session must revoke on close.
     pub identity_observer_ids: Vec<nmp_ffi::IdentityChangeObserverId>,
 }

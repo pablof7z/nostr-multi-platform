@@ -159,14 +159,15 @@ The resolution reuses the existing feed seam rather than adding a bespoke
 - `nmp-feed` (ADR-0033) owns the keyed `FeedRegistry`, cursors, windowing, and
   the viewport FFI; `RootIndexedFeed<R, A, C>` (ADR-0035) is the
   protocol-agnostic engine and `nmp-nip01::register_op_feed` (ADR-0038) is the
-  NIP-10 instance behind `nmp.feed.home`. The engine ingests via the generic
-  `KernelEventObserver` fan-out, which fires for every stored event.
+  NIP-10 instance behind `nmp.feed.home`. The engine ingests via declared
+  observed projections, so future delivery is scoped to the feed's shapes.
 - Author and thread feeds are additional **feed instances registered under their
   own keys** (`nmp.feed.author.<pubkey>` / `nmp.feed.thread.<event_id>`) through
-  the same registry, observer, and typed-sidecar composition. Chirp's app crate
-  owns them: open registers a feed + observer + `NOFS` typed projection and opens
-  the matching `open_interest`; close unregisters the dynamic key (emitting one
-  `Cleared` row so host caches drop it) and closes the interest.
+  the same registry, observed-projection, and typed-sidecar composition. Chirp's
+  app crate owns them: open registers a feed + declared observed projection +
+  `NOFS` typed projection and opens the matching interest; close unregisters
+  the dynamic key (emitting one `Cleared` row so host caches drop it) and closes
+  the interest.
 
 A parallel `interest_feeds` snapshot projection would be the "substrate theater"
 the repo forbids; the existing seam is the architecturally-right home. Per

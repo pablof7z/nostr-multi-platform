@@ -112,7 +112,9 @@ pub(crate) mod planner {
     pub use nmp_planner::compiler::InMemoryMailboxCache;
     #[cfg(test)]
     pub use nmp_planner::interest::PTagRouting;
-    pub use nmp_planner::plan::{canonical_filter_hash, CompiledPlan, PlannerError, RelayAttribution, SubShape};
+    pub use nmp_planner::plan::{
+        canonical_filter_hash, CompiledPlan, PlannerError, RelayAttribution, SubShape,
+    };
     // W4 — warm-relay score lookup seam + lookup-aware selection.
     pub use nmp_planner::selection::apply_selection_with_lookup;
     // Internal call sites that reach into `interest::EventId` and similar
@@ -159,10 +161,10 @@ pub(crate) mod store {
 }
 pub mod projection_emission; // ADR-0055 R6-S2: byte-equality typed-projection omit helper.
 pub mod refs; // ADR-0063 Lane A (#1671) — row-grain delta carrier for keyed reference projections.
-// Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`) and the
-// actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
-// (private); promoted here so the crate-private actor module can still name them after
-// the FFI extraction. `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
+              // Step 11 final — shared substrate slot aliases the FFI shell (`nmp-ffi`) and the
+              // actor runtime (`crate::actor`) both reach into. Used to live in `crate::ffi::mod.rs`
+              // (private); promoted here so the crate-private actor module can still name them after
+              // the FFI extraction. `pub` because nmp-ffi reaches them through `nmp_core::slots::*`.
 pub mod signer_catalog;
 pub mod slots;
 pub mod subs;
@@ -181,8 +183,13 @@ pub use app::{
     resolve_open_uri, KernelAction, KernelUpdate, KernelViewSpec, OpenUriError, OpenUriRouting,
     VIEW_ADDRESSABLE, VIEW_PROFILE, VIEW_THREAD,
 };
-pub use bunker_hook::{install_bunker_hook, new_bunker_hook_slot, BunkerHookFn, BunkerHookRequest, BunkerHookSlot};
-pub use external_signer_hook::{install_external_signer_hook, new_external_signer_hook_slot, ExternalSignerHookFn, ExternalSignerHookRequest, ExternalSignerHookSlot};
+pub use bunker_hook::{
+    install_bunker_hook, new_bunker_hook_slot, BunkerHookFn, BunkerHookRequest, BunkerHookSlot,
+};
+pub use external_signer_hook::{
+    install_external_signer_hook, new_external_signer_hook_slot, ExternalSignerHookFn,
+    ExternalSignerHookRequest, ExternalSignerHookSlot,
+};
 // Step 11 final — `NmpApp` opaque handle + the `nmp_app_*` symbol family
 // moved to the standalone `nmp-ffi` crate (`nmp_ffi::NmpApp`). `nmp-core`
 // no longer exposes `ffi::*` at all.
@@ -191,24 +198,26 @@ pub use kernel::{
     ProfileLiveness, KERNEL_BUILTIN_PROJECTION_KEYS,
 };
 // ADR-0063 Lane D — closed typed `resolve_ref`/`release_ref` surface at the crate root.
-pub use kernel::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
-pub use kernel::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7 (#1671)
 pub use kernel::pull::{pull_page_over, PullError, PullLimits, PullScope}; // ADR-0058
 pub use kernel::pull_cursor::{InvalidCursorSpec, PullConsumerId, PullCursorHandle};
 pub use kernel::pull_cursor::{PullCursorId, PullCursorMode, PullCursorRegistry, PullCursorSpec};
 pub use kernel::pull_wake::{decode_pull_wake_batch, PullWakeRow, PULL_WAKE_KEY};
+pub use kernel::{record_emitted_feed_authors, EmittedFeedAuthorsSlot}; // ADR-0063 D7 (#1671)
+pub use kernel::{
+    EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape,
+};
 // ADR-0049 — the composition ledger (explain-the-composition surface) and its
 // record types. Re-exported at the crate root so `nmp-ffi` (the C-ABI host) and
 // downstream composition crates can name them without reaching into `kernel`.
+pub use kernel::{default_registry, ActionRegistry};
 pub use kernel::{
     CompositionLedger, CompositionRecord, Disposition, COMPOSITION_REPORT_SCHEMA_VERSION,
-};
-pub use kernel::{default_registry, ActionRegistry}; // ADR-0064/S3 (#1751/#1008): crate-root registry for the no-`native` WASM path.
-// Injectable kernel wall-clock trait. Re-exported (always) so the `pub`
-// `slots::KernelClockSlot` alias (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) is
-// nameable across crates. Production installs nothing (the kernel keeps its
-// `SystemClock`); only the test-support `MonotonicSecondClock` is constructible
-// downstream.
+}; // ADR-0064/S3 (#1751/#1008): crate-root registry for the no-`native` WASM path.
+   // Injectable kernel wall-clock trait. Re-exported (always) so the `pub`
+   // `slots::KernelClockSlot` alias (`Arc<Mutex<Option<Arc<dyn Clock>>>>`) is
+   // nameable across crates. Production installs nothing (the kernel keeps its
+   // `SystemClock`); only the test-support `MonotonicSecondClock` is constructible
+   // downstream.
 pub use kernel::Clock;
 // Test-support: advanceable kernel clock external e2e tests install through the
 // FFI `NmpApp::set_kernel_clock_for_test` seam to stamp strictly-increasing
@@ -229,13 +238,13 @@ pub mod relay_score {
 // `AuthSignerFn` alias for their `Kernel::set_relay_auth_signer(...)` call.
 // Substrate-grade (D0): no protocol nouns — generic Schnorr signer callback.
 pub use kernel::{wallet_access::KernelWalletAccess, AuthSignerFn}; // KernelWalletAccess: ADR-0052 §D5 wallet/zap adapter
-// V-51 phase 4 (validation harness) — the projection's three public types
-// reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
-// is the bounded ring-buffer the kernel hands to production composition
-// (via `routing_trace()` → `set_routing_substrate` factory →
-// `GenericOutboxRouter::with_trace_observer`); `PublishTraceEntry` /
-// `SubscriptionTraceEntry` are the entry shapes the `snapshot_*` accessors
-// return. See `kernel::routing_trace` module doc.
+                                                                   // V-51 phase 4 (validation harness) — the projection's three public types
+                                                                   // reachable from `nmp-testing` and the chirp-repl. `RoutingTraceProjection`
+                                                                   // is the bounded ring-buffer the kernel hands to production composition
+                                                                   // (via `routing_trace()` → `set_routing_substrate` factory →
+                                                                   // `GenericOutboxRouter::with_trace_observer`); `PublishTraceEntry` /
+                                                                   // `SubscriptionTraceEntry` are the entry shapes the `snapshot_*` accessors
+                                                                   // return. See `kernel::routing_trace` module doc.
 pub use kernel::routing_trace::{
     PublishTraceEntry, RoutingTraceProjection, SubscriptionTraceEntry,
     DEFAULT_ROUTING_TRACE_CAPACITY,
@@ -251,9 +260,17 @@ pub use kernel::routing_trace_dto::{projection_to_json, ROUTING_TRACE_SCHEMA_VER
 // `web_sys::MessageEvent` / `CloseEvent` through the
 // `nmp-wasm::relay_pool::build_handlers` callback bag.
 // Substrate-grade (D0): no app/protocol nouns.
-pub use kernel::{RelayFrame, kernel_ports::{FollowPort, IdentityPort, InterestPort, KernelPorts, ProtocolDispatchPort, PublishPort, PullCursorPort, ReferencePort, RelayLifecyclePort, UiPort}};
-pub use kernel_reducer::{KernelReducer, SignRoundTripCompletion, SignRoundTripOutcome, SignRoundTripRequest}; // #1753 S6 wasm signing DTOs
+pub use kernel::{
+    kernel_ports::{
+        FollowPort, IdentityPort, InterestPort, KernelPorts, ProtocolDispatchPort, PublishPort,
+        PullCursorPort, ReferencePort, RelayLifecyclePort, UiPort,
+    },
+    RelayFrame,
+};
 pub use kernel_reducer::CommandApplyOutcome; // #2045 PR-A narrow headless interpreter outcome
+pub use kernel_reducer::{
+    KernelReducer, SignRoundTripCompletion, SignRoundTripOutcome, SignRoundTripRequest,
+}; // #1753 S6 wasm signing DTOs
 pub use relay::canonical_relay_url;
 // V-01 Stage 3 — the per-frame outbound type (`role`, `relay_url`, `text`) the
 // kernel produces and any transport (native `relay_worker`, wasm
@@ -330,9 +347,9 @@ pub use actor::{CipherContinuation, SignContinuation, SignerSource};
 // `ActorMail` is the raw inbox discriminant — test-support only (#1608: not
 // part of the stable public API; external code that needs a test channel
 // should use `nmp_core::testing::spawn_actor()` instead).
-pub use actor::{CommandSendError, CommandSender};
 #[cfg(any(test, feature = "test-support"))]
 pub use actor::ActorMail;
+pub use actor::{CommandSendError, CommandSender};
 
 // Step 11 final — every `nmp_app_*` `extern "C"` symbol that used to be
 // re-exported from `ffi::` now lives in the standalone `nmp-ffi` crate.
@@ -350,13 +367,10 @@ pub use actor::ActorMail;
 #[cfg(any(test, feature = "test-support"))]
 pub use actor::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
 
-// T146 — kernel event observer surface exposed to per-app Rust crates
-// (`nmp-app-chirp`, future app-specific crates, ...). Apps register typed
-// `Arc<dyn KernelEventObserver>`s via [`NmpApp::register_event_observer`].
-// The FFI shape (`KernelEventObserverFn` etc.) is the C-ABI channel
-// Swift / Kotlin bridges use directly through
-// `nmp_app_register_event_observer`.
-pub use actor::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
+// Scoped observed-projection sink surface exposed to reusable Rust crates.
+// Hosts register these through `substrate::ObservedProjectionRegistrar` with a
+// declared event shape; there is no public filterless observer registration.
+pub use actor::{ObservedProjectionId, ObservedProjectionSink};
 
 // `KindFilter` is the per-registration kind filter used by `external_event_sink`
 // and any consumer that needs to match events by kind. Exported from the
@@ -386,13 +400,10 @@ pub use actor::KindFilter;
 pub mod __ffi_internal {
     pub use crate::actor::{
         has_role, new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
-        new_signer_state_slot, nostrconnect_relay_url,
-        activate_observer, register_c_observer, register_rust_observer,
-        register_rust_observer_muted, rust_observer_count,
-        run_actor_with_observers, unregister_observer,
-        ActorChannels, ActorConfigSources, ActorRuntimeSlots,
-        KernelEventObserverRegistration, KernelEventObserverSlot, LifecycleObserverFn,
-        LifecycleObserverRegistration, LifecycleObserverSlot, LIFECYCLE_PHASE_BACKGROUND,
+        new_signer_state_slot, nostrconnect_relay_url, register_rust_observer_muted,
+        run_actor_with_observers, rust_observer_count, unregister_observer, ActorChannels,
+        ActorConfigSources, ActorRuntimeSlots, LifecycleObserverFn, LifecycleObserverRegistration,
+        LifecycleObserverSlot, ObservedProjectionSinkSlot, LIFECYCLE_PHASE_BACKGROUND,
         LIFECYCLE_PHASE_FOREGROUND,
     };
     // `ActorMail` is the raw inbox discriminant used by `nmp-ffi::nmp_app_new`
