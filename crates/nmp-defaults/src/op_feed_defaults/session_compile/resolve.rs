@@ -1,5 +1,4 @@
-//! `FeedScope` → resolved `(admission predicate, acquisition interests)` for the
-//! perspective compiler (#1740 step 3).
+//! `FeedScope` → [`ReducedSource`] for the perspective compiler (#1740 step 3).
 //!
 //! This is the ONLY module that touches the resolution snapshots — kind:3 follows
 //! ([`nmp_nip02::ActiveFollowSet`]), NIP-51 list members
@@ -7,7 +6,7 @@
 //! [`nmp_wot::score::WotGraph`] query). It reuses those single-source mechanisms;
 //! it never re-derives a follow graph or a list parser (D4).
 //!
-//! Each non-default scope resolves to a [`ResolvedScope`]:
+//! Each non-default scope resolves to a [`ReducedSource`]:
 //! * `admission` — the engine's EVENT-AWARE [`nmp_feed::RootAdmission`], built
 //!   INSIDE the framework from a [`nmp_feed::AdmitExpr`] (static sets / `#t` tag
 //!   / set algebra) OR from a LIVE framework projection (reactive scopes). No
@@ -30,38 +29,16 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{KernelEventObserver, KernelEventObserverId};
+use nmp_core::KernelEventObserver;
 use nmp_feed::RootAdmission;
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
 use nmp_wot::score::WotGraph;
 
-use super::session_engine::{AcquisitionInterest, ExtraAcquisition, LiveShape};
-
-/// A closure that, given the feed-window reset trigger, installs it on the
-/// underlying set's change signal (reactive perspective).
-pub(super) type ResetHook = Box<dyn FnOnce(Arc<dyn Fn() + Send + Sync>)>;
-
-/// The compiled product of one [`nmp_feed::FeedScope`].
-pub(super) struct ResolvedScope {
-    /// The engine's ROOT-admission predicate (compiled from DATA or a live
-    /// projection). EVENT-AWARE (#1740 step 3) so author scopes and `#t` tag
-    /// scopes compose faithfully under set algebra and the perspective gates
-    /// which roots enter the feed, not just reply attribution.
-    pub admission: RootAdmission,
-    /// Internal typed acquisition interests.
-    pub interests: Vec<AcquisitionInterest>,
-    /// Live pull acquisition shape (re-read on `load_older`).
-    pub live_shape: LiveShape,
-    /// Extra acquisition shapes to subscribe to beyond the render shape (e.g.
-    /// WoT's seed-follows kind:3). Empty for most scopes.
-    pub extra_acquisition: ExtraAcquisition,
-    /// Reactive-reset installers (run by the session engine once it has a
-    /// controller to reset).
-    pub reset_hooks: Vec<ResetHook>,
-    /// Resolver observer ids the session must revoke on close.
-    pub resolver_observer_ids: Vec<KernelEventObserverId>,
-}
+use super::source::{
+    extra_from_live_shape, AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource,
+    ResetHook,
+};
 
 const KIND_CONTACT_LIST: u32 = 3;
 /// NIP-51 follow set / people list (kind:30000). Named locally because
@@ -78,7 +55,7 @@ pub(super) fn resolve_scope(
     app: &NmpApp,
     scope: &nmp_feed::FeedScope,
     kinds: &BTreeSet<u32>,
-) -> Result<ResolvedScope, FeedOpenError> {
+) -> Result<ReducedSource, FeedOpenError> {
     use nmp_feed::FeedScope as S;
     match scope {
         S::Authors { authors } => super::resolve_static::resolve_authors(authors, kinds),
@@ -123,7 +100,7 @@ fn resolve_contact_list(
     app: &NmpApp,
     owner: &str,
     kinds: &BTreeSet<u32>,
-) -> Result<ResolvedScope, FeedOpenError> {
+) -> Result<ReducedSource, FeedOpenError> {
     let viewer = super::super::read_active(&app.active_account_handle())
         .ok_or_else(|| not_supported("ContactList-no-active-account"))?;
     if owner != viewer {
@@ -152,32 +129,13 @@ fn resolve_contact_list(
         reset_set.on_change(Box::new(move || reset()));
     });
 
-    Ok(ResolvedScope {
+    Ok(ReducedSource {
         admission,
         interests,
-        extra_acquisition: extra_from_shape(&live_shape),
+        extra_acquisition: extra_from_live_shape(&live_shape),
         live_shape,
         reset_hooks: vec![reset_hook],
         resolver_observer_ids: vec![observer_id],
-    })
-}
-
-/// No extra acquisition beyond the fixed interests (the static scopes —
-/// `Authors` / `Tag`).
-pub(super) fn empty_extra() -> ExtraAcquisition {
-    Arc::new(Vec::new)
-}
-
-/// Wrap a render [`LiveShape`] as an [`ExtraAcquisition`] so the member timeline
-/// is registered as a dependent child (and re-synced as the set grows), not
-/// merely scanned.
-fn extra_from_shape(live_shape: &LiveShape) -> ExtraAcquisition {
-    let live_shape = Arc::clone(live_shape);
-    Arc::new(move || {
-        live_shape()
-            .into_iter()
-            .map(AcquisitionInterest::active_account)
-            .collect()
     })
 }
 
@@ -187,7 +145,7 @@ fn resolve_list_members(
     app: &NmpApp,
     list_id: &str,
     kinds: &BTreeSet<u32>,
-) -> Result<ResolvedScope, FeedOpenError> {
+) -> Result<ReducedSource, FeedOpenError> {
     // The list owner is the active viewer (the projection is owner-gated). No
     // active account ⇒ fail closed (no list to resolve).
     let viewer = super::super::read_active(&app.active_account_handle())
@@ -235,10 +193,10 @@ fn resolve_list_members(
         reset_proj.on_change(Box::new(move || reset()));
     });
 
-    Ok(ResolvedScope {
+    Ok(ReducedSource {
         admission,
         interests,
-        extra_acquisition: extra_from_shape(&live_shape),
+        extra_acquisition: extra_from_live_shape(&live_shape),
         live_shape,
         reset_hooks: vec![reset_hook],
         resolver_observer_ids: vec![observer_id],
@@ -251,7 +209,7 @@ fn resolve_wot(
     app: &NmpApp,
     seed: &str,
     kinds: &BTreeSet<u32>,
-) -> Result<ResolvedScope, FeedOpenError> {
+) -> Result<ReducedSource, FeedOpenError> {
     // A session-scoped WoT graph observer, reusing `WotGraph` (the #1698 ranked
     // second-degree query) — we do NOT touch the singleton bootstrap runtime.
     let graph = Arc::new(SessionWotGraph::new(seed.to_string()));
@@ -320,7 +278,7 @@ fn resolve_wot(
         reset_graph.on_change(Box::new(move || reset()));
     });
 
-    Ok(ResolvedScope {
+    Ok(ReducedSource {
         admission,
         interests,
         live_shape,

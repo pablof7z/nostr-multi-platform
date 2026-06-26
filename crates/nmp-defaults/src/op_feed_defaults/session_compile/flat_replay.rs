@@ -4,7 +4,7 @@ use std::sync::Arc;
 use nmp_core::KernelEventObserver;
 use nmp_ffi::NmpApp;
 
-use super::session_engine::AcquisitionInterest;
+use super::source::AcquisitionInterest;
 
 pub(super) fn replay_fixed_event_ids(
     app: &NmpApp,
