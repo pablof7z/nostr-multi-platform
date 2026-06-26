@@ -69,8 +69,8 @@ fn kernel_role_options_round_trip_field_for_field() {
             })
             .collect(),
     };
-    let decoded = decode_relay_role_options(&encode_relay_role_options(&model))
-        .expect("decode must succeed");
+    let decoded =
+        decode_relay_role_options(&encode_relay_role_options(&model)).expect("decode must succeed");
     assert_eq!(decoded, model);
     assert_eq!(decoded.options.len(), options.len());
 }

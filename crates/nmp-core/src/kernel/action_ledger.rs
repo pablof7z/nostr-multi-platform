@@ -82,12 +82,12 @@ use result_records::ActionResultRecord;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use super::action_stages::{
-    ActionStage, MAX_TRACKED_CORRELATIONS, PENDING_STAGE_RETENTION_MS, StageHistory,
-    TERMINAL_STAGE_RETENTION_MS,
-};
 #[cfg(test)]
 use super::action_stages::StageEntry;
+use super::action_stages::{
+    ActionStage, StageHistory, MAX_TRACKED_CORRELATIONS, PENDING_STAGE_RETENTION_MS,
+    TERMINAL_STAGE_RETENTION_MS,
+};
 
 /// Retention window for terminal lifecycle entries. Mirrors the stage-history
 /// terminal TTL so the derived lifecycle view and the substrate history expire
@@ -283,7 +283,8 @@ impl ActionLedger {
     ) {
         // The history records the prose-only stage (bounded; may drop a
         // non-terminal diagnostic at the per-correlation cap).
-        self.stages.record(correlation_id, stage.clone(), detail, at_ms);
+        self.stages
+            .record(correlation_id, stage.clone(), detail, at_ms);
         // The latest-lifecycle slot ALWAYS advances on every record — it is the
         // authoritative lifecycle state and is independent of the history cap,
         // so a 65th non-terminal still moves the displayed stage + TTL anchor
@@ -347,7 +348,14 @@ impl ActionLedger {
     ) {
         // Record the stage first so the `action_stages` / `action_lifecycle`
         // projections observe the terminal in the same edge.
-        self.record_coded(correlation_id, stage, None, reason_code, reason_subject, at_ms);
+        self.record_coded(
+            correlation_id,
+            stage,
+            None,
+            reason_code,
+            reason_subject,
+            at_ms,
+        );
         // Then enqueue the per-tick action_results row — the single source.
         self.terminal_results.push(ActionResultRecord {
             correlation_id: correlation_id.to_string(),

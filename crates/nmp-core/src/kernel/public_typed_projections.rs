@@ -19,11 +19,8 @@ pub use super::typed_projections::{
     decode_active_account,
     // claimed_events (also used as the per-row `refs.event` payload)
     decode_claimed_events,
-    encode_claimed_events,
     // configured_relays
     decode_configured_relays,
-    // profile (encode: ADR-0063 Lane F — build a refs.profile KPRF row payload)
-    encode_profile,
     // outbox_summary
     decode_outbox_summary,
     // profile
@@ -42,6 +39,9 @@ pub use super::typed_projections::{
     decode_settings_hub,
     // signed_events (nmp-ffi sign_event_for_return typed migration — PR-B final zeroing)
     decode_signed_events,
+    encode_claimed_events,
+    // profile (encode: ADR-0063 Lane F — build a refs.profile KPRF row payload)
+    encode_profile,
     AccountSummaryRow,
     AccountsModel,
     ActionResultRow,

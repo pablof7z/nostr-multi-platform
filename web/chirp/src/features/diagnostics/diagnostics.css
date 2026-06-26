@@ -119,7 +119,8 @@
 .relay-row span,
 .relay-metrics span,
 .diagnostics-empty,
-.interest-strip span {
+.interest-strip span,
+.wire-strip span {
   color: var(--ink-3);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -131,13 +132,15 @@
   text-align: right;
 }
 
-.interest-strip {
+.interest-strip,
+.wire-strip {
   display: flex;
   gap: 8px;
   overflow-x: auto;
 }
 
-.interest-strip span {
+.interest-strip span,
+.wire-strip span {
   flex: 0 0 auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);

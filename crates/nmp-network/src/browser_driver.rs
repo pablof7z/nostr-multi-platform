@@ -70,8 +70,7 @@ use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 use web_sys::{BinaryType, CloseEvent, ErrorEvent, MessageEvent, WebSocket};
 
 use crate::relay_protocol::{
-    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
-    RELAY_RECONNECT_DELAY_MAX,
+    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
 };
 use crate::role::RelayRole;
 
@@ -234,9 +233,7 @@ impl BrowserRelayDriver {
     pub fn send_text(&self, text: &str) -> Result<(), JsValue> {
         let mut state = self.state.borrow_mut();
         match &state.current_socket {
-            Some(socket) if socket.ready_state() == WebSocket::OPEN => {
-                socket.send_with_str(text)
-            }
+            Some(socket) if socket.ready_state() == WebSocket::OPEN => socket.send_with_str(text),
             // CONNECTING (socket present, not yet open) or between a close and
             // the next reconnect dial (no socket): buffer until `onopen`.
             _ => {
@@ -269,6 +266,12 @@ impl BrowserRelayDriver {
     #[must_use]
     pub fn url(&self) -> &str {
         &self.url
+    }
+
+    /// Diagnostic/kernel role this driver reports inbound frames under.
+    #[must_use]
+    pub fn role(&self) -> RelayRole {
+        self.role
     }
 
     /// Open a new WebSocket and wire its four event closures. Called once
@@ -386,8 +389,7 @@ impl BrowserRelayDriver {
             // still fires `wasClean=true`, and the native worker reconnects on
             // both. Skipping on `was_clean` would silently strand the driver
             // every time the relay does a clean restart.
-            let permanent =
-                driver.state.borrow().permanent_failure || is_permanent_error(&reason);
+            let permanent = driver.state.borrow().permanent_failure || is_permanent_error(&reason);
             if !permanent {
                 driver.schedule_reconnect();
             }

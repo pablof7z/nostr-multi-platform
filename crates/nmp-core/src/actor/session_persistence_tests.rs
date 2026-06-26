@@ -13,8 +13,8 @@ use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::{CapabilityEnvelope, KeyringRequest, KeyringResult};
 use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_char, c_void};
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::ffi::{c_char, c_void, CStr, CString};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 

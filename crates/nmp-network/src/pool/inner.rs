@@ -166,12 +166,7 @@ impl PoolInner {
         }
     }
 
-    fn reopen_slot(
-        &mut self,
-        slot_id: u32,
-        canonical: RelayUrl,
-        role: RelayRole,
-    ) -> RelayHandle {
+    fn reopen_slot(&mut self, slot_id: u32, canonical: RelayUrl, role: RelayRole) -> RelayHandle {
         // Bump generation off the prior value (kept on the slot when it
         // was closed) so a stale handle from before the close is
         // structurally rejected.
@@ -401,7 +396,6 @@ fn translator_loop(
         sink.send_event(pool_event);
     }
 }
-
 
 // Off-lock pre-translation (`prepare_event`) and the O(1) locked apply
 // (`apply_prepared`) live in the sibling `pool::translate` module.

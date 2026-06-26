@@ -4,8 +4,8 @@
 //! The property-test harness (the merge gate) lives in the sibling `property`
 //! module.
 
-use super::property::{decode_ok, ground_truth, payload_for, wire_round_trip, REF_NS};
 use super::super::*;
+use super::property::{decode_ok, ground_truth, payload_for, wire_round_trip, REF_NS};
 
 // ── Explicit invariant + behaviour tests ────────────────────────────────────────
 
@@ -71,8 +71,14 @@ fn invariant2_decode_before_commit_keeps_prior_on_malformed() {
     };
     let outcome = cache.apply(&wire_round_trip(&batch), 1, 0, &decode_ok);
 
-    assert!(outcome.decode_failed, "malformed row must report decode failure");
-    assert!(cache.needs_resync(), "needs_resync must latch (fail-closed, D6)");
+    assert!(
+        outcome.decode_failed,
+        "malformed row must report decode failure"
+    );
+    assert!(
+        cache.needs_resync(),
+        "needs_resync must latch (fail-closed, D6)"
+    );
     assert_eq!(
         cache.get("profile", "alice"),
         Some(payload_for("alice", 1)),
@@ -94,7 +100,12 @@ fn invariant3_epoch_resync_repairs_corrupt_cache() {
 
     source.upsert("profile", "alice", 1, payload_for("alice", 1));
     source.upsert("profile", "bob", 1, payload_for("bob", 1));
-    cache.apply(&wire_round_trip(&tracker.build_baseline("profile", &source)), 1, 0, &decode_ok);
+    cache.apply(
+        &wire_round_trip(&tracker.build_baseline("profile", &source)),
+        1,
+        0,
+        &decode_ok,
+    );
 
     // Corrupt the host cache out from under the protocol + leave a stale ghost.
     cache.corrupt_for_test("profile", "alice", b"GARBAGE".to_vec());
@@ -111,7 +122,10 @@ fn invariant3_epoch_resync_repairs_corrupt_cache() {
 
     assert_eq!(cache.snapshot("profile"), ground_truth(&source, "profile"));
     assert_eq!(cache.snapshot("event"), ground_truth(&source, "event"));
-    assert!(!cache.needs_resync(), "epoch re-baseline clears needs_resync");
+    assert!(
+        !cache.needs_resync(),
+        "epoch re-baseline clears needs_resync"
+    );
 }
 
 /// A release produces an EXPLICIT `Cleared` row that removes the host's cached
@@ -123,16 +137,28 @@ fn cleared_is_explicit_and_removes() {
     let mut cache = RefRowCache::new();
 
     source.upsert("profile", "alice", 1, payload_for("alice", 1));
-    cache.apply(&wire_round_trip(&tracker.build_baseline("profile", &source)), 1, 0, &decode_ok);
+    cache.apply(
+        &wire_round_trip(&tracker.build_baseline("profile", &source)),
+        1,
+        0,
+        &decode_ok,
+    );
     assert!(cache.get("profile", "alice").is_some());
 
     source.remove("profile", "alice", 2);
     let incr = wire_round_trip(&tracker.build_incremental("profile", &source));
     assert_eq!(incr.rows.len(), 1);
     assert_eq!(incr.rows[0].state, RefRowState::Cleared);
-    assert!(incr.rows[0].rev > 1, "clear carries the release rev, not the prior live rev");
+    assert!(
+        incr.rows[0].rev > 1,
+        "clear carries the release rev, not the prior live rev"
+    );
     cache.apply(&incr, 1, 0, &decode_ok);
-    assert_eq!(cache.get("profile", "alice"), None, "Cleared row removes the cached row");
+    assert_eq!(
+        cache.get("profile", "alice"),
+        None,
+        "Cleared row removes the cached row"
+    );
 }
 
 /// The per-key reorder guard skips a `Changed` row whose rev is not newer than
@@ -181,7 +207,10 @@ fn reorder_guard_skips_stale_clear() {
         rows: vec![RefRow::cleared("alice", 5)],
     };
     let outcome = cache.apply(&wire_round_trip(&stale_clear), 1, 0, &decode_ok);
-    assert!(outcome.changed_keys.is_empty(), "stale clear must be a no-op");
+    assert!(
+        outcome.changed_keys.is_empty(),
+        "stale clear must be a no-op"
+    );
     assert_eq!(
         cache.get("profile", "alice"),
         Some(payload_for("alice", 6)),
@@ -196,7 +225,11 @@ fn reorder_guard_skips_stale_clear() {
     };
     let outcome = cache.apply(&wire_round_trip(&fresh_clear), 1, 0, &decode_ok);
     assert_eq!(outcome.changed_keys, vec!["alice".to_string()]);
-    assert_eq!(cache.get("profile", "alice"), None, "a newer clear removes the row");
+    assert_eq!(
+        cache.get("profile", "alice"),
+        None,
+        "a newer clear removes the row"
+    );
 }
 
 /// BLOCKING-1 (scratch-then-commit baseline): a malformed row INSIDE a baseline
@@ -232,9 +265,18 @@ fn baseline_decode_failure_preserves_prior_cache() {
     };
     let outcome = cache.apply(&wire_round_trip(&bad_baseline), 1, 0, &decode_ok);
 
-    assert!(outcome.decode_failed, "a malformed baseline row fails the batch");
-    assert!(cache.needs_resync(), "needs_resync latches (fail-closed, D6)");
-    assert!(outcome.changed_keys.is_empty(), "no slot is committed on a failed baseline");
+    assert!(
+        outcome.decode_failed,
+        "a malformed baseline row fails the batch"
+    );
+    assert!(
+        cache.needs_resync(),
+        "needs_resync latches (fail-closed, D6)"
+    );
+    assert!(
+        outcome.changed_keys.is_empty(),
+        "no slot is committed on a failed baseline"
+    );
     // Prior cache is byte-for-byte intact: alice was NOT advanced to rev 9, bob
     // (absent from the bad baseline) was NOT dropped, carol was NOT inserted.
     assert_eq!(
@@ -274,10 +316,17 @@ fn decode_seam_rejects_non_empty_invalid_row() {
     let bad = RefRowDeltaBatch {
         namespace: "profile".into(),
         baseline: false,
-        rows: vec![RefRow::changed("alice", 2, b"non-empty-but-invalid".to_vec())],
+        rows: vec![RefRow::changed(
+            "alice",
+            2,
+            b"non-empty-but-invalid".to_vec(),
+        )],
     };
     let outcome = cache.apply(&wire_round_trip(&bad), 1, 0, &strict_decode);
-    assert!(outcome.decode_failed, "non-empty invalid payload fails the seam");
+    assert!(
+        outcome.decode_failed,
+        "non-empty invalid payload fails the seam"
+    );
     assert!(cache.needs_resync());
     assert_eq!(
         cache.get("profile", "alice"),
@@ -297,14 +346,27 @@ fn typed_per_namespace_isolation() {
     source.upsert("profile", "shared", 1, b"profile-bytes".to_vec());
     source.upsert("event", "shared", 1, b"event-bytes".to_vec());
     for ns in REF_NS {
-        cache.apply(&wire_round_trip(&tracker.build_baseline(ns, &source)), 1, 0, &decode_ok);
+        cache.apply(
+            &wire_round_trip(&tracker.build_baseline(ns, &source)),
+            1,
+            0,
+            &decode_ok,
+        );
     }
-    assert_eq!(cache.get("profile", "shared"), Some(b"profile-bytes".to_vec()));
+    assert_eq!(
+        cache.get("profile", "shared"),
+        Some(b"profile-bytes".to_vec())
+    );
     assert_eq!(cache.get("event", "shared"), Some(b"event-bytes".to_vec()));
 
     // Clearing the profile row must not touch the event row.
     source.remove("profile", "shared", 2);
-    cache.apply(&wire_round_trip(&tracker.build_incremental("profile", &source)), 1, 0, &decode_ok);
+    cache.apply(
+        &wire_round_trip(&tracker.build_incremental("profile", &source)),
+        1,
+        0,
+        &decode_ok,
+    );
     assert_eq!(cache.get("profile", "shared"), None);
     assert_eq!(cache.get("event", "shared"), Some(b"event-bytes".to_vec()));
 }
@@ -332,7 +394,14 @@ fn baseline_replaces_namespace_wholesale() {
         rows: vec![RefRow::changed("alice", 2, payload_for("alice", 2))],
     };
     cache.apply(&wire_round_trip(&second), 1, 0, &decode_ok);
-    assert_eq!(cache.snapshot("profile").keys().cloned().collect::<Vec<_>>(), vec!["alice"]);
+    assert_eq!(
+        cache
+            .snapshot("profile")
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>(),
+        vec!["alice"]
+    );
 }
 
 /// The wire codec is lossless for every field (key/rev/state/payload + batch

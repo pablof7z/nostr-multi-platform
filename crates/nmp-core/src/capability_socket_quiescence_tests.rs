@@ -1,7 +1,7 @@
 //! Blocking regression tests for capability-callback quiescence.
 
-use super::{CapabilityCallbackRegistration, dispatch_capability, new_capability_callback_slot};
-use std::ffi::{CStr, CString, c_char, c_void};
+use super::{dispatch_capability, new_capability_callback_slot, CapabilityCallbackRegistration};
+use std::ffi::{c_char, c_void, CStr, CString};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};

@@ -136,8 +136,8 @@ pub fn decode_dispatch_envelope(bytes: &[u8]) -> Result<DecodedDispatch, Dispatc
     // Gate 3 — FlatBuffers verification. `root_with_opts` runs the size-prefixed
     // / bounds verifier; a truncated or corrupt buffer is rejected as data, not
     // a panic.
-    let envelope = flatbuffers::root::<DispatchEnvelope>(bytes)
-        .map_err(|_| DispatchDecodeError::Malformed)?;
+    let envelope =
+        flatbuffers::root::<DispatchEnvelope>(bytes).map_err(|_| DispatchDecodeError::Malformed)?;
 
     // Gate 4 — schema_version tripwire. Read the RAW value and reject any
     // version we do not recognise. We do NOT attempt to decode an unknown

@@ -140,7 +140,9 @@ pub enum ActionStage {
     AwaitingCapability,
     Publishing,
     Accepted,
-    Failed { reason: String },
+    Failed {
+        reason: String,
+    },
     /// User-initiated cancellation — a distinct terminal from `Failed`. Routed
     /// through the cancel-by-`correlation_id` doorway (S7, #1754).
     Cancelled,

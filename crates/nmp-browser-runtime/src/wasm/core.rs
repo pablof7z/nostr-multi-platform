@@ -140,6 +140,7 @@ impl NmpRuntimeCore {
         // Drain events buffered from async pump turns and prepend to response.
         let mut events = std::mem::take(&mut self.pending_host_events);
         events.extend(self.dispatch_request(request));
+        events.extend(self.pump_once());
         serialize_events(&events)
     }
 
@@ -149,6 +150,7 @@ impl NmpRuntimeCore {
     pub fn handle_dispatch_bytes_raw(&mut self, bytes: &[u8]) -> String {
         let mut events = std::mem::take(&mut self.pending_host_events);
         events.extend(self.dispatch_dispatch_bytes(bytes));
+        events.extend(self.pump_once());
         serialize_events(&events)
     }
 

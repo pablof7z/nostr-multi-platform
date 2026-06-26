@@ -51,10 +51,7 @@ impl InputScopeRegistry {
     /// installed and returns [`InputScopeDisposition::YieldedToExisting`]. The
     /// caller (FFI shell) records the disposition in the `"input_scope"` ledger
     /// seam.
-    pub fn register(
-        &self,
-        recognizer: Arc<dyn InputScopeRecognizer>,
-    ) -> InputScopeDisposition {
+    pub fn register(&self, recognizer: Arc<dyn InputScopeRecognizer>) -> InputScopeDisposition {
         let scope = recognizer.scope();
         let Ok(mut recognizers) = self.recognizers.lock() else {
             // D6 — a poisoned lock drops the registration silently.

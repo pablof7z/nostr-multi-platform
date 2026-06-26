@@ -23,9 +23,9 @@
 use crate::kernel::ram_eviction_tests::{make_pubkey, pin_clock, T0_SECS};
 use crate::kernel::Kernel;
 use crate::planner::canonical_filter_hash;
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{RawEvent, VerifiedEvent};
+use nmp_network::role::RelayRole;
 
 fn open_interest(kernel: &mut Kernel, filter_json: &str, consumer_id: &str) {
     use crate::planner::{InterestLifecycle, InterestScope, LogicalInterest};

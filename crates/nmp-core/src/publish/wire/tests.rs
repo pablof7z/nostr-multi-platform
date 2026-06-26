@@ -49,10 +49,17 @@ fn presigned_publish_event_is_byte_identical_through_round_trip() {
 
     // The decoded SignedEvent is field-identical (id/sig/unsigned).
     match &decoded {
-        PublishAction::Publish { event: decoded_event, handle, target } => {
+        PublishAction::Publish {
+            event: decoded_event,
+            handle,
+            target,
+        } => {
             assert_eq!(handle, "pub-1");
             assert_eq!(*target, PublishTarget::Auto);
-            assert_eq!(*decoded_event, event, "decoded SignedEvent must equal original");
+            assert_eq!(
+                *decoded_event, event,
+                "decoded SignedEvent must equal original"
+            );
             // The id and sig are byte-exact (the whole point).
             assert_eq!(decoded_event.id, "a".repeat(64));
             assert_eq!(decoded_event.sig, "b".repeat(128));
@@ -85,7 +92,10 @@ fn presigned_publish_event_is_byte_identical_through_round_trip() {
 fn publish_raw_round_trips() {
     let action = PublishAction::PublishRaw {
         kind: 30023,
-        tags: vec![vec!["d".to_string(), "slug".to_string()], vec!["title".to_string(), "T".to_string()]],
+        tags: vec![
+            vec!["d".to_string(), "slug".to_string()],
+            vec!["title".to_string(), "T".to_string()],
+        ],
         content: "body".to_string(),
         target: PublishTarget::Explicit {
             relays: vec!["wss://relay.one".to_string(), "wss://relay.two".to_string()],
@@ -112,9 +122,17 @@ fn publish_raw_auto_target_and_no_signer_round_trips() {
 #[test]
 fn publish_profile_round_trips() {
     let mut fields = serde_json::Map::new();
-    fields.insert("name".to_string(), serde_json::Value::String("Alice".to_string()));
-    fields.insert("about".to_string(), serde_json::Value::String("nostr dev".to_string()));
-    let action = PublishAction::PublishProfile { fields: fields.clone() };
+    fields.insert(
+        "name".to_string(),
+        serde_json::Value::String("Alice".to_string()),
+    );
+    fields.insert(
+        "about".to_string(),
+        serde_json::Value::String("nostr dev".to_string()),
+    );
+    let action = PublishAction::PublishProfile {
+        fields: fields.clone(),
+    };
     let decoded = PublishAction::decode(&action.encode()).expect("decodes");
     match decoded {
         PublishAction::PublishProfile { fields: got } => assert_eq!(got, fields),
@@ -133,7 +151,10 @@ fn wrong_schema_version_is_rejected_before_decode() {
     let canonical = fbb.create_vector(b"{}");
     let target = fb::PublishTarget::create(
         &mut fbb,
-        &fb::PublishTargetArgs { explicit: false, relays: None },
+        &fb::PublishTargetArgs {
+            explicit: false,
+            relays: None,
+        },
     );
     let signed = fb::PublishSigned::create(
         &mut fbb,
@@ -157,7 +178,10 @@ fn wrong_schema_version_is_rejected_before_decode() {
     let err = PublishAction::decode(&bytes).expect_err("bad schema_version must be rejected");
     assert_eq!(
         err,
-        ActionPayloadDecodeError::SchemaVersionMismatch { found: 999, expected: SCHEMA_VERSION }
+        ActionPayloadDecodeError::SchemaVersionMismatch {
+            found: 999,
+            expected: SCHEMA_VERSION
+        }
     );
 }
 

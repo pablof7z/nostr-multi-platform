@@ -70,8 +70,8 @@ use crate::substrate::{
     BlockedRelaySet, DmInboxRelayLookup, MailboxCache as SubstrateMailboxCache, RoutingContext,
     SessionKeySet,
 };
-use nmp_signer_iface::UnsignedEvent;
 use crate::util::sort_dedup;
+use nmp_signer_iface::UnsignedEvent;
 
 impl Kernel {
     /// Snapshot the active account's blocked-relay set from the

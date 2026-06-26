@@ -60,9 +60,9 @@ mod kernel_impl;
 // ADR-0055 Rung 3 S1b: the presence state-machine impls (`note_drain_emit`,
 // `note_copy_emit`, `presence_for`) live in a sibling file to keep this module
 // under the 500-LOC hard ceiling while adding the new copy-with-TTL edge machine.
-mod presence;
 #[cfg(any(test, feature = "test-support"))]
 pub(crate) mod oracle;
+mod presence;
 // ADR-0055 Rung 1 (F3): the `impl Kernel` oracle methods live in a sibling file
 // (test-support only) so `kernel/mod.rs` stays at its file-size baseline.
 #[cfg(any(test, feature = "test-support"))]

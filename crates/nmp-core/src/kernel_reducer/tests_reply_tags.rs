@@ -11,20 +11,14 @@ use crate::store::{RawEvent, VerifiedEvent};
 // ─── Synthetic event IDs (valid 64-char hex) ────────────────────────────────
 
 /// A parent event that IS the thread root (no root ref in its tags).
-const PARENT_ROOT_ID: &str =
-    "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
-const PARENT_ROOT_AUTHOR: &str =
-    "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
+const PARENT_ROOT_ID: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+const PARENT_ROOT_AUTHOR: &str = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
 
 /// A mid-thread event that carries a root ref.
-const PARENT_MID_ID: &str =
-    "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3";
-const PARENT_MID_AUTHOR: &str =
-    "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4";
-const ROOT_ID: &str =
-    "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5";
-const ALICE_PK: &str =
-    "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6";
+const PARENT_MID_ID: &str = "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3";
+const PARENT_MID_AUTHOR: &str = "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4";
+const ROOT_ID: &str = "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5";
+const ALICE_PK: &str = "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -107,7 +101,10 @@ fn build_reply_tags_for_mid_thread_event_inherits_root_ref() {
     assert_eq!(tags[0][1], ROOT_ID, "root e-tag must carry thread root id");
     assert_eq!(tags[0][3], "root");
     // reply e-tag → PARENT_MID_ID
-    assert_eq!(tags[1][1], PARENT_MID_ID, "reply e-tag must carry direct parent");
+    assert_eq!(
+        tags[1][1], PARENT_MID_ID,
+        "reply e-tag must carry direct parent"
+    );
     assert_eq!(tags[1][3], "reply");
     // p-tags: parent author first, then alice
     assert_eq!(tags[2][1], PARENT_MID_AUTHOR);

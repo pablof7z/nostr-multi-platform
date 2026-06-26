@@ -110,7 +110,10 @@ pub enum InvalidCursorSpec {
 impl std::fmt::Display for InvalidCursorSpec {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            InvalidCursorSpec::LimitsOutOfOrder { max_entries, max_scan_entries } => write!(
+            InvalidCursorSpec::LimitsOutOfOrder {
+                max_entries,
+                max_scan_entries,
+            } => write!(
                 f,
                 "PullCursorSpec: max_entries ({max_entries}) > max_scan_entries \
                  ({max_scan_entries}); max_entries must be ≤ max_scan_entries"
@@ -208,7 +211,10 @@ pub struct PullCursorRegistry {
 
 impl Default for PullCursorRegistry {
     fn default() -> Self {
-        Self { by_id: BTreeMap::new(), next_cursor_id: 1 }
+        Self {
+            by_id: BTreeMap::new(),
+            next_cursor_id: 1,
+        }
     }
 }
 
@@ -473,7 +479,10 @@ mod tests {
         let err = spec(257, 256).validate().unwrap_err();
         assert_eq!(
             err,
-            InvalidCursorSpec::LimitsOutOfOrder { max_entries: 257, max_scan_entries: 256 }
+            InvalidCursorSpec::LimitsOutOfOrder {
+                max_entries: 257,
+                max_scan_entries: 256
+            }
         );
     }
 

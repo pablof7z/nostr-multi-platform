@@ -162,8 +162,8 @@ pub use claimed_events_fb::{
 // drained codecs' `model_from_json` parsers are called module-qualified
 // (`super::<mod>::model_from_json`) and so are not re-exported.
 pub(crate) use action_lifecycle_fb::{
-    encode_action_lifecycle, ActionLifecycleModel,
-    ACTION_LIFECYCLE_FILE_IDENTIFIER, ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
+    encode_action_lifecycle, ActionLifecycleModel, ACTION_LIFECYCLE_FILE_IDENTIFIER,
+    ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
 };
 // Internal-only encoder; the publicly re-exported `action_results` names
 // (`ActionResultsModel` + the envelope constants) live in the PUBLIC block

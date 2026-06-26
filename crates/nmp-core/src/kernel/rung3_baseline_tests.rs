@@ -66,7 +66,10 @@ fn declare_before_first_emit_still_has_typed_projections() {
 
 /// Construct a fresh kernel with a snapshot slot installed (so registry reads
 /// in `make_update` succeed).
-fn kernel_with_slot() -> (Kernel, super::super::snapshot_registry::SnapshotProjectionSlot) {
+fn kernel_with_slot() -> (
+    Kernel,
+    super::super::snapshot_registry::SnapshotProjectionSlot,
+) {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     let slot = new_snapshot_projection_slot();
     kernel.set_snapshot_projection_handle(Arc::clone(&slot));
@@ -135,7 +138,10 @@ fn first_frame_after_declare_incremental_apply_is_full_baseline() {
         // Skip the four conditional drain/stage keys — they are absent on a
         // fresh kernel with no settlements. All other Tier-2 keys MUST appear
         // in the baseline frame (they are unconditionally produced each tick).
-        if matches!(key, "action_results" | "signed_events" | "action_stages" | "action_lifecycle") {
+        if matches!(
+            key,
+            "action_results" | "signed_events" | "action_stages" | "action_lifecycle"
+        ) {
             continue;
         }
         assert!(
@@ -263,7 +269,10 @@ fn first_frame_after_bump_epoch_is_full_baseline() {
 
     for &key in tier2_keys() {
         // Skip conditional drain/stage keys (absent on ticks with no settlements).
-        if matches!(key, "action_results" | "signed_events" | "action_stages" | "action_lifecycle") {
+        if matches!(
+            key,
+            "action_results" | "signed_events" | "action_stages" | "action_lifecycle"
+        ) {
             continue;
         }
         assert!(
@@ -298,18 +307,22 @@ fn omission_biconditional_oracle_omitted_iff_unchanged() {
     let frame1 = emit_frame(&mut kernel);
 
     // Verify: all non-drain Tier-2 keys present in frame 1 as Changed.
-    let present_tick1: std::collections::HashMap<&str, WireProjectionState> = frame1
-        .iter()
-        .map(|r| (r.key.as_str(), r.state))
-        .collect();
+    let present_tick1: std::collections::HashMap<&str, WireProjectionState> =
+        frame1.iter().map(|r| (r.key.as_str(), r.state)).collect();
     for &key in tier2_keys() {
         // Skip conditional drain/stage keys (absent on ticks with no settlements).
-        if matches!(key, "action_results" | "signed_events" | "action_stages" | "action_lifecycle") {
+        if matches!(
+            key,
+            "action_results" | "signed_events" | "action_stages" | "action_lifecycle"
+        ) {
             continue;
         }
         let state = present_tick1.get(key).copied();
         assert!(
-            matches!(state, Some(WireProjectionState::Changed) | Some(WireProjectionState::Cleared)),
+            matches!(
+                state,
+                Some(WireProjectionState::Changed) | Some(WireProjectionState::Cleared)
+            ),
             "Tick 1 baseline: key `{key}` must be Changed or Cleared (not absent); \
              got {state:?}"
         );
@@ -336,7 +349,10 @@ fn omission_biconditional_oracle_omitted_iff_unchanged() {
         // in tick 1 (no settlements) and thus also absent in tick 2. Allowing
         // them here avoids false positives when they ARE absent in tick 2 not
         // because they were omitted (Unchanged) but because they never appeared.
-        if matches!(key, "action_results" | "signed_events" | "action_stages" | "action_lifecycle") {
+        if matches!(
+            key,
+            "action_results" | "signed_events" | "action_stages" | "action_lifecycle"
+        ) {
             continue;
         }
         assert!(
@@ -371,7 +387,12 @@ fn omission_biconditional_oracle_omitted_iff_unchanged() {
         frame3.iter().map(|r| r.key.as_str()).collect();
 
     // Kept (Changed): the configured-relays cluster + relay_diagnostics.
-    for key in ["configured_relays", "relay_role_options", "settings_hub", "relay_diagnostics"] {
+    for key in [
+        "configured_relays",
+        "relay_role_options",
+        "settings_hub",
+        "relay_diagnostics",
+    ] {
         assert!(
             present_tick3.contains(key),
             "Tick 3 (mixed): key `{key}` depends on the mutated input → must be \
@@ -405,7 +426,10 @@ fn omission_biconditional_oracle_omitted_iff_unchanged() {
         }
         // Drain/stage keys are conditional (absent without settlements) — their
         // absence is not an omission signal, so skip them here.
-        if matches!(key, "action_results" | "signed_events" | "action_stages" | "action_lifecycle") {
+        if matches!(
+            key,
+            "action_results" | "signed_events" | "action_stages" | "action_lifecycle"
+        ) {
             continue;
         }
         assert!(

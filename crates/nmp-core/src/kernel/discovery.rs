@@ -90,7 +90,9 @@ impl Kernel {
         // cloned handle inside the closure.
         let profile_lookup = std::sync::Arc::clone(&self.profile_lookup);
         let Self {
-            unknown_ids, events, ..
+            unknown_ids,
+            events,
+            ..
         } = self;
         unknown_ids.visit_tags(
             tags,
@@ -225,7 +227,8 @@ impl Kernel {
             // OneshotApi::prepare: pure bookkeeping, returns identity+interest
             // for the unified front-door (store-serve + trigger inclusive).
             let (token, interest_id, identity, interest) =
-                self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
+                self.oneshot
+                    .prepare(InterestScope::Global, shape, Vec::new());
             self.register_interest(
                 &[crate::kernel::cache_serve::InterestRegistration {
                     identity,
@@ -271,7 +274,8 @@ impl Kernel {
                 ..Default::default()
             };
             let (token, interest_id, identity, interest) =
-                self.oneshot.prepare(InterestScope::Global, shape, Vec::new());
+                self.oneshot
+                    .prepare(InterestScope::Global, shape, Vec::new());
             self.register_interest(
                 &[crate::kernel::cache_serve::InterestRegistration {
                     identity,

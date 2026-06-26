@@ -7,11 +7,7 @@ use nmp_network::pool::{Pool, PoolConfig, PoolEvent};
 /// receiver (kept around so the channel doesn't disconnect mid-test), and an
 /// empty [`RelayRuntime`] owner (relay_controls + slot_to_url + connected_urls
 /// + next_relay_generation). Returns `(pool, events_rx, relay_runtime)`.
-fn fresh_pool() -> (
-    Pool,
-    std::sync::mpsc::Receiver<PoolEvent>,
-    RelayRuntime,
-) {
+fn fresh_pool() -> (Pool, std::sync::mpsc::Receiver<PoolEvent>, RelayRuntime) {
     let (events_tx, events_rx) = std::sync::mpsc::channel::<PoolEvent>();
     let pool = Pool::new(PoolConfig::default(), events_tx);
     (pool, events_rx, RelayRuntime::new())
@@ -307,7 +303,11 @@ fn t158_ensure_relay_worker_dials_and_emits_connected() {
         spawned,
         "first ensure_relay_worker call must spawn a worker"
     );
-    assert_eq!(rt.relay_controls.len(), 1, "pool must have exactly one entry");
+    assert_eq!(
+        rt.relay_controls.len(),
+        1,
+        "pool must have exactly one entry"
+    );
 
     // Wait for the Opened event — proves the socket actually dialled.
     let mut got_opened = false;

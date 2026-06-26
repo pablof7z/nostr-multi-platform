@@ -32,10 +32,7 @@ pub enum ResolvedInputKind {
     /// decoder). `entity_class` is a generic discriminant the producing parser
     /// fills (e.g. `"profile"`, `"event"`, `"address"`) so a recognizer can
     /// scope-match without re-decoding.
-    Reference {
-        uri: String,
-        entity_class: String,
-    },
+    Reference { uri: String, entity_class: String },
     /// A normalized relay URL (`ws://` / `wss://`).
     RelayUrl { url: String },
     /// A NIP-05-shaped identifier (`name@domain`), SHAPE-validated only (no IO).

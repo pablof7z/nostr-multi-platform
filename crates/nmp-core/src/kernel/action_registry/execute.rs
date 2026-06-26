@@ -4,7 +4,7 @@
 //! the hand-authored file-size ceiling while the public methods remain on
 //! `ActionRegistry`.
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use super::{ActionExecuteFailure, ActionFailureKind, ActionRegistry};
 use crate::substrate::ActionContext;

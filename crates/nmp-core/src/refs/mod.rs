@@ -44,10 +44,10 @@ mod tests;
 pub use cache::{RefRowApplyOutcome, RefRowCache};
 // ADR-0063 (#1671 Lane F) — host-side `refs.profile` / `refs.event`
 // consumption helpers for the Rust shells.
-pub use host_store::{REFS_EVENT_KEY, REFS_PROFILE_KEY, RefEventStore, RefProfileStore};
+pub use host_store::{RefEventStore, RefProfileStore, REFS_EVENT_KEY, REFS_PROFILE_KEY};
 pub use rowdelta::{
-    RefRow, RefRowDeltaBatch, RefRowDeltaDecodeError, RefRowState, decode_ref_row_delta_batch,
-    encode_ref_row_delta_batch,
+    decode_ref_row_delta_batch, encode_ref_row_delta_batch, RefRow, RefRowDeltaBatch,
+    RefRowDeltaDecodeError, RefRowState,
 };
 pub use tracker::{RefRowDeltaTracker, RefRowRevSource};
 // `MapRowRevSource` is a TEST-ONLY in-memory Lane B stub (deleted when Lane B's

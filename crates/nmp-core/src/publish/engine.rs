@@ -18,14 +18,14 @@
 //!   the actor can branch on them, then mapped via
 //!   `engine::error_mapping::engine_error_to_failure` into a `RecentFailure`
 //!   row on the same snapshot before the boundary crosses to Swift / Kotlin.
-mod dispatch;
-mod engine_error;
-mod error_mapping;
-mod helpers;
 #[cfg(test)]
 mod auth_park_tests;
 #[cfg(test)]
 mod deadline_tests;
+mod dispatch;
+mod engine_error;
+mod error_mapping;
+mod helpers;
 #[cfg(test)]
 mod tests;
 mod types;

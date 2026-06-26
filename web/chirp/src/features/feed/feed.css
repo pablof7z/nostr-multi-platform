@@ -161,6 +161,10 @@
 }
 
 .post-author {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
   max-width: min(100%, 280px);
   overflow: hidden;
   color: var(--ink);
@@ -168,6 +172,12 @@
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+  text-align: left;
+}
+
+.post-author:hover {
+  color: var(--accent);
 }
 
 .post-context,
@@ -182,12 +192,59 @@
 }
 
 .post-content {
-  margin: 7px 0 14px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+  margin: 7px 0 12px;
+  max-height: 12.4em;
+  overflow: hidden;
   color: var(--ink);
   font-size: 15px;
   line-height: 1.55;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.post-meta-row,
+.post-counts,
+.post-provenance {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.post-meta-row {
+  gap: 10px;
+  margin: 0 0 13px;
+}
+
+.post-counts {
+  gap: 8px;
+  color: var(--ink-3);
+  font-size: 12px;
+}
+
+.post-counts strong {
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+}
+
+.post-provenance {
+  gap: 6px;
+  margin-left: auto;
+}
+
+.post-provenance span {
+  max-width: 170px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .post-actions {
@@ -205,6 +262,12 @@
 .action-btn:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
+}
+
+.action-btn:disabled {
+  background: var(--bg-inset);
+  color: var(--ink-3);
+  cursor: not-allowed;
 }
 
 @media (max-width: 720px) {
@@ -226,6 +289,11 @@
   }
 
   .post-timestamp {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .post-provenance {
     width: 100%;
     margin-left: 0;
   }

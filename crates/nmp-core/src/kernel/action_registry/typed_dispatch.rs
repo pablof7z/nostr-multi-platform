@@ -13,10 +13,10 @@
 //! `ActionPayload` impl and runs the fail-closed `schema_version` gate BEFORE
 //! `start()`. This file never decodes a payload itself.
 
-use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use super::erased::TypedDispatchError;
-use super::{ActionExecuteFailure, ActionFailureKind, ActionRegistry, new_action_id};
+use super::{new_action_id, ActionExecuteFailure, ActionFailureKind, ActionRegistry};
 use crate::substrate::{ActionContext, ActionId, ActionRejection};
 
 // `self.modules` is a private field of `ActionRegistry`; this sibling module is

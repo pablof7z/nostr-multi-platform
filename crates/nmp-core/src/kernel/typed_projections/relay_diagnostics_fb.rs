@@ -49,9 +49,9 @@ use connection_reason::{connection_reason_from_fb, create_connection_reason};
 // NoticeRow model + encode/decode helpers extracted to satisfy the 500-LOC gate.
 #[path = "relay_diagnostics_notice.rs"]
 mod notice;
+use flatbuffers::{FlatBufferBuilder, WIPOffset};
 pub use notice::NoticeRow;
 use notice::{create_notice, notice_from_fb};
-use flatbuffers::{FlatBufferBuilder, WIPOffset};
 
 use generated::nmp::kernel as fb;
 
@@ -284,8 +284,11 @@ fn create_interest<'a>(
     fbb: &mut FlatBufferBuilder<'a>,
     row: &InterestRow,
 ) -> WIPOffset<fb::RelayDiagnosticsInterest<'a>> {
-    let url_offsets: Vec<WIPOffset<&str>> =
-        row.relay_urls.iter().map(|u| fbb.create_string(u)).collect();
+    let url_offsets: Vec<WIPOffset<&str>> = row
+        .relay_urls
+        .iter()
+        .map(|u| fbb.create_string(u))
+        .collect();
     let relay_urls = fbb.create_vector(&url_offsets);
     let key = fbb.create_string(&row.key);
     let state = fbb.create_string(&row.state);
@@ -375,7 +378,10 @@ fn wire_sub_from_fb(row: fb::RelayDiagnosticsWireSub<'_>) -> WireSubRow {
         opened_ms: row.opened_ms(),
         last_event_ms: row.last_event_ms(),
         eose_ms: row.eose_ms(),
-        close_reason: row.has_close_reason().then(|| opt(row.close_reason())).flatten(),
+        close_reason: row
+            .has_close_reason()
+            .then(|| opt(row.close_reason()))
+            .flatten(),
     }
 }
 
@@ -394,10 +400,12 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
             reasons.push(connection_reason_from_fb(r));
         }
     }
-    let notices = row.notices()
+    let notices = row
+        .notices()
         .map(|v| v.iter().map(notice_from_fb).collect())
         .unwrap_or_default();
-    let discovery_kinds = row.discovery_kinds()
+    let discovery_kinds = row
+        .discovery_kinds()
         .map(|v| v.iter().collect())
         .unwrap_or_default();
     RelayRow {
@@ -414,10 +422,16 @@ fn relay_row_from_fb(row: fb::RelayDiagnosticsRow<'_>) -> RelayRow {
         bytes_tx: row.bytes_tx(),
         last_connected_ms: row.last_connected_ms(),
         last_event_ms: row.last_event_ms(),
-        last_notice: row.has_last_notice().then(|| opt(row.last_notice())).flatten(),
+        last_notice: row
+            .has_last_notice()
+            .then(|| opt(row.last_notice()))
+            .flatten(),
         notice_count: row.notice_count(),
         notices,
-        last_error: row.has_last_error().then(|| opt(row.last_error())).flatten(),
+        last_error: row
+            .has_last_error()
+            .then(|| opt(row.last_error()))
+            .flatten(),
         wire_subs,
         discovery_kinds,
         info: row.info().map(info_from_fb),
@@ -435,7 +449,10 @@ fn info_from_fb(info: fb::RelayDiagnosticsInfo<'_>) -> InfoRow {
     }
     InfoRow {
         name: info.has_name().then(|| opt(info.name())).flatten(),
-        description: info.has_description().then(|| opt(info.description())).flatten(),
+        description: info
+            .has_description()
+            .then(|| opt(info.description()))
+            .flatten(),
         icon: info.has_icon().then(|| opt(info.icon())).flatten(),
         pubkey: info.has_pubkey().then(|| opt(info.pubkey())).flatten(),
         contact: info.has_contact().then(|| opt(info.contact())).flatten(),
@@ -444,7 +461,9 @@ fn info_from_fb(info: fb::RelayDiagnosticsInfo<'_>) -> InfoRow {
         supported_nips,
         payment_required: info.has_payment_required().then(|| info.payment_required()),
         auth_required: info.has_auth_required().then(|| info.auth_required()),
-        restricted_writes: info.has_restricted_writes().then(|| info.restricted_writes()),
+        restricted_writes: info
+            .has_restricted_writes()
+            .then(|| info.restricted_writes()),
     }
 }
 

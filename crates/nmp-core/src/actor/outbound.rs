@@ -6,9 +6,9 @@
 
 use crate::kernel::Kernel;
 use crate::relay::{canonical_relay_url, OutboundMessage};
-use nmp_network::role::RelayRole;
 use crate::subs::WireFrame;
 use crate::substrate::ReqFrameContext;
+use nmp_network::role::RelayRole;
 
 /// Convert planner `WireFrame`s to actor `OutboundMessage`s for the relay pool.
 ///
@@ -107,10 +107,10 @@ mod tests {
     use super::wire_frames_to_outbound;
     use crate::kernel::Kernel;
     use crate::planner::{InterestId, InterestLifecycle};
-    use crate::relay::{OutboundMessage};
-use nmp_network::role::RelayRole;
+    use crate::relay::OutboundMessage;
     use crate::subs::WireFrame;
     use crate::substrate::{ReqFrameContext, ReqFrameInterceptor};
+    use nmp_network::role::RelayRole;
     use std::sync::{Arc, Mutex};
 
     struct TestReqInterceptor {

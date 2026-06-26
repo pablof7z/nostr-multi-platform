@@ -56,15 +56,32 @@ function buildSteps(state: OnboardingState): Step[] {
   ];
 }
 
+function nextAction(steps: Step[]): string {
+  const blocked = steps.find((step) => step.status !== "done");
+  if (!blocked) return "Live: read, compose, react, inspect relay state.";
+  if (blocked.label === "Identity") return "Connect a signer to unlock posting and reactions.";
+  if (blocked.label === "Relays") return "Waiting for relay sockets to connect.";
+  if (blocked.label === "Feed") return "Waiting for followed notes to hydrate.";
+  return "Starting the WASM runtime.";
+}
+
 export function OnboardingPanel(props: { state: OnboardingState }) {
   const steps = () => buildSteps(props.state);
   const complete = () => steps().every((step) => step.status === "done");
+  const completeCount = () => steps().filter((step) => step.status === "done").length;
 
   return (
     <section class="onboarding-panel" aria-label="Onboarding">
       <div class="onboarding-header">
-        <p class="panel-kicker">First run</p>
-        <h2>{complete() ? "Ready for signed Chirps" : "Set up Chirp"}</h2>
+        <div>
+          <p class="panel-kicker">First run</p>
+          <h2>{complete() ? "Ready for signed Chirps" : "Set up Chirp"}</h2>
+        </div>
+        <span class="onboarding-progress">{completeCount()}/4</span>
+      </div>
+      <div class="onboarding-next" data-complete={complete() ? "true" : "false"}>
+        <strong>{complete() ? "Session ready" : "Next"}</strong>
+        <span>{nextAction(steps())}</span>
       </div>
       <ol class="onboarding-steps">
         <For each={steps()}>

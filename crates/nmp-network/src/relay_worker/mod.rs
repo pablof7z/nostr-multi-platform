@@ -115,7 +115,7 @@ pub(super) type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 // native relay worker and the wasm32 `BrowserRelayDriver` can share them.
 use crate::relay_protocol::{
     apply_reconnect_backoff, is_permanent_error, jittered_backoff,
-    RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
+    RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX, RELAY_RECONNECT_DELAY_RATE_LIMITED,
 };
 
 /// Spawn-with-explicit-keepalive worker that dials `relay_url` on

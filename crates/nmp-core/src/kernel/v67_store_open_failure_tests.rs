@@ -74,7 +74,10 @@ fn v67_no_store_open_failure_key_is_absent_from_snapshot() {
     // not present as JSON null — the wire stays byte-for-byte identical to
     // pre-V-67 snapshots when there is no failure.
     assert!(
-        !parsed.as_object().map(|o| o.contains_key("store_open_failure")).unwrap_or(false),
+        !parsed
+            .as_object()
+            .map(|o| o.contains_key("store_open_failure"))
+            .unwrap_or(false),
         "V-67: with no store-open failure the `store_open_failure` key must be \
          absent from the snapshot (skip_serializing_if); got: {:?}",
         parsed.get("store_open_failure")

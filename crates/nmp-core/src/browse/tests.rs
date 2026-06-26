@@ -41,10 +41,8 @@ fn open_action(relay: &str, kinds: Vec<u32>, id: u64) -> BrowseRelayAction {
 
 fn ensured_interest(cmds: &[ActorCommand]) -> &crate::planner::LogicalInterest {
     match cmds {
-        [
-            ActorCommand::Interests(InterestsCommand::DropInterestOwner(drop_identity)),
-            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }),
-        ] => {
+        [ActorCommand::Interests(InterestsCommand::DropInterestOwner(drop_identity)), ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest })] =>
+        {
             assert_eq!(
                 drop_identity, identity,
                 "open must replace the same scoped owner"

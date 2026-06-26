@@ -12,9 +12,7 @@
 //!
 //! Always-compiled: `NmpRuntimeCore` exercises this logic on native CI.
 
-use nmp_core::{
-    EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape,
-};
+use nmp_core::{EventShape, ProfileShape, RefLiveness, RefNamespace, RefResolveMetadata, RefShape};
 
 use crate::wasm::protocol::{ReleaseRef, ResolveRef};
 

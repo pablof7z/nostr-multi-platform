@@ -49,10 +49,7 @@ impl ReplaceableTtlConfig {
     /// Returns the kind-specific TTL if configured, otherwise the default.
     #[must_use]
     pub fn ttl_for_kind(&self, kind: u32) -> Duration {
-        self.per_kind
-            .get(&kind)
-            .copied()
-            .unwrap_or(self.default)
+        self.per_kind.get(&kind).copied().unwrap_or(self.default)
     }
 }
 

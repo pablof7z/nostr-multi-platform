@@ -10,10 +10,8 @@ use crate::store::{RawEvent, VerifiedEvent};
 
 // ─── Synthetic event IDs (valid 64-char hex) ────────────────────────────────
 
-const TARGET_ID: &str =
-    "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
-const TARGET_AUTHOR: &str =
-    "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
+const TARGET_ID: &str = "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1";
+const TARGET_AUTHOR: &str = "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2";
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
@@ -61,7 +59,11 @@ fn build_reaction_draft_includes_p_tag_when_author_cached() {
     let (tags, content) = r
         .build_reaction_draft(TARGET_ID, "+")
         .expect("valid hex id should return Some after ingest");
-    assert_eq!(tags.len(), 2, "e-tag + p-tag expected when author is cached");
+    assert_eq!(
+        tags.len(),
+        2,
+        "e-tag + p-tag expected when author is cached"
+    );
     assert_eq!(tags[0][0], "e");
     assert_eq!(tags[0][1], TARGET_ID);
     assert_eq!(tags[1][0], "p");
@@ -72,9 +74,7 @@ fn build_reaction_draft_includes_p_tag_when_author_cached() {
 #[test]
 fn build_reaction_draft_normalises_blank_reaction_to_plus() {
     let r = KernelReducer::new();
-    let (_, content) = r
-        .build_reaction_draft(TARGET_ID, "")
-        .expect("valid hex id");
+    let (_, content) = r.build_reaction_draft(TARGET_ID, "").expect("valid hex id");
     assert_eq!(content, "+", "empty string must normalise to '+'");
     let (_, content2) = r
         .build_reaction_draft(TARGET_ID, "   ")

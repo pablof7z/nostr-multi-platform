@@ -72,10 +72,7 @@ impl KernelSnapshot {
     /// Populated entirely from the struct (never from a re-walk of the JSON
     /// `payload`), so the typed and JSON representations are independent
     /// encodings of the same source state.
-    pub(crate) fn encode_tier3<'b>(
-        &self,
-        builder: &mut FlatBufferBuilder<'b>,
-    ) -> Tier3Offsets<'b> {
+    pub(crate) fn encode_tier3<'b>(&self, builder: &mut FlatBufferBuilder<'b>) -> Tier3Offsets<'b> {
         // Nested tables / vectors first (FlatBuffers builds inner offsets before
         // the table that references them).
         let negentropy_sync_stats =

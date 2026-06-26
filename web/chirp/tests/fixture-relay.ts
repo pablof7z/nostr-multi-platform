@@ -146,14 +146,15 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
             const filters = (rest.slice(1) as NostrFilter[]).filter(
               (f) => typeof f === "object" && f !== null,
             );
+            const sendSoon = (frame: string) => setTimeout(() => ws.send(frame), 0);
             for (const event of seededEvents) {
               const matched =
                 filters.length === 0 || filters.some((f) => matchesFilter(event, f));
               if (matched) {
-                ws.send(JSON.stringify(["EVENT", subId, event]));
+                sendSoon(JSON.stringify(["EVENT", subId, event]));
               }
             }
-            ws.send(JSON.stringify(["EOSE", subId]));
+            sendSoon(JSON.stringify(["EOSE", subId]));
           } else if (verb === "EVENT") {
             const event = rest[0] as Record<string, unknown> | undefined;
             const eventId = typeof event?.id === "string" ? event.id : "";

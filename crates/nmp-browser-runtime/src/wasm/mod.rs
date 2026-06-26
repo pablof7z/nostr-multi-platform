@@ -54,7 +54,7 @@ pub(crate) mod store_failure;
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_impl {
-    use std::cell::RefCell;
+    use std::cell::{Cell, RefCell};
     use std::rc::Rc;
 
     use js_sys::Function;
@@ -91,10 +91,10 @@ mod wasm_impl {
         /// handle exists (#2139 BLOCKER 1 — prevents relay events and signer
         /// completions from being silently dropped on the default NO-OP wake).
         fn try_install_pending_wake(&mut self) {
-            if let (Some(wake), Some(h)) =
-                (self.pending_wake.take(), self.core.handle.as_mut())
-            {
-                h.set_wake(wake);
+            if let Some(h) = self.core.handle.as_mut() {
+                if let Some(wake) = self.pending_wake.take() {
+                    h.set_wake(wake);
+                }
             }
         }
 
@@ -124,6 +124,27 @@ mod wasm_impl {
             self.core.buffer_host_events(events);
             self.push_snapshot_via_js();
         }
+    }
+
+    fn schedule_pump(inner: Rc<RefCell<Inner>>, scheduled: Rc<Cell<bool>>) {
+        if scheduled.replace(true) {
+            return;
+        }
+
+        gloo_timers::callback::Timeout::new(0, move || {
+            scheduled.set(false);
+            let pumped = match inner.try_borrow_mut() {
+                Ok(mut guard) => {
+                    guard.pump_and_push_snapshot();
+                    true
+                }
+                Err(_) => false,
+            };
+            if !pumped {
+                schedule_pump(inner, scheduled);
+            }
+        })
+        .forget();
     }
 
     // ── NmpWasmRuntime ─────────────────────────────────────────────────────────
@@ -222,10 +243,9 @@ mod wasm_impl {
             // Build the wake closure. Captures a clone of the Rc so the timer
             // callback can borrow the Inner without holding the current borrow.
             let inner_rc = Rc::clone(&self.inner);
+            let wake_scheduled = Rc::new(Cell::new(false));
             let wake: Rc<dyn Fn()> = Rc::new(move || {
-                if let Ok(mut guard) = inner_rc.try_borrow_mut() {
-                    guard.pump_and_push_snapshot();
-                }
+                schedule_pump(Rc::clone(&inner_rc), Rc::clone(&wake_scheduled));
             });
 
             // If the handle already exists, install immediately.
@@ -327,8 +347,7 @@ mod wasm_impl {
                 let npub_short = nmp_core::display::short_npub(hex);
                 // serde_json::to_string cannot fail on a simple object literal;
                 // unwrap_or_default is a belt-and-suspenders guard only.
-                serde_json::json!({ "npub": npub, "npubShort": npub_short })
-                    .to_string()
+                serde_json::json!({ "npub": npub, "npubShort": npub_short }).to_string()
             }
             Err(_) => String::new(),
         }
@@ -367,8 +386,7 @@ mod tests {
     fn encode_npub_returns_json_object() {
         let hex = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
         let json = nmp_encode_npub(hex);
-        let parsed: serde_json::Value =
-            serde_json::from_str(&json).expect("must be valid JSON");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("must be valid JSON");
         assert!(
             parsed["npub"].as_str().unwrap_or("").starts_with("npub1"),
             "npub field must start with npub1"

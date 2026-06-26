@@ -105,9 +105,7 @@ impl Kernel {
     /// [`Self::try_current_kind3_event`] remains the wasm reducer seam's gate and
     /// keeps its strict not-loaded → `None` contract unchanged.
     #[must_use]
-    pub(crate) fn try_current_kind3_event_for_edit(
-        &self,
-    ) -> Option<(Vec<Vec<String>>, String)> {
+    pub(crate) fn try_current_kind3_event_for_edit(&self) -> Option<(Vec<Vec<String>>, String)> {
         if let Some(raw) = self.try_current_kind3_event() {
             return Some(raw);
         }

@@ -68,7 +68,10 @@ fn enabled_changed_keeps_full_row() {
     let manifest = make_manifest(vec![("accounts", ProjectionPresence::Changed, 3)]);
     let result = omit_unchanged(typed, &manifest, true);
     assert_eq!(result.len(), 1, "Changed row must be kept");
-    assert_eq!(result[0].payload, payload, "Changed row payload must be unchanged");
+    assert_eq!(
+        result[0].payload, payload,
+        "Changed row payload must be unchanged"
+    );
     assert_eq!(
         result[0].state,
         WireProjectionState::Changed,
@@ -96,7 +99,11 @@ fn disabled_all_rows_present() {
         "disabled: all rows must be present regardless of presence"
     );
     // Payloads should be untouched (including the Cleared one).
-    assert_eq!(result[1].payload, vec![2], "disabled: Cleared row payload untouched");
+    assert_eq!(
+        result[1].payload,
+        vec![2],
+        "disabled: Cleared row payload untouched"
+    );
     assert_eq!(
         result[1].state,
         WireProjectionState::Changed,
@@ -113,7 +120,11 @@ fn tier1_no_manifest_entry_never_omitted() {
     // Manifest only covers a Tier-2 key (profile), not the feed.
     let manifest = make_manifest(vec![("profile", ProjectionPresence::Unchanged, 0)]);
     let result = omit_unchanged(typed, &manifest, true);
-    assert_eq!(result.len(), 1, "Tier-1 key absent from manifest must never be omitted");
+    assert_eq!(
+        result.len(),
+        1,
+        "Tier-1 key absent from manifest must never be omitted"
+    );
     assert_eq!(result[0].key, "nmp.feed.home");
     assert_eq!(result[0].state, WireProjectionState::Changed);
 }
@@ -123,9 +134,9 @@ fn tier1_no_manifest_entry_never_omitted() {
 fn mixed_sidecar_filters_correctly() {
     let typed = vec![
         make_row("profile", vec![1]),        // Changed
-        make_row("accounts", vec![2]),        // Unchanged → dropped
-        make_row("action_results", vec![3]),  // Cleared → empty payload
-        make_row("nmp.wallet", vec![4]),      // Tier-1, no manifest entry → kept
+        make_row("accounts", vec![2]),       // Unchanged → dropped
+        make_row("action_results", vec![3]), // Cleared → empty payload
+        make_row("nmp.wallet", vec![4]),     // Tier-1, no manifest entry → kept
     ];
     let manifest = make_manifest(vec![
         ("profile", ProjectionPresence::Changed, 5),
@@ -136,15 +147,24 @@ fn mixed_sidecar_filters_correctly() {
     // Expect: profile (Changed), action_results (Cleared+empty), nmp.wallet (Tier-1).
     // accounts (Unchanged) must be dropped.
     assert_eq!(result.len(), 3);
-    let profile = result.iter().find(|r| r.key == "profile").expect("profile present");
+    let profile = result
+        .iter()
+        .find(|r| r.key == "profile")
+        .expect("profile present");
     assert_eq!(profile.state, WireProjectionState::Changed);
     assert_eq!(profile.payload, vec![1]);
 
-    let ar = result.iter().find(|r| r.key == "action_results").expect("action_results present");
+    let ar = result
+        .iter()
+        .find(|r| r.key == "action_results")
+        .expect("action_results present");
     assert!(ar.payload.is_empty(), "Cleared row must have empty payload");
     assert_eq!(ar.state, WireProjectionState::Cleared);
 
-    let wallet = result.iter().find(|r| r.key == "nmp.wallet").expect("nmp.wallet present");
+    let wallet = result
+        .iter()
+        .find(|r| r.key == "nmp.wallet")
+        .expect("nmp.wallet present");
     assert_eq!(wallet.payload, vec![4]);
     assert_eq!(wallet.state, WireProjectionState::Changed);
 
@@ -168,7 +188,11 @@ fn empty_manifest_treats_all_as_tier1() {
     let typed = vec![make_row("custom.key", vec![99])];
     let manifest = make_manifest(vec![]);
     let result = omit_unchanged(typed, &manifest, true);
-    assert_eq!(result.len(), 1, "no manifest entry → Tier-1 default (Changed) → kept");
+    assert_eq!(
+        result.len(),
+        1,
+        "no manifest entry → Tier-1 default (Changed) → kept"
+    );
     assert_eq!(result[0].key, "custom.key");
 }
 
@@ -191,16 +215,20 @@ fn manifest_cleared_absent_synthesizes_cleared_row() {
     let row = &result[0];
     assert_eq!(row.key, "action_results");
     assert_eq!(row.state, WireProjectionState::Cleared);
-    assert!(row.payload.is_empty(), "synthesized Cleared row must have empty payload");
-    assert_eq!(row.projection_rev, 7, "synthesized row must carry manifest rev");
+    assert!(
+        row.payload.is_empty(),
+        "synthesized Cleared row must have empty payload"
+    );
+    assert_eq!(
+        row.projection_rev, 7,
+        "synthesized row must carry manifest rev"
+    );
 }
 
 /// manifest-Cleared for signed_events (second drain key) — synthesized.
 #[test]
 fn signed_events_manifest_cleared_absent_synthesizes() {
-    let manifest = make_manifest(vec![
-        ("signed_events", ProjectionPresence::Cleared, 5),
-    ]);
+    let manifest = make_manifest(vec![("signed_events", ProjectionPresence::Cleared, 5)]);
     let result = omit_unchanged(vec![], &manifest, true);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].key, "signed_events");
@@ -210,9 +238,7 @@ fn signed_events_manifest_cleared_absent_synthesizes() {
 /// manifest-Cleared for action_stages — synthesized (post §10.4 edge machine).
 #[test]
 fn action_stages_manifest_cleared_absent_synthesizes() {
-    let manifest = make_manifest(vec![
-        ("action_stages", ProjectionPresence::Cleared, 9),
-    ]);
+    let manifest = make_manifest(vec![("action_stages", ProjectionPresence::Cleared, 9)]);
     let result = omit_unchanged(vec![], &manifest, true);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].key, "action_stages");
@@ -223,9 +249,7 @@ fn action_stages_manifest_cleared_absent_synthesizes() {
 /// manifest-Cleared for action_lifecycle — synthesized.
 #[test]
 fn action_lifecycle_manifest_cleared_absent_synthesizes() {
-    let manifest = make_manifest(vec![
-        ("action_lifecycle", ProjectionPresence::Cleared, 11),
-    ]);
+    let manifest = make_manifest(vec![("action_lifecycle", ProjectionPresence::Cleared, 11)]);
     let result = omit_unchanged(vec![], &manifest, true);
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].key, "action_lifecycle");
@@ -237,11 +261,13 @@ fn action_lifecycle_manifest_cleared_absent_synthesizes() {
 /// means "went empty".)
 #[test]
 fn conditional_key_changed_absent_belt_synthesizes_cleared() {
-    let manifest = make_manifest(vec![
-        ("action_results", ProjectionPresence::Changed, 8),
-    ]);
+    let manifest = make_manifest(vec![("action_results", ProjectionPresence::Changed, 8)]);
     let result = omit_unchanged(vec![], &manifest, true);
-    assert_eq!(result.len(), 1, "belt must synthesize Cleared for conditional Changed-absent");
+    assert_eq!(
+        result.len(),
+        1,
+        "belt must synthesize Cleared for conditional Changed-absent"
+    );
     assert_eq!(result[0].key, "action_results");
     assert_eq!(result[0].state, WireProjectionState::Cleared);
 }
@@ -261,9 +287,7 @@ fn conditional_key_changed_absent_belt_synthesizes_cleared() {
 fn unconditional_key_changed_absent_panics_in_debug() {
     // "profile" is an unconditional Tier-2 key — it MUST always emit a row
     // when Changed. A Changed-but-absent profile is a producer bug.
-    let manifest = make_manifest(vec![
-        ("profile", ProjectionPresence::Changed, 5),
-    ]);
+    let manifest = make_manifest(vec![("profile", ProjectionPresence::Changed, 5)]);
     // This must panic with the invariant-violation debug_assert.
     let _result = omit_unchanged(vec![], &manifest, true);
 }
@@ -276,9 +300,7 @@ fn present_key_not_double_emitted() {
     // manifest says Cleared for action_results, but it IS present in typed.
     // The forward pass strips its payload (Cleared + present); the inverse
     // pass must NOT also synthesize a second row.
-    let manifest = make_manifest(vec![
-        ("action_results", ProjectionPresence::Cleared, 3),
-    ]);
+    let manifest = make_manifest(vec![("action_results", ProjectionPresence::Cleared, 3)]);
     let result = omit_unchanged(typed, &manifest, true);
     let count = result.iter().filter(|r| r.key == "action_results").count();
     assert_eq!(count, 1, "exactly one Cleared row, not two");
@@ -294,16 +316,20 @@ fn unchanged_absent_never_synthesized() {
         ("action_stages", ProjectionPresence::Unchanged, 0),
     ]);
     let result = omit_unchanged(vec![], &manifest, true);
-    assert!(result.is_empty(), "Unchanged absent keys must never produce Cleared rows");
+    assert!(
+        result.is_empty(),
+        "Unchanged absent keys must never produce Cleared rows"
+    );
 }
 
 /// When disabled (no incremental-apply), the inverse pass must NOT run.
 #[test]
 fn disabled_inverse_pass_does_not_run() {
-    let manifest = make_manifest(vec![
-        ("action_results", ProjectionPresence::Cleared, 5),
-    ]);
+    let manifest = make_manifest(vec![("action_results", ProjectionPresence::Cleared, 5)]);
     // disabled: return typed unchanged — no synthesis
     let result = omit_unchanged(vec![], &manifest, false);
-    assert!(result.is_empty(), "disabled: inverse pass must not synthesize");
+    assert!(
+        result.is_empty(),
+        "disabled: inverse pass must not synthesize"
+    );
 }

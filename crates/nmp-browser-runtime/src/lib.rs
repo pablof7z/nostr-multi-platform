@@ -21,9 +21,10 @@
 //! - [`PumpOutcome`] / [`BrowserRuntimeEvent`] — the result of one `pump()` turn.
 
 mod builder;
-pub mod wasm;
+mod feed;
 pub(crate) mod relay;
 mod runtime;
+pub mod wasm;
 // `signer` is `pub` so that `CapabilityEnvelope` can be re-exported from the
 // crate root; the internal sub-modules (`completion`, `registry`) remain
 // `pub(crate)` so they are not part of the public API surface.
@@ -38,9 +39,7 @@ pub use signer::CapabilityEnvelope;
 
 // Re-export typestate markers for consumers that need to name them
 // (e.g. `BrowserAppBuilder<Unstarted>` in a type annotation).
-pub use builder::{
-    ProjectionsDeclared, ProvidersDecided, RelaysDeclared, StorageSet, Unstarted,
-};
+pub use builder::{ProjectionsDeclared, ProvidersDecided, RelaysDeclared, StorageSet, Unstarted};
 
 #[cfg(target_arch = "wasm32")]
 pub fn install_panic_hook() {

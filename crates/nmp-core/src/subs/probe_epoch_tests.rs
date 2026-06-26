@@ -25,7 +25,11 @@ fn first_indexer_connect_does_not_bump_epoch() {
     let re_armed = l.note_indexer_lane_recovered(true);
 
     assert!(!re_armed, "the first connect must not re-arm");
-    assert_eq!(l.probe_epoch(), 0, "the first connect must not bump the epoch");
+    assert_eq!(
+        l.probe_epoch(),
+        0,
+        "the first connect must not bump the epoch"
+    );
     assert_eq!(
         l.probed_mailboxes().len(),
         1,
@@ -97,7 +101,11 @@ fn sibling_still_live_reconnect_does_not_rearm() {
         assert!(!re_armed, "an up → up observation must never re-arm");
     }
 
-    assert_eq!(l.probe_epoch(), 0, "no full outage occurred → epoch unchanged");
+    assert_eq!(
+        l.probe_epoch(),
+        0,
+        "no full outage occurred → epoch unchanged"
+    );
     assert_eq!(
         l.probed_mailboxes().len(),
         1,

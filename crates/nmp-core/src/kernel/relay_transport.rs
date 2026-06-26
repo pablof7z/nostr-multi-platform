@@ -196,11 +196,7 @@ impl Kernel {
     /// can verify the relay-lifetime contract without promoting the main
     /// function to `pub`.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn relay_socket_is_persistent_for_test(
-        &self,
-        relay_url: &str,
-        role: RelayRole,
-    ) -> bool {
+    pub fn relay_socket_is_persistent_for_test(&self, relay_url: &str, role: RelayRole) -> bool {
         let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
         self.relay_socket_is_persistent(&canonical, role)
     }

@@ -5,7 +5,7 @@
 // no signing, no relay framing. Profile resolution is delegated to the ambient
 // NostrProfileHost (which the kernel resolves via the refs.profile projection).
 
-import { Show, createUniqueId } from "solid-js";
+import { For, Show, createUniqueId } from "solid-js";
 import type { FeedRow } from "../../nmp/feedDecoder";
 import { NostrAvatar } from "@nmp/components-web/src/user-avatar/NostrAvatar";
 import { displayLabel, shortHex } from "@nmp/components-web/src/user-avatar/ProfileWire";
@@ -13,7 +13,13 @@ import { useNostrProfileHost } from "@nmp/components-web/src/user-avatar/NostrPr
 import { useNmpClient } from "../../nmp/context";
 import { reactCommand } from "../../nmp/actions";
 
-export function PostCard(props: { row: FeedRow }) {
+export type FeedSelection = { kind: "profile" | "thread"; row: FeedRow };
+
+export function PostCard(props: {
+  row: FeedRow;
+  canPublish: boolean;
+  onSelect: (selection: FeedSelection) => void;
+}) {
   const host = useNostrProfileHost();
   const { client } = useNmpClient();
   const consumerId = `post-card.${createUniqueId()}`;
@@ -21,6 +27,7 @@ export function PostCard(props: { row: FeedRow }) {
   const profile = () => host.profile(props.row.authorPubkey);
   const authorLabel = () => {
     const p = profile();
+    if (!p && props.row.authorDisplayName) return props.row.authorDisplayName;
     // displayLabel falls back to short hex when no profile is resolved.
     return p ? displayLabel(p, props.row.authorPubkey) : shortHex(props.row.authorPubkey);
   };
@@ -36,11 +43,20 @@ export function PostCard(props: { row: FeedRow }) {
   };
 
   const handleReact = () => {
+    if (!props.canPublish) return;
     void client.dispatchCommand(reactCommand(props.row.id));
   };
 
+  const counts = () => [
+    { label: "replies", value: props.row.relationCounts.replies },
+    { label: "likes", value: props.row.relationCounts.reactions },
+    { label: "reposts", value: props.row.relationCounts.reposts },
+    { label: "zaps", value: props.row.relationCounts.zaps },
+  ].filter((item) => item.value > 0);
+  const displayContent = () => props.row.contentPreview || props.row.content;
+
   return (
-    <article class="post-card" data-event-id={props.row.id}>
+    <article class="post-card" data-testid="post-card" data-event-id={props.row.id}>
       {/* Avatar */}
       <div class="post-avatar">
         <NostrAvatar pubkey={props.row.authorPubkey} size={40} consumerId={consumerId} />
@@ -50,9 +66,14 @@ export function PostCard(props: { row: FeedRow }) {
       <div class="post-body">
         {/* Header row */}
         <div class="post-header">
-          <span class="post-author">
+          <button
+            type="button"
+            class="post-author"
+            aria-label={`Open profile for ${authorLabel()}`}
+            onClick={() => props.onSelect({ kind: "profile", row: props.row })}
+          >
             {authorLabel()}
-          </span>
+          </button>
           <Show when={props.row.isRepost && props.row.repostedByPubkey}>
             <span class="post-context">
               reposted by {shortHex(props.row.repostedByPubkey!)}
@@ -65,14 +86,46 @@ export function PostCard(props: { row: FeedRow }) {
 
         {/* Content */}
         <p class="post-content">
-          {props.row.content}
+          {displayContent()}
         </p>
+
+        <Show when={counts().length > 0 || props.row.relayProvenance.length > 0}>
+          <div class="post-meta-row">
+            <Show when={counts().length > 0}>
+              <div class="post-counts" data-testid="post-counts">
+                <For each={counts()}>
+                  {(item) => (
+                    <span>
+                      <strong>{item.value}</strong> {item.label}
+                    </span>
+                  )}
+                </For>
+              </div>
+            </Show>
+            <Show when={props.row.relayProvenance.length > 0}>
+              <div class="post-provenance" data-testid="relay-provenance">
+                <For each={props.row.relayProvenance.slice(0, 2)}>
+                  {(relay) => <span title={relay}>{relay.replace(/^wss?:\/\//, "")}</span>}
+                </For>
+              </div>
+            </Show>
+          </div>
+        </Show>
 
         {/* Actions */}
         <div class="post-actions">
           <button
             class="action-btn"
+            aria-label="Open thread"
+            onClick={() => props.onSelect({ kind: "thread", row: props.row })}
+          >
+            Thread
+          </button>
+          <button
+            class="action-btn"
             aria-label="Like"
+            title={props.canPublish ? "Like" : "Sign in to like"}
+            disabled={!props.canPublish}
             onClick={handleReact}
           >
             Like

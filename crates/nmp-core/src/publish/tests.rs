@@ -149,7 +149,10 @@ fn state_machine_auth_required_parks_without_consuming_retry_budget() {
         attempt: 1,
     };
     assert!(
-        matches!(apply_ack(&state, &ack, policy, 1_010), RetryVerdict::ParkAwaitingAuth { .. }),
+        matches!(
+            apply_ack(&state, &ack, policy, 1_010),
+            RetryVerdict::ParkAwaitingAuth { .. }
+        ),
         "first auth-required parks awaiting auth"
     );
 
@@ -163,7 +166,10 @@ fn state_machine_auth_required_parks_without_consuming_retry_budget() {
         attempt: 5,
     };
     assert!(
-        matches!(apply_ack(&state, &ack, policy, 2_010), RetryVerdict::ParkAwaitingAuth { .. }),
+        matches!(
+            apply_ack(&state, &ack, policy, 2_010),
+            RetryVerdict::ParkAwaitingAuth { .. }
+        ),
         "auth-required always parks; it never settles FailedAfterRetries by budget exhaustion"
     );
 }

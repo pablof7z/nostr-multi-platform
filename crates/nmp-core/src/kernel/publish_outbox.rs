@@ -5,7 +5,7 @@
 //! user-triggered retry/cancel commands back through the engine.
 
 use crate::publish::{PerRelayState, PublishEngineError, PublishStoreError, RelaySelectionReason};
-use crate::relay::{OutboundMessage};
+use crate::relay::OutboundMessage;
 use nmp_network::role::RelayRole;
 
 use super::publish_engine_wire::describe_engine_error;

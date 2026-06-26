@@ -58,9 +58,7 @@ impl LocalServer {
         let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
 
         let thread = thread::spawn(move || {
-            listener
-                .set_nonblocking(false)
-                .expect("blocking listener");
+            listener.set_nonblocking(false).expect("blocking listener");
             let (stream, _) = match listener.accept() {
                 Ok(s) => s,
                 Err(_) => return,
@@ -554,7 +552,10 @@ fn disconnected_control_sender_emits_terminal_closed_event() {
         |ev| matches!(ev, RelayEvent::Connected { .. }),
         Duration::from_secs(2),
     );
-    assert!(connected.is_some(), "worker must report Connected before test can proceed");
+    assert!(
+        connected.is_some(),
+        "worker must report Connected before test can proceed"
+    );
 
     // Drop the control sender — simulates Pool slot teardown without Shutdown.
     // The `ControlInbox` internal forwarding thread will observe the disconnect
@@ -566,7 +567,13 @@ fn disconnected_control_sender_emits_terminal_closed_event() {
     // and — defensively — Failed (would still be honest), but NOT absence.
     let terminal = drain_until(
         &relay_rx,
-        |ev| matches!(ev, RelayEvent::Closed { generation: 42, .. } | RelayEvent::Failed { generation: 42, .. }),
+        |ev| {
+            matches!(
+                ev,
+                RelayEvent::Closed { generation: 42, .. }
+                    | RelayEvent::Failed { generation: 42, .. }
+            )
+        },
         Duration::from_secs(2),
     );
     assert!(

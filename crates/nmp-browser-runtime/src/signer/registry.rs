@@ -109,7 +109,10 @@ impl CapabilityProviderRegistry {
     /// is deferred to the lifecycle follow-up (#2068).
     pub(crate) fn sole_backend(&self) -> Option<SignerBackend> {
         if self.providers.len() == 1 {
-            self.providers.values().next().map(|e| e.envelope.backend.clone())
+            self.providers
+                .values()
+                .next()
+                .map(|e| e.envelope.backend.clone())
         } else {
             None
         }
@@ -148,7 +151,9 @@ mod tests {
         let mut reg = CapabilityProviderRegistry::new();
         reg.insert(signer as Arc<dyn Signer>);
 
-        let env = reg.capability_envelope(&pubkey_hex).expect("envelope present");
+        let env = reg
+            .capability_envelope(&pubkey_hex)
+            .expect("envelope present");
         assert!(env.sign_event, "sign_event always true");
         // LocalKeySigner exposes both nip04 and nip44.
         assert!(env.nip04, "LocalKeySigner advertises nip04");
@@ -173,7 +178,7 @@ mod tests {
         // Re-insert with a signer that has a different identity would result in
         // a different key.  Here we test that the entry is replaced.
         let _ = pubkey_hex; // used above
-        // Insert s1 then s2 with the same pubkey by using from_secret_hex.
+                            // Insert s1 then s2 with the same pubkey by using from_secret_hex.
         let secret = "aa".repeat(32);
         let sa: Arc<dyn Signer> =
             Arc::new(LocalKeySigner::from_secret_hex(&secret).expect("valid secret"));
@@ -183,7 +188,10 @@ mod tests {
         reg.insert(Arc::clone(&sa));
         reg.insert(Arc::clone(&sb));
         // Either sa or sb is present — both have same pubkey; key present.
-        assert!(reg.resolve(&pk).is_some(), "entry present after last-write-wins");
+        assert!(
+            reg.resolve(&pk).is_some(),
+            "entry present after last-write-wins"
+        );
         // s1/s2 inserted separately — but they share nothing; just verify count is 1.
         let _ = (s1, s2);
     }

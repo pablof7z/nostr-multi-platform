@@ -21,9 +21,9 @@ use nmp_core::substrate::{RelayConnectedHook, RelayTextInterceptor};
 use nmp_core::time::Instant;
 use nmp_core::{CommandSender, KernelReducer, OutboundMessage};
 
+use crate::BrowserRuntimeEvent;
 #[cfg(target_arch = "wasm32")]
 use budgets::MAX_CONCURRENT_SOCKETS;
-use crate::BrowserRuntimeEvent;
 
 pub(crate) mod budgets;
 pub(crate) mod handlers;
@@ -142,10 +142,7 @@ impl RelayPool {
         bootstrap: &[(String, String)],
     ) -> Vec<BrowserRuntimeEvent> {
         let plans = plan::plan_drivers(bootstrap);
-        let handlers = handlers::build_handlers(
-            Rc::clone(&self.inbound),
-            Rc::clone(&self.wake),
-        );
+        let handlers = handlers::build_handlers(Rc::clone(&self.inbound), Rc::clone(&self.wake));
         self.handlers_slot = Some(handlers.clone());
 
         let mut events = Vec::new();
@@ -158,7 +155,7 @@ impl RelayPool {
             }
             match nmp_network::browser_driver::BrowserRelayDriver::new(
                 plan.url.clone(),
-                plan.primary_role,
+                plan.role,
                 handlers.clone(),
             ) {
                 Ok(driver) => self.drivers.push(driver),

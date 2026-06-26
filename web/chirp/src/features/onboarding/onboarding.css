@@ -9,7 +9,9 @@
 }
 
 .onboarding-header {
-  display: grid;
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
   gap: 4px;
 }
 
@@ -27,6 +29,46 @@
   color: var(--ink);
   font-size: 18px;
   line-height: 1.2;
+}
+
+.onboarding-progress {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--bg-panel);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.onboarding-next {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 11px 12px;
+  background: var(--bg-panel);
+}
+
+.onboarding-next[data-complete="true"] {
+  border-color: color-mix(in srgb, var(--tone-ok) 34%, var(--line));
+  background: var(--tone-ok-wash);
+}
+
+.onboarding-next strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.onboarding-next span {
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .onboarding-steps {

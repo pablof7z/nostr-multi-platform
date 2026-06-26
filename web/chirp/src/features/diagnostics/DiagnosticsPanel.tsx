@@ -104,6 +104,7 @@ export function DiagnosticsPanel(props: {
 
   const relays = () => props.diagnostics?.relays ?? [];
   const interests = () => props.diagnostics?.interests ?? [];
+  const wireSubscriptions = () => props.diagnostics?.wireSubscriptions ?? [];
   const writeEvent = () => latestWriteEvent(props.events);
 
   return (
@@ -164,6 +165,18 @@ export function DiagnosticsPanel(props: {
             {(interest) => (
               <span title={interest.key}>
                 {interest.state} · {interest.relayCount} relays
+              </span>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      <Show when={wireSubscriptions().length > 0}>
+        <div class="wire-strip" aria-label="Wire subscriptions" data-testid="wire-subscriptions">
+          <For each={wireSubscriptions().slice(0, 4)}>
+            {(wire) => (
+              <span title={`${wire.relayUrl} · ${wire.filterSummary}`}>
+                {wire.state} · {wire.eventsRx} events · {wire.logicalConsumerCount} consumers
               </span>
             )}
           </For>

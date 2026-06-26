@@ -138,8 +138,20 @@ mod tests {
 
         let url_a = CanonicalRelayUrl::parse_or_raw("wss://127.0.0.1:1");
         let url_b = CanonicalRelayUrl::parse_or_raw("wss://127.0.0.2:1");
-        seed(&mut rt, &pool, &mut kernel, RelayRole::Content, url_a.as_str());
-        seed(&mut rt, &pool, &mut kernel, RelayRole::Content, url_b.as_str());
+        seed(
+            &mut rt,
+            &pool,
+            &mut kernel,
+            RelayRole::Content,
+            url_a.as_str(),
+        );
+        seed(
+            &mut rt,
+            &pool,
+            &mut kernel,
+            RelayRole::Content,
+            url_b.as_str(),
+        );
 
         // Opened(A) + Opened(B): both connected, role Content ready.
         assert!(rt.mark_url_connected(&url_a), "first open of A is fresh");
@@ -175,8 +187,20 @@ mod tests {
 
         let content = CanonicalRelayUrl::parse_or_raw("wss://content.example");
         let indexer = CanonicalRelayUrl::parse_or_raw("wss://indexer.example");
-        seed(&mut rt, &pool, &mut kernel, RelayRole::Content, content.as_str());
-        seed(&mut rt, &pool, &mut kernel, RelayRole::Indexer, indexer.as_str());
+        seed(
+            &mut rt,
+            &pool,
+            &mut kernel,
+            RelayRole::Content,
+            content.as_str(),
+        );
+        seed(
+            &mut rt,
+            &pool,
+            &mut kernel,
+            RelayRole::Indexer,
+            indexer.as_str(),
+        );
 
         // Cold: nothing connected → not ready, empty role set.
         assert!(!rt.any_role_connected());

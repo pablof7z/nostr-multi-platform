@@ -233,7 +233,10 @@ mod tests {
         let started = Instant::now();
         let result = connect_with_timeout("192.0.2.1", 9, Duration::from_secs(2));
         let elapsed = started.elapsed();
-        assert!(result.is_err(), "black-holed connect must fail, not succeed");
+        assert!(
+            result.is_err(),
+            "black-holed connect must fail, not succeed"
+        );
         assert!(
             elapsed < Duration::from_secs(10),
             "connect took {elapsed:?}; the timeout bound is not in effect \

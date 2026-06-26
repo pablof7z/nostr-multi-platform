@@ -29,11 +29,22 @@ export type InterestRuntimeRow = {
   cacheCoverage?: string;
 };
 
+export type WireSubscriptionRuntimeRow = {
+  wireId: string;
+  relayUrl: string;
+  filterSummary: string;
+  state: string;
+  logicalConsumerCount: number;
+  eventsRx: number;
+  eoseObserved: boolean;
+};
+
 export type RuntimeProjection = {
   running: boolean;
   rev: number;
   relays: RelayRuntimeRow[];
   interests: InterestRuntimeRow[];
+  wireSubscriptions: WireSubscriptionRuntimeRow[];
   lastErrorToast?: string;
   lastErrorCategory?: string;
   lastPlannerError?: string;
@@ -93,11 +104,27 @@ function decodeSnapshot(snap: SnapshotFrame): RuntimeProjection {
     });
   }
 
+  const wireSubscriptions: WireSubscriptionRuntimeRow[] = [];
+  for (let i = 0; i < snap.wireSubscriptionsLength(); i++) {
+    const row = snap.wireSubscriptions(i);
+    if (!row) continue;
+    wireSubscriptions.push({
+      wireId: row.wireId() ?? "unknown",
+      relayUrl: row.relayUrl() ?? "unknown relay",
+      filterSummary: row.filterSummary() ?? "unknown filter",
+      state: row.state() ?? "unknown",
+      logicalConsumerCount: row.logicalConsumerCount(),
+      eventsRx: numberFromBigint(row.eventsRx()),
+      eoseObserved: row.eoseAtMs() !== null,
+    });
+  }
+
   return {
     running: snap.running(),
     rev: numberFromBigint(snap.rev()),
     relays,
     interests,
+    wireSubscriptions,
     lastErrorToast: snap.lastErrorToast() ?? undefined,
     lastErrorCategory: snap.lastErrorCategory() ?? undefined,
     lastPlannerError: snap.lastPlannerError() ?? undefined,

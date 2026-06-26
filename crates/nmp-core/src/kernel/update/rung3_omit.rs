@@ -118,9 +118,7 @@ pub(super) fn omit_unchanged(
             // For these four keys the accessor returns Null iff empty, so a
             // Changed-but-absent entry ALWAYS means "went empty" and the only
             // safe signal is Cleared.
-            ProjectionPresence::Changed
-                if CONDITIONAL_PRESENCE_KEYS.contains(&ps.key) =>
-            {
+            ProjectionPresence::Changed if CONDITIONAL_PRESENCE_KEYS.contains(&ps.key) => {
                 out.push(TypedProjectionData {
                     key: ps.key.to_string(),
                     state: WireProjectionState::Cleared,

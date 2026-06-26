@@ -112,8 +112,7 @@ mod tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let url = "ws://127.0.0.1:9";
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let mut rt =
-            runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Temporary);
+        let mut rt = runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Temporary);
 
         let now = Instant::now();
         sweep_temporary_idle_relays(&mut rt, &pool, &mut kernel, now, Duration::from_secs(10));
@@ -141,8 +140,7 @@ mod tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let url = "ws://127.0.0.1:9";
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let mut rt =
-            runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Temporary);
+        let mut rt = runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Temporary);
         kernel.relay_connected_url(RelayRole::Content, key.as_str());
         rt.mark_url_connected(&key);
         assert_eq!(
@@ -181,8 +179,7 @@ mod tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let url = "ws://127.0.0.1:9";
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let mut rt =
-            runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Persistent);
+        let mut rt = runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Persistent);
 
         let now = Instant::now();
         sweep_temporary_idle_relays(&mut rt, &pool, &mut kernel, now, Duration::from_secs(1));
@@ -207,8 +204,7 @@ mod tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let url = "ws://127.0.0.1:9";
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let mut rt =
-            runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Temporary);
+        let mut rt = runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Temporary);
         let _req = kernel.req_for_relay(
             RelayRole::Content,
             url.to_string(),
@@ -240,8 +236,7 @@ mod tests {
         let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
         let url = "ws://127.0.0.1:9";
         let key = CanonicalRelayUrl::parse_or_raw(url);
-        let mut rt =
-            runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Temporary);
+        let mut rt = runtime_with_control(&pool, &mut kernel, url, RelayConnectionKind::Temporary);
         kernel.set_configured_relays(vec![crate::kernel::AppRelay::new(
             key.to_string(),
             "both".to_string(),

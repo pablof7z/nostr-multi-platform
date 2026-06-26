@@ -40,6 +40,12 @@ nmp-substrate-defaults = { path = "../nmp-substrate-defaults" }
 nmp-store = { path = "../nmp-store" }
 nmp-network = { path = "../nmp-network", default-features = false }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
+nmp-feed = { path = "../nmp-feed" }
+nmp-kinds = { path = "../nmp-kinds" }
+nmp-nip01 = { path = "../nmp-nip01" }
+nmp-nip02 = { path = "../nmp-nip02" }
+nmp-nip18 = { path = "../nmp-nip18" }
+nmp-planner = { path = "../nmp-planner", default-features = false }
 # Signer trait + LocalKeySigner / Nip07Signer implementations used by the
 # capability-provider registry (#2049/#2066/#2067). `default-features = false`
 # keeps the native build free of wasm-only signing bridges; the `wasm` feature
@@ -69,4 +75,5 @@ tracing = "0.1"
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"], default-features = false }
 nmp-codegen = { path = "../nmp-codegen" }
+nostr = { workspace = true, features = ["std"] }
 wasm-bindgen-test = "0.3"

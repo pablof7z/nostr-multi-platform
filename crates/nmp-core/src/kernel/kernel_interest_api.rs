@@ -67,19 +67,15 @@ impl Kernel {
     /// Returns `true` when the owner was present and removed. Reason tag:
     /// `"drop-interest-owner"` (preserved verbatim from the original
     /// `cmd_interests::drop_interest_owner` dispatch arm).
-    pub(crate) fn drop_interest_owner(
-        &mut self,
-        identity: crate::subs::SubIdentity,
-    ) -> bool {
+    pub(crate) fn drop_interest_owner(&mut self, identity: crate::subs::SubIdentity) -> bool {
         let removed = self.lifecycle.registry_mut().drop_owner(&identity);
         if removed {
-            self.lifecycle.enqueue_trigger(
-                crate::subs::CompileTrigger::InvalidateCompile {
+            self.lifecycle
+                .enqueue_trigger(crate::subs::CompileTrigger::InvalidateCompile {
                     reason: crate::subs::InvalidateReason::External(
                         "drop-interest-owner".to_string(),
                     ),
-                },
-            );
+                });
         }
         removed
     }

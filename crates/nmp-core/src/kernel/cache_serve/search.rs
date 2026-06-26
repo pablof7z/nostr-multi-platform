@@ -64,10 +64,8 @@ impl Kernel {
             .cache_search_scopes()
             .into_iter()
             .filter_map(|(scope, scope_kinds)| {
-                let overlap: BTreeSet<u32> = scope_kinds
-                    .intersection(&shape.kinds)
-                    .copied()
-                    .collect();
+                let overlap: BTreeSet<u32> =
+                    scope_kinds.intersection(&shape.kinds).copied().collect();
                 if overlap.is_empty() {
                     None
                 } else {
@@ -174,9 +172,8 @@ impl Kernel {
 
         if served > 0 {
             self.changed_since_emit = true;
-            self.events_since_last_update = self
-                .events_since_last_update
-                .saturating_add(served as u64);
+            self.events_since_last_update =
+                self.events_since_last_update.saturating_add(served as u64);
         }
 
         // Covered by the cache (even if zero hits matched the query text): a

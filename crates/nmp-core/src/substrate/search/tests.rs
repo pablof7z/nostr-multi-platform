@@ -60,7 +60,10 @@ fn stored(id: &str, kind: u32, content: &str, created_at: u64) -> StoredEvent {
 #[test]
 fn register_then_compile_yields_one_spec() {
     let reg = SearchScopeRegistry::new();
-    let d = reg.register(FixtureNoteScope::new("test.note", SearchPrivacyPolicy::PublicIndexable));
+    let d = reg.register(FixtureNoteScope::new(
+        "test.note",
+        SearchPrivacyPolicy::PublicIndexable,
+    ));
     assert_eq!(d, SearchScopeDisposition::Installed);
     let compiled = reg.compile();
     assert_eq!(compiled.len(), 1);
@@ -71,8 +74,14 @@ fn register_then_compile_yields_one_spec() {
 #[test]
 fn duplicate_scope_yields() {
     let reg = SearchScopeRegistry::new();
-    let a = reg.register(FixtureNoteScope::new("test.dup", SearchPrivacyPolicy::PublicIndexable));
-    let b = reg.register(FixtureNoteScope::new("test.dup", SearchPrivacyPolicy::PublicIndexable));
+    let a = reg.register(FixtureNoteScope::new(
+        "test.dup",
+        SearchPrivacyPolicy::PublicIndexable,
+    ));
+    let b = reg.register(FixtureNoteScope::new(
+        "test.dup",
+        SearchPrivacyPolicy::PublicIndexable,
+    ));
     assert_eq!(a, SearchScopeDisposition::Installed);
     assert_eq!(b, SearchScopeDisposition::YieldedToExisting);
     assert_eq!(reg.len(), 1);
@@ -86,14 +95,20 @@ fn local_only_private_scope_dropped_from_compile() {
         SearchPrivacyPolicy::LocalOnlyPrivate,
     ));
     assert_eq!(reg.len(), 1, "registered");
-    assert!(reg.compile().is_empty(), "but compiled away from the public index");
+    assert!(
+        reg.compile().is_empty(),
+        "but compiled away from the public index"
+    );
 }
 
 #[test]
 fn install_into_then_search_matches_token_and_prefix() {
     let reg = SearchScopeRegistry::new();
     let scope = SearchScopeId::from_label("test.note");
-    reg.register(FixtureNoteScope::new("test.note", SearchPrivacyPolicy::PublicIndexable));
+    reg.register(FixtureNoteScope::new(
+        "test.note",
+        SearchPrivacyPolicy::PublicIndexable,
+    ));
 
     let store = MemEventStore::new();
     // Install BEFORE ingest so the index is maintained on insert.
@@ -101,7 +116,17 @@ fn install_into_then_search_matches_token_and_prefix() {
 
     store
         .insert(
-            VerifiedEvent::from_raw_unchecked(stored("aa".repeat(32).as_str(), 40001, "hello satoshi nakamoto", 100).raw.as_ref().clone()),
+            VerifiedEvent::from_raw_unchecked(
+                stored(
+                    "aa".repeat(32).as_str(),
+                    40001,
+                    "hello satoshi nakamoto",
+                    100,
+                )
+                .raw
+                .as_ref()
+                .clone(),
+            ),
             &"wss://r/".to_string(),
             100_000,
         )

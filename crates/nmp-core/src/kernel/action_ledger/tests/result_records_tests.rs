@@ -34,9 +34,15 @@ fn record_terminal_drains_one_row_then_empties() {
     assert_eq!(rows.len(), 1, "exactly one row per terminal");
     let row = &rows[0];
     assert_eq!(row["correlation_id"], "corr-pub");
-    assert_eq!(row["status"], "published", "ok → published mapping is resolved at record time");
+    assert_eq!(
+        row["status"], "published",
+        "ok → published mapping is resolved at record time"
+    );
     assert!(row["error"].is_null(), "success carries a null error key");
-    assert!(row.get("result").is_none(), "no result_json → no result key");
+    assert!(
+        row.get("result").is_none(),
+        "no result_json → no result key"
+    );
     assert_eq!(row["event_id"], "event-abc");
 
     // Pure drain — the next call is empty (the terminal appears exactly once).
@@ -113,7 +119,17 @@ fn record_terminal_threads_reason_code_into_lifecycle() {
 #[test]
 fn record_terminal_accumulates_until_drained() {
     let mut l = ActionLedger::new();
-    l.record_terminal("corr-a", ActionStage::Accepted, "published", None, None, None, None, None, 1);
+    l.record_terminal(
+        "corr-a",
+        ActionStage::Accepted,
+        "published",
+        None,
+        None,
+        None,
+        None,
+        None,
+        1,
+    );
     l.record_terminal(
         "corr-b",
         ActionStage::Failed {
@@ -165,7 +181,13 @@ fn record_terminal_forwards_result_json() {
     );
 
     let rows = l.take_terminal_results();
-    assert!(rows[0]["result"].is_object(), "JSON body parses to an object");
+    assert!(
+        rows[0]["result"].is_object(),
+        "JSON body parses to an object"
+    );
     assert_eq!(rows[0]["result"]["sha256"], "abc");
-    assert_eq!(rows[1]["result"], "not json", "non-JSON body forwards as a raw string");
+    assert_eq!(
+        rows[1]["result"], "not json",
+        "non-JSON body forwards as a raw string"
+    );
 }

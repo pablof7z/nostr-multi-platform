@@ -188,7 +188,12 @@ impl NmpRuntimeCore {
                 metadata,
             }) => {
                 let outbound = handle.apply_resolve_ref_with_metadata(
-                    namespace, key, consumer_id, shape, liveness, metadata,
+                    namespace,
+                    key,
+                    consumer_id,
+                    shape,
+                    liveness,
+                    metadata,
                 );
                 handle.fan_out_outbound(outbound);
                 vec![WorkerEvent::ActionAccepted {

@@ -131,8 +131,14 @@ mod tests {
         assert_eq!(
             rows,
             vec![
-                PullWakeRow { cursor_id: 7, latest_seq: 42 },
-                PullWakeRow { cursor_id: 9, latest_seq: 100 },
+                PullWakeRow {
+                    cursor_id: 7,
+                    latest_seq: 42
+                },
+                PullWakeRow {
+                    cursor_id: 9,
+                    latest_seq: 100
+                },
             ]
         );
     }
@@ -149,7 +155,13 @@ mod tests {
         assert_eq!(proj.schema_id, PULL_WAKE_KEY);
         assert_eq!(proj.schema_version, PULL_WAKE_SCHEMA_VERSION);
         let rows = decode_pull_wake_batch(&proj.payload).expect("decode");
-        assert_eq!(rows, vec![PullWakeRow { cursor_id: 3, latest_seq: 5 }]);
+        assert_eq!(
+            rows,
+            vec![PullWakeRow {
+                cursor_id: 3,
+                latest_seq: 5
+            }]
+        );
     }
 
     #[test]

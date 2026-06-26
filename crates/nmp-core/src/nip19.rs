@@ -38,10 +38,8 @@
 //! assert_eq!(decoded.pubkey, data.pubkey);
 //! ```
 
-use nostr::nips::nip19::{
-    FromBech32, Nip19, Nip19Coordinate, Nip19Event, Nip19Profile, ToBech32,
-};
 use nostr::nips::nip01::Coordinate;
+use nostr::nips::nip19::{FromBech32, Nip19, Nip19Coordinate, Nip19Event, Nip19Profile, ToBech32};
 use nostr::{EventId, Kind, PublicKey, RelayUrl, SecretKey};
 
 // ─── HRPs ──────────────────────────────────────────────────────────────────
@@ -154,9 +152,7 @@ fn map_nostr_err(err: nostr::nips::nip19::Error) -> Nip19Error {
     use nostr::nips::nip19::Error as N;
     match err {
         N::WrongPrefix => Nip19Error::UnknownHrp(String::new()),
-        N::FieldMissing(_) | N::TLV | N::TryFromSlice => {
-            Nip19Error::MalformedTlv(err.to_string())
-        }
+        N::FieldMissing(_) | N::TLV | N::TryFromSlice => Nip19Error::MalformedTlv(err.to_string()),
         N::Keys(_) | N::Event(_) => Nip19Error::InvalidHex,
         N::RelayUrl(_) => Nip19Error::Bech32(err.to_string()),
         other => Nip19Error::Bech32(other.to_string()),
@@ -293,7 +289,10 @@ fn data_to_ncoordinate(data: &NaddrData) -> Result<Nip19Coordinate, Nip19Error> 
     }
     let coord = Coordinate::new(kind_to_nostr(data.kind)?, pubkey_from_hex(&data.pubkey)?)
         .identifier(data.identifier.clone());
-    Ok(Nip19Coordinate::new(coord, relays_from_strings(&data.relays)?))
+    Ok(Nip19Coordinate::new(
+        coord,
+        relays_from_strings(&data.relays)?,
+    ))
 }
 
 // ─── Bare-key encode / decode ──────────────────────────────────────────────
@@ -395,7 +394,9 @@ pub fn decode_nevent(bech: &str) -> Result<NeventData, Nip19Error> {
 /// Encode an `NaddrData` as an `naddr` bech32m string.
 #[must_use]
 pub fn encode_naddr(data: &NaddrData) -> Result<String, Nip19Error> {
-    data_to_ncoordinate(data)?.to_bech32().map_err(map_nostr_err)
+    data_to_ncoordinate(data)?
+        .to_bech32()
+        .map_err(map_nostr_err)
 }
 
 /// Decode an `naddr` bech32m string into `NaddrData`.
@@ -446,9 +447,7 @@ pub fn parse(bech: &str) -> Result<Nip19Entity, Nip19Error> {
         Ok(_) => Err(Nip19Error::UnknownHrp(hrp.to_string())),
         // `nostr` returns `WrongPrefix` for a recognised-bech32 / unknown-NIP19
         // HRP; surface the actual prefix the caller passed.
-        Err(nostr::nips::nip19::Error::WrongPrefix) => {
-            Err(Nip19Error::UnknownHrp(hrp.to_string()))
-        }
+        Err(nostr::nips::nip19::Error::WrongPrefix) => Err(Nip19Error::UnknownHrp(hrp.to_string())),
         Err(e) => Err(map_nostr_err(e)),
     }
 }

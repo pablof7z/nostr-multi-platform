@@ -52,7 +52,8 @@ pub(crate) fn fan_out_outbound(
     for message in outbound {
         let url = message.relay_url();
 
-        let known = pool.iter().any(|d| d.url() == url);
+        let role = message.role();
+        let known = pool.iter().any(|d| d.url() == url && d.role() == role);
         if !known {
             if pool.len() >= MAX_CONCURRENT_SOCKETS {
                 // Budget exceeded — emit event, never silent.
@@ -64,7 +65,7 @@ pub(crate) fn fan_out_outbound(
                 continue;
             }
             // Spawn-on-miss: the kernel targeted a URL not yet in the pool.
-            match BrowserRelayDriver::new(url.to_string(), message.role(), handlers.clone()) {
+            match BrowserRelayDriver::new(url.to_string(), role, handlers.clone()) {
                 Ok(driver) => pool.push(driver),
                 // Bad URL (very rare after the first connect). Surface it — the
                 // frame cannot be delivered, so do not silently drop it (D6).
@@ -78,7 +79,7 @@ pub(crate) fn fan_out_outbound(
             }
         }
 
-        for driver in pool.iter().filter(|d| d.url() == url) {
+        for driver in pool.iter().filter(|d| d.url() == url && d.role() == role) {
             // send_text is synchronous and non-blocking (buffers if not OPEN).
             // A throw (e.g. socket in an illegal state) means the frame did not
             // leave the runtime — surface it rather than swallow it (D6).

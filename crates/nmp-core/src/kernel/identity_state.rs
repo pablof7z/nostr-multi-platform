@@ -221,7 +221,9 @@ impl super::Kernel {
             // ADR-0055 Rung 1: bump source version counters.
             self.projection_rev_tracker.source_versions.bump_accounts();
             if active_changed {
-                self.projection_rev_tracker.source_versions.bump_active_account();
+                self.projection_rev_tracker
+                    .source_versions
+                    .bump_active_account();
                 // ADR-0055 Rung 1 (F6): an account switch invalidates every
                 // account-scoped projection cache on the host — bump the epoch so
                 // Rung 3's host re-baselines all projections (treats the next emit
@@ -254,7 +256,9 @@ impl super::Kernel {
         self.changed_since_emit = true;
         if changed {
             // ADR-0055 Rung 1: bump active_account_ver (wasm path — no full accounts vec).
-            self.projection_rev_tracker.source_versions.bump_active_account();
+            self.projection_rev_tracker
+                .source_versions
+                .bump_active_account();
             // ADR-0055 Rung 1 (F6): account switch → epoch bump (host re-baseline).
             self.projection_rev_tracker.bump_epoch();
         }
@@ -326,7 +330,8 @@ impl super::Kernel {
             return;
         }
         entry.status = status.to_string();
-        entry.can_retry = publish_queue::publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
+        entry.can_retry =
+            publish_queue::publish_entry_can_retry(status, &outcomes, entry.signed_event.is_some());
         entry.relay_outcomes = outcomes;
         self.changed_since_emit = true;
         // ADR-0055 Rung 1: bump publish_ver on terminal state transition.
@@ -395,7 +400,9 @@ impl super::Kernel {
             // ADR-0055 Rung 1: bump configured_relays_ver.
             // (diagnostics_inputs_ver is NOT co-bumped here — F5 derives it from the
             // relay_diagnostics payload fingerprint each emit, not per mutation site.)
-            self.projection_rev_tracker.source_versions.bump_configured_relays();
+            self.projection_rev_tracker
+                .source_versions
+                .bump_configured_relays();
         }
         if let Some(handle) = self.configured_relays_handle.as_ref() {
             if let Ok(mut guard) = handle.lock() {
@@ -427,10 +434,12 @@ impl super::Kernel {
         // events-oneshot arm (Case D, `OneShot + Global + event_ids`) and the
         // profile-oneshot arm (Case A, `OneShot + Global + authors` with no
         // NIP-65 mailbox).
-        let bootstrap_content_urls = self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Content);
+        let bootstrap_content_urls =
+            self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Content);
         self.lifecycle
             .set_bootstrap_content_relays(bootstrap_content_urls);
-        let bootstrap_indexer_urls = self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Indexer);
+        let bootstrap_indexer_urls =
+            self.bootstrap_urls_for_role(nmp_network::role::RelayRole::Indexer);
         self.lifecycle
             .set_bootstrap_indexer_relays(bootstrap_indexer_urls);
         let write_urls = rows

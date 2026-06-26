@@ -3,13 +3,10 @@
  * relay, ingests genuinely signed events, and pushes the resulting projection
  * to the shell.
  *
- * The Item B shell exposes the runtime state through the <main> data-* hooks
- * and leaves the feed DOM to Item C (the [data-slot="feed"] mount point is empty
- * until Item C lands its panel). This spec therefore asserts acceptance at the
- * SHELL level — that real signed events flow end to end into a snapshot frame —
- * and additionally renders the feed DOM assertion the moment Item C populates
- * the feed slot (forward-compatible: the same spec strengthens automatically
- * when the feed UI merges, with no further edits here).
+ * The shell exposes runtime state through the <main> data-* hooks and the feed
+ * feature renders the runtime's home-feed projection. This spec asserts both:
+ * real signed events flow end to end into a snapshot frame, and the feed UI
+ * exposes the resulting post, profile, thread, and provenance surfaces.
  *
  * Scenario: connect to the fixture relay via ?relay_bootstrap=, install the
  * viewer identity via a stubbed NIP-07 window.nostr, and confirm the kernel
@@ -27,7 +24,7 @@ test("@wasm feed: real signed events from the fixture relay reach a snapshot aft
 }) => {
   // Boot + connect + relay round-trips for the contact list, two profiles and
   // two notes. Give the whole flow headroom beyond the default timeout.
-  test.setTimeout(150_000);
+  test.setTimeout(240_000);
 
   const relay = await startFeedFixtureRelay();
   const relayBootstrap = JSON.stringify([[relay.url, "both,indexer"]]);
@@ -87,30 +84,19 @@ test("@wasm feed: real signed events from the fixture relay reach a snapshot aft
     await expect(shell).toHaveAttribute("data-has-snapshot", "true");
     await expect(shell).toHaveAttribute("data-runtime-status", "running");
 
-    // Forward-compatible feed-DOM assertion. The feed slot is empty in the Item
-    // B shell; once Item C renders the home feed here, this asserts the seeded
-    // note's exact content is displayed. We probe for any rendered feed content
-    // and only assert the string when the feed UI is actually present, so this
-    // spec does not fail against the current shell yet strengthens automatically
-    // when Item C merges.
     const feedSlot = page.locator('[data-slot="feed"]');
-    const renderedFeedContent = feedSlot.locator("*", { hasText: relay.noteContent });
-    const feedRendered = await renderedFeedContent
-      .first()
-      .isVisible()
-      .catch(() => false);
-    if (feedRendered) {
-      await expect(renderedFeedContent.first()).toContainText(relay.noteContent);
-    } else {
-      test.info().annotations.push({
-        type: "pending-item-c",
-        description:
-          "Feed DOM assertion deferred: [data-slot=\"feed\"] is unpopulated in the " +
-          "Item B shell. This assertion activates automatically once Item C renders " +
-          "the home feed. Shell-level event flow (snapshot + relay connection) is " +
-          "asserted above.",
-      });
-    }
+    await expect(feedSlot.getByTestId("post-card").first()).toBeVisible({ timeout: 60_000 });
+    const firstCard = feedSlot.getByTestId("post-card").first();
+    await expect(firstCard).toHaveAttribute("data-event-id", /^[a-f0-9]{64}$/);
+    await expect(firstCard.getByRole("button", { name: /like/i })).toBeEnabled();
+
+    await firstCard.getByRole("button", { name: /open profile/i }).click();
+    const detail = feedSlot.getByTestId("feed-detail-panel");
+    await expect(detail).toHaveAttribute("data-kind", "profile");
+    await expect(detail.getByRole("button", { name: "Follow" })).toBeEnabled();
+
+    await firstCard.getByRole("button", { name: /open thread/i }).click();
+    await expect(detail).toHaveAttribute("data-kind", "thread");
   } finally {
     await relay.close();
   }

@@ -77,18 +77,27 @@ impl BrowserRuntimeDiagnostics {
         active_account_pubkey_hex: Option<String>,
     ) -> Self {
         // ── Decode the snapshot envelope (Tier-3 fields) ─────────────────────
-        let envelope = merged_frame
-            .and_then(|bytes| decode_snapshot_envelope(bytes).ok());
+        let envelope = merged_frame.and_then(|bytes| decode_snapshot_envelope(bytes).ok());
 
-        let (running, snapshot_rev, snapshot_epoch, session_id, actor_queue_depth,
-             last_error_category) = envelope.map(|e| (
-            e.running,
-            e.rev,
-            e.snapshot_epoch,
-            e.session_id,
-            e.actor_queue_depth,
-            e.last_error_category, // category only, never toast body
-        )).unwrap_or_default();
+        let (
+            running,
+            snapshot_rev,
+            snapshot_epoch,
+            session_id,
+            actor_queue_depth,
+            last_error_category,
+        ) = envelope
+            .map(|e| {
+                (
+                    e.running,
+                    e.rev,
+                    e.snapshot_epoch,
+                    e.session_id,
+                    e.actor_queue_depth,
+                    e.last_error_category, // category only, never toast body
+                )
+            })
+            .unwrap_or_default();
 
         // ── Signer state (poisoned → None, D6) ───────────────────────────────
         let (signer_kind, signer_state_str) = read_signer_state(signer_state_slot);
@@ -119,9 +128,8 @@ impl BrowserRuntimeDiagnostics {
     /// only carries redacted fields).
     #[must_use]
     pub fn to_json(&self) -> String {
-        serde_json::to_string(self).unwrap_or_else(|_| {
-            r#"{"error":"diagnostics_serialize_failed"}"#.to_string()
-        })
+        serde_json::to_string(self)
+            .unwrap_or_else(|_| r#"{"error":"diagnostics_serialize_failed"}"#.to_string())
     }
 }
 
@@ -138,9 +146,9 @@ fn read_signer_state(slot: &BrowserSignerStateSlot) -> (Option<String>, Option<S
     };
     match guard.model() {
         None => (None, None),
-        Some(SignerStateModel { signer_kind, state, .. }) => {
-            (Some(signer_kind.clone()), Some(state.clone()))
-        }
+        Some(SignerStateModel {
+            signer_kind, state, ..
+        }) => (Some(signer_kind.clone()), Some(state.clone())),
     }
 }
 

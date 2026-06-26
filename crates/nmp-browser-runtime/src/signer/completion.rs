@@ -172,9 +172,7 @@ fn dispatch_local_key(
         SignerOp::Ready(Err(e)) => Err(format!("local-key sign error: {e}")),
         // `LocalKeySigner::sign` always returns `Ready`; guard against
         // a misbehaving custom implementation (D6 — never panic across seam).
-        SignerOp::Pending(_) => {
-            Err("local-key signer returned Pending unexpectedly".to_string())
-        }
+        SignerOp::Pending(_) => Err("local-key signer returned Pending unexpectedly".to_string()),
     };
     let _ = tx.send(SignerCompletion {
         correlation_id: correlation_id.to_string(),
@@ -312,10 +310,9 @@ mod tests {
         // Build a wake cell with a counting closure (what set_wake installs).
         let count = Rc::new(Cell::new(0u32));
         let count_clone = Rc::clone(&count);
-        let wake: WakeCell =
-            Rc::new(RefCell::new(Rc::new(move || {
-                count_clone.set(count_clone.get() + 1);
-            }) as Rc<dyn Fn()>));
+        let wake: WakeCell = Rc::new(RefCell::new(Rc::new(move || {
+            count_clone.set(count_clone.get() + 1);
+        }) as Rc<dyn Fn()>));
 
         let (tx, rx) = mpsc::channel::<SignerCompletion>();
         enqueue_completion(
@@ -346,7 +343,10 @@ mod tests {
             &tx,
             &noop_wake(),
         );
-        assert!(brokered, "malformed json still triggers broker (error path)");
+        assert!(
+            brokered,
+            "malformed json still triggers broker (error path)"
+        );
         let completion = rx.try_recv().expect("error completion must arrive");
         assert!(
             completion.result.is_err(),

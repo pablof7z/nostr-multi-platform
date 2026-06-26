@@ -102,7 +102,9 @@ impl SnapshotRegistry {
             Ok(guard) if guard.0 == tick_rev => guard
                 .1
                 .iter()
-                .flat_map(|(consumer, keys)| keys.iter().map(move |k| (consumer.clone(), k.clone())))
+                .flat_map(|(consumer, keys)| {
+                    keys.iter().map(move |k| (consumer.clone(), k.clone()))
+                })
                 .collect(),
             _ => Vec::new(),
         }

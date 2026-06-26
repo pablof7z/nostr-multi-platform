@@ -118,7 +118,11 @@ fn op_survives_ticks_then_resolves_only_on_message() {
     for _ in 0..10 {
         let _ = r.tick();
     }
-    assert_eq!(r.pending_sign_roundtrips(), 1, "op survived non-message activity");
+    assert_eq!(
+        r.pending_sign_roundtrips(),
+        1,
+        "op survived non-message activity"
+    );
 
     // The single message resolves it.
     let outcome = r.deliver_signed_response(&req.correlation_id, &signed_flat_json());
@@ -153,10 +157,7 @@ fn module_source_contains_no_polling_primitive() {
         !code.contains("recv_timeout"),
         "wasm signing must not block on recv_timeout (D8)"
     );
-    assert!(
-        !code.contains("sleep"),
-        "wasm signing must not sleep (D8)"
-    );
+    assert!(!code.contains("sleep"), "wasm signing must not sleep (D8)");
     assert!(
         !code.contains("set_interval") && !code.contains("setInterval"),
         "wasm signing must not install its own completion timer (D8)"

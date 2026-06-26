@@ -119,8 +119,7 @@ pub fn pull_page_over(
             let queries = plan.queries;
 
             // Step 2: scan the global log up to the scan budget.
-            let scan_result =
-                store.scan_log_since_seq(after_seq, limits.max_scan_entries.get())?;
+            let scan_result = store.scan_log_since_seq(after_seq, limits.max_scan_entries.get())?;
 
             // Propagate a real gap unchanged (ADR §10: gap contract).
             let page = match scan_result {

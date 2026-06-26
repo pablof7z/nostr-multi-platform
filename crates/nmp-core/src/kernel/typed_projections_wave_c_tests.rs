@@ -19,8 +19,8 @@ use super::typed_projections::{
     decode_accounts, decode_active_account, decode_claimed_events, decode_profile,
     ACCOUNTS_FILE_IDENTIFIER, ACCOUNTS_SCHEMA_ID, ACCOUNTS_SCHEMA_VERSION,
     ACTIVE_ACCOUNT_FILE_IDENTIFIER, ACTIVE_ACCOUNT_SCHEMA_ID, ACTIVE_ACCOUNT_SCHEMA_VERSION,
-    CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID,
-    PROFILE_FILE_IDENTIFIER, PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
+    CLAIMED_EVENTS_FILE_IDENTIFIER, CLAIMED_EVENTS_SCHEMA_ID, PROFILE_FILE_IDENTIFIER,
+    PROFILE_SCHEMA_ID, PROFILE_SCHEMA_VERSION,
 };
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
@@ -151,7 +151,10 @@ fn event_cluster_builtin_emits_typed_sidecar_alongside_json() {
         .len();
     let ce = typed_entry(&typed, "claimed_events");
     assert_eq!(ce.schema_id, CLAIMED_EVENTS_SCHEMA_ID);
-    assert_eq!(ce.file_identifier.as_bytes(), CLAIMED_EVENTS_FILE_IDENTIFIER);
+    assert_eq!(
+        ce.file_identifier.as_bytes(),
+        CLAIMED_EVENTS_FILE_IDENTIFIER
+    );
     let ce_decoded =
         decode_claimed_events(&ce.payload).expect("claimed_events sidecar must decode");
     assert_eq!(

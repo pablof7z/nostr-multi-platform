@@ -6,8 +6,8 @@
 //! do NOT drive a real kernel (that is `tests.rs`'s job).
 
 use crate::kernel::projection_rev::{
-    build_manifest, build_state, ProjectionPresence, ProjectionRevTracker, DRAIN_PROJECTION_KEYS,
-    BUILTIN_PROJECTION_DEPENDENCIES,
+    build_manifest, build_state, ProjectionPresence, ProjectionRevTracker,
+    BUILTIN_PROJECTION_DEPENDENCIES, DRAIN_PROJECTION_KEYS,
 };
 use crate::kernel::update::KERNEL_BUILTIN_PROJECTION_KEYS;
 
@@ -89,7 +89,9 @@ fn s8_per_key_mutate_dep_bumps_rev_no_op_tick_stable() {
 #[test]
 fn all_builtin_keys_have_dependency_entries() {
     for key in KERNEL_BUILTIN_PROJECTION_KEYS {
-        let found = BUILTIN_PROJECTION_DEPENDENCIES.iter().any(|(k, _)| k == key);
+        let found = BUILTIN_PROJECTION_DEPENDENCIES
+            .iter()
+            .any(|(k, _)| k == key);
         assert!(
             found,
             "projection key '{key}' is in KERNEL_BUILTIN_PROJECTION_KEYS but has no entry in \
@@ -181,7 +183,10 @@ fn build_state_after_emit_at_rev0_is_unchanged() {
             ProjectionPresence::Unchanged,
             "after record_emitted at rev=0: key '{key}' must be Unchanged"
         );
-        assert_eq!(s.rev, 0, "after record_emitted at rev=0: key '{key}' must have rev=0");
+        assert_eq!(
+            s.rev, 0,
+            "after record_emitted at rev=0: key '{key}' must have rev=0"
+        );
     }
 }
 

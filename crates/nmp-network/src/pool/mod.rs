@@ -279,9 +279,6 @@ impl Pool {
     /// projection.
     #[must_use]
     pub fn snapshot(&self) -> PoolSnapshot {
-        self.inner
-            .lock()
-            .map(|g| g.snapshot())
-            .unwrap_or_default()
+        self.inner.lock().map(|g| g.snapshot()).unwrap_or_default()
     }
 }

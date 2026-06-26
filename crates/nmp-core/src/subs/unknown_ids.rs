@@ -339,8 +339,7 @@ mod tests {
             events, expected_events,
             "the first-inserted event ids must survive, surplus dropped"
         );
-        let expected_pubkeys: Vec<String> =
-            (0..MAX_UNKNOWN_IDS).map(|i| id_for(i + n)).collect();
+        let expected_pubkeys: Vec<String> = (0..MAX_UNKNOWN_IDS).map(|i| id_for(i + n)).collect();
         assert_eq!(
             pubkeys, expected_pubkeys,
             "the first-inserted pubkeys must survive, surplus dropped"

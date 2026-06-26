@@ -108,11 +108,7 @@ fn declared_set_narrows_to_members_and_omits_relay_diagnostics() {
         projections.keys().collect::<Vec<_>>()
     );
     // Other undeclared built-ins gated out too.
-    for key in [
-        "publish_queue",
-        "settings_hub",
-        "active_account",
-    ] {
+    for key in ["publish_queue", "settings_hub", "active_account"] {
         assert!(
             !projections.contains_key(key),
             "undeclared built-in {key:?} must be omitted; got keys {:?}",

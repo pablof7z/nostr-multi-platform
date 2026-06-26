@@ -34,7 +34,7 @@ fn fixture_signed_event() -> SignedEvent {
 #[test]
 fn dispatch_envelope_bytes_decode_and_route_into_start_bytes_end_to_end() {
     use crate::transport::dispatch_envelope::{
-        DISPATCH_ENVELOPE_SCHEMA_VERSION, decode_dispatch_envelope, encode_dispatch_envelope,
+        decode_dispatch_envelope, encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION,
     };
 
     let registry = default_registry();

@@ -17,7 +17,8 @@
 //!
 //! **Handled set (Group A → `Applied`):**
 //! `Interests(EnsureInterest)`, `Interests(DropInterestOwner)`,
-//! `Interests(OpenInterest)`, `Interests(CloseInterest)`,
+//! `Interests(OpenInterest)`, `Interests(OpenObservedInterest)`,
+//! `Interests(CloseInterest)`,
 //! `Relay(SetRelayInfo)`, `Lifecycle(MarkChangedSinceEmit)`,
 //! `Publish(SignedEvent)`.
 //!
@@ -88,16 +89,65 @@ impl super::KernelReducer {
                 Applied(outbound)
             }
 
-            // CloseInterest: detach one owner; note relay_pin is not forwarded
-            // (KernelReducer::close_interest uses build_interest_pair with
-            // None; pinned close is a native-actor-only path).
+            // OpenObservedInterest: browser/default read-model front door. The
+            // observer has already been registered muted by the caller; this
+            // opens the live interest, replays cache rows, activates the
+            // observer, and drains lifecycle outbound inline like open_interest.
+            ActorCommand::Interests(InterestsCommand::OpenObservedInterest {
+                filter_json,
+                consumer_id,
+                scope,
+                relay_pin,
+                observer_id,
+                replay_shapes,
+                replay_limit,
+            }) => {
+                if let Some((identity, interest)) =
+                    crate::subs::interest_builder::build_interest_pair(
+                        &filter_json,
+                        &consumer_id,
+                        scope,
+                        relay_pin.as_deref(),
+                    )
+                {
+                    let replay = crate::kernel::ObserverReplayRequest {
+                        observer_id,
+                        shapes: replay_shapes,
+                        limit: replay_limit,
+                    };
+                    let _ = self.kernel.open_interest_with_observer_replay(
+                        identity,
+                        interest,
+                        replay,
+                        "open-observed-interest",
+                    );
+                }
+                let outbound = self.kernel.drain_lifecycle_outbound();
+                let outbound = self.kernel.partition_auth_paused(outbound);
+                Applied(outbound)
+            }
+
+            // CloseInterest: detach one owner. The relay pin participates in
+            // the subscription identity, so preserve it when reconstructing
+            // the close.
             ActorCommand::Interests(InterestsCommand::CloseInterest {
                 filter_json,
                 consumer_id,
                 scope,
-                relay_pin: _,
+                relay_pin,
             }) => {
-                let outbound = self.close_interest(&filter_json, &consumer_id, scope);
+                if let Some((identity, _interest)) =
+                    crate::subs::interest_builder::build_interest_pair(
+                        &filter_json,
+                        &consumer_id,
+                        scope,
+                        relay_pin.as_deref(),
+                    )
+                {
+                    let _ = self.kernel.close_interest_sub(&identity);
+                }
+                let outbound = self.kernel.drain_lifecycle_outbound();
+                let outbound = self.kernel.partition_auth_paused(outbound);
                 Applied(outbound)
             }
 

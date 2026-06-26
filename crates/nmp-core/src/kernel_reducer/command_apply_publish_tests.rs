@@ -206,8 +206,7 @@ fn unsigned_event_needs_sign_with_correlation_id() {
                 "sign request account must be the active account"
             );
             assert_eq!(
-                action_correlation_id,
-                cid,
+                action_correlation_id, cid,
                 "action_correlation_id must propagate from the command"
             );
         }
@@ -252,7 +251,10 @@ fn profile_needs_sign_with_correlation_id() {
 
     let cid = Some("profile-cid-3".to_string());
     let mut fields = serde_json::Map::new();
-    fields.insert("name".to_string(), serde_json::Value::String("Alice".to_string()));
+    fields.insert(
+        "name".to_string(),
+        serde_json::Value::String("Alice".to_string()),
+    );
 
     let outcome = r.apply_actor_command(ActorCommand::Publish(PublishCommand::Profile {
         fields,

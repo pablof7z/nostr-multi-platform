@@ -34,7 +34,10 @@ use crate::runtime::PendingSignedPublish;
 #[derive(Debug)]
 pub(crate) enum DispatchBytesResult {
     /// Command applied, outbound fanned, snapshot ready.
-    Applied { action_type: String, correlation_id: String },
+    Applied {
+        action_type: String,
+        correlation_id: String,
+    },
     /// Command needs an async sign round-trip.
     SignRequired {
         correlation_id: String,
@@ -42,9 +45,16 @@ pub(crate) enum DispatchBytesResult {
         unsigned_json: String,
     },
     /// Typed decode / `start()` / `execute()` rejection or kernel unsupported.
-    Rejected { capability: String, correlation_id: String, reason: String },
+    Rejected {
+        capability: String,
+        correlation_id: String,
+        reason: String,
+    },
     /// No active account — fail-closed write gate.
-    NoActiveAccount { capability: String, correlation_id: String },
+    NoActiveAccount {
+        capability: String,
+        correlation_id: String,
+    },
     /// DispatchEnvelope decode failed (bad file id, oversize, etc.).
     DecodeError { message: String },
 }
@@ -69,7 +79,23 @@ impl BrowserRuntimeHandle {
         &mut self,
         canonical_pubkey_hex: String,
     ) -> Vec<OutboundMessage> {
-        self.runtime.reducer.set_active_account(canonical_pubkey_hex)
+        let before = self
+            .runtime
+            .reducer
+            .active_account_handle()
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
+        let outbound = self
+            .runtime
+            .reducer
+            .set_active_account(canonical_pubkey_hex.clone());
+        if before.as_deref() != Some(canonical_pubkey_hex.as_str()) {
+            for observer in &self.runtime.identity_change_observers {
+                observer(Some(canonical_pubkey_hex.clone()));
+            }
+        }
+        outbound
     }
 
     /// Fan outbound relay frames to the pool's WebSocket drivers.
@@ -119,7 +145,9 @@ impl BrowserRuntimeHandle {
         key: &str,
         consumer_id: &str,
     ) -> Vec<OutboundMessage> {
-        self.runtime.reducer.release_ref(namespace, key, consumer_id)
+        self.runtime
+            .reducer
+            .release_ref(namespace, key, consumer_id)
     }
 
     /// JSON snapshot of recent routing decisions (log-safe diagnostics).

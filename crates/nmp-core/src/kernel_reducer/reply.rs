@@ -72,9 +72,11 @@ impl super::KernelReducer {
             created_at: signed.unsigned.created_at,
         };
         let _ = p_tags; // callers always pass &[]; p-routing comes from event tags
-        let outbound =
-            self.kernel
-                .publish_externally_signed(raw, crate::publish::PublishTarget::Auto, correlation_id);
+        let outbound = self.kernel.publish_externally_signed(
+            raw,
+            crate::publish::PublishTarget::Auto,
+            correlation_id,
+        );
         self.kernel.partition_auth_paused(outbound)
     }
 

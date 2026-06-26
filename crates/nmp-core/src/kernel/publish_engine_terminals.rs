@@ -203,7 +203,6 @@ impl Kernel {
         }
         serde_json::Value::Array(rows)
     }
-
 }
 
 /// T128: map a `TerminalOutcome` into the wire-level `(status, outcomes)`

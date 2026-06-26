@@ -4,7 +4,8 @@
 
 use super::{
     decode_dispatch_envelope, encode_dispatch_envelope, DispatchDecodeError,
-    DISPATCH_ENVELOPE_FILE_IDENTIFIER, DISPATCH_ENVELOPE_SCHEMA_VERSION, MAX_DISPATCH_ENVELOPE_BYTES,
+    DISPATCH_ENVELOPE_FILE_IDENTIFIER, DISPATCH_ENVELOPE_SCHEMA_VERSION,
+    MAX_DISPATCH_ENVELOPE_BYTES,
 };
 
 // ---- Round-trip (acceptance: encode → bytes → decode) -----------------------
@@ -90,10 +91,7 @@ fn wrong_file_identifier_is_rejected() {
 #[test]
 fn empty_buffer_is_rejected() {
     let err = decode_dispatch_envelope(&[]).expect_err("empty buffer must be rejected");
-    assert!(matches!(
-        err,
-        DispatchDecodeError::BadFileIdentifier { .. }
-    ));
+    assert!(matches!(err, DispatchDecodeError::BadFileIdentifier { .. }));
 }
 
 // ---- Gate: oversize bound (fail CLOSED) -------------------------------------
@@ -150,8 +148,12 @@ fn empty_correlation_id_is_rejected() {
 
 #[test]
 fn truncated_buffer_is_rejected() {
-    let bytes =
-        encode_dispatch_envelope("c", "nmp.publish", DISPATCH_ENVELOPE_SCHEMA_VERSION, b"payload");
+    let bytes = encode_dispatch_envelope(
+        "c",
+        "nmp.publish",
+        DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        b"payload",
+    );
     // Keep the magic intact but truncate the body so verification fails.
     let truncated = &bytes[..bytes.len().min(12)];
     let err = decode_dispatch_envelope(truncated).expect_err("truncated buffer must be rejected");

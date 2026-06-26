@@ -74,7 +74,8 @@ mod tests {
         let mut rt = RelayRuntime::new();
         let url = "wss://127.0.0.1:1".to_string();
 
-        let spawned = ensure_relay_worker(&mut rt, &pool, &mut kernel, RelayRole::Content, url.clone());
+        let spawned =
+            ensure_relay_worker(&mut rt, &pool, &mut kernel, RelayRole::Content, url.clone());
         assert!(spawned, "first ensure_relay_worker call must spawn");
 
         let key = CanonicalRelayUrl::parse_or_raw(&url);
@@ -126,7 +127,13 @@ mod tests {
         let pool = Pool::new(PoolConfig::default(), events_tx);
         let mut kernel = Kernel::new(80);
         let mut rt = RelayRuntime::new();
-        ensure_relay_worker(&mut rt, &pool, &mut kernel, RelayRole::Content, url.to_string());
+        ensure_relay_worker(
+            &mut rt,
+            &pool,
+            &mut kernel,
+            RelayRole::Content,
+            url.to_string(),
+        );
         let key = CanonicalRelayUrl::parse_or_raw(url);
         let before = rt.relay_controls.get(&key).expect("control").handle;
         assert!(pool.close(before), "close the live handle");

@@ -90,7 +90,10 @@ mod tests {
     fn nip07_uppercase_is_normalized_to_lowercase() {
         let upper = PK.to_ascii_uppercase();
         let result = canonical_pubkey_from_kind("nip07", &upper).expect("must succeed");
-        assert_eq!(result, PK, "uppercase input must be normalized to lowercase (B2)");
+        assert_eq!(
+            result, PK,
+            "uppercase input must be normalized to lowercase (B2)"
+        );
     }
 
     #[test]

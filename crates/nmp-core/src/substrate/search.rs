@@ -26,9 +26,7 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use crate::store::{
-    CompiledIndexSpec, EventStore, SearchField, SearchScopeId, StoredEvent,
-};
+use crate::store::{CompiledIndexSpec, EventStore, SearchField, SearchScopeId, StoredEvent};
 
 /// Whether a scope's documents may be served by generic public search and
 /// fanned out to relays, or are local-only/private.
@@ -144,10 +142,7 @@ impl SearchScopeRegistry {
     /// installed and returns [`SearchScopeDisposition::YieldedToExisting`]. The
     /// caller (FFI shell) records the disposition in the `"search_scope"`
     /// ledger seam.
-    pub fn register(
-        &self,
-        provider: Arc<dyn SearchScopeProvider>,
-    ) -> SearchScopeDisposition {
+    pub fn register(&self, provider: Arc<dyn SearchScopeProvider>) -> SearchScopeDisposition {
         let scope = provider.spec().scope;
         let Ok(mut providers) = self.providers.lock() else {
             // D6 — a poisoned lock drops the registration silently.
@@ -229,8 +224,8 @@ fn compile_one(provider: &Arc<dyn SearchScopeProvider>) -> Option<CompiledIndexS
         return None;
     }
     let provider = Arc::clone(provider);
-    let extract = Arc::new(move |event: &StoredEvent| provider.extract(event))
-        as Arc<nmp_store::ExtractFn>;
+    let extract =
+        Arc::new(move |event: &StoredEvent| provider.extract(event)) as Arc<nmp_store::ExtractFn>;
     Some(CompiledIndexSpec {
         scope_id: spec.scope,
         kinds,

@@ -109,10 +109,9 @@ export default function App() {
             </div>
           </div>
           <nav class="rail-nav" aria-label="Primary">
-            <a class="rail-link rail-link--active" href="/" aria-current="page">Home</a>
-            <span class="rail-link rail-link--disabled" aria-disabled="true">Threads</span>
-            <span class="rail-link rail-link--disabled" aria-disabled="true">Profiles</span>
-            <span class="rail-link rail-link--disabled" aria-disabled="true">Relays</span>
+            <a class="rail-link rail-link--active" href="#feed" aria-current="page">Home</a>
+            <a class="rail-link" href="#signing">Signer</a>
+            <a class="rail-link" href="#diagnostics">Diagnostics</a>
           </nav>
           <div class="rail-status" aria-live="polite">
             <span class="status-dot" data-connected={isConnected() ? "true" : "false"} />
@@ -148,7 +147,7 @@ export default function App() {
               Item C imports its panel components and renders them here via
               NmpClientContext. Do not add logic to this slot — zero protocol TS.
             */}
-            <section data-slot="feed" aria-label="Feed">
+            <section id="feed" data-slot="feed" aria-label="Feed">
               <FeedPanel canPublish={signerConnected()} />
             </section>
 
@@ -158,7 +157,7 @@ export default function App() {
               signer status, and the pending-sign overlay. All signing logic lives in
               features/signing/ and reads the runtime via NmpClientContext.
             */}
-            <section class="side-stack" data-slot="signing" aria-label="Signing">
+            <section id="signing" class="side-stack" data-slot="signing" aria-label="Signing">
               <OnboardingPanel
                 state={{
                   runtimeConnected: isConnected(),
@@ -170,7 +169,9 @@ export default function App() {
                 }}
               />
               <SigningPanel onConnectionChange={setSignerConnected} />
-              <DiagnosticsPanel diagnostics={runtimeProjection()} events={snapshot().events} />
+              <div id="diagnostics">
+                <DiagnosticsPanel diagnostics={runtimeProjection()} events={snapshot().events} />
+              </div>
             </section>
           </div>
         </div>

@@ -35,12 +35,12 @@ use super::{
     encode_action_lifecycle, encode_action_results, encode_action_stages, encode_relay_diagnostics,
     encode_signed_events, ActionLifecycleModel, ActionResultsModel, ActionStagesModel,
     ConnectionReasonRow, InfoRow, InterestRow, NoticeRow, RelayDiagnosticsModel, RelayRow,
-    SignedEventsModel, WireSubRow,
-    ACTION_LIFECYCLE_FILE_IDENTIFIER, ACTION_LIFECYCLE_SCHEMA_ID, ACTION_LIFECYCLE_SCHEMA_VERSION,
-    ACTION_RESULTS_FILE_IDENTIFIER, ACTION_RESULTS_SCHEMA_ID, ACTION_RESULTS_SCHEMA_VERSION,
-    ACTION_STAGES_FILE_IDENTIFIER, ACTION_STAGES_SCHEMA_ID, ACTION_STAGES_SCHEMA_VERSION,
-    RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID, RELAY_DIAGNOSTICS_SCHEMA_VERSION,
-    SIGNED_EVENTS_FILE_IDENTIFIER, SIGNED_EVENTS_SCHEMA_ID, SIGNED_EVENTS_SCHEMA_VERSION,
+    SignedEventsModel, WireSubRow, ACTION_LIFECYCLE_FILE_IDENTIFIER, ACTION_LIFECYCLE_SCHEMA_ID,
+    ACTION_LIFECYCLE_SCHEMA_VERSION, ACTION_RESULTS_FILE_IDENTIFIER, ACTION_RESULTS_SCHEMA_ID,
+    ACTION_RESULTS_SCHEMA_VERSION, ACTION_STAGES_FILE_IDENTIFIER, ACTION_STAGES_SCHEMA_ID,
+    ACTION_STAGES_SCHEMA_VERSION, RELAY_DIAGNOSTICS_FILE_IDENTIFIER, RELAY_DIAGNOSTICS_SCHEMA_ID,
+    RELAY_DIAGNOSTICS_SCHEMA_VERSION, SIGNED_EVENTS_FILE_IDENTIFIER, SIGNED_EVENTS_SCHEMA_ID,
+    SIGNED_EVENTS_SCHEMA_VERSION,
 };
 use crate::update_envelope::TypedProjectionData;
 
@@ -81,7 +81,14 @@ fn relay_row(row: &super::super::relay_diagnostics::RelayDiagnosticsRow) -> Rela
         last_event_ms: row.last_event_ms.unwrap_or(0),
         last_notice: row.last_notice.clone(),
         notice_count: row.notice_count,
-        notices: row.notices.iter().map(|n| NoticeRow { at_ms: n.at_ms, text: n.text.clone() }).collect(),
+        notices: row
+            .notices
+            .iter()
+            .map(|n| NoticeRow {
+                at_ms: n.at_ms,
+                text: n.text.clone(),
+            })
+            .collect(),
         last_error: row.last_error.clone(),
         wire_subs: row.wire_subs.iter().map(wire_sub_row).collect(),
         discovery_kinds: row.discovery_kinds.clone(),

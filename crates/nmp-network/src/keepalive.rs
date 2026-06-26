@@ -174,10 +174,16 @@ mod tests {
         // At threshold — step returns EmitPing but ping is NOT yet in-flight
         // (no ping has reached the wire yet).
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
-        assert!(!k.ping_in_flight(), "ping not in-flight until on_ping_flushed is called");
+        assert!(
+            !k.ping_in_flight(),
+            "ping not in-flight until on_ping_flushed is called"
+        );
         // Caller flushes the ping to the wire and confirms:
         k.on_ping_flushed(t0 + s(30));
-        assert!(k.ping_in_flight(), "ping is in-flight after on_ping_flushed");
+        assert!(
+            k.ping_in_flight(),
+            "ping is in-flight after on_ping_flushed"
+        );
     }
 
     #[test]
@@ -213,7 +219,10 @@ mod tests {
         // Idle threshold elapsed — FSM says "emit ping".
         assert_eq!(k.step(t0 + s(30)), KeepaliveAction::EmitPing);
         // Worker's flush was Blocked: caller does NOT call on_ping_flushed.
-        assert!(!k.ping_in_flight(), "clock must not start until ping is on the wire");
+        assert!(
+            !k.ping_in_flight(),
+            "clock must not start until ping is on the wire"
+        );
 
         // One more tick: idle threshold STILL exceeded, still no ping in flight
         // → FSM should return EmitPing again so the worker retries the write.
