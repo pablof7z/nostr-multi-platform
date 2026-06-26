@@ -128,13 +128,15 @@ impl BrowserRuntimeDiagnostics {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 /// Read `(signer_kind, signer_state)` from the slot.
-/// D6: poisoned lock → `(None, None)`.
+///
+/// D6: a poisoned lock yields `(None, None)` — we do NOT recover and serialize
+/// the poisoned value (recovered-poisoned data must never be presented; the
+/// contract is poison → defaults / no sidecar). An idle slot is `(None, None)`.
 fn read_signer_state(slot: &BrowserSignerStateSlot) -> (Option<String>, Option<String>) {
-    let guard = match slot.lock() {
-        Ok(g) => g,
-        Err(e) => e.into_inner(),
+    let Ok(guard) = slot.lock() else {
+        return (None, None);
     };
-    match guard.as_ref() {
+    match guard.model() {
         None => (None, None),
         Some(SignerStateModel { signer_kind, state, .. }) => {
             (Some(signer_kind.clone()), Some(state.clone()))

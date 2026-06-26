@@ -49,20 +49,37 @@ impl ProjectionMergeCache {
             .snapshot()
             .ok_or(UpdateFrameDecodeError::MissingSnapshotPayload)?;
         let identity = (snapshot.session_id(), snapshot.snapshot_epoch());
-        if self.frame_identity != Some(identity) {
-            self.frame_identity = Some(identity);
-            self.projections.clear();
-        }
+
+        // Transactional merge (fail-closed): build the next projection set in a
+        // LOCAL and only commit it to `self` AFTER decode fully succeeds. A
+        // malformed frame that carries a new `(session_id, snapshot_epoch)` must
+        // NOT clear/replace the live cache before its rows decode — otherwise a
+        // decode error mid-frame would leave `self.projections` poisoned (empty
+        // or partially applied) and the NEXT valid incremental frame would merge
+        // from that corrupted baseline, silently overwriting `last_good`. The
+        // `?` below propagates any decode error BEFORE the commit, so on error
+        // `self` is left exactly as it was (the caller still holds last-good).
+        let mut next_projections = if self.frame_identity == Some(identity) {
+            // Same frame identity: continue from the current baseline.
+            self.projections.clone()
+        } else {
+            // New frame identity: a fresh baseline (the prior epoch's rows are
+            // dropped — but only once we are sure THIS frame decodes).
+            BTreeMap::new()
+        };
         for row in super::typed_projection_decode::decode_typed_projections(&snapshot)? {
             match row.state {
                 WireProjectionState::Changed => {
-                    self.projections.insert(row.key.clone(), row);
+                    next_projections.insert(row.key.clone(), row);
                 }
                 WireProjectionState::Cleared => {
-                    self.projections.remove(&row.key);
+                    next_projections.remove(&row.key);
                 }
             }
         }
+        // Commit: decode succeeded, so atomically adopt the new identity + set.
+        self.frame_identity = Some(identity);
+        self.projections = next_projections;
         let merged: Vec<TypedProjectionData> = self.projections.values().cloned().collect();
         Ok(rewrite_typed_projections(&snapshot, &merged))
     }

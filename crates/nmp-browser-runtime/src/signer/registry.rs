@@ -99,6 +99,21 @@ impl CapabilityProviderRegistry {
     pub(crate) fn capability_envelope(&self, account_pubkey: &str) -> Option<&CapabilityEnvelope> {
         self.providers.get(account_pubkey).map(|e| &e.envelope)
     }
+
+    /// Return the backend of the SOLE registered provider, if exactly one is
+    /// registered (#2074).
+    ///
+    /// Used at `start()` to seed the signer-state projection to a `ready` state
+    /// for the single-signer browser case. Returns `None` when zero or multiple
+    /// providers are registered — per-account selection across multiple signers
+    /// is deferred to the lifecycle follow-up (#2068).
+    pub(crate) fn sole_backend(&self) -> Option<SignerBackend> {
+        if self.providers.len() == 1 {
+            self.providers.values().next().map(|e| e.envelope.backend.clone())
+        } else {
+            None
+        }
+    }
 }
 
 #[cfg(test)]

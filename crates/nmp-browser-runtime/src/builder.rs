@@ -219,12 +219,11 @@ impl BrowserAppBuilder<StorageSet> {
     ///
     /// # Panics
     ///
-    /// Panics if `keys` is empty — that is the [`Self::consume_all_builtin_projections`]
-    /// case, which must be chosen explicitly so a no-op narrowing is never a
-    /// silent ADR-0053 footgun. An empty `declare_projections([])` advances the
-    /// typestate but declares nothing, leaving `DeclaredProjections::Undeclared`
-    /// — the loud forgotten-declaration state. To receive every built-in, call
-    /// [`Self::consume_all_builtin_projections`] instead.
+    /// Panics immediately if `keys` is empty — BEFORE advancing the typestate or
+    /// touching the reducer. An empty narrowing declares nothing (it would leave
+    /// `DeclaredProjections::Undeclared`, the silent ADR-0053 footgun), so it is
+    /// rejected loudly rather than accepted. To receive every built-in, call
+    /// [`Self::consume_all_builtin_projections`] explicitly instead.
     pub fn declare_projections<I, K>(self, keys: I) -> BrowserAppBuilder<ProjectionsDeclared>
     where
         I: IntoIterator<Item = K>,

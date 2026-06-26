@@ -20,7 +20,7 @@ use nmp_core::{AppRelayList, CommandSender, SignerStateModel, UpdateFrameBytes};
 use super::diagnostics::BrowserRuntimeDiagnostics;
 use super::event::BrowserRuntimeEvent;
 use super::signer_state::{
-    new_signer_state_slot, register_signer_state_projection, update_signer_state,
+    new_signer_state_slot, ready_model, register_signer_state_projection, update_signer_state,
     BrowserSignerStateSlot,
 };
 use super::snapshot::{BrowserSnapshotCache, SnapshotOutcome};
@@ -141,6 +141,13 @@ impl BrowserRuntimeHandle {
         // ── #2074 — Rust-owned signer-state slot + typed projection ──────────
         let signer_state_slot = new_signer_state_slot();
         register_signer_state_projection(&inner.reducer, Arc::clone(&signer_state_slot));
+        // Seed signer-state readiness from the SOLE registered provider so the
+        // projection reflects reality (a signer is available + ready) rather
+        // than silently empty. Multi-provider per-account selection and the
+        // full sign-success/failure/reconnecting lifecycle are deferred (#2068).
+        if let Some(backend) = signer_registry.sole_backend() {
+            update_signer_state(&signer_state_slot, Some(ready_model(&backend)));
+        }
 
         // ── Extract the receiver and build the runtime ────────────────────────
 

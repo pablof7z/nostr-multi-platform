@@ -95,6 +95,101 @@ fn identity_change_resets_cache_before_applying_rows() {
     assert!(keys(&next_identity).is_empty());
 }
 
+/// Build a structurally-valid Snapshot frame carrying ONE malformed typed
+/// projection (a `TypedProjection` with no `key`), stamped with the given
+/// `(session_id, snapshot_epoch)`. `merge_update_frame` reads the identity,
+/// then fails inside `decode_typed_projections` ("missing key"). This is the
+/// "new identity + decode error" frame the transactional-commit guarantee
+/// must survive.
+fn malformed_frame_new_identity(session_id: u64, snapshot_epoch: u64) -> Vec<u8> {
+    let mut builder = FlatBufferBuilder::new();
+    // A TypedProjection with `key: None` → decode_typed_projections returns
+    // InvalidValue("missing key") AFTER the snapshot identity has been read.
+    let schema_id = builder.create_string("x.schema");
+    let payload = builder.create_vector(b"x");
+    let typed_payload = fb::TypedPayload::create(
+        &mut builder,
+        &fb::TypedPayloadArgs {
+            schema_id: Some(schema_id),
+            schema_version: 1,
+            file_identifier: None,
+            payload: Some(payload),
+        },
+    );
+    let projection = fb::TypedProjection::create(
+        &mut builder,
+        &fb::TypedProjectionArgs {
+            key: None, // ← the malformation
+            payload: Some(typed_payload),
+            projection_rev: 1,
+            state: fb::ProjectionPresenceState::Changed,
+        },
+    );
+    let typed_projections = builder.create_vector(&[projection]);
+    let snapshot = fb::SnapshotFrame::create(
+        &mut builder,
+        &fb::SnapshotFrameArgs {
+            schema_version: 1,
+            typed_projections: Some(typed_projections),
+            snapshot_epoch,
+            session_id,
+            ..Default::default()
+        },
+    );
+    let root = fb::UpdateFrame::create(
+        &mut builder,
+        &fb::UpdateFrameArgs {
+            kind: fb::FrameKind::Snapshot,
+            snapshot: Some(snapshot),
+            panic: None,
+        },
+    );
+    fb::finish_update_frame_buffer(&mut builder, root);
+    builder.finished_data().to_vec()
+}
+
+/// Fail-closed transactional merge (#2073): a malformed frame B carrying a NEW
+/// `(session_id, snapshot_epoch)` must NOT poison the cache. It returns an
+/// error (the caller degrades to last-good) AND leaves the cache exactly at
+/// frame A's state, so a subsequent valid incremental frame C merges from A —
+/// not from an empty/cleared baseline.
+#[test]
+fn malformed_new_identity_frame_does_not_poison_cache() {
+    let mut cache = ProjectionMergeCache::default();
+
+    // Frame A: a good baseline at identity (10, 0).
+    let a = cache
+        .merge_update_frame(&frame(
+            10,
+            0,
+            &[row("profile", b"a", WireProjectionState::Changed)],
+        ))
+        .expect("frame A merges");
+    assert_eq!(keys(&a), vec!["profile"]);
+
+    // Frame B: malformed, carries a NEW identity (11, 0). Pre-fix this would
+    // clear the cache and adopt identity (11, 0) BEFORE failing the row decode.
+    let err = cache
+        .merge_update_frame(&malformed_frame_new_identity(11, 0))
+        .expect_err("malformed frame B must return a decode error");
+    assert!(
+        matches!(err, UpdateFrameDecodeError::InvalidValue(_)),
+        "expected InvalidValue (missing key), got {err:?}"
+    );
+
+    // Frame C: a valid INCREMENTAL frame at the ORIGINAL identity (10, 0) that
+    // omits "profile". If B had poisoned the cache (cleared it + adopted
+    // identity 11), the cache would now be empty and "profile" would be gone.
+    // With the transactional fix the cache is still A, so "profile" survives.
+    let c = cache
+        .merge_update_frame(&frame(10, 0, &[]))
+        .expect("frame C merges");
+    let rows = decode_snapshot_typed_projections(&c).expect("merged frame decodes");
+    assert_eq!(rows.len(), 1, "profile must survive the malformed frame B");
+    assert_eq!(rows[0].key, "profile");
+    assert_eq!(rows[0].payload, b"a", "last-good payload not poisoned");
+}
+
 #[test]
 fn merge_rewrite_preserves_non_projection_snapshot_fields() {
     let mut cache = ProjectionMergeCache::default();
