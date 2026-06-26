@@ -24,6 +24,13 @@ pub enum DriveOutcome {
     Ready(SignerReady),
     /// The handshake failed (timeout, protocol error, bunker error, etc.).
     Failed(HandshakeError),
+    /// The inbound REQ `subscribe()` failed. Carries the RAW relay-error string
+    /// (no prefix) so each worker can wrap it in its OWN per-flow message —
+    /// `subscribe: {e}` (bunker/restore) vs `REQ subscribe failed: {e}`
+    /// (nostrconnect) — byte-identical to the prior blocking implementation,
+    /// where the worker formatted the subscribe error directly (NOT through a
+    /// `HandshakeError`, so there is no `transport error:` prefix).
+    SubscribeFailed(String),
     /// The session was cancelled before completing.
     Cancelled,
 }
@@ -32,7 +39,12 @@ pub enum DriveOutcome {
 ///
 /// 1. Applies `start_effects` in order (Subscribe → relay.subscribe,
 ///    SendFrame → relay.send, Progress → emit_progress, Error → return).
-/// 2. Enters a `select_biased!` loop (`cancel > deadline > inbound`) feeding
+/// 2. Once the start effects are applied (relay connected + subscribed),
+///    (re-)arms the step deadline so the 60s budget starts AFTER connect +
+///    subscribe — matching the prior blocking `await_response`, which set its
+///    deadline only when the wait began. `start_*` runs before the (up to 10s)
+///    relay dial, so the deadline it carries would otherwise start too early.
+/// 3. Enters a `select_biased!` loop (`cancel > deadline > inbound`) feeding
 ///    relay events into the reducer and dispatching returned effects until the
 ///    reducer reaches a terminal state (SignerReady or Error).
 ///
@@ -52,6 +64,11 @@ pub fn drive(
     if let Some(outcome) = apply_effects(start_effects, relay, emit_progress) {
         return outcome;
     }
+
+    // The relay is now connected and the inbound REQ is installed. Start the
+    // step-deadline clock HERE, not at `start_*` — the dial above can take up
+    // to CONNECT_BUDGET (10s) and must not eat into the 60s response budget.
+    reducer.arm_deadline(now_secs());
 
     // Phase 2: event loop — cancel > deadline > inbound (D8 — no polling).
     loop {
@@ -77,8 +94,14 @@ pub fn drive(
                         }
                     }
                     Err(_) => {
-                        // Channel disconnected — session cancelled or dropped.
-                        return DriveOutcome::Cancelled;
+                        // Every inbound sender dropped WITHOUT a cancel signal
+                        // (cancel is the higher-priority arm above, so reaching
+                        // here means a genuine transport teardown). The prior
+                        // `wait.rs` surfaced this as a Transport error with this
+                        // exact string — preserve it byte-for-byte.
+                        return DriveOutcome::Failed(HandshakeError::Transport(
+                            "inbound channel disconnected".to_string(),
+                        ));
                     }
                 }
             }
@@ -87,8 +110,8 @@ pub fn drive(
 }
 
 /// Apply a batch of effects. Returns `Some(DriveOutcome)` for terminal effects
-/// (SignerReady, Error) or relay send failures; returns `None` when non-terminal
-/// (loop should continue).
+/// (SignerReady, Error), subscribe failures, or relay send failures; returns
+/// `None` when non-terminal (loop should continue).
 fn apply_effects(
     effects: Vec<Effect>,
     relay: &dyn RelayClient,
@@ -98,7 +121,9 @@ fn apply_effects(
         match effect {
             Effect::Subscribe { frame, .. } => {
                 if let Err(e) = relay.subscribe(frame) {
-                    return Some(DriveOutcome::Failed(HandshakeError::Transport(e.to_string())));
+                    // RAW relay error — the worker prepends its own per-flow
+                    // prefix (see `DriveOutcome::SubscribeFailed`).
+                    return Some(DriveOutcome::SubscribeFailed(e.to_string()));
                 }
             }
             Effect::SendFrame { text, .. } => {

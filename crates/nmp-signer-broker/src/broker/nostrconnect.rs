@@ -165,6 +165,11 @@ impl BunkerBroker {
             &mut progress_emitter,
         ) {
             DriveOutcome::Ready(sr) => sr,
+            DriveOutcome::SubscribeFailed(e) => {
+                // Byte-identical to the prior nostrconnect worker's subscribe error.
+                self.emit_progress("failed", Some(&format!("REQ subscribe failed: {e}")));
+                return;
+            }
             DriveOutcome::Failed(e) => {
                 self.emit_progress("failed", Some(&format!("{e}")));
                 return;

@@ -310,3 +310,73 @@ fn tick_after_deadline_emits_timeout_error() {
         "timeout message must name the step and budget: {err:?}"
     );
 }
+
+/// The step deadline must be (re-)armable to a fresh `now + 60s` AFTER the
+/// driver has connected + subscribed — the relay dial (up to 10s) must NOT eat
+/// into the 60s response budget. `start_bunker` carries an initial deadline,
+/// but `arm_deadline` is what the driver calls post-subscribe; this asserts the
+/// clock restarts from the supplied `now`, not from `start_bunker`'s timestamp.
+#[test]
+fn arm_deadline_restarts_budget_from_post_subscribe_now() {
+    let client_keys = Keys::generate();
+    let bunker_pk = Keys::generate().public_key();
+    let (mut state, _effects) = bunker_start(&client_keys, bunker_pk, None, None);
+
+    // start_bunker armed the deadline at start time.
+    assert_eq!(state.deadline_at(), TEST_NOW + 60);
+
+    // Simulate a 9s relay dial: the driver arms the deadline only after
+    // connect + subscribe, so the full 60s budget starts from THERE.
+    let post_subscribe_now = TEST_NOW + 9;
+    state.arm_deadline(post_subscribe_now);
+    assert_eq!(
+        state.deadline_at(),
+        post_subscribe_now + 60,
+        "deadline must restart from post-subscribe now, not start time"
+    );
+
+    // A tick at the OLD deadline (TEST_NOW+60) must now be a no-op — the budget
+    // was correctly extended past the dial time.
+    let at_old_deadline = state.tick(TEST_NOW + 60);
+    assert!(
+        at_old_deadline.is_empty(),
+        "the dial time must not count against the response budget"
+    );
+}
+
+// ─── on_relay_text sub-id filtering ──────────────────────────────────────────
+
+/// `on_relay_text` must only act on frames carrying THIS session's sub id; a
+/// frame for a different subscription (multiplexed on the same socket) must be
+/// ignored. Matters for the step-3 browser caller that forwards raw socket text.
+#[test]
+fn on_relay_text_ignores_frames_for_other_subscriptions() {
+    let client_keys = Keys::generate();
+    let bunker_keys = Keys::generate();
+    let (mut state, effects) = bunker_start(&client_keys, bunker_keys.public_key(), None, None);
+    let connect_frame = match &effects[2] {
+        Effect::SendFrame { text, .. } => text.clone(),
+        other => panic!("expected SendFrame, got {other:?}"),
+    };
+
+    // A genuine, decryptable connect ack — but wrapped in an EVENT frame whose
+    // sub id is NOT this session's. It must be ignored despite valid content.
+    let ack_event = respond_to_frame(&connect_frame, &bunker_keys, client_keys.public_key(), "ack");
+    let wrong_sub_frame =
+        json!(["EVENT", "some-other-subscription", ack_event.clone()]).to_string();
+    let ignored = state.on_relay_text(&wrong_sub_frame, TEST_NOW);
+    assert!(
+        ignored.is_empty(),
+        "a frame for a different sub id must be ignored: {ignored:?}"
+    );
+
+    // The SAME event on THIS session's sub id advances the handshake.
+    let right_sub_frame = json!(["EVENT", SUB_ID, ack_event]).to_string();
+    let accepted = state.on_relay_text(&right_sub_frame, TEST_NOW);
+    assert!(
+        accepted
+            .iter()
+            .any(|e| matches!(e, Effect::SendFrame { .. })),
+        "the matching sub id must advance to get_public_key: {accepted:?}"
+    );
+}

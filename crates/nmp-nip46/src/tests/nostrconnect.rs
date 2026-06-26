@@ -237,7 +237,7 @@ fn stray_events_skipped_then_valid_connect_completes() {
     let gpk_frame = effects
         .iter()
         .filter_map(|e| if let Effect::SendFrame { text, .. } = e { Some(text.clone()) } else { None })
-        .last()
+        .next_back()
         .expect("gpk SendFrame");
     let gpk_rpc = decrypt_outgoing_frame(&gpk_frame, &signer_keys, local_keys.public_key());
     let gpk_id = gpk_rpc.get("id").and_then(|v| v.as_str()).unwrap();

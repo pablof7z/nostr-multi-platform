@@ -105,6 +105,22 @@ impl SessionState {
         self.deadline_at
     }
 
+    /// (Re-)arm the current step deadline to `now + STEP_TIMEOUT_SECS`.
+    ///
+    /// The driver calls this once the relay is connected AND the inbound REQ
+    /// subscription is installed, so the 60s step budget starts counting only
+    /// from the point the session can actually receive responses — not from
+    /// `start_bunker` / `start_nostrconnect`, which run before the (up to 10s)
+    /// relay dial. This matches the prior blocking implementation, where the
+    /// deadline was `Instant::now() + timeout`, set inside `await_response`
+    /// AFTER the worker's connect + subscribe completed. Terminal (`Done`)
+    /// sessions are left untouched.
+    pub fn arm_deadline(&mut self, now: u64) {
+        if !matches!(self.phase, Phase::Done) {
+            self.deadline_at = now + STEP_TIMEOUT_SECS;
+        }
+    }
+
     // ─── Internal helpers ─────────────────────────────────────────────────
 
     fn next_req_id(&mut self) -> String {
@@ -163,9 +179,13 @@ impl SessionState {
         if arr[0].as_str() != Some("EVENT") {
             return Vec::new();
         }
-        // Accept any subscription id — the caller already filters by its own
-        // sub_id when using `parse_event_frame`; `on_relay_text` is for callers
-        // that forward raw text directly (e.g. future wasm runtime).
+        // Only handle frames for THIS session's subscription. A relay multiplexes
+        // many REQs over one socket; frames for other sub ids belong to other
+        // consumers and must be ignored (matters for the step-3 browser caller
+        // that forwards raw socket text straight into `on_relay_text`).
+        if arr[1].as_str() != Some(self.sub_id.as_str()) {
+            return Vec::new();
+        }
         let event = arr[2].clone();
         self.on_relay_event(&event, now)
     }
