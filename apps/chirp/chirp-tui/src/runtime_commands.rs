@@ -251,9 +251,15 @@ impl AppRuntime {
     }
 
     pub fn post_group_message(&self, relay: &str, local_id: &str, content: &str) -> Result<String> {
+        // A group chat message is just a kind:9 event published to the group;
+        // the generic publish action injects the `h` / `previous` envelope.
         self.dispatch_action_value(
-            "nmp.nip29.post_chat_message",
-            &json!({ "group": { "host_relay_url": relay, "local_id": local_id }, "content": content }),
+            "nmp.nip29.publish_group_event",
+            &json!({
+                "group": { "host_relay_url": relay, "local_id": local_id },
+                "kind": 9,
+                "content": content,
+            }),
         )
     }
 

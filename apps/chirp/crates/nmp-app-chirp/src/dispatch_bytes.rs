@@ -91,8 +91,8 @@ fn encode_payload_for_namespace(namespace: &str, json: &str) -> Result<Vec<u8>, 
         }
         "nmp.nip29.join" => encode::<nmp_nip29::action::JoinGroupInput>(namespace, json),
         "nmp.nip29.leave" => encode::<nmp_nip29::action::LeaveGroupInput>(namespace, json),
-        "nmp.nip29.post_chat_message" => {
-            encode::<nmp_nip29::action::PostChatMessageInput>(namespace, json)
+        "nmp.nip29.publish_group_event" => {
+            encode::<nmp_nip29::action::PublishGroupEventInput>(namespace, json)
         }
         "nmp.nip29.react_in_group" => {
             encode::<nmp_nip29::action::ReactInGroupInput>(namespace, json)

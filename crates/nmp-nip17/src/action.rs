@@ -3,7 +3,7 @@
 //! This is the typed action seam a host wires into the kernel's action
 //! registry (`ActionRegistry::register::<SendDmAction>()`) so a DM send
 //! reaches the actor through the generic `dispatch_action` path — exactly
-//! like the NIP-29 `post_chat_message` action.
+//! like the NIP-29 `publish_group_event` action.
 //!
 //! # Two halves
 //!

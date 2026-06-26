@@ -4,7 +4,7 @@
 
 use crate::action::{
     CreateInviteInput, CreatePublicGroupInput, DiscoverGroupsInput, GroupAccess, GroupEventTarget,
-    GroupVisibility, JoinGroupInput, LeaveGroupInput, PostChatMessageInput, PutUserInput,
+    GroupVisibility, JoinGroupInput, LeaveGroupInput, PublishGroupEventInput, PutUserInput,
     ReactInGroupInput, RepostInGroupInput, SetParentInput, ShareEventInGroupInput,
 };
 use crate::group_id::GroupId;
@@ -27,7 +27,7 @@ fn malformed_buffers_are_rejected_for_every_payload() {
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
     assert!(matches!(
-        PostChatMessageInput::decode(b"junk"),
+        PublishGroupEventInput::decode(b"junk"),
         Err(ActionPayloadDecodeError::Malformed { .. })
     ));
     assert!(matches!(
@@ -115,12 +115,12 @@ fn wrong_file_identifier_is_rejected_for_every_payload() {
         }
     );
     assert_wrong_fid_rejected!(
-        PostChatMessageInput,
-        PostChatMessageInput {
+        PublishGroupEventInput,
+        PublishGroupEventInput {
             group: group(),
+            kind: 9,
             content: "x".to_string(),
-            previous_event_id_prefixes: Vec::new(),
-            reply_to_event_id: None,
+            tags: Vec::new(),
         }
     );
     assert_wrong_fid_rejected!(
@@ -267,12 +267,12 @@ fn wrong_schema_version_is_rejected_for_every_payload() {
         }
     );
     assert_bad_version!(
-        PostChatMessageInput,
-        PostChatMessageInput {
+        PublishGroupEventInput,
+        PublishGroupEventInput {
             group: group(),
+            kind: 9,
             content: "x".to_string(),
-            previous_event_id_prefixes: Vec::new(),
-            reply_to_event_id: None,
+            tags: Vec::new(),
         }
     );
     assert_bad_version!(

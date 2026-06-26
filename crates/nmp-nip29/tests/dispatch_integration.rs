@@ -16,27 +16,29 @@
 //! (S2 `DispatchEnvelope`) drives in production.
 
 use nmp_core::__ffi_internal::ActionRegistry;
+use nmp_core::slots::new_event_store_slot;
 use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
 
 use nmp_nip29::action::{
     CreateInviteAction, CreateInviteInput, CreatePublicGroupAction, CreatePublicGroupInput,
     GroupAccess, GroupEventTarget, GroupVisibility, JoinGroupAction, JoinGroupInput,
-    LeaveGroupAction, LeaveGroupInput, PostChatMessageAction, PostChatMessageInput, PutUserAction,
-    PutUserInput, ReactInGroupAction, ReactInGroupInput, RepostInGroupAction, RepostInGroupInput,
-    ShareEventInGroupAction, ShareEventInGroupInput,
+    LeaveGroupAction, LeaveGroupInput, PublishGroupEventAction, PublishGroupEventInput,
+    PutUserAction, PutUserInput, ReactInGroupAction, ReactInGroupInput, RepostInGroupAction,
+    RepostInGroupInput, ShareEventInGroupAction, ShareEventInGroupInput,
 };
 use nmp_nip29::GroupId;
 
 /// Register every migrated nip29 event-authoring module onto a fresh registry.
 fn registry() -> ActionRegistry {
+    let slot = new_event_store_slot();
     let mut r = ActionRegistry::new();
     r.register(JoinGroupAction);
     r.register(LeaveGroupAction);
-    r.register(PostChatMessageAction);
-    r.register(ReactInGroupAction);
+    r.register(PublishGroupEventAction::new(slot.clone()));
+    r.register(ReactInGroupAction::new(slot.clone()));
     r.register(CreatePublicGroupAction);
-    r.register(ShareEventInGroupAction);
-    r.register(RepostInGroupAction);
+    r.register(ShareEventInGroupAction::new(slot.clone()));
+    r.register(RepostInGroupAction::new(slot));
     r.register(PutUserAction);
     r.register(CreateInviteAction);
     r
@@ -114,12 +116,12 @@ fn leave() -> LeaveGroupInput {
         reason: Some("bye".into()),
     }
 }
-fn chat() -> PostChatMessageInput {
-    PostChatMessageInput {
+fn publish() -> PublishGroupEventInput {
+    PublishGroupEventInput {
         group: group(),
+        kind: 9,
         content: "hello".into(),
-        previous_event_id_prefixes: vec!["aa".into()],
-        reply_to_event_id: None,
+        tags: vec![vec!["t".into(), "nostr".into()]],
     }
 }
 fn react() -> ReactInGroupInput {
@@ -184,7 +186,7 @@ fn create_invite() -> CreateInviteInput {
 fn start_bytes_rejects_wrong_schema_version_for_every_namespace() {
     assert_bad_version_rejected("nmp.nip29.join", join().encode());
     assert_bad_version_rejected("nmp.nip29.leave", leave().encode());
-    assert_bad_version_rejected("nmp.nip29.post_chat_message", chat().encode());
+    assert_bad_version_rejected("nmp.nip29.publish_group_event", publish().encode());
     assert_bad_version_rejected("nmp.nip29.react_in_group", react().encode());
     assert_bad_version_rejected("nmp.nip29.create_public_group", create().encode());
     assert_bad_version_rejected("nmp.nip29.share_event_in_group", share().encode());
@@ -199,7 +201,7 @@ fn start_bytes_rejects_wrong_schema_version_for_every_namespace() {
 fn start_bytes_accepts_well_formed_typed_payload_for_every_namespace() {
     assert_good_accepted("nmp.nip29.join", join().encode());
     assert_good_accepted("nmp.nip29.leave", leave().encode());
-    assert_good_accepted("nmp.nip29.post_chat_message", chat().encode());
+    assert_good_accepted("nmp.nip29.publish_group_event", publish().encode());
     assert_good_accepted("nmp.nip29.react_in_group", react().encode());
     assert_good_accepted("nmp.nip29.create_public_group", create().encode());
     assert_good_accepted("nmp.nip29.share_event_in_group", share().encode());

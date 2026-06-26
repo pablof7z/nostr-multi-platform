@@ -6,7 +6,7 @@ import SwiftUI
 // First real consumer of the NIP-29 seam:
 //   • Read:  `projections["nmp.nip29.group_chat"]`, mirrored by `GroupChatStore`
 //            (registered via `nmp_app_chirp_register_group_chat`).
-//   • Write: `nmp.nip29.post_chat_message` via `KernelHandle.postChatMessage`.
+//   • Write: `nmp.nip29.publish_group_event` via `KernelHandle.postChatMessage`.
 //
 // Thin-shell rule: ZERO protocol logic here. Messages arrive newest-first
 // from the Rust `GroupChatProjection`; this view only renders them and

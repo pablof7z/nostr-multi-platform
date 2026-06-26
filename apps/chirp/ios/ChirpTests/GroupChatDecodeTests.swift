@@ -100,7 +100,7 @@ final class GroupChatDecodeTests: XCTestCase {
 
     /// `GroupId.jsonObject` produces the snake_case shape the Rust
     /// `nmp_nip29::GroupId` deserializes from — the FFI contract for both
-    /// `nmp_app_chirp_register_group_chat` and the `nmp.nip29.post_chat_message`
+    /// `nmp_app_chirp_register_group_chat` and the `nmp.nip29.publish_group_event`
     /// action payload.
     func testGroupIdMarshalsToSnakeCaseJSON() {
         let group = GroupId(

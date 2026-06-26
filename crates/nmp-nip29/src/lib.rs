@@ -19,9 +19,10 @@
 //!
 //! - [`group_id`] — `GroupId { host_relay_url, local_id }` + URI codec.
 //! - [`kinds`] — NIP-29 kind constants and the `["h", ...]` dispatch helper.
-//! - [`action`] — the 3 group-chat `ActionModule` impls (post chat message,
-//!   react, comment).
-//! - [`cache`] — `RecentGroupEvents` (previous-tag), `JoinedHostsCache`,
+//! - [`action`] — the group `ActionModule` impls, fronted by the generic
+//!   `PublishGroupEvent` (publish any event to a group), plus react / share /
+//!   repost conveniences and the lifecycle/admin actions.
+//! - [`cache`] — `previous_tag_prefix` helper, `JoinedHostsCache`,
 //!   `TofuSignerCache` (metadata-signer trust).
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
 //! - [`projection`] — `GroupChatProjection`: the read-side of a group-chat

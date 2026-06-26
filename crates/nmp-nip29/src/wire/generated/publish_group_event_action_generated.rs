@@ -165,15 +165,15 @@ pub mod nmp {
                 ds.finish()
             }
         }
-        pub enum PostChatMessagePayloadOffset {}
+        pub enum StringTagOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        pub struct PostChatMessagePayload<'a> {
+        pub struct StringTag<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
 
-        impl<'a> ::flatbuffers::Follow<'a> for PostChatMessagePayload<'a> {
-            type Inner = PostChatMessagePayload<'a>;
+        impl<'a> ::flatbuffers::Follow<'a> for StringTag<'a> {
+            type Inner = StringTag<'a>;
             #[inline]
             unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
                 Self {
@@ -182,16 +182,12 @@ pub mod nmp {
             }
         }
 
-        impl<'a> PostChatMessagePayload<'a> {
-            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-            pub const VT_GROUP: ::flatbuffers::VOffsetT = 6;
-            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
-            pub const VT_PREVIOUS_EVENT_ID_PREFIXES: ::flatbuffers::VOffsetT = 10;
-            pub const VT_REPLY_TO_EVENT_ID: ::flatbuffers::VOffsetT = 12;
+        impl<'a> StringTag<'a> {
+            pub const VT_VALUES: ::flatbuffers::VOffsetT = 4;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                PostChatMessagePayload { _tab: table }
+                StringTag { _tab: table }
             }
             #[allow(unused_mut)]
             pub fn create<
@@ -201,18 +197,144 @@ pub mod nmp {
                 A: ::flatbuffers::Allocator + 'bldr,
             >(
                 _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args PostChatMessagePayloadArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<PostChatMessagePayload<'bldr>> {
-                let mut builder = PostChatMessagePayloadBuilder::new(_fbb);
-                if let Some(x) = args.reply_to_event_id {
-                    builder.add_reply_to_event_id(x);
+                args: &'args StringTagArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<StringTag<'bldr>> {
+                let mut builder = StringTagBuilder::new(_fbb);
+                if let Some(x) = args.values {
+                    builder.add_values(x);
                 }
-                if let Some(x) = args.previous_event_id_prefixes {
-                    builder.add_previous_event_id_prefixes(x);
+                builder.finish()
+            }
+
+            #[inline]
+            pub fn values(
+                &self,
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    >>(StringTag::VT_VALUES, None)
+                }
+            }
+        }
+
+        impl ::flatbuffers::Verifiable for StringTag<'_> {
+            #[inline]
+            fn run_verifier(
+                v: &mut ::flatbuffers::Verifier,
+                pos: usize,
+            ) -> Result<(), ::flatbuffers::InvalidFlatbuffer> {
+                v.visit_table(pos)?
+                    .visit_field::<::flatbuffers::ForwardsUOffset<
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
+                    >>("values", Self::VT_VALUES, false)?
+                    .finish();
+                Ok(())
+            }
+        }
+        pub struct StringTagArgs<'a> {
+            pub values: Option<
+                ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                >,
+            >,
+        }
+        impl<'a> Default for StringTagArgs<'a> {
+            #[inline]
+            fn default() -> Self {
+                StringTagArgs { values: None }
+            }
+        }
+
+        pub struct StringTagBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+            fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
+        }
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> StringTagBuilder<'a, 'b, A> {
+            #[inline]
+            pub fn add_values(
+                &mut self,
+                values: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                >,
+            ) {
+                self.fbb_
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(StringTag::VT_VALUES, values);
+            }
+            #[inline]
+            pub fn new(
+                _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            ) -> StringTagBuilder<'a, 'b, A> {
+                let start = _fbb.start_table();
+                StringTagBuilder {
+                    fbb_: _fbb,
+                    start_: start,
+                }
+            }
+            #[inline]
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<StringTag<'a>> {
+                let o = self.fbb_.end_table(self.start_);
+                ::flatbuffers::WIPOffset::new(o.value())
+            }
+        }
+
+        impl ::core::fmt::Debug for StringTag<'_> {
+            fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
+                let mut ds = f.debug_struct("StringTag");
+                ds.field("values", &self.values());
+                ds.finish()
+            }
+        }
+        pub enum PublishGroupEventPayloadOffset {}
+        #[derive(Copy, Clone, PartialEq)]
+
+        pub struct PublishGroupEventPayload<'a> {
+            pub _tab: ::flatbuffers::Table<'a>,
+        }
+
+        impl<'a> ::flatbuffers::Follow<'a> for PublishGroupEventPayload<'a> {
+            type Inner = PublishGroupEventPayload<'a>;
+            #[inline]
+            unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+                Self {
+                    _tab: unsafe { ::flatbuffers::Table::new(buf, loc) },
+                }
+            }
+        }
+
+        impl<'a> PublishGroupEventPayload<'a> {
+            pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
+            pub const VT_GROUP: ::flatbuffers::VOffsetT = 6;
+            pub const VT_KIND: ::flatbuffers::VOffsetT = 8;
+            pub const VT_CONTENT: ::flatbuffers::VOffsetT = 10;
+            pub const VT_TAGS: ::flatbuffers::VOffsetT = 12;
+
+            #[inline]
+            pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
+                PublishGroupEventPayload { _tab: table }
+            }
+            #[allow(unused_mut)]
+            pub fn create<
+                'bldr: 'args,
+                'args: 'mut_bldr,
+                'mut_bldr,
+                A: ::flatbuffers::Allocator + 'bldr,
+            >(
+                _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
+                args: &'args PublishGroupEventPayloadArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<PublishGroupEventPayload<'bldr>> {
+                let mut builder = PublishGroupEventPayloadBuilder::new(_fbb);
+                if let Some(x) = args.tags {
+                    builder.add_tags(x);
                 }
                 if let Some(x) = args.content {
                     builder.add_content(x);
                 }
+                builder.add_kind(args.kind);
                 if let Some(x) = args.group {
                     builder.add_group(x);
                 }
@@ -227,7 +349,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(PostChatMessagePayload::VT_SCHEMA_VERSION, Some(0))
+                        .get::<u32>(PublishGroupEventPayload::VT_SCHEMA_VERSION, Some(0))
                         .unwrap()
                 }
             }
@@ -239,57 +361,52 @@ pub mod nmp {
                 unsafe {
                     self._tab
                         .get::<::flatbuffers::ForwardsUOffset<GroupRef>>(
-                            PostChatMessagePayload::VT_GROUP,
+                            PublishGroupEventPayload::VT_GROUP,
                             None,
                         )
                         .unwrap()
                 }
             }
             #[inline]
-            pub fn content(&self) -> &'a str {
+            pub fn kind(&self) -> u32 {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(
-                            PostChatMessagePayload::VT_CONTENT,
-                            None,
-                        )
+                        .get::<u32>(PublishGroupEventPayload::VT_KIND, Some(0))
                         .unwrap()
                 }
             }
             #[inline]
-            pub fn previous_event_id_prefixes(
+            pub fn content(&self) -> Option<&'a str> {
+                // Safety:
+                // Created from valid Table for this object
+                // which contains a valid value in this slot
+                unsafe {
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        PublishGroupEventPayload::VT_CONTENT,
+                        None,
+                    )
+                }
+            }
+            #[inline]
+            pub fn tags(
                 &self,
-            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>>
+            ) -> Option<::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<StringTag<'a>>>>
             {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
-                    >>(
-                        PostChatMessagePayload::VT_PREVIOUS_EVENT_ID_PREFIXES, None
-                    )
-                }
-            }
-            #[inline]
-            pub fn reply_to_event_id(&self) -> Option<&'a str> {
-                // Safety:
-                // Created from valid Table for this object
-                // which contains a valid value in this slot
-                unsafe {
-                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        PostChatMessagePayload::VT_REPLY_TO_EVENT_ID,
-                        None,
-                    )
+                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<StringTag>>,
+                    >>(PublishGroupEventPayload::VT_TAGS, None)
                 }
             }
         }
 
-        impl ::flatbuffers::Verifiable for PostChatMessagePayload<'_> {
+        impl ::flatbuffers::Verifiable for PublishGroupEventPayload<'_> {
             #[inline]
             fn run_verifier(
                 v: &mut ::flatbuffers::Verifier,
@@ -302,60 +419,52 @@ pub mod nmp {
                         Self::VT_GROUP,
                         true,
                     )?
+                    .visit_field::<u32>("kind", Self::VT_KIND, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
                         "content",
                         Self::VT_CONTENT,
-                        true,
+                        false,
                     )?
                     .visit_field::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<&'_ str>>,
-                    >>(
-                        "previous_event_id_prefixes",
-                        Self::VT_PREVIOUS_EVENT_ID_PREFIXES,
-                        false,
-                    )?
-                    .visit_field::<::flatbuffers::ForwardsUOffset<&str>>(
-                        "reply_to_event_id",
-                        Self::VT_REPLY_TO_EVENT_ID,
-                        false,
-                    )?
+                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<StringTag>>,
+                    >>("tags", Self::VT_TAGS, false)?
                     .finish();
                 Ok(())
             }
         }
-        pub struct PostChatMessagePayloadArgs<'a> {
+        pub struct PublishGroupEventPayloadArgs<'a> {
             pub schema_version: u32,
             pub group: Option<::flatbuffers::WIPOffset<GroupRef<'a>>>,
+            pub kind: u32,
             pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
-            pub previous_event_id_prefixes: Option<
+            pub tags: Option<
                 ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<&'a str>>,
+                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<StringTag<'a>>>,
                 >,
             >,
-            pub reply_to_event_id: Option<::flatbuffers::WIPOffset<&'a str>>,
         }
-        impl<'a> Default for PostChatMessagePayloadArgs<'a> {
+        impl<'a> Default for PublishGroupEventPayloadArgs<'a> {
             #[inline]
             fn default() -> Self {
-                PostChatMessagePayloadArgs {
+                PublishGroupEventPayloadArgs {
                     schema_version: 0,
-                    group: None,   // required field
-                    content: None, // required field
-                    previous_event_id_prefixes: None,
-                    reply_to_event_id: None,
+                    group: None, // required field
+                    kind: 0,
+                    content: None,
+                    tags: None,
                 }
             }
         }
 
-        pub struct PostChatMessagePayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+        pub struct PublishGroupEventPayloadBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
             fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PostChatMessagePayloadBuilder<'a, 'b, A> {
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> PublishGroupEventPayloadBuilder<'a, 'b, A> {
             #[inline]
             pub fn add_schema_version(&mut self, schema_version: u32) {
                 self.fbb_.push_slot::<u32>(
-                    PostChatMessagePayload::VT_SCHEMA_VERSION,
+                    PublishGroupEventPayload::VT_SCHEMA_VERSION,
                     schema_version,
                     0,
                 );
@@ -364,172 +473,166 @@ pub mod nmp {
             pub fn add_group(&mut self, group: ::flatbuffers::WIPOffset<GroupRef<'b>>) {
                 self.fbb_
                     .push_slot_always::<::flatbuffers::WIPOffset<GroupRef>>(
-                        PostChatMessagePayload::VT_GROUP,
+                        PublishGroupEventPayload::VT_GROUP,
                         group,
                     );
             }
             #[inline]
+            pub fn add_kind(&mut self, kind: u32) {
+                self.fbb_
+                    .push_slot::<u32>(PublishGroupEventPayload::VT_KIND, kind, 0);
+            }
+            #[inline]
             pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PostChatMessagePayload::VT_CONTENT,
+                    PublishGroupEventPayload::VT_CONTENT,
                     content,
                 );
             }
             #[inline]
-            pub fn add_previous_event_id_prefixes(
+            pub fn add_tags(
                 &mut self,
-                previous_event_id_prefixes: ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<&'b str>>,
+                tags: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<StringTag<'b>>>,
                 >,
             ) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PostChatMessagePayload::VT_PREVIOUS_EVENT_ID_PREFIXES,
-                    previous_event_id_prefixes,
-                );
-            }
-            #[inline]
-            pub fn add_reply_to_event_id(
-                &mut self,
-                reply_to_event_id: ::flatbuffers::WIPOffset<&'b str>,
-            ) {
-                self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    PostChatMessagePayload::VT_REPLY_TO_EVENT_ID,
-                    reply_to_event_id,
+                    PublishGroupEventPayload::VT_TAGS,
+                    tags,
                 );
             }
             #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> PostChatMessagePayloadBuilder<'a, 'b, A> {
+            ) -> PublishGroupEventPayloadBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
-                PostChatMessagePayloadBuilder {
+                PublishGroupEventPayloadBuilder {
                     fbb_: _fbb,
                     start_: start,
                 }
             }
             #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<PostChatMessagePayload<'a>> {
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<PublishGroupEventPayload<'a>> {
                 let o = self.fbb_.end_table(self.start_);
                 self.fbb_
-                    .required(o, PostChatMessagePayload::VT_GROUP, "group");
-                self.fbb_
-                    .required(o, PostChatMessagePayload::VT_CONTENT, "content");
+                    .required(o, PublishGroupEventPayload::VT_GROUP, "group");
                 ::flatbuffers::WIPOffset::new(o.value())
             }
         }
 
-        impl ::core::fmt::Debug for PostChatMessagePayload<'_> {
+        impl ::core::fmt::Debug for PublishGroupEventPayload<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("PostChatMessagePayload");
+                let mut ds = f.debug_struct("PublishGroupEventPayload");
                 ds.field("schema_version", &self.schema_version());
                 ds.field("group", &self.group());
+                ds.field("kind", &self.kind());
                 ds.field("content", &self.content());
-                ds.field(
-                    "previous_event_id_prefixes",
-                    &self.previous_event_id_prefixes(),
-                );
-                ds.field("reply_to_event_id", &self.reply_to_event_id());
+                ds.field("tags", &self.tags());
                 ds.finish()
             }
         }
         #[inline]
-        /// Verifies that a buffer of bytes contains a `PostChatMessagePayload`
+        /// Verifies that a buffer of bytes contains a `PublishGroupEventPayload`
         /// and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_post_chat_message_payload_unchecked`.
-        pub fn root_as_post_chat_message_payload(
+        /// `root_as_publish_group_event_payload_unchecked`.
+        pub fn root_as_publish_group_event_payload(
             buf: &[u8],
-        ) -> Result<PostChatMessagePayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root::<PostChatMessagePayload>(buf)
+        ) -> Result<PublishGroupEventPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<PublishGroupEventPayload>(buf)
         }
         #[inline]
         /// Verifies that a buffer of bytes contains a size prefixed
-        /// `PostChatMessagePayload` and returns it.
+        /// `PublishGroupEventPayload` and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `size_prefixed_root_as_post_chat_message_payload_unchecked`.
-        pub fn size_prefixed_root_as_post_chat_message_payload(
+        /// `size_prefixed_root_as_publish_group_event_payload_unchecked`.
+        pub fn size_prefixed_root_as_publish_group_event_payload(
             buf: &[u8],
-        ) -> Result<PostChatMessagePayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root::<PostChatMessagePayload>(buf)
+        ) -> Result<PublishGroupEventPayload<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<PublishGroupEventPayload>(buf)
         }
         #[inline]
         /// Verifies, with the given options, that a buffer of bytes
-        /// contains a `PostChatMessagePayload` and returns it.
+        /// contains a `PublishGroupEventPayload` and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_post_chat_message_payload_unchecked`.
-        pub fn root_as_post_chat_message_payload_with_opts<'b, 'o>(
+        /// `root_as_publish_group_event_payload_unchecked`.
+        pub fn root_as_publish_group_event_payload_with_opts<'b, 'o>(
             opts: &'o ::flatbuffers::VerifierOptions,
             buf: &'b [u8],
-        ) -> Result<PostChatMessagePayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root_with_opts::<PostChatMessagePayload<'b>>(opts, buf)
+        ) -> Result<PublishGroupEventPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<PublishGroupEventPayload<'b>>(opts, buf)
         }
         #[inline]
         /// Verifies, with the given verifier options, that a buffer of
-        /// bytes contains a size prefixed `PostChatMessagePayload` and returns
+        /// bytes contains a size prefixed `PublishGroupEventPayload` and returns
         /// it. Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_post_chat_message_payload_unchecked`.
-        pub fn size_prefixed_root_as_post_chat_message_payload_with_opts<'b, 'o>(
+        /// `root_as_publish_group_event_payload_unchecked`.
+        pub fn size_prefixed_root_as_publish_group_event_payload_with_opts<'b, 'o>(
             opts: &'o ::flatbuffers::VerifierOptions,
             buf: &'b [u8],
-        ) -> Result<PostChatMessagePayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root_with_opts::<PostChatMessagePayload<'b>>(opts, buf)
+        ) -> Result<PublishGroupEventPayload<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<PublishGroupEventPayload<'b>>(opts, buf)
         }
         #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a PostChatMessagePayload and returns it.
+        /// Assumes, without verification, that a buffer of bytes contains a PublishGroupEventPayload and returns it.
         /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid `PostChatMessagePayload`.
-        pub unsafe fn root_as_post_chat_message_payload_unchecked(
+        /// Callers must trust the given bytes do indeed contain a valid `PublishGroupEventPayload`.
+        pub unsafe fn root_as_publish_group_event_payload_unchecked(
             buf: &[u8],
-        ) -> PostChatMessagePayload<'_> {
-            unsafe { ::flatbuffers::root_unchecked::<PostChatMessagePayload>(buf) }
+        ) -> PublishGroupEventPayload<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<PublishGroupEventPayload>(buf) }
         }
         #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a size prefixed PostChatMessagePayload and returns it.
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed PublishGroupEventPayload and returns it.
         /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid size prefixed `PostChatMessagePayload`.
-        pub unsafe fn size_prefixed_root_as_post_chat_message_payload_unchecked(
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `PublishGroupEventPayload`.
+        pub unsafe fn size_prefixed_root_as_publish_group_event_payload_unchecked(
             buf: &[u8],
-        ) -> PostChatMessagePayload<'_> {
-            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<PostChatMessagePayload>(buf) }
+        ) -> PublishGroupEventPayload<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<PublishGroupEventPayload>(buf) }
         }
-        pub const POST_CHAT_MESSAGE_PAYLOAD_IDENTIFIER: &str = "N29C";
+        pub const PUBLISH_GROUP_EVENT_PAYLOAD_IDENTIFIER: &str = "N29G";
 
         #[inline]
-        pub fn post_chat_message_payload_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, POST_CHAT_MESSAGE_PAYLOAD_IDENTIFIER, false)
-        }
-
-        #[inline]
-        pub fn post_chat_message_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, POST_CHAT_MESSAGE_PAYLOAD_IDENTIFIER, true)
+        pub fn publish_group_event_payload_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, PUBLISH_GROUP_EVENT_PAYLOAD_IDENTIFIER, false)
         }
 
         #[inline]
-        pub fn finish_post_chat_message_payload_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
-            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<PostChatMessagePayload<'a>>,
-        ) {
-            fbb.finish(root, Some(POST_CHAT_MESSAGE_PAYLOAD_IDENTIFIER));
+        pub fn publish_group_event_payload_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, PUBLISH_GROUP_EVENT_PAYLOAD_IDENTIFIER, true)
         }
 
         #[inline]
-        pub fn finish_size_prefixed_post_chat_message_payload_buffer<
+        pub fn finish_publish_group_event_payload_buffer<
             'a,
             'b,
             A: ::flatbuffers::Allocator + 'a,
         >(
             fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<PostChatMessagePayload<'a>>,
+            root: ::flatbuffers::WIPOffset<PublishGroupEventPayload<'a>>,
         ) {
-            fbb.finish_size_prefixed(root, Some(POST_CHAT_MESSAGE_PAYLOAD_IDENTIFIER));
+            fbb.finish(root, Some(PUBLISH_GROUP_EVENT_PAYLOAD_IDENTIFIER));
+        }
+
+        #[inline]
+        pub fn finish_size_prefixed_publish_group_event_payload_buffer<
+            'a,
+            'b,
+            A: ::flatbuffers::Allocator + 'a,
+        >(
+            fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
+            root: ::flatbuffers::WIPOffset<PublishGroupEventPayload<'a>>,
+        ) {
+            fbb.finish_size_prefixed(root, Some(PUBLISH_GROUP_EVENT_PAYLOAD_IDENTIFIER));
         }
     } // pub mod nip29
 } // pub mod nmp
