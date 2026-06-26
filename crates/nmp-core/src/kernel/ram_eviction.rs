@@ -46,9 +46,9 @@
 //!   profile lookup, which has no store fallback.
 //!
 //! ### contacts-cache pin set (pubkey → follow list)
-//! - The pubkey is `self.active_account` (follow/unfollow actions,
-//!   `should_open_timeline`, and `register_follow_feed_for_active_account`
-//!   all read `contacts_lookup().follows(active_account)`).
+//! - The pubkey is `self.active_account` (follow/unfollow actions and the
+//!   ReducedSource active-follows feed-session compiler both read
+//!   `contacts_lookup().follows(active_account)`).
 //!
 //! ## LMDB safety
 //!

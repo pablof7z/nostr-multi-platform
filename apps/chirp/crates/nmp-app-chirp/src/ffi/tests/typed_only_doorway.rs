@@ -44,9 +44,14 @@
 //!   completes; at Cut B the JSON doorway and this allowlist both reach zero —
 //!   that is Cut B *across the full composition*, not merely the default set).
 
-use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
+use nmp_ffi::{NmpApp, nmp_app_free, nmp_app_new};
 
-use super::super::{nmp_app_chirp_register, nmp_app_chirp_unregister, ChirpHandle, NmpRegisterStatus};
+use super::super::{
+    ChirpHandle, NmpRegisterStatus, nmp_app_chirp_register, nmp_app_chirp_unregister,
+};
+
+#[cfg(feature = "marmot")]
+use super::helpers::{MarmotTestRegistration, register_marmot_for_test};
 
 /// Production Chirp modules NOT yet migrated to a typed FlatBuffers payload —
 /// they ride the JSON doorway (`nmp_app_dispatch_action`) only and are rejected
@@ -79,13 +84,36 @@ const MIGRATION_PENDING_UNTYPED: &[&str] = &[];
 #[cfg(feature = "marmot")]
 const MARMOT_PENDING_UNTYPED: &str = "nmp.marmot";
 
+struct FullChirpComposition {
+    app: *mut NmpApp,
+    handle: *mut ChirpHandle,
+    #[cfg(feature = "marmot")]
+    marmot: Option<MarmotTestRegistration>,
+}
+
+impl Drop for FullChirpComposition {
+    fn drop(&mut self) {
+        #[cfg(feature = "marmot")]
+        drop(self.marmot.take());
+
+        if !self.handle.is_null() {
+            nmp_app_chirp_unregister(self.handle);
+            self.handle = std::ptr::null_mut();
+        }
+        if !self.app.is_null() {
+            nmp_app_free(self.app);
+            self.app = std::ptr::null_mut();
+        }
+    }
+}
+
 /// Build the EXACT production Chirp composition on a fresh real [`NmpApp`]:
 /// `nmp_app_chirp_register` (= `register_defaults` + NIP-29 actions +
 /// visible-note-relations + NIP-47 wallet + zaps/group/op-feed projections),
 /// and, under `--features marmot`, the `MarmotActionModule` the iOS shell
 /// registers at sign-in. Returns the live `(app, handle)`; the caller must
 /// `nmp_app_chirp_unregister(handle)` then `nmp_app_free(app)`.
-fn build_full_chirp_composition() -> (*mut NmpApp, *mut ChirpHandle) {
+fn build_full_chirp_composition() -> FullChirpComposition {
     let app = nmp_app_new();
     assert!(!app.is_null(), "nmp_app_new returned null");
 
@@ -100,30 +128,36 @@ fn build_full_chirp_composition() -> (*mut NmpApp, *mut ChirpHandle) {
     );
     assert!(!handle.is_null(), "register returned null handle on Ok");
 
+    let mut composition = FullChirpComposition {
+        app,
+        handle,
+        #[cfg(feature = "marmot")]
+        marmot: None,
+    };
+
     // Under `--features marmot` the iOS shell additionally registers the
     // `MarmotActionModule` against the kernel action registry at sign-in
-    // (`nmp_marmot::ffi::register_with_keys` → `register_action(MarmotActionModule)`).
-    // The heavyweight Marmot SERVICE (MLS SQLite DB + keyring) is NOT needed to
-    // exercise the byte-doorway invariant — only the `ActionModule` is, and it
-    // is the same value the production path registers. Registering it directly
-    // keeps the gate faithful to the wire-reachable module set without forcing a
-    // real signer/store/keyring into a unit test.
+    // (`nmp_marmot::ffi::register_with_secret_hex` →
+    // `register_action(MarmotActionModule::new(projection))`).
+    // This gate does not drive a Marmot operation; it only needs the same
+    // action module the production registration path installs. Use the
+    // production Rust helper so the module construction stays in `nmp-marmot`
+    // and Chirp does not regain direct MDK/test-storage dependencies.
     #[cfg(feature = "marmot")]
     {
-        // SAFETY: `app` is valid and not aliased here (the register call above
-        // dropped its borrow; the handle holds only a copy of the raw pointer).
-        unsafe { &mut *app }
-            .register_action(nmp_marmot::projection::action::MarmotActionModule);
+        composition.marmot = Some(register_marmot_for_test(app, "typed-only"));
     }
 
-    (app, handle)
+    composition
 }
 
 /// Sorted expected untyped set for the composition actually built (feature
 /// dependent).
 fn expected_untyped() -> Vec<String> {
-    let mut expected: Vec<String> =
-        MIGRATION_PENDING_UNTYPED.iter().map(|s| (*s).to_string()).collect();
+    let mut expected: Vec<String> = MIGRATION_PENDING_UNTYPED
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
     #[cfg(feature = "marmot")]
     expected.push(MARMOT_PENDING_UNTYPED.to_string());
     expected.sort();
@@ -137,10 +171,10 @@ fn expected_untyped() -> Vec<String> {
 /// else is typed (ADR-0064 / #1756 — the byte doorway is typed-only).
 #[test]
 fn full_chirp_composition_untyped_modules_match_the_migration_allowlist() {
-    let (app, handle) = build_full_chirp_composition();
+    let composition = build_full_chirp_composition();
 
     // SAFETY: `app` is a valid non-null pointer with no live aliases.
-    let untyped = unsafe { &mut *app }.untyped_action_namespaces(); // already sorted
+    let untyped = unsafe { &mut *composition.app }.untyped_action_namespaces(); // already sorted
     let expected = expected_untyped();
 
     assert_eq!(
@@ -156,8 +190,7 @@ fn full_chirp_composition_untyped_modules_match_the_migration_allowlist() {
          composition)."
     );
 
-    nmp_app_chirp_unregister(handle);
-    nmp_app_free(app);
+    drop(composition);
 }
 
 /// A deliberately JSON-only module — `serde_json::Value` action, NO
@@ -188,10 +221,10 @@ impl nmp_core::substrate::ActionModule for JsonOnlyAppModule {
 /// module is reachable through the byte doorway of the real composition.
 #[test]
 fn gate_flags_a_json_only_module_added_to_the_full_composition() {
-    let (app, handle) = build_full_chirp_composition();
+    let composition = build_full_chirp_composition();
 
     // SAFETY: `app` is valid and not aliased here.
-    let app_mut = unsafe { &mut *app };
+    let app_mut = unsafe { &mut *composition.app };
     let before = app_mut.untyped_action_namespaces();
     assert_eq!(
         before,
@@ -204,7 +237,7 @@ fn gate_flags_a_json_only_module_added_to_the_full_composition() {
     );
 
     // Introduce the forbidden JSON-only shim into the real composition.
-    app_mut.register_action(JsonOnlyAppModule);
+    let _ = app_mut.register_action(JsonOnlyAppModule);
 
     let after = app_mut.untyped_action_namespaces();
     assert!(
@@ -218,6 +251,5 @@ fn gate_flags_a_json_only_module_added_to_the_full_composition() {
         "registering one JSON-only module must add EXACTLY one untyped namespace"
     );
 
-    nmp_app_chirp_unregister(handle);
-    nmp_app_free(app);
+    drop(composition);
 }

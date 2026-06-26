@@ -1,5 +1,10 @@
 # Design: Reference Nostr View Modules Catalog
 
+> **Status:** Historical catalog for the removed v2 `ViewModule` proposal. The
+> current v1 app surface uses feed sessions, registered projections/observers,
+> and ref/dependent-interest claims; do not implement new work from this catalog
+> without first translating it to those seams.
+
 This document is split into focused sections to keep each hand-authored file under the repository LOC ceiling.
 
 - [View Catalog: Template And Enumeration](view-catalog/template-and-enumeration.md)

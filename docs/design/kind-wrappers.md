@@ -235,13 +235,13 @@ Each phase ships behind real apps, never speculatively. NDK's mistake is the inv
 |---|---|
 | Decode kind 30023 in my view | `nmp_nip23::decode_article(&event)` — pure fn |
 | Publish a new article | `ArticleBuilder::new(d, content).title(t).into_unsigned(pk, ts)` → action ledger → signer → publish engine |
-| Render an article list | A `ViewModule` in `twitter-core` (or app-core) that subscribes to `kinds: [30023]` and projects `Vec<ArticleSummary>` from `ArticleRecord`s |
+| Render an article list | An app feed/session or registered projection in `twitter-core` (or app-core) opens `FeedParams` with primary kind `[30023]` and projects `Vec<ArticleSummary>` from `ArticleRecord`s |
 | Add a brand-new kind (say, my app's kind 38500 recipe events) | New module in app-core: `RecipeRecord`, `RecipeBuilder`, `RecipeDomainModule::ingest_kinds() = &[38500]` |
 | Mutate the title of an already-published article | **Not a wrapper concern.** Issue `EditArticleAction { article_addr, new_title, … }` → action handler reads the latest event, builds a *replacement* `UnsignedEvent`, publishes (NIP-23 replaceability) |
 | Decode kind 9802 with `h` tag (group highlight) vs without (web highlight) | Two modules, two decoders, two namespaces. `nmp-nip29::GroupHighlightModule` owns h-tagged; `nmp-nip84::HighlightModule` owns the rest. D4 discriminator. |
 | Use NIP-51 global bookmarks but not lists generally | Depend on `nmp-nip51` and consume `BookmarkListProjection` plus `nmp.nip51.add_bookmark` / `nmp.nip51.remove_bookmark`. The shipped slice is kind:10003 raw facts and safe read-modify-write builders; kind:30003 bookmark sets and app-specific vault organization stay out of NMP until a consuming app justifies them. |
 | Get "wrap this raw event into its typed form" in one call | **Not a kernel API.** The caller knows which module they care about; module-private decoders are the call. NDK's `wrapEvent` (`wrap.ts:78-128`) is what we explicitly don't ship. |
-| Decode or publish a NIP-68 picture post | Use `nmp_nip68::try_from_event` / `try_from_kernel_event` and `PicturePostBuilder`. Shared NIP-92 `imeta` parsing/building lives below it in `nmp-nip92-types` so future media NIPs do not import `nmp-nip68`. Open feeds with the existing generic `open_interest` filter `{"kinds":[20]}`; publish via the existing action ledger / `PublishRaw` path. No `nmp_app_open_nip68_feed` C-ABI is added. |
+| Decode or publish a NIP-68 picture post | Use `nmp_nip68::try_from_event` / `try_from_kernel_event` and `PicturePostBuilder`. Shared NIP-92 `imeta` parsing/building lives below it in `nmp-nip92-types` so future media NIPs do not import `nmp-nip68`. Open feeds with `open_feed(FeedParams)` using primary kind `[20]`, app-owned source/admission/ranking, and protocol-owned wrapper derivation; publish via the existing action ledger / `PublishRaw` path. No `nmp_app_open_nip68_feed` C-ABI is added. |
 
 ## 12. Open questions (for orchestrator)
 

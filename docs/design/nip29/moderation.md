@@ -129,7 +129,13 @@ A `private` group's 39000 is hidden from non-members. A `restricted` group rejec
 
 But what about the *client-side rendering*? If we somehow obtain a fragment of a private group's chat (e.g. from a stale cache before a membership change), do we render it?
 
-**`nmp-nip29` projection rule (private-group gate only):** A `ViewModule` for a **private** group (39000 carries the `private` marker tag) whose latest known 39002 does **not** include the current user's pubkey projects an **empty result + a "you are not (or no longer) a member of this group" diagnostic**. The cache's stale events for that group are kept for 24 hours then evicted, in case membership is restored. This prevents the "I got kicked from a private group but still see its chat" rendering bug.
+**`nmp-nip29` projection rule (private-group gate only):** A projection/read
+model for a **private** group (39000 carries the `private` marker tag) whose
+latest known 39002 does **not** include the current user's pubkey projects an
+**empty result + a "you are not (or no longer) a member of this group"
+diagnostic**. The cache's stale events for that group are kept for 24 hours then
+evicted, in case membership is restored. This prevents the "I got kicked from a
+private group but still see its chat" rendering bug.
 
 **Public groups are not gated.** A public group's metadata, members, admins, and discussions are visible to anyone — that's what `public` means in NIP-29. The room-preview flow (`feature-inventory.md` §1.1: "Preview sheet — read-only peek at name/about/picture/member count/admins before joining") requires this; gating public groups on membership would break preview.
 

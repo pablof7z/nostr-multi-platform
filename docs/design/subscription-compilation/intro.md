@@ -149,12 +149,13 @@ The app-facing feed declarations name primary content kinds (`{1}` here) and a
 reactive source. The `{1, 6}` shapes above are compiled acquisition output, not
 what the app asks for and not substrate defaults.
 
-**Worked example — address-pointer dedup across ThreadView and MetaTimeline:**
+**Worked example — address-pointer dedup across thread/comment and
+meta-subscribe projections:**
 
 ```
-Thread/read-model code for kind:1111 comment on kind:30023 article →
+Thread/comment read-model code for kind:1111 comment on kind:30023 article →
   hydrate interest { addresses: {(article_pk, 30023, "slug")} }
-Meta-timeline/highlights read model →
+Highlights/engagement meta-subscribe projection →
   hydrate interest { addresses: {(article_pk, 30023, "slug")} }
 Compiler Stage 1: both coords resolve to article_pk's write relays.
 Compiler Stage 3: Rule 7 (§3.3) unions the address sets (identical here).

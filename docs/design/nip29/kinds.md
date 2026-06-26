@@ -26,7 +26,7 @@ This is the structure the `DomainModule` impls follow (per `../nip29-crate.md` �
 - **Optional tags:** `["e", <reply-target-id>, "", "reply"]` (NIP-10-style reply marker); `["e", <root-id>, "", "root"]` for deeply-nested replies; `["p", <mentioned-pubkey>]` per mention
 - **Content:** the message body, free-form text
 - **Routing:** host relay (pin)
-- **Owner:** `nmp-nip29::GroupChatMessage` DomainModule; projected by `GroupChat` ViewModule
+- **Owner:** `nmp-nip29::GroupChatMessage` record/projection; surfaced by `GroupChat`
 - **Replaceable:** no
 - **Notes:** Highlighter's `chat.rs` is the reference impl. Empty content rejected by the framework at write time; NIP-29 itself doesn't ban it but it's a UX rule.
 
@@ -40,7 +40,7 @@ Highlighter overloads kind:11 as **two distinct event shapes** with the same wir
 - **Optional tags:** `["title", <discussion title>]`; `["image", <url>]` per attached image; `["alt", <accessibility text>]`
 - **Content:** the discussion body (markdown supported)
 - **Routing:** host relay (pin)
-- **Owner:** `nmp-nip29::GroupDiscussion` DomainModule; projected by `GroupDiscussions` ViewModule
+- **Owner:** `nmp-nip29::GroupDiscussion` record/projection; surfaced by `GroupDiscussions`
 - **Replaceable:** no
 - **Emitted by:** `PostDiscussion` ActionModule
 - **Notes:** Discussion replies in Highlighter today are NIP-22 kind:1111 comments scoped via `E`/`e` tags to the discussion event — **they do NOT carry an `h` tag** (verified against `app/core/src/comments.rs::publish_comment` and `Communities/DiscussionDetailView.swift::artifactRef = .event(id: discussion.eventId, kind: 11)`). Per the unifying rule in §4, that makes them ordinary `nmp-nip22::Comment` records (not `nmp-nip29::GroupComment`), routed per the author's NIP-65 write relays — *not* host-pinned. The discussion view's reply-thread join is a cross-crate composition done in `highlighter-core` (per `nip29-crate.md` §6's `DiscussionsWithReplyCounts`), reading from `nmp-nip22`'s public comment stream filtered to the discussion's event id. **M11.5 must preserve this behavior** to keep historical replies visible and to match the copied UI's publish path. (A future iteration could add an `h` tag to in-room comments to make them group-private, but that's a Highlighter UX decision, not an M11.5 deliverable.) The `t=discussion` marker is recognised by both Highlighter and 0xchat-style clients but is NOT in the NIP-29 spec; document the convention in the M11.5 exit-gate report and consider proposing it upstream.
@@ -54,7 +54,7 @@ Highlighter overloads kind:11 as **two distinct event shapes** with the same wir
 - **Optional tags:** `["title", …]`, `["image", …]`, `["alt", …]`, podcast-specific `["chapter", …]` arrays (per Highlighter's lift-podcast-tags convention), `["preview-audio", …]`
 - **Content:** an optional user note about why this artifact is shared
 - **Routing:** host relay (pin)
-- **Owner:** `nmp-nip29::GroupArtifact` DomainModule; projected by `GroupArtifacts` ViewModule (the Room Library lanes)
+- **Owner:** `nmp-nip29::GroupArtifact` record/projection; surfaced by `GroupArtifacts` (the Room Library lanes)
 - **Replaceable:** **No** — kind:11 is a regular Nostr event kind (not 30000-39999), so NIP-33 parameterized replacement does NOT apply. The Highlighter relay performs a *custom* upsert by `d` tag (per `artifacts.rs::publish` comment "if a duplicate kind:11 with the same `d` tag exists the relay will upsert"), but this is **relay-specific behavior**, not a Nostr protocol guarantee. `nmp-nip29`'s storage keys `GroupArtifact` by `event_id` (regular event semantics); any `d`-based dedup in projections is documented as relay-specific and applied at the projection layer, not at storage.
 - **Emitted by:** `PostArtifact` ActionModule (the "Suggest an artifact to the room" flow)
 - **Notes:** This is *Highlighter convention*, layered on the same NIP-29 routing as the discussion variant. The `t=discussion` absence + the presence of a catalog tag is the structural discriminator. `nmp-nip29` ships ingest for both shapes because the dispatch is wire-level structural; apps that don't want the artifact-share path simply don't consume the `GroupArtifacts` view.
@@ -193,7 +193,9 @@ The `p` tag is used in three distinct ways across this kind set:
 
 The `e` tag carries the target for event-targeting moderation: kind 9005 (delete-event) uses `["e", <event_id>]`, not `["p", ...]`. The `ModerationEvent` parser must look for `target_event_id` (from `e`) for 9005 and `target_pubkey` (from `p`) for 9000/9001.
 
-`nmp-nip29` ingest preserves all `p`-tag and `e`-tag bearing events in their owning DomainRecord; the View modules know which interpretation applies in their context.
+`nmp-nip29` ingest preserves all `p`-tag and `e`-tag bearing events in their
+owning record; the projections/read models know which interpretation applies
+in their context.
 
 #### Kind 16 — Generic repost into a group
 
@@ -201,10 +203,10 @@ The `e` tag carries the target for event-targeting moderation: kind 9005 (delete
 - **Optional tags:** `["p", <original_author_pubkey>]`, `["k", <reposted_kind_string>]` (typically `"9802"` for highlight reposts; per `highlights.rs::build_repost_event`)
 - **Content:** typically empty; some clients embed the reposted event JSON, but Highlighter does not
 - **Routing:** host relay (pin)
-- **Owner:** `nmp-nip29::GroupRepost` DomainModule; surfaced inside `GroupArtifacts` ViewModule
+- **Owner:** `nmp-nip29::GroupRepost` record/projection; surfaced inside `GroupArtifacts`
 - **Replaceable:** no
 - **Emitted by:** `ShareEventIntoGroup` ActionModule; also the second leg of the `publish-and-share` composed flow described in `routing.md` §6
-- **Notes:** This is NIP-18 generic repost, scoped into a group by the `h` tag. `nmp-nip29` owns this DomainModule in M11.5 because (a) no separate `nmp-nip18` crate exists yet, (b) the routing concern is the `h` tag, not the kind, (c) the surface is one domain + one action. A future `nmp-nip18` extraction would lift the *non-`h`* repost case out, leaving `nmp-nip29` owning only the `h`-tagged variant.
+- **Notes:** This is NIP-18 generic repost, scoped into a group by the `h` tag. `nmp-nip29` owns this record/projection in M11.5 because (a) no separate `nmp-nip18` crate exists yet, (b) the routing concern is the `h` tag, not the kind, (c) the surface is one record + one action. A future `nmp-nip18` extraction would lift the *non-`h`* repost case out, leaving `nmp-nip29` owning only the `h`-tagged variant.
 
 ## 4. The unifying ownership rule
 

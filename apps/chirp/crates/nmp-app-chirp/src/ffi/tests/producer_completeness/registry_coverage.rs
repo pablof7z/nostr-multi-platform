@@ -52,22 +52,23 @@
 //! `recv_timeout` is a blocking wait on a real channel, not a sleep loop.
 
 use std::collections::BTreeSet;
-use std::ffi::{c_void, CString};
-use std::sync::mpsc::{channel, Sender};
+use std::ffi::{CString, c_void};
+use std::sync::mpsc::{Sender, channel};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use nmp_codegen::swift_projections_registry::SNAPSHOT_PROJECTIONS;
 use nmp_core::decode_snapshot_envelope;
-use nmp_ffi::{
-    nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start, NmpApp,
-};
+use nmp_ffi::{NmpApp, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nmp_app_start};
 
 use super::super::super::{
     nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
     nmp_app_chirp_register_group_chat, nmp_app_chirp_unregister,
 };
+
+#[cfg(feature = "marmot")]
+use super::super::helpers::register_marmot_for_test;
 
 /// `extern "C"` callbacks cannot capture; park the frame `Sender` in a static
 /// and forward every emitted frame's bytes through it (the V-82 test pattern).
@@ -145,9 +146,11 @@ fn every_codegen_registry_key_is_registered_at_runtime() {
     // `nmp.nip29.group_chat` key was in the codegen registry but never in the
     // runtime keyset.
     let group_id =
-        CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"abcd"}"#)
-            .unwrap();
+        CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"abcd"}"#).unwrap();
     nmp_app_chirp_register_group_chat(app, group_id.as_ptr());
+
+    #[cfg(feature = "marmot")]
+    let marmot = register_marmot_for_test(app, "registry-coverage");
 
     // Runtime keyset: Tier-1 typed sidecar closures ∪ the Tier-2 kernel built-ins.
     // Use `registered_typed_projection_keys()` (returns registered keys WITHOUT
@@ -219,6 +222,8 @@ fn every_codegen_registry_key_is_registered_at_runtime() {
     if !discovery_handle.is_null() {
         nmp_app_chirp_close_group_discovery(discovery_handle);
     }
+    #[cfg(feature = "marmot")]
+    drop(marmot);
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);
 }

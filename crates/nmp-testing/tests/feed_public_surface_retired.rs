@@ -57,6 +57,10 @@ fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+fn binary_contains(bytes: &[u8], needle: &[u8]) -> bool {
+    bytes.windows(needle.len()).any(|window| window == needle)
+}
+
 /// A code line that is NOT a `//` comment (we allow retired symbols to be NAMED
 /// in comments documenting their removal). Returns the code portion only.
 fn code_only(line: &str) -> &str {
@@ -65,6 +69,41 @@ fn code_only(line: &str) -> &str {
         return "";
     }
     line
+}
+
+#[test]
+fn checked_in_native_libs_do_not_export_contact_feed_symbols() {
+    // The source scan below is not enough: the gallery Android JNI library is
+    // tracked as a prebuilt `.so`, and a stale binary can keep exporting a
+    // deleted public symbol. Scan bytes directly so the gate does not depend on
+    // platform-specific `nm` availability.
+    const RETIRED_C_SYMBOLS: &[&str] = &["nmp_app_open_contact_feed", "nmp_app_close_contact_feed"];
+
+    let root = repo_root();
+    let libs =
+        [root
+            .join("apps/nmp-gallery/android/app/src/main/jniLibs/arm64-v8a/libnmp_app_gallery.so")];
+
+    let mut violations = Vec::new();
+    for lib in libs {
+        let bytes = fs::read(&lib).unwrap_or_else(|err| {
+            panic!(
+                "{} must be readable for public-surface scan: {err}",
+                lib.display()
+            )
+        });
+        for sym in RETIRED_C_SYMBOLS {
+            if binary_contains(&bytes, sym.as_bytes()) {
+                violations.push(format!("{} contains {sym}", lib.display()));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "retired contact-feed C-ABI symbols remain in checked-in native libs:\n{}",
+        violations.join("\n")
+    );
 }
 
 #[test]

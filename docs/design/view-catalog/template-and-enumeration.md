@@ -4,17 +4,22 @@
 
 # Design: View Catalog
 
-> **Audience:** Framework contributors building reference Nostr protocol modules. Each view kind below is a `ViewModule` shipped in a reusable protocol crate such as `nmp-nip01`, `nmp-nip10`, `nmp-nip25`, `nmp-nip65`, or `nmp-nip17`.
+> **Audience:** Historical reference for the removed v2 `ViewModule` catalog.
+> Current v1 work should translate these view ideas into feed sessions,
+> registered projections/observers, and ref/dependent-interest claims.
 
-> **Status:** Rev 2, reframed per ADR-0009. These view kinds are not in `nmp-core`; apps consume them by adding the owning module crate to `nmp.toml` and regenerating the per-app FFI crate.
+> **Status:** Historical Rev 2. The `ViewModule` trait and per-app FFI-codegen
+> crate model did not ship.
 
 > **Prerequisites:** `product-spec.md` §7.6, `reactivity.md`, `kernel-substrate.md` §3, ADR-0005, ADR-0010.
 
 ---
 
-## 1. Per-view-kind template
+## 1. Retired per-view-kind template
 
-Every reference Nostr view module lives in a `nmp-nip*` crate and implements `ViewModule` from `nmp-core::substrate`:
+The retired Rev 2 design placed every reference Nostr view module in a
+`nmp-nip*` crate and had it implement `ViewModule` from
+`nmp-core::substrate`:
 
 ```
 crates/nmp-<protocol>/src/views/<kind>.rs

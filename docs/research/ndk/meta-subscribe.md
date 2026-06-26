@@ -118,11 +118,19 @@ close consumer
   -> owner releases pointer interest and dependent target children
 ```
 
-The existing `InterestShape` already has `event_ids` and `addresses`, so the
-event/address flavor of metaSubscribe composes with the planner today. #2092
-extends the same family of mechanics to source reductions whose output is an
-author or tag-value set, so home/follow feeds, mute-list feeds, follow-pack
-feeds, and pointer-target hydration stop being separate bespoke paths.
+The substrate already has the right low-level shape for target hydration:
+`InterestShape` carries `event_ids` and `addresses`, and those shapes route
+through the same planner/registry/cache path as other interests. What is still
+not complete is the full `$metaSubscribe` read model: the pointer-source owner,
+target-set replacement lifecycle, `pointedBy` reverse index, and projection
+sort modes. That work should be a follow-up on the existing ref/dependent-
+interest seams, not a revival of `ViewModule` or an out-of-band fetch lane.
+Tracked follow-up: #2113.
+
+#2092 generalizes the adjacent ReducedSource family whose reduced output is an
+author or tag-value set, so home/follow feeds, mute-list feeds, and follow-pack
+feeds stop being separate bespoke paths. Pointer-target hydration composes with
+that family but remains its own read-model follow-up.
 
 ## 8. Test surface
 
