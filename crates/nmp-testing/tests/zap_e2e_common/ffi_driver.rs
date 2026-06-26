@@ -15,8 +15,6 @@
 //!
 //! - `"wallet"` — Tier-1 host-registered; decoded via
 //!   `nmp_nip47::decode_wallet_status`.
-//! - `"nmp.nip57.zaps"` — Tier-1 host-registered; decoded via
-//!   `nmp_nip57::decode_zaps_snapshot`.
 //! - `"action_lifecycle"` — Tier-2 kernel built-in; only present in the
 //!   emitted frame bytes. The last frame is cached per-app by `on_emit`
 //!   (in `FRAME_CACHE`) and decoded via
@@ -115,7 +113,6 @@ fn last_frame_bytes(app: *mut NmpApp) -> Option<Vec<u8>> {
 ///
 /// Dispatch table:
 /// - `"wallet"` — Tier-1 typed: `nmp_nip47::decode_wallet_status`
-/// - `"nmp.nip57.zaps"` — Tier-1 typed: `nmp_nip57::decode_zaps_snapshot`
 /// - `"action_lifecycle"` — Tier-2 built-in from frame bytes:
 ///   `nmp_core::typed_projections::decode_action_lifecycle`
 /// - `"last_error_toast"` — Tier-3 envelope field from frame bytes
@@ -131,15 +128,6 @@ pub fn read_projection(app: *mut NmpApp, key: &str) -> Option<serde_json::Value>
                 .find(|p| p.key == "wallet" && !p.payload.is_empty())?;
             let status = nmp_nip47::decode_wallet_status(&entry.payload).ok()?;
             serde_json::to_value(status).ok()
-        }
-        "nmp.nip57.zaps" => {
-            let projections = app_ref.run_typed_snapshot_projections();
-            let entry = projections
-                .iter()
-                .find(|p| p.key == "nmp.nip57.zaps" && !p.payload.is_empty())?;
-            let snap =
-                nmp_nip57::decode_zaps_snapshot(&entry.payload).ok()?;
-            serde_json::to_value(snap).ok()
         }
         "action_lifecycle" => {
             // Tier-2 built-in: only present in the emitted frame bytes, not in

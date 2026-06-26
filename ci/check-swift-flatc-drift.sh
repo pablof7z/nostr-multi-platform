@@ -101,7 +101,6 @@ MAPPINGS=(
     "crates/nmp-nip29/schema/group_defaults.fbs|group_defaults_generated.swift|GroupDefaults.generated.swift"
     "crates/nmp-nip47/schema/wallet_status.fbs|wallet_status_generated.swift|WalletStatus.generated.swift"
     "crates/nmp-nip50/schema/search_results.fbs|search_results_generated.swift|SearchResults.generated.swift"
-    "crates/nmp-nip57/schema/zaps.fbs|zaps_generated.swift|Zaps.generated.swift"
 )
 
 TMP_DIR="$(mktemp -d)"

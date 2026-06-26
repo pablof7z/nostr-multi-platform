@@ -11,15 +11,16 @@ use super::*;
 /// silent.
 #[test]
 fn registry_size_is_locked() {
-    // 29 entries: 31 (the #1610 baseline) minus 2 old-surface entries removed
+    // 28 entries: 31 (the #1610 baseline) minus 2 old-surface entries removed
     // in ADR-0063 Lane H (#1671): `claimed_profiles` (KCPR) and
     // `resolved_profiles` (KRPR). Profile data is now served via the
-    // refs.profile KPRF NRRD row-delta sidecar.
+    // refs.profile KPRF NRRD row-delta sidecar; minus the deleted global
+    // zaps sidecar (#2091).
     // Bump this (and add a new SnapshotProjectionEntry above) when a new
     // projection is wired.
     assert_eq!(
         SNAPSHOT_PROJECTIONS.len(),
-        29,
+        28,
         "registry size changed — regenerate KernelTypes.generated.swift and update this test"
     );
 }
@@ -67,7 +68,7 @@ fn all_dotted_keys_are_present() {
         .map(|e| e.key)
         .filter(|k| k.contains('.'))
         .collect();
-    // Ten dotted keys. `nmp.feed.home` is a NOFS typed sidecar decoded by
+    // Nine dotted keys. `nmp.feed.home` is a NOFS typed sidecar decoded by
     // the hand-written `TypedHomeFeedDecoder` (`swift_reader_type: None`) —
     // not a JSON `SnapshotProjections` field, so it has no `XCTAssertNotNil`
     // in the Swift conformance test, but it IS a dotted registry key.
@@ -77,7 +78,6 @@ fn all_dotted_keys_are_present() {
         "nmp.nip29.group_defaults",
         "nmp.nip17.dm_inbox",
         "nmp.follow_list",
-        "nmp.nip57.zaps",
         "nmp.nip17.dm_relay_list",
         "nmp.marmot.snapshot",
         "nmp.marmot.messages",

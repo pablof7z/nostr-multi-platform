@@ -124,12 +124,16 @@ for the update stream.
 
 **What it is.** A snapshot projection is a named slice of app- or module-owned
 state, keyed by a dotted `nmp.*` namespace (e.g. `nmp.feed.home`,
-`nmp.nip57.zaps`, `nmp.follow_list`), that rides the kernel's reactive snapshot
+`nmp.nip29.group_chat`, `nmp.follow_list`), that rides the kernel's reactive snapshot
 push frame ([06 — Reactivity contract](06-reactivity-contract.md)) into the host.
 The kernel pushes a **whole frame every emit tick when state changed**; hosts
 decode the binary `UpdateFrame`, apply its `SnapshotEnvelope` fields, then read
 projection sidecars by key. **No polling, no pull symbol** — render state arrives
 on the callback path as part of the same frame as every other field.
+
+Do not model zap counts as a global snapshot projection. Zap counts are
+visible-note relation data: the owning card or detail view claims a bounded
+`nmp.nip01.visible_note_relations` interest for its `#e=<event_id>` target.
 
 ### Production seam — `register_typed_snapshot_projection`
 

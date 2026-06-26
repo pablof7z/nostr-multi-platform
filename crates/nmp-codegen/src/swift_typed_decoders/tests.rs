@@ -81,7 +81,8 @@ fn emitted_decoder_decodes_into_the_flatc_reader_type() {
 fn emitted_decoder_returns_domain_type_and_delegates_to_glue() {
     let out = render_typed_decoders(&mixed_registry());
     // Domain return type from swift_type.
-    assert!(out.contains("static func decode(from projections: [TypedProjectionEnvelope]) -> String? {"));
+    assert!(out
+        .contains("static func decode(from projections: [TypedProjectionEnvelope]) -> String? {"));
     assert!(out.contains("static func decode(bytes: Data) -> String? {"));
     // Hand-written glue seam — NOT generated, called by name.
     assert!(
@@ -94,14 +95,20 @@ fn emitted_decoder_returns_domain_type_and_delegates_to_glue() {
 fn output_is_deterministic() {
     let a = render_typed_decoders(&mixed_registry());
     let b = render_typed_decoders(&mixed_registry());
-    assert_eq!(a, b, "renderer must be byte-deterministic for the --check gate");
+    assert_eq!(
+        a, b,
+        "renderer must be byte-deterministic for the --check gate"
+    );
 }
 
 #[test]
 fn output_ends_with_single_newline() {
     let out = render_typed_decoders(&mixed_registry());
     assert!(out.ends_with('\n'), "file must end with a newline");
-    assert!(!out.ends_with("\n\n"), "file must not end with a blank line");
+    assert!(
+        !out.ends_with("\n\n"),
+        "file must not end with a blank line"
+    );
 }
 
 #[test]
@@ -122,7 +129,10 @@ fn empty_when_no_reader_bindings() {
 #[test]
 fn decoder_enum_name_capitalizes_first_letter() {
     assert_eq!(decoder_enum_name("accounts"), "TypedAccountsDecoder");
-    assert_eq!(decoder_enum_name("activeAccount"), "TypedActiveAccountDecoder");
+    assert_eq!(
+        decoder_enum_name("activeAccount"),
+        "TypedActiveAccountDecoder"
+    );
     assert_eq!(decoder_enum_name("wallet"), "TypedWalletDecoder");
 }
 
@@ -132,7 +142,7 @@ fn decoder_enum_name_capitalizes_first_letter() {
 /// keys (`configured_relays`, `relay_role_options`, `outbox_summary`,
 /// `publish_outbox`, `publish_queue`), the Wave B batch #3 diagnostics +
 /// action-lifecycle keys (`relay_diagnostics`, `action_lifecycle`), plus the
-/// Wave B Tier-1 #4 app-projection keys (`nmp.follow_list`, `nmp.nip57.zaps`,
+/// Wave B Tier-1 #4 app-projection keys (`nmp.follow_list`,
 /// `nmp.nip29.group_chat`, `nmp.nip29.discovered_groups`). If a future PR adds a
 /// reader binding to another entry, this test fails loudly — a reminder to
 /// regenerate the Swift and update this expectation.
@@ -154,7 +164,10 @@ fn real_registry_emits_exactly_the_proof_keys() {
     // Wave B Tier-1 #4 app-projection keys (dotted producer keys; the enum name
     // derives from `swift_field`, so `followList` → `TypedFollowListDecoder`).
     assert!(out.contains("enum TypedFollowListDecoder {"));
-    assert!(out.contains("enum TypedZapsDecoder {"));
+    assert!(
+        !out.contains("enum TypedZapsDecoder {"),
+        "global zaps projection deleted — #2091"
+    );
     assert!(out.contains("enum TypedGroupChatDecoder {"));
     assert!(out.contains("enum TypedDiscoveredGroupsDecoder {"));
     // #626: crate-owned NIP-29 group-create defaults (`groupDefaults` →
@@ -164,8 +177,14 @@ fn real_registry_emits_exactly_the_proof_keys() {
     // (ADR-0063). The old claimed_profiles (KCPR) and resolved_profiles (KRPR)
     // JSON-snapshot decoders are deleted in Lane H.
     assert!(out.contains("enum TypedProfileDecoder {"));
-    assert!(!out.contains("enum TypedClaimedProfilesDecoder {"), "claimed_profiles deleted — ADR-0063 Lane H");
-    assert!(!out.contains("enum TypedResolvedProfilesDecoder {"), "resolved_profiles deleted — ADR-0063 Lane H");
+    assert!(
+        !out.contains("enum TypedClaimedProfilesDecoder {"),
+        "claimed_profiles deleted — ADR-0063 Lane H"
+    );
+    assert!(
+        !out.contains("enum TypedResolvedProfilesDecoder {"),
+        "resolved_profiles deleted — ADR-0063 Lane H"
+    );
     // NIP-17 DM cluster + claimed-event map. The enum name derives from
     // `swift_field`, so the dotted producer keys map to camelCase decoders.
     assert!(out.contains("enum TypedDmInboxDecoder {"));
@@ -188,8 +207,14 @@ fn real_registry_emits_exactly_the_proof_keys() {
     // V-112 (ADR-0042): author_view / thread_view deleted from registry.
     assert!(out.contains("enum TypedActionResultsDecoder {"));
     assert!(out.contains("enum TypedActionStagesDecoder {"));
-    assert!(!out.contains("enum TypedAuthorViewDecoder {"), "author_view deleted — V-112");
-    assert!(!out.contains("enum TypedThreadViewDecoder {"), "thread_view deleted — V-112");
+    assert!(
+        !out.contains("enum TypedAuthorViewDecoder {"),
+        "author_view deleted — V-112"
+    );
+    assert!(
+        !out.contains("enum TypedThreadViewDecoder {"),
+        "thread_view deleted — V-112"
+    );
     let emitted = SNAPSHOT_PROJECTIONS
         .iter()
         .filter(|e| {
@@ -200,13 +225,13 @@ fn real_registry_emits_exactly_the_proof_keys() {
         })
         .count();
     assert_eq!(
-        emitted, 28,
-        "exactly 28 keys have a checked-in flatc --swift reader binding \
+        emitted, 27,
+        "exactly 27 keys have a checked-in flatc --swift reader binding \
          today (accounts + active_account from PR #1039; the Wave B batch #2: \
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
          relay_diagnostics, action_lifecycle; the Wave B Tier-1 #4: \
-         nmp.follow_list, nmp.nip57.zaps, nmp.nip29.group_chat, \
+         nmp.follow_list, nmp.nip29.group_chat, \
          nmp.nip29.discovered_groups; the profile cluster: profile; \
          ADR-0063 Lane H: claimed_profiles + resolved_profiles DELETED; \
          the NIP-17 DM cluster: \
@@ -215,11 +240,10 @@ fn real_registry_emits_exactly_the_proof_keys() {
          push-projection cluster: nmp.marmot.snapshot, nmp.marmot.messages; \
          plus the wallet (producer field-add) + settings_hub (kernel built-in) \
          flips; Wave C: action_results, action_stages; signer_state \
-         (ADR-0048 D6, generalised from V-14 bunker_connection_state); V-112 \
-         author_view + thread_view deleted = 30 - 2 = 28; #626: \
-         nmp.nip29.group_defaults = 28 + 1 = 29; #1283 Phase 1: \
-         claimed_event_embeds (NEMB) = 29 + 1 = 30; ADR-0063 Lane H: \
-         - 2 = 28); if this changed, \
+         (ADR-0048 D6, generalised from V-14 bunker_connection_state); \
+         #626: nmp.nip29.group_defaults; #1283 Phase 1: \
+         claimed_event_embeds (NEMB); #2091: global zaps sidecar deleted; \
+         if this changed, \
          regenerate TypedProjectionDecoders.generated.swift and update this test"
     );
 }
@@ -234,8 +258,12 @@ fn check_typed_decoders_length_diff_reports_first_diff_line_not_none() {
     generate_typed_decoders(&out).expect("write");
     let full = std::fs::read_to_string(&out).expect("read");
     let line_count = full.lines().count();
-    let truncated: String =
-        full.lines().take(line_count - 1).collect::<Vec<_>>().join("\n") + "\n";
+    let truncated: String = full
+        .lines()
+        .take(line_count - 1)
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
     std::fs::write(&out, &truncated).expect("truncate");
     let result = check_typed_decoders(&out).expect("check");
     assert!(!result.up_to_date, "truncated file must be stale");

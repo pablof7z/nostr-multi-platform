@@ -125,7 +125,6 @@
 		A40672B13026E9B94EC7E65A /* FollowList.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6138CF89212823876CA2EC /* FollowList.generated.swift */; };
 		A4D78531938555278B719582 /* AccountsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F9E4580C1A561577607FE7A /* AccountsView.swift */; };
 		A6D95634F72D197923BC4F21 /* NostrContentGrouping.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE8AC3C9D7E8BFDA3A272490 /* NostrContentGrouping.swift */; };
-		A96ACA705B7D372CFB336CAB /* Zaps.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7AB8ECBADFA1F6DFAD7C8885 /* Zaps.generated.swift */; };
 		AB43B649AEF283F6AB9EE648 /* TypedProjectionGlue+Refs.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7E633869A6C7E9E35B95F02 /* TypedProjectionGlue+Refs.swift */; };
 		AC54835CF70CDC28555DB2F0 /* NostrProfileName.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3272FC46083B4B1DBE320AA8 /* NostrProfileName.swift */; };
 		AD0B7E93729F229EA02B15E8 /* NostrContentHighlights.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47F59AD225862EA4C0CDC371 /* NostrContentHighlights.swift */; };
@@ -300,7 +299,6 @@
 		7647A55525529ED256916F3F /* OpFeedRepostDecoderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpFeedRepostDecoderTests.swift; sourceTree = "<group>"; };
 		77FC3EFCACD228C1E20F7FC4 /* KernelUpdateResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KernelUpdateResult.swift; sourceTree = "<group>"; };
 		783F02654D52CA1DACFDCC32 /* TypedProjectionGlue+RelayDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TypedProjectionGlue+RelayDiagnostics.swift"; sourceTree = "<group>"; };
-		7AB8ECBADFA1F6DFAD7C8885 /* Zaps.generated.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Zaps.generated.swift; sourceTree = "<group>"; };
 		7BA43E598F11A1CE9FEC7D6F /* SettingsHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsHubView.swift; sourceTree = "<group>"; };
 		7CE028B856FE7D32538CE605 /* ModularTimelineBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModularTimelineBridge.swift; sourceTree = "<group>"; };
 		7D6ADE8B08D5ABD0EA510EDC /* NoteRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NoteRowView.swift; sourceTree = "<group>"; };
@@ -499,7 +497,6 @@
 				963FD6DE472A7F2DE345A656 /* TimelineSnapshot.generated.swift */,
 				AFCE56EF6CC2D5CB4D646C2D /* TypedProjectionDecoders.generated.swift */,
 				091F2859D4156C6921500EFE /* WalletStatus.generated.swift */,
-				7AB8ECBADFA1F6DFAD7C8885 /* Zaps.generated.swift */,
 			);
 			path = Generated;
 			sourceTree = "<group>";
@@ -1086,7 +1083,6 @@
 				5A64FFA65566FF2762F1A8B7 /* WalletView.swift in Sources */,
 				9E808639BB9728758172B8C0 /* WireSubscriptionDetailView.swift in Sources */,
 				2F40E77B3C6CC81D2E954470 /* ZapAmountSheet.swift in Sources */,
-				A96ACA705B7D372CFB336CAB /* Zaps.generated.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -9,8 +9,8 @@
 //!   builds one. Surface: [`ZapReceiptRecord`] + [`try_from_event`] decoder,
 //!   plus a minimal [`bolt11::amount_msats`] HRP parser for the
 //!   authoritative payment amount.
-//! - **`ZapsView`** — reactive aggregate (total msats, zappers) keyed by a
-//!   zapped event id.
+//! - **`ZapsView`** — scoped, single-target receipt view keyed by a zapped
+//!   event id.
 
 pub mod action;
 pub mod bolt11;
@@ -22,7 +22,6 @@ pub mod kinds;
 #[cfg(feature = "native")]
 pub mod lnurl;
 pub mod pending;
-pub mod projection;
 pub mod view;
 pub mod wire;
 
@@ -39,12 +38,7 @@ pub use pending::{
     active_pending_zap_registry, new_pending_zap_registry, try_from_kernel_event_validated,
     PendingZapRegistry, PendingZapRegistryHandle, ZapReceiptProviderMismatch,
 };
-pub use projection::{ZapCount, ZapsAggregateProjection, ZapsAggregateSnapshot};
 pub use view::{ZapEntry, ZapsDelta, ZapsPayload, ZapsSpec, ZapsState, ZapsView};
-pub use wire::typed_fb::{
-    decode_zaps_snapshot, encode_zaps_snapshot, FILE_IDENTIFIER as ZAPS_FILE_IDENTIFIER,
-    SCHEMA_ID as ZAPS_SCHEMA_ID, SCHEMA_VERSION as ZAPS_SCHEMA_VERSION,
-};
 
 /// Register the NIP-57 zap action module as a yielding default, with NO payment
 /// port wired (ADR-0049 Part 1: an app may pre-empt it regardless of call
@@ -82,4 +76,5 @@ pub fn register_zap_with_payment_port(
 
 // `nmp-nip57` exposes `ZapsView` as a plain public type whose `open` /
 // `on_event_*` / `snapshot` inherent methods are reached via static dispatch.
-// The live extension path is `KernelEventObserver` — see `nmp_core::substrate` docs.
+// Timeline/card counts should claim visible-note relations through
+// `nmp-relations`, not a process-wide zap aggregate.

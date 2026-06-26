@@ -69,6 +69,9 @@ a second source of truth.
 Projection payloads carry protocol facts and bounded state. Presentation
 formatting belongs to the platform shell.
 
+Zap totals are visible-target relation counts. NMP must not expose an
+app-lifetime or process-wide zap aggregate projection.
+
 ## Capabilities
 
 Capabilities report native facts: keychain results, external signer returns,

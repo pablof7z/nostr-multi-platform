@@ -171,42 +171,6 @@ struct GroupDefaultsSnapshot: Decodable, Equatable {
     static let empty = GroupDefaultsSnapshot(suggestedRelayUrl: "")
 }
 
-// ─── NIP-57 zap aggregate read model ──────────────────────────────────────
-//
-// Mirror of `nmp-nip57`'s `ZapsAggregateSnapshot` / `ZapCount` — the shape
-// the `ZapsAggregateProjection` serialises under the snapshot key
-// `"nmp.nip57.zaps"`. Thin-shell rule: these are pure DTOs. The Rust
-// projection owns ALL protocol logic — kind:9735 receipt decoding, bolt11
-// amount parsing, per-target grouping, and per-receipt dedupe. Swift never
-// re-derives `count` or `totalMsats` from raw events.
-
-/// Aggregate zap totals for a single target event. `totalMsats` sums the
-/// authoritative bolt11 amount of every distinct receipt indexed under the
-/// target; `count` is the number of distinct receipts. A receipt whose
-/// amount could not be parsed contributes `0` msats but still increments
-/// `count` — the zap *happened*, the amount is just unknown.
-///
-/// No explicit `CodingKeys`: the top-level `.convertFromSnakeCase` strategy
-/// (inherited by every nested type) maps the kernel's `"total_msats"` to
-/// `totalMsats` automatically.
-struct ZapCount: Decodable, Equatable {
-    let totalMsats: UInt64
-    let count: UInt32
-}
-
-/// The serialised read-model a timeline-zap-count surface consumes.
-/// `totals` maps a zapped event id (hex) to its running `ZapCount`. The
-/// wrapper struct (rather than a bare map at the top level) mirrors the
-/// Rust shape and leaves room for sibling fields without a breaking
-/// re-shape.
-struct ZapsAggregateSnapshot: Decodable, Equatable {
-    /// `target_event_id (hex) → ZapCount`. Empty when the projection has
-    /// been registered but no kind:9735 receipts have arrived yet.
-    let totals: [String: ZapCount]
-
-    static let empty = ZapsAggregateSnapshot(totals: [:])
-}
-
 // ─── NIP-17 DM relay-list read model ─────────────────────────────────────
 //
 // Mirror of the `DmRelayListSnapshot` the `DmRuntimeController` serialises

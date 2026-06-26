@@ -82,12 +82,10 @@ final class KernelModel: ObservableObject, NostrProfileHost {
     @Published var typedActionLifecycle: ActionLifecycleSnapshot?
 
     /// V6 Stage 4 (Wave B Tier-1 #4) typed slots for the app-projection keys
-    /// (`NF02` / `NZAP` / `NGCS` / `NDGS`). `typedZaps` is read through the
-    /// `zaps` accessor; the other three feed their dedicated stores
+    /// (`NF02` / `NGCS` / `NDGS`). These feed their dedicated stores
     /// (`FollowListStore` / `GroupChatStore` / `DiscoveredGroupsStore`) from the
     /// SAME typed value in `apply(result:)`, so store and accessor never diverge.
     @Published var typedFollowList: FollowListSnapshot?
-    @Published var typedZaps: ZapsAggregateSnapshot?
     @Published var typedGroupChat: GroupChatSnapshot?
     @Published var typedDiscoveredGroups: DiscoveredGroupsSnapshot?
     /// Typed `nmp.nip29.group_defaults` sidecar (`NGDF`, #626/#1924) — the

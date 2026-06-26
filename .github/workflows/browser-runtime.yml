@@ -1,0 +1,162 @@
+name: browser-runtime
+
+# CI gates for crates/nmp-browser-runtime (issue #2081, epic #2045).
+#
+# nmp-browser-runtime is built two ways in this repo:
+#
+#   Mode A — wasm-shaped (default features):
+#     `cargo build -p nmp-browser-runtime`
+#     All deps use `default-features = false`, so native-only crates (mio, lmdb,
+#     nmp-nip01, nmp-nip47, nmp-ffi, …) are absent from the feature graph.
+#     This is the shape the actual wasm32 binary will have, validated on the
+#     host target so secp256k1-sys' C wasm sysroot requirement is not a blocker.
+#
+#   Mode B — feature-unified (nmp-defaults default features):
+#     `cargo build -p nmp-browser-runtime -p nmp-defaults`
+#     nmp-defaults pulls in the native-feature variants of nmp-core and shared
+#     crates (lmdb, nmp-nip01 subscribers, NWC, …).  This is the build shape
+#     used by the desktop/server runtime that shares the same nmp-core.
+#     Catching non-exhaustive `cfg`-enum match arms requires both modes because
+#     native cfg arms are only reachable in Mode B.
+#
+# Why a true wasm32-unknown-unknown build is deferred:
+#   secp256k1-sys 0.10 requires a C wasm toolchain (clang + wasm-ld / emcc) to
+#   build the vendored secp256k1 C library.  The ubuntu-latest runner ships
+#   neither clang-wasm nor the Emscripten SDK, so `cargo build --target
+#   wasm32-unknown-unknown` fails at the C compilation step, not at the Rust
+#   level.  Setting up wasm-pack + clang-wasm is feasible but adds ~3 min of
+#   toolchain install to every PR.  The wasm32-smoke job below is kept as a
+#   self-documenting non-blocking marker; flipping it to a real gate later is a
+#   one-line change (`continue-on-error: false` + toolchain install steps).
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/browser-runtime.yml"
+      - "crates/nmp-browser-runtime/**"
+      - "crates/nmp-network/**"
+      - "crates/nmp-signers/**"
+      - "crates/nmp-signer-iface/**"
+      - "crates/nmp-defaults/**"
+      - "crates/nmp-substrate-defaults/**"
+      - "crates/nmp-store/**"
+      - "crates/nmp-core/**"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/browser-runtime.yml"
+      - "crates/nmp-browser-runtime/**"
+      - "crates/nmp-network/**"
+      - "crates/nmp-signers/**"
+      - "crates/nmp-signer-iface/**"
+      - "crates/nmp-defaults/**"
+      - "crates/nmp-substrate-defaults/**"
+      - "crates/nmp-store/**"
+      - "crates/nmp-core/**"
+
+jobs:
+  # Mode A — wasm-shaped feature graph (native crates absent).
+  # Validates the crate compiles and is lint-clean when all deps use
+  # `default-features = false`, matching the wasm32 production feature graph.
+  wasm-shaped:
+    name: nmp-browser-runtime (wasm-shaped, native crates absent)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # Swatinem/rust-cache fingerprints target/ by crate + feature set +
+      # Cargo.lock so a dep change only re-uploads the changed slice.
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: browser-runtime-wasm-shaped
+
+      - name: Build (wasm-shaped)
+        run: cargo build -p nmp-browser-runtime
+
+      # --no-deps restricts lints to nmp-browser-runtime itself; omitting it
+      # causes pre-existing warnings in nmp-planner (large_enum_variant),
+      # nmp-signer-iface (double_must_use), and nmp-network relay_worker to
+      # fail the job, which are tracked separately and not in scope here.
+      - name: Clippy (wasm-shaped, -D warnings, crate-only)
+        run: cargo clippy -p nmp-browser-runtime --no-deps -- -D warnings
+
+      # --no-run compiles all test binaries without executing them; this
+      # catches compile-time errors in test code under the wasm-shaped graph.
+      - name: Compile tests (wasm-shaped, --no-run)
+        run: cargo test -p nmp-browser-runtime --no-run
+
+  # Mode B — feature-unified build.
+  # nmp-defaults is built WITH its default features, which pulls in the
+  # native-feature variants of nmp-core and shared crates (lmdb, nmp-nip01,
+  # NWC, …).  This build catches non-exhaustive cfg-enum match arms that are
+  # only reachable when the native feature flag is active via feature
+  # unification.  Tests are executed (not just compiled) in this mode.
+  feature-unified:
+    name: nmp-browser-runtime (feature-unified, nmp-core/native active)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: browser-runtime-feature-unified
+
+      # Building nmp-defaults with its default features causes feature
+      # unification of nmp-core: both wasm-shaped and native cfg arms are
+      # compiled in the same invocation, catching non-exhaustive match arms.
+      - name: Build (feature-unified)
+        run: cargo build -p nmp-browser-runtime -p nmp-defaults
+
+      # Clippy targets only nmp-browser-runtime (not nmp-defaults) because
+      # nmp-defaults carries pre-existing lints (derivable_impls, dead_code,
+      # etc.) that are tracked separately.  --no-deps excludes transitive deps.
+      - name: Clippy (feature-unified, -D warnings, nmp-browser-runtime only)
+        run: cargo clippy -p nmp-browser-runtime --no-deps -- -D warnings
+
+      # Execute the test suite under the feature-unified graph to prove runtime
+      # behaviour is correct when native features are present.
+      - name: Test (feature-unified, executed)
+        run: cargo test -p nmp-browser-runtime
+
+  # Non-blocking wasm32 smoke probe.
+  #
+  # A true wasm32-unknown-unknown build is infra-blocked: secp256k1-sys
+  # requires a C wasm toolchain (clang + wasm-ld or emcc) that is absent on
+  # ubuntu-latest.  This job attempts the build anyway as a self-documenting
+  # marker so that the moment the C toolchain constraint is lifted (e.g. by a
+  # secp256k1-sys wasm32-pure-Rust backend or by adding toolchain install
+  # steps), this job can be promoted to a blocking gate with a one-line change:
+  #   continue-on-error: false
+  wasm32-smoke:
+    name: nmp-browser-runtime (wasm32-unknown-unknown smoke, non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: browser-runtime-wasm32
+
+      # This step is expected to fail today because secp256k1-sys 0.10 cannot
+      # build its vendored C library without a wasm C toolchain on the runner.
+      # Kept as a canary: if it goes green unexpectedly, promote to blocking.
+      - name: Build (wasm32-unknown-unknown)
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build -p nmp-browser-runtime --target wasm32-unknown-unknown

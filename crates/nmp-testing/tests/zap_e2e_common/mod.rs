@@ -440,7 +440,7 @@ fn build_response_event(
 ///
 /// NIP-57 Appendix E: the receipt carries `["p", recipient]`, `["e",
 /// target]`, `["bolt11", …]`, and `["description", <kind:9734 json>]`. The
-/// kernel's `ZapsAggregateProjection` keys totals off the `["e", target]` tag
+/// visible-card relation counts key zap totals off the `["e", target]` tag
 /// and decodes the amount from the bolt11 HRP.
 pub fn signed_zap_receipt_json(
     provider_keys: &Keys,
