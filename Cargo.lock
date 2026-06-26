@@ -5141,11 +5141,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-sqlite-wasm"
+version = "0.8.0"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
 name = "nmp-store"
 version = "0.8.0"
 dependencies = [
  "heed",
  "nmp-nostr-lmdb",
+ "nmp-sqlite-wasm",
  "nostr",
  "nostr-database",
  "serde",

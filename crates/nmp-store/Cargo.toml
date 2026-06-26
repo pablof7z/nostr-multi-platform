@@ -17,6 +17,13 @@ path = "src/lib.rs"
 # builds (which never see LMDB) lean.
 default = []
 lmdb-backend = ["dep:nmp-nostr-lmdb", "dep:heed", "dep:nostr-database"]
+# OPFS-SQLite EventStore backend (#1007). Off by default. The backing crate
+# (`nmp-sqlite-wasm`) is wasm32-only and declared under the `[target.…wasm32…]`
+# table below, so enabling this feature on a native target (e.g. via
+# `--all-features`) resolves the `dep:` reference but compiles nothing — the
+# dependency simply isn't part of the native dependency graph. Browser-only
+# durable storage; native builds use Lmdb/Mem instead.
+opfs-sqlite-backend = ["dep:nmp-sqlite-wasm"]
 # Exposes a small surface used by integration tests and live-bench binaries
 # (e.g. `VerifiedEvent::try_from_raw` is always public, but the `test-support`
 # cfg gates the `RawEvent::sample_*` constructors and similar harness helpers).
@@ -46,6 +53,13 @@ web-time = "1.1"
 nmp-nostr-lmdb = { path = "../nmp-nostr-lmdb", optional = true }
 heed = { version = "0.20", default-features = false, features = ["read-txn-no-tls"], optional = true }
 nostr-database = { version = "0.44", default-features = false, features = ["flatbuf"], optional = true }
+
+# OPFS-SQLite backend (#1007) — wasm32-only. Unlike LMDB's `heed` (which builds
+# on every target and so sits in plain `[dependencies]`), the SQLite-on-OPFS
+# engine only builds for the browser, so its crate lives here. Optional +
+# enabled via the `opfs-sqlite-backend` feature.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+nmp-sqlite-wasm = { path = "../nmp-sqlite-wasm", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

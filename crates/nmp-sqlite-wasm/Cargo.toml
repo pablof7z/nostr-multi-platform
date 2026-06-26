@@ -1,0 +1,30 @@
+[package]
+name = "nmp-sqlite-wasm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "OPFS-backed SQLite EventStore backend for wasm32 (#1007). Spine only — the SQLite engine + EventStore impl land in later PRs."
+
+[lib]
+name = "nmp_sqlite_wasm"
+path = "src/lib.rs"
+
+# NOTE: this crate must NOT depend on `nmp-store`. `nmp-store` declares an
+# optional dependency on `nmp-sqlite-wasm` (the `opfs-sqlite-backend` feature),
+# so a reverse edge would be a Cargo dependency cycle. This mirrors
+# `nmp-nostr-lmdb`, which is a standalone engine crate: the `EventStore` trait
+# impl that bridges this engine (`OpfsSqliteEventStore`, parallel to
+# `LmdbEventStore`) lives in `nmp-store` behind the feature, not here. This
+# crate owns only the SQLite-on-OPFS engine + the `OpfsSqliteStore` handle and
+# its single scoped `unsafe impl Send/Sync` (ADR-0054 §3).
+
+# wasm-only JS/OPFS interop. SQLite-on-OPFS is a browser-only backend: the
+# engine reaches the filesystem through `web-sys`/`js-sys` and is driven from
+# a Worker via `wasm-bindgen`. These deps do NOT build on native, so they are
+# gated to wasm32 — the whole crate compiles to ~nothing off-wasm. See the
+# `[target.…]` table difference vs. nmp-nostr-lmdb (heed builds everywhere).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3.98"
+wasm-bindgen = "0.2.121"
+web-sys = "0.3.98"
