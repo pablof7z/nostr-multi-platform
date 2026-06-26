@@ -11,6 +11,13 @@ export class DegradedRuntime {
     private readonly unavailableReason = "nmp-wasm actor driver is not linked into the web worker yet",
   ) {}
 
+  /** Uniform with {@link WasmBridge.prepareForStart}: the degraded runtime has no
+   *  durable store to open, so this is always a no-op. Lets the worker call
+   *  `prepareForStart` on either runtime without a type narrow. */
+  async prepareForStart(_request: WorkerRequest): Promise<void> {
+    // no durable backend in degraded mode
+  }
+
   handle(request: WorkerRequest): WorkerEvent[] {
     switch (request.type) {
       case "hello":

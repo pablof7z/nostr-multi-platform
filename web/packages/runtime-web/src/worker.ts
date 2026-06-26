@@ -32,6 +32,11 @@ scope.onmessage = async (message: MessageEvent<WorkerRequest>) => {
         scope.postMessage(event);
       }
     }
+    // #1007 — open the durable OPFS-SQLite store BEFORE dispatching `Start`, so
+    // the runtime injects it instead of starting in-memory. No-op for every
+    // non-`start` request and for the degraded runtime. `prepareForStart` never
+    // rejects (it degrades honestly), so this cannot strand the worker.
+    await initialized.runtime.prepareForStart(message.data);
     for (const event of initialized.runtime.handle(message.data)) {
       scope.postMessage(event);
     }

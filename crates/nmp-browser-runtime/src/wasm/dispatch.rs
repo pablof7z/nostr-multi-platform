@@ -95,16 +95,20 @@ impl NmpRuntimeCore {
         // Storage gate (#1007 PR-7): if the async pre-`Start` hook
         // (`NmpWasmRuntime::prepare_store`) already opened a durable OPFS-SQLite
         // store and parked it on the core, inject it. Otherwise fall back to the
-        // explicit in-memory store. The fallback is honest — when the OPFS open
-        // failed, durability is OFF and that was already logged at the open site;
-        // PR-8 adds the D6 degraded-mode diagnostics + Tier-3 `store_open_failure`
-        // snapshot. Both arms land on `BrowserAppBuilder<StorageSet>`.
+        // explicit in-memory store. Both arms land on `BrowserAppBuilder<StorageSet>`.
         let storage = BrowserAppBuilder::new();
         let builder = match self.injected_store.take() {
             Some(store) => storage.inject_store(store),
             None => storage.in_memory(),
         }
         .consume_all_builtin_projections();
+
+        // Degraded-open diagnostic (#1007 PR-8): if `prepare_store` classified an
+        // OPFS open failure and parked the stable reason, thread it onto the
+        // kernel so the in-memory fallback session reports the SAME Tier-3
+        // `store_open_failure` snapshot the native LMDB degraded-open path emits.
+        // `None` (healthy open / native) clears nothing — it is the no-failure case.
+        let builder = builder.with_store_open_failure(self.store_open_failure.take());
 
         let builder = if bootstrap.is_empty() {
             builder.without_initial_relays()

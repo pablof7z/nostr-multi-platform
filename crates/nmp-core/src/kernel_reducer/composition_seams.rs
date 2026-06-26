@@ -83,6 +83,24 @@ impl super::KernelReducer {
         self.sign_roundtrip = super::wasm_signing::SignRoundTripState::default();
     }
 
+    /// Record a degraded store-open failure reason onto the wrapped kernel so it
+    /// surfaces through the Tier-3 `store_open_failure` snapshot channel (#1007
+    /// PR-8 — the browser-durable analog of the native LMDB degraded-open path).
+    ///
+    /// Browser composition opens the OPFS-SQLite store asynchronously before the
+    /// kernel exists; when that open fails the host falls back to in-memory and
+    /// threads the stable reason here (via `BrowserAppBuilder::with_store_open_failure`)
+    /// so the same diagnostic native emits at init reaches the snapshot.
+    pub fn set_store_open_failure(&mut self, reason: impl Into<String>) {
+        self.kernel.set_store_open_failure(reason);
+    }
+
+    /// Read the kernel's recorded store-open failure reason, if any (#1007 PR-8).
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn store_open_failure(&self) -> Option<String> {
+        self.kernel.store_open_failure().map(str::to_owned)
+    }
+
     // ── Observed-projection seam ─────────────────────────────────────────
 
     /// Open a declared observed projection on the reducer/browser path.

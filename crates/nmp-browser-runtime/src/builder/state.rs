@@ -131,6 +131,14 @@ pub(crate) struct BrowserBuilderInner {
     /// Run config set at `decide_providers()` gate.
     pub(crate) run_config: Option<crate::builder::BrowserRunConfig>,
 
+    // ── #1007 PR-8 — degraded OPFS open diagnostic ────────────────────────────
+    /// Stable reason string for a failed/degraded durable-store open, set via
+    /// `BrowserAppBuilder::with_store_open_failure`. Applied to the kernel at
+    /// `start()` (`KernelReducer::set_store_open_failure`) so it surfaces through
+    /// the Tier-3 `store_open_failure` snapshot — the browser analog of the
+    /// native LMDB degraded-open diagnostic. `None` = healthy open / in-memory.
+    pub(crate) store_open_failure: Option<String>,
+
     // ── #2076 — clock injection ───────────────────────────────────────────────
     /// Injectable kernel clock. `None` = use the default web-time wall-clock.
     /// Set via `.with_clock(arc)` or `.with_system_clock()`. Applied at
@@ -177,6 +185,7 @@ impl BrowserBuilderInner {
             relay_bootstrap: Vec::new(),
             run_config: None,
             clock: None,
+            store_open_failure: None,
         }
     }
 }

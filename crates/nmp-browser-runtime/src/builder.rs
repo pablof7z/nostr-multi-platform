@@ -427,6 +427,30 @@ impl<S> BrowserAppBuilder<S> {
         }
         self
     }
+
+    // ── #1007 PR-8 — degraded OPFS open diagnostic ───────────────────────────
+
+    /// Record a degraded durable-store open reason (#1007 PR-8).
+    ///
+    /// The browser opens the OPFS-SQLite store asynchronously *before* `start()`
+    /// (ADR-0054 §1). When that open fails (Safari < 17.4 / OPFS-SAH
+    /// unavailable, private browsing, quota denied, handle loss, second-tab
+    /// pool-lock contention) the host falls back to an in-memory store and
+    /// threads the **stable reason** here. At `start()` it is applied to the
+    /// kernel (`KernelReducer::set_store_open_failure`) so the session reports
+    /// the **same** Tier-3 `store_open_failure` diagnostic the native LMDB
+    /// degraded-open path emits.
+    ///
+    /// NOT a typestate gate — an accumulating setter available in all builder
+    /// states (a `None` argument is the explicit healthy/in-memory case and
+    /// clears any prior reason; last-writer-wins). Reason strings are minted by
+    /// [`crate::wasm::store_failure`].
+    pub fn with_store_open_failure(self, reason: Option<String>) -> Self {
+        if let Ok(mut g) = self.inner.lock() {
+            g.store_open_failure = reason;
+        }
+        self
+    }
 }
 
 // ── BrowserRunConfig ──────────────────────────────────────────────────────────
