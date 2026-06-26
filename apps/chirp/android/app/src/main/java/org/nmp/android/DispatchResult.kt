@@ -22,6 +22,21 @@ sealed class DispatchResult {
     }
 
     companion object {
+        /**
+         * Convert a UniFFI [org.nmp.android.uniffi.DispatchAck] returned by
+         * [AppHandle][org.nmp.android.uniffi.AppHandle] dispatch methods into a
+         * typed [DispatchResult] (M14-0 / issue #2129).
+         *
+         * The mapping is 1-to-1: a non-null [correlationId][org.nmp.android.uniffi.DispatchAck.correlationId]
+         * wins; otherwise the [error][org.nmp.android.uniffi.DispatchAck.error] field is used.
+         */
+        fun fromAck(ack: org.nmp.android.uniffi.DispatchAck): DispatchResult {
+            val correlationId = ack.correlationId
+            if (!correlationId.isNullOrEmpty()) return Accepted(correlationId)
+            val error = ack.error ?: "dispatch returned ack with no correlation_id and no error"
+            return Failure(error)
+        }
+
         fun parse(envelope: String): DispatchResult {
             val obj: JsonObject = try {
                 Json.parseToJsonElement(envelope).jsonObject

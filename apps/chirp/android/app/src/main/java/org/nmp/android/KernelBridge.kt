@@ -27,22 +27,43 @@ fun interface KernelSignerRequestListener {
 }
 
 /**
- * Thin JNI wrapper around `libnmp_android_ffi.so`.
+ * JNI/UniFFI wrapper around `libnmp_android_ffi.so` (M14-0 / issue #2129).
+ *
+ * App-loop lifecycle (create/start/stop/close/free) and update/dispatch lanes
+ * are served by the UniFFI [AppHandle] object (proc-macro bindings, JNA runtime).
+ * Residual JNI lanes (signer, capability, marmot, identity, feeds, claims) remain
+ * on the existing `#[no_mangle] Java_*` JNI path and are reached via [rawHandle].
  *
  * Doctrine: no business logic or cached state (D5/D8). Runtime outcomes arrive
  * in the next update frame. Init-only config calls may return `NmpConfigStatus`
  * codes so ordering mistakes fail loudly without Android policy.
  */
 class KernelBridge {
+    /** UniFFI [AppHandle] for the app-loop lane (M14-0). Null only after [free]. */
+    @Volatile
+    private var appHandle: org.nmp.android.uniffi.AppHandle? = null
+
+    /**
+     * Legacy JNI session registry id, obtained from [org.nmp.android.uniffi.AppHandle.legacyJniSessionId]
+     * after construction. Used by residual JNI lanes (signer, capability,
+     * marmot, identity, feeds, claims) until they are individually migrated.
+     * Zero when [appHandle] is null (post-[free] or inert-init).
+     */
     @Volatile
     private var handle: Long = 0
+
     private var homeFeedHandle: String? = null
     private val threadFeedHandles = mutableMapOf<String, String>()
     private val authorFeedHandles = mutableMapOf<String, String>()
 
     init {
         System.loadLibrary("nmp_android_ffi")
-        handle = nativeNew()
+        // UniFFI app-loop lane (M14-0): AppHandle() calls nmp_app_new / init /
+        // register internally. D6: init failure yields an inert AppHandle whose
+        // dispatch methods return DispatchAck.error and whose lifecycle methods
+        // are no-ops. legacyJniSessionId() returns 0 for an inert handle.
+        appHandle = org.nmp.android.uniffi.AppHandle()
+        handle = appHandle!!.legacyJniSessionId()
     }
 
     /** Configure the Rust LMDB storage directory before [start]. */
@@ -54,24 +75,22 @@ class KernelBridge {
     }
 
     fun start(visibleLimit: Int = 80, emitHz: Int = 4) {
-        if (handle != 0L) nativeStart(handle, visibleLimit, emitHz)
+        if (handle != 0L) appHandle?.start(visibleLimit.toUInt(), emitHz.toUInt())
     }
 
     fun stop() {
-        if (handle != 0L) nativeStop(handle)
+        if (handle != 0L) appHandle?.stop()
     }
 
     /**
-     * Close the Rust update callback without freeing the session id.
+     * Quiesce the kernel update callback and deregister the [KernelUpdateListener].
      *
-     * Quiesces the kernel update callback (the Rust gate blocks until any
-     * in-flight `on_update` returns) and drops the registered
-     * [KernelUpdateListener]. Lifecycle invariant: call [clearUpdateListener]
-     * (or this, which also clears it) before [free].
+     * Blocks until any in-flight `on_update` invocation completes (lockfree
+     * quiescence — [org.nmp.android.uniffi.AppHandle.clearUpdateSink]).
+     * Call before [free]. D6: null/dead handle is a no-op.
      */
     fun closeUpdates() {
-        val current = handle
-        if (current != 0L) nativeClose(current)
+        if (handle != 0L) appHandle?.clearUpdateSink()
     }
 
     fun lifecycleForeground() {
@@ -97,39 +116,61 @@ class KernelBridge {
     }
 
     /**
-     * Register a push listener for kernel update frames (issue #614 — D8
-     * no-polling; replaces the former blocking `nextUpdate` drain).
+     * Register a push listener for kernel update frames (D8 no-polling).
      *
      * [listener] receives each FlatBuffers `UpdateFrame` (file_identifier
      * "NMPU") on the kernel's update-listener thread — a native background
      * thread, NOT the main thread. Decode with [KernelUpdateFrameDecoder] and
-     * marshal to the main thread for UI state. Replacing an existing listener
-     * is allowed; pass a new one to swap.
+     * marshal to the main thread for UI state.
+     *
+     * Internally wraps [listener] in [UniFFISinkWrapper] and registers it with
+     * [org.nmp.android.uniffi.AppHandle.setUpdateSink] (M14-0). Replacing an
+     * existing listener is allowed; pass a new one to swap.
      *
      * Call [clearUpdateListener] (or [closeUpdates]) on teardown before [free].
      * D6: a null/dead handle is a no-op.
      */
     fun setUpdateListener(listener: KernelUpdateListener) {
-        if (handle != 0L) nativeSetUpdateListener(handle, listener)
+        if (handle != 0L) appHandle?.setUpdateSink(UniFFISinkWrapper(listener))
     }
 
     /**
-     * Deregister the push listener set by [setUpdateListener]. Safe to call
-     * when none is registered. D6: a null/dead handle is a no-op.
+     * Deregister the push listener (M14-0: calls [AppHandle.clearUpdateSink]).
+     * Quiescent: waits for any in-flight on_update to complete. D6: no-op.
      */
     fun clearUpdateListener() {
-        if (handle != 0L) nativeClearUpdateListener(handle)
+        if (handle != 0L) appHandle?.clearUpdateSink()
     }
 
     /**
-     * Typed Chirp action-intent dispatch through the Rust byte doorway. Takes
-     * the SAME `ChirpActionIntent` JSON the host built for the action spec; Rust
-     * does intent → typed-bytes → byte dispatch in ONE call (collapsing the
-     * former two-step round-trip). Returns the standard dispatch envelope.
+     * Typed Chirp action-intent dispatch through the Rust byte doorway
+     * (M14-0: uses [AppHandle.dispatchIntentJson]).
+     *
+     * Rust parses the intent, builds (namespace, body_json), encodes FlatBuffers
+     * bytes, dispatches, and returns a typed [DispatchResult]. The intent JSON
+     * never touches the Kotlin → kernel FFI boundary as bytes; Rust builds them.
      */
-    fun dispatchIntentBytes(intentJson: String): DispatchResult =
-        if (handle != 0L) DispatchResult.parse(nativeDispatchIntentBytes(handle, intentJson))
-        else DispatchResult.Failure("dispatch returned a null handle")
+    fun dispatchIntentBytes(intentJson: String): DispatchResult {
+        if (handle == 0L) return DispatchResult.Failure("dispatch returned a null handle")
+        val ack = appHandle?.dispatchIntentJson(intentJson)
+            ?: return DispatchResult.Failure("dispatch returned a null handle")
+        return DispatchResult.fromAck(ack)
+    }
+
+    /**
+     * Dispatch a pre-built `(namespace, bodyJson)` action through the UniFFI
+     * byte doorway (M14-0; replaces `nativeDispatchActionBytes`).
+     *
+     * Called by sibling extension files: [KernelBridgeOutboxRelay],
+     * [KernelBridgeMarmotActions], [KernelBridgeWalletActions].
+     * D6: null/dead handle returns [DispatchResult.Failure].
+     */
+    internal fun dispatchActionJson(namespace: String, bodyJson: String): DispatchResult {
+        if (handle == 0L) return DispatchResult.Failure("dispatch returned a null handle")
+        val ack = appHandle?.dispatchActionJson(namespace, bodyJson)
+            ?: return DispatchResult.Failure("dispatch returned a null handle")
+        return DispatchResult.fromAck(ack)
+    }
 
     /**
      * Acknowledge a terminal `action_stages` entry after the host has reacted.
@@ -218,74 +259,6 @@ class KernelBridge {
     fun removeRelay(url: String) {
         if (handle != 0L) nativeRemoveRelay(handle, url)
     }
-
-    /** Sign in with an nsec secret key (calls nmp_app_signin_nsec directly — no ActionModule for sign-in). */
-    fun signInNsec(secret: String) {
-        if (handle != 0L) nativeSignInNsec(handle, secret)
-    }
-
-    /** Sign in with a NIP-46 bunker URI through the Rust signer broker. */
-    fun signInBunker(uri: String) {
-        if (handle != 0L) nativeSignInBunker(handle, uri)
-    }
-
-    /** Cancel an in-flight NIP-46 handshake through the Rust signer broker. */
-    fun cancelBunkerHandshake() {
-        if (handle != 0L) nativeCancelBunkerHandshake(handle)
-    }
-
-    /**
-     * ADR-0048 Stage 2 — begin a NIP-55 sign-in routed to `signerPackage`
-     * (null = let the OS resolver pick). Rust builds the `get_public_key` +
-     * permission-batch request and dispatches it through the capability
-     * socket; the request is pushed to the registered
-     * [KernelSignerRequestListener] (see [setSignerRequestListener]).
-     */
-    fun signInNip55(signerPackage: String?) {
-        if (handle != 0L) nativeSignInNip55(handle, signerPackage)
-    }
-
-    /**
-     * ADR-0048 Stage 2 / issue #1284 — register a push listener for outbound
-     * NIP-55 capability requests (D8 — no polling; replaces the former
-     * `nextSignerRequest` blocking drain).
-     *
-     * [listener] receives each `ExternalSignerRequest` JSON on the Rust
-     * capability-dispatch thread — a native background thread, NOT the main
-     * thread. The NIP-55 launch Intent requires the main thread, so the
-     * implementation must marshal there itself. Replacing an existing listener
-     * is allowed; pass a new one to swap.
-     *
-     * Call [clearSignerRequestListener] (or [closeUpdates], which clears it on
-     * teardown) before [free]. D6: a null/dead handle is a no-op.
-     */
-    fun setSignerRequestListener(listener: KernelSignerRequestListener) {
-        if (handle != 0L) nativeSetSignerRequestListener(handle, listener)
-    }
-
-    /**
-     * Deregister the push listener set by [setSignerRequestListener]. Safe to
-     * call when none is registered. D6: a null/dead handle is a no-op.
-     */
-    fun clearSignerRequestListener() {
-        if (handle != 0L) nativeClearSignerRequestListener(handle)
-    }
-
-    /**
-     * ADR-0048 Stage 2 — report a raw `ExternalSignerResponse` JSON back to
-     * the Rust NIP-55 driver (D7: verbatim, Kotlin decides nothing).
-     */
-    fun deliverSignerResponse(responseJson: String) {
-        if (handle != 0L) nativeDeliverSignerResponse(handle, responseJson)
-    }
-
-    /**
-     * Generate a fresh `nostrconnect://` URI. Rust selects the relay from the
-     * kernel's relay config (D3: relay selection is Rust-owned). Android
-     * supplies only the optional platform callback scheme.
-     */
-    fun nostrConnectUri(callbackScheme: String? = null): String? =
-        if (handle != 0L) nativeNostrConnectUri(handle, callbackScheme) else null
 
     /** Switch the active account to the given pubkey (calls nmp_app_switch_active directly). */
     fun switchAccount(pubkey: String) {
@@ -392,7 +365,12 @@ class KernelBridge {
         val current = handle
         if (current != 0L) {
             closeOpenFeeds(current)
-            nativeFree(current)
+            // M14-0: shutdown() quiesces the update callback, removes the session
+            // from the registry, and frees native resources. Replaces `nativeFree`
+            // (deleted in issue #2129). close() (AutoCloseable) then drops the Arc.
+            appHandle?.shutdown()
+            appHandle?.close()
+            appHandle = null
             handle = 0
         }
     }
@@ -406,18 +384,41 @@ class KernelBridge {
         authorFeedHandles.clear()
     }
 
-    private external fun nativeNew(): Long
+    /**
+     * Adapts a [KernelUpdateListener] to the UniFFI [org.nmp.android.uniffi.UpdateSink]
+     * callback interface (M14-0 / issue #2129).
+     *
+     * Frames are delivered on the Rust kernel update thread (a native background
+     * thread). Implementations of [KernelUpdateListener.onUpdate] must marshal
+     * to the Android main thread themselves when touching UI state.
+     *
+     * Panics inside [KernelUpdateListener.onUpdate] are caught by the Rust
+     * `catch_unwind` trampoline (in `uniffi_app_loop.rs::AppHandle::set_update_sink`)
+     * and logged/dropped; they do NOT abort the process.
+     */
+    private inner class UniFFISinkWrapper(
+        private val delegate: KernelUpdateListener,
+    ) : org.nmp.android.uniffi.UpdateSink {
+        override fun onUpdate(frame: ByteArray) {
+            delegate.onUpdate(frame)
+        }
+    }
+
+    // ── Residual JNI external declarations ───────────────────────────────────
+    //
+    // The following app-loop JNI symbols were DELETED in M14-0 (issue #2129):
+    //   nativeNew, nativeStart, nativeStop, nativeClose, nativeFree,
+    //   nativeSetUpdateListener, nativeClearUpdateListener,
+    //   nativeDispatchIntentBytes, nativeDispatchActionBytes.
+    //
+    // The remaining declarations below are for residual JNI lanes (signer,
+    // capability, marmot, identity, feeds, claims) staged for future migration.
     private external fun nativeSetStoragePath(handle: Long, path: String): Int
-    private external fun nativeStart(handle: Long, visibleLimit: Int, emitHz: Int)
     private external fun nativeOpenHomeFeed(handle: Long): String?
     private external fun nativeCreateLocalAccount(handle: Long, displayName: String)
-    private external fun nativeStop(handle: Long)
-    private external fun nativeClose(handle: Long)
     private external fun nativeLifecycleForeground(handle: Long)
     private external fun nativeLifecycleBackground(handle: Long)
     private external fun nativeIsAlive(handle: Long): Boolean
-    private external fun nativeSetUpdateListener(handle: Long, listener: KernelUpdateListener)
-    private external fun nativeClearUpdateListener(handle: Long)
     // Ref resolution — `internal` so the cohesive wrappers live in the sibling
     // KernelBridgeRefs.kt without inflating this file past the LOC ceiling. Event URI
     // JNI functions below are app-local adapters over `resolve_ref` / `release_ref`.
@@ -432,8 +433,6 @@ class KernelBridge {
         liveness: Int,
     )
     internal external fun nativeReleaseRef(handle: Long, namespace: Int, key: String, consumerId: String)
-    internal external fun nativeDispatchActionBytes(handle: Long, namespace: String, actionJson: String): String
-    private external fun nativeDispatchIntentBytes(handle: Long, intentJson: String): String
     private external fun nativeAckActionStage(handle: Long, correlationId: String)
     // Outbox control-plane (parity GAP 4). `internal` so the cohesive
     // [retryPublish]/[cancelPublish] wrappers can live in the sibling
@@ -450,14 +449,16 @@ class KernelBridge {
     private external fun nativeSeedRelays(handle: Long, relaysJson: String?)
     private external fun nativeAddRelay(handle: Long, url: String, role: String)
     private external fun nativeRemoveRelay(handle: Long, url: String)
-    private external fun nativeSignInNsec(handle: Long, secret: String)
-    private external fun nativeSignInBunker(handle: Long, uri: String)
-    private external fun nativeCancelBunkerHandshake(handle: Long)
-    private external fun nativeSignInNip55(handle: Long, signerPackage: String?)
-    private external fun nativeSetSignerRequestListener(handle: Long, listener: KernelSignerRequestListener)
-    private external fun nativeClearSignerRequestListener(handle: Long)
-    private external fun nativeDeliverSignerResponse(handle: Long, responseJson: String)
-    private external fun nativeNostrConnectUri(handle: Long, callbackScheme: String?): String?
+    // Signer JNI symbols — `internal` so KernelBridgeSignerActions.kt extension
+    // functions can reach them without inflating this file past the LOC ceiling.
+    internal external fun nativeSignInNsec(handle: Long, secret: String)
+    internal external fun nativeSignInBunker(handle: Long, uri: String)
+    internal external fun nativeCancelBunkerHandshake(handle: Long)
+    internal external fun nativeSignInNip55(handle: Long, signerPackage: String?)
+    internal external fun nativeSetSignerRequestListener(handle: Long, listener: KernelSignerRequestListener)
+    internal external fun nativeClearSignerRequestListener(handle: Long)
+    internal external fun nativeDeliverSignerResponse(handle: Long, responseJson: String)
+    internal external fun nativeNostrConnectUri(handle: Long, callbackScheme: String?): String?
     private external fun nativeSwitchAccount(handle: Long, pubkey: String)
     private external fun nativeRemoveAccount(handle: Long, pubkey: String)
     private external fun nativeMarmotRegisterActive(handle: Long, dbDir: String): Boolean
@@ -465,5 +466,4 @@ class KernelBridge {
     private external fun nativeEncodeProfile(handle: Long, pubkey: String): String?
     private external fun nativeSetCapabilityHandler(handle: Long, handler: Any)
     private external fun nativeIdentityRestore(handle: Long, dbDir: String, testNsec: String?): Boolean
-    private external fun nativeFree(handle: Long)
 }

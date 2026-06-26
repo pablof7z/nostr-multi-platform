@@ -3,8 +3,8 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicI64, AtomicPtr, Ordering};
 #[cfg(test)]
 use std::sync::mpsc::RecvTimeoutError;
-use std::sync::mpsc::{Receiver, Sender};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 #[cfg(test)]
 use std::time::Duration;
 
@@ -15,55 +15,12 @@ use nmp_ffi::{NmpApp, nmp_app_free, nmp_app_set_capability_callback, nmp_app_set
 
 use crate::capability::CapabilityHandlerSlot;
 use crate::signer_request_listener::SignerRequestListenerSlot;
-use crate::update_listener::UpdateListenerSlot;
 pub(crate) use crate::update_listener::UpdatePushListener;
 
-struct CallbackState {
-    /// Legacy mpsc sink — retained only for the in-crate unit tests
-    /// (`recv_next_update`). Production update delivery is the JNI push path
-    /// via [`CallbackState::push_listener`].
-    tx: Mutex<Option<Sender<Vec<u8>>>>,
-    /// JNI push listener — invoked on every update frame (issue #614, D8: no
-    /// polling). Cleared in [`Session::close_updates_locked`] after the
-    /// quiescence gate guarantees no further `on_update` invocations.
-    push_listener: UpdateListenerSlot,
-}
+pub(crate) use self::callback_state::CallbackState;
 
-impl CallbackState {
-    fn new(tx: Sender<Vec<u8>>) -> Self {
-        Self {
-            tx: Mutex::new(Some(tx)),
-            push_listener: Mutex::new(None),
-        }
-    }
-
-    fn send(&self, bytes: Vec<u8>) {
-        let Ok(guard) = self.tx.lock() else {
-            return;
-        };
-        if let Some(tx) = guard.as_ref() {
-            let _ = tx.send(bytes);
-        }
-    }
-
-    fn close(&self) {
-        if let Ok(mut guard) = self.tx.lock() {
-            guard.take();
-        }
-    }
-
-    fn set_push_listener(&self, listener: UpdatePushListener) {
-        if let Ok(mut slot) = self.push_listener.lock() {
-            *slot = Some(Arc::new(listener));
-        }
-    }
-
-    fn clear_push_listener(&self) {
-        if let Ok(mut slot) = self.push_listener.lock() {
-            slot.take();
-        }
-    }
-}
+#[path = "session/callback_state.rs"]
+mod callback_state;
 
 struct SessionState {
     app: *mut NmpApp,
@@ -80,41 +37,37 @@ struct SessionState {
 /// memory still in use by an in-flight JNI call.
 pub(crate) struct Session {
     state: Mutex<SessionState>,
-    /// Legacy mpsc receiver — drained only by the test-only `recv_next_update`
-    /// since issue #614 removed the production polling path. Kept so the unit
-    /// tests can exercise the close/quiescence lifecycle without live JNI.
+    /// Legacy mpsc receiver — test-only since issue #614.
     #[cfg_attr(not(test), allow(dead_code))]
     rx: Mutex<Receiver<Vec<u8>>>,
-    callback_state: Arc<CallbackState>,
+    pub(crate) callback_state: Arc<CallbackState>,
     callback_context: *const CallbackState,
     /// ADR-0048 Stage 2 — JNI push listener for outbound NIP-55 capability
-    /// requests (issue #1284, D8: no polling). The capability trampoline
-    /// (`external_signer::on_capability_request`) pushes each request JSON
-    /// straight to the registered Kotlin listener; cleared on teardown by
-    /// [`Self::close_updates_locked`] after the capability socket is
-    /// unregistered.
+    /// requests (issue #1284, D8: no polling).
     pub(crate) signer_request_listener: SignerRequestListenerSlot,
-    /// Test-only capture sink for pushed NIP-55 signer requests. Production
-    /// pushes go through the JNI `signer_request_listener` (which needs a live
-    /// JVM); the unit tests have no JVM, so `push_signer_request` mirrors each
-    /// pushed request into this `Vec` when one is present and reports success,
-    /// letting the trampoline tests assert the request payload + ack envelope
-    /// without a JNI listener. Never compiled into the shipped `.so`.
     #[cfg(test)]
     pub(crate) signer_request_capture: Mutex<Option<Vec<String>>>,
-    /// Synchronous capability handler for non-`external_signer` namespaces
-    /// (e.g. Android Keystore keyring). Registered by `nativeSetCapabilityHandler`;
-    /// cleared in `close_updates_locked` after the capability socket is unregistered.
     pub(crate) capability_handler: CapabilityHandlerSlot,
-    /// Opaque `*mut MarmotHandle` (or null when no MLS identity is registered).
-    /// Stored type-erased so the core session module stays feature-agnostic.
     #[cfg_attr(not(feature = "marmot"), allow(dead_code))]
     pub(crate) marmot: AtomicPtr<c_void>,
+    /// Lifecycle guard for lock-free callback-mutation operations (FIX 1+2).
+    ///
+    /// Read lock: held by lock-free quiescence/reregister/close_updates Phase 2
+    /// while using the raw `app` pointer without holding `Session.state`.
+    /// Write lock: held by `free_native` around `nmp_app_free(app)`. No other
+    /// lock is held concurrently with the write lock.
+    ///
+    /// Invariant (UAF prevention): `nmp_app_free` runs only while the write
+    /// lock is held. Any thread that extracted a non-null `app` pointer and
+    /// acquired the read lock is guaranteed `app` remains valid until the read
+    /// lock is released — the exclusive write lock blocks `nmp_app_free` until
+    /// all such readers complete.
+    pub(crate) callback_mutation_guard: RwLock<()>,
 }
 
-// SAFETY: All mutable lifecycle state is behind `Mutex`/atomics. Raw pointers
-// are only consumed while holding `state`, and `free_native` removes them from
-// the state before calling the final C-ABI destructors.
+// SAFETY: All mutable lifecycle state is behind Mutex/atomics. Raw pointers
+// are only dereferenced while holding `callback_mutation_guard` (read lock for
+// lock-free users; write lock for `free_native` before `nmp_app_free`).
 unsafe impl Send for Session {}
 unsafe impl Sync for Session {}
 
@@ -139,6 +92,7 @@ impl Session {
             signer_request_capture: Mutex::new(None),
             capability_handler: Mutex::new(None),
             marmot: AtomicPtr::new(std::ptr::null_mut()),
+            callback_mutation_guard: RwLock::new(()),
         }
     }
 
@@ -152,34 +106,81 @@ impl Session {
         Some(f(state.app))
     }
 
+    /// Quiesce update/capability callbacks and clear all delivery sinks.
+    /// Idempotent.
+    ///
+    /// ## Deadlock-prevention (FIX 1)
+    ///
+    /// Three-phase design so `state` is never held during the blocking
+    /// `nmp_app_set_update_callback(None)` call:
+    /// 1. Brief `state` lock: check `updates_closed`; extract `app`; release.
+    /// 2. Read lock on `callback_mutation_guard` (NO `state`): call the
+    ///    blocking quiescence functions; re-check `state` under the read lock
+    ///    to confirm the pointer is still valid before use (UAF guard FIX 2).
+    /// 3. `state` lock again: clear listeners, close mpsc, set `updates_closed`.
     pub(crate) fn close_updates(&self) {
-        let Ok(mut state) = self.state.lock() else {
-            return;
+        // Phase 1
+        let app = {
+            let Ok(state) = self.state.lock() else { return };
+            if state.updates_closed { return; }
+            state.app
         };
-        self.close_updates_locked(&mut state);
+
+        // Phase 2: blocking quiescence WITHOUT `state`.
+        // Read lock prevents concurrent nmp_app_free (write lock in free_native).
+        if !app.is_null() {
+            let _guard = self.callback_mutation_guard.read().unwrap_or_else(|e| e.into_inner());
+            // Re-check: if free_native freed the app or another thread already
+            // ran close_updates between Phase 1 and acquiring the read lock, skip.
+            let skip = self.state.lock()
+                .map(|s| s.updates_closed || s.freed)
+                .unwrap_or(true);
+            if !skip {
+                // These block until any in-flight on_update / capability
+                // callback completes. `state` is NOT held here, so an in-flight
+                // on_update that calls back into with_app cannot deadlock.
+                nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
+                nmp_app_set_capability_callback(app, std::ptr::null_mut(), None);
+            }
+        }
+
+        // Phase 3: cleanup under `state`.
+        let Ok(mut state) = self.state.lock() else { return };
+        if state.updates_closed { return; } // idempotent
+        if !state.app.is_null() {
+            self.callback_state.clear_push_listener();
+            self.callback_state.clear_generic_sink();
+            self.clear_signer_request_listener();
+        }
+        self.callback_state.close();
+        if let Ok(mut slot) = self.capability_handler.lock() {
+            slot.take();
+        }
+        state.updates_closed = true;
     }
 
     /// Register the JNI push listener for kernel update frames (issue #614).
-    /// Replaces an existing listener if one is already set. Cleared on
-    /// teardown by [`Self::close_updates_locked`].
     pub(crate) fn set_push_listener(&self, listener: UpdatePushListener) {
         self.callback_state.set_push_listener(listener);
     }
 
-    /// Drop the JNI push listener (deregister). Safe to call when none is set.
+    /// Drop the JNI push listener. Safe to call when none is set.
     pub(crate) fn clear_push_listener(&self) {
         self.callback_state.clear_push_listener();
     }
 
+    /// Free all native resources.  Idempotent.
+    ///
+    /// `nmp_app_free` is called while holding the write lock on
+    /// `callback_mutation_guard` so it cannot race any lock-free caller
+    /// (quiesce / reregister / close_updates Phase 2) that holds the read lock
+    /// and is actively using the same raw pointer (UAF guard — FIX 2).
     pub(crate) fn free_native(&self) {
+        self.close_updates(); // idempotent; quiesces before we null state.app
+
         let (app, chirp) = {
-            let Ok(mut state) = self.state.lock() else {
-                return;
-            };
-            if state.freed {
-                return;
-            }
-            self.close_updates_locked(&mut state);
+            let Ok(mut state) = self.state.lock() else { return };
+            if state.freed { return; }
             state.freed = true;
             let app = state.app;
             let chirp = state.chirp;
@@ -193,15 +194,19 @@ impl Session {
             nmp_app_chirp_unregister(chirp);
         }
         if !app.is_null() {
+            // Write lock: blocks until all in-flight read-lock holders (lock-free
+            // quiescence / reregister / close_updates Phase 2) complete, then
+            // the pointer is exclusively ours to free.
+            let _write_guard =
+                self.callback_mutation_guard.write().unwrap_or_else(|e| e.into_inner());
+            // SAFETY: state.freed=true, state.app=null. No thread that respects
+            // those flags will access this pointer. The write lock serialises us
+            // after any concurrent reader that extracted the pointer before freed
+            // was set.
             nmp_app_free(app);
         }
     }
 
-    /// Test-only blocking drain of the legacy mpsc update channel.
-    ///
-    /// Issue #614 removed the production `nativeNextUpdate` polling path; the
-    /// in-crate unit tests still exercise the channel + quiescence lifecycle
-    /// through this helper, so it is gated `#[cfg(test)]`.
     #[cfg(test)]
     pub(crate) fn recv_next_update(&self, timeout: Duration) -> NextUpdate {
         let Ok(rx) = self.rx.lock() else {
@@ -214,51 +219,92 @@ impl Session {
         }
     }
 
-    fn close_updates_locked(&self, state: &mut SessionState) {
-        if state.updates_closed {
-            return;
+    pub(crate) fn set_generic_sink(&self, sink: Arc<dyn Fn(Vec<u8>) + Send + Sync>) {
+        self.callback_state.set_generic_sink(sink);
+    }
+
+    pub(crate) fn clear_generic_sink(&self) {
+        self.callback_state.clear_generic_sink();
+    }
+
+    /// Quiesce the kernel update callback WITHOUT holding `Session.state`.
+    ///
+    /// Acquires the read lock on `callback_mutation_guard` BEFORE extracting
+    /// `app` so `free_native` (write lock) cannot free the pointer while we
+    /// use it (UAF guard FIX 2).  `state` is NOT held during the blocking
+    /// `nmp_app_set_update_callback` call (deadlock prevention FIX 1).
+    pub(crate) fn quiesce_update_callback_lockfree(&self) {
+        // Read lock FIRST — prevents concurrent nmp_app_free.
+        let _guard = self.callback_mutation_guard.read().unwrap_or_else(|e| e.into_inner());
+        let app = {
+            let Ok(state) = self.state.lock() else { return };
+            if state.freed { return; }
+            state.app
+        };
+        if !app.is_null() {
+            nmp_app_set_update_callback(app, std::ptr::null_mut(), None);
         }
-        if !state.app.is_null() {
-            // Quiescence contract (nmp-ffi ADR — UpdateCallbackGate):
-            // `nmp_app_set_update_callback(…, None)` does NOT return until any
-            // in-flight `on_update` invocation has completed.  After this call
-            // returns, `context` (the raw `*const CallbackState` pointer baked
-            // into the registration) will never be dereferenced again by the
-            // listener thread.  It is therefore safe for `Session::drop` to
-            // `drop(Arc::from_raw(self.callback_context))` immediately after
-            // `free_native()` returns — the quiescence guarantee prevents the
-            // use-after-free race that existed before the gate was introduced.
-            nmp_app_set_update_callback(state.app, std::ptr::null_mut(), None);
-            // Issue #614 — drop the JNI push listener `GlobalRef` now that the
-            // quiescence gate above guarantees no in-flight (or future)
-            // `on_update` can read the slot. Doing it INSIDE the `app`-non-null
-            // branch (right after the gate) is what makes the drop UAF-safe.
-            self.callback_state.clear_push_listener();
-            // ADR-0048 Stage 2 — unregister the external-signer capability
-            // trampoline before the app is freed. This call is quiescent:
-            // when it returns, no in-flight trampoline can still read the
-            // registry handle id or any listener/handler slot reached through
-            // it. The handle-id context still degrades stale dispatches to an
-            // error envelope via registry lookup rather than a use-after-free.
-            nmp_app_set_capability_callback(state.app, std::ptr::null_mut(), None);
-            // Issue #1284 — drop the NIP-55 signer-request push listener
-            // `GlobalRef` now that the capability trampoline above is
-            // unregistered. The trampoline snapshots an `Arc` clone of the
-            // listener under the slot lock and drops the lock before its JNI
-            // upcall (mirrors `on_update`), so this `take()` only ever races a
-            // cheap `Arc::clone`, never an in-flight `push`.
-            self.clear_signer_request_listener();
+    }
+
+    /// Re-register the `on_update` C callback after a lockfree quiescence.
+    /// Must NOT be called while `state.updates_closed` is true.
+    pub(crate) fn reregister_update_callback_lockfree(&self) {
+        let _guard = self.callback_mutation_guard.read().unwrap_or_else(|e| e.into_inner());
+        let app = {
+            let Ok(state) = self.state.lock() else { return };
+            if state.updates_closed || state.freed { return; }
+            state.app
+        };
+        if !app.is_null() {
+            nmp_app_set_update_callback(
+                app,
+                self.callback_context as *mut std::ffi::c_void,
+                Some(on_update),
+            );
         }
-        self.callback_state.close();
-        // Drop the synchronous capability handler GlobalRef. Teardown safety
-        // comes from the quiescent `nmp_app_set_capability_callback(None)`
-        // above: after it returns there is no active trampoline that can call
-        // into this slot. The `capability_handler` lock still serializes
-        // explicit handler replacement/clearing against an active JNI upcall.
-        if let Ok(mut slot) = self.capability_handler.lock() {
-            slot.take();
+    }
+
+    /// Inert (null-app) session for the `AppHandle` init-failure path (D6).
+    pub(crate) fn inert_session() -> Arc<Self> {
+        let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+        Arc::new(Self {
+            state: Mutex::new(SessionState {
+                app: std::ptr::null_mut(),
+                chirp: std::ptr::null_mut(),
+                updates_closed: false,
+                freed: false,
+            }),
+            rx: Mutex::new(rx),
+            callback_state: Arc::new(CallbackState::new(tx)),
+            callback_context: std::ptr::null(),
+            signer_request_listener: Mutex::new(None),
+            #[cfg(test)]
+            signer_request_capture: Mutex::new(None),
+            capability_handler: Mutex::new(None),
+            marmot: AtomicPtr::new(std::ptr::null_mut()),
+            callback_mutation_guard: RwLock::new(()),
+        })
+    }
+
+    /// Test-only: fire the generic sink directly, bypassing the kernel.
+    #[cfg(test)]
+    pub(crate) fn callback_state_send_via_generic(&self, bytes: Vec<u8>) {
+        let sink: Option<Arc<dyn Fn(Vec<u8>) + Send + Sync>> =
+            self.callback_state.generic_sink.lock().ok().and_then(|g| g.clone());
+        if let Some(f) = sink {
+            f(bytes);
         }
-        state.updates_closed = true;
+    }
+
+    /// Test-only: check whether the generic sink slot is occupied.
+    #[cfg(test)]
+    pub(crate) fn callback_state_generic_has_sink(&self) -> bool {
+        self.callback_state
+            .generic_sink
+            .lock()
+            .ok()
+            .map(|g| g.is_some())
+            .unwrap_or(false)
     }
 
     #[cfg(test)]
@@ -279,6 +325,7 @@ impl Session {
             signer_request_capture: Mutex::new(None),
             capability_handler: Mutex::new(None),
             marmot: AtomicPtr::new(std::ptr::null_mut()),
+            callback_mutation_guard: RwLock::new(()),
         })
     }
 }
@@ -294,9 +341,7 @@ impl Drop for Session {
     }
 }
 
-/// Result of one `recv_next_update` drain tick. Test-only since issue #614
-/// removed the production polling path (the JNI push listener is now the
-/// production update-delivery seam).
+/// Test-only: result of one `recv_next_update` drain tick.
 #[cfg(test)]
 #[derive(Debug, Eq, PartialEq)]
 pub(crate) enum NextUpdate {
@@ -311,22 +356,21 @@ extern "C" fn on_update(context: *mut c_void, bytes: *const u8, len: usize) {
     }
     let state = unsafe { &*(context as *const CallbackState) };
     let frame = unsafe { std::slice::from_raw_parts(bytes, len) };
-    // JNI push path (issue #614 — D8: no polling). The kernel pushes the frame
-    // straight to the Kotlin listener instead of a Kotlin thread draining a
-    // 250 ms-timed channel.
-    //
-    // Lock ordering: we snapshot an `Arc` clone under the lock, drop the lock
-    // BEFORE invoking the JNI callback. This prevents a deadlock where Kotlin
-    // re-enters a Rust JNI entry-point (or the actor) that itself tries to
-    // acquire `push_listener` — which would deadlock if the lock were still
-    // held across the upcall. Pattern mirrors nmp-ffi's update-callback
-    // quiescence loop (nmp-ffi/src/lib.rs, "option b — Condvar drain").
+    // UniFFI generic-sink path (M14-0 / issue #2129 — D8: no polling).
+    // Snapshot-under-lock, release BEFORE invoke — deadlock prevention.
+    let generic_snapshot: Option<Arc<dyn Fn(Vec<u8>) + Send + Sync>> =
+        state.generic_sink.lock().ok().and_then(|g| g.clone());
+    if let Some(sink) = generic_snapshot {
+        sink(frame.to_vec());
+    }
+    // JNI push path (issue #614 — D8: no polling).
+    // Lock ordering: snapshot Arc clone under lock, drop lock BEFORE push.
     let listener_snapshot: Option<Arc<UpdatePushListener>> =
         state.push_listener.lock().ok().and_then(|g| g.clone());
     if let Some(listener) = listener_snapshot {
         listener.push(frame);
     }
-    // Legacy mpsc path — only the in-crate unit tests drain this now.
+    // Legacy mpsc path — only in-crate unit tests drain this.
     state.send(frame.to_vec());
 }
 
@@ -376,85 +420,5 @@ pub(crate) fn remove_session(handle: jlong) -> Option<Arc<Session>> {
 mod push_listener_lock_ordering_tests; // PR #1226 lock-ordering regression tests
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-    use std::sync::mpsc;
-    use std::time::Duration;
-
-    use super::{NextUpdate, Session, insert_session, remove_session, session_arc};
-
-    #[test]
-    fn push_listener_slot_starts_empty() {
-        // A freshly constructed session has no JNI push listener registered.
-        let session = Session::test_session();
-        let guard = session.callback_state.push_listener.lock().unwrap();
-        assert!(guard.is_none());
-    }
-
-    #[test]
-    fn close_updates_clears_push_listener_slot() {
-        // UAF-safety invariant: after teardown the push-listener slot is empty
-        // (in production the `GlobalRef` is dropped after the quiescence gate).
-        let session = Session::test_session();
-        session.close_updates();
-        let guard = session.callback_state.push_listener.lock().unwrap();
-        assert!(guard.is_none());
-    }
-
-    #[test]
-    fn on_update_forwards_frame_to_mpsc_when_no_push_listener() {
-        // With no JNI listener registered, the push branch is a no-op and the
-        // frame still reaches the legacy mpsc test seam — never dropped.
-        let session = Session::test_session();
-        let handle = insert_session(Arc::clone(&session));
-        session.callback_state.send(b"frame-bytes".to_vec());
-        let update = session.recv_next_update(Duration::from_millis(200));
-        assert_eq!(update, NextUpdate::Frame(b"frame-bytes".to_vec()));
-        remove_session(handle);
-    }
-
-    #[test]
-    fn close_updates_wakes_blocked_next_update() {
-        let session = Session::test_session();
-        let (entered_tx, entered_rx) = mpsc::channel();
-        let reader = {
-            let session = Arc::clone(&session);
-            std::thread::spawn(move || {
-                entered_tx.send(()).expect("signal reader entry");
-                session.recv_next_update(Duration::from_secs(60))
-            })
-        };
-
-        entered_rx.recv().expect("reader entered next update");
-        session.close_updates();
-
-        assert_eq!(
-            reader.join().expect("reader thread joined"),
-            NextUpdate::Closed
-        );
-    }
-
-    #[test]
-    fn free_native_is_idempotent_and_does_not_reclaim_blocked_reader_state() {
-        let session = Session::test_session();
-        let handle = insert_session(Arc::clone(&session));
-        let reader_session = session_arc(handle).expect("registry handle exists");
-        let (entered_tx, entered_rx) = mpsc::channel();
-        let reader = std::thread::spawn(move || {
-            entered_tx.send(()).expect("signal reader entry");
-            reader_session.recv_next_update(Duration::from_secs(60))
-        });
-
-        entered_rx.recv().expect("reader entered next update");
-        let removed = remove_session(handle).expect("first remove returns session");
-        removed.free_native();
-        removed.free_native();
-
-        assert!(session_arc(handle).is_none());
-        assert!(remove_session(handle).is_none());
-        assert_eq!(
-            reader.join().expect("reader thread joined"),
-            NextUpdate::Closed
-        );
-    }
-}
+#[path = "session/tests.rs"]
+mod tests;

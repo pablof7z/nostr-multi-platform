@@ -56,14 +56,9 @@ fun KernelBridge.publishDmRelayList(relays: List<String>): DispatchResult =
         dmRelayListBodyJson(relays),
     )
 
-private fun KernelBridge.dispatchAuthoredWrite(namespace: String, bodyJson: String): DispatchResult {
-    val handle = rawHandle()
-    return if (handle != 0L) {
-        DispatchResult.parse(nativeDispatchActionBytes(handle, namespace, bodyJson))
-    } else {
-        DispatchResult.Failure("dispatch returned a null handle")
-    }
-}
+// staged: see #2145 (M14-1) — migrate to GeneratedActionBuilders bytes-only dispatch.
+private fun KernelBridge.dispatchAuthoredWrite(namespace: String, bodyJson: String): DispatchResult =
+    dispatchActionJson(namespace, bodyJson)
 
 private fun relayListBodyJson(relays: List<RelayStatus>): String {
     val entries = relays.joinToString(separator = ",") { relay ->

@@ -61,6 +61,11 @@ dependencies {
     // FlatBuffers Java/Kotlin runtime. Pin matches nmp_update.fbs header comment
     // ("Android/Kotlin runtime: 25.2.10") and the Rust+Swift pin asymmetry table.
     implementation("com.google.flatbuffers:flatbuffers-java:25.2.10")
+    // JNA Android runtime — required by UniFFI-generated Kotlin bindings (M14-0 /
+    // issue #2129).  Version 5.14.0 is the latest stable that ships an AAR for
+    // Android.  The `@aar` classifier forces Gradle to fetch the Android variant
+    // rather than the plain JAR (which lacks the arm64/x86 JNI loaders).
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
     // JVM unit tests (e.g. OpFeedDecoderTest — ADR-0038 Stage T4 golden parity).
     testImplementation("junit:junit:4.13.2")
 }

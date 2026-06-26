@@ -1,8 +1,8 @@
 # 15 — Codegen: bindings + FFI surface
 
 **Status:** raw C/JNI lifecycle/action FFI + FlatBuffers update transport SHIPS ·
-UniFFI M14 PLANNED · `nmp init` thin-shell scaffold SHIPS ·
-full multi-platform starter M16 PLANNED · Audience: both
+UniFFI M14-0 (Android app-loop lane) SHIPS (issue #2129) · remaining M14 lanes PLANNED ·
+`nmp init` thin-shell scaffold SHIPS · full multi-platform starter M16 PLANNED · Audience: both
 
 A NMP app is a *composition*: one kernel + N protocol modules + 1 app core. The
 canonical composition is delivered as a **library call**, not as generated wiring
@@ -10,9 +10,10 @@ in your source tree (ADR-0046 — see [19a](19a-walkthrough-microblog.md) and
 [19b](19b-walkthrough-microblog.md) for how a new app uses it).
 
 This section covers the generated *bindings* and the *FFI boundary*. The boundary
-split is: raw C/JNI owns lifecycle/action/capability calls today, binary
-FlatBuffers owns the hot update stream today, UniFFI is still the planned
-binding/lifecycle target for M14, and the full starter remains M16.
+split is: the Android app-loop lane (lifecycle/action dispatch/update push) is
+now served by UniFFI `AppHandle` (M14-0); raw C/JNI owns residual Android lanes
+and all iOS lanes today; binary FlatBuffers owns the hot update stream; remaining
+UniFFI M14 lanes are still planned; the full multi-platform starter remains M16.
 
 ## The `nmp.toml` manifest
 
@@ -89,12 +90,22 @@ Deleting the old `gen modules` scaffolder did not touch them.
 │ and typed projection sidecars from Rust to frontend shells. JSON is    │
 │ allowed for Nostr relay frames, capability envelopes, diagnostics,     │
 │ goldens, or tests. It is not a second production update transport.   │
-├─ M14 — UniFFI (PLANNED — see ADR-0030 for the decision record; status tracked in GitHub Issues) ──┤
+├─ M14-0 — UniFFI Android app-loop lane (SHIPS — issue #2129) ────────┤
+│ `AppHandle` UniFFI object (proc-macro, uniffi 0.29.5): `new()`,      │
+│ `start()`, `stop()`, `close()`, `dispatch_action_bytes()`,           │
+│ `dispatch_action_json()`, `dispatch_intent_json()`,                  │
+│ `set_update_sink()`, `clear_update_sink()`. `UpdateSink` callback    │
+│ interface delivers NMPU FlatBuffers frames (D8 push, no polling).    │
+│ `DispatchAck` record: `correlation_id?`, `error?` (D6 — no throws). │
+│ Generated Kotlin checked in at org/nmp/android/uniffi/; gated by    │
+│ ci/check-uniffi-kotlin-drift.sh. FlatBuffers NOT transcoded.         │
+├─ M14 remaining lanes — UniFFI (PLANNED) ─────────────────────────────┤
 │ nmp-codegen extended to emit `uniffi::setup_scaffolding!()` +        │
 │ lifecycle/binding wrappers (see ADR-0010 §Codegen output). iOS stops    │
 │ importing NmpCore.h; imports the generated Swift module. UniFFI owns   │
 │ object lifetime, callbacks, and capability interfaces; it is not the   │
-│ hot update payload format. NOT built.                                  │
+│ hot update payload format. Residual Android JNI lanes (signer,        │
+│ capability, marmot, identity, feeds) are staged for future migration.  │
 ├─ `nmp` CLI (SHIPS, crates/nmp-cli/) ────────────────────────────────┤
 │ `nmp init <app>` scaffolds a thin Rust shell: a `<name>-core` crate  │
 │ that calls `register_defaults`, plus a headless `examples/shell.rs`   │
