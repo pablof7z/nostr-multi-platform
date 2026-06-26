@@ -13,15 +13,16 @@
 //!
 //! # Wake contract
 //!
-//! `wake: Rc<dyn Fn()>` is the caller-provided "please schedule a pump" hook.
-//! Default: no-op (tests call `pump()` directly). On wasm32 production the
-//! host sets it to a function that schedules a 0ms timer which calls `pump()`
-//! on the shared runtime handle.
+//! `wake: WakeCell` is the shared, stable "please schedule a pump" indirection
+//! (see [`super::WakeCell`]). The closures clone the *cell* (not the inner
+//! closure) at construction and invoke the current closure via
+//! [`super::fire_wake`] at callback time, so a host that installs the real wake
+//! via `set_wake` *after* `spawn_bootstrap` built these handlers is still
+//! observed. On wasm32 production the host sets it to a function that schedules
+//! a 0ms timer which calls `pump()` on the shared runtime handle.
 
 #[cfg(target_arch = "wasm32")]
 use std::rc::Rc;
-#[cfg(target_arch = "wasm32")]
-use std::sync::Arc;
 
 #[cfg(target_arch = "wasm32")]
 use nmp_network::browser_driver::BrowserKernelHandlers;
@@ -30,16 +31,19 @@ use nmp_network::role::RelayRole;
 
 #[cfg(target_arch = "wasm32")]
 use super::inbound::{InboundQueue, InboundRelayEvent};
+#[cfg(target_arch = "wasm32")]
+use super::{fire_wake, WakeCell};
 
 /// Build a [`BrowserKernelHandlers`] whose closures enqueue events (never
 /// mutate the reducer). Called once from `spawn_bootstrap` on wasm32.
 ///
-/// `inbound` and `wake` are `Rc`-shared so the closures can push events and
-/// schedule pumps without holding a mutable borrow on the relay pool.
+/// `inbound` is `Rc`-shared and `wake` is the shared [`WakeCell`] so the
+/// closures can push events and schedule pumps without holding a mutable borrow
+/// on the relay pool, and observe a later `set_wake`.
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn build_handlers(
     inbound: Rc<InboundQueue>,
-    wake: Rc<dyn Fn()>,
+    wake: WakeCell,
 ) -> BrowserKernelHandlers {
     let on_connected = {
         let inbound = Rc::clone(&inbound);
@@ -50,7 +54,7 @@ pub(crate) fn build_handlers(
                 url: url.to_string(),
                 is_reconnect,
             });
-            (wake)();
+            fire_wake(&wake);
         }) as Rc<dyn Fn(RelayRole, &str, bool)>
     };
 
@@ -63,7 +67,7 @@ pub(crate) fn build_handlers(
                 url: url.to_string(),
                 text,
             });
-            (wake)();
+            fire_wake(&wake);
         }) as Rc<dyn Fn(RelayRole, &str, String)>
     };
 
@@ -76,7 +80,7 @@ pub(crate) fn build_handlers(
                 url: url.to_string(),
                 bytes,
             });
-            (wake)();
+            fire_wake(&wake);
         }) as Rc<dyn Fn(RelayRole, &str, Vec<u8>)>
     };
 
@@ -89,7 +93,7 @@ pub(crate) fn build_handlers(
                 url: url.to_string(),
                 reason,
             });
-            (wake)();
+            fire_wake(&wake);
         }) as Rc<dyn Fn(RelayRole, &str, Option<String>)>
     };
 
@@ -101,7 +105,7 @@ pub(crate) fn build_handlers(
                 role,
                 url: url.to_string(),
             });
-            (wake)();
+            fire_wake(&wake);
         }) as Rc<dyn Fn(RelayRole, &str)>
     };
 
@@ -114,7 +118,7 @@ pub(crate) fn build_handlers(
                 url: url.to_string(),
                 error,
             });
-            (wake)();
+            fire_wake(&wake);
         }) as Rc<dyn Fn(RelayRole, &str, String)>
     };
 

@@ -66,14 +66,28 @@ pub(crate) fn fan_out_outbound(
             // Spawn-on-miss: the kernel targeted a URL not yet in the pool.
             match BrowserRelayDriver::new(url.to_string(), message.role(), handlers.clone()) {
                 Ok(driver) => pool.push(driver),
-                // Bad URL (very rare after the first connect) — drop the frame.
-                Err(_) => continue,
+                // Bad URL (very rare after the first connect). Surface it — the
+                // frame cannot be delivered, so do not silently drop it (D6).
+                Err(error) => {
+                    events.push(BrowserRuntimeEvent::RelaySpawnFailed {
+                        url: url.to_string(),
+                        reason: format!("{error:?}"),
+                    });
+                    continue;
+                }
             }
         }
 
         for driver in pool.iter().filter(|d| d.url() == url) {
             // send_text is synchronous and non-blocking (buffers if not OPEN).
-            let _ = driver.send_text(message.text());
+            // A throw (e.g. socket in an illegal state) means the frame did not
+            // leave the runtime — surface it rather than swallow it (D6).
+            if let Err(error) = driver.send_text(message.text()) {
+                events.push(BrowserRuntimeEvent::RelaySendFailed {
+                    url: url.to_string(),
+                    reason: format!("{error:?}"),
+                });
+            }
         }
     }
 

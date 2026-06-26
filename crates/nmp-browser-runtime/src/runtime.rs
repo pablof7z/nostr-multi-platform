@@ -135,6 +135,11 @@ struct BrowserRuntime {
     /// timer (#2050). On native test builds holds only the queue and timer
     /// (no actual sockets).
     relay_pool: RelayPool,
+    /// Events produced by `spawn_bootstrap` at start() (socket-budget exceeded,
+    /// spawn-failed) that have not yet been surfaced. Drained into the first
+    /// `pump()`'s `PumpOutcome.events` so a bad bootstrap relay is observable
+    /// (D6 — never a silent drop).
+    pending_startup_events: Vec<BrowserRuntimeEvent>,
 }
 
 impl BrowserRuntime {
@@ -155,18 +160,30 @@ impl BrowserRuntime {
             &cmd_sender,
         );
 
-        // ── 3. Maintenance tick (tick_at + arm next deadline) ─────────────────
+        // ── 3. Relay idle-tick sweep ──────────────────────────────────────────
+        // Run every registered interceptor's `on_idle_tick` (e.g. NWC expiry
+        // sweeps). Mirrors the native actor loop's idle section; D8: hooks
+        // compare kernel timestamps and emit, never sleep.
+        let idle_outbound = self
+            .reducer
+            .run_relay_idle_tick(&self.relay_text_interceptors);
+
+        // ── 4. Maintenance tick (tick_at + arm next deadline) ─────────────────
         let now = Instant::now();
         let tick_outbound = self.relay_pool.tick_and_arm(&mut self.reducer, now);
 
-        // ── 4. Collect all outbound from this turn ────────────────────────────
+        // ── 5. Collect all outbound from this turn ────────────────────────────
         let mut all_outbound: Vec<OutboundMessage> = Vec::new();
         all_outbound.extend(cmd_drain.outbound);
         all_outbound.extend(relay_drain.outbound);
+        all_outbound.extend(idle_outbound);
         all_outbound.extend(tick_outbound);
 
-        // ── 5. Fan outbound to relay drivers (wasm32: actual sends; native: no-op)
+        // ── 6. Fan outbound to relay drivers (wasm32: actual sends; native: no-op)
         let mut events: Vec<BrowserRuntimeEvent> = Vec::new();
+        // Bootstrap spawn events (budget-exceeded / spawn-failed) captured at
+        // start() are surfaced on the first pump (never silently discarded — D6).
+        events.append(&mut self.pending_startup_events);
         events.extend(cmd_drain.events);
         events.extend(relay_drain.events);
         let budget_events = self.relay_pool.fan_out_outbound(&all_outbound);
@@ -290,6 +307,7 @@ impl BrowserRuntimeHandle {
             identity_change_observers: inner.identity_change_observers,
             run_config: inner.run_config,
             relay_pool,
+            pending_startup_events: Vec::new(),
         };
 
         let mut handle = Self {
@@ -362,13 +380,15 @@ impl BrowserRuntimeHandle {
     /// Spawn relay drivers from `bootstrap` (wasm32: opens WebSockets; native:
     /// no-op). Called once from `from_builder_inner` with the bootstrap list
     /// captured before it was consumed into the kernel.
+    ///
+    /// Any socket-budget-exceeded or spawn-failed events from bootstrap are
+    /// parked in `pending_startup_events` and surfaced on the first `pump()`
+    /// (D6 — a bad bootstrap relay is never silently dropped).
     fn spawn_relay_bootstrap(&mut self, bootstrap: &[(String, String)]) {
         #[cfg(target_arch = "wasm32")]
         {
             let events = self.runtime.relay_pool.spawn_bootstrap(bootstrap);
-            // Budget-exceeded events from bootstrap seam: surface via a startup
-            // events buffer on BrowserRuntime (#2050 follow-up).
-            let _ = events;
+            self.runtime.pending_startup_events.extend(events);
         }
         #[cfg(not(target_arch = "wasm32"))]
         let _ = bootstrap;

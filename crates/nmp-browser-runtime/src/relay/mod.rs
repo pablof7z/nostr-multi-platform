@@ -13,6 +13,7 @@
 //! is therefore carried to the NIP-11 GET only (where headers can be set).
 //! The WS handshake carries the browser's default User-Agent string.
 
+use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -34,23 +35,51 @@ pub(crate) mod timer;
 use inbound::{drain_inbound, InboundDrainOutcome, InboundQueue};
 use timer::CancelableTimer;
 
+/// Stable wake indirection shared between the relay pool, the JS driver
+/// handlers, and the maintenance timer.
+///
+/// The outer `Rc` is cloned (cheaply, sharing one allocation) into every
+/// handler closure and the maintenance-timer callback **at construction /
+/// bootstrap time**; the inner `Rc<dyn Fn()>` is the actual "please pump now"
+/// closure. [`RelayPool::set_wake`] swaps the *inner* closure in place, so
+/// callbacks built before the host installed the real wake still observe it —
+/// fixing the bootstrap-runs-before-`set_wake` ordering dead-end (handlers
+/// would otherwise have captured a stale no-op and inbound events would never
+/// schedule a pump).
+pub(crate) type WakeCell = Rc<RefCell<Rc<dyn Fn()>>>;
+
+/// Invoke the current wake closure through a [`WakeCell`]. Clones the inner
+/// `Rc<dyn Fn()>` out before calling so the `RefCell` borrow is released before
+/// the closure runs (the closure may, transitively, re-enter `set_wake`).
+pub(crate) fn fire_wake(cell: &WakeCell) {
+    let wake = cell.borrow().clone();
+    wake();
+}
+
 /// The browser relay pool — driver set + inbound queue + maintenance timer.
 pub(crate) struct RelayPool {
     /// Shared inbound event queue (pushed by JS handlers, drained by pump()).
     pub(crate) inbound: Rc<InboundQueue>,
 
-    /// "Please schedule a pump" hook. Default: no-op. Set by the host via
-    /// [`Self::set_wake`] so inbound events trigger pump() calls without
-    /// external polling (D8 no-polling).
-    wake: Rc<dyn Fn()>,
+    /// Stable "please schedule a pump" indirection. Handlers and the
+    /// maintenance timer capture a clone of this `Rc` at construction; the host
+    /// installs the real wake via [`Self::set_wake`], which swaps the inner
+    /// closure so earlier-built callbacks observe it (D8 no-polling — inbound
+    /// events drive pumps via the host wake, not a busy loop).
+    wake: WakeCell,
 
     /// Maintenance timer armed by pump() from `next_runtime_deadline_delay_ms`.
     /// When it fires it calls wake() which schedules a pump().
     maintenance_timer: CancelableTimer,
 
-    /// User-agent string carried to the NIP-11 info-document GET (not the WS
-    /// handshake — browser WS cannot set custom headers).
-    #[allow(dead_code)] // seam: NIP-11 browser fetch lands in #2050 follow-up
+    /// User-agent string for the NIP-11 info-document GET. The browser WS
+    /// handshake cannot set custom headers, so this UA can only ever ride the
+    /// NIP-11 `application/nostr+json` fetch — and that fetch uses `fetch()`
+    /// rather than the native `ureq` path, so it is wired as part of the
+    /// Chirp-web real-relay work in #2038 (not on this transport-only adapter).
+    /// Stored here rather than dropped so the host-configured value survives to
+    /// that consumer instead of being silently lost at the builder boundary.
+    #[allow(dead_code)] // consumed by the #2038 browser NIP-11 info-document fetch
     user_agent: Option<String>,
 
     /// Live WebSocket drivers, one per distinct relay URL. wasm32-only — native
@@ -70,7 +99,11 @@ impl RelayPool {
     pub(crate) fn new(user_agent: Option<String>) -> Self {
         Self {
             inbound: InboundQueue::new(),
-            wake: Rc::new(|| {}), // no-op default; set via set_wake()
+            // Stable cell; inner closure is a no-op placeholder until the host
+            // installs the real pump-trigger via set_wake(). Because the cell is
+            // shared by reference, handlers built during bootstrap (before
+            // set_wake) still observe the real wake once it is swapped in.
+            wake: Rc::new(RefCell::new(Rc::new(|| {}) as Rc<dyn Fn()>)),
             maintenance_timer: CancelableTimer::new(),
             user_agent,
             #[cfg(target_arch = "wasm32")]
@@ -84,8 +117,14 @@ impl RelayPool {
     /// (e.g. the nmp-wasm bridge sets a closure that schedules a 0ms timer
     /// which calls the wasm-exported pump function). Not called in native tests
     /// — tests invoke pump() directly.
+    ///
+    /// Swaps the *inner* closure of the shared [`WakeCell`] in place. Handlers
+    /// and the maintenance timer built before this call captured a clone of the
+    /// cell (not the closure), so they immediately observe the new wake — this
+    /// is what makes `spawn_bootstrap` (which runs before the host can call
+    /// `set_wake`) wire a live wake rather than a dead no-op.
     pub(crate) fn set_wake(&mut self, wake: Rc<dyn Fn()>) {
-        self.wake = wake;
+        *self.wake.borrow_mut() = wake;
     }
 
     /// Open sockets for the bootstrap relay list (wasm32 only).
@@ -124,9 +163,13 @@ impl RelayPool {
             ) {
                 Ok(driver) => self.drivers.push(driver),
                 // Unparseable URL (bad scheme / illegal chars). Very rare since
-                // the kernel's CanonicalRelayUrl normalises before storage.
-                // seam: surface dial errors via RelayDriverError (#2050 follow-up)
-                Err(_) => continue,
+                // the kernel's CanonicalRelayUrl normalises before storage, but
+                // surfaced (never silently dropped — D6) so a misconfigured
+                // bootstrap relay is observable to the host.
+                Err(error) => events.push(BrowserRuntimeEvent::RelaySpawnFailed {
+                    url: plan.url.clone(),
+                    reason: format!("{error:?}"),
+                }),
             }
         }
         events
@@ -169,29 +212,32 @@ impl RelayPool {
     ///
     /// Calls `reducer.tick_at(now)` to drain the kernel's maintenance queues
     /// (subscription lifecycle, claim expansion, publish-engine tick) and then
-    /// arms the maintenance timer for the next kernel-declared deadline.
+    /// arms the maintenance timer **only when the kernel declares a concrete
+    /// next deadline**.
     ///
-    /// `MAINTENANCE_DELAY_MS_CAP` (1000ms) prevents the timer from waking more
-    /// than once per second in the absence of a kernel deadline.
+    /// D8 (no polling): when `next_runtime_deadline_delay_ms()` returns `None`
+    /// there is no kernel work waiting on the wall clock, so no timer is armed —
+    /// the next inbound relay event or host command drives the following pump.
+    /// Arming a fallback timer here would re-arm the runtime every second
+    /// forever, which is exactly the busy-loop the doctrine forbids.
     pub(crate) fn tick_and_arm(
         &mut self,
         reducer: &mut KernelReducer,
         now: Instant,
     ) -> Vec<OutboundMessage> {
-        const MAINTENANCE_DELAY_MS_CAP: u32 = 1000;
-
         let outbound = reducer.tick_at(now);
 
-        // Arm maintenance timer at the next kernel-declared deadline (capped).
-        let delay_ms = reducer
-            .next_runtime_deadline_delay_ms()
-            .unwrap_or(MAINTENANCE_DELAY_MS_CAP)
-            .clamp(1, MAINTENANCE_DELAY_MS_CAP);
-
-        let wake = Rc::clone(&self.wake);
-        self.maintenance_timer.arm(delay_ms, Rc::new(move || {
-            (wake)();
-        }));
+        // Arm only when the kernel has a real deadline. `max(1)` avoids a 0ms
+        // delay (which would fire on the same JS task and could starve the
+        // event loop); the kernel's own deadline is otherwise honored verbatim
+        // (no artificial cap — a far deadline is a single far-future timer, not
+        // a 1Hz poll).
+        if let Some(delay) = reducer.next_runtime_deadline_delay_ms() {
+            let delay_ms = delay.max(1);
+            let wake = Rc::clone(&self.wake);
+            self.maintenance_timer
+                .arm(delay_ms, Rc::new(move || fire_wake(&wake)));
+        }
 
         outbound
     }
@@ -212,6 +258,15 @@ impl RelayPool {
         #[cfg(not(target_arch = "wasm32"))]
         return 0;
     }
+
+    /// Clone the shared [`WakeCell`]. Mirrors what `build_handlers` captures for
+    /// each JS driver callback at bootstrap time, so a native test can prove the
+    /// stable-indirection contract (a wake installed *after* this clone is still
+    /// observed) without the wasm32-only handler bag.
+    #[cfg(test)]
+    pub(crate) fn wake_cell_for_test(&self) -> WakeCell {
+        Rc::clone(&self.wake)
+    }
 }
 
 #[cfg(test)]
@@ -226,32 +281,78 @@ mod tests {
     }
 
     #[test]
-    fn maintenance_timer_armed_after_tick() {
+    fn no_deadline_means_no_timer_armed() {
+        // D8 no-polling: a fresh reducer has no pending publish work, so
+        // `next_runtime_deadline_delay_ms()` returns None and `tick_and_arm`
+        // must NOT arm a fallback timer (arming one would re-wake the runtime
+        // every second forever — the busy loop the doctrine forbids).
         let mut pool = RelayPool::new(None);
         let mut reducer = KernelReducer::new();
+        assert_eq!(
+            reducer.next_runtime_deadline_delay_ms(),
+            None,
+            "precondition: fresh reducer has no runtime deadline"
+        );
         let now = nmp_core::time::Instant::now();
         pool.tick_and_arm(&mut reducer, now);
-        // Timer must be armed (delay may vary based on kernel state, but
-        // must be Some and within the cap).
-        assert!(
-            pool.maintenance_timer.armed_delay_ms_for_test().is_some(),
-            "maintenance timer must be armed after tick_and_arm"
+        assert_eq!(
+            pool.maintenance_timer.armed_delay_ms_for_test(),
+            None,
+            "no kernel deadline must leave the maintenance timer unarmed"
         );
-        let delay = pool.maintenance_timer.armed_delay_ms_for_test().unwrap();
-        assert!(delay >= 1 && delay <= 1000, "delay must be in [1, 1000]");
     }
 
     #[test]
-    fn set_wake_replaces_the_hook() {
+    fn set_wake_installs_through_stable_cell() {
         use std::cell::Cell;
         let mut pool = RelayPool::new(None);
         let called = Rc::new(Cell::new(false));
         let called_clone = Rc::clone(&called);
         pool.set_wake(Rc::new(move || called_clone.set(true)));
-        // Calling wake() through the maintenance timer isn't triggered natively,
-        // but we can exercise the set_wake seam directly.
-        (pool.wake)();
+        // Fire the current wake through the shared cell (what a handler does).
+        fire_wake(&pool.wake);
         assert!(called.get(), "set_wake must install the provided function");
+    }
+
+    #[test]
+    fn wake_fires_after_set_wake_installed_post_spawn() {
+        use std::cell::Cell;
+        // Reproduces the bootstrap-before-set_wake ordering: a driver handler
+        // captures the wake cell at spawn time (here, `wake_cell_for_test`),
+        // THEN the host installs the real wake via set_wake. An inbound event
+        // arriving afterwards must still schedule a pump (counter increments) —
+        // proving the indirection is stable, not a captured-stale no-op.
+        let mut pool = RelayPool::new(None);
+
+        // 1. "Handler" captures the cell during bootstrap (wake still no-op).
+        let captured = pool.wake_cell_for_test();
+
+        // 2. Host installs the real wake AFTER the capture.
+        let pumps = Rc::new(Cell::new(0u32));
+        let pumps_clone = Rc::clone(&pumps);
+        pool.set_wake(Rc::new(move || {
+            pumps_clone.set(pumps_clone.get() + 1);
+        }));
+
+        // 3. An inbound relay event arrives: handler enqueues + wakes via the
+        //    cell it captured in step 1.
+        pool.inbound.push(inbound::InboundRelayEvent::Failed {
+            role: nmp_network::role::RelayRole::Content,
+            url: "wss://relay.example".to_string(),
+            error: "x".to_string(),
+        });
+        fire_wake(&captured);
+
+        assert_eq!(
+            pumps.get(),
+            1,
+            "wake installed after the handler captured the cell must still fire"
+        );
+        assert_eq!(
+            pool.inbound.queue.borrow().len(),
+            1,
+            "the inbound event must have been enqueued"
+        );
     }
 
     #[test]

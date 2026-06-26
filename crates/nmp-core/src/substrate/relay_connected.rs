@@ -93,8 +93,25 @@ pub fn fan_relay_connected(
         Ok(guard) => guard.clone(),
         Err(_) => return,
     };
+    fan_relay_connected_hooks(&hooks, relay_url, is_reconnect, command_sender);
+}
+
+/// Fan a connect notification to every hook in a plain slice.
+///
+/// This is the single source of truth for the panic-contained (D15) per-hook
+/// invocation loop. [`fan_relay_connected`] delegates here after cloning the
+/// hooks out from under its slot mutex. Hosts that hold the hooks in an owned
+/// `Vec` rather than a [`RelayConnectedHookSlot`] — e.g. the browser runtime's
+/// `RelayPool`, which has no interior-mutable slot — call this directly so they
+/// do not re-implement the fan loop.
+pub fn fan_relay_connected_hooks(
+    hooks: &[Arc<dyn RelayConnectedHook>],
+    relay_url: &str,
+    is_reconnect: bool,
+    command_sender: &CommandSender,
+) {
     for hook in hooks {
-        // D15: a panicking hook adapter must not unwind the actor's dispatch
+        // D15: a panicking hook adapter must not unwind the caller's dispatch
         // frame. Each hook gets its own sender clone.
         let sender = command_sender.clone();
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

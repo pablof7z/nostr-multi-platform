@@ -30,7 +30,7 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use nmp_core::substrate::{RelayConnectedHook, RelayTextInterceptor};
+use nmp_core::substrate::{fan_relay_connected_hooks, RelayConnectedHook, RelayTextInterceptor};
 use nmp_core::time::Instant;
 use nmp_core::{CommandSender, KernelReducer, OutboundMessage, RelayFrame};
 use nmp_network::role::RelayRole;
@@ -82,7 +82,13 @@ pub(crate) enum InboundRelayEvent {
 /// handlers (which push) and `RelayPool` (which drains in `pump()`).
 pub(crate) struct InboundQueue {
     pub(crate) queue: RefCell<VecDeque<InboundRelayEvent>>,
+    /// Cumulative count of inbound frames dropped (oldest-first) on overflow.
     pub(crate) dropped: Cell<u64>,
+    /// The `dropped` value already surfaced to the host via a
+    /// [`BrowserRuntimeEvent::RelayInboundDropped`] event. The drain reports the
+    /// delta `dropped - reported` each turn so each drop is surfaced exactly
+    /// once (D6-honest — never a silent loss).
+    reported_dropped: Cell<u64>,
 }
 
 impl InboundQueue {
@@ -90,6 +96,7 @@ impl InboundQueue {
         Rc::new(Self {
             queue: RefCell::new(VecDeque::new()),
             dropped: Cell::new(0),
+            reported_dropped: Cell::new(0),
         })
     }
 
@@ -101,6 +108,17 @@ impl InboundQueue {
             self.dropped.set(self.dropped.get().saturating_add(1));
         }
         q.push_back(event);
+    }
+
+    /// Number of inbound drops not yet surfaced to the host, consuming them so
+    /// the next call returns only newly-dropped frames. Called once per pump by
+    /// [`drain_inbound`]; a non-zero return becomes a
+    /// [`BrowserRuntimeEvent::RelayInboundDropped`] event.
+    pub(crate) fn take_dropped_delta(&self) -> u64 {
+        let total = self.dropped.get();
+        let delta = total.saturating_sub(self.reported_dropped.get());
+        self.reported_dropped.set(total);
+        delta
     }
 }
 
@@ -132,14 +150,22 @@ pub(crate) fn drain_inbound(
     command_sender: &CommandSender,
 ) -> InboundDrainOutcome {
     let mut outbound: Vec<OutboundMessage> = Vec::new();
+    let mut events: Vec<BrowserRuntimeEvent> = Vec::new();
     let mut applied = 0usize;
+
+    // Surface any inbound frames the queue dropped on overflow since the last
+    // pump (D6-honest — never a silent loss).
+    let dropped = queue.take_dropped_delta();
+    if dropped > 0 {
+        events.push(BrowserRuntimeEvent::RelayInboundDropped { count: dropped });
+    }
 
     loop {
         if applied >= BROWSER_RELAY_DRAIN_BUDGET {
             return InboundDrainOutcome {
                 outbound,
                 yielded: true,
-                events: Vec::new(),
+                events,
             };
         }
 
@@ -158,9 +184,10 @@ pub(crate) fn drain_inbound(
             } => {
                 let msgs = reducer.handle_relay_connected_at(role, &url, is_reconnect, now);
                 outbound.extend(msgs);
-                // Fan connected hooks (D8: must not block — hooks spawn async
-                // work and return immediately).
-                fan_connected_hooks(hooks, &url, is_reconnect, command_sender);
+                // Fan connected hooks via the canonical substrate helper (single
+                // source of truth for the D15 panic-contained loop). D8: hooks
+                // spawn async work and return immediately.
+                fan_relay_connected_hooks(hooks, &url, is_reconnect, command_sender);
             }
             InboundRelayEvent::Text { role, url, text } => {
                 let msgs =
@@ -194,28 +221,7 @@ pub(crate) fn drain_inbound(
     InboundDrainOutcome {
         outbound,
         yielded: false,
-        events: Vec::new(),
-    }
-}
-
-/// Fan a relay-connected notification to every installed hook.
-///
-/// Mirrors `nmp_core::substrate::relay_connected::fan_relay_connected` but
-/// operates on an owned slice (not a `RelayConnectedHookSlot`) since
-/// `BrowserRuntime` stores the hooks in a plain `Vec` without an interior-
-/// mutable slot.
-fn fan_connected_hooks(
-    hooks: &[Arc<dyn RelayConnectedHook>],
-    relay_url: &str,
-    is_reconnect: bool,
-    command_sender: &CommandSender,
-) {
-    for hook in hooks {
-        let sender = command_sender.clone();
-        // D15: a panicking hook must not unwind the pump frame.
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            hook.on_relay_connected(relay_url, is_reconnect, sender);
-        }));
+        events,
     }
 }
 
@@ -295,6 +301,47 @@ mod tests {
             _ => panic!("unexpected variant"),
         });
         assert_eq!(back.as_deref(), Some("wss://new.example"));
+    }
+
+    #[test]
+    fn dropped_overflow_surfaces_inbound_dropped_event_once() {
+        let q = test_queue();
+        // Overflow the queue by 3 so `dropped == 3`.
+        for i in 0..MAX_INBOUND_QUEUED + 3 {
+            q.push(InboundRelayEvent::Failed {
+                role: RelayRole::Content,
+                url: format!("wss://r{i}.example"),
+                error: "x".to_string(),
+            });
+        }
+        assert_eq!(q.dropped.get(), 3);
+
+        let mut reducer = KernelReducer::new();
+        let (sender, _rx) = test_sender();
+
+        // First drain hits the budget (queue is full) but must still surface the
+        // 3 drops exactly once via a RelayInboundDropped event.
+        let first = drain_inbound(&q, &mut reducer, &[], &[], &sender);
+        let dropped_events: Vec<u64> = first
+            .events
+            .iter()
+            .filter_map(|e| match e {
+                BrowserRuntimeEvent::RelayInboundDropped { count } => Some(*count),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(dropped_events, vec![3], "drops surfaced once with count 3");
+
+        // Drain the rest; no new drops occurred, so no further dropped event.
+        while drain_inbound(&q, &mut reducer, &[], &[], &sender).yielded {}
+        let second = drain_inbound(&q, &mut reducer, &[], &[], &sender);
+        assert!(
+            !second
+                .events
+                .iter()
+                .any(|e| matches!(e, BrowserRuntimeEvent::RelayInboundDropped { .. })),
+            "already-surfaced drops must not be re-reported"
+        );
     }
 
     #[test]

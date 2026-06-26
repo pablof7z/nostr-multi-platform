@@ -48,4 +48,34 @@ pub enum BrowserRuntimeEvent {
         /// The relay URL for which no driver could be spawned.
         url: String,
     },
+    /// A relay driver could not be constructed for `url` (the WebSocket
+    /// constructor rejected the URL — bad scheme / illegal characters).
+    ///
+    /// Surfaced on both bootstrap spawn and outbound spawn-on-miss so a frame
+    /// targeting an unspawnable relay is never silently dropped (D6-honest).
+    RelaySpawnFailed {
+        /// The relay URL whose driver could not be constructed.
+        url: String,
+        /// The stringified constructor error.
+        reason: String,
+    },
+    /// An outbound frame send to an existing driver for `url` failed (the
+    /// `WebSocket.send` call threw). The frame did not leave the runtime.
+    ///
+    /// Surfaced so a failed send is observable rather than swallowed (D6).
+    RelaySendFailed {
+        /// The relay URL whose driver rejected the send.
+        url: String,
+        /// The stringified send error.
+        reason: String,
+    },
+    /// One or more inbound relay frames were dropped because the bounded inbound
+    /// queue (`MAX_INBOUND_QUEUED = 1024`) overflowed since the previous pump.
+    ///
+    /// `count` is the number of frames dropped (oldest-first) in that window.
+    /// Surfaced so inbound loss is observable rather than silent (D6-honest).
+    RelayInboundDropped {
+        /// Number of inbound frames dropped since the last pump turn.
+        count: u64,
+    },
 }
