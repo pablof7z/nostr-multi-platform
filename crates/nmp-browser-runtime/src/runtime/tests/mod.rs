@@ -23,6 +23,7 @@ use crate::signer::{CapabilityProviderRegistry, SignerCompletion, SignerCompleti
 
 mod composition;
 mod contract;
+mod feed_composition;
 mod pump;
 mod signer;
 
