@@ -91,7 +91,9 @@ test("@wasm publish: composed note is NIP-07 signed and the relay receives a val
       .toBeGreaterThanOrEqual(1);
 
     // Install the viewer identity via the shell's connect affordance.
-    const connect = page.locator('[data-slot="signing"] .connect-btn');
+    // SigningPanel uses data-action="connect-nip07" on the NIP-07 button;
+    // there is no .connect-btn class in the real DOM.
+    const connect = page.locator('[data-slot="signing"] [data-action="connect-nip07"]');
     await expect(connect).toBeVisible({ timeout: 10_000 });
     await connect.click();
     await expect(page.locator(".status-indicator")).toHaveAttribute("data-connected", "true", {
