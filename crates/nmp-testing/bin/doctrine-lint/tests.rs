@@ -27,11 +27,13 @@
 //! | `no_raw_tap_rule_tests.rs`| no_raw_tap                            |
 //! | `recent_rule_tests.rs`    | D19/D20/D21                           |
 //! | `tests_a6.rs`             | A6                                    |
+//! | `browser_boundary_gates.rs` | browser-runtime/runtime-web boundary |
 
 use std::path::PathBuf;
 use std::process::Command;
 
 mod authority_rule_tests; // D26 protocol-authority gate smoke tests — sibling module.
+mod browser_boundary_gates; // Browser runtime + runtime-web boundary smoke gates.
 mod d27_rule_tests; // D27 projection display-helper ban smoke tests — sibling module.
 mod event_flow_rule_tests; // D23/D24/D25 event-flow gate smoke tests — sibling module.
 mod file_size_gate_tests; // File-size baseline ratchet smoke tests — sibling module.
