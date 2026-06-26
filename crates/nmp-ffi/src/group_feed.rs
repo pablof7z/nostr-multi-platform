@@ -181,13 +181,22 @@ impl NmpApp {
     /// a view opened after the relay's kind:39000/39001/39002 catalog was
     /// cached catches it up (#2088), then tails live. Pinned `Global`.
     ///
-    /// Returns a [`GroupFeedHandle`] the caller passes to
-    /// [`Self::close_group_feed`] (via the handle's `close`) on teardown.
-    /// Singleton: re-opening replaces the prior discovery view.
+    /// Returns the [`GroupFeedHandle`] the caller passes to
+    /// [`Self::close_group_feed`] (via the handle's `close`) on teardown, plus a
+    /// read-only `Arc<DiscoveredGroupsProjection>` snapshot reader so a per-app
+    /// composer (e.g. nmp-app-29er's group tree) can fold the canonical
+    /// discovered-groups catalog without re-registering its own projection +
+    /// interest. The door keeps owning the sidecar, the relay-pinned interest,
+    /// and the #2088 hydrating replay; it just hands back the same `Arc` it
+    /// already built. Singleton: re-opening replaces the prior discovery view.
     #[must_use]
-    pub fn open_group_discovery(&self, host_relay_url: String) -> GroupFeedHandle {
+    pub fn open_group_discovery(
+        &self,
+        host_relay_url: String,
+    ) -> (GroupFeedHandle, Arc<DiscoveredGroupsProjection>) {
         let relay_pin = Some(host_relay_url.clone());
         let projection = Arc::new(DiscoveredGroupsProjection::new(host_relay_url));
+        let projection_reader = Arc::clone(&projection);
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
@@ -215,10 +224,13 @@ impl NmpApp {
             register_sidecar,
         );
 
-        GroupFeedHandle {
-            app_addr: (self as *const NmpApp) as usize,
-            key: DISCOVERED_GROUPS_KEY.to_string(),
-        }
+        (
+            GroupFeedHandle {
+                app_addr: (self as *const NmpApp) as usize,
+                key: DISCOVERED_GROUPS_KEY.to_string(),
+            },
+            projection_reader,
+        )
     }
 
     /// Close the group-discovery read view opened by
@@ -233,10 +245,22 @@ impl NmpApp {
     /// and the interest is pinned to it; otherwise the projection derives host
     /// identity from `KernelEvent.relay_provenance` and the interest is
     /// outbox-routed (no pin). Hydrating + `ActiveAccount`-scoped (re-routes on
-    /// account switch). An empty `active_pubkey` is a no-op (D6). Singleton.
-    pub fn open_joined_groups(&self, active_pubkey: String, host_relay_url: String) {
+    /// account switch). An empty `active_pubkey` is a no-op returning `None`
+    /// (D6). Singleton.
+    ///
+    /// Returns a read-only `Arc<JoinedGroupsProjection>` snapshot reader (the
+    /// same `Arc` the door installs as its observer) so a per-app composer can
+    /// fold the canonical per-group `is_member`/`is_admin` membership truth
+    /// without building its own joined-groups projection + interest. `None` when
+    /// `active_pubkey` is empty (nothing was opened).
+    #[must_use]
+    pub fn open_joined_groups(
+        &self,
+        active_pubkey: String,
+        host_relay_url: String,
+    ) -> Option<Arc<JoinedGroupsProjection>> {
         if active_pubkey.is_empty() {
-            return;
+            return None;
         }
         let (projection, relay_pin) = if host_relay_url.is_empty() {
             (Arc::new(JoinedGroupsProjection::new(active_pubkey)), None)
@@ -249,6 +273,7 @@ impl NmpApp {
                 Some(host_relay_url),
             )
         };
+        let projection_reader = Arc::clone(&projection);
 
         let projection_for_sidecar = Arc::clone(&projection);
         let register_sidecar = move |app: &NmpApp| {
@@ -275,6 +300,8 @@ impl NmpApp {
             projection as Arc<dyn nmp_core::KernelEventObserver>,
             register_sidecar,
         );
+
+        Some(projection_reader)
     }
 
     /// Close the joined-groups read view opened by [`Self::open_joined_groups`].

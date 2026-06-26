@@ -16,7 +16,7 @@ fn joined_groups_typed_sidecar_round_trips_membership_and_admin_status() {
     let app = boot();
     let active = "a".repeat(64);
 
-    unsafe { (*app).open_joined_groups(active.clone(), HOST.to_string()) };
+    let _joined = unsafe { (*app).open_joined_groups(active.clone(), HOST.to_string()) };
 
     let meta = VerifiedEvent::from_raw_unchecked(raw_event(
         &"1".repeat(64),
@@ -106,7 +106,7 @@ fn joined_groups_sidecar_reflects_latest_relay_snapshot_only() {
     let app = boot();
     let active = "a".repeat(64);
 
-    unsafe { (*app).open_joined_groups(active.clone(), HOST.to_string()) };
+    let _joined = unsafe { (*app).open_joined_groups(active.clone(), HOST.to_string()) };
 
     let add_request = VerifiedEvent::from_raw_unchecked(raw_event(
         &"5".repeat(64),
