@@ -74,6 +74,7 @@ pub mod search;
 // InputScopeRegistry; orchestrator + generic parsers live in the nmp-intent crate).
 pub mod intent;
 mod view;
+pub(crate) use view::{observed_shape_matches_event, observed_shape_matches_fields};
 
 pub use action::ProtocolDescriptor;
 pub use action::{

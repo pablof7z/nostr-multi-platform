@@ -1,29 +1,22 @@
 # 28 — Action-triggered subscriptions
 
-> **Status: SHIPS** · Audience: both · Read after
-> [05a — Substrate traits](05a-substrate-traits.md) and
-> [07 — Subscription planner](07-subscription-planner.md).
+> **Status: SHIPS** · Audience: both · Read after [05a — Substrate traits](05a-substrate-traits.md) and [07 — Subscription planner](07-subscription-planner.md).
 
-This chapter closes the gap that sent the podcast-player app to
-`dispatch_capability("nostr_relay", …)` and a Swift `URLSessionWebSocketTask`.
-The problem was not a missing API. The problem was a missing recipe.
+This chapter closes the gap that sent podcast-player to
+`dispatch_capability("nostr_relay", …)`: the API existed, but the recipe did not.
 
 ## The gap and why it matters
 
 `ActionModule::execute` dispatches `ActorCommand`s. The kernel opens Nostr
 subscriptions in response to `LogicalInterest`s pushed into the
 `InterestRegistry`. Those two facts look disconnected, but **`execute` can
-dispatch `ActorCommand::EnsureInterest` directly** — the seam already exists.
-What did not exist was a documented, idiomatic path for the pattern
-"user taps something → kernel starts fetching matching events → events appear
-in a projection the shell reads."
+dispatch `ActorCommand::EnsureInterest` directly**. That is the idiomatic path
+for "user taps something → kernel fetches matching events → a shell projection updates."
 
-The canonical live reference is
-`crates/nmp-relations/src/visible_relations.rs` (reaction/reply relations on a
-note card). The illustrative non-kind-1 example is
-`crates/nmp-defaults/src/topic_articles.rs` (NIP-23 long-form articles
-by topic). Both are fully operational; this chapter explains the pattern they
-share.
+Live references: `crates/nmp-relations/src/visible_relations.rs`
+(reaction/reply relations) and `crates/nmp-defaults/src/topic_articles.rs`
+(NIP-23 long-form articles by topic). Both are operational examples of this
+pattern.
 
 ## The three moving parts
 
@@ -31,7 +24,7 @@ Every action-triggered subscription wires three things together at **init
 time** — before any action is dispatched, before `nmp_app_start`:
 
 ```
-register_event_observer   ←── fires for every ingested event on the actor thread
+register_live_event_tap   ←── live-only event tap on the actor thread
 register_snapshot_projection ←── reads the observer's state on every tick
 register_action           ←── dispatches EnsureInterest / DropInterestOwner
 ```
@@ -319,16 +312,17 @@ by reusing a static key with `EnsureInterest`.
 
 ## The event observer — populating the read model
 
-Register a `KernelEventObserver` at init time. It fires on every ingested event
-(already running before any action is dispatched), so once the subscription is
-open and matching events arrive, they flow through immediately:
+Register a `KernelEventObserver` live tap at init time for always-on app
+projections. It fires on every ingested event (already running before any action
+is dispatched), so once the subscription is open and matching events arrive,
+they flow through immediately:
 
 ```rust
 // In your app's registration function, called before nmp_app_start:
 let state = Arc::new(Mutex::new(DiscoveryState::default()));
 
 let state_obs = state.clone();
-app.register_event_observer(Arc::new(ArticleObserver { state: state_obs }));
+app.register_live_event_tap(Arc::new(ArticleObserver { state: state_obs }));
 
 // Observer impl — cheap, must not panic (D6):
 impl KernelEventObserver for ArticleObserver {
@@ -343,10 +337,15 @@ impl KernelEventObserver for ArticleObserver {
 ```
 
 The observer fires synchronously on the actor thread. Keep it fast:
-no I/O, no blocking, no panics. All observers see all events regardless of
-which subscription caused the delivery — filter by `event.kind`, author,
-tags, or whatever the read model needs. This is cheaper than per-subscription
-fan-out routing and keeps the pipeline O(registered observers).
+no I/O, no blocking, no panics. Live taps see all accepted events regardless of
+which subscription caused the delivery, so the observer must filter by
+`event.kind`, author, tags, or whatever the read model needs.
+
+Do not use a live tap for a per-open or late-joining read model that must catch
+up to events already accepted into the kernel. Use
+`ObservedProjectionRegistrar::open_observed_projection`: it registers the
+observer muted, replays the read-cache through the kernel, then activates
+interest-scoped live delivery.
 
 ## The snapshot projection — delivering to the shell
 
@@ -379,7 +378,7 @@ pub fn register(app: &mut impl AppHost) {
     nmp_defaults::register_defaults(app);
 
     // 2. Observer before any app action can trigger ingest.
-    app.register_event_observer(Arc::new(ArticleObserver { state: state.clone() }));
+    app.register_live_event_tap(Arc::new(ArticleObserver { state: state.clone() }));
 
     // 3. Projection — reads the observer's state.
     app.register_snapshot_projection("myapp.discover_results", {
@@ -483,8 +482,7 @@ The subscription should close when…
 │
 └─ …the user navigates away / explicitly cancels
     → InterestLifecycle::Tailing
-    → Dispatch Release when the view closes.
-    → The shell owns the Release trigger; Rust owns the subscription.
+    → Dispatch Release when the view closes; the shell owns the trigger, Rust owns the subscription.
 ```
 
 ## Checklist
@@ -493,7 +491,8 @@ The subscription should close when…
 - [ ] `SubOwnerKey` includes `consumer_id`; `SubKey` does not.
 - [ ] `SubKey` matches the filter; `InterestId` is a stable hash, not a UUID.
 - [ ] `is_async_completing()` is `false` (default) for subscription-only actions.
-- [ ] The event observer is registered at init time, stays cheap, and never panics.
+- [ ] The live tap is registered at init time, stays cheap, and never panics.
+- [ ] Per-open/late-joining projections use `open_observed_projection`, not app-side hydration.
 - [ ] The snapshot projection reads from the observer state; tailing subs have Release.
 - [ ] No relay logic, WebSocket code, or `dispatch_capability("nostr_relay", …)` is in the shell.
 See also: [05a](05a-substrate-traits.md) · [06](06-reactivity-contract.md) · [07](07-subscription-planner.md) · [16](16-capabilities.md) · [20](20-new-protocol-module.md).

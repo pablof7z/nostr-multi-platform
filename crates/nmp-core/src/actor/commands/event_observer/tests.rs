@@ -28,6 +28,18 @@ fn event() -> KernelEvent {
     }
 }
 
+fn event_from(author: &str, kind: u32) -> KernelEvent {
+    KernelEvent {
+        id: format!("id-{author}-{kind}"),
+        author: author.into(),
+        kind,
+        created_at: 1,
+        tags: vec![],
+        content: "hi".into(),
+        relay_provenance: Vec::new(),
+    }
+}
+
 /// Block until `cond` holds or `timeout` elapses. C-ABI observers fire on
 /// the per-slot drain thread, so assertions on their side effects must
 /// poll rather than read immediately after `notify_observers`.
@@ -244,6 +256,66 @@ fn activate_observer_joins_global_fanout() {
         obs.0.load(Ordering::SeqCst),
         2,
         "active observer must receive global fan-out events"
+    );
+}
+
+/// `activate_observer_scoped` promotes a muted registration into live delivery
+/// only for events matching the declared observed-projection shape.
+#[test]
+fn activate_observer_scoped_filters_global_fanout() {
+    let _g = SERIAL.lock().unwrap();
+    let slot = new_event_observer_slot();
+    let obs = Arc::new(CountingObserver(AtomicU32::new(0)));
+    let id = register_rust_observer_muted(&slot, obs.clone());
+
+    let shape = crate::planner::InterestShape::from_filter_json(
+        r#"{"kinds":[1],"authors":["match-author"]}"#,
+    )
+    .expect("valid observed-projection shape");
+    assert!(activate_observer_scoped(&slot, id, shape));
+
+    notify_observers(&slot, &event_from("other-author", 1));
+    notify_observers(&slot, &event_from("match-author", 2));
+    assert_eq!(
+        obs.0.load(Ordering::SeqCst),
+        0,
+        "scoped observer must skip nonmatching author/kind events"
+    );
+
+    notify_observers(&slot, &event_from("match-author", 1));
+    assert_eq!(
+        obs.0.load(Ordering::SeqCst),
+        1,
+        "scoped observer receives exactly matching live events"
+    );
+}
+
+/// Multi-interest users such as search can activate the same observer id for
+/// more than one shape; delivery is the union of those declared shapes.
+#[test]
+fn activate_observer_scoped_appends_shapes_for_same_observer() {
+    let _g = SERIAL.lock().unwrap();
+    let slot = new_event_observer_slot();
+    let obs = Arc::new(CountingObserver(AtomicU32::new(0)));
+    let id = register_rust_observer_muted(&slot, obs.clone());
+
+    let shape_a =
+        crate::planner::InterestShape::from_filter_json(r#"{"kinds":[1],"authors":["author-a"]}"#)
+            .expect("valid shape a");
+    let shape_b =
+        crate::planner::InterestShape::from_filter_json(r#"{"kinds":[1],"authors":["author-b"]}"#)
+            .expect("valid shape b");
+
+    assert!(activate_observer_scoped(&slot, id, shape_a));
+    assert!(activate_observer_scoped(&slot, id, shape_b));
+
+    notify_observers(&slot, &event_from("author-a", 1));
+    notify_observers(&slot, &event_from("author-b", 1));
+    notify_observers(&slot, &event_from("author-c", 1));
+    assert_eq!(
+        obs.0.load(Ordering::SeqCst),
+        2,
+        "scoped observer must receive the union of activated shapes"
     );
 }
 

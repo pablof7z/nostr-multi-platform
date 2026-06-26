@@ -111,7 +111,9 @@ Registers a `KernelEventObserver` (`actor/commands/event_observer.rs:189`)
 for event-driven view updates. `on_event_inserted` / `on_event_replaced` fire
 on the actor thread for every accepted ingest. Use this in in-process
 consumers (`nmp-app-chirp`, per-app projection crates) that build typed views
-from raw `KernelEvent`s.
+from raw `KernelEvent`s and are live before their events arrive. If the view is
+per-open or late-joining, use `ObservedProjectionRegistrar::open_observed_projection`
+so the kernel owns read-cache replay and scoped live delivery.
 
 ### The two kernel-defined extension traits
 
@@ -191,7 +193,7 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     nmp_defaults::register_defaults(app);
     // App-specific seams.
     app.register_action(NoteActionModule);
-    app.register_event_observer(Arc::new(FeedObserver { store: Arc::clone(&store) }));
+    app.register_live_event_tap(Arc::new(FeedObserver { store: Arc::clone(&store) }));
     let projector = Arc::clone(&store);
     app.register_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
         match projector.lock() {

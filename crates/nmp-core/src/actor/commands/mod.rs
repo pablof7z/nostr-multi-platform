@@ -223,8 +223,8 @@ pub use event_observer::register_rust_observer;
 // ADR-0062: muted observer registration and activation are available on all
 // targets. The kernel replay path activates muted observers after targeted
 // catch-up, so wasm/no-native reducer builds need the same pure helper.
-pub use event_observer::activate_observer;
 pub use event_observer::register_rust_observer_muted;
+pub use event_observer::{activate_observer, activate_observer_scoped};
 // Diagnostics/test helper counting registered Rust observers in a slot;
 // pure (no native deps), available on all targets.
 pub use event_observer::rust_observer_count;

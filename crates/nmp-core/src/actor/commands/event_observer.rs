@@ -64,7 +64,12 @@
 //! dropped (rate-limit backpressure, D6 best-effort). The first overflow
 //! per slot logs once so the condition is visible to ops.
 
+mod delivery;
+
+pub use delivery::{activate_observer, activate_observer_scoped};
+
 use crate::substrate::KernelEvent;
+use delivery::RustObserverDelivery;
 use std::ffi::{c_char, c_void, CString};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::mpsc::{sync_channel, SyncSender};
@@ -111,17 +116,14 @@ pub struct KernelEventObserverRegistration {
 
 /// One Rust-trait observer registration entry.
 ///
-/// `active: false` means the observer is registered but **muted** — it will
-/// NOT receive events from the global `notify_observers` fan-out but WILL be
-/// reachable by `notify_observer_by_id` for targeted one-shot replay. Muted
-/// registrations are promoted to active by `activate_observer` once the
-/// caller's read-model catch-up (ADR-0062) has completed.
+/// Muted registrations are reachable by `notify_observer_by_id` for targeted
+/// replay and are promoted by `activate_observer` (legacy live tap) or
+/// `activate_observer_scoped` (declared observed projection) once catch-up has
+/// completed.
 pub struct RustObserverRegistration {
     pub(super) id: KernelEventObserverId,
     pub(super) observer: Arc<dyn KernelEventObserver>,
-    /// When `false`, the global `notify_observers` fan-out skips this entry.
-    /// Targeted `notify_observer_by_id` delivery still reaches it.
-    pub(super) active: bool,
+    delivery: RustObserverDelivery,
 }
 
 /// Slot contents: zero or more Rust + C-ABI registrations, plus a monotonic
@@ -266,17 +268,17 @@ pub fn register_rust_observer(
     guard.rust.push(RustObserverRegistration {
         id,
         observer,
-        active: true,
+        delivery: RustObserverDelivery::ActiveAll,
     });
     id
 }
 
 /// Register an in-process Rust observer in **muted** state (ADR-0062).
 ///
-/// Like [`register_rust_observer`] but with `active: false`. The observer
-/// will NOT receive events from the global `notify_observers` fan-out until
-/// [`activate_observer`] is called. Use this when you need to install an
-/// observer BEFORE the read-model catch-up replay so the observer is
+/// Like [`register_rust_observer`] but with muted live delivery. The observer
+/// will NOT receive events from `notify_observers` until [`activate_observer`]
+/// or [`activate_observer_scoped`] is called. Use this when you need to install
+/// an observer BEFORE the read-model catch-up replay so the observer is
 /// addressable by [`notify_observer_by_id`] during replay.
 ///
 /// Returns an opaque id the caller retains to activate / unregister later.
@@ -291,7 +293,7 @@ pub fn register_rust_observer_muted(
     guard.rust.push(RustObserverRegistration {
         id,
         observer,
-        active: false,
+        delivery: RustObserverDelivery::Muted,
     });
     id
 }
@@ -303,27 +305,6 @@ pub fn register_rust_observer_muted(
 #[must_use]
 pub fn rust_observer_count(slot: &KernelEventObserverSlot) -> usize {
     slot.lock().map(|guard| guard.rust.len()).unwrap_or(0)
-}
-
-/// Activate a previously muted observer (ADR-0062).
-///
-/// Sets `active: true` on the registration matching `id`, so subsequent
-/// global `notify_observers` calls include it. Returns `true` iff a muted
-/// registration was found and activated; returns `false` for unknown or
-/// already-active ids (idempotent — safe to call even if the registration
-/// was removed before activation, e.g. the screen was closed before the
-/// replay command was dispatched).
-pub fn activate_observer(slot: &KernelEventObserverSlot, id: KernelEventObserverId) -> bool {
-    let Ok(mut guard) = slot.lock() else {
-        return false;
-    };
-    for reg in &mut guard.rust {
-        if reg.id == id {
-            reg.active = true;
-            return true;
-        }
-    }
-    false
 }
 
 /// Deliver one event to the specific Rust observer identified by `id`,
@@ -422,10 +403,10 @@ pub(crate) fn notify_observers(slot: &KernelEventObserverSlot, event: &KernelEve
             guard
                 .rust
                 .iter()
-                // ADR-0062: muted registrations (active:false) are excluded
-                // from the global fan-out; they receive events only via
-                // `notify_observer_by_id` during the targeted replay phase.
-                .filter(|r| r.active)
+                // ADR-0062: muted registrations are excluded from global
+                // fan-out; scoped registrations receive only events matching
+                // their declared observed-projection shapes.
+                .filter(|r| r.delivery.matches(event))
                 .map(|r| Arc::clone(&r.observer))
                 .collect::<Vec<_>>(),
             guard.c_abi.iter().map(|(_, r)| *r).collect::<Vec<_>>(),

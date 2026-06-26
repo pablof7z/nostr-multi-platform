@@ -27,8 +27,20 @@ impl Kernel {
         sub_id: &str,
         verified: crate::store::VerifiedEvent,
     ) {
-        let raw = verified.into_raw();
         let relay_url = role.url().to_string();
+        self.ingest_pre_verified_event_from_relay(&relay_url, sub_id, verified);
+    }
+
+    /// Test-support variant of [`Self::ingest_pre_verified_event`] for harnesses
+    /// that must prove relay-pinned read models using a concrete host relay.
+    pub(crate) fn ingest_pre_verified_event_from_relay(
+        &mut self,
+        relay_url: &str,
+        sub_id: &str,
+        verified: crate::store::VerifiedEvent,
+    ) {
+        let raw = verified.into_raw();
+        let relay_url = relay_url.to_string();
         let received_at_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis() as u64)

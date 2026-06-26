@@ -24,6 +24,13 @@ pub enum TestSupportCommand {
     /// signature re-verification is performed — the `VerifiedEvent` type is
     /// the gate.
     IngestPreVerifiedEvents(Vec<VerifiedEvent>),
+    /// Test-support — ingest pre-verified events as if they arrived from the
+    /// supplied relay URL. Use for relay-pinned view tests where provenance is
+    /// part of the correctness contract.
+    IngestPreVerifiedEventsForRelay {
+        relay_url: String,
+        events: Vec<VerifiedEvent>,
+    },
     /// Test-support — ingest pre-verified events under a caller-chosen
     /// `sub_id` that does NOT pin the timeline, then ack.
     ///

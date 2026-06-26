@@ -18,8 +18,7 @@ use crate::actor::{
 use crate::kernel::observer_replay::ObserverReplayRequest;
 use crate::planner::{InterestShape, LogicalInterest};
 use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
-use crate::store::{RawEvent, VerifiedEvent};
+use crate::store::{InsertOutcome, RawEvent, VerifiedEvent};
 use crate::substrate::KernelEvent;
 use crate::subs::SubIdentity;
 use std::sync::{Arc, Mutex};
@@ -59,6 +58,17 @@ impl KernelEventObserver for CapturingObserver {
 
 /// Ingest a minimal kind:1 event into the kernel and return the event id.
 fn ingest(kernel: &mut Kernel, id: &str, author: &str, created_at: u64, tags: Vec<Vec<String>>) {
+    ingest_from_relay(kernel, "test-relay", id, author, created_at, tags);
+}
+
+fn ingest_from_relay(
+    kernel: &mut Kernel,
+    relay_url: &str,
+    id: &str,
+    author: &str,
+    created_at: u64,
+    tags: Vec<Vec<String>>,
+) {
     let raw = RawEvent {
         id: id.to_string(),
         pubkey: author.to_string(),
@@ -68,11 +78,43 @@ fn ingest(kernel: &mut Kernel, id: &str, author: &str, created_at: u64, tags: Ve
         content: "test".into(),
         sig: "a".repeat(128),
     };
-    kernel.ingest_pre_verified_event(
-        RelayRole::Content,
-        "test-relay",
-        VerifiedEvent::from_raw_unchecked(raw),
-    );
+    let proceed = kernel
+        .store
+        .insert(
+            VerifiedEvent::from_raw_unchecked(raw.clone()),
+            &relay_url.to_string(),
+            created_at,
+        )
+        .map(|outcome| {
+            matches!(
+                outcome,
+                InsertOutcome::Inserted { .. } | InsertOutcome::Replaced { .. }
+            )
+        })
+        .unwrap_or(false);
+    if !proceed {
+        return;
+    }
+
+    let cached = StoredEvent {
+        id: raw.id.clone(),
+        author: raw.pubkey.clone(),
+        kind: raw.kind,
+        created_at: raw.created_at,
+        tags: raw.tags.clone(),
+        content: raw.content.clone(),
+        relay_count: 1,
+    };
+    kernel.events.insert(raw.id.clone(), cached.clone());
+    kernel.notify_event_observers(&KernelEvent {
+        id: cached.id,
+        author: cached.author,
+        kind: cached.kind,
+        created_at: cached.created_at,
+        tags: cached.tags,
+        content: cached.content,
+        relay_provenance: Vec::new(),
+    });
 }
 
 /// Build a simple author+kinds interest shape.
@@ -94,6 +136,22 @@ fn logical_interest(filter_json: &str, consumer_id: &str, scope: u32) -> Logical
     crate::subs::interest_builder::build_interest_pair(filter_json, consumer_id, scope, None)
         .map(|(_, interest)| interest)
         .expect("valid filter → interest")
+}
+
+fn logical_interest_pinned(
+    filter_json: &str,
+    consumer_id: &str,
+    scope: u32,
+    relay_pin: &str,
+) -> LogicalInterest {
+    crate::subs::interest_builder::build_interest_pair(
+        filter_json,
+        consumer_id,
+        scope,
+        Some(relay_pin),
+    )
+    .map(|(_, interest)| interest)
+    .expect("valid pinned filter → interest")
 }
 
 fn author_filter_json(author: &str) -> String {
@@ -182,6 +240,111 @@ fn observer_fires_on_global_notify_after_activation() {
     // because activate_observer was called inside open_interest_with_observer_replay.
     ingest(&mut kernel, &"b0".repeat(32), &author, 2_000, vec![]);
     assert_eq!(capturing.count(), 2, "newly ingested event reaches activated observer");
+}
+
+/// After replay, observed-projection live delivery must remain constrained to
+/// the opened interest shape rather than becoming an unfiltered live tap.
+#[test]
+fn observer_live_delivery_stays_shape_scoped_after_replay() {
+    let slot = new_event_observer_slot();
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_event_observers_handle(slot.clone());
+
+    let author = "c".repeat(64);
+    ingest(&mut kernel, &"a1".repeat(32), &author, 1_000, vec![]);
+
+    let capturing = CapturingObserver::new();
+    let observer_id = register_rust_observer_muted(&slot, capturing.clone());
+
+    let filter_json = author_filter_json(&author);
+    let identity = sub_identity(&filter_json, "test-consumer-2b", 1);
+    let interest = logical_interest(&filter_json, "test-consumer-2b", 1);
+    let replay = ObserverReplayRequest {
+        observer_id,
+        shapes: vec![author_shape(&author, &[1])],
+        limit: 80,
+    };
+    kernel.open_interest_with_observer_replay(identity, interest, replay, "test");
+
+    assert_eq!(capturing.count(), 1, "replay delivered the cached author event");
+
+    let other = "d".repeat(64);
+    ingest(&mut kernel, &"b1".repeat(32), &other, 2_000, vec![]);
+    assert_eq!(
+        capturing.count(),
+        1,
+        "nonmatching live events must not reach the scoped observer"
+    );
+
+    ingest(&mut kernel, &"b2".repeat(32), &author, 3_000, vec![]);
+    assert_eq!(
+        capturing.count(),
+        2,
+        "matching live events still reach the scoped observer"
+    );
+}
+
+/// Relay-pinned replay must apply the same pin that live delivery uses; a
+/// cached event with matching kind/tags from a different host relay is not part
+/// of the observed projection.
+#[test]
+fn replay_honors_relay_pinned_shape() {
+    let slot = new_event_observer_slot();
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    kernel.set_event_observers_handle(slot.clone());
+
+    let author = "a".repeat(64);
+    let tag = vec![vec!["h".to_string(), "room".to_string()]];
+    ingest_from_relay(
+        &mut kernel,
+        "wss://relay-a.example",
+        &"f1".repeat(32),
+        &author,
+        1_000,
+        tag.clone(),
+    );
+    ingest_from_relay(
+        &mut kernel,
+        "wss://relay-b.example",
+        &"f2".repeat(32),
+        &author,
+        2_000,
+        tag,
+    );
+
+    let capturing = CapturingObserver::new();
+    let observer_id = register_rust_observer_muted(&slot, capturing.clone());
+
+    let filter_json = r##"{"kinds":[1],"#h":["room"]}"##;
+    let identity = crate::subs::interest_builder::build_interest_pair(
+        filter_json,
+        "test-consumer-relay-pin",
+        1,
+        Some("wss://relay-a.example"),
+    )
+    .map(|(id, _)| id)
+    .expect("valid pinned identity");
+    let interest = logical_interest_pinned(
+        filter_json,
+        "test-consumer-relay-pin",
+        1,
+        "wss://relay-a.example",
+    );
+    let mut replay_shape =
+        InterestShape::from_filter_json(filter_json).expect("valid relay-pinned shape");
+    replay_shape.relay_pin = Some("wss://relay-a.example".to_string());
+    let replay = ObserverReplayRequest {
+        observer_id,
+        shapes: vec![replay_shape],
+        limit: 80,
+    };
+    kernel.open_interest_with_observer_replay(identity, interest, replay, "test");
+
+    assert_eq!(
+        capturing.ids(),
+        vec!["f1".repeat(32)],
+        "replay must include only events provenanced to the pinned relay"
+    );
 }
 
 /// Multi-owner scenario: two observers for the same author shape.

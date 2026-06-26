@@ -168,8 +168,11 @@ impl ActionModule for NoteActionModule {
 
 ## KernelEventObserver — building the feed
 
-The app builds its feed by implementing `KernelEventObserver`. Every accepted
-kind:1 event fires `on_kernel_event`; the observer appends it to the store.
+The app builds its always-on feed by implementing `KernelEventObserver` and
+registering it as a live tap. Every accepted kind:1 event fires
+`on_kernel_event`; the observer appends it to the store. Per-open views that may
+join after matching events are already cached use `open_observed_projection`
+instead.
 
 ```rust
 use nmp_core::{KernelEventObserver, KernelEvent};
@@ -219,7 +222,7 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     app.register_action(NoteActionModule);
 
     // 3. Event-driven view — populates the feed store on every ingest.
-    app.register_event_observer(Arc::new(FeedObserver { store: Arc::clone(&store) }));
+    app.register_live_event_tap(Arc::new(FeedObserver { store: Arc::clone(&store) }));
 
     // 4. Read output — projects the feed into the snapshot.
     let projector = Arc::clone(&store);
@@ -279,7 +282,7 @@ That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/crates/nmp-a
   `register_substrate`.** The shared `Arc<InMemoryMailboxCache>` and coverage
   gate must reach multiple collaborators with the same instance; copying the
   block by hand desyncs them (V-48).
-- **Skipping `register_event_observer` and rendering raw events in Swift.**
+- **Skipping `register_live_event_tap`/`open_observed_projection` and rendering raw events in Swift.**
   The feed store is the source of truth; the snapshot projection carries it.
   Raw event arrays across FFI violate D5.
 - **Using the removed `ViewModule` / `DomainModule` traits.** They are not on

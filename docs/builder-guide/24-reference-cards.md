@@ -30,7 +30,7 @@ monotonic `rev`; platforms drop updates with `rev` ≤ last seen.
 |---|---|---|---|
 | `register_action(module)` | write path | `start()` validates, `execute()` enqueues `ActorCommand` | `action.rs:56` |
 | `register_snapshot_projection(key, fn)` | read output | JSON slice pushed under `projections[key]` on every tick | `nmp-ffi/src/lib.rs:1109` |
-| `register_event_observer(arc)` | event-driven views | `on_kernel_event` fires per `Inserted\|Replaced` on actor thread | `event_observer.rs:189` |
+| `register_live_event_tap(arc)` | live-only event-driven views | `on_kernel_event` fires per accepted ingest on actor thread; use `open_observed_projection` for hydrating scoped views | `event_observer.rs:189` |
 | **ActionModule** (trait) | write seam shape | `NAMESPACE`, `type Action`, `start()`, `execute()` | `action.rs:56` |
 | **CapabilityModule** (trait) | native bridge shape | request → native → result envelope (D7) | `capability.rs:11` |
 

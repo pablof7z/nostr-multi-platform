@@ -21,17 +21,15 @@
 //! `search.rs` step-for-step:
 //!
 //! 1. register the typed FlatBuffers sidecar reading the projection snapshot;
-//! 2. register the projection as a **MUTED** kernel observer
-//!    (`register_rust_observer_muted`);
-//! 3. open a relay-pinned observed interest via
-//!    [`NmpApp::open_observed_interest_pinned`] — which replays the in-memory
-//!    read-cache (ADR-0062 `replay_read_cache_to_observer`, matched by the
-//!    `#h` / kind shapes built from the same wire filter) to the muted
-//!    observer and THEN activates it, so the view catches up on already-cached
-//!    events AND tails live ones;
-//! 4. record a teardown recipe keyed by the (singleton) projection key so the
-//!    matching `close_*` detaches the pinned interest, revokes the observer,
-//!    and removes the sidecar.
+//! 2. open a relay-pinned observed projection via
+//!    [`ObservedProjectionRegistrar::open_observed_projection`] — which registers
+//!    the projection muted, replays the in-memory read-cache (ADR-0062
+//!    `replay_read_cache_to_observer`, matched by the `#h` / kind shapes built
+//!    from the same wire filter) to that observer, and THEN activates scoped
+//!    live delivery for the declared interest;
+//! 3. record the projection id keyed by the singleton projection key so the
+//!    matching `close_*` can reverse the observed projection and remove the
+//!    sidecar.
 //!
 //! The durable-store tail (events evicted from the bounded in-memory read-cache)
 //! hydrates once the general single-letter (`#h`) `StoreQuery` index lands (a
@@ -54,16 +52,17 @@
 
 use std::sync::Arc;
 
-use nmp_core::__ffi_internal::register_rust_observer_muted;
+use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
 use nmp_core::KernelEventObserverId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip29::group_id::{group_metadata_filter_json, GroupId};
 use nmp_nip29::{
     encode_discovered_groups_snapshot, encode_group_chat_snapshot, encode_joined_groups_snapshot,
     DiscoveredGroupsProjection, GroupChatProjection, JoinedGroupsProjection,
-    DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID, DISCOVERED_GROUPS_SCHEMA_VERSION,
-    GROUP_CHAT_FILE_IDENTIFIER, GROUP_CHAT_SCHEMA_ID, GROUP_CHAT_SCHEMA_VERSION,
-    JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID, JOINED_GROUPS_SCHEMA_VERSION,
+    DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
+    DISCOVERED_GROUPS_SCHEMA_VERSION, GROUP_CHAT_FILE_IDENTIFIER, GROUP_CHAT_SCHEMA_ID,
+    GROUP_CHAT_SCHEMA_VERSION, JOINED_GROUPS_FILE_IDENTIFIER, JOINED_GROUPS_SCHEMA_ID,
+    JOINED_GROUPS_SCHEMA_VERSION,
 };
 
 use crate::app_struct::NmpApp;
@@ -93,14 +92,8 @@ const JOINED_GROUPS_CONSUMER: &str = "nip29-joined-groups";
 pub(crate) struct GroupFeedSession {
     /// The snapshot-projection key (also the session key).
     projection_key: String,
-    /// The muted→active kernel observer id (the read projection).
+    /// The observed-projection kernel observer id.
     observer_id: KernelEventObserverId,
-    /// The `(filter_json, consumer, scope, relay_pin)` close args matching the
-    /// pinned open, so the kernel reconstructs the same registry slot.
-    filter_json: String,
-    consumer: String,
-    scope: u32,
-    relay_pin: Option<String>,
 }
 
 /// Opaque handle for one host-driven NIP-29 read view, returned by the C-ABI
@@ -246,10 +239,7 @@ impl NmpApp {
             return;
         }
         let (projection, relay_pin) = if host_relay_url.is_empty() {
-            (
-                Arc::new(JoinedGroupsProjection::new(active_pubkey)),
-                None,
-            )
+            (Arc::new(JoinedGroupsProjection::new(active_pubkey)), None)
         } else {
             (
                 Arc::new(JoinedGroupsProjection::new_for_host(
@@ -319,40 +309,46 @@ impl NmpApp {
 
         register_sidecar(self);
 
-        let observer_id = register_rust_observer_muted(&self.event_observers, observer);
-
         // The in-memory read-cache replay (ADR-0062) matches cached events by
         // the SAME wire shape the live filter uses — `matches_event_with_id`
         // honours the `#h` generic-tag + kind dimensions. A malformed filter
-        // yields no shapes (and `open_observed_interest_pinned` no-ops, D6).
+        // yields no shapes; `open_observed_projection` validates the filter and
+        // no-ops the interest open while returning the observer id.
         let replay_shapes: Vec<nmp_planner::InterestShape> =
             nmp_planner::InterestShape::from_filter_json(&filter_json)
+                .map(|mut shape| {
+                    shape.relay_pin = relay_pin.clone();
+                    shape
+                })
                 .into_iter()
                 .collect();
 
-        self.open_observed_interest_pinned(
-            &filter_json,
-            consumer,
+        let observer_id = self.open_observed_projection(ObservedProjection {
+            observer,
+            filter_json,
+            consumer_id: consumer.to_string(),
             scope,
-            relay_pin.clone(),
-            observer_id,
+            relay_pin,
             replay_shapes,
-            DEFAULT_FEED_WINDOW_LIMIT,
-        );
-
-        if let Ok(mut sessions) = self.group_feed_sessions.lock() {
-            sessions.insert(
-                key.to_string(),
-                GroupFeedSession {
-                    projection_key: key.to_string(),
-                    observer_id,
-                    filter_json,
-                    consumer: consumer.to_string(),
-                    scope,
-                    relay_pin,
-                },
-            );
+            replay_limit: DEFAULT_FEED_WINDOW_LIMIT,
+        });
+        if observer_id.0 == 0 {
+            self.remove_snapshot_projection(key);
+            return;
         }
+
+        let Ok(mut sessions) = self.group_feed_sessions.lock() else {
+            self.close_observed_projection(observer_id);
+            self.remove_snapshot_projection(key);
+            return;
+        };
+        sessions.insert(
+            key.to_string(),
+            GroupFeedSession {
+                projection_key: key.to_string(),
+                observer_id,
+            },
+        );
     }
 
     /// Tear down the NIP-29 read view registered under `key`: detach the pinned
@@ -367,13 +363,7 @@ impl NmpApp {
         let Some(session) = session else {
             return;
         };
-        self.close_interest_pinned(
-            &session.filter_json,
-            &session.consumer,
-            session.scope,
-            session.relay_pin.clone(),
-        );
-        self.unregister_event_observer(session.observer_id);
+        self.close_observed_projection(session.observer_id);
         self.remove_snapshot_projection(&session.projection_key);
     }
 }

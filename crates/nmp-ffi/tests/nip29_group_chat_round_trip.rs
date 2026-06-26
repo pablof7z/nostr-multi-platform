@@ -19,8 +19,8 @@
 //!
 //! ## Receive side
 //!
-//! A well-formed kind:9 event carrying `["h", local_id]` is injected via
-//! `ActorCommand::IngestPreVerifiedEvents`. This is bit-for-bit identical to
+//! A well-formed kind:9 event carrying `["h", local_id]` is injected with relay
+//! provenance via `ActorCommand::IngestPreVerifiedEventsForRelay`. This matches
 //! the path a relay worker follows when it delivers a verified event into the
 //! actor loop. The actor fans it out through `notify_event_observers`;
 //! `GroupChatProjection` (opened by `NmpApp::open_group_chat`, #2088)
@@ -40,18 +40,17 @@ use std::ffi::{c_void, CStr};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use nmp_store::{RawEvent, VerifiedEvent};
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{TestSupportCommand};
+use nmp_core::actor::{ActorCommand, TestSupportCommand};
 use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
 use nmp_core::substrate::ActionPayload;
 use nmp_ffi::{
     nmp_app_consume_all_builtin_projections, nmp_app_dispatch_action_bytes, nmp_app_free,
     nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_free_string, NmpApp,
 };
-use nmp_nip29::action::{PostChatMessageInput};
+use nmp_nip29::action::PostChatMessageInput;
 use nmp_nip29::group_id::GroupId;
 use nmp_nip29::register::register_actions;
+use nmp_store::{RawEvent, VerifiedEvent};
 
 /// Dispatch a typed `PostChatMessageInput` through the ADR-0064 byte doorway
 /// ([`nmp_app_dispatch_action_bytes`]) and return the result envelope JSON.
@@ -91,6 +90,7 @@ static SERIAL: Mutex<()> = Mutex::new(());
 // Raw FlatBuffers frames collected by the update callback (decoded lazily by
 // the poll helper — PR-B: the generic JSON payload no longer exists).
 static SNAPSHOTS: Mutex<Vec<Vec<u8>>> = Mutex::new(Vec::new());
+const HOST_RELAY: &str = "wss://groups.example.com";
 
 extern "C" fn collect_snapshot(_ctx: *mut c_void, bytes: *const u8, len: usize) {
     if bytes.is_null() {
@@ -122,7 +122,12 @@ fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
     let app_ref = unsafe { &*app };
     app_ref
         .actor_sender()
-        .send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
+        .send(ActorCommand::TestSupport(
+            TestSupportCommand::IngestPreVerifiedEventsForRelay {
+                relay_url: HOST_RELAY.to_string(),
+                events,
+            },
+        ))
         .expect("actor command channel must be open");
 }
 
@@ -174,10 +179,10 @@ fn post_chat_message_dispatch_returns_correlation_id() {
     let app = nmp_app_new();
     // SAFETY: `app` is a valid pointer from `nmp_app_new`; no other reference
     // aliases it at this call site.
-    register_actions(unsafe { &mut *app });
+    register_actions(unsafe { &mut *app }).expect("NIP-29 actions register");
 
     let action = PostChatMessageInput {
-        group: GroupId::new("wss://groups.example.com", "test-room"),
+        group: GroupId::new(HOST_RELAY, "test-room"),
         content: "hello from TUI".to_string(),
         previous_event_id_prefixes: Vec::new(),
         reply_to_event_id: None,
@@ -199,7 +204,7 @@ fn post_chat_message_dispatch_returns_correlation_id() {
     // Malformed payload (empty content) is rejected by the typed module
     // validator — the executor is never reached.
     let bad = PostChatMessageInput {
-        group: GroupId::new("wss://groups.example.com", "test-room"),
+        group: GroupId::new(HOST_RELAY, "test-room"),
         content: String::new(),
         previous_event_id_prefixes: Vec::new(),
         reply_to_event_id: None,
@@ -250,7 +255,7 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
     // Wire the GroupChatProjection for "test-room".
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
     let app_ref = unsafe { &*app };
-    app_ref.open_group_chat(GroupId::new("wss://groups.example.com", "test-room"));
+    app_ref.open_group_chat(GroupId::new(HOST_RELAY, "test-room"));
 
     // Inject the target event: kind:9 with h-tag "test-room".
     let target = VerifiedEvent::from_raw_unchecked(raw_chat_event(
@@ -294,7 +299,10 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
                 .and_then(|t| decode_group_chat_snapshot(&t.payload).ok())
             {
                 assert!(
-                    !snapshot.messages.iter().any(|m| m.content == "should not appear"),
+                    !snapshot
+                        .messages
+                        .iter()
+                        .any(|m| m.content == "should not appear"),
                     "decoy event for 'other-room' must not appear in 'test-room' projection"
                 );
             }

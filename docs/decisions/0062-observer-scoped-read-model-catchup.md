@@ -1,6 +1,6 @@
 # ADR-0062 — Observer-scoped read-model catch-up: delivery ≠ population
 
-- **Status:** Proposed (2026-06-21)
+- **Status:** Accepted (2026-06-26)
 - **Date:** 2026-06-21
 - **Issues:** #1645 (delete redundant explicit LMDB hydration in
   `open_author_feed`), #1646 (the thread-root half). This ADR is the prerequisite
@@ -56,12 +56,12 @@ Two facts combine into a hole:
      deliberately re-visits boundary-timestamp events and relies on the dedup to
      swallow them.
 
-2. **`notify_event_observers` is a one-shot global broadcast**
-   (`crates/nmp-core/src/actor/commands/event_observer.rs:301`), and observer
-   registration (`NmpApp::register_feed_with_observer` / `register_event_observer`,
-   `crates/nmp-ffi/src/lib.rs:1557, 1783`) **replays nothing** to a
-   newly-registered observer. The observer carries no interest shape, so
-   registration cannot know what to replay.
+2. **A live tap is a one-shot broadcast, while an observed projection must be
+   interest-scoped.** The live-tap seam (`register_live_event_tap`) replays
+   nothing to a newly-registered observer and intentionally has no interest
+   shape. The observed-projection seam
+   (`ObservedProjectionRegistrar::open_observed_projection`) carries the filter
+   and replay shapes required for kernel-owned catch-up and scoped live delivery.
 
 **Consequence.** An observer registered *after* an interest's read-model is warm —
 which a per-open feed (Chirp author/thread profile, `interest_feed.rs`) **always**
@@ -128,31 +128,34 @@ The dedup partitions the two cleanly: cached ⇒ replay; evicted ⇒ serve.
 
 ### Invariant
 
-> **Any observer activated for an interest receives every matching event already
-> present in the read-model — cached (in-memory) or stored (LMDB) — exactly once,
-> and no event twice.**
+> **Any observed projection activated for an interest receives every matching
+> event already present in the read-model — cached (in-memory) or stored (LMDB) —
+> exactly once, no event twice, and only matching future live events.**
 
 Population stays a global, accept-once concern (cache-serve / ADR-0057 chokepoint).
 **Delivery to a late-joining observer becomes a separate, observer-scoped,
 read-only replay.** Apps MUST NOT read the store directly to hydrate observers.
 
-### Mechanism — register muted, then open → replay → activate
+### Mechanism — register muted, then open → replay → activate scoped
 
 A new **activation protocol** makes observer mounting and interest-open atomic and
 correctly ordered by construction. The activation transition is the single
 hand-off point between *replay (catch-up)* and *live (broadcast)*.
 
-1. `register_feed_with_observer` registers the observer **muted** — present in the
-   slot, excluded from the global `notify_event_observers` fan-out.
+1. `ObservedProjectionRegistrar::open_observed_projection` registers the observer
+   **muted** — present in the slot, excluded from `notify_event_observers`.
 2. The app issues one atomic
-   `ActorCommand::OpenObservedInterest { filter_json, consumer_id, scope, observer_id, replay_shapes }`
-   (parsed like today's `OpenInterest`, `actor/dispatch.rs:1399`), replacing the
-   per-open feed's separate "register observer + push `open_interest`" pair.
+   `ActorCommand::OpenObservedInterest { filter_json, consumer_id, scope, relay_pin, observer_id, replay_shapes }`
+   (parsed like `OpenInterest`), replacing any separate "register observer +
+   push `open_interest`" pair.
 3. Kernel runs `register_interest` unchanged — cache-serve populates `self.events`
    and notifies the **existing** (active) observers; the muted new observer is not
    notified.
 4. Kernel replays the matching `self.events` to **only** that observer id.
-5. Kernel **activates** the observer — it now joins the live broadcast.
+5. Kernel calls `activate_observer_scoped` with the registered interest shape —
+   it now receives only future events matching that observed projection. The
+   legacy `activate_observer` function remains for explicit live taps that need
+   unfiltered all-event delivery.
 
 Because the observer is muted through steps 3–4, no live event can reach it before
 the replay, so the replay cannot duplicate a live delivery; and because replay runs
@@ -173,7 +176,11 @@ pub fn register_rust_observer_muted(
 pub(crate) fn notify_observer_by_id(
     slot: &KernelEventObserverSlot, id: KernelEventObserverId, event: &KernelEvent,
 );
-pub(crate) fn activate_observer(slot: &KernelEventObserverSlot, id: KernelEventObserverId);
+pub fn activate_observer_scoped(
+    slot: &KernelEventObserverSlot,
+    id: KernelEventObserverId,
+    shape: InterestShape,
+) -> bool;
 
 // Kernel (crates/nmp-core/src/kernel/...)
 pub(crate) struct ObserverReplayRequest {

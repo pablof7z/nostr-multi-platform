@@ -342,6 +342,13 @@ fn dispatch_test_support(
         TestSupportCommand::IngestPreVerifiedEvents(events) => {
             cmd_interests::ingest_pre_verified_events(events, &mut ctx.interests_ports())
         }
+        TestSupportCommand::IngestPreVerifiedEventsForRelay { relay_url, events } => {
+            cmd_interests::ingest_pre_verified_events_for_relay(
+                relay_url,
+                events,
+                &mut ctx.interests_ports(),
+            )
+        }
         TestSupportCommand::IngestPreVerifiedEventsForSubId {
             sub_id,
             events,
