@@ -5,10 +5,10 @@
 //! structurally validated and host-pinned here. Relay-enforced admin authority
 //! remains reflected through relay-signed 39001/39002 snapshots.
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -154,6 +154,7 @@ impl ActionModule for PutUserAction {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -182,6 +183,7 @@ impl ActionModule for CreateInviteAction {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

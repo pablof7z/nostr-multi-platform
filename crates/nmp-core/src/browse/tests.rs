@@ -21,8 +21,9 @@ use crate::substrate::{ActionContext, ActionModule, ActionRejection};
 
 fn capture_commands(action: BrowseRelayAction) -> Vec<ActorCommand> {
     let captured = Mutex::new(Vec::new());
+    let ctx = ActionContext::default();
     BrowseRelayModule
-        .execute(action, "test-corr", &|cmd| {
+        .execute(&ctx, action, "test-corr", &|cmd| {
             captured.lock().unwrap().push(cmd);
         })
         .expect("execute must not fail for valid actions");
@@ -40,8 +41,10 @@ fn open_action(relay: &str, kinds: Vec<u32>, id: u64) -> BrowseRelayAction {
 
 fn ensured_interest(cmds: &[ActorCommand]) -> &crate::planner::LogicalInterest {
     match cmds {
-        [ActorCommand::Interests(InterestsCommand::DropInterestOwner(drop_identity)), ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest })] =>
-        {
+        [
+            ActorCommand::Interests(InterestsCommand::DropInterestOwner(drop_identity)),
+            ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }),
+        ] => {
             assert_eq!(
                 drop_identity, identity,
                 "open must replace the same scoped owner"

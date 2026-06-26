@@ -18,8 +18,8 @@
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::substrate::{
-    build_record_action_success, ActionContext, ActionModule, ActionPayload,
-    ActionPayloadDecodeError, ActionRejection,
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+    build_record_action_success,
 };
 use serde::{Deserialize, Serialize};
 
@@ -63,6 +63,7 @@ impl ActionModule for DiscoverGroupsAction {
     }
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -94,9 +95,14 @@ mod tests {
     /// Run the typed executor and capture every `ActorCommand` it sends.
     fn run_execute(input: DiscoverGroupsInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        DiscoverGroupsAction.execute(input, "test-cid", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })?;
+        DiscoverGroupsAction.execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "test-cid",
+            &|cmd| {
+                captured.borrow_mut().push(cmd);
+            },
+        )?;
         Ok(captured.into_inner())
     }
 

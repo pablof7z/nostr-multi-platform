@@ -4,14 +4,14 @@
 //! UPPERCASE root scope (`A`/`E`/`I` + `K`) and lowercase parent scope
 //! (`a`/`e`/`i` + `k`). Mirrors the `nmp-nip25` `react` action module shape.
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
 };
-use nmp_signer_iface::UnsignedEvent;
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{PublishCommand};
 use nmp_kinds::KIND_NIP22_COMMENT;
+use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 pub use nmp_kinds::KIND_NIP22_COMMENT as KIND_COMMENT;
@@ -58,9 +58,7 @@ impl ActionModule for PostCommentModule {
 
     /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<PostCommentAction as ActionPayload>::decode(bytes))
     }
 
@@ -70,6 +68,7 @@ impl ActionModule for PostCommentModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

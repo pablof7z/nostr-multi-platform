@@ -11,10 +11,10 @@
 //! canonical terminal — see [`crate::result`]). No HTTP, base64, header
 //! construction, or sign-for-return in app code.
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::upload::BlossomUploadCommand;
@@ -102,6 +102,7 @@ impl ActionModule for UploadAction {
     /// validated upload intent. Returns immediately (D8).
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -154,7 +155,12 @@ mod tests {
     fn run_execute(input: UploadInput) -> Vec<ActorCommand> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
         UploadAction
-            .execute(input, "cid-blossom", &|cmd| captured.borrow_mut().push(cmd))
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                input,
+                "cid-blossom",
+                &|cmd| captured.borrow_mut().push(cmd),
+            )
             .expect("execute succeeds");
         captured.into_inner()
     }

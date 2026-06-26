@@ -30,18 +30,23 @@ impl ActionModule for EnqueueThenPanicModule {
     ) -> Result<(), ActionRejection> {
         Ok(())
     }
-    fn is_async_completing() -> bool { true } // doctrine-allow: D12 — test module; the enqueued RecordActionSuccess carries the terminal, asserted here, not via a stage recorded in this file
+    fn is_async_completing() -> bool {
+        true
+    } // doctrine-allow: D12 — test module; the enqueued RecordActionSuccess carries the terminal, asserted here, not via a stage recorded in this file
     fn execute(
         &self,
+        _ctx: &ActionContext,
         _action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(nmp_core::actor::ActorCommand),
     ) -> Result<(), String> {
         // Enqueue the real terminal-bearing command, then panic.
-        send(nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordSuccess {
-            correlation_id: correlation_id.to_string(),
-            result_json: None,
-        }));
+        send(nmp_core::actor::ActorCommand::ActionLedger(
+            ActionLedgerCommand::RecordSuccess {
+                correlation_id: correlation_id.to_string(),
+                result_json: None,
+            },
+        ));
         panic!("module panicked after enqueueing");
     }
 }

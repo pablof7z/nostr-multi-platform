@@ -68,6 +68,8 @@ pub trait ActionModule: Send + Sync + 'static {
     /// that id (e.g. `PublishNote` — the actor signs the event) keeps the
     /// host's spinner key consistent with `action_results`.
     fn execute(
+        &self,
+        ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
@@ -78,10 +80,13 @@ pub trait ActionModule: Send + Sync + 'static {
 }
 ```
 
-Then `NmpApp::register_action_module<M: ActionModule>()` (renamed and
-generic) wires **both halves from one typed impl** — the `ActionModuleAdapter<M>`
-gains an `execute` arm that decodes once into `M::Action` and forwards to
-`M::execute`. `register_action_executor` is deleted.
+Then `NmpApp::register_action(module)` wires **both halves from one typed
+impl** — the `ActionModuleAdapter<M>` gains an `execute` arm that decodes into
+`M::Action` and forwards to `M::execute`. `execute` receives the same
+execution-scoped `ActionContext` family as `start`, so runtime capabilities
+such as bounded local-store reads are visible to the action lifecycle instead
+of hidden in per-module constructor plumbing. `register_action_executor` is
+deleted.
 
 ### Why typed `Self::Action`, not raw `&str`
 

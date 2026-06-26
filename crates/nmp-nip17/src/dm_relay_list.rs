@@ -42,12 +42,14 @@
 //! from `kernel.now_secs()` before signing; this crate never reads the system
 //! clock.
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
-use nmp_signer_iface::UnsignedEvent;
-use nmp_core::{canonical_relay_url};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{PublishCommand};
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::PublishCommand;
+use nmp_core::canonical_relay_url;
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use nmp_kinds::KIND_DM_RELAY_LIST;
+use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 /// Build a NIP-17 kind:10050 DM-relay-list **unsigned** event from an explicit
@@ -71,7 +73,7 @@ use serde::{Deserialize, Serialize};
 /// - has an empty `pubkey` — the actor derives it from the signing keys at
 ///   sign time (this mirrors NIP-29 actions; the build half of the send is
 ///   pubkey-agnostic).
-#[must_use] 
+#[must_use]
 pub fn build_dm_relay_list_event(relay_urls: &[String]) -> UnsignedEvent {
     let mut tags: Vec<Vec<String>> = Vec::with_capacity(relay_urls.len());
     let mut seen = std::collections::HashSet::new();
@@ -132,9 +134,7 @@ impl ActionModule for PublishDmRelayListAction {
 
     /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<PublishDmRelayListInput as ActionPayload>::decode(bytes))
     }
 
@@ -166,6 +166,7 @@ impl ActionModule for PublishDmRelayListAction {
     }
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -209,7 +210,10 @@ mod tests {
         ]);
         assert_eq!(
             event.tags,
-            vec![vec!["relay".to_string(), "wss://secure.example".to_string()]],
+            vec![vec![
+                "relay".to_string(),
+                "wss://secure.example".to_string()
+            ]],
         );
     }
 
@@ -396,25 +400,42 @@ mod tests {
 
     #[test]
     fn execute_emits_publish_unsigned_event_for_kind10050() {
-        use nmp_core::substrate::ActionModule;
         use nmp_core::actor::ActorCommand;
+        use nmp_core::substrate::ActionModule;
         use std::cell::RefCell;
 
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
         let input = PublishDmRelayListInput {
             relays: vec!["wss://inbox.example".to_string()],
         };
-        PublishDmRelayListAction.execute(input, "test-cid", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
-        .expect("execute must not fail");
+        PublishDmRelayListAction
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                input,
+                "test-cid",
+                &|cmd| {
+                    captured.borrow_mut().push(cmd);
+                },
+            )
+            .expect("execute must not fail");
         let cmds = captured.into_inner();
-        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        assert_eq!(
+            cmds.len(),
+            1,
+            "executor must send exactly one command, got {cmds:?}"
+        );
         match cmds.into_iter().next().unwrap() {
-            ActorCommand::Publish(PublishCommand::UnsignedEvent { event, correlation_id, .. }) => {
+            ActorCommand::Publish(PublishCommand::UnsignedEvent {
+                event,
+                correlation_id,
+                ..
+            }) => {
                 assert_eq!(event.kind, 10050, "DM relay list must emit kind:10050");
-                assert_eq!(correlation_id.as_deref(), Some("test-cid"),
-                    "correlation_id must thread through so the host spinner closes");
+                assert_eq!(
+                    correlation_id.as_deref(),
+                    Some("test-cid"),
+                    "correlation_id must thread through so the host spinner closes"
+                );
             }
             other => panic!("expected PublishUnsignedEvent, got {other:?}"),
         }

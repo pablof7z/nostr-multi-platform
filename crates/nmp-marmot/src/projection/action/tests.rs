@@ -64,9 +64,14 @@ fn execute_emits_one_typed_protocol_command_with_correlation_id() {
         text: "hello, group".to_string(),
     };
     test_module()
-        .execute(action, "corr-test-id", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            action,
+            "corr-test-id",
+            &|cmd| {
+                captured.borrow_mut().push(cmd);
+            },
+        )
         .expect("execute should not fail for a valid action");
 
     let cmds = captured.into_inner();

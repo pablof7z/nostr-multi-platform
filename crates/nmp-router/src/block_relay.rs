@@ -58,14 +58,14 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, BlockedRelayLookup,
 };
-use nmp_signer_iface::UnsignedEvent;
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{PublishCommand};
 use nmp_kinds::KIND_BLOCKED_RELAYS;
+use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::blocked_relays::InMemoryBlockedRelayCache;
@@ -181,9 +181,7 @@ impl ActionModule for BlockRelayAction {
 
     /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<BlockRelayInput as ActionPayload>::decode(bytes))
     }
 
@@ -211,6 +209,7 @@ impl ActionModule for BlockRelayAction {
     /// Add `url` to the blocked set and publish the updated kind:10006.
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -278,9 +277,7 @@ impl ActionModule for UnblockRelayAction {
 
     /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<UnblockRelayInput as ActionPayload>::decode(bytes))
     }
 
@@ -312,6 +309,7 @@ impl ActionModule for UnblockRelayAction {
     /// `snapshot_blocked_relays` calls return an empty set (fail-open).
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

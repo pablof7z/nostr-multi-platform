@@ -1,6 +1,6 @@
 use super::*;
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{PublishCommand};
+use nmp_core::actor::PublishCommand;
 use std::cell::RefCell;
 
 fn cache_with(pubkey: &str, urls: &[&str]) -> Arc<InMemoryBlockedRelayCache> {
@@ -187,7 +187,12 @@ fn block_execute_emits_publish_unsigned_event_command() {
     };
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     action
-        .execute(input, "test-cid", &|cmd| captured.borrow_mut().push(cmd))
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "test-cid",
+            &|cmd| captured.borrow_mut().push(cmd),
+        )
         .expect("execute must not fail");
     let cmds = captured.into_inner();
     assert_eq!(cmds.len(), 1);
@@ -218,10 +223,16 @@ fn block_execute_adds_url_to_existing_set() {
     };
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     action
-        .execute(input, "cid", &|cmd| captured.borrow_mut().push(cmd))
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "cid",
+            &|cmd| captured.borrow_mut().push(cmd),
+        )
         .unwrap();
     let cmds = captured.into_inner();
-    let ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) = cmds.into_iter().next().unwrap()
+    let ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) =
+        cmds.into_iter().next().unwrap()
     else {
         panic!("expected PublishUnsignedEvent");
     };
@@ -247,7 +258,12 @@ fn block_execute_threads_correlation_id() {
     };
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     action
-        .execute(input, "my-spinner-id", &|cmd| captured.borrow_mut().push(cmd))
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "my-spinner-id",
+            &|cmd| captured.borrow_mut().push(cmd),
+        )
         .unwrap();
     let ActorCommand::Publish(PublishCommand::UnsignedEvent { correlation_id, .. }) =
         captured.into_inner().into_iter().next().unwrap()
@@ -313,7 +329,12 @@ fn unblock_execute_removes_url_from_set() {
     };
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     action
-        .execute(input, "cid", &|cmd| captured.borrow_mut().push(cmd))
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "cid",
+            &|cmd| captured.borrow_mut().push(cmd),
+        )
         .unwrap();
     let ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) =
         captured.into_inner().into_iter().next().unwrap()
@@ -344,7 +365,12 @@ fn unblock_last_entry_publishes_empty_kind_10006() {
     };
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     action
-        .execute(input, "cid", &|cmd| captured.borrow_mut().push(cmd))
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "cid",
+            &|cmd| captured.borrow_mut().push(cmd),
+        )
         .unwrap();
     let ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) =
         captured.into_inner().into_iter().next().unwrap()
@@ -368,7 +394,12 @@ fn unblock_execute_threads_correlation_id() {
     };
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     action
-        .execute(input, "spinner-99", &|cmd| captured.borrow_mut().push(cmd))
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "spinner-99",
+            &|cmd| captured.borrow_mut().push(cmd),
+        )
         .unwrap();
     let ActorCommand::Publish(PublishCommand::UnsignedEvent { correlation_id, .. }) =
         captured.into_inner().into_iter().next().unwrap()

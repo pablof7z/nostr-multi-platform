@@ -16,12 +16,12 @@
 //! outcome handling (`finish_dispatch`) and the small JSON helpers stay in
 //! `action.rs` and are reached here through `super::`.
 
-use std::ffi::{c_char, CString};
+use std::ffi::{CString, c_char};
 
-use super::super::{app_ref, NmpApp};
+use super::super::{NmpApp, app_ref};
 use super::{error_json, finish_dispatch, rejection_json};
 use nmp_core::dispatch_envelope::{
-    decode_dispatch_envelope, DispatchDecodeError, MAX_DISPATCH_ENVELOPE_BYTES,
+    DispatchDecodeError, MAX_DISPATCH_ENVELOPE_BYTES, decode_dispatch_envelope,
 };
 use nmp_core::substrate::ActionContext;
 
@@ -139,7 +139,7 @@ pub(in crate::action) fn dispatch_action_bytes(app: Option<&NmpApp>, bytes: &[u8
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0)
     };
-    let mut ctx = ActionContext {};
+    let mut ctx = ActionContext::with_event_store_slot(app.event_store_handle());
     // S3 — route the opaque payload by namespace into the typed registry
     // doorway. `start_bytes` runs the per-crate typed decode + the fail-closed
     // `schema_version` gate BEFORE `start()`; an unknown namespace, a
@@ -162,6 +162,7 @@ pub(in crate::action) fn dispatch_action_bytes(app: Option<&NmpApp>, bytes: &[u8
     ) {
         Ok(_validated) => {
             let outcome = app.action_registry.execute_bytes(
+                &ctx,
                 &decoded.action_namespace,
                 &decoded.payload,
                 &correlation_id,

@@ -143,6 +143,7 @@ impl ActionModule for BrowseRelayModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),

@@ -141,6 +141,7 @@ pub trait ActionModule: Send + Sync + 'static {
     // Enqueue the ActorCommand(s) that carry out the validated action.
     fn execute(
         &self,
+        ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

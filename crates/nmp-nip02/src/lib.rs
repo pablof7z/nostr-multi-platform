@@ -68,8 +68,8 @@ pub use active_follow_set::ActiveFollowSet;
 pub use nmp_nip25::{ReactAction, ReactModule};
 pub use projection::{FollowEntry, FollowListProjection, FollowListSnapshot};
 pub use wire::typed_fb::{
-    decode_follow_list, encode_follow_list, FILE_IDENTIFIER as FOLLOW_LIST_FILE_IDENTIFIER,
-    SCHEMA_ID as FOLLOW_LIST_SCHEMA_ID, SCHEMA_VERSION as FOLLOW_LIST_SCHEMA_VERSION,
+    FILE_IDENTIFIER as FOLLOW_LIST_FILE_IDENTIFIER, SCHEMA_ID as FOLLOW_LIST_SCHEMA_ID,
+    SCHEMA_VERSION as FOLLOW_LIST_SCHEMA_VERSION, decode_follow_list, encode_follow_list,
 };
 
 // ---------------------------------------------------------------------------
@@ -398,6 +398,7 @@ mod tests {
         let cmd = capture_one(|send| {
             FollowModule
                 .execute(
+                    &nmp_core::substrate::ActionContext::default(),
                     PubkeyAction {
                         pubkey: "deadbeef".to_string(),
                     },
@@ -428,6 +429,7 @@ mod tests {
         let cmd = capture_one(|send| {
             UnfollowModule
                 .execute(
+                    &nmp_core::substrate::ActionContext::default(),
                     PubkeyAction {
                         pubkey: "cafebabe".to_string(),
                     },

@@ -34,7 +34,7 @@ fn fixture_signed_event() -> SignedEvent {
 #[test]
 fn dispatch_envelope_bytes_decode_and_route_into_start_bytes_end_to_end() {
     use crate::transport::dispatch_envelope::{
-        decode_dispatch_envelope, encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION,
+        DISPATCH_ENVELOPE_SCHEMA_VERSION, decode_dispatch_envelope, encode_dispatch_envelope,
     };
 
     let registry = default_registry();
@@ -75,9 +75,13 @@ fn dispatch_envelope_bytes_decode_and_route_into_start_bytes_end_to_end() {
     use std::cell::RefCell;
     let sent: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     registry
-        .execute_bytes(&decoded.action_namespace, &decoded.payload, &id, &|cmd| {
-            sent.borrow_mut().push(cmd)
-        })
+        .execute_bytes(
+            &ctx(),
+            &decoded.action_namespace,
+            &decoded.payload,
+            &id,
+            &|cmd| sent.borrow_mut().push(cmd),
+        )
         .expect("S3 execute_bytes enqueues");
     assert_eq!(
         sent.into_inner().len(),
@@ -141,9 +145,13 @@ fn execute_bytes_publish_signed_sends_publish_signed_event_command() {
     };
     let sent: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     registry
-        .execute_bytes("nmp.publish", &action.encode(), "corr-typed-1", &|cmd| {
-            sent.borrow_mut().push(cmd)
-        })
+        .execute_bytes(
+            &ctx(),
+            "nmp.publish",
+            &action.encode(),
+            "corr-typed-1",
+            &|cmd| sent.borrow_mut().push(cmd),
+        )
         .expect("typed execute should enqueue the publish command");
     let cmds = sent.into_inner();
     assert_eq!(cmds.len(), 1, "exactly one ActorCommand enqueued");
@@ -219,6 +227,7 @@ impl ActionModule for JsonOnlyModule {
     type Action = serde_json::Value;
     fn execute(
         &self,
+        _ctx: &ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(crate::actor::ActorCommand),
@@ -255,7 +264,7 @@ fn start_bytes_rejects_not_typed_capable_module() {
 fn execute_bytes_unknown_namespace_reports_no_executor() {
     let registry = ActionRegistry::new();
     let failure = registry
-        .execute_bytes("nmp.nope", b"x", "c", &|_| {})
+        .execute_bytes(&ctx(), "nmp.nope", b"x", "c", &|_| {})
         .expect_err("unknown namespace has no executor");
     assert_eq!(failure.kind, ActionFailureKind::NoExecutor);
     assert!(!failure.enqueued);

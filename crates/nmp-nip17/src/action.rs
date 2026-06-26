@@ -29,7 +29,7 @@ use nmp_core::substrate::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{build_dm_rumor, DmInput, SendGiftWrappedDmCommand};
+use crate::{DmInput, SendGiftWrappedDmCommand, build_dm_rumor};
 
 /// Wire shape for `nmp.nip17.send` — the JSON a host passes to
 /// `nmp_app_dispatch_action`.
@@ -54,9 +54,7 @@ impl ActionModule for SendDmAction {
 
     /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<SendDmInput as ActionPayload>::decode(bytes))
     }
 
@@ -64,23 +62,18 @@ impl ActionModule for SendDmAction {
     /// rejects an empty body or a missing recipient. The actual seal /
     /// gift-wrap / publish — and the recipient-pubkey *parse* — happen on the
     /// actor thread (which owns the user-facing error toasts, D6).
-    fn start(
-        &self,
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         if action.content.trim().is_empty() {
             return Err(ActionRejection::Invalid("empty DM content".into()));
         }
         if action.recipient_pubkey.trim().is_empty() {
-            return Err(ActionRejection::Invalid(
-                "missing recipient pubkey".into(),
-            ));
+            return Err(ActionRejection::Invalid("missing recipient pubkey".into()));
         }
         Ok(())
     }
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -113,8 +106,7 @@ impl ActionModule for SendDmAction {
 mod tests {
     use super::*;
 
-    const RECIPIENT: &str =
-        "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
+    const RECIPIENT: &str = "bb11223344556677889900aabbccddeeff00112233445566778899aabbccddff";
 
     fn ctx() -> ActionContext {
         ActionContext::default()
@@ -172,12 +164,22 @@ mod tests {
             content: "hello world".to_string(),
             reply_to: None,
         };
-        SendDmAction.execute(input, "cid-dm", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
-        .expect("well-formed input executes");
+        SendDmAction
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                input,
+                "cid-dm",
+                &|cmd| {
+                    captured.borrow_mut().push(cmd);
+                },
+            )
+            .expect("well-formed input executes");
         let cmds = captured.into_inner();
-        assert_eq!(cmds.len(), 1, "executor must send exactly one command, got {cmds:?}");
+        assert_eq!(
+            cmds.len(),
+            1,
+            "executor must send exactly one command, got {cmds:?}"
+        );
         match cmds.into_iter().next().unwrap() {
             ActorCommand::Protocol(boxed) => {
                 // The boxed `ProtocolCommand`'s debug repr carries the
@@ -192,11 +194,13 @@ mod tests {
                     "Protocol-arm payload must be a SendGiftWrappedDmCommand; got: {s}"
                 );
                 assert!(s.contains(RECIPIENT), "recipient must round-trip");
-                assert!(s.contains("hello world"), "DM content must land in the rumor");
+                assert!(
+                    s.contains("hello world"),
+                    "DM content must land in the rumor"
+                );
                 assert!(s.contains("cid-dm"), "correlation_id must thread through");
             }
             other => panic!("expected ActorCommand::Protocol, got {other:?}"),
         }
     }
-
 }

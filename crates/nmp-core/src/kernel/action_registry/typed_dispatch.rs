@@ -13,12 +13,10 @@
 //! `ActionPayload` impl and runs the fail-closed `schema_version` gate BEFORE
 //! `start()`. This file never decodes a payload itself.
 
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::erased::TypedDispatchError;
-use super::{
-    new_action_id, ActionExecuteFailure, ActionFailureKind, ActionRegistry,
-};
+use super::{ActionExecuteFailure, ActionFailureKind, ActionRegistry, new_action_id};
 use crate::substrate::{ActionContext, ActionId, ActionRejection};
 
 // `self.modules` is a private field of `ActionRegistry`; this sibling module is
@@ -88,6 +86,7 @@ impl ActionRegistry {
     /// reason as [`ActionRegistry::execute`].
     pub fn execute_bytes(
         &self,
+        ctx: &ActionContext,
         namespace: &str,
         payload: &[u8],
         correlation_id: &str,
@@ -106,7 +105,7 @@ impl ActionRegistry {
             send(cmd);
         };
         match catch_unwind(AssertUnwindSafe(|| {
-            module.execute_bytes(payload, correlation_id, &tracking_send)
+            module.execute_bytes(ctx, payload, correlation_id, &tracking_send)
         })) {
             Ok(Ok(())) => Ok(()),
             Ok(Err(err)) => {

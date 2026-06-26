@@ -47,14 +47,13 @@
 //! > `PublishUnsignedEvent` inside an `extern "C" fn nmp_app_*` body
 //! > (D11 lint catches that regression).
 
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+use super::ActionContext;
 
 pub use crate::kernel::RegistrationError;
 
 pub type ActionId = String;
-
-#[derive(Clone, Debug, Default)]
-pub struct ActionContext {}
 
 /// Fail-closed reasons a typed [`ActionPayload`] decode can reject. Errors are
 /// **data** (D6) — never a panic, never a `Result`/exception across the FFI or
@@ -180,9 +179,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// whose `Action` is e.g. `serde_json::Value` cannot implement
     /// [`ActionPayload`], and simply leaves this defaulted.
     #[allow(unused_variables)]
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         None
     }
 
@@ -217,6 +214,7 @@ pub trait ActionModule: Send + Sync + 'static {
     /// through a process-global. Stateless modules ignore `&self`.
     fn execute(
         &self,
+        ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),

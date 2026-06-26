@@ -10,11 +10,9 @@
 use std::ffi::CStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::dispatch_envelope::{DISPATCH_ENVELOPE_SCHEMA_VERSION, encode_dispatch_envelope};
 use nmp_core::substrate::ActionPayload;
-use nmp_ffi::{
-    nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new, nmp_free_string, NmpApp,
-};
+use nmp_ffi::{NmpApp, nmp_app_dispatch_action_bytes, nmp_app_free, nmp_app_new, nmp_free_string};
 
 /// Mint a process-local unique host correlation id. On the byte lane the host
 /// supplies the id and the doorway echoes it back verbatim (ADR-0064 §4) — it
@@ -41,7 +39,10 @@ fn dispatch_bytes(
         payload,
     );
     let ptr = nmp_app_dispatch_action_bytes(app, envelope.as_ptr(), envelope.len());
-    assert!(!ptr.is_null(), "dispatch_action_bytes must never return null");
+    assert!(
+        !ptr.is_null(),
+        "dispatch_action_bytes must never return null"
+    );
     // SAFETY: `ptr` is a valid C string from `nmp_app_dispatch_action_bytes`.
     let out = unsafe { CStr::from_ptr(ptr) }.to_str().unwrap().to_owned();
     nmp_free_string(ptr);
@@ -151,7 +152,10 @@ fn typed_bytes_dispatch_round_trips_trio_through_registry() {
     // Build typed payloads with each crate's `ActionPayload::encode`, then drive
     // them through the registry's typed-bytes doorway exactly as the byte
     // transport (S2) would after decoding the envelope.
-    let follow = nmp_nip02::PubkeyAction { pubkey: "a".repeat(64) }.encode();
+    let follow = nmp_nip02::PubkeyAction {
+        pubkey: "a".repeat(64),
+    }
+    .encode();
     let follow_many = nmp_nip02::FollowManyAction {
         pubkeys: vec!["b".repeat(64), "c".repeat(64)],
     }
@@ -176,16 +180,31 @@ fn typed_bytes_dispatch_round_trips_trio_through_registry() {
         ("nmp.nip25.unreact", &unreact),
     ] {
         let id = registry
-            .start_bytes(&mut ActionContext::default(), 1_700_000_000_000, namespace, payload)
+            .start_bytes(
+                &mut ActionContext::default(),
+                1_700_000_000_000,
+                namespace,
+                payload,
+            )
             .unwrap_or_else(|e| panic!("{namespace}: typed start_bytes should accept: {e:?}"));
         assert_eq!(id.len(), 32, "{namespace}: minted 32-hex correlation_id");
 
         // execute_bytes enqueues exactly one ActorCommand.
         let count = std::cell::Cell::new(0u32);
         registry
-            .execute_bytes(namespace, payload, &id, &|_cmd| count.set(count.get() + 1))
+            .execute_bytes(
+                &nmp_core::substrate::ActionContext::default(),
+                namespace,
+                payload,
+                &id,
+                &|_cmd| count.set(count.get() + 1),
+            )
             .unwrap_or_else(|e| panic!("{namespace}: execute_bytes should enqueue: {e:?}"));
-        assert_eq!(count.get(), 1, "{namespace}: exactly one ActorCommand enqueued");
+        assert_eq!(
+            count.get(),
+            1,
+            "{namespace}: exactly one ActorCommand enqueued"
+        );
     }
 
     // NEGATIVE 1: a payload with a BAD schema_version is REJECTED before start().

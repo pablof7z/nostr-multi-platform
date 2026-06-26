@@ -51,6 +51,7 @@ impl ActionModule for TopicArticlesModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -485,7 +486,6 @@ The subscription should close when…
     → InterestLifecycle::Tailing
     → Dispatch Release when the view closes; the shell owns the trigger, Rust owns the subscription.
 ```
-
 ## Checklist
 
 - [ ] Claim and Release derive the same `SubIdentity` from the same inputs.

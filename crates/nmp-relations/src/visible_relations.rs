@@ -4,13 +4,13 @@
 //! one note, so a host can claim/release the relation surface of a card. Its
 //! cross-protocol kind set is why it belongs here, not in the base note crate.
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::InterestsCommand;
 use nmp_core::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, ViewDependencies,
 };
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{InterestsCommand};
 use nmp_planner::stable_hash::stable_hash64;
 use nmp_planner::{InterestId, InterestLifecycle, InterestScope, LogicalInterest};
 use serde::{Deserialize, Serialize};
@@ -87,6 +87,7 @@ impl ActionModule for VisibleNoteRelationsModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -102,9 +103,12 @@ impl ActionModule for VisibleNoteRelationsModule {
             VisibleNoteRelationsAction::Release {
                 event_id,
                 consumer_id,
-            } => send(ActorCommand::Interests(InterestsCommand::DropInterestOwner(
-                visible_note_relations_identity(&event_id, &consumer_id),
-            ))),
+            } => send(ActorCommand::Interests(
+                InterestsCommand::DropInterestOwner(visible_note_relations_identity(
+                    &event_id,
+                    &consumer_id,
+                )),
+            )),
         }
         Ok(())
     }
@@ -138,7 +142,8 @@ pub fn visible_note_relations_identity(event_id: &str, consumer_id: &str) -> Sub
 
 pub fn register_visible_note_relation_actions(app: &mut impl ActionRegistrar) {
     app.register_action(VisibleNoteRelationsModule)
-        .expect("duplicate registration: nmp-relations VisibleNoteRelationsModule"); // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error (duplicate wiring), not a runtime failure
+        .expect("duplicate registration: nmp-relations VisibleNoteRelationsModule");
+    // doctrine-allow: D6 — startup-only call; RegistrationError here is a programmer error (duplicate wiring), not a runtime failure
 }
 
 fn is_hex64(value: &str) -> bool {
@@ -160,11 +165,13 @@ mod tests {
         assert!(interest.shape.kinds.contains(&7));
         assert!(interest.shape.kinds.contains(&9735));
         assert_eq!(interest.shape.limit, Some(VISIBLE_NOTE_RELATIONS_LIMIT));
-        assert!(interest
-            .shape
-            .tags
-            .get("e")
-            .is_some_and(|targets| targets.contains(EVENT)));
+        assert!(
+            interest
+                .shape
+                .tags
+                .get("e")
+                .is_some_and(|targets| targets.contains(EVENT))
+        );
     }
 
     #[test]
@@ -174,15 +181,27 @@ mod tests {
             event_id: EVENT.to_string(),
             consumer_id: "row".to_string(),
         };
-        assert!(VisibleNoteRelationsModule.start(&mut ctx, claim.clone()).is_ok());
+        assert!(
+            VisibleNoteRelationsModule
+                .start(&mut ctx, claim.clone())
+                .is_ok()
+        );
 
         let (tx, rx) = std::sync::mpsc::channel();
-        VisibleNoteRelationsModule.execute(claim, "corr", &|cmd| {
-            tx.send(cmd).expect("test channel accepts command");
-        })
-        .expect("claim action should enqueue");
+        VisibleNoteRelationsModule
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                claim,
+                "corr",
+                &|cmd| {
+                    tx.send(cmd).expect("test channel accepts command");
+                },
+            )
+            .expect("claim action should enqueue");
         let mut cmds = rx.try_iter().collect::<Vec<_>>();
-        let ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) = &cmds[0] else {
+        let ActorCommand::Interests(InterestsCommand::EnsureInterest { identity, interest }) =
+            &cmds[0]
+        else {
             panic!("expected EnsureInterest");
         };
         assert_eq!(*identity, visible_note_relations_identity(EVENT, "row"));
@@ -193,10 +212,16 @@ mod tests {
             consumer_id: "row".to_string(),
         };
         let (tx, rx) = std::sync::mpsc::channel();
-        VisibleNoteRelationsModule.execute(release, "corr", &|cmd| {
-            tx.send(cmd).expect("test channel accepts command");
-        })
-        .expect("release action should enqueue");
+        VisibleNoteRelationsModule
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                release,
+                "corr",
+                &|cmd| {
+                    tx.send(cmd).expect("test channel accepts command");
+                },
+            )
+            .expect("release action should enqueue");
         cmds.extend(rx.try_iter());
         assert!(matches!(
             &cmds[1],

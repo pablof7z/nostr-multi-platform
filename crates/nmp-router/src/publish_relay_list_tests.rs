@@ -23,7 +23,10 @@ fn build_drops_ws_scheme_to_match_ingest_gate() {
         entry("ws://insecure.example", RelayMarker::Both),
         entry("wss://secure.example", RelayMarker::Both),
     ]);
-    assert_eq!(event.tags, vec![vec!["r".to_string(), "wss://secure.example".to_string()]]);
+    assert_eq!(
+        event.tags,
+        vec![vec!["r".to_string(), "wss://secure.example".to_string()]]
+    );
 }
 
 #[test]
@@ -295,17 +298,23 @@ fn start_rejects_input_that_produces_zero_canonical_tags() {
 #[test]
 fn execute_emits_kind10002_publish_unsigned_event_command() {
     use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{PublishCommand};
+    use nmp_core::actor::PublishCommand;
     use std::cell::RefCell;
 
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
     let input = PublishRelayListInput {
         relays: vec![entry("wss://relay.example", RelayMarker::Both)],
     };
-    PublishRelayListAction.execute(input, "test-cid", &|cmd| {
-        captured.borrow_mut().push(cmd);
-    })
-    .expect("execute must not fail");
+    PublishRelayListAction
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "test-cid",
+            &|cmd| {
+                captured.borrow_mut().push(cmd);
+            },
+        )
+        .expect("execute must not fail");
     let cmds = captured.into_inner();
     assert_eq!(
         cmds.len(),

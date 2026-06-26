@@ -16,10 +16,10 @@
 //! [`crate::projection::DiscoveredGroupsProjection`] (or a per-group
 //! projection) — this action only emits the request.
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -78,6 +78,7 @@ impl ActionModule for JoinGroupAction {
     }
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -105,9 +106,14 @@ mod tests {
     /// Run the typed executor and capture every `ActorCommand` it sends, in order.
     fn run_execute(input: JoinGroupInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        JoinGroupAction.execute(input, "test-cid", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })?;
+        JoinGroupAction.execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "test-cid",
+            &|cmd| {
+                captured.borrow_mut().push(cmd);
+            },
+        )?;
         Ok(captured.into_inner())
     }
 

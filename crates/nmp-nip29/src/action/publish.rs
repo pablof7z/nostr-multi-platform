@@ -16,21 +16,20 @@
 //! the envelope composer issues a **cache-only** `StoreQuery::Tags { #h, limit }`
 //! against the kernel event store (which already indexes every ingested event by
 //! its single-letter `h` tag) at publish time. The store handle is read through
-//! the V-83 [`EventStoreSlot`] publish-back slot — the same synchronous,
-//! local-only read pattern as `nmp_core::slots::following_count_from_store`. No
-//! relay round-trip, no async, bounded by `limit`.
+//! the execution [`ActionContext`], so all action-local reads use one bounded
+//! primitive instead of per-action slot captures. No relay round-trip, no async,
+//! bounded by `limit`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::slots::EventStoreSlot;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
 use nmp_store::StoreQuery;
 use serde::{Deserialize, Serialize};
 
-use crate::cache::{previous_tag_prefix, EventIdPrefix};
+use crate::cache::{EventIdPrefix, previous_tag_prefix};
 use crate::group_id::GroupId;
 
 use super::publish_plan::PublishPlan;
@@ -54,23 +53,16 @@ pub struct PublishGroupEventInput {
 }
 
 /// Read up to `limit` recent event-id prefixes for the group's `["previous", …]`
-/// tags from the kernel store cache. Best-effort: an unpublished slot, a
-/// poisoned lock, or a store error degrades to no `previous` tags (D6).
-fn previous_prefixes_from_store(
-    store_slot: &EventStoreSlot,
+/// tags from the kernel store cache. Best-effort: an unavailable context,
+/// poisoned store slot, or store error degrades to no `previous` tags (D6).
+fn previous_prefixes_from_context(
+    ctx: &ActionContext,
     group: &GroupId,
     limit: usize,
 ) -> Vec<EventIdPrefix> {
     if limit == 0 {
         return Vec::new();
     }
-    let store = match store_slot.lock() {
-        Ok(guard) => match guard.clone() {
-            Some(store) => store,
-            None => return Vec::new(),
-        },
-        Err(_) => return Vec::new(),
-    };
     let Ok(h) = nostr::SingleLetterTag::from_char('h') else {
         return Vec::new();
     };
@@ -84,7 +76,7 @@ fn previous_prefixes_from_store(
         until: None,
     };
     // `query` returns newest-first, capped at `limit`.
-    match store.query(&query, limit) {
+    match ctx.query_local_events(&query, limit) {
         Ok(events) => events
             .iter()
             .map(|ev| previous_tag_prefix(&ev.raw.id))
@@ -102,13 +94,13 @@ fn previous_prefixes_from_store(
 /// `repost_in_group`) flows through it so the envelope is built in exactly one
 /// place.
 pub(crate) fn group_publish_plan(
-    store_slot: &EventStoreSlot,
+    ctx: &ActionContext,
     group: &GroupId,
     kind: u32,
     content: impl Into<String>,
     caller_tags: Vec<Vec<String>>,
 ) -> PublishPlan {
-    let previous = previous_prefixes_from_store(store_slot, group, DEFAULT_PREVIOUS_LIMIT);
+    let previous = previous_prefixes_from_context(ctx, group, DEFAULT_PREVIOUS_LIMIT);
     let mut tags = Vec::with_capacity(caller_tags.len() + 1 + previous.len());
     tags.push(vec!["h".to_string(), group.local_id.clone()]);
     for prefix in previous {
@@ -134,19 +126,8 @@ pub(crate) fn reject_caller_envelope_tags(tags: &[Vec<String>]) -> Result<(), Ac
     Ok(())
 }
 
-/// The generic "publish this event to group X" action. Stateful: it captures the
-/// V-83 [`EventStoreSlot`] at composition so `execute` can read recent group
-/// events for the `["previous", …]` tags.
-pub struct PublishGroupEventAction {
-    store_slot: EventStoreSlot,
-}
-
-impl PublishGroupEventAction {
-    #[must_use]
-    pub fn new(store_slot: EventStoreSlot) -> Self {
-        Self { store_slot }
-    }
-}
+/// The generic "publish this event to group X" action.
+pub struct PublishGroupEventAction;
 
 impl ActionModule for PublishGroupEventAction {
     const NAMESPACE: &'static str = "nmp.nip29.publish_group_event";
@@ -169,17 +150,12 @@ impl ActionModule for PublishGroupEventAction {
 
     fn execute(
         &self,
+        ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        let plan = group_publish_plan(
-            &self.store_slot,
-            &action.group,
-            action.kind,
-            action.content,
-            action.tags,
-        );
+        let plan = group_publish_plan(ctx, &action.group, action.kind, action.content, action.tags);
         send(plan.into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
@@ -188,7 +164,9 @@ impl ActionModule for PublishGroupEventAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_core::slots::new_event_store_slot;
+    use std::sync::Arc;
+
+    use nmp_store::{EventStore, MemEventStore, RawEvent, VerifiedEvent};
 
     fn input() -> PublishGroupEventInput {
         PublishGroupEventInput {
@@ -199,16 +177,29 @@ mod tests {
         }
     }
 
+    fn stored_group_event(id: &str, group: &str, created_at: u64) -> VerifiedEvent {
+        let raw = RawEvent {
+            id: id.to_string(),
+            pubkey: "11".repeat(32),
+            created_at,
+            kind: 9,
+            tags: vec![vec!["h".to_string(), group.to_string()]],
+            content: "cached".to_string(),
+            sig: "aa".repeat(64),
+        };
+        VerifiedEvent::from_raw_unchecked(raw)
+    }
+
     #[test]
     fn well_formed_passes_validator() {
-        let action = PublishGroupEventAction::new(new_event_store_slot());
+        let action = PublishGroupEventAction;
         let mut ctx = ActionContext::default();
         assert!(action.start(&mut ctx, input()).is_ok());
     }
 
     #[test]
     fn empty_host_relay_url_rejected_in_start() {
-        let action = PublishGroupEventAction::new(new_event_store_slot());
+        let action = PublishGroupEventAction;
         let mut ctx = ActionContext::default();
         let bad = PublishGroupEventInput {
             group: GroupId::new("", "room"),
@@ -222,12 +213,12 @@ mod tests {
 
     #[test]
     fn caller_supplied_envelope_tags_rejected() {
-        let action = PublishGroupEventAction::new(new_event_store_slot());
+        let action = PublishGroupEventAction;
         let mut ctx = ActionContext::default();
-        for envelope in [vec!["h".to_string(), "room".to_string()], vec![
-            "previous".to_string(),
-            "abc".to_string(),
-        ]] {
+        for envelope in [
+            vec!["h".to_string(), "room".to_string()],
+            vec!["previous".to_string(), "abc".to_string()],
+        ] {
             let bad = PublishGroupEventInput {
                 tags: vec![envelope],
                 ..input()
@@ -244,16 +235,63 @@ mod tests {
         // No store published → no `previous` tags; `h` is always injected and
         // caller tags are preserved in order after it.
         let group = GroupId::new("wss://h.example.com", "g1");
+        let ctx = ActionContext::default();
         let plan = group_publish_plan(
-            &new_event_store_slot(),
+            &ctx,
             &group,
             9,
             "hi",
-            vec![vec!["e".to_string(), "deadbeef".to_string(), String::new(), "reply".to_string()]],
+            vec![vec![
+                "e".to_string(),
+                "deadbeef".to_string(),
+                String::new(),
+                "reply".to_string(),
+            ]],
         );
         assert_eq!(plan.kind, 9);
         assert_eq!(plan.tags[0], vec!["h".to_string(), "g1".to_string()]);
         assert_eq!(plan.tags[1][0], "e");
         assert!(plan.pin_to.is_some());
+    }
+
+    #[test]
+    fn composer_reads_previous_tags_through_action_context() {
+        let store = MemEventStore::default();
+        store
+            .insert(
+                stored_group_event(&"22".repeat(32), "g1", 2),
+                &"wss://r".to_string(),
+                2,
+            )
+            .unwrap();
+        store
+            .insert(
+                stored_group_event(&"33".repeat(32), "g1", 1),
+                &"wss://r".to_string(),
+                1,
+            )
+            .unwrap();
+        store
+            .insert(
+                stored_group_event(&"44".repeat(32), "other", 3),
+                &"wss://r".to_string(),
+                3,
+            )
+            .unwrap();
+
+        let ctx = ActionContext::with_event_store(Arc::new(store));
+        let group = GroupId::new("wss://h.example.com", "g1");
+        let plan = group_publish_plan(&ctx, &group, 9, "hi", Vec::new());
+
+        assert_eq!(plan.tags[0], vec!["h".to_string(), "g1".to_string()]);
+        assert_eq!(
+            plan.tags[1],
+            vec!["previous".to_string(), "22222222".to_string()]
+        );
+        assert_eq!(
+            plan.tags[2],
+            vec!["previous".to_string(), "33333333".to_string()]
+        );
+        assert_eq!(plan.tags.len(), 3);
     }
 }

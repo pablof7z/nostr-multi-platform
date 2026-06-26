@@ -177,9 +177,14 @@ fn add_action_rejects_duplicate_and_publishes_append() {
         .start(&mut ActionContext::default(), input.clone())
         .expect("valid add");
     action
-        .execute(input, "corr-add", &|command| {
-            sent.lock().expect("sent").push(command);
-        })
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "corr-add",
+            &|command| {
+                sent.lock().expect("sent").push(command);
+            },
+        )
         .expect("execute add");
 
     let ActorCommand::Publish(PublishCommand::UnsignedEvent {
@@ -226,9 +231,14 @@ fn remove_action_rejects_absent_and_publishes_removal() {
         .start(&mut ActionContext::default(), input.clone())
         .expect("valid remove");
     action
-        .execute(input, "corr-remove", &|command| {
-            sent.lock().expect("sent").push(command);
-        })
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "corr-remove",
+            &|command| {
+                sent.lock().expect("sent").push(command);
+            },
+        )
         .expect("execute remove");
 
     let ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) =

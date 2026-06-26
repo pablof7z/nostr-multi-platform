@@ -5,10 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
 
 use crate::protocol::{WalletConnectCommand, WalletDisconnectCommand};
 use crate::runtime::WalletRuntimeHandle;
@@ -74,10 +74,14 @@ impl ActionModule for WalletConnectModule {
                         message: "wallet connect requires a non-empty NWC URI".to_string(),
                     });
                 }
-                if !uri.to_ascii_lowercase().starts_with("nostr+walletconnect://") {
+                if !uri
+                    .to_ascii_lowercase()
+                    .starts_with("nostr+walletconnect://")
+                {
                     return Err(ActionRejection::InvalidCoded {
                         code: ui_codes::NWC_URI_BAD_SCHEME,
-                        message: "invalid NWC URI: must start with nostr+walletconnect://".to_string(),
+                        message: "invalid NWC URI: must start with nostr+walletconnect://"
+                            .to_string(),
                     });
                 }
                 Ok(())
@@ -87,6 +91,7 @@ impl ActionModule for WalletConnectModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -139,6 +144,7 @@ impl ActionModule for WalletDisconnectModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -166,7 +172,8 @@ mod tests {
     #[test]
     fn connect_start_accepts_valid_nwc_uri() {
         let action = WalletConnectAction::Connect {
-            uri: "nostr+walletconnect://abc123?relay=wss://relay.example.com&secret=xyz".to_string(),
+            uri: "nostr+walletconnect://abc123?relay=wss://relay.example.com&secret=xyz"
+                .to_string(),
         };
         WalletConnectModule::new(handle())
             .start(&mut ctx(), action)
@@ -186,9 +193,7 @@ mod tests {
 
     #[test]
     fn connect_start_rejects_empty_uri() {
-        let action = WalletConnectAction::Connect {
-            uri: String::new(),
-        };
+        let action = WalletConnectAction::Connect { uri: String::new() };
         let err = WalletConnectModule::new(handle())
             .start(&mut ctx(), action)
             .expect_err("empty URI must be rejected");
@@ -217,7 +222,9 @@ mod tests {
             "lightning:abc",
             "   ",
         ] {
-            let action = WalletConnectAction::Connect { uri: bad.to_string() };
+            let action = WalletConnectAction::Connect {
+                uri: bad.to_string(),
+            };
             let err = WalletConnectModule::new(handle())
                 .start(&mut ctx(), action)
                 .expect_err(&format!("bad URI {bad:?} must be rejected"));

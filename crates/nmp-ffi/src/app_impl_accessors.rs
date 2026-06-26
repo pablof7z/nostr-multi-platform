@@ -11,8 +11,8 @@
 //! `remove_account`, `recall_local_nsec`, `register_action_result_observer`,
 //! and the `impl ActionRegistrar for NmpApp` block.
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use nmp_core::__ffi_internal::{dispatch_capability, unregister_observer};
 use nmp_core::actor::ActorCommand;
@@ -20,8 +20,8 @@ use nmp_core::actor::{
     IdentityCommand, InterestsCommand, PublishCommand, RefsCommand, RelayCommand, SignCommand,
 };
 use nmp_core::slots::{
-    event_by_id_from_store, ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot,
-    PullCursorRegistryHandleSlot,
+    ActiveAccountSlot, ActiveLocalKeysSlot, EventStoreSlot, PullCursorRegistryHandleSlot,
+    event_by_id_from_store,
 };
 use nmp_core::ObservedProjectionId;
 use zeroize::Zeroizing;
@@ -360,10 +360,16 @@ impl NmpApp {
         namespace: &str,
         action_json: &str,
     ) -> Result<(), String> {
+        let ctx =
+            nmp_core::substrate::ActionContext::with_event_store_slot(self.event_store_handle());
         self.action_registry
-            .execute(namespace, action_json, "test-correlation-id", &|cmd| {
-                self.send_cmd(cmd)
-            })
+            .execute(
+                &ctx,
+                namespace,
+                action_json,
+                "test-correlation-id",
+                &|cmd| self.send_cmd(cmd),
+            )
             .map_err(|failure| failure.message)
     }
 

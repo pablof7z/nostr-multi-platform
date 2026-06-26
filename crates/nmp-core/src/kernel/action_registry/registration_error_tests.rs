@@ -10,6 +10,7 @@ impl ActionModule for AppModule {
     const NAMESPACE: &'static str = "nmp.test.reg_err.ns";
     fn execute(
         &self,
+        _ctx: &ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(ActorCommand),
@@ -24,6 +25,7 @@ impl ActionModule for OtherAppModuleSameNs {
     const NAMESPACE: &'static str = "nmp.test.reg_err.ns";
     fn execute(
         &self,
+        _ctx: &ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(ActorCommand),

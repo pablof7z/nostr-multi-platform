@@ -41,7 +41,12 @@ fn highlight_with_all_fields_emits_expected_tags() {
     };
     let cmd = capture_execute(|send| {
         PublishHighlightModule
-            .execute(action, "hl-cid", send)
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                action,
+                "hl-cid",
+                send,
+            )
             .expect("execute succeeds");
     });
     match run_one_protocol(cmd) {
@@ -132,7 +137,12 @@ fn external_only_highlight_emits_nip73_i_and_k_tags_with_no_attribution() {
         .expect("external-only highlight accepted");
     let cmd = capture_execute(|send| {
         PublishHighlightModule
-            .execute(action, "ext-cid", send)
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                action,
+                "ext-cid",
+                send,
+            )
             .expect("execute succeeds");
     });
     match run_one_protocol(cmd) {
@@ -167,7 +177,12 @@ fn blockchain_external_ids_derive_chain_selector_kind() {
     };
     match run_one_protocol(capture_execute(|send| {
         PublishHighlightModule
-            .execute(action, "chain-cid", send)
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                action,
+                "chain-cid",
+                send,
+            )
             .expect("execute succeeds");
     })) {
         ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) => assert_eq!(
@@ -244,7 +259,12 @@ fn duplicate_derived_k_tags_are_deduped_from_ids() {
     };
     match run_one_protocol(capture_execute(|send| {
         PublishHighlightModule
-            .execute(action, "dedupe-cid", send)
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                action,
+                "dedupe-cid",
+                send,
+            )
             .expect("execute succeeds");
     })) {
         ActorCommand::Publish(PublishCommand::UnsignedEvent { event, .. }) => assert_eq!(
@@ -266,6 +286,7 @@ fn direct_protocol_run_rejects_malformed_external_id_defensively() {
     let cmd = capture_execute(|send| {
         PublishHighlightModule
             .execute(
+                &nmp_core::substrate::ActionContext::default(),
                 PublishHighlightAction {
                     content: "clip text".to_string(),
                     context: None,

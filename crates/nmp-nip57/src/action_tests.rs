@@ -36,9 +36,14 @@ fn zap_action() -> ZapAction {
 /// Run the typed executor and capture every `ActorCommand` it sends, in order.
 fn run_execute(input: ZapInput) -> Result<Vec<ActorCommand>, String> {
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-    zap_action().execute(input, "cid-deadbeef", &|cmd| {
-        captured.borrow_mut().push(cmd);
-    })?;
+    zap_action().execute(
+        &nmp_core::substrate::ActionContext::default(),
+        input,
+        "cid-deadbeef",
+        &|cmd| {
+            captured.borrow_mut().push(cmd);
+        },
+    )?;
     Ok(captured.into_inner())
 }
 
@@ -129,7 +134,11 @@ fn start_accepts_no_lnurl_kernel_resolves() {
     // Shells that know only the pubkey and amount pass `lnurl: None`.
     // The kernel resolves the address from the cached kind:0 profile at
     // execute time — `start` must not reject it.
-    assert!(zap_action().start(&mut ctx(), well_formed_input_no_lnurl()).is_ok());
+    assert!(
+        zap_action()
+            .start(&mut ctx(), well_formed_input_no_lnurl())
+            .is_ok()
+    );
 }
 
 #[test]

@@ -8,7 +8,6 @@
 //! these actions only shape their `e` / `p` / `additional_tags` caller tags.
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::slots::EventStoreSlot;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
@@ -73,10 +72,10 @@ fn validate_group_event_input(
     if target.event_id.is_empty() {
         return Err(ActionRejection::Invalid("target event_id is empty".into()));
     }
-    if additional_tags
-        .iter()
-        .any(|tag| tag.first().is_some_and(|key| key == "h" || key == "previous"))
-    {
+    if additional_tags.iter().any(|tag| {
+        tag.first()
+            .is_some_and(|key| key == "h" || key == "previous")
+    }) {
         return Err(ActionRejection::Invalid(
             "additional_tags must not override the NIP-29 envelope (`h` / `previous`)".into(),
         ));
@@ -84,9 +83,9 @@ fn validate_group_event_input(
     Ok(())
 }
 
-fn share_event_plan(store_slot: &EventStoreSlot, action: &ShareEventInGroupInput) -> PublishPlan {
+fn share_event_plan(ctx: &ActionContext, action: &ShareEventInGroupInput) -> PublishPlan {
     group_publish_plan(
-        store_slot,
+        ctx,
         &action.group,
         KIND_DISCUSSION_OR_ARTIFACT,
         action.content.clone(),
@@ -94,9 +93,9 @@ fn share_event_plan(store_slot: &EventStoreSlot, action: &ShareEventInGroupInput
     )
 }
 
-fn repost_plan(store_slot: &EventStoreSlot, action: &RepostInGroupInput) -> PublishPlan {
+fn repost_plan(ctx: &ActionContext, action: &RepostInGroupInput) -> PublishPlan {
     group_publish_plan(
-        store_slot,
+        ctx,
         &action.group,
         REPOST_KIND,
         action.content.clone(),
@@ -104,16 +103,7 @@ fn repost_plan(store_slot: &EventStoreSlot, action: &RepostInGroupInput) -> Publ
     )
 }
 
-pub struct ShareEventInGroupAction {
-    store_slot: EventStoreSlot,
-}
-
-impl ShareEventInGroupAction {
-    #[must_use]
-    pub fn new(store_slot: EventStoreSlot) -> Self {
-        Self { store_slot }
-    }
-}
+pub struct ShareEventInGroupAction;
 
 impl ActionModule for ShareEventInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.share_event_in_group";
@@ -131,28 +121,17 @@ impl ActionModule for ShareEventInGroupAction {
 
     fn execute(
         &self,
+        ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(
-            share_event_plan(&self.store_slot, &action)
-                .into_actor_command(Some(correlation_id.to_string()))?,
-        );
+        send(share_event_plan(ctx, &action).into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
 
-pub struct RepostInGroupAction {
-    store_slot: EventStoreSlot,
-}
-
-impl RepostInGroupAction {
-    #[must_use]
-    pub fn new(store_slot: EventStoreSlot) -> Self {
-        Self { store_slot }
-    }
-}
+pub struct RepostInGroupAction;
 
 impl ActionModule for RepostInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.repost_in_group";
@@ -170,14 +149,12 @@ impl ActionModule for RepostInGroupAction {
 
     fn execute(
         &self,
+        ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(
-            repost_plan(&self.store_slot, &action)
-                .into_actor_command(Some(correlation_id.to_string()))?,
-        );
+        send(repost_plan(ctx, &action).into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
@@ -186,7 +163,6 @@ impl ActionModule for RepostInGroupAction {
 mod tests {
     use super::*;
     use nmp_core::actor::PublishCommand;
-    use nmp_core::slots::new_event_store_slot;
     use std::cell::RefCell;
 
     fn target() -> GroupEventTarget {
@@ -197,11 +173,11 @@ mod tests {
     }
 
     fn share_action() -> ShareEventInGroupAction {
-        ShareEventInGroupAction::new(new_event_store_slot())
+        ShareEventInGroupAction
     }
 
     fn repost_action() -> RepostInGroupAction {
-        RepostInGroupAction::new(new_event_store_slot())
+        RepostInGroupAction
     }
 
     fn share_input() -> ShareEventInGroupInput {
@@ -242,8 +218,9 @@ mod tests {
     #[test]
     fn share_executes_host_pinned_kind11() {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        let ctx = ActionContext::default();
         share_action()
-            .execute(share_input(), "share-cid", &|cmd| {
+            .execute(&ctx, share_input(), "share-cid", &|cmd| {
                 captured.borrow_mut().push(cmd)
             })
             .expect("share executes");
@@ -270,6 +247,7 @@ mod tests {
     #[test]
     fn repost_executes_host_pinned_kind16() {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        let ctx = ActionContext::default();
         let action = RepostInGroupInput {
             group: GroupId::new("wss://groups.example.com", "room"),
             target: target(),
@@ -277,7 +255,9 @@ mod tests {
             additional_tags: Vec::new(),
         };
         repost_action()
-            .execute(action, "repost-cid", &|cmd| captured.borrow_mut().push(cmd))
+            .execute(&ctx, action, "repost-cid", &|cmd| {
+                captured.borrow_mut().push(cmd)
+            })
             .expect("repost executes");
 
         match captured.into_inner().pop().expect("command emitted") {

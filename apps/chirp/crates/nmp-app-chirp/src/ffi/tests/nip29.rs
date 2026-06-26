@@ -5,8 +5,7 @@
 
 use nmp_core::actor::ActorCommand;
 use nmp_core::actor::{ActionLedgerCommand, InterestsCommand, PublishCommand};
-use nmp_core::slots::new_event_store_slot;
-use nmp_core::substrate::ActionModule;
+use nmp_core::substrate::{ActionContext, ActionModule};
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 use nmp_nip29::action::{
     CreatePublicGroupAction, DiscoverGroupsAction, DiscoverGroupsInput, JoinGroupAction,
@@ -70,9 +69,7 @@ fn nip29_publish_group_event_dispatches_through_action_registry() {
 /// `PublishGroupEventInput` to a concrete
 /// [`ActorCommand::PublishUnsignedEventToRelays`] pinned to the group's
 /// own host relay — proving the `PublishGroupEventAction::execute` typed
-/// path (ADR-0027) produces the right command end-to-end. Built directly
-/// (not via `run_module_execute`) because the action is stateful (it carries
-/// the V-83 store slot, so it has no `Default`).
+/// path (ADR-0027) produces the right command end-to-end.
 #[test]
 fn nip29_publish_group_event_executor_emits_host_pinned_publish_command() {
     let input = PublishGroupEventInput {
@@ -82,8 +79,11 @@ fn nip29_publish_group_event_executor_emits_host_pinned_publish_command() {
         tags: vec![],
     };
     let captured: std::cell::RefCell<Vec<ActorCommand>> = std::cell::RefCell::new(Vec::new());
-    PublishGroupEventAction::new(new_event_store_slot())
-        .execute(input, "test-cid", &|cmd| captured.borrow_mut().push(cmd))
+    let ctx = ActionContext::default();
+    PublishGroupEventAction
+        .execute(&ctx, input, "test-cid", &|cmd| {
+            captured.borrow_mut().push(cmd)
+        })
         .expect("well-formed group event");
     let cmd = captured
         .into_inner()
@@ -361,14 +361,18 @@ fn nip29_join_executor_emits_kind_9021_with_host_pin() {
         }) => {
             assert_eq!(relays, vec!["wss://groups.example.com".to_string()]);
             assert_eq!(event.kind, 9021);
-            assert!(event
-                .tags
-                .iter()
-                .any(|t| t == &vec!["h".to_string(), "room".to_string()]));
-            assert!(event
-                .tags
-                .iter()
-                .any(|t| t == &vec!["code".to_string(), "abc".to_string()]));
+            assert!(
+                event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["h".to_string(), "room".to_string()])
+            );
+            assert!(
+                event
+                    .tags
+                    .iter()
+                    .any(|t| t == &vec!["code".to_string(), "abc".to_string()])
+            );
             assert_eq!(event.content, "please");
             // correlation_id threads through from the executor.
             assert!(

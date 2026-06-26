@@ -204,6 +204,7 @@ impl nmp_core::substrate::ActionModule for JsonOnlyAppModule {
 
     fn execute(
         &self,
+        _ctx: &nmp_core::substrate::ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),

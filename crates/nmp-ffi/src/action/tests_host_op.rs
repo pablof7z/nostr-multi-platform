@@ -64,6 +64,7 @@ impl nmp_core::substrate::ActionModule for TestHostOpModule {
     /// `Protocol` arm. No state access — the handler owns that.
     fn execute(
         &self,
+        _ctx: &nmp_core::substrate::ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(nmp_core::actor::ActorCommand),

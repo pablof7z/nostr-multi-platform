@@ -187,9 +187,14 @@ fn publish_action_rejects_bad_inputs_and_publishes_upsert() {
         .start(&mut ActionContext::default(), input.clone())
         .expect("valid publish");
     action
-        .execute(input, "corr-web", &|command| {
-            sent.lock().expect("sent").push(command);
-        })
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "corr-web",
+            &|command| {
+                sent.lock().expect("sent").push(command);
+            },
+        )
         .expect("execute publish");
 
     let ActorCommand::Publish(PublishCommand::UnsignedEvent {

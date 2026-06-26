@@ -7,7 +7,7 @@
 use std::cell::RefCell;
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::substrate::ActionModule;
+use nmp_core::substrate::{ActionContext, ActionModule};
 use nmp_ffi::NmpApp;
 
 use super::super::{ChirpHandle, NmpRegisterStatus, nmp_app_chirp_register};
@@ -32,7 +32,8 @@ pub(super) fn run_module_execute<M: ActionModule + Default>(
     // ADR-0052 rung 5.2: `execute` takes `&self` (the module value carries its
     // dependencies). The NIP-29 test modules probed here are stateless unit
     // structs, so a `Default`-constructed instance is the canonical handle.
-    M::default().execute(input, "test-cid", &|cmd| {
+    let ctx = ActionContext::default();
+    M::default().execute(&ctx, input, "test-cid", &|cmd| {
         captured.borrow_mut().push(cmd);
     })?;
     Ok(captured.into_inner())

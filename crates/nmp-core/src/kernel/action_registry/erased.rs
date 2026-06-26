@@ -27,9 +27,7 @@
 //! Extracted from `action_registry.rs` to keep that orchestrator file under the
 //! 500-LOC hand-authored ceiling (AGENTS.md / V-12).
 
-use crate::substrate::{
-    ActionContext, ActionModule, ActionPayloadDecodeError, ActionRejection,
-};
+use crate::substrate::{ActionContext, ActionModule, ActionPayloadDecodeError, ActionRejection};
 
 /// Dyn-safe facade over [`ActionModule`].
 ///
@@ -49,16 +47,13 @@ pub(super) trait ErasedActionModule: Send + Sync {
     /// pre-signed event's `id` (the event id is the operation's *result*, not
     /// its identity; conflating them broke host spinner matching on the
     /// pre-signed publish path).
-    fn start(
-        &self,
-        ctx: &mut ActionContext,
-        action_json: &str,
-    ) -> Result<(), ActionRejection>;
+    fn start(&self, ctx: &mut ActionContext, action_json: &str) -> Result<(), ActionRejection>;
 
     /// Execute the validated action. Called by [`super::ActionRegistry::execute`]
     /// after `start` returns `Ok`.
     fn execute(
         &self,
+        ctx: &ActionContext,
         action_json: &str,
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
@@ -89,6 +84,7 @@ pub(super) trait ErasedActionModule: Send + Sync {
     /// keeps the seam uniform).
     fn execute_bytes(
         &self,
+        ctx: &ActionContext,
         payload: &[u8],
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
@@ -152,11 +148,7 @@ impl core::fmt::Display for TypedDispatchError {
 pub(super) struct ActionModuleAdapter<M: ActionModule>(pub(super) M);
 
 impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
-    fn start(
-        &self,
-        ctx: &mut ActionContext,
-        action_json: &str,
-    ) -> Result<(), ActionRejection> {
+    fn start(&self, ctx: &mut ActionContext, action_json: &str) -> Result<(), ActionRejection> {
         let action: M::Action = serde_json::from_str(action_json)
             .map_err(|e| ActionRejection::Invalid(e.to_string()))?;
         self.0.start(ctx, action)
@@ -164,12 +156,13 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
 
     fn execute(
         &self,
+        ctx: &ActionContext,
         action_json: &str,
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String> {
         let action: M::Action = serde_json::from_str(action_json).map_err(|e| e.to_string())?;
-        self.0.execute(action, correlation_id, send)
+        self.0.execute(ctx, action, correlation_id, send)
     }
 
     fn start_bytes(
@@ -193,6 +186,7 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
 
     fn execute_bytes(
         &self,
+        ctx: &ActionContext,
         payload: &[u8],
         correlation_id: &str,
         send: &dyn Fn(crate::actor::ActorCommand),
@@ -203,7 +197,7 @@ impl<M: ActionModule> ErasedActionModule for ActionModuleAdapter<M> {
             Some(Ok(action)) => action,
         };
         self.0
-            .execute(action, correlation_id, send)
+            .execute(ctx, action, correlation_id, send)
             .map_err(TypedDispatchError::Execute)
     }
 

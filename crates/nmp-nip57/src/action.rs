@@ -34,18 +34,20 @@
 //! `RecordActionFailure`. One signing seam, both backends (D13 — only a
 //! `SignedEvent` ever crosses the port).
 
-use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection};
+use nmp_core::actor::ActionLedgerCommand;
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{ActionLedgerCommand};
+use nmp_core::substrate::{
+    ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::build::ZapRequest;
 #[cfg(feature = "native")]
 use crate::lnurl::FetchLnurlInvoiceCommand;
 #[cfg(feature = "native")]
-use std::sync::Arc;
-#[cfg(feature = "native")]
 use nmp_core::substrate::PaymentPort;
+#[cfg(feature = "native")]
+use std::sync::Arc;
 
 /// Wire shape for `nmp.nip57.zap` — the JSON body a host passes to
 /// `nmp_app_dispatch_action`.
@@ -159,10 +161,12 @@ impl ZapAction {
 }
 
 fn record_action_failure(send: &dyn Fn(ActorCommand), correlation_id: &str, reason: String) {
-    send(ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
-        correlation_id: correlation_id.to_string(),
-        reason,
-    }));
+    send(ActorCommand::ActionLedger(
+        ActionLedgerCommand::RecordFailure {
+            correlation_id: correlation_id.to_string(),
+            reason,
+        },
+    ));
 }
 
 impl ActionModule for ZapAction {
@@ -171,9 +175,7 @@ impl ActionModule for ZapAction {
 
     /// ADR-0064 / S9: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<ZapInput as ActionPayload>::decode(bytes))
     }
 
@@ -237,6 +239,7 @@ impl ActionModule for ZapAction {
     /// worker (D8).
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -285,7 +288,14 @@ impl ActionModule for ZapAction {
         // NOTE: `self.payment_port` is `Option<Arc<dyn PaymentPort>>`; a `None`
         // surfaces as a "no wallet connected" failure inside the worker.
         #[cfg(not(feature = "native"))]
-        { let _ = (unsigned, action); record_action_failure(send, correlation_id, "zap not available on this platform".into()); }
+        {
+            let _ = (unsigned, action);
+            record_action_failure(
+                send,
+                correlation_id,
+                "zap not available on this platform".into(),
+            );
+        }
         Ok(())
     }
 }
