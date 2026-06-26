@@ -18,8 +18,20 @@ use serde_json::Value;
 use crate::bunker::STEP_TIMEOUT;
 use crate::error::HandshakeError;
 use crate::relay::FrameSink;
-use crate::rpc::{build_event_frame, new_request_id};
+use crate::rpc::{build_event_frame, new_request_id, RpcBuildError};
 use crate::wait::{await_response, recv_inbound_or_cancel};
+
+/// Map a [`RpcBuildError`] from the shared frame builder onto the ACK-specific
+/// error strings the pre-extraction inline code produced. The `TagParse`
+/// variant already matches the shared "tag parse: …" wording verbatim.
+fn map_ack_build_error(e: &RpcBuildError) -> String {
+    match e {
+        RpcBuildError::Encrypt(s) => format!("nip44 encrypt ack: {s}"),
+        RpcBuildError::TagParse(s) => format!("tag parse: {s}"),
+        RpcBuildError::Sign(s) => format!("sign ack event: {s}"),
+        RpcBuildError::Serialize(s) => format!("serialize ack: {s}"),
+    }
+}
 
 /// Result of a successful nostrconnect:// handshake: the signer's pubkey and
 /// the user's pubkey (as returned by `get_public_key`).
@@ -77,8 +89,12 @@ pub fn run_nostrconnect_handshake(
     .to_string();
     let signer_pk = PublicKey::from_hex(&signer_pubkey)
         .map_err(|e| HandshakeError::Protocol(format!("invalid signer pubkey: {e}")))?;
+    // The ACK build path historically produced ACK-specific error strings
+    // ("nip44 encrypt ack", "sign ack event", "serialize ack"); remap the
+    // shared builder's variants back to those exact strings so surfaced error
+    // text is byte-identical to the pre-extraction inline code.
     let ack_frame = build_event_frame(local_keys, signer_pk, &ack_response)
-        .map_err(|e| HandshakeError::Protocol(e.to_string()))?;
+        .map_err(|e| HandshakeError::Protocol(map_ack_build_error(&e)))?;
     relay
         .send(ack_frame)
         .map_err(|e| HandshakeError::Transport(e.to_string()))?;

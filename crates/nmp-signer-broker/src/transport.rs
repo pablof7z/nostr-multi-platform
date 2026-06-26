@@ -123,9 +123,13 @@ impl Nip46Transport for BrokerTransport {
         // `nmp_signers::signers::nip46` (the signer defers NIP-44 encryption
         // to the transport, which is us). Delegate to the single authoritative
         // NIP-44 V2 kind:24133 frame builder in nmp-nip46.
+        // `RpcBuildError`'s `Display` reproduces the exact prior inline strings
+        // ("nip44 encrypt: …", "tag parse: …", "sign event: …", "serialize
+        // event: …"), so forward it verbatim with no added prefix to keep the
+        // surfaced error text byte-identical to the pre-extraction code.
         let frame =
             build_event_frame(&self.local_keys, self.remote_pubkey, &rpc.body_json_to_encrypt)
-                .map_err(|e| SignerError::Backend(format!("build frame: {e}")))?;
+                .map_err(|e| SignerError::Backend(e.to_string()))?;
         self.relay
             .send(frame)
             .map_err(|e| SignerError::Backend(format!("relay send: {e}")))
