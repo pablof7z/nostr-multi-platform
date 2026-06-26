@@ -127,6 +127,10 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
     pub(crate) identity_change_observers:
         Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
+    /// Capability/signer providers accumulated via
+    /// `BrowserAppBuilder::with_capability_providers`. Moved into the
+    /// `CapabilityProviderRegistry` in `from_builder_inner` at `start()`.
+    pub(crate) capability_providers: Vec<Arc<dyn nmp_signers::Signer>>,
 
     // ── Gate-specific fields set by typestate-advancing builder methods ────────
     /// Relay bootstrap list set at `set_relays()` gate; applied at `start()`.
@@ -169,6 +173,7 @@ impl BrowserBuilderInner {
             relay_text_interceptors: Vec::new(),
             relay_connected_hooks: Vec::new(),
             identity_change_observers: Vec::new(),
+            capability_providers: Vec::new(),
             relay_bootstrap: Vec::new(),
             run_config: None,
         }

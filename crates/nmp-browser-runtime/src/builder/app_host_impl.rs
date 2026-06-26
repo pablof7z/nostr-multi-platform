@@ -400,6 +400,33 @@ impl<S> HostCapabilities for BrowserAppBuilder<S> {
     }
 }
 
+// ── CapabilityProvider registrar (inherent, not a trait) ─────────────────────
+
+impl<S> BrowserAppBuilder<S> {
+    /// Register one or more capability/signer providers, keyed by their
+    /// `Signer::pubkey()` (ADR-0067 §10a, single-door per account).
+    ///
+    /// Available in ALL builder states. Providers accumulate into the inner
+    /// state and are moved into the `CapabilityProviderRegistry` at `start()`.
+    /// Multiple providers for the same pubkey are last-write-wins.
+    ///
+    /// Supported providers in this track (#2049/#2066/#2067):
+    /// - `nmp_signers::LocalKeySigner` — synchronous in-memory signing.
+    /// - `nmp_signers::Nip07Signer` — async via browser extension; active on
+    ///   `wasm32 + feature = "wasm"` builds only. On native builds the
+    ///   provider is unresolvable and the runtime emits `SignRequest` for
+    ///   host-brokering instead.
+    ///
+    /// NIP-46 bunker:// providers (#2068) are a follow-up.
+    pub fn with_capability_providers(
+        &self,
+        providers: impl IntoIterator<Item = std::sync::Arc<dyn nmp_signers::Signer>>,
+    ) {
+        let Ok(mut g) = self.inner.lock() else { return };
+        g.capability_providers.extend(providers);
+    }
+}
+
 // ── ActionRegistrar ───────────────────────────────────────────────────────────
 //
 // Takes `&mut self` (by the trait contract) — the `Mutex` unlock + `&mut`

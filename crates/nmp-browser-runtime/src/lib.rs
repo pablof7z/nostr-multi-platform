@@ -23,9 +23,14 @@
 mod builder;
 pub(crate) mod relay;
 mod runtime;
+// `signer` is `pub` so that `CapabilityEnvelope` can be re-exported from the
+// crate root; the internal sub-modules (`completion`, `registry`) remain
+// `pub(crate)` so they are not part of the public API surface.
+pub mod signer;
 
 pub use builder::{BrowserAppBuilder, BrowserRunConfig};
 pub use runtime::{BrowserRuntimeEvent, BrowserRuntimeHandle, PumpOutcome};
+pub use signer::CapabilityEnvelope;
 
 // Re-export typestate markers for consumers that need to name them
 // (e.g. `BrowserAppBuilder<Unstarted>` in a type annotation).

@@ -16,12 +16,9 @@
 //!
 //! # Relay transport (#2050)
 //!
-//! `BrowserRuntime` owns a `RelayPool` which drives the browser relay
-//! transport. On wasm32 `spawn_relay_bootstrap` opens one WebSocket per
-//! distinct relay URL from the configured bootstrap list. Inbound frames are
-//! enqueued (D4 — handlers never mutate the reducer directly) and drained on
-//! each `pump()`. Maintenance (`tick_at`) and next-deadline scheduling run
-//! inside every `pump()` turn.
+//! `BrowserRuntime` owns a `RelayPool` driving WebSocket transport.
+//! Inbound frames are enqueued (D4) and drained on each `pump()`.
+//! Maintenance (`tick_at`) and next-deadline scheduling also run per turn.
 
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -40,9 +37,14 @@ use nmp_core::{
 
 use crate::builder::{BrowserBuilderInner, BrowserRunConfig};
 use crate::relay::RelayPool;
+use crate::signer::{
+    CapabilityEnvelope, CapabilityProviderRegistry, SignerCompletion, SignerCompletionRx,
+    SignerCompletionTx,
+};
 
 mod event;
 mod pump;
+mod signer_delivery;
 
 pub use event::BrowserRuntimeEvent;
 
@@ -67,16 +69,14 @@ impl NoopRoutingTrace {
 ///
 /// Mirrors `nmp-wasm`'s `PendingSignedPublish`. The runtime stores one of these
 /// keyed on the sign `correlation_id` whenever a publish command needs an async
-/// signature. The broker that delivers the signature back and re-publishes lands
-/// in #2049; this struct is the runtime-side parking contract that exists now.
+/// signature. Consumed by `signer_delivery::deliver_one_completion` when the
+/// signed response arrives (broker side: `signer/completion.rs`).
 #[derive(Debug, Clone)]
 pub(crate) struct PendingSignedPublish {
     /// The action-level correlation id the host uses to settle the result, or
     /// `None` when the command carried none.
-    #[allow(dead_code)] // read by the #2049 broker when it settles the action.
     pub(crate) action_correlation_id: Option<String>,
     /// The publish target resolved when the command was interpreted.
-    #[allow(dead_code)] // consumed by the #2049 broker on signed re-publish.
     pub(crate) target: PublishTarget,
 }
 
@@ -107,8 +107,7 @@ pub struct PumpOutcome {
 /// use `BrowserRuntimeHandle`.
 struct BrowserRuntime {
     reducer: KernelReducer,
-    /// Action registry kept so the #2049 signer-provider broker can resolve
-    /// action modules when settling parked publishes.
+    /// Action registry kept for future broker resolution of action modules.
     #[allow(dead_code)]
     action_registry: ActionRegistry,
     inbox_rx: mpsc::Receiver<ActorMail>,
@@ -116,8 +115,17 @@ struct BrowserRuntime {
     /// commands back through the inbox during `pump()`.
     inbox_tx: mpsc::Sender<ActorMail>,
     /// Publishes parked awaiting an async signature, keyed on sign correlation
-    /// id. Populated on `NeedsSign`; drained by the #2049 broker.
+    /// id. Populated on `NeedsSign`; drained by `signer_delivery` on completion.
     pending_signed_publishes: HashMap<String, PendingSignedPublish>,
+    /// Capability/signer-provider registry (#2049 / #2065). Populated from
+    /// `BrowserBuilderInner::capability_providers` at `start()`.
+    signer_registry: CapabilityProviderRegistry,
+    /// Sender end of the sign-completion channel. Cloned into `drain_inbox`
+    /// so the broker can send completions; drained in `pump()` after the
+    /// command drain.
+    signer_completion_tx: SignerCompletionTx,
+    /// Receiver end of the sign-completion channel. Drained in `pump()`.
+    signer_completion_rx: SignerCompletionRx,
     /// Relay-text interceptors — invoked during the inbound relay drain (#2050)
     /// for every inbound text frame (D0: substrate-generic, no app nouns here).
     relay_text_interceptors: Vec<Arc<dyn RelayTextInterceptor>>,
@@ -125,8 +133,7 @@ struct BrowserRuntime {
     /// when a relay socket opens. Hooks spawn async work and return immediately
     /// (D8 no-blocking).
     relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
-    /// Identity-change callbacks. Dormant until the #2049 signer-provider
-    /// registry lands; stored so the wiring is in place.
+    /// Identity-change callbacks (stored for future identity-change wiring).
     #[allow(dead_code)]
     identity_change_observers: Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
     #[allow(dead_code)]
@@ -143,6 +150,19 @@ struct BrowserRuntime {
 }
 
 impl BrowserRuntime {
+    /// Deliver one settled sign completion to the kernel (D4: called only from
+    /// `pump()` or `BrowserRuntimeHandle::deliver_signer_response`).
+    fn deliver_one_completion(
+        &mut self,
+        completion: SignerCompletion,
+    ) -> (Vec<OutboundMessage>, Vec<BrowserRuntimeEvent>) {
+        signer_delivery::deliver_one_completion(
+            &mut self.reducer,
+            &mut self.pending_signed_publishes,
+            completion,
+        )
+    }
+
     fn pump(&mut self) -> PumpOutcome {
         // ── 1. Command inbox drain ────────────────────────────────────────────
         let cmd_sender = CommandSender::new(self.inbox_tx.clone());
@@ -150,7 +170,30 @@ impl BrowserRuntime {
             &mut self.reducer,
             &self.inbox_rx,
             &mut self.pending_signed_publishes,
+            &self.signer_registry,
+            &self.signer_completion_tx,
         );
+
+        // ── 1.5. Drain sign completions (bounded — same budget as cmd drain) ───
+        // LocalKey completions arrive here synchronously in the same turn.
+        // NIP-07 async completions arrive in a future turn after JS resolves.
+        let mut completion_outbound: Vec<OutboundMessage> = Vec::new();
+        let mut completion_events: Vec<BrowserRuntimeEvent> = Vec::new();
+        let mut completions_applied = 0usize;
+        loop {
+            if completions_applied >= pump::BROWSER_COMMAND_DRAIN_BUDGET {
+                break;
+            }
+            match self.signer_completion_rx.try_recv() {
+                Ok(c) => {
+                    completions_applied += 1;
+                    let (o, e) = self.deliver_one_completion(c);
+                    completion_outbound.extend(o);
+                    completion_events.extend(e);
+                }
+                Err(_) => break,
+            }
+        }
 
         // ── 2. Inbound relay event drain ──────────────────────────────────────
         let relay_drain = self.relay_pool.drain_inbound(
@@ -175,6 +218,7 @@ impl BrowserRuntime {
         // ── 5. Collect all outbound from this turn ────────────────────────────
         let mut all_outbound: Vec<OutboundMessage> = Vec::new();
         all_outbound.extend(cmd_drain.outbound);
+        all_outbound.extend(completion_outbound);
         all_outbound.extend(relay_drain.outbound);
         all_outbound.extend(idle_outbound);
         all_outbound.extend(tick_outbound);
@@ -185,6 +229,7 @@ impl BrowserRuntime {
         // start() are surfaced on the first pump (never silently discarded — D6).
         events.append(&mut self.pending_startup_events);
         events.extend(cmd_drain.events);
+        events.extend(completion_events);
         events.extend(relay_drain.events);
         let budget_events = self.relay_pool.fan_out_outbound(&all_outbound);
         events.extend(budget_events);
@@ -288,6 +333,14 @@ impl BrowserRuntimeHandle {
         let user_agent = inner.relay_user_agent.take();
         let relay_pool = RelayPool::new(user_agent);
 
+        // ── Build signer registry from accumulated providers (#2049) ──────────
+        let mut signer_registry = CapabilityProviderRegistry::new();
+        for signer in std::mem::take(&mut inner.capability_providers) {
+            signer_registry.insert(signer);
+        }
+        let (signer_completion_tx, signer_completion_rx) =
+            mpsc::channel::<SignerCompletion>();
+
         // ── Extract the receiver and build the runtime ────────────────────────
 
         let inbox_rx = inner
@@ -302,6 +355,9 @@ impl BrowserRuntimeHandle {
             inbox_rx,
             inbox_tx: inbox_tx.clone(),
             pending_signed_publishes: HashMap::new(),
+            signer_registry,
+            signer_completion_tx,
+            signer_completion_rx,
             relay_text_interceptors: inner.relay_text_interceptors,
             relay_connected_hooks: inner.relay_connected_hooks,
             identity_change_observers: inner.identity_change_observers,
@@ -340,14 +396,10 @@ impl BrowserRuntimeHandle {
         self.runtime.pump()
     }
 
-    /// Install the "please schedule a pump now" wake hook on the relay pool.
-    ///
-    /// When inbound relay events arrive, the pool calls `wake()` to signal that
-    /// a `pump()` turn is needed. On wasm32 production the nmp-wasm bridge sets
-    /// this to a 0ms-timer closure that calls the exported pump function. Tests
-    /// call `pump()` directly and do not need to set a wake.
-    ///
-    /// Expose as `set_wake` matching the seam documented in the plan (#2050 O3).
+    /// Install the wake hook: the relay pool calls it when inbound events
+    /// arrive to signal a `pump()` turn is needed. On wasm32 the nmp-wasm
+    /// bridge sets this to a 0ms-timer; tests call `pump()` directly.
+    /// Seam documented in the plan (#2050 O3).
     pub fn set_wake(&mut self, wake: Rc<dyn Fn()>) {
         self.runtime.relay_pool.set_wake(wake);
     }
@@ -375,6 +427,52 @@ impl BrowserRuntimeHandle {
     #[must_use]
     pub fn pending_sign_count(&self) -> usize {
         self.runtime.pending_signed_publishes.len()
+    }
+
+    /// Host-brokered sign delivery — re-entry without polling (D8).
+    ///
+    /// Called when the host handled a `BrowserRuntimeEvent::SignRequest`
+    /// externally. `result`: `Ok(flat-NIP-01 signed JSON)` on success or
+    /// `Err(reason)` on failure. On `Completed`, re-publishes the pre-signed
+    /// event to relay drivers. Re-entry is a direct handle method (no
+    /// `ActorCommand` round-trip needed; mirrors the nmp-wasm ABI pattern).
+    pub fn deliver_signer_response(
+        &mut self,
+        correlation_id: String,
+        result: Result<String, String>,
+    ) -> PumpOutcome {
+        let completion = SignerCompletion { correlation_id, result };
+        let (outbound, events) = self.runtime.deliver_one_completion(completion);
+        // Fan the resulting outbound to relay drivers (wasm32: actual sends).
+        let budget_events = self.runtime.relay_pool.fan_out_outbound(&outbound);
+        let mut all_events = events;
+        all_events.extend(budget_events);
+        PumpOutcome {
+            outbound,
+            events: all_events,
+            yielded: false,
+        }
+    }
+
+    /// Return the capability envelope for `account_pubkey` (lowercase hex),
+    /// or `None` if no provider is registered for that account.
+    ///
+    /// Callers can inspect this to determine what signing and encrypt/decrypt
+    /// capabilities are available for an account without triggering a sign
+    /// round-trip (introspection, #2065).
+    #[must_use]
+    pub fn capability_envelope(&self, account_pubkey: &str) -> Option<CapabilityEnvelope> {
+        self.runtime
+            .signer_registry
+            .capability_envelope(account_pubkey)
+            .cloned()
+    }
+
+    /// Test-support only: seed the active account without a full identity
+    /// round-trip. Mirrors `KernelReducer::set_active_account_for_test`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn set_active_account_for_test(&mut self, pubkey: impl Into<String>) {
+        self.runtime.reducer.set_active_account_for_test(pubkey);
     }
 
     /// Spawn relay drivers from `bootstrap` (wasm32: opens WebSockets; native:
