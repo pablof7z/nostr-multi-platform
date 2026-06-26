@@ -4708,6 +4708,7 @@ dependencies = [
 name = "nmp-network"
 version = "0.8.0"
 dependencies = [
+ "gloo-timers",
  "js-sys",
  "mio",
  "nmp-nip42-types",
