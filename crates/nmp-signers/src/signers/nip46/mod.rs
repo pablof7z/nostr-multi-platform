@@ -77,9 +77,9 @@ impl Nip46SignerHandle {
         })
     }
 
-    /// Parse and seed with a specific local key. Used by the signer broker
-    /// (`nmp-signer-broker`) to restore sessions with a persisted local secret,
-    /// and in tests for deterministic key seeding.
+    /// Parse and seed with a specific local key. Used by the NIP-46 actor-lane
+    /// runtime (`nmp-nip46-runtime`) to restore sessions with a persisted local
+    /// secret, and in tests for deterministic key seeding.
     #[must_use]
     pub fn from_bunker_uri_with_local_key(
         s: &str,

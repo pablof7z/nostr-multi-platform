@@ -62,7 +62,7 @@ pub enum IdentityCommand {
         /// `"connecting"` | `"awaiting_pubkey"` | `"ready"` | `"failed"` | `"idle"`.
         stage: String,
         /// Stable machine code for a user-facing progress label
-        /// (`nmp_signer_broker::progress_codes::*`); `None` for diagnostic /
+        /// (`nmp_nip46::progress_codes::*`); `None` for diagnostic /
         /// `"failed"` transitions. The shell localizes the code, falling back
         /// to `message` (#1711).
         code: Option<String>,

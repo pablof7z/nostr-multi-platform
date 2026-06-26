@@ -6,8 +6,8 @@
 //! inbound events via [`SessionState::on_relay_event`].
 //!
 //! The blocking `run_handshake` that existed here in STEP 1 is removed.
-//! The broker drives the reducer from its own thread via the `drive` helper
-//! in `nmp-signer-broker::broker::drive`.
+//! The actor-lane runtime (`nmp-nip46-runtime`) drives the reducer from the
+//! actor's relay lane, executing the returned `Effect`s.
 
 use nostr::{Keys, PublicKey};
 

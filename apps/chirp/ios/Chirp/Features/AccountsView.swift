@@ -310,7 +310,7 @@ private struct AddAccountSheet: View {
 /// Only rendered when `model.signerState` is non-nil (i.e. a remote signer is
 /// active). Rust pre-computes `isReady` / `isAwaitingApproval` /
 /// `isReconnecting` / `isUnavailable` / `isFailed` (NIP-46: relay socket state
-/// from `nmp-signer-broker`; NIP-55: Intent/ContentResolver outcomes). Swift
+/// from the actor-lane runtime; NIP-55: Intent/ContentResolver outcomes). Swift
 /// renders verbatim (ADR-0032 / relay_diagnostics pattern): no string-compare
 /// on `state`.
 ///

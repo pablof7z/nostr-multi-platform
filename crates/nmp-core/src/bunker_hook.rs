@@ -4,7 +4,7 @@
 //!
 //! Keeps `nmp-core` ignorant of NIP-46 protocol details (D0 spirit): the
 //! kernel knows there is *something* on the other side that will handle the
-//! URI, but it does not name `nmp-signers`, `nmp-signer-broker`, or any
+//! URI, but it does not name `nmp-signers`, `nmp-nip46-runtime`, or any
 //! NIP-46 type.
 //!
 //! ## Per-app slot — no process-global (ADR-0052 §D3)

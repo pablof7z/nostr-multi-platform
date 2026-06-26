@@ -57,9 +57,13 @@ use super::{app_ref, NmpApp, NmpConfigStatus};
 /// Initialise the NIP-46 actor-lane runtime for `app`.
 ///
 /// After this call, any `nmp_app_signin_bunker` dispatch routes through the
-/// actor-lane runtime's handshake state machine. Idempotent per app: a second
-/// call is rejected with [`NmpConfigStatus::AlreadyConfigured`] because the
-/// substrate hooks are write-once.
+/// actor-lane runtime's handshake state machine. **Idempotent and
+/// first-writer-wins per app:** a second pre-start call is a no-op that
+/// returns [`NmpConfigStatus::Ok`] without re-registering the interceptor /
+/// connected hook / bunker hook (the substrate slots accumulate, so a blind
+/// re-register would install duplicate hooks). This matches the old
+/// `signer_broker_get_or_init` first-writer semantics. A call after
+/// `nmp_app_start` returns [`NmpConfigStatus::AlreadyStarted`].
 ///
 /// ADR-0052 §D3 — the runtime handle and the bunker hook are **per-app** (no
 /// process-global), so two `NmpApp`s in one process have independent runtimes
@@ -81,6 +85,21 @@ pub extern "C" fn nmp_signer_broker_init(app: *mut NmpApp) -> u32 {
     {
         return status.code();
     }
+
+    // First-writer-wins: if the runtime is already installed, this is a
+    // duplicate pre-start init. Return Ok WITHOUT re-registering — a second
+    // register_nip46 + install_bunker_hook would accumulate duplicate
+    // interceptors/hooks in the substrate slots (the old broker path was
+    // get-or-init / idempotent).
+    if app
+        .nip46_runtime
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .is_some()
+    {
+        return NmpConfigStatus::Ok.code();
+    }
+
     let tx = app.actor_sender();
 
     // Config-phase wiring: install the interceptor + connected hook.

@@ -9,7 +9,7 @@
 //!
 //! # Does NOT own
 //! - routing/outbox policy (that is `nmp-router`/kernel);
-//! - signing policy or signer-provider choice semantics (that is `nmp-signers`/`nmp-signer-broker`);
+//! - signing policy or signer-provider choice semantics (that is `nmp-signers`);
 //! - NIP modules, protocol defaults, app defaults, projection policy, persistence policy;
 //! - the wasm-bindgen ABI surface (that is the sibling `nmp-wasm` ABI shell).
 //!

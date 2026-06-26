@@ -298,7 +298,7 @@ data class DmInboxSnapshot(
  * external-signer sessions.
  *
  * Rust pre-computes every flag (NIP-46: relay-socket state in
- * `nmp-signer-broker`; NIP-55: Intent/ContentResolver outcomes) so the UI
+ * the actor-lane runtime; NIP-55: Intent/ContentResolver outcomes) so the UI
  * never string-compares `state` (ADR-0032 relay_diagnostics pattern). The
  * states drive distinct presentation:
  *  - `isReady` → green badge ("Connected")
