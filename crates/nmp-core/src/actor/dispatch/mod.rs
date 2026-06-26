@@ -29,7 +29,7 @@ use std::time::Instant;
 use nmp_network::pool::Pool;
 
 use crate::kernel::Kernel;
-use crate::relay::{CanonicalRelayUrl, OutboundMessage};
+use crate::relay::OutboundMessage;
 use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
 
 use super::capability_worker::CapabilityWorkSender;
@@ -42,7 +42,7 @@ use super::tick::maybe_emit_after_dispatch;
 use super::TestSupportCommand;
 use super::{
     ActionLedgerCommand, ActorCommand, ActorConfig, ContactsCommand, LifecycleCommand,
-    PublishCommand, RefsCommand, RelayCommand, SignCommand,
+    PublishCommand, RefsCommand, SignCommand,
 };
 use crate::capability_socket::CapabilityCallbackSlot;
 use crate::kernel_action::dispatch_kernel_action;
@@ -56,6 +56,9 @@ mod cmd_publish;
 mod helpers;
 // #1927 — narrow command-family port bundles (Protocol / Interests).
 mod ports;
+// Relay/outbound arms (EnqueueOutbound / SetReconnectPreamble /
+// UnregisterPersistentSub) + RelayCommand family dispatcher.
+mod relay_cmds;
 mod relay_events;
 // Debt C — capability adapters for `ProtocolCommandContext`.
 mod substrate_adapters;
@@ -177,7 +180,7 @@ pub(super) fn dispatch_command(
         ActorCommand::Sign(cmd) => dispatch_sign(cmd, ctx),
         ActorCommand::Publish(cmd) => dispatch_publish(cmd, ctx),
         ActorCommand::Contacts(cmd) => dispatch_contacts(cmd, ctx),
-        ActorCommand::Relay(cmd) => dispatch_relay(cmd, ctx),
+        ActorCommand::Relay(cmd) => relay_cmds::dispatch_relay(cmd, ctx),
         ActorCommand::Refs(cmd) => dispatch_refs(cmd, ctx),
         ActorCommand::Interests(cmd) => cmd_interests::dispatch(cmd, &mut ctx.interests_ports()),
         ActorCommand::ActionLedger(cmd) => dispatch_action_ledger(cmd, ctx),
@@ -197,29 +200,14 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        // D0-clean fire-and-forget outbound: route the frame directly to
-        // `send_outbound` with the supplied role and URL. The sender (e.g. a
-        // `RelayConnectedHook`) already holds no kernel reference and cannot
-        // return `Vec<OutboundMessage>` directly; posting through this variant
-        // wakes the actor (ADR-0050 §D3a) and delivers the frame on the actor
-        // thread without any new mutex or blocking call.
         ActorCommand::EnqueueOutbound { role, relay_url, text } => {
-            Some(vec![OutboundMessage::new(role, relay_url, text)])
+            relay_cmds::enqueue_outbound(role, relay_url, text)
         }
-        // REQ-before-EVENT fix (#2119): forward preamble to pool. Stale handles silently ignored.
         ActorCommand::SetReconnectPreamble { relay_url, frames, .. } => {
-            let canonical = CanonicalRelayUrl::parse_or_raw(&relay_url);
-            if let Some(control) = ctx.relay_runtime.relay_controls.get(&canonical) {
-                ctx.pool.set_reconnect_preamble(control.handle, frames);
-            }
-            Some(Vec::new())
+            relay_cmds::set_reconnect_preamble(relay_url, frames, ctx)
         }
-        // Cancel a persistent NIP-46 subscription.  Removes the sub_id from the
-        // kernel's persistent-sub registry so the relay worker no longer prevents
-        // EOSE-triggered CLOSE.  D0-clean (generic strings only).
         ActorCommand::UnregisterPersistentSub { relay_url, sub_id } => {
-            ctx.kernel.unregister_persistent_sub(&relay_url, &sub_id);
-            Some(Vec::new())
+            relay_cmds::unregister_persistent_sub(relay_url, sub_id, ctx)
         }
         #[cfg(any(test, feature = "test-support"))]
         ActorCommand::TestSupport(cmd) => dispatch_test_support(cmd, ctx),
@@ -469,19 +457,6 @@ fn dispatch_contacts(
             pubkeys,
             correlation_id,
         } => cmd_publish::follow_many(pubkeys, correlation_id, ctx),
-    }
-}
-
-/// `RelayCommand` family dispatch.
-fn dispatch_relay(cmd: RelayCommand, ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> {
-    match cmd {
-        RelayCommand::AddRelay { url, role } => cmd_publish::add_relay(url, role, ctx),
-        RelayCommand::RemoveRelay { url } => cmd_publish::remove_relay(url, ctx),
-        RelayCommand::ReconnectRelays => cmd_publish::reconnect_relays_cmd(ctx),
-        RelayCommand::SetRelayInfo {
-            relay_url,
-            doc_json,
-        } => cmd_publish::set_relay_info(relay_url, doc_json, ctx),
     }
 }
 
