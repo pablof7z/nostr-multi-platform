@@ -11,21 +11,21 @@ Both bullets in this chapter discharge cardinal doctrine **D3** ("outbox routing
 
 **Framework does:** the compilation pipeline at `docs/design/subscription-compilation/compiler.md` §3 — Stages 1 (resolve mailboxes), 2 (assign per-relay author subsets), 3 (merge sub-shapes), 4 (emit per-relay REQs). The indexer-fallback path is `RoutingSource::Indexer`; the post-NIP-65-arrival migration is `Trigger::Nip65Arrived` per `docs/design/subscription-compilation/recompilation.md` §4.2. The mailbox cache is read from the substrate `MailboxCache` trait; the current implementation and kind:10002 writer live in `nmp-router` (`docs/design/subscription-compilation/router.md`).
 
-**App writes:** nothing. The view spec names authors (or, for follow-derived views, names nothing and the view module reads the active account's follow-set — see C5). The app never names a relay URL on a read path.
+**App writes:** nothing. The feed/session spec names authors explicitly, or it names a ReducedSource such as `ActiveUserFollows` and lets the Rust feed reducer derive the author set from the active account's follow-set (see C5). The app never names a relay URL on a read path.
 
 **Failure mode prevented:** the bug `ndk-applesauce-lessons.md` §3 names: *"NDK's convenience can blur boundaries"* combined with the bug `product-spec/subsystems.md` §7.3 lines 89–90 names: *"Posts to relays the author hasn't declared as write relays."* On the read side, the symmetric failure is reading from the global content relay and missing an author's actual events because the author publishes only to their own write relay. The structural enforcement is that the view spec has no relay field; the only API surface that names a relay is the explicit override (named, audited, one-shot per `docs/design/subscription-compilation/outbox.md` §7.4).
 
 **Test:** `c6_authors_subscription_routes_to_per_author_write_relays`. This test is a **rename of and dependency on** the M2 audit gate test `timeline_compiles_to_per_relay_union` (`docs/design/subscription-compilation/tests.md` §9.2 assertion 2). The framework-magic version asserts the same observable but accesses the data through the **public view path**, not the planner harness:
 
 1. Pre-seed mailbox cache with 1000 authors using three overlapping relay sets (per the M2 test).
-2. Open `TimelineView { source: ActiveUserFollows, primary_kinds: [1] }` through the actor's public dispatch surface; inspect the compiled wire plan for the derived `{1, 6}` acquisition shape.
+2. Open a feed with `FeedParams { scope: ActiveUserFollows, primary_kinds: [1] }` through the public app dispatch surface; inspect the compiled wire plan for the derived `{1, 6}` acquisition shape.
 3. Read the wire-emission audit log (exposed via `DebugDiagnostics`) and assert: relay count = union; per-relay author partition = subset semantics; sub-shape merge = one REQ per relay; plan-id stable on re-compile.
 4. Ingest a new kind:10002 for one author moving them off relay-1 onto relay-4; assert exactly one CLOSE-and-REQ pair fires for the affected slice; no churn for the unmoved authors.
 5. **NDK comparison for step 4:** NDK's `refreshRelayConnections` (`core/src/ndk/index.ts:458-471`, `subscription/index.ts:787-812`) only *adds* relays and never removes stale ones. NMP's wire-emitter diff emits CLOSE for the stale slice and a new REQ for the author's updated relay, covering the window with `since: last_seen_for_author`. The test asserts no events are missed during the transition.
 
 The "via the public view path" framing matters: M2's test exercises the compiler directly; the framework-magic test exercises the contract surface (open a view, watch the wire). Both must pass.
 
-**Milestone owner:** **[PENDING M2]**. Test checked in as `#[ignore = "pending M2 compiler + view bridge"]`. Removed in the M2 framework-magic delta.
+**Milestone owner:** **[DONE]**. Implemented by the M2 planner/feed path and covered by `c6_authors_subscription_routes_to_per_author_write_relays`.
 
 ## C7. Write fan-out: outbox + recipient-inbox; private events fail closed
 
@@ -49,7 +49,7 @@ The "via the public view path" framing matters: M2's test exercises the compiler
 4. **Override rejection:** dispatch a `PublishWithOverride` carrying a `PrivateToRecipients` inner action and an override relay set that includes a non-inbox URL; assert it rejects with `PublishPlanError::OverrideRejected { reason: "private widen" }` (rule 4 of `outbox.md` §7.4).
 5. **Override audit:** dispatch a `PublishWithOverride` on a public action; assert the side-effect lane emits `Diagnostic::PublishOverrideUsed { ... }` and the debug log line per `outbox.md` §7.4 (3).
 
-**Milestone owner:** **[PENDING M2 seam → M6 publish]**. M2 lands the `PublishPlanner` trait + `Nip65PublishPlanner` + the `PublishWithOverride` action (`docs/design/subscription-compilation/outbox.md` §7.1, §7.2, §7.4). M6 lands `SendNoteAction` as the first concrete consumer. Test checked in as `#[ignore = "pending M2 planner + M6 first consumer"]`. Sub-paths 3 and 4 of the test exercise the planner in isolation (M2-completable); 1, 2, and 5 require M6's action consumer.
+**Milestone owner:** **[DONE]**. Implemented by the M2 planner seam plus the M6 publish consumers and covered by `c7_publish_routes_outbox_and_private_fails_closed`.
 
 ## The two bullets together discharge D3
 
@@ -59,7 +59,7 @@ C6 covers the read side; C7 covers the write side. Together they discharge cardi
 - the planner's diagnostic accessors (read-only);
 - the user-configured-relays settings surface (configuration, not per-operation).
 
-The app's domain code, view modules, and action modules **never** name a relay. That is the doctrine-D3 boundary the contract holds in place.
+The app's Rust domain code and native shells **never** name a relay on the safe path. That is the doctrine-D3 boundary the contract holds in place.
 
 ## What this chapter does not cover
 
