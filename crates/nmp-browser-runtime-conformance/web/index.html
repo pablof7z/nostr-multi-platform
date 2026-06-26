@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>nmp-browser-runtime OPFS durability conformance</title>
+  </head>
+  <body>
+    <!-- Host page. It owns NO storage logic: it only spawns the dedicated Worker
+         (where the OPFS SyncAccessHandle pool actually works) and surfaces the
+         result for the headless runner to read via window.__conformance_result. -->
+    <pre id="status">running…</pre>
+    <script type="module">
+      const statusEl = document.getElementById("status");
+      const worker = new Worker(new URL("./worker.js", import.meta.url), {
+        type: "module",
+      });
+      worker.onmessage = (ev) => {
+        const { ok, report } = ev.data;
+        window.__conformance_result = ev.data;
+        statusEl.textContent = (ok ? "PASS " : "FAIL ") + report;
+        document.title = ok ? "PASS" : "FAIL";
+      };
+      worker.onerror = (e) => {
+        const report = "worker error: " + (e.message || String(e));
+        window.__conformance_result = { ok: false, report };
+        statusEl.textContent = "FAIL " + report;
+        document.title = "FAIL";
+      };
+    </script>
+  </body>
+</html>
