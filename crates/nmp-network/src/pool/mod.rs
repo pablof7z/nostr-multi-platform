@@ -248,6 +248,27 @@ impl Pool {
         }
     }
 
+    /// Register a reconnect preamble for the worker at handle `h`.
+    ///
+    /// On every subsequent socket (re)connect the worker injects these frames
+    /// at the FRONT of its outbound `pending` queue BEFORE processing any
+    /// actor-posted `Send` commands from the connected hook.  This is the
+    /// structural REQ-before-EVENT guarantee: the preamble REQ is always
+    /// written to the wire before any EVENT the actor enqueues from its
+    /// `Opened` handler.
+    ///
+    /// The preamble survives reconnects (it is NOT cleared after use).  The
+    /// last call wins (whole list replaced).
+    ///
+    /// Returns `true` iff the command was successfully enqueued.  Stale
+    /// handles and closed slots return `false`.
+    pub fn set_reconnect_preamble(&self, h: RelayHandle, frames: Vec<String>) -> bool {
+        match self.inner.lock() {
+            Ok(guard) => guard.set_reconnect_preamble_for(h, frames),
+            Err(_) => false,
+        }
+    }
+
     /// Per-handle health snapshot. Stale handle → `None`.
     #[must_use]
     pub fn health(&self, h: RelayHandle) -> Option<RelayHealth> {

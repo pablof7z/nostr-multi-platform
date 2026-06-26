@@ -25,7 +25,7 @@ use nostr::Keys;
 
 use crate::effect::Effect;
 use crate::progress_codes;
-use crate::reducer::{phase_nc_wait_connect, SessionState};
+use crate::reducer::{Phase, SessionState};
 use crate::rpc::build_req_frame;
 use crate::uri_encode::percent_encode_query_value;
 
@@ -72,7 +72,7 @@ pub fn start_nostrconnect(
     let req_frame = build_req_frame(sub_id, &pubkey_hex, now);
 
     let state = SessionState::new(
-        phase_nc_wait_connect(expected_secret),
+        Phase::NostrConnectWaitConnect { expected_secret },
         local_keys,
         relay_url.clone(),
         sub_id.to_string(),

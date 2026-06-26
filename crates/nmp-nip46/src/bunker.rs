@@ -14,7 +14,7 @@ use nostr::{Keys, PublicKey};
 use crate::effect::Effect;
 use crate::error::HandshakeError;
 use crate::progress_codes;
-use crate::reducer::{phase_bunker_wait_connect_ack, SessionState};
+use crate::reducer::{Phase, SessionState};
 use crate::rpc::{build_connect_params, build_event_frame_at, build_req_frame};
 
 /// Per-handshake step deadline — kept as a public const so tests can
@@ -76,7 +76,7 @@ pub fn start_bunker(
         build_event_frame_at(&local_keys, remote_pubkey, &connect_envelope, now);
 
     let state = SessionState::new(
-        phase_bunker_wait_connect_ack(connect_id, remote_pubkey),
+        Phase::BunkerWaitConnectAck { connect_id, remote_pubkey },
         local_keys,
         relay_url.clone(),
         sub_id.to_string(),

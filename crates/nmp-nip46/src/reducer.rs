@@ -164,19 +164,40 @@ impl SessionState {
         }
     }
 
-    /// Drive the state machine from a raw relay text frame. Parses
-    /// `["EVENT", sub_id, event_json]` and delegates to [`Self::on_relay_event`].
-    /// Non-EVENT frames and frames for other subscriptions are silently ignored.
+    /// Drive the state machine from a raw relay text frame.
+    ///
+    /// - `["EVENT", sub_id, event_json]` → delegates to [`Self::on_relay_event`].
+    /// - `["EOSE", sub_id]` → arms the per-step deadline (Guardrail 2): the
+    ///   relay is confirming it has sent all stored events, so any response to
+    ///   our in-flight RPC will arrive now.  The handshake-start deadline from
+    ///   `start_bunker`/`start_nostrconnect` remains as a fallback floor for
+    ///   relays that never send EOSE.
+    /// - All other frames and frames for other subscriptions are silently ignored.
     pub fn on_relay_text(&mut self, text: &str, now: u64) -> Vec<Effect> {
         let v: Value = match serde_json::from_str(text) {
             Ok(v) => v,
             Err(_) => return Vec::new(),
         };
         let arr = match v.as_array() {
-            Some(a) if a.len() >= 3 => a,
+            Some(a) if !a.is_empty() => a,
             _ => return Vec::new(),
         };
-        if arr[0].as_str() != Some("EVENT") {
+        let msg_type = arr[0].as_str().unwrap_or("");
+
+        // EOSE for our subscription: arm the per-step deadline so the 60 s
+        // budget counts from the point the relay is ready to deliver responses.
+        if msg_type == "EOSE" {
+            if arr.len() >= 2 && arr[1].as_str() == Some(self.sub_id.as_str()) {
+                self.arm_deadline(now);
+            }
+            return Vec::new();
+        }
+
+        // Only process EVENT frames.
+        if msg_type != "EVENT" {
+            return Vec::new();
+        }
+        if arr.len() < 3 {
             return Vec::new();
         }
         // Only handle frames for THIS session's subscription. A relay multiplexes
@@ -473,15 +494,3 @@ fn map_ack_build_error(e: &RpcBuildError) -> String {
     }
 }
 
-// ─── Phase constructor helpers (used by bunker.rs / nostrconnect.rs) ─────────
-
-pub(crate) fn phase_bunker_wait_connect_ack(
-    connect_id: String,
-    remote_pubkey: PublicKey,
-) -> Phase {
-    Phase::BunkerWaitConnectAck { connect_id, remote_pubkey }
-}
-
-pub(crate) fn phase_nc_wait_connect(expected_secret: String) -> Phase {
-    Phase::NostrConnectWaitConnect { expected_secret }
-}

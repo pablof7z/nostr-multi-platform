@@ -130,4 +130,19 @@ impl CommandSender {
     ) {
         let _ = self.send(ActorCommand::EnqueueOutbound { role, relay_url, text });
     }
+
+    /// Register a reconnect preamble with the relay worker for `relay_url`.
+    ///
+    /// On every subsequent (re)connect the worker injects `frames` at the FRONT
+    /// of its outbound queue before any actor-posted commands can arrive,
+    /// structurally guaranteeing REQ-before-EVENT ordering.  The preamble
+    /// persists across reconnects; the last call wins.
+    pub fn set_reconnect_preamble(
+        &self,
+        role: nmp_network::role::RelayRole,
+        relay_url: String,
+        frames: Vec<String>,
+    ) {
+        let _ = self.send(ActorCommand::SetReconnectPreamble { role, relay_url, frames });
+    }
 }

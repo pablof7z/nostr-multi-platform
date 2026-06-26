@@ -90,10 +90,6 @@ pub enum ActorCommand {
     /// the actor dispatches it to `send_outbound` without waiting for an
     /// acknowledgement. D0-clean — carries only substrate-generic types
     /// (`RelayRole`, `String`); no NIP protocol noun crosses this boundary.
-    ///
-    /// Used by `nmp-nip46-runtime`'s connected-hook to replay the REQ
-    /// subscription frame after a relay reconnect, guaranteeing the
-    /// REQ-before-EVENT ordering that makes sign-event responses observable.
     EnqueueOutbound {
         /// Lane discriminator — determines persistence and health-row placement.
         role: nmp_network::role::RelayRole,
@@ -101,6 +97,25 @@ pub enum ActorCommand {
         relay_url: String,
         /// Fully-formed wire frame (e.g. `["REQ", ...]` or `["EVENT", ...]`).
         text: String,
+    },
+    /// Register a reconnect preamble with the relay worker for `relay_url`.
+    ///
+    /// The worker injects `frames` at the FRONT of its outbound `pending`
+    /// queue immediately after every `RelayEvent::Connected`, before the
+    /// actor's `Opened` hook can enqueue any `Send` commands.  This is the
+    /// structural REQ-before-EVENT guarantee: a NIP-46 REQ registered here
+    /// will always reach the wire before any sign EVENT queued by the hook.
+    ///
+    /// D0-clean: `frames` are opaque strings; no protocol noun in
+    /// `nmp-network`.  The worker's `preamble` is owned by one caller;
+    /// the last write wins.
+    SetReconnectPreamble {
+        /// Lane discriminator — identifies which pool slot to update.
+        role: nmp_network::role::RelayRole,
+        /// Canonical relay URL of the target worker.
+        relay_url: String,
+        /// Fully-formed wire frames to inject on every (re)connect.
+        frames: Vec<String>,
     },
     /// Test-support-only actor verbs (cfg-gated). See [`TestSupportCommand`].
     #[cfg(any(test, feature = "test-support"))]

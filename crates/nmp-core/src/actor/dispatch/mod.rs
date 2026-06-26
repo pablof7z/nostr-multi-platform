@@ -29,7 +29,7 @@ use std::time::Instant;
 use nmp_network::pool::Pool;
 
 use crate::kernel::Kernel;
-use crate::relay::OutboundMessage;
+use crate::relay::{CanonicalRelayUrl, OutboundMessage};
 use crate::slots::{ActiveLocalKeysSlot, MlsLocalNsecSlot};
 
 use super::capability_worker::CapabilityWorkSender;
@@ -205,6 +205,14 @@ pub(super) fn dispatch_command(
         // thread without any new mutex or blocking call.
         ActorCommand::EnqueueOutbound { role, relay_url, text } => {
             Some(vec![OutboundMessage::new(role, relay_url, text)])
+        }
+        // REQ-before-EVENT fix (#2119): forward preamble to pool. Stale handles silently ignored.
+        ActorCommand::SetReconnectPreamble { relay_url, frames, .. } => {
+            let canonical = CanonicalRelayUrl::parse_or_raw(&relay_url);
+            if let Some(control) = ctx.relay_runtime.relay_controls.get(&canonical) {
+                ctx.pool.set_reconnect_preamble(control.handle, frames);
+            }
+            Some(Vec::new())
         }
         #[cfg(any(test, feature = "test-support"))]
         ActorCommand::TestSupport(cmd) => dispatch_test_support(cmd, ctx),

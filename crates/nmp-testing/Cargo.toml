@@ -112,6 +112,9 @@ nmp-router = { path = "../nmp-router" }
 nmp-signers = { path = "../nmp-signers" }
 nmp-signer-broker = { path = "../nmp-signer-broker" }
 nmp-signer-iface = { path = "../nmp-signer-iface" }
+# NIP-46 reconnect-ordering integration test (#2119): pool API + session reducer.
+nmp-network = { path = "../nmp-network", features = ["native"] }
+nmp-nip46 = { path = "../nmp-nip46" }
 # Real-relay smoke test dependencies (real_relay_smoke.rs).
 # NIP-46 mock-bunker integration test (nip46_bunker_signing.rs) needs nip04/nip44.
 nostr = { version = "0.44", features = ["std", "nip04", "nip44"] }
@@ -401,3 +404,12 @@ path = "tests/cross_platform_parity.rs"
 [[test]]
 name = "dx_scaffold_gate"
 path = "tests/dx_scaffold_gate.rs"
+
+# T120 — NIP-46 REQ-before-EVENT ordering on reconnect (green-gate, #2119).
+# Proves that the relay worker's preamble injection guarantees the subscription
+# REQ arrives at the mock relay BEFORE any sign_event EVENT queued during a
+# disconnect window.  MUST FAIL without the preamble fix in relay_worker/mod.rs.
+# `cargo test -p nmp-testing --test nip46_req_before_event_on_reconnect`
+[[test]]
+name = "nip46_req_before_event_on_reconnect"
+path = "tests/nip46_req_before_event_on_reconnect.rs"

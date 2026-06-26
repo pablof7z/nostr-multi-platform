@@ -21,10 +21,8 @@ use std::time::{Duration, Instant};
 
 use tungstenite::{accept, Message};
 
-use super::{
-    apply_reconnect_backoff, spawn_relay_worker_with_keepalive, BackoffClass, RelayCommand,
-    RelayEvent,
-};
+use crate::relay_protocol::apply_reconnect_backoff;
+use super::{spawn_relay_worker_with_keepalive, BackoffClass, RelayCommand, RelayEvent};
 use crate::role::RelayRole;
 
 /// What the server-side WebSocket observed. Kept narrow so test assertions
@@ -138,7 +136,7 @@ impl LocalServer {
     }
 }
 
-fn drain_until<F: Fn(&RelayEvent) -> bool>(
+pub(super) fn drain_until<F: Fn(&RelayEvent) -> bool>(
     rx: &Receiver<RelayEvent>,
     predicate: F,
     budget: Duration,

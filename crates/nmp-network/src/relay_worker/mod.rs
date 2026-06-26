@@ -17,6 +17,8 @@ mod no_polling_tests;
 mod socket_io;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod preamble_tests;
 
 use connect::open_relay_socket;
 use socket_io::{drain_relay_reads, flush_relay_writes, flush_socket_message, FlushResult};
@@ -81,6 +83,23 @@ pub enum RelayCommand {
     /// subsequent reconnects resume the normal exponential curve. Sending
     /// multiple hints before a disconnect: the last one wins.
     SetBackoffHint(BackoffClass),
+    /// Reconnect-preamble registration (REQ-before-EVENT fix).
+    ///
+    /// Registers a list of raw text frames that the worker will inject at
+    /// the FRONT of its outbound `pending` queue immediately after emitting
+    /// `RelayEvent::Connected`, BEFORE `run_connected_relay` drains any
+    /// actor-posted `Send` commands.  This structural injection guarantees
+    /// that a REQ subscription frame is always written to the wire before
+    /// any EVENT command that the actor posts from its `Opened` hook —
+    /// even when a sign EVENT is queued while the socket is reconnecting.
+    ///
+    /// The last write wins (whole list replaces the prior preamble).
+    /// The preamble survives every reconnect so that repeated socket resets
+    /// keep the guarantee without the actor needing to re-register.
+    ///
+    /// D0-clean: the frames are opaque `String`s; no protocol noun crosses
+    /// the `nmp-network` boundary.
+    SetReconnectPreamble(Vec<String>),
 }
 
 enum RelayWorkerResult {
@@ -91,21 +110,13 @@ enum RelayWorkerResult {
 
 pub(super) type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 
-// V-01 Stage 3: backoff/keepalive constants and helpers now live in the
-// always-compiled `relay_protocol` module so the wasm32 `BrowserRelayDriver`
-// can reuse them. Behaviour and values are unchanged — these `use` statements
-// preserve the legacy in-module names so the body of `run_relay_worker` is
-// untouched.
-// V-58: add RELAY_RECONNECT_DELAY_RATE_LIMITED for the rate-limited long-backoff.
+// V-01 Stage 3 / V-58: backoff/keepalive constants AND the backoff computation
+// helper now live in the always-compiled `relay_protocol` module so both the
+// native relay worker and the wasm32 `BrowserRelayDriver` can share them.
 use crate::relay_protocol::{
-    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
-    RELAY_RECONNECT_DELAY_MAX, RELAY_RECONNECT_DELAY_RATE_LIMITED,
+    apply_reconnect_backoff, is_permanent_error, jittered_backoff,
+    RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
 };
-
-/// After a relay has been connected for this duration, the reconnect backoff
-/// is reset to [`RELAY_RECONNECT_DELAY_INITIAL`] on the next disconnect,
-/// preventing accumulated backoff from earlier failure cycles (V-92 / GH #615).
-const RELAY_BACKOFF_RESET_AFTER_SECS: Duration = Duration::from_secs(300); // 5 minutes
 
 /// Spawn-with-explicit-keepalive worker that dials `relay_url` on
 /// transport lane `role`.
@@ -146,6 +157,7 @@ pub(crate) fn spawn_relay_worker_with_keepalive(
     control_tx
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_relay_worker(
     role: RelayRole,
     relay_url: String,
@@ -157,6 +169,12 @@ fn run_relay_worker(
     user_agent: Option<String>,
 ) {
     let mut pending = VecDeque::new();
+    // Reconnect preamble: frames injected at the FRONT of `pending` on every
+    // connect, BEFORE the actor's Opened hook can enqueue outbound commands.
+    // This is the structural REQ-before-EVENT guarantee for NIP-46 (and any
+    // other subscriber that needs its REQ sent before the relay can deliver
+    // matching EVENTs).  Set via `SetReconnectPreamble`; survives reconnects.
+    let mut preamble: Vec<String> = Vec::new();
     let mut backoff = RELAY_RECONNECT_DELAY_INITIAL;
     // V-58 — one-shot backoff hint. `None` = normal exponential curve.
     // Set by a `SetBackoffHint` command delivered while the socket is live;
@@ -185,6 +203,15 @@ fn run_relay_worker(
                 {
                     return;
                 }
+                // REQ-before-EVENT: inject the registered preamble at the FRONT
+                // of the outbound queue immediately after signalling Connected.
+                // The actor's Opened hook fires on the other side of the channel
+                // and may post Send commands; because those arrive via
+                // `drain_pending` inside `run_connected_relay`, they land AFTER
+                // the preamble frames already in `pending`.
+                for f in preamble.iter().rev() {
+                    pending.push_front(f.clone());
+                }
                 // T120b: fresh socket → fresh keepalive driver. `Instant::now()`
                 // is the moment the socket actually opened; the first
                 // `keepalive_idle` of silence is tolerated.
@@ -200,6 +227,7 @@ fn run_relay_worker(
                     &mut socket,
                     &mut keepalive,
                     &mut backoff_hint,
+                    &mut preamble,
                 );
                 match result {
                     RelayWorkerResult::Reconnect => {
@@ -215,7 +243,7 @@ fn run_relay_worker(
                         );
                         // T116c / G12: jitter spreads simultaneous reconnects.
                         let delay = jittered_backoff(base, &relay_url);
-                        if !wait_before_reconnect(&control, &mut pending, delay) {
+                        if !wait_before_reconnect(&control, &mut pending, &mut preamble, delay) {
                             return;
                         }
                     }
@@ -245,6 +273,7 @@ fn run_relay_worker(
                 if !wait_before_reconnect(
                     &control,
                     &mut pending,
+                    &mut preamble,
                     jittered_backoff(backoff, &relay_url),
                 ) {
                     return;
@@ -266,6 +295,7 @@ fn run_connected_relay(
     socket: &mut RelaySocket,
     keepalive: &mut KeepaliveState,
     backoff_hint: &mut Option<BackoffClass>,
+    preamble: &mut Vec<String>,
 ) -> RelayWorkerResult {
     let (mut poller, _wake_guard) = match io_ready::RelayPoller::new(socket, control) {
         Ok(poller) => poller,
@@ -280,7 +310,7 @@ fn run_connected_relay(
         }
     };
     loop {
-        match control.drain_pending(pending, backoff_hint) {
+        match control.drain_pending(pending, backoff_hint, preamble) {
             io_ready::ControlDrain::Continue => {}
             io_ready::ControlDrain::Shutdown => {
                 let _ = socket.close(None);
@@ -412,55 +442,18 @@ fn run_connected_relay(
     }
 }
 
-/// V-58 / V-92 — compute and apply the reconnect backoff for one disconnect.
+/// Wait for the reconnect delay to elapse, buffering incoming `Send` commands
+/// and updating the `preamble` if `SetReconnectPreamble` arrives.
 ///
-/// Called by `run_relay_worker` in the `Reconnect` branch. Mutates
-/// `current_backoff` in place (so the next call starts from the updated value)
-/// and returns the jittered delay to wait before retrying.
-///
-/// Rules (in priority order):
-///
-/// 1. `hint = Some(BackoffClass::RateLimited)` — relay just rate-limited us.
-///    Override V-92 reset and normal exponential advance: pin the base to
-///    [`RELAY_RECONNECT_DELAY_RATE_LIMITED`] (60 s) regardless of session age.
-///    Jitter is applied on top.
-/// 2. `hint = None | Some(BackoffClass::Transient)` — normal transient drop.
-///    V-92 / GH #615: if the session ran for ≥ [`RELAY_BACKOFF_RESET_AFTER_SECS`]
-///    (5 min), reset the base to [`RELAY_RECONNECT_DELAY_INITIAL`] so
-///    accumulated earlier-cycle debt does not bleed into stable relays.
-///    Otherwise advance the exponential curve (×2 capped at
-///    [`RELAY_RECONNECT_DELAY_MAX`]). Jitter is applied on top.
-///
-/// This is `pub(crate)` so tests can call the real production logic directly
-/// without spinning up a socket.
-pub(crate) fn apply_reconnect_backoff(
-    hint: Option<BackoffClass>,
-    current_backoff: &mut Duration,
-    connected_elapsed: Duration,
-) -> Duration {
-    match hint {
-        Some(BackoffClass::RateLimited) => {
-            // V-58: pin base to the long value so *future* reconnects
-            // (hint absent) also start from the rate-limited floor.
-            *current_backoff = RELAY_RECONNECT_DELAY_RATE_LIMITED;
-            *current_backoff
-        }
-        None | Some(BackoffClass::Transient) => {
-            // V-92 / GH #615: healthy session → reset to initial.
-            if connected_elapsed >= RELAY_BACKOFF_RESET_AFTER_SECS {
-                *current_backoff = RELAY_RECONNECT_DELAY_INITIAL;
-            } else {
-                // Mid-session drop: advance the exponential curve.
-                *current_backoff = (*current_backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
-            }
-            *current_backoff
-        }
-    }
-}
-
+/// **Guardrail 1 (codex):** `SetReconnectPreamble` arriving during the wait is
+/// STORED (not discarded), unlike `SetBackoffHint`.  A fast-flap scenario where
+/// the actor registers the preamble while the socket is between reconnects would
+/// silently drop it if we discarded it here, leaving the NEXT reconnect without
+/// the REQ guarantee.
 fn wait_before_reconnect(
     control: &io_ready::ControlInbox,
     pending: &mut VecDeque<String>,
+    preamble: &mut Vec<String>,
     delay: Duration,
 ) -> bool {
     let deadline = Instant::now() + delay;
@@ -479,6 +472,8 @@ fn wait_before_reconnect(
             // the *next* session either; the kernel re-sends a fresh hint on
             // the next rate-limited CLOSED after the socket reopens.
             Ok(RelayCommand::SetBackoffHint(_)) => {}
+            // Guardrail 1: store the preamble — do NOT discard it.
+            Ok(RelayCommand::SetReconnectPreamble(frames)) => *preamble = frames,
             Err(RecvTimeoutError::Timeout) => {}
             Ok(RelayCommand::Shutdown) | Err(RecvTimeoutError::Disconnected) => return false,
         }

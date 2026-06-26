@@ -61,17 +61,21 @@ fn forward_commands(
 }
 
 impl ControlInbox {
-    /// Drain pending commands into `pending` (for outbound text frames) and
-    /// `backoff_hint` (for V-58 rate-limit hints). Returns the appropriate
-    /// `ControlDrain` variant when a shutdown or disconnect is observed.
+    /// Drain pending commands into `pending` (for outbound text frames),
+    /// `backoff_hint` (for V-58 rate-limit hints), and `preamble` (for
+    /// reconnect-preamble registration). Returns the appropriate `ControlDrain`
+    /// variant when a shutdown or disconnect is observed.
     ///
     /// `SetBackoffHint` updates the caller-supplied `backoff_hint` slot; the
     /// last hint wins if multiple arrive before the next disconnect. The caller
     /// consumes the hint in the reconnect branch and clears it there.
+    ///
+    /// `SetReconnectPreamble` replaces the whole preamble; last writer wins.
     pub(super) fn drain_pending(
         &self,
         pending: &mut VecDeque<String>,
         backoff_hint: &mut Option<BackoffClass>,
+        preamble: &mut Vec<String>,
     ) -> ControlDrain {
         loop {
             match self.rx.try_recv() {
@@ -79,6 +83,8 @@ impl ControlInbox {
                 Ok(RelayCommand::Shutdown) => return ControlDrain::Shutdown,
                 // V-58: store the hint; last writer wins.
                 Ok(RelayCommand::SetBackoffHint(class)) => *backoff_hint = Some(class),
+                // Update the reconnect preamble; last writer wins.
+                Ok(RelayCommand::SetReconnectPreamble(frames)) => *preamble = frames,
                 Err(TryRecvError::Empty) => return ControlDrain::Continue,
                 Err(TryRecvError::Disconnected) => return ControlDrain::Disconnected,
             }

@@ -247,6 +247,19 @@ impl PoolInner {
         tx.send(RelayCommand::SetBackoffHint(class)).is_ok()
     }
 
+    /// Register a reconnect preamble for the worker at handle `h`.
+    ///
+    /// The preamble is injected at the FRONT of the worker's outbound queue on
+    /// every (re)connect, before any actor-posted commands can arrive. This is
+    /// the structural REQ-before-EVENT guarantee. A stale or closed handle is a
+    /// no-op. Returns `true` iff the command was enqueued.
+    pub(super) fn set_reconnect_preamble_for(&self, h: RelayHandle, frames: Vec<String>) -> bool {
+        let Some(tx) = self.command_tx_for(h) else {
+            return false;
+        };
+        tx.send(RelayCommand::SetReconnectPreamble(frames)).is_ok()
+    }
+
     /// Health for a (potentially stale) handle. Stale handle → `None`.
     pub(super) fn health_for(&self, h: RelayHandle) -> Option<RelayHealth> {
         let state = self.slots.get(h.slot as usize).and_then(|s| s.as_ref())?;

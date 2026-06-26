@@ -26,6 +26,17 @@
 //! This is NOT a general-purpose nostr relay. It only understands `REQ` /
 //! `EVENT` frames sufficient for the NIP-46 handshake + `sign_event` call
 //! path used by [`nmp_signer_broker`].
+//!
+//! ## Extra test-support APIs
+//!
+//! - [`MockBunkerRelay::per_conn_log`] — ordered per-connection frame log.
+//!   Each entry is `"OPEN"` (new connection), `"REQ"` (REQ frame arrived), or
+//!   `"EVENT"` (EVENT frame arrived). Multiple connections produce interleaved
+//!   `"OPEN"` markers; consumers slice from the second `"OPEN"` to inspect the
+//!   second (reconnect) connection.
+//! - [`MockBunkerRelay::force_disconnect`] — atomically signals the current
+//!   connection's worker to exit immediately (simulates a TCP drop). The
+//!   acceptor keeps running so the client can redial.
 
 use std::io::ErrorKind;
 use std::net::{SocketAddr, TcpListener};
@@ -43,6 +54,15 @@ pub struct MockBunkerRelay {
     addr: SocketAddr,
     shutdown: Arc<AtomicBool>,
     seen_methods: Arc<Mutex<Vec<String>>>,
+    /// Flat per-connection log: "OPEN" on each new connection, then "REQ" /
+    /// "EVENT" as frames arrive.  Multiple connections produce consecutive
+    /// "OPEN" markers; tests slice from the second "OPEN" to inspect the
+    /// reconnect connection independently.
+    per_conn_log: Arc<Mutex<Vec<String>>>,
+    /// When `true`, the current per-connection worker exits immediately (TCP
+    /// drop simulation).  Cleared automatically after the worker reads it so
+    /// a single `force_disconnect()` call drops exactly one connection.
+    force_disconnect: Arc<AtomicBool>,
     listener: Option<TcpListener>,
     acceptor: Mutex<Option<JoinHandle<()>>>,
     _workers: Arc<Mutex<Vec<JoinHandle<()>>>>,
@@ -61,11 +81,15 @@ impl MockBunkerRelay {
         let addr = listener.local_addr()?;
         let shutdown = Arc::new(AtomicBool::new(false));
         let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+        let conn_log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let force_dc = Arc::new(AtomicBool::new(false));
         let workers: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
 
         let listener_for_thread = listener.try_clone()?;
         let shutdown_t = Arc::clone(&shutdown);
         let seen_t = Arc::clone(&seen);
+        let conn_log_t = Arc::clone(&conn_log);
+        let force_dc_t = Arc::clone(&force_dc);
         let workers_t = Arc::clone(&workers);
         let acceptor = std::thread::spawn(move || {
             listener_for_thread
@@ -83,8 +107,13 @@ impl MockBunkerRelay {
                         let user_keys = user_keys.clone();
                         let shutdown_w = Arc::clone(&shutdown_t);
                         let seen_w = Arc::clone(&seen_t);
+                        let conn_log_w = Arc::clone(&conn_log_t);
+                        let force_dc_w = Arc::clone(&force_dc_t);
                         let worker = std::thread::spawn(move || {
-                            run_connection(stream, bunker_keys, user_keys, shutdown_w, seen_w);
+                            run_connection(
+                                stream, bunker_keys, user_keys,
+                                shutdown_w, seen_w, conn_log_w, force_dc_w,
+                            );
                         });
                         workers_t.lock().unwrap().push(worker);
                     }
@@ -100,6 +129,8 @@ impl MockBunkerRelay {
             addr,
             shutdown,
             seen_methods: seen,
+            per_conn_log: conn_log,
+            force_disconnect: force_dc,
             listener: Some(listener),
             acceptor: Mutex::new(Some(acceptor)),
             _workers: workers,
@@ -115,6 +146,24 @@ impl MockBunkerRelay {
     /// `sign_event`, …).
     pub fn observed_methods(&self) -> Vec<String> {
         self.seen_methods.lock().unwrap().clone()
+    }
+
+    /// Ordered per-connection frame log.
+    ///
+    /// Entries: `"OPEN"` on each new connection, `"REQ"` when a REQ frame
+    /// arrives, `"EVENT"` when an EVENT frame arrives.  Slice from the second
+    /// `"OPEN"` to inspect the reconnect connection in isolation.
+    pub fn per_conn_log(&self) -> Vec<String> {
+        self.per_conn_log.lock().unwrap().clone()
+    }
+
+    /// Signal the current connection's worker to exit immediately.
+    ///
+    /// The acceptor thread keeps running, so the client can redial.  The flag
+    /// is cleared automatically after the worker reads it; a single call drops
+    /// exactly one connection.
+    pub fn force_disconnect(&self) {
+        self.force_disconnect.store(true, Ordering::Relaxed);
     }
 }
 
@@ -137,15 +186,24 @@ fn run_connection(
     user_keys: Keys,
     shutdown: Arc<AtomicBool>,
     seen: Arc<Mutex<Vec<String>>>,
+    conn_log: Arc<Mutex<Vec<String>>>,
+    force_disconnect: Arc<AtomicBool>,
 ) {
     let mut ws = match tungstenite::accept(stream) {
         Ok(w) => w,
         Err(_) => return,
     };
+    // Mark the start of this connection in the per-connection log.
+    conn_log.lock().unwrap().push("OPEN".to_string());
+
     let mut client_local_pubkey: Option<PublicKey> = None;
     let mut subscription_id: Option<String> = None;
 
     loop {
+        // Force-disconnect: test asked us to drop immediately.
+        if force_disconnect.swap(false, Ordering::Relaxed) {
+            return; // drop the socket — simulates a TCP RST
+        }
         if shutdown.load(Ordering::Relaxed) {
             let _ = ws.close(None);
             return;
@@ -179,6 +237,7 @@ fn run_connection(
         let kind_str = arr.first().and_then(|v| v.as_str()).unwrap_or("");
         match kind_str {
             "REQ" => {
+                conn_log.lock().unwrap().push("REQ".to_string());
                 if arr.len() < 3 {
                     continue;
                 }
@@ -200,6 +259,7 @@ fn run_connection(
                 }
             }
             "EVENT" => {
+                conn_log.lock().unwrap().push("EVENT".to_string());
                 let event = match arr.get(1) {
                     Some(e) => e,
                     None => continue,
