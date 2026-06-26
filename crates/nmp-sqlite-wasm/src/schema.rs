@@ -136,9 +136,69 @@ CREATE TABLE IF NOT EXISTS ingest_log (
     op             TEXT NOT NULL,
     event_id       BLOB NOT NULL,
     target_id      BLOB,
+    reason         TEXT,
     raw_event      BLOB,
     source_relay   TEXT,
     received_at_ms INTEGER NOT NULL
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- #1007 PR-5: GC LRU bookkeeping, the K3 coverage ledger, the F-TTL replaceable
+-- freshness cache, NMP domain rows + namespace versions, and the volatile
+-- ingest-log retention-claim set. Kept in one block so PR-4's query/provenance
+-- work and this PR's write/GC work touch disjoint regions of the DDL.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- LRU access bookkeeping (mirror of LMDB `nmp-lru-access`): event_id → access
+-- sequence (monotonic, allocated from the `lru_seq` row in `nmp_meta`). A point
+-- read (`get_by_id`) and `hot_set_hint` stamp a fresh seq; GC Phase-2 evicts the
+-- lowest-seq un-pinned events first (un-stamped events sort oldest).
+CREATE TABLE IF NOT EXISTS lru_access (
+    event_id BLOB PRIMARY KEY,
+    seq      INTEGER NOT NULL
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_lru_seq ON lru_access (seq);
+
+-- K3 coverage ledger (ADR-0056 §3): per (filter_hash, relay) the downward-closed
+-- `covered_through` watermark. The relay-agnostic store + per-relay ledger is
+-- why GC's D3 backstop lowers the right row when it evicts a covered event.
+CREATE TABLE IF NOT EXISTS coverage (
+    filter_hash     TEXT NOT NULL,
+    relay           TEXT NOT NULL,
+    covered_through INTEGER NOT NULL,
+    PRIMARY KEY (filter_hash, relay)
+) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS idx_coverage_fh ON coverage (filter_hash);
+
+-- F-TTL replaceable-freshness cache: ReplaceableKey blob → check_again_after
+-- (unix ms). Persisted (unlike LMDB's in-memory cache) — a missed stamp only
+-- means the next claim re-verifies eagerly, never a wrong answer (D6).
+CREATE TABLE IF NOT EXISTS replaceable_freshness (
+    rkey              BLOB PRIMARY KEY,
+    check_again_after INTEGER NOT NULL
+) WITHOUT ROWID;
+
+-- NMP domain rows: one shared table keyed (namespace, user_key) — mirror of the
+-- LMDB single `nmp-domain-data` sub-db (avoids exhausting a per-namespace cap).
+CREATE TABLE IF NOT EXISTS domain_data (
+    namespace TEXT NOT NULL,
+    user_key  BLOB NOT NULL,
+    value     BLOB NOT NULL,
+    PRIMARY KEY (namespace, user_key)
+) WITHOUT ROWID;
+-- Per-namespace schema version (mirror of LMDB `nmp-domain-versions`).
+CREATE TABLE IF NOT EXISTS domain_versions (
+    namespace TEXT PRIMARY KEY,
+    version   INTEGER NOT NULL
+) WITHOUT ROWID;
+
+-- Volatile ingest-log retention claims (ADR-0058 §6): the slowest `Protected`
+-- cursors that pin the seq-keyed log GC floor. Replaced wholesale each kernel
+-- pass; read inside the append-time trim txn. Not durable understanding — a
+-- stale row self-evicts once its lag exceeds `max_lag_entries`.
+CREATE TABLE IF NOT EXISTS log_retention_claims (
+    after_seq       INTEGER NOT NULL,
+    max_lag_entries INTEGER NOT NULL
 );
 "#;
 

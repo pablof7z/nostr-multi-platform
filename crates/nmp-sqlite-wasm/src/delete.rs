@@ -19,10 +19,12 @@
 
 use crate::conv::{self, EngineEvent};
 use crate::error::SqliteWasmError;
+use crate::ingest_log::DeleteReason;
 use crate::outcome::{EventId, PubKey};
 use crate::shim::SqliteConn;
-use crate::store_impl::{blob32, exec_write, SqlVal};
-use crate::{ingest_log, provenance, tombstones};
+use crate::store_impl::{blob32, exec_write, with_txn, SqlVal};
+use crate::types::DeleteFilter;
+use crate::{ingest_log, provenance, tombstones, OpfsSqliteStore};
 
 /// Apply a kind:5 event's `e`-tag and `a`-tag self-deletes inside the insert
 /// transaction (tombstones + target removal + `Deleted` log entries).
@@ -54,7 +56,13 @@ pub(crate) fn apply_kind5(
                 tombstones::put_id(conn, &target_id, &kind5_id, &kind5_pubkey, kind5_at, source)?;
                 if stored.is_some() {
                     remove_event(conn, &target_id)?;
-                    ingest_log::append_deleted(conn, &kind5_id, &target_id, received_at_ms)?;
+                    ingest_log::append_deleted(
+                        conn,
+                        &kind5_id,
+                        &target_id,
+                        DeleteReason::Nip09,
+                        received_at_ms,
+                    )?;
                 }
             }
         }
@@ -79,16 +87,22 @@ pub(crate) fn apply_kind5(
         )?;
         for removed in coordinate_targets(conn, tgt_kind, &kind5_pubkey, tgt_dtag, kind5_at)? {
             remove_event(conn, &removed)?;
-            ingest_log::append_deleted(conn, &kind5_id, &removed, received_at_ms)?;
+            ingest_log::append_deleted(
+                conn,
+                &kind5_id,
+                &removed,
+                DeleteReason::Nip09,
+                received_at_ms,
+            )?;
         }
     }
     Ok(())
 }
 
-/// Remove an event everywhere it lives: secondary tag rows, provenance, then the
-/// primary row. (The primary delete also cascades `event_tags` via the schema
-/// FK, but the explicit delete keeps removal correct independent of the
-/// per-connection `foreign_keys` pragma.)
+/// Remove an event everywhere it lives: secondary tag rows, provenance, the LRU
+/// access row, then the primary row. (The primary delete also cascades
+/// `event_tags` via the schema FK, but the explicit delete keeps removal correct
+/// independent of the per-connection `foreign_keys` pragma.)
 pub(crate) fn remove_event(conn: &SqliteConn, id: &EventId) -> Result<(), SqliteWasmError> {
     exec_write(
         conn,
@@ -96,7 +110,116 @@ pub(crate) fn remove_event(conn: &SqliteConn, id: &EventId) -> Result<(), Sqlite
         &[SqlVal::Blob(id)],
     )?;
     provenance::delete(conn, id)?;
+    exec_write(
+        conn,
+        "DELETE FROM lru_access WHERE event_id = ?1",
+        &[SqlVal::Blob(id)],
+    )?;
     exec_write(conn, "DELETE FROM events WHERE id = ?1", &[SqlVal::Blob(id)])
+}
+
+// ─── delete_by_filter (admin / GC bulk delete) ──────────────────────────────────
+
+impl OpfsSqliteStore {
+    /// Delete by an NMP-internal filter — for admin / GC purge paths.
+    ///
+    /// NOT a NIP-09 path (that flows through kind:5 `insert`). Removals + their
+    /// ingest-log entries apply in ONE transaction. Mirrors the LMDB backend:
+    /// `ByIds`/`ByAuthor`/`ByKindRange` emit `AdminPurge` log entries;
+    /// `ByRelayOnly` (a retention removal of relay-exclusive events) emits none.
+    /// Returns the number of primary rows removed.
+    pub fn delete_by_filter(&self, filter: DeleteFilter) -> Result<usize, SqliteWasmError> {
+        let conn = self.db.borrow();
+        with_txn(&conn, |c| match filter {
+            DeleteFilter::ByIds(ids) => by_ids(c, &ids),
+            DeleteFilter::ByAuthor(pk) => by_author(c, &pk),
+            DeleteFilter::ByKindRange { lo, hi } => by_kind_range(c, lo, hi),
+            DeleteFilter::ByRelayOnly(relay) => by_relay_only(c, &relay),
+        })
+    }
+}
+
+/// Remove `ids` that are actually present, appending an `AdminPurge` log entry
+/// for each. The carrier id is the removed id itself (no kind:5 involved).
+fn by_ids(conn: &SqliteConn, ids: &[EventId]) -> Result<usize, SqliteWasmError> {
+    let mut n = 0usize;
+    for id in ids {
+        if !event_present(conn, id)? {
+            continue;
+        }
+        remove_event(conn, id)?;
+        ingest_log::append_deleted(conn, id, id, DeleteReason::AdminPurge, 0)?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+fn by_author(conn: &SqliteConn, pubkey: &PubKey) -> Result<usize, SqliteWasmError> {
+    let ids = collect_ids(
+        conn,
+        "SELECT id FROM events WHERE pubkey = ?1",
+        &[SqlVal::Blob(pubkey)],
+    )?;
+    remove_all_admin(conn, &ids)
+}
+
+fn by_kind_range(conn: &SqliteConn, lo: u32, hi: u32) -> Result<usize, SqliteWasmError> {
+    let ids = collect_ids(
+        conn,
+        "SELECT id FROM events WHERE kind BETWEEN ?1 AND ?2",
+        &[SqlVal::Int(i64::from(lo)), SqlVal::Int(i64::from(hi))],
+    )?;
+    remove_all_admin(conn, &ids)
+}
+
+/// Remove events seen on EXACTLY this relay (provenance has a single row and it
+/// is this relay). A retention removal: no ingest-log entry (mirror of LMDB).
+fn by_relay_only(conn: &SqliteConn, relay: &str) -> Result<usize, SqliteWasmError> {
+    let ids = collect_ids(
+        conn,
+        "SELECT p.event_id FROM provenance p
+         WHERE p.relay_url = ?1
+           AND (SELECT COUNT(*) FROM provenance p2 WHERE p2.event_id = p.event_id) = 1",
+        &[SqlVal::Text(relay)],
+    )?;
+    let mut n = 0usize;
+    for id in &ids {
+        remove_event(conn, id)?;
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// Remove every id with an `AdminPurge` log entry; returns the count.
+fn remove_all_admin(conn: &SqliteConn, ids: &[EventId]) -> Result<usize, SqliteWasmError> {
+    for id in ids {
+        remove_event(conn, id)?;
+        ingest_log::append_deleted(conn, id, id, DeleteReason::AdminPurge, 0)?;
+    }
+    Ok(ids.len())
+}
+
+fn event_present(conn: &SqliteConn, id: &EventId) -> Result<bool, SqliteWasmError> {
+    let stmt = conn.prepare("SELECT 1 FROM events WHERE id = ?1")?;
+    stmt.bind_blob(1, id)?;
+    stmt.step()
+}
+
+/// Run an id-returning query and collect the 32-byte ids.
+fn collect_ids(
+    conn: &SqliteConn,
+    sql: &str,
+    params: &[SqlVal<'_>],
+) -> Result<Vec<EventId>, SqliteWasmError> {
+    let stmt = conn.prepare(sql)?;
+    crate::store_impl::bind_params(&stmt, params)?;
+    let mut out = Vec::new();
+    while stmt.step()? {
+        if let Some(id) = blob32(&stmt.column_blob(0)?) {
+            out.push(id);
+        }
+    }
+    Ok(out)
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────────────

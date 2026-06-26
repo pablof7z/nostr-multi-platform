@@ -7,7 +7,7 @@
 //! stub ever ships inside a trait impl (zero-tolerance no-hacks rule).
 
 #[cfg(target_arch = "wasm32")]
-pub(crate) use wasm_impl::{blob32, exec_write, with_txn, SqlVal};
+pub(crate) use wasm_impl::{bind_params, blob32, exec_write, with_txn, SqlVal};
 
 #[cfg(target_arch = "wasm32")]
 mod wasm_impl {
@@ -59,15 +59,20 @@ mod wasm_impl {
         /// Primary lookup by id. `Ok(None)` if absent (a tombstoned event is not
         /// present — deletion removes the primary row).
         ///
-        /// Read-only. (The `EventStore` contract has `get_by_id` stamp the LRU;
-        /// there is no LRU until the GC PR lands, so this is currently identical
-        /// to [`Self::peek_by_id`]. The LRU stamp will be added here — and only
-        /// here — when GC arrives, keeping `peek_by_id` write-free.)
+        /// Stamps the LRU access counter on a hit so GC Phase-2 evicts this event
+        /// last (the `EventStore` contract; [`Self::peek_by_id`] stays write-free).
+        /// One point-read becomes one short write txn; bulk scans never stamp, so
+        /// write-amplification is bounded to point reads (V-60 LRU design).
         pub fn get_by_id(&self, id: &EventId) -> Result<Option<StoredEngineEvent>, SqliteWasmError> {
-            self.read_stored(
+            let found = self.read_stored(
                 "SELECT raw, received_at_ms FROM events WHERE id = ?1",
                 &[SqlVal::Blob(id)],
-            )
+            )?;
+            if found.is_some() {
+                let conn = self.db.borrow();
+                with_txn(&conn, |c| crate::gc::stamp_lru(c, id))?;
+            }
+            Ok(found)
         }
 
         /// Pure point-read by id — never opens a write transaction, never stamps
