@@ -4871,6 +4871,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-nip46-runtime"
+version = "0.8.0"
+dependencies = [
+ "nmp-core",
+ "nmp-network",
+ "nmp-nip46",
+ "nmp-signer-iface",
+ "nostr",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "nmp-nip47"
 version = "0.8.0"
 dependencies = [

@@ -100,6 +100,7 @@ impl RelayRoleTestExt for RelayRole {
             RelayRole::Content => BOOTSTRAP_DISCOVERY_RELAYS[0],
             RelayRole::Indexer => BOOTSTRAP_DISCOVERY_RELAYS[1],
             RelayRole::Wallet => "",
+            RelayRole::Signer => "",
         }
     }
 

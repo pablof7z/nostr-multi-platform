@@ -152,6 +152,10 @@ name = "nmp-nip46"
 path = "crates/nmp-nip46"
 
 [[public_crates]]
+name = "nmp-nip46-runtime"
+path = "crates/nmp-nip46-runtime"
+
+[[public_crates]]
 name = "nmp-nip47"
 path = "crates/nmp-nip47"
 

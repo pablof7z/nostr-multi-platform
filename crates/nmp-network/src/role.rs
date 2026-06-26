@@ -23,11 +23,16 @@ pub enum RelayRole {
     // (actor/commands/wallet.rs); always-callable here because nmp-network
     // does not know about Cargo features in downstream crates.
     Wallet,
+    /// NIP-46 remote-signer relay. Spawned on demand when a bunker session is
+    /// active; NOT included in `all()` so it does not gate startup.
+    /// Like `Wallet`, treated as persistent by `relay_socket_is_persistent`
+    /// so the socket is never reaped by the idle sweeper between RPC calls.
+    Signer,
 }
 
 impl RelayRole {
     /// Bootstrap-only roles (spawned at start, gate for startup REQs).
-    /// `Wallet` is excluded: it spawns on demand, not at startup.
+    /// `Wallet` and `Signer` are excluded: they spawn on demand, not at startup.
     #[must_use]
     pub fn all() -> [Self; 2] {
         [Self::Content, Self::Indexer]
@@ -39,6 +44,7 @@ impl RelayRole {
             Self::Content => "content",
             Self::Indexer => "indexer",
             Self::Wallet => "wallet",
+            Self::Signer => "signer",
         }
     }
 }

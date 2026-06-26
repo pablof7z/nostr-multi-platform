@@ -13,7 +13,10 @@ impl Kernel {
                     || crate::actor::has_role(row_role, "write")
             }
             RelayRole::Indexer => crate::actor::has_role(row_role, "indexer"),
-            RelayRole::Wallet => false,
+            // NWC and NIP-46 signer relays are on-demand; they never appear
+            // in the user's kind:10002 relay list, so no configured-relay row
+            // matches them here.
+            RelayRole::Wallet | RelayRole::Signer => false,
         };
         self.configured_relays
             .iter()

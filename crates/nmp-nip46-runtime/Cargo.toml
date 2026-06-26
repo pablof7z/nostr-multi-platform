@@ -1,0 +1,20 @@
+[package]
+name = "nmp-nip46-runtime"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+repository.workspace = true
+description = "NIP-46 actor-lane runtime — drives the nmp-nip46 reducer over the actor relay lane (Layer-4). DORMANT in PR-A: broker still drives; nmp-ffi flip + broker deletion is PR-B."
+
+[dependencies]
+nmp-core    = { path = "../nmp-core" }
+nmp-network = { path = "../nmp-network", default-features = false }
+nmp-nip46   = { path = "../nmp-nip46" }
+nmp-signer-iface = { path = "../nmp-signer-iface" }
+nostr       = { version = "0.44", features = ["std"] }
+serde_json  = "1"
+tracing     = "0.1"
+
+[dev-dependencies]
+nmp-core = { path = "../nmp-core", features = ["test-support"] }
+nostr    = { version = "0.44", features = ["std"] }

@@ -115,4 +115,19 @@ impl CommandSender {
             IdentityCommand::BunkerConnectionStateChanged { state, reason },
         ));
     }
+
+    /// Fire-and-forget outbound frame send (ADR-0065 `EnqueueOutbound`).
+    ///
+    /// Posts a raw `text` frame to `relay_url` on the `role` lane without
+    /// waiting for delivery confirmation. Used by `RelayConnectedHook` impls
+    /// (e.g. `nmp-nip46-runtime`) that hold a `CommandSender` but cannot
+    /// return `Vec<OutboundMessage>` directly.
+    pub fn enqueue_outbound(
+        &self,
+        role: nmp_network::role::RelayRole,
+        relay_url: String,
+        text: String,
+    ) {
+        let _ = self.send(ActorCommand::EnqueueOutbound { role, relay_url, text });
+    }
 }
