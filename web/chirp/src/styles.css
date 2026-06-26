@@ -1,0 +1,46 @@
+/* Chirp Web — thin shell skin (Item B).
+ *
+ * Minimal layout for the composition root: status indicator + slot mount
+ * points. Item C will extend this with the full social shell styles.
+ */
+
+/* ── App frame ── */
+
+.app-shell {
+  display: grid;
+  min-height: 100vh;
+  grid-template-rows: auto 1fr auto;
+  background: var(--bg);
+  padding: 0;
+}
+
+/* ── Status indicator ── */
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  font-size: 13px;
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-mono);
+}
+
+.status-indicator[data-connected="true"] {
+  color: var(--tone-ok);
+}
+
+.status-indicator[data-connected="false"] {
+  color: var(--tone-warn);
+}
+
+/* ── Slot mount points ── */
+
+[data-slot="feed"] {
+  min-height: 0;
+}
+
+[data-slot="signing"] {
+  /* Item D: signing / onboarding panel, initially empty */
+}

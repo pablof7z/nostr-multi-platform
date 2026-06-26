@@ -1,0 +1,95 @@
+/* Chirp Web — design tokens (single source of truth).
+ *
+ * Per docs/ux-design.md §3: one restrained palette, two type voices, a tone
+ * system lifted 1:1 from the kernel's own vocabulary. These tokens are shared
+ * by the social shell (styles.css) AND the Inspector dock (inspector.css) so
+ * the two surfaces stay visually cohesive and dark mode flows through both.
+ *
+ * Dark mode is presentation-only (prefers-color-scheme) — no runtime state,
+ * no manual toggle, no persistence; the shell stays a thin renderer.
+ */
+
+:root {
+  /* Surfaces & ink */
+  --bg:          #fafaf8;
+  --bg-raised:   #ffffff;
+  --bg-inset:    #f1f1ed;
+  --ink:         #1c1d1a;
+  --ink-2:       #6b6c66;
+  --ink-3:       #a3a49c;
+  --line:        #e6e6e0;
+  --accent:      #2f7d5b;
+  --accent-ink:  #ffffff;
+
+  /* Semantic tones — mapped 1:1 from kernel tone strings */
+  --tone-ok:     #2f7d5b;
+  --tone-warn:   #b07a1e;
+  --tone-error:  #b3403a;
+  --tone-muted:  var(--ink-3);
+
+  /* Relay-role accents */
+  --role-primary:   var(--accent);
+  --role-write:     #7a5ac8;
+  --role-accent:    #2b7da8;
+  --role-secondary: var(--ink-2);
+
+  /* Type voices */
+  --font-prose: "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono:  "IBM Plex Mono", ui-monospace, "Cascadia Code", SFMono-Regular, monospace;
+
+  /* Form */
+  --radius:      8px;
+  --radius-pill: 999px;
+  --shadow-pop:  0 8px 32px rgb(0 0 0 / 0.16);
+
+  /* Motion */
+  --t-fast: 120ms ease-out;
+  --t-med:  200ms cubic-bezier(.2, .8, .2, 1);
+
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--font-prose);
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  accent-color: var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:          #131412;
+    --bg-raised:   #1b1c1a;
+    --bg-inset:    #0e0f0d;
+    --ink:         #e8e7e1;
+    --ink-2:       #9a9b93;
+    --ink-3:       #5f605a;
+    --line:        #2a2b28;
+    --accent:      #5bbd92;
+    --accent-ink:  #0e2a1e;
+
+    --tone-ok:    #5bbd92;
+    --tone-warn:  #d9a84e;
+    --tone-error: #e07a75;
+
+    --role-write:  #a78be0;
+    --role-accent: #6fb4d8;
+
+    --shadow-pop: 0 8px 32px rgb(0 0 0 / 0.4);
+  }
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+button, textarea, input { font: inherit; color: inherit; }
+
+/* Quiet, physical motion — honor the reduced-motion contract (§3.5). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
