@@ -259,9 +259,9 @@ fn render_snapshot_projections(entries: &[SnapshotProjectionEntry], out: &mut St
 /// What the docs leave implicit and what bit the iOS shell historically:
 ///
 /// - **`.` is opaque.** `.convertFromSnakeCase` does NOT split on `.`; it
-///   only touches `_`. So `"nmp.nip29.group_chat"` becomes
+///   only touches `_`. So `"nmp.nip29.group_timeline"` becomes
 ///   `"nmp.nip29.groupChat"`, NOT `"nmp.Nip29.GroupChat"`. The dot-separated
-///   prefix passes through unchanged, and only the `group_chat` tail
+///   prefix passes through unchanged, and only the `group_timeline` tail
 ///   camelises.
 /// - **Single-word inputs are returned unchanged.** `"wallet"` → `"wallet"`,
 ///   `"profile"` → `"profile"`. Apple's algorithm has nothing to do, so the

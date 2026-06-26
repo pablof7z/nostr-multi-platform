@@ -16,8 +16,8 @@ import XCTest
 ///
 /// This pattern has bitten us at least twice. The decoder uses
 /// `.convertFromSnakeCase`, which splits on `_` only (`.` is opaque), so the
-/// kernel's dotted keys (e.g. `"nmp.nip29.group_chat"`) transform to
-/// `"nmp.nip29.groupChat"` — and the `CodingKeys` raw value MUST be that
+/// kernel's dotted keys (e.g. `"nmp.nip29.group_timeline"`) transform to
+/// `"nmp.nip29.groupTimeline"` — and the `CodingKeys` raw value MUST be that
 /// post-transform string, not the bare camelCase name the synthesised default
 /// would have produced. A subtle drift between the kernel key, the
 /// `.convertFromSnakeCase` transform, and the `CodingKeys` raw value is
@@ -44,7 +44,7 @@ import XCTest
 /// ## Known gap
 ///
 /// None for the JSON `Decodable` path — every registered Rust projection that
-/// ships as a JSON `SnapshotProjections` field (`nmp.nip29.group_chat`,
+/// ships as a JSON `SnapshotProjections` field (`nmp.nip29.group_timeline`,
 /// `nmp.nip29.discovered_groups`, `nmp.nip29.group_defaults`,
 /// `nmp.nip17.dm_inbox`, `nmp.follow_list`, `nmp.nip17.dm_relay_list`,
 /// `nmp.marmot.snapshot`, `nmp.marmot.messages`) has its decoder covered by
@@ -82,8 +82,8 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
     func testSnapshotProjectionsCoverAllRegisteredKeys() throws {
         let json = """
         {
-          "nmp.nip29.group_chat": {
-            "messages": [],
+          "nmp.nip29.group_timeline": {
+            "events": [],
             "group_initials": "?"
           },
           "nmp.nip29.discovered_groups": {
@@ -146,8 +146,8 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
         // key (after `.convertFromSnakeCase`). The message names the exact
         // case to inspect so the failure is self-diagnosing.
         XCTAssertNotNil(
-            projections.groupChat,
-            "SnapshotProjections.groupChat decoded nil — check CodingKeys.groupChat raw value matches \"nmp.nip29.groupChat\" (post-convertFromSnakeCase of \"nmp.nip29.group_chat\")")
+            projections.groupTimeline,
+            "SnapshotProjections.groupTimeline decoded nil — check CodingKeys.groupTimeline raw value matches \"nmp.nip29.groupTimeline\" (post-convertFromSnakeCase of \"nmp.nip29.group_timeline\")")
         XCTAssertNotNil(
             projections.discoveredGroups,
             "SnapshotProjections.discoveredGroups decoded nil — check CodingKeys.discoveredGroups raw value matches \"nmp.nip29.discoveredGroups\" (post-convertFromSnakeCase of \"nmp.nip29.discovered_groups\")")
@@ -205,7 +205,7 @@ final class SnapshotProjectionsConformanceTests: XCTestCase {
     func testEmptyProjectionsMapDecodesWithAllNils() throws {
         let projections = try snapshotDecoder().decode(
             SnapshotProjections.self, from: Data("{}".utf8))
-        XCTAssertNil(projections.groupChat)
+        XCTAssertNil(projections.groupTimeline)
         XCTAssertNil(projections.discoveredGroups)
         XCTAssertNil(projections.groupDefaults)
         XCTAssertNil(projections.dmInbox)

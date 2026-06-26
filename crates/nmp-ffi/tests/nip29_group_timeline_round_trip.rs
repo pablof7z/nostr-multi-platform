@@ -24,9 +24,9 @@
 //! provenance via `ActorCommand::IngestPreVerifiedEventsForRelay`. This matches
 //! the path a relay worker follows when it delivers a verified event into the
 //! actor loop. The actor fans it out through `notify_event_observers`;
-//! `GroupChatProjection` (opened by `NmpApp::open_group_chat`, #2088)
+//! `GroupTimelineProjection` (opened by `NmpApp::open_group_timeline`, #2088)
 //! accumulates it and surfaces it under
-//! `projections["nmp.nip29.group_chat"]["messages"]` on the next snapshot tick.
+//! `projections["nmp.nip29.group_timeline"]["events"]` on the next snapshot tick.
 //! The test reads that snapshot via `nmp_app_set_update_callback` — the same
 //! path any shell (iOS KernelBridge, a TUI, a web bridge) uses.
 //!
@@ -132,12 +132,12 @@ fn inject(app: *mut nmp_ffi::NmpApp, events: Vec<VerifiedEvent>) {
         .expect("actor command channel must be open");
 }
 
-/// Poll `SNAPSHOTS` until a snapshot tick's typed `"nmp.nip29.group_chat"`
+/// Poll `SNAPSHOTS` until a snapshot tick's typed `"nmp.nip29.group_timeline"`
 /// sidecar contains a group-chat message with `content`, or the 3-second
 /// deadline passes. PR-B: decodes the typed FlatBuffers sidecar via
-/// `decode_group_chat_snapshot` — the generic JSON payload no longer exists.
+/// `decode_group_timeline_snapshot` — the generic JSON payload no longer exists.
 fn wait_for_group_message(content: &str) -> bool {
-    use nmp_nip29::{decode_group_chat_snapshot, GROUP_CHAT_SCHEMA_ID};
+    use nmp_nip29::{decode_group_timeline_snapshot, GROUP_TIMELINE_SCHEMA_ID};
 
     let deadline = std::time::Instant::now() + Duration::from_secs(3);
     while std::time::Instant::now() < deadline {
@@ -149,9 +149,9 @@ fn wait_for_group_message(content: &str) -> bool {
                 };
                 let found = typed
                     .iter()
-                    .find(|t| t.key == GROUP_CHAT_SCHEMA_ID)
-                    .and_then(|t| decode_group_chat_snapshot(&t.payload).ok())
-                    .map(|snapshot| snapshot.messages.iter().any(|m| m.content == content))
+                    .find(|t| t.key == GROUP_TIMELINE_SCHEMA_ID)
+                    .and_then(|t| decode_group_timeline_snapshot(&t.payload).ok())
+                    .map(|snapshot| snapshot.events.iter().any(|m| m.content == content))
                     .unwrap_or(false);
                 if found {
                     return true;
@@ -227,18 +227,18 @@ fn publish_group_event_dispatch_returns_correlation_id() {
 
 /// Proves the receive-side seam is live end-to-end:
 ///
-/// 1. `NmpApp::open_group_chat` opens a hydrating `GroupChatProjection` for
+/// 1. `NmpApp::open_group_timeline` opens a hydrating `GroupTimelineProjection` for
 ///    `"test-room"` as a `KernelEventObserver` (ingest) + snapshot projection
-///    under `"nmp.nip29.group_chat"` (output).
+///    under `"nmp.nip29.group_timeline"` (output).
 /// 2. A kind:9 event carrying `["h", "test-room"]` is injected via
 ///    `IngestPreVerifiedEvents` — the same actor path a relay worker uses.
-/// 3. The `GroupChatProjection` accumulates the event; on the next snapshot
-///    tick the kernel serializes it under `projections["nmp.nip29.group_chat"]`.
+/// 3. The `GroupTimelineProjection` accumulates the event; on the next snapshot
+///    tick the kernel serializes it under `projections["nmp.nip29.group_timeline"]`.
 /// 4. The update callback (set via `nmp_app_set_update_callback`) receives the
 ///    JSON string — the same path any shell reads from.
 /// 5. A decoy event for a different group must NOT appear.
 #[test]
-fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
+fn group_timeline_event_surfaces_via_kernel_snapshot_callback() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     SNAPSHOTS.lock().unwrap_or_else(|p| p.into_inner()).clear();
 
@@ -256,10 +256,10 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
     // and begins emitting snapshot ticks at emit_hz rate.
     nmp_app_start(app, 64, 8); // emit_hz=8 → ~125 ms cadence
 
-    // Wire the GroupChatProjection for "test-room".
+    // Wire the GroupTimelineProjection for "test-room".
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
     let app_ref = unsafe { &*app };
-    app_ref.open_group_chat(GroupId::new(HOST_RELAY, "test-room"));
+    app_ref.open_group_timeline(GroupId::new(HOST_RELAY, "test-room"));
 
     // Inject the target event: kind:9 with h-tag "test-room".
     let target = VerifiedEvent::from_raw_unchecked(raw_chat_event(
@@ -285,12 +285,12 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
     // Wait up to 3 s for the snapshot to carry the target message.
     assert!(
         wait_for_group_message("hello from TUI"),
-        "kind:9 event for 'test-room' must appear in the typed nmp.nip29.group_chat sidecar within 3 s"
+        "kind:9 event for 'test-room' must appear in the typed nmp.nip29.group_timeline sidecar within 3 s"
     );
 
     // Verify the decoy did NOT leak into the typed projection sidecar.
     {
-        use nmp_nip29::{decode_group_chat_snapshot, GROUP_CHAT_SCHEMA_ID};
+        use nmp_nip29::{decode_group_timeline_snapshot, GROUP_TIMELINE_SCHEMA_ID};
 
         let snaps = SNAPSHOTS.lock().unwrap_or_else(|p| p.into_inner());
         for frame in snaps.iter() {
@@ -299,12 +299,12 @@ fn group_chat_event_surfaces_via_kernel_snapshot_callback() {
             };
             if let Some(snapshot) = typed
                 .iter()
-                .find(|t| t.key == GROUP_CHAT_SCHEMA_ID)
-                .and_then(|t| decode_group_chat_snapshot(&t.payload).ok())
+                .find(|t| t.key == GROUP_TIMELINE_SCHEMA_ID)
+                .and_then(|t| decode_group_timeline_snapshot(&t.payload).ok())
             {
                 assert!(
                     !snapshot
-                        .messages
+                        .events
                         .iter()
                         .any(|m| m.content == "should not appear"),
                     "decoy event for 'other-room' must not appear in 'test-room' projection"

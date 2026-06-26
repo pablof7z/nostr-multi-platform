@@ -3,7 +3,7 @@ use std::ptr;
 
 use nmp_app_chirp::ffi::{
     nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
-    nmp_app_chirp_register_group_chat,
+    nmp_app_chirp_register_group_timeline,
 };
 use nmp_app_chirp::{nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery};
 use nmp_app_chirp::{
@@ -203,11 +203,11 @@ impl AppRuntime {
         }
     }
 
-    pub fn register_group_chat(&self, relay: &str, local_id: &str) -> Result<()> {
+    pub fn register_group_timeline(&self, relay: &str, local_id: &str) -> Result<()> {
         let group =
             CString::new(json!({ "host_relay_url": relay, "local_id": local_id }).to_string())
                 .map_err(|_| "group JSON contains NUL byte".to_string())?;
-        nmp_app_chirp_register_group_chat(self.app_ptr(), group.as_ptr());
+        nmp_app_chirp_register_group_timeline(self.app_ptr(), group.as_ptr());
         Ok(())
     }
 
@@ -239,7 +239,7 @@ impl AppRuntime {
             body["about"] = Value::String(about.to_string());
         }
         let correlation_id = self.dispatch_action_value("nmp.nip29.create_public_group", &body)?;
-        self.register_group_chat(relay, local_id)?;
+        self.register_group_timeline(relay, local_id)?;
         Ok(correlation_id)
     }
 

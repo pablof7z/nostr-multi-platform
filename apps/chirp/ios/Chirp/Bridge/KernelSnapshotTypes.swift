@@ -32,9 +32,9 @@ struct SettingsHubSummary: Decodable, Equatable {
 
 // ─── NIP-29 group-chat read model ─────────────────────────────────────────
 //
-// Mirror of `nmp-nip29`'s `GroupChatSnapshot` / `GroupChatMessage` — the
-// shape the `GroupChatProjection` serialises under the snapshot key
-// `"nmp.nip29.group_chat"`. Thin-shell rule: these are pure DTOs; no Swift
+// Mirror of `nmp-nip29`'s `GroupTimelineSnapshot` / `GroupTimelineEvent` — the
+// shape the `GroupTimelineProjection` serialises under the snapshot key
+// `"nmp.nip29.group_timeline"`. Thin-shell rule: these are pure DTOs; no Swift
 // owns the ordering (the projection emits newest-first) or the membership
 // filter (the projection matches kind + `h`-tag).
 
@@ -47,7 +47,7 @@ struct SettingsHubSummary: Decodable, Equatable {
 /// `"created_at_display"` to `createdAt` / `createdAtDisplay` automatically.
 /// An explicit enum would have to spell the post-transform name and is pure
 /// surface area — omitted deliberately.
-struct GroupChatMessage: Decodable, Identifiable, Equatable {
+struct GroupTimelineEvent: Decodable, Identifiable, Equatable {
     let id: String
     /// Author Nostr pubkey, hex (64 chars). Presentation layer formats for
     /// display (ADR-0032).
@@ -59,14 +59,14 @@ struct GroupChatMessage: Decodable, Identifiable, Equatable {
     let kind: UInt32
 }
 
-/// The serialised read-model a group-chat screen consumes. `messages` is
+/// The serialised read-model a group-timeline screen consumes. `events` is
 /// ordered newest-first (`created_at` descending, ties broken by id) by the
 /// Rust projection — Swift does not re-sort. Avatar / initials for the
 /// group tile are derived by the presentation layer (ADR-0032).
-struct GroupChatSnapshot: Decodable, Equatable {
-    let messages: [GroupChatMessage]
+struct GroupTimelineSnapshot: Decodable, Equatable {
+    let events: [GroupTimelineEvent]
 
-    static let empty = GroupChatSnapshot(messages: [])
+    static let empty = GroupTimelineSnapshot(events: [])
 }
 
 // ─── NIP-29 group-discovery read model ────────────────────────────────────

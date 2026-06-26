@@ -6,7 +6,7 @@
 //! Live snapshot projections retain bounded per-event state that is
 //! re-serialised on every snapshot tick (≈4 Hz):
 //!
-//! * `nmp_nip29::projection::group_chat::GroupChatProjection`
+//! * `nmp_nip29::projection::group_timeline::GroupTimelineProjection`
 //!   — chat messages keyed by event id.
 //! * `nmp_nip17::inbox::DmInboxProjection`
 //!   — decrypted DM rumors keyed by inner-rumor event id.

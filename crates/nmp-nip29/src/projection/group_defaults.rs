@@ -1,7 +1,7 @@
 //! `GroupDefaultsProjection` — app-supplied defaults for the NIP-29
 //! public-group create flow.
 //!
-//! Unlike [`super::group_chat::GroupChatProjection`] and
+//! Unlike [`super::group_timeline::GroupTimelineProjection`] and
 //! [`super::discovered::DiscoveredGroupsProjection`], this projection is **not**
 //! event-driven: it carries no [`nmp_core::KernelEventObserver`] and observes no
 //! kernel events. It is a pure **output** projection that surfaces the

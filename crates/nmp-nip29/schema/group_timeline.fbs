@@ -1,0 +1,53 @@
+namespace nmp.nip29;
+
+// Typed FlatBuffers wire for the NIP-29 group-timeline snapshot projection
+// (`nmp_nip29::projection::GroupTimelineSnapshot`), schema_id
+// "nmp.nip29.group_timeline".
+//
+// NIP-29 is a kind-agnostic group transport: this projection accumulates every
+// h-tagged group event regardless of kind and exposes the kind per event, so a
+// "chat view" is a consumer-side filter on `kind == 9`, not a baked-in concept.
+//
+// This is the typed sidecar (ADR-0037) carried alongside the existing generic
+// `serde_json::Value` projection registered under the same key in
+// `nmp_nip29::register::wire_group_timeline`. The serde shape
+// (`GroupTimelineProjection::snapshot_json`) stays authoritative; this buffer
+// mirrors it byte-for-byte in field semantics so a host with a `NGTL` decoder
+// can read typed accessors instead of JSON reflection. An un-updated host falls
+// back to the generic `Value` subtree (the permanent fallback from ADR-0037).
+//
+// Raw data only (ADR-0032): every field is the raw protocol value — hex event
+// ids / pubkeys, verbatim content, Unix-second `created_at`, raw kind. No
+// `display::` forwarder runs on the encode path.
+//
+// Identity encoding: strings, not raw bytes — `id` / `pubkey` are hex `String`
+// in the source serde types, so `string` is byte-for-byte parity (the same
+// per-schema choice documented in timeline_snapshot.fbs / op_feed.fbs).
+//
+// Regenerate the checked-in Rust bindings only with the workspace FlatBuffers
+// pin (25.12.19), enforced by ci/check-flatbuffers-version-pins.sh. The schema
+// is self-contained (no `include`), so generate with plain `flatc --rust`:
+//
+//   flatc --rust -o crates/nmp-nip29/src/wire/generated \
+//         crates/nmp-nip29/schema/group_timeline.fbs
+
+// One group event on the timeline. A flat carrier mirroring
+// `nmp_nip29::GroupTimelineEvent` exactly.
+table GroupTimelineEvent {
+  id:string;            // raw hex event id (also the projection dedupe key)
+  pubkey:string;        // raw hex author pubkey (64 chars)
+  content:string;       // event content, verbatim
+  created_at:uint64;    // event created_at, Unix seconds
+  kind:uint32;          // event kind (e.g. 9 chat, 11 thread) — consumers filter
+}
+
+// The serialised group-timeline read model. `events` is ordered newest-first
+// (`created_at` descending, ties broken by id descending) — the encoder ships
+// the snapshot order verbatim.
+table GroupTimelineSnapshot {
+  schema_version:uint32 = 1;   // mirrors GROUP_TIMELINE_SCHEMA_VERSION
+  events:[GroupTimelineEvent];
+}
+
+root_type GroupTimelineSnapshot;
+file_identifier "NGTL";

@@ -4,7 +4,7 @@
 //! shape — a [`nmp_core::KernelEventObserver`] for ingest plus a no-argument
 //! `snapshot_json` for `nmp_core::NmpApp::register_snapshot_projection`:
 //!
-//! - [`group_chat`] — [`GroupChatProjection`]: one group's chat-content
+//! - [`group_timeline`] — [`GroupTimelineProjection`]: one group's chat-content
 //!   events (kinds 9/11) keyed by `["h", local_id]`. The read-side
 //!   of `GroupChatView`.
 //! - [`discovered`] — [`DiscoveredGroupsProjection`]: a single relay's
@@ -18,12 +18,12 @@
 //!   status derived from relay-signed 39001/39002 snapshots.
 
 pub mod discovered;
-pub mod group_chat;
+pub mod group_timeline;
 pub mod group_defaults;
 pub mod joined;
 
 pub use discovered::{DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot};
-pub use group_chat::{GroupChatMessage, GroupChatProjection, GroupChatSnapshot};
+pub use group_timeline::{GroupTimelineEvent, GroupTimelineProjection, GroupTimelineSnapshot};
 pub use group_defaults::{
     GroupDefaultsProjection, GroupDefaultsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };

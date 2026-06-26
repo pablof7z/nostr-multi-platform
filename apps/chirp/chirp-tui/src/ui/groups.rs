@@ -19,7 +19,7 @@ pub fn render(frame: &mut Frame, area: Rect, state: &AppState) {
         .split(area);
 
     render_group_list(frame, cols[0], state);
-    render_group_chat(frame, cols[1], state);
+    render_group_timeline(frame, cols[1], state);
 }
 
 fn render_group_list(frame: &mut Frame, area: Rect, state: &AppState) {
@@ -110,7 +110,7 @@ fn append_group_card(
     ]));
 }
 
-fn render_group_chat(frame: &mut Frame, area: Rect, state: &AppState) {
+fn render_group_timeline(frame: &mut Frame, area: Rect, state: &AppState) {
     let block = Block::default()
         .borders(Borders::TOP)
         .border_style(Style::default().fg(ACCENT_CYAN))

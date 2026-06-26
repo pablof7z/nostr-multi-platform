@@ -6,7 +6,7 @@
 //! sidecar, alongside — never replacing — the existing generic `serde_json::Value`
 //! projection registered under the same key.
 //!
-//! - [`group_chat_fb`] — `"nmp.nip29.group_chat"` (`NGCS`).
+//! - [`group_timeline_fb`] — `"nmp.nip29.group_timeline"` (`NGTL`).
 //! - [`discovered_groups_fb`] — `"nmp.nip29.discovered_groups"` (`NDGS`).
 //! - [`group_defaults_fb`] — `"nmp.nip29.group_defaults"` (`NGDF`).
 //! - [`joined_groups_fb`] — `"nmp.nip29.joined_groups"` (`NJGS`).
@@ -22,6 +22,6 @@
 
 pub mod action_payload;
 pub mod discovered_groups_fb;
-pub mod group_chat_fb;
+pub mod group_timeline_fb;
 pub mod group_defaults_fb;
 pub mod joined_groups_fb;

@@ -4,7 +4,7 @@
 //! Extracted from `ffi/tests/nip29.rs` to keep each file under the 500-LOC
 //! cap (AGENTS.md). Covers the C-ABI entry-point surface for:
 //!   - `nmp_app_chirp_open_group_discovery` / `close_group_discovery`
-//!   - `nmp_app_chirp_register_group_chat` (parse-gate + idempotency)
+//!   - `nmp_app_chirp_register_group_timeline` (parse-gate + idempotency)
 
 use std::ffi::CString;
 
@@ -13,7 +13,7 @@ use nmp_nip29::group_id::GroupId;
 
 use super::super::{
     nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
-    nmp_app_chirp_register_group_chat, nmp_app_chirp_unregister_group_chat,
+    nmp_app_chirp_register_group_timeline, nmp_app_chirp_unregister_group_timeline,
 };
 
 /// THE DISCOVERY REGISTRATION WIRING PROOF: `nmp_app_chirp_open_group_discovery`
@@ -58,13 +58,13 @@ fn open_group_discovery_null_and_empty_input_are_silent_noops() {
 }
 
 /// THE GROUP-ID WIRE-SHAPE CONTRACT: the JSON shape documented on
-/// `nmp_app_chirp_register_group_chat` — `{"host_relay_url":…,
+/// `nmp_app_chirp_register_group_timeline` — `{"host_relay_url":…,
 /// "local_id":…}` — is exactly what `GroupId`'s serde derive accepts.
 /// This is the contract a Swift caller depends on: a body of any other
 /// shape is rejected by the `serde_json::from_str::<GroupId>` parse gate
 /// inside the function and the registration silently no-ops (D6).
 #[test]
-fn register_group_chat_group_id_wire_shape_matches_serde() {
+fn register_group_timeline_group_id_wire_shape_matches_serde() {
     let parsed: GroupId =
         serde_json::from_str(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#)
             .expect("documented group_id_json shape must deserialize to GroupId");
@@ -79,49 +79,49 @@ fn register_group_chat_group_id_wire_shape_matches_serde() {
     );
 }
 
-/// THE GROUP-CHAT WIRING PROOF: `nmp_app_chirp_register_group_chat` opens a
-/// hydrating `GroupChatProjection` read view against `app` for a well-formed
+/// THE GROUP-CHAT WIRING PROOF: `nmp_app_chirp_register_group_timeline` opens a
+/// hydrating `GroupTimelineProjection` read view against `app` for a well-formed
 /// group id — it runs to completion (typed sidecar registration + muted
 /// observer + relay-pinned observed interest) without panicking, and the
-/// `"nmp.nip29.group_chat"` snapshot key is synchronously registered. The
+/// `"nmp.nip29.group_timeline"` snapshot key is synchronously registered. The
 /// hydration end-to-end is proven by the `nmp-ffi` integration tests; this
 /// asserts the Chirp-side delegation is sound, and that `unregister` removes
 /// the key again (#2088 teardown).
 #[test]
-fn register_group_chat_runs_for_well_formed_group() {
+fn register_group_timeline_runs_for_well_formed_group() {
     let app = nmp_app_new();
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this test.
     let app_ref = unsafe { &*app };
     let group =
         CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#).unwrap();
-    nmp_app_chirp_register_group_chat(app, group.as_ptr());
+    nmp_app_chirp_register_group_timeline(app, group.as_ptr());
     assert!(
         app_ref
             .registered_typed_projection_keys()
             .iter()
-            .any(|k| k == "nmp.nip29.group_chat"),
-        "register_group_chat must synchronously register the group_chat snapshot key"
+            .any(|k| k == "nmp.nip29.group_timeline"),
+        "register_group_timeline must synchronously register the group_timeline snapshot key"
     );
     // Teardown removes the key (no stale chat log after screen dismissal).
-    nmp_app_chirp_unregister_group_chat(app);
+    nmp_app_chirp_unregister_group_timeline(app);
     assert!(
         !app_ref
             .registered_typed_projection_keys()
             .iter()
-            .any(|k| k == "nmp.nip29.group_chat"),
-        "unregister_group_chat must remove the group_chat snapshot key"
+            .any(|k| k == "nmp.nip29.group_timeline"),
+        "unregister_group_timeline must remove the group_timeline snapshot key"
     );
     nmp_app_free(app);
 }
 
 /// THE IDEMPOTENCY PROOF — group-chat variant. Two consecutive
-/// `register_group_chat` calls (the multi-screen navigation case that
+/// `register_group_timeline` calls (the multi-screen navigation case that
 /// previously leaked the prior observer) leave EXACTLY ONE
-/// `"nmp.nip29.group_chat"` snapshot projection registered: the singleton open
+/// `"nmp.nip29.group_timeline"` snapshot projection registered: the singleton open
 /// path closes the prior hydrating session before installing the replacement,
 /// so there is no leak and no duplicate key.
 #[test]
-fn register_group_chat_is_idempotent_on_re_invoke() {
+fn register_group_timeline_is_idempotent_on_re_invoke() {
     let app = nmp_app_new();
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for the
     // duration of this test.
@@ -130,7 +130,7 @@ fn register_group_chat_is_idempotent_on_re_invoke() {
     let key_count = |a: &nmp_ffi::NmpApp| {
         a.registered_typed_projection_keys()
             .iter()
-            .filter(|k| *k == "nmp.nip29.group_chat")
+            .filter(|k| *k == "nmp.nip29.group_timeline")
             .count()
     };
 
@@ -143,19 +143,19 @@ fn register_group_chat_is_idempotent_on_re_invoke() {
         CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room-b"}"#)
             .unwrap();
 
-    nmp_app_chirp_register_group_chat(app, group_a.as_ptr());
+    nmp_app_chirp_register_group_timeline(app, group_a.as_ptr());
     assert_eq!(key_count(app_ref), 1, "first register installs one view");
 
     // Second registration with a different group — re-open must close the
-    // prior session first, leaving exactly one live group_chat view.
-    nmp_app_chirp_register_group_chat(app, group_b.as_ptr());
+    // prior session first, leaving exactly one live group_timeline view.
+    nmp_app_chirp_register_group_timeline(app, group_b.as_ptr());
     assert_eq!(
         key_count(app_ref),
         1,
-        "re-register must keep exactly one group_chat view (no leak, no duplicate)"
+        "re-register must keep exactly one group_timeline view (no leak, no duplicate)"
     );
 
-    nmp_app_chirp_unregister_group_chat(app);
+    nmp_app_chirp_unregister_group_timeline(app);
     nmp_app_free(app);
 }
 
@@ -163,20 +163,20 @@ fn register_group_chat_is_idempotent_on_re_invoke() {
 /// `group_id_json` (valid JSON, wrong fields) all degrade to a silent
 /// no-op — the function must never panic across the FFI boundary.
 #[test]
-fn register_group_chat_null_and_malformed_input_are_silent_noops() {
+fn register_group_timeline_null_and_malformed_input_are_silent_noops() {
     let group =
         CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"room"}"#).unwrap();
     // Null app — must not dereference.
-    nmp_app_chirp_register_group_chat(std::ptr::null_mut(), group.as_ptr());
+    nmp_app_chirp_register_group_timeline(std::ptr::null_mut(), group.as_ptr());
 
     let app = nmp_app_new();
     // Null group id — silent return.
-    nmp_app_chirp_register_group_chat(app, std::ptr::null());
+    nmp_app_chirp_register_group_timeline(app, std::ptr::null());
     // Malformed JSON shape — fails the `GroupId` parse gate, silent return.
     let bad = CString::new(r#"{"not":"a group id"}"#).unwrap();
-    nmp_app_chirp_register_group_chat(app, bad.as_ptr());
+    nmp_app_chirp_register_group_timeline(app, bad.as_ptr());
     // Non-JSON garbage — also fails the parse gate, silent return.
     let garbage = CString::new("not json at all").unwrap();
-    nmp_app_chirp_register_group_chat(app, garbage.as_ptr());
+    nmp_app_chirp_register_group_timeline(app, garbage.as_ptr());
     nmp_app_free(app);
 }

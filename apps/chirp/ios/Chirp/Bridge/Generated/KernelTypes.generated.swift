@@ -178,7 +178,7 @@ struct SnapshotProjections: Decodable, Equatable {
     let actionLifecycle: ActionLifecycleSnapshot?
     let profile: ProfileCard?
     let homeFeed: OpFeedSnapshot?
-    let groupChat: GroupChatSnapshot?
+    let groupTimeline: GroupTimelineSnapshot?
     let dmInbox: DmInboxSnapshot?
     let followList: FollowListSnapshot?
     let discoveredGroups: DiscoveredGroupsSnapshot?
@@ -208,7 +208,7 @@ struct SnapshotProjections: Decodable, Equatable {
         case actionLifecycle
         case profile
         case homeFeed = "nmp.feed.home"
-        case groupChat = "nmp.nip29.groupChat"
+        case groupTimeline = "nmp.nip29.groupTimeline"
         case dmInbox = "nmp.nip17.dmInbox"
         case followList = "nmp.followList"
         case discoveredGroups = "nmp.nip29.discoveredGroups"
