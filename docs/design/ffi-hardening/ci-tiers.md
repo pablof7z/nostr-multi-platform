@@ -158,8 +158,7 @@ capture traces.
 3. §7.1 grep gate = 0 hits.
 4. Doctrine review (D0–D5) signed off in `doctrine-review.md`.
 5. iPhone 12 baseline = published in `iphone12-baseline.md` with no
-   p99 regression > 5 % vs M10 baseline (plan.md M10.5 exit-gate
-   row 2).
+   p99 regression > 5 % vs M10 baseline (M10.5 exit-gate).
 6. M11 podcast app scoping begins.
 
 A single broken row in any of 1–5 means M10.5 stays open. There

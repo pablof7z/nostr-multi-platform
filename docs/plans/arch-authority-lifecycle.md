@@ -84,6 +84,6 @@ per workstream (or one combined "kernel owns authority & lifecycle" ADR) before 
 
 ## Open questions
 - Is one combined ADR right, or one per workstream? (D is a bigger surface than E.)
-- Which of D/E items are v1-blocking vs post-v1? Reconcile with `docs/plan.md` and v1 scope before sequencing.
+- Which of D/E items are v1-blocking vs post-v1? Check GitHub Issues and v1 scope before sequencing.
 - Cross-check against existing issues for V-78 (`active_local_keys` signing defect) and the signer-session-port work so
   this doesn't duplicate in-flight fixes.

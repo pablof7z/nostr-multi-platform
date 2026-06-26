@@ -10,7 +10,7 @@ NDK and Applesauce taught NMP what a well-shaped reactive Nostr client API looks
 
 Both Damus codebases are production. nostrdb is LMDB-backed and intentionally a port of strfry's storage layout (the fastest Nostr relay). Notedeck is the TweetDeck-style desktop/Android client that consumes nostrdb directly. Combined ≈ 30k LOC of Rust focused on exactly the substrate we are building.
 
-This note distills what to **adopt directly**, what to **consider and possibly defer**, what to **intentionally diverge on**, and a few specific decisions for the milestones in `docs/plan.md`.
+This note distills what to **adopt directly**, what to **consider and possibly defer**, what to **intentionally diverge on**, and a few specific decisions for the milestones tracked in GitHub Issues.
 
 ## 2. Lessons from nostrdb (storage)
 

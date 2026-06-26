@@ -29,7 +29,6 @@ tests.
 
 The temporal coordination files are:
 
-- `docs/plan.md`: current release-plan view and v1 exit criteria.
 - GitHub Issues: active violations, pending user decisions, and queued work.
 - `WIP.md`: live worktrees and branches.
 

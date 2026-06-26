@@ -63,7 +63,7 @@ members = [
 ]
 # PARKED CRATES — excluded from the default workspace build.
 #
-# These crates are post-v1 (see docs/plan.md §133-141) and their primary
+# These crates are post-v1 (tracked in GitHub Issues) and their primary
 # action stubs return `Err(Unsupported)`. Keeping them as active members
 # would violate the no-dead-code / no-false-advertising rule in AGENTS.md
 # §155-170. The code is preserved in-tree so it is ready when the

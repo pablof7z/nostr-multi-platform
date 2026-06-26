@@ -1,6 +1,6 @@
 //! Helpers for constructing Marmot `LogicalInterest`s.
 //!
-//! Per `docs/plan/marmot-mls.md` §Step 4 + mdk-api.md §4, every relay read the
+//! Per `docs/research/mdk-api.md` §4, every relay read the
 //! Marmot app needs is represented as a kernel interest:
 //!
 //! - kind:1059 `#p = self` gift-wrap inbox, registered at Marmot startup;

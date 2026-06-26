@@ -402,8 +402,8 @@ fn nip42_kernel_publish_retry_on_auth_required() {
 //
 // Pins: AUTH-state transitions DO NOT directly bump `kernel.rev`. The
 // `changed_since_emit` flag IS set so the diagnostic surface re-emits on
-// the next actor tick (required by `docs/plan/m5-nip42.md` §19 — Failed
-// AUTH must be visible), but the rev counter advances only via
+// the next actor tick (required by the NIP-42 auth-failure diagnostic
+// contract — Failed AUTH must be visible), but the rev counter advances only via
 // `make_update` which the actor schedules at ≤60 Hz/view (D8).
 //
 // The narrower invariant pinned here: AUTH-paused REQ re-defers (the

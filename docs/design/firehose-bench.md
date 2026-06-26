@@ -2,7 +2,7 @@
 
 > **Audience:** Framework contributors. Complements `reactivity-bench` (synthetic, Rust-only); this harness exercises the full system end-to-end.
 
-> **Status:** Draft. Lives in `crates/nmp-testing/bin/firehose-bench/`. Gated as a Phase 9 deliverable in `plan.md`; capture-mode scenarios run as early as Phase 2.
+> **Status:** Draft. Lives in `crates/nmp-testing/bin/firehose-bench/`. Gated as a Phase 9 deliverable, tracked in GitHub Issues; capture-mode scenarios run as early as Phase 2.
 
 > **Prerequisites:** `product-spec.md` (especially §7.1 EventStore, §7.2 planner, §7.3 outbox, §7.8 sync engine, §7.16 metrics); `reactivity.md`; ADRs 0001–0005.
 
@@ -297,7 +297,7 @@ Traces are re-captured quarterly against current relay traffic to keep them repr
 
 ## 6. Implementation phasing
 
-The harness is a Phase 9 deliverable per `plan.md`, but pieces ship earlier:
+The harness is a Phase 9 deliverable, but pieces ship earlier:
 
 | Capability | Lands in phase | Why |
 |---|---|---|

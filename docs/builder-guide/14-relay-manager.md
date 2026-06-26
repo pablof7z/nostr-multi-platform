@@ -5,8 +5,9 @@
 >
 > This is **M8-subs** (subscription lifecycle), *distinct from* M8
 > multi-account (session scope — that is [11 — Sessions + signers + identity scopes](11-sessions-signers.md)). The
-> plan that governs this section is `docs/plan/m8-subscription-lifecycle.md`
-> — not `m8-multi-account.md`. Conflating them is anti-pattern #5.
+> subscription lifecycle contract for this section is pinned by
+> `crates/nmp-testing/tests/m8_subscription_lifecycle.rs` — not
+> `m8-multi-account.md`. Conflating them is anti-pattern #5.
 
 `CompiledPlan` (from the M2 planner — see
 [07 — Subscription planner — Interest → CompiledPlan → wire](07-subscription-planner.md)) is a deterministic
@@ -17,7 +18,7 @@ connection-pool plumbing.
 
 ## The four M8-subs seams
 
-Per `docs/plan/m8-subscription-lifecycle.md:15-32` and the module doc
+Per the subscription lifecycle contract (`crates/nmp-testing/tests/m8_subscription_lifecycle.rs`) and the module doc
 (`crates/nmp-core/src/subs/mod.rs:6-20`):
 
 1. **`InterestRegistry`** — single writer of the active-interest set (D4).
@@ -135,7 +136,8 @@ Sequence across the seams:
 5. Disconnect → `Nip42Driver::reset_on_disconnect` → `NotRequired`
    (`flow.rs:119-123`); a fresh challenge on the next connect re-runs the
    handshake. Logical subscriptions are **not** re-issued by the handshake
-   (M5 exit gate, `docs/plan/m5-nip42.md:20`).
+   (M5 exit gate — reconnect replay is handled by `handle_reconnect` separately,
+   not by the auth handshake).
 
 ## What happens on reconnect to live REQs
 
@@ -194,8 +196,9 @@ the `nmp-nip77` side.
    you queued during the pause re-sends frames that CLOSE'd in the interim.
 5. **Confusing M8-subs with M8-multi-account.** This section is the
    connection-pool / trigger-fan-in concern. Account-scope rebuild-on-switch
-   is [11 — Sessions + signers + identity scopes](11-sessions-signers.md). The plan files are
-   `m8-subscription-lifecycle.md` vs `m8-multi-account.md`.
+   is [11 — Sessions + signers + identity scopes](11-sessions-signers.md). The lifecycle
+   contract is `crates/nmp-testing/tests/m8_subscription_lifecycle.rs`; the
+   multi-account concern is covered in guide 11.
 6. **Including plan-id in the wire sub-id.** It forces a full CLOSE+REQ on
    every plan-id change. Sub-ids must derive from `canonical_filter_hash`
    only (`wire.rs:133-135`).

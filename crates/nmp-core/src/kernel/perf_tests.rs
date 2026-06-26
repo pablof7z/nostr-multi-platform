@@ -43,9 +43,10 @@
 //! The real monitoring signal is the `NMP_PERF` log line emitted on every
 //! tick in production; this gate is the coarse net that catches a snapshot
 //! path that has clearly broken. Tighten the ceiling further only if a
-//! follow-up perf budget is documented in `docs/plan.md` or GitHub Issues.
+//! follow-up perf budget is documented in GitHub Issues.
 //!
-//! See `docs/plan.md` v1 exit criterion #8 for the contract.
+//! See the v1 snapshot-performance exit criterion (tracked in GitHub Issues)
+//! for the contract.
 //!
 //! ## What this test does NOT cover
 //!
@@ -206,13 +207,13 @@ fn snapshot_perf_firehose_gate() {
         make_update_us < MAX_MAKE_UPDATE_US,
         "snapshot perf regression: make_update_us={make_update_us} exceeds \
          ceiling {MAX_MAKE_UPDATE_US} (1k-event firehose, visible_limit={VISIBLE_LIMIT}). \
-         See docs/plan.md v1 exit criterion #8."
+         See the v1 snapshot-performance exit criterion (GitHub Issues)."
     );
     assert!(
         serialize_us < MAX_SERIALIZE_US,
         "snapshot perf regression: serialize_us={serialize_us} exceeds \
          ceiling {MAX_SERIALIZE_US} (1k-event firehose, visible_limit={VISIBLE_LIMIT}). \
-         See docs/plan.md v1 exit criterion #8."
+         See the v1 snapshot-performance exit criterion (GitHub Issues)."
     );
 }
 

@@ -15,9 +15,7 @@ doctrine, architecture docs, builder guides, ADRs, and validation reports.
 It does not own active work state, roadmap state, pending decisions, or release
 truth. Those are temporal coordination facts and belong only in:
 
-- `docs/plan.md`
 - GitHub Issues
-- `WIP.md`
 
 ## Authority Boundary
 

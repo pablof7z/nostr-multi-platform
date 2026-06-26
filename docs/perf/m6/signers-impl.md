@@ -90,10 +90,9 @@ URI shell itself parses in <1 µs.
 - ADR-0015 (this commit) — full design rationale, synthesis reconciliation,
   follow-ups.
 - PD-004 — `IdentityId` → ULID before M8.
-- `docs/plan/m6-signers-write.md` — milestone scope.
-- `docs/plan/m5-nip42.md` — depends on `Signer` trait + `signer_active()`
-  to route AUTH challenges.
-- `docs/plan/m7-interaction-loop.md` — depends on this for `SendNote`.
+- M6 signers milestone (shipped; durable design is ADR-0015, `docs/decisions/0015-m6-signer-design.md`).
+- `nmp-nip42` crate — depends on `Signer` trait + `signer_active()` to route AUTH challenges.
+- M7 interaction-loop (SendNote write-path) — depends on this crate for the active signer.
 
 ## What's NOT in this commit (deferred per scope)
 

@@ -12,7 +12,7 @@ name it without depending on `nmp-signers`.
 
 ## Context
 
-M6 (per `docs/plan/m6-signers-write.md`) requires three signer kinds: local nsec, NIP-46 bunker, and NIP-07 browser extension. Task #43 additionally requires a multi-account `AccountManager` and kind:3 rewire observer — work that strictly belongs to M8 but is folded into M6 here because the kernel reactivity for active-account changes needs to be in place before the M5 NIP-42 auth path can route challenges to the *right* signer (the same active account).
+M6 requires three signer kinds: local nsec, NIP-46 bunker, and NIP-07 browser extension. Task #43 additionally requires a multi-account `AccountManager` and kind:3 rewire observer — work that strictly belongs to M8 but is folded into M6 here because the kernel reactivity for active-account changes needs to be in place before the M5 NIP-42 auth path can route challenges to the *right* signer (the same active account).
 
 Two upstream research families inform the design:
 
@@ -150,6 +150,6 @@ The parser is **the** target of the 1000-URI fuzz suite (`fuzz/bunker_uri.rs`), 
 
 - ADR-0007 (diagnostics and non-Nostr domain data) — toast-style error surfacing.
 - ADR-0009 (app-extension-kernel boundary) — `IdentityModule` is one of the canonical extension trait shapes.
-- `docs/plan/m5-nip42.md` — auth challenge routing needs the active signer bridge.
-- `docs/plan/m7-interaction-loop.md` — write-path actions consume the active signer to sign.
-- `docs/plan/m8-multi-account.md` — multi-account UX builds on this manager.
+- `nmp-nip42` crate — NIP-42 auth challenge routing depends on the active signer bridge from this ADR.
+- M7 interaction-loop — write-path actions (e.g. SendNote) consume the active signer to sign events.
+- Multi-account UX (M8) — builds on `AccountManager` from this ADR.

@@ -74,7 +74,7 @@ platform shadow model. UniFFI may expose helper objects and lifecycle APIs, but
 has no `payload:Value` compatibility tree; host-visible state is carried by typed
 envelope fields and typed projection sidecars.
 
-Top-level shape (long-term, illustrative; v1 contains the kernel fields needed by [`docs/plan.md`](../plan.md) and keeps product subsystems absent or empty):
+Top-level shape (long-term, illustrative; v1 contains the kernel fields tracked in GitHub Issues and keeps product subsystems absent or empty):
 
 ```rust
 #[derive(Clone, uniffi::Record)]

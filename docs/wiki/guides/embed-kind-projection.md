@@ -33,7 +33,7 @@ The default handler set for each platform registry at launch covers only kind:1 
 
 ## ADR Requirement
 
-An ADR must be written before any code lands, locking in three commitments: (1) `EmbedKindProjection` is a Rust-side typed enum, not a native kind-to-widget map; (2) `ContentTreeWire` is the canonical embed-host wire format across all platforms; (3) `nmp-content::RenderContext` is the single recursion guard. ADRs live in `docs/decisions/0032-*.md` format and plan files in `docs/plan/m*.md` format, with F-08 already scoping this area in BACKLOG. The ADR-0055 projection merge cache must live in the wasm worker/Rust side; the web client.ts must only decode and render already-merged frames, not reimplement keep-last-good projection merge semantics in TypeScript.
+An ADR must be written before any code lands, locking in three commitments: (1) `EmbedKindProjection` is a Rust-side typed enum, not a native kind-to-widget map; (2) `ContentTreeWire` is the canonical embed-host wire format across all platforms; (3) `nmp-content::RenderContext` is the single recursion guard. ADRs live in `docs/decisions/0032-*.md` format. F-08 (component registry) has shipped (issue #980 closed); active follow-on work is tracked in GitHub Issues. The ADR-0055 projection merge cache must live in the wasm worker/Rust side; the web client.ts must only decode and render already-merged frames, not reimplement keep-last-good projection merge semantics in TypeScript.
 
 <!-- citations: [^15725-6] [^019ed-14] -->
 ## EmbedKindProjection Variants

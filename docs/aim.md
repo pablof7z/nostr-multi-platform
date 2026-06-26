@@ -173,13 +173,13 @@ The framework ships **test utilities**: a mock relay (already provided by the re
 
 ### 4.14 Scaffolding CLI
 
-A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the binding layer (today: hand-rolled C-ABI; symbol counts and governance are temporal facts tracked in `docs/plan.md`; UniFFI migration deferred to M14 when the write surface stabilizes — see **ADR-0030** (`docs/decisions/0030-uniffi-vs-c-abi.md`)), an iOS SwiftUI app, an Android Compose app, a desktop (egui) app, the `justfile` build orchestrator, and an optional Nix flake. A web wasm shell is a post-v1 scaffold target, not part of the v1 starter contract. The starter app implements login, a timeline, compose, a profile screen, and DMs. It builds and runs on the v1 native platforms (iOS, Android, desktop) immediately. This is modeled directly on RMP's `rmp init`.
+A **scaffolding CLI** (`<framework> init`) generates a complete starter project: the Rust core crate, the binding layer (today: hand-rolled C-ABI; symbol counts and governance are temporal facts tracked in GitHub Issues; UniFFI migration deferred to M14 when the write surface stabilizes — see **ADR-0030** (`docs/decisions/0030-uniffi-vs-c-abi.md`)), an iOS SwiftUI app, an Android Compose app, a desktop (egui) app, the `justfile` build orchestrator, and an optional Nix flake. A web wasm shell is a post-v1 scaffold target, not part of the v1 starter contract. The starter app implements login, a timeline, compose, a profile screen, and DMs. It builds and runs on the v1 native platforms (iOS, Android, desktop) immediately. This is modeled directly on RMP's `rmp init`.
 
 ---
 
 ## 5. Crate layout
 
-The repository is a Cargo workspace plus per-platform shells. The layout below is the long-term workspace shape. v1 publishes only the kernel subset described in [`docs/plan.md`](plan.md); product crates remain placeholders or later milestones until the kernel proves its invariants.
+The repository is a Cargo workspace plus per-platform shells. The layout below is the long-term workspace shape. v1 publishes only the kernel subset tracked in GitHub Issues; product crates remain placeholders or later milestones until the kernel proves its invariants.
 
 ```
 <framework>/
@@ -191,7 +191,7 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 │   │                              # AppReconciler callback interface,
 │   │                              # state-type carriers across the FFI seam.
 │   │                              # TODAY: hand-rolled C-ABI; symbol count and
-│   │                              # governance tracked in docs/plan.md.
+│   │                              # governance tracked in GitHub Issues.
 │   │                              # UniFFI migration deferred to M14 — see
 │   │                              # ADR-0030.
 │   ├── <framework>-wasm         # wasm-bindgen wrapper for web/Node/RN.

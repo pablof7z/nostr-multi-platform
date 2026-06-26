@@ -1,5 +1,5 @@
-//! Marmot domain record shapes per `docs/plan/marmot-mls.md` §Step 1 and the
-//! MDK→NMP mapping table in `docs/research/mdk-api.md` §6.
+//! Marmot domain record shapes per the MDK→NMP mapping table in
+//! `docs/research/mdk-api.md` §6.
 //!
 //! Four record types live here: [`MarmotGroupRecord`], [`MarmotMessageRecord`],
 //! [`MarmotKeyPackageRecord`], [`MarmotWelcomeRecord`]. Each is an

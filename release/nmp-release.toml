@@ -1,7 +1,7 @@
 # Canonical release-train manifest for NMP.
 #
-# This file is operational configuration, not a planning document. The product
-# plan lives in docs/plan/m17-release.md and docs/BACKLOG.md.
+# This file is operational configuration, not a planning document.
+# Release/milestone planning lives in GitHub Issues.
 
 schema_version = 1
 release_train = "nmp"

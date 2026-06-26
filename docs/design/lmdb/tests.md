@@ -157,7 +157,7 @@ Scenario in `crates/nmp-testing/bin/reactivity-bench` (`--scenario working_set_l
 - Insert 1M synthetic events; open 100 views covering 10k events; run 60 s with 10 inserts/sec.
 - Gate: max RSS ≤ 100 MB over the run.
 
-### 2.16 Restart preserves replaceable semantics (`plan.md` §M3 exit gate)
+### 2.16 Restart preserves replaceable semantics (M3 exit gate)
 
 File: `crates/nmp-testing/tests/store_replaceable_restart.rs`
 
@@ -188,7 +188,7 @@ Violation of any invariant fails the test with a precise diff of which sub-db is
 
 ## 5. CI integration
 
-`cargo test --workspace --features lmdb-backend` becomes part of the pre-merge gate from M3 onward (`plan.md` §6 will be updated). The criterion benches in `crates/nmp-testing/benches/store_*.rs` run nightly with regression checks against the previous week's median (>5% regression on any p99 fails the nightly).
+`cargo test --workspace --features lmdb-backend` becomes part of the pre-merge gate from M3 onward. The criterion benches in `crates/nmp-testing/benches/store_*.rs` run nightly with regression checks against the previous week's median (>5% regression on any p99 fails the nightly).
 
 ## 6. Cache adoption acceptance gates (epic #1523)
 

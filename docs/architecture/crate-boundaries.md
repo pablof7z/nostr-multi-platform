@@ -7,7 +7,7 @@ This document owns durable crate-boundary rules: which layer owns which
 responsibility, which dependency directions are valid, and which seams are
 allowed between layers. It does **not** own migration status, completed-step
 history, active branches, PR state, or "what is currently being fixed" claims.
-Temporal coordination belongs in `docs/plan.md` and GitHub Issues.
+Temporal coordination belongs in GitHub Issues.
 
 If this document disagrees with code, ADRs, or doctrine, fix the single source
 of truth that owns the concept. Do not create a second crate-boundary plan.

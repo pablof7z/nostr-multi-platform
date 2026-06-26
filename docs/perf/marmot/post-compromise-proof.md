@@ -3,7 +3,7 @@
 **Date**: 2026-05-18  
 **Test**: `marmot_post_compromise::post_compromise_attacker_epoch_n_cannot_decrypt_epoch_n_plus_1`  
 **File**: `crates/nmp-testing/tests/marmot_post_compromise.rs`  
-**Exit gate ref**: `docs/plan/marmot-mls.md §"Exit gate (product)"` — post-compromise security proof
+**Exit gate ref**: Marmot post-compromise security exit gate. Marmot shipped and was validated cross-platform 2026-06-13; the API spec lives at `docs/research/mdk-api.md`.
 
 ---
 

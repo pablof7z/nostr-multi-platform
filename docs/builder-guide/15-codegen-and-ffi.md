@@ -96,7 +96,7 @@ Deleting the old `gen modules` scaffolder did not touch them.
 │ and typed projection sidecars from Rust to frontend shells. JSON is    │
 │ allowed for Nostr relay frames, capability envelopes, diagnostics,     │
 │ goldens, or tests. It is not a second production update transport.   │
-├─ M14 — UniFFI (PLANNED, docs/plan/m14-uniffi.md) ───────────────────┤
+├─ M14 — UniFFI (PLANNED — see ADR-0030 for the decision record; status tracked in GitHub Issues) ──┤
 │ nmp-codegen extended to emit `uniffi::setup_scaffolding!()` +        │
 │ lifecycle/binding wrappers (see ADR-0010 §Codegen output). iOS stops    │
 │ importing NmpCore.h; imports the generated Swift module. UniFFI owns   │

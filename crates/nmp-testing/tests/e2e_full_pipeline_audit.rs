@@ -1,10 +1,10 @@
 //! Audit: fail CI when an e2e test is still `#[ignore]`-tagged for a milestone
-//! that has already been recorded as DONE in `docs/plan.md`.
+//! that has already been recorded as DONE in GitHub Issues.
 //!
 //! # How it works
 //!
 //! 1. `DONE_MILESTONES` lists every milestone whose status is DONE per
-//!    `docs/plan.md`.  Update this constant when a milestone ships.
+//!    GitHub Issues.  Update this constant when a milestone ships.
 //! 2. The test reads `e2e_full_pipeline.rs` and finds all `#[ignore = "..."]`
 //!    annotations that match the pattern `blocked on M<N>+...`.
 //! 3. For each gate milestone extracted from those annotations, if it appears
@@ -14,7 +14,7 @@
 //! # When to update `DONE_MILESTONES`
 //!
 //! After a milestone lands on `master` and passes its exit gate (runnable
-//! artifact + perf report + ADR update per `docs/plan.md`), add its label
+//! artifact + perf report + ADR update), add its label
 //! here.  The label must match the `M<N>` prefix used in the ignore tags.
 //!
 //!   M0  — kernel substrate + non-Nostr fixture              (DONE)
@@ -43,7 +43,7 @@ use std::collections::HashSet;
 const DONE_MILESTONES: &[&str] = &[
     // M0 and M1 are done but not referenced in ignore tags — safe to list.
     "M0", "M1",
-    // M2–M8 are all marked ✅ done in docs/plan.md (milestone ladder table).
+    // M2–M8 are all done (tracked in GitHub Issues).
     "M2", "M3", "M4", "M5", "M6", "M7", "M8",
 ];
 

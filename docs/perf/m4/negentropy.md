@@ -1,8 +1,6 @@
 # M4 — Negentropy efficiency report
 
-> Part of the [Build & Validation Plan](../../plan.md). Closes the M4 exit-gate
-> "≤ 5 % bytes-on-wire vs equivalent REQ on a 10 k-event backfill"
-> ([`docs/plan/m4-negentropy.md`](../../plan/m4-negentropy.md) §Exit-gate).
+> Closes the M4 exit-gate "≤ 5 % bytes-on-wire vs equivalent REQ on a 10 k-event backfill".
 
 ## What ran
 

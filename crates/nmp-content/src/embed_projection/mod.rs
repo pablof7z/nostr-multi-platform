@@ -6,7 +6,7 @@
 //! consume via `EmbeddedEventEnvelope` on the wire.
 //!
 //! D0-clean: lives in nmp-content (a rendering sidecar), not nmp-core substrate.
-//! See ADR-0034 and docs/plan/m16-kind-dispatch.md for the full contract.
+//! See ADR-0034 (`docs/decisions/0034-kind-dispatch-content-rendering.md`) for the full contract.
 
 mod envelope;
 mod variants;

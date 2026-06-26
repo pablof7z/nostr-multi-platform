@@ -1,6 +1,6 @@
 # NMP M6 Sessions + Signers — Synthesis & Recommendation
 
-> Reads: `ndk-sessions.md`, `applesauce-sessions.md`, existing `docs/research/applesauce/signers.md`, NMP doctrine D0–D8 (`docs/product-spec/overview-and-dx.md` §1.5), `docs/plan/m6-signers-write.md`, current Rust shape in `crates/nmp-core/src/substrate/identity.rs`.
+> Reads: `ndk-sessions.md`, `applesauce-sessions.md`, existing `docs/research/applesauce/signers.md`, NMP doctrine D0–D8 (`docs/product-spec/overview-and-dx.md` §1.5), current Rust shape in `crates/nmp-core/src/substrate/identity.rs`.
 
 ## 1. The nine questions, answered
 
@@ -85,7 +85,7 @@ RemoveAccount { pubkey: String, wipe: bool },
 GenerateNewAccount { display_name: Option<String>, passphrase: String }, // create + nip-49 encrypt + publish kind:0/10002 if requested
 ```
 
-**Defer to M8** (per `docs/plan/m8-multi-account.md` per `docs/plan/m6-signers-write.md`): account-metadata editing (`RenameAccount`), the multi-account switcher UI, and any full N-account state-machine UX. The account list is **always** readable from `AppState.session.accounts` (no `ListAccounts` action needed — it's snapshot state per D8). The data-model multi-account support is M6 invariant (don't bake "single account" into any schema); the *UX surface* for it is M8.
+**Defer to M8** (multi-account UX; signer design in ADR-0015): account-metadata editing (`RenameAccount`), the multi-account switcher UI, and any full N-account state-machine UX. The account list is **always** readable from `AppState.session.accounts` (no `ListAccounts` action needed — it's snapshot state per D8). The data-model multi-account support is M6 invariant (don't bake "single account" into any schema); the *UX surface* for it is M8.
 
 **Enumeration**: read-only via `AppState.session.accounts: Vec<AccountRecord>`. Reactive: the actor emits `AppUpdate::FullState` (or a `SessionDelta` variant) on add/remove/activate.
 
@@ -174,12 +174,12 @@ Applesauce (`packages/signers/src/signers/extension-signer.ts`, 37 LOC): caches 
 
 ### 1.9 Multi-account UX surface for M6 vs deferred
 
-M6 deliverables per `docs/plan/m6-signers-write.md:11-19`:
+M6 deliverables (signer design in ADR-0015 at `docs/decisions/0015-m6-signer-design.md`):
 
 | In scope for M6 | Deferred (M7+) |
 | --- | --- |
 | Paste nsec (raw + ncryptsec) | `nostrconnect://` (client-initiated reverse handshake) |
-| Generate new nsec + NIP-49 encrypt + keyring store | Multi-account switcher UI (M8 per `docs/plan/m8-multi-account.md`) |
+| Generate new nsec + NIP-49 encrypt + keyring store | Multi-account switcher UI (M8; track in GitHub Issues) |
 | Paste `bunker://` URL → live signer | Hardware signers (Coldcard, Krux, etc.) — analogous to applesauce's SerialPortSigner |
 | `KeychainCapability` real impl on iOS | NIP-07 web extension (post-v1 web/wasm milestone) |
 | Active account binding (one at a time) | Account metadata (color, display name editing) |

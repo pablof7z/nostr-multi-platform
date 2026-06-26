@@ -154,7 +154,7 @@ CI regression check; iPhone 12 column is the load-bearing gate.*
 |---|---|---|---|
 | Total Instruments-Leaks across the suite | `==` | 0 | every scenario with `--instruments` |
 | Total crashes / panics across the suite | `==` | 0 | every scenario |
-| M1–M10 firehose-bench rerun regression (p99 ms, any scenario) | `<=` | +5 % vs baseline | plan.md §M10.5 exit-gate row 2 |
+| M1–M10 firehose-bench rerun regression (p99 ms, any scenario) | `<=` | +5 % vs baseline | M10.5 exit-gate |
 | Pre-merge runtime budget per PR | `<=` | 15 min wall-time on `macos-14` | ci.md §1 |
 | Nightly runtime budget on Mac mini self-hosted | `<=` | 90 min | ci.md §2 |
 
@@ -255,7 +255,7 @@ Each line item names the artifact that proves it.
 
 ### D5. Capabilities report, never decide
 
-Canonical (plan.md:9): capabilities surface position events to the
+Canonical doctrine D5: capabilities surface position events to the
 iOS layer; **no policy decisions are made at the bridge**.
 
 - ✅ **Code proof:** `CapabilityModule` trait (`substrate/capability.rs`)

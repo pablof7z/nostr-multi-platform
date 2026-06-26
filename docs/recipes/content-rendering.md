@@ -235,6 +235,6 @@ report so you can cherry-pick the upstream changes manually.
 
 ## See Also
 
-- [`docs/plan/m16-component-registry.md`](../plan/m16-component-registry.md) — full M16 spec
+- ADR-0032 and ADR-0034 in `docs/decisions/` — content-rendering decision records; component registry (F-08) shipped (issue #980 closed)
 - [`crates/nmp-cli/registry/registry.toml`](../../crates/nmp-cli/registry/registry.toml) — registry manifest
 - [`web/registry/`](../../web/registry/) — component showcase website

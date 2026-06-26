@@ -44,7 +44,7 @@ Path: `mobile/src/`. Re-exports `@nostr-dev-kit/react` plus:
 
 ## wallet
 
-Path: `wallet/src/`. NIP-60 (Cashu) wallet implementation. Subdirs: `wallets/cashu/`, `wallets/nwc/`, `wallets/webln/`, `nip87/mint-store.ts`, `nutzap-monitor/`, `utils/ln.ts`. Uses `@cashu/cashu-ts v3`. Uses `NDKSync` for relay capability caching (fix `7287bf5e`). Wallet work is currently deferred to post-v1; use `docs/plan/post-v1.md` only for live sequencing.
+Path: `wallet/src/`. NIP-60 (Cashu) wallet implementation. Subdirs: `wallets/cashu/`, `wallets/nwc/`, `wallets/webln/`, `nip87/mint-store.ts`, `nutzap-monitor/`, `utils/ln.ts`. Uses `@cashu/cashu-ts v3`. Uses `NDKSync` for relay capability caching (fix `7287bf5e`). Wallet work is currently deferred to post-v1; track post-v1 sequencing in GitHub Issues.
 
 ## wot
 
@@ -71,7 +71,7 @@ Path: `messages/src/`. Multi-protocol DM stack:
 - `cache-module.ts` — registers a module with NDK cache for message persistence.
 - `storage/` — memory and cache-module adapters.
 
-Currently deferred to post-v1; use `docs/plan/post-v1.md` only for live sequencing.
+Currently deferred to post-v1; track post-v1 sequencing in GitHub Issues.
 
 ## cache-* packages
 

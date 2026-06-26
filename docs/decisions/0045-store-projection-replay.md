@@ -318,7 +318,7 @@ acceptance test (§9), is a v1 exit criterion:
 > threads, long-form, and anything else the v1 apps open. Offline-empty for any
 > open, store-backed interest blocks v1.
 
-`docs/plan.md` carries this in its v1 blocker list (issue #1086,
+This is tracked in GitHub Issues (issue #1086,
 `phase:v1-blocker`, `priority:p1`). Because the mechanism is one seam, there is no
 coherent "feed gates v1 but DMs are post-v1" line — it either renders every open
 interest from the store or it does not. This is table-stakes app behavior on the

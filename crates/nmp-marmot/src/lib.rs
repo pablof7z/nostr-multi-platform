@@ -1,8 +1,7 @@
 //! `nmp-marmot` — Marmot Protocol (MLS-over-Nostr) as an NMP protocol crate.
 //!
 //! Adapter only — does NOT re-implement MLS. Wraps `mdk-core` 0.8.0 +
-//! `mdk-sqlite-storage` 0.8.0. Spec: `docs/plan/marmot-mls.md`,
-//! API surface: `docs/research/mdk-api.md`.
+//! `mdk-sqlite-storage` 0.8.0. API surface: `docs/research/mdk-api.md`.
 //!
 //! ## Kernel-boundary exit gate
 //!

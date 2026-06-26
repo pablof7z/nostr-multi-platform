@@ -345,8 +345,8 @@ impl Kernel {
     /// the next `make_update` whose schedule is rate-capped.
     ///
     /// Without this dirty-mark the user could not see a Failed AUTH state
-    /// (`docs/plan/m5-nip42.md` §19 explicitly requires visible diagnostic
-    /// surfacing of the `Failed` transition).
+    /// (the NIP-42 auth-failure diagnostic contract explicitly requires visible
+    /// diagnostic surfacing of the `Failed` transition).
     pub(super) fn update_relay_auth_status(
         &mut self,
         role: RelayRole,

@@ -4,7 +4,7 @@
 > **Status:** rev 0 — proposed; opens ADR slot for any open-question resolution.
 > **Companion docs:** [`lmdb/trait.md`](lmdb/trait.md), [`lmdb/keys.md`](lmdb/keys.md), [`lmdb/gc.md`](lmdb/gc.md), [`lmdb/watermarks.md`](lmdb/watermarks.md), [`lmdb/tests.md`](lmdb/tests.md).
 > **Prerequisites:** `docs/product-spec/subsystems.md` §7.1 (insert invariants), `docs/decisions/0003-working-set-memory.md` (GC policy intent), `docs/decisions/0009-app-extension-kernel-boundary.md` (DomainModule storage), `docs/design/kernel-substrate.md` §2 (DomainModule trait).
-> **Plan reference:** [`docs/plan/m3-persistence.md`](../plan/m3-persistence.md).
+
 
 ---
 
@@ -216,7 +216,7 @@ See [`lmdb/tests.md`](lmdb/tests.md) for the full mapping of every spec §7.1 in
 | `gc_step()` work-batch ceiling (single call) | ≤ 50 ms total wall time | bounded by `GcBudget { max_events, max_duration_ms }` |
 | `nmp dump` of 1M events | sustained ≥ 50k events/sec on M-series Mac | wall-clock measurement in dump-roundtrip test |
 
-Each gate is measurable; any miss revises the design via an ADR before M3 is declared complete (per `plan.md` §1.6 "no silent endings").
+Each gate is measurable; any miss revises the design via an ADR before M3 is declared complete.
 
 ## 13. Open questions for ADR after review
 

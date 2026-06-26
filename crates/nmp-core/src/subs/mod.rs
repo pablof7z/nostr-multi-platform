@@ -1,8 +1,8 @@
 //! M8-subs — subscription lifecycle: the seam between M2's `CompiledPlan`
 //! and the wire.
 //!
-//! See `docs/plan/m8-subscription-lifecycle.md` for the scope discriminator
-//! against M4 (negentropy), M5 (NIP-42 auth), M7 (publishing). This module
+//! Scope discriminator: this module covers subscription lifecycle only, not
+//! M4 (negentropy), M5 (NIP-42 auth), or M7 (publishing). This module
 //! ships only the **seams**:
 //!
 //! - [`InterestRegistry`] — single-writer logical-interest store (D4).

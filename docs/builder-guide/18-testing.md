@@ -1,8 +1,8 @@
 # 18 — Testing: `nmp-testing`, benches, contract tests
 
 The kernel is tested without networking. Every tier below runs deterministically
-in CI; real relays appear only in opt-in live-bench modes. Source of truth for
-the tier map: [`docs/plan/test-pyramid.md`](../plan/test-pyramid.md).
+in CI; real relays appear only in opt-in live-bench modes. The test tiers are
+owned by `crates/nmp-testing/`; the pyramid below is the canonical tier map.
 
 ## The test pyramid
 

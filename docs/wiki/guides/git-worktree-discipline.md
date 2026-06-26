@@ -40,7 +40,7 @@ Agent worktrees must be dedicated (not shared); a shared worktree exhibited stal
 
 Per-worktree target/ directories consume multiple GB each (up to 16 GB for the shared worktree), causing disk exhaustion on a 926G volume; agents must cargo clean their worktrees after each PR merges to prevent disk exhaustion on the build host.
 
-A violation or feature tracked in GitHub Issues must not also be restated as a queue row in docs/plan.md; the issue is the queue authority.
+A violation or feature tracked in GitHub Issues must not be restated in any other planning file; the issue is the queue authority.
 
 <!-- citations: [^11850-33] [^e3b42-3] [^d27a4-1] [^d5c1c-1] [^95d02-7] [^019ed-12] [^019ed-21] [^11850-70] -->
 ## Branch Landing and Sync Discipline

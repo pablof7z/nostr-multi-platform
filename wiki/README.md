@@ -4,8 +4,7 @@ This directory is a committed, repo-local knowledge base for NMP.
 
 It is derived synthesis, not authority. When a wiki article disagrees with
 code, `docs/aim.md`, product doctrine, architecture/design docs, ADRs, or the
-current temporal trackers, those sources win. Active status lives only in
-`docs/plan.md`, GitHub Issues, and `WIP.md`.
+current temporal trackers, those sources win. Active status lives only in GitHub Issues.
 
 Plans are temporal coordination artifacts. Implemented, executed, or invalidated
 plan detail should not be preserved here as durable understanding. The wiki may

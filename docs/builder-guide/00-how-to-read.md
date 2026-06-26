@@ -32,7 +32,7 @@ milestone _n_; the surrounding section still ships. When a section says a
 thing is aspirational, **that is not a doc bug** — it is the status flag doing
 its job. (See the anti-patterns below.)
 
-Authoritative status lives in `docs/plan.md` and GitHub Issues.
+Authoritative status lives in GitHub Issues.
 This guide's numbered section files are the guide source; there is no parallel
 builder-guide plan file. Doctrine canon: `docs/product-spec/doctrine.md`
 (D0–D10, conflicts resolve in listed order).
@@ -125,10 +125,9 @@ M12 Wallet) — not bugs.
 - **Assuming a section is "wrong" when the status flag marks it aspirational.**
   A `[PENDING M_n]` bullet or a LANDED flag is the doc telling the truth
   about reality. File it in 27 only if reality and the flag *disagree*.
-- **Trusting `README.md` over `docs/plan.md` for milestone detail.**
-  README is a snapshot; `docs/plan.md` and GitHub Issues are the
-  canonical planning/status surface. They should agree — if they do not, file a
-  27 entry.
+- **Trusting `README.md` over GitHub Issues for milestone detail.**
+  README is a snapshot; GitHub Issues is the canonical planning/status
+  surface. They should agree — if they do not, file a 27 entry.
 - **Skipping the doctrine (03) because you "only want to ship an app."**
   Builders who ignore D1/D4 re-introduce the spinner-gating and parallel-cache
   bugs NMP exists to prevent.

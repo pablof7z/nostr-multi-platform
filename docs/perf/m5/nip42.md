@@ -1,9 +1,9 @@
 # M5 — NIP-42 auth (protocol module landing report)
 
-**Status:** Partial. This commit ships the **`nmp-nip42` protocol module crate** per the T40 contract in `docs/plan/m8-subscription-lifecycle.md` §3. The M5 milestone exit gates (iOS demo + real-relay validation against an NIP-42-required relay such as nostr.wine) are explicit follow-ups; **do not mark M5 complete on this commit.**
+**Status:** Partial. This commit ships the **`nmp-nip42` protocol module crate** per the T40 subscription-lifecycle contract (§3: `RelayAuthState` enum, kind:22242 builder, AUTH/OK parsers, handshake driver). The M5 milestone exit gates (iOS demo + real-relay validation against an NIP-42-required relay such as nostr.wine) are explicit follow-ups; **do not mark M5 complete on this commit.**
 
-**Milestone reference:** [docs/plan/m5-nip42.md](../../plan/m5-nip42.md).
-**Architectural contract:** [docs/plan/m8-subscription-lifecycle.md](../../plan/m8-subscription-lifecycle.md) §3 — T40 wins on the canonical `RelayAuthState` enum, the kind:22242 builder, the AUTH/OK parsers, and the handshake driver. T46 (M8-subs) already shipped the wire pause/flush gate; T43 (M6 signers) already shipped the canonical `Signer` trait.
+**Milestone reference:** `nmp-nip42` crate (shipped); subscription-lifecycle contract is pinned by `crates/nmp-testing/tests/m8_subscription_lifecycle.rs`.
+**Architectural contract:** T40 owns the canonical `RelayAuthState` enum, the kind:22242 builder, the AUTH/OK parsers, and the handshake driver. T46 (M8-subs) already shipped the wire pause/flush gate; T43 (M6 signers) already shipped the canonical `Signer` trait.
 
 ---
 
@@ -72,7 +72,7 @@ test result: ok. 25 passed; 0 failed
 ### Out of T40 scope per the M8-subs contract
 
 1. **Wire-frame pause / flush queue.** T46 (M8-subs) already shipped `subs::auth_gate::AuthGate` — owns the per-relay pending REQ buffer, partitions wire frames, drains on `Authenticated`. T40 (this crate) feeds it via the `CompileTrigger::RelayAuthStateChanged` inbox seam.
-2. **Kernel-side `handle_text` integration.** The kernel's `kernel/ingest/mod.rs::handle_text` still has `"OK" => {}` and no `"AUTH" =>` arm. Wiring the kernel to call `nmp_nip42::parse_auth_frame` / `Nip42Driver` is the M2-phase-2 wiring task per `docs/plan/m8-subscription-lifecycle.md` §5 — that task replaces the kernel's hand-rolled `req`/`defer_outbound` calls with `SubscriptionLifecycle::drain_tick` + `ConnectionPool::send`. Doing it inside T40 would conflict with that task's scope.
+2. **Kernel-side `handle_text` integration.** The kernel's `kernel/ingest/mod.rs::handle_text` still has `"OK" => {}` and no `"AUTH" =>` arm. Wiring the kernel to call `nmp_nip42::parse_auth_frame` / `Nip42Driver` is the M2-phase-2 wiring task (subscription-lifecycle §5, pinned by `crates/nmp-testing/tests/m8_subscription_lifecycle.rs`) — that task replaces the kernel's hand-rolled `req`/`defer_outbound` calls with `SubscriptionLifecycle::drain_tick` + `ConnectionPool::send`. Doing it inside T40 would conflict with that task's scope.
 3. **Signer wiring.** T43 (M6) shipped `nmp_signers::Signer::sign(unsigned) -> SignerOp<SignedEvent>`. The protocol module accepts a generic signer closure (`FnMut(&UnsignedEvent) -> Result<SignedEvent, Nip42Error>`); the M6 wiring task adapts the canonical `Signer` trait to that signature at the call site. The publish engine's `publish::traits::Signer::sign_auth` shim is the M7-side path for AUTH-REQUIRED publish retries — different code path, kept separate intentionally.
 4. **iOS bridging-header changes.** No FFI surface added — the signer integration is internal Rust, bound by M6's account-manager. The C FFI surface in `NmpCore.h` is unchanged.
 5. **Toast field on the FFI snapshot.** The M10.5 toast-field bridge (`docs/design/ffi-hardening.md` §7.2) is the agreed mechanism; this crate exposes `failure_reason` in `HandshakeOutcome` so M10.5 has the data when it lands. Adding a parallel toast-field now would conflict with M10.5's design.
@@ -156,4 +156,4 @@ The publish engine has its own `Signer::sign_auth` shim for the `AUTH-REQUIRED` 
 
 ## Why this commit lives in a new crate (not in `nmp-core/src/kernel/auth.rs`)
 
-Master now has the protocol-module crate pattern established (`nmp-nip29`, `nmp-highlighter-core`). The M5 plan (`docs/plan/m5-nip42.md`) calls for `nmp-nip42` explicitly. The justification for keeping NIP-42 inside the kernel (no other protocol modules extracted) no longer applies — NIP-29 has already been carved out. Following the precedent keeps the kernel boundary clean per D0 and makes the M2-phase-2 wiring task's job mechanical.
+Master now has the protocol-module crate pattern established (`nmp-nip29`, `nmp-highlighter-core`). The M5 NIP-42 work explicitly called for the `nmp-nip42` crate. The justification for keeping NIP-42 inside the kernel (no other protocol modules extracted) no longer applies — NIP-29 has already been carved out. Following the precedent keeps the kernel boundary clean per D0 and makes the M2-phase-2 wiring task's job mechanical.

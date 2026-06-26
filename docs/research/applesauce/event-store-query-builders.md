@@ -150,7 +150,7 @@ This composition pattern is the actual deliverable for NMP. Reproducing the kind
 | `EventStore.eventLoader` fallback | the "subscribe-by-pointer, fetch if missing" path |
 | `claim/touch/prune/unclaimed` LRU+refcount API | spec §7.5 claim-based GC |
 | `insert$`/`update$`/`remove$` streams | spec §7.4 reactive view emission |
-| `EventModels` mixin pattern | the LLM-friendliness test from `plan.md:148` — adding a new view kind without touching `nmp-core` |
+| `EventModels` mixin pattern | the LLM-friendliness test — adding a new view kind without touching `nmp-core` |
 
 ## 8. What this means for NMP's M2
 

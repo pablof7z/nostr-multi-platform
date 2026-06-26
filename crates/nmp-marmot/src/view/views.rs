@@ -1,5 +1,5 @@
 //! `GroupList`, `GroupMessages` reactive views per
-//! `docs/plan/marmot-mls.md` §Step 1 + mdk-api.md §6.
+//! `docs/research/mdk-api.md` §6.
 //!
 //! `GroupMessages` is relay-pinned to the group relay (kind:445) via
 //! `InterestShape::relay_pin` (ADR-0012). `GroupList` projects

@@ -3,7 +3,7 @@
 **Date**: 2026-05-18  
 **Test**: `marmot_forward_secrecy::forward_secrecy_removed_member_cannot_decrypt`  
 **File**: `crates/nmp-testing/tests/marmot_forward_secrecy.rs`  
-**Exit gate ref**: `docs/plan/marmot-mls.md §"Exit gate (product)"` — forward secrecy proof
+**Exit gate ref**: Marmot forward-secrecy exit gate. Marmot shipped and was validated cross-platform 2026-06-13; the API spec lives at `docs/research/mdk-api.md`.
 
 ---
 

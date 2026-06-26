@@ -14,8 +14,7 @@ review runs and records findings in
 [`docs/perf/orchestration-log.md`](../perf/orchestration-log.md)). The
 machine-enforced subset runs in CI:
 `cargo run -p nmp-testing --bin doctrine-lint` (D0/D6/D7 grep gates,
-`.github/workflows/doctrine-lint.yml`), plus the gates in
-[`docs/plan/ci-hygiene.md`](../plan/ci-hygiene.md)
+`.github/workflows/doctrine-lint.yml`), plus the target-state CI gates tracked in issue #2124
 (`cargo test --workspace`, `reactivity-bench --fail-on-gate`). File-size
 ceiling (`AGENTS.md`: ≤300 LOC) is its own gate (`file-size-gate.yml`).
 

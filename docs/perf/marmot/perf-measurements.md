@@ -15,7 +15,7 @@ I/O). Relay-network legs (relay-publish RTT, relay-ack, relay ingest) are
 **excluded** — they are environment-dependent and not testable without a real
 relay.
 
-The exit-gate targets in `docs/plan/marmot-mls.md §"Exit gate (perf)"` include
+The Marmot perf exit-gate targets include
 relay legs; the compute portions measured here are the local cost components
 that the implementation controls. The target is the total (compute + relay); a
 compute measurement well below target leaves adequate budget for the relay leg.

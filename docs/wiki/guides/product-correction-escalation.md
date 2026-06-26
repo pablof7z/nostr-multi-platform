@@ -19,6 +19,6 @@ sources:
 
 ## Product Correction Escalation
 
-When a user gives a correction or instruction about how the NMP product should work, it must be treated as a possible product-authority update, not just an implementation request. Before making code changes for the correction, a separate agent must research whether the correction should be represented in product specs, doctrine, canonical docs, docs/plan.md, GitHub Issues, or ADRs under docs/decisions/. If documentation needs to change for a product correction, the documentation update must be made in the same PR as the implementation unless the user explicitly scopes the work to docs only.
+When a user gives a correction or instruction about how the NMP product should work, it must be treated as a possible product-authority update, not just an implementation request. Before making code changes for the correction, a separate agent must research whether the correction should be represented in product specs, doctrine, canonical docs, GitHub Issues, or ADRs under docs/decisions/. If documentation needs to change for a product correction, the documentation update must be made in the same PR as the implementation unless the user explicitly scopes the work to docs only.
 
 <!-- citations: [^019ed-130] [^019ed-134] -->

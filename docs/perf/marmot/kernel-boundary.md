@@ -2,7 +2,7 @@
 
 **Date**: 2026-05-18  
 **Commit**: `018ac40d` (nmp-marmot fully landed)  
-**Exit gate ref**: `docs/plan/marmot-mls.md §"Exit gate (kernel boundary)"`
+**Exit gate ref**: Marmot kernel-boundary exit gate. Marmot shipped and was validated cross-platform 2026-06-13; the API spec lives at `docs/research/mdk-api.md`.
 
 ---
 

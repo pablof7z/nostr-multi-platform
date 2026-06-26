@@ -1,6 +1,6 @@
 //! M8-subs — subscription lifecycle integration tests (Task #46).
 //!
-//! Pins the eight contracts in `docs/plan/m8-subscription-lifecycle.md` §6:
+//! Pins the eight M8 subscription-lifecycle contracts (this test is the authoritative owner):
 //!
 //! 1. `compile_plan_to_wire_frames_emits_one_req_per_sub_shape`
 //! 2. `plan_diff_closes_removed_subs_and_opens_added_subs`

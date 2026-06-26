@@ -3,8 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-05-23
 - **Revisits:** `docs/aim.md` §5 (UniFFI named as the binding strategy at
-  lines 60, 171, 185, 203–204, 242) and `docs/plan/m14-uniffi.md:1-24` (the
-  open migration milestone).
+  lines 60, 171, 185, 203–204, 242) and the UniFFI write-surface migration
+  milestone (M14 scope; status now tracked in GitHub Issues).
 - **Related:** ADR-0009 (app-extension kernel boundary — snapshots cross FFI
   as JSON), ADR-0010 (generated app enum vs type-erased registry — the home
   of `nmp-codegen`), ADR-0025 (Marmot bespoke FFI cluster — named exception),
@@ -28,9 +28,9 @@ binding strategy. The aim doc says so in five places:
 - §7 (line 242) — Open design question 3 names UniFFI as the substrate the
   reactive cross-FFI subscription protocol must adapt.
 
-`docs/plan/m14-uniffi.md` keeps UniFFI on the milestone roadmap (M14, Arc 3)
-with an exit gate "iOS app builds and runs against UniFFI-generated
-bindings; no raw C FFI in the app target."
+The UniFFI write-surface migration (M14, Arc 3) has an exit gate of "iOS app
+builds and runs against UniFFI-generated bindings; no raw C FFI in the app
+target." Its roadmap status is now tracked in GitHub Issues.
 
 The current code says something different. NMP ships a hand-rolled C-ABI:
 
@@ -122,9 +122,9 @@ serialization.
 ### (a) Write/register surface — keep C-ABI; defer UniFFI to M14
 
 The ~46 `#[no_mangle] pub extern "C"` symbols in
-`crates/nmp-core/src/ffi/` remain as-is. The UniFFI migration named in
-`docs/plan/m14-uniffi.md` is **not abandoned** — it is the planned end-state
-— but it is **not the bottleneck** today.
+`crates/nmp-core/src/ffi/` remain as-is. The UniFFI write-surface migration
+(M14) is **not abandoned** — it is the planned end-state — but it is **not
+the bottleneck** today. Roadmap status for M14 is tracked in GitHub Issues.
 
 Rationale:
 
@@ -273,7 +273,7 @@ waits for M14 to do the UniFFI-proper job.
 
 - `docs/aim.md` §2 (line 60), §4.14 (line 171), §5 (lines 185, 203–204),
   §7 (line 242) — UniFFI as the named binding strategy.
-- `docs/plan/m14-uniffi.md:1-24` — UniFFI migration milestone.
+- UniFFI write-surface migration (M14) — status tracked in GitHub Issues.
 - ADR-0009 — snapshot-as-JSON (the load-bearing prerequisite for the
   read-surface codegen approach).
 - ADR-0010 — generated app enum vs type-erased registry (the home of

@@ -6,7 +6,7 @@
 
 > **Working name:** `nmp` (Nostr Multi-Platform). Final name TBD per `aim.md` §7.7. Crate names below use the `nmp-*` prefix; substitute when renamed.
 
-> **Status:** Draft 0, revised for ADR-0009 and ADR-0010. The kernel/module split is now architectural ground truth; product modules still graduate by the phased plan in [`docs/plan.md`](../plan.md).
+> **Status:** Draft 0, revised for ADR-0009 and ADR-0010. The kernel/module split is now architectural ground truth; product modules still graduate by the phased plan tracked in GitHub Issues.
 
 > **Required prior reading:** `docs/aim.md`.
 
@@ -225,7 +225,7 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 
 The CLI is also published to npm as `@nmp/cli` for non-Rust developers, wrapping the same binary via npx.
 
-The v1 release does **not** ship every module above as a finished product module. Per [`docs/plan.md`](../plan.md), v1 first proves the kernel substrate and codegen with a non-Nostr fixture module, then grows Chirp from the first social baseline into NMP's reference client. Any reusable module that does ship should be demonstrated in Chirp, or carry a documented platform exception.
+The v1 release does **not** ship every module above as a finished product module. Per the v1 plan tracked in GitHub Issues, v1 first proves the kernel substrate and codegen with a non-Nostr fixture module, then grows Chirp from the first social baseline into NMP's reference client. Any reusable module that does ship should be demonstrated in Chirp, or carry a documented platform exception.
 
 ### 4.2 Bindings
 

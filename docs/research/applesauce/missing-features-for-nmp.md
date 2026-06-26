@@ -1,13 +1,13 @@
 # Applesauce — Features NMP Must Add (or That Applesauce Lacks)
 
 > Source: `/private/tmp/nostr-research/applesauce` @ `da5ec22b`.
-> Cross-referenced with `docs/aim.md`, `docs/plan.md`, `docs/product-spec.md` in the NMP worktree.
+> Cross-referenced with `docs/aim.md` and `docs/product-spec.md` in the NMP worktree.
 
 ## A. Features present in Applesauce that NMP must reproduce in `nmp-core`
 
 These are not "missing" — they're the deliverables. Listed here because they constrain the architecture.
 
-1. **Model-cache mixin pattern.** `event-models.ts:40-150`. NMP must expose an extension point so downstream crates (or LLM-generated views per `plan.md`) can register new typed views (`MutesView`, `ZapsView`, `WalletView`) without forking `nmp-core`. Applesauce does this via TypeScript prototype augmentation; NMP's equivalent in Rust is a `View` trait + registry.
+1. **Model-cache mixin pattern.** `event-models.ts:40-150`. NMP must expose an extension point so downstream crates (or LLM-generated views) can register new typed views (`MutesView`, `ZapsView`, `WalletView`) without forking `nmp-core`. Applesauce does this via TypeScript prototype augmentation; NMP's equivalent in Rust is a `View` trait + registry.
 2. **`share()` with keepWarm + ReplaySubject(1) semantics.** `event-models.ts:73-78`. Every typed view subscription must dedupe across consumers, replay last value to new subscribers, and stay warm for ~60s after the last unsubscribe.
 3. **Claim refcount + LRU prune.** `event-memory.ts:176-242`, `observable/claim-*.ts`. Separate from RxJS refcounting. NMP's planner must claim every event surfaced through a view and release on view drop.
 4. **Single-instance invariant via `mapToMemory`.** `event-store.ts:136-142`. Every read of the same event id returns the same `&Event` so identity-equality is meaningful. In Rust this is `Arc<Event>` interning.
@@ -30,7 +30,7 @@ These are not "missing" — they're the deliverables. Listed here because they c
 
 **Applesauce:** `applesauce-relay/src/negentropy.ts` exists and `RelayPool.negentropy(relays, store, filter, reconcile, opts)` is a method. It is **not integrated** with the loaders. There is no "before issuing this REQ, check the watermark" path. Timeline loaders use stateful backward/forward cursors in-process (`timeline-loader.ts:53-186`) that reset on app restart.
 
-**NMP spec (`plan.md`, Phase 2 / M4):** Negentropy is the default sync mechanism with durable per-(filter, relay) watermarks consulted by the planner before issuing historical REQs.
+**NMP spec (Phase 2 / M4):** Negentropy is the default sync mechanism with durable per-(filter, relay) watermarks consulted by the planner before issuing historical REQs.
 
 **Gap:** Durable watermarks + planner integration. Applesauce gives you the building block; NMP must wire it into the planner's "should I REQ?" decision.
 
@@ -38,7 +38,7 @@ These are not "missing" — they're the deliverables. Listed here because they c
 
 **Applesauce:** Has dedup via the model cache (one observable per `hash_sum(args)`) but **does not coalesce filters at the relay level**. If view A wants `{kinds:[1], authors:[X]}` and view B wants `{kinds:[1], authors:[Y]}`, two REQs go out.
 
-**NMP spec (`plan.md`, M2):** Subscription planner with coalescing.
+**NMP spec (M2):** Subscription planner with coalescing.
 
 **Gap:** Filter-level merge planner. Should be implementable as a layer between the EventStore models and the RelayPool. Applesauce contributors have hinted at this (the `loadBlocksFromFilterMap` per-relay caching at `timeline-loader.ts:269-281` is a poor man's version) but it's not architecturally present.
 
@@ -60,7 +60,7 @@ These are not "missing" — they're the deliverables. Listed here because they c
 
 ### B6. (DEFERRED to post-v1) Wallet / NWC / NIP-60 integration
 
-Applesauce has `applesauce-wallet` and `applesauce-wallet-connect` as separate packages. NMP currently defers wallet entirely to post-v1; use `docs/plan/post-v1.md` only for live sequencing. Worth noting they share the EventStore + factories + signer abstractions — when NMP comes back to wallet, the integration patterns will be there to reference.
+Applesauce has `applesauce-wallet` and `applesauce-wallet-connect` as separate packages. NMP currently defers wallet entirely to post-v1. Worth noting they share the EventStore + factories + signer abstractions — when NMP comes back to wallet, the integration patterns will be there to reference.
 
 ### B7. Native platform signers (iOS Secure Enclave, etc.)
 
@@ -74,7 +74,7 @@ Applesauce has `applesauce-wallet` and `applesauce-wallet-connect` as separate p
 
 **Applesauce:** `helpers/relays.ts` provides `addSeenRelay`/`getSeenRelays` (cited at `event-store.ts:23, 192-196`). Events accumulate a "seen on these relays" set as they arrive from multiple relays. But this is informational — there's no API for "give me events that arrived from at least 2 relays."
 
-**NMP spec (`plan.md`):** "an event arriving from 3 relays appears once in the store with all 3 relays in its provenance set." Implied: query by provenance is possible.
+**NMP spec:** "an event arriving from 3 relays appears once in the store with all 3 relays in its provenance set." Implied: query by provenance is possible.
 
 **Gap:** Querying by provenance count is not in Applesauce. NMP can build this on top of the seen-relay set; index it in the persistent store.
 

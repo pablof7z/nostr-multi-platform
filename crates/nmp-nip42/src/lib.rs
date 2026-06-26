@@ -1,7 +1,7 @@
 //! `nmp-nip42` — NIP-42 relay AUTH protocol module.
 //!
-//! Owns the M5 / T40 surface called out in `docs/plan/m5-nip42.md` and the
-//! T40 substitution contract in `docs/plan/m8-subscription-lifecycle.md` §3:
+//! Owns the NIP-42 relay AUTH protocol (M5 / T40 surface) and the
+//! T40 substitution contract (pinned by `crates/nmp-testing/tests/m8_subscription_lifecycle.rs` §3):
 //!
 //! - [`state::RelayAuthState`] — canonical per-relay NIP-42 lifecycle,
 //!   re-exported from the `nmp-nip42-types` substrate crate (T77).
