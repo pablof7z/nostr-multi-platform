@@ -52,6 +52,10 @@ extern "C" {
     #[wasm_bindgen(js_name = "bindInt64", catch)]
     pub(super) fn bind_int64(stmt: &JsValue, idx: i32, value: i64) -> Result<(), JsValue>;
 
+    /// Bind SQL NULL to a 1-based parameter.
+    #[wasm_bindgen(js_name = "bindNull", catch)]
+    pub(super) fn bind_null(stmt: &JsValue, idx: i32) -> Result<(), JsValue>;
+
     /// Advance one step; `true` means a row is available (SQLITE_ROW).
     #[wasm_bindgen(js_name = "step", catch)]
     pub(super) fn step(stmt: &JsValue) -> Result<bool, JsValue>;

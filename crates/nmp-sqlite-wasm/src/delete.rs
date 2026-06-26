@@ -1,1 +1,158 @@
-//! NIP-09 / replaceable / addressable tombstone deletion policy. PR-2/PR-3 (#1007).
+//! NIP-09 (kind:5) deletion *application* policy for the OPFS-SQLite engine
+//! (#1007 PR-3).
+//!
+//! Mirrors `nmp-store/src/lmdb/insert_kind5.rs`, minus the index families PR-3
+//! does not yet own (FTS, LRU, interaction counters, freshness — later PRs). The
+//! tombstone-row read/write half lives in [`crate::tombstones`] (mirroring the
+//! LMDB split between `insert_kind5.rs` and `tombstones.rs`).
+//!
+//!   * Walk the kind:5's `e`-tags / `a`-tags; act on **self-deletes only**
+//!     (foreign targets are silently skipped, matching the other backends).
+//!   * Write an NMP tombstone (per-id for `e`-tags, coordinate for `a`-tags) so a
+//!     later arrival of the deleted event is suppressed at insert time.
+//!   * Remove any matching stored target (primary row + secondary tag rows +
+//!     provenance) and append a `Deleted` ingest-log entry.
+//!
+//! All of this runs inside the single insert transaction supplied by the caller.
+
+#![cfg(target_arch = "wasm32")]
+
+use crate::conv::{self, EngineEvent};
+use crate::error::SqliteWasmError;
+use crate::outcome::{EventId, PubKey};
+use crate::shim::SqliteConn;
+use crate::store_impl::{blob32, exec_write, SqlVal};
+use crate::{ingest_log, provenance, tombstones};
+
+/// Apply a kind:5 event's `e`-tag and `a`-tag self-deletes inside the insert
+/// transaction (tombstones + target removal + `Deleted` log entries).
+pub(crate) fn apply_kind5(
+    conn: &SqliteConn,
+    ev: &EngineEvent,
+    source: &str,
+    received_at_ms: u64,
+) -> Result<(), SqliteWasmError> {
+    // The caller (insert) only reaches kind:5 application after the structural
+    // gate, so both decode; the `else` arms are defensive D6 no-panic fallbacks.
+    let Some(kind5_id) = ev.id_bytes() else {
+        return Err(SqliteWasmError::Encoding("kind:5 id not decodable".into()));
+    };
+    let Some(kind5_pubkey) = ev.pubkey_bytes() else {
+        return Err(SqliteWasmError::Encoding("kind:5 pubkey not decodable".into()));
+    };
+    let kind5_at = ev.created_at;
+
+    for target_hex in ev.e_tags() {
+        let Some(target_id) = conv::hex_to_bytes32(target_hex) else {
+            continue;
+        };
+        // Self-delete check: an unknown (not-yet-stored) target is tombstoned for
+        // future arrivals; a stored foreign target is skipped.
+        match event_pubkey(conn, &target_id)? {
+            Some(pk) if pk != kind5_pubkey => continue,
+            stored => {
+                tombstones::put_id(conn, &target_id, &kind5_id, &kind5_pubkey, kind5_at, source)?;
+                if stored.is_some() {
+                    remove_event(conn, &target_id)?;
+                    ingest_log::append_deleted(conn, &kind5_id, &target_id, received_at_ms)?;
+                }
+            }
+        }
+    }
+
+    for addr in ev.a_tags() {
+        let Some((tgt_kind, tgt_pk_hex, tgt_dtag)) = parse_coordinate(addr) else {
+            continue;
+        };
+        if tgt_pk_hex != ev.pubkey {
+            continue; // foreign target — skip.
+        }
+        tombstones::put_addr(
+            conn,
+            tgt_kind,
+            &kind5_pubkey,
+            tgt_dtag.as_bytes(),
+            &kind5_id,
+            &kind5_pubkey,
+            kind5_at,
+            source,
+        )?;
+        for removed in coordinate_targets(conn, tgt_kind, &kind5_pubkey, tgt_dtag, kind5_at)? {
+            remove_event(conn, &removed)?;
+            ingest_log::append_deleted(conn, &kind5_id, &removed, received_at_ms)?;
+        }
+    }
+    Ok(())
+}
+
+/// Remove an event everywhere it lives: secondary tag rows, provenance, then the
+/// primary row. (The primary delete also cascades `event_tags` via the schema
+/// FK, but the explicit delete keeps removal correct independent of the
+/// per-connection `foreign_keys` pragma.)
+pub(crate) fn remove_event(conn: &SqliteConn, id: &EventId) -> Result<(), SqliteWasmError> {
+    exec_write(
+        conn,
+        "DELETE FROM event_tags WHERE event_id = ?1",
+        &[SqlVal::Blob(id)],
+    )?;
+    provenance::delete(conn, id)?;
+    exec_write(conn, "DELETE FROM events WHERE id = ?1", &[SqlVal::Blob(id)])
+}
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+fn event_pubkey(conn: &SqliteConn, id: &EventId) -> Result<Option<PubKey>, SqliteWasmError> {
+    let stmt = conn.prepare("SELECT pubkey FROM events WHERE id = ?1")?;
+    stmt.bind_blob(1, id)?;
+    if stmt.step()? {
+        Ok(blob32(&stmt.column_blob(0)?))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Ids of stored events matching an `a`-tag coordinate with `created_at <=
+/// kind5_at`. Addressable (param-replaceable) coordinates match on the d-tag;
+/// regular-replaceable coordinates are unique per `(kind, pubkey)`.
+fn coordinate_targets(
+    conn: &SqliteConn,
+    kind: u32,
+    pubkey: &PubKey,
+    d_tag: &str,
+    kind5_at: u64,
+) -> Result<Vec<EventId>, SqliteWasmError> {
+    let stmt = if (30_000..40_000).contains(&kind) {
+        let s = conn.prepare(
+            "SELECT id FROM events
+             WHERE pubkey = ?1 AND kind = ?2 AND d_tag = ?3 AND created_at <= ?4",
+        )?;
+        s.bind_blob(1, pubkey)?;
+        s.bind_int64(2, i64::from(kind))?;
+        s.bind_blob(3, d_tag.as_bytes())?;
+        s.bind_int64(4, kind5_at as i64)?;
+        s
+    } else {
+        let s = conn
+            .prepare("SELECT id FROM events WHERE pubkey = ?1 AND kind = ?2 AND created_at <= ?3")?;
+        s.bind_blob(1, pubkey)?;
+        s.bind_int64(2, i64::from(kind))?;
+        s.bind_int64(3, kind5_at as i64)?;
+        s
+    };
+    let mut ids = Vec::new();
+    while stmt.step()? {
+        if let Some(id) = blob32(&stmt.column_blob(0)?) {
+            ids.push(id);
+        }
+    }
+    Ok(ids)
+}
+
+/// Parse an `a`-tag coordinate `"kind:pubkey-hex:d-tag"` into its parts.
+fn parse_coordinate(addr: &str) -> Option<(u32, &str, &str)> {
+    let mut parts = addr.splitn(3, ':');
+    let kind = parts.next()?.parse::<u32>().ok()?;
+    let pubkey = parts.next()?;
+    let d_tag = parts.next()?;
+    Some((kind, pubkey, d_tag))
+}
