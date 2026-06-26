@@ -10,6 +10,17 @@ description = "OPFS-backed SQLite EventStore backend for wasm32 (#1007). Spine o
 name = "nmp_sqlite_wasm"
 path = "src/lib.rs"
 
+# Target-agnostic deps. `serde`/`serde_json` back the wire ⇆ row codec (`conv`):
+# the `events.raw` blob is canonical NIP-01 JSON (mirroring the LMDB backend's
+# JSON round-trip), and `TombstoneOrigin` derives serde for parity with
+# `nmp_store::TombstoneOrigin`. Both are pure Rust and build on wasm32 and
+# native alike — they are NOT the "external SQLite engine" ADR-0054 §1 forbids
+# (that engine remains the vendored artifact), so they belong here, not under
+# the wasm-only target table below.
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
 # NOTE: this crate must NOT depend on `nmp-store`. `nmp-store` declares an
 # optional dependency on `nmp-sqlite-wasm` (the `opfs-sqlite-backend` feature),
 # so a reverse edge would be a Cargo dependency cycle. This mirrors

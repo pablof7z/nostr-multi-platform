@@ -108,6 +108,11 @@ export function bindInt64(stmt, idx, value) {
   stmt.bind(idx, value);
 }
 
+/** Bind SQL NULL to a 1-based parameter (oo1 maps a JS `null` to SQLITE_NULL). */
+export function bindNull(stmt, idx) {
+  stmt.bind(idx, null);
+}
+
 /**
  * Advance the statement one step.
  * @returns {boolean} true if a row is available (SQLITE_ROW), false when done.

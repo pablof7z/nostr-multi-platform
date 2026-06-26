@@ -32,54 +32,10 @@ use sqlite3_bindings as raw;
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 
-/// Error returned by the SQLite-on-OPFS shim.
-///
-/// Crate-local on purpose (no `nmp-store` dependency — a Cargo cycle would
-/// result). PR-3's `nmp-store` `EventStore` wrapper converts these into
-/// `nmp_store::StoreError` at the boundary: `ModuleInit` / `VfsInstall` / `Open`
-/// / `Close` are backend-i/o failures (`StoreError::Io`), `Exec` / `Prepare` /
-/// `Bind` / `Step` are statement faults (`StoreError::Io` or `Corrupt`), and
-/// `Column` is a decode fault (`StoreError::Encoding`). The wrapped `String` is
-/// the stringified JS exception; per D6 it carries no private event content.
-#[derive(Debug, Clone)]
-pub enum SqliteWasmError {
-    /// `sqlite3InitModule()` failed to instantiate the WASM module.
-    ModuleInit(String),
-    /// Installing/registering the opfs-sahpool VFS failed.
-    VfsInstall(String),
-    /// Opening the database file on the pool VFS failed.
-    Open(String),
-    /// Closing the database handle failed.
-    Close(String),
-    /// A no-result `exec` (DDL / pragma) failed.
-    Exec(String),
-    /// Compiling a statement (`prepare`) failed.
-    Prepare(String),
-    /// Binding a parameter value failed.
-    Bind(String),
-    /// Stepping the statement failed.
-    Step(String),
-    /// Reading/decoding a result column failed.
-    Column(String),
-}
-
-impl core::fmt::Display for SqliteWasmError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        match self {
-            Self::ModuleInit(s) => write!(f, "sqlite wasm module init failed: {s}"),
-            Self::VfsInstall(s) => write!(f, "opfs-sahpool vfs install failed: {s}"),
-            Self::Open(s) => write!(f, "open database failed: {s}"),
-            Self::Close(s) => write!(f, "close database failed: {s}"),
-            Self::Exec(s) => write!(f, "exec failed: {s}"),
-            Self::Prepare(s) => write!(f, "prepare failed: {s}"),
-            Self::Bind(s) => write!(f, "bind failed: {s}"),
-            Self::Step(s) => write!(f, "step failed: {s}"),
-            Self::Column(s) => write!(f, "column read failed: {s}"),
-        }
-    }
-}
-
-impl core::error::Error for SqliteWasmError {}
+// The error type itself is target-agnostic and lives in `crate::error` so the
+// pure codec / schema modules can return it on native too. The shim only owns
+// the wasm-only JS-exception → error mapping (`js_err`, below).
+use crate::error::SqliteWasmError;
 
 /// Stringify a thrown `JsValue` for an error message. D6: no private event
 /// content reaches this path — only engine-level exception text.
@@ -170,6 +126,11 @@ impl SqliteStmt<'_> {
     /// Bind a 64-bit integer to the 1-based parameter `idx`.
     pub fn bind_int64(&self, idx: i32, value: i64) -> Result<(), SqliteWasmError> {
         raw::bind_int64(&self.stmt, idx, value).map_err(|e| SqliteWasmError::Bind(js_err(e)))
+    }
+
+    /// Bind SQL NULL to the 1-based parameter `idx`.
+    pub fn bind_null(&self, idx: i32) -> Result<(), SqliteWasmError> {
+        raw::bind_null(&self.stmt, idx).map_err(|e| SqliteWasmError::Bind(js_err(e)))
     }
 
     /// Advance the statement one step.
