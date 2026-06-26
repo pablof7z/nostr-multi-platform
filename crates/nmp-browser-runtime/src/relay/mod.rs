@@ -172,6 +172,32 @@ impl RelayPool {
         events
     }
 
+    pub(crate) fn spawn_configured_relay(
+        &mut self,
+        url: &str,
+        role: &str,
+    ) -> Vec<BrowserRuntimeEvent> {
+        #[cfg(target_arch = "wasm32")]
+        {
+            if let Some(handlers) = &self.handlers_slot {
+                return spawn::spawn_configured_relay(&mut self.drivers, handlers, url, role);
+            }
+            Vec::new()
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let _ = (url, role);
+            Vec::new()
+        }
+    }
+
+    pub(crate) fn close_relay(&mut self, url: &str) {
+        #[cfg(target_arch = "wasm32")]
+        spawn::close_relay(&mut self.drivers, url);
+        #[cfg(not(target_arch = "wasm32"))]
+        let _ = url;
+    }
+
     /// Drain inbound events, run relay lifecycle + interceptors + hooks, and
     /// return the outcome. Called from `BrowserRuntime::pump()`.
     pub(crate) fn drain_inbound(

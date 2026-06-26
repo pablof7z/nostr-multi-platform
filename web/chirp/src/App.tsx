@@ -28,6 +28,7 @@ import { SigningPanel } from "./features/signing/SigningPanel";
 import { chirpRelayOverrideFromSearch } from "./chirpConfig";
 import { OnboardingPanel } from "./features/onboarding/OnboardingPanel";
 import { DiagnosticsPanel } from "./features/diagnostics/DiagnosticsPanel";
+import { RelaySettingsPanel } from "./features/relays/RelaySettingsPanel";
 import { decodeUpdateFrame } from "./nmp/feedDecoder";
 import { decodeRuntimeProjection } from "./nmp/runtimeProjection";
 // Item C — feed / publish / profile UI (FeedPanel owns its own store + provider).
@@ -111,6 +112,7 @@ export default function App() {
           <nav class="rail-nav" aria-label="Primary">
             <a class="rail-link rail-link--active" href="#feed" aria-current="page">Home</a>
             <a class="rail-link" href="#signing">Signer</a>
+            <a class="rail-link" href="#relays">Relays</a>
             <a class="rail-link" href="#diagnostics">Diagnostics</a>
           </nav>
           <div class="rail-status" aria-live="polite">
@@ -169,6 +171,9 @@ export default function App() {
                 }}
               />
               <SigningPanel onConnectionChange={setSignerConnected} />
+              <div id="relays">
+                <RelaySettingsPanel diagnostics={runtimeProjection()} />
+              </div>
               <div id="diagnostics">
                 <DiagnosticsPanel diagnostics={runtimeProjection()} events={snapshot().events} />
               </div>

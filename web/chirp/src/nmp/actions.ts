@@ -40,6 +40,12 @@ export type RuntimeCommand =
       consumerId: string;
     }
   | {
+      kind: "relay_config";
+      action: "add" | "remove";
+      url: string;
+      role?: string;
+    }
+  | {
       kind: "unsupported";
       capability: string;
       reason: string;
@@ -212,6 +218,23 @@ export function releaseEventCommand(key: string, consumerId: string): RuntimeCom
     namespace: REF_NS_EVENT,
     key,
     consumerId,
+  };
+}
+
+export function addRelayCommand(url: string, role: string): RuntimeCommand {
+  return {
+    kind: "relay_config",
+    action: "add",
+    url,
+    role,
+  };
+}
+
+export function removeRelayCommand(url: string): RuntimeCommand {
+  return {
+    kind: "relay_config",
+    action: "remove",
+    url,
   };
 }
 

@@ -26,6 +26,7 @@ pub(crate) enum WorkerRequest {
     ResolveRef(ResolveRef),
     ReleaseRef(ReleaseRef),
     DispatchBytes(DispatchBytesPayload),
+    RelayConfig(RelayConfig),
     CapabilityResult(CapabilityResultPayload),
     SetIdentity(SetIdentity),
     BeginSign(BeginSign),
@@ -104,6 +105,22 @@ pub(crate) struct ReleaseRef {
 pub(crate) struct DispatchBytesPayload {
     #[serde(default)]
     pub bytes: Vec<u8>,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RelayConfig {
+    pub action: RelayConfigAction,
+    pub url: String,
+    #[serde(default)]
+    pub role: Option<String>,
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RelayConfigAction {
+    Add,
+    Remove,
 }
 
 #[derive(Debug, Deserialize)]

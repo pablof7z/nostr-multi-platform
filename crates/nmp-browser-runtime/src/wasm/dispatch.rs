@@ -13,14 +13,15 @@
 //! pre-split single file.
 
 use crate::runtime::DispatchBytesResult;
+use crate::runtime::{RelayConfigAction as RuntimeRelayConfigAction, RelayConfigResult};
 use crate::{BrowserAppBuilder, BrowserRunConfig};
 
 use super::core::NmpRuntimeCore;
 use super::identity::canonical_pubkey_from_kind;
 use super::protocol::{
     relay_bootstrap_from_config, BeginSign, ClientHello, DeliverSignerResponse,
-    IdentityRelayPermission, ReleaseRef, ResolveRef, RuntimeStatus, SetIdentity, StartConfig,
-    WorkerEvent, WorkerRequest, PROTOCOL_VERSION,
+    IdentityRelayPermission, RelayConfig, ReleaseRef, ResolveRef, RuntimeStatus, SetIdentity,
+    StartConfig, WorkerEvent, WorkerRequest, PROTOCOL_VERSION,
 };
 use super::ref_routing::{
     invalid_ref_request_reason, ref_dispatch_from_release, ref_dispatch_from_resolve,
@@ -41,6 +42,7 @@ impl NmpRuntimeCore {
             WorkerRequest::BeginSign(req) => self.handle_begin_sign(req),
             WorkerRequest::DeliverSignerResponse(resp) => self.handle_deliver_signer_response(resp),
             WorkerRequest::DispatchBytes(payload) => self.dispatch_dispatch_bytes(&payload.bytes),
+            WorkerRequest::RelayConfig(req) => self.handle_relay_config(req),
             WorkerRequest::CapabilityResult(r) => {
                 // No native capability handler in this crate (requires native
                 // actor); surface honestly rather than silently dropping.
@@ -250,6 +252,35 @@ impl NmpRuntimeCore {
                     correlation_id: Some(correlation_id),
                 }]
             }
+        }
+    }
+
+    fn handle_relay_config(&mut self, req: RelayConfig) -> Vec<WorkerEvent> {
+        let Some(handle) = self.handle.as_mut() else {
+            return not_started_error(Some(req.correlation_id));
+        };
+
+        let action = match req.action {
+            super::protocol::RelayConfigAction::Add => RuntimeRelayConfigAction::Add,
+            super::protocol::RelayConfigAction::Remove => RuntimeRelayConfigAction::Remove,
+        };
+        match handle.apply_relay_config(action, req.url, req.role, &req.correlation_id) {
+            RelayConfigResult::Applied {
+                action_type,
+                correlation_id,
+            } => vec![WorkerEvent::ActionAccepted {
+                action_type,
+                correlation_id,
+            }],
+            RelayConfigResult::Rejected {
+                capability,
+                correlation_id,
+                reason,
+            } => vec![WorkerEvent::CapabilityFailure {
+                capability,
+                correlation_id,
+                reason,
+            }],
         }
     }
 

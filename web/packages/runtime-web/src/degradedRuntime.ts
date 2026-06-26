@@ -72,6 +72,15 @@ export class DegradedRuntime {
           },
         ];
       }
+      case "relay_config":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.relay_config",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "capability_result":
         return [
           {

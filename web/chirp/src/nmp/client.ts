@@ -228,6 +228,17 @@ class WorkerNmpClient extends BaseClient {
           },
           correlationId,
         );
+      case "relay_config":
+        return this.request(
+          {
+            type: "relay_config",
+            action: command.action,
+            url: command.url,
+            role: command.role,
+            correlation_id: correlationId,
+          },
+          correlationId,
+        );
       case "unsupported":
         return this.record({
           type: "capability_failure",
@@ -383,6 +394,14 @@ class InProcessNmpClient extends BaseClient {
           namespace: command.namespace,
           key: command.key,
           consumer_id: command.consumerId,
+          correlation_id: correlationId,
+        });
+      case "relay_config":
+        return this.send({
+          type: "relay_config",
+          action: command.action,
+          url: command.url,
+          role: command.role,
           correlation_id: correlationId,
         });
       case "unsupported":

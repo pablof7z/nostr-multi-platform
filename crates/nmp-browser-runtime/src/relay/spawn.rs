@@ -95,6 +95,50 @@ pub(crate) fn fan_out_outbound(
     events
 }
 
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn spawn_configured_relay(
+    pool: &mut Vec<Rc<BrowserRelayDriver>>,
+    handlers: &BrowserKernelHandlers,
+    url: &str,
+    role: &str,
+) -> Vec<BrowserRuntimeEvent> {
+    let mut events = Vec::new();
+    let bootstrap = [(url.to_string(), role.to_string())];
+    for plan in super::plan::plan_drivers(&bootstrap) {
+        let known = pool
+            .iter()
+            .any(|d| d.url() == plan.url && d.role() == plan.role);
+        if known {
+            continue;
+        }
+        if pool.len() >= MAX_CONCURRENT_SOCKETS {
+            events.push(BrowserRuntimeEvent::RelayBudgetExceeded { url: plan.url });
+            continue;
+        }
+        match BrowserRelayDriver::new(plan.url.clone(), plan.role, handlers.clone()) {
+            Ok(driver) => pool.push(driver),
+            Err(error) => events.push(BrowserRuntimeEvent::RelaySpawnFailed {
+                url: plan.url,
+                reason: format!("{error:?}"),
+            }),
+        }
+    }
+    events
+}
+
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn close_relay(pool: &mut Vec<Rc<BrowserRelayDriver>>, url: &str) {
+    let mut kept = Vec::with_capacity(pool.len());
+    for driver in pool.drain(..) {
+        if driver.url() == url {
+            driver.close();
+        } else {
+            kept.push(driver);
+        }
+    }
+    *pool = kept;
+}
+
 /// Close every driver in the pool and clear it. Idempotent.
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn close_drivers(pool: &mut Vec<Rc<BrowserRelayDriver>>) {

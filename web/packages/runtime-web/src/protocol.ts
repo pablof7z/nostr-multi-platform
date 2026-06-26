@@ -46,6 +46,17 @@ export type WorkerRequest =
       type: "dispatch_bytes";
       bytes: Uint8Array;
     }
+  /** Browser runtime relay inventory edit. This is structured transport/runtime
+   *  control, not an app-level write. The Rust runtime validates URL/role,
+   *  mutates the configured-relay projection, and opens/closes browser relay
+   *  drivers so diagnostics reflect the live socket inventory. */
+  | {
+      type: "relay_config";
+      action: "add" | "remove";
+      url: string;
+      role?: string;
+      correlation_id: string;
+    }
   | {
       type: "capability_result";
       capability: string;

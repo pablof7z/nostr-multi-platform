@@ -52,7 +52,7 @@ pub(crate) mod pump;
 mod signer_delivery;
 // Pub(crate) kernel-op helpers for the wasm entry point (#2038 item A).
 mod kernel_ops;
-pub(crate) use kernel_ops::DispatchBytesResult;
+pub(crate) use kernel_ops::{DispatchBytesResult, RelayConfigAction, RelayConfigResult};
 
 // ── #2051/#2073 — snapshot/projection/clock/diagnostics track ────────────────
 pub mod diagnostics;
