@@ -103,7 +103,7 @@ pub use bookmarks::{
     RemoveBookmarkAction,
 };
 pub use people_list::{PeopleListProjection, PeopleListSnapshot};
-pub use projection::{MuteListProjection, MuteListSnapshot};
+pub use projection::{MuteListProjection, MuteListSnapshot, ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID};
 pub use search_relays::{SearchRelayListProjection, SearchRelayListSnapshot};
 pub use web_bookmarks::{
     build_web_bookmark_event, register_web_bookmark_actions, PublishWebBookmarkAction,

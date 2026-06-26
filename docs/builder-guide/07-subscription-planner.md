@@ -129,6 +129,10 @@ ordinary claims. Component/read-model dependencies use the same lifecycle:
 avatars claim profiles, target previews claim events/addresses, and pointer
 feeds claim the targets they render.
 
+Current default reducers include active-account follows, NIP-51 people-list
+members, and the active account's public mute-list `p` tags. They differ only in
+the protocol-owned reducer; the planner still receives materialized interests.
+
 Three invariants matter:
 
 - Empty reduced output fails closed. It never becomes wildcard `authors`,

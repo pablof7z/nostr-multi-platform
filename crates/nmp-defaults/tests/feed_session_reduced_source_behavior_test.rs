@@ -111,6 +111,19 @@ fn signed_people_list(
     (event.id.to_hex(), event.as_json())
 }
 
+fn signed_mute_list(keys: &Keys, muted_pubkeys: &[String], created_at: u64) -> (String, String) {
+    let tags: Vec<Tag> = muted_pubkeys
+        .iter()
+        .map(|pk| Tag::parse(["p", pk.as_str()]).expect("valid p tag"))
+        .collect();
+    let event = EventBuilder::new(Kind::from(10_000u16), "")
+        .tags(tags)
+        .custom_created_at(Timestamp::from_secs(created_at))
+        .sign_with_keys(keys)
+        .expect("sign kind:10000");
+    (event.id.to_hex(), event.as_json())
+}
+
 fn signed_note(keys: &Keys, content: &str, created_at: u64) -> (String, String) {
     let event = EventBuilder::text_note(content)
         .custom_created_at(Timestamp::from_secs(created_at))
@@ -125,6 +138,20 @@ fn list_params(projection: &str) -> FeedParams {
         render: FeedRender::Flat,
         acquisition: FeedScope::ListMembers {
             list: ListId("team".to_string()),
+        },
+        admission: FeedAdmission::All,
+        ranking: FeedRanking::ChronologicalDesc,
+        window: FeedWindow { initial_limit: 80 },
+        projection: ProjectionKey(projection.into()),
+    }
+}
+
+fn mute_source_params(projection: &str) -> FeedParams {
+    FeedParams {
+        primary_kinds: vec![1],
+        render: FeedRender::Flat,
+        acquisition: FeedScope::ListMembers {
+            list: ListId(nmp_nip51::ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID.to_string()),
         },
         admission: FeedAdmission::All,
         ranking: FeedRanking::ChronologicalDesc,
@@ -190,6 +217,101 @@ fn list_members_cache_first_open_derives_members_and_replays_rows() {
         .expect("list-members feed opens");
 
     wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&bob_note_id));
+
+    nmp_app_free(app);
+    uninstall_update_signal();
+}
+
+#[test]
+fn active_mute_list_source_reuses_reduced_source_for_non_follow_members() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let rx = install_update_signal();
+    let app = nmp_app_new();
+    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app_ref = unsafe { &*app };
+    nmp_app_start(app, 256, 8);
+
+    let alice = keys_from_byte(11);
+    let bob = keys_from_byte(12);
+    let carol = keys_from_byte(13);
+    let bob_pk = bob.public_key().to_hex();
+    let carol_pk = carol.public_key().to_hex();
+    sign_in(app, &alice);
+    wait_active(&rx, app_ref, &alice.public_key().to_hex());
+
+    let key = "test.feed.mute-source.replace";
+    let _handle = app_ref
+        .open_feed(&mute_source_params(key), &compiler)
+        .expect("mute-list source feed opens");
+
+    let (bob_note_id, bob_note_json) = signed_note(&bob, "muted author first", 110);
+    let (carol_note_id, carol_note_json) = signed_note(&carol, "muted author replacement", 120);
+    inject_event(app, &rx, app_ref, &bob_note_id, &bob_note_json);
+    inject_event(app, &rx, app_ref, &carol_note_id, &carol_note_json);
+
+    let (mute_id, mute_json) = signed_mute_list(&alice, &[bob_pk], 130);
+    inject_event(app, &rx, app_ref, &mute_id, &mute_json);
+    wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&bob_note_id));
+
+    let (replacement_id, replacement_json) = signed_mute_list(&alice, &[carol_pk], 140);
+    inject_event(app, &rx, app_ref, &replacement_id, &replacement_json);
+    wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&carol_note_id));
+
+    let (clear_id, clear_json) = signed_mute_list(&alice, &[], 150);
+    inject_event(app, &rx, app_ref, &clear_id, &clear_json);
+    wait_feed_ids(&rx, app_ref, key, &[]);
+
+    nmp_app_free(app);
+    uninstall_update_signal();
+}
+
+#[test]
+fn active_mute_list_source_account_switch_replays_new_account_source() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let rx = install_update_signal();
+    let app = nmp_app_new();
+    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app_ref = unsafe { &*app };
+    nmp_app_start(app, 256, 8);
+
+    let alice = keys_from_byte(14);
+    let bob = keys_from_byte(15);
+    let carol = keys_from_byte(16);
+    let dave = keys_from_byte(17);
+    let bob_pk = bob.public_key().to_hex();
+    let carol_pk = carol.public_key().to_hex();
+    let dave_pk = dave.public_key().to_hex();
+    sign_in(app, &alice);
+    wait_active(&rx, app_ref, &alice.public_key().to_hex());
+
+    let key = "test.feed.mute-source.account-switch";
+    let _handle = app_ref
+        .open_feed(&mute_source_params(key), &compiler)
+        .expect("mute-list source feed opens");
+
+    let (bob_note_id, bob_note_json) = signed_note(&bob, "alice muted author", 110);
+    let (dave_note_id, dave_note_json) = signed_note(&dave, "carol muted author", 120);
+    inject_event(app, &rx, app_ref, &bob_note_id, &bob_note_json);
+    inject_event(app, &rx, app_ref, &dave_note_id, &dave_note_json);
+
+    let (alice_mute_id, alice_mute_json) =
+        signed_mute_list(&alice, std::slice::from_ref(&bob_pk), 130);
+    inject_event(app, &rx, app_ref, &alice_mute_id, &alice_mute_json);
+    wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&bob_note_id));
+
+    let (carol_mute_id, carol_mute_json) =
+        signed_mute_list(&carol, std::slice::from_ref(&dave_pk), 140);
+    inject_event(app, &rx, app_ref, &carol_mute_id, &carol_mute_json);
+
+    sign_in(app, &carol);
+    wait_for(
+        &rx,
+        "account switch replays cached active mute-list source",
+        || {
+            app_ref.active_account_handle().lock().unwrap().as_deref() == Some(carol_pk.as_str())
+                && flat_feed_ids(app_ref, key) == std::slice::from_ref(&dave_note_id)
+        },
+    );
 
     nmp_app_free(app);
     uninstall_update_signal();
@@ -275,10 +397,14 @@ fn list_members_account_switch_withdraws_old_source_and_reacquires_new_account()
     inject_event(app, &rx, app_ref, &carol_list_id, &carol_list_json);
 
     sign_in(app, &carol);
-    wait_for(&rx, "account switch replays cached list-members source", || {
-        app_ref.active_account_handle().lock().unwrap().as_deref() == Some(carol_pk.as_str())
-            && flat_feed_ids(app_ref, key) == std::slice::from_ref(&dave_note_id)
-    });
+    wait_for(
+        &rx,
+        "account switch replays cached list-members source",
+        || {
+            app_ref.active_account_handle().lock().unwrap().as_deref() == Some(carol_pk.as_str())
+                && flat_feed_ids(app_ref, key) == std::slice::from_ref(&dave_note_id)
+        },
+    );
 
     nmp_app_free(app);
     uninstall_update_signal();

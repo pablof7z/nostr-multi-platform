@@ -407,5 +407,7 @@ content kinds and a closed `FeedScope` / `PubkeySetExpr` source. Protocol and
 defaults code reduce that source into planner-owned interests. Secondary facts
 that a rendered component needs are dependent interests claimed by that
 component or read model, never native-owned caches or ad hoc relay fetches.
+The default reducers include active-account follows and NIP-51 pubkey-list
+sources such as people-list members and public mute-list `p` tags.
 
 ---

@@ -1,10 +1,11 @@
 //! `FeedScope` → [`ReducedSource`] for the perspective compiler (#1740 step 3).
 //!
-//! This is the ONLY module that touches the resolution snapshots — kind:3 follows
-//! ([`nmp_nip02::ActiveFollowSet`]), NIP-51 list members
-//! ([`nmp_nip51::PeopleListProjection`]), and ranked WoT candidates (the #1698
-//! [`nmp_wot::score::WotGraph`] query). It reuses those single-source mechanisms;
-//! it never re-derives a follow graph or a list parser (D4).
+//! This is the ONLY module that touches the resolution snapshots — kind:3
+//! follows ([`nmp_nip02::ActiveFollowSet`]), NIP-51 pubkey lists
+//! ([`nmp_nip51::PeopleListProjection`] plus the kind:10000 source in
+//! `nip51_sources`), and ranked WoT candidates (the #1698
+//! [`nmp_wot::score::WotGraph`] query). It reuses those single-source
+//! mechanisms; it never re-derives a follow graph or list parser (D4).
 //!
 //! Each non-default scope resolves to a [`ReducedSource`]:
 //! * `admission` — the engine's EVENT-AWARE [`nmp_feed::RootAdmission`], built
@@ -32,16 +33,13 @@ use nmp_core::substrate::KernelEvent;
 use nmp_core::KernelEventObserver;
 use nmp_feed::RootAdmission;
 use nmp_ffi::{FeedOpenError, NmpApp};
+use nmp_kinds::KIND_FOLLOW_SET;
 use nmp_planner::InterestShape;
 
 use super::source::{AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook};
 use super::wot_graph::SessionWotGraph;
 
 const KIND_CONTACT_LIST: u32 = 3;
-/// NIP-51 follow set / people list (kind:30000). Named locally because
-/// `nmp-defaults` does not depend on `nmp-kinds`; the canonical constant is
-/// `nmp_kinds::KIND_FOLLOW_SET` (the projection in `nmp-nip51` uses that).
-const KIND_FOLLOW_SET: u32 = 30_000;
 
 /// Resolve a non-default, non-set-algebra scope. Set algebra is handled by
 /// [`super::set_algebra`]; `ActiveUserFollows` / `CustomPerspectiveId` are
@@ -154,13 +152,17 @@ fn resolve_contact_list(
     })
 }
 
-// ── ListMembers { list } (NIP-51 kind:30000) ─────────────────────────────
+// ── ListMembers { list } (NIP-51 pubkey sources) ─────────────────────────
 
 fn resolve_list_members(
     app: &NmpApp,
     list_id: &str,
     kinds: &BTreeSet<u32>,
 ) -> Result<ReducedSource, FeedOpenError> {
+    if list_id == nmp_nip51::ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID {
+        return super::nip51_sources::resolve_active_mute_list_members(app, kinds);
+    }
+
     // The list owner is the active viewer (the projection is owner-gated). No
     // active account ⇒ fail closed (no list to resolve).
     let viewer = super::super::read_active(&app.active_account_handle())

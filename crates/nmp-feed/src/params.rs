@@ -88,10 +88,16 @@ pub enum PubkeySetExpr {
     /// fixed author+kind acquisition (no reactive projection, no account
     /// re-routing). An EMPTY set is fail-closed by the resolver (admits nobody,
     /// acquires nothing) — never silently "all authors".
-    Authors { authors: std::collections::BTreeSet<String> },
+    Authors {
+        authors: std::collections::BTreeSet<String>,
+    },
     /// The contact list (kind:3 follows) of a specific owner pubkey.
     ContactList { owner: String },
-    /// The members of an app-registered list (NIP-51 set / curated id).
+    /// The members of an app/defaults-registered list id.
+    ///
+    /// `nmp-feed` treats the id as opaque. The composition layer decides
+    /// whether it names an addressable list, an active-account replaceable
+    /// list, a curated source, or another protocol-owned pubkey-set reducer.
     ListMembers { list: ListId },
     /// A web-of-trust expansion from `seed` under an opaque, registered ruleset.
     Wot { seed: WotSeed, rules: WotRulesId },
