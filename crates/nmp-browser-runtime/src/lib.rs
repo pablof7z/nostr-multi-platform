@@ -13,9 +13,23 @@
 //! - NIP modules, protocol defaults, app defaults, projection policy, persistence policy;
 //! - the wasm-bindgen ABI surface (that is the sibling `nmp-wasm` ABI shell).
 //!
-//! Issue #2056 defines this boundary scaffold, so the initial public API is
-//! limited to boundary-owned browser setup. Issue #2057 adds `BrowserAppBuilder`.
-#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+//! # Public API (issues #2046 / #2057 / #2058)
+//!
+//! - [`BrowserAppBuilder<S>`] — typestate composition root (5 stages).
+//! - [`BrowserRunConfig`] — runtime config passed at the `decide_providers` gate.
+//! - [`BrowserRuntimeHandle`] — pump-driven runtime handle (hides raw reducer).
+
+mod builder;
+mod runtime;
+
+pub use builder::{BrowserAppBuilder, BrowserRunConfig};
+pub use runtime::BrowserRuntimeHandle;
+
+// Re-export typestate markers for consumers that need to name them
+// (e.g. `BrowserAppBuilder<Unstarted>` in a type annotation).
+pub use builder::{
+    Unstarted, StorageSet, ProjectionsDeclared, RelaysDeclared, ProvidersDecided,
+};
 
 #[cfg(target_arch = "wasm32")]
 pub fn install_panic_hook() {

@@ -237,6 +237,11 @@ pub use event_observer::register_rust_observer_muted;
 // `nmp_core::__ffi_internal::*`.
 #[cfg(feature = "native")]
 pub use event_observer::{new_event_observer_slot, unregister_observer};
+// `unregister_observer` is pure Rust (no native deps) — expose pub(crate) on
+// all targets so `KernelReducer::unregister_event_observer` can delegate to it
+// from the wasm32/no-default-features browser-runtime composition path (PR-B
+// #2046). The `native`-only `pub use` above serves the FFI external path.
+pub(crate) use event_observer::unregister_observer as unregister_observer_internal;
 // `KernelEventObserver` / `KernelEventObserverFn` / `KernelEventObserverId`
 // are the typed observer surface re-exported unconditionally from `lib.rs`
 // (per-app Rust crates and the C-ABI wire shape). `KernelEventObserverRegistration`

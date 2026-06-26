@@ -174,6 +174,9 @@ pub use commands::{
     LifecycleObserverSlot,
 };
 pub use commands::{register_rust_observer, KernelEventObserverSlot};
+// `unregister_observer_internal` is the pub(crate) all-targets alias used by
+// `KernelReducer::unregister_event_observer` (PR-B #2046 composition seam).
+pub(crate) use commands::unregister_observer_internal;
 // `register_c_observer` + `LifecycleObserverRegistration` reach `nmp-ffi`
 // through `nmp_core::__ffi_internal::*` so the C-ABI bridge in
 // `nmp-ffi/src/event_observer.rs` + `lifecycle.rs` can drive the slot.

@@ -12,6 +12,9 @@
 //! * `indexer_relays_handle` / `local_write_relays_handle` — read the relay
 //!   slots shared with the publish resolver.
 //!
+//! PR-B (#2046) AppHost-surface seams are in `composition_seams_browser.rs`
+//! (factored out to stay under the 500-LOC ceiling).
+//!
 //! All methods delegate either to `self.kernel` (for slot handles that are
 //! already `pub` there) or to `self.observer_slot` / `self.snapshot_slot`
 //! (the per-reducer slots initialised in `KernelReducer::new`).
@@ -34,9 +37,7 @@ use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
 use crate::substrate::{ContactsLookup, IngestParser, ProfileLookup};
-use crate::{
-    EmittedFeedAuthorsSlot, KernelEventObserver, KernelEventObserverId, TypedProjectionData,
-};
+use crate::{EmittedFeedAuthorsSlot, KernelEventObserver, KernelEventObserverId, TypedProjectionData};
 
 impl super::KernelReducer {
     /// Construct a reducer around an externally-opened event store.
@@ -339,6 +340,7 @@ impl super::KernelReducer {
         let outbound = self.kernel.publish_externally_signed(raw, target, correlation_id);
         self.kernel.partition_auth_paused(outbound)
     }
+
 }
 
 #[cfg(any(test, feature = "test-support"))]
