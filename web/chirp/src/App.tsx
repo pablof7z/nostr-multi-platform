@@ -54,6 +54,7 @@ function runtimeStatusLabel(snapshot: RuntimeSnapshot): string {
 
 export default function App() {
   const [snapshot, setSnapshot] = createSignal<RuntimeSnapshot>(client.snapshot());
+  const [signerConnected, setSignerConnected] = createSignal(false);
 
   const unsubscribe = client.subscribe(setSnapshot);
   onCleanup(unsubscribe);
@@ -71,6 +72,8 @@ export default function App() {
   const runtimeStatus = () => runtimeStatusLabel(snapshot());
   const hasSnapshot = () => snapshot().latestUpdateBytes !== undefined;
   const isConnected = () => hasSnapshot();
+  const runtimeModeLabel = () =>
+    snapshot().clientRuntime === "worker" ? "worker runtime" : "degraded runtime";
 
   return (
     <NmpClientProvider client={client} snapshot={snapshot}>
@@ -86,36 +89,68 @@ export default function App() {
         data-runtime-status={runtimeStatus()}
         data-has-snapshot={hasSnapshot() ? "true" : "false"}
       >
-        {/* Status indicator — visible while connecting; updates live. */}
-        <div
-          class="status-indicator"
-          aria-live="polite"
-          data-connected={isConnected() ? "true" : "false"}
-        >
-          {isConnected() ? "connected" : "connecting…"}
-          {snapshot().clientRuntime === "in_process_fallback" && (
-            <span aria-label="degraded mode"> (degraded)</span>
-          )}
+        <aside class="app-rail" aria-label="Chirp navigation">
+          <div class="brand-lockup">
+            <span class="brand-mark" aria-hidden="true">C</span>
+            <div>
+              <strong>Chirp</strong>
+              <span>NMP Web</span>
+            </div>
+          </div>
+          <nav class="rail-nav" aria-label="Primary">
+            <a class="rail-link rail-link--active" href="/" aria-current="page">Home</a>
+            <span class="rail-link rail-link--disabled">Threads</span>
+            <span class="rail-link rail-link--disabled">Profiles</span>
+          </nav>
+          <div class="rail-status" aria-live="polite">
+            <span class="status-dot" data-connected={isConnected() ? "true" : "false"} />
+            <div>
+              <strong>{isConnected() ? "Connected" : "Connecting"}</strong>
+              <span>{runtimeModeLabel()}</span>
+            </div>
+          </div>
+        </aside>
+
+        <div class="app-main">
+          <header class="topbar">
+            <div>
+              <p class="topbar-kicker">Home feed</p>
+              <h1>Real relay timeline</h1>
+            </div>
+            <div
+              class="status-indicator"
+              aria-live="polite"
+              data-connected={isConnected() ? "true" : "false"}
+            >
+              <span class="status-dot" data-connected={isConnected() ? "true" : "false"} />
+              <span>{isConnected() ? "connected" : "connecting"}</span>
+              {snapshot().clientRuntime === "in_process_fallback" && (
+                <span aria-label="degraded mode">degraded</span>
+              )}
+            </div>
+          </header>
+
+          <div class="content-grid">
+            {/*
+              MOUNT POINT — Item C: feed / profile / publish UI.
+              Item C imports its panel components and renders them here via
+              NmpClientContext. Do not add logic to this slot — zero protocol TS.
+            */}
+            <section data-slot="feed" aria-label="Feed">
+              <FeedPanel canPublish={signerConnected()} />
+            </section>
+
+            {/*
+              MOUNT POINT — Item D: signing / onboarding UI.
+              SigningPanel renders the NIP-07 + local-key onboarding flow, the active
+              signer status, and the pending-sign overlay. All signing logic lives in
+              features/signing/ and reads the runtime via NmpClientContext.
+            */}
+            <section data-slot="signing" aria-label="Signing">
+              <SigningPanel onConnectionChange={setSignerConnected} />
+            </section>
+          </div>
         </div>
-
-        {/*
-          MOUNT POINT — Item C: feed / profile / publish UI.
-          Item C imports its panel components and renders them here via
-          NmpClientContext. Do not add logic to this slot — zero protocol TS.
-        */}
-        <section data-slot="feed" aria-label="Feed">
-          <FeedPanel />
-        </section>
-
-        {/*
-          MOUNT POINT — Item D: signing / onboarding UI.
-          SigningPanel renders the NIP-07 + local-key onboarding flow, the active
-          signer status, and the pending-sign overlay. All signing logic lives in
-          features/signing/ and reads the runtime via NmpClientContext.
-        */}
-        <section data-slot="signing" aria-label="Signing">
-          <SigningPanel />
-        </section>
       </main>
     </NmpClientProvider>
   );

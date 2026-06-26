@@ -57,9 +57,7 @@ test.describe("boot", () => {
     // No UpdateFrame is ever emitted on the degraded path.
     await expect(shell).toHaveAttribute("data-has-snapshot", "false");
 
-    // The signing slot renders the degraded status message (no connect button in
-    // the degraded/in_process_fallback path — SigningPanel gates connect behind
-    // <Show when={!degraded() && !connected()}> which is false here).
+    // The signing slot stays honest when the runtime cannot install signers.
     await expect(page.locator('[data-slot="signing"] .signing-degraded')).toBeVisible();
   });
 

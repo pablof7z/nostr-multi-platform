@@ -40,85 +40,42 @@ export function PostCard(props: { row: FeedRow }) {
   };
 
   return (
-    <article
-      class="post-card"
-      data-event-id={props.row.id}
-      style={{
-        display: "flex",
-        gap: "12px",
-        padding: "12px 16px",
-        "border-bottom": "1px solid rgba(0,0,0,0.08)",
-      }}
-    >
+    <article class="post-card" data-event-id={props.row.id}>
       {/* Avatar */}
-      <div style={{ "flex-shrink": "0" }}>
+      <div class="post-avatar">
         <NostrAvatar pubkey={props.row.authorPubkey} size={40} consumerId={consumerId} />
       </div>
 
       {/* Body */}
-      <div style={{ flex: "1", "min-width": "0" }}>
+      <div class="post-body">
         {/* Header row */}
-        <div
-          style={{
-            display: "flex",
-            gap: "6px",
-            "align-items": "baseline",
-            "flex-wrap": "wrap",
-          }}
-        >
-          <span
-            class="post-author"
-            style={{ "font-weight": "600", "font-size": "0.9rem", color: "#111" }}
-          >
+        <div class="post-header">
+          <span class="post-author">
             {authorLabel()}
           </span>
           <Show when={props.row.isRepost && props.row.repostedByPubkey}>
-            <span style={{ "font-size": "0.8rem", color: "#666" }}>
+            <span class="post-context">
               reposted by {shortHex(props.row.repostedByPubkey!)}
             </span>
           </Show>
-          <span
-            class="post-timestamp"
-            style={{ "font-size": "0.8rem", color: "#888", "margin-left": "auto" }}
-          >
+          <span class="post-timestamp">
             {timestamp()}
           </span>
         </div>
 
         {/* Content */}
-        <p
-          class="post-content"
-          style={{
-            margin: "4px 0 8px",
-            "font-size": "0.9rem",
-            "line-height": "1.45",
-            color: "#222",
-            "word-break": "break-word",
-            "white-space": "pre-wrap",
-          }}
-        >
+        <p class="post-content">
           {props.row.content}
         </p>
 
         {/* Actions */}
-        <div
-          class="post-actions"
-          style={{ display: "flex", gap: "16px", "align-items": "center" }}
-        >
+        <div class="post-actions">
           <button
             class="action-btn"
             aria-label="Like"
             onClick={handleReact}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              color: "#888",
-              "font-size": "0.8rem",
-              padding: "2px 6px",
-            }}
           >
-            ♥
+            Like
           </button>
         </div>
       </div>

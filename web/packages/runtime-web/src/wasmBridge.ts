@@ -1,10 +1,8 @@
 import type { WorkerEvent, WorkerRequest } from "./protocol";
 
-// Module path for the wasm composition root (see #2038).
-// The default path will be wired to the nmp-browser-runtime output when it lands.
-// Until then, this bridge is not functional — the app must pass an explicit modulePath
-// to loadWasmBridge() or the unavailable handler will take over.
-const defaultModulePath = "/nmp-wasm/nmp-browser-runtime.js";
+// Module path for the wasm composition root emitted by wasm-pack
+// (`nmp_browser_runtime.js`, underscore form from the crate name).
+const defaultModulePath = "/nmp-wasm/nmp_browser_runtime.js";
 
 type SnapshotCallback = (bytes: Uint8Array) => void;
 

@@ -13,29 +13,16 @@ import { NostrProfileHostProvider } from "@nmp/components-web/src/user-avatar/No
 import { createFeedStore } from "../../nmp/feedStore";
 import { PostCard } from "./PostCard";
 import { Composer } from "./Composer";
+import "./feed.css";
 
-export function FeedPanel() {
+export function FeedPanel(props: { canPublish: boolean }) {
   const { state, profileHost } = createFeedStore();
 
   return (
     <NostrProfileHostProvider host={profileHost}>
-      <div
-        class="feed-panel"
-        data-testid="feed-panel"
-        style={{
-          display: "flex",
-          "flex-direction": "column",
-          width: "100%",
-          "max-width": "600px",
-          margin: "0 auto",
-          "border-left": "1px solid rgba(0,0,0,0.08)",
-          "border-right": "1px solid rgba(0,0,0,0.08)",
-          "min-height": "100vh",
-          background: "white",
-        }}
-      >
+      <div class="feed-panel" data-testid="feed-panel">
         {/* Compose box */}
-        <Composer />
+        <Composer canPublish={props.canPublish} />
 
         {/* Timeline */}
         <div class="feed-timeline" data-testid="feed-timeline">
@@ -44,15 +31,9 @@ export function FeedPanel() {
             fallback={
               <div
                 class="feed-loading"
-                style={{
-                  padding: "32px 16px",
-                  "text-align": "center",
-                  color: "#888",
-                  "font-size": "0.9rem",
-                }}
                 data-testid="feed-loading"
               >
-                Loading feed…
+                Loading relay feed...
               </div>
             }
           >
@@ -61,15 +42,10 @@ export function FeedPanel() {
               fallback={
                 <div
                   class="feed-empty"
-                  style={{
-                    padding: "32px 16px",
-                    "text-align": "center",
-                    color: "#888",
-                    "font-size": "0.9rem",
-                  }}
                   data-testid="feed-empty"
                 >
-                  No posts yet — follow some accounts to see their notes here.
+                  <strong>No notes yet</strong>
+                  <span>Connect a signer with follows or use a relay bootstrap to hydrate the feed.</span>
                 </div>
               }
             >

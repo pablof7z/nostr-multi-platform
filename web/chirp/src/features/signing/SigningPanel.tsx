@@ -25,6 +25,10 @@ type ActiveIdentity =
   | { kind: "nip07"; pubkey: string }
   | { kind: "local_key" };
 
+type SigningPanelProps = {
+  onConnectionChange?: (connected: boolean) => void;
+};
+
 /** Inspect a post-onboarding snapshot for a capability failure that aborted the
  *  identity install. Returns the honest reason, or undefined on success. */
 function onboardingFailure(events: readonly WorkerEvent[]): string | undefined {
@@ -40,7 +44,7 @@ function shortHex(hex: string): string {
   return hex.length <= 12 ? hex : `${hex.slice(0, 8)}…${hex.slice(-4)}`;
 }
 
-export function SigningPanel() {
+export function SigningPanel(props: SigningPanelProps) {
   const { client, snapshot } = useNmpClient();
 
   const [identity, setIdentity] = createSignal<ActiveIdentity | null>(null);
@@ -76,12 +80,15 @@ export function SigningPanel() {
       const failure = onboardingFailure(snap.events);
       if (failure) {
         setOnboardError(failure);
+        props.onConnectionChange?.(false);
       } else {
         setIdentity({ kind: "nip07", pubkey });
+        props.onConnectionChange?.(true);
         resolveNpub(pubkey);
       }
     } catch (e) {
       setOnboardError(humanizeError(e));
+      props.onConnectionChange?.(false);
     } finally {
       setConnecting(false);
     }
@@ -103,12 +110,15 @@ export function SigningPanel() {
       const failure = onboardingFailure(snap.events);
       if (failure) {
         setOnboardError(failure);
+        props.onConnectionChange?.(false);
       } else {
         setIdentity({ kind: "local_key" });
+        props.onConnectionChange?.(true);
         setShowNsec(false);
       }
     } catch (e) {
       setOnboardError(humanizeError(e));
+      props.onConnectionChange?.(false);
     } finally {
       setConnecting(false);
     }
@@ -126,7 +136,10 @@ export function SigningPanel() {
 
       <Show when={!degraded() && !connected()}>
         <div class="signing-onboarding">
-          <h2 class="signing-title">Connect your Nostr identity</h2>
+          <div>
+            <p class="signing-kicker">Identity</p>
+            <h2 class="signing-title">Connect signer</h2>
+          </div>
 
           <Show
             when={hasNip07Extension()}
@@ -138,12 +151,12 @@ export function SigningPanel() {
             }
           >
             <button
-              class="signing-btn signing-btn--primary"
+              class="signing-btn signing-btn--primary connect-btn"
               data-action="connect-nip07"
               disabled={connecting()}
               onClick={() => void connectNip07()}
             >
-              {connecting() ? "Connecting…" : "Connect browser extension (NIP-07)"}
+              {connecting() ? "Connecting..." : "Connect NIP-07"}
             </button>
           </Show>
 
@@ -155,7 +168,7 @@ export function SigningPanel() {
                 data-action="reveal-nsec"
                 onClick={() => setShowNsec(true)}
               >
-                Use a secret key (nsec) instead
+                Local key
               </button>
             }
           >
@@ -181,8 +194,8 @@ export function SigningPanel() {
                 onInput={(e) => setNsec(e.currentTarget.value)}
               />
               <p class="signing-hint">
-                Your key is handed to the local signer and never leaves this
-                device. Chirp does not transmit or store it.
+                This path is visible for runtime validation. The current browser
+                runtime reports it as unsupported until the local-key provider lands.
               </p>
               <button
                 class="signing-btn signing-btn--primary"
@@ -190,7 +203,7 @@ export function SigningPanel() {
                 data-action="connect-nsec"
                 disabled={connecting()}
               >
-                {connecting() ? "Connecting…" : "Sign in with secret key"}
+                {connecting() ? "Connecting..." : "Install local key"}
               </button>
             </form>
           </Show>

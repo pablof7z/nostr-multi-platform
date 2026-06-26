@@ -1,30 +1,155 @@
-/* Chirp Web — thin shell skin (Item B).
- *
- * Minimal layout for the composition root: status indicator + slot mount
- * points. Item C will extend this with the full social shell styles.
- */
-
-/* ── App frame ── */
-
 .app-shell {
   display: grid;
   min-height: 100vh;
-  grid-template-rows: auto 1fr auto;
-  background: var(--bg);
-  padding: 0;
+  grid-template-columns: 248px minmax(0, 1fr);
+  background:
+    radial-gradient(circle at top left, var(--accent-wash), transparent 30rem),
+    linear-gradient(180deg, var(--bg), var(--bg-muted));
 }
 
-/* ── Status indicator ── */
+.app-rail {
+  position: sticky;
+  top: 0;
+  display: flex;
+  height: 100vh;
+  flex-direction: column;
+  gap: 28px;
+  border-right: 1px solid var(--line);
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg-raised) 88%, transparent);
+  backdrop-filter: blur(16px);
+}
 
-.status-indicator {
+.brand-lockup {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 20px;
-  font-size: 13px;
-  color: var(--ink-2);
-  border-bottom: 1px solid var(--line);
+  gap: 12px;
+}
+
+.brand-mark {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: var(--radius);
+  background: var(--ink);
+  color: var(--bg-raised);
+  font-weight: 800;
+}
+
+.brand-lockup strong,
+.brand-lockup span,
+.rail-status strong,
+.rail-status span {
+  display: block;
+}
+
+.brand-lockup strong {
+  font-size: 16px;
+}
+
+.brand-lockup span,
+.rail-status span {
+  color: var(--ink-3);
   font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.rail-nav {
+  display: grid;
+  gap: 8px;
+}
+
+.rail-link {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  border-radius: var(--radius);
+  padding: 0 12px;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.rail-link--active {
+  background: var(--bg-panel);
+  color: var(--ink);
+}
+
+.rail-link--disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.rail-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 12px;
+  background: var(--bg-raised);
+}
+
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--tone-warn);
+  box-shadow: 0 0 0 4px var(--tone-warn-wash);
+}
+
+.status-dot[data-connected="true"] {
+  background: var(--tone-ok);
+  box-shadow: 0 0 0 4px var(--tone-ok-wash);
+}
+
+.app-main {
+  min-width: 0;
+  padding: 24px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  max-width: 1120px;
+  margin: 0 auto 18px;
+}
+
+.topbar-kicker {
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.topbar h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 24px;
+  line-height: 1.15;
+}
+
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0 12px;
+  background: var(--bg-raised);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 
 .status-indicator[data-connected="true"] {
@@ -35,12 +160,92 @@
   color: var(--tone-warn);
 }
 
-/* ── Slot mount points ── */
-
-[data-slot="feed"] {
-  min-height: 0;
+.content-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 680px) minmax(300px, 360px);
+  gap: 20px;
+  align-items: start;
+  max-width: 1120px;
+  margin: 0 auto;
 }
 
+[data-slot="feed"],
 [data-slot="signing"] {
-  /* Item D: signing / onboarding panel, initially empty */
+  min-width: 0;
+}
+
+@media (max-width: 1040px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .app-rail {
+    position: static;
+    height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 18px;
+    padding: 14px 18px;
+  }
+
+  .rail-nav {
+    display: flex;
+    gap: 6px;
+  }
+
+  .rail-status {
+    margin-top: 0;
+    margin-left: auto;
+  }
+
+  .content-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .app-main {
+    padding: 0;
+  }
+
+  .app-rail {
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--line);
+    border-right: 0;
+  }
+
+  .brand-lockup {
+    width: 100%;
+  }
+
+  .rail-nav {
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  .rail-link {
+    white-space: nowrap;
+  }
+
+  .rail-status {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .topbar {
+    padding: 18px 16px;
+    margin: 0;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+  }
+
+  .status-indicator {
+    display: none;
+  }
+
+  .content-grid {
+    gap: 0;
+  }
 }
