@@ -5,11 +5,10 @@ scaffolds a new app as a thin **composition shell** over the framework's default
 composition library (`nmp-defaults`), and installs app-owned source components
 from the offline NMP component registry.
 
-Per **ADR-0046** ("composition is a library, not a generator") there is **no
-`nmp gen modules` step**: a downstream app depends on `nmp-defaults` and calls
-`register_defaults` — the Bevy-`DefaultPlugins` / Spring-Boot-starter pattern —
-rather than generating an FFI crate. The old generator emitted a non-functional
-FFI tree (it never called `register_defaults`) and has been deleted.
+Per **ADR-0046** ("composition is a library, not a generator"), a downstream app
+depends on `nmp-defaults` and calls `register_defaults` — the
+Bevy-`DefaultPlugins` / Spring-Boot-starter pattern — rather than generating
+framework wiring.
 
 It ships in the `nmp-cli` crate (`crates/nmp-cli`). Install or run it:
 

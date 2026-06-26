@@ -251,9 +251,9 @@ for relay in guard.as_slice() {
     println!("{} — {}", relay.url(), relay.role());
 }
 
-// Add/remove at runtime (via action dispatch, not direct mutation — D4)
-app.dispatch_action("nmp.relay.add",   json!({ "url": "wss://relay.example", "role": "both" }));
-app.dispatch_action("nmp.relay.remove", json!({ "url": "wss://relay.example" }));
+// Add/remove at runtime through typed intent helpers, not direct mutation — D4.
+relay_actions.add("wss://relay.example", RelayRole::Both);
+relay_actions.remove("wss://relay.example");
 ```
 
 ---

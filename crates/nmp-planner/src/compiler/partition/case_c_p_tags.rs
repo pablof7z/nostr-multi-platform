@@ -39,7 +39,7 @@
 //! this helper assumes the gate already fired.
 //!
 //! Design: `docs/design/subscription-compilation/compiler.md` §3.1 / §3.2,
-//!          `docs/architecture-audit/pd033c-plan.md` §4.3
+//!          `docs/retired/pd033c-routing-gaps.md` §4.3
 //! Doctrine: D3 (outbox routing automatic).
 
 use std::collections::{BTreeMap, BTreeSet};

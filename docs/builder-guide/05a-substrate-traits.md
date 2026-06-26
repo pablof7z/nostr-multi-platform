@@ -48,8 +48,8 @@ pub trait ActionModule: Send + Sync + 'static {
 }
 ```
 
-- **Associated types:** `Action` is the input — whatever the host serializes
-  and passes to `nmp_app_dispatch_action`.
+- **Associated types:** `Action` is the input decoded from the typed action
+  payload carried by `DispatchEnvelope`.
 - **Lifecycle:** `start` validates synchronously → if `Ok`, the registry
   mints the `correlation_id` (the operation's sole identity — never an event
   id) and calls `execute` → `execute` calls `send(cmd)` to enqueue
@@ -72,8 +72,8 @@ app.register_action(MyActionModule);
 // crates/nmp-ffi/src/lib.rs:1087
 ```
 
-One call. The registered module handles every
-`nmp_app_dispatch_action(app, MyActionModule::NAMESPACE, json)` call.
+One call. The registered module handles every `DispatchEnvelope` whose action
+namespace matches `MyActionModule::NAMESPACE`.
 
 ## CapabilityModule — the native bridge shape
 
@@ -101,14 +101,14 @@ pub trait CapabilityModule: Send + Sync + 'static {
   monitor). Native code *reports a fact*; it never decides retry, routing,
   or any policy (D7). Results are envelopes, not `Result`-typed errors.
 
-## register_snapshot_projection — the read output seam
+## register_typed_snapshot_projection — the read output seam
 
-`crates/nmp-ffi/src/lib.rs:1109`. Registers a named JSON slice pushed in
-every snapshot tick under `KernelSnapshot.projections[key]`.
+Registers a typed sidecar pushed in every snapshot tick under
+`typed_projections[key]`.
 
 ```rust
-app.register_snapshot_projection("nmp.myapp.key", move || {
-    serde_json::json!({ "count": store.lock().unwrap().len() })
+app.register_typed_snapshot_projection("nmp.myapp.key", move || {
+    store.lock().ok().map(|g| encode_myapp_snapshot(&g))
 });
 ```
 
@@ -161,7 +161,7 @@ I want to ...
 ├─ change state, publish, or mutate anything    → ActionModule + register_action
 │     └─ result must survive restart / relay ack   use is_async_completing = true
 │
-├─ expose a named JSON slice to the host shell  → register_snapshot_projection
+├─ expose a typed sidecar to the host shell  → register_typed_snapshot_projection
 │     └─ cheap + non-blocking closure
 │
 ├─ maintain an in-process typed projection      → KernelEventObserver
@@ -176,32 +176,11 @@ I want to ...
 ```
 
 A real app typically combines several: `microblog-core` uses
-`register_action` + `register_live_event_tap` + `register_snapshot_projection`;
-late-joining views use `open_observed_projection` for kernel-owned hydration.
+`register_action` + `register_live_event_tap`/`open_observed_projection` +
+`register_typed_snapshot_projection`; late-joining views use
+`open_observed_projection` for kernel-owned hydration.
 Walkthroughs are in
 [05b](05b-substrate-traits.md) and [19a](19a-walkthrough-microblog.md).
-
-## Removed v2 traits (reference)
-
-An earlier proposed v2 extension architecture included `ViewModule`,
-`DomainModule`, and `IdentityModule` traits, plus a `ModuleRegistry` to
-collect them. These were **removed before shipping** — no kernel runtime ever
-drove them. `crates/nmp-core/src/substrate/mod.rs` documents this history.
-
-If you encounter references to these types in older docs, ADRs, or codegen
-output, treat them as stale. The correct replacements:
-
-| Removed concept | Replacement |
-|---|---|
-| `ViewModule` (typed reactive projection) | `register_live_event_tap` or `open_observed_projection` + `register_snapshot_projection` |
-| `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + `register_snapshot_projection` |
-| `IdentityModule` (signer scope) | `nmp-signers` crate + keyring capability |
-| `ModuleRegistry` (composition root) | an app-core `register()` fn that calls `nmp_defaults::register_defaults` once, then app/protocol `register()` fns |
-| `ActionPlan` / `ActionTransition` / `reduce()` | `execute()` dispatching `ActorCommand` |
-
-See [27 — discrepancies](27-discrepancies.md) rows 11–15 for the triage
-record.
-
 ## Deliverables (this half)
 
 - **Per-seam shape block** (above) — copy the skeleton, fill the types,

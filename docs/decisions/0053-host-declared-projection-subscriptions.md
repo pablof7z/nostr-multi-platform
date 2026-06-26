@@ -34,7 +34,7 @@ and every host-registered projection that has been registered, then every host
 decodes the frame. Concretely there are two tiers (code-grounded, 2026-06-13):
 
 1. **Tier-1 — host-registered projections** (`SnapshotRegistry` closures, registered
-   via `register_snapshot_projection` / `register_typed_snapshot_projection` /
+   via `register_typed_snapshot_projection` /
    `register_feed_with_observer`): `wallet`, `bunker_handshake`, `nip46_onboarding`,
    `signer_state`, `nmp.feed.home`, the dynamic per-view feeds `nmp.feed.author.<pk>`
    / `nmp.feed.thread.<id>`, and the protocol-crate projections `nmp.nip29.*`,
@@ -122,7 +122,7 @@ for the life of the app, with no opt-out.
    the `Arc<Mutex<SnapshotRegistry>>` slot already shared between the host
    (registration side) and the actor-thread kernel (`make_update` read side), and
    already preserved across `Reset`. No new actor parameter, no new shared slot, no
-   new lifetime to manage. The API mirrors `register_snapshot_projection` exactly:
+   new lifetime to manage. The API mirrors typed projection registration exactly:
 
    - **Rust / `AppHost` trait:** `fn declare_consumed_projections<I, K>(&self, keys: I)
      where I: IntoIterator<Item = K>, K: Into<String>;` — additive (unions into the
@@ -317,21 +317,11 @@ for the life of the app, with no opt-out.
 
 ## Alternatives considered
 
-- **Empty declared set = silent "emit everything" (the original Decision 4).**
-  Superseded by Workstream-E4 (see Decision 4, amended). The silent empty=permissive
-  default was a footgun: a forgotten declaration was indistinguishable from a
-  deliberate "consume everything," and shipped the full 4Hz firehose with no signal.
-  The replacement keeps the *release behaviour* (an `Undeclared` consumer still
-  `permits()` everything, so nothing ever goes dark and there is no clean-break window
-  on master) but makes the forgotten case **loud** (`nmp_app_start` `debug_assert!` +
-  `tracing::warn!`) and provides exactly one explicit way to mean everything
-  (`consume_all_builtin_projections` → `All`) and one to narrow
-  (`declare_consumed_projections` → `Narrow`). The internal full clients (chirp-tui,
-  chirp-desktop, the Chirp shells, the gallery) now call `consume_all` explicitly
-  rather than relying on a silent default, and the test path keeps working without
-  per-site declarations (the `debug_assert!` is compiled out under `cfg(test)` /
-  `test-support`; `Undeclared` still permits everything). This is the doctrine-correct
-  end state: one way to do things, no silent footgun.
+- **Empty declared set = silent "emit everything".** Rejected. A forgotten
+  declaration would be indistinguishable from a deliberate "consume everything"
+  and would ship the full 4 Hz firehose with no signal. Current clients choose
+  explicitly: `consume_all_builtin_projections` for all built-ins or
+  `declare_consumed_projections` for a narrowed set.
 - **Empty declared set = omit ALL Tier-2 built-ins (the task's literal default).**
   Also rejected: forcing `Undeclared` to emit *nothing* would make a forgotten
   declaration silently blank every screen (and break behaviour-preservation on

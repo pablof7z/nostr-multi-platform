@@ -20,9 +20,14 @@
 - Feed/projection payloads recompute through the same observer/projection
   update-frame cascade the kernel uses for any state change; the platform
   shadow's feed handles emit a new payload.
-- The signer attached to operations dispatched after the switch is the new active account's signer (per `IdentityModule` routing in `kernel-substrate.md` §6).
+- The signer attached to operations dispatched after the switch is the new
+  active account's signer, owned by the Rust account/session machinery.
 
-**App writes:** one dispatch: `dispatch(AppAction::SwitchActiveAccount { pubkey })`. The app's "switch account" UI is a button that fires that dispatch. No log-out / log-in dance, no view-tree rebuild, no manual REQ reissue, no clearing of caches — the framework handles all of it as a single tick of the actor's event loop.
+**App writes:** one typed `SwitchActiveAccount { pubkey }` dispatch through the
+action doorway. The app's "switch account" UI is a button that fires that
+dispatch. No log-out / log-in dance, no view-tree rebuild, no manual REQ
+reissue, no clearing of caches — the framework handles all of it as a single
+tick of the actor's event loop.
 
 **Failure mode prevented:** `product-spec/overview-and-dx.md` §3.3 **bug #5** ("Two account contexts having overlapping mutable state"). Plus the operationally common bug where an app tears down its view tree on account switch — losing scroll position, in-flight composes, draft state — because it doesn't trust the framework to re-derive correctly. C12 makes the trust structural: the view handles remain valid; the app cannot accidentally observe the old account's data on the new account's views.
 
@@ -30,12 +35,14 @@
 
 1. **Setup:** seed two accounts in `SessionState.accounts` — Alice (follows `[X, Y]`) and Bob (follows `[Y, Z]`). Pre-seed mailboxes: X→r1, Y→r2, Z→r3. Set Alice active.
 2. **Initial open:** open `FollowingTimelineView` (no fields — derives from active account); assert the planner opens REQs on `{r1, r2}`; assert the payload emits with follow set `{X, Y}`.
-3. **Dispatch switch:** `dispatch(AppAction::SwitchActiveAccount { pubkey: bob_pk })`. The test makes no other calls; the harness drains the action ledger and the planner trigger queue.
+3. **Dispatch switch:** send `SwitchActiveAccount { pubkey: bob_pk }`. The test makes no other calls; the harness drains the action ledger and the planner trigger queue.
 4. **Assert delta wire frames:** exactly two frames emitted by the planner — `CLOSE` for the r1 slice (X drops; X is not in Bob's follows), `REQ` for the r3 slice (Z appears; Z is in Bob's follows). The r2 slice is untouched (Y is in both follows).
 5. **Assert view handle stability:** the `FollowingTimelineView` handle from step 2 is **the same handle**; it has not been torn down. Its payload has been re-emitted once, now reflecting Bob's follow set `{Y, Z}`.
 6. **Assert signer rebinding:** dispatch a `SendNote { content: "hello" }`; assert the signed event's `pubkey = bob_pk` (the new active account's signer was used), without any explicit signer parameter on the `SendNote` action.
 7. **Assert specific-scoped views untouched:** before step 3, also open `ProfileView { pubkey: charlie_pk }` (an `InterestScope::Account(charlie)`-equivalent — actually Global since it names an explicit author). Assert this view's payload is not re-emitted after the switch; its underlying REQ stays alive on the same relay; no delta frames touch it. This is the symmetric assertion: the switch affects *only* `ActiveAccount`-scoped interests, per `subscription-compilation/recompilation.md` §4.2 line 113.
-8. **Assert no overlap:** read the audit log of any per-account domain-store namespace (e.g., Alice's drafts) and assert Bob cannot read it. The kernel's domain-store isolation per account is the structural enforcement (`kernel-substrate.md` §8 "Domain stores are isolated" and the per-account scoping in domain key prefixes).
+8. **Assert no overlap:** read per-account app/session state and assert Bob
+   cannot read Alice's account-scoped state. Account scoping is Rust-owned and
+   must not be reconstructed by native UI state.
 
 **Milestone owner:** **[DONE]**. The active-account trigger and
 ReducedSource feed-session rebind path are active on master. The contract proof
@@ -45,7 +52,13 @@ switch is a state transition rather than a host-driven teardown/reopen dance.
 
 ## Why this is one bullet, not several
 
-The eight sub-paths assert different facets of one observable contract: *after the switch dispatch, every consequence is a derived re-emission, never an imperative reissue.* The kernel-substrate (`kernel-substrate.md` §8) ensures domain-store isolation; the planner (`subscription-compilation/recompilation.md` §4.2) ensures interest re-resolution; the identity machinery (`kernel-substrate.md` §6) ensures signer rebinding. The contract bullet covers all three as one because they are observed together: an app that does `dispatch(SwitchActiveAccount)` and then attempts any operation gets a correctly-rebound system; partial rebinding is a regression.
+The eight sub-paths assert different facets of one observable contract: *after
+the switch dispatch, every consequence is a derived re-emission, never an
+imperative reissue.* The planner ensures interest re-resolution and the
+account/session machinery ensures signer rebinding. The contract bullet covers
+these together because they are observed together: an app that dispatches
+`SwitchActiveAccount` and then attempts any operation gets a correctly-rebound
+system; partial rebinding is a regression.
 
 ## Doctrine alignment
 
@@ -57,7 +70,7 @@ It also discharges `aim.md` §6 doctrine 7: "Sessions are state, switching is an
 
 - `docs/design/subscription-compilation/intro.md` §2.3 — `InterestScope::ActiveAccount` resolution at compile time, not registration time.
 - `docs/design/subscription-compilation/recompilation.md` §4.2 trigger A4 — the actor-message shape of the `ActiveAccountChanged` trigger.
-- `docs/design/kernel-substrate.md` §8 — module composition rules, specifically domain-store isolation.
+- ADR-0015 — signer/account boundary.
 - `docs/product-spec/subsystems.md` §7.4 — `SessionState` field shapes.
 
 ## Interaction with C11
@@ -73,4 +86,5 @@ The full sequence (onboard → switch → use) is exercised by C11 sub-path 2(e)
   `SessionState.accounts`; its spec/payload is owned by the app or protocol
   composition surface, not this contract.
 - **Background account state** (per-account sync watermarks, per-account action ledger). Those are per-account scopes inside the storage backend; the contract does not specify the scoping mechanism, only that the switch does not leak state across.
-- **Logging out / removing an account.** A `RemoveAccount` action exists in the long-term catalog (`subsystems.md` §7.4 implied); its contract surface is a separate potential bullet, not in v1's 13. Removal cleanly through the same `IdentityModule::destroy` path (kernel-substrate.md §6 line 341).
+- **Logging out / removing an account.** Account removal is a separate action
+  contract and must cleanly tear down account-scoped signer/session state.

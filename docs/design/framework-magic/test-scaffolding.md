@@ -65,7 +65,7 @@ pub struct ContractHarness {
     mock_relays:      Vec<MockRelay>,             // from nostr-relay-builder
     keyring:          InMemoryKeyringCapability,  // for C11
     audit:            WireFrameAuditLog,          // proposed; captures every CLOSE/REQ/EVENT frame
-    reconciler_log:   Vec<AppUpdate>,             // every AppUpdate emitted across the FFI seam
+    update_log:       Vec<UpdateFrame>,           // every pushed update frame
 }
 
 impl ContractHarness {
@@ -81,7 +81,7 @@ impl ContractHarness {
 
 pub struct Contract {
     // dispatch surface
-    pub fn dispatch(&mut self, action: AppAction);
+    pub fn dispatch(&mut self, envelope: DispatchEnvelope);
     pub fn open_feed(&mut self, params: FeedParams) -> FeedHandle;
     pub fn close_feed(&mut self, handle: FeedHandle);
     pub fn open_interest(&mut self, filter_json: &str, consumer_id: &str, scope: InterestScope);
@@ -97,10 +97,10 @@ pub struct Contract {
 
     // assertion surface
     pub fn wire_frames(&self, relay: usize) -> &[WireFrame];
-    pub fn reconciler_log(&self) -> &[AppUpdate];
+    pub fn update_log(&self) -> &[UpdateFrame];
     pub fn event_store_get(&self, id: &EventId) -> Option<&StoredEvent>;
     pub fn provenance_of(&self, id: &EventId) -> &Provenance;
-    pub fn watermark_of(&self, filter_sig: &FilterSig, relay: usize) -> Option<&Watermark>;
+    pub fn coverage_of(&self, filter_sig: &FilterSig, relay: usize) -> Option<&CoverageRow>;
     pub fn action_ledger(&self) -> &[ActionLedgerRow];
     pub fn keyring_entries(&self) -> &[KeyringEntry];
     pub fn session_state(&self) -> &SessionState;
@@ -207,6 +207,6 @@ Total: 13 behavior tests + 1 meta-test = 14 `#[test] fn` declarations across six
 ## 8. What this scaffolding does not specify
 
 - **The harness implementation.** The skeleton above is the API; the implementation is the next agent's deliverable (a `framework-magic-harness` task, or the M2 milestone implementation owner folding it in).
-- **The reverse mapping from `AppAction` variants to action-ledger rows.** That's `kernel-substrate.md` §4 territory; the harness exposes `action_ledger()` and the test reads rows by index/id.
-- **Per-platform binding tests.** Cross-platform consistency (`subsystems.md` §3.5) is a separate test suite that runs the same scripted actions on iOS / Android / Desktop / Web and diffs `AppState` JSON. The framework-magic contract is Rust-only; platform-binding regressions show up in the cross-platform suite.
+- **The reverse mapping from dispatch envelopes to action-ledger rows.** That's `kernel-substrate.md` §4 territory; the harness exposes `action_ledger()` and the test reads rows by index/id.
+- **Per-platform binding tests.** Cross-platform consistency (`subsystems.md` §3.5) is a separate test suite that runs the same scripted actions on iOS / Android / Desktop / Web and diffs decoded update state. The framework-magic contract is Rust-only; platform-binding regressions show up in the cross-platform suite.
 - **Negative tests for the API surface.** "The app cannot type `SendNote { content, relays: vec![...] }`" is a *compile-fail* test, owned by `docs/design/subscription-compilation/tests.md` §9.2 assertion 1. The framework-magic surface assertion is "no test passes the broken usage"; the structural inability is asserted there.

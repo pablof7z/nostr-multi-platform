@@ -21,22 +21,22 @@ The success criterion is qualitative: **a developer should be able to one-shot a
 The architectural skeleton follows the **`rust-multiplatform/rmp`** project's design. The load-bearing model is **The Elm Architecture (TEA)**, also called Model-View-Update. Three primitives:
 
 - **`AppState`** — a single struct containing all data the UI needs to render.
-- **`AppAction`** — an enum of every user intent or lifecycle event.
-- **`handle_message(state, action) -> state`** — a pure update function that takes current state and a message and produces new state.
+- **typed actions / commands** — validated user intent, lifecycle events, and capability completions entering the actor.
+- **reducers** — pure update functions that take current state and a message and produce new state plus typed effects.
 
 Data flow is **strictly unidirectional**: user interaction → action dispatch → actor processes synchronously → state emission → platform re-renders. *"No data races. A single actor thread owns all mutable state. No locks, no concurrent mutation, no race conditions."*
 
-The execution model is the **actor pattern**. A dedicated OS thread owns `AppState` and runs a synchronous event loop reading from a `flume` channel. A separate tokio runtime handles async I/O (relay connections, signing, database) and feeds results back through the same channel as `InternalEvent`. Only the actor thread mutates state.
+The execution model is the **actor pattern**. A dedicated OS thread owns the kernel state and runs a synchronous event loop over typed commands, relay events, and capability completions. Blocking workers and capability handlers report results back into that same loop. Only the actor thread mutates state.
 
 The cross-FFI flow:
 
 ```
-Native UI calls dispatch(action)         [fire-and-forget, never blocks]
-  → flume channel
+Native UI calls typed intent helper      [fire-and-forget, never blocks]
+  → bridge encodes DispatchEnvelope bytes
   → Actor thread recv()
-  → handle_message() mutates AppState, increments rev
-  → AppUpdate emitted on update channel
-  → Listener thread invokes AppReconciler.reconcile(update) callback
+  → reducer mutates state, increments rev
+  → UpdateFrame emitted on update channel
+  → Listener thread invokes update callback
   → Native code hops to main/UI thread
   → State replaced via @Observable / mutableStateOf / runes / signals
   → UI re-renders
@@ -184,11 +184,11 @@ The repository is a Cargo workspace plus per-platform shells. The layout below i
 ```
 <framework>/
 ├── crates/
-│   ├── <framework>-core         # Actor, AppState, AppAction, AppUpdate,
+│   ├── <framework>-core         # Actor, AppState, typed commands, UpdateFrame,
 │   │                              # event store, subscription planner, sessions,
 │   │                              # outbox routing. Pure Rust, no FFI.
-│   ├── <framework>-ffi          # Binding scaffolding. FfiApp object,
-│   │                              # AppReconciler callback interface,
+│   ├── <framework>-ffi          # Binding scaffolding. App handle,
+│   │                              # update callback interface,
 │   │                              # state-type carriers across the FFI seam.
 │   │                              # TODAY: hand-rolled C-ABI; symbol count and
 │   │                              # governance tracked in GitHub Issues.
@@ -249,19 +249,7 @@ These rules are the framework's identity. They derive from the TEA + actor model
 
 ---
 
-## 7. Open design questions (must resolve before substantive coding)
-
-1. **State granularity across FFI.** Full-state snapshots are clean but expensive for large stores. Where do we draw the line, and what granular update variants are needed (e.g. `EventAdded`, `ViewChanged { view_id }`, `SessionSwitched`)? — *Partially resolved by ADR-0055 (2026-06-14):* the line is drawn at the **per-projection** grain, not per-event — the wire omits unchanged projection rows (carrying `projection_rev`/`state`) and an NMP-owned generated `ProjectionCache` reconstructs the full set host-side, so no new app-visible `AppUpdate::*` variants are needed and app code never handles deltas. Realized for Tier-2 projections; Tier-1 feed-class granularity (row-deltas) remains open for a later rung.
-2. **Where do views live?** (a) Materialized in `AppState`, (b) lazy with `ViewHandle` opaque references the UI subscribes to, (c) computed in platform code. The actor model rules out (c). Pick between (a) and (b) — leaning (b) for efficiency, but it complicates the FFI surface.
-3. **Reactive cross-FFI subscription protocol.** UniFFI gives callback interfaces, not native reactive streams. Swift wants `@Observable`, Kotlin wants `Flow`, JS wants Observables/Promises. Define a single `Subscription` opaque handle + reconciler-style callback that adapts cleanly per platform.
-4. **NIP-46 bunker as a capability bridge.** Long-lived, stateful, involves user approval on another device. Needs careful design as a capability bridge.
-5. **Background notification decryption.** iOS Notification Service Extensions and Android background workers must call into the Rust core for NIP-17 decryption without spinning up the full actor. Likely a smaller "decrypt-only" surface area in a sibling crate.
-6. **Frozen offline action queue.** Actions dispatched while offline must persist and replay on reconnect, with correct ordering and timestamping. Where does the queue live — in the actor, in SQLite, in a separate durable channel?
-7. **Naming.** Working name only. The eventual name should be memorable, available on crates.io and npm, and not conflict with existing Nostr or Rust-multiplatform projects.
-
----
-
-## 8. References
+## 7. References
 
 - **`rust-multiplatform/rmp`** on GitHub — the architectural anchor. This framework's TEA + actor model and crate layout follow its design.
 - **`rust-nostr`** workspace on GitHub — the protocol foundation. We depend on its `nostr`, `nostr-database`, `nostr-lmdb`, `nostr-ndb`, `nostr-sqlite`, `nostr-gossip`, `nostr-keyring`, `nostr-blossom`, `nostr-relay-builder`, and `nwc` crates. We **do not** depend on `nostr-sdk` (own relay transport — see **ADR-0022**) or `nostr-connect` (own NIP-46 broker — see **ADR-0031** `docs/decisions/0031-signer-broker-nip46-transport.md`).
@@ -269,6 +257,6 @@ These rules are the framework's identity. They derive from the TEA + actor model
 
 ---
 
-## 9. What this document is not
+## 8. What this document is not
 
 It is not a design document. It is not a roadmap. It does not commit to APIs, file structures beyond the workspace sketch, dependency versions, or scheduling. It defines the **aim** so that subsequent design and implementation work proceeds from shared, durable context.

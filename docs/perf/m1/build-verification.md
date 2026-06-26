@@ -67,19 +67,6 @@ Total: 12 unit/integration tests, 0 failed
 real 4.35s   EXIT: 0
 ```
 
-### 3. `cargo run -p nmp-codegen -- gen modules --manifest apps/fixture/nmp.toml --out apps/fixture/nmp-app-fixture --check`
-
-> **Historical.** `nmp gen modules` and `apps/fixture` were deleted by ADR-0046
-> (2026-06-12). This step no longer exists; the CI gate is now `just gen bindings` + diff
-> check. Results below are from the 2026-05-18 baseline snapshot.
-
-Note: The task spec omitted `--manifest` and `--out` flags. The canonical invocation comes from the justfile `gen-modules-check` recipe. That full form was used.
-
-```
-nmp gen modules --check: ok
-real 0.45s   EXIT: 0
-```
-
 ### 4. `reactivity-bench --standard --fail-on-gate`
 
 Note: `--fail-on-gate` IS wired (verified in `crates/nmp-testing/bin/reactivity-bench/config.rs`). `--no-write-report` added to suppress disk write during verification.

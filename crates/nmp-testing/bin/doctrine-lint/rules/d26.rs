@@ -12,10 +12,9 @@
 //! the `LocalSignerAccess` port), never by a protocol command pulling the raw
 //! `nostr::Keys` out of an ambient accessor.
 //!
-//! D26 makes both permanent. It is the [`docs/plans/arch-authority-lifecycle.md`]
-//! Workstream D item 7 gate: "protocol/command code cannot reference
+//! D26 makes both permanent: protocol/command code cannot reference
 //! `active_local_keys` or the broad `AppHost`; signing goes through the
-//! signer-session port only." It is **D21-adjacent**: D21 bans ambient-authority
+//! signer-session port only. It is **D21-adjacent**: D21 bans ambient-authority
 //! *statics*; D26 bans ambient-authority *type/accessor* references in
 //! protocol-command code.
 //!

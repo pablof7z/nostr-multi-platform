@@ -122,12 +122,11 @@ well under the 100 MB ADR-0003 gate. (`run-002.md:7-50`.)
 
 ## How reactive modules plug in
 
-Current v1 code uses explicit Rust seams, not a `ViewModule` trait. A module
-can register:
+Current v1 code uses explicit Rust seams. A module can register:
 
 - a typed feed session (`open_feed(FeedParams)`) whose source compiles to
   materialized `LogicalInterest`s;
-- `KernelEventObserver` + `register_snapshot_projection` for read models that
+- `KernelEventObserver` + `register_typed_snapshot_projection` for read models that
   maintain their own app-owned state slice;
 - ref/dependent-interest claims for profiles, events, addresses, and other
   secondary facts a mounted component/read model needs.

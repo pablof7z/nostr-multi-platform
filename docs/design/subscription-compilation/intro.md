@@ -118,10 +118,9 @@ pub enum InterestLifecycle {
 
 ### 2.2 How current code expresses interests
 
-The proposed runtime `ViewModule` registry did not ship. Current NMP code opens
-interests through typed feed sessions, ref/dependent-interest claims, event
-observers, and registered projections. The planner still receives the same
-kind of normalized `LogicalInterest` data; the ownership boundary changed.
+Current NMP code opens interests through typed feed sessions,
+ref/dependent-interest claims, event observers, and registered projections. The
+planner receives normalized `LogicalInterest` data from those Rust-owned seams.
 
 Concrete current examples:
 
@@ -183,7 +182,9 @@ Account-scoped interests with empty `authors` and empty `#p` (e.g. a free-form h
 To keep the surface small, the following are explicitly **not** logical interests:
 
 - A **wire REQ**. Wire REQs are produced by the compiler; they live in `WireSubscriptionStatus` per ADR-0007.
-- A **publish**. Publishes are durable actions on the action ledger (`docs/design/kernel-substrate.md` §4); they consult the `PublishPlanner` (§7) but they are not interests because they do not stay alive.
+- A **publish**. Publishes are action/publish-engine work; they may consult
+  the `PublishPlanner`, but they are not interests because they do not stay
+  alive.
 - A **diagnostic record**. ADR-0007 lanes are facts derived from the planner's state, not inputs.
 - An **HTTP fetch** (Blossom upload, indexer JSON probe). Those are `CapabilityModule` requests.
 

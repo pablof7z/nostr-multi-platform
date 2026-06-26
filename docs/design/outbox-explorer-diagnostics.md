@@ -4,9 +4,6 @@
 **Doctrine.** D0 (no app nouns), D4 (single-writer per fact),
 D5 (bounded snapshot), D7 (capability report, no policy), D8 (working-set
 bounded, no per-event allocation).
-**Companion.** `docs/research/relay-lifecycle-and-pools.md` §3 + §4.1 (the
-G8/M11 gap this surface formalises).
-
 The explorer is a kernel-side **diagnostic projection** that lets a builder
 answer, for any live WebSocket: (a) **why** we connected, (b) **what** REQs
 are running on it, (c) per-socket **metrics**, and (d) **usefulness** — how

@@ -4,7 +4,7 @@ name: s3-snapshot-pressure-gate
 #
 # §G-S3 enforces the C-ABI serialization path that Swift actually calls:
 # `nmp_app_set_update_callback` + snapshot emit under a 100k-event corpus.
-# Gate thresholds (docs/design/ffi-hardening/gates.md §G-S3):
+# Gate thresholds (docs/retired/ffi-hardening-m10-5.md §G-S3):
 #   callback_p99_ms     <= 20 ms   (per-emit serialization wall-time p99)
 #   max_payload_bytes   <= 2 MiB   (per-emit payload size)
 #   apply_us_p99        <= 16,000  (callback apply_us p99 ≈ one 60 Hz frame)

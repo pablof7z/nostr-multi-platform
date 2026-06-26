@@ -3,8 +3,7 @@
 > **Status:** Design draft. No code yet.
 > **ADR:** `docs/decisions/0021-relay-roles-indexer-and-app-relay.md`.
 > **Date:** 2026-05-18.
-> **Research:** `docs/research/relay-lifecycle-and-pools.md` (existing
-> NMP relay architecture); the cross-library research at
+> **Research:** Cross-library research at
 > `docs/research/ndk/` and `docs/research/applesauce/` directories.
 > Two flat-file research reports (`ndk-app-relay-model.md` and
 > `applesauce-app-relay-model.md`) were produced during this design

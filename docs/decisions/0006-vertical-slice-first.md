@@ -34,8 +34,8 @@ Phase 1 of the build plan opens with a **vertical slice**: kind:0 profile metada
 │  - dispatch CloseView(id) after 30s grace on 1→0             │
 │  - write replaced profile payload into the keyed cache      │
 └──────────────────────▲───────────────────────────────────────┘
-                       │ AppAction / AppUpdate (no FFI for slice;
-                       │ direct fn calls into nmp-core)
+                       │ direct kernel action/update calls
+                       │ (no FFI for slice)
 ┌──────────────────────┴───────────────────────────────────────┐
 │  nmp-core actor (minimal)                                    │
 │  - handle OpenView/CloseView                                 │

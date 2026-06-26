@@ -47,7 +47,7 @@
 //!
 //! Stage 2 (the dotted-projection-key registry — `SnapshotProjections`) is
 //! live; the remaining Stage 3 work is deferred per
-//! `docs/architecture-audit/v6-codegen-plan.md` §6d.
+//! `docs/retired/codegen-v6.md` §6d.
 
 use schemars::{schema_for, JsonSchema};
 use serde::Serialize;

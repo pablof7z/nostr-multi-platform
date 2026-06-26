@@ -173,10 +173,7 @@ the minimum that unblocks the app. See flagged user-decision Q2.
 
 The blob descriptor surfaces via the **existing** `action_results[correlation_id]`
 projection — the same drain-once, correlation-keyed surface that
-`RecordActionSuccess` / `RecordActionFailure` already feed (verified:
-`ActorCommand::RecordActionSuccess { correlation_id }` and the
-`dispatch_action` `{"ok":true,…}` → success / `{"ok":false,"error":…}` →
-failure routing in `crates/nmp-core/src/actor/mod.rs`). No new
+`RecordActionSuccess` / `RecordActionFailure` already feed. No new
 `blossom_uploads` projection key is added to `nmp-core` — "blossom" is a
 protocol noun and must not appear in the substrate (D0).
 
@@ -270,7 +267,9 @@ crates/nmp-blossom/
 
 ## App-facing API
 
-Dispatch (`nmp_app_dispatch_action("nmp.blossom.upload", json)`):
+Expose a typed upload intent helper. Generated/bridge code encodes the
+`nmp.blossom.upload` payload and sends the finished envelope through the byte
+doorway:
 
 ```json
 {
@@ -359,11 +358,10 @@ substrate-touching step.
    "nmp.blossom.upload"`, `is_async_completing() = true`), `UploadInput` shape,
    `start()` validation (non-empty `file_path`, non-empty `servers`),
    `execute()` emits the `Protocol` command.
-8. **`lib.rs::register_actions`** registers `UploadAction`; wire podcast-player
-   avatar/artwork/feedback uploads to `dispatch_action("nmp.blossom.upload", …)`.
-9. **Follow-up PR** — add the §2 Layer-4 row + §8 decision-log line to
-   `docs/architecture/crate-boundaries.md`; supersede
-   `docs/wiki/blossom-upload-signing.md` and amend `docs/wiki/nmp-app-podcast.md:26`.
+8. **`lib.rs::register_actions`** registers `UploadAction`; podcast-player
+   avatar/artwork/feedback uploads call a typed upload helper rather than a
+   raw transport helper.
+9. **Crate-boundary docs** list `nmp-blossom` as the Layer-4 Blossom owner.
 
 ### `nmp-core` substrate extensions required (touch core — review with care)
 
@@ -394,8 +392,7 @@ No HTTP crate enters `nmp-core`. No Blossom token enters `nmp-core`.
 - D0/D6/D7/D8 hold: no NIP/Blossom nouns and no HTTP client in `nmp-core`;
   errors become kernel state (toast + action terminal); the kernel owns
   `created_at`; all hashing and HTTP run off the actor thread.
-- `docs/wiki/blossom-upload-signing.md`'s "NMP must not absorb Blossom HTTP"
-  stance is **superseded** by this ADR.
+- `nmp-blossom` owns Blossom HTTP while `nmp-core` remains HTTP-free.
 
 ## Resolved decisions (formerly flagged questions)
 

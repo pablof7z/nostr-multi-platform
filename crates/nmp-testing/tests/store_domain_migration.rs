@@ -1,6 +1,6 @@
 //! §2.12 Domain migration success + failure tests.
 //!
-//! See `docs/design/lmdb/tests/migration.md` §2.12.
+//! See `docs/design/lmdb/tests.md` for current store-test guidance.
 
 use nmp_store::StoreError;
 use nmp_core::substrate::{DomainMigration, MigrationTx};

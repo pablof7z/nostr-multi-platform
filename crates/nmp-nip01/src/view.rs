@@ -8,14 +8,10 @@
 //!
 //! ## Lazy `#e` expansion (`ThreadView`)
 //!
-//! `view-catalog.md §5` calls for replies-of-replies to expand the `#e` set
-//! lazily as nested replies arrive. The current `dependencies` method is a
-//! static snapshot — there is no API to mutate dependencies post-open.
-//! This crate therefore relies on the planner also surfacing nested replies
-//! (e.g. via a separate `RepliesView` per intermediate node). When a child
-//! reply that points at an as-yet-unseen parent arrives, it is buffered in
-//! the `orphans` table and stitched once the parent does arrive — matching
-//! applesauce's `ThreadModel.parentReferences` behaviour.
+//! Thread dependencies are declared as a static `#e` target. Nested replies
+//! that point at an as-yet-unseen parent are buffered in the `orphans` table
+//! and stitched once the parent arrives, matching applesauce's
+//! `ThreadModel.parentReferences` behaviour.
 
 use std::collections::{BTreeMap, BTreeSet};
 

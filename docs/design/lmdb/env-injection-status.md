@@ -209,10 +209,8 @@ A clean reading of the four options:
   tested" advantage of `nostr-lmdb` shrinks once we are committed to
   refactoring its ingester regardless.
 
-**This doc does not pick.** Picking is T136a's job and requires user input
-(or autonomous-mode decision per memory `autonomous-mode.md` if the user
-is unavailable). Logging to `docs/perf/pending-user-decisions.md` is
-appropriate here.
+**This doc does not pick.** Picking is T136a's job and requires user input or a
+GitHub issue labeled `category:decision`.
 
 ## 5. What was NOT done in T136 Gate 1 (and why)
 
@@ -231,11 +229,9 @@ appropriate here.
    Single-line corrections, but worth doing once the option is chosen
    so the ADR matches the implementation.
 
-2. **`crates/nmp-core/src/store/lmdb.rs:23-27` doc comment** still
-   describes the rejected two-env model ("two separate heed environments
-   ... Atomicity across the two environments is best-effort with startup
-   repair"). This contradicts ADR-0011 and was already obsolete when
-   the skeleton was committed. Fix as part of T136b's first commit.
+2. **`crates/nmp-core/src/store/lmdb.rs:23-27` doc comment** must match
+   ADR-0011's single-environment atomicity rule. Fix as part of T136b's
+   first commit.
 
 3. **`docs/design/lmdb/trait.md` §5** references
    `nostr_lmdb::NostrLMDB + NMP sub-dbs` for the LMDB backend — that

@@ -24,13 +24,9 @@ eliminate (`docs/aim.md` §2 commandment #4: *no native business logic*; a
 relay-metadata fetch is a generic Nostr building block, not an app's
 proprietary domain — `AGENTS.md` "What belongs in NMP crates").
 
-The deferred design intent already exists in two places:
-
-- `crates/nmp-network/src/pool/types.rs:174-176` defers a "NIP-11 capability
-  map" to "phases C/D".
-- `docs/research/relay-lifecycle-and-pools.md` §4.1(2) specifies a
-  `RelayCapabilities` report per relay (`nip11_supported_nips`, …) framed D7:
-  *the kernel reports; the planner/protocol crates decide*.
+The design intent is a `RelayCapabilities` report per relay
+(`nip11_supported_nips`, …) framed D7: *the kernel reports; the
+planner/protocol crates decide*.
 
 This ADR resolves that deferred intent and the Highlighter product correction
 ("NMP should own the full NIP-11 lifecycle so apps get relay metadata with zero
@@ -110,8 +106,7 @@ otherwise. No app does HTTP, JSON, or knows what NIP-11 is — it reads
   crate), exactly as it does not depend on `nmp-blossom`/`nmp-nip57`. The
   `RelayConnectedHook` slot is generic and HTTP-free, so `nmp-core` stays
   wasm-clean.
-- The `nmp-network` "NIP-11 capability map deferred to phases C/D" comment is
-  superseded: capability data is surfaced via diagnostics (D7 report), not via a
+- Capability data is surfaced via diagnostics (D7 report), not via a
   pool-internal map. The pool stays substrate-grade.
 
 ## Subjective decisions / tradeoffs

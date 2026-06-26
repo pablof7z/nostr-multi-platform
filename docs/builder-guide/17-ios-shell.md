@@ -14,7 +14,7 @@ that keep it doctrine-clean.
 There is no UniFFI on master (that is M14; see
 [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). iOS calls the `extern "C"`
 surface exported by `crates/nmp-ffi` (`nmp_app_new`, `nmp_app_start`,
-`nmp_app_dispatch_action`, the generic feed doorway, capability callbacks,
+`nmp_app_dispatch_action_bytes`, the generic feed doorway, capability callbacks,
 etc.).
 One C callback delivers binary `nmp.transport.UpdateFrame` bytes with file
 identifier `NMPU`. The frame is FlatBuffers-only: `Snapshot` or `Panic`, with no
@@ -126,8 +126,8 @@ guard** and never derive UI truth from anything but the latest applied snapshot.
 > **Disambiguation.** "Snapshot projection" here means an app/module-owned slice
 > delivered under its key in `SnapshotFrame.typed_projections` (registered
 > Rust-side via `register_typed_snapshot_projection`; see
-> [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). It is **not** the ViewModule
-> view-delta system, and it is **not** a host-owned source of truth.
+> [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md)). It is not a
+> host-owned source of truth.
 
 The named typed fields in `apply()` (`items`, `profile`, `relayStatuses`) are
 the kernel's built-in slices. App- and module-owned state arrives in the same
@@ -191,7 +191,7 @@ looking at this now / not anymore".
 
 Only **Chirp** is an active iOS product proof today. Additional app shells are
 deferred until Chirp is complete; treating deleted historical scaffolds as proof
-of the iOS path is drift; see [27 — Doc/code discrepancies](27-discrepancies.md).
+of the iOS path is drift; see GitHub Issues or the owning doc.
 
 ## Anti-patterns
 

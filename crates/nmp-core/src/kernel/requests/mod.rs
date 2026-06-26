@@ -155,7 +155,7 @@ impl Kernel {
         // PD-033-C Stage 0: route through the single-writer helper. Stage 6
         // retires this M1 caller entirely; until then the helper preserves
         // M1's `auth_paused` initial state (M2 hardcodes `"opening"`, which
-        // is a known asymmetry — see pd033c-plan.md §4.1).
+        // is a known asymmetry — see docs/retired/pd033c-routing-gaps.md §4.1).
         self.insert_wire_sub(
             role,
             wire_key_url,
@@ -332,7 +332,7 @@ impl Kernel {
                     // PD-033-C Stage 0: route through the single-writer helper.
                     // After Stage 6 this is the SOLE caller of `insert_wire_sub`.
                     // M2 keeps its `"opening"` initial state (M1 has an extra
-                    // `auth_paused` branch — see pd033c-plan.md §4.1 for the
+                    // `auth_paused` branch — see docs/retired/pd033c-routing-gaps.md §4.1 for the
                     // gap and the AuthGate consolidation that closes it).
                     self.insert_wire_sub(
                         role,

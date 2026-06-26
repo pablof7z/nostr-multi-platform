@@ -56,8 +56,8 @@ Each row binds a behavior to: the sub-file that specifies it, the test name in `
 
 1. **C11 caveat (status unaffected).** The test passes and exercises the real
    primitives (`parse_bunker_uri`, `LocalKeySigner::generate`,
-   `AccountManager::add`). The `KeyringCapability` / `IdentityModule` kernel
-   action-module wrapper is still a substrate-layer gap tracked by
+   `AccountManager::add`). The `KeyringCapability` / account-action wrapper is
+   still a substrate-layer gap tracked by
    `#57-c11-keyring` — an internal wiring caveat, **not** a bullet downgrade.
    Similarly C5's registry push that expands the author set is a synthetic
    stand-in for the ReducedSource dependent-interest replacement; the source

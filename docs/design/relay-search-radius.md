@@ -250,7 +250,9 @@ and the new table starts empty.
 - *Read strategy*: load into the in-memory `BTreeMap` on kernel construction. Lazy load (per-author) is rejected for v1 — keeps the read path simple and the working set bounded (an author has at most ~30 outbox relays; total table size is bounded by `|authors_we've_seen| × ~30`).
 ### 8.3 Snapshot integration
 
-The scores table is NOT included in `AppUpdate` snapshots — it is purely internal kernel state, not a projection the UI consumes. (D8 update-equality is preserved trivially — no Swift/Kotlin code needs the table.)
+The scores table is not included in update frames; it is purely internal kernel
+state, not a projection the UI consumes. D8 update equality is preserved because
+no native host code reads the table.
 
 ---
 

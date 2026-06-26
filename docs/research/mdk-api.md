@@ -347,18 +347,18 @@ Removed: `GROUP_CONTEXT_REQUIRED_PROPOSALS` constant, `MDK::required_capabilitie
 
 ## 6. MDK → NMP Mapping Table
 
-### DomainModules
+### Domain Records
 
-| NMP DomainModule | MDK calls |
+| NMP domain record | MDK calls |
 |---|---|
 | `MarmotGroup` | `MDK::get_group(&GroupId)` → `group_types::Group` for display metadata. `MDK::get_members(&GroupId)` for member set. The actual MLS ratchet state lives in MDK/SQLite, not in NMP's LMDB. |
 | `MarmotMessage` | `MDK::process_message(&Event)` → `MessageProcessingResult::ApplicationMessage(msg)`. `MDK::get_messages(&GroupId, pagination)` for history. |
 | `MarmotKeyPackage` | `MDK::create_key_package_for_event(&PublicKey, relays)` → `KeyPackageEventData`. Track `hash_ref` and `d_tag` for rotation lifecycle. `MDK::parse_key_package(&Event)` for peer key packages fetched from relay. |
 | `MarmotWelcome` | `MDK::process_welcome(wrapper_id, rumor)` → `welcome_types::Welcome`. `MDK::get_pending_welcomes(pagination)` for pending list. |
 
-### ViewModules
+### Read Projections
 
-| NMP ViewModule | MDK calls |
+| NMP projection | MDK calls |
 |---|---|
 | `GroupList` | `MDK::get_groups()` → `Vec<group_types::Group>`. Filter by `group.state == GroupState::Active`. Unread count derived from `group.last_message_at` vs client-tracked read cursor. |
 | `GroupMessages` | `MDK::get_messages(&GroupId, Some(Pagination))` → paginated `Vec<message_types::Message>`. Live-update on new epoch from `MessageProcessingResult::Commit`. |

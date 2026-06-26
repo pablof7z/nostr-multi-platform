@@ -66,7 +66,7 @@ where the 95 %+ savings appear.
   acts as a coverage hint, not a true mid-stream resume.  Persisting it is
   still useful so future engine versions can pick up mid-frame.
 - Capability persistence is wired through [`CapabilityDomain`](../../../crates/nmp-nip77/src/capability_domain.rs)
-  as a `DomainModule`, but the LMDB-backed store path is not yet active
+  as protocol-owned domain state, but the LMDB-backed store path is not yet active
   in M4 (M3 + LMDB feature gate); the in-memory cache covers the run-time
   semantics.
 

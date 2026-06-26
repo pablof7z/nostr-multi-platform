@@ -26,7 +26,7 @@ import XCTest
 /// be constructed directly from the test target.  Since `TimelineListView.==`
 /// is a thin zip-allSatisfy wrapper over `rendersIdentically`, testing the
 /// pure function is the complete verification of the guard's correctness.
-/// A decision note is logged in docs/perf/pending-user-decisions.md.
+/// The corresponding decision belongs in the GitHub decision queue.
 @MainActor
 final class IdleReRenderTests: XCTestCase {
 

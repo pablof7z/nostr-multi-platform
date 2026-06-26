@@ -37,7 +37,7 @@ Generated artifacts:
 - `docs/perf/firehose-bench/1779046827-replay.json`
 - `docs/perf/firehose-bench/1779046847-capture.md`
 - `docs/perf/firehose-bench/1779046847-capture.json`
-- `docs/perf/firehose-bench/1779046850-live.md`
+- no retained live report
 - `docs/perf/firehose-bench/1779046850-live.json`
 - `docs/perf/firehose-bench/traces/1779046847-synthetic.json`
 - `docs/perf/reactivity-bench/1779046753-run-002.md`
@@ -129,7 +129,7 @@ Capture mode is useful as a placeholder contract for future trace ingestion. It 
 
 ## Firehose Live Findings
 
-Latest live report: `docs/perf/firehose-bench/1779046850-live.md`.
+Latest live report: none retained.
 
 Overall result: false.
 

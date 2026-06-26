@@ -25,13 +25,13 @@ time** — before any action is dispatched, before `nmp_app_start`:
 
 ```
 register_live_event_tap   ←── live-only event tap on the actor thread
-register_snapshot_projection ←── reads the observer's state on every tick
+register_typed_snapshot_projection ←── reads the observer's state on every tick
 register_action           ←── dispatches EnsureInterest / DropInterestOwner
 ```
 
 The action opens (or closes) the subscription slots. The observer catches
 arriving events and populates an `Arc<Mutex<AppState>>`. The projection reads that
-state and emits a JSON slice the shell sees on the next pushed frame. Nothing
+state and emits a typed sidecar the shell sees on the next pushed frame. Nothing
 is polling. Nothing is in the shell.
 
 ## The action module: Claim/Release
@@ -301,8 +301,8 @@ for the old one:
 
 ```swift
 // Shell (Swift) — user changes discover query from "bitcoin" to "lightning"
-nmpAppDispatchAction(app, ns, #"{"op":"release","topic":"bitcoin","consumer_id":"discover-view"}"#)
-nmpAppDispatchAction(app, ns, #"{"op":"claim","topic":"lightning","consumer_id":"discover-view"}"#)
+topicArticles.release(topic: "bitcoin", consumerID: "discover-view")
+topicArticles.claim(topic: "lightning", consumerID: "discover-view")
 ```
 
 A `SetInterest` command that calls `set_sub` (`registry.rs:86` — replaces the
@@ -349,20 +349,20 @@ interest-scoped live delivery.
 
 ## The snapshot projection — delivering to the shell
 
-Register a closure that reads from the same `Arc<Mutex<AppState>>` and emits
-JSON. The closure runs on every snapshot tick after any ingest:
+Register a closure that reads from the same `Arc<Mutex<AppState>>` and emits a
+typed sidecar. The closure runs on every snapshot tick after any ingest:
 
 ```rust
 let state_snap = state.clone();
-app.register_snapshot_projection("myapp.discover_results", move || {
+app.register_typed_snapshot_projection("myapp.discover_results", move || {
     state_snap
         .lock()
-        .map(|s| serde_json::to_value(&*s).unwrap_or_default())
-        .unwrap_or_default()
+        .ok()
+        .map(|s| encode_discovery_projection(&*s))
 });
 ```
 
-The shell reads `projections["myapp.discover_results"]` off the pushed
+The shell reads `typed_projections["myapp.discover_results"]` off the pushed
 `SnapshotFrame` in its `apply()` callback. No polling. Edge-triggered by the
 actor's `changed_since_emit` flag whenever an event lands. See
 [06 — Reactivity contract](06-reactivity-contract.md) and
@@ -381,9 +381,9 @@ pub fn register(app: &mut impl AppHost) {
     app.register_live_event_tap(Arc::new(ArticleObserver { state: state.clone() }));
 
     // 3. Projection — reads the observer's state.
-    app.register_snapshot_projection("myapp.discover_results", {
+    app.register_typed_snapshot_projection("myapp.discover_results", {
         let s = state.clone();
-        move || serde_json::to_value(&*s.lock().unwrap()).unwrap_or_default()
+        move || s.lock().ok().map(|g| encode_discovery_projection(&*g))
     });
 
     // 4. Action module — the shell can now dispatch Claim/Release.
@@ -468,7 +468,7 @@ and read the results from a projection?" The answer is almost certainly yes.
 | `dispatch_capability("nostr_relay", …)` | Relay logic enters the shell; kernel becomes a passthrough (D0, D4) | Action module → `EnsureInterest` → observer → projection |
 | Calling `push_interest` / `EnsureInterest` outside of `ActionModule::execute` or a runtime controller | Bypasses the action stage machinery; no correlation ID; no host visibility | Route through an `ActionModule` or an account-switch runtime controller (see `runtimes.rs`) |
 | Observer that blocks or panics | Stalls the actor thread; may corrupt snapshot cadence | Keep observer body O(1), lock briefly, never panic (D6) |
-| Polling the projection from the shell instead of reading off the pushed frame | D8 violation (polling); data is already pushed — read it from `apply()` | Register a push projection; read `projections[key]` in the push callback |
+| Polling the projection from the shell instead of reading off the pushed frame | D8 violation (polling); data is already pushed — read it from `apply()` | Register a push projection; read `typed_projections[key]` in the push callback |
 | Setting `is_async_completing = true` for a subscription-only action | Host spinner waits for a terminal that never arrives | Leave `is_async_completing` at default `false`; the action is done when `EnsureInterest` is enqueued |
 
 ## Decision tree — which lifecycle?

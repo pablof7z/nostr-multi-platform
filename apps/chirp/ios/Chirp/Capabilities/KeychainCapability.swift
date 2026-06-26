@@ -53,7 +53,7 @@ struct CapabilityEnvelope: Encodable, Equatable {
 /// The kernel's keyring capability contract is not yet defined in the Rust
 /// tree (filed: the kernel-side `KeyringCapability` Request/Result enum +
 /// IdentityModule wiring + the FFI/actor socket — see
-/// `docs/perf/pending-user-decisions.md` PD-019). This Swift vocabulary is
+/// GitHub decision queue). This Swift vocabulary is
 /// the minimal, self-contained shape the iOS side needs and is the shape the
 /// kernel side should converge on: a key/value secret store keyed by an
 /// account-scoped account identifier.

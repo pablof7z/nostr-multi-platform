@@ -70,8 +70,7 @@ variable-length segment can otherwise alias a longer value.
 
 ## Coverage ledger
 
-The old persisted `nmp-watermarks` design was deleted as dead machinery. The
-live durable read-path fact is `CoverageRow` in
+The durable read-path fact is `CoverageRow` in
 `crates/nmp-store/src/types/coverage.rs`:
 
 | Field | Meaning |
@@ -155,4 +154,4 @@ against an in-memory store.
 
 See also: [08 — EventStore + insert invariants + GC](08-eventstore.md) ·
 [13 — Sync engine — `nmp-nip77`](13-sync-engine.md) ·
-[27 — Doc/code discrepancies](27-discrepancies.md)
+GitHub Issues or the owning doc

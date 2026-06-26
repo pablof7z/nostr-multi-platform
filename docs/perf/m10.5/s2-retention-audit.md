@@ -5,9 +5,8 @@
   (PD-021 line-11 "Option A is mandatory"). T114 part 1 (`44cbfd2`) bounded
   the FFI command channel; T114b (this document) audits per-dispatch
   retention end-to-end and closes the M10.5 §G-S2 gate.
-- **Spec:** `docs/design/ffi-hardening/gates.md` §G-S2 (retention threshold
-  added in `s2-drain-analysis.md` as the leak-vs-transient tiebreaker:
-  `retained_heap_after_drain_bytes ≤ 1 MiB`).
+- **Spec:** M10.5 §G-S2 retention threshold
+  (`retained_heap_after_drain_bytes ≤ 1 MiB`).
 - **Predecessor analysis:** `s2-drain-analysis.md` — RETAINED-not-transient
   verdict (~38 MiB retained, 0.13 % reclaimed) that foreclosed Option B and
   mandated this fix.

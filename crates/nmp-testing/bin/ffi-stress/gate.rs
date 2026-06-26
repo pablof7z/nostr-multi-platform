@@ -1,4 +1,4 @@
-//! Gate checker per `docs/design/ffi-hardening/gates.md` G-S1..G-S5.
+//! Gate checker per `docs/retired/ffi-hardening-m10-5.md` G-S1..G-S5.
 //!
 //! A `Gate` is a named assertion: measured value op threshold.
 //! Collect gates into a `Vec<Gate>` during a scenario run, then call

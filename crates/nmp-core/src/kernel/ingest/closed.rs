@@ -1,7 +1,6 @@
 //! NIP-01 `CLOSED` frame ingest — parse, classify, route side-effect.
 //!
-//! Per the [relay-lifecycle review](../../../../docs/research/relay-lifecycle-and-pools.md)
-//! G8/G11, NIP-01 `CLOSED` frames carry a machine-readable reason prefix
+//! NIP-01 `CLOSED` frames carry a machine-readable reason prefix
 //! (`auth-required:`, `restricted:`, `rate-limited:`, …) that the kernel
 //! must route to distinct actions: AUTH-pause vs back-off vs mark-denied
 //! vs give-up. Before T120 the kernel folded every CLOSED to a generic

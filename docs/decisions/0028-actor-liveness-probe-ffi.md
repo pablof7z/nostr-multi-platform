@@ -51,11 +51,10 @@ transition in `apps/chirp/ios/Chirp/App/ChirpApp.swift`, alongside
 
 ## Rationale: why not a per-verb `dispatch_action` namespace
 
-The C-ABI surface freeze (`ci/check-ffi-surface-freeze.sh`) requires that
-every new app verb route through `nmp_app_dispatch_action("nmp.X.Y", json)`.
-The freeze is correct for app verbs (publish, react, follow, zap, dm send) —
-they are the surface that mirrors into Swift, doubles maintenance, and
-promises ABI stability to App Store binaries.
+App verbs route through the generic action doorway instead of gaining one C/JNI
+symbol per verb. That is correct for publish, react, follow, zap, and DM send:
+per-verb native symbols double maintenance and promise ABI stability to App
+Store binaries.
 
 A liveness probe is **not** an app verb:
 

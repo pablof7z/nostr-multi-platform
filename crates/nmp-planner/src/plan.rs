@@ -206,7 +206,7 @@ impl SubShape {
     /// the mutated shape as identical to the pre-mutation one and skip the
     /// REQ frame — leaving the relay on a stale `since`. See
     /// `docs/design/subscription-compilation/compiler.md` §3.3 and the M4
-    /// codex review at `docs/perf/codex-reviews/076173d.md` (P1 plan-identity
+    /// codex review at `docs/retired/removed-documents.md` (P1 plan-identity
     /// bug).
     pub fn recompute_hash(&mut self) {
         self.canonical_filter_hash = canonical_filter_hash(&self.shape);

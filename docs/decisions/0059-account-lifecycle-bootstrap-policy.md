@@ -79,10 +79,11 @@ secret-bearing operations such as local import and is wrapped in `Zeroizing` at
 the FFI boundary before dispatch; raw secrets must not enter action history,
 snapshots, logs, or generic JSON payloads.
 
-The symbol returns an enqueue verdict JSON, following `nmp_app_dispatch_action`:
-`{"correlation_id":"..."}` or `{"error":"..."}`. Terminal outcomes surface
-later in bounded state (`account_lifecycle_stages`, `last_error_toast`, and
-account snapshots), never as exceptions or blocking return values.
+The symbol returns the same enqueue verdict shape as
+`nmp_app_dispatch_action_bytes`: `{"correlation_id":"..."}` or
+`{"error":"..."}`. Terminal outcomes surface later in bounded state
+(`account_lifecycle_stages`, `last_error_toast`, and account snapshots), never
+as exceptions or blocking return values.
 
 The v1 request owns four operations:
 

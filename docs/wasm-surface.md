@@ -45,9 +45,7 @@ wire protocol uses three channels:
 
 App-level **writes** ride the binary write channel as a typed
 `DispatchEnvelope` (ADR-0064 §1; §3 below). There is no Promise write
-entrypoint and no wasm-only write enum: the former `dispatch_app_action_async`
-/ `AppAction` / `"app_action"` envelope were deleted (#1743 Cut A). Signing is
-the ADR-0050 capability round-trip
+entrypoint and no wasm-only write enum. Signing is the ADR-0050 capability round-trip
 (`begin_sign` → `sign_request` → `deliver_signer_response`), driven by pure
 message re-entry — the reducer never awaits a persistent signer (D7/D8).
 
@@ -75,9 +73,9 @@ Source: `crates/nmp-wasm/src/protocol.rs` lines 6–30.
 
 ### Structured reference controls
 
-The public JSON `dispatch` envelope (`action_type + payload`) is retired. A
-host that sends `"type":"dispatch"` fails serde deserialisation and receives a
-protocol error from `handle_json`; app writes must use `dispatch_bytes`.
+The worker accepts `dispatch_bytes` for app writes. A host that sends an
+unknown JSON control type fails serde deserialisation and receives a protocol
+error from `handle_json`.
 
 `resolve_ref` / `release_ref` are the only JSON control messages that mutate
 component reference bookkeeping:
@@ -183,16 +181,14 @@ oversize, missing routing fields) fails CLOSED with a data-shaped
 `WorkerEvent::Error { code: "dispatch_envelope_rejected" }` — never a panic,
 never a silent accept (D6).
 
-The old blanket `publish_not_supported_in_web_preview` gate is retired. With no
-active account, typed writes fail with `signer_not_installed`; after
+With no active account, typed writes fail with `signer_not_installed`; after
 `set_identity`, typed writes reach the `ActionModule` registry and the
 `WasmOutboxResolver`. Malformed typed payloads fail as data-shaped
 `CapabilityFailure`s from the registry/decode path.
 
 ### Signing — the ADR-0050 capability round-trip
 
-Signing is **not** an in-flow `Arc<dyn Signer>.await` (that path was deleted in
-#1743 Cut A). A signed write is the message-driven capability round-trip:
+Signing is a message-driven capability round-trip:
 
 1. The host sends `begin_sign { account_pubkey, unsigned_json }`.
 2. The worker parks a sign op and emits `sign_request { correlation_id,

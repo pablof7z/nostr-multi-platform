@@ -14,13 +14,6 @@ split is: raw C/JNI owns lifecycle/action/capability calls today, binary
 FlatBuffers owns the hot update stream today, UniFFI is still the planned
 binding/lifecycle target for M14, and the full starter remains M16.
 
-> **Historical note.** Older docs referred to `nmp gen modules`, a per-app FFI-crate
-> generator, and `apps/fixture/`. ADR-0046 deleted both: a generated `FfiApp` never
-> called `register_defaults` and produced a non-functional Nostr app. Composition now
-> lives in the `nmp-defaults` crate; codegen for host bindings is limited to the still-
-> live `gen swift` / `gen typed-decoders` emitters (gated by
-> `.github/workflows/codegen-drift.yml`).
-
 ## The `nmp.toml` manifest
 
 The manifest parser in `crates/nmp-codegen/src/manifest.rs` survives only for
@@ -83,7 +76,7 @@ Deleting the old `gen modules` scaffolder did not touch them.
 ```
 ┌─ TODAY (SHIPS) ─────────────────────────────────────────────────────┐
 │ Raw C/JNI lifecycle/action/capability ABI in crates/nmp-ffi. It      │
-│ exports the `nmp_app_*` surface (`new`, `start`, `dispatch_action`,    │
+│ exports the `nmp_app_*` surface (`new`, `start`, byte action dispatch,  │
 │ capability callbacks, projection/observer registration, etc.).         │
 │ The update callback carries one binary `nmp.transport.UpdateFrame`   │
 │ with file identifier `NMPU`: Snapshot or Panic. There is no JSON     │
@@ -113,13 +106,10 @@ Deleting the old `gen modules` scaffolder did not touch them.
 
 ADR-0010 §"Codegen output" shows `#[derive(Clone, uniffi::Enum)]` and a
 `bindings/{swift,kotlin,typescript}/` tree. **That is the M14 target shape, not
-master.** The deleted `gen modules` path no longer emits a generated Rust enum
-or per-app FFI crate at all. Live `nmp-codegen` emits only maintained host and
-runtime artifacts (`gen swift`, `gen typed-decoders`, `gen projection-cache`,
-and `gen builtin-keys`). Any doc or agent claiming UniFFI ships today, claiming
-a generated per-app Rust module exists, or claiming JSON remains a runtime
-fallback for the update stream is drift — file it into
-[27 — Doc/code discrepancies](27-discrepancies.md).
+master.** Live `nmp-codegen` emits maintained host and runtime artifacts
+(`gen swift`, `gen typed-decoders`, `gen projection-cache`, and
+`gen builtin-keys`). UniFFI remains planned, and JSON is not a runtime fallback
+for the update stream.
 
 ## How to add a snapshot projection to your app
 
@@ -160,9 +150,8 @@ in `crates/nmp-ffi/src/snapshot.rs`). The closure returns
 `nmp-core` treats those bytes as opaque. The host chooses the decoder by key and
 descriptor and reads the generated native model from the `typed_projections`
 vector. This is the production path for Swift/Kotlin/TS render inputs because it
-does not rely on a dynamic `payload:Value` tree. The update transport schema does
-not retain a compatibility payload slot; unknown host-visible state must get a
-typed sidecar rather than a native JSON walker.
+uses typed transport data. Unknown host-visible state must get a typed sidecar
+rather than a native JSON walker.
 
 Idle or empty projections must still encode an empty snapshot payload when the
 key is registered. Do not use `None` or sidecar absence to mean "empty wallet",
@@ -175,16 +164,6 @@ The OP feed wiring is the canonical high-volume exemplar:
 `nmp-defaults` registers the `nmp.feed.home` typed sidecar, `nmp-nip01` owns the
 feed schema and encoder, and iOS decodes it through `TypedHomeFeedDecoder`
 before assigning the corresponding `KernelModel` slot.
-
-### Legacy/internal seam — `register_snapshot_projection`
-
-`NmpApp::register_snapshot_projection` still exists for Rust-side composition,
-tests, diagnostics, and legacy helpers that want a `serde_json::Value` snapshot
-inside `KernelSnapshot::projections`. It is structurally useful as a framework
-extension seam, but the production `UpdateFrame` no longer carries a generic
-`payload:Value` tree for hosts to walk. Do not introduce new Swift/Kotlin UI
-state that depends on `snapshot.projections[key]` JSON being available on the
-wire; add a typed sidecar instead.
 
 > **D8 + D6 — the projector runs on the actor thread inside the snapshot tick.**
 > It MUST be cheap and non-blocking — no I/O, no mutex waits (D8); a blocking

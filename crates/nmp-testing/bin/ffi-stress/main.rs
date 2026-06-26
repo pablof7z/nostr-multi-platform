@@ -2,7 +2,7 @@
 //!
 //! Drives the `nmp_app_*` C symbols via extern declarations (same ABI Swift
 //! uses) and verifies S1–S5 gate conditions from
-//! `docs/design/ffi-hardening/gates.md`.
+//! `docs/retired/ffi-hardening-m10-5.md`.
 //!
 //! Usage:
 //!   ffi-stress <scenario> [--duration <D>] [--threads <N>] [--fail-on-gate]
@@ -11,7 +11,7 @@
 //! Scenarios: mount-unmount (S1) | dispatch-flood (S2) | snapshot-pressure (S3)
 //!            | reconciler-backpressure (S4) | reentrancy (S5)
 //!
-//! See `docs/design/ffi-hardening/harness.md` §1.2 for the full CLI reference.
+//! See `docs/retired/ffi-hardening-m10-5.md` §1.2 for the full CLI reference.
 
 mod allocator;
 mod common;

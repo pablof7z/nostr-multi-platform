@@ -46,7 +46,7 @@ impl Kernel {
     /// relay role (Content + Indexer). Replaces any previously-bound identity
     /// signer on those roles; other roles (e.g. NWC `Wallet`) are unaffected.
     /// FFI bridge that surfaces this from Swift is T59
-    /// (filed in `docs/perf/pending-user-decisions.md`).
+    /// (tracked in the GitHub decision queue).
     pub(crate) fn bind_auth_signer(&mut self, pubkey_hex: String, signer: AuthSignerFn) {
         self.auth_signers.insert(
             RelayRole::Content,

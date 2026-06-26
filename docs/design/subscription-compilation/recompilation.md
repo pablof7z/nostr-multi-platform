@@ -12,7 +12,10 @@ This section enumerates **every trigger that may cause recompilation** and the a
 Two trigger classes exist:
 
 - **Internal** triggers are emitted by the actor itself in response to an `InternalEvent`. They are `Trigger::*` enum variants; the planner consumes them off its own internal queue. They have no public dispatch surface.
-- **External** triggers are `AppAction` variants the platform may dispatch directly. There is exactly one — `AppAction::InvalidateCompile { reason }` — to keep the public surface minimal per `docs/aim.md` §6 doctrine 5.
+- **External** triggers are typed action payloads the platform may dispatch
+  through the action doorway. There is exactly one force-recompile action —
+  `InvalidateCompile { reason }` — to keep the public surface minimal per
+  `docs/aim.md` §6 doctrine 5.
 
 The full list:
 
@@ -23,7 +26,7 @@ The full list:
 | A3 | view registry | `Trigger::ViewClosed { interest_ids }` | warmth grace expired; interests dropped |
 | A4 | session | `Trigger::ActiveAccountChanged { from, to }` | account switch (M8) |
 | A5 | relay worker | `Trigger::RelayReconnected { url }` | socket re-established after backoff |
-| A6 | operator | `AppAction::InvalidateCompile { reason }` | external force-recompile |
+| A6 | operator | `InvalidateCompile { reason }` action payload | external force-recompile |
 | A7 | config | `Trigger::UserConfiguredRelaysChanged { generation }` | added/removed relay in local config |
 | A8 | config | `Trigger::IndexerSetChanged { generation }` | indexer relay list edited |
 | A9 | auth | `Trigger::RelayAuthStateChanged { url, state }` | NIP-42 transition (M5+) |
@@ -137,7 +140,7 @@ Per `docs/product-spec/subsystems.md` §7.2 "Reconnect": "the planner restores l
 
 ### A6 — InvalidateCompile
 
-The single external `AppAction` variant. Useful for:
+The single external force-recompile action. Useful for:
 
 - Operator diagnostics screens — "Force re-route now."
 - Test harnesses — see §9.

@@ -145,27 +145,16 @@ Applesauce's `OutboxModel` switchMaps each contact into its own mailbox sub
 but leaves debounce to the caller. NMP's wire-emitter diff (CLOSE removed
 slices, REQ added slices) avoids the race window entirely.
 
-## Reality check: what's still on the constant relay
+## Reality check: what is wired today
 
-**The planner and `SubscriptionLifecycle` SHIP, but the kernel's legacy REQ
-emitters have not migrated to consume the `CompiledPlan` yet.** The kernel
-demo still issues REQs through `RelayRole::{Content,Indexer}`
-(`crates/nmp-core/src/relay.rs:14-38`), whose `.url()` returns the two
-hardcoded constants `CONTENT_RELAY_URL = "wss://relay.primal.net"` and
-`INDEXER_RELAY_URL = "wss://purplepag.es"`
-(`crates/nmp-core/src/relay.rs:1-2`). `crates/nmp-core/src/kernel/requests/`
-still carries legacy replacement notes for the remaining bespoke request
-builder path, and
-`kernel/status.rs` / `kernel/update.rs` still render those constants.
+The planner output is consumed by `subs::SubscriptionLifecycle`. `subs::wire`
+diffs `CompiledPlan` into per-relay REQ/CLOSE frames, `Kernel::req_for_relay`
+stamps each outbound frame with the target relay URL, and the actor dispatches
+those frames through the URL-keyed relay pool (`send_outbound` /
+`RelayControl`). Per-author NIP-65 routing is therefore on the wire, not only in
+the compiler.
 
-So today's demo timeline does **not** fan per-author to NIP-65 write relays
-at the wire — the compiler computes the correct `CompiledPlan`, but nothing
-in the kernel REQ path applies it as a diff yet. This wiring gap is a §27
-discrepancy (drift-class), recorded in the DRIFT REPORT of this delivery. Do
-not assume opening a view today routes by mailbox; verify against
-`subs::SubscriptionLifecycle`, not `kernel::requests`.
-
-### `apply_selection` — landed, not yet wired
+### `apply_selection` — landed
 
 `crates/nmp-planner/src/selection.rs` ships an applesauce-style
 greedy max-coverage post-compile mutator:
@@ -176,10 +165,8 @@ applesauce `selectOptimalRelays` algorithm, ported to Rust). It calls
 **not** touch `plan_id` — the plan-id contract is unchanged: same
 inputs → same id.
 
-The function is present and tested but **not yet wired** into the
-kernel's live recompile path. That's a separate follow-up; today it
-sits as an opt-in mutator the wiring layer will invoke once
-connection-cap policy is settled.
+The function is present, tested, and part of the live recompile path before
+coverage gating and watermark rewrite.
 
 ## Anti-patterns
 
@@ -194,8 +181,6 @@ connection-cap policy is settled.
    inbox lookups, no indexer.
 4. **Per-call relay lists in app code.** Outbox is automatic; a relay list
    threaded through app code is the hand-rolled fan-out D3 forbids.
-5. **Trusting the kernel demo's wire as mailbox-routed.** Per the reality
-   check, the legacy REQ path is still on the two constants.
 
 See also: [07 — Subscription planner — Interest → CompiledPlan → wire](07-subscription-planner.md) ·
 [11 — Sessions + signers + identity scopes (`nmp-signers`)](11-sessions-signers.md) ·

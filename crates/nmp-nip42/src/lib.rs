@@ -29,7 +29,7 @@
 //!   [`nmp_core::subs::auth_gate::AuthGate`], not here.
 //! - **D6** — `Result<…, Nip42Error>` is the internal flow control type;
 //!   the caller surfaces the error as a `RelayAuthState::Failed` diagnostic
-//!   (the FFI toast bridge is M10.5 scope per `docs/design/ffi-hardening.md`
+//!   (failure reasons surface through the current FFI/update bridge; see `docs/ffi-surface.md`
 //!   §7.2 — not added by this crate).
 //! - ADR-0007 §1 — `RelayAuthState` enum matches the diagnostics contract
 //!   exactly (`NotRequired | ChallengeReceived | Authenticating |

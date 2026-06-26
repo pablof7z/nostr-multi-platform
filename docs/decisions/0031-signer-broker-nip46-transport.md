@@ -96,8 +96,7 @@ is two sequential interactive NIP-46 decrypts.
 stopgap: it exists to satisfy D0, the mio execution model, multi-relay redundancy, and
 NMP-specific progress telemetry — none of which `nostr-connect` provides out of the box.
 
-`aim.md` §3 is updated by this ADR: the `nostr-connect` reference is superseded. The
-corollary "Use rust-nostr, not scratch crypto" applies to cryptographic primitives only
+`aim.md` §3 is updated by this ADR. The corollary "Use rust-nostr, not scratch crypto" applies to cryptographic primitives only
 (NIP-44, bech32, key derivation); it does not require using rust-nostr's relay-transport
 or session-management layers where they conflict with NMP's synchronous actor model.
 

@@ -86,18 +86,18 @@ app.register_action(MyActionModule);
 
 Registers an `ActionModule`: its `start()` validates dispatched actions;
 its `execute()` enqueues `ActorCommand`s into the actor. The registered module
-receives every `nmp_app_dispatch_action(app, NAMESPACE, json)` call whose
-`NAMESPACE` matches `MyActionModule::NAMESPACE`.
+receives every typed dispatch envelope whose namespace matches
+`MyActionModule::NAMESPACE`.
 
-### Seam 2 — `register_snapshot_projection(key, closure)`
+### Seam 2 — `register_typed_snapshot_projection(key, closure)`
 
 ```rust
-app.register_snapshot_projection("nmp.myapp.items", move || {
-    project_items(&store.lock().unwrap())
+app.register_typed_snapshot_projection("nmp.myapp.items", move || {
+    store.lock().ok().map(|g| encode_items_projection(&g))
 });
 ```
 
-Registers a named JSON slice pushed under `projections["nmp.myapp.items"]` on
+Registers a typed sidecar pushed under `typed_projections["nmp.myapp.items"]` on
 every snapshot tick. The closure runs on the **actor thread**; it must be
 cheap and non-blocking (D8). Registered under dotted `nmp.*` namespaces.
 
@@ -158,21 +158,11 @@ pub trait CapabilityModule: Send + Sync + 'static {
 }
 ```
 
-> **v2 traits that were removed.** An earlier design proposed `ViewModule`,
-> `IdentityModule`, and `DomainModule` traits, plus a `ModuleRegistry` that
-> collected them. No kernel runtime ever drove them. `substrate/mod.rs`
-> documents this explicitly: *"documentation theater that misled readers about
-> how extension actually works today."* They are absent from master. The
-> correct patterns are the three seams above. See
-> [27 — discrepancies](27-discrepancies.md) rows 11–15.
-
 ### The app-core convention
 
 Every app-core crate follows a small naming convention so the thin staticlib
-shell can call it uniformly. `nmp-codegen` does **not** generate this crate
-(ADR-0046 deleted the per-app FFI generator). The convention is simply what
-your `register()` function expects from `nmp-defaults` and what the shell
-expects back:
+shell can call it uniformly. The convention is simply what your `register()`
+function expects from `nmp-defaults` and what the shell expects back:
 
 | Export | Type | Purpose |
 |---|---|---|
@@ -180,7 +170,6 @@ expects back:
 | `Store` | type alias | app-owned state (`Arc<Mutex<T>>`) |
 | `register(app: &mut impl AppHost) -> Store` | fn | wires seams, returns store |
 | `accepted() -> Update` | fn | success variant for dispatch result |
-| `ViewSpec` | enum | host-driven view specs (empty if none) |
 | `Update` | enum | update variants (at minimum `ActionAccepted`) |
 
 `register()` is the composition root. From the microblog walkthrough
@@ -195,10 +184,10 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
     app.register_action(NoteActionModule);
     app.register_live_event_tap(Arc::new(FeedObserver { store: Arc::clone(&store) }));
     let projector = Arc::clone(&store);
-    app.register_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
+    app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
         match projector.lock() {
             Ok(g) => project_feed(&g),
-            Err(_) => serde_json::Value::Null,   // D6: no panic on poison
+            Err(_) => None,   // D6: no panic on poison
         }
     });
     store
@@ -238,7 +227,7 @@ the snapshot or as capability envelopes. The hot update transport is a single
 canonical FlatBuffers schema: `UpdateFrame` carries snapshot envelopes and typed
 projection sidecars. The raw C/JNI ABI remains live for lifecycle/actions/
 capabilities, but it no longer carries JSON runtime snapshots (see
-[15](15-codegen-and-ffi.md) and [27](27-discrepancies.md) row 3).
+[15](15-codegen-and-ffi.md)).
 
 ## "Where does X live?" — concrete map
 
@@ -261,11 +250,10 @@ changes to `nmp-core`**.
    exact abstraction error ADR-0009 exists to forbid — it turns the kernel
    into a junk drawer of every consumer's domain concepts. App nouns go in
    app-core crates; protocol nouns in `nmp-nip*` crates.
-2. **Reaching for the removed v2 traits.** `ViewModule`, `DomainModule`,
-   `IdentityModule`, and `ModuleRegistry` are not on master. Use
-   `register_snapshot_projection` for the read path and `register_action`
-   for the write path — see [05a](05a-substrate-traits.md).
-3. **Bypassing `register_snapshot_projection` to render raw events in
+2. **Bypassing the shipped seams.** Use `register_typed_snapshot_projection` for
+   named read output, `KernelEventObserver` for event-driven in-process
+   projections, and `register_action` for the write path.
+3. **Bypassing `register_typed_snapshot_projection` to render raw events in
    SwiftUI.** Decoding `kind:1` JSON in Swift re-implements the kernel's
    reactive contract in the shell, duplicates state ownership (D4 violation),
    and breaks D5 bounding. Every read goes through a registered projection or

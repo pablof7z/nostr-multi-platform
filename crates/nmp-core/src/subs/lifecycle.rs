@@ -237,7 +237,7 @@ impl SubscriptionLifecycle {
     /// interest with an empty bootstrap set falls through to the unchanged
     /// Case D body. See
     /// [`crate::planner::compiler::SubscriptionCompiler::with_relays_and_bootstrap`]
-    /// and `docs/architecture-audit/pd033c-plan.md` §4.3 for the routing
+    /// and `docs/retired/pd033c-routing-gaps.md` §4.3 for the routing
     /// rationale.
     pub fn set_bootstrap_content_relays(&mut self, relays: Vec<RelayUrl>) {
         self.bootstrap_content_relays = relays;

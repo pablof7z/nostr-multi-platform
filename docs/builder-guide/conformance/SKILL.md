@@ -85,6 +85,6 @@ committed**; it is promoted to GitHub issues):
 ## Distribution
 This skill + catalog are authored in-repo (canon-adjacent, drift-gated). A
 generated snapshot is scaffolded into consumer app repos via
-`crates/nmp-app-template` so any app can run the scan without the NMP `docs/`
+`crates/nmp-defaults` so any app can run the scan without the NMP `docs/`
 tree present. The in-repo copy is the source of truth; the scaffolded copy is
 distribution.

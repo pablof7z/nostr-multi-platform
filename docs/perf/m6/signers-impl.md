@@ -99,8 +99,7 @@ URI shell itself parses in <1 µs.
 - `KeychainCapability` real iOS implementation.
 - Live NIP-46 RPC subscription (kernel relay-pool integration).
 - FFI action variants (`AddLocalAccount`, `AddBunkerAccount`, `SwitchActive`).
-- `IdentityModule` registration into the existing `nmp-core::substrate`
-  module registry.
+- signer registration into the existing `nmp-core` substrate.
 - iOS login UX (paste nsec / paste bunker / generate new).
 - M7 `SendNote` action wiring.
 

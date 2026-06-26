@@ -12,29 +12,22 @@
   has relevance-shaped holes), #1443/#1480 (production durable retention keeps
   valid fetched events by default; finite durable LRU is explicit policy only).
 - **Decision record:** this ADR is the durable, self-contained authority for the
-  ingest-chokepoint architecture. Durable "why" lives here and in the issues above;
-  `docs/plans/arch-fixes.md` (Workstream A) is only the **temporal tactical
-  PR-sequencing tracker** for landing it (this ADR is its "PR 0") and is deleted
-  when the work merges — it is not an authority for any decision.
+  ingest-chokepoint architecture. Durable "why" lives here and in the issues above.
 - **Amends / supersedes:**
   - **Amends ADR-0042** — its §5.1 "Remaining kernel work" and §6 frame
     `should_store_event` as a **store-admission** gate (generalised so an event is
     *stored* when it matches an active interest). This ADR demotes
     `should_store_event` to a **read-time projection predicate** with no power over
     persistence; the ADR-0042 admission framing is withdrawn.
-  - **Supersedes the dual-ladder ingest design** — the two hand-maintained
-    per-kind, per-source ingest ladders (`handle_event`'s relay `match event.kind`
-    arms and `record_local_publish_intent`'s mirror arms) are replaced by one
-    kind-agnostic chokepoint. #1440's narrow "add a 4th local-publish arm" framing
-    is superseded by this architecture.
+  - **Sets the unified ingest design** — one kind-agnostic chokepoint handles
+    accepted events from relay and local-publish sources.
   - **Extends ADR-0045** — the single always-on cache-serve mechanism. ADR-0045's
     "one mechanism, replay feeds the post-store seam not `store.insert`" principle
     is the read-half precedent this ADR generalises to *all* event sources.
 - **Related:** ADR-0053 (host-declared projections — observers self-gate by
   registration), crate-boundaries.md §4.2 (the `IngestParser` migration this
-  finishes), `docs/plans/arch-authority-lifecycle.md` (sibling plan: signer
-  authority & action/projection lifecycle — a **separate problem domain**, out of
-  scope).
+  finishes), ADR-0064 and the D26 doctrine gate for the separate signer authority
+  and action/projection lifecycle problem domain.
 
 ---
 
@@ -249,10 +242,8 @@ not silently conflated with the chokepoint's `source` discriminator.
 
 The timeline read-cache, like `profiles` and `seed_contacts`, becomes an
 observer/parser fed by the chokepoint, not a `match kind` arm.
-`pre_kind3_buffer` is **deleted** — it existed only to park events the
-admission/persistence entanglement would otherwise have dropped; with admission
-≠ persistence the parking is obsolete (a follow added later still surfaces prior
-events from the now-complete store).
+`pre_kind3_buffer` is **not part of the current design**. Followers added later
+surface prior events from the store through the normal read path.
 
 **D9 created_at clamp — clamp the future date at the chokepoint observer
 fan-out (universal hostile-relay defense).** Pre-PR-1 the future-date clamp lived
@@ -344,9 +335,8 @@ reached the D0 finish-line (`contacts_chokepoint_pr3_tests.rs`).
   child interests through the generic dependent-interest path. After PR 3 the
   ingest path has **zero kind literals** — full D0 purity.
 
-The sibling plan `docs/plans/arch-authority-lifecycle.md` (signer / capability
-authority and action/projection-lifecycle ownership) is a separate problem domain
-and is **out of scope** for this ADR.
+Signer / capability authority and action/projection-lifecycle ownership are a
+separate problem domain and are **out of scope** for this ADR.
 
 ---
 
@@ -459,6 +449,3 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
   `GcBudget::with_durable_event_ceiling`),
   `crates/nmp-store/src/types/outcomes.rs:11-33` (`InsertOutcome` enum).
 - Docs: `docs/builder-guide/08-eventstore.md:51` (outcome-by-kind table).
-- See also (tactical, temporal — not an authority): `docs/plans/arch-fixes.md`
-  Workstream A — the PR-sequencing tracker for landing this decision; deleted when
-  the work merges.

@@ -188,12 +188,12 @@ Third parties can publish kind handler components to any jsrepo-compatible regis
   `MarkdownNodeDto` are **retained** as a fixtures-only serde mirror for the gallery
   golden bundles. They are not on the production embed-host wire path (`ContentTreeWire`
   is). (Corrected from the original draft, which incorrectly said they would be deleted.)
-- `crates/nmp-cli/registry/*/content-quote-card/`: **DELETED (F-CR-04).** The
-  `NostrQuoteCard` widgets are superseded by the built-in `ShortNote` + `Unknown` (and
-  Article/Highlight/Profile) handlers inside `content-kind-registry`. All three platform
-  registries (`swiftui` / `compose` / `tui`) now ship a `content-kind-registry`
-  component; the three `content-view` components depend on it and route every
-  `nostr:` event ref through `EmbeddedEvent` instead of a quote card.
+- Event refs render through the built-in `ShortNote`, `Unknown`,
+  `Article`, `Highlight`, and `Profile` handlers inside
+  `content-kind-registry`. All three platform registries (`swiftui` /
+  `compose` / `tui`) ship a `content-kind-registry` component; the three
+  `content-view` components depend on it and route every `nostr:` event ref
+  through `EmbeddedEvent`.
 - `apps/chirp/ios/.../NostrContentView.swift`: **DONE.** The `quoteCardProvider` closure API is
   removed; event refs render through the `NostrKindRegistry` seam, bound by the app via
   `.embedEnvelopeSource(source, claimSink:registry:)` (defined in the registry's

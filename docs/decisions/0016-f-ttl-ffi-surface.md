@@ -1,61 +1,31 @@
-# ADR-0041: F-TTL FFI surface — `force` argument on the claim functions
+# ADR-0016 — F-TTL force refresh on claim functions
 
-Status: ACCEPTED
-
-> Numbering note: the F-TTL task draft referenced "ADR-0013", but `0013` is
-> already taken (`0013-nip29-metadata-signer-trust-model.md`) and the decisions
-> log has advanced to 0040. This stub takes the next free number, 0041, per the
-> repo's single-source-of-truth / no-duplicate-id discipline.
+- **Status:** Accepted
+- **Date:** 2026-05-18
 
 ## Context
 
-F-TTL requires a force-refresh entry point so a host can say "treat this
-replaceable identity as due now" (e.g. the user explicitly opens a profile /
-article, or pulls to refresh).
+Replaceable Nostr records such as profiles and addressable events need lazy TTL
+re-verification plus an explicit user-triggered refresh path.
 
-The T-D commit first added a **new** symbol `nmp_app_refresh_replaceable` to the
-C-ABI (`crates/nmp-ffi/src/timeline.rs`). That approach failed two CI gates:
-
-- **ffi-surface-freeze** — the seam-migration doctrine (ADR-0027 direction)
-  freezes the per-verb `nmp_app_*` C-ABI; a genuinely new symbol requires an
-  exemption and widens the hand-written Swift-mirror surface.
-- **ffi-drift** — the symbol was exported from Rust but never declared in
-  `NmpCore.h`, so the header/Rust symbol sets diverged.
+The refresh path should not be a separate public FFI verb. A separate verb would
+create another way to mutate freshness state and would widen the native surface.
 
 ## Decision
 
-Historical decision before ADR-0063/#1946: do **not** add a new symbol. Expose
-force-refresh as a trailing `force` argument on the two then-existing claim
-functions:
+Force refresh is a parameter on existing claim functions.
 
-- `nmp_app_claim_profile(app, pubkey, consumer_id, force: c_int)` — kind:0 profile.
-- the legacy event URI claim entry point — `naddr` addressable
-  identities; a silent no-op for immutable `nevent`/`note` URIs (no TTL record).
+- Profile claims pass `force` to request immediate kind:0 re-verification.
+- Addressable event/reference claims use the same TTL machinery when the
+  resolved identity has a replaceable freshness record.
+- Immutable event ids do not need TTL refresh because the event id names a fixed
+  event.
 
-`force` (`force != 0`) propagates as `force: bool` through
-the historical profile/event claim commands, `KernelReducer`/`Kernel`, and into
-`Kernel::claim_replaceable(kind, pubkey, d_tag?, force)`.
-When `force == true` the kernel treats the stored `check_again_after` as `0`, so
-the TTL gate always reads as due and enqueues a re-verification REQ — semantically
-identical to what the deleted `nmp_app_refresh_replaceable` did. When
-`force == false` (the default) the claim re-verifies lazily, only when the TTL has
-elapsed.
-
-The gate runs in the **cached/known** branch of each claim function: an
-already-cached replaceable identity is re-verified per the TTL (or unconditionally
-when forced), while a cold/unknown identity issues its normal one-shot fetch and
-is not double-fetched.
+`force != 0` treats the stored `check_again_after` as due now. `force == 0`
+uses the normal lazy TTL gate.
 
 ## Consequences
 
-- iOS/Android callers gain an explicit profile/article refresh trigger
-  (pass `force = 1`) without any new C-ABI symbol — the surface stays frozen.
-- The Swift bridges expose `force: Bool = false`, so every background /
-  `.onAppear` caller is unchanged and passes `0` implicitly.
-- No ABI break: modifying a function signature is invisible to the name-based
-  ffi-drift / surface-freeze gates; `NmpCore.h` is updated to the 4-arg form.
-- Force routes through the existing TTL machinery (`claim_replaceable` /
-  `pending_reverify`), inheriting the in-flight guard and EOSE re-stamp; it does
-  not open a second, parallel refresh path.
-- `nmp_app_refresh_replaceable` (symbol, `ActorCommand::RefreshReplaceable`
-  variant, `KernelReducer::refresh_replaceable`) is deleted.
+- Refresh and ordinary claims share one refcount/freshness path.
+- Hosts get pull-to-refresh behavior without another native symbol.
+- The in-flight guard and EOSE restamp behavior remain owned by Rust.

@@ -74,7 +74,7 @@ hand each other, so all of them — `nmp-network` (L1), `nmp-router` /
 `nmp-planner` (L2), `nmp-core` (L3, re-exported as
 `nmp_core::substrate::canonicalize_relay_url`), and protocol crates such as
 `nmp-nip17` (L4) — depend on this one crate rather than each re-implementing the
-rules. This retired five drifting copies (#967). The type/authority owner is
+rules. This centralizes the five previously drifting copies (#967). The type/authority owner is
 `nmp-relay-url`.
 
 ---
@@ -90,9 +90,7 @@ rules. This retired five drifting copies (#967). The type/authority owner is
   `EventIngestDispatcher`, `KernelEventObserver` delivery slots (explicit
   live taps via `LiveEventTapRegistrar`, hydrating interest-scoped read models
   via `ObservedProjectionRegistrar`), `ExternalEventSinkPolicy`
-  (the internal in-process relay-forwarding seam; replaces the retired
-  `RawEventObserver` / `RawEventForwardPolicy` pair — there is no native push
-  sink),
+  (the internal in-process relay-forwarding seam; there is no native push sink),
   `OutboxRouter`, `MailboxCache`, `PaymentPort` (the BOLT-11 pay-invoice seam:
   NIP-57 emits a typed `PaymentIntent`, NIP-47 supplies the implementation, so
   there is no `nmp-nip57 → nmp-nip47` sibling edge), and publish resolver

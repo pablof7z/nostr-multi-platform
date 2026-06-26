@@ -108,11 +108,7 @@ callback-per-dispatch.
   [ADR-0064](0064-unified-write-command-boundary.md).** Writes ride the one
   `DispatchBytes` byte doorway (open `DispatchEnvelope` + typed per-crate
   FlatBuffers payloads, generated typed builders), and signing rides the ADR-0050
-  capability port. The hand-rolled `WorkerRequest::AppAction` / `"app_action"`
-  wire tag and the `dispatch_app_action_async` / `start_publish_app_action` /
-  `SetSigner`-as-install signing path are removed by that migration — they were a
-  second, wasm-only write-and-sign vocabulary, which is exactly what ADR-0064
-  collapses onto the shared native seam.
+  capability port. Browser and native writes share that same Rust registry path.
 
 ## Alternatives considered
 
