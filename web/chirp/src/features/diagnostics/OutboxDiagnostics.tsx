@@ -20,6 +20,44 @@ function compactUrl(url: string): string {
   return url.replace(/^wss?:\/\//, "");
 }
 
+type PublishRelayReceipt = {
+  kind: "publish_relay_receipt";
+  event_id?: string;
+  relays: {
+    relay_url: string;
+    status: string;
+    message?: string;
+    relay_reason?: string;
+  }[];
+};
+
+function isStringRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function parseRelayReceipt(row: ActionResultRuntimeRow): PublishRelayReceipt | undefined {
+  if (!row.result) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(row.result);
+    if (!isStringRecord(parsed) || parsed.kind !== "publish_relay_receipt") return undefined;
+    const relays = Array.isArray(parsed.relays)
+      ? parsed.relays.filter(isStringRecord).map((relay) => ({
+          relay_url: typeof relay.relay_url === "string" ? relay.relay_url : "unknown relay",
+          status: typeof relay.status === "string" ? relay.status : "unknown",
+          message: typeof relay.message === "string" ? relay.message : undefined,
+          relay_reason: typeof relay.relay_reason === "string" ? relay.relay_reason : undefined,
+        }))
+      : [];
+    return {
+      kind: "publish_relay_receipt",
+      event_id: typeof parsed.event_id === "string" ? parsed.event_id : undefined,
+      relays,
+    };
+  } catch {
+    return undefined;
+  }
+}
+
 function mergeResults(
   existing: ActionResultRuntimeRow[],
   incoming: readonly ActionResultRuntimeRow[],
@@ -119,8 +157,29 @@ export function OutboxDiagnostics(props: {
           <For each={recentResults()}>
             {(row) => (
               <div class="action-result-row" data-status={row.status}>
-                <strong>{row.status}</strong>
-                <span>{resultDetail(row)}</span>
+                <div class="action-result-summary">
+                  <strong>{row.status}</strong>
+                  <span>{resultDetail(row)}</span>
+                </div>
+                <Show when={parseRelayReceipt(row)}>
+                  {(receipt) => (
+                    <div class="action-result-relays" data-testid="relay-verdicts">
+                      <For each={receipt().relays}>
+                        {(relay) => (
+                          <span
+                            data-status={relay.status}
+                            title={`${relay.relay_url}${relay.message ? ` · ${relay.message}` : ""}${
+                              relay.relay_reason ? ` · ${relay.relay_reason}` : ""
+                            }`}
+                          >
+                            {compactUrl(relay.relay_url)} ·{" "}
+                            {relay.status === "ok" ? "accepted" : relay.status}
+                          </span>
+                        )}
+                      </For>
+                    </div>
+                  )}
+                </Show>
               </div>
             )}
           </For>

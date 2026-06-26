@@ -514,6 +514,29 @@ fn action_results_reports_published_on_all_ack_success() {
         result.get("error").map(|v| v.is_null()).unwrap_or(false),
         "a published result carries a null error"
     );
+    let receipt = result
+        .get("result")
+        .expect("a published result carries a structured relay receipt");
+    assert_eq!(
+        receipt.get("kind").and_then(|v| v.as_str()),
+        Some("publish_relay_receipt")
+    );
+    assert_eq!(
+        receipt.get("event_id").and_then(|v| v.as_str()),
+        Some(signed.id.as_str())
+    );
+    let relays = receipt
+        .get("relays")
+        .and_then(|v| v.as_array())
+        .expect("relay receipt carries per-relay rows");
+    assert_eq!(relays.len(), 2, "both relay verdicts are preserved");
+    assert!(
+        relays.iter().all(|row| {
+            row.get("status").and_then(|v| v.as_str()) == Some("ok")
+                && row.get("relay_url").and_then(|v| v.as_str()).is_some()
+        }),
+        "each relay receipt row carries an ok verdict and raw relay URL: {relays:?}"
+    );
 }
 
 #[test]
@@ -567,6 +590,23 @@ fn action_results_reports_failed_with_reason_on_all_relays_giving_up() {
         error.contains("transient"),
         "the error must carry the per-relay give-up reason: {}",
         error
+    );
+    let relays = result
+        .get("result")
+        .and_then(|v| v.get("relays"))
+        .and_then(|v| v.as_array())
+        .expect("failed publish result carries per-relay failure receipts");
+    assert_eq!(relays.len(), 2, "both failed relay verdicts are preserved");
+    assert!(
+        relays.iter().all(|row| {
+            row.get("status").and_then(|v| v.as_str()) == Some("failed")
+                && row
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .map(|message| message.contains("transient"))
+                    .unwrap_or(false)
+        }),
+        "each relay receipt row carries the failure reason: {relays:?}"
     );
 }
 

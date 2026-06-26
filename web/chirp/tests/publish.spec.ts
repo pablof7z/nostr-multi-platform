@@ -132,6 +132,12 @@ test("@wasm publish: composed note is NIP-07 signed and the relay receives a val
     await expect(page.getByTestId("action-results")).toContainText(/published|accepted/i, {
       timeout: 30_000,
     });
+    await expect(page.getByTestId("relay-verdicts")).toContainText("127.0.0.1", {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("relay-verdicts")).toContainText("accepted", {
+      timeout: 30_000,
+    });
 
     // The NIP-07 stub signed exactly the note (scenario 4: round-trip).
     expect(signedEvents.length).toBeGreaterThanOrEqual(1);
@@ -202,6 +208,12 @@ test("@wasm publish: local-key onboarding signs and publishes without a browser 
       .poll(() => relay.eventCount(), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
     await expect(page.getByTestId("action-results")).toContainText(/published|accepted/i, {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("relay-verdicts")).toContainText("127.0.0.1", {
+      timeout: 30_000,
+    });
+    await expect(page.getByTestId("relay-verdicts")).toContainText("accepted", {
       timeout: 30_000,
     });
     expect(relay.receivedEvents()).toEqual(

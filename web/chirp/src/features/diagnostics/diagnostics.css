@@ -99,7 +99,7 @@
 
 .outbox-diagnostics-header,
 .outbox-item-main,
-.action-result-row {
+.action-result-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
@@ -144,14 +144,16 @@
 }
 
 .outbox-relays,
-.action-stage-strip {
+.action-stage-strip,
+.action-result-relays {
   display: flex;
   gap: 6px;
   overflow-x: auto;
 }
 
 .outbox-relays span,
-.action-stage-strip span {
+.action-stage-strip span,
+.action-result-relays span {
   flex: 0 0 auto;
   border: 1px solid var(--line);
   border-radius: var(--radius-pill);
@@ -160,6 +162,16 @@
   color: var(--ink-3);
   font-family: var(--font-mono);
   font-size: 11px;
+}
+
+.action-result-relays span[data-status="ok"] {
+  border-color: color-mix(in srgb, var(--tone-ok) 42%, var(--line));
+  color: var(--tone-ok);
+}
+
+.action-result-relays span[data-status="failed"] {
+  border-color: color-mix(in srgb, var(--tone-error) 42%, var(--line));
+  color: var(--tone-error);
 }
 
 .action-results {
