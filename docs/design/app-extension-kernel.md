@@ -1,6 +1,10 @@
 # Design Proposal: App Extension Kernel Boundary
 
-> **Status:** Proposed
+> **Status:** Historical proposal. The v1 implementation did not ship the
+> `DomainModule` / `ViewModule` / `IdentityModule` registry described below;
+> those traits are removed. Treat this file as background for the app-extension
+> boundary only. Current implementation guidance is `docs/product-spec/doctrine.md`
+> §D0 plus the builder-guide substrate sections.
 > **Date:** 2026-05-17
 > **Scope:** How NMP should support real apps without baking app-specific business logic into the framework core.
 

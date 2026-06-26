@@ -109,8 +109,9 @@ and publish symbols (`nmp_app_publish_note`, `nmp_app_publish_unsigned_event`,
 
 > **#1740 step 8 — RETIRED:** the raw `nmp_app_open_contact_feed` /
 > `nmp_app_close_contact_feed` C-ABI active-follows shims are DELETED. The only
-> public way to open the active-follows home feed is
-> `nmp_app_open_feed(FeedScope::ActiveUserFollows)`. The
+> public way to open the active-follows home feed is `nmp_app_open_feed` with a
+> `FeedParams` payload whose acquisition scope is `FeedScope::ActiveUserFollows`.
+> The
 > `NmpApp::declare_active_follows_feed` / `clear_active_follows_feed` Rust methods
 > are also DELETED; active-follows is one ReducedSource instance, not a helper
 > verb.

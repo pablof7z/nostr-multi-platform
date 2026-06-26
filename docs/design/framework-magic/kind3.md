@@ -86,10 +86,23 @@ A new follow (D in the test) needs a mailbox lookup. If D's kind:10002 is not in
 
 That second recompile is **not part of the C5 test** — it belongs to the M2 NIP-65 audit gate (test #3 in `docs/design/subscription-compilation/tests.md` §9.2). The C5 test asserts kind:3 alone caused exactly the right delta; the NIP-65 chained recompile is a separate observable that the M2 gate already covers.
 
-## 6. What this bullet does not cover
+## 6. Scope and sibling ReducedSources
 
-- **The "following timeline" view module itself.** Its spec, payload, recompute logic live in `nmp-nip01` per `docs/design/view-catalog/profile-timeline-thread-reactions.md`. C5 cares only that *whatever view module* declares follow-set dependence gets the recompile.
-- **Mute-list changes (kind:10000).** The mute list is structurally analogous, but the original user directive explicitly named kind:3. Mute-list auto-tracking would be a C5-shaped sibling bullet (potential C14 future addition); not in the v1 contract surface.
-- **Other people's follow lists.** A view module that opens kind:3 for `pubkey != active_account` is asking a one-shot question, not declaring a reactive dependency on the social graph. That path uses the normal C1 supersession; no C5 trigger fires.
+This chapter uses the active account's kind:3 follow list as the canonical C5
+worked example because it is the failure mode that originally motivated the
+contract. The implemented C5 primitive is broader: a source reducer whose
+output changes replaces its materialized dependent interests through the same
+generic owner. The current proof surface also covers active-account NIP-51 mute
+lists and replaceable people-list membership (`framework_magic_contract`
+subtests under C5/C8/C13).
+
+Those sibling sources are not new public doors and do not get their own
+framework-magic bullet unless they introduce a different app-visible guarantee.
+They are instances of the same ReducedSource/dependent-interest mechanism.
+
+## 7. What this bullet does not cover
+
+- **The "following timeline" feed/projection itself.** Its payload and recompute logic live above the kernel feed-session seam. C5 cares only that any `FeedScope::ActiveUserFollows` ReducedSource declaration gets the recompile.
+- **Other people's follow lists.** A feed/projection that opens kind:3 for `pubkey != active_account` is asking a one-shot question, not declaring a reactive dependency on the social graph. That path uses the normal C1 supersession; no C5 trigger fires.
 
 These exclusions keep the bullet sharp: C5 is exactly *"the active account's follow-list change re-shapes the open-subscription set."* Everything outside that sentence routes through other contract bullets.

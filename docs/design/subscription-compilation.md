@@ -2,7 +2,7 @@
 
 > **Status:** Durable design reference.
 > **Date:** 2026-05-18.
-> **Companion docs:** `docs/aim.md` §4.4–§4.5; `docs/design/ndk-applesauce-lessons.md` §7; ADR-0007 (diagnostic lanes); `docs/design/kernel-substrate.md` §3 (`ViewModule`) and §4 (`ActionModule`); `docs/product-spec/subsystems.md` §7.2–§7.3.
+> **Companion docs:** `docs/aim.md` §4.4–§4.5; `docs/design/ndk-applesauce-lessons.md` §7; ADR-0007 (diagnostic lanes); ADR-0042 (generic interests + typed feed sessions); `docs/product-spec/subsystems.md` §7.2–§7.3; `docs/product-spec/doctrine.md` §D0 (current v1 extension seams).
 > **Scope:** Subscription compilation turns logical interests into per-relay
 > plans driven by NIP-65 mailboxes and makes outbox routing a first-class
 > planner subsystem. Implementation status belongs in source, tests, and
@@ -23,7 +23,7 @@ This document is split into focused sub-files to stay under the 500 LOC ceiling 
 | § | Topic | File |
 |---|---|---|
 | 1 | What is wrong with the current planner (cited line refs) | intro.md |
-| 2 | Logical interest — formal definition + how views express them | intro.md |
+| 2 | Logical interest — formal definition + how feed sessions, refs, observers, and projections express them | intro.md |
 | 3 | Compilation pipeline: authors → mailboxes → per-relay plans + plan-id | compiler.md |
 | 4 | Recompilation triggers (kind:10002, view open/close, reconnect, account switch, manual, user-configured change) | recompilation.md |
 | 5 | Four-lane diagnostic records (NIP-65 / hint / provenance / user-configured) | diagnostics.md |

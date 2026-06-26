@@ -82,8 +82,12 @@ impl ContractHarness {
 pub struct Contract {
     // dispatch surface
     pub fn dispatch(&mut self, action: AppAction);
-    pub fn open_view<V: ViewModule>(&mut self, spec: V::Spec) -> ViewHandle<V>;
-    pub fn close_view<V: ViewModule>(&mut self, handle: ViewHandle<V>);
+    pub fn open_feed(&mut self, params: FeedParams) -> FeedHandle;
+    pub fn close_feed(&mut self, handle: FeedHandle);
+    pub fn open_interest(&mut self, filter_json: &str, consumer_id: &str, scope: InterestScope);
+    pub fn close_interest(&mut self, filter_json: &str, consumer_id: &str, scope: InterestScope);
+    pub fn resolve_ref(&mut self, key: RefKey, consumer_id: &str) -> RefHandle;
+    pub fn release_ref(&mut self, handle: RefHandle);
     pub fn ingest(&mut self, relay: usize, event: NostrEvent);
     pub fn ingest_eose(&mut self, relay: usize, sub_id: &str);
     pub fn disconnect_relay(&mut self, relay: usize);

@@ -2,7 +2,13 @@
 
 > **Audience:** Framework contributors and module authors. Defines the concrete trait machinery any extension module implements.
 
-> **Status:** rev 1. Adopted alongside ADR-0009 and ADR-0010.
+> **Status:** Historical rev 1. This file describes the removed v2
+> `DomainModule` / `ViewModule` / `IdentityModule` trait-family proposal. It is
+> kept as design history, not current v1 implementation guidance. Current v1
+> modules use registered actions, event observers, snapshot/typed projections,
+> feed/source declarations, ref/dependent-interest claims, and capability
+> bridges as described in `docs/product-spec/doctrine.md` §D0 and the builder
+> guide.
 
 > **Prerequisites:** `docs/design/app-extension-kernel.md` (the architectural proposal), ADR-0009 (kernel boundary), ADR-0010 (generated app enum), `docs/design/reactivity.md` (the reactive machinery these modules plug into), `docs/design/view-catalog.md` (reference view modules).
 

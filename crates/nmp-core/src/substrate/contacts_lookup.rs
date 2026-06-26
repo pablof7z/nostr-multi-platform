@@ -18,11 +18,11 @@
 //!   and extracts the follow set via `nmp_core::tags::contact_follows`
 //!   (the SAME pure function the kernel's old `ingest_contacts` used, so the
 //!   valid-hex-p-tags extraction is byte-identical).
-//! - The **reader** is the kernel
-//!   (`register_follow_feed_for_active_account`, the byte estimate, RAM
-//!   eviction, the diagnostic `contacts_authors` counter) — it consults this
-//!   trait through a substrate-generic shape and never names the kind:3 wire
-//!   format (D0).
+//! - The **reader** is the kernel/defaults composition (`ActiveFollowSet`,
+//!   ReducedSource feed-session compilation, the byte estimate, RAM eviction,
+//!   and the diagnostic `contacts_authors` counter) — it consults this trait
+//!   through a substrate-generic shape and never names the kind:3 wire format
+//!   (D0).
 //!
 //! Both ends agree on a shared `Arc` (the concrete `nmp_nip01::ContactsCache`)
 //! at composition time; the kernel sees it only as `Arc<dyn ContactsLookup>`.
@@ -37,9 +37,9 @@
 //! (a CLEARED follow set → `Some(vec![])`) from "no kind:3 has arrived yet"
 //! (`None`). The kernel's old `ingest_contacts` stored an empty `Vec` for an
 //! empty kind:3 (a cleared follow set is a real state, not the absence of
-//! data), and `register_follow_feed_for_active_account` relies on the empty
-//! vector to WITHDRAW the prior follow-feed interests. The cache preserves that
-//! distinction.
+//! data), and the ReducedSource feed-session path relies on the empty vector to
+//! WITHDRAW the prior active-follows dependent interests. The cache preserves
+//! that distinction.
 
 use std::sync::Arc;
 

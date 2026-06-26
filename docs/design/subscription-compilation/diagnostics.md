@@ -156,7 +156,8 @@ The lesson the four-lane discipline preserves: routing is **derivable but contes
 
 > The inverse question. For any relay we are talking to, *whose* timeline does it serve?
 
-This is one specific `ViewModule` that consumes the four-lane fact streams plus the compiler's `RelayPlan`s and produces a per-relay summary.
+This is one specific diagnostic projection that consumes the four-lane fact
+streams plus the compiler's `RelayPlan`s and produces a per-relay summary.
 
 ## 8.1 Spec, payload, dependencies
 
@@ -185,7 +186,7 @@ pub struct ByLaneCounts {
     pub indexer_fallback: u32,
 }
 
-// `ViewModule::dependencies` returns:
+// The projection's declared inputs are:
 //   - Mailbox cache updates touching any author in our timeline
 //   - RelayPlan updates touching `relay_url`
 //   - Provenance facts on `relay_url` (rate-limited; only the count, not individual events)

@@ -263,7 +263,7 @@ fn four_lanes_stay_distinct_in_diagnostic_payload() {
 
 This assertion encodes the doctrine: a single relay may be in the plan for multiple reasons; the plan must say which reasons, not collapse them. The explicit non-zero checks (before the exact-count checks) catch the failure mode where a reducer is wired but receives no facts — a silent count-stays-at-zero bug that the original `assert_eq!(count, 1)` alone would catch, but which is clearer with an explicit "lane not consumed" message.
 
-### Assertion 5 — Address-pointer dedup across ThreadView and MetaTimeline
+### Assertion 5 — Address-pointer dedup across thread/comment and meta-subscribe projections
 
 > "Two views registering the same `NaddrCoord` emit ONE REQ per relay (Rule 8 address-pointer union, D8 invariant)."
 

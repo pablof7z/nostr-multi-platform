@@ -92,8 +92,8 @@ void nmp_app_release_event_ref(void *app, const char *key,
                                const char *consumer_id);
 // #1740 step 7 — the ONE public app-facing feed doorway. (The raw
 // nmp_app_open_contact_feed / nmp_app_close_contact_feed active-follows shims
-// are RETIRED in step 8 — use nmp_app_open_feed(FeedScope::ActiveUserFollows)
-// for the home feed.)
+// are RETIRED in step 8 — pass FeedParams whose acquisition scope is
+// FeedScope::ActiveUserFollows to nmp_app_open_feed for the home feed.)
 //
 // nmp_app_open_feed: open ONE feed session from a JSON-encoded FeedParams (the
 // app's PRIMARY content kinds + a typed FeedScope acquisition + admission /

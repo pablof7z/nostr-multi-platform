@@ -11,7 +11,9 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 
 **Framework does:** the insert-time supersession at `docs/product-spec/subsystems.md` §7.1 row "Replaceable kinds (0, 3, 10000-19999)". Mechanism: compare `(pubkey, kind)` against the existing entry, keep newest `created_at`, tie-break by lexicographically smallest `id`. The current in-memory kernel partially enforces this: kind:0 (`ingest_profile` at `crates/nmp-core/src/kernel/ingest.rs:187-185`) applies both the `created_at` check and the `id` tie-break correctly; kind:10002 (`ingest_relay_list` at `crates/nmp-core/src/kernel/ingest.rs:218-222`) uses `>=` with no tie-break; kind:3 (`ingest_contacts` at `crates/nmp-core/src/kernel/ingest.rs:206`) uses unconditional overwrite with no monotonicity guard or tie-break. The full canonical rule (strict monotonic + `id` tie-break for all replaceable kinds) lands in M3's LMDB-backed `EventStore` trait (`docs/design/lmdb/trait.md`).
 
-**App writes:** nothing. The app calls `ProfileView::open(pubkey)`; the view's payload reflects the latest kind:0 the store has, with no app-side comparison of `created_at`.
+**App writes:** nothing. The app opens the relevant feed/projection/ref; the
+payload reflects the latest kind:0 the store has, with no app-side comparison
+of `created_at`.
 
 **Failure mode prevented:** §3.3 bug #1. Plus the doctrine-4 footgun: an app caches kind:3 in its own state, fails to re-fetch on UI nav, renders a stale follow list, double-subscribes on the next session.
 
@@ -43,7 +45,9 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 
 **Framework does:** §7.1 row "Kind 5 (delete)". Mechanism: after signature verification, scan the referenced `e` and `a` tags, remove matching events *authored by the deleter* (other authors' events with the same id, if any, are untouched — a kind:5 by Alice cannot delete Bob's events), persist a tombstone keyed by event coordinate with a tombstone timestamp = maximum delete `created_at` observed for that target.
 
-**App writes:** nothing. The view payloads recompute (via `ViewModule::on_event_removed` per `docs/design/kernel-substrate.md` §3 lines 141–143) and the deleted note disappears from `TimelineView.items` in the next emit.
+**App writes:** nothing. Feed/projection payloads recompute through the
+observer/projection update path, and the deleted note disappears from the next
+payload emit.
 
 **Failure mode prevented:** the cross-cutting "phantom note" bug: a kind:5 lands, the app's UI does nothing, the note still renders, and worse — re-inserts on app restart because the app's local cache predates the delete. The tombstone is the structural answer: even if the original event is re-delivered by another relay, the store refuses to re-insert it.
 
@@ -65,7 +69,7 @@ This chapter holds four bullets, all of which discharge `docs/product-spec/overv
 
 **Framework does:** §7.1 row "NIP-40 expiration": schedule a tokio timer to remove the event at the expiration timestamp; on actor restart, scan the persisted store and re-schedule. M3 implements the persistent rescan; the in-memory kernel can run the timer but loses schedules on restart.
 
-**App writes:** nothing. Same `on_event_removed` path as C3.
+**App writes:** nothing. Same observer/projection removal path as C3.
 
 **Failure mode prevented:** apps shipping their own "is this event expired?" filter, getting it wrong (off-by-one timezone, missing tag parser, not re-checking after restart), and rendering events that should be gone — especially relevant for ephemeral notifications and expiring offers.
 

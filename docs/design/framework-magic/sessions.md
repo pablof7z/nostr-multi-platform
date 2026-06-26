@@ -17,7 +17,9 @@
   `InterestScope::ActiveAccount` interests also re-route; specific/global
   interests are untouched.
 - The compiler diffs the new plan against the old; per-relay CLOSE/REQ frames fire only for the *delta* (e.g., previous account's follows that are not in new account's follows close their slices; new follows open new slices).
-- View payloads recompute via the same `on_event_replaced` / `on_event_inserted` cascade the kernel uses for any state change; the platform shadow's `useFollowingTimeline()` etc. emit a new payload.
+- Feed/projection payloads recompute through the same observer/projection
+  update-frame cascade the kernel uses for any state change; the platform
+  shadow's feed handles emit a new payload.
 - The signer attached to operations dispatched after the switch is the new active account's signer (per `IdentityModule` routing in `kernel-substrate.md` §6).
 
 **App writes:** one dispatch: `dispatch(AppAction::SwitchActiveAccount { pubkey })`. The app's "switch account" UI is a button that fires that dispatch. No log-out / log-in dance, no view-tree rebuild, no manual REQ reissue, no clearing of caches — the framework handles all of it as a single tick of the actor's event loop.
@@ -35,7 +37,11 @@
 7. **Assert specific-scoped views untouched:** before step 3, also open `ProfileView { pubkey: charlie_pk }` (an `InterestScope::Account(charlie)`-equivalent — actually Global since it names an explicit author). Assert this view's payload is not re-emitted after the switch; its underlying REQ stays alive on the same relay; no delta frames touch it. This is the symmetric assertion: the switch affects *only* `ActiveAccount`-scoped interests, per `subscription-compilation/recompilation.md` §4.2 line 113.
 8. **Assert no overlap:** read the audit log of any per-account domain-store namespace (e.g., Alice's drafts) and assert Bob cannot read it. The kernel's domain-store isolation per account is the structural enforcement (`kernel-substrate.md` §8 "Domain stores are isolated" and the per-account scoping in domain key prefixes).
 
-**Milestone owner:** **[PENDING M8]**. M8 is the multi-account session milestone. M2 already lands the `Trigger::ActiveAccountChanged` shape (`subscription-compilation/recompilation.md` §4.2 line 109: "M2 establishes the trigger; M8 wires the multi-account state machine"). Test checked in as `#[ignore = "pending M8 multi-account state machine"]`. Sub-paths 4 and 7 are testable as soon as M2 lands (single-account boot fires the trigger once with `from: None, to: Some(active)` per the M2 design); the rest needs M8.
+**Milestone owner:** **[DONE]**. The active-account trigger and
+ReducedSource feed-session rebind path are active on master. The contract proof
+is `c12_account_switch_rebinds_views_without_imperative_dance`; it is no
+longer ignored. M8 closed the multi-account state-machine wiring so account
+switch is a state transition rather than a host-driven teardown/reopen dance.
 
 ## Why this is one bullet, not several
 
@@ -63,6 +69,8 @@ The full sequence (onboard → switch → use) is exercised by C11 sub-path 2(e)
 ## What this chapter does not cover
 
 - **The login UI itself.** The app provides the button; the contract specifies what the dispatch guarantees.
-- **The account-switcher view payload.** That is a view module (`AccountListView` or similar in `nmp-core`'s built-ins per `subsystems.md` §7.4); its spec/payload is owned by the view catalog, not the contract.
+- **The account-switcher payload.** That is an app/registered projection over
+  `SessionState.accounts`; its spec/payload is owned by the app or protocol
+  composition surface, not this contract.
 - **Background account state** (per-account sync watermarks, per-account action ledger). Those are per-account scopes inside the storage backend; the contract does not specify the scoping mechanism, only that the switch does not leak state across.
 - **Logging out / removing an account.** A `RemoveAccount` action exists in the long-term catalog (`subsystems.md` §7.4 implied); its contract surface is a separate potential bullet, not in v1's 13. Removal cleanly through the same `IdentityModule::destroy` path (kernel-substrate.md §6 line 341).
