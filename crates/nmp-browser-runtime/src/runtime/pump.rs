@@ -71,6 +71,13 @@ pub(super) fn drain_inbox(
     while applied < BROWSER_COMMAND_DRAIN_BUDGET {
         let cmd = match rx.try_recv() {
             Ok(ActorMail::Command(cmd)) => cmd,
+            // `ActorMail::Relay` exists only when `nmp-core/native` is unified
+            // into this build (workspace feature unification adds the cfg-gated
+            // variant). The browser ignores relay mail here — it has its own
+            // relay driver (#2050). Unreachable under `--no-default-features`
+            // (Command is then the only variant), so the wildcard is allow'd.
+            #[allow(unreachable_patterns)]
+            Ok(_) => continue,
             // Channel drained or sender gone: no more work this turn and nothing
             // was left behind, so the host need not re-pump on our account.
             Err(TryRecvError::Empty) | Err(TryRecvError::Disconnected) => {
