@@ -101,10 +101,10 @@ Registers a named JSON slice pushed under `projections["nmp.myapp.items"]` on
 every snapshot tick. The closure runs on the **actor thread**; it must be
 cheap and non-blocking (D8). Registered under dotted `nmp.*` namespaces.
 
-### Seam 3 — `register_event_observer(arc)`
+### Seam 3 — `register_live_event_tap(arc)`
 
 ```rust
-app.register_event_observer(Arc::new(MyObserver { store: Arc::clone(&store) }));
+app.register_live_event_tap(Arc::new(MyObserver { store: Arc::clone(&store) }));
 ```
 
 Registers a `KernelEventObserver` (`actor/commands/event_observer.rs:189`)

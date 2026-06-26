@@ -296,6 +296,15 @@ pub fn register_rust_observer_muted(
     id
 }
 
+/// Number of registered Rust trait-object observers in the slot (active or
+/// muted). Diagnostics/test helper — proves observer-slot bookkeeping, e.g.
+/// that a multi-relay NIP-50 search shares ONE observer across all its
+/// relay-pinned interests rather than registering one observer per relay.
+#[must_use]
+pub fn rust_observer_count(slot: &KernelEventObserverSlot) -> usize {
+    slot.lock().map(|guard| guard.rust.len()).unwrap_or(0)
+}
+
 /// Activate a previously muted observer (ADR-0062).
 ///
 /// Sets `active: true` on the registration matching `id`, so subsequent

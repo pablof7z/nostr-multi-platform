@@ -235,8 +235,6 @@ pub struct NmpApp {
     pub(crate) feed_sessions: Arc<nmp_feed::FeedSessionRegistry>,
     /// #1740 step 4 — app-registered custom-perspective definitions.
     pub(crate) custom_perspectives: Arc<nmp_feed::PerspectiveRegistry>,
-    /// Per-open feed → ingest-observer bookkeeping for *transient* feeds.
-    pub(crate) interest_feed_observers: Mutex<HashMap<String, KernelEventObserverId>>,
     /// G-S4 — straddle counter for the actor command channel depth.
     pub(crate) queue_depth: Arc<AtomicU64>,
     /// Test-only monotone send counter.
@@ -261,7 +259,8 @@ pub struct NmpApp {
     /// entry maps an observer id returned by `open_observed_projection` to the
     /// close params `(filter_json, consumer_id, scope, relay_pin)` needed to
     /// reverse the open in `close_observed_projection`.
-    pub(crate) observed_projection_sessions: Mutex<HashMap<nmp_core::KernelEventObserverId, (String, String, u32, Option<String>)>>,
+    pub(crate) observed_projection_sessions:
+        Mutex<HashMap<KernelEventObserverId, (String, String, u32, Option<String>)>>,
     /// Test-support GC budget ceiling.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) gc_budget_ceiling: Arc<Mutex<Option<usize>>>,

@@ -225,6 +225,9 @@ pub use event_observer::register_rust_observer;
 // catch-up, so wasm/no-native reducer builds need the same pure helper.
 pub use event_observer::activate_observer;
 pub use event_observer::register_rust_observer_muted;
+// Diagnostics/test helper counting registered Rust observers in a slot;
+// pure (no native deps), available on all targets.
+pub use event_observer::rust_observer_count;
 // Slot constructor + unregister helper reach `nmp-ffi` through
 // `nmp_core::__ffi_internal::*`.
 #[cfg(feature = "native")]

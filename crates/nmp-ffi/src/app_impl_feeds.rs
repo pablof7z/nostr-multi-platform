@@ -162,25 +162,21 @@ impl NmpApp {
         }));
     }
 
-    /// Tear down a transient feed registered via `register_feed` + observer.
+    /// Tear down a feed registered via [`Self::register_feed`].
     ///
-    /// Performs all three removals the registration installed, in any
-    /// combination present (each is an independent no-op when its target is
-    /// absent, so an unknown key is harmless):
+    /// Performs both removals the registration installed, in any combination
+    /// present (each is an independent no-op when its target is absent, so an
+    /// unknown key is harmless):
     ///
     /// 1. the [`nmp_feed::FeedController`] from the feed registry;
-    /// 2. the snapshot projection closure (generic + typed) so it stops
-    ///    emitting a stale empty subtree on every tick;
-    /// 3. the tracked [`KernelEventObserver`], if one was recorded for `key`.
+    /// 2. the snapshot projection closure (generic + typed), plus the feed's
+    ///    author provider, so it stops emitting a stale empty subtree per tick.
     ///
-    /// CALLER CONTRACT — call this ONLY for transient keys registered via
-    /// `register_feed` + observer. It is **destructive on any key**
-    /// that has a live `FeedController` / projection: calling it on the
-    /// permanent home-feed key (`nmp.feed.home`, registered via the plain
-    /// [`Self::register_feed`]) WOULD drop the home feed's controller and
-    /// projection — it is "safe" there only in the sense that it never panics,
-    /// not that it preserves the feed. The home feed has no tracked observer, so
-    /// step 3 is a no-op there, but steps 1–2 are not.
+    /// CALLER CONTRACT — this is **destructive on any key** that has a live
+    /// `FeedController` / projection, including the permanent home-feed key
+    /// (`nmp.feed.home`): calling it there WOULD drop the home feed's controller
+    /// and projection. It is "safe" only in the sense that it never panics, not
+    /// that it preserves the feed.
     ///
     /// Returns `true` when any registration was removed. D6 — poisoned locks
     /// degrade to partial teardown (best-effort); the `nmp_app_free` actor
@@ -198,15 +194,7 @@ impl NmpApp {
                 removed_proj || removed_provider
             })
             .unwrap_or(false);
-        let removed_observer = self
-            .interest_feed_observers
-            .lock()
-            .ok()
-            .and_then(|mut map| map.remove(key));
-        let removed_any = removed_feed || removed_projection || removed_observer.is_some();
-        if let Some(observer_id) = removed_observer {
-            self.unregister_event_observer(observer_id);
-        }
+        let removed_any = removed_feed || removed_projection;
         if removed_any {
             self.mark_changed_since_emit();
         }
@@ -331,24 +319,48 @@ impl ObservedProjectionRegistrar for NmpApp {
     ///
     /// The close params are recorded in `observed_projection_sessions` so
     /// `close_observed_projection` can reverse both registrations (observer +
-    /// interest) from just the id. D6 — a poisoned sessions mutex degrades to
-    /// "session untracked": the interest and observer are still active but
-    /// `close_observed_projection` cannot close them (bounded soft-leak).
+    /// interest) from just the id.
+    ///
+    /// D6 fail-closed on two poison paths:
+    ///
+    /// * `register_rust_observer_muted` returns the reserved sentinel
+    ///   `KernelEventObserverId(0)` when the observer slot mutex is poisoned. A
+    ///   real id is always `>= 1` (the allocator starts at 1). On the sentinel
+    ///   we do NOT track the session and do NOT open the interest — opening
+    ///   against id 0 would route fan-out to an unaddressable slot, and tracking
+    ///   it would collapse every poisoned open onto the single `0` key so the
+    ///   first close leaks every other session's interests. We return id 0; the
+    ///   caller treats it as "no session opened".
+    /// * a poisoned `observed_projection_sessions` mutex means we cannot record
+    ///   the close params, so `close_observed_projection` could never reverse
+    ///   this open. Rather than leak the just-registered observer + a live
+    ///   interest, we unregister the observer and return id 0 without opening.
     fn open_observed_projection(&self, decl: ObservedProjection) -> KernelEventObserverId {
         let observer_id = register_rust_observer_muted(&self.event_observers, decl.observer);
-        // Store close params before sending the interest command so a concurrent
-        // close (D6 poison path) doesn't see a dangling id.
-        if let Ok(mut sessions) = self.observed_projection_sessions.lock() {
-            sessions.insert(
-                observer_id,
-                (
-                    decl.filter_json.clone(),
-                    decl.consumer_id.clone(),
-                    decl.scope,
-                    decl.relay_pin.clone(),
-                ),
-            );
+        // Fail closed on the poisoned-observer-slot sentinel: never open an
+        // interest against id 0 (unaddressable) nor track it (would alias every
+        // poisoned open onto one key and leak interests on the first close).
+        if observer_id.0 == 0 {
+            return observer_id;
         }
+        // Store close params before sending the interest command so a concurrent
+        // close (D6 poison path) doesn't see a dangling id. If the sessions mutex
+        // is poisoned we cannot record the teardown recipe, so we fail closed:
+        // unregister the observer and return without opening (no silent leak).
+        let Ok(mut sessions) = self.observed_projection_sessions.lock() else {
+            self.unregister_event_observer(observer_id);
+            return KernelEventObserverId(0);
+        };
+        sessions.insert(
+            observer_id,
+            (
+                decl.filter_json.clone(),
+                decl.consumer_id.clone(),
+                decl.scope,
+                decl.relay_pin.clone(),
+            ),
+        );
+        drop(sessions);
         self.open_observed_interest_pinned(
             &decl.filter_json,
             &decl.consumer_id,

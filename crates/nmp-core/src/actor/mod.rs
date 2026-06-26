@@ -162,6 +162,8 @@ pub(crate) use commands::notify_observers;
 pub use commands::activate_observer;
 pub(crate) use commands::notify_observer_by_id;
 pub use commands::register_rust_observer_muted;
+// Diagnostics/test helper; pure, available on all targets.
+pub use commands::rust_observer_count;
 // `KernelEventObserverSlot` and `register_rust_observer` are `pub`
 // unconditionally so `nmp-ffi` and wasm32 composition roots can register
 // observers. `new_event_observer_slot_headless` is `pub(crate)` — wasm32-safe

@@ -365,7 +365,7 @@ pub mod __ffi_internal {
         has_role, new_bunker_handshake_slot, new_event_observer_slot, new_lifecycle_observer_slot,
         new_signer_state_slot, nostrconnect_relay_url,
         activate_observer, register_c_observer, register_rust_observer,
-        register_rust_observer_muted,
+        register_rust_observer_muted, rust_observer_count,
         run_actor_with_observers, unregister_observer,
         ActorChannels, ActorConfigSources, ActorRuntimeSlots,
         KernelEventObserverRegistration, KernelEventObserverSlot, LifecycleObserverFn,
