@@ -203,6 +203,21 @@ impl Default for NmpDefaults {
 /// without desyncing them). [`super::register_defaults`] passes
 /// `CoverageGate::default()`.
 ///
+/// # Returns
+///
+/// The shared NIP-65 (kind:10002) mailbox cache as a read handle (#2085) — the
+/// **same** `Arc<dyn MailboxCache>` instance this function wires into all three
+/// substrate seams: the NIP-19 encoder reader (`set_mailbox_cache_reader`), the
+/// routing-substrate factory, and the `nmp_router::Kind10002Parser` writer.
+/// Instance identity is load-bearing: a non-social external consumer (hl,
+/// podcast-player, win-the-day) that needs to read an author's importable
+/// NIP-65 relay list reads through this handle rather than constructing a fresh
+/// `InMemoryMailboxCache` (which would be empty and divergent from the cache the
+/// parser actually writes). The handle preserves the read/write/both role shape
+/// via [`nmp_core::substrate::MailboxCache::snapshot`] and exposes no raw event
+/// history. [`super::register_defaults_with_handles`] surfaces it on
+/// [`super::NmpDefaultRuntimeHandles::mailbox_cache`].
+///
 /// # Shared host target
 ///
 /// The substrate tier is intentionally expressed only in terms of narrow
@@ -237,7 +252,7 @@ pub fn register_substrate(
               + ReqFrameInterceptorRegistrar
               + RoutingFactoryRegistrar),
     gate: CoverageGate,
-) {
+) -> Arc<dyn nmp_core::substrate::MailboxCache> {
     // NIP-65: kind:10002 relay-list publish. The `nmp-router` crate owns
     // both routing AND the kind:10002 publish path (step 3 absorbed the
     // former `nmp-nip65` crate into `nmp-router`). This is the routing
@@ -254,7 +269,13 @@ pub fn register_substrate(
     // installs the shared mailbox cache (also as the H4 `set_mailbox_cache_reader`
     // read side for the NIP-19 encoder), the routing-substrate factory, and the
     // kind:10002 / kind:0 / kind:3 cache+parser pairs.
-    nmp_substrate_defaults::install_on_app_host(app);
+    //
+    // It returns the shared NIP-65 mailbox cache as a read handle (#2085) — the
+    // SAME `Arc` it just wired into the encoder reader, the routing factory, and
+    // the `Kind10002Parser` writer. We surface it as this function's return value
+    // so `register_defaults_with_handles` can hand app-core crates an
+    // instance-identical read handle without re-deriving the un-copyable wiring.
+    let mailbox_cache = nmp_substrate_defaults::install_on_app_host(app);
 
     // ── kind:10006 blocked-relay cache (Phase 0 relay-attribution) ──────
     //
@@ -367,4 +388,9 @@ pub fn register_substrate(
     // fetch-based RelayConnectedHook in a later issue (#2046/#2057).
     #[cfg(feature = "native")]
     nmp_nip11::register(app);
+
+    // Hand the shared NIP-65 mailbox cache read handle back to the caller
+    // (#2085). This is the same `Arc` wired into the encoder reader, the routing
+    // factory, and the kind:10002 parser writer above.
+    mailbox_cache
 }

@@ -48,18 +48,40 @@ impl DefaultSubstrateWiring {
         }
     }
 
+    /// The NMP-owned NIP-65 (kind:10002) mailbox cache as a read handle (#2085).
+    ///
+    /// Returns a clone of the **same** `Arc<InMemoryMailboxCache>` this wiring
+    /// hands to all three substrate seams: the NIP-19 encoder's
+    /// `set_mailbox_cache_reader`, the routing-substrate factory, and the
+    /// `nmp_router::Kind10002Parser` writer. Instance identity is load-bearing —
+    /// app-core crates that read a pubkey's importable relay list (e.g.
+    /// Highlighter's relay-import preview) MUST read through this handle rather
+    /// than constructing a fresh `InMemoryMailboxCache`, which would be empty
+    /// and divergent from the cache the parser actually writes.
+    ///
+    /// The handle preserves the read/write/both role shape via
+    /// [`MailboxCache::snapshot`]; it does not expose raw event history.
+    #[must_use]
+    pub fn mailbox_cache(&self) -> Arc<dyn MailboxCache> {
+        self.mailbox_cache.clone()
+    }
+
     /// Install the shared cache/parser pairs on an AppHost-style composition
     /// target.
     ///
     /// This intentionally covers only the wasm-safe cache/parser/router
     /// construction. The full native substrate tier still belongs to
     /// `nmp-defaults::register_substrate`.
+    ///
+    /// Returns the shared NIP-65 mailbox cache read handle (#2085) — the same
+    /// `Arc` installed as the encoder reader, the routing factory cache, and the
+    /// kind:10002 parser writer (see [`Self::mailbox_cache`]).
     pub fn install_on_app_host(
         &self,
         app: &(impl IngestParserRegistrar + KernelReaderRegistrar + RoutingFactoryRegistrar),
-    ) {
+    ) -> Arc<dyn MailboxCache> {
         let mailbox_reader: Arc<dyn MailboxCache> = self.mailbox_cache.clone();
-        app.set_mailbox_cache_reader(mailbox_reader);
+        app.set_mailbox_cache_reader(Arc::clone(&mailbox_reader));
 
         let cache_for_factory = Arc::clone(&self.mailbox_cache);
         app.set_routing_substrate(
@@ -73,6 +95,7 @@ impl DefaultSubstrateWiring {
         );
 
         self.install_reader_parser_pairs(app);
+        mailbox_reader
     }
 
     /// Install the shared cache/parser pairs on a reducer-owned web
@@ -131,10 +154,14 @@ impl DefaultSubstrateWiring {
 
 /// Install fresh default substrate wiring on an AppHost-style composition
 /// target.
+///
+/// Returns the shared NIP-65 mailbox cache read handle (#2085) — the same `Arc`
+/// installed as the encoder reader, the routing factory cache, and the
+/// kind:10002 parser writer.
 pub fn install_on_app_host(
     app: &(impl IngestParserRegistrar + KernelReaderRegistrar + RoutingFactoryRegistrar),
-) {
-    DefaultSubstrateWiring::new().install_on_app_host(app);
+) -> Arc<dyn MailboxCache> {
+    DefaultSubstrateWiring::new().install_on_app_host(app)
 }
 
 /// Install fresh default substrate wiring on a reducer-owned web composition
