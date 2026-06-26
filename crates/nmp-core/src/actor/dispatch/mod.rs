@@ -197,6 +197,15 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
+        // D0-clean fire-and-forget outbound: route the frame directly to
+        // `send_outbound` with the supplied role and URL. The sender (e.g. a
+        // `RelayConnectedHook`) already holds no kernel reference and cannot
+        // return `Vec<OutboundMessage>` directly; posting through this variant
+        // wakes the actor (ADR-0050 §D3a) and delivers the frame on the actor
+        // thread without any new mutex or blocking call.
+        ActorCommand::EnqueueOutbound { role, relay_url, text } => {
+            Some(vec![OutboundMessage::new(role, relay_url, text)])
+        }
         #[cfg(any(test, feature = "test-support"))]
         ActorCommand::TestSupport(cmd) => dispatch_test_support(cmd, ctx),
     }

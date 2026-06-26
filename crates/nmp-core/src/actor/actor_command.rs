@@ -84,6 +84,24 @@ pub enum ActorCommand {
     /// English fallback prose (`last_error_toast`) so the shell can render
     /// localized prose.
     ShowErrorToken { token: crate::ui_token::UiToken },
+    /// Enqueue a raw outbound text frame on `relay_url` from a
+    /// [`crate::substrate::RelayConnectedHook`] (or any off-actor sender
+    /// that cannot return `Vec<OutboundMessage>` directly). Fire-and-forget:
+    /// the actor dispatches it to `send_outbound` without waiting for an
+    /// acknowledgement. D0-clean — carries only substrate-generic types
+    /// (`RelayRole`, `String`); no NIP protocol noun crosses this boundary.
+    ///
+    /// Used by `nmp-nip46-runtime`'s connected-hook to replay the REQ
+    /// subscription frame after a relay reconnect, guaranteeing the
+    /// REQ-before-EVENT ordering that makes sign-event responses observable.
+    EnqueueOutbound {
+        /// Lane discriminator — determines persistence and health-row placement.
+        role: nmp_network::role::RelayRole,
+        /// Canonical relay URL.
+        relay_url: String,
+        /// Fully-formed wire frame (e.g. `["REQ", ...]` or `["EVENT", ...]`).
+        text: String,
+    },
     /// Test-support-only actor verbs (cfg-gated). See [`TestSupportCommand`].
     #[cfg(any(test, feature = "test-support"))]
     TestSupport(TestSupportCommand),

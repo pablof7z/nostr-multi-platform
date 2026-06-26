@@ -172,7 +172,11 @@ impl Kernel {
         relay_url: &CanonicalRelayUrl,
         role: RelayRole,
     ) -> bool {
-        if role == RelayRole::Wallet {
+        // Both the NWC wallet lane and the NIP-46 signer lane are on-demand
+        // persistent sockets — they must never be reaped by the idle sweeper
+        // while the session is live. All other roles fall through to the
+        // bootstrap/configured-relay check below.
+        if role == RelayRole::Wallet || role == RelayRole::Signer {
             return true;
         }
         RelayRole::all()
@@ -183,6 +187,22 @@ impl Kernel {
                 .configured_relays
                 .iter()
                 .any(|row| CanonicalRelayUrl::parse_or_raw(&row.url) == *relay_url)
+    }
+
+    /// Test-support accessor: check persistence by raw URL string + role.
+    ///
+    /// Wraps the `pub(crate)` `relay_socket_is_persistent` behind the
+    /// `test-support` feature gate so external crates (e.g. `nmp-nip46-runtime`)
+    /// can verify the relay-lifetime contract without promoting the main
+    /// function to `pub`.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn relay_socket_is_persistent_for_test(
+        &self,
+        relay_url: &str,
+        role: RelayRole,
+    ) -> bool {
+        let canonical = CanonicalRelayUrl::parse_or_raw(relay_url);
+        self.relay_socket_is_persistent(&canonical, role)
     }
 
     pub(crate) fn relay_has_active_demand(&self, relay_url: &CanonicalRelayUrl) -> bool {
