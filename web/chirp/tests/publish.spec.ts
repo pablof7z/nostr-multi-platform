@@ -52,7 +52,7 @@ test("@wasm publish: composed note is NIP-07 signed and the relay receives a val
 }) => {
   test.setTimeout(120_000);
 
-  const relay = await startFixtureRelay();
+  const relay = await startFixtureRelay({ eventAck: { delayMs: 2_500 } });
   const relayBootstrap = JSON.stringify([[relay.url, "both,indexer"]]);
   const viewerSecretKey = generateSecretKey();
   const viewerPubkey = getPublicKey(viewerSecretKey);
@@ -114,10 +114,23 @@ test("@wasm publish: composed note is NIP-07 signed and the relay receives a val
     await compose.fill(content);
     await page.getByRole("button", { name: /publish|chirp|post|send/i }).first().click();
 
+    await expect(page.getByTestId("publish-outbox")).toContainText("in flight", {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("publish-outbox")).toContainText(content, {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("publish-outbox")).toContainText(/sending|pending|retrying/i, {
+      timeout: 15_000,
+    });
+
     // The fixture relay received the published EVENT.
     await expect
       .poll(() => relay.eventCount(), { timeout: 30_000 })
       .toBeGreaterThanOrEqual(1);
+    await expect(page.getByTestId("action-results")).toContainText(/published|accepted/i, {
+      timeout: 30_000,
+    });
 
     // The NIP-07 stub signed exactly the note (scenario 4: round-trip).
     expect(signedEvents.length).toBeGreaterThanOrEqual(1);

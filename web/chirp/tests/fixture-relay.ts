@@ -98,6 +98,14 @@ export type FeedFixtureRelay = FixtureRelay & {
   replierDisplayName: string;
 };
 
+export type FixtureRelayOptions = {
+  eventAck?: {
+    ok?: boolean;
+    message?: string;
+    delayMs?: number;
+  };
+};
+
 type NostrFilter = {
   kinds?: number[];
   authors?: string[];
@@ -117,7 +125,10 @@ function matchesFilter(event: NostrEvent, filter: NostrFilter): boolean {
   return true;
 }
 
-function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
+function startServer(
+  seededEvents: NostrEvent[],
+  options: FixtureRelayOptions = {},
+): Promise<FixtureRelay> {
   return new Promise((resolve, reject) => {
     const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
     let connections = 0;
@@ -161,7 +172,14 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
             if (event !== undefined) {
               receivedEvents.push(event as NostrEvent);
             }
-            ws.send(JSON.stringify(["OK", eventId, true, ""]));
+            const ack = options.eventAck ?? {};
+            const ok = ack.ok ?? true;
+            const message = ack.message ?? "";
+            setTimeout(() => {
+              if (ws.readyState === 1) {
+                ws.send(JSON.stringify(["OK", eventId, ok, message]));
+              }
+            }, ack.delayMs ?? 0);
           }
           // CLOSE: no response required per NIP-01.
         });
@@ -192,8 +210,8 @@ function startServer(seededEvents: NostrEvent[]): Promise<FixtureRelay> {
  * publish spec, where the only events the relay sees are the browser's own
  * outbound EVENT frames.
  */
-export async function startFixtureRelay(): Promise<FixtureRelay> {
-  return startServer([]);
+export async function startFixtureRelay(options: FixtureRelayOptions = {}): Promise<FixtureRelay> {
+  return startServer([], options);
 }
 
 /**

@@ -2,6 +2,7 @@ import { createSignal, For, Show } from "solid-js";
 import type { WorkerEvent } from "@nmp/runtime-web";
 import { useNmpClient } from "../../nmp/context";
 import type { RuntimeProjection } from "../../nmp/runtimeProjection";
+import { OutboxDiagnostics } from "./OutboxDiagnostics";
 import "./diagnostics.css";
 
 type RoutingSummary = {
@@ -128,6 +129,12 @@ export function DiagnosticsPanel(props: {
         <strong>{writeLabel(writeEvent())}</strong>
         <span>{writeDetail(writeEvent())}</span>
       </div>
+
+      <OutboxDiagnostics
+        outbox={props.diagnostics?.publishOutbox ?? []}
+        results={props.diagnostics?.actionResults ?? []}
+        stages={props.diagnostics?.actionStages ?? []}
+      />
 
       <Show when={props.diagnostics?.storeOpenFailure}>
         {(failure) => (

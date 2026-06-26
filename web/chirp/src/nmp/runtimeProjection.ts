@@ -7,6 +7,12 @@ import * as flatbuffers from "flatbuffers";
 import { UpdateFrame } from "./generated/nmp/transport/update-frame";
 import { FrameKind } from "./generated/nmp/transport/frame-kind";
 import type { SnapshotFrame } from "./generated/nmp/transport/snapshot-frame";
+import {
+  decodeTypedRuntimeProjections,
+  type ActionResultRuntimeRow,
+  type ActionStageRuntimeRow,
+  type PublishOutboxRuntimeItem,
+} from "./runtimeTypedProjections";
 
 export type RelayRuntimeRow = {
   url: string;
@@ -39,12 +45,17 @@ export type WireSubscriptionRuntimeRow = {
   eoseObserved: boolean;
 };
 
+export type { ActionResultRuntimeRow, ActionStageRuntimeRow, PublishOutboxRuntimeItem };
+
 export type RuntimeProjection = {
   running: boolean;
   rev: number;
   relays: RelayRuntimeRow[];
   interests: InterestRuntimeRow[];
   wireSubscriptions: WireSubscriptionRuntimeRow[];
+  publishOutbox: PublishOutboxRuntimeItem[];
+  actionResults: ActionResultRuntimeRow[];
+  actionStages: ActionStageRuntimeRow[];
   lastErrorToast?: string;
   lastErrorCategory?: string;
   lastPlannerError?: string;
@@ -118,6 +129,7 @@ function decodeSnapshot(snap: SnapshotFrame): RuntimeProjection {
       eoseObserved: row.eoseAtMs() !== null,
     });
   }
+  const typed = decodeTypedRuntimeProjections(snap);
 
   return {
     running: snap.running(),
@@ -125,6 +137,9 @@ function decodeSnapshot(snap: SnapshotFrame): RuntimeProjection {
     relays,
     interests,
     wireSubscriptions,
+    publishOutbox: typed.publishOutbox,
+    actionResults: typed.actionResults,
+    actionStages: typed.actionStages,
     lastErrorToast: snap.lastErrorToast() ?? undefined,
     lastErrorCategory: snap.lastErrorCategory() ?? undefined,
     lastPlannerError: snap.lastPlannerError() ?? undefined,
