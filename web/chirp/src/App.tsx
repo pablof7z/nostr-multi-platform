@@ -22,14 +22,16 @@
 // Item D: import and render signing/onboarding UI inside [data-slot="signing"].
 
 import { createSignal, onCleanup, onMount } from "solid-js";
-import type { IdentityRelayPermission } from "@nmp/runtime-web";
 import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
 import { NmpClientProvider } from "./nmp/context";
+import { SigningPanel } from "./features/signing/SigningPanel";
 import { chirpRelayOverrideFromSearch } from "./chirpConfig";
 // Item C — feed / publish / profile UI (FeedPanel owns its own store + provider).
 import { FeedPanel } from "./features/feed/FeedPanel";
 
 // NIP-07 browser extension interface (window.nostr — EIP-1193-style extension).
+// Shared ambient declaration: signBroker.ts, client.ts, and the signing feature
+// (features/signing/nip07.ts) all read `window.nostr` through this type.
 declare global {
   interface Window {
     nostr?: {
@@ -42,33 +44,6 @@ declare global {
 
 // The client is a module-level singleton: one worker per page load.
 const client = createNmpClient();
-
-function identityRelaysFromNip07(value: unknown): IdentityRelayPermission[] {
-  if (typeof value !== "object" || value === null) return [];
-  const relays: IdentityRelayPermission[] = [];
-  for (const [url, permissions] of Object.entries(value)) {
-    if (typeof url !== "string" || typeof permissions !== "object" || permissions === null) {
-      continue;
-    }
-    const raw = permissions as Record<string, unknown>;
-    relays.push({
-      url,
-      read: raw.read === true,
-      write: raw.write === true,
-    });
-  }
-  return relays;
-}
-
-async function readNip07Relays(): Promise<IdentityRelayPermission[] | undefined> {
-  if (!window.nostr?.getRelays) return undefined;
-  try {
-    const relays = identityRelaysFromNip07(await window.nostr.getRelays());
-    return relays.length > 0 ? relays : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** Derive a stable string from the runtime status for data attributes and UI. */
 function runtimeStatusLabel(snapshot: RuntimeSnapshot): string {
@@ -89,19 +64,6 @@ export default function App() {
   const start = async () => {
     const override = chirpRelayOverrideFromSearch(window.location.search);
     setSnapshot(await client.start(override));
-  };
-
-  // Connect the active NIP-07 extension as the signing identity.
-  // Item D will replace this with a full onboarding flow.
-  const connect = async () => {
-    if (!window.nostr) return;
-    try {
-      const pubkeyHex = await window.nostr.getPublicKey();
-      const snap = await client.setSigner(pubkeyHex, await readNip07Relays());
-      setSnapshot(snap);
-    } catch {
-      // Signer install failed; UI stays disconnected, no crash.
-    }
   };
 
   // Derived test-hook values (reactive, zero allocations on stable status).
@@ -147,20 +109,12 @@ export default function App() {
 
         {/*
           MOUNT POINT — Item D: signing / onboarding UI.
-          Item D renders the NIP-07 connect flow and pending-sign overlay here.
-          The connect() handler above is a stub; Item D replaces it with its
-          full onboarding component.
+          SigningPanel renders the NIP-07 + local-key onboarding flow, the active
+          signer status, and the pending-sign overlay. All signing logic lives in
+          features/signing/ and reads the runtime via NmpClientContext.
         */}
         <section data-slot="signing" aria-label="Signing">
-          {!isConnected() && (
-            <button
-              class="connect-btn"
-              onClick={() => void connect()}
-              style={{ padding: "10px 20px", margin: "20px", cursor: "pointer" }}
-            >
-              Connect NIP-07 extension
-            </button>
-          )}
+          <SigningPanel />
         </section>
       </main>
     </NmpClientProvider>
