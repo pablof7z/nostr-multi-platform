@@ -12,11 +12,7 @@
 //!
 //! 1. Constructs [`nmp_nip02::ActiveFollowSet`] over the kernel's
 //!    [`ActiveAccountSlot`] (the producer of the follow predicate).
-//! 2. Declares the home feed as app-owned primary kinds from the active
-//!    account's reactive follows perspective. The declaration derives repost
-//!    wrapper acquisition below the app boundary and queues the active-follows
-//!    subscription command; it never passes concrete follow pubkeys.
-//! 3. Builds the three inputs `register_op_feed` needs:
+//! 2. Builds the three inputs `register_op_feed` needs:
 //!    * **follow predicate** — `active_follow_set.predicate()` (live view of
 //!      the active account's follow set);
 //!    * **event lookup** — a synchronous read through the kernel event-store
@@ -24,29 +20,25 @@
 //!      acquisition;
 //!    * **card builder** — supplied inside `register_op_feed` itself
 //!      (`TimelineEventCard::from_event_for_op_feed`).
-//! 4. Registers the returned `Arc<OpFeedEngine>` as a
+//! 3. Registers the returned `Arc<OpFeedEngine>` as a
 //!    [`KernelEventObserver`](nmp_core::KernelEventObserver) (ingest) **and** as
 //!    a [`FeedController`](nmp_feed::FeedController) under
 //!    `"nmp.feed.home"` (output).
-//! 5. Registers the `ActiveFollowSet` as its own `KernelEventObserver` (so
+//! 4. Registers the `ActiveFollowSet` as its own `KernelEventObserver` (so
 //!    kind:3 ingest keeps the follow set current — exactly the pattern the
 //!    sibling `FollowListProjection` already uses).
-//! 6. Registers an `on_change` callback that resets the engine on every
+//! 5. Registers an `on_change` callback that resets the engine on every
 //!    follow-set perspective change.
-//! 7. Registers the follow-set notifier on `NmpApp`'s identity-change observer
+//! 6. Registers the follow-set notifier on `NmpApp`'s identity-change observer
 //!    seam so sign-in, switch, logout, and reset are pushed after the actor has
 //!    written the active-account slot.
 //!
 //! # CRITICAL DECISION — declaration here, no static follow snapshots
 //!
-//! This composition root owns the app-level feed declaration: primary content
-//! kinds from the active account's reactive follows perspective. It does not
-//! compute or pass a static follow list. The active-follow producer and kernel
-//! subscription machinery react to active-account kind:3 replacement, account
-//! switch, logout, mute/block, delete, and replacement changes using the stored
-//! acquisition kinds. The OP-feed engine observes resulting events through the
-//! kernel's `KernelEventObserver` fan-out and clears/regrows its visible window
-//! on perspective changes.
+//! Feed acquisition is owned by the `open_feed(FeedScope::ActiveUserFollows)`
+//! reduced-source path. This composition helper wires only the OP-feed render
+//! engine and its live follow predicate; it never declares an actor-owned
+//! follow-feed subscription.
 //!
 //! # `event_lookup` reads the kernel event store (V-83)
 //!
@@ -174,9 +166,9 @@ pub struct OpFeedDefaults {
 ///
 /// # CRITICAL DECISION
 ///
-/// This function declares active-follows acquisition from app primary kinds,
-/// but never passes concrete follow pubkeys or registers a second home-feed
-/// projection. See the module docs.
+/// This function wires render state only. `open_feed(FeedScope::ActiveUserFollows)`
+/// owns acquisition through the reduced-source/dependent-interest path. See the
+/// module docs.
 ///
 /// # Ordering
 ///
@@ -234,15 +226,7 @@ fn register_op_feed_defaults_inner(
     // close (was discarded — app-lifetime). Zero id ⇒ soft-fail, revoke no-ops.
     let follow_set_observer_id = app.register_event_observer(follow_set_observer);
 
-    // ── 2. Declare active-follows acquisition from app primary kinds ─────
-    //
-    // The app/defaults layer owns the primary-kind declaration. The kernel
-    // stores only the adapter-derived acquisition kinds and uses the active
-    // account's current kind:3 as a reactive perspective; concrete follow
-    // pubkeys are never passed through this API.
-    let _declared = app.declare_active_follows_feed(primary_feed_kinds.iter().copied());
-
-    // ── 3. Event lookup (V-83 — real synchronous kernel event read) ──────
+    // ── 2. Event lookup (V-83 — real synchronous kernel event read) ──────
     //
     // `Fn(&EventId) -> Option<KernelEvent>`. The engine's repost L-2/L-5
     // backward-hydration paths consult this to read a parent/target/wrapper
@@ -261,16 +245,16 @@ fn register_op_feed_defaults_inner(
     });
     let event_lookup_for_observer = event_lookup.clone();
 
-    // ── 4. Construct the engine ──────────────────────────────────────────
+    // ── 3. Construct the engine ──────────────────────────────────────────
     let engine = register_op_feed(viewer.clone(), follow_set.predicate(), event_lookup);
 
-    // ── 5. Register the engine (ingest + output) ─────────────────────────
+    // ── 4. Register the engine (ingest + output) ─────────────────────────
     let observer = op_feed_observer(engine.clone(), event_lookup_for_observer, suppression);
     let observer_for_registry: Arc<dyn KernelEventObserver> = observer.clone();
     // #1740 step 2: capture so a session can revoke the engine ingest observer.
     let engine_observer_id = app.register_event_observer(observer_for_registry);
 
-    // ── 5a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
+    // ── 4a. Wire the home feed to the seq-ordered pull pager (ADR-0058 §8 6B) ──
     //
     // Pull uses the same live active-follows shape as acquisition, the in-process
     // event-store scan, and the suppression/delete-aware observer used by relay
@@ -318,7 +302,7 @@ fn register_op_feed_defaults_inner(
         PullFeedController::new_with_perspective(provider, pull, apply, None, Some(reset), advance);
     app.register_feed(nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY, controller.clone());
 
-    // ── 5b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
+    // ── 4b. Register the typed NOFS sidecar (ADR-0038 Commitment 5) ───────
     //
     // ADR-0055 Rung 6 Option A (R6-S1): the typed sidecar now uses
     // `FeedEmissionState` to omit an unchanged feed frame when the host has
@@ -352,7 +336,7 @@ fn register_op_feed_defaults_inner(
     // own mutex).
     let emission_state = Arc::new(Mutex::new(FeedEmissionState::new(incremental_apply)));
 
-    // ── 5b. Structural typed-sidecar + feed-author provider (ADR-0063 D7,
+    // ── 4b. Structural typed-sidecar + feed-author provider (ADR-0063 D7,
     //         #1671 Lane H) ────────────────────────────────────────────────────
     //
     // ONE `FeedRenderSource` materializes the home feed's window ONCE per tick and
@@ -363,7 +347,8 @@ fn register_op_feed_defaults_inner(
     // if a concurrent `load_older` widens the window mid-tick (no 1-frame blank gap;
     // ADR-0038). The home feed is PERMANENT so the provider is never removed. R6-S1
     // emission-state omit + frame-identity rebaseline live in the encoder closure.
-    let source = nmp_feed::FeedRenderSource::new(move || engine_for_typed.snapshot_current_window());
+    let source =
+        nmp_feed::FeedRenderSource::new(move || engine_for_typed.snapshot_current_window());
     app.register_feed_render_source(
         nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY,
         source,

@@ -85,8 +85,7 @@ where
     // Deletions suppress superseded/retracted rows, so a live feed must acquire
     // them for the observer's kind:5 handling to fire. But an EMPTY primary set
     // is the canonical "clear this feed" signal — an empty acquisition set
-    // withdraws the subscription (`parse_primary_kinds_json("[]")`,
-    // `declare_active_follows_feed(empty)` -> `set_follow_feed_kinds(empty)`).
+    // withdraws the subscription.
     // Injecting kind:5 there would turn a clear into a deletes-only
     // subscription, so only add it when the feed has primary content to suppress.
     if !kinds.is_empty() {

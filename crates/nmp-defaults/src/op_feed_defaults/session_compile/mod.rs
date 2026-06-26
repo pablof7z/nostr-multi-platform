@@ -23,10 +23,8 @@
 
 use std::collections::BTreeSet;
 
-use nmp_feed::{FeedAdmission, FeedParams, FeedScope, FeedSessionBuild};
+use nmp_feed::{FeedAdmission, FeedParams, FeedSessionBuild};
 use nmp_ffi::{FeedOpenError, NmpApp};
-
-use super::{read_active, register_op_feed_defaults};
 
 mod custom;
 mod flat_replay;
@@ -50,24 +48,20 @@ mod tests;
 ///
 /// # Wired vs deferred scopes (step 2)
 ///
-/// * [`FeedScope::ActiveUserFollows`] — WIRED. Reuses
-///   [`super::register_op_feed_defaults`] verbatim (engine + pull controller +
-///   typed NOFS sidecar + follow-set/engine observers + the actor-owned
-///   active-follows acquisition declaration), then builds a handle-based
-///   teardown that unregisters the `nmp.feed.home` controller + projection,
-///   revokes both captured observer ids, AND clears the active-follows feed
-///   interests (the close-side of the open path's `declare_active_follows_feed`)
-///   before a final change-notification. No new feed engine.
-/// * Every other [`FeedScope`] variant (`ContactList`, `ListMembers`, `Wot`,
-///   `RelaySet`, `Tag`, set algebra, `CustomPerspectiveId`) — DEFERRED to step 3
-///   (the full perspective compiler). They fail closed here with
-///   [`FeedOpenError::ScopeNotSupportedYet`] WITHOUT registering anything, so
-///   there is nothing to leak.
+/// Every [`nmp_feed::FeedScope`] variant routes through the reduced-source
+/// compiler. `ActiveUserFollows` is not a special door: it resolves to the same
+/// session-owned dependent-interest shape as `ContactList`, `ListMembers`, and
+/// set algebra, with the active-account source re-resolved by the identity
+/// observer.
 ///
-/// # Step 3 — every non-default scope goes through ONE compiler
+/// # Step 3 — every scope goes through ONE compiler
 ///
-/// * `ContactList` (active owner) → live [`nmp_nip02::ActiveFollowSet`] predicate
-///   (foreign owner fails closed — no single-source resolver yet).
+/// * `ActiveUserFollows` → live [`nmp_nip02::ActiveFollowSet`] predicate and
+///   session-owned dependent acquisition; opens before sign-in and recompiles
+///   once the active-account slot is populated.
+/// * `ContactList` (active owner) → same live follow-set source with a concrete
+///   active-owner check (foreign owner fails closed — no single-source resolver
+///   yet).
 /// * `ListMembers` → live NIP-51 pubkey reducers:
 ///   [`nmp_nip51::PeopleListProjection`] for kind:30000 list ids, and
 ///   [`nmp_nip51::MuteListProjection`] when the list id is
@@ -95,22 +89,6 @@ pub fn compile_feed_params(
     // order or a typed error.
     custom::resolve_ranking(app, &params.ranking)?;
 
-    // The framework-default home perspective keeps its dedicated wiring. It does
-    // not support a custom admission gate (the home path is its own engine), so a
-    // custom admission over `ActiveUserFollows` fails closed.
-    if matches!(params.acquisition, FeedScope::ActiveUserFollows) {
-        if !matches!(params.render, nmp_feed::FeedRender::OpCentric) {
-            return not_supported_yet("active-user-follows-render");
-        }
-        if params.projection.0 != nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY {
-            return not_supported_yet("active-user-follows-projection");
-        }
-        if !matches!(params.admission, FeedAdmission::All) {
-            return not_supported_yet("custom-admission");
-        }
-        return compile_active_user_follows(app, params);
-    }
-
     // ── Resolve the ACQUISITION scope (step 3 compiler; custom id → registered
     //    definition's scope). An unregistered `CustomPerspectiveId` fails closed.
     let mut resolved = custom::resolve_acquisition(app, &params.acquisition, acquisition_kinds)?;
@@ -125,64 +103,4 @@ pub fn compile_feed_params(
     }
 
     session_engine::build_scope_session(app, &params.projection.0, &params.render, resolved)
-}
-
-fn not_supported_yet(scope: &'static str) -> Result<FeedSessionBuild, FeedOpenError> {
-    Err(FeedOpenError::ScopeNotSupportedYet { scope })
-}
-
-/// Wire the framework-default active-follows home feed over the existing
-/// mechanics and return its handle-based teardown recipe.
-fn compile_active_user_follows(
-    app: &NmpApp,
-    params: &FeedParams,
-) -> Result<FeedSessionBuild, FeedOpenError> {
-    // The viewer is the active account when one exists. A view-driven shell may
-    // open the home feed before sign-in; `register_op_feed_defaults` already
-    // reads the live active-account slot for acquisition/pull and self-seeds
-    // once identity arrives, so use an empty bootstrap viewer in that window
-    // instead of dropping the declaration.
-    let viewer = read_active(&app.active_account_handle()).unwrap_or_default();
-
-    // Reuse the EXISTING composition verbatim — engine + pull controller + typed
-    // NOFS sidecar + observers. `register_op_feed_defaults` derives wrapper
-    // acquisition below the app boundary; we hand it the validated primary kinds.
-    let defaults = register_op_feed_defaults(app, viewer, params.primary_kinds.clone());
-
-    // Handle-based teardown over the SAME registry primitives the wiring used.
-    //
-    // EXECUTION ORDER (the contract this recipe encodes):
-    //   1. unregister the feed controller          ── registry removals
-    //   2. revoke the engine ingest observer        ──        ↓
-    //   3. revoke the follow-set observer           ──        ↓
-    //   4. remove the typed sidecar projection      ── registry removals end
-    //   5. clear the active-follows interests       ── WITHDRAW actor-owned state
-    //   6. mark-changed (the change notification)   ── RUN LAST, after all the above
-    //
-    // The `FeedSessionRegistry` runs the teardown Vec in REVERSE registration
-    // order (`session.rs::run_teardown`). So to make the change-notification run
-    // LAST in execution order it is placed FIRST in the Vec below, and the
-    // controller-unregister (which must run FIRST in execution order) is placed
-    // LAST. `clear_active_follows` (fix #1740 — the close-side of the open path's
-    // `declare_active_follows_feed`) sits next to mark-changed: after the
-    // registry removals, before the notify, so the interest withdrawal + state
-    // clear are in flight before the snapshot tick that mark-changed forces.
-    // Symmetric with the open path: `register_op_feed_defaults` issued
-    // `DeclareActiveFollowsFeed`; this issues `ClearActiveFollowsFeed`.
-    let key = nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY;
-    let teardown = app.feed_teardown();
-    let [follow_set_observer_id, engine_observer_id] = defaults.observer_ids;
-    Ok(FeedSessionBuild {
-        projection_key: params.projection.clone(),
-        // Registration order = REVERSE of the execution order documented above
-        // (the registry reverses the Vec on close).
-        teardown: vec![
-            teardown.mark_changed(),                          // exec #6 (runs last)
-            teardown.clear_active_follows(),                  // exec #5
-            teardown.remove_projection(key),                  // exec #4
-            teardown.revoke_observer(follow_set_observer_id), // exec #3
-            teardown.revoke_observer(engine_observer_id),     // exec #2
-            teardown.unregister_feed(key),                    // exec #1 (runs first)
-        ],
-    })
 }

@@ -153,9 +153,9 @@ the safety property that prevents holes below active floors.
   Caveat (not a bug): the `stored_events` metric is actually a RAM-projection count (`update.rs:122-127`) — misnamed;
   rename for honesty when convenient.
 - **Q2 [OWNER-DECIDED: full migration, sequenced across PRs, no debt]** — `ingest_contacts` is NOT just a cache write:
-  it drives kernel-owned planner/lifecycle effects (`CompileTrigger` `contacts.rs:242-249`, `sync_follow_feed_interests`
-  → registry mutation + `timeline_authors` rebuild + `pre_kind3` flush + cache-serve `:87-174`) that an `IngestParser`
-  (which gets a bare `VerifiedEvent`, no `&mut self`/`active_account`) structurally cannot reach. `seed_contacts` also has a
+  it drives source-recompile effects (`CompileTrigger` `contacts.rs`, active
+  follows via ReducedSource/dependent-interest recompilation) that an
+  `IngestParser` (which gets a bare `VerifiedEvent`, no `&mut self`/`active_account`) structurally cannot reach. `seed_contacts` also has a
   non-ingest writer (sign-in `prepopulate_seed_contacts` `identity.rs:1032`). `profiles` has ~10 synchronous readers
   (hot `profile_for_pubkey` `views.rs:185`, zap LNURL `diagnostic_counters.rs:77-84`, TTL/claim dedup `requests/profile.rs`).
   → These cannot fold into PR 1 safely, but per owner they are NOT deferred to debt — they are PRs 2 & 3 of this plan.
@@ -212,9 +212,9 @@ and unifying the source paths cannot land separately without a broken intermedia
 - [ ] Move kind:0 parsing to a registered `IngestParser` writing the capability-owned profile cache; drop the kernel arm.
 
 ### PR 3 — `contacts` → parser + kernel-owned effect seam (the hard one)
-- [ ] Design a typed "contacts changed" effect signal the kind:3 parser can emit that the kernel reacts to on its tick
-      (the parser writes the cache; the kernel still owns `sync_follow_feed_interests` / `timeline_authors` / cache-serve —
-      they are driven by the signal, not inlined into the parser). This keeps planner/lifecycle effects kernel-owned (D-correct)
+- [ ] Design a typed "contacts changed" effect signal the kind:3 parser can emit that the kernel reacts to on its tick.
+      The parser writes the cache; source reduction and dependent-interest recompilation remain kernel/session-owned
+      and are driven by the signal, not inlined into the parser. This keeps planner/lifecycle effects kernel-owned (D-correct)
       while removing the last kind literal from the ingest path.
 - [ ] Reroute the non-ingest `seed_contacts` writer (sign-in `prepopulate_seed_contacts`) and reader
       (`register_follow_feed_for_active_account`) through the new ownership.
@@ -222,7 +222,7 @@ and unifying the source paths cannot land separately without a broken intermedia
 
 ## 6. Doctrine constraints
 - **D0** — no NIP kind literals in kernel dispatch; gate by predicates (`is_replaceable`, `is_addressable`,
-  `follow_feed_kinds.contains`, parser `is_interested`). kind:1059 gift-wrap stays excluded via parser registry, not a literal.
+  ReducedSource predicates, parser `is_interested`). kind:1059 gift-wrap stays excluded via parser registry, not a literal.
   (Full D0 purity — zero kind literals — is reached at end of PR 3.)
 - **D4** — `store.insert` stays single writer; observers/parsers fire once, on outcome gate.
 - **D5 / #1090** — pin-aware LRU eviction is the ONLY storage bound; admission is never relevance-gated.

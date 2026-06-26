@@ -322,10 +322,8 @@ impl Kernel {
     /// [`Kernel::project_accepted_event`], which dispatches to the REGISTERED
     /// kind:3 parser (`TestKind3Parser` in test builds, `nmp_nip01::Kind3Parser`
     /// in production) → the parser writes the capability-owned contacts cache →
-    /// the contacts-transition signal for the ACTIVE account drives the
-    /// kernel-owned follow-feed effects (`on_active_contacts_changed`:
-    /// `FollowListChanged` trigger + `sync_follow_feed_interests` →
-    /// `timeline_authors` rebuild + cache-serve). This is the SAME path a
+    /// the contacts-transition signal for the ACTIVE account enqueues the
+    /// source recompile trigger (`on_active_contacts_changed`). This is the SAME path a
     /// relay-delivered, locally-published, or cache-served kind:3 takes; there
     /// is no separate cache writer. Callers keep the convenient
     /// `NostrEvent`-taking signature.
@@ -460,30 +458,7 @@ impl Kernel {
             .map(|s| s.state.clone())
     }
 
-    /// Snapshot of the registered M2 follow-feed `InterestId`s.
-    #[cfg(test)]
-    pub(crate) fn follow_feed_interest_ids_for_test(&self) -> Vec<crate::planner::InterestId> {
-        self.follow_feed_interest_ids.iter().cloned().collect()
-    }
-
-    /// The author set carried by the SINGLE collapsed follow-feed interest
-    /// (#1497) — `None` when no follow-feed interest is registered. Looks the
-    /// interest up by its tracked id so the test sees exactly the shape that
-    /// was installed in the registry.
-    #[cfg(test)]
-    pub(crate) fn follow_feed_interest_authors_for_test(
-        &self,
-    ) -> Option<std::collections::BTreeSet<String>> {
-        let id = self.follow_feed_interest_ids.iter().next()?;
-        self.lifecycle
-            .registry()
-            .iter_active()
-            .into_iter()
-            .find(|i| &i.id == id)
-            .map(|i| i.shape.authors.clone())
-    }
-
-    /// Snapshot of the follow-derived `timeline_authors` projection.
+    /// Snapshot of the home timeline author projection.
     #[cfg(test)]
     pub(crate) fn timeline_authors_for_test(&self) -> &std::collections::BTreeSet<String> {
         &self.timeline_authors

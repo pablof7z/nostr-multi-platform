@@ -112,14 +112,15 @@ and publish symbols (`nmp_app_publish_note`, `nmp_app_publish_unsigned_event`,
 > public way to open the active-follows home feed is
 > `nmp_app_open_feed(FeedScope::ActiveUserFollows)`. The
 > `NmpApp::declare_active_follows_feed` / `clear_active_follows_feed` Rust methods
-> remain as INTERNAL composition glue, never as a public C symbol.
+> are also DELETED; active-follows is one ReducedSource instance, not a helper
+> verb.
 
 The active-follows feed declaration is not a raw kind-list escape hatch.
 Public app code opens it through typed `FeedParams` with
-`FeedScope::ActiveUserFollows`. Internal composition may still translate that
-source into lower-level acquisition while #2092 removes the remaining bespoke
-active-follows scaffolding. The caller supplies primary content kinds only and
-never passes concrete follow pubkeys. Protocol adapters derive repost-wrapper
+`FeedScope::ActiveUserFollows`. The source compiler reduces that source into
+lower-level child interests and recompiles them when the active account or
+source event changes. The caller supplies primary content kinds only and never
+passes concrete follow pubkeys. Protocol adapters derive repost-wrapper
 acquisition from those primary declarations and reject wrapper kinds if they are
 supplied as primary kinds. `nmp-core` never stores a default "social timeline is
 kind:1" policy; the primary-kind decision belongs above the kernel. Feed

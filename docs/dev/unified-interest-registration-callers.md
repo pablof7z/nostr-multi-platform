@@ -5,6 +5,11 @@ which contains the §0 codex amendments, front-door API design, sealing, safety 
 and summary. This file covers the detailed current-surface enumeration (§0) and the
 complete caller-migration table (§3) and follow-feed batch detail (§4).
 
+> Status note, 2026-06-26: the follow-feed batch material in this investigation
+> is historical after #2092 M5. Active-user follows no longer use
+> `sync_follow_feed_interests`; they are expressed as a ReducedSource that
+> recompiles dependent interests.
+
 ---
 
 ## 0 — Current surface (what exists today)

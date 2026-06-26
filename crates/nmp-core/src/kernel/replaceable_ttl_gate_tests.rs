@@ -31,9 +31,11 @@ const PK: [u8; 32] = [7u8; 32];
 fn fresh_identity_does_not_enqueue() {
     // now = 1_000_000 ms; stamp check_again_after in the FUTURE → still fresh.
     let mut k = kernel_at(1_000_000);
-    let key = crate::store::ReplaceableKey::Regular { kind: 0, pubkey: PK };
-    k.event_store_handle()
-        .set_check_again_after(key, 2_000_000); // 1s in the future
+    let key = crate::store::ReplaceableKey::Regular {
+        kind: 0,
+        pubkey: PK,
+    };
+    k.event_store_handle().set_check_again_after(key, 2_000_000); // 1s in the future
 
     k.claim_replaceable(0, PK, None, false);
 
@@ -51,7 +53,10 @@ fn force_enqueues_even_when_fresh() {
     // This is the user-navigation / pull-to-refresh path that replaces the
     // removed `nmp_app_refresh_replaceable` FFI.
     let mut k = kernel_at(1_000_000);
-    let key = crate::store::ReplaceableKey::Regular { kind: 0, pubkey: PK };
+    let key = crate::store::ReplaceableKey::Regular {
+        kind: 0,
+        pubkey: PK,
+    };
     k.event_store_handle().set_check_again_after(key, 2_000_000); // 1s in the future
 
     k.claim_replaceable(0, PK, None, true);
@@ -67,9 +72,11 @@ fn force_enqueues_even_when_fresh() {
 fn expired_identity_enqueues_once() {
     // now = 2_000_000 ms; stamp check_again_after in the PAST → due.
     let mut k = kernel_at(2_000_000);
-    let key = crate::store::ReplaceableKey::Regular { kind: 0, pubkey: PK };
-    k.event_store_handle()
-        .set_check_again_after(key, 1_000_000); // already elapsed
+    let key = crate::store::ReplaceableKey::Regular {
+        kind: 0,
+        pubkey: PK,
+    };
+    k.event_store_handle().set_check_again_after(key, 1_000_000); // already elapsed
 
     k.claim_replaceable(0, PK, None, false);
     assert_eq!(
@@ -137,8 +144,16 @@ fn ingesting_kind0_stamps_check_again_after_with_ttl() {
     let pubkey = crate::kernel::hex_to_pubkey_bytes(&keys.public_key().to_hex())
         .expect("public key is 64-char hex");
 
-    let value = signed_value(::nostr::EventBuilder::metadata(&::nostr::Metadata::new()), &keys);
-    k.handle_event(RelayRole::Content, "wss://r.example/", "diag-firehose-stress", &value);
+    let value = signed_value(
+        ::nostr::EventBuilder::metadata(&::nostr::Metadata::new()),
+        &keys,
+    );
+    k.handle_event(
+        RelayRole::Content,
+        "wss://r.example/",
+        "diag-firehose-stress",
+        &value,
+    );
 
     // Default TTL for kind:0 is 1 hour (3_600_000 ms).
     let key = crate::store::ReplaceableKey::Regular { kind: 0, pubkey };
@@ -162,7 +177,12 @@ fn ingesting_addressable_stamps_parameterized_key_with_d_tag() {
     let builder = ::nostr::EventBuilder::new(::nostr::Kind::from(30023u16), "body")
         .tags([::nostr::Tag::parse(["d", d_tag]).expect("valid d tag")]);
     let value = signed_value(builder, &keys);
-    k.handle_event(RelayRole::Content, "wss://r.example/", "diag-firehose-stress", &value);
+    k.handle_event(
+        RelayRole::Content,
+        "wss://r.example/",
+        "diag-firehose-stress",
+        &value,
+    );
 
     // The stamp must land on the PARAMETERIZED key carrying the d-tag — this is
     // the unique tag-extraction logic in the ingest hook. The default TTL

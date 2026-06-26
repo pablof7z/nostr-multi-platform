@@ -19,17 +19,17 @@
 //! `Interests(EnsureInterest)`, `Interests(DropInterestOwner)`,
 //! `Interests(OpenInterest)`, `Interests(CloseInterest)`,
 //! `Relay(SetRelayInfo)`, `Lifecycle(MarkChangedSinceEmit)`,
-//! `Contacts(ClearActiveFollowsFeed)`, `Publish(SignedEvent)`.
+//! `Publish(SignedEvent)`.
 //!
 //! **Group B → `NeedsSign`:**
 //! `Publish(UnsignedEvent)`, `Publish(RawEvent)`, `Publish(Profile)`.
 //!
 //! **Group C → `Unsupported`:** every other variant.
 
+use super::wasm_signing::SignRoundTripRequest;
 use crate::actor::ActorCommand;
 use crate::publish::PublishTarget;
 use crate::relay::OutboundMessage;
-use super::wasm_signing::SignRoundTripRequest;
 
 /// Outcome of applying one [`ActorCommand`] through the narrow headless
 /// interpreter.
@@ -60,9 +60,7 @@ impl super::KernelReducer {
     ///
     /// See the [module docs](self) for the full handled/unhandled set.
     pub fn apply_actor_command(&mut self, command: ActorCommand) -> CommandApplyOutcome {
-        use crate::actor::{
-            ContactsCommand, InterestsCommand, LifecycleCommand, PublishCommand, RelayCommand,
-        };
+        use crate::actor::{InterestsCommand, LifecycleCommand, PublishCommand, RelayCommand};
         use CommandApplyOutcome::{Applied, NeedsSign, Unsupported};
 
         match command {
@@ -104,7 +102,10 @@ impl super::KernelReducer {
             }
 
             // SetRelayInfo: fold a fetched NIP-11 document onto the kernel row.
-            ActorCommand::Relay(RelayCommand::SetRelayInfo { relay_url, doc_json }) => {
+            ActorCommand::Relay(RelayCommand::SetRelayInfo {
+                relay_url,
+                doc_json,
+            }) => {
                 if let Some(doc) = crate::substrate::RelayInfoDoc::from_json(&doc_json) {
                     self.kernel
                         .set_relay_info_at(&relay_url, doc, crate::time::Instant::now());
@@ -116,12 +117,6 @@ impl super::KernelReducer {
             ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit) => {
                 self.kernel.mark_changed_since_emit();
                 Applied(Vec::new())
-            }
-
-            // ClearActiveFollowsFeed: withdraw all follow-feed M2 interests.
-            ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed) => {
-                let outbound = self.clear_active_follows_feed();
-                Applied(outbound)
             }
 
             // SignedEvent: route through the shared publish helper (now verifies
@@ -218,8 +213,7 @@ impl super::KernelReducer {
                         reason: "no active account for Profile sign round-trip".to_string(),
                     };
                 };
-                let content =
-                    serde_json::to_string(&fields).unwrap_or_else(|_| "{}".to_string());
+                let content = serde_json::to_string(&fields).unwrap_or_else(|_| "{}".to_string());
                 let created_at = self.now_secs();
                 let unsigned_json = serde_json::json!({
                     "pubkey": account_pubkey,

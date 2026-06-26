@@ -188,7 +188,7 @@ pub(super) fn finish_signer_add(
     }
     sync_kernel(identity, kernel);
     if should_activate {
-        kernel.reconcile_follow_feed_after_identity_change();
+        kernel.reconcile_feed_sources_after_identity_change();
         let mut outbound = kernel.active_account_bootstrap_requests();
         outbound.extend(retarget_timeline(identity, kernel, relays_ready));
         outbound
@@ -220,10 +220,9 @@ pub(crate) fn switch_active(
     }
     identity.active = Some(identity_id.to_string());
     sync_kernel(identity, kernel);
-    // #168: reconcile the M2 follow-feed to the NEW active account — withdraw
-    // the prior account's follow interests + emit the CLOSE diff (stale-feed /
-    // privacy leak fix). Runs AFTER sync_kernel set kernel.active_account.
-    kernel.reconcile_follow_feed_after_identity_change();
+    // Reconcile account-scoped feed-source cache state after sync_kernel set
+    // kernel.active_account.
+    kernel.reconcile_feed_sources_after_identity_change();
     let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
     outbound
@@ -261,7 +260,7 @@ pub(crate) fn remove_account(
     // #168: removing an account (esp. the last → active=None) must withdraw
     // the prior account's M2 follow interests + emit the CLOSE diff so the
     // follow-feed subs do not leak past logout. Runs AFTER sync_kernel.
-    kernel.reconcile_follow_feed_after_identity_change();
+    kernel.reconcile_feed_sources_after_identity_change();
     Vec::new()
 }
 

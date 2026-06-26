@@ -1,4 +1,4 @@
-//! `ContactsCommand` — active-account kind:3 follow set (ADR-0065).
+//! `ContactsCommand` — active-account kind:3 follow-set publishing (ADR-0065).
 //!
 //! Grouped under `ActorCommand::Contacts(ContactsCommand)`. Dispatch home:
 //! `actor/dispatch/cmd_publish.rs` (kind:3 follow-set path).
@@ -49,27 +49,4 @@ pub enum ContactsCommand {
         /// the host spinner closes on the `nmp.follow_many` action.
         correlation_id: Option<String>,
     },
-    /// Declare the active-account-follows feed for app primary content kinds.
-    ///
-    /// `acquisition_kinds` is the compiled acquisition kind set the follow-set
-    /// REQ should carry. D0: `nmp-core` does not know which primary kinds or
-    /// wrapper policy belong to the host's app concept; the caller supplies
-    /// the compiled set so the substrate carries no app-specific social
-    /// knowledge. The actor folds it into the kernel via
-    /// `Kernel::set_follow_feed_kinds`, which re-registers the active
-    /// account's follow-feed M2 interests under the new kind set. An empty
-    /// set is equivalent to [`Self::ClearActiveFollowsFeed`] — it withdraws
-    /// all follow-feed interests.
-    DeclareActiveFollowsFeed {
-        acquisition_kinds: std::collections::BTreeSet<u32>,
-    },
-    /// Tear down the active-follows feed declaration.
-    ///
-    /// Calls `Kernel::set_follow_feed_kinds(BTreeSet::new())`, which clears
-    /// the stored kinds and withdraws all follow-feed M2 interests from the
-    /// lifecycle registry. The unconditional `FollowListChanged` trigger
-    /// propagates to `drain_lifecycle_tick`, which emits CLOSE frames for any
-    /// live REQs. D6: no active account (or no prior declaration) is a silent
-    /// no-op.
-    ClearActiveFollowsFeed,
 }

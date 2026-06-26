@@ -24,12 +24,12 @@ fn signed_kind(keys: &::nostr::Keys, kind: u32, content: &str, created_at: u64) 
     }
 }
 
-/// ADR-0057 oracle (#1440) — a locally-published kind:1 NOTE is visible
-/// immediately (read-your-writes) BEFORE any relay ACK. The deleted
+/// ADR-0057 oracle (#1440) — a locally-published kind:1 NOTE is delivered to
+/// app observers and persisted immediately BEFORE any relay ACK. The deleted
 /// `record_local_publish_intent` ladder explicitly skipped non-replaceables, so
-/// a just-posted note showed no optimistic echo (the "ghost post"). Routing the
-/// local publish through the chokepoint persists it AND fires the app-observer
-/// delivery + the timeline projection on the spot.
+/// a just-posted note could disappear until relay echo. Routing the local
+/// publish through the chokepoint persists it AND fires app-observer delivery
+/// on the spot; feed rendering is owned by registered feed interests.
 #[test]
 fn local_kind1_note_read_your_writes_before_relay_ack() {
     let keys = ::nostr::Keys::generate();
@@ -44,30 +44,30 @@ fn local_kind1_note_read_your_writes_before_relay_ack() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.set_event_observers_handle(slot);
     kernel.active_account = Some(author.clone());
-    // The host declares kind:1 as a follow-feed kind (Chirp's home feed) so the
-    // timeline projection fires; the author is the active account, which
-    // `ingest_contacts`-style follow logic keeps in `timeline_authors`.
-    kernel.set_follow_feed_kinds([1u32].into_iter().collect());
+    // Keep the author in `timeline_authors`; local publish no longer writes the
+    // home timeline cache directly, so the assertions below are about the
+    // core-owned chokepoint effects.
     kernel.timeline_authors.insert(author.clone());
     kernel.seed_kind10002_for_test(&author, &["wss://write.test"]);
 
     let outbound = kernel.run_publish_engine_at(&signed, &[], PublishTarget::Auto, None, 1_000);
     assert!(!outbound.is_empty(), "publish should have an outbox target");
 
-    // Read-your-writes: the note fired the observer exactly once and is in the
-    // timeline read-cache + ordering — BEFORE any relay OK.
+    // Read-your-writes: the note fired the observer exactly once and is
+    // persisted — BEFORE any relay OK.
     assert_eq!(
         observer.count.load(Ordering::SeqCst),
         1,
         "a locally published kind:1 note must fire the observer exactly once (read-your-writes)"
     );
+    let id_bytes = crate::kernel::hex_to_pubkey_bytes(&event_id).expect("event id is 64-char hex");
     assert!(
-        kernel.events.contains_key(&event_id),
-        "the locally published note must be in the timeline read-cache immediately"
-    );
-    assert!(
-        kernel.timeline.iter().any(|id| id == &event_id),
-        "the locally published note must be in the timeline ordering immediately"
+        kernel
+            .store
+            .get_by_id(&id_bytes)
+            .expect("store get_by_id must not error")
+            .is_some(),
+        "the locally published note must be persisted immediately"
     );
 }
 

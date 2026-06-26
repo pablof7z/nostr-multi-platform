@@ -3,7 +3,6 @@
 //! Covers: `PublishRawEvent`, `PublishProfile`, `PublishUnsignedEvent`,
 //! `PublishUnsignedEventToRelays`, `PublishSignedEvent`, `RetryPublish`,
 //! `CancelPublish`, `Follow`, `Unfollow`, `FollowMany`,
-//! `DeclareActiveFollowsFeed`, `ClearActiveFollowsFeed`,
 //! `AddRelay`, `RemoveRelay`, `ReconnectRelays`,
 //! `RecordActionFailure`, `RecordActionSuccess`, `AckActionStage`,
 //! `SetRelayInfo`.
@@ -369,28 +368,6 @@ pub(super) fn reconnect_relays_cmd(ctx: &mut ActorContext<'_>) -> Option<Vec<Out
         maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
     }
     Some(Vec::new())
-}
-
-/// Dispatch `ActorCommand::DeclareActiveFollowsFeed`.
-pub(super) fn declare_active_follows_feed(
-    acquisition_kinds: std::collections::BTreeSet<u32>,
-    ctx: &mut ActorContext<'_>,
-) -> Option<Vec<OutboundMessage>> {
-    use crate::actor::tick::maybe_emit_after_dispatch;
-    let outbound =
-        commands::declare_active_follows_feed(ctx.identity, ctx.kernel, acquisition_kinds);
-    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-    Some(outbound)
-}
-
-/// Dispatch `ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed)`.
-pub(super) fn clear_active_follows_feed(
-    ctx: &mut ActorContext<'_>,
-) -> Option<Vec<OutboundMessage>> {
-    use crate::actor::tick::maybe_emit_after_dispatch;
-    let outbound = commands::clear_active_follows_feed(ctx.identity, ctx.kernel);
-    maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
-    Some(outbound)
 }
 
 /// Dispatch `ActorCommand::RecordActionFailure`.

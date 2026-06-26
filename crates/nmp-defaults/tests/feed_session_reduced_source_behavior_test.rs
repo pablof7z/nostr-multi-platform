@@ -124,6 +124,19 @@ fn signed_mute_list(keys: &Keys, muted_pubkeys: &[String], created_at: u64) -> (
     (event.id.to_hex(), event.as_json())
 }
 
+fn signed_contact_list(keys: &Keys, follows: &[String], created_at: u64) -> (String, String) {
+    let tags: Vec<Tag> = follows
+        .iter()
+        .map(|pk| Tag::parse(["p", pk.as_str()]).expect("valid p tag"))
+        .collect();
+    let event = EventBuilder::new(Kind::from(3u16), "")
+        .tags(tags)
+        .custom_created_at(Timestamp::from_secs(created_at))
+        .sign_with_keys(keys)
+        .expect("sign kind:3");
+    (event.id.to_hex(), event.as_json())
+}
+
 fn signed_note(keys: &Keys, content: &str, created_at: u64) -> (String, String) {
     let event = EventBuilder::text_note(content)
         .custom_created_at(Timestamp::from_secs(created_at))
@@ -160,6 +173,18 @@ fn mute_source_params(projection: &str) -> FeedParams {
     }
 }
 
+fn active_follows_params(projection: &str) -> FeedParams {
+    FeedParams {
+        primary_kinds: vec![1],
+        render: FeedRender::OpCentric,
+        acquisition: FeedScope::ActiveUserFollows,
+        admission: FeedAdmission::All,
+        ranking: FeedRanking::ChronologicalDesc,
+        window: FeedWindow { initial_limit: 80 },
+        projection: ProjectionKey(projection.into()),
+    }
+}
+
 fn compiler(
     app: &NmpApp,
     params: &FeedParams,
@@ -186,6 +211,144 @@ fn flat_feed_ids(app: &NmpApp, key: &str) -> Vec<String> {
 
 fn wait_feed_ids(rx: &Receiver<()>, app: &NmpApp, key: &str, expected: &[String]) {
     wait_for(rx, "feed ids", || flat_feed_ids(app, key) == expected);
+}
+
+#[test]
+fn active_user_follows_prelogin_signin_replays_cached_follow_set_and_rows() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let rx = install_update_signal();
+    let app = nmp_app_new();
+    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app_ref = unsafe { &*app };
+    nmp_app_start(app, 256, 8);
+
+    let alice = keys_from_byte(21);
+    let bob = keys_from_byte(22);
+    let stranger = keys_from_byte(23);
+    let bob_pk = bob.public_key().to_hex();
+
+    let (contacts_id, contacts_json) =
+        signed_contact_list(&alice, std::slice::from_ref(&bob_pk), 100);
+    let (bob_note_id, bob_note_json) = signed_note(&bob, "cached follow note", 110);
+    let (stranger_note_id, stranger_note_json) = signed_note(&stranger, "outside follows", 120);
+    inject_event(app, &rx, app_ref, &contacts_id, &contacts_json);
+    inject_event(app, &rx, app_ref, &bob_note_id, &bob_note_json);
+    inject_event(app, &rx, app_ref, &stranger_note_id, &stranger_note_json);
+
+    let key = "test.feed.active-follows.prelogin";
+    let _handle = app_ref
+        .open_feed(&active_follows_params(key), &compiler)
+        .expect("active-follows feed opens before sign-in");
+    assert_eq!(
+        flat_feed_ids(app_ref, key),
+        Vec::<String>::new(),
+        "pre-login active-follows source must fail closed, not wildcard"
+    );
+
+    sign_in(app, &alice);
+    wait_for(&rx, "sign-in replays cached active follows", || {
+        app_ref.active_account_handle().lock().unwrap().as_deref()
+            == Some(alice.public_key().to_hex().as_str())
+            && flat_feed_ids(app_ref, key) == std::slice::from_ref(&bob_note_id)
+    });
+
+    nmp_app_free(app);
+    uninstall_update_signal();
+}
+
+#[test]
+fn active_user_follows_replacement_recompiles_rows() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let rx = install_update_signal();
+    let app = nmp_app_new();
+    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app_ref = unsafe { &*app };
+    nmp_app_start(app, 256, 8);
+
+    let alice = keys_from_byte(24);
+    let bob = keys_from_byte(25);
+    let carol = keys_from_byte(26);
+    let bob_pk = bob.public_key().to_hex();
+    let carol_pk = carol.public_key().to_hex();
+    sign_in(app, &alice);
+    wait_active(&rx, app_ref, &alice.public_key().to_hex());
+
+    let key = "test.feed.active-follows.replace";
+    let _handle = app_ref
+        .open_feed(&active_follows_params(key), &compiler)
+        .expect("active-follows feed opens");
+
+    let (bob_note_id, bob_note_json) = signed_note(&bob, "first follow", 110);
+    let (carol_note_id, carol_note_json) = signed_note(&carol, "replacement follow", 120);
+    inject_event(app, &rx, app_ref, &bob_note_id, &bob_note_json);
+    inject_event(app, &rx, app_ref, &carol_note_id, &carol_note_json);
+
+    let (contacts_id, contacts_json) = signed_contact_list(&alice, &[bob_pk], 130);
+    inject_event(app, &rx, app_ref, &contacts_id, &contacts_json);
+    wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&bob_note_id));
+
+    let (replacement_id, replacement_json) = signed_contact_list(&alice, &[carol_pk], 140);
+    inject_event(app, &rx, app_ref, &replacement_id, &replacement_json);
+    wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&carol_note_id));
+
+    let (clear_id, clear_json) = signed_contact_list(&alice, &[], 150);
+    inject_event(app, &rx, app_ref, &clear_id, &clear_json);
+    wait_feed_ids(&rx, app_ref, key, &[]);
+
+    nmp_app_free(app);
+    uninstall_update_signal();
+}
+
+#[test]
+fn active_user_follows_account_switch_replays_new_account_source() {
+    let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+    let rx = install_update_signal();
+    let app = nmp_app_new();
+    nmp_app_set_update_callback(app, std::ptr::null_mut(), Some(update_signal_callback));
+    let app_ref = unsafe { &*app };
+    nmp_app_start(app, 256, 8);
+
+    let alice = keys_from_byte(27);
+    let bob = keys_from_byte(28);
+    let carol = keys_from_byte(29);
+    let dave = keys_from_byte(30);
+    let bob_pk = bob.public_key().to_hex();
+    let dave_pk = dave.public_key().to_hex();
+    let carol_pk = carol.public_key().to_hex();
+    sign_in(app, &alice);
+    wait_active(&rx, app_ref, &alice.public_key().to_hex());
+
+    let key = "test.feed.active-follows.account-switch";
+    let _handle = app_ref
+        .open_feed(&active_follows_params(key), &compiler)
+        .expect("active-follows feed opens");
+
+    let (bob_note_id, bob_note_json) = signed_note(&bob, "alice follow", 110);
+    let (dave_note_id, dave_note_json) = signed_note(&dave, "carol follow", 120);
+    inject_event(app, &rx, app_ref, &bob_note_id, &bob_note_json);
+    inject_event(app, &rx, app_ref, &dave_note_id, &dave_note_json);
+
+    let (alice_contacts_id, alice_contacts_json) =
+        signed_contact_list(&alice, std::slice::from_ref(&bob_pk), 130);
+    inject_event(app, &rx, app_ref, &alice_contacts_id, &alice_contacts_json);
+    wait_feed_ids(&rx, app_ref, key, std::slice::from_ref(&bob_note_id));
+
+    let (carol_contacts_id, carol_contacts_json) =
+        signed_contact_list(&carol, std::slice::from_ref(&dave_pk), 140);
+    inject_event(app, &rx, app_ref, &carol_contacts_id, &carol_contacts_json);
+
+    sign_in(app, &carol);
+    wait_for(
+        &rx,
+        "account switch replays cached active follow source",
+        || {
+            app_ref.active_account_handle().lock().unwrap().as_deref() == Some(carol_pk.as_str())
+                && flat_feed_ids(app_ref, key) == std::slice::from_ref(&dave_note_id)
+        },
+    );
+
+    nmp_app_free(app);
+    uninstall_update_signal();
 }
 
 #[test]

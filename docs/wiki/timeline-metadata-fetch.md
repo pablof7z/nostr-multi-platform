@@ -53,10 +53,10 @@ source reduction and planner recompilation, not Swift/Kotlin/TUI logic.
 
 TimelineItem carries a `kind` field (u32 in Rust, UInt32 in Swift) populated from `event.kind`, allowing Swift to branch on `item.kind == 6` for reposts instead of relying on fragile JSON heuristics. The Swift `TimelineItem` Decodable struct uses `.convertFromSnakeCase`, so no CodingKeys override is needed for the new `kind` field.
 
-The remaining bespoke `follow_feed_*` / `sync_follow_feed_interests` paths are
-tracked as #2092 migration debt. They are not the target architecture and must
-collapse into the generic ReducedSource/dependent-interest path before #2092
-closes.
+#2092 retires the bespoke `follow_feed_*` / `sync_follow_feed_interests` paths.
+Active follows are one ReducedSource/dependent-interest feed source; apps should
+open the active-follows feed through the normal feed API and let Rust-owned
+source reduction recompile the dependent interests.
 
 <!-- citations: [^fd809-4] [^17ef1-4] [^5d180-1] [^c4b2e-9] [^6e4c3-3] [^64f3e-6] -->
 ## Kind:0 Metadata Fetching

@@ -438,10 +438,6 @@ fn dispatch_contacts(
             pubkeys,
             correlation_id,
         } => cmd_publish::follow_many(pubkeys, correlation_id, ctx),
-        ContactsCommand::DeclareActiveFollowsFeed { acquisition_kinds } => {
-            cmd_publish::declare_active_follows_feed(acquisition_kinds, ctx)
-        }
-        ContactsCommand::ClearActiveFollowsFeed => cmd_publish::clear_active_follows_feed(ctx),
     }
 }
 

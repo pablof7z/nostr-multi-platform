@@ -24,18 +24,15 @@
 //!   ([`Kernel::ingest_accepted_event`]) and cache-serve replay
 //!   ([`Kernel::feed_served_event`]), so the two paths cannot diverge.
 //! - **Projection / relevance** = read-time only. The kernel-owned post-store
-//!   read-cache (the timeline read-cache projection) is CALLED BY the chokepoint,
-//!   gated by the behavioral `follow_feed_kinds` predicate (D0, no kind literal).
-//!   Profiles (kind:0, ADR-0057 PR 2) AND contacts (kind:3, ADR-0057 PR 3) moved
-//!   out to registered `nmp_nip01::Kind0Parser` / `Kind3Parser` writing the
-//!   capability-owned `ProfileCache` / `ContactsCache` — both detected via a
-//!   before/after cache snapshot exactly like the mailbox / DM-relay observers.
-//!   For contacts the kernel additionally reacts to the ACTIVE account's
-//!   transition by driving the kernel-owned follow-feed effects
-//!   (`on_active_contacts_changed`: `timeline_authors` rebuild,
-//!   `sync_follow_feed_interests`, `FollowListChanged`, cache-serve) — the
-//!   PARSER stays side-effect-free against kernel state; the KERNEL owns the
-//!   effects, driven by the transition SIGNAL (never inlined in the parser).
+//!   read-cache is gated by the timeline author projection and by active
+//!   generic interests. Profiles (kind:0, ADR-0057 PR 2) AND contacts (kind:3,
+//!   ADR-0057 PR 3) moved out to registered `nmp_nip01::Kind0Parser` /
+//!   `Kind3Parser` writing the capability-owned `ProfileCache` /
+//!   `ContactsCache` — both detected via a before/after cache snapshot exactly
+//!   like the mailbox / DM-relay observers. For contacts the kernel reacts to
+//!   the ACTIVE account's transition by enqueueing a source recompile trigger;
+//!   the reduced feed-source compiler owns author-set expansion and generic
+//!   interest replacement.
 //!   Substrate `MailboxCache` / `DmInboxRelayLookup` transitions are likewise
 //!   detected kind-agnostically by bracketing the chokepoint with before/after
 //!   snapshots (the kernel only knows "this author's mailbox / contacts
@@ -48,9 +45,8 @@
 //!
 //! ADR-0057 PR 3 is the full D0 finish-line: the kernel ingest path now names
 //! ZERO NIP kind literals. kind:0 (profiles) moved in PR 2, kind:3 (contacts)
-//! moves here; the 1/6 timeline gate is the behavioral `follow_feed_kinds`
-//! predicate, and kind:1059 gift-wrap stays excluded via the parser registry,
-//! not a literal.
+//! moved here, and feed acquisition flows through generic interests rather
+//! than a hard-coded follow-feed branch.
 
 mod accepted;
 mod auth_handlers;

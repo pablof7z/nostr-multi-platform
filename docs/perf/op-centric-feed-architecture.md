@@ -3,10 +3,10 @@
 > **Status:** Shipped. Design record for ADR-0035/ADR-0036/ADR-0037/ADR-0038.
 > The shipped invariants are: `nmp-feed` provides bounded feed mechanics only;
 > protocol/app layers declare primary kinds and perspectives; protocol adapters
-> derive repost wrapper acquisition; `nmp-core` owns active-user follow
-> acquisition but no app primary-kind policy; `nmp-defaults` wires consumers
-> and resets the feed on perspective changes; secondary data is claimed by the
-> component or sibling module that needs it, not by the feed.
+> derive repost wrapper acquisition; `nmp-defaults` owns ReducedSource
+> expansion for active-user follows; `nmp-core` only sees the materialized
+> generic interests; secondary data is claimed by the component or sibling
+> module that needs it, not by the feed.
 >
 > **Revision:** 2026-05-27d (post-codex-v2 + user decisions). Shipped via
 > 7-PR ladder. Pre-kind:3 buffer was not retained; replay comes from interest
@@ -34,10 +34,11 @@ so every render surface chooses its own enumeration policy.
   `predicate() -> Arc<dyn Fn(&str) -> bool + Send + Sync>`. No `FollowSetLookup`
   trait.
 - **`nmp-defaults`** — `register_op_feed_defaults(app, viewer, primary_kinds)`
-  composes consumers. Does not expand follows into duplicate interests.
-- **`nmp-core`** — owns active-user follow-feed acquisition through
-  `sync_follow_feed_interests`. No follow-set trait, no NIP token, no
-  `SocialTimeline`, no new bespoke C-ABI symbol.
+  composes consumers and reduces `FeedScope::ActiveUserFollows` into dependent
+  child interests.
+- **`nmp-core`** — owns the generic interest registry, cache-serve, routing, and
+  planner execution. It does not own active-user follow-feed acquisition, a
+  follow-set trait, NIP tokens, `SocialTimeline`, or bespoke C-ABI symbols.
 - **`nmp-threading`** — `TimelineBlock::Standalone { id, root: Option<ThreadPointer> }` (lossless).
 - **`nmp-planner`** — unchanged. No `SocialTimeline` variant.
 
@@ -58,8 +59,8 @@ so every render surface chooses its own enumeration policy.
 ### A. Crate ownership
 
 Generic engine in `nmp-feed`; NIP-10 instance in `nmp-nip01`; follow-set producer
-in `nmp-nip02`; kernel-owned follow acquisition in `nmp-core`; consumer composition
-in `nmp-defaults`.
+in `nmp-nip02`; ReducedSource composition in `nmp-defaults`; generic
+interest/cache/routing execution in `nmp-core`.
 
 ### B. How Bob's unfollowed OP enters the kernel
 
@@ -88,8 +89,8 @@ pub trait AttributionPayload: Clone + Send + Sync + 'static {
 
 ### D. Follow set — closure predicate, no trait (ARCHITECTURE OVERRIDE)
 
-No `FollowSetLookup` trait. No `LogicalInterest::SocialTimeline`. No
-composition-root follow-interest expansion.
+No `FollowSetLookup` trait. No `LogicalInterest::SocialTimeline`. No bespoke
+core follow-feed door.
 
 **`nmp-nip02::ActiveFollowSet`** exposes `follows()`, `predicate()`, `on_change()`.
 Internal `KernelEventObserver` watches kind:3; internal observer watches
@@ -100,7 +101,12 @@ Internal `KernelEventObserver` watches kind:3; internal observer watches
 ```rust
 pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, primary_kinds: Vec<u32>) {
     let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
-    app.declare_active_follows_feed(primary_kinds);
+    app.open_feed(FeedParams {
+        acquisition: FeedScope::ActiveUserFollows,
+        primary_kinds,
+        render: FeedRender::OpCentric { /* ... */ },
+        /* ... */
+    });
     let engine = nmp_nip01::register_op_feed(
         viewer,
         follow_set.predicate(),
@@ -115,8 +121,8 @@ pub fn register_op_feed_defaults(app: &NmpApp, viewer: Pubkey, primary_kinds: Ve
 
 Rationale: the v3 `SocialTimeline` planner-side expansion forced a
 `FollowSetLookup` trait that creates an `nmp-feed → nmp-core → nmp-planner` cycle.
-The current shape avoids the cycle, eliminates duplicate composition-root REQs,
-and delivers the V-45 affordance via `register_op_feed_defaults`.
+The current shape avoids the cycle and delivers the V-45 affordance through the
+generic ReducedSource/dependent-interest mechanism.
 
 ### E. `TimelineBlock::Standalone` lossless reshape
 
@@ -198,7 +204,8 @@ pending_attributions, render window).
 - **Do not** parse NIP-10 inside `nmp-core`. Decoder lives in `nmp-nip01`.
 - **Do not** import any `nmp-nip*` crate from `nmp-feed`. CI grep enforces.
 - **Do not** add a `FollowSetLookup` trait, `LogicalInterest::SocialTimeline`
-  variant, or composition-root follow-interest expansion. Re-read §2-D.
+  variant, or bespoke follow-interest expansion outside the ReducedSource path.
+  Re-read §2-D.
 - **Do not** accept dual `Standalone` JSON shapes.
 - **Do not** poll. Observer callbacks only.
 - **Do** read the precedent: `claim_event`, `crates/nmp-core/src/subs/oneshot.rs`,

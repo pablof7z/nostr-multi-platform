@@ -22,11 +22,14 @@ fn cache_served_kind0_bumps_profiles_ver_and_populates_cache() {
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(hex_pk("aa"));
-    kernel.follow_feed_kinds = BTreeSet::from([0u32]);
     kernel.timeline_authors.insert(author.clone());
 
     // Phase 1: live-ingest a kind:0 into the store (also populates the cache).
-    live_ingest(&mut kernel, "follow-feed-default", &signed_kind0(&keys, "Nova", base_ts));
+    live_ingest(
+        &mut kernel,
+        "follow-feed-default",
+        &signed_kind0(&keys, "Nova", base_ts),
+    );
     assert_eq!(
         kernel.profile_lookup().profile(&author).map(|p| p.display),
         Some("Nova".to_string()),
@@ -98,19 +101,35 @@ fn cache_served_future_dated_event_is_clamped_in_fan_out() {
     let keys = ::nostr::Keys::generate();
     let author = keys.public_key().to_hex();
     kernel.active_account = Some(hex_pk("aa"));
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
     kernel.timeline_authors.insert(author.clone());
 
     let future = signed_note(&keys, "from the future", NOW_SECS + 9_999);
     let past = signed_note(&keys, "from the past", NOW_SECS - 500_000);
     let future_id = future.id.clone();
     let past_id = past.id.clone();
-    kernel.ingest_timeline_event(RelayRole::Content, "wss://seed.relay/", "follow-feed-default", future);
-    kernel.ingest_timeline_event(RelayRole::Content, "wss://seed.relay/", "follow-feed-default", past);
-    assert_eq!(kernel.events.len(), 2, "both seeded events in cache pre-restart");
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://seed.relay/",
+        "follow-feed-default",
+        future,
+    );
+    kernel.ingest_timeline_event(
+        RelayRole::Content,
+        "wss://seed.relay/",
+        "follow-feed-default",
+        past,
+    );
+    assert_eq!(
+        kernel.events.len(),
+        2,
+        "both seeded events in cache pre-restart"
+    );
 
     simulate_cold_restart(&mut kernel);
-    assert!(kernel.events.is_empty(), "events cache empty after cold restart");
+    assert!(
+        kernel.events.is_empty(),
+        "events cache empty after cold restart"
+    );
 
     // Observer registered AFTER restart → captures ONLY the cache-serve fan-out.
     let slot = new_event_observer_slot();
@@ -120,7 +139,7 @@ fn cache_served_future_dated_event_is_clamped_in_fan_out() {
     register_rust_observer(&slot, observer.clone());
     kernel.set_event_observers_handle(slot);
 
-    kernel.sync_follow_feed_interests(&[author.clone()]);
+    open_author_interest(&mut kernel, 31, &author);
     drain_cache_serves(&mut kernel, 4);
 
     let seen = observer.seen.lock().unwrap();

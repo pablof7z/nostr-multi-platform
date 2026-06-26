@@ -4,6 +4,10 @@
 **Question:** Is store-first (ADR-0045) truly universal and intrinsic, or is it bolted-on
 per-call-site? Where is the chokepoint gap, and what is the minimal "do less" fix?
 
+> Status note, 2026-06-26: this investigation predates #2092 M5. Mentions of
+> `sync_follow_feed_interests` describe the retired follow-feed implementation;
+> active follows now compile through the ReducedSource/dependent-interest path.
+
 ---
 
 ## 1 — How was the original store-first bug fixed?

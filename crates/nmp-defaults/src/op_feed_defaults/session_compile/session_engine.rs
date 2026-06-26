@@ -1,9 +1,9 @@
 //! The generalized session-engine builder for non-default feed scopes (#1740
 //! step 3).
 //!
-//! Every [`nmp_feed::FeedScope`] that is NOT `ActiveUserFollows` (which keeps
-//! the framework-default home wiring) compiles through here. The builder is a
-//! SESSION WRAPPER over the existing OP-feed mechanics — the same generic engine
+//! Every [`nmp_feed::FeedScope`] compiles through here, including the framework
+//! home `ActiveUserFollows` source. The builder is a SESSION WRAPPER over the
+//! existing OP-feed mechanics — the same generic engine
 //! [`nmp_nip01::op_feed::register_op_feed`] the home feed uses — parameterized
 //! on:
 //!
@@ -41,7 +41,7 @@ use nmp_feed::{
 };
 use nmp_ffi::{FeedOpenError, NmpApp};
 
-use super::source::{acquisition_children, ExtraAcquisition, ReducedSource};
+use super::source::{acquisition_children, ExtraAcquisition, OpSessionIdentity, ReducedSource};
 
 /// Build a registered feed session for a reduced non-default source and return
 /// its teardown recipe.
@@ -67,13 +67,8 @@ fn build_op_scope_session(
     key: &str,
     resolved: ReducedSource,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
-    let viewer = super::super::read_active(&app.active_account_handle()).ok_or(
-        FeedOpenError::ScopeNotSupportedYet {
-            scope: "scope-no-active-account",
-        },
-    )?;
-
     let ReducedSource {
+        op_session_identity,
         admission,
         interests,
         live_shape,
@@ -82,6 +77,19 @@ fn build_op_scope_session(
         resolver_observer_ids,
         identity_observer_ids,
     } = resolved;
+
+    let viewer = match (
+        super::super::read_active(&app.active_account_handle()),
+        op_session_identity,
+    ) {
+        (Some(viewer), _) => viewer,
+        (None, OpSessionIdentity::AllowMissingActive) => String::new(),
+        (None, OpSessionIdentity::RequireActive) => {
+            return Err(FeedOpenError::ScopeNotSupportedYet {
+                scope: "scope-no-active-account",
+            });
+        }
+    };
 
     // ── 1. Engine over the COMPILED, EVENT-AWARE admission predicate ──────
     //
@@ -284,6 +292,7 @@ fn build_flat_scope_session(
     resolved: ReducedSource,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     let ReducedSource {
+        op_session_identity: _,
         admission,
         interests,
         live_shape,

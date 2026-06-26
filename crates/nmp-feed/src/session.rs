@@ -11,8 +11,8 @@
 //!
 //! Why a closure list and not a typed teardown record: the concrete things to
 //! release (an `unregister_feed(key)`, an `unregister_event_observer(id)`, a
-//! `clear_active_follows_feed()`) live above this crate in `nmp-ffi` /
-//! `nmp-defaults`. Recording them as opaque `FnOnce` actions keeps the session
+//! dependent-interest clear) live above this crate in `nmp-ffi` / `nmp-defaults`.
+//! Recording them as opaque `FnOnce` actions keeps the session
 //! registry from importing those layers (it sits at the bottom of the DAG) and
 //! keeps a single source of truth for feed state: the registry owns no feed
 //! state of its own, only the recipe to release whatever the existing mechanics

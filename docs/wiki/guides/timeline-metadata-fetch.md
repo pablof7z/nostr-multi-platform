@@ -53,12 +53,9 @@ switch. The older implementation did that through
 `reconcile_follow_feed_after_identity_change()`; #2092 moves the responsibility
 to the generic ReducedSource/dependent-interest owner.
 
-P4 Finding 1 is widened so p4 owns both the kernel `follow_feed_kinds` persistence fix and the native `openTimeline` deletion in a single PR, avoiding an unmasked intermediate state where both platforms could have no feed after sign-in.
-
-PR #1545 implemented the P4 fix: nmp-core stores host-declared
-`follow_feed_kinds` unconditionally (even with no active account), and the
-imperative `openTimeline` call was removed from Android
-signInNsec/createAccount/switchAccount. #2092 is the follow-up that retires the
-bespoke follow-feed mechanism entirely in favor of the generic primitive.
+#2092 retires the bespoke follow-feed mechanism entirely. Active follows are now
+compiled as a ReducedSource/dependent-interest feed source; source reduction and
+account-switch recompilation are Rust-owned, and native shells do not issue
+post-identity feed-opening commands to repair state.
 
 <!-- citations: [^7c780-9] [^019ed-47] [^019ed-48] [^019ed-49] [^129d2-68] [^11850-24] [^11850-88] -->

@@ -216,8 +216,9 @@ router. The generic `nmp_app_open_interest` / `close_interest` C symbols (§2)
 remain ONLY as a low-level NON-feed interest seam (avatar / `nostr:` URI
 resolution); they are not an app feed-open surface — the ONLY public way to open
 a feed is `open_feed`. The `declare_active_follows_feed` /
-`clear_active_follows_feed` Rust methods stay as INTERNAL composition glue (the
-home-feed wiring + the perspective compiler's `ActiveUserFollows` arm).
+`clear_active_follows_feed` Rust methods are also deleted; the
+`ActiveUserFollows` arm is one ReducedSource reducer that replaces child
+interests through the generic dependent-interest path.
 
 The active-user follow feed is **not** expressible as one static
 `open_interest` (§2): its author set is reactive perspective state derived from
@@ -264,31 +265,29 @@ reaches exhaustion under the current perspective.
 ### Historical context — pre-typed declaration verbs (internal/test-only)
 
 Before `FeedParams`, the active-follows feed used a lower-level declaration
-pair that is now **internal and test-only**:
+pair that is now **deleted**:
 
 ```rust
-// INTERNAL/TEST-ONLY — not the app-facing surface
+// HISTORICAL — deleted
 app.declare_active_follows_feed([1]);
 app.clear_active_follows_feed();
 ```
 
 The exported C symbols with the old contact-feed names were compatibility shims
-that delegated to this declaration path. They must not be used by apps; the
-current primitive is `open_feed(FeedParams)` (step 2). Likewise,
+that delegated to this declaration path. They are deleted; the current
+primitive is `open_feed(FeedParams)` (step 2). Likewise,
 `open_interest` / `close_interest` (§2) are substrate-level primitives used
 internally by the feed session machinery and non-feed ref/read paths, not an
 app-facing feed API.
 
 ### Historical `ActorCommand` variants
 
-- `DeclareActiveFollowsFeed { acquisition_kinds: BTreeSet<u32> }` — installs
-  the adapter-derived acquisition kinds for the active-follows declared feed.
-- `ClearActiveFollowsFeed` — withdraws the declaration and closes the resulting
-  follow-feed interests.
+- `DeclareActiveFollowsFeed { acquisition_kinds: BTreeSet<u32> }`
+- `ClearActiveFollowsFeed`
 
-These commands are historical/internal scaffolding, not the canonical model.
-They must disappear or collapse into the generic ReducedSource/dependent
-interest path when #2092 lands.
+These commands were historical scaffolding and are deleted. Active-follows now
+uses the same ReducedSource/dependent-interest mechanism as NIP-51 people-list
+members, mute-list `p` tags, and any future protocol-owned source reducer.
 
 > Chirp author/thread/home feeds now use the generic app-layer feed doorway:
 > construct typed `FeedParams`, call `nmp_app_open_feed`, retain the returned
@@ -305,11 +304,9 @@ correction; it is not permission to add a second follow-feed API.
 
 ### Consequences
 
-- D5 cluster gating is **symmetric**: the home-feed projection cluster
-  (`timeline`, `inserted`, `updated`, `removed`) appears only when
-  the active-follows feed declaration has concrete acquisition kinds, and
-  disappears when the declaration is cleared or receives an empty primary-kind
-  set.
+- D5 cluster gating is driven by the feed session handle and its projection
+  key. Closing the handle clears the typed feed row; an empty reduced source
+  yields no wildcard acquisition and no stale child interests.
 - The `timeline_requested` milestone is unaffected: it is flipped by ingest at
   `kernel/ingest/timeline.rs:309-337`, not by the open/close verb.
 - All Chirp shells (iOS, Android, TUI, desktop) open home, author, and thread
@@ -319,8 +316,7 @@ correction; it is not permission to add a second follow-feed API.
   `nmp-core` / `nmp-planner` may carry authors, tags, ids, and addresses as
   filter data, but they must not name contact-list, mute-list, follow-pack, or
   app feed concepts.
-- `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`. Any
-  platform-stable wrapper name that remains for binary/UI compatibility must
-  call the active-follows declaration path; it must not preserve a separate
-  home-feed code path.
+- `nmp_app_open_timeline`, `nmp_app_open_contact_feed`, and every active-follows
+  declaration helper are removed from `nmp-ffi` and `NmpCore.h`. No compatibility
+  wrapper remains for the old home-feed code path.
 - Completes V-68 Stage 2 (#911).

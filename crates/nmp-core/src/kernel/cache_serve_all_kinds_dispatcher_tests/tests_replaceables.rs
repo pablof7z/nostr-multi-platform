@@ -16,32 +16,52 @@ fn cache_served_replaceables_fire_transitions_kind_agnostically() {
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(hex_pk("aa"));
-    kernel.follow_feed_kinds = BTreeSet::from([0u32, 10_002u32]);
     kernel.timeline_authors.insert(author.clone());
 
     // Register a kind:10002 parser writing a real mailbox cache, mirroring
     // production composition (the kernel's test-default kind:0 parser is already
     // registered). Use the same in-memory mailbox cache the kernel reads.
     let mailbox = kernel.mailbox_cache_arc();
-    let mailbox_parser: Arc<dyn IngestParser> =
-        Arc::new(TestKind10002Parser { cache: mailbox });
+    let mailbox_parser: Arc<dyn IngestParser> = Arc::new(TestKind10002Parser { cache: mailbox });
     if let Ok(mut d) = kernel.ingest_dispatcher_slot().write() {
         d.register_kind(10_002, mailbox_parser);
     }
 
     // Phase 1: live-ingest a kind:0 and a kind:10002 for the author.
-    live_ingest(&mut kernel, "follow-feed-default", &signed_kind0(&keys, "Nova", base_ts));
-    live_ingest(&mut kernel, "follow-feed-default", &signed_kind10002(&keys, "wss://write.relay/", base_ts));
-    assert!(kernel.profile_lookup().contains(&author), "precondition: profile cached");
-    assert!(kernel.mailbox_cache().known(&author), "precondition: mailbox cached");
+    live_ingest(
+        &mut kernel,
+        "follow-feed-default",
+        &signed_kind0(&keys, "Nova", base_ts),
+    );
+    live_ingest(
+        &mut kernel,
+        "follow-feed-default",
+        &signed_kind10002(&keys, "wss://write.relay/", base_ts),
+    );
+    assert!(
+        kernel.profile_lookup().contains(&author),
+        "precondition: profile cached"
+    );
+    assert!(
+        kernel.mailbox_cache().known(&author),
+        "precondition: mailbox cached"
+    );
 
     // Phase 2: cold restart + clear both capability caches so cache-serve replay
     // is the only repopulation path.
     simulate_cold_restart(&mut kernel);
-    kernel.profile_lookup().evict_to(&std::collections::HashSet::new(), 0);
+    kernel
+        .profile_lookup()
+        .evict_to(&std::collections::HashSet::new(), 0);
     kernel.mailbox_cache().remove(&author);
-    assert!(!kernel.profile_lookup().contains(&author), "profile cleared pre-replay");
-    assert!(!kernel.mailbox_cache().known(&author), "mailbox cleared pre-replay");
+    assert!(
+        !kernel.profile_lookup().contains(&author),
+        "profile cleared pre-replay"
+    );
+    assert!(
+        !kernel.mailbox_cache().known(&author),
+        "mailbox cleared pre-replay"
+    );
 
     // Phase 3: replay both kinds via cache-serve.
     open_kind0_interest(&mut kernel, 40, &author);

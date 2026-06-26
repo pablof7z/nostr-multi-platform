@@ -8,8 +8,8 @@ tags:
 volatility: warm
 confidence: high
 created: 2026-06-18
-updated: 2026-06-19
-verified: 2026-06-18
+updated: 2026-06-26
+verified: 2026-06-26
 compiled-from: conversation
 sources:
   - session:129d2615-7195-4082-924e-9b96e3f1de8b
@@ -40,7 +40,10 @@ The follow list display bug (profiles showing 'Follow' for already-followed user
 
 The #1516 streaming `query_visit` implementation preserves tie-group buffering for equal `created_at` events, delivering `(created_at DESC, id ASC)` ordering consistent with the existing contract. A `#[cfg(test)]` `AtomicUsize` conversion counter verifies streaming `query_visit` does not over-materialize; the test `streaming_visit_does_not_over_materialize` inserts 1000 events, breaks at 10, and asserts ≤11 conversions. The early-stop materialization regression gate test in #1524 is marked `#[ignore]` until #1516's streaming `query_visit` lands, because it would fail against the current pre-materialization code.
 
-`open_contact_feed` must persist host-declared `follow_feed_kinds` unconditionally (even with no active account) so sign-in reconcile re-registers the feed correctly on both platforms.
+The old `open_contact_feed` / `follow_feed_kinds` path is retired. Active-user
+follows now compile through the generic ReducedSource/dependent-interest feed
+source, so sign-in, account switch, and follow-list replacement re-run source
+reduction instead of preserving a parallel kernel follow-feed registry.
 
 <!-- citations: [^129d2-67] [^11850-179] [^e6b44-9] -->
 ## Drain (Budget-Bounded)

@@ -375,10 +375,11 @@ impl Kernel {
     /// Drain queued cache-serves under ONE shared per-tick budget.
     ///
     /// Called from the actor loop (piggybacked on the existing ≤250 ms wake,
-    /// like the #1069 gc tick) and once synchronously by the two enqueue
-    /// sites (`open_interest_sub`, `sync_follow_feed_interests`) so the
-    /// first snapshot after an open carries store data (D1). Work beyond the
-    /// budget stays queued with a resume cursor and continues next tick.
+    /// like the #1069 gc tick) and once synchronously by interest-registration
+    /// callers (`open_interest_sub`, dependent-source replacement, ensure/replace
+    /// commands) so the first snapshot after an open carries store data (D1).
+    /// Work beyond the budget stays queued with a resume cursor and continues
+    /// next tick.
     ///
     /// Drains `store_wakeups.cache_serve` first so re-armed interests enter the
     /// queue before the budget loop starts (#1520 — event-driven wakeups).

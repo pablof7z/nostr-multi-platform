@@ -3,7 +3,7 @@
 //! These tests verify the ADR-0045 E1 invariants:
 //!
 //! 1. **Universal acceptance** — on second launch (in-memory caches cleared,
-//!    store warm), `sync_follow_feed_interests` drives cache-serve and
+//!    store warm), generic author interests drive cache-serve and
 //!    re-populates `events` and `timeline` from the store without any relay
 //!    connectivity.
 //!
@@ -21,16 +21,17 @@
 //!    prior relay deliver) are skipped on cache-serve; the cache is not
 //!    double-populated.
 //!
-//! 6. **Completion-key one-shot** — re-syncing the same follow set does not
+//! 6. **Completion-key one-shot** — re-opening the same interest does not
 //!    re-serve (the completion key gates it).
 //!
 //! 7. **Account-switch clears completion set + queue** — after
-//!    `reconcile_follow_feed_after_identity_change`, the new account's
-//!    interests get a fresh serve.
+//!    `reconcile_feed_sources_after_identity_change`, served-interest state is
+//!    cleared so recompiled feed sources can serve fresh rows.
 
 use super::*;
+use crate::planner::{InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
-use std::collections::BTreeSet;
+use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -97,8 +98,37 @@ pub(super) fn simulate_cold_restart(kernel: &mut Kernel) {
     kernel.metric_stored_events = 0;
     kernel.metric_note_events = 0;
     // Clear the served-interest completion set + pending queue so the next
-    // `sync_follow_feed_interests` triggers a fresh cache-serve.
+    // interest open triggers a fresh cache-serve.
     kernel.clear_served_interest_shapes();
+}
+
+/// Register one generic tailing interest for `{authors} x {kinds}`.
+///
+/// This is the kernel-level equivalent of the `open_interest` seam after a
+/// higher layer has reduced a dynamic source into a concrete author set.
+pub(super) fn open_author_interest(
+    kernel: &mut Kernel,
+    consumer_seed: impl std::hash::Hash,
+    authors: impl IntoIterator<Item = String>,
+    kinds: impl IntoIterator<Item = u32>,
+) {
+    let shape = InterestShape {
+        authors: authors.into_iter().collect(),
+        kinds: kinds.into_iter().collect(),
+        ..Default::default()
+    };
+    let key = SubKey::builder("open-interest")
+        .with(&shape)
+        .with(1u32)
+        .finish();
+    let identity = SubIdentity::new(SubOwnerKey::new(consumer_seed), key, SubScope::Global);
+    let interest = LogicalInterest {
+        scope: InterestScope::Global,
+        shape,
+        lifecycle: InterestLifecycle::Tailing,
+        ..Default::default()
+    };
+    let _ = kernel.open_interest_sub(identity, interest);
 }
 
 /// Drain the cache-serve continuation queue, asserting each step respects the
@@ -130,7 +160,7 @@ pub(super) fn drain_cache_serves(kernel: &mut Kernel, max_steps: usize) -> usize
 ///
 /// 1. Seed events into the store via the live ingest path.
 /// 2. Simulate a cold second launch by clearing in-memory caches.
-/// 3. Re-open the follow-feed interest via `sync_follow_feed_interests`.
+/// 3. Re-open the author interest via the generic interest seam.
 /// 4. Assert events reappear in `kernel.events` and `kernel.timeline` without
 ///    any relay connectivity.
 ///
@@ -144,9 +174,7 @@ fn e1_stored_events_reappear_after_cold_restart_without_relay() {
     let author = keys.public_key().to_hex();
     let base_ts: u64 = 1_700_000_000;
 
-    // Set up follow-feed: the author is followed.
     kernel.active_account = Some(hex_pk("aa"));
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
     kernel.timeline_authors.insert(author.clone());
 
     // Phase 1: seed 3 events into the live kernel (store + in-memory caches).
@@ -168,9 +196,9 @@ fn e1_stored_events_reappear_after_cold_restart_without_relay() {
         "timeline must be empty after restart"
     );
 
-    // Phase 3: re-open the follow-feed interest (enqueues serves + drains one
+    // Phase 3: re-open the author interest (enqueues serves + drains one
     // aggregate-budget chunk; 3 events fit in one chunk).
-    kernel.sync_follow_feed_interests(&[author.clone()]);
+    open_author_interest(&mut kernel, "e1-cold-restart", [author.clone()], [1u32]);
     drain_cache_serves(&mut kernel, 4);
 
     // Phase 4: verify all seeded events are back.
@@ -204,7 +232,6 @@ fn e1_serve_depth_is_the_consumers_visible_window() {
     let base_ts: u64 = 1_700_000_000;
 
     kernel.active_account = Some(hex_pk("aa"));
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
     kernel.timeline_authors.insert(author.clone());
 
     let over_window = DEFAULT_VISIBLE_LIMIT + 5;
@@ -213,7 +240,7 @@ fn e1_serve_depth_is_the_consumers_visible_window() {
 
     simulate_cold_restart(&mut kernel);
 
-    kernel.sync_follow_feed_interests(&[author.clone()]);
+    open_author_interest(&mut kernel, "e1-depth", [author.clone()], [1u32]);
     drain_cache_serves(&mut kernel, 8);
 
     assert_eq!(
@@ -251,7 +278,6 @@ fn e1_events_already_in_cache_are_not_double_served() {
     let base_ts: u64 = 1_700_000_000;
 
     kernel.active_account = Some(hex_pk("aa"));
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
     kernel.timeline_authors.insert(author.clone());
 
     // Seed 2 events into the store.
@@ -275,7 +301,7 @@ fn e1_events_already_in_cache_are_not_double_served() {
 
     let cache_size_before = kernel.events.len();
 
-    kernel.sync_follow_feed_interests(&[author.clone()]);
+    open_author_interest(&mut kernel, "e1-dedup", [author.clone()], [1u32]);
     drain_cache_serves(&mut kernel, 4);
 
     // The already-cached event must NOT cause the cache to grow by more than 1
@@ -303,8 +329,8 @@ fn e1_events_already_in_cache_are_not_double_served() {
 
 // ─── 6. Completion-key one-shot ───────────────────────────────────────────────
 
-/// Once an interest has been served, `sync_follow_feed_interests` for the same
-/// follow set must NOT re-serve the same events (the completion key gates it).
+/// Once an interest has been served, re-opening the same owner/key must NOT
+/// re-serve the same events (the completion key gates it).
 #[test]
 fn e1_completion_key_prevents_re_serve() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -314,93 +340,61 @@ fn e1_completion_key_prevents_re_serve() {
     let base_ts: u64 = 1_700_000_000;
 
     kernel.active_account = Some(hex_pk("aa"));
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
     kernel.timeline_authors.insert(author.clone());
 
     seed_events(&mut kernel, &keys, 3, base_ts);
     simulate_cold_restart(&mut kernel);
 
     // First serve.
-    kernel.sync_follow_feed_interests(&[author.clone()]);
+    open_author_interest(&mut kernel, "e1-one-shot", [author.clone()], [1u32]);
     drain_cache_serves(&mut kernel, 4);
     let after_first = kernel.events.len();
     assert!(after_first > 0, "first sync must serve events");
 
-    // Second sync — same follow set; completion keys already recorded, so
+    // Second open — same owner/key; completion keys already recorded, so
     // nothing is enqueued and nothing is served.
-    kernel.sync_follow_feed_interests(&[author.clone()]);
+    open_author_interest(&mut kernel, "e1-one-shot", [author.clone()], [1u32]);
     drain_cache_serves(&mut kernel, 4);
     assert_eq!(
         kernel.events.len(),
         after_first,
-        "E1 one-shot: a second sync for the same follow set must not re-serve events"
+        "E1 one-shot: a second open for the same interest must not re-serve events"
     );
 }
 
 // ─── 7. Account-switch clears completion set + queue ─────────────────────────
 
-/// After `reconcile_follow_feed_after_identity_change`, the completion set
-/// (and pending queue) is cleared so the new account's interests get a fresh
-/// serve.
-///
-/// Evidence: after the switch, events for author_a (whom B follows) appear in
-/// the `events` cache — served from the store for B's interests. If
-/// `clear_served_interest_shapes` were not called, the completion key from
-/// A's serve (same shape: author_a + kinds) would gate the re-serve and the
-/// cache would stay empty.
+/// After `reconcile_feed_sources_after_identity_change`, the completion set
+/// and pending queue are cleared so dependent feed sources can recompile and
+/// serve fresh rows for the next account.
 #[test]
-fn e1_account_switch_triggers_fresh_serve() {
+fn e1_identity_change_clears_interest_serve_state() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
 
     let keys_a = ::nostr::Keys::generate();
     let author_a = keys_a.public_key().to_hex();
-    let keys_b = ::nostr::Keys::generate();
-    let author_b = keys_b.public_key().to_hex();
     let base_ts: u64 = 1_700_000_000;
 
-    // Account A: seed events, open follow-feed, run cache-serve.
     kernel.active_account = Some(hex_pk("aa"));
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
     kernel.timeline_authors.insert(author_a.clone());
     seed_events(&mut kernel, &keys_a, 2, base_ts);
     simulate_cold_restart(&mut kernel);
-    kernel.sync_follow_feed_interests(&[author_a.clone()]);
+    open_author_interest(&mut kernel, "e1-identity", [author_a.clone()], [1u32]);
     drain_cache_serves(&mut kernel, 4);
 
-    // The completion set must be non-empty after serving A's interests.
     assert!(
         !kernel.served_interest_shapes.is_empty(),
-        "completion set must be non-empty after first serve (pre-condition)"
+        "completion set must be non-empty after first serve"
     );
 
-    // Switch to account B (B follows author_a).
-    kernel.events.clear();
-    kernel.timeline.clear();
-    kernel.metric_stored_events = 0;
-    kernel.metric_note_events = 0;
-    kernel.active_account = Some(author_b.clone());
-    // ADR-0057 PR 3 — seed B's follow set through the capability-owned contacts
-    // cache (no kernel-owned `seed_contacts` HashMap any more).
-    // `prepopulate_contacts` routes through the chokepoint projection → the
-    // registered kind:3 parser writes the cache.
-    kernel.prepopulate_contacts(author_b.clone(), vec![author_a.clone()]);
-    kernel.reconcile_follow_feed_after_identity_change();
-    drain_cache_serves(&mut kernel, 4);
-
-    // The fresh serve must have fired for B's interests: author_a's stored
-    // events reappear. (A's serve used the SAME shape/completion key, so this
-    // can only pass if the switch cleared the completion set.)
-    let author_a_events = kernel
-        .events
-        .values()
-        .filter(|e| e.author == author_a)
-        .count();
+    kernel.reconcile_feed_sources_after_identity_change();
     assert!(
-        author_a_events > 0,
-        "E1 account-switch: author_a's events must be re-served for account B \
-         (B follows A); an uncleared completion set would gate the serve. \
-         events in cache: {:?}",
-        kernel.events.keys().collect::<Vec<_>>()
+        kernel.served_interest_shapes.is_empty(),
+        "identity change must clear served-interest completion keys"
+    );
+    assert!(
+        !kernel.has_pending_cache_serves(),
+        "identity change must clear pending cache-serve work"
     );
 }
 
@@ -420,11 +414,6 @@ fn adr0057_follow_added_later_surfaces_prior_events_from_store() {
 
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
     kernel.active_account = Some(hex_pk("aa"));
-    // Host declares kind:1 as a follow-feed kind, but the author is NOT yet in
-    // the follow set — their events are persisted on arrival, not timeline-
-    // projected.
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
-
     let stranger_keys = ::nostr::Keys::generate();
     let stranger = stranger_keys.public_key().to_hex();
     let base_ts: u64 = 1_700_000_000;
@@ -462,10 +451,15 @@ fn adr0057_follow_added_later_surfaces_prior_events_from_store() {
          (they are persisted in the store, not parked)"
     );
 
-    // Now FOLLOW the author. `sync_follow_feed_interests` rebuilds
-    // `timeline_authors` and enqueues a cache-serve for the new follow.
+    // Now include the author in the home timeline projection and open the
+    // reduced author interest.
     kernel.timeline_authors.insert(stranger.clone());
-    kernel.sync_follow_feed_interests(&[stranger.clone()]);
+    open_author_interest(
+        &mut kernel,
+        "adr0057-later-follow",
+        [stranger.clone()],
+        [1u32],
+    );
     drain_cache_serves(&mut kernel, 4);
 
     // The prior events surface from the store — no parking buffer needed.

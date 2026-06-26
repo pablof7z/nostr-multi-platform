@@ -24,20 +24,17 @@ impl Kernel {
     ///    relay echo of a locally-published event) is projection-silent —
     ///    preserving D4 single-fire for read-your-writes.
     /// 3. **Projection / relevance** = read-time only. The kernel-owned timeline
-    ///    read-cache is CALLED BY this one chokepoint post-`verify_and_persist`,
-    ///    gated on the behavioral `follow_feed_kinds` predicate — not a scattered
-    ///    per-kind/per-source ladder. The timeline read-cache is a chokepoint-fed
-    ///    observer ([`Self::project_timeline_event`]) whose read-time relevance
-    ///    predicate is `should_store_event` (which no longer has any power over
+    ///    read-cache is an internal diagnostic/read-model observer
+    ///    ([`Self::project_timeline_event`]) whose read-time relevance predicate
+    ///    is `should_store_event` (which no longer has any power over
     ///    persistence).
     ///
     /// ADR-0057 PR 3 finishes D0: profiles (kind:0) AND contacts (kind:3) are
     /// both parser-fed (`nmp_nip01::Kind0Parser` / `Kind3Parser` writing the
     /// capability-owned `ProfileCache` / `ContactsCache`), detected via a
     /// before/after cache snapshot in [`Self::project_accepted_event`]. The
-    /// ingest path now names ZERO NIP kind literals — the timeline projection is
-    /// gated by the behavioral `follow_feed_kinds` predicate, and gift-wrap is
-    /// excluded via the parser registry, not a literal.
+    /// ingest path now names ZERO NIP kind literals; gift-wrap is excluded via
+    /// the parser registry, not a literal.
     ///
     /// Returns the store outcome so a source wrapper can apply source-specific
     /// post-processing (e.g. the relay path's claim-hit scoring).
@@ -107,9 +104,10 @@ impl Kernel {
             );
         }
 
-        // Timeline read-cache projection — LIVE-path specific. The cache-serve
-        // path has its own follow-set timeline append in `feed_served_event`.
-        if self.follow_feed_kinds.contains(&event.kind) || sub_id.starts_with("diag-firehose-") {
+        // Timeline read-cache projection — live diagnostic/test path specific.
+        // Production feed sessions render through registered observers and
+        // pull controllers; the core no longer owns an active-follows kind gate.
+        if sub_id.starts_with("diag-firehose-") {
             self.project_timeline_event(sub_id, &event, Some(&outcome));
         }
 
@@ -121,8 +119,8 @@ impl Kernel {
     ///
     /// The store evicts the superseded predecessor on insert (NIP-01 replaceable
     /// semantics), but the read-cache is populated independently — for
-    /// `follow_feed_kinds` by `project_timeline_event`, and for ANY kind by the
-    /// cache-serve replay (`feed_served_event`). When a previously-served event
+    /// the timeline projection, and for ANY kind by the cache-serve replay
+    /// (`feed_served_event`). When a previously-served event
     /// (e.g. a kind:3 contact list served at interest registration) is replaced
     /// live, its predecessor must be removed from the read-cache and the new head
     /// recorded — otherwise the read-cache disagrees with the store.
@@ -151,17 +149,13 @@ impl Kernel {
         if self.events.remove(&replaced_hex).is_none() {
             return;
         }
-        // Drop the stale predecessor from the ordered timeline too (if present);
-        // the new head re-enters via `project_timeline_event` for follow-feed
-        // kinds (sorted), and is irrelevant to the timeline for other kinds.
+        // Drop the stale predecessor from the ordered timeline too (if present).
         if let Some(pos) = self.timeline.iter().position(|id| id == &replaced_hex) {
             self.timeline.remove(pos);
         }
         // Record the new head so the wakeup re-serve dedups it (no double-fire).
         // Mirrors `feed_served_event`'s read-cache entry (raw `created_at`, no
-        // relay confirmation in-session → `relay_count: 0`). For follow-feed
-        // kinds, the subsequent `project_timeline_event` overwrites this with the
-        // D9-clamped, timeline-sorted entry.
+        // relay confirmation in-session → `relay_count: 0`).
         let raw = verified.raw();
         self.events.insert(
             raw.id.clone(),

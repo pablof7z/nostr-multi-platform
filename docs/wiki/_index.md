@@ -339,7 +339,7 @@ Last updated: 2026-06-19
 | [2026-06-18-6-handshake-polling-eliminated-event-driven-cancel](episodes/2026-06-18-6-handshake-polling-eliminated-event-driven-cancel.md) | 2026-06-18 | Handshake polling eliminated: event-driven cancel via crossbeam | reversal | superseded |
 | [2026-06-18-6-known-signers-three-way-drift-rust](episodes/2026-06-18-6-known-signers-three-way-drift-rust.md) | 2026-06-18 | Known-signers three-way drift: Rust, Kotlin, Swift tables already diverged with no cross-validation | architecture | superseded |
 | [2026-06-18-6-per-nip-per-kind-branches-removed](episodes/2026-06-18-6-per-nip-per-kind-branches-removed.md) | 2026-06-18 | Per-NIP/per-kind branches removed from generic layers (D0) | architecture | superseded |
-| [2026-06-18-6-persist-follow-feed-kinds-unconditionally-in](episodes/2026-06-18-6-persist-follow-feed-kinds-unconditionally-in.md) | 2026-06-18 | Persist follow_feed_kinds unconditionally in kernel | product | active |
+| [2026-06-18-6-persist-follow-feed-kinds-unconditionally-in](episodes/2026-06-18-6-persist-follow-feed-kinds-unconditionally-in.md) | 2026-06-18 | Persist follow_feed_kinds unconditionally in kernel | product | superseded |
 | [2026-06-18-7-nip-17-dm-relay-bypass-silent](episodes/2026-06-18-7-nip-17-dm-relay-bypass-silent.md) | 2026-06-18 | NIP-17 DM relay bypass: silent relay pruning bug | root-cause | superseded |
 | [2026-06-18-7-operator-policy-removed-from-nmp-core](episodes/2026-06-18-7-operator-policy-removed-from-nmp-core.md) | 2026-06-18 | Operator policy removed from NMP core (D0/D4 doctrine) | architecture | superseded |
 | [2026-06-18-7-per-nip-branches-removed-from-generic](episodes/2026-06-18-7-per-nip-branches-removed-from-generic.md) | 2026-06-18 | Per-NIP branches removed from generic router layer; nip19 codec to become thin adapter | architecture | superseded |
@@ -386,4 +386,3 @@ Last updated: 2026-06-19
 | [2026-06-19-7-native-policy-duplication-rust-bound-no](episodes/2026-06-19-7-native-policy-duplication-rust-bound-no.md) | 2026-06-19 | Native policy duplication → Rust-bound; no-feed-after-signin bug fixed | product | active |
 | [2026-06-19-7-signer-handshake-200ms-polling-replaced-with](episodes/2026-06-19-7-signer-handshake-200ms-polling-replaced-with.md) | 2026-06-19 | Signer handshake: 200ms polling replaced with event-driven crossbeam channel | product | superseded |
 | [2026-06-19-8-handshake-polling-event-driven-crossbeam-channel](episodes/2026-06-19-8-handshake-polling-event-driven-crossbeam-channel.md) | 2026-06-19 | Handshake polling → event-driven crossbeam channel | architecture | active |
-

@@ -224,13 +224,13 @@ pub(crate) fn execute_ref_dispatch(
 
 // #1740 step 8: the raw feed-verb dispatch (`InterestDispatch` /
 // `interest_dispatch_from_action` / `execute_interest_dispatch`) is DELETED. The
-// public action strings `nmp.kernel.open_interest` / `close_interest` and
-// `nmp.feed.declare_active_follows` / `clear_active_follows` are retired — no
+// public action strings `nmp.kernel.open_interest` / `close_interest` and the
+// old active-follows feed action strings are retired — no
 // host (JS) reached them, and the only public way to open a feed is the typed
 // `open_feed` doorway (native today; a wasm `nmp.feed.open` awaits porting the
 // native session registry + perspective compiler — see #1740). The wasm
-// reducer's `open_interest` / `declare_active_follows_feed` methods remain as
-// internal composition glue driven by the raw ABI adapter.
+// reducer's `open_interest` method remains internal composition glue driven by
+// the raw ABI adapter.
 
 #[cfg(test)]
 #[path = "dispatch_routing_tests.rs"]

@@ -160,6 +160,7 @@ pub(super) fn combine_admission_gate(
     gate: ReducedSource,
 ) -> ReducedSource {
     let ReducedSource {
+        op_session_identity: acq_op_session_identity,
         admission: acq_admission,
         mut interests,
         live_shape: acq_live_shape,
@@ -168,6 +169,7 @@ pub(super) fn combine_admission_gate(
         mut resolver_observer_ids,
         mut identity_observer_ids,
     } = acquisition;
+    let op_session_identity = acq_op_session_identity.combine(gate.op_session_identity);
 
     // AND the two LIVE, EVENT-AWARE predicates: a root renders iff the
     // acquisition admits it AND the custom admission perspective admits it.
@@ -202,6 +204,7 @@ pub(super) fn combine_admission_gate(
     identity_observer_ids.extend(gate.identity_observer_ids);
 
     ReducedSource {
+        op_session_identity,
         admission: combined,
         interests,
         live_shape,
@@ -251,6 +254,7 @@ mod tests {
     //! predicate can go live on a cold open).
 
     use super::super::source::AcquisitionInterest;
+    use super::super::source::OpSessionIdentity;
     use super::*;
     use nmp_core::substrate::{EventId, KernelEvent};
     use nmp_feed::AdmitExpr;
@@ -279,6 +283,7 @@ mod tests {
         let admission = AdmitExpr::Authors(authors.iter().map(|s| (*s).to_string()).collect())
             .to_root_admission();
         ReducedSource {
+            op_session_identity: OpSessionIdentity::RequireActive,
             admission,
             interests: interest.into_iter().collect(),
             live_shape: Arc::new(|| None),
