@@ -63,22 +63,13 @@ pub(super) struct ReducedSource {
     pub reset_hooks: Vec<ResetHook>,
     /// Resolver observer ids the session must revoke on close.
     pub resolver_observer_ids: Vec<KernelEventObserverId>,
+    /// Identity-change observer ids the session must revoke on close.
+    pub identity_observer_ids: Vec<nmp_ffi::IdentityChangeObserverId>,
 }
 
 /// No extra acquisition beyond fixed interests.
 pub(super) fn empty_extra() -> ExtraAcquisition {
     Arc::new(Vec::new)
-}
-
-/// Wrap a render [`LiveShape`] as extra acquisition.
-pub(super) fn extra_from_live_shape(live_shape: &LiveShape) -> ExtraAcquisition {
-    let live_shape = Arc::clone(live_shape);
-    Arc::new(move || {
-        live_shape()
-            .into_iter()
-            .map(AcquisitionInterest::active_account)
-            .collect()
-    })
 }
 
 pub(super) fn acquisition_children(

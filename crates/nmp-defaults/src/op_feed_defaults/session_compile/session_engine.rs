@@ -80,6 +80,7 @@ fn build_op_scope_session(
         extra_acquisition,
         reset_hooks,
         resolver_observer_ids,
+        identity_observer_ids,
     } = resolved;
 
     // ── 1. Engine over the COMPILED, EVENT-AWARE admission predicate ──────
@@ -236,9 +237,14 @@ fn build_op_scope_session(
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
         let sync_acquisition = sync_acquisition.clone();
+        let notify = sender.clone();
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_acquisition(&extra);
-            let _ = controller_for_reset.reset();
+            let reset = controller_for_reset.reset();
+            let replayed = controller_for_reset.load_older();
+            if reset || replayed {
+                notify.mark_changed_since_emit();
+            }
         });
         hook(reset_trigger);
     }
@@ -259,6 +265,9 @@ fn build_op_scope_session(
     teardown.push(teardown_handle.remove_projection(key.to_string())); // exec #4
     for id in &resolver_observer_ids {
         teardown.push(teardown_handle.revoke_observer(*id));
+    } // exec #3
+    for id in &identity_observer_ids {
+        teardown.push(teardown_handle.revoke_identity_observer(*id));
     } // exec #3
     teardown.push(teardown_handle.revoke_observer(engine_observer_id)); // exec #2
     teardown.push(teardown_handle.unregister_feed(key.to_string())); // exec #1 (first)
@@ -281,6 +290,7 @@ fn build_flat_scope_session(
         extra_acquisition,
         reset_hooks,
         resolver_observer_ids,
+        identity_observer_ids,
     } = resolved;
 
     let feed = nmp_nip01::FlatFeed::new(admission);
@@ -356,9 +366,14 @@ fn build_flat_scope_session(
         let controller_for_reset = controller.clone();
         let extra = extra_acquisition.clone();
         let sync_acquisition = sync_acquisition.clone();
+        let notify = sender.clone();
         let reset_trigger: Arc<dyn Fn() + Send + Sync> = Arc::new(move || {
             sync_acquisition(&extra);
-            let _ = controller_for_reset.reset();
+            let reset = controller_for_reset.reset();
+            let replayed = controller_for_reset.load_older();
+            if reset || replayed {
+                notify.mark_changed_since_emit();
+            }
         });
         hook(reset_trigger);
     }
@@ -370,6 +385,9 @@ fn build_flat_scope_session(
     teardown.push(teardown_handle.remove_projection(key.to_string()));
     for id in &resolver_observer_ids {
         teardown.push(teardown_handle.revoke_observer(*id));
+    }
+    for id in &identity_observer_ids {
+        teardown.push(teardown_handle.revoke_identity_observer(*id));
     }
     teardown.push(teardown_handle.revoke_observer(engine_observer_id));
     teardown.push(teardown_handle.unregister_feed(key.to_string()));

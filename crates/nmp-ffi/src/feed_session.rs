@@ -29,6 +29,7 @@
 //! - D8: a closed session frees its registry entry and drops its teardown
 //!   closures, releasing everything the open registered (no leak).
 
+use crate::app_struct::IdentityChangeObserverSlot;
 use crate::NmpApp;
 use nmp_core::__ffi_internal::{
     unregister_observer, KernelEventObserverSlot, SnapshotProjectionSlot,
@@ -126,6 +127,7 @@ pub struct FeedTeardown {
     feeds: FeedRegistrySlot,
     projections: SnapshotProjectionSlot,
     observers: KernelEventObserverSlot,
+    identity_observers: Option<IdentityChangeObserverSlot>,
     sender: CommandSender,
 }
 
@@ -134,12 +136,13 @@ impl FeedTeardown {
     /// `Arc`s + the cheap command sender — captures nothing borrowed).
     #[must_use]
     pub fn for_app(app: &NmpApp) -> Self {
-        Self::from_parts(
-            app.feed_registry_handle(),
-            app.snapshot_projections_handle(),
-            app.event_observers_handle(),
-            app.command_sender(),
-        )
+        Self {
+            feeds: app.feed_registry_handle(),
+            projections: app.snapshot_projections_handle(),
+            observers: app.event_observers_handle(),
+            identity_observers: Some(app.identity_change_observers.clone()),
+            sender: app.command_sender(),
+        }
     }
 
     /// Build a teardown handle from the four registry slots + command sender
@@ -159,6 +162,7 @@ impl FeedTeardown {
             feeds,
             projections,
             observers,
+            identity_observers: None,
             sender,
         }
     }
@@ -207,6 +211,21 @@ impl FeedTeardown {
         let observers = self.observers.clone();
         Box::new(move || {
             unregister_observer(&observers, id);
+        })
+    }
+
+    /// A teardown step that revokes a session-scoped active-account observer.
+    ///
+    /// App-level runtimes may register identity observers for the app lifetime.
+    /// Feed sessions are shorter-lived, so reduced-source reset hooks must be
+    /// removed on close just like kernel-event observers and acquisition sets.
+    #[must_use]
+    pub fn revoke_identity_observer(&self, id: crate::IdentityChangeObserverId) -> TeardownAction {
+        let observers = self.identity_observers.clone();
+        Box::new(move || {
+            if let Some(observers) = observers.as_ref() {
+                crate::app_struct::unregister_identity_change_observer(observers, id);
+            }
         })
     }
 

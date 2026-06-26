@@ -95,7 +95,7 @@ mod app_impl_accessors;
 mod app_lifecycle_ffi;
 
 // ── Re-exports from split modules ────────────────────────────────────────
-pub use app_struct::NmpApp;
+pub use app_struct::{IdentityChangeObserverId, NmpApp};
 // Make update-callback types accessible via `super::` from inline test
 // modules (passive_start_tests, update_callback_quiescence_tests).
 #[cfg(test)]

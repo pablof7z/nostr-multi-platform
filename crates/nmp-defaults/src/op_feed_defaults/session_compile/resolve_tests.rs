@@ -5,15 +5,20 @@
 //! framework-internal, app-free pieces: the session WoT graph (reusing the
 //! #1698 ranked query) and the typed acquisition shapes the interests use.
 
-use super::resolve::*;
+use super::wot_graph::SessionWotGraph;
 use nmp_core::substrate::{EventId, KernelEvent};
 use nmp_core::KernelEventObserver;
 use nmp_planner::InterestScope;
 
+const CONTACT_KIND: u32 = 3;
 const SEED: &str = "5eed000000000000000000000000000000000000000000000000000000000001";
 const F1: &str = "f1f1000000000000000000000000000000000000000000000000000000000001";
 const F2: &str = "f2f2000000000000000000000000000000000000000000000000000000000001";
 const CAND: &str = "ca11000000000000000000000000000000000000000000000000000000000001";
+
+fn session_wot_graph() -> SessionWotGraph {
+    SessionWotGraph::new(SEED.to_string(), CONTACT_KIND)
+}
 
 fn contacts(author: &str, follows: &[&str]) -> KernelEvent {
     let tags = follows
@@ -33,7 +38,7 @@ fn contacts(author: &str, follows: &[&str]) -> KernelEvent {
 
 #[test]
 fn session_wot_graph_ranks_second_degree_candidate() {
-    let graph = SessionWotGraph::new(SEED.to_string());
+    let graph = session_wot_graph();
     // SEED follows F1, F2. F1 and F2 both follow CAND (a 2nd-degree candidate
     // SEED does not yet follow). CAND must be a ranked candidate.
     graph.on_kernel_event(&contacts(SEED, &[F1, F2]));
@@ -48,7 +53,7 @@ fn session_wot_graph_ranks_second_degree_candidate() {
 
 #[test]
 fn session_wot_graph_admits_only_candidates_fail_closed() {
-    let graph = SessionWotGraph::new(SEED.to_string());
+    let graph = session_wot_graph();
     graph.on_kernel_event(&contacts(SEED, &[F1]));
     graph.on_kernel_event(&contacts(F1, &[CAND]));
     assert!(graph.admits(CAND));
@@ -58,7 +63,7 @@ fn session_wot_graph_admits_only_candidates_fail_closed() {
 
 #[test]
 fn session_wot_graph_ignores_non_contact_events() {
-    let graph = SessionWotGraph::new(SEED.to_string());
+    let graph = session_wot_graph();
     let mut ev = contacts(SEED, &[F1]);
     ev.kind = 1;
     graph.on_kernel_event(&ev);
@@ -226,7 +231,7 @@ fn authors_scope_fails_closed_on_empty_set_or_no_kinds() {
 fn wot_tracks_seed_direct_follows_for_acquisition() {
     // The session WoT graph must expose the seed's DIRECT follows so the session
     // can acquire their kind:3 (needed to rank second-degree candidates).
-    let graph = SessionWotGraph::new(SEED.to_string());
+    let graph = session_wot_graph();
     graph.on_kernel_event(&contacts(SEED, &[F1, F2]));
     let direct = graph.direct_follows();
     assert!(direct.contains(F1));

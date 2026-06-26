@@ -308,6 +308,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         tx: command_tx,
         update_callback,
         identity_change_observers,
+        next_identity_change_observer_id: AtomicU64::new(1),
         capability_callback,
         lifecycle_observer,
         event_observers,

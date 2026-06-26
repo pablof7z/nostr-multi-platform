@@ -109,6 +109,16 @@ impl PeopleListProjection {
         }
     }
 
+    /// Notify the projection that the active account changed.
+    ///
+    /// Membership reads are already owner-gated by the active-account slot, so
+    /// this does not need to rewrite stored lists. It exists to wake dependent
+    /// feed sessions so they withdraw the prior account's member interests,
+    /// reset visible rows, and re-acquire the new account's source list.
+    pub fn notify_account_changed(&self) {
+        self.notify_changed();
+    }
+
     /// The members of the active account's follow set identified by `list_id`
     /// (its `d`-tag), sorted lowercase hex.
     ///

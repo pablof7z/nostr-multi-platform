@@ -35,6 +35,8 @@ mod resolve_static;
 mod session_engine;
 mod set_algebra;
 mod source;
+mod source_replay;
+mod wot_graph;
 
 #[cfg(test)]
 mod source_tests;
