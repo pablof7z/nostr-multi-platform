@@ -20,6 +20,21 @@ not decode, derive from, cache, or sign with the secret.
 NIP-07 remains the preferred browser-extension path. NIP-46 is not a web
 onboarding path until the browser runtime wires a bunker signer end to end.
 
+## Profile Publish Contract
+
+Chirp Web must let a signed-in user publish their public identity from the first
+product session. The browser shell may collect profile fields such as display
+name, about text, and picture URL, but it must send them through the typed
+profile publish command. Event construction, signing, outbox routing, relay
+selection, and acceptance diagnostics remain owned by Rust and the browser
+runtime.
+
+Publishing profile metadata must surface the same proof path as note publishing:
+the outbox shows the in-flight action, action results show the runtime verdict,
+and relay diagnostics show per-relay acceptance or failure. Local validation must
+assert that a fixture relay receives a signed kind:0 event with the requested
+metadata.
+
 ## Secret Storage
 
 Pasted `nsec` values are session-memory only. Chirp Web must not persist them to
