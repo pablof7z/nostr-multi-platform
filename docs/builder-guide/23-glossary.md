@@ -77,10 +77,12 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
 - **kernel** — `nmp-core`: substrate + planner + store + subs + publish. Holds
   no app nouns (D0). Apps assemble from kernel + protocol modules + an
   app-core crate. *defined in:* `crates/nmp-core/src/lib.rs`.
-- **KernelEventObserver** — the in-process event fan-out trait: a single
+- **KernelEventObserver** — the in-process event-delivery trait: a single
   `on_kernel_event(&self, event: &KernelEvent)` method, fired on the actor
-  thread for every `Inserted | Replaced` ingest. The v1 mechanism for
-  event-driven views. *defined in:*
+  thread for accepted ingest. It backs both explicit live taps
+  (`register_live_event_tap`, no replay, all matching handled by the observer)
+  and observed projections (`open_observed_projection`, kernel replay +
+  interest-scoped live delivery). *defined in:*
   `crates/nmp-core/src/actor/commands/event_observer.rs:189`.
 - **KernelEvent** — the substrate-level event passed to `KernelEventObserver`
   and `register_snapshot_projection` closures; carries `id`, `author`, `kind`,
@@ -161,7 +163,8 @@ that existed in a removed v2 design are tagged **[removed]** — do not use them
   `crates/nmp-core/src/substrate/view.rs`.
 - **ViewModule** — **[removed]** proposed v2 typed reactive projection trait
   (`Spec`/`Payload`/`Delta`/`Key`/`State`). Never shipped. Use
-  `register_event_observer` + `register_snapshot_projection` instead. See
+  `register_live_event_tap`/`open_observed_projection` +
+  `register_snapshot_projection` instead. See
   [05a](05a-substrate-traits.md) §Removed v2 traits.
 - **ViewPayload** — **[removed]** associated type on the removed `ViewModule`
   trait. See **ViewModule** entry.

@@ -49,7 +49,7 @@ fn main() {
     }
 
     // Seam 3: event-driven view — observer populates the store.
-    let _ = builder.register_event_observer(Arc::new(FeedObserver::new(Arc::clone(&store))));
+    let _ = builder.register_live_event_tap(Arc::new(FeedObserver::new(Arc::clone(&store))));
 
     // Commit the storage choice and start the kernel.
     // .in_memory()  →  NmpAppBuilder<StorageSet>  →  .start()  →  *mut NmpApp
@@ -161,7 +161,7 @@ creates a second composition path and risks duplicate default registration.
 ```
 NmpAppBuilder::new()
   │  register_snapshot_projection(...)   ┐ wire before
-  │  register_event_observer(...)        │ start — both states
+  │  register_live_event_tap(...)        │ start — both states
   │  register_action(M)                  ┘ accept them
   │
   ├─ .in_memory()  or  .storage_path(p)

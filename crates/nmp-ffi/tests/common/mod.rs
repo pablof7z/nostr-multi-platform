@@ -75,14 +75,20 @@ pub fn raw_event(
     }
 }
 
-/// Inject pre-verified events via the actor channel — the exact path a relay
-/// worker takes after signature verification.
+/// Inject pre-verified events via the actor channel with the shared NIP-29 host
+/// relay as provenance — the path a relay worker takes after signature
+/// verification.
 pub fn inject(app: *mut NmpApp, events: Vec<VerifiedEvent>) {
     // SAFETY: `app` is a valid pointer from `nmp_app_new` owned by the caller.
     let app_ref = unsafe { &*app };
     app_ref
         .actor_sender()
-        .send(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)))
+        .send(ActorCommand::TestSupport(
+            TestSupportCommand::IngestPreVerifiedEventsForRelay {
+                relay_url: HOST.to_string(),
+                events,
+            },
+        ))
         .expect("actor command channel must be open");
 }
 

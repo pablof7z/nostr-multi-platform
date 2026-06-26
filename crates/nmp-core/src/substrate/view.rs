@@ -32,6 +32,42 @@ pub struct KernelEvent {
     pub relay_provenance: Vec<String>,
 }
 
+pub(crate) fn observed_shape_matches_event(shape: &InterestShape, event: &KernelEvent) -> bool {
+    observed_shape_matches_fields(
+        shape,
+        &event.id,
+        &event.author,
+        event.kind,
+        event.created_at,
+        &event.tags,
+        &event.relay_provenance,
+    )
+}
+
+pub(crate) fn observed_shape_matches_fields(
+    shape: &InterestShape,
+    event_id: &str,
+    author: &str,
+    kind: u32,
+    created_at: u64,
+    tags: &[Vec<String>],
+    relay_provenance: &[String],
+) -> bool {
+    if !shape.matches_event_with_id(event_id, author, kind, created_at, tags) {
+        return false;
+    }
+
+    let Some(pin) = shape.relay_pin.as_deref() else {
+        return true;
+    };
+
+    relay_provenance.iter().any(|relay| relay == pin)
+        || (shape.search.is_none()
+            && relay_provenance
+                .iter()
+                .any(|relay| relay == "local://publish"))
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Serialize)]
 pub struct ViewDependencies {
     pub kinds: Vec<u32>,

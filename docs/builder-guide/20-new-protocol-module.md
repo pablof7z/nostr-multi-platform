@@ -41,7 +41,7 @@ snapshot projector for the group-chat read model. Minimum surface:
 |---|---|---|
 | `ActionModule` | `NAMESPACE`, `type Action`, `start()`, `execute()` dispatching `ActorCommand` | `crates/nmp-nip29/src/action/mod.rs` |
 | `register_snapshot_projection` | `snapshot_json() -> serde_json::Value` on the read model; registered under `nmp.<crate>.*` | `crates/nmp-nip29/src/register.rs:66` |
-| `register_event_observer` | `KernelEventObserver` impl populating the read model from raw `KernelEvent`s | `nmp-app-chirp`'s observer pattern |
+| `register_live_event_tap` / `open_observed_projection` | `KernelEventObserver` impl populating the read model from raw `KernelEvent`s; use observed projection for late-joining/hydrating views | `nmp-app-chirp`'s observer pattern |
 | `CapabilityModule` | request → native execution → typed result *envelope* (never `Result`) | [16 — Capabilities](16-capabilities.md) |
 
 The unifying ownership rule a protocol crate states explicitly

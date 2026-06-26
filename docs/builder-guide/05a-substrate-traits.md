@@ -148,7 +148,10 @@ app.register_live_event_tap(Arc::new(MyObserver { store: arc_store.clone() }));
   (`nmp-app-chirp` registers an observer that drives the modular timeline
   projection).
 - **Use it when** you need to maintain an in-process projection that updates
-  on every event arrival — e.g. a timeline sorted by kind:1 events.
+  on every event arrival — e.g. a startup timeline projection. If the projection
+  opens after matching events may already be in the kernel, use
+  `ObservedProjectionRegistrar::open_observed_projection` instead so the kernel
+  owns replay and scoped live delivery.
 
 ## Decision tree: "I want X — which seam?"
 
@@ -162,7 +165,8 @@ I want to ...
 │     └─ cheap + non-blocking closure
 │
 ├─ maintain an in-process typed projection      → KernelEventObserver
-│     (timeline, group chat list, …)               + register_event_observer
+│     (startup/live-only tap)                       + register_live_event_tap
+│     (per-open/late-joining view)                  + open_observed_projection
 │
 ├─ report OS-native facts to the kernel        → CapabilityModule
 │     (keychain, push, audio, network)             (native C-ABI callback)
@@ -172,8 +176,9 @@ I want to ...
 ```
 
 A real app typically combines several: `microblog-core` uses
-`register_action` + `register_event_observer` + `register_snapshot_projection`;
-`nmp-app-chirp` uses all three for the live timeline feed. Walkthroughs are in
+`register_action` + `register_live_event_tap` + `register_snapshot_projection`;
+late-joining views use `open_observed_projection` for kernel-owned hydration.
+Walkthroughs are in
 [05b](05b-substrate-traits.md) and [19a](19a-walkthrough-microblog.md).
 
 ## Removed v2 traits (reference)
@@ -188,7 +193,7 @@ output, treat them as stale. The correct replacements:
 
 | Removed concept | Replacement |
 |---|---|
-| `ViewModule` (typed reactive projection) | `register_event_observer` + `register_snapshot_projection` |
+| `ViewModule` (typed reactive projection) | `register_live_event_tap` or `open_observed_projection` + `register_snapshot_projection` |
 | `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + `register_snapshot_projection` |
 | `IdentityModule` (signer scope) | `nmp-signers` crate + keyring capability |
 | `ModuleRegistry` (composition root) | an app-core `register()` fn that calls `nmp_defaults::register_defaults` once, then app/protocol `register()` fns |

@@ -89,7 +89,9 @@ rules. This retired five drifting copies (#967). The type/authority owner is
 - Capability sockets and raw capability-result intake.
 - Session/account state and active-account switching.
 - Trait seams: `ActionModule`, `ProtocolCommand`, `IngestParser`,
-  `EventIngestDispatcher`, `KernelEventObserver`, `ExternalEventSinkPolicy`
+  `EventIngestDispatcher`, `KernelEventObserver` delivery slots (explicit
+  live taps via `LiveEventTapRegistrar`, hydrating interest-scoped read models
+  via `ObservedProjectionRegistrar`), `ExternalEventSinkPolicy`
   (the internal in-process relay-forwarding seam; replaces the retired
   `RawEventObserver` / `RawEventForwardPolicy` pair — there is no native push
   sink),

@@ -153,14 +153,17 @@ def `crates/nmp-store/src/types/outcomes.rs:11-33`) is
   Tombstoned | Rejected` are likewise not new canonical writes. Persistence stays
   exactly where it is, at the store layer.
 - **Delivery** = both `EventIngestDispatcher.dispatch` (to the NIP `IngestParser`s)
-  **and** `notify_event_observers` (the app-facing `KernelEventObserver` seam),
-  fired on the **canonical accepted store outcome `Inserted | Replaced |
-  Ephemeral`** — NOT on `Duplicate | Superseded | Tombstoned | Rejected`. The
-  dispatcher already uses exactly this gate (`ingest/mod.rs:486`); the fix is to
-  move `notify_event_observers` inside the chokepoint under the **same** gate. That
-  gate including `Ephemeral` **closes the latent bug**: an ephemeral reaches both
-  the parsers and the app observers, so apps can react to ephemeral events they
-  never store.
+  **and** `notify_event_observers` (the app-facing `KernelEventObserver` delivery
+  slot), fired on the **canonical accepted store outcome `Inserted | Replaced |
+  Ephemeral`** — NOT on `Duplicate | Superseded | Tombstoned | Rejected`.
+  `notify_event_observers` is the single live delivery site for both explicit
+  all-event live taps and ADR-0062 observed projections; observed projections are
+  filtered by their declared `InterestShape` at the observer slot, not by adding
+  another ingest path. The dispatcher already uses exactly this gate
+  (`ingest/mod.rs:486`); the fix was to move `notify_event_observers` inside the
+  chokepoint under the **same** gate. That gate including `Ephemeral` **closes the
+  latent bug**: an ephemeral reaches both the parsers and the app observers, so
+  apps can react to ephemeral events they never store.
 
 The store outcome — not just a valid signature — is what gates delivery. A
 validly-signed event whose outcome is `Duplicate` (or `Superseded` / `Tombstoned`

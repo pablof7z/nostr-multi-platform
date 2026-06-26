@@ -143,7 +143,7 @@ map keyed by that id.
 | NIP-46 bunker signer | ✅ M6 (DONE) | — |
 | Multi-account switch | ✅ M8 (DONE) | — |
 | Outbox auto-routing (NIP-65) | ✅ T105 (DONE) | — |
-| `KernelEventObserver` + `register_event_observer` | ✅ DONE | — |
+| `KernelEventObserver` + `register_live_event_tap` | ✅ DONE | — |
 | `register_snapshot_projection` | ✅ DONE | — |
 | Raw C/JNI lifecycle/action FFI + FlatBuffers update frames | ✅ today | UniFFI binding/lifecycle bridge = **M14, PLANNED** |
 | `nmp init` (thin Rust shell scaffold) | ✅ ships | Creates a `<name>-core` crate + `examples/shell.rs`; full multi-platform starter is M16. |

@@ -180,6 +180,26 @@ pub(super) fn ingest_pre_verified_events(
     Some(Vec::new())
 }
 
+/// Dispatch `ActorCommand::IngestPreVerifiedEventsForRelay` (test-support only).
+#[cfg(any(test, feature = "test-support"))]
+pub(super) fn ingest_pre_verified_events_for_relay(
+    relay_url: String,
+    events: Vec<crate::store::VerifiedEvent>,
+    ports: &mut InterestsPorts<'_>,
+) -> Option<Vec<OutboundMessage>> {
+    use crate::actor::tick::maybe_emit_after_dispatch;
+    for verified in events {
+        ports.kernel.ingest_pre_verified_event_from_relay(
+            &relay_url,
+            "diag-firehose-stress",
+            verified,
+        );
+    }
+    ports.kernel.sort_timeline_deferred();
+    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
+    Some(Vec::new())
+}
+
 /// Dispatch `ActorCommand::IngestPreVerifiedEventsForSubId` (test-support only).
 #[cfg(any(test, feature = "test-support"))]
 pub(super) fn ingest_pre_verified_events_for_sub_id(

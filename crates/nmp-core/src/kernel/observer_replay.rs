@@ -17,8 +17,9 @@
 //!    `notify_event_observer_by_id`. This deliberately targets ONLY the one
 //!    observer, not the global fan-out, so already-active observers do NOT
 //!    receive duplicate deliveries.
-//! 3. `activate_observer` — promote the muted observer to active so subsequent
-//!    global `notify_observers` calls reach it.
+//! 3. `activate_observer_scoped` — promote the muted observer to scoped live
+//!    delivery so subsequent `notify_observers` calls reach it only for events
+//!    matching the declared observed interest.
 //!
 //! ## Dedup invariant
 //!
@@ -98,6 +99,8 @@ impl Kernel {
         replay: ObserverReplayRequest,
         reason: &'static str,
     ) -> bool {
+        let live_shape = interest.shape.clone();
+
         // Step 1: normal interest registration (UNCHANGED — do not gate replay
         // on the `changed` outcome; a multi-owner slot returns changed:false
         // for a second subscriber but the new observer still needs its replay).
@@ -115,9 +118,10 @@ impl Kernel {
         let replayed = self.replay_read_cache_to_observer(&replay);
         let _ = replayed; // count is informational; callers don't need it
 
-        // Step 3: promote muted → active so future global fan-out includes it.
+        // Step 3: promote muted → scoped-live so future fan-out includes it
+        // only for events matching the observed interest.
         if let Some(slot) = &self.event_observers {
-            crate::actor::activate_observer(slot, replay.observer_id);
+            crate::actor::activate_observer_scoped(slot, replay.observer_id, live_shape);
         }
 
         outcomes[0].newly_installed
@@ -162,15 +166,24 @@ impl Kernel {
             content: String,
         }
 
+        let needs_relay_provenance = replay.shapes.iter().any(|shape| shape.relay_pin.is_some());
+
         let mut matched: Vec<CachedEntry> = Vec::new();
         for (id, stored) in &self.events {
+            let relay_provenance = if needs_relay_provenance {
+                super::provenance::relay_urls_for_event(&*self.store, id)
+            } else {
+                Vec::new()
+            };
             let matches = replay.shapes.iter().any(|shape| {
-                shape.matches_event_with_id(
+                crate::substrate::observed_shape_matches_fields(
+                    shape,
                     id,
                     &stored.author,
                     stored.kind,
                     stored.created_at,
                     &stored.tags,
+                    &relay_provenance,
                 )
             });
             if matches {
@@ -231,13 +244,20 @@ impl Kernel {
                 // BLOCK-1: re-check the shape predicate against the fetched event.
                 // The `event_ids` set only gates the point-lookup; the full shape
                 // (kinds, authors, since, until, tags) must also match.
+                let relay_provenance = if needs_relay_provenance {
+                    super::provenance::relay_urls_for_event(&*self.store, &raw.id)
+                } else {
+                    Vec::new()
+                };
                 let shape_match = replay.shapes.iter().any(|shape| {
-                    shape.matches_event_with_id(
+                    crate::substrate::observed_shape_matches_fields(
+                        shape,
                         &raw.id,
                         &raw.pubkey,
                         raw.kind,
                         raw.created_at,
                         &raw.tags,
+                        &relay_provenance,
                     )
                 });
                 if !shape_match {
@@ -261,7 +281,11 @@ impl Kernel {
         // Select newest `limit` events: sort ascending by (created_at, id),
         // then keep the tail (newest-first conceptually, but we deliver
         // oldest-first so we use the tail of the ascending sort).
-        matched.sort_unstable_by(|a, b| a.created_at.cmp(&b.created_at).then_with(|| a.id.cmp(&b.id)));
+        matched.sort_unstable_by(|a, b| {
+            a.created_at
+                .cmp(&b.created_at)
+                .then_with(|| a.id.cmp(&b.id))
+        });
         let start = matched.len().saturating_sub(replay.limit);
 
         // Deliver oldest-first (the window is already in ascending

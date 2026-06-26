@@ -159,7 +159,7 @@ pub(crate) use commands::notify_observers;
 // `notify_observer_by_id` is crate-internal (kernel replay path only).
 // `register_rust_observer_muted` is pub so nmp-ffi can call it.
 // `activate_observer` is also used by the kernel replay path (wasm/no-native too).
-pub use commands::activate_observer;
+pub use commands::{activate_observer, activate_observer_scoped};
 pub(crate) use commands::notify_observer_by_id;
 pub use commands::{register_rust_observer_muted, rust_observer_count};
 // `KernelEventObserverSlot` and `register_rust_observer` are `pub`
