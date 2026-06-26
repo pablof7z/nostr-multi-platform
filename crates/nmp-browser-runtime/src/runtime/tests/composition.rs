@@ -53,6 +53,52 @@ fn in_memory_start_does_not_alias_an_injected_store() {
     );
 }
 
+/// #1007 PR-8 — degraded-open diagnostic via the builder path: a reason handed
+/// to `with_store_open_failure` must be recorded on the kernel and readable as
+/// `store_open_failure` after `start()`. This is the builder-path analog of the
+/// native LMDB `v67_store_open_failure` channel: a browser session that fell
+/// back to in-memory reports the SAME Tier-3 diagnostic.
+#[test]
+fn with_store_open_failure_surfaces_through_the_kernel() {
+    let reason = "opfs_store_open_failure: quota_denied".to_string();
+    let handle = BrowserAppBuilder::new()
+        .in_memory()
+        .with_store_open_failure(Some(reason.clone()))
+        .consume_all_builtin_projections()
+        .without_initial_relays()
+        .decide_providers(BrowserRunConfig::default())
+        .start();
+
+    assert_eq!(
+        handle.store_open_failure(),
+        Some(reason),
+        "with_store_open_failure must reach the kernel's Tier-3 store_open_failure diagnostic"
+    );
+}
+
+/// Control: a builder that never declares a degraded reason (`None` / unset)
+/// must start clean — no false-positive `store_open_failure`.
+#[test]
+fn healthy_in_memory_start_reports_no_store_open_failure() {
+    let cleared = BrowserAppBuilder::new()
+        .in_memory()
+        .with_store_open_failure(None)
+        .consume_all_builtin_projections()
+        .without_initial_relays()
+        .decide_providers(BrowserRunConfig::default())
+        .start();
+    assert!(
+        cleared.store_open_failure().is_none(),
+        "an explicit None degraded reason must leave store_open_failure absent"
+    );
+
+    // And the default path (setter never called) is equally clean.
+    assert!(
+        started_handle().store_open_failure().is_none(),
+        "a default in-memory start must not report a store_open_failure"
+    );
+}
+
 #[test]
 fn browser_start_registers_every_canonical_default_action_namespace() {
     let handle = started_handle();

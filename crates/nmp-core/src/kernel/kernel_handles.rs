@@ -113,10 +113,32 @@ impl Kernel {
         Arc::clone(&self.mailbox_cache)
     }
 
+    /// Record a store-open failure reason (degraded-mode diagnostic) AFTER kernel
+    /// construction.
+    ///
+    /// Native LMDB threads the reason in at construction (`build_event_store`).
+    /// Browser composition opens the durable OPFS-SQLite store **asynchronously
+    /// before the kernel exists** (ADR-0054 §1), so when that open fails the
+    /// reason is recorded here post-hoc and surfaces through the **same** Tier-3
+    /// `store_open_failure` snapshot channel native uses (#1007 PR-8). Idempotent
+    /// last-writer-wins; D6 — no stderr, no panic.
+    pub(crate) fn set_store_open_failure(&mut self, reason: impl Into<String>) {
+        self.store_open_failure = Some(reason.into());
+    }
+
+    /// Read the recorded store-open failure reason, if any (degraded-mode
+    /// diagnostic). `None` for a healthy open (#1007 PR-8). Test/test-support
+    /// only: production reads the reason through the Tier-3 snapshot, never this
+    /// accessor (its sole consumer is `KernelReducer::store_open_failure`).
+    #[cfg(any(test, feature = "test-support"))]
+    pub(crate) fn store_open_failure(&self) -> Option<&str> {
+        self.store_open_failure.as_deref()
+    }
+
     /// Test-only: inject a `store_open_failure` string without requiring a real LMDB failure.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn set_store_open_failure_for_test(&mut self, reason: impl Into<String>) {
-        self.store_open_failure = Some(reason.into());
+        self.set_store_open_failure(reason);
     }
 
     /// Test-only: set `active_account` directly for diagnostic path tests.

@@ -259,6 +259,50 @@ results back to the test runner; a bespoke Worker test runner is the only
 alternative. This vehicle must be scoped and stood up *before* #6 begins — it is
 the sole mitigation for #6's HIGH risk.
 
+### 9. Degraded-open reason taxonomy + multi-tab decision (PR-8, shipped)
+
+§6's contract is realised in the browser-runtime composition root (#1007 PR-8).
+The async pre-`Start` hook (`NmpWasmRuntime::prepare_store`,
+`crates/nmp-browser-runtime/src/wasm/mod.rs`) classifies any
+`OpfsSqliteEventStore::open` failure into a **single, stable reason string** —
+the taxonomy lives in one place, `crates/nmp-browser-runtime/src/wasm/store_failure.rs`:
+
+| Reason | Cause |
+|---|---|
+| `opfs_store_open_failure: safari_or_sah_pool_unavailable` | Safari < 17.4 / no `createSyncAccessHandle` / sahpool VFS missing |
+| `opfs_store_open_failure: private_browsing` | OPFS blocked by a `SecurityError` in a private window |
+| `opfs_store_open_failure: quota_denied` | Origin storage quota exhausted at pool pre-allocation |
+| `opfs_store_open_failure: handle_loss` | A `SyncAccessHandle` was lost / invalidated (`InvalidStateError`) |
+| `opfs_store_open_failure: second_tab_pool_lock` | Another tab holds the exclusive sahpool for this `database_name` |
+| `opfs_store_open_failure: unknown` | Open failed outside the known taxonomy (never silently dropped) |
+
+The reason is parked on the runtime core and threaded at `Start` through
+`BrowserAppBuilder::with_store_open_failure` →
+`KernelReducer::set_store_open_failure` → `Kernel::store_open_failure`, i.e. the
+**same** Tier-3 snapshot field the native LMDB degraded-open path
+(`build_event_store`) writes. The wrapper collapses the engine's
+`SqliteWasmError` into `StoreError::Io(domexception_text)`, so classification is
+case-insensitive substring matching on the JS `DOMException` text (D6: engine
+text only, no private content).
+
+**Multi-tab decision (resolves the *Multi-tab correctness* risk):** a second tab
+on the same `database_name` is an **explicit ephemeral tier**, not an error. The
+sahpool is exclusive per origin+name; the second opener's `open` fails, is
+classified `second_tab_pool_lock`, and the tab predictably degrades to an
+in-memory `MemEventStore` with that reason surfaced through the snapshot (honest
+banner via §6). Full Web-Locks single-durable-tab *arbitration* (electing one
+lock-holder that runs the durable store while others knowingly run ephemeral) is
+a **documented follow-up** — the predictable degrade above is the shipped
+behaviour and is correct regardless of which arbitration we later add.
+
+**Mid-session quota (resolves the *Mid-session write-failure* risk):** a quota
+exhaustion on `insert` surfaces as `StoreError::Io` and is handled at the kernel
+ingest chokepoint (`kernel/ingest/persistence.rs`, the `Err(e) => self.log(…);
+None` arm) — the event is logged and dropped, **never** an FFI/Worker panic,
+exactly mirroring the native LMDB `MDB_MAP_FULL` analog. The browser pump
+(`map_pump_events`, `pump_and_push_snapshot` with `try_borrow_mut`) carries no
+panic path either.
+
 ## Consequences
 
 - **The honest web persistence claim (#1007 under #2045) becomes reachable**
@@ -328,6 +372,11 @@ implementation starts.
   `docs/wasm-surface.md` contract with an honest banner via §6. The exact
   `opfs-sahpool` behavior on a concurrent second opener (throw vs block vs
   degrade) is unverified from the repo and needs a browser test.
+  *Resolved in PR-8 (§9):* the explicit-ephemeral-tier option is chosen — the
+  second tab degrades predictably to in-memory with reason `second_tab_pool_lock`
+  on the Tier-3 snapshot. Web-Locks single-durable-tab arbitration remains a
+  documented follow-up. (A browser test confirming the exact sahpool throw/block
+  behaviour is still owed once the Worker conformance vehicle lands.)
 
 - **Performance is behavioral parity, not perf parity (LOW, addressed in §2/§8).**
   `EventIter: Send` (`events.rs:22-23`) forces every scan to materialize owned
@@ -362,6 +411,10 @@ implementation starts.
   mid-session must also map to the degraded snapshot surface and never panic
   across the FFI seam (D6), mirroring the native LMDB `MDB_MAP_FULL` analog. The
   native map-full path was not traced and must be verified during #6.
+  *Resolved in PR-8 (§9):* traced — the kernel ingest chokepoint
+  (`kernel/ingest/persistence.rs`) handles an `insert` `Err` with `self.log(…);
+  None` (log + drop, no panic); the browser pump has no panic path. Quota mid-session
+  is therefore non-fatal end to end.
 
 ## Alternatives considered
 

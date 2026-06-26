@@ -106,6 +106,16 @@ impl BrowserRuntimeHandle {
             inner.reducer.set_clock(clock);
         }
 
+        // #1007 PR-8 — thread the degraded OPFS open reason onto the kernel so it
+        // surfaces through the Tier-3 `store_open_failure` snapshot, the same
+        // channel native LMDB uses at init. Only set on the in-memory fallback
+        // path (a successful inject_store never carries a reason), and the kernel
+        // for that path is the default reducer kernel (never rebuilt), so this is
+        // never clobbered by a later store swap.
+        if let Some(reason) = inner.store_open_failure.take() {
+            inner.reducer.set_store_open_failure(reason);
+        }
+
         if !inner.outbound_public_tags.is_empty() {
             inner
                 .reducer
@@ -363,6 +373,16 @@ impl BrowserRuntimeHandle {
     #[must_use]
     pub fn event_store_handle(&self) -> std::sync::Arc<dyn nmp_store::EventStore> {
         self.runtime.reducer.event_store_handle()
+    }
+
+    /// Read the degraded store-open failure reason recorded on the kernel, if any
+    /// (#1007 PR-8). `None` for a healthy durable open / in-memory start. The
+    /// native, always-runnable analog of asserting the wasm OPFS degraded session
+    /// reports a Tier-3 `store_open_failure` diagnostic.
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn store_open_failure(&self) -> Option<String> {
+        self.runtime.reducer.store_open_failure()
     }
 
     /// Spawn relay drivers from `bootstrap` (wasm32: opens WebSockets; native:

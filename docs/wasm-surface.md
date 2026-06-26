@@ -285,11 +285,17 @@ routing-inspector renderer can work across both surfaces.
   `WasmOutboxResolver` are live. Unsigned writes still depend on the browser
   host's ADR-0050 sign round-trip and a follow-up publish of the signed event,
   plus user-visible per-relay verdicts.
-- **OPFS-SQLite browser store.** ADR-0054 Stage #5 provides the boot-time
-  event-store injection seam, but no OPFS-SQLite backend is shipped yet. Without
-  an injected store the kernel runs in memory and state resets on page reload.
-  IndexedDB is not the chosen backend: it is async-only and cannot satisfy the
-  synchronous `EventStore` contract.
+- **OPFS-SQLite browser store (shipping under #1007).** The durable backend and
+  the async-open-before-`Start` injection seam are live: the worker `await`s
+  `prepare_store(app_id, database_name)` before dispatching `Start` so the kernel
+  injects the per-app OPFS store instead of running in memory. On open failure the
+  session falls back to in-memory and reports a stable `store_open_failure` reason
+  on the Tier-3 snapshot (Safari < 17.4 / OPFS-SAH unavailable, private browsing,
+  quota denied, handle loss, second-tab pool-lock). Taxonomy + the multi-tab
+  "second tab is an explicit ephemeral tier" decision live in ADR-0054 §9
+  (`crates/nmp-browser-runtime/src/wasm/store_failure.rs`). IndexedDB is not the
+  chosen backend: it is async-only and cannot satisfy the synchronous
+  `EventStore` contract.
 - **NIP-46 (bunker) / NIP-55 signer on wasm.** `SetIdentity` only accepts
   `kind = "nip07"`. Other backends join as ADR-0050 sign capability fulfillers
   on the same `begin_sign` / `deliver_signer_response` round-trip.

@@ -48,6 +48,7 @@ pub(crate) mod dispatch;
 pub(crate) mod identity;
 pub(crate) mod protocol;
 pub(crate) mod ref_routing;
+pub(crate) mod store_failure;
 
 // ── wasm32 entry point ────────────────────────────────────────────────────────
 
@@ -249,11 +250,20 @@ mod wasm_impl {
         /// `take()` and `inject_store(..)`.
         ///
         /// `app_id` + `database_name` compose the per-app OPFS namespace (see
-        /// [`super::core::opfs_database_name`]). On open failure this logs
-        /// honestly and leaves the core to fall back to `.in_memory()` —
-        /// durability OFF, never a silent pretend-durable. Rich D6 degraded-mode
-        /// diagnostics + the Tier-3 `store_open_failure` snapshot are PR-8's
-        /// scope. TODO(#1007 PR-8).
+        /// [`super::core::opfs_database_name`]).
+        ///
+        /// # Degraded-mode diagnostics (#1007 PR-8)
+        ///
+        /// On a successful open the ready `Arc<dyn EventStore>` is parked for
+        /// `handle_start` to inject. On **open failure** the error is classified
+        /// into a **stable reason string** ([`super::store_failure`]) and parked
+        /// on the core; `handle_start` threads it through
+        /// `BrowserAppBuilder::with_store_open_failure` so the in-memory fallback
+        /// session reports the **same** Tier-3 `store_open_failure` diagnostic
+        /// the native LMDB degraded-open path emits. Never a silent
+        /// pretend-durable: durability is OFF and the host sees exactly why
+        /// (Safari < 17.4, private browsing, quota, handle loss, second-tab
+        /// pool-lock).
         ///
         /// Gated on `feature = "opfs-sqlite-backend"`: a wasm build without the
         /// durable backend simply has no such hook and starts in-memory.
@@ -272,13 +282,19 @@ mod wasm_impl {
                     }
                 }
                 Err(err) => {
-                    // TODO(#1007 PR-8): replace this bare log with D6 degraded-mode
-                    // diagnostics + a Tier-3 `store_open_failure` snapshot frame.
-                    // PR-7 keeps the fallback simple but honest: durability is OFF.
+                    // Classify into a stable reason and park it for handle_start to
+                    // thread onto the kernel's Tier-3 `store_open_failure`. The
+                    // fallback to in-memory is honest: durability is OFF and the
+                    // reason is surfaced through the snapshot, not just logged.
+                    let reason = super::store_failure::classify_open_failure(&err);
                     tracing::warn!(
-                        "OPFS-SQLite open failed for {db_name:?}: {err}; falling back \
-                         to in-memory store (durability OFF) — PR-8 adds diagnostics"
+                        "OPFS-SQLite open failed for {db_name:?}: {err} \
+                         (classified: {reason}); falling back to in-memory store \
+                         (durability OFF)"
                     );
+                    if let Ok(mut inner) = self.inner.try_borrow_mut() {
+                        inner.core.set_store_open_failure(reason.to_string());
+                    }
                 }
             }
         }

@@ -18,6 +18,14 @@ type NmpWasmRuntime = {
   handle_dispatch_bytes?(bytes: Uint8Array): unknown;
   recent_routing_decisions?(): string;
   set_snapshot_callback?(callback: SnapshotCallback | null): void;
+  /** Async pre-`Start` hook (#1007): open the durable OPFS-SQLite store and park
+   *  it on the runtime so the subsequent synchronous `Start` injects it instead
+   *  of an in-memory store. The host MUST `await` this BEFORE dispatching the
+   *  `Start` request. On open failure the runtime falls back to in-memory and
+   *  records a Tier-3 `store_open_failure` diagnostic (PR-8) — it never throws.
+   *  Absent on a wasm build compiled without the `opfs-sqlite-backend` feature
+   *  (the runtime then simply starts in-memory). */
+  prepare_store?(appId: string, databaseName: string): Promise<void>;
 };
 
 /** Free function exported by the wasm module: hex pubkey → JSON `{npub, npubShort}`
@@ -75,6 +83,26 @@ export class WasmBridge {
       return { npub: parsed.npub, npubShort: parsed.npubShort };
     } catch {
       return {};
+    }
+  }
+
+  /** Async pre-`Start` durable-store open (#1007). The worker MUST `await` this
+   *  before calling {@link handle} so a `Start` request injects the OPFS-SQLite
+   *  store rather than starting in-memory. For non-`start` requests this is a
+   *  no-op; for `start` it opens the per-app OPFS namespace
+   *  (`app_id` + `database_name`). The wasm `prepare_store` never rejects — on an
+   *  OPFS open failure it falls back to in-memory and records the degraded-mode
+   *  `store_open_failure` diagnostic (PR-8) — but we still guard defensively so a
+   *  thrown value can never abort the worker before `Start` is dispatched. */
+  async prepareForStart(request: WorkerRequest): Promise<void> {
+    if (request.type !== "start") return;
+    if (typeof this.runtime.prepare_store !== "function") return;
+    try {
+      await this.runtime.prepare_store(request.app_id, request.database_name);
+    } catch (error) {
+      // Honest degrade: the runtime starts in-memory and the failure surfaces
+      // through the snapshot's store_open_failure (PR-8). Don't block Start.
+      console.error("[NMP] prepare_store failed; starting in-memory", error);
     }
   }
 
