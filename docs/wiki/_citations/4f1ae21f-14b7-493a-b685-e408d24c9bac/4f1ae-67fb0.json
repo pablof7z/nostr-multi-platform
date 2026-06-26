@@ -1,0 +1,6 @@
+{
+  "id": "4f1ae-67fb0",
+  "ts": "2026-06-26T09:13:04Z",
+  "session": "4f1ae21f-14b7-493a-b685-e408d24c9bac",
+  "text": "User: concatenate all ADRs in a single markdown file with proper headings and relative file references -- put the generated file in ~/Downloads/ADRs.md [...] Assistant: Done! I've successfully concatenated all 67 ADRs into a single markdown file at **~/Downloads/ADRs.md** (10,952 lines)."
+}

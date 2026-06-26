@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "maybe it's time to start working on 1007?"
+  ],
+  [
+    "assistant",
+    "PR-1 is building in its worktree. Here's where things stand and how I'll drive it home:\n\n**Done:**\n- #1007 unblocked (`status:blocked` removed — the injection seam it waited on landed).\n- Corrected design + 9-PR breakdown posted to #1007 as the coordination surface, framed as the storage lane of #2045.\n\n**In flight:**\n- **PR-1** (spine: `nmp-sqlite-wasm` crate skeleton + `nmp-store` `opfs-sqlite-backend` feature, native `--all-features` stays green) — running in an isolated worktree, will open a PR.\n\n**Sequencing note:** PR-2/3/6/7 all add files to the new crate or reference its `OpfsSqliteStore` type, so I'm deliberately **not** fanning them out until PR-1 merges — parallel agents creating the same crate would just collide. Once PR-1 is green and merged, Wave 2 fans out in parallel on disjoint files: **PR-2** (vendored sqlite.org artifact + shim), **PR-6** (dedicated-Worker conformance vehicle — must precede the engine PRs since OPFS SAH is Worker-only and untestable from the main thread), and **PR-7** (the async-open → `BrowserAppBuilder::inject_store` wiring in `nmp-browser-runtime`, disjoint from the crate internals).\n\nI'll get a completion notification when PR-1 lands, check its CI, merge it, and kick off Wave 2 — no need to check in. I'll ping you when the first PR is up."
+  ]
+]

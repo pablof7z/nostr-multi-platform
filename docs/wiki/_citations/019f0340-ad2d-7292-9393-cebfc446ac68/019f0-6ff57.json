@@ -1,0 +1,6 @@
+{
+  "id": "019f0-6ff57",
+  "ts": "2026-06-26T09:43:09Z",
+  "session": "019f0340-ad2d-7292-9393-cebfc446ac68",
+  "text": "Core design: make `ActionContext` the action-runtime capability bag, pass it into `ActionModule::execute`, and expose a bounded Rust-only local store reader. That replaces the PR #2131 per-action `EventStoreSlot` capture pattern without adding a native-visible query API or relay-fetch path."
+}

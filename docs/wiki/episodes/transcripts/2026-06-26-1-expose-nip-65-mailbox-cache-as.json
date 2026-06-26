@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "work on #2085 and land its PR"
+  ],
+  [
+    "assistant",
+    "Resolved #2085 and merged PR #2141 to master, which exposes the NMP-owned NIP-65 mailbox cache as a public read handle via `NmpDefaultRuntimeHandles::mailbox_cache`; tests confirm instance identity across parser, routing cache, and encoder."
+  ]
+]

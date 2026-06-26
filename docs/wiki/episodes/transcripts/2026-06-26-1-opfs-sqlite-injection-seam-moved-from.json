@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "maybe it's time to start working on 1007?"
+  ],
+  [
+    "assistant",
+    "Explained that PR-1 is building in isolation and will unblock Wave 2 (PRs 2/3/6/7) once it merges; will notify when ready."
+  ]
+]

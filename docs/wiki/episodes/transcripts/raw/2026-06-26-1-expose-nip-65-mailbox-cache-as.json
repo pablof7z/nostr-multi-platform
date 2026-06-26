@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "work on #2085 and land its PR"
+  ],
+  [
+    "assistant",
+    "Done. Everything landed cleanly.\n\n## Result\n\n**Issue #2085 is resolved and closed** — PR #2141 squash-merged to `master` (commit `d38ef7bc9`), all 26 CI checks green. Local master is synced and the issue auto-closed via the `Closes #2085` reference.\n\n### What shipped\n\nExposed the NMP-owned NIP-65 (kind:10002) mailbox cache as a public read handle on `NmpDefaultRuntimeHandles::mailbox_cache`, returned by `register_defaults_with_handles` — the documented app-core read-handle surface. I implemented the issue's **requested seam #1** because it:\n- returns the *same* `Arc<dyn MailboxCache>` instance wired into the parser writer, routing factory, and NIP-19 encoder reader (instance identity is provable via `Arc::ptr_eq`),\n- adds no new FFI symbol and leaks no event history,\n- preserves the read/write/both role shape via `ParsedRelayList`/`snapshot`.\n\nThreaded the handle out cleanly: `nmp_substrate_defaults::install_on_app_host` → `register_substrate` → `register_defaults_with_handles`. One construction, four clones, no drift.\n\n### Tests proving the invariant\n- `substrate_coverage_gate`: the returned handle `Arc::ptr_eq`s the encoder reader and observes the kind:10002 parser's write (handle == parser-writer == routing-cache).\n- `nip65_mailbox_handle` (new): end-to-end through the real composition root — a write through the handle is read back by the public `nmp_app_encode_profile` FFI (handle == encoder-read cache).\n\nThis unblocks **pablof7z/hl#95** — Highlighter can now switch its relay-import preview to this handle and drop another `HighlighterCore` iOS dependency.\n\nOne note on the merge: `gh pr merge` reported a local error, but that was only its *post-merge* local fast-forward step tripping over the pre-existing unstaged `docs/wiki` changes in your working tree — the GitHub-side squash merge itself succeeded. I synced local master with a clean `--ff-only` that left those pre-existing working-tree changes untouched."
+  ]
+]

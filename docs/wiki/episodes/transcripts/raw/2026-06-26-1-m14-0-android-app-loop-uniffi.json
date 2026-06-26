@@ -1,0 +1,10 @@
+[
+  [
+    "user",
+    "work on issue 2129 in a git worktree use sonnet agent for coding"
+  ],
+  [
+    "assistant",
+    "Coding agent still implementing (Kotlin facade + JNI deletion underway, not yet committed). Waiting for completion before the codex review gate. I flagged a `nmp-signer-broker` delta to scrutinize for scope creep during review."
+  ]
+]

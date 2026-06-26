@@ -1,0 +1,6 @@
+{
+  "id": "ccf39-4d609",
+  "ts": "2026-06-26T11:23:04Z",
+  "session": "ccf39f42-1717-41d2-aa85-48f6d27e6298",
+  "text": "- `GroupChatProjection→GroupTimelineProjection`, `GroupChatSnapshot→GroupTimelineSnapshot`, `GroupChatMessage→GroupTimelineEvent`, field `messages→events`, key `nmp.nip29.group_timeline`, file-id `NGTL`, FFI symbols `nmp_app_chirp_{register,unregister}_group_timeline`. [...] - `Chirp/Bridge/GroupChatBridge.swift` — C-ABI `nmp_app_chirp_register_group_chat`→`...group_timeline`; `GroupChatStore.messages` element type→`[GroupTimelineEvent]` (property name kept); `apply(snapshot: GroupTimelineSnapshot?)` with `snapshot.events`; comments/key strings"
+}
