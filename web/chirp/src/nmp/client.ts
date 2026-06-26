@@ -66,6 +66,14 @@ export type NmpClient = {
    *  first and supply the resulting hex pubkey. The wasm runtime installs the
    *  signer synchronously; subsequent write actions use it. */
   setSigner(pubkeyHex: string, identityRelays?: IdentityRelayPermission[]): Promise<RuntimeSnapshot>;
+  /** Install a local-key signer from a raw nsec bech32 string. The secret key is
+   *  handed to the Rust LocalKey provider VERBATIM — the runtime decodes it,
+   *  derives the pubkey, and owns all signing. No crypto runs in TS: the nsec is
+   *  never decoded or signed-with on the main thread (Chirp thin-shell rule). */
+  setLocalKeySigner(
+    secretKeyBech32: string,
+    identityRelays?: IdentityRelayPermission[],
+  ): Promise<RuntimeSnapshot>;
   /** S6 — parks a NIP-07 sign op and emits sign_request for the main thread. */
   beginSign(accountPubkey: string, unsignedJson: string): void;
   /** #968 — request the kernel-owned routing diagnostics snapshot. */
@@ -140,6 +148,10 @@ abstract class BaseClient implements NmpClient {
   abstract dispatchCommand(command: RuntimeCommand): Promise<RuntimeSnapshot>;
   abstract dispatchChirp(action: ChirpAction): Promise<RuntimeSnapshot>;
   abstract setSigner(pubkeyHex: string, identityRelays?: IdentityRelayPermission[]): Promise<RuntimeSnapshot>;
+  abstract setLocalKeySigner(
+    secretKeyBech32: string,
+    identityRelays?: IdentityRelayPermission[],
+  ): Promise<RuntimeSnapshot>;
   abstract beginSign(accountPubkey: string, unsignedJson: string): void;
   abstract refreshRoutingDecisions(): Promise<RuntimeSnapshot>;
 }
@@ -244,6 +256,24 @@ class WorkerNmpClient extends BaseClient {
     });
   }
 
+  async setLocalKeySigner(
+    secretKeyBech32: string,
+    identityRelays?: IdentityRelayPermission[],
+  ): Promise<RuntimeSnapshot> {
+    await this.helloReady;
+    const correlation_id = makeCorrelationId("web-signer", this.nextCorrelationId++);
+    return this.request({
+      type: "set_identity",
+      kind: "local_key",
+      // Empty pubkey — the runtime derives it from the secret key. Present so
+      // the request deserializes against the runtime's required field.
+      pubkey_hex: "",
+      secret_key_bech32: secretKeyBech32,
+      correlation_id,
+      identity_relays: identityRelays,
+    });
+  }
+
   beginSign(accountPubkey: string, unsignedJson: string): void {
     this.worker.postMessage({
       type: "begin_sign",
@@ -283,6 +313,7 @@ class WorkerNmpClient extends BaseClient {
         (request) => this.worker.postMessage(request),
         event.correlation_id,
         event.unsigned_json,
+        event.account_pubkey,
       );
       return;
     }
@@ -374,6 +405,21 @@ class InProcessNmpClient extends BaseClient {
       type: "set_identity",
       kind: "nip07",
       pubkey_hex: pubkeyHex,
+      correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),
+      identity_relays: identityRelays,
+    });
+  }
+
+  async setLocalKeySigner(
+    secretKeyBech32: string,
+    identityRelays?: IdentityRelayPermission[],
+  ): Promise<RuntimeSnapshot> {
+    return this.send({
+      type: "set_identity",
+      kind: "local_key",
+      // Empty pubkey — the runtime derives it from the secret key.
+      pubkey_hex: "",
+      secret_key_bech32: secretKeyBech32,
       correlation_id: makeCorrelationId("web-signer", this.nextCorrelationId++),
       identity_relays: identityRelays,
     });

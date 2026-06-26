@@ -53,15 +53,34 @@ export type WorkerRequest =
       payload: unknown;
     }
   | { type: "stop"; correlation_id: string }
-  /** Set the active identity. The browser host calls window.nostr.getPublicKey()
-   *  first, then sends this request so the wasm runtime can seed the kernel's
-   *  active account. kind: "nip07" (the only kind wired). ADR-0064 §5: this does
-   *  NOT install a persistent signer — signing is the begin_sign capability
-   *  round-trip. */
+  /** Set the active identity. Signer kinds:
+   *
+   *  kind: "nip07" — the browser host called window.nostr.getPublicKey() first
+   *    and provides pubkey_hex. Signing is a begin_sign capability round-trip
+   *    routed back to the main thread (ADR-0064 §5). Does NOT install a
+   *    persistent signer. This is the path the current nmp-browser-runtime
+   *    wires end-to-end.
+   *
+   *  kind: "local_key" — the host provides secret_key_bech32 (the raw nsec
+   *    bech32 string) and an empty pubkey_hex; the runtime is responsible for
+   *    decoding the nsec, deriving the pubkey, and installing a LocalKey
+   *    provider. The TS layer MUST NOT decode or sign with the nsec — handing
+   *    it to the runtime is the only permitted use. The runtime currently
+   *    returns a `unsupported_signer_kind` capability failure for this kind;
+   *    the field + contract are forward-compatible so the UI works unchanged
+   *    once the runtime wires the local-key install door.
+   */
   | {
       type: "set_identity";
       kind: string;
+      /** Hex pubkey. Carries the NIP-07 pubkey for kind: "nip07"; sent as an
+       *  empty string for kind: "local_key" (the runtime derives it from the
+       *  secret key). Always present so the request deserializes against the
+       *  runtime's required field. */
       pubkey_hex: string;
+      /** For kind: "local_key" — raw nsec bech32 string handed to the runtime's
+       *  LocalKey provider. Never decoded or signed-with in TS. */
+      secret_key_bech32?: string;
       correlation_id: string;
       /** Raw relay permissions reported by the identity backend, e.g. NIP-07
        *  getRelays(). The worker owns canonicalization and role mapping. */
