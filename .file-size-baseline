@@ -64,12 +64,8 @@ crates/nmp-testing/bin/doctrine-lint/rules/d8.rs	523
 crates/nmp-testing/tests/e2e_full_pipeline.rs	857
 crates/nmp-threading/src/grouper.rs	595
 crates/nmp-threading/tests/grouper.rs	657
-docs/architecture-audit/pd033c-plan.md	689
-docs/architecture-audit/v6-codegen-plan.md	724
-docs/decisions/0038-typed-op-feed-projection.md	524
-docs/design/relay-roles.md	614
+docs/design/relay-roles.md	613
 docs/research/applesauce-app-relay-model.md	535
-docs/testing/nmpui-website-screenshot-checklist.md	574
 apps/chirp/ios/Chirp/Bridge/TypedProjectionGlue.swift	877
 apps/chirp/ios/ChirpTests/OpFeedDecoderTests.swift	506
 web/registry/public/registry.json	1221
