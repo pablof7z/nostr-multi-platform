@@ -72,20 +72,20 @@ impl Nip46Runtime {
     /// React to the bunker relay (re)connecting.
     ///
     /// Returns the REQ subscription replay effects so the connected hook can
-    /// enqueue them via `CommandSender::enqueue_outbound`.  Arms the
-    /// per-step deadline after replaying so the 60 s budget starts from the
-    /// moment the subscription is live on the (possibly fresh) socket, not
-    /// from `start_bunker` / `start_nostrconnect`.
+    /// register them as the worker's reconnect preamble via
+    /// `CommandSender::set_reconnect_preamble`.
+    ///
+    /// The 60 s step deadline is NO LONGER armed here (Guardrail 2).  It is
+    /// armed by `on_relay_text` when the relay sends `EOSE` for our
+    /// subscription, i.e. the point at which the relay is actually ready to
+    /// deliver matching EVENTs.  The handshake-start deadline set by
+    /// `start_bunker` / `start_nostrconnect` remains as a fallback floor so a
+    /// relay that never sends EOSE still bounds a stuck handshake.
     pub fn on_relay_connected(&mut self, relay_url: &str, is_reconnect: bool, now_secs: u64) -> Vec<Effect> {
         if relay_url != self.relay_url {
             return Vec::new();
         }
-        let effects = self.state.on_relay_connected(is_reconnect, now_secs);
-        // Arm the deadline AFTER the subscription is replayed so the 60 s
-        // step budget counts from the point the relay can actually deliver
-        // responses — matching the prior blocking implementation.
-        self.state.arm_deadline(now_secs);
-        effects
+        self.state.on_relay_connected(is_reconnect, now_secs)
     }
 
     /// The relay URL this session is bound to.
