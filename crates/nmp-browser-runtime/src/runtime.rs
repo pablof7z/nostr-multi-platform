@@ -164,6 +164,21 @@ pub(crate) struct BrowserRuntime {
     /// `pump()`'s `PumpOutcome.events` so a bad bootstrap relay is observable
     /// (D6 — never a silent drop).
     pub(crate) pending_startup_events: Vec<BrowserRuntimeEvent>,
+
+    // ── #2068 — NIP-46 provider registration channel (native-only) ───────────
+    //
+    // The BunkerBroker event-handler (OS thread) enqueues ProviderRegistrations
+    // here when `SignerReady` fires. `pump()` drains this channel (D4: the
+    // CapabilityProviderRegistry is only mutated inside pump()).
+    // Not present on wasm32: nmp-signer-broker is native-only.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) provider_reg_rx: crate::signer::nip46::ProviderRegistrationRx,
+
+    // The signer-state slot is owned by both BrowserRuntime (for pump() updates)
+    // and BrowserRuntimeHandle (for host-initiated writes). The Arc is cloned at
+    // handle construction so both sides share the same slot.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) signer_state_slot: crate::runtime::signer_state::BrowserSignerStateSlot,
 }
 
 impl BrowserRuntime {
@@ -219,6 +234,34 @@ impl BrowserRuntime {
                     completion_events.extend(e);
                 }
                 Err(_) => break,
+            }
+        }
+
+        // ── 1.7. NIP-46 provider registrations (native-only) ─────────────────
+        // Drain SignerReady events forwarded by the BunkerBroker event handler
+        // through the bounded ProviderRegistrationRx channel. Applied here
+        // (D4: inside pump() — the only &mut signer_registry mutation point).
+        // Each registration updates the signer-state slot so the next
+        // make_update_frame tick reflects the new signer availability.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let mut reg_applied = 0usize;
+            loop {
+                if reg_applied >= pump::BROWSER_COMMAND_DRAIN_BUDGET {
+                    break;
+                }
+                match self.provider_reg_rx.try_recv() {
+                    Ok(reg) => {
+                        let backend = reg.signer.backend().clone();
+                        self.signer_registry.insert(reg.signer);
+                        crate::runtime::signer_state::update_signer_state(
+                            &self.signer_state_slot,
+                            Some(crate::runtime::signer_state::ready_model(&backend)),
+                        );
+                        reg_applied += 1;
+                    }
+                    Err(_) => break,
+                }
             }
         }
 

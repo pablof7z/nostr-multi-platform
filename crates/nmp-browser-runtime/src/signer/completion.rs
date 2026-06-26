@@ -155,7 +155,26 @@ fn dispatch_by_backend(
             true
         }
         SignerBackend::Nip07 => dispatch_nip07(signer, correlation_id, unsigned, tx, wake),
-        // NIP-46 (#2068 follow-up), NIP-55, Custom: not wired in this track.
+        SignerBackend::Nip46 => {
+            // Native: BunkerBroker drives the NIP-46 RPC round-trip (#2068).
+            // A per-sign thread waits on the Pending rx; completion arrives on
+            // `tx` when `CompletionSink` → `ingest_rpc_response` resolves it.
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                crate::signer::nip46::dispatch_nip46(signer, correlation_id, unsigned, tx, wake)
+            }
+            // wasm32: NIP-46 handshake and RPC are HOST-DRIVEN. nmp-signer-broker
+            // depends on OS threads / sync I/O and is excluded from the wasm32
+            // dependency graph (#2068). The runtime emits `BrowserRuntimeEvent::SignRequest`
+            // so the JS host can broker the sign externally via
+            // `BrowserRuntimeHandle::deliver_signer_response`.
+            #[cfg(target_arch = "wasm32")]
+            {
+                let _ = (signer, correlation_id, unsigned, tx, wake);
+                false
+            }
+        }
+        // NIP-55, Custom: not wired in this track.
         _ => false,
     }
 }

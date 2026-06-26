@@ -53,6 +53,21 @@ pub struct BrowserRuntimeHandle {
 
     // ── #2074 — Rust-owned signer-state slot ─────────────────────────────────
     pub(super) signer_state_slot: BrowserSignerStateSlot,
+
+    // ── #2068 — NIP-46 bunker-broker wiring (native-only) ────────────────────
+    //
+    // The broker drives the nostrconnect handshake on its own OS thread.
+    // `connect_nip46` / `cancel_nip46` call through to it. nmp-signer-broker
+    // is excluded from the wasm32 dependency graph (native-only dep in Cargo.toml).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(super) nip46_broker: std::sync::Arc<nmp_signer_broker::BunkerBroker>,
+    /// Kept so `enqueue_nip46_provider_for_test` can send registrations
+    /// directly without going through the broker (test seam, D4 preserved).
+    /// Only read by `enqueue_nip46_provider_for_test`; suppress the dead-code
+    /// lint for non-test builds where that method is cfg-gated out.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(dead_code)]
+    pub(super) nip46_provider_reg_tx: crate::signer::nip46::ProviderRegistrationTx,
 }
 
 impl BrowserRuntimeHandle {
@@ -149,6 +164,27 @@ impl BrowserRuntimeHandle {
             update_signer_state(&signer_state_slot, Some(ready_model(&backend)));
         }
 
+        // ── #2068 — NIP-46 provider registration channel + broker (native-only) ─
+        // The channel is bounded (capacity 8); the SyncSender is Send+Clone so
+        // the broker's BrokerEventHandler OS thread can write to it, and pump()
+        // drains the Receiver (D4: CapabilityProviderRegistry mutated only inside
+        // pump()). On wasm32 these bindings are omitted; the compiler tree-shakes
+        // nmp-signer-broker out of the dependency graph entirely.
+        #[cfg(not(target_arch = "wasm32"))]
+        let (provider_reg_tx, provider_reg_rx) =
+            crate::signer::nip46::provider_registration_channel();
+
+        #[cfg(not(target_arch = "wasm32"))]
+        let (nip46_broker, nip46_completion_sink) =
+            crate::signer::nip46::make_nip46_broker(provider_reg_tx.clone());
+
+        // Install the CompletionSink so BrokerTransport::dispatch_inbound routes
+        // decrypted NIP-46 RPC responses through ingest_rpc_response on the
+        // Nip46Signer, resolving the SignerOp::Pending(rx) that dispatch_nip46
+        // created. Must be set BEFORE start_handshake is called by the host.
+        #[cfg(not(target_arch = "wasm32"))]
+        nip46_broker.set_completion_sink(nip46_completion_sink);
+
         // ── Extract the receiver and build the runtime ────────────────────────
 
         let inbox_rx = inner
@@ -172,6 +208,10 @@ impl BrowserRuntimeHandle {
             run_config: inner.run_config,
             relay_pool,
             pending_startup_events: Vec::new(),
+            #[cfg(not(target_arch = "wasm32"))]
+            provider_reg_rx,
+            #[cfg(not(target_arch = "wasm32"))]
+            signer_state_slot: std::sync::Arc::clone(&signer_state_slot),
         };
 
         let mut handle = Self {
@@ -180,6 +220,10 @@ impl BrowserRuntimeHandle {
             configured_relays: relay_slot,
             snapshot_cache: BrowserSnapshotCache::new(),
             signer_state_slot,
+            #[cfg(not(target_arch = "wasm32"))]
+            nip46_broker,
+            #[cfg(not(target_arch = "wasm32"))]
+            nip46_provider_reg_tx: provider_reg_tx,
         };
 
         // ── Spawn relay drivers from bootstrap list (wasm32 only) ────────────
@@ -351,6 +395,51 @@ impl BrowserRuntimeHandle {
     #[cfg(any(test, feature = "test-support"))]
     pub fn set_active_account_for_test(&mut self, pubkey: impl Into<String>) {
         self.runtime.reducer.set_active_account_for_test(pubkey);
+    }
+
+    // ── #2068 — NIP-46 bunker-broker API (native-only) ───────────────────────
+
+    /// Begin a NIP-46 `nostrconnect://` handshake (native builds only).
+    ///
+    /// `uri` must be a valid `bunker://` or `nostrconnect://` URI. The broker
+    /// drives the handshake on its own OS thread; completion is signalled by
+    /// a `BrokerEvent::SignerReady` which is forwarded to the
+    /// `ProviderRegistrationRx` channel. Call `pump()` after the handshake
+    /// completes to apply the provider registration (D4 single-writer).
+    ///
+    /// On wasm32, NIP-46 is host-brokered: nmp-signer-broker is native-only
+    /// and excluded from the wasm32 dependency graph entirely (#2068).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn connect_nip46(&self, uri: String) {
+        self.nip46_broker.start_handshake(uri);
+    }
+
+    /// Cancel the active NIP-46 session (native builds only). Idempotent.
+    ///
+    /// Signal-only / detached: returns immediately even while the broker's
+    /// worker thread winds down. See `BunkerBroker::cancel` for the full
+    /// detached-reaper lifecycle.
+    ///
+    /// On wasm32, NIP-46 is host-brokered — this method does not exist.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn cancel_nip46(&self) {
+        self.nip46_broker.cancel();
+    }
+
+    /// Test seam: enqueue a signer registration as if `BunkerBroker` had
+    /// emitted `SignerReady`. Call `pump()` afterwards to apply it (D4).
+    ///
+    /// The `try_send` is non-blocking and bounded (capacity
+    /// `nip46::PROVIDER_REG_CHANNEL_CAP`); it drops silently if the channel
+    /// is full (exactly as the real broker event handler does).
+    #[cfg(all(not(target_arch = "wasm32"), any(test, feature = "test-support")))]
+    pub fn enqueue_nip46_provider_for_test(
+        &self,
+        signer: std::sync::Arc<dyn nmp_signers::Signer>,
+    ) {
+        let _ = self
+            .nip46_provider_reg_tx
+            .try_send(crate::signer::nip46::ProviderRegistration { signer });
     }
 
     /// Spawn relay drivers from `bootstrap` (wasm32: opens WebSockets; native:

@@ -4453,6 +4453,7 @@ dependencies = [
  "nmp-core",
  "nmp-defaults",
  "nmp-network",
+ "nmp-signer-broker",
  "nmp-signer-iface",
  "nmp-signers",
  "nmp-store",

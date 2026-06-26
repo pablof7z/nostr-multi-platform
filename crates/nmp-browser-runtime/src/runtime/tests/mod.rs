@@ -22,6 +22,7 @@ use crate::relay::WakeCell;
 use crate::signer::{CapabilityProviderRegistry, SignerCompletion, SignerCompletionTx};
 
 mod contract;
+mod nip46;
 mod pump;
 mod signer;
 
