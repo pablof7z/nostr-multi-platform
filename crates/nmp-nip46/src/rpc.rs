@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 // ─── RpcBuildError ───────────────────────────────────────────────────────────
 
-/// Errors returned by [`build_event_frame`].
+/// Errors returned by [`build_event_frame`] / [`build_event_frame_at`].
 #[derive(Debug)]
 pub enum RpcBuildError {
     /// NIP-44 encryption failed.
@@ -41,27 +41,22 @@ impl std::fmt::Display for RpcBuildError {
 
 impl std::error::Error for RpcBuildError {}
 
-// ─── build_event_frame ───────────────────────────────────────────────────────
+// ─── build_event_frame_at ────────────────────────────────────────────────────
 
-/// Encrypt `plaintext` with NIP-44 V2 (sender = `local_keys`, recipient =
-/// `remote`), wrap the ciphertext in a kind:24133 event tagged `["p",
-/// remote_hex]`, sign it with `local_keys`, and serialise to the NIP-01
-/// `["EVENT", <event>]` wire frame.
+/// Encrypt `plaintext` with NIP-44 V2, wrap in a kind:24133 event tagged
+/// `["p", remote_hex]`, sign with `local_keys`, and serialise to the NIP-01
+/// `["EVENT", <event>]` wire frame.  Uses the supplied `created_at` Unix
+/// timestamp so callers in wasm runtimes (no `SystemTime`) can pass a
+/// caller-provided clock value.
 ///
-/// This is the single authoritative frame builder for all NIP-46 outbound
-/// messages. Callers form the JSON-RPC envelope (`{id, method, params}`) and
-/// pass it here as `plaintext`.
-///
-/// ## Wire shape (verified identical to the prior two implementations)
-///
-/// - `kind = 24133`
-/// - single `["p", <remote_pubkey_hex>]` tag
-/// - `created_at = floor(now_unix_secs)` (via `custom_created_at`)
-/// - NIP-44 V2 encryption
-pub fn build_event_frame(
+/// This is the single authoritative frame builder used by the reducer.
+/// The reducer always passes `now` from the caller so no `SystemTime` call
+/// appears on any reducer code path.
+pub fn build_event_frame_at(
     local_keys: &Keys,
     remote: PublicKey,
     plaintext: &str,
+    created_at: u64,
 ) -> Result<String, RpcBuildError> {
     let ciphertext = nip44::encrypt(
         local_keys.secret_key(),
@@ -74,7 +69,7 @@ pub fn build_event_frame(
     let event = EventBuilder::new(Kind::from_u16(24133), ciphertext)
         .tags(vec![Tag::parse(["p", &remote.to_hex()])
             .map_err(|e| RpcBuildError::TagParse(e.to_string()))?])
-        .custom_created_at(Timestamp::from(now_secs()))
+        .custom_created_at(Timestamp::from(created_at))
         .sign_with_keys(local_keys)
         .map_err(|e| RpcBuildError::Sign(e.to_string()))?;
 
@@ -82,6 +77,58 @@ pub fn build_event_frame(
         serde_json::to_string(&event).map_err(|e| RpcBuildError::Serialize(e.to_string()))?;
 
     Ok(format!(r#"["EVENT",{serialized}]"#))
+}
+
+// ─── build_event_frame ───────────────────────────────────────────────────────
+
+/// Encrypt `plaintext` with NIP-44 V2 (sender = `local_keys`, recipient =
+/// `remote`), wrap the ciphertext in a kind:24133 event tagged `["p",
+/// remote_hex]`, sign it with `local_keys`, and serialise to the NIP-01
+/// `["EVENT", <event>]` wire frame.
+///
+/// This is the single authoritative frame builder for all NIP-46 outbound
+/// messages. Callers form the JSON-RPC envelope (`{id, method, params}`) and
+/// pass it here as `plaintext`.
+///
+/// For callers that have an explicit `now` timestamp (e.g. the reducer),
+/// use [`build_event_frame_at`] instead to avoid a `SystemTime` call.
+///
+/// ## Wire shape (verified identical to the prior two implementations)
+///
+/// - `kind = 24133`
+/// - single `["p", <remote_pubkey_hex>]` tag
+/// - `created_at = floor(now_unix_secs)` (via `custom_created_at`)
+/// - NIP-44 V2 encryption
+pub fn build_event_frame(
+    local_keys: &Keys,
+    remote: PublicKey,
+    plaintext: &str,
+) -> Result<String, RpcBuildError> {
+    build_event_frame_at(local_keys, remote, plaintext, now_secs())
+}
+
+// ─── build_req_frame ─────────────────────────────────────────────────────────
+
+/// Build the `["REQ", sub_id, filter]` frame that subscribes to inbound
+/// kind:24133 responses addressed to `local_pubkey_hex`.
+///
+/// `now` is the caller's current Unix-second timestamp; `since` is set to
+/// `now - 30` so stale events replayed by the relay after a reconnect are
+/// skipped. Pass the real wall-clock value from the broker; the reducer
+/// passes it through from `start_bunker` / `start_nostrconnect`.
+#[must_use]
+pub fn build_req_frame(sub_id: &str, local_pubkey_hex: &str, now: u64) -> String {
+    let since = now.saturating_sub(30);
+    json!([
+        "REQ",
+        sub_id,
+        {
+            "kinds": [24133],
+            "#p": [local_pubkey_hex],
+            "since": since,
+        }
+    ])
+    .to_string()
 }
 
 // ─── build_connect_params ────────────────────────────────────────────────────
@@ -103,6 +150,11 @@ pub(crate) fn build_connect_params(
 
 /// Generate a request id (11-byte lowercase hex, mirroring the
 /// `nmp-signers::mapper::generate_request_id` shape).
+///
+/// Available for callers that need steady-state request IDs outside the
+/// reducer (which uses its own `req_counter` field instead). NOT on any
+/// reducer code path — `SystemTime` is safe here (native-only).
+#[allow(dead_code)]
 pub(crate) fn new_request_id() -> String {
     use std::sync::atomic::{AtomicU64, Ordering as AOrd};
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -146,7 +198,7 @@ pub fn decode_inbound_response(
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-fn now_secs() -> u64 {
+pub(crate) fn now_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())

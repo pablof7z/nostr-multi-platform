@@ -20,7 +20,7 @@ use nmp_signers::Nip46Signer;
 use nostr::{Keys, PublicKey};
 use serde_json::Value;
 
-use crate::handshake::decode_inbound_response;
+use nmp_nip46::decode_inbound_response;
 use crate::relay_client::RelayClient;
 
 /// Transport that publishes RPCs over the broker's persistent relay client

@@ -11,13 +11,14 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use crossbeam_channel::Receiver as CbReceiver;
+use nmp_nip46::start_bunker;
 use nmp_signers::{parse_bunker_uri, Nip46Signer, Nip46SignerHandle};
 use nostr::{Keys, PublicKey};
 use serde_json::Value;
 
+use super::drive::{drive, now_secs, DriveOutcome};
 use super::{BunkerBroker, BUNKER_SUB_ID};
 use crate::events::BrokerEvent;
-use crate::handshake::{build_req_frame, run_handshake, HandshakeOutcome};
 use crate::relay_client::{RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
 
@@ -26,9 +27,10 @@ impl BunkerBroker {
     /// 1. Parse the URI (already shape-validated by the host, but we
     ///    re-parse here for the typed `BunkerUri`).
     /// 2. Connect to the first relay (cycle through if it fails).
-    /// 3. Subscribe to inbound kind:24133 events.
-    /// 4. Drive the connect → get_public_key state machine.
-    /// 5. Construct `Nip46Signer`, emit `SignerReady`, and emit the terminal
+    /// 3. Start the reducer (`start_bunker`) and drive it to completion
+    ///    (`drive`), which handles the subscribe, connect RPC, and
+    ///    get_public_key exchange.
+    /// 4. Construct `Nip46Signer`, emit `SignerReady`, and emit the terminal
     ///    `"ready"` progress snapshot.
     pub(super) fn run_handshake_thread(
         self: Arc<Self>,
@@ -71,7 +73,7 @@ impl BunkerBroker {
         let (event_cb, inbound_rx) = self.make_relay_intake();
 
         // Dial the first relay. Cycle through on failure.
-        let mut relay_result: Option<Arc<dyn RelayClient>> = None;
+        let mut relay_result: Option<(Arc<dyn RelayClient>, String)> = None;
         let mut last_err: Option<String> = None;
         let conn_state_cb = self.make_connection_state_callback();
         for url in &bunker_uri.relays {
@@ -88,7 +90,7 @@ impl BunkerBroker {
                 Some(Arc::clone(&conn_state_cb)),
             ) {
                 Ok(client) => {
-                    relay_result = Some(Arc::new(client) as Arc<dyn RelayClient>);
+                    relay_result = Some((Arc::new(client) as Arc<dyn RelayClient>, url.clone()));
                     break;
                 }
                 Err(e) => {
@@ -96,7 +98,7 @@ impl BunkerBroker {
                 }
             }
         }
-        let Some(relay) = relay_result else {
+        let Some((relay, relay_url)) = relay_result else {
             self.emit_progress(
                 "failed",
                 Some(&format!(
@@ -107,21 +109,11 @@ impl BunkerBroker {
             return;
         };
 
-        // Subscribe (REQ). Use the dedicated `subscribe()` method so the
-        // relay client remembers the frame and replays it after every
-        // reconnect — V-14. A plain `send()` would be lost the moment the
-        // socket flaps, leaving the broker with a connected transport that
-        // delivers no events.
-        let req_frame = build_req_frame(BUNKER_SUB_ID, &local_keys.public_key().to_hex());
-        if let Err(e) = relay.subscribe(req_frame) {
-            self.emit_progress("failed", Some(&format!("subscribe: {e}")));
-            return;
-        }
-
-        // Build the transport before the signer — the signer takes `Arc<dyn
-        // Nip46Transport>` and the transport holds a `Weak<Nip46Signer>`
+        // Build the transport before the signer — the signer takes
+        // `Arc<dyn Nip46Transport>` and the transport holds a `Weak<Nip46Signer>`
         // which we'll bind once we construct the signer.
-        let transport = BrokerTransport::new(Arc::clone(&relay), local_keys.clone(), remote_pubkey);
+        let transport =
+            BrokerTransport::new(Arc::clone(&relay), local_keys.clone(), remote_pubkey);
 
         // Install the live session entry (replacing the placeholder). No-ops
         // if this worker has been superseded (its generation no longer matches
@@ -136,28 +128,49 @@ impl BunkerBroker {
             return;
         }
 
-        // Run the handshake.
+        // Start the reducer. `start_bunker` returns the initial state +
+        // effects (Subscribe + Progress + SendFrame(connect)) without touching
+        // any I/O or SystemTime — `drive` applies the effects on this thread.
+        let now = now_secs();
+        let (mut state, start_effects) = start_bunker(
+            BUNKER_SUB_ID,
+            local_keys.clone(),
+            remote_pubkey,
+            relay_url,
+            bunker_uri.secret.as_deref().map(String::as_str),
+            bunker_uri.permissions.as_deref(),
+            now,
+        );
+
         let mut progress_emitter = |stage: &str, code: &str, msg: Option<&str>| {
             self.emit_progress_coded(stage, code, msg);
         };
-        let outcome = match run_handshake(
+
+        let outcome = match drive(
+            &mut state,
             relay.as_ref(),
+            start_effects,
             &inbound_rx,
             &cancel_rx,
-            &local_keys,
-            remote_pubkey,
-            bunker_uri.secret.as_deref().map(String::as_str),
-            bunker_uri.permissions.as_deref(),
             &mut progress_emitter,
         ) {
-            Ok(o) => o,
-            Err(e) => {
+            DriveOutcome::Ready(sr) => sr,
+            DriveOutcome::SubscribeFailed(e) => {
+                // Byte-identical to the prior bunker worker's subscribe error.
+                self.emit_progress("failed", Some(&format!("subscribe: {e}")));
+                return;
+            }
+            DriveOutcome::Failed(e) => {
                 self.emit_progress("failed", Some(&format!("{e}")));
+                return;
+            }
+            DriveOutcome::Cancelled => {
+                self.emit_progress("failed", Some("cancelled"));
                 return;
             }
         };
 
-        self.complete_handshake(handle, transport, inbound_rx, outcome, generation);
+        self.complete_handshake(handle, transport, inbound_rx, outcome.user_pubkey_hex, generation);
     }
 
     /// Replace the placeholder session entry with the real relay/transport.
@@ -193,10 +206,10 @@ impl BunkerBroker {
         handle: Nip46SignerHandle,
         transport: Arc<BrokerTransport>,
         inbound_rx: CbReceiver<Value>,
-        outcome: HandshakeOutcome,
+        user_pubkey_hex: String,
         generation: u64,
     ) {
-        let user_pubkey = match PublicKey::from_hex(&outcome.user_pubkey_hex) {
+        let user_pubkey = match PublicKey::from_hex(&user_pubkey_hex) {
             Ok(pk) => pk,
             Err(e) => {
                 self.emit_progress("failed", Some(&format!("user pubkey decode: {e}")));

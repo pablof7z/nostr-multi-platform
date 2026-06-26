@@ -7,7 +7,6 @@ use nostr::{Keys, PublicKey, SecretKey};
 use serde_json::Value;
 
 use super::{ActiveSession, BunkerBroker, NoopRelay, BUNKER_SUB_ID};
-use crate::handshake::build_req_frame;
 use crate::relay_client::{RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
 
@@ -155,7 +154,12 @@ impl BunkerBroker {
 
         // V-14: use `subscribe()` so the REQ is replayed after any
         // transparent reconnect; `send()` would be lost on the first flap.
-        let req_frame = build_req_frame(BUNKER_SUB_ID, &local_keys.public_key().to_hex());
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let req_frame =
+            nmp_nip46::build_req_frame(BUNKER_SUB_ID, &local_keys.public_key().to_hex(), now);
         if let Err(e) = relay.subscribe(req_frame) {
             self.emit_progress("failed", Some(&format!("subscribe: {e}")));
             return None;

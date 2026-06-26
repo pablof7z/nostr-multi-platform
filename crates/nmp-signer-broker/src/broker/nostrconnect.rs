@@ -2,12 +2,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use crossbeam_channel::Receiver as CbReceiver;
+use nmp_nip46::start_nostrconnect;
 use nmp_signers::Nip46SignerHandle;
 use nostr::{Keys, PublicKey};
 use rand::Rng;
 
+use super::drive::{drive, now_secs, DriveOutcome};
 use super::{ActiveSession, BunkerBroker, NoopRelay, BUNKER_SUB_ID};
-use crate::handshake::{build_req_frame, run_nostrconnect_handshake, HandshakeOutcome};
 use crate::relay_client::{RelayClient, TungsteniteRelayClient};
 use crate::transport::BrokerTransport;
 
@@ -36,31 +37,32 @@ impl BunkerBroker {
         self.cancel();
 
         let local_keys = Keys::generate();
-        let pubkey_hex = local_keys.public_key().to_hex();
         let secret: String = rand::thread_rng()
             .sample_iter(rand::distributions::Alphanumeric)
             .take(16)
             .map(char::from)
             .collect();
-        let encoded_relay = crate::uri_encode::percent_encode_query_value(&relay_url);
-        let name = NOSTRCONNECT_CLIENT_NAME;
-        let mut uri = format!(
-            "nostrconnect://{pubkey_hex}?relay={encoded_relay}&secret={secret}&name={name}"
+
+        // `start_nostrconnect` builds the URI, state, and start_effects
+        // synchronously — no I/O, no clock. The returned URI is forwarded to
+        // the caller (QR code rendering) immediately; state + start_effects
+        // are forwarded to the worker thread.
+        let now = now_secs();
+        let (uri, state, start_effects) = start_nostrconnect(
+            BUNKER_SUB_ID,
+            local_keys.clone(),
+            relay_url.clone(),
+            secret.clone(),
+            perms,
+            NOSTRCONNECT_CLIENT_NAME,
+            now,
         );
-        // #1493 P9 — perms are app-supplied. Append the `&perms=` parameter only
-        // when the host registered one; otherwise omit it entirely (NMP owns no
-        // perm policy).
-        if let Some(perms) = perms.as_deref() {
-            uri.push_str("&perms=");
-            uri.push_str(&crate::uri_encode::percent_encode_query_value(perms));
-        }
 
         // Fresh generation for this session — strictly newer than anything the
         // just-cancelled (detached) worker carries. See `broker.rs::generation`.
         let generation = self.generation.fetch_add(1, Ordering::AcqRel) + 1;
 
         let me = Arc::clone(self);
-        let secret_for_thread = secret.clone();
         let cancel = Arc::new(AtomicBool::new(false));
         let cancel_for_thread = Arc::clone(&cancel);
         // Event-driven cancel wakeup (D8 — no polling); see `broker.rs`.
@@ -74,7 +76,8 @@ impl BunkerBroker {
                 me.run_nostrconnect_thread(
                     relay_url,
                     local_keys,
-                    secret_for_thread,
+                    state,
+                    start_effects,
                     cancel_for_thread,
                     cancel_rx,
                     generation,
@@ -103,7 +106,8 @@ impl BunkerBroker {
         self: Arc<Self>,
         relay_url: String,
         local_keys: Keys,
-        expected_secret: String,
+        mut state: nmp_nip46::SessionState,
+        start_effects: Vec<nmp_nip46::Effect>,
         cancel: Arc<AtomicBool>,
         cancel_rx: CbReceiver<()>,
         generation: u64,
@@ -133,14 +137,6 @@ impl BunkerBroker {
             }
         };
 
-        // V-14: use `subscribe()` so the REQ is replayed after any
-        // transparent reconnect; `send()` would be lost on the first flap.
-        let req_frame = build_req_frame(BUNKER_SUB_ID, &local_keys.public_key().to_hex());
-        if let Err(e) = relay.subscribe(req_frame) {
-            self.emit_progress("failed", Some(&format!("REQ subscribe failed: {e}")));
-            return;
-        }
-
         let placeholder_transport = BrokerTransport::new(
             Arc::clone(&relay),
             local_keys.clone(),
@@ -152,26 +148,40 @@ impl BunkerBroker {
             let relay_dispatcher = relay.signal_shutdown();
             self.spawn_reaper(None, None, relay_dispatcher);
             return;
-}
+        }
+
+        // Drive the reducer to completion. `start_effects` has [Subscribe, Progress]
+        // from `start_nostrconnect`; `drive` applies Subscribe → relay.subscribe,
+        // Progress → emit_progress, then waits for the signer's connect event.
         let mut progress_emitter = |stage: &str, code: &str, msg: Option<&str>| {
             self.emit_progress_coded(stage, code, msg);
         };
-        let outcome = match run_nostrconnect_handshake(
+        let sr = match drive(
+            &mut state,
             relay.as_ref(),
+            start_effects,
             &inbound_rx,
             &cancel_rx,
-            &local_keys,
-            &expected_secret,
             &mut progress_emitter,
         ) {
-            Ok(o) => o,
-            Err(e) => {
+            DriveOutcome::Ready(sr) => sr,
+            DriveOutcome::SubscribeFailed(e) => {
+                // Byte-identical to the prior nostrconnect worker's subscribe error.
+                self.emit_progress("failed", Some(&format!("REQ subscribe failed: {e}")));
+                return;
+            }
+            DriveOutcome::Failed(e) => {
                 self.emit_progress("failed", Some(&format!("{e}")));
+                return;
+            }
+            DriveOutcome::Cancelled => {
+                self.emit_progress("failed", Some("cancelled"));
                 return;
             }
         };
 
-        let signer_pk = match PublicKey::from_hex(&outcome.signer_pubkey_hex) {
+        // The signer's pubkey is now known from the reducer's SignerReady.
+        let signer_pk = match PublicKey::from_hex(&sr.remote_signer_pubkey_hex) {
             Ok(pk) => pk,
             Err(e) => {
                 self.emit_progress("failed", Some(&format!("signer pubkey decode: {e}")));
@@ -188,7 +198,7 @@ impl BunkerBroker {
         }
 
         let synthetic_bunker_uri =
-            format!("bunker://{}?relay={}", outcome.signer_pubkey_hex, relay_url);
+            format!("bunker://{}?relay={}", sr.remote_signer_pubkey_hex, relay_url);
         let handle = match Nip46SignerHandle::from_bunker_uri_with_local_key(
             &synthetic_bunker_uri,
             local_keys.secret_key().clone(),
@@ -204,9 +214,7 @@ impl BunkerBroker {
             handle,
             transport,
             inbound_rx,
-            HandshakeOutcome {
-                user_pubkey_hex: outcome.user_pubkey_hex,
-            },
+            sr.user_pubkey_hex,
             generation,
         );
     }

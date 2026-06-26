@@ -4865,7 +4865,6 @@ dependencies = [
 name = "nmp-nip46"
 version = "0.8.0"
 dependencies = [
- "crossbeam-channel",
  "nostr",
  "serde",
  "serde_json",
