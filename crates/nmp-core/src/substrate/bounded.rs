@@ -3,16 +3,13 @@
 //!
 //! # Why a primitive
 //!
-//! Three live snapshot projections retain unbounded per-event state that is
+//! Live snapshot projections retain bounded per-event state that is
 //! re-serialised on every snapshot tick (≈4 Hz):
 //!
 //! * `nmp_nip29::projection::group_chat::GroupChatProjection`
 //!   — chat messages keyed by event id.
 //! * `nmp_nip17::inbox::DmInboxProjection`
 //!   — decrypted DM rumors keyed by inner-rumor event id.
-//! * `nmp_nip57::projection::ZapsAggregateProjection`
-//!   — per-target receipt sets keyed by target event id.
-//!
 //! Each one had its own ad-hoc `BTreeMap` / `HashMap` that grew linearly with
 //! session length. With ~10 000 messages at 250 bytes each, re-serialising at
 //! 4 Hz produces ~10 MB/s of redundant snapshot work and the resident set
@@ -139,8 +136,8 @@ where
     ///
     /// Mutating an existing value through this handle does **not** affect
     /// eviction order — only [`Self::insert`] adds to the back. This is the
-    /// hook the `ZapsAggregateProjection` migration uses to update the inner
-    /// receipt map without touching the outer position.
+    /// hook projections use to update nested state without touching the outer
+    /// position.
     ///
     /// Accepts `Q` for the same ergonomic reason as [`Self::get`].
     #[must_use]

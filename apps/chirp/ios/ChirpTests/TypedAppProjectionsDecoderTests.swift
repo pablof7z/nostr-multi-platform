@@ -3,8 +3,8 @@ import FlatBuffers
 @testable import Chirp
 
 /// Typed-decode tests for the Wave B Tier-1 #4 app-projection sidecars:
-/// `nmp.follow_list` (`NF02`), `nmp.nip57.zaps` (`NZAP`),
-/// `nmp.nip29.group_chat` (`NGCS`), and `nmp.nip29.discovered_groups` (`NDGS`).
+/// `nmp.follow_list` (`NF02`), `nmp.nip29.group_chat` (`NGCS`), and
+/// `nmp.nip29.discovered_groups` (`NDGS`).
 /// These mirror `TypedDiagnosticsLifecycleDecoderTests`: build the typed
 /// FlatBuffers buffer directly via the generated builders, wrap it in a
 /// `TypedProjectionEnvelope` carrying the producer's actual `(key, schemaId)`,
@@ -93,55 +93,6 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         // the JSON fallback when the typed path is in fact authoritative).
         let snap = try XCTUnwrap(TypedFollowListDecoder.decode(bytes: buildFollowList([])))
         XCTAssertTrue(snap.follows.isEmpty)
-    }
-
-    // ── nmp.nip57.zaps (NZAP) ────────────────────────────────────────────────
-
-    func testTypedZapsSidecarDecodes() throws {
-        let envelope = TypedProjectionEnvelope(
-            key: TypedZapsDecoder.key,
-            schemaId: TypedZapsDecoder.schemaId,
-            schemaVersion: 1,
-            fileIdentifier: TypedZapsDecoder.fileIdentifier,
-            payload: buildZaps([
-                ("typedevent-a", 123_456, 7),
-                ("typedevent-b", 9, 1),
-            ]))
-
-        let snap = try XCTUnwrap(
-            TypedZapsDecoder.decode(from: [envelope]),
-            "well-formed NZAP sidecar must decode")
-
-        // The flattened `[ZapTotal]` vector rebuilds the domain `totals` dict.
-        XCTAssertEqual(snap.totals.count, 2)
-        XCTAssertEqual(snap.totals["typedevent-a"], ZapCount(totalMsats: 123_456, count: 7))
-        XCTAssertEqual(snap.totals["typedevent-b"], ZapCount(totalMsats: 9, count: 1))
-    }
-
-    func testAbsentZapsSidecarFallsBack() {
-        XCTAssertNil(TypedZapsDecoder.decode(from: []))
-    }
-
-    func testWrongSchemaZapsFallsBack() {
-        let envelope = TypedProjectionEnvelope(
-            key: TypedZapsDecoder.key,
-            schemaId: "not.zaps",
-            schemaVersion: 1,
-            fileIdentifier: TypedZapsDecoder.fileIdentifier,
-            payload: buildZaps([("e", 1, 1)]))
-        XCTAssertNil(TypedZapsDecoder.decode(from: [envelope]))
-    }
-
-    // NOTE: the garbled-file-identifier test was removed. The decode path now
-    // uses unchecked `getRoot` (trusted in-process FFI boundary); the 4-byte
-    // file-identifier magic is NOT verified. A structurally-valid buffer with
-    // a clobbered magic still decodes successfully (possibly to empty/default
-    // field values). The key+schemaId envelope routing in `decode(from:)` is
-    // the selection mechanism, not the file identifier.
-
-    func testEmptyZapsBufferDecodesToNoTotals() throws {
-        let snap = try XCTUnwrap(TypedZapsDecoder.decode(bytes: buildZaps([])))
-        XCTAssertTrue(snap.totals.isEmpty)
     }
 
     // ── nmp.nip29.group_chat (NGCS) ──────────────────────────────────────────
@@ -296,19 +247,6 @@ final class TypedAppProjectionsDecoderTests: XCTestCase {
         let root = nmp_nip02_FollowListSnapshot.createFollowListSnapshot(
             &fbb, followsVectorOffset: vec)
         nmp_nip02_FollowListSnapshot.finish(&fbb, end: root)
-        return fbb.data
-    }
-
-    private func buildZaps(_ rows: [(String, UInt64, UInt32)]) -> Data {
-        var fbb = FlatBufferBuilder(initialSize: 256)
-        let offsets: [Offset] = rows.map { (eventId, msats, count) in
-            let idOff = fbb.create(string: eventId)
-            return nmp_nip57_ZapTotal.createZapTotal(
-                &fbb, targetEventIdOffset: idOff, totalMsats: msats, count: count)
-        }
-        let vec = fbb.createVector(ofOffsets: offsets)
-        let root = nmp_nip57_ZapsSnapshot.createZapsSnapshot(&fbb, totalsVectorOffset: vec)
-        nmp_nip57_ZapsSnapshot.finish(&fbb, end: root)
         return fbb.data
     }
 

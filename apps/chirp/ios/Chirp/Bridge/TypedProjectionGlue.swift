@@ -230,27 +230,6 @@ enum TypedProjectionGlue {
         )
     }
 
-    // MARK: nmp.nip57.zaps → ZapsAggregateSnapshot
-
-    /// Map the typed `nmp.nip57.zaps` sidecar (`NZAP` / `nmp_nip57_ZapsSnapshot`)
-    /// to the `ZapsAggregateSnapshot` the JSON `projections["nmp.nip57.zaps"]`
-    /// path yields. FlatBuffers has no map type, so the wire flattens the Rust
-    /// `totals: HashMap<EventId, ZapCount>` into a `[ZapTotal]` vector — this
-    /// glue rebuilds the dict keyed by `target_event_id` (hex), mirroring the
-    /// serde shape. A duplicate target id would collide, but the producer emits
-    /// one row per map entry, so keys are unique by construction.
-    static func zaps(_ reader: nmp_nip57_ZapsSnapshot) -> ZapsAggregateSnapshot {
-        var totals: [String: ZapCount] = [:]
-        totals.reserveCapacity(reader.totals.count)
-        for row in reader.totals {
-            totals[row.targetEventId ?? ""] = ZapCount(
-                totalMsats: row.totalMsats,
-                count: row.count
-            )
-        }
-        return ZapsAggregateSnapshot(totals: totals)
-    }
-
     // MARK: nmp.nip29.group_chat → GroupChatSnapshot
 
     /// Map the typed `nmp.nip29.group_chat` sidecar (`NGCS` /

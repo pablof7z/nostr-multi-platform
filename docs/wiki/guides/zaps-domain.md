@@ -34,6 +34,14 @@ self_zap_receipts_interest() uses InterestScope::Global + PTagRouting::Nip65Read
 
 `wait_for_zap_receipt` correlates kind:9735 receipts on the `bolt11` tag, not just on the recipient pubkey (which would produce false positives for popular recipients). <!-- [^7b06d-6] -->
 
+## Visible Zap Counts
+
+Zap totals are relation data for declared visible targets. NMP must not expose
+an app-lifetime or process-wide zap aggregate over every accepted kind:9735
+receipt. Note cards and detail views acquire zap counts through
+`nmp.nip01.visible_note_relations` or an equivalent bounded visible-target
+contract keyed by `#e=<event_id>`.
+
 ## LNURL Encoding and Injection
 
 The `lnurl` tag in kind:9734 zap requests MUST be the bech32-encoded LNURL (e.g. `lnurl1dp68gurn8...`), NOT the raw lightning address. The LNURL callback URL MUST include `&lnurl=<bech32_lnurl>` as a query parameter per NIP-57 Appendix B. `url_to_bech32_lnurl` encodes an https URL as a bech32 LNURL string and rejects non-https inputs. `inject_lnurl_tag` in `nmp-nip57` computes the bech32 LNURL from the address and injects it into the kind:9734 unsigned event's tags before signing. `fetch_lnurl_invoice_blocking` includes the `&lnurl=` bech32 parameter in the LNURL callback URL. `fetch_bolt11_for_zap` computes the bech32 LNURL from the well-known URL and passes it to the `ZapRequestBuilder.lnurl()` method. <!-- [^7b06d-7] -->

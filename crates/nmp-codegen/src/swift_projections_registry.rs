@@ -11,7 +11,7 @@
 //! triples — there is no Rust type to reflect via `schemars` (unlike Stage 1).
 //! The natural home would have been `nmp-core::codegen_schema` alongside
 //! Stage 1, BUT the registry MUST name dotted host-registered keys like
-//! `"nmp.nip29.group_chat"`, `"nmp.nip17.dm_inbox"`, `"nmp.nip57.zaps"`.
+//! `"nmp.nip29.group_chat"`, `"nmp.nip17.dm_inbox"`.
 //! Those substrings would trip D0 doctrine-lint (`nip29` / `nip17` / `nip57`
 //! tokens forbidden in `nmp-core` per `crates/nmp-testing/bin/doctrine-lint/
 //! rules/d0.rs`). The substrings are legitimate here because *they are the
@@ -536,25 +536,6 @@ pub const SNAPSHOT_PROJECTIONS: &[SnapshotProjectionEntry] = &[
             // from `crates/nmp-nip29/schema/group_defaults.fbs`. Flat copy:
             // `{ suggested_relay_url }`. See `TypedProjectionGlue.groupDefaults`.
             swift_reader_type: Some("nmp_nip29_GroupDefaultsSnapshot"),
-        }),
-    },
-    // `nmp.nip57.zaps` has no `_`, so the post-transform key is identical
-    // — but declaring the `CodingKeys` enum overrides synthesised raw
-    // values, so the case still needs the explicit literal.
-    SnapshotProjectionEntry {
-        key: "nmp.nip57.zaps",
-        swift_field: "zaps",
-        swift_type: "ZapsAggregateSnapshot",
-        typed_sidecar: Some(TypedSidecar {
-            // Wave B Tier-1 #4: the `flatc --swift` reader
-            // (`nmp_nip57_ZapsSnapshot`) ships in this PR. Host-registered
-            // producer in `apps/chirp/.../ffi/register.rs`
-            // (`register_typed_snapshot_projection("nmp.nip57.zaps", …)` →
-            // `zaps_typed_projection`). FlatBuffers has no map type, so the wire
-            // is a flattened `[ZapTotal{target_event_id, total_msats, count}]`
-            // vector; the glue rebuilds the domain `totals: [String: ZapCount]`
-            // dict. See `TypedProjectionGlue.zaps`.
-            swift_reader_type: Some("nmp_nip57_ZapsSnapshot"),
         }),
     },
     SnapshotProjectionEntry {

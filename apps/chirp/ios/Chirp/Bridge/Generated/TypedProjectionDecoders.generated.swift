@@ -707,40 +707,6 @@ enum TypedGroupDefaultsDecoder {
     }
 }
 
-// MARK: - TypedZapsDecoder
-// Projection `nmp.nip57.zaps` → typed sidecar `nmp.nip57.zaps` (NZAP). Domain type: `ZapsAggregateSnapshot?`.
-enum TypedZapsDecoder {
-    /// `TypedProjection.key` the producer publishes for this projection.
-    static let key = "nmp.nip57.zaps"
-    /// `TypedPayload.schema_id` carried on the sidecar buffer.
-    static let schemaId = "nmp.nip57.zaps"
-    /// FlatBuffers `file_identifier` for `nmp_nip57_ZapsSnapshot`.
-    static let fileIdentifier = "NZAP"
-
-    /// Decode the typed `nmp.nip57.zaps` sidecar from the snapshot's typed-projection
-    /// envelopes into the Chirp domain value. Returns `nil` (so the host
-    /// falls back to the generic JSON `payload`) when the sidecar is absent,
-    /// carries the wrong schema, or is not a well-formed buffer.
-    static func decode(from projections: [TypedProjectionEnvelope]) -> ZapsAggregateSnapshot? {
-        guard let projection = projections.first(where: {
-            $0.key == key && $0.schemaId == schemaId
-        }), !projection.payload.isEmpty else {
-            return nil
-        }
-        return decode(bytes: projection.payload)
-    }
-
-    /// Decode a raw `NZAP` FlatBuffers buffer into the Chirp domain value.
-    static func decode(bytes: Data) -> ZapsAggregateSnapshot? {
-        guard !bytes.isEmpty else { return nil }
-        var buffer = ByteBuffer(data: bytes)
-        let reader: nmp_nip57_ZapsSnapshot = getRoot(byteBuffer: &buffer)
-        // Hand-written glue (NOT generated): map the `flatc --swift` reader
-        // struct to the Chirp domain type. See `TypedProjectionGlue.zaps`.
-        return TypedProjectionGlue.zaps(reader)
-    }
-}
-
 // MARK: - TypedDmRelayListDecoder
 // Projection `nmp.nip17.dm_relay_list` → typed sidecar `nmp.nip17.dm_relay_list` (NDRL). Domain type: `DmRelayListSnapshot?`.
 enum TypedDmRelayListDecoder {

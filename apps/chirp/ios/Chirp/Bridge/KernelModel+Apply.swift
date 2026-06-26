@@ -97,7 +97,6 @@ extension KernelModel {
         if ck.contains(TypedActionLifecycleDecoder.key) { typedActionLifecycle = result.typedActionLifecycle }
         // V6 Stage 4 (Wave B Tier-1 #4): app-projection typed slots.
         if ck.contains(TypedFollowListDecoder.key) { typedFollowList = result.typedFollowList }
-        if ck.contains(TypedZapsDecoder.key) { typedZaps = result.typedZaps }
         if ck.contains(TypedGroupChatDecoder.key) { typedGroupChat = result.typedGroupChat }
         if ck.contains(TypedDiscoveredGroupsDecoder.key) { typedDiscoveredGroups = result.typedDiscoveredGroups }
         if ck.contains(TypedGroupDefaultsDecoder.key) { typedGroupDefaults = result.typedGroupDefaults }
@@ -244,7 +243,6 @@ extension KernelModel {
         typedRelayDiagnostics = nil
         typedActionLifecycle = nil
         typedFollowList = nil
-        typedZaps = nil
         typedGroupChat = nil
         typedDiscoveredGroups = nil
         typedGroupDefaults = nil

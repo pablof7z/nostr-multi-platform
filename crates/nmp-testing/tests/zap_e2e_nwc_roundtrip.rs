@@ -2,11 +2,11 @@
 //!
 //! The zap pipeline
 //! (`ZapAction` → `FetchLnurlInvoiceCommand` → NWC `WalletPayInvoiceCommand`
-//! → kind:9735 receipt ingest → `ZapsAggregateProjection`) is built and
-//! unit-tested, but the full round-trip had never been exercised at runtime
-//! against a live wallet over a relay. These tests close that gap with **zero
-//! real money** by standing up a `nak serve` in-memory relay, a scripted fake
-//! NIP-47 wallet service, and a real signed kind:9735 receipt.
+//! → kind:9735 receipt ingest) is built and unit-tested, but the full
+//! round-trip had never been exercised at runtime against a live wallet over a
+//! relay. These tests close that gap with **zero real money** by standing up a
+//! `nak serve` in-memory relay, a scripted fake NIP-47 wallet service, and a
+//! real signed kind:9735 receipt.
 //!
 //! ## What is verified headlessly here
 //!
@@ -23,11 +23,11 @@
 //!    dispatch → encrypt → relay → decrypt → response → terminal path works
 //!    on a real socket.
 //!
-//! 2. **`zap_receipt_ingest_updates_aggregate_projection`** — the receipt half:
+//! 2. **`zap_receipt_ingest_accepts_signed_receipt`** — the receipt half:
 //!    a real Schnorr-signed kind:9735 zap receipt is ingested through the
-//!    production verify path (`nmp_app_inject_signed_event_json`) and the
-//!    `nmp.nip57.zaps` (`ZapsAggregateProjection`) snapshot reflects the new
-//!    total for the zapped target.
+//!    production verify path (`nmp_app_inject_signed_event_json`). Visible-card
+//!    zap counts are covered by the scoped `nmp.nip01.visible_note_relations`
+//!    relation tests, not by a process-wide zap aggregate.
 //!
 //! The residual last mile — "a REAL lightning wallet paid a REAL invoice" —
 //! needs a real wallet + lightning address (the LNURL-pay HTTPS leg is not
@@ -206,10 +206,10 @@ fn nwc_pay_invoice_round_trip_over_live_relay() {
     );
 }
 
-// ── Test 2: kind:9735 receipt ingest → ZapsAggregateProjection ───────────────
+// ── Test 2: kind:9735 receipt ingest ─────────────────────────────────────────
 
 #[test]
-fn zap_receipt_ingest_updates_aggregate_projection() {
+fn zap_receipt_ingest_accepts_signed_receipt() {
     // No relay needed for the ingest half — inject the verbatim signed receipt
     // through the production verify path. (Test 3's real-wallet path proves the
     // over-relay subscription delivery; here we prove ingest → projection
@@ -219,7 +219,7 @@ fn zap_receipt_ingest_updates_aggregate_projection() {
     let status = nmp_app_chirp_register(app, std::ptr::null(), &mut handle);
     assert_eq!(status, NmpRegisterStatus::Ok as u32);
     assert!(!handle.is_null());
-    let rx = install_emit_signal(app);
+    let _rx = install_emit_signal(app);
     nmp_app_start(app, 200, 4);
 
     // The LN provider that mints the receipt (its nostrPubkey identity).
@@ -255,28 +255,12 @@ fn zap_receipt_ingest_updates_aggregate_projection() {
     let ok = nmp_app_inject_signed_event_json(app, receipt_c.as_ptr());
     assert!(ok, "kind:9735 receipt must verify + ingest");
 
-    // Block on the emit signal until the zaps projection reflects the target.
-    let deadline = Instant::now() + Duration::from_secs(10);
-    let zaps = wait_for_projection(app, &rx, "nmp.nip57.zaps", deadline, |v| {
-        // The aggregate keys totals by the `["e", target]` tag. Accept either a
-        // `totals` map keyed by target id, or any non-empty representation that
-        // mentions the target.
-        let as_text = v.to_string();
-        as_text.contains(&target_event_id)
-    });
-
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);
 
-    let zaps = zaps.expect(
-        "nmp.nip57.zaps projection must reflect the ingested kind:9735 receipt for the \
-         zapped target within the deadline",
+    eprintln!(
+        "[zap-e2e] receipt-ingest PASS: signed kind:9735 accepted for target {target_event_id}"
     );
-    assert!(
-        zaps.to_string().contains(&target_event_id),
-        "the zapped target {target_event_id} must appear in the zaps aggregate: {zaps}",
-    );
-    eprintln!("[zap-e2e] receipt-ingest PASS: nmp.nip57.zaps = {zaps}");
 }
 
 // ── Test 3: relay publish helper sanity ──────────────────────────────────────

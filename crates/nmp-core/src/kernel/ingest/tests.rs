@@ -1,8 +1,7 @@
 //! F-04 wildcard-arm regression coverage.
 //!
 //! The explicit kind:9735 arm in `handle_event` is already exercised by
-//! `kernel/raw_event_observer_tests.rs` (raw-tap path) and the
-//! `ZapsAggregateProjection` integration tests. These tests focus on the
+//! zap receipt decode/ingest coverage. These tests focus on the
 //! `_ =>` wildcard arm, which prior to this fix called only
 //! `verify_and_persist` and therefore never fanned the store-accepted
 //! `KernelEvent` out to `KernelEventObserver`s. The structural consequence
@@ -18,9 +17,9 @@
 //! `kernel/ingest_tests.rs::signed_note`.
 use super::*;
 use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::KernelEvent;
+use nmp_network::role::RelayRole;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 

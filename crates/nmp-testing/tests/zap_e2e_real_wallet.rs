@@ -6,9 +6,8 @@
 //! does two HTTPS GETs with `ureq` against the webpki root store and refuses
 //! any non-`https://` callback (LUD-01 §1), so a local stub would need a
 //! publicly-trusted certificate. Proving "a REAL lightning wallet paid a REAL
-//! invoice and a REAL kind:9735 receipt landed in the aggregate" therefore
-//! needs the owner to supply a live wallet + lightning address. This file is
-//! that one-command last mile.
+//! invoice" therefore needs the owner to supply a live wallet + lightning
+//! address. This file is that one-command last mile.
 
 mod zap_e2e_common;
 
@@ -21,8 +20,7 @@ use nostr::{Keys, ToBech32};
 use serde_json;
 
 use zap_e2e_common::{
-    build_app_signed_in, install_emit_signal, install_rustls_provider, read_projection,
-    wait_for_projection,
+    build_app_signed_in, install_emit_signal, install_rustls_provider, wait_for_projection,
 };
 
 /// THE REAL-WALLET LAST MILE — the hop that cannot be mocked in-process.
@@ -140,16 +138,13 @@ fn real_wallet_zap_e2e() {
         .unwrap_or_else(|err| panic!("zap dispatch must be accepted, got error: {err}"));
     eprintln!("[zap-e2e real] dispatched zap correlation_id={correlation_id}");
 
-    // Block until the action lifecycle shows a terminal for this correlation,
-    // then confirm the zaps aggregate reflects the receipt.
+    // Block until the action lifecycle shows a terminal for this correlation.
     let deadline = Instant::now() + Duration::from_secs(90);
     let terminal = wait_for_projection(app, &rx, "action_lifecycle", deadline, |v| {
         let txt = v.to_string();
         txt.contains(&correlation_id)
             && (txt.contains("ok") || txt.contains("failed") || txt.contains("Failed"))
     });
-
-    let zaps = read_projection(app, "nmp.nip57.zaps");
 
     nmp_app_chirp_unregister(handle);
     nmp_app_free(app);
@@ -161,7 +156,6 @@ fn real_wallet_zap_e2e() {
         )
     });
     eprintln!("[zap-e2e real] terminal lifecycle: {terminal}");
-    eprintln!("[zap-e2e real] zaps aggregate: {zaps:?}");
     assert!(
         terminal.to_string().contains("ok"),
         "the real zap must record an OK terminal (a real wallet paid a real invoice): {terminal}",

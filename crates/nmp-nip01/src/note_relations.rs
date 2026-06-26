@@ -84,7 +84,7 @@ impl RelationCountInterest {
     #[must_use]
     pub fn zaps(event_id: &str) -> Self {
         Self {
-            namespace: "nmp.nip57.zaps".to_string(),
+            namespace: "nmp.nip01.visible_note_relations".to_string(),
             target_event_id: event_id.to_string(),
             tag: "e".to_string(),
         }

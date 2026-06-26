@@ -61,24 +61,15 @@ fn workspace_root() -> PathBuf {
         .expect("workspace root must exist two levels above CARGO_MANIFEST_DIR")
 }
 
-/// Returns (exit_code, stdout, stderr) for `cargo run --quiet -p nmp-testing
-/// --bin doctrine-lint -- <args>` invoked from the workspace root.
+/// Returns (exit_code, stdout, stderr) for the prebuilt doctrine-lint binary
+/// invoked from the workspace root.
 fn run_lint(args: &[&str]) -> (i32, String, String) {
     let root = workspace_root();
-    let output = Command::new(env!("CARGO"))
+    let output = Command::new(env!("CARGO_BIN_EXE_doctrine-lint"))
         .current_dir(&root)
-        .args([
-            "run",
-            "--quiet",
-            "-p",
-            "nmp-testing",
-            "--bin",
-            "doctrine-lint",
-            "--",
-        ])
         .args(args)
         .output()
-        .expect("cargo run must succeed in spawning");
+        .expect("doctrine-lint binary must succeed in spawning");
     (
         output.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&output.stdout).into_owned(),

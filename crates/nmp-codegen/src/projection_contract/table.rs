@@ -402,18 +402,6 @@ pub const PROJECTION_CONTRACT: &[ProjectionContract] = &[
         presence_policy: PresencePolicy::None,
     },
     ProjectionContract {
-        key: "nmp.nip57.zaps",
-        tier: ProjectionTier::HostRegistered,
-        producer: "apps/chirp ffi/register zaps (NIP-57)",
-        schema_id: "nmp.nip57.zaps",
-        file_identifier: "NZAP",
-        // nmp-nip57 wire/typed_fb::SCHEMA_VERSION
-        version: 1,
-        declaration_policy: DeclarationPolicy::RegistrationGated,
-        dependency_versions: &[],
-        presence_policy: PresencePolicy::None,
-    },
-    ProjectionContract {
         key: "claimed_event_embeds",
         tier: ProjectionTier::HostRegistered,
         producer: "nmp-ffi embed_sidecar",

@@ -72,7 +72,10 @@ mod tests {
             "replies": { "state": "known", "count": 2 },
             "reactions": { "state": "known", "count": 3 },
             "reposts": { "state": "known", "count": 1 },
-            "zaps": { "state": "loading", "interest": { "namespace": "nmp.nip57.zaps" } }
+            "zaps": {
+                "state": "loading",
+                "interest": { "namespace": "nmp.nip01.visible_note_relations" }
+            }
         });
 
         let counts: RelationCounts =

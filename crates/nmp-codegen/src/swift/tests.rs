@@ -304,14 +304,14 @@ fn post_convert_leaves_dots_opaque() {
         post_convert_from_snake_case("nmp.follow_list"),
         "nmp.followList"
     );
-    // `nmp.nip57.zaps` — no `_` anywhere. Strategy returns it
+    // `nmp.example.summary` — no `_` anywhere. Strategy returns it
     // unchanged. The renderer must STILL emit an explicit raw value
     // because declaring `CodingKeys` overrides synthesis — the
-    // synthesised default for the Swift property `zaps` would be the
-    // bare string `"zaps"`, which doesn't match the dotted kernel key.
+    // synthesised default for the Swift property `summary` would be the
+    // bare string `"summary"`, which doesn't match the dotted kernel key.
     assert_eq!(
-        post_convert_from_snake_case("nmp.nip57.zaps"),
-        "nmp.nip57.zaps"
+        post_convert_from_snake_case("nmp.example.summary"),
+        "nmp.example.summary"
     );
 }
 
@@ -367,22 +367,19 @@ fn render_snapshot_projections_emits_one_field_and_one_case_per_entry() {
 
 #[test]
 fn render_snapshot_projections_emits_explicit_raw_for_dotted_no_underscore_key() {
-    // The `zaps` trap: `nmp.nip57.zaps` has no `_`, so the strategy
-    // returns it unchanged. The synthesised default for property
-    // `zaps` would be `"zaps"`, which doesn't match the dotted key.
-    // The renderer MUST emit an explicit `= "nmp.nip57.zaps"` raw
-    // value because post-transform `"nmp.nip57.zaps"` != swift field
-    // `"zaps"`.
+    // Dotted keys with no `_` survive `.convertFromSnakeCase` unchanged. The
+    // renderer MUST emit an explicit raw value when that post-transform key
+    // still differs from the Swift field.
     let entries = vec![SnapshotProjectionEntry {
-        key: "nmp.nip57.zaps",
-        swift_field: "zaps",
-        swift_type: "ZapsAggregateSnapshot",
+        key: "nmp.example.summary",
+        swift_field: "summary",
+        swift_type: "ExampleSummary",
         typed_sidecar: None,
     }];
     let mut out = String::new();
     render_snapshot_projections(&entries, &mut out);
     assert!(
-        out.contains("        case zaps = \"nmp.nip57.zaps\"\n"),
+        out.contains("        case summary = \"nmp.example.summary\"\n"),
         "dotted no-underscore key MUST emit explicit raw value; got:\n{out}"
     );
 }
