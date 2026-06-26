@@ -5151,6 +5151,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "nmp-sqlite-wasm-conformance"
+version = "0.8.0"
+dependencies = [
+ "console_error_panic_hook",
+ "js-sys",
+ "nmp-sqlite-wasm",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "nmp-store"
 version = "0.8.0"
 dependencies = [

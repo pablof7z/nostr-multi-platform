@@ -1,0 +1,31 @@
+[package]
+name = "nmp-sqlite-wasm-conformance"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "Dedicated-Worker OPFS conformance vehicle for nmp-sqlite-wasm (#1007 PR-6). Test harness only — never published."
+
+# A cdylib so `wasm-bindgen --target web` can emit browser-loadable glue; rlib so
+# the crate still participates in normal workspace `cargo check`/metadata on
+# native (where it compiles to nothing — see the `#![cfg]` guard in lib.rs).
+[lib]
+name = "nmp_sqlite_wasm_conformance"
+crate-type = ["cdylib", "rlib"]
+
+# wasm32-only by construction: the entire harness drives the wasm32-only OPFS
+# engine. On native there are no deps and no items, so the workspace build of
+# this crate is ~free off-wasm (mirrors nmp-sqlite-wasm's own gating).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+nmp-sqlite-wasm = { path = "../nmp-sqlite-wasm" }
+wasm-bindgen = "0.2.121"
+# `#[wasm_bindgen] pub async fn` lowers to `wasm_bindgen_futures::future_to_promise`,
+# so the async entry point needs this crate in the graph directly.
+wasm-bindgen-futures = "0.4.72"
+# `js_sys::Date::now()` gives each run a fresh OPFS database name so repeated
+# runs in the same browser origin do not collide on persisted state.
+js-sys = "0.3.98"
+# Surface a Rust panic inside the Worker as a real console error instead of an
+# opaque `RuntimeError: unreachable` swallowed by the Worker boundary.
+console_error_panic_hook = "0.1"

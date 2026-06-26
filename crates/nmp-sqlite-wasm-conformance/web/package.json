@@ -1,0 +1,13 @@
+{
+  "name": "nmp-sqlite-wasm-conformance-harness",
+  "private": true,
+  "type": "module",
+  "description": "Dedicated-Worker OPFS conformance driver for nmp-sqlite-wasm (#1007 PR-6).",
+  "scripts": {
+    "build": "bash ./build.sh",
+    "test": "bash ./build.sh && node ./run-conformance.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}
