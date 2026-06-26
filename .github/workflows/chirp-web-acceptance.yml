@@ -1,0 +1,168 @@
+name: chirp-web-acceptance
+
+# Real-relay acceptance suite for the Chirp Web rebuild (#2038 item E).
+#
+# Two tiers, deliberately split by cost and by the wasm-toolchain constraint:
+#
+#   pr-smoke  (BLOCKING, every web PR/push)
+#     Typechecks the app + the e2e suite and runs the wasm-FREE browser
+#     acceptance (Playwright, `--grep-invert @wasm`): the shell's degraded /
+#     in-process fallback boot path, which proves the shell mounts and renders
+#     the data-* hooks WITHOUT needing the wasm artifact. Cheap (Node only), so
+#     it gates every PR and the specs can never silently rot.
+#
+#   full-e2e-wasm  (NIGHTLY + manual dispatch, NON-BLOCKING by construction)
+#     Builds the real wasm artifact (crates/nmp-browser-runtime/scripts/
+#     build-wasm.sh via `npm run build:wasm`), builds the Chirp app, and runs
+#     the FULL Playwright suite headless — including the `@wasm` tests (real
+#     boot, fixture-relay connect + ingest, publish round-trip).
+#
+#     Why this is NOT a PR-blocking gate (honest constraint, do-not-silently-skip):
+#       The wasm artifact needs a C toolchain that can compile secp256k1-sys to
+#       wasm32. ubuntu-latest ships neither clang-wasm nor the Emscripten SDK by
+#       default — the SAME constraint documented in browser-runtime.yml, whose
+#       `wasm32-smoke` job is non-blocking for exactly this reason. Installing a
+#       wasm C toolchain + a release wasm-pack build of nmp-core adds several
+#       minutes to every run, so the full browser e2e runs on a nightly schedule
+#       (plus workflow_dispatch for on-demand verification of a web/chirp PR)
+#       rather than blocking every PR. The coverage is NOT skipped — it runs
+#       nightly and can be triggered manually on any branch.
+
+on:
+  # Blocking smoke runs on web changes.
+  push:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/chirp-web-acceptance.yml"
+      - "web/**"
+  pull_request:
+    branches: ["**"]
+    paths:
+      - ".github/workflows/chirp-web-acceptance.yml"
+      - "web/**"
+  # Full wasm browser e2e runs nightly + on demand.
+  schedule:
+    - cron: "0 4 * * *" # 04:00 UTC, after the real-relay matrix (03:00).
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # ── BLOCKING: typecheck + wasm-free browser acceptance ────────────────────
+  pr-smoke:
+    name: chirp-web typecheck + fallback smoke (no wasm)
+    # Skip on schedule (the nightly only needs the full wasm job).
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Typecheck app (src)
+        run: npm run typecheck
+        working-directory: web/chirp
+
+      - name: Typecheck acceptance suite (tests/)
+        run: npm run typecheck:e2e
+        working-directory: web/chirp
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: web/chirp
+
+      - name: Build Chirp app (wasm artifact not required for the build step)
+        run: npm run build
+        working-directory: web/chirp
+
+      - name: Run wasm-free browser acceptance (fallback boot smoke)
+        run: npm run test:e2e -- --grep-invert @wasm
+        working-directory: web/chirp
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chirp-web-pr-smoke-report
+          path: web/chirp/playwright-report/
+          retention-days: 7
+
+  # ── NIGHTLY / DISPATCH: full wasm browser e2e (non-blocking) ──────────────
+  full-e2e-wasm:
+    name: chirp-web full wasm e2e (nightly / dispatch)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install Rust toolchain (wasm32 target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: chirp-web-acceptance-wasm
+
+      # secp256k1-sys needs a C compiler that can target wasm32. clang ships a
+      # wasm backend; lld provides wasm-ld. Point the wasm32 C build at them.
+      - name: Install wasm C toolchain (clang + lld)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --locked || cargo install wasm-pack
+
+      - name: Install web dependencies
+        run: npm ci
+        working-directory: web
+
+      - name: Build wasm artifact (nmp-browser-runtime → public/nmp-wasm)
+        env:
+          CC_wasm32_unknown_unknown: clang
+          AR_wasm32_unknown_unknown: llvm-ar
+        run: npm run build:wasm
+        working-directory: web/chirp
+
+      - name: Show wasm artifact contents
+        run: ls -la web/chirp/public/nmp-wasm || echo "wasm artifact missing"
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+        working-directory: web/chirp
+
+      - name: Build Chirp app
+        run: npm run build
+        working-directory: web/chirp
+
+      - name: Run full acceptance suite (includes @wasm)
+        run: npm run test:e2e
+        working-directory: web/chirp
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chirp-web-full-e2e-report
+          path: web/chirp/playwright-report/
+          retention-days: 14
