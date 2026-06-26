@@ -354,6 +354,17 @@ impl BrowserRuntimeHandle {
         self.runtime.reducer.set_active_account_for_test(pubkey);
     }
 
+    /// Test-support only: borrow the kernel's `EventStore` handle.
+    ///
+    /// Lets the native injection-identity test assert that the store passed to
+    /// `BrowserAppBuilder::inject_store` is the exact `Arc` the reducer ends up
+    /// holding — the live-path analog of the nmp-wasm hook test (#1007 PR-7).
+    #[cfg(any(test, feature = "test-support"))]
+    #[must_use]
+    pub fn event_store_handle(&self) -> std::sync::Arc<dyn nmp_store::EventStore> {
+        self.runtime.reducer.event_store_handle()
+    }
+
     /// Spawn relay drivers from `bootstrap` (wasm32: opens WebSockets; native:
     /// no-op). Called once from `from_builder_inner` with the bootstrap list
     /// captured before it was consumed into the kernel.

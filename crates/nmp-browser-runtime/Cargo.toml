@@ -18,7 +18,17 @@ default = []
 # Must be paired with `--target wasm32-unknown-unknown` — enabling on a native
 # target compiles the cfg guard out, not a build error. Propagates to
 # `nmp-signers/wasm` so `nmp_signers::sign_event_via_extension` is available.
-wasm = ["nmp-signers/wasm"]
+# Also pulls in the durable OPFS-SQLite store backend (#1007 PR-7): the
+# production wasm build already turns `wasm` on, so this is where the browser
+# gets persistence by default.
+wasm = ["nmp-signers/wasm", "opfs-sqlite-backend"]
+# Durable OPFS-SQLite `EventStore` backend (#1007 PR-7). Propagates
+# `nmp-store/opfs-sqlite-backend`, which on wasm32 pulls the `nmp-sqlite-wasm`
+# engine into the graph and exposes `nmp_store::OpfsSqliteEventStore`.
+# On native this resolves to nothing: the engine lives under nmp-store's
+# `[target.'cfg(wasm32)']` table and the `opfs` module self-gates on
+# `target_arch = "wasm32"`, so native default builds are unaffected.
+opfs-sqlite-backend = ["nmp-store/opfs-sqlite-backend"]
 # Expose test-support seams (e.g. `set_active_account_for_test`) so integration
 # tests in sibling crates can seed kernel state without a full identity flow.
 test-support = []
@@ -47,9 +57,13 @@ console_error_panic_hook = "0.1"
 js-sys = "0.3.98"
 wasm-bindgen = "0.2.121"
 gloo-timers = "0.3"
-# Drive the async NIP-07 sign bridge (`signer/completion.rs` wasm path).
+# Drive the async NIP-07 sign bridge (`signer/completion.rs` wasm path) and the
+# async OPFS-SQLite store-open hook (`NmpWasmRuntime::prepare_store`, #1007 PR-7).
 # Matches nmp-signers' version so feature unification keeps one copy in the graph.
 wasm-bindgen-futures = "0.4.71"
+# Honest-fallback log when the OPFS-SQLite open fails (#1007 PR-7). The repo's
+# logging facade; wasm-safe. Scoped to the wasm path where prepare_store lives.
+tracing = "0.1"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"], default-features = false }

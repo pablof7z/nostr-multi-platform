@@ -236,6 +236,52 @@ mod wasm_impl {
                 inner.pending_wake = Some(wake);
             }
         }
+
+        /// Async pre-`Start` hook: open the durable OPFS-SQLite store and stash it
+        /// on the core so the next (synchronous) `Start` injects it instead of an
+        /// in-memory store (#1007 PR-7).
+        ///
+        /// The host MUST `await` this before sending `WorkerRequest::Start`. This
+        /// is the async-open-before-`Start` seam: `OpfsSqliteEventStore::open`
+        /// acquires the OPFS SyncAccessHandle pool asynchronously — work the
+        /// synchronous `handle_start` cannot do, so it is hoisted here and the
+        /// ready `Arc<dyn EventStore>` parked on the core for `handle_start` to
+        /// `take()` and `inject_store(..)`.
+        ///
+        /// `app_id` + `database_name` compose the per-app OPFS namespace (see
+        /// [`super::core::opfs_database_name`]). On open failure this logs
+        /// honestly and leaves the core to fall back to `.in_memory()` —
+        /// durability OFF, never a silent pretend-durable. Rich D6 degraded-mode
+        /// diagnostics + the Tier-3 `store_open_failure` snapshot are PR-8's
+        /// scope. TODO(#1007 PR-8).
+        ///
+        /// Gated on `feature = "opfs-sqlite-backend"`: a wasm build without the
+        /// durable backend simply has no such hook and starts in-memory.
+        #[cfg(feature = "opfs-sqlite-backend")]
+        pub async fn prepare_store(&self, app_id: String, database_name: String) {
+            let db_name = super::core::opfs_database_name(&app_id, &database_name);
+            match nmp_store::OpfsSqliteEventStore::open(&db_name).await {
+                Ok(store) => {
+                    let store: std::sync::Arc<dyn nmp_store::EventStore> =
+                        std::sync::Arc::new(store);
+                    // Park on the core for handle_start to take(). try_borrow_mut:
+                    // the wake timer is the only other borrower and never overlaps
+                    // this await-driven call on the single-threaded wasm target.
+                    if let Ok(mut inner) = self.inner.try_borrow_mut() {
+                        inner.core.set_injected_store(store);
+                    }
+                }
+                Err(err) => {
+                    // TODO(#1007 PR-8): replace this bare log with D6 degraded-mode
+                    // diagnostics + a Tier-3 `store_open_failure` snapshot frame.
+                    // PR-7 keeps the fallback simple but honest: durability is OFF.
+                    tracing::warn!(
+                        "OPFS-SQLite open failed for {db_name:?}: {err}; falling back \
+                         to in-memory store (durability OFF) — PR-8 adds diagnostics"
+                    );
+                }
+            }
+        }
     }
 
     impl Default for NmpWasmRuntime {
