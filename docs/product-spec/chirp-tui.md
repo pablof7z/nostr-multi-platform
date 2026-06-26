@@ -207,7 +207,7 @@ compose surface is `tui-input` plus a small custom multiline wrapper.
 
 ## 7. Product Acceptance
 
-Implementation sequencing belongs in GitHub Issues and `WIP.md`. This
+Implementation sequencing belongs in GitHub Issues. This
 product spec records the durable acceptance shape:
 
 - `apps/chirp/chirp-tui` builds as the terminal Chirp shell and exits cleanly

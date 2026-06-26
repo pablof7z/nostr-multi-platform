@@ -6,10 +6,9 @@
 > - **Architectural north star** — [`docs/aim.md`](aim.md) (immutable; read first on cold-start).
 > - **Durable doctrine** — [`docs/product-spec/doctrine.md`](product-spec/doctrine.md).
 > - **Durable architecture** — [`docs/architecture/`](architecture/) and [`docs/design/`](design/).
-> - **Live in-flight tracker** — [`WIP.md`](../WIP.md) (temporal work currently on a branch).
 > - **Tactical tracker** — GitHub Issues, sorted by `priority:*` labels, then narrowed by `category:*`, `phase:*`, `area:*`, `doctrine:*`, and `status:*`.
 >
-> **This file is not durable understanding.** It is the current release-plan view. Active items belong in `WIP.md` (in-flight) or GitHub Issues (queue). Implemented or invalidated plan detail should be deleted or reduced to the smallest remaining live follow-up; lasting understanding belongs in aim, product, design, architecture, ADR, builder-guide, or wiki docs.
+> **This file is not durable understanding.** It is the current release-plan view. Active items belong in GitHub Issues (queue). Implemented or invalidated plan detail should be deleted or reduced to the smallest remaining live follow-up; lasting understanding belongs in aim, product, design, architecture, ADR, builder-guide, or wiki docs.
 
 ---
 
@@ -166,7 +165,6 @@ Where to look for detail:
 - [`docs/aim.md`](aim.md) — architectural north star (immutable)
 - [`docs/product-spec.md`](product-spec.md) + [`docs/product-spec/doctrine.md`](product-spec/doctrine.md) — full doctrine
 - GitHub Issues — active violations, pending decisions, v1 queue; sort by `priority:*` labels
-- [`WIP.md`](../WIP.md) — live in-flight tracker
 - [`docs/plan/principles.md`](plan/principles.md) — execution principles
 - [`docs/plan/subsystem-matrix.md`](plan/subsystem-matrix.md) — subsystem coverage + NIP roadmap
 - [`docs/plan/parallelization.md`](plan/parallelization.md) — parallelization opportunities
@@ -187,5 +185,5 @@ Where to look for detail:
 - **Not a schedule.** Milestones are sequential; durations depend on team size and surface complexity. No dates, no person-months.
 - **Not a marketing roadmap.** v1 ships when the exit criteria above are met, not on a calendar.
 - **Not durable understanding.** Implemented or invalidated plan detail must be removed, not preserved as reference documentation.
-- **Not the active-work tracker.** `WIP.md` owns in-flight; GitHub Issues own the queue. This file is only the current release-plan view.
+- **Not the active-work tracker.** GitHub Issues own the queue. This file is only the current release-plan view.
 - **Not exhaustive about post-v1.** Additional protocol modules (NIP-23 long-form is in, more video/long-form work post-v1), app demonstrations, and the framework GA are scoped only after v1.
