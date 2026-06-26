@@ -61,8 +61,8 @@ pub(super) fn deliver_one_completion(
 /// On `Completed`: pops the parked publish, parses the signed JSON into a
 /// `RawEvent`, and calls `reducer.publish_pre_signed`. On `Failed`: pops
 /// the parked entry and surfaces a `CommandFailed` event. On `Unknown`
-/// (stale/duplicate delivery): silent no-op (D6 — the kernel already handles
-/// this case gracefully).
+/// (stale/duplicate delivery): surfaces a `SignFailed` event (D6 — never a
+/// silent drop; mirrors `nmp-wasm`'s `WorkerEvent::SignFailed`).
 fn settle_outcome(
     reducer: &mut KernelReducer,
     pending: &mut HashMap<String, PendingSignedPublish>,
@@ -101,9 +101,17 @@ fn settle_outcome(
             let events = vec![BrowserRuntimeEvent::CommandFailed { reason }];
             (Vec::new(), events)
         }
-        SignRoundTripOutcome::Unknown { .. } => {
-            // Stale or duplicate delivery. Kernel is already clean; nothing to do.
-            (Vec::new(), Vec::new())
+        SignRoundTripOutcome::Unknown { correlation_id } => {
+            // Stale or duplicate delivery: the kernel had no parked round-trip
+            // for this id. Surface it honestly (D6) rather than dropping it —
+            // a stranded sign delivery must be observable to the host.
+            let events = vec![BrowserRuntimeEvent::SignFailed {
+                correlation_id,
+                reason: "no parked sign round-trip matched this correlation id \
+                         (stale or duplicate delivery)"
+                    .to_string(),
+            }];
+            (Vec::new(), events)
         }
     }
 }

@@ -14,7 +14,8 @@ pub(crate) mod completion;
 pub(crate) mod registry;
 
 pub(crate) use completion::{
-    broker_sign_request, SignerCompletion, SignerCompletionRx, SignerCompletionTx,
+    broker_sign_request, enqueue_completion, SignerCompletion, SignerCompletionRx,
+    SignerCompletionTx,
 };
 // `CapabilityEnvelope` is re-exported publicly so `lib.rs` can expose it as
 // a crate-root type. `CapabilityProviderRegistry` stays `pub(crate)`.

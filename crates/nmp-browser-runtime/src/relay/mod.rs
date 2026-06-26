@@ -259,12 +259,15 @@ impl RelayPool {
         return 0;
     }
 
-    /// Clone the shared [`WakeCell`]. Mirrors what `build_handlers` captures for
-    /// each JS driver callback at bootstrap time, so a native test can prove the
-    /// stable-indirection contract (a wake installed *after* this clone is still
-    /// observed) without the wasm32-only handler bag.
-    #[cfg(test)]
-    pub(crate) fn wake_cell_for_test(&self) -> WakeCell {
+    /// Clone the shared [`WakeCell`].
+    ///
+    /// The runtime hands a clone to the signer-completion broker paths (async
+    /// NIP-07 driver + host `deliver_signer_response`) so that enqueuing a
+    /// `SignerCompletion` outside `pump()` fires the SAME wake relay inbound
+    /// uses — guaranteeing a pump is scheduled to drain it (D8 no-polling).
+    /// Because the cell is shared by reference, a wake installed *after* this
+    /// clone is still observed (stable-indirection contract).
+    pub(crate) fn wake_cell(&self) -> WakeCell {
         Rc::clone(&self.wake)
     }
 }
@@ -325,7 +328,7 @@ mod tests {
         let mut pool = RelayPool::new(None);
 
         // 1. "Handler" captures the cell during bootstrap (wake still no-op).
-        let captured = pool.wake_cell_for_test();
+        let captured = pool.wake_cell();
 
         // 2. Host installs the real wake AFTER the capture.
         let pumps = Rc::new(Cell::new(0u32));

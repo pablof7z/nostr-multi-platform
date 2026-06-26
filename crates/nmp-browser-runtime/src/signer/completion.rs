@@ -31,6 +31,7 @@ use nmp_signer_iface::{SignerOp, UnsignedEvent};
 use nmp_signers::{Signer, SignerBackend};
 
 use super::registry::CapabilityProviderRegistry;
+use crate::relay::{fire_wake, WakeCell};
 
 /// One settled sign round-trip from the broker.
 #[derive(Debug)]
@@ -45,6 +46,27 @@ pub(crate) struct SignerCompletion {
 pub(crate) type SignerCompletionTx = mpsc::Sender<SignerCompletion>;
 /// Receiver end of the signer-completion channel.
 pub(crate) type SignerCompletionRx = mpsc::Receiver<SignerCompletion>;
+
+/// Enqueue a settled completion and fire the wake so a pump is scheduled.
+///
+/// Used by the paths that enqueue **outside** `pump()` — the async NIP-07
+/// driver (`spawn_local`) and the host-brokered
+/// `BrowserRuntimeHandle::deliver_signer_response`. Firing the wake (the SAME
+/// indirection relay inbound uses) is what guarantees the queued completion is
+/// drained on a subsequent pump instead of sitting forever (D8: no polling;
+/// D4: the reducer is NOT touched here — only the channel + wake).
+///
+/// The synchronous LocalKey path does NOT use this: its completion is sent
+/// during `drain_inbox` and drained in the same pump turn (step 1.5), so no
+/// wake is needed.
+pub(crate) fn enqueue_completion(
+    tx: &SignerCompletionTx,
+    wake: &WakeCell,
+    completion: SignerCompletion,
+) {
+    let _ = tx.send(completion);
+    fire_wake(wake);
+}
 
 /// Parse a flat-NIP-01 or nested `UnsignedEvent` JSON into an [`UnsignedEvent`].
 ///
@@ -89,6 +111,7 @@ pub(crate) fn broker_sign_request(
     account_pubkey: &str,
     unsigned_json: &str,
     tx: &SignerCompletionTx,
+    wake: &WakeCell,
 ) -> bool {
     let Some(entry) = registry.resolve(account_pubkey) else {
         return false;
@@ -98,6 +121,8 @@ pub(crate) fn broker_sign_request(
         Ok(u) => u,
         Err(e) => {
             // Parse failure is terminal; fail the round-trip immediately.
+            // Sent during `drain_inbox` (inside pump) — drained the same turn,
+            // so no wake is needed here.
             let _ = tx.send(SignerCompletion {
                 correlation_id: correlation_id.to_string(),
                 result: Err(format!("broker: unsigned-event parse error: {e}")),
@@ -112,6 +137,7 @@ pub(crate) fn broker_sign_request(
         correlation_id,
         unsigned,
         tx,
+        wake,
     )
 }
 
@@ -121,13 +147,14 @@ fn dispatch_by_backend(
     correlation_id: &str,
     unsigned: UnsignedEvent,
     tx: &SignerCompletionTx,
+    wake: &WakeCell,
 ) -> bool {
     match backend {
         SignerBackend::LocalKey => {
             dispatch_local_key(signer, correlation_id, unsigned, tx);
             true
         }
-        SignerBackend::Nip07 => dispatch_nip07(signer, correlation_id, unsigned, tx),
+        SignerBackend::Nip07 => dispatch_nip07(signer, correlation_id, unsigned, tx, wake),
         // NIP-46 (#2068 follow-up), NIP-55, Custom: not wired in this track.
         _ => false,
     }
@@ -170,19 +197,28 @@ fn dispatch_nip07(
     correlation_id: &str,
     unsigned: UnsignedEvent,
     tx: &SignerCompletionTx,
+    wake: &WakeCell,
 ) -> bool {
     let pubkey = signer.pubkey();
     let corr = correlation_id.to_string();
     let tx = tx.clone();
+    let wake = wake.clone();
     wasm_bindgen_futures::spawn_local(async move {
         let result = nmp_signers::sign_event_via_extension(pubkey, unsigned)
             .await
             .map(|signed| signed.to_nip01_json())
             .map_err(|e| format!("nip07 extension sign error: {e}"));
-        let _ = tx.send(SignerCompletion {
-            correlation_id: corr,
-            result,
-        });
+        // Resolves in a FUTURE JS task — pump() has long returned. Enqueue AND
+        // fire the wake so the queued completion is drained next pump instead
+        // of sitting forever (D8: no polling; D4: reducer untouched here).
+        enqueue_completion(
+            &tx,
+            &wake,
+            SignerCompletion {
+                correlation_id: corr,
+                result,
+            },
+        );
     });
     true
 }
@@ -194,10 +230,12 @@ fn dispatch_nip07(
     _correlation_id: &str,
     _unsigned: UnsignedEvent,
     _tx: &SignerCompletionTx,
+    wake: &WakeCell,
 ) -> bool {
     // NIP-07 extension signing requires wasm32 + browser context.
     // On native builds the provider is unresolvable; the runtime falls back to
     // emitting `BrowserRuntimeEvent::SignRequest` for host-brokering.
+    let _ = wake;
     false
 }
 
@@ -210,6 +248,13 @@ mod tests {
 
     use super::*;
     use crate::signer::registry::CapabilityProviderRegistry;
+
+    /// A no-op wake cell for broker tests that don't assert on wake firing.
+    fn noop_wake() -> WakeCell {
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        Rc::new(RefCell::new(Rc::new(|| {}) as Rc<dyn Fn()>))
+    }
 
     fn make_registry_with_local_key(secret_hex: &str) -> (CapabilityProviderRegistry, String) {
         let signer = LocalKeySigner::from_secret_hex(secret_hex).expect("valid secret");
@@ -238,7 +283,7 @@ mod tests {
         let (tx, rx) = mpsc::channel::<SignerCompletion>();
         let ujson = unsigned_json(&pubkey_hex);
 
-        let brokered = broker_sign_request(&reg, "corr-1", &pubkey_hex, &ujson, &tx);
+        let brokered = broker_sign_request(&reg, "corr-1", &pubkey_hex, &ujson, &tx, &noop_wake());
 
         assert!(brokered, "LocalKey should be brokered");
         let completion = rx.try_recv().expect("completion must arrive synchronously");
@@ -255,8 +300,36 @@ mod tests {
         let (reg, _) = make_registry_with_local_key(&"cc".repeat(32));
         let (tx, _rx) = mpsc::channel::<SignerCompletion>();
 
-        let brokered = broker_sign_request(&reg, "corr-2", "deadbeef", "{}", &tx);
+        let brokered = broker_sign_request(&reg, "corr-2", "deadbeef", "{}", &tx, &noop_wake());
         assert!(!brokered, "unknown pubkey must not be brokered");
+    }
+
+    #[test]
+    fn enqueue_completion_fires_wake_and_queues() {
+        use std::cell::{Cell, RefCell};
+        use std::rc::Rc;
+
+        // Build a wake cell with a counting closure (what set_wake installs).
+        let count = Rc::new(Cell::new(0u32));
+        let count_clone = Rc::clone(&count);
+        let wake: WakeCell =
+            Rc::new(RefCell::new(Rc::new(move || {
+                count_clone.set(count_clone.get() + 1);
+            }) as Rc<dyn Fn()>));
+
+        let (tx, rx) = mpsc::channel::<SignerCompletion>();
+        enqueue_completion(
+            &tx,
+            &wake,
+            SignerCompletion {
+                correlation_id: "corr-wake".to_string(),
+                result: Ok("{}".to_string()),
+            },
+        );
+
+        assert_eq!(count.get(), 1, "enqueue_completion must fire the wake once");
+        let completion = rx.try_recv().expect("completion must be queued");
+        assert_eq!(completion.correlation_id, "corr-wake");
     }
 
     #[test]
@@ -265,8 +338,14 @@ mod tests {
         let (reg, pubkey_hex) = make_registry_with_local_key(&secret);
         let (tx, rx) = mpsc::channel::<SignerCompletion>();
 
-        let brokered =
-            broker_sign_request(&reg, "corr-3", &pubkey_hex, "not-valid-json", &tx);
+        let brokered = broker_sign_request(
+            &reg,
+            "corr-3",
+            &pubkey_hex,
+            "not-valid-json",
+            &tx,
+            &noop_wake(),
+        );
         assert!(brokered, "malformed json still triggers broker (error path)");
         let completion = rx.try_recv().expect("error completion must arrive");
         assert!(

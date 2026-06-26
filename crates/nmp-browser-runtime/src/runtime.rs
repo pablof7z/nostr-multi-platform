@@ -38,8 +38,8 @@ use nmp_core::{
 use crate::builder::{BrowserBuilderInner, BrowserRunConfig};
 use crate::relay::RelayPool;
 use crate::signer::{
-    CapabilityEnvelope, CapabilityProviderRegistry, SignerCompletion, SignerCompletionRx,
-    SignerCompletionTx,
+    enqueue_completion, CapabilityEnvelope, CapabilityProviderRegistry, SignerCompletion,
+    SignerCompletionRx, SignerCompletionTx,
 };
 
 mod event;
@@ -165,6 +165,10 @@ impl BrowserRuntime {
 
     fn pump(&mut self) -> PumpOutcome {
         // ── 1. Command inbox drain ────────────────────────────────────────────
+        // Clone the shared wake cell first (cheap Rc clone) so the async NIP-07
+        // broker path can fire it from a future JS task; cloning here avoids
+        // holding a borrow on the pool across the &mut reducer drain.
+        let wake = self.relay_pool.wake_cell();
         let cmd_sender = CommandSender::new(self.inbox_tx.clone());
         let cmd_drain = pump::drain_inbox(
             &mut self.reducer,
@@ -172,16 +176,22 @@ impl BrowserRuntime {
             &mut self.pending_signed_publishes,
             &self.signer_registry,
             &self.signer_completion_tx,
+            &wake,
         );
 
         // ── 1.5. Drain sign completions (bounded — same budget as cmd drain) ───
         // LocalKey completions arrive here synchronously in the same turn.
-        // NIP-07 async completions arrive in a future turn after JS resolves.
+        // NIP-07 async + host-brokered completions arrive in a future turn (the
+        // wake scheduled the pump that drains them).
         let mut completion_outbound: Vec<OutboundMessage> = Vec::new();
         let mut completion_events: Vec<BrowserRuntimeEvent> = Vec::new();
         let mut completions_applied = 0usize;
+        let mut completion_yielded = false;
         loop {
             if completions_applied >= pump::BROWSER_COMMAND_DRAIN_BUDGET {
+                // Budget hit; remaining completions stay queued. Signal a re-pump
+                // so they are not stranded (mirrors the command/relay drains).
+                completion_yielded = true;
                 break;
             }
             match self.signer_completion_rx.try_recv() {
@@ -237,7 +247,7 @@ impl BrowserRuntime {
         PumpOutcome {
             outbound: all_outbound,
             events,
-            yielded: cmd_drain.yielded || relay_drain.yielded,
+            yielded: cmd_drain.yielded || relay_drain.yielded || completion_yielded,
         }
     }
 
@@ -431,27 +441,15 @@ impl BrowserRuntimeHandle {
 
     /// Host-brokered sign delivery — re-entry without polling (D8).
     ///
-    /// Called when the host handled a `BrowserRuntimeEvent::SignRequest`
-    /// externally. `result`: `Ok(flat-NIP-01 signed JSON)` on success or
-    /// `Err(reason)` on failure. On `Completed`, re-publishes the pre-signed
-    /// event to relay drivers. Re-entry is a direct handle method (no
-    /// `ActorCommand` round-trip needed; mirrors the nmp-wasm ABI pattern).
-    pub fn deliver_signer_response(
-        &mut self,
-        correlation_id: String,
-        result: Result<String, String>,
-    ) -> PumpOutcome {
+    /// `result`: `Ok(flat-NIP-01 signed JSON)` on success or `Err(reason)` on
+    /// failure. D4 (single-writer): this does NOT touch the reducer — it
+    /// enqueues a `SignerCompletion` on the broker's channel and fires the
+    /// shared wake (the same mechanism relay inbound uses), so `pump()` — the
+    /// sole reducer write point — applies it and routes the signed event.
+    pub fn deliver_signer_response(&mut self, correlation_id: String, result: Result<String, String>) {
         let completion = SignerCompletion { correlation_id, result };
-        let (outbound, events) = self.runtime.deliver_one_completion(completion);
-        // Fan the resulting outbound to relay drivers (wasm32: actual sends).
-        let budget_events = self.runtime.relay_pool.fan_out_outbound(&outbound);
-        let mut all_events = events;
-        all_events.extend(budget_events);
-        PumpOutcome {
-            outbound,
-            events: all_events,
-            yielded: false,
-        }
+        let wake = self.runtime.relay_pool.wake_cell();
+        enqueue_completion(&self.runtime.signer_completion_tx, &wake, completion);
     }
 
     /// Return the capability envelope for `account_pubkey` (lowercase hex),

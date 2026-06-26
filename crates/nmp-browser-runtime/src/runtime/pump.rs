@@ -30,6 +30,7 @@ use nmp_core::{CommandApplyOutcome, KernelReducer, OutboundMessage};
 
 use super::event::BrowserRuntimeEvent;
 use super::PendingSignedPublish;
+use crate::relay::WakeCell;
 use crate::signer::{broker_sign_request, CapabilityProviderRegistry, SignerCompletionTx};
 
 /// Maximum number of commands applied per `pump()` turn.
@@ -68,6 +69,7 @@ pub(super) fn drain_inbox(
     pending: &mut HashMap<String, PendingSignedPublish>,
     registry: &CapabilityProviderRegistry,
     completion_tx: &SignerCompletionTx,
+    wake: &WakeCell,
 ) -> DrainOutcome {
     let mut outbound: Vec<OutboundMessage> = Vec::new();
     let mut events: Vec<BrowserRuntimeEvent> = Vec::new();
@@ -122,6 +124,7 @@ pub(super) fn drain_inbox(
                     &request.account_pubkey,
                     &request.unsigned_json,
                     completion_tx,
+                    wake,
                 );
                 if !brokered {
                     events.push(BrowserRuntimeEvent::SignRequest {
