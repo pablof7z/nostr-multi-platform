@@ -309,3 +309,7 @@ mod tests_follow;
 #[cfg(test)]
 #[path = "kernel_reducer/command_apply_tests.rs"]
 mod command_apply_tests;
+
+#[cfg(test)]
+#[path = "kernel_reducer/command_apply_publish_tests.rs"]
+mod command_apply_publish_tests;

@@ -22,7 +22,7 @@ crates/nmp-cli/registry/compose/content-view/NostrContentView.kt	599
 crates/nmp-cli/registry/tui/content-kind-registry/nostr_kind_registry.rs	826
 crates/nmp-codegen/src/swift.rs	605
 crates/nmp-codegen/src/swift_projections_registry.rs	741
-crates/nmp-core/src/actor/commands/publish.rs	678
+crates/nmp-core/src/actor/commands/publish.rs	610
 crates/nmp-core/src/actor/mod.rs	761
 crates/nmp-core/src/actor/sign_event_for_account_tests.rs	565
 crates/nmp-core/src/kernel/action_registry/tests.rs	724
