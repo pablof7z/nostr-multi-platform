@@ -68,3 +68,16 @@ jobs:
           # block the build.  See deny.toml [advisories].ignore for known-safe
           # exceptions.
           arguments: --all-features
+
+  vendored-artifact-integrity:
+    name: vendored SQLite-WASM artifact integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The vendored SQLite-WASM artifact (crates/nmp-sqlite-wasm/vendor/) is a
+      # public-domain binary outside the Cargo graph, so cargo-deny/cargo-audit
+      # cannot see it. This SHA-256 re-verify is its substitute supply-chain
+      # control (#1007 PR-2). See crates/nmp-sqlite-wasm/vendor/PROVENANCE.md.
+      - name: Verify vendored SQLite-WASM artifact SHA-256
+        run: bash ci/verify-sqlite-wasm-artifact.sh

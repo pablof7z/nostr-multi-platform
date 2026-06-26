@@ -48,3 +48,10 @@ apps/chirp/android/app/src/main/java/org/nmp/android/uniffi/**
 
 # Web registry vendor mirror (copied output, source lives under crates/nmp-cli/registry/)
 web/registry/src/vendor/**
+
+# Vendored SQLite-WASM artifact (#1007): the public-domain sqlite.org engine
+# glue `sqlite3.mjs` is a ~14k-line generated `.mjs` (a checked extension), and
+# the hand-authored shim glue sits beside it so its `import './sqlite3.mjs'`
+# resolves locally. Integrity is enforced by SHA-256 (ci/verify-sqlite-wasm-artifact.sh),
+# not the LOC gate. Provenance: crates/nmp-sqlite-wasm/vendor/PROVENANCE.md (NOT exempt).
+crates/nmp-sqlite-wasm/vendor/sqlite-wasm/**

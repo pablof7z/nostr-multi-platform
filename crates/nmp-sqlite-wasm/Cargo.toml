@@ -27,4 +27,10 @@ path = "src/lib.rs"
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3.98"
 wasm-bindgen = "0.2.121"
+# Bridges the async halves of the shim (`sqlite3InitModule` / opfs-sahpool pool
+# open both return JS Promises) into Rust `Future`s via `JsFuture`. Part of the
+# wasm-bindgen toolchain (MIT/Apache-2.0), not an external engine dependency —
+# ADR-0054 §1's "zero external Rust crates" refers to the SQLite engine, which
+# remains a vendored artifact, not a crate.
+wasm-bindgen-futures = "0.4.72"
 web-sys = "0.3.98"
