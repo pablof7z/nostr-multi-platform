@@ -102,11 +102,12 @@ seam**, not an offline mode and not a per-domain feature:
   tiebreak), differing **only** by `Provenance::LocalStore` vs relay provenance.
   When the relay returns an event we already hold, supersession makes it a no-op;
   when it returns a newer one — or another client signs one mid-session — the same
-  seam re-drives every downstream effect. Serving a stored kind:3 fires the
-  contacts transition (`on_active_contacts_changed`) → registers the follow-feed →
-  serves the followed authors' notes, with the app doing nothing; a later kind:3
-  signed in another client routes through the identical seam and re-subscribes the
-  timeline under the new follow set.
+  seam re-drives every downstream effect. Serving a stored kind:3 updates the
+  active-account source state, the ReducedSource owner replaces its materialized
+  author interests through the generic dependent-interest path, and the followed
+  authors' notes are served with the app doing nothing. A later kind:3 signed in
+  another client routes through the identical seam and recompiles the feed under
+  the new follow set.
 
 For each interest the cache-serve seam:
 

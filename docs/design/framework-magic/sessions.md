@@ -10,7 +10,12 @@
 **Framework does:**
 
 - `SessionState` (`subsystems.md` §7.4 lines 107–125) carries `accounts: Vec<Account>` and `active: Option<String>` as plain state fields. A `SwitchActiveAccount { pubkey }` action mutates `active`; the mutation is the only state change.
-- `Trigger::ActiveAccountChanged { from, to }` (`subscription-compilation/recompilation.md` §4.2) fires as a consequence of the state change. The planner re-runs `interests()` on every `ViewModule` whose registered interest carries `InterestScope::ActiveAccount` (`subscription-compilation/intro.md` §2.1 line 60 + §2.3); `InterestScope::Account(specific)` and `InterestScope::Global` interests are untouched.
+- Active-account observers fire as a consequence of the state change.
+  ReducedSource feed sessions re-resolve sources such as
+  `FeedScope::ActiveUserFollows`, then replace their materialized child
+  interests through the generic dependent-interest owner. Concrete
+  `InterestScope::ActiveAccount` interests also re-route; specific/global
+  interests are untouched.
 - The compiler diffs the new plan against the old; per-relay CLOSE/REQ frames fire only for the *delta* (e.g., previous account's follows that are not in new account's follows close their slices; new follows open new slices).
 - View payloads recompute via the same `on_event_replaced` / `on_event_inserted` cascade the kernel uses for any state change; the platform shadow's `useFollowingTimeline()` etc. emit a new payload.
 - The signer attached to operations dispatched after the switch is the new active account's signer (per `IdentityModule` routing in `kernel-substrate.md` §6).

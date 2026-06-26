@@ -1,4 +1,4 @@
-//! Host-declared follow-feed timeline projection.
+//! Timeline read-cache projection.
 //!
 //! ADR-0057 — the timeline read-cache (`self.events` / `self.timeline`) is a
 //! **chokepoint-fed projection observer**, not a per-kind ingest arm. Admission
@@ -21,9 +21,9 @@ impl Kernel {
     /// driver preserves the `(role, relay_url, sub_id, event) -> bool` signature
     /// the existing `nmp-core` test suite drives directly, routing through the
     /// SAME production chokepoint so the tests exercise the real path (no
-    /// shadow ingest logic). It declares the event's kind as a follow-feed kind
-    /// first — exactly what the active-follows declaration path does — so the
-    /// timeline projection fires; production never calls this method.
+    /// shadow ingest logic). It then projects through the timeline read-cache
+    /// helper directly so tests can exercise timeline behavior without
+    /// reintroducing a production follow-feed kind gate.
     ///
     /// Returns `true` iff the store accepted the event as canonical
     /// (`Inserted | Replaced`), mirroring the old method's "stored?" boolean.
@@ -35,9 +35,11 @@ impl Kernel {
         sub_id: &str,
         event: NostrEvent,
     ) -> bool {
-        self.follow_feed_kinds.insert(event.kind);
-        let outcome =
-            self.ingest_accepted_event(super::IngestSource::Relay { relay_url, sub_id }, event);
+        let outcome = self.ingest_accepted_event(
+            super::IngestSource::Relay { relay_url, sub_id },
+            event.clone(),
+        );
+        self.project_timeline_event(sub_id, &event, outcome.as_ref());
         matches!(
             outcome,
             Some(
@@ -47,15 +49,14 @@ impl Kernel {
         )
     }
 
-    /// ADR-0057 — project an already-persisted compiled-acquisition follow-feed event
+    /// ADR-0057 — project an already-persisted timeline event
     /// into the timeline read-cache (`self.events` + `self.timeline`).
     ///
-    /// Called by the chokepoint ([`Kernel::ingest_accepted_event`]) for
-    /// `follow_feed_kinds` events AFTER `verify_and_persist` has run the
-    /// authoritative `store.insert` (D4 single-writer), the NIP-parser dispatch,
-    /// and the app-observer notify. This method does **no** sig-verify and **no**
-    /// `store.insert` — persistence already happened, gated only by valid
-    /// signature, kind-agnostically.
+    /// Called by the test/diagnostic timeline path AFTER `verify_and_persist`
+    /// has run the authoritative `store.insert` (D4 single-writer), the
+    /// NIP-parser dispatch, and the app-observer notify. This method does
+    /// **no** sig-verify and **no** `store.insert` — persistence already
+    /// happened, gated only by valid signature, kind-agnostically.
     ///
     /// - On `Duplicate` (a sibling-relay re-delivery, incl. the relay echo of a
     ///   locally-published event): bump the cached `relay_count` from the
@@ -267,37 +268,6 @@ impl Kernel {
             })
     }
 
-    /// T140 — follow-feed open milestone + pending profile-claim flush.
-    ///
-    /// ## M1 follow-feed REQ emission is RETIRED (T140 cutover)
-    ///
-    /// This function NO LONGER emits the hand-rolled `seed-timeline-*` REQ.
-    /// The follow feed is now carried exclusively by the M2 planner: kind:3
-    /// ingest registers per-follow `LogicalInterest`s
-    /// (`sync_follow_feed_interests`) and `drain_lifecycle_tick()` (the actor
-    /// idle loop) compiles + emits the per-NIP-65-write-relay REQ/CLOSE diff.
-    /// The seed-author bootstrap feed is independently covered by
-    /// `startup_requests()` (`seed-bootstrap` REQ + seed pubkeys seeded into
-    /// `timeline_authors`), so retiring the M1 path here does not regress it.
-    ///
-    /// `timeline_authors` is single-sourced from the M2 projection
-    /// (`sync_follow_feed_interests`) — the divergent `self.timeline_authors =
-    /// authors` assignment that previously lived here is deleted so the M1 and
-    /// M2 views cannot drift apart.
-    ///
-    /// The `timeline_requested` / `timeline_opened_at` milestone flags are
-    /// still flipped: `status.rs` reports cache-coverage off them, and the
-    /// milestone now means "the follow feed has been opened" regardless of
-    /// which subsystem carries it.
-    ///
-    /// Records the follow-feed open milestone. Emits no `OutboundMessage`s:
-    /// profile (kind:0) claims are registry interests (M2 migration), compiled
-    /// by the planner, not drained here.
-    #[cfg(any(test, feature = "test-support"))]
-    pub(in crate::kernel) fn maybe_open_timeline(&mut self) -> Vec<OutboundMessage> {
-        self.maybe_open_timeline_at(crate::kernel::test_support::test_support_now())
-    }
-
     pub(in crate::kernel) fn maybe_open_timeline_at(
         &mut self,
         now: Instant,
@@ -306,9 +276,7 @@ impl Kernel {
             self.timeline_requested = true;
             self.timing.timeline_opened_at = Some(now);
             self.log(
-                "follow-feed open milestone reached — carried by M2 planner \
-                 (drain_lifecycle_tick); M1 seed-timeline-* REQ retired (T140)"
-                    .to_string(),
+                "timeline open milestone reached; acquisition is feed-session owned".to_string(),
             );
         }
 

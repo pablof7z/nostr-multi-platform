@@ -544,9 +544,6 @@ fn profile_card_carries_raw_pubkey_without_npub() {
 #[test]
 fn contact_list_appears_in_snapshot_metrics_after_kind3_ingest() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
-    // hardcodes a social kind set.
-    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ACCOUNT.to_string());
 
     // Cold snapshot: no kind:3 → zero followed authors projected.
@@ -577,13 +574,12 @@ fn contact_list_appears_in_snapshot_metrics_after_kind3_ingest() {
         Some(2),
         "metrics.contacts_authors must project the two kind:3 follows",
     );
-    // Active-account kind:3 also rebuilds the follow-feed author set: the two
-    // follows plus the active account itself (so the user's own notes show).
+    // Core contact ingest no longer owns feed author expansion; reduced feed
+    // sources compile that dynamic author set above the generic interest seam.
     assert_eq!(
         after["metrics"]["timeline_authors"].as_u64(),
-        Some(3),
-        "active-account kind:3 must project the follows + self into \
-         metrics.timeline_authors",
+        Some(0),
+        "active-account kind:3 must not mutate metrics.timeline_authors directly",
     );
 }
 

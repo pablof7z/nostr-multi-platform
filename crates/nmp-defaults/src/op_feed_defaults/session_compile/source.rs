@@ -22,6 +22,23 @@ pub(super) type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>
 /// Extra acquisition shapes a scope must subscribe to beyond the render shape.
 pub(super) type ExtraAcquisition = Arc<dyn Fn() -> Vec<AcquisitionInterest> + Send + Sync>;
 
+/// Whether an OP-centric session can be registered before the active-account
+/// slot is populated.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum OpSessionIdentity {
+    RequireActive,
+    AllowMissingActive,
+}
+
+impl OpSessionIdentity {
+    pub(super) fn combine(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::AllowMissingActive, Self::AllowMissingActive) => Self::AllowMissingActive,
+            _ => Self::RequireActive,
+        }
+    }
+}
+
 /// One typed acquisition child compiled by a reduced source.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct AcquisitionInterest {
@@ -51,6 +68,10 @@ impl AcquisitionInterest {
 
 /// The compiled product of one reduced feed source.
 pub(super) struct ReducedSource {
+    /// OP-centric engine bootstrap policy. Most scopes require an active viewer
+    /// at open; `ActiveUserFollows` is intentionally view-driven and may open
+    /// before sign-in, with acquisition failing closed until identity resolves.
+    pub op_session_identity: OpSessionIdentity,
     /// The engine's event-aware root-admission predicate.
     pub admission: RootAdmission,
     /// Fixed typed acquisition interests.

@@ -88,7 +88,7 @@ pub enum ActorCommand {
 | `Identity` | `AddSigner`, `CreateAccount`, `SwitchActive`, `RemoveAccount`, `BunkerHandshakeProgress`, `BunkerConnectionStateChanged`, `Nip55SignerStateChanged`, `DeliverSignerResponse`, `CapabilityResultReady` | `cmd_identity.rs` |
 | `Sign` | `SignEventForReturn`, `SignEventForAccount`, `Nip44EncryptForAccount`, `Nip44DecryptForAccount` | `cmd_identity.rs` (signer-port-dispatch seam) |
 | `Publish` | `PublishRawEvent`, `PublishProfile`, `PublishUnsignedEvent`, `PublishUnsignedEventToRelays`, `PublishSignedEvent`, `RetryPublish`, `CancelPublish` | `cmd_publish.rs` |
-| `Contacts` | `Follow`, `Unfollow`, `FollowMany`, `DeclareActiveFollowsFeed`, `ClearActiveFollowsFeed` | `cmd_publish.rs` (kind:3 follow-set path) |
+| `Contacts` | `Follow`, `Unfollow`, `FollowMany` | `cmd_publish.rs` (kind:3 follow-set mutation path) |
 | `Relay` | `AddRelay`, `RemoveRelay`, `ReconnectRelays`, `SetRelayInfo` | `cmd_publish.rs` (relay-mutation path) |
 | `Refs` | `Resolve`, `Release` | `dispatch/mod.rs` (thin delegator) |
 | `Interests` | `PushInterest`, `WithdrawInterest`, `EnsureInterest`, `DropInterestOwner`, `OpenInterest`, `OpenObservedInterest`, `CloseInterest`, `RegisterPullCursor`, `AdvancePullCursor`, `UnregisterPullCursor` | `cmd_interests.rs` |

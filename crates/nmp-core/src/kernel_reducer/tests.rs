@@ -1,10 +1,9 @@
 use super::*;
 use crate::app::VIEW_PROFILE;
 use crate::kernel::{EventShape, RefLiveness, RefNamespace, RefShape, RelayFrame};
-use crate::relay::OutboundMessage;
 use crate::nip19::encode_npub;
+use crate::relay::OutboundMessage;
 use nmp_network::role::RelayRole;
-use std::collections::BTreeSet;
 use std::sync::Arc;
 
 const PK: &str = "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d";
@@ -290,7 +289,6 @@ fn idle_tick_does_not_set_dirty_flag() {
 //                       is called before returning so frames go out against
 //                       already-connected relays immediately).
 // • `close_interest`  — last-owner removal emits CLOSE inline.
-// • `declare_active_follows_feed` — total (D6: empty or non-empty, no panic).
 // • `set_active_account`   — total (D6: valid or empty pubkey, no panic);
 //                            sets active_account projection and returns
 //                            outbound without panicking.
@@ -356,23 +354,6 @@ fn open_interest_malformed_filter_is_silent_no_panic() {
         out.iter().all(|m| !m.text.contains("REQ")),
         "malformed filter must not produce a REQ"
     );
-}
-
-#[test]
-fn declare_active_follows_feed_is_total() {
-    // D6 — total: empty set, populated set, called before or after
-    // start/relay-connect must never panic.
-    let mut r = KernelReducer::new();
-    // Before start / relay connect — must not panic.
-    let _ = r.declare_active_follows_feed(BTreeSet::new());
-    let _ = r.declare_active_follows_feed([1u32, 6u32].into_iter().collect());
-
-    // After start + relay connected — must not panic.
-    r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
-    let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
-    let _ = r.declare_active_follows_feed([1u32, 6u32].into_iter().collect());
-    let _ = r.declare_active_follows_feed(BTreeSet::new());
-    // Pass: no panic.
 }
 
 #[test]

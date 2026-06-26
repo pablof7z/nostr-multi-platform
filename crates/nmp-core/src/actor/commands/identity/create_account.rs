@@ -8,8 +8,8 @@ use nostr::Keys;
 use crate::actor::{canonical_relay_role, has_role};
 use crate::kernel::{AppRelay, Kernel};
 use crate::relay::{canonical_relay_url, OutboundMessage};
-use nmp_signer_iface::UnsignedEvent;
 use crate::util::sort_dedup;
+use nmp_signer_iface::UnsignedEvent;
 
 use super::account_ops::{retarget_timeline, sync_kernel};
 use super::runtime::IdentityRuntime;
@@ -186,7 +186,7 @@ pub(crate) fn create_account(
         }
     }
 
-    kernel.reconcile_follow_feed_after_identity_change();
+    kernel.reconcile_feed_sources_after_identity_change();
     let mut outbound = kernel.active_account_bootstrap_requests();
     outbound.extend(retarget_timeline(identity, kernel, relays_ready));
     outbound.extend(publish_outbound);

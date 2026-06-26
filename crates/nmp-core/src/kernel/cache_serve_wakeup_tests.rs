@@ -7,10 +7,9 @@
 
 use super::*;
 use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::KernelEvent;
-use std::collections::BTreeSet;
+use nmp_network::role::RelayRole;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -351,7 +350,6 @@ fn replay_chunk_no_wakeup_reenqueue() {
     let base_ts: u64 = 1_700_000_000;
 
     // Seed 5 events into the store first (before registering the interest).
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
     kernel.timeline_authors.insert(author.clone());
     for i in 0..5u64 {
         let ev = signed_note(&keys, &format!("pre-seed {i}"), base_ts + i);

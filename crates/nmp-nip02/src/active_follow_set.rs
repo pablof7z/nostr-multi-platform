@@ -14,9 +14,8 @@
 //!
 //! `ActiveFollowSet` is the **producer** of that closure. It owns an
 //! `Arc<RwLock<BTreeSet<String>>>` of raw hex pubkeys for the active account's
-//! follows (plus the active account's own pubkey, mirroring the kernel's
-//! `timeline_authors` seeding — see below), keeps it current by observing
-//! kind:3 ingest, and hands out:
+//! follows (plus the active account's own pubkey; see below), keeps it current
+//! by observing kind:3 ingest, and hands out:
 //!
 //! * [`ActiveFollowSet::follows`] — a sorted `Vec<String>` snapshot read.
 //! * [`ActiveFollowSet::predicate`] — a closure that captures a clone of the
@@ -46,13 +45,10 @@
 //!
 //! # Self-inclusion
 //!
-//! `crates/nmp-core/src/kernel/ingest/contacts.rs::sync_follow_feed_interests`
-//! seeds the active account's *own* pubkey into `timeline_authors` (lines
-//! 162-164: `authors.insert(me.clone())`) so the user's own notes appear in
-//! their home stream. `ActiveFollowSet` mirrors that inclusion: the active
-//! account's own pubkey is always a member of the set (even before any kind:3
-//! has arrived), so the producer agrees with the kernel's own follow-derived
-//! authorship set.
+//! Dynamic feed-source reduction includes the active account's *own* pubkey so
+//! the user's own notes appear in their home stream. `ActiveFollowSet` mirrors
+//! that inclusion: the active account's own pubkey is always a member of the
+//! set (even before any kind:3 has arrived).
 //!
 //! # Account switch / logout
 //!

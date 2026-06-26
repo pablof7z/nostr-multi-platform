@@ -20,7 +20,9 @@ use nmp_ffi::FeedOpenError;
 use nmp_planner::InterestShape;
 
 use super::resolve::not_supported;
-use super::source::{empty_extra, AcquisitionInterest, LiveShape, ReducedSource};
+use super::source::{
+    empty_extra, AcquisitionInterest, LiveShape, OpSessionIdentity, ReducedSource,
+};
 
 // ── Authors { authors } — static author-set timeline ─────────────────────
 
@@ -59,6 +61,7 @@ pub(super) fn resolve_authors(
     let live_shape: LiveShape = Arc::new(move || Some(shape.clone()));
 
     Ok(ReducedSource {
+        op_session_identity: OpSessionIdentity::RequireActive,
         admission,
         interests,
         live_shape,
@@ -85,6 +88,7 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ReducedSource {
         Arc::new(move || shape.clone())
     };
     ReducedSource {
+        op_session_identity: OpSessionIdentity::RequireActive,
         admission,
         interests,
         live_shape,
@@ -168,6 +172,7 @@ pub(super) fn resolve_referrer(
         Arc::new(move || referrer_live_shape(&id, &k))
     };
     Ok(ReducedSource {
+        op_session_identity: OpSessionIdentity::RequireActive,
         admission,
         interests,
         live_shape,

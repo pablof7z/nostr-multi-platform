@@ -2,33 +2,33 @@
 //! blocks live in the split submodules below; this file carries the
 //! lifecycle/argument helpers and the re-export facade.
 
+mod action;
+#[cfg(test)]
+#[path = "active_account_handle_tests.rs"]
+mod active_account_handle_tests;
+mod app_config_hooks;
+mod app_config_intent;
+mod app_config_search;
+mod app_config_substrate;
+mod app_host_impl;
+mod capability;
+#[cfg(test)]
+#[path = "capability_quiescence_tests.rs"]
+mod capability_quiescence_tests;
+mod content_ffi;
+mod declared_projections;
+mod keyring_forget;
 #[cfg(test)]
 #[path = "passive_start_tests.rs"]
 mod passive_start_tests;
 #[cfg(test)]
 #[path = "update_callback_quiescence_tests.rs"]
-mod update_callback_quiescence_tests;
-#[cfg(test)]
-#[path = "capability_quiescence_tests.rs"]
-mod capability_quiescence_tests;
-mod keyring_forget;
-#[cfg(test)]
-#[path = "active_account_handle_tests.rs"]
-mod active_account_handle_tests;
-mod action;
-mod app_config_hooks;
-mod app_config_search;
-mod app_config_intent;
-mod app_config_substrate;
-mod app_host_impl;
-mod capability;
-mod content_ffi;
-mod declared_projections; // ADR-0053/E4: `impl NmpApp` consumed-projection-intent methods (LOC ceiling).
-// `nmp_app_active_following_count` deleted (#1726): follow count is in the
-// `nmp.follow_list` typed projection (`follows.len()`). Callers that
-// previously read this sync sentinel should read `follows.len()` from the
-// `nmp.follow_list` projection instead.
-// #1726 — unified diagnostic pull accessor (domain 0=routing, 1=composition, 2=merged).
+mod update_callback_quiescence_tests; // ADR-0053/E4: `impl NmpApp` consumed-projection-intent methods (LOC ceiling).
+                                      // `nmp_app_active_following_count` deleted (#1726): follow count is in the
+                                      // `nmp.follow_list` typed projection (`follows.len()`). Callers that
+                                      // previously read this sync sentinel should read `follows.len()` from the
+                                      // `nmp.follow_list` projection instead.
+                                      // #1726 — unified diagnostic pull accessor (domain 0=routing, 1=composition, 2=merged).
 mod debug_info;
 
 // Canonical cross-cutting string-free symbol. Every `*mut c_char` returned
@@ -36,32 +36,32 @@ mod debug_info;
 #[cfg(test)]
 #[path = "event_by_id_tests.rs"]
 mod event_by_id_tests;
-mod free;
-mod passive_start;
-mod prestart_config;
-#[cfg(test)]
-#[path = "sign_event_for_return_tests.rs"]
-mod sign_event_for_return_tests;
 mod event_observer;
+#[cfg(feature = "external-signer")]
+mod external_signer;
 mod feed;
 mod feed_session;
+mod free;
 mod identity;
+mod incremental_apply;
+mod intent_ffi;
 #[cfg(test)]
 #[path = "interest_feed_tests.rs"]
 mod interest_feed_tests;
 mod lifecycle;
 mod nip19_ffi;
-mod intent_ffi;
 mod nip21_ffi;
+mod passive_start;
+mod prestart_config;
 mod publish;
 pub mod pull;
 mod relay_config;
+#[cfg(test)]
+#[path = "sign_event_for_return_tests.rs"]
+mod sign_event_for_return_tests;
 #[cfg(feature = "signer-broker")]
 mod signer_broker;
 mod signer_ports;
-mod incremental_apply;
-#[cfg(feature = "external-signer")]
-mod external_signer;
 // #1726: `mod routing_trace` and `mod composition_report` deleted.
 // Callers use `nmp_app_debug_info(app, domain)` instead (domain 0 = routing,
 // 1 = composition, 2 = merged). No compat shims kept.
@@ -86,25 +86,25 @@ mod testing_sync;
 mod signer_ports_test_support;
 
 // ── Split submodules ──────────────────────────────────────────────────────
-mod app_sub_structs;
-mod app_struct;
 mod app_ctor;
+mod app_impl_accessors;
 mod app_impl_core;
 mod app_impl_feeds;
-mod app_impl_accessors;
 mod app_lifecycle_ffi;
+mod app_struct;
+mod app_sub_structs;
 
 // ── Re-exports from split modules ────────────────────────────────────────
 pub use app_struct::{IdentityChangeObserverId, NmpApp};
 // Make update-callback types accessible via `super::` from inline test
 // modules (passive_start_tests, update_callback_quiescence_tests).
-#[cfg(test)]
-pub(crate) use app_struct::{UpdateCallback, UpdateCallbackGate, UpdateCallbackRegistration};
 pub use app_ctor::nmp_app_new;
 pub use app_lifecycle_ffi::{
     nmp_app_configure, nmp_app_free, nmp_app_reset, nmp_app_set_update_callback, nmp_app_start,
     nmp_app_stop,
 };
+#[cfg(test)]
+pub(crate) use app_struct::{UpdateCallback, UpdateCallbackGate, UpdateCallbackRegistration};
 
 // ── Native re-export surface ──────────────────────────────────────────────
 // Hoist every per-submodule FFI entry-point into the `ffi::` namespace so
@@ -206,13 +206,11 @@ pub use timeline::{
     // V-68 Stage 2 (ADR-0042 amendment 2026-06-12): nmp_app_open_timeline
     // deleted from identity.rs.
     // ADR-0063 Lane H: nmp_app_claim_profile, nmp_app_release_profile deleted.
-    // #1740 step 8: `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
-    // C-ABI shims DELETED. `declare_active_follows_feed` / `clear_active_follows_feed`
-    // stay as INTERNAL composition glue (home-feed wiring), not app-facing C ABI.
+    // #1740/#2092: `nmp_app_open_contact_feed` / `nmp_app_close_contact_feed`
+    // and the follow-feed declare/clear helpers are deleted. Apps open the
+    // home feed through `nmp_app_open_feed(FeedScope::ActiveUserFollows)`.
     // #1946: event URI C-ABI front doors DELETED. Callers migrate to the typed
     // event-ref adapters below.
-    clear_active_follows_feed,
-    declare_active_follows_feed,
     nmp_app_close_interest,
     nmp_app_open_interest,
     nmp_app_open_uri,
@@ -231,6 +229,11 @@ pub use resolve_ref::{
 
 // ── test-support delta ───────────────────────────────────────────────────
 #[cfg(any(test, feature = "test-support"))]
+pub use signer_ports_test_support::{
+    install_bunker_hook_for_test, install_external_signer_hook_for_test,
+    invoke_bunker_connect_hook_for_test, invoke_external_signer_restore_hook_for_test,
+};
+#[cfg(any(test, feature = "test-support"))]
 pub use testing::{
     nmp_app_configure_gc_budget, nmp_app_inject_pre_verified_events,
     nmp_app_inject_signed_event_json, nmp_app_inject_signed_events,
@@ -239,11 +242,6 @@ pub use testing::{
 };
 #[cfg(any(test, feature = "test-support"))]
 pub use testing_sync::nmp_app_wait_barrier;
-#[cfg(any(test, feature = "test-support"))]
-pub use signer_ports_test_support::{
-    install_bunker_hook_for_test, install_external_signer_hook_for_test,
-    invoke_bunker_connect_hook_for_test, invoke_external_signer_restore_hook_for_test,
-};
 
 // ── Shared FFI helpers ────────────────────────────────────────────────────
 use std::ffi::{c_char, CStr};

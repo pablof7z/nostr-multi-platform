@@ -295,8 +295,6 @@ impl Kernel {
             test_contacts_cache,
             timeline_authors: BTreeSet::new(),
             dependent_interest_sets: BTreeMap::new(),
-            follow_feed_interest_ids: BTreeSet::new(),
-            follow_feed_kinds: BTreeSet::new(),
             profile_claims: HashMap::new(),
             live_profile_claims: HashMap::new(),
             live_event_claims: HashMap::new(),

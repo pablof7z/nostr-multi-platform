@@ -5,7 +5,7 @@
 //! multi-author MemEventStore fixture with distinct kind:10002 write
 //! relays per author. They pin the D3 enforcement bullets:
 //!
-//! 1. **Follow-feed REQ** fans out to each followed author's resolved write
+//! 1. **Generic multi-author REQ** fans out to each author's resolved write
 //!    relays (NOT the BOOTSTRAP constants) once their kind:10002 is cached.
 //! 2. **Publish** fans out to the author's resolved write relays via
 //!    `Nip65OutboxResolver`.
@@ -14,7 +14,10 @@
 //!    the relay list arrives (recompilation trigger).
 
 use super::*;
+use crate::planner::{InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
 use crate::relay::{BOOTSTRAP_DISCOVERY_RELAYS, DEFAULT_VISIBLE_LIMIT};
+use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
+use std::collections::BTreeSet;
 
 const ALICE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BOB: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
@@ -28,19 +31,32 @@ fn install_relay_list(kernel: &Kernel, author: &str, write: &[&str], read: &[&st
     );
 }
 
+fn open_author_interest(kernel: &mut Kernel, owner: &str, authors: &[&str], kinds: &[u32]) {
+    let shape = InterestShape {
+        authors: authors.iter().map(|author| (*author).to_string()).collect(),
+        kinds: kinds.iter().copied().collect(),
+        ..Default::default()
+    };
+    let key = SubKey::builder("open-interest")
+        .with(&shape)
+        .with(1u32)
+        .finish();
+    let identity = SubIdentity::new(SubOwnerKey::new(owner), key, SubScope::Global);
+    let interest = LogicalInterest {
+        scope: InterestScope::Global,
+        shape,
+        lifecycle: InterestLifecycle::Tailing,
+        ..Default::default()
+    };
+    let _ = kernel.open_interest_sub(identity, interest);
+}
+
 #[test]
-fn follow_feed_fans_out_per_author_write_relays_not_constants() {
-    // T140: the follow-feed REQ is now carried by the M2 planner
-    // (`drain_lifecycle_tick`), NOT the retired M1 `maybe_open_timeline()`
-    // `seed-timeline-*` path. The D3 contract this test pins is unchanged —
-    // only the mechanism moved from M1 to M2: two followed authors with
-    // DISTINCT write relays MUST each get a REQ on their own resolved relay,
-    // each carrying only the authors that relay serves — never a hardcoded
-    // `RelayRole::Content` URL.
+fn multi_author_interest_fans_out_per_author_write_relays_not_constants() {
+    // Two authors with DISTINCT write relays MUST each get a REQ on their own
+    // resolved relay, each carrying only the authors that relay serves — never
+    // a hardcoded `RelayRole::Content` URL.
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
-    // hardcodes a social kind set.
-    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
     kernel
         .lifecycle_mut()
@@ -54,24 +70,9 @@ fn follow_feed_fans_out_per_author_write_relays_not_constants() {
         &["wss://shared.relay/"],
     );
 
-    // ALICE (the active account) follows ALICE + BOB. `ingest_contacts`
-    // registers the M2 follow-feed interests + enqueues FollowListChanged.
-    kernel
-        .inject_replaceable_event(
-            "1111111111111111111111111111111111111111111111111111111111111111",
-            ALICE,
-            1_000,
-            3,
-            vec![
-                vec!["p".to_string(), ALICE.to_string()],
-                vec!["p".to_string(), BOB.to_string()],
-            ],
-            "wss://seed.relay/",
-            1_000_000,
-        )
-        .expect("inject kind:3");
+    open_author_interest(&mut kernel, "outbox-multi-author", &[ALICE, BOB], &[1, 6]);
 
-    // The actor idle-loop call: M2 compiles + emits the per-relay REQ diff.
+    // The actor idle-loop call: lifecycle compiles + emits the per-relay REQ diff.
     let frames = kernel.drain_lifecycle_tick();
     let reqs: Vec<(&String, &String)> = frames
         .iter()
@@ -86,7 +87,7 @@ fn follow_feed_fans_out_per_author_write_relays_not_constants() {
         .collect();
     assert!(
         !reqs.is_empty(),
-        "M2 drain must emit follow-feed REQs after ingest_contacts"
+        "lifecycle drain must emit generic author-interest REQs"
     );
 
     // (1) Every REQ carries an explicit resolved relay_url.
@@ -99,7 +100,7 @@ fn follow_feed_fans_out_per_author_write_relays_not_constants() {
 
     // (2) Alice's and Bob's resolved write relays both appear; the shared
     // (both-marker) relay also appears.
-    let urls: std::collections::BTreeSet<String> = reqs.iter().map(|(u, _)| (*u).clone()).collect();
+    let urls: BTreeSet<String> = reqs.iter().map(|(u, _)| (*u).clone()).collect();
     assert!(
         urls.contains("wss://alice.relay/"),
         "alice's write relay must be a routing target, got {urls:?}"
@@ -146,35 +147,20 @@ fn follow_feed_fans_out_per_author_write_relays_not_constants() {
 
 #[test]
 fn cold_start_routes_to_bootstrap_then_replans_after_nip65_arrives() {
-    // T105 / T140: NIP-65 arrival for a followed author triggers M2 recompile
+    // T105 / T140: NIP-65 arrival for an interested author triggers recompile
     // and re-routes from discovery (no-NIP65 fallback) to the resolved write relay.
     //
-    // Setup: ALICE follows herself; alice's kind:10002 is NOT cached initially
+    // Setup: an interest names ALICE; alice's kind:10002 is NOT cached initially
     // so the first M2 drain emits a discovery (kind:10002) probe. Once alice's
     // kind:10002 arrives (Nip65Arrived trigger), the second M2 drain emits a
     // REQ for alice's resolved write relay and CLOSEs the prior fallback REQ.
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
-    // hardcodes a social kind set.
-    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(ALICE.to_string());
     kernel
         .lifecycle_mut()
         .set_selection_budget(usize::MAX, usize::MAX);
 
-    // Inject kind:3: ALICE follows herself. No kind:10002 yet.
-    let follows = vec![vec!["p".to_string(), ALICE.to_string()]];
-    kernel
-        .inject_replaceable_event(
-            "1111111111111111111111111111111111111111111111111111111111111111",
-            ALICE,
-            1_000,
-            3,
-            follows,
-            "wss://seed.relay/",
-            1_000_000,
-        )
-        .expect("inject kind:3");
+    open_author_interest(&mut kernel, "outbox-cold-start", &[ALICE], &[1, 6]);
 
     // First M2 drain: no NIP-65 for ALICE → planner probes the indexer.
     // We don't assert on the exact URL (it's the indexer probe, not alice's

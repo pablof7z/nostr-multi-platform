@@ -39,19 +39,21 @@
 //! The decrypt path itself is exercised by
 //! `nmp-nip17::inbox::tests::received_dm_surfaces_in_the_conversation`.
 
-use super::cache_serve_tests::{drain_cache_serves, hex_pk, simulate_cold_restart};
+use super::cache_serve_tests::{
+    drain_cache_serves, hex_pk, open_author_interest, simulate_cold_restart,
+};
 use super::*;
 
 use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest, NaddrCoord,
 };
-use {crate::relay::DEFAULT_VISIBLE_LIMIT, nmp_network::role::RelayRole};
 use crate::store::VerifiedEvent;
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use crate::substrate::IngestParser;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
+use {crate::relay::DEFAULT_VISIBLE_LIMIT, nmp_network::role::RelayRole};
 
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -232,8 +234,7 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
 
     // Active account is the receiver (DM recipient and feed "self").
     kernel.active_account = Some(receiver_hex.clone());
-    // Feed author is followed.
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
+    // Feed author is visible in the home timeline projection.
     kernel.timeline_authors.insert(feed_author.clone());
 
     // Pre-open the thread interest so `should_store_event` admits the thread
@@ -325,26 +326,20 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
     );
 
     // Phase 1 postconditions:
-    // - Feed events (kind:1 from timeline author) land in the in-memory cache.
-    // - Thread reply (kind:1 from non-followed author, but open interest matches)
-    //   is stored AND admitted into kernel.events (matches_active_open_interest).
-    // - Long-form / gift-wrap go through wildcard arm → stored, but NOT in
-    //   kernel.events (wildcard arm does NOT call `self.events.insert`).
+    // The live chokepoint persists accepted events and notifies observers, but
+    // feed rendering is owned by registered interests. Verify feed and
+    // long-form rows are NOT in the read-cache yet so Phase 4's cache-serve
+    // assertions are non-vacuous. The thread row is allowed to be cached here:
+    // this test pre-opens a thread interest before seeding to exercise store
+    // admission for non-followed authors.
     assert!(
-        kernel.events.contains_key(feed_id_1.as_str()),
-        "Phase 1: feed_ev_1 must be in events cache after ingest (timeline author)"
-    );
-    assert!(
-        kernel.events.contains_key(feed_id_2.as_str()),
-        "Phase 1: feed_ev_2 must be in events cache after ingest (timeline author)"
-    );
-    assert!(
-        kernel.events.contains_key(thread_id.as_str()),
-        "Phase 1: thread reply must be in events cache (admitted via open interest)"
+        !kernel.events.contains_key(feed_id_1.as_str())
+            && !kernel.events.contains_key(feed_id_2.as_str())
+            && !kernel.events.contains_key(longform_id.as_str()),
+        "Phase 1 pre-condition: store-seeded rows must not already be in events cache; \
+         cache-serve will populate them in Phase 4",
     );
     // (raw observer tap removed from kernel in Step 2; dispatcher handles external sinks)
-    // Long-form (kind:30023) goes through wildcard arm → store only (not events cache).
-    // Verify it is NOT in the cache yet to make the Phase 4 assertion non-vacuous.
     assert!(
         !kernel.events.contains_key(longform_id.as_str()),
         "Phase 1 pre-condition: long-form must NOT be in events cache yet \
@@ -372,8 +367,13 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
 
     // ── Phase 3: open interests and drain cache-serves (ZERO relay) ───────────
     // Fresh keys force `changed=true` after the Phase-1 pre-open. The feed uses
-    // the production follow-feed sync path.
-    kernel.sync_follow_feed_interests(&[feed_author.clone()]);
+    // the reduced author-set shape through the generic interest path.
+    open_author_interest(
+        &mut kernel,
+        "universal-feed-phase3",
+        [feed_author.clone()],
+        [1u32],
+    );
 
     // E3 — thread: register Etag interest with a fresh key → newly_installed=true.
     {
@@ -435,7 +435,7 @@ fn universal_acceptance_all_four_projection_paths_from_store_no_relay() {
         );
     }
 
-    // Drain: `sync_follow_feed_interests` ran one synchronous step; continue
+    // Drain: the feed interest open ran one synchronous step; continue
     // until the queue is empty. These small fixtures finish in ≤ 2 ticks.
     drain_cache_serves(&mut kernel, 10);
 

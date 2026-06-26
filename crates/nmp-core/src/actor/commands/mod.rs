@@ -116,15 +116,7 @@ pub(super) mod test_support_command;
 // runtime (publish / dm / relays helpers, `run_actor`, etc.). They share
 // the `native` gate with the modules they drive.
 #[cfg(all(test, feature = "native"))]
-mod active_follows_feed_prelogin_tests;
-#[cfg(all(test, feature = "native"))]
-mod feed_session_clear_followfeed_tests;
-#[cfg(all(test, feature = "native"))]
-mod registration_seed_follow_tests;
-#[cfg(all(test, feature = "native"))]
 mod remote_signer_tests;
-#[cfg(all(test, feature = "native"))]
-mod t168_identity_followfeed_reconcile_tests;
 #[cfg(all(test, feature = "native"))]
 mod tests;
 
@@ -254,8 +246,8 @@ pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEvent
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
-    clear_active_follows_feed, declare_active_follows_feed, follow, follow_many, publish_profile,
-    publish_signed_event, publish_unsigned_event, publish_unsigned_event_to_relays,
+    follow, follow_many, publish_profile, publish_signed_event, publish_unsigned_event,
+    publish_unsigned_event_to_relays,
 };
 // V-41 — `zap::handle_fetch_lnurl_invoice` was the legacy actor-thread
 // LNURL handler. Deleted alongside the `FetchLnurlInvoice` `ActorCommand`

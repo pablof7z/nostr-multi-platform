@@ -18,21 +18,19 @@
 //!
 //! # Side-effect-free against kernel state (the `IngestParser` contract)
 //!
-//! This parser writes ONLY the capability-owned cache. The kernel-owned
-//! follow-feed effects (`sync_follow_feed_interests`, `timeline_authors`
-//! rebuild, `FollowListChanged` trigger, cache-serve) are driven by the kernel
-//! itself, on its own tick, via the contacts-transition detection in
-//! `project_accepted_event` (before/after snapshot of this cache for the
-//! author). The parser never names the active account or the lifecycle
-//! registry — it cannot, structurally (no `&mut Kernel`).
+//! This parser writes ONLY the capability-owned cache. The kernel detects
+//! contacts-cache transitions in `project_accepted_event` (before/after
+//! snapshot of this cache for the author) and enqueues the generic feed-source
+//! recompile trigger for the active account. The parser never names the active
+//! account or the lifecycle registry — it cannot, structurally (no `&mut Kernel`).
 //!
 //! Supersession (newest kind:3 wins, lexicographic event-id tiebreak) is owned
 //! by [`ContactsCache::upsert_view`].
 
 use std::sync::Arc;
 
-use nmp_store::VerifiedEvent;
 use nmp_core::substrate::{ContactsView, IngestParser};
+use nmp_store::VerifiedEvent;
 
 use crate::contacts_cache::ContactsCache;
 
@@ -42,7 +40,7 @@ const KIND_CONTACT_LIST: u32 = 3;
 /// The kind:3 ingest parser. Constructed with a shared `Arc<ContactsCache>`
 /// handle — the same `Arc` the kernel holds as its `Arc<dyn ContactsLookup>`,
 /// so the writer side (this parser) and the reader side (the kernel's
-/// follow-feed registration / byte-estimate / RAM-eviction paths) see one
+/// feed-source recompile / byte-estimate / RAM-eviction paths) see one
 /// source of truth.
 pub struct Kind3Parser {
     cache: Arc<ContactsCache>,
@@ -85,10 +83,16 @@ impl IngestParser for Kind3Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nmp_store::RawEvent;
     use nmp_core::substrate::{ContactsLookup, EventIngestDispatcher};
+    use nmp_store::RawEvent;
 
-    fn evt(pubkey: &str, id: &str, kind: u32, created_at: u64, tags: Vec<Vec<String>>) -> VerifiedEvent {
+    fn evt(
+        pubkey: &str,
+        id: &str,
+        kind: u32,
+        created_at: u64,
+        tags: Vec<Vec<String>>,
+    ) -> VerifiedEvent {
         VerifiedEvent::from_raw_unchecked(RawEvent {
             id: id.into(),
             pubkey: pubkey.into(),
@@ -118,12 +122,7 @@ mod tests {
         let parser = Kind3Parser::new(Arc::clone(&cache));
         let a = "1".repeat(64);
         let b = "2".repeat(64);
-        let tags = vec![
-            p(&a),
-            p(&b),
-            p("not-hex"),
-            vec!["e".to_string(), a.clone()],
-        ];
+        let tags = vec![p(&a), p(&b), p("not-hex"), vec!["e".to_string(), a.clone()]];
         assert!(parser.parse_event(&evt("alice", "aa", 3, 100, tags)));
         assert_eq!(cache.follows("alice"), Some(vec![a, b]));
     }

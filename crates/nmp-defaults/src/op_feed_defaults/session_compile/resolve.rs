@@ -36,14 +36,15 @@ use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_kinds::KIND_FOLLOW_SET;
 use nmp_planner::InterestShape;
 
-use super::source::{AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook};
+use super::source::{
+    AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity, ReducedSource, ResetHook,
+};
 use super::wot_graph::SessionWotGraph;
 
 const KIND_CONTACT_LIST: u32 = 3;
 
-/// Resolve a non-default, non-set-algebra scope. Set algebra is handled by
-/// [`super::set_algebra`]; `ActiveUserFollows` / `CustomPerspectiveId` are
-/// handled in `mod.rs`.
+/// Resolve a non-set-algebra scope. Set algebra is handled by
+/// [`super::set_algebra`]; `CustomPerspectiveId` is handled in `custom.rs`.
 pub(super) fn resolve_scope(
     app: &NmpApp,
     scope: &nmp_feed::FeedScope,
@@ -52,6 +53,7 @@ pub(super) fn resolve_scope(
     use nmp_feed::FeedScope as S;
     match scope {
         S::Authors { authors } => super::resolve_static::resolve_authors(authors, kinds),
+        S::ActiveUserFollows => resolve_active_user_follows(app, kinds),
         S::ContactList { owner } => resolve_contact_list(app, owner, kinds),
         S::ListMembers { list } => resolve_list_members(app, &list.0, kinds),
         S::Wot { seed, .. } => resolve_wot(app, &seed.0, kinds),
@@ -65,7 +67,7 @@ pub(super) fn resolve_scope(
         S::Difference(l, r) => {
             super::set_algebra::resolve_set_op(app, SetOp::Difference, l, r, kinds)
         }
-        S::ActiveUserFollows | S::CustomPerspectiveId(_) => {
+        S::CustomPerspectiveId(_) => {
             // Handled by the dispatcher; unreachable here. Fail closed.
             Err(not_supported("scope-routing"))
         }
@@ -86,6 +88,19 @@ pub(super) fn not_supported(scope: &'static str) -> FeedOpenError {
 
 // ── ContactList { owner } ────────────────────────────────────────────────
 
+fn resolve_active_user_follows(
+    app: &NmpApp,
+    kinds: &BTreeSet<u32>,
+) -> Result<ReducedSource, FeedOpenError> {
+    let initial_viewer = super::super::read_active(&app.active_account_handle());
+    resolve_active_follow_set(
+        app,
+        kinds,
+        initial_viewer,
+        OpSessionIdentity::AllowMissingActive,
+    )
+}
+
 /// The active viewer's contact list resolves via the framework
 /// [`nmp_nip02::ActiveFollowSet`] (live, reactive). A FOREIGN owner's kind:3 has
 /// no single-source framework resolver → fail closed (deferred to step 4).
@@ -100,6 +115,15 @@ fn resolve_contact_list(
         return Err(not_supported("ContactList-foreign-owner"));
     }
 
+    resolve_active_follow_set(app, kinds, Some(viewer), OpSessionIdentity::RequireActive)
+}
+
+fn resolve_active_follow_set(
+    app: &NmpApp,
+    kinds: &BTreeSet<u32>,
+    initial_viewer: Option<String>,
+    op_session_identity: OpSessionIdentity,
+) -> Result<ReducedSource, FeedOpenError> {
     // A fresh ActiveFollowSet over the same active-account slot, registered as a
     // session observer so kind:3 ingest keeps the predicate live (reactive).
     let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
@@ -119,11 +143,13 @@ fn resolve_contact_list(
             );
         }
     });
-    super::source_replay::replay_source_shape(
-        app,
-        follow_set.as_ref(),
-        seed_contacts_shape(&viewer),
-    );
+    if let Some(viewer) = initial_viewer {
+        super::source_replay::replay_source_shape(
+            app,
+            follow_set.as_ref(),
+            seed_contacts_shape(&viewer),
+        );
+    }
 
     // Event-aware over the author-only follow predicate: a root is admitted iff
     // its author is in the live follow set.
@@ -142,6 +168,7 @@ fn resolve_contact_list(
     });
 
     Ok(ReducedSource {
+        op_session_identity,
         admission,
         interests,
         extra_acquisition,
@@ -228,6 +255,7 @@ fn resolve_list_members(
     );
 
     Ok(ReducedSource {
+        op_session_identity: OpSessionIdentity::RequireActive,
         admission,
         interests,
         extra_acquisition,
@@ -314,6 +342,7 @@ fn resolve_wot(
     });
 
     Ok(ReducedSource {
+        op_session_identity: OpSessionIdentity::RequireActive,
         admission,
         interests,
         live_shape,

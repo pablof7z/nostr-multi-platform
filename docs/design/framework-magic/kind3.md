@@ -1,25 +1,42 @@
-# Framework Magic §C5 — Kind:3 Auto-Tracking
+# Framework Magic §C5 — Active-Follows ReducedSource Tracking
 
 > Parent: `docs/design/framework-magic.md`.
-> Read first: `docs/design/subscription-compilation/recompilation.md` (trigger model — kind:3 is the symmetric case to `Trigger::Nip65Arrived`); `docs/design/subscription-compilation/intro.md` §2.3 (account scope binding).
+> Read first: `docs/design/subscription-compilation/intro.md` and
+> `docs/builder-guide/21-framework-magic.md` (current ReducedSource model).
 
 ## 1. The bullet
 
-### C5. Kind:3 auto-tracking: the active account's follow-list change recompiles every dependent subscription transparently.
+### C5. Active-follows ReducedSource tracking: the active account source change recompiles dependent interests transparently.
 
 **Framework does:**
 
-When a kind:3 event lands for the active account's pubkey *and* the replaceable-supersession rule (C1) decides it is fresher than the stored kind:3, the kernel:
+When a kind:3 event lands for the active account's pubkey and the replaceable
+supersession rule (C1) accepts it as current, the framework:
 
-1. Replaces the stored kind:3 in the event store (per C1; mechanism at `crates/nmp-core/src/kernel/ingest.rs:187-207` — currently stored in `self.seed_contacts` map; M2 graduates this into the projection cache).
-2. Emits an internal planner trigger — proposed name `Trigger::FollowListChanged { account: AccountId, prev_follows: BTreeSet<Pubkey>, next_follows: BTreeSet<Pubkey> }` — symmetric to the existing `Trigger::Nip65Arrived` (`docs/design/subscription-compilation/recompilation.md` §4.1).
-3. The subscription compiler re-runs `interests()` on every `ViewModule` whose `dependencies()` declares `kind 3` *or* whose `interests()` consumes the active account's follow-set as an input to its filter shape (e.g. a "following timeline" view module).
-4. The wire-emitter diffs the new plan against the old; only the *delta* (authors added/removed from the union write-relay set) becomes CLOSE / new-REQ frames on the wire. Authors present in both old and new follow-sets see zero wire churn.
-5. The view payload's `items` recompute reactively per the standard `on_event_inserted` path (`docs/design/kernel-substrate.md` §3). No view handle is destroyed; the platform shadow's `useFollowingTimeline()` rune/observable continues to emit, just with a new payload.
+1. Stores/replays the source event through the normal accepted-event path.
+2. Lets the NIP-02/defaults reducer update the session's `ActiveUserFollows`
+   ReducedSource state from the event's `p` tags.
+3. Replaces that source owner's materialized child interests through the generic
+   dependent-interest owner (`ReplaceDependentInterestSet`), so removed authors
+   are withdrawn and added authors are acquired immediately.
+4. Lets the existing registry/planner/router diff produce the actual `CLOSE` /
+   `REQ` delta on the wire. Authors present in both old and new source outputs
+   see zero wire churn.
+5. Recomputes the feed payload through the feed-session projection path. The
+   feed handle remains valid; the platform receives an updated payload, not a
+   teardown/reopen cycle.
 
-**App writes:** nothing. The "following timeline" view's spec does not name authors — the view module consumes the active account's follow-set internally. The app's only contact with this surface is opening `FollowingTimelineView { /* no fields */ }` and reading its `Payload.items`.
+**App writes:** open one typed feed session, for example `FeedParams {
+acquisition: FeedScope::ActiveUserFollows, primary_kinds: [1], ... }`. The app
+does not watch kind:3, does not pass concrete follow pubkeys, and does not issue
+identity-change repair calls.
 
-**Failure mode prevented:** the canonical NDK-era bug: app code listens for kind:3 events, manually closes its open subscriptions, re-derives author lists, re-issues REQs, and either races itself (REQ ordering vs. local-state ordering) or leaks the old REQ. This contract structurally forbids that pattern: the view module never sees the kind:3 directly, and the app never issues a REQ. Specifically discharges **D3** (outbox routing automatic; see `docs/product-spec/overview-and-dx.md` §1.5 D3) and the auto-group/auto-close property of **C8** for the follow-list-change case.
+**Failure mode prevented:** the canonical NDK-era bug: app code listens for
+kind:3 events, manually closes open subscriptions, re-derives author lists,
+re-issues REQs, and either races itself or leaks the old REQ. This contract
+structurally forbids that pattern: the app never learns or owns the concrete
+expansion. It discharges **D3**, **D4**, and the auto-group/auto-close property
+of **C8** for the source-change case.
 
 **Test:** `c5_kind3_change_recompiles_follow_dependent_subs` in `crates/nmp-testing/tests/framework_magic_contract.rs`. The test:
 
@@ -30,9 +47,13 @@ When a kind:3 event lands for the active account's pubkey *and* the replaceable-
 5. Asserts the same `FollowingTimelineView` handle is still open (refcount unchanged); the platform shadow has emitted one additional payload, not torn down and re-created.
 6. Asserts a stale kind:3 (older `created_at`) is rejected without firing the trigger — symmetric to C1 supersession; no payload re-emit.
 
-The test runs against the `PlannerHarness` introduced in `docs/design/subscription-compilation/tests.md` §9.3, extended with a `follow_set_for(account)` accessor.
+The current feed-session behavior proof lives in
+`crates/nmp-defaults/tests/feed_session_reduced_source_behavior_test.rs`; the
+framework-magic contract test keeps the public guarantee pinned.
 
-**Milestone owner:** **M2** (the subscription-compilation milestone owns the trigger and the recompile). M2's exit gate (`docs/design/subscription-compilation/tests.md` §9) currently lists four assertions covering the NIP-65 case; the M2 owner adds this fifth assertion as part of the framework-magic delta. Test starts as `#[ignore = "pending M2 trigger"]`; M2 lands the trigger and removes the ignore.
+**Milestone owner:** M2 created the generic dependent-interest owner and M5
+(#2092/#2108) migrated active-user follows onto it. This chapter no longer
+specifies the removed runtime view-module trigger mechanism.
 
 ## 2. Why kind:3 is its own bullet (not a sub-case of C1)
 
@@ -44,7 +65,7 @@ C1 is a storage-layer invariant. C5 is a planner-layer reactive guarantee. The f
 
 The user's directive for this contract named the NDK reference: *"how NDK auto-follows kind:3 changes and re-routes its open subs."*
 
-Research conclusion (`docs/research/ndk/kind3-auto-tracking.md`): **NDK has no unified kind:3 → open-subscription rewire in core.** The session package (`@nostr-dev-kit/sessions`) opens a long-lived REQ on the active user's pubkey at `sessions/src/store.ts:184-194` and updates `session.followSet` on each newer kind:3 via `handleContactListEvent` at `store.ts:492-512`. However, this state write does not mutate any open subscription's `authors` filter — filters are immutable after `ndk.subscribe()` returns. Svelte gets implicit rewire via runes (`svelte/src/lib/builders/subscription.svelte.ts:164-177`); React requires explicit dependency declaration (`react/src/subscribe/hooks/subscribe.ts:110`). NMP is in the same position as React: the framework-glue must actively observe the follow-list signal and trigger `Trigger::FollowListChanged` (step 2 above) to replace the full-teardown + rebuild pattern with a delta patch.
+Research conclusion (`docs/research/ndk/kind3-auto-tracking.md`): **NDK has no unified kind:3 → open-subscription rewire in core.** The session package (`@nostr-dev-kit/sessions`) opens a long-lived REQ on the active user's pubkey at `sessions/src/store.ts:184-194` and updates `session.followSet` on each newer kind:3 via `handleContactListEvent` at `store.ts:492-512`. However, this state write does not mutate any open subscription's `authors` filter — filters are immutable after `ndk.subscribe()` returns. Svelte gets implicit rewire via runes (`svelte/src/lib/builders/subscription.svelte.ts:164-177`); React requires explicit dependency declaration (`react/src/subscribe/hooks/subscribe.ts:110`). NMP fills that gap inside Rust: the source owner observes the current follow-set, reduces it to materialized interests, and replaces the child set without a host teardown/rebuild.
 
 The race window NDK Svelte has: `restart()` at `subscription.svelte.ts:117` does `stop()` then a fresh `ndk.subscribe()` — events arriving between the CLOSE and the new REQ's EOSE are missed or re-fetched. NMP's wire-emitter delta-patch (CLOSE only the removed-author slices, open new slices for added authors) avoids this window entirely.
 
@@ -54,7 +75,10 @@ Research conclusion (`docs/research/applesauce/event-store-query-builders.md`): 
 
 The specific API that produces `"things kind:1 by people I follow"` reactivity is `EventModels.model(OutboxModel, user, opts)` at `event-models.ts:50-86`. When kind:3 arrives for `user`, `ReplaceableModel({kind:3, pubkey:user})` re-emits (`models/base.ts:136-143`), `ContactsModel(user)` maps to a `ProfilePointer[]`, and `OutboxModel` switchMaps each pointer into its `store.replaceable({kind:10002, pubkey})` — so adding/removing a contact spawns/terminates exactly the inner sub for that contact's mailbox with zero app involvement (`models/outbox.ts:14-24`, `observable/relay-selection.ts:19-49`).
 
-NMP's analog: `ViewModule.dependencies()` declares `kind 3` as a structural dependency (`docs/design/kernel-substrate.md` §3 lines 131–132); `Trigger::FollowListChanged` fires instead of a switchMap re-subscription; the compiler re-runs `interests()` and emits a CLOSE/REQ delta. The contract's observable — follow-set change causes exactly the right wire delta without app code — is the same; the mechanism is an actor-owned trigger rather than RxJS switchMap.
+NMP's analog is a ReducedSource resolver plus dependent-interest replacement:
+the contract's observable — source change causes exactly the right wire delta
+without app code — is the same; the mechanism is an actor-owned source owner,
+not host-side RxJS/runes or a public view-module trigger.
 
 ## 5. Interaction with NIP-65 (kind:10002)
 

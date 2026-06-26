@@ -8,8 +8,8 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-06-18
-updated: 2026-06-19
-verified: 2026-06-18
+updated: 2026-06-26
+verified: 2026-06-26
 compiled-from: conversation
 sources:
   - session:7c780fef-d33c-4d22-bcdb-2d9ab625a4f9
@@ -88,7 +88,10 @@ P4 Finding 4 (ExternalSignerCapabilityBridge transport selection and concurrent-
 
 When a PR needs fixture/decoder updates after removing projection fields, all golden test fixtures and shell decoder sites (including JSON-string-literal fixtures and typed-projection glue) must be regenerated before declaring CI green.
 
-P4 Finding 1 (Android post-identity openTimeline) must be widened so the kernel persists follow_feed_kinds even without an active account and the native openTimeline call is deleted, all in one PR (no unmasked intermediate state).
+P4's old `follow_feed_kinds` repair is historical. The current architecture is
+that active-user follows are one ReducedSource/dependent-interest feed source,
+with source reduction and recompilation owned by Rust rather than by native
+post-identity `openTimeline` calls.
 
 FullState/full snapshot is the correctness path; granular ViewBatch or delta variants are added only when profiling proves the snapshot path is the bottleneck and the delta is lossless. <!-- [^019ed-151] -->
 

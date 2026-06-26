@@ -1,5 +1,5 @@
 //! Unit tests for [`super::KernelReducer::apply_actor_command`] (#2045 PR-A) —
-//! the interest / relay-info / lifecycle / contacts verbs.
+//! the interest / relay-info / lifecycle verbs.
 //!
 //! The publish, sign-roundtrip (NeedsSign), and unsupported-command tests live
 //! in the sibling `command_apply_publish_tests.rs` (file-size ceiling split).
@@ -13,8 +13,10 @@
 //! Include guard: this file is `#[path]`-included by `kernel_reducer.rs`.
 
 use super::*;
-use crate::actor::{ActorCommand, ContactsCommand, InterestsCommand, LifecycleCommand, RelayCommand};
-use crate::planner::{InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest};
+use crate::actor::{ActorCommand, InterestsCommand, LifecycleCommand, RelayCommand};
+use crate::planner::{
+    InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
+};
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use nmp_network::role::RelayRole;
 
@@ -24,11 +26,7 @@ const RELAY: &str = "wss://relay.example";
 
 /// Build a `SubIdentity` with `SubScope::Global` and caller-supplied string keys.
 fn global_id(owner: &str, key: &str) -> SubIdentity {
-    SubIdentity::new(
-        SubOwnerKey::new(owner),
-        SubKey::new(key),
-        SubScope::Global,
-    )
+    SubIdentity::new(SubOwnerKey::new(owner), SubKey::new(key), SubScope::Global)
 }
 
 /// Build a minimal `LogicalInterest` matching the registry fixture convention.
@@ -53,9 +51,11 @@ fn ensure_interest_returns_applied_empty() {
     let identity = global_id("test-owner", "test-key-1");
     let interest = simple_interest(1);
 
-    let outcome = r.apply_actor_command(ActorCommand::Interests(
-        InterestsCommand::EnsureInterest { identity, interest },
-    ));
+    let outcome =
+        r.apply_actor_command(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+            identity,
+            interest,
+        }));
 
     assert!(
         matches!(outcome, CommandApplyOutcome::Applied(v) if v.is_empty()),
@@ -101,13 +101,14 @@ fn ensure_then_drop_interest_owner_clears_registry() {
     let interest = simple_interest(2);
 
     // Install the interest.
-    let _ = r.apply_actor_command(ActorCommand::Interests(
-        InterestsCommand::EnsureInterest {
-            identity: identity.clone(),
-            interest,
-        },
-    ));
-    assert_eq!(r.kernel.lifecycle_mut().registry_mut().iter_active().len(), 1);
+    let _ = r.apply_actor_command(ActorCommand::Interests(InterestsCommand::EnsureInterest {
+        identity: identity.clone(),
+        interest,
+    }));
+    assert_eq!(
+        r.kernel.lifecycle_mut().registry_mut().iter_active().len(),
+        1
+    );
 
     // Drop the owner.
     let outcome = r.apply_actor_command(ActorCommand::Interests(
@@ -132,13 +133,11 @@ fn open_interest_with_relay_connected_emits_req_frame() {
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
 
-    let outcome = r.apply_actor_command(ActorCommand::Interests(
-        InterestsCommand::OpenInterest {
-            filter_json: r#"{"kinds":[1]}"#.to_string(),
-            consumer_id: "chirp-home".to_string(),
-            scope: 1, // Global
-        },
-    ));
+    let outcome = r.apply_actor_command(ActorCommand::Interests(InterestsCommand::OpenInterest {
+        filter_json: r#"{"kinds":[1]}"#.to_string(),
+        consumer_id: "chirp-home".to_string(),
+        scope: 1, // Global
+    }));
 
     match outcome {
         CommandApplyOutcome::Applied(frames) => {
@@ -159,22 +158,18 @@ fn close_interest_after_open_emits_close_frame() {
     r.set_configured_relays(vec![(RELAY.to_string(), "both".to_string())]);
     let _ = r.handle_relay_connected(RelayRole::Content, RELAY, false);
     let filter = r#"{"kinds":[1]}"#.to_string();
-    let _ = r.apply_actor_command(ActorCommand::Interests(
-        InterestsCommand::OpenInterest {
-            filter_json: filter.clone(),
-            consumer_id: "chirp-home".to_string(),
-            scope: 1,
-        },
-    ));
+    let _ = r.apply_actor_command(ActorCommand::Interests(InterestsCommand::OpenInterest {
+        filter_json: filter.clone(),
+        consumer_id: "chirp-home".to_string(),
+        scope: 1,
+    }));
 
-    let outcome = r.apply_actor_command(ActorCommand::Interests(
-        InterestsCommand::CloseInterest {
-            filter_json: filter,
-            consumer_id: "chirp-home".to_string(),
-            scope: 1,
-            relay_pin: None,
-        },
-    ));
+    let outcome = r.apply_actor_command(ActorCommand::Interests(InterestsCommand::CloseInterest {
+        filter_json: filter,
+        consumer_id: "chirp-home".to_string(),
+        scope: 1,
+        relay_pin: None,
+    }));
 
     match outcome {
         CommandApplyOutcome::Applied(frames) => {
@@ -246,21 +241,5 @@ fn mark_changed_since_emit_sets_dirty_flag() {
     assert!(
         r.changed_since_emit(),
         "changed_since_emit must be true after MarkChangedSinceEmit"
-    );
-}
-
-#[test]
-fn clear_active_follows_feed_returns_applied() {
-    // ClearActiveFollowsFeed: Applied (may carry CLOSE frames or be empty;
-    // the important assertion is no panic and the outcome is Applied).
-    let mut r = KernelReducer::new();
-
-    let outcome = r.apply_actor_command(ActorCommand::Contacts(
-        ContactsCommand::ClearActiveFollowsFeed,
-    ));
-
-    assert!(
-        matches!(outcome, CommandApplyOutcome::Applied(_)),
-        "ClearActiveFollowsFeed must return Applied, got {outcome:?}"
     );
 }

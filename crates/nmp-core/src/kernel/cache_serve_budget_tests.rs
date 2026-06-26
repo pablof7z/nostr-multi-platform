@@ -3,7 +3,9 @@
 //! file ceiling; shared fixtures live there as `pub(super)` helpers).
 
 use super::cache_serve::shape_to_store_queries;
-use super::cache_serve_tests::{drain_cache_serves, hex_pk, seed_events, simulate_cold_restart};
+use super::cache_serve_tests::{
+    drain_cache_serves, hex_pk, open_author_interest, seed_events, simulate_cold_restart,
+};
 use super::*;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::StoreQuery;
@@ -16,8 +18,8 @@ use std::collections::BTreeSet;
 /// fan-out), serves the visible window newest-first across multiple followed
 /// authors, and records exactly one completion key.
 ///
-/// 250 followed authors × 2 stored events each (500 events total, distinct
-/// ascending timestamps). After `sync_follow_feed_interests`:
+/// 250 authors × 2 stored events each (500 events total, distinct ascending
+/// timestamps). After opening one reduced multi-author interest:
 ///
 /// - the collapsed shape maps to exactly ONE `AuthorsKind` query;
 /// - the synchronous drain serves the bounded visible window (≤ the tick
@@ -47,7 +49,6 @@ fn e1_follow_feed_serves_single_authorskind_multi_author_newest_first() {
     }
 
     kernel.active_account = Some(hex_pk("aa"));
-    kernel.follow_feed_kinds = BTreeSet::from([1u32]);
 
     // The collapsed multi-author shape maps to exactly ONE AuthorsKind query.
     let collapsed_shape = InterestShape {
@@ -78,9 +79,9 @@ fn e1_follow_feed_serves_single_authorskind_multi_author_newest_first() {
 
     simulate_cold_restart(&mut kernel);
 
-    // The sync enqueues ONE serve for the multi-author follow-feed interest and
+    // The open enqueues ONE serve for the multi-author interest and
     // synchronously drains it. The serve is bounded by the visible window.
-    kernel.sync_follow_feed_interests(&follows);
+    open_author_interest(&mut kernel, "e1-collapsed", follows.clone(), [1u32]);
 
     let served = kernel.events.len();
     assert!(

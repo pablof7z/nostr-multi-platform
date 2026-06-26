@@ -8,7 +8,9 @@ use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_kinds::KIND_MUTE_LIST;
 use nmp_planner::InterestShape;
 
-use super::source::{AcquisitionInterest, ExtraAcquisition, LiveShape, ReducedSource, ResetHook};
+use super::source::{
+    AcquisitionInterest, ExtraAcquisition, LiveShape, OpSessionIdentity, ReducedSource, ResetHook,
+};
 
 pub(super) fn resolve_active_mute_list_members(
     app: &NmpApp,
@@ -75,6 +77,7 @@ pub(super) fn resolve_active_mute_list_members(
     );
 
     Ok(ReducedSource {
+        op_session_identity: OpSessionIdentity::RequireActive,
         admission,
         interests: Vec::new(),
         extra_acquisition,

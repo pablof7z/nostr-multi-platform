@@ -16,14 +16,10 @@ import org.nmp.android.model.RelayStatus
 
 /** Sign in with an nsec secret key (direct C-ABI — no ActionModule for sign-in namespace).
  *
- *  No imperative post-identity `openHomeFeed()`: the home-feed interest is
- *  registered by the view that renders it (`TimelineScreen` →
- *  `LaunchedEffect { model.openHomeFeed() }`), exactly as on iOS
- *  (`HomeFeedView.task { model.openHomeFeed() }`). The kernel now persists
- *  the host-declared active-follows kinds even before an account exists
- *  (#1493 P4 / active-follows declaration), so the sign-in reconcile re-registers
- *  the feed without the shell re-declaring it. Driving it from the identity
- *  op was a per-platform policy band-aid the shell must not carry (D7). */
+ *  No imperative post-identity `openHomeFeed()`: the view owns the typed feed
+ *  session handle, and Rust owns active-follows source reduction/recompile on
+ *  sign-in, switch, and logout. Driving feed repair from the identity op was a
+ *  per-platform policy band-aid the shell must not carry (D7). */
 fun KernelModel.signInNsec(secret: String) {
     bridge.signInNsec(secret)
 }

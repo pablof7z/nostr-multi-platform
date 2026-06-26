@@ -119,49 +119,12 @@ impl RawWasmAbiAdapter {
                 source_for_provider.author_keys_for_tick(rev)
             });
     }
-
-    /// Declare an active-follows feed from app-owned primary content kinds.
-    ///
-    /// This is the wasm twin of `NmpApp::declare_active_follows_feed`.
-    /// Callers name only the primary kinds they intend to render. NIP-18
-    /// repost wrappers are derived here before the pure reducer receives the
-    /// compiled acquisition set, so app composition never has to say
-    /// "kind 1 plus kind 6" or "kind 20 plus kind 16".
-    ///
-    /// Returns `false` when a caller supplies a wrapper kind as primary input
-    /// or otherwise fails NIP-18 primary-kind validation. The reducer is left
-    /// unchanged on failure.
-    pub(crate) fn declare_active_follows_feed<I>(&self, primary_kinds: I) -> bool
-    where
-        I: IntoIterator<Item = u32>,
-    {
-        let Ok(acquisition_kinds) = nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds)
-        else {
-            return false;
-        };
-        let outbound = self
-            .reducer
-            .borrow_mut()
-            .declare_active_follows_feed(acquisition_kinds);
-        self.fan_outbound(outbound);
-        self.request_event_drain();
-        true
-    }
-
-    /// Clear the active-follows feed declaration.
-    pub(crate) fn clear_active_follows_feed(&self) {
-        let outbound = self.reducer.borrow_mut().clear_active_follows_feed();
-        self.fan_outbound(outbound);
-        self.request_event_drain();
-    }
 }
 
 #[cfg(test)]
 mod feed_params_decode_tests {
     use super::*;
     use nmp_feed::PubkeySetExpr;
-
-    const ALICE: &str = "aaaa000000000000000000000000000000000000000000000000000000000001";
 
     fn params_json(primary_kinds: &str) -> String {
         format!(
@@ -206,81 +169,6 @@ mod feed_params_decode_tests {
         assert_eq!(
             decode_and_validate_feed_params("{ not json"),
             Err(FeedParamsDecodeError::MalformedJson)
-        );
-    }
-
-    #[test]
-    fn runtime_declares_active_follows_feed_from_primary_kinds() {
-        let runtime = RawWasmAbiAdapter::new();
-
-        assert!(
-            runtime.declare_active_follows_feed([1]),
-            "primary kind 1 is a valid app-facing feed declaration"
-        );
-        runtime
-            .reducer_handle()
-            .borrow_mut()
-            .set_active_account(ALICE.to_string());
-
-        let authors = runtime.reducer_handle().borrow().active_timeline_authors();
-        assert_eq!(
-            authors,
-            vec![ALICE.to_string()],
-            "pre-sign-in declaration must prime the active-follows feed so sign-in \
-             installs the active account as the first author"
-        );
-    }
-
-    #[test]
-    fn runtime_rejects_repost_wrappers_as_primary_feed_kinds() {
-        let runtime = RawWasmAbiAdapter::new();
-
-        assert!(
-            !runtime.declare_active_follows_feed([1, 6]),
-            "kind 6 is derived from primary kind 1; apps must not declare it"
-        );
-        assert!(
-            !runtime.declare_active_follows_feed([16]),
-            "kind 16 is derived for non-kind-1 primaries; apps must not declare it"
-        );
-        runtime
-            .reducer_handle()
-            .borrow_mut()
-            .set_active_account(ALICE.to_string());
-
-        let authors = runtime.reducer_handle().borrow().active_timeline_authors();
-        assert!(
-            authors.is_empty(),
-            "rejected wrapper-kind declarations must leave the active-follows feed inert"
-        );
-    }
-
-    #[test]
-    fn runtime_clears_active_follows_feed_declaration() {
-        let runtime = RawWasmAbiAdapter::new();
-
-        assert!(runtime.declare_active_follows_feed([1]));
-        runtime
-            .reducer_handle()
-            .borrow_mut()
-            .set_active_account(ALICE.to_string());
-        assert!(
-            !runtime
-                .reducer_handle()
-                .borrow()
-                .active_timeline_authors()
-                .is_empty(),
-            "test setup must install the active-follows feed before clearing"
-        );
-
-        runtime.clear_active_follows_feed();
-        assert!(
-            runtime
-                .reducer_handle()
-                .borrow()
-                .active_timeline_authors()
-                .is_empty(),
-            "clear must withdraw the active-follows declaration"
         );
     }
 }

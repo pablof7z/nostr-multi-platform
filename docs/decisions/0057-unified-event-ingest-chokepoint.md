@@ -334,11 +334,12 @@ reached the D0 finish-line (`contacts_chokepoint_pr3_tests.rs`).
 - **PR 2 — `profiles` → capability-owned cache.** Added a `ProfileLookup`-style read
   trait, migrated the synchronous profile readers, moved kind:0 parsing to a
   registered `IngestParser`; dropped the kernel arm.
-- **PR 3 — `contacts` → parser + kernel-owned effect seam (the D0 finish-line).**
-  A kind:3 parser writes the cache and emits a typed "contacts changed" signal the
-  kernel reacts to on its tick (keeping `sync_follow_feed_interests` /
-  `timeline_authors` / cache-serve kernel-owned, driven by the signal not inlined).
-  After PR 3 the ingest path has **zero kind literals** — full D0 purity.
+- **PR 3 — `contacts` → parser + source-trigger seam (the D0 finish-line).**
+  A kind:3 parser writes the cache and the kernel detects active-account contact
+  transitions by bracketing the chokepoint with before/after cache reads. The
+  kernel enqueues a source recompile trigger; ReducedSource owners materialize
+  child interests through the generic dependent-interest path. After PR 3 the
+  ingest path has **zero kind literals** — full D0 purity.
 
 The sibling plan `docs/plans/arch-authority-lifecycle.md` (signer / capability
 authority and action/projection-lifecycle ownership) is a separate problem domain
@@ -353,8 +354,8 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
 - A non-followed kind:1/6 **persists** to the store but does **NOT** timeline-project
   (persistence ≠ projection — the event IS stored; it just is not projected into
   the timeline view).
-- A local kind:1 / kind:6 / kind:7 **read-your-writes** works — visible immediately,
-  before any relay ACK.
+- A local kind:1 / kind:6 / kind:7 **read-your-writes** works — persisted and
+  delivered to app observers immediately, before any relay ACK.
 - A relay echo of a locally-published event **dedups** (`Duplicate`) and does **NOT**
   double-notify observers (D4) — yet the kind:1/6 cached `relay_count` **still
   bumps** on that `Duplicate` (the diagnostic signal is preserved).
@@ -362,8 +363,9 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
   observer-delivered `KernelEvent`** (so it cannot pin to the top of any app feed
   that orders by `created_at`) and on the timeline read-cache projection; the
   authoritative stored event retains the original timestamp (D9).
-- kind:0 / kind:3 still update profile / contact caches (no regression), and kind:3
-  still rebuilds `timeline_authors` / interests.
+- kind:0 / kind:3 still update profile / contact caches (no regression), and an
+  active-account kind:3 enqueues the source recompile trigger without inlining
+  feed-interest expansion in the parser or ingest arm.
 - An ephemeral event (20000–29999) does **NOT** persist (store-layer exclusion
   intact) **BUT still reaches NIP parsers AND app `KernelEventObserver`s** — the
   latent-bug fix: an app can react to an ephemeral event it never stores.
@@ -378,11 +380,11 @@ Concrete oracles for PR 1 (these are the acceptance criteria of this decision):
 ## Doctrine
 
 - **D0** — no NIP kind literals in the kernel ingest dispatch; gate by behavioral
-  predicates (`is_replaceable`, `is_addressable`,
-  `follow_feed_kinds.contains`, parser `is_interested`). kind:1059 gift-wrap stays
-  excluded via the parser registry, not a literal. Full D0 purity (zero kind
-  literals in the ingest path) is reached at the end of PR 3, when profile and
-  contacts also become parser/observer-fed.
+  predicates (`is_replaceable`, `is_addressable`, active generic interests, parser
+  `is_interested`). kind:1059 gift-wrap stays excluded via the parser registry,
+  not a literal. Full D0 purity (zero kind literals in the ingest path) is
+  reached at the end of PR 3, when profile and contacts also become
+  parser/observer-fed.
 - **D4** — `store.insert` stays the single writer; observers/parsers fire once per
   accepted event, on the outcome gate. A relay echo of a local publish dedups to
   `Duplicate` and does not double-notify.

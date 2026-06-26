@@ -183,8 +183,7 @@ fn on_dm_relays_changed_two_calls_enqueue_two_triggers() {
 /// graph: the followed hex pubkeys are stored under the author's key.
 ///
 /// The author here is NOT the active account, so this isolates the
-/// contacts-cache write from the active-account-only
-/// `sync_follow_feed_interests` side-effects (registry + `timeline_authors`).
+/// contacts-cache write from the active-account-only recompile trigger.
 #[test]
 fn ingest_contacts_with_p_tags_updates_follow_graph() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
@@ -234,7 +233,7 @@ fn ingest_contacts_with_p_tags_updates_follow_graph() {
     assert_eq!(
         kernel.lifecycle.pending_trigger_count(),
         0,
-        "a non-active author's kind:3 must NOT enqueue a follow-feed trigger",
+        "a non-active author's kind:3 must NOT enqueue a source recompile trigger",
     );
     assert!(
         kernel.timeline_authors_for_test().is_empty(),
@@ -289,16 +288,12 @@ fn ingest_contacts_empty_list_stores_empty_follow_vector() {
     );
 }
 
-/// When the kind:3 author IS the active account, `ingest_contacts` additionally
-/// runs `sync_follow_feed_interests`, which rebuilds the `timeline_authors`
-/// projection and registers M2 follow-feed interests. This asserts that
-/// active-account-only branch fires.
+/// When the kind:3 author IS the active account, `ingest_contacts` emits the
+/// active-source recompile trigger. The reduced author-set expansion itself is
+/// owned by the feed-source compiler, not by a bespoke core follow-feed path.
 #[test]
-fn ingest_contacts_for_active_account_syncs_follow_feed_projection() {
+fn ingest_contacts_for_active_account_enqueues_source_recompile() {
     let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
-    // Seed compiled acquisition kinds {1, 6}. D0: the substrate no longer
-    // hardcodes a social kind set.
-    kernel.follow_feed_kinds = std::collections::BTreeSet::from([1u32, 6u32]);
     kernel.active_account = Some(AUTHOR.to_string());
 
     let event = make_event(
@@ -310,24 +305,23 @@ fn ingest_contacts_for_active_account_syncs_follow_feed_projection() {
     );
     kernel.inject_contacts(event);
 
-    // `timeline_authors` is rebuilt from the new follow set plus the active
-    // account itself (so the user's own notes appear in the timeline).
-    let authors = kernel.timeline_authors_for_test();
     assert!(
-        authors.contains(FOLLOW_A) && authors.contains(FOLLOW_B),
-        "active-account kind:3 must project followed authors into timeline_authors",
+        kernel
+            .contacts_lookup()
+            .follows(AUTHOR)
+            .expect("active kind:3 must write contacts cache")
+            .contains(&FOLLOW_A.to_string()),
+        "active-account kind:3 must still update the contacts cache",
     );
-    assert!(
-        authors.contains(AUTHOR),
-        "timeline_authors must also include the active account itself",
-    );
-
-    // ONE multi-author follow-feed interest covering follows + self (#1497).
     assert_eq!(
-        kernel.follow_feed_interest_ids_for_test().len(),
+        kernel.lifecycle.pending_trigger_count(),
         1,
-        "active-account kind:3 must register ONE multi-author follow-feed \
-         interest covering every follow plus the active account itself",
+        "active-account kind:3 must enqueue one source recompile trigger"
+    );
+    assert!(
+        kernel.timeline_authors_for_test().is_empty(),
+        "core must not project active follows into timeline_authors directly; \
+         reduced feed sources own author-set expansion",
     );
 }
 

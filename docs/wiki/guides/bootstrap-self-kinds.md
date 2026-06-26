@@ -8,8 +8,8 @@ tags:
 volatility: warm
 confidence: medium
 created: 2026-05-26
-updated: 2026-06-19
-verified: 2026-05-26
+updated: 2026-06-26
+verified: 2026-06-26
 compiled-from: conversation
 sources:
   - session:64f3e239-c4c1-4c32-82de-458516b28418
@@ -30,6 +30,10 @@ Apps can override the default bootstrap self-kinds set before calling nmp_app_st
 
 NmpApp has pre-start slots for bootstrap_self_kinds and blocked_relay_lookup that survive Reset via the dispatch-context re-binding path. Account-switch safety for bootstrap interests uses drop_owner + set_sub pattern so that switching accounts replaces the slot's author in-place rather than silently keeping the old pubkey in the interest filter.
 
-The kernel persists host-declared follow_feed_kinds unconditionally (even without an active account), fixing a latent both-platforms no-feed-after-sign-in bug; Android removes the imperative openTimeline post-identity call.
+Bootstrap self-kinds still deliver the active account's kind:3 updates, but they
+do not own the home-feed author set. Active-user follows are a ReducedSource
+feed source: the source watches the active account's contacts, reduces them to
+authors, and recompiles dependent interests on sign-in, account switch, and
+follow-list replacement.
 
 <!-- citations: [^64f3e-3] [^11850-49] [^11850-113] [^11850-236] -->

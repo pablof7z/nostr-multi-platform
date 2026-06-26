@@ -33,12 +33,17 @@ social timeline." A feed declaration names primary content kinds and a
 reactive source; protocol adapters derive wrapper acquisition and provenance.
 A long-form reader app may declare `[30023]`; a media app may declare `[20]`.
 
-## 2. Decision — generic `open_interest` / `close_interest`
+## 2. Decision — raw `open_interest` / `close_interest`
 
-Two new C-ABI symbols replace the five:
+The M2 migration introduced two raw C-ABI interest symbols as the low-level
+static subscription seam. They replaced the old bespoke author/thread/tag
+subscription verbs, but they are not the current app feed API. App feeds are
+declared through typed `FeedParams` and opened with `open_feed`; `open_interest`
+is for callers that need to attach an owner to a concrete, already-materialized
+Nostr filter.
 
 ```c
-// Register (or attach an owner to) a tailing interest.
+// Register (or attach an owner to) a concrete tailing interest.
 // filter_json: standard Nostr REQ filter, e.g. {"kinds":[30023],"authors":["<hex>"]}
 // consumer_id: refcount owner key — deduplicates across call sites
 // scope: 0 = ActiveAccount (re-routes on account switch), 1 = Global
@@ -62,8 +67,9 @@ Internal routing (`nmp-core`):
   `registry_mut().ensure_sub` / `drop_owner` + enqueues
   `CompileTrigger::InvalidateCompile` — byte-for-byte the body the
   `EnsureInterest` / `DropInterestOwner` arms already run.
-- Lifecycle is always **`Tailing`** — `open_interest` is a feed subscription,
-  never a one-shot.
+- Lifecycle is always **`Tailing`** — `open_interest` keeps a concrete filter
+  live until its owners close. It does not compile feed policy, primary-kind
+  declarations, wrapper acquisition, or dynamic source reduction.
 
 ### 2.1 Deterministic dedup via the `InterestShape` hash
 
@@ -83,10 +89,11 @@ The `scope` param maps to `crate::planner::InterestScope` on the
 `ActiveAccount` folds to `SubScope::Global` for the dedup key — identical to the
 existing `InterestRegistry::legacy_scope` convention — while the real
 `InterestScope::ActiveAccount` rides on the `LogicalInterest` so the compiler
-re-routes on account switch. Contact feeds use the account-routed surface. A
-visited author or open thread is keyed to a concrete pubkey/root id and uses
-scope `1` (Global); it does not reroute on account switch. Hashtag feeds also
-use scope `1`.
+re-routes the concrete filter on account switch. Dynamic feed sources such as
+active-user follows do not use this raw lane directly; they compile from
+`FeedParams` into ReducedSource-owned dependent interests. A visited author or
+open thread is keyed to a concrete pubkey/root id and uses scope `1` (Global);
+it does not reroute on account switch. Hashtag feeds also use scope `1`.
 
 ## 3. Net symbol delta
 
@@ -216,8 +223,9 @@ router. The generic `nmp_app_open_interest` / `close_interest` C symbols (§2)
 remain ONLY as a low-level NON-feed interest seam (avatar / `nostr:` URI
 resolution); they are not an app feed-open surface — the ONLY public way to open
 a feed is `open_feed`. The `declare_active_follows_feed` /
-`clear_active_follows_feed` Rust methods stay as INTERNAL composition glue (the
-home-feed wiring + the perspective compiler's `ActiveUserFollows` arm).
+`clear_active_follows_feed` Rust methods are also deleted; the
+`ActiveUserFollows` arm is one ReducedSource reducer that replaces child
+interests through the generic dependent-interest path.
 
 The active-user follow feed is **not** expressible as one static
 `open_interest` (§2): its author set is reactive perspective state derived from
@@ -264,31 +272,29 @@ reaches exhaustion under the current perspective.
 ### Historical context — pre-typed declaration verbs (internal/test-only)
 
 Before `FeedParams`, the active-follows feed used a lower-level declaration
-pair that is now **internal and test-only**:
+pair that is now **deleted**:
 
 ```rust
-// INTERNAL/TEST-ONLY — not the app-facing surface
+// HISTORICAL — deleted
 app.declare_active_follows_feed([1]);
 app.clear_active_follows_feed();
 ```
 
 The exported C symbols with the old contact-feed names were compatibility shims
-that delegated to this declaration path. They must not be used by apps; the
-current primitive is `open_feed(FeedParams)` (step 2). Likewise,
+that delegated to this declaration path. They are deleted; the current
+primitive is `open_feed(FeedParams)` (step 2). Likewise,
 `open_interest` / `close_interest` (§2) are substrate-level primitives used
 internally by the feed session machinery and non-feed ref/read paths, not an
 app-facing feed API.
 
 ### Historical `ActorCommand` variants
 
-- `DeclareActiveFollowsFeed { acquisition_kinds: BTreeSet<u32> }` — installs
-  the adapter-derived acquisition kinds for the active-follows declared feed.
-- `ClearActiveFollowsFeed` — withdraws the declaration and closes the resulting
-  follow-feed interests.
+- `DeclareActiveFollowsFeed { acquisition_kinds: BTreeSet<u32> }`
+- `ClearActiveFollowsFeed`
 
-These commands are historical/internal scaffolding, not the canonical model.
-They must disappear or collapse into the generic ReducedSource/dependent
-interest path when #2092 lands.
+These commands were historical scaffolding and are deleted. Active-follows now
+uses the same ReducedSource/dependent-interest mechanism as NIP-51 people-list
+members, mute-list `p` tags, and any future protocol-owned source reducer.
 
 > Chirp author/thread/home feeds now use the generic app-layer feed doorway:
 > construct typed `FeedParams`, call `nmp_app_open_feed`, retain the returned
@@ -305,11 +311,9 @@ correction; it is not permission to add a second follow-feed API.
 
 ### Consequences
 
-- D5 cluster gating is **symmetric**: the home-feed projection cluster
-  (`timeline`, `inserted`, `updated`, `removed`) appears only when
-  the active-follows feed declaration has concrete acquisition kinds, and
-  disappears when the declaration is cleared or receives an empty primary-kind
-  set.
+- D5 cluster gating is driven by the feed session handle and its projection
+  key. Closing the handle clears the typed feed row; an empty reduced source
+  yields no wildcard acquisition and no stale child interests.
 - The `timeline_requested` milestone is unaffected: it is flipped by ingest at
   `kernel/ingest/timeline.rs:309-337`, not by the open/close verb.
 - All Chirp shells (iOS, Android, TUI, desktop) open home, author, and thread
@@ -319,8 +323,7 @@ correction; it is not permission to add a second follow-feed API.
   `nmp-core` / `nmp-planner` may carry authors, tags, ids, and addresses as
   filter data, but they must not name contact-list, mute-list, follow-pack, or
   app feed concepts.
-- `nmp_app_open_timeline` is removed from `nmp-ffi` and `NmpCore.h`. Any
-  platform-stable wrapper name that remains for binary/UI compatibility must
-  call the active-follows declaration path; it must not preserve a separate
-  home-feed code path.
+- `nmp_app_open_timeline`, `nmp_app_open_contact_feed`, and every active-follows
+  declaration helper are removed from `nmp-ffi` and `NmpCore.h`. No compatibility
+  wrapper remains for the old home-feed code path.
 - Completes V-68 Stage 2 (#911).

@@ -16,9 +16,6 @@
 //!     `nmp.feed.clear_active_follows`) — no routed `action_type` arm.
 //!
 //! What is INTENTIONALLY still allowed (so this gate does not over-reach):
-//!   * the `declare_active_follows_feed` / `clear_active_follows_feed` Rust
-//!     methods — internal composition glue the home-feed wiring + perspective
-//!     compiler drive (NOT a public C-ABI symbol);
 //!   * `nmp_app_open_interest` / `nmp_app_close_interest` — a generic low-level
 //!     interest seam still used by non-feed callers (avatar/uri resolution); its
 //!     feed-lane retirement is tracked separately in #1740 (see PR notes).

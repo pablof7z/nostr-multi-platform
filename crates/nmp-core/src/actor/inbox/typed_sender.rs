@@ -11,9 +11,7 @@
 
 use super::CommandSender;
 use crate::actor::ActorCommand;
-use crate::actor::{
-    ContactsCommand, IdentityCommand, InterestsCommand, LifecycleCommand, RelayCommand,
-};
+use crate::actor::{IdentityCommand, InterestsCommand, LifecycleCommand, RelayCommand};
 
 impl CommandSender {
     /// Attach one scoped owner to a [`crate::planner::LogicalInterest`].
@@ -39,13 +37,6 @@ impl CommandSender {
     pub fn mark_changed_since_emit(&self) {
         let _ = self.send(ActorCommand::Lifecycle(
             LifecycleCommand::MarkChangedSinceEmit,
-        ));
-    }
-
-    /// Tear down the active-follows feed declaration and withdraw its interests.
-    pub fn clear_active_follows_feed(&self) {
-        let _ = self.send(ActorCommand::Contacts(
-            ContactsCommand::ClearActiveFollowsFeed,
         ));
     }
 

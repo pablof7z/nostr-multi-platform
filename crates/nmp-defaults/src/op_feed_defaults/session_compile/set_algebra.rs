@@ -49,6 +49,7 @@ pub(super) fn resolve_set_op(
             return Err(e);
         }
     };
+    let op_session_identity = l.op_session_identity.combine(r.op_session_identity);
 
     // ── Admission combine over the children's LIVE, EVENT-AWARE predicates ──
     //
@@ -116,6 +117,7 @@ pub(super) fn resolve_set_op(
     identity_observer_ids.extend(r.identity_observer_ids);
 
     Ok(ReducedSource {
+        op_session_identity,
         admission,
         interests,
         live_shape,

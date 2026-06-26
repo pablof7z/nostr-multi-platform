@@ -2,7 +2,6 @@
 //! under the 500-LOC ceiling (AGENTS.md file-size rule).
 //!
 //! Covers: `send_cmd`, `show_toast`, `mark_changed_since_emit`,
-//! `declare_active_follows_feed`, `clear_active_follows_feed`,
 //! action-registry methods, composition-ledger helpers,
 //! `set_pending_mls_autopublish`, `take_pending_mls_autopublish`.
 
@@ -10,7 +9,7 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{ContactsCommand, LifecycleCommand};
+use nmp_core::actor::LifecycleCommand;
 #[cfg(test)]
 use nmp_core::actor::PublishCommand;
 
@@ -70,37 +69,9 @@ impl NmpApp {
     /// reusable NMP extension state changes outside a typed kernel field (e.g.
     /// a registered feed viewport expanding older rows).
     pub(crate) fn mark_changed_since_emit(&self) {
-        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::MarkChangedSinceEmit));
-    }
-
-
-    /// Declare a feed of app-owned primary kinds from the active account's
-    /// reactive follows perspective.
-    ///
-    /// The caller supplies primary content kinds only. Repost wrappers are
-    /// derived here before the actor receives the compiled acquisition set, so
-    /// `nmp-core` never owns the app's primary-kind policy.
-    pub fn declare_active_follows_feed<I>(&self, primary_kinds: I) -> bool
-    where
-        I: IntoIterator<Item = u32>,
-    {
-        let acquisition_kinds = match nmp_nip18::try_acquisition_kinds_for_primary(primary_kinds) {
-            Ok(kinds) => kinds,
-            Err(_) => {
-                self.show_toast(
-                    "declare_active_follows_feed: primary kinds must not include repost wrappers or the delete kind"
-                        .to_string(),
-                );
-                return false;
-            }
-        };
-        self.send_cmd(ActorCommand::Contacts(ContactsCommand::DeclareActiveFollowsFeed { acquisition_kinds }));
-        true
-    }
-
-    /// Clear the active-follows feed declaration.
-    pub fn clear_active_follows_feed(&self) {
-        self.send_cmd(ActorCommand::Contacts(ContactsCommand::ClearActiveFollowsFeed));
+        self.send_cmd(ActorCommand::Lifecycle(
+            LifecycleCommand::MarkChangedSinceEmit,
+        ));
     }
 
     /// Register a typed [`nmp_core::substrate::ActionModule`] `M` against the
@@ -242,7 +213,9 @@ impl NmpApp {
     /// Typed wrapper for [`ActorCommand::LifecycleEvent`]. Used by the
     /// lifecycle FFI symbols so they do not construct `ActorCommand` directly.
     pub(crate) fn lifecycle_event(&self, phase: nmp_core::__ffi_internal::LifecyclePhase) {
-        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::LifecycleEvent(phase)));
+        self.send_cmd(ActorCommand::Lifecycle(LifecycleCommand::LifecycleEvent(
+            phase,
+        )));
     }
 
     /// Request clean actor shutdown.
