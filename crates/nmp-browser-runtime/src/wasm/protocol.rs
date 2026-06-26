@@ -27,6 +27,7 @@ pub(crate) enum WorkerRequest {
     ReleaseRef(ReleaseRef),
     DispatchBytes(DispatchBytesPayload),
     RelayConfig(RelayConfig),
+    PublishRelayPreferences(PublishRelayPreferences),
     CapabilityResult(CapabilityResultPayload),
     SetIdentity(SetIdentity),
     BeginSign(BeginSign),
@@ -117,6 +118,11 @@ pub(crate) struct RelayConfig {
 }
 
 #[derive(Debug, Deserialize)]
+pub(crate) struct PublishRelayPreferences {
+    pub correlation_id: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum RelayConfigAction {
     Add,
@@ -169,6 +175,8 @@ pub(crate) enum WorkerEvent {
     },
     SignRequest {
         correlation_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        action_correlation_id: Option<String>,
         account_pubkey: String,
         unsigned_json: String,
     },

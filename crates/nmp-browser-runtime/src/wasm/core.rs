@@ -229,6 +229,7 @@ pub(super) fn map_pump_events(events: Vec<crate::BrowserRuntimeEvent>) -> Vec<Wo
                 unsigned_json,
             } => Some(WorkerEvent::SignRequest {
                 correlation_id,
+                action_correlation_id: None,
                 account_pubkey,
                 unsigned_json,
             }),

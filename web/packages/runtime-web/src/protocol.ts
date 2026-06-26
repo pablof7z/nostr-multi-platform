@@ -57,6 +57,14 @@ export type WorkerRequest =
       role?: string;
       correlation_id: string;
     }
+  /** Publish the Rust-owned configured relay projection as NIP-65 kind:10002.
+   *  This is a typed write: the worker encodes `nmp.nip65.publish_relay_list`
+   *  and routes it through the same `dispatch_bytes` path, so TS never builds
+   *  NIP-65 tags or marker policy. */
+  | {
+      type: "publish_relay_preferences";
+      correlation_id: string;
+    }
   | {
       type: "capability_result";
       capability: string;
@@ -161,6 +169,9 @@ export type WorkerEvent =
   | {
       type: "sign_request";
       correlation_id: string;
+      /** Present when this sign request was caused by an action dispatch; lets
+       *  the UI settle the initiating command while the signer broker continues. */
+      action_correlation_id?: string | null;
       account_pubkey: string;
       unsigned_json: string;
     }

@@ -1,6 +1,10 @@
 import { createSignal, For, Show } from "solid-js";
 import type { WorkerEvent } from "@nmp/runtime-web";
-import { addRelayCommand, removeRelayCommand } from "../../nmp/actions";
+import {
+  addRelayCommand,
+  publishRelayPreferencesCommand,
+  removeRelayCommand,
+} from "../../nmp/actions";
 import { useNmpClient } from "../../nmp/context";
 import type { RelayRuntimeRow, RuntimeProjection } from "../../nmp/runtimeProjection";
 import "./relays.css";
@@ -14,6 +18,9 @@ function compactUrl(url: string): string {
 function eventStatus(event: WorkerEvent | undefined): string {
   if (!event) return "";
   if (event.type === "action_accepted") return "Relay settings updated.";
+  if (event.type === "sign_request") return "Signer approval requested for relay preferences.";
+  if (event.type === "sign_completed") return "Relay preferences signed and sent.";
+  if (event.type === "sign_failed") return event.reason;
   if (event.type === "capability_failure") return event.reason;
   if (event.type === "error") return event.message;
   return "";
@@ -29,7 +36,10 @@ function relayDetail(relay: RelayRuntimeRow): string {
   return bits.join(" · ");
 }
 
-export function RelaySettingsPanel(props: { diagnostics?: RuntimeProjection }) {
+export function RelaySettingsPanel(props: {
+  diagnostics?: RuntimeProjection;
+  canPublishRelayPreferences: boolean;
+}) {
   const { client } = useNmpClient();
   const [url, setUrl] = createSignal("");
   const [role, setRole] = createSignal<(typeof ROLE_OPTIONS)[number]>("both,indexer");
@@ -75,6 +85,19 @@ export function RelaySettingsPanel(props: { diagnostics?: RuntimeProjection }) {
     }
   };
 
+  const publishPreferences = async () => {
+    setBusy(true);
+    setStatus("");
+    try {
+      const snapshot = await client.dispatchCommand(publishRelayPreferencesCommand());
+      applyResult(snapshot.events);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <section class="relay-settings-panel" aria-label="Relay settings">
       <div class="relay-settings-header">
@@ -82,7 +105,17 @@ export function RelaySettingsPanel(props: { diagnostics?: RuntimeProjection }) {
           <p class="panel-kicker">Relays</p>
           <h2>Connection setup</h2>
         </div>
-        <span class="relay-count" data-testid="relay-count">{relays().length}</span>
+        <div class="relay-header-actions">
+          <button
+            type="button"
+            data-testid="relay-publish-preferences"
+            disabled={busy() || !props.canPublishRelayPreferences || relays().length === 0}
+            onClick={() => void publishPreferences()}
+          >
+            Publish preferences
+          </button>
+          <span class="relay-count" data-testid="relay-count">{relays().length}</span>
+        </div>
       </div>
 
       <form

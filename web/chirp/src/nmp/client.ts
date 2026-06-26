@@ -239,6 +239,14 @@ class WorkerNmpClient extends BaseClient {
           },
           correlationId,
         );
+      case "publish_relay_preferences":
+        return this.request(
+          {
+            type: "publish_relay_preferences",
+            correlation_id: correlationId,
+          },
+          correlationId,
+        );
       case "unsupported":
         return this.record({
           type: "capability_failure",
@@ -320,6 +328,14 @@ class WorkerNmpClient extends BaseClient {
     // S6 — broker: worker emits sign_request; main thread calls window.nostr.signEvent
     // and posts deliver_signer_response back (pure message re-entry, no polling D8).
     if (event.type === "sign_request") {
+      const actionCorrelationId = event.action_correlation_id ?? undefined;
+      if (actionCorrelationId) {
+        const resolve = this.pending.get(actionCorrelationId);
+        if (resolve) {
+          this.pending.delete(actionCorrelationId);
+          resolve(snapshot);
+        }
+      }
       void fulfilSignRequestViaExtension(
         (request) => this.worker.postMessage(request),
         event.correlation_id,
@@ -402,6 +418,11 @@ class InProcessNmpClient extends BaseClient {
           action: command.action,
           url: command.url,
           role: command.role,
+          correlation_id: correlationId,
+        });
+      case "publish_relay_preferences":
+        return this.send({
+          type: "publish_relay_preferences",
           correlation_id: correlationId,
         });
       case "unsupported":

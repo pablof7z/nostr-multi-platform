@@ -40,6 +40,7 @@ pub(crate) enum DispatchBytesResult {
     },
     /// Command needs an async sign round-trip.
     SignRequired {
+        action_correlation_id: String,
         correlation_id: String,
         account_pubkey: String,
         unsigned_json: String,
@@ -57,25 +58,6 @@ pub(crate) enum DispatchBytesResult {
     },
     /// DispatchEnvelope decode failed (bad file id, oversize, etc.).
     DecodeError { message: String },
-}
-
-#[derive(Debug)]
-pub(crate) enum RelayConfigResult {
-    Applied {
-        action_type: String,
-        correlation_id: String,
-    },
-    Rejected {
-        capability: String,
-        correlation_id: String,
-        reason: String,
-    },
-}
-
-#[derive(Debug)]
-pub(crate) enum RelayConfigAction {
-    Add,
-    Remove,
 }
 
 // ── Kernel-op methods on BrowserRuntimeHandle ────────────────────────────────
@@ -280,6 +262,7 @@ impl BrowserRuntimeHandle {
                     let prev_out = std::mem::take(&mut all_outbound);
                     self.fan_out_outbound(prev_out);
                     return DispatchBytesResult::SignRequired {
+                        action_correlation_id: correlation_id,
                         correlation_id: request.correlation_id,
                         account_pubkey: request.account_pubkey,
                         unsigned_json: request.unsigned_json,
@@ -302,117 +285,6 @@ impl BrowserRuntimeHandle {
             correlation_id,
         }
     }
-
-    pub(crate) fn apply_relay_config(
-        &mut self,
-        action: RelayConfigAction,
-        url: String,
-        role: Option<String>,
-        correlation_id: &str,
-    ) -> RelayConfigResult {
-        let capability = "nmp.relay_config".to_string();
-        let Some(canonical_url) = nmp_core::canonical_relay_url(&url) else {
-            return RelayConfigResult::Rejected {
-                capability,
-                correlation_id: correlation_id.to_string(),
-                reason: "invalid relay URL — expected ws:// or wss://".to_string(),
-            };
-        };
-
-        let mut rows: Vec<(String, String)> = self
-            .configured_relays
-            .lock()
-            .map(|g| {
-                g.as_slice()
-                    .iter()
-                    .map(|r| (r.url().to_string(), r.role().to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        match action {
-            RelayConfigAction::Add => {
-                let raw_role = role.unwrap_or_else(|| "both".to_string());
-                let Some(role) = normalize_relay_role(&raw_role) else {
-                    return RelayConfigResult::Rejected {
-                        capability,
-                        correlation_id: correlation_id.to_string(),
-                        reason: "invalid relay role — expected read, write, both, indexer, or a composite role".to_string(),
-                    };
-                };
-                if let Some(existing) = rows.iter_mut().find(|(u, _)| *u == canonical_url) {
-                    existing.1 = role.clone();
-                } else {
-                    rows.push((canonical_url.clone(), role.clone()));
-                }
-                self.runtime
-                    .relay_pool
-                    .spawn_configured_relay(&canonical_url, &role)
-                    .into_iter()
-                    .for_each(|event| self.runtime.pending_startup_events.push(event));
-            }
-            RelayConfigAction::Remove => {
-                rows.retain(|(u, _)| u != &canonical_url);
-                self.runtime.relay_pool.close_relay(&canonical_url);
-            }
-        }
-
-        self.runtime.reducer.set_configured_relays(rows);
-        let outbound = self
-            .runtime
-            .relay_pool
-            .tick_and_arm(&mut self.runtime.reducer, nmp_core::time::Instant::now());
-        self.fan_out_outbound(outbound);
-
-        RelayConfigResult::Applied {
-            action_type: "nmp.relay_config".to_string(),
-            correlation_id: correlation_id.to_string(),
-        }
-    }
-
-    /// Merge identity-provided relay URLs into the kernel's configured relay list
-    /// and apply the result (#2139 HIGH 4 — restores nmp-wasm signer.rs:151 behaviour).
-    ///
-    /// Reads the current list from the relay slot, merges incoming rows (adds new
-    /// entries, upgrades roles of existing ones by unioning read/write/indexer flags),
-    /// and calls `set_configured_relays`. Called from `wasm::dispatch::handle_set_identity`
-    /// before seeding the active account so the kernel's relay discovery is seeded
-    /// from identity-provided relays at the same moment the account activates.
-    ///
-    /// No-op when `new_rows` is empty (avoids a redundant kernel write).
-    pub(crate) fn apply_identity_relays(&mut self, new_rows: Vec<(String, String)>) {
-        if new_rows.is_empty() {
-            return;
-        }
-        let mut merged: Vec<(String, String)> = self
-            .configured_relays
-            .lock()
-            .map(|g| {
-                g.as_slice()
-                    .iter()
-                    .map(|r| (r.url().to_string(), r.role().to_string()))
-                    .collect()
-            })
-            .unwrap_or_default();
-
-        let mut changed = false;
-        for (url, role) in new_rows {
-            if let Some(existing) = merged.iter_mut().find(|(eu, _)| eu == &url) {
-                let merged_role = merge_relay_roles(&existing.1, &role);
-                if merged_role != existing.1 {
-                    existing.1 = merged_role;
-                    changed = true;
-                }
-            } else {
-                merged.push((url, role));
-                changed = true;
-            }
-        }
-
-        if changed {
-            self.runtime.reducer.set_configured_relays(merged);
-        }
-    }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -424,71 +296,4 @@ fn format_rejection(rejection: ActionRejection) -> String {
         ActionRejection::Unauthorized(s) => format!("unauthorized: {s}"),
         ActionRejection::Conflict(s) => format!("conflict: {s}"),
     }
-}
-
-/// Merge two relay role strings by unioning their read/write/indexer flags.
-///
-/// Parses both role strings (comma-separated "read", "write", "both", "indexer"),
-/// ORs the flags, and returns a canonical combined string.
-fn merge_relay_roles(existing: &str, incoming: &str) -> String {
-    let (er, ew, ei) = parse_role_flags(existing);
-    let (ir, iw, ii) = parse_role_flags(incoming);
-    let r = er || ir;
-    let w = ew || iw;
-    let i = ei || ii;
-    let mut parts: Vec<&str> = Vec::new();
-    match (r, w) {
-        (true, true) => parts.push("both"),
-        (true, false) => parts.push("read"),
-        (false, true) => parts.push("write"),
-        (false, false) => {}
-    }
-    if i {
-        parts.push("indexer");
-    }
-    if parts.is_empty() {
-        existing.to_string()
-    } else {
-        parts.join(",")
-    }
-}
-
-/// Parse a comma-separated relay role string into (read, write, indexer) flags.
-fn parse_role_flags(role: &str) -> (bool, bool, bool) {
-    let mut read = false;
-    let mut write = false;
-    let mut indexer = false;
-    for part in role.split(',') {
-        match part.trim() {
-            "read" => read = true,
-            "write" => write = true,
-            "both" => {
-                read = true;
-                write = true;
-            }
-            "indexer" => indexer = true,
-            _ => {}
-        }
-    }
-    (read, write, indexer)
-}
-
-fn normalize_relay_role(role: &str) -> Option<String> {
-    let read = nmp_core::actor::has_role(role, "read");
-    let write = nmp_core::actor::has_role(role, "write");
-    let indexer = nmp_core::actor::has_role(role, "indexer");
-    if !read && !write && !indexer {
-        return None;
-    }
-    let mut parts = Vec::new();
-    match (read, write) {
-        (true, true) => parts.push("both"),
-        (true, false) => parts.push("read"),
-        (false, true) => parts.push("write"),
-        (false, false) => {}
-    }
-    if indexer {
-        parts.push("indexer");
-    }
-    Some(parts.join(","))
 }

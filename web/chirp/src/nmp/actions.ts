@@ -46,6 +46,9 @@ export type RuntimeCommand =
       role?: string;
     }
   | {
+      kind: "publish_relay_preferences";
+    }
+  | {
       kind: "unsupported";
       capability: string;
       reason: string;
@@ -235,6 +238,12 @@ export function removeRelayCommand(url: string): RuntimeCommand {
     kind: "relay_config",
     action: "remove",
     url,
+  };
+}
+
+export function publishRelayPreferencesCommand(): RuntimeCommand {
+  return {
+    kind: "publish_relay_preferences",
   };
 }
 

@@ -81,6 +81,15 @@ export class DegradedRuntime {
             reason: this.unavailableReason,
           },
         ];
+      case "publish_relay_preferences":
+        return [
+          {
+            type: "capability_failure",
+            capability: "nmp.nip65.publish_relay_list",
+            correlation_id: request.correlation_id,
+            reason: this.unavailableReason,
+          },
+        ];
       case "capability_result":
         return [
           {

@@ -20,8 +20,8 @@ use super::core::NmpRuntimeCore;
 use super::identity::canonical_pubkey_from_kind;
 use super::protocol::{
     relay_bootstrap_from_config, BeginSign, ClientHello, DeliverSignerResponse,
-    IdentityRelayPermission, RelayConfig, ReleaseRef, ResolveRef, RuntimeStatus, SetIdentity,
-    StartConfig, WorkerEvent, WorkerRequest, PROTOCOL_VERSION,
+    IdentityRelayPermission, PublishRelayPreferences, RelayConfig, ReleaseRef, ResolveRef,
+    RuntimeStatus, SetIdentity, StartConfig, WorkerEvent, WorkerRequest, PROTOCOL_VERSION,
 };
 use super::ref_routing::{
     invalid_ref_request_reason, ref_dispatch_from_release, ref_dispatch_from_resolve,
@@ -43,6 +43,9 @@ impl NmpRuntimeCore {
             WorkerRequest::DeliverSignerResponse(resp) => self.handle_deliver_signer_response(resp),
             WorkerRequest::DispatchBytes(payload) => self.dispatch_dispatch_bytes(&payload.bytes),
             WorkerRequest::RelayConfig(req) => self.handle_relay_config(req),
+            WorkerRequest::PublishRelayPreferences(req) => {
+                self.handle_publish_relay_preferences(req)
+            }
             WorkerRequest::CapabilityResult(r) => {
                 // No native capability handler in this crate (requires native
                 // actor); surface honestly rather than silently dropping.
@@ -284,6 +287,17 @@ impl NmpRuntimeCore {
         }
     }
 
+    fn handle_publish_relay_preferences(
+        &mut self,
+        req: PublishRelayPreferences,
+    ) -> Vec<WorkerEvent> {
+        let Some(handle) = self.handle.as_mut() else {
+            return not_started_error(Some(req.correlation_id));
+        };
+
+        dispatch_result_events(handle.publish_relay_preferences(&req.correlation_id))
+    }
+
     fn handle_begin_sign(&mut self, req: BeginSign) -> Vec<WorkerEvent> {
         let Some(handle) = self.handle.as_mut() else {
             return not_started_error(None);
@@ -292,6 +306,7 @@ impl NmpRuntimeCore {
         match handle.begin_sign_roundtrip(req.account_pubkey, &req.unsigned_json) {
             Ok(sign_req) => vec![WorkerEvent::SignRequest {
                 correlation_id: sign_req.correlation_id,
+                action_correlation_id: None,
                 account_pubkey: sign_req.account_pubkey,
                 unsigned_json: sign_req.unsigned_json,
             }],
@@ -343,12 +358,14 @@ impl NmpRuntimeCore {
                 }]
             }
             DispatchBytesResult::SignRequired {
+                action_correlation_id,
                 correlation_id,
                 account_pubkey,
                 unsigned_json,
             } => {
                 vec![WorkerEvent::SignRequest {
                     correlation_id,
+                    action_correlation_id: Some(action_correlation_id),
                     account_pubkey,
                     unsigned_json,
                 }]
@@ -382,6 +399,51 @@ impl NmpRuntimeCore {
                 }]
             }
         }
+    }
+}
+
+fn dispatch_result_events(result: DispatchBytesResult) -> Vec<WorkerEvent> {
+    match result {
+        DispatchBytesResult::Applied {
+            action_type,
+            correlation_id,
+        } => vec![WorkerEvent::ActionAccepted {
+            action_type,
+            correlation_id,
+        }],
+        DispatchBytesResult::SignRequired {
+            action_correlation_id,
+            correlation_id,
+            account_pubkey,
+            unsigned_json,
+        } => vec![WorkerEvent::SignRequest {
+            correlation_id,
+            action_correlation_id: Some(action_correlation_id),
+            account_pubkey,
+            unsigned_json,
+        }],
+        DispatchBytesResult::Rejected {
+            capability,
+            correlation_id,
+            reason,
+        } => vec![WorkerEvent::CapabilityFailure {
+            capability,
+            correlation_id,
+            reason,
+        }],
+        DispatchBytesResult::NoActiveAccount {
+            capability,
+            correlation_id,
+        } => vec![WorkerEvent::CapabilityFailure {
+            capability,
+            correlation_id,
+            reason: signer_not_installed_reason(),
+        }],
+        DispatchBytesResult::DecodeError { message } => vec![WorkerEvent::Error {
+            code: "dispatch_envelope_rejected".to_string(),
+            message,
+            correlation_id: None,
+        }],
     }
 }
 

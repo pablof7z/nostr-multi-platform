@@ -15,6 +15,13 @@
   justify-content: space-between;
 }
 
+.relay-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .relay-settings-header h2 {
   margin: 0;
   color: var(--ink);
@@ -75,6 +82,7 @@
 }
 
 .relay-form button,
+.relay-header-actions button,
 .configured-relay-row button {
   min-height: 36px;
   border: 1px solid var(--line-strong);
@@ -88,12 +96,14 @@
 }
 
 .relay-form button:hover:not(:disabled),
+.relay-header-actions button:hover:not(:disabled),
 .configured-relay-row button:hover:not(:disabled) {
   border-color: var(--accent);
   color: var(--accent);
 }
 
 .relay-form button:disabled,
+.relay-header-actions button:disabled,
 .configured-relay-row button:disabled {
   opacity: 0.6;
   cursor: progress;
@@ -167,5 +177,13 @@
 
   .relay-form {
     grid-template-columns: 1fr;
+  }
+
+  .relay-settings-header {
+    display: grid;
+  }
+
+  .relay-header-actions {
+    justify-content: flex-start;
   }
 }

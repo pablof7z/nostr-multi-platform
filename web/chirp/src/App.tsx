@@ -172,7 +172,10 @@ export default function App() {
               />
               <SigningPanel onConnectionChange={setSignerConnected} />
               <div id="relays">
-                <RelaySettingsPanel diagnostics={runtimeProjection()} />
+                <RelaySettingsPanel
+                  diagnostics={runtimeProjection()}
+                  canPublishRelayPreferences={signerConnected()}
+                />
               </div>
               <div id="diagnostics">
                 <DiagnosticsPanel diagnostics={runtimeProjection()} events={snapshot().events} />
