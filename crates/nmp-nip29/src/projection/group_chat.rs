@@ -26,7 +26,7 @@
 //!
 //! ```ignore
 //! let projection = Arc::new(GroupChatProjection::new(group_id));
-//! let observer_id = app.register_event_observer(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+//! let observer_id = app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
 //! let snap = Arc::clone(&projection);
 //! app.register_typed_snapshot_projection("nmp.nip29.group_chat", move || {
 //!     let snapshot = snap.snapshot();

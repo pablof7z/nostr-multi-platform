@@ -18,7 +18,7 @@ use std::sync::Arc;
 
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ContactsLookup, CoverageHookRegistrar, DmInboxRelayRegistrar,
-    EventObserverRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
+    LiveEventTapRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
     IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
     RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
     RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
@@ -145,17 +145,17 @@ impl<S> IngestParserRegistrar for BrowserAppBuilder<S> {
     }
 }
 
-// ── EventObserverRegistrar ───────────────────────────────────────────────────
+// ── LiveEventTapRegistrar ───────────────────────────────────────────────────
 
-impl<S> EventObserverRegistrar for BrowserAppBuilder<S> {
-    fn register_event_observer(
+impl<S> LiveEventTapRegistrar for BrowserAppBuilder<S> {
+    fn register_live_event_tap(
         &self,
         observer: Arc<dyn KernelEventObserver>,
     ) -> KernelEventObserverId {
         let Ok(g) = self.inner.lock() else {
             return KernelEventObserverId(0);
         };
-        g.reducer.register_event_observer(observer)
+        g.reducer.register_live_event_tap(observer)
     }
 
     fn unregister_event_observer(&self, id: KernelEventObserverId) {

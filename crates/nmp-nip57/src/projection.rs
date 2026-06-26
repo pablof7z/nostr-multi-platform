@@ -42,7 +42,7 @@
 //!
 //! ```ignore
 //! let projection = Arc::new(ZapsAggregateProjection::new());
-//! let observer_id = app.register_event_observer(
+//! let observer_id = app.register_live_event_tap(
 //!     Arc::clone(&projection) as Arc<dyn KernelEventObserver>,
 //! );
 //! let snap = Arc::clone(&projection);
