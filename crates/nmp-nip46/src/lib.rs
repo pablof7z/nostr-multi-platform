@@ -18,6 +18,7 @@
 //! | [`nostrconnect`] | [`nostrconnect::start_nostrconnect`] — signer-initiated entry point |
 //! | [`error`] | [`error::HandshakeError`] |
 //! | [`rpc`] | [`rpc::build_event_frame`], [`rpc::build_event_frame_at`], [`rpc::decode_inbound_response`] |
+//! | [`restore`] | [`restore::start_restore`] — seed a Done-phase session from a saved payload |
 //! | [`progress_codes`] | stable machine codes for progress labels |
 //! | [`uri_encode`] | RFC 3986 query-value percent-encoder |
 
@@ -31,6 +32,7 @@ pub mod error;
 pub mod nostrconnect;
 pub mod progress_codes;
 pub mod reducer;
+pub mod restore;
 pub mod rpc;
 pub mod uri_encode;
 
@@ -41,6 +43,7 @@ pub use effect::{Effect, SignerReady};
 pub use error::HandshakeError;
 pub use nostrconnect::start_nostrconnect;
 pub use reducer::SessionState;
+pub use restore::start_restore;
 pub use rpc::{
     build_event_frame, build_event_frame_at, build_req_frame, decode_inbound_response, RpcBuildError,
 };

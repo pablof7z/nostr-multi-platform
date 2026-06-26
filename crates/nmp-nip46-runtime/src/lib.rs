@@ -69,7 +69,8 @@ pub mod transport;
 
 pub use register::register_nip46;
 pub use runtime::{
-    init_bunker, init_nostrconnect, new_nip46_runtime_handle, Nip46Runtime, Nip46RuntimeHandle,
+    clear_runtime, init_bunker, init_nostrconnect, init_restore, new_nip46_runtime_handle,
+    Nip46Runtime, Nip46RuntimeHandle,
 };
 pub use transport::ActorLaneTransport;
 

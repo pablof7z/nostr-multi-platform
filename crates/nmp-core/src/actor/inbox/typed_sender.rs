@@ -145,4 +145,14 @@ impl CommandSender {
     ) {
         let _ = self.send(ActorCommand::SetReconnectPreamble { role, relay_url, frames });
     }
+
+    /// Unregister a persistent NIP-46 subscription.
+    ///
+    /// Removes `sub_id` from the kernel's persistent-sub registry for
+    /// `relay_url` so the relay worker no longer suppresses EOSE-triggered
+    /// CLOSE for this subscription. Called by the runtime teardown path
+    /// (PR-B2 `clear_runtime`).
+    pub fn unregister_persistent_sub(&self, relay_url: String, sub_id: String) {
+        let _ = self.send(ActorCommand::UnregisterPersistentSub { relay_url, sub_id });
+    }
 }

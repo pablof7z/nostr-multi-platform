@@ -214,6 +214,13 @@ pub(super) fn dispatch_command(
             }
             Some(Vec::new())
         }
+        // Cancel a persistent NIP-46 subscription.  Removes the sub_id from the
+        // kernel's persistent-sub registry so the relay worker no longer prevents
+        // EOSE-triggered CLOSE.  D0-clean (generic strings only).
+        ActorCommand::UnregisterPersistentSub { relay_url, sub_id } => {
+            ctx.kernel.unregister_persistent_sub(&relay_url, &sub_id);
+            Some(Vec::new())
+        }
         #[cfg(any(test, feature = "test-support"))]
         ActorCommand::TestSupport(cmd) => dispatch_test_support(cmd, ctx),
     }
