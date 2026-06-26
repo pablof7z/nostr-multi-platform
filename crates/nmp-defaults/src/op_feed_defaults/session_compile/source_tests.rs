@@ -1,4 +1,4 @@
-use super::session_engine::{acquisition_children, AcquisitionInterest, ExtraAcquisition};
+use super::source::{acquisition_children, AcquisitionInterest, ExtraAcquisition};
 use nmp_core::DependentInterestChild;
 use nmp_planner::InterestShape;
 use std::collections::BTreeSet;

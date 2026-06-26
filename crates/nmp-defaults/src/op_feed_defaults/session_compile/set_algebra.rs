@@ -22,8 +22,8 @@ use nmp_feed::RootAdmission;
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
 
-use super::resolve::{resolve_scope, ResolvedScope, SetOp};
-use super::session_engine::{ExtraAcquisition, LiveShape};
+use super::resolve::{resolve_scope, SetOp};
+use super::source::{ExtraAcquisition, LiveShape, ReducedSource};
 
 /// Resolve a binary set-algebra scope by recursing into both children.
 pub(super) fn resolve_set_op(
@@ -32,7 +32,7 @@ pub(super) fn resolve_set_op(
     left: &nmp_feed::FeedScope,
     right: &nmp_feed::FeedScope,
     kinds: &BTreeSet<u32>,
-) -> Result<ResolvedScope, FeedOpenError> {
+) -> Result<ReducedSource, FeedOpenError> {
     let l = resolve_scope(app, left, kinds)?;
     // If the right child fails AFTER the left already registered resolver
     // observers, revoke the left's observers so nothing leaks (fail-closed: a
@@ -110,7 +110,7 @@ pub(super) fn resolve_set_op(
     let mut resolver_observer_ids = l.resolver_observer_ids;
     resolver_observer_ids.extend(r.resolver_observer_ids);
 
-    Ok(ResolvedScope {
+    Ok(ReducedSource {
         admission,
         interests,
         live_shape,

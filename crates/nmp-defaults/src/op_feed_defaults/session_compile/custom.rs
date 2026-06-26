@@ -33,8 +33,8 @@ use nmp_feed::{CustomPerspectiveId, FeedRanking, FeedScope, RootAdmission};
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
 
-use super::resolve::{resolve_scope, ResolvedScope};
-use super::session_engine::{ExtraAcquisition, LiveShape};
+use super::resolve::resolve_scope;
+use super::source::{ExtraAcquisition, LiveShape, ReducedSource};
 
 fn not_supported(scope: &'static str) -> FeedOpenError {
     FeedOpenError::ScopeNotSupportedYet { scope }
@@ -81,7 +81,7 @@ pub(super) fn resolve_acquisition(
     app: &NmpApp,
     scope: &FeedScope,
     kinds: &BTreeSet<u32>,
-) -> Result<ResolvedScope, FeedOpenError> {
+) -> Result<ReducedSource, FeedOpenError> {
     match scope {
         FeedScope::CustomPerspectiveId(id) => {
             let def = app
@@ -123,10 +123,10 @@ pub(super) fn resolve_acquisition(
 /// observers are revoked first so nothing leaks (D8).
 pub(super) fn apply_custom_admission(
     app: &NmpApp,
-    acquisition: ResolvedScope,
+    acquisition: ReducedSource,
     id: &CustomPerspectiveId,
     kinds: &BTreeSet<u32>,
-) -> Result<ResolvedScope, FeedOpenError> {
+) -> Result<ReducedSource, FeedOpenError> {
     let Some(def) = app.custom_perspective(id) else {
         // Unregistered → fail closed, revoking the acquisition's observers so the
         // partially-resolved open leaks nothing.
@@ -156,10 +156,10 @@ pub(super) fn apply_custom_admission(
 ///   goes live (its dependency events get fetched);
 /// * reactivity/teardown: both sides' reset hooks + observers flow up.
 pub(super) fn combine_admission_gate(
-    acquisition: ResolvedScope,
-    gate: ResolvedScope,
-) -> ResolvedScope {
-    let ResolvedScope {
+    acquisition: ReducedSource,
+    gate: ReducedSource,
+) -> ReducedSource {
+    let ReducedSource {
         admission: acq_admission,
         mut interests,
         live_shape: acq_live_shape,
@@ -199,7 +199,7 @@ pub(super) fn combine_admission_gate(
     reset_hooks.extend(gate.reset_hooks);
     resolver_observer_ids.extend(gate.resolver_observer_ids);
 
-    ResolvedScope {
+    ReducedSource {
         admission: combined,
         interests,
         live_shape,
@@ -229,7 +229,7 @@ fn merge_live_shapes(left: &LiveShape, right: &LiveShape) -> Option<InterestShap
 
 /// Revoke every resolver observer a resolved scope registered (fail-closed
 /// cleanup when a later resolution step errors — no leak, D8).
-fn revoke_observers(app: &NmpApp, resolved: &ResolvedScope) {
+fn revoke_observers(app: &NmpApp, resolved: &ReducedSource) {
     for id in &resolved.resolver_observer_ids {
         app.unregister_event_observer(*id);
     }
@@ -244,7 +244,7 @@ mod tests {
     //! gate's DEPENDENCY acquisition is preserved (so a `ListMembers`/`Wot` gate
     //! predicate can go live on a cold open).
 
-    use super::super::session_engine::AcquisitionInterest;
+    use super::super::source::AcquisitionInterest;
     use super::*;
     use nmp_core::substrate::{EventId, KernelEvent};
     use nmp_feed::AdmitExpr;
@@ -269,10 +269,10 @@ mod tests {
 
     /// A resolved scope admitting exactly `authors`, carrying the given fixed
     /// acquisition interest (so we can assert the gate's acquisition survives).
-    fn scope(authors: &[&str], interest: Option<AcquisitionInterest>) -> ResolvedScope {
+    fn scope(authors: &[&str], interest: Option<AcquisitionInterest>) -> ReducedSource {
         let admission = AdmitExpr::Authors(authors.iter().map(|s| (*s).to_string()).collect())
             .to_root_admission();
-        ResolvedScope {
+        ReducedSource {
             admission,
             interests: interest.into_iter().collect(),
             live_shape: Arc::new(|| None),

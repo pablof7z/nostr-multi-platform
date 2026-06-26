@@ -34,56 +34,27 @@ use nmp_core::actor::ActorCommand;
 use nmp_core::actor::InterestsCommand;
 use nmp_core::subs::SubOwnerKey;
 use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
-use nmp_core::DependentInterestChild;
 use nmp_core::KernelEventObserver;
 use nmp_feed::{
     ClosureInterestShape, FeedAdvance, FeedApply, FeedController, FeedRender, FeedReset,
     FeedSessionBuild, PullFeedController, RootAdmission,
 };
 use nmp_ffi::{FeedOpenError, NmpApp};
-use nmp_planner::{InterestScope, InterestShape};
 
-use super::resolve::ResolvedScope;
+use super::source::{acquisition_children, ExtraAcquisition, ReducedSource};
 
-/// One typed acquisition child compiled by a feed scope.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct AcquisitionInterest {
-    pub shape: InterestShape,
-    pub scope: InterestScope,
-}
-
-impl AcquisitionInterest {
-    pub(super) fn active_account(shape: InterestShape) -> Self {
-        Self {
-            shape,
-            scope: InterestScope::ActiveAccount,
-        }
-    }
-
-    pub(super) fn global(shape: InterestShape) -> Self {
-        Self {
-            shape,
-            scope: InterestScope::Global,
-        }
-    }
-
-    fn into_child(self) -> DependentInterestChild {
-        DependentInterestChild::tailing(self.shape, self.scope)
-    }
-}
-
-/// Build a registered feed session for a resolved non-default scope and return
+/// Build a registered feed session for a reduced non-default source and return
 /// its teardown recipe.
 ///
 /// `key` is the session's unique projection key (from `params.projection`).
-/// `resolved` carries the compiled admission predicate, the acquisition
-/// interests, the live acquisition shape, and any resolver observer ids that
-/// must be revoked on close.
+/// `resolved` carries the compiled admission predicate, fixed + live
+/// acquisition interests, reset hooks, and any resolver observer ids that must
+/// be revoked on close.
 pub(super) fn build_scope_session(
     app: &NmpApp,
     key: &str,
     render: &FeedRender,
-    resolved: ResolvedScope,
+    resolved: ReducedSource,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     match render {
         FeedRender::OpCentric => build_op_scope_session(app, key, resolved),
@@ -94,7 +65,7 @@ pub(super) fn build_scope_session(
 fn build_op_scope_session(
     app: &NmpApp,
     key: &str,
-    resolved: ResolvedScope,
+    resolved: ReducedSource,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
     let viewer = super::super::read_active(&app.active_account_handle()).ok_or(
         FeedOpenError::ScopeNotSupportedYet {
@@ -102,7 +73,7 @@ fn build_op_scope_session(
         },
     )?;
 
-    let ResolvedScope {
+    let ReducedSource {
         admission,
         interests,
         live_shape,
@@ -301,9 +272,9 @@ fn build_op_scope_session(
 fn build_flat_scope_session(
     app: &NmpApp,
     key: &str,
-    resolved: ResolvedScope,
+    resolved: ReducedSource,
 ) -> Result<FeedSessionBuild, FeedOpenError> {
-    let ResolvedScope {
+    let ReducedSource {
         admission,
         interests,
         live_shape,
@@ -423,18 +394,6 @@ fn session_acquisition_owner(key: &str) -> SubOwnerKey {
     SubOwnerKey::new(("feed-session-acquisition", key))
 }
 
-pub(super) fn acquisition_children(
-    fixed: &[AcquisitionInterest],
-    extra: &ExtraAcquisition,
-) -> Vec<DependentInterestChild> {
-    fixed
-        .iter()
-        .cloned()
-        .chain(extra())
-        .map(AcquisitionInterest::into_child)
-        .collect()
-}
-
 fn clear_acquisition_set(
     sender: nmp_core::CommandSender,
     owner: SubOwnerKey,
@@ -449,10 +408,3 @@ fn clear_acquisition_set(
         ));
     })
 }
-
-// Re-export so `mod.rs` can name the live-shape type alias used by `resolve.rs`.
-/// The single render/pull acquisition shape (the member timeline), re-read live.
-pub(super) type LiveShape = Arc<dyn Fn() -> Option<InterestShape> + Send + Sync>;
-/// Extra acquisition shapes a scope must subscribe to BEYOND the render shape
-/// (e.g. WoT's seed-follows kind:3, needed to build the second-degree ranking).
-pub(super) type ExtraAcquisition = Arc<dyn Fn() -> Vec<AcquisitionInterest> + Send + Sync>;

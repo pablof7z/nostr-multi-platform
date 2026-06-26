@@ -19,8 +19,8 @@ use nmp_feed::{AdmitExpr, RootAdmission};
 use nmp_ffi::FeedOpenError;
 use nmp_planner::InterestShape;
 
-use super::resolve::{empty_extra, not_supported, ResolvedScope};
-use super::session_engine::{AcquisitionInterest, LiveShape};
+use super::resolve::not_supported;
+use super::source::{empty_extra, AcquisitionInterest, LiveShape, ReducedSource};
 
 // ── Authors { authors } — static author-set timeline ─────────────────────
 
@@ -35,7 +35,7 @@ use super::session_engine::{AcquisitionInterest, LiveShape};
 pub(super) fn resolve_authors(
     authors: &BTreeSet<String>,
     kinds: &BTreeSet<u32>,
-) -> Result<ResolvedScope, FeedOpenError> {
+) -> Result<ReducedSource, FeedOpenError> {
     if authors.is_empty() {
         return Err(not_supported("Authors-empty-set"));
     }
@@ -58,7 +58,7 @@ pub(super) fn resolve_authors(
     let interests = vec![AcquisitionInterest::global(shape.clone())];
     let live_shape: LiveShape = Arc::new(move || Some(shape.clone()));
 
-    Ok(ResolvedScope {
+    Ok(ReducedSource {
         admission,
         interests,
         live_shape,
@@ -70,7 +70,7 @@ pub(super) fn resolve_authors(
 
 // ── Tag { term } — #t scope, admit any acquired row ───────────────────────
 
-pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ResolvedScope {
+pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ReducedSource {
     // The #t filter gates at acquisition, but admission must be EVENT-AWARE
     // (`AdmitExpr::Tag`), not `Any` (#1740 step 3): so a `Tag` scope composes
     // faithfully inside set algebra (e.g. `Intersection(Tag, ContactList)`
@@ -83,7 +83,7 @@ pub(super) fn resolve_tag(term: &str, kinds: &BTreeSet<u32>) -> ResolvedScope {
         let shape = tag_live_shape(term, kinds);
         Arc::new(move || shape.clone())
     };
-    ResolvedScope {
+    ReducedSource {
         admission,
         interests,
         live_shape,
@@ -123,7 +123,7 @@ fn tag_live_shape(term: &str, kinds: &BTreeSet<u32>) -> Option<InterestShape> {
 pub(super) fn resolve_referrer(
     event_id: &str,
     kinds: &BTreeSet<u32>,
-) -> Result<ResolvedScope, FeedOpenError> {
+) -> Result<ReducedSource, FeedOpenError> {
     if event_id.is_empty() {
         return Err(not_supported("Referrer-empty-id"));
     }
@@ -165,7 +165,7 @@ pub(super) fn resolve_referrer(
         let k = kinds.clone();
         Arc::new(move || referrer_live_shape(&id, &k))
     };
-    Ok(ResolvedScope {
+    Ok(ReducedSource {
         admission,
         interests,
         live_shape,
