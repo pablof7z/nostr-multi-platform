@@ -51,8 +51,9 @@ pub(in crate::kernel) enum UnsupportedShapeReason {
     WildcardKinds,
     /// `search` is set — full-text path, not a structural `StoreQuery`.
     SearchShape,
-    /// `event_ids` is non-empty — pointer-loader covers these on ingest.
-    EventIdsOnly,
+    /// `event_ids` is non-empty — pointer-loader covers these on ingest, and
+    /// the structural store-query variants cannot encode the id constraint.
+    EventIds,
     /// A tag key is not a single ASCII-alphabetic letter — not a valid
     /// `SingleLetterTag` dimension.
     InvalidTagKey,
@@ -80,7 +81,7 @@ pub(in crate::kernel) enum UnsupportedShapeReason {
 /// | 1 author + ≥1 kind | `AuthorKind` | `idx_author_kind` | E1 |
 /// | >1 author + ≥1 kind | one `AuthorsKind` (multi-author) | `idx_author_kind` (multi-scan) | E1 (#1497) |
 /// | 0 authors + ≥1 kind + 0 tags + 0 addrs | `KindTime` | `idx_kind_time` | E1 |
-/// | any single-letter tag map (incl. `#e`/`#p`/`#h`/`#t`) | one `Tags` | `tci`/`atci`/`ktci` generic-tag indexes | E2/E3 |
+/// | any single-letter tag map with no `ids` (incl. `#e`/`#p`/`#h`/`#t`) | one `Tags` | `tci`/`atci`/`ktci` generic-tag indexes | E2/E3 |
 /// | `addresses` non-empty | `KindDtag` per coord | `idx_kind_dtag_time` | E3 |
 ///
 /// Note: `Tags` carries a `since`/`until` window like every other variant —
@@ -100,8 +101,10 @@ pub(in crate::kernel) enum UnsupportedShapeReason {
 ///   covered: the tag index bounds the scan.)
 /// - **`addresses` + generic `tags` together:** a coordinate unit and a flat
 ///   tag map cannot be one exact query without over-serving. Relay delivers.
-/// - **Event-ids-only shapes:** the pointer-loader hydrates on ingest; replaying
-///   via a store scan adds no value (each id returns at most one event).
+/// - **Event-id shapes:** the pointer-loader hydrates on ingest; replaying via a
+///   structural store scan adds no value when ids are the only constraint, and
+///   would be unsound when ids are combined with tags/authors/kinds because
+///   those store-query variants cannot encode the id predicate.
 /// - **Text / full-text search candidates:** shapes with `search` set always
 ///   return `Err` from THIS function — full-text matching has no `StoreQuery`
 ///   variant (its index is the tokenized inverted index, not a structural
@@ -128,6 +131,16 @@ pub(in crate::kernel) fn compile_store_query_plan(
     // by this Err.)
     if shape.search.is_some() {
         return Err(UnsupportedShapeReason::SearchShape);
+    }
+
+    // Event-id-bearing shapes are deliberately not structural cache-serve
+    // shapes. When `ids` is the only pointer, point lookup is handled by the
+    // pointer-loader/replay paths. When `ids` is combined with other dimensions
+    // (for example `{ids:[...], kinds:[9], #h:["room"]}`), dropping the id
+    // predicate would over-serve every matching tag/kind row because cache-serve
+    // trusts StoreQuery exactness and does not post-filter.
+    if !shape.event_ids.is_empty() {
+        return Err(UnsupportedShapeReason::EventIds);
     }
 
     // ── Generic single-letter tag shapes → one `StoreQuery::Tags` ───────────
@@ -224,13 +237,6 @@ pub(in crate::kernel) fn compile_store_query_plan(
     }
 
     // ── E1: author+kind or KindTime (no tags, no addresses) ─────────────────
-    // event_ids shapes are not covered: an id-lookup can only return zero or
-    // one event per id, and the pointer-load path already retrieves them on
-    // ingest. There is no gain from replaying them.
-    if !shape.event_ids.is_empty() {
-        return Err(UnsupportedShapeReason::EventIdsOnly);
-    }
-
     let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
 
     if shape.authors.is_empty() {

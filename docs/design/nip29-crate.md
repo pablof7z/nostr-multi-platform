@@ -1,8 +1,8 @@
 # Design: `nmp-nip29` — NIP-29 Relay-Based Groups as a Protocol Crate (M11.5)
 
-> **Status:** Implemented as generic protocol infrastructure. **Date:** 2026-05-18.
+> **Status:** Implemented as generic protocol infrastructure; updated 2026-06-26 to reflect the current projection/action/read-interest surface. **Date:** 2026-05-18.
 > **Companion docs:** `docs/design/subscription-compilation.md` §§ 4, 7 (the M2 planner this crate hooks into); `docs/product-spec/doctrine.md` §D0 (current extension seams); ADR-0009 (the kernel-boundary doctrine the crate must respect).
-> **Scope:** Define the public surface, internal architecture, and routing contract of `nmp-nip29` — the NMP-idiomatic protocol crate for NIP-29 relay-based groups. Some early sections still use the historical `DomainModule` / `ViewModule` vocabulary; current v1 code expresses those roles with registered actions, observers, projections, and feed/ref interests.
+> **Scope:** Define the public surface, internal architecture, and routing contract of `nmp-nip29` — the NMP-idiomatic protocol crate for NIP-29 relay-based groups. Current v1 code expresses this with typed action registration, snapshot projections, hydrating observed read interests, and host-pinned filter builders; it does not use the retired `DomainModule` / `ViewModule` / `ActionModule` trait-family generator model.
 
 This document is split into focused sub-files to stay well under the 300 LOC ceiling per file.
 
@@ -18,7 +18,7 @@ NIP-29 is *structurally different* from every other NIP the framework has touche
 2. **Group metadata events (39000–39003) are signed by the relay**, not by any human user. They appear in the user's stream out of nowhere and must be trusted because the relay produced them, not because a follow did.
 3. **Every group event has a forced routing target**: the host relay. NIP-65 mailbox routing for the author is *irrelevant* for these events — they only exist on that one relay. This is the routing-contract inversion that justifies the whole crate existing.
 4. **The `previous`-tag chain** is a relay-enforced anti-forgery mechanism with no analog in any other Nostr NIP. *Outbound* publishes must attach `previous` references (per `moderation.md` §2); *ingest* preserves the tags but does not re-validate (the relay already did, and re-validating client-side would risk dropping valid events during cold-cache / historical backfill).
-5. **The "group" is a security boundary**, not just a noun. A private group's 39000 may be hidden from non-members; a closed group rejects join requests. The crate's view modules must respect membership state when projecting.
+5. **The "group" is a security boundary**, not just a noun. A private group's 39000 may be hidden from non-members; a closed group rejects join requests. The crate's projections must respect membership state when projecting.
 
 Treating NIP-29 as "just another kind range" would force NMP's kernel actor or M2 compiler to grow group-aware special cases, violating ADR-0009 doctrine D0 ("the kernel never grows app nouns"). The crate is the boundary where the special cases live; the kernel sees a generic `RelayPinned` and `RelayPinnedPublish` it already knows how to handle (see `routing.md`).
 
@@ -43,75 +43,32 @@ crates/
 └── nmp-testing/
 ```
 
-Apps consume `nmp-nip29` by adding it to their `nmp.toml` enabled-modules list, which causes `nmp-codegen` to register its DomainModules / ViewModules / ActionModules into the generated per-app crate (per ADR-0010).
+Apps consume `nmp-nip29` through the app's Rust composition layer. The protocol
+crate provides reusable NIP-29 building blocks; app crates decide which read
+views to open and which actions to expose.
 
-## 3. Trait family families produced by `nmp-nip29`
+## 3. Current public surface produced by `nmp-nip29`
 
-Per the advisor checkpoint and verified against the Highlighter `app/core/src/{groups,chat,discussions}.rs` public surfaces, the crate produces **three** of the five substrate trait families (per `crates/nmp-core/src/substrate/mod.rs`):
+`nmp-nip29` currently ships four categories of reusable surface:
 
-### 3.1 `DomainModule` impls (13)
-
-These are the persistent record shapes the crate owns. Each is the truth source for its kind range; views project off them. **The unifying rule: any event carrying an `["h", group_id]` tag is a group event and lives in `nmp-nip29`, regardless of its kind.** The kind is the dispatch, the `h` tag is the ownership.
-
-| `DomainModule` | Owns kinds | Composite keys | Notes |
-|---|---|---|---|
-| `Group` | 39000 (metadata) | `(host_relay_url, group_id)` | The metadata snapshot for a group; replaceable on every 9002 edit → 39000 republish. |
-| `GroupAdmins` | 39001 | `(host_relay_url, group_id)` | The admin set; replaceable on every 9000 with `role` tag → 39001 republish. |
-| `GroupMembers` | 39002 | `(host_relay_url, group_id)` | The member set; replaceable on every 9000/9001 → 39002 republish. |
-| `GroupRoles` | 39003 | `(host_relay_url, group_id)` | The relay's declared role list (optional; not all relays publish 39003). |
-| `GroupChatMessage` | 9 (when `h` present) | `(host_relay_url, group_id, event_id)` | Flat chat message. The `h` tag is the in-group key. |
-| `GroupDiscussion` | 11 (when `h` present and `["t","discussion"]` marker) | `(host_relay_url, group_id, event_id)` | Threaded discussion *roots only*. Replies today are public NIP-22 kind:1111 *without* `h`, owned by `nmp-nip22` (verified per `kinds.md` §2.1 against Highlighter's `comments.rs::publish_comment`). `nmp-nip29::GroupComment` exists for *future* h-tagged in-room comments (Highlighter post-M11.5 may attach `h` to in-room composers; until then `GroupComment` is forward-looking and not consumed by the M11.5 Highlighter rebuild). |
-| `GroupArtifact` | 11 (when `h` present and *no* `t=discussion` marker — Highlighter's "share an article/podcast/book into a room" event per `artifacts.rs::publish`) | `(host_relay_url, group_id, event_id)` | The "Suggest an artifact" / Room Library source events. Distinct from `GroupDiscussion` by the absence of `t=discussion`; the artifact reference is in catalog tags (`r`/`i`/`a` per Highlighter's `web/src/lib/ndk/artifacts.ts` convention). |
-| `GroupRepost` | 16 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-18 generic repost scoped into the group. The "share an existing highlight into a community" path (`highlights.rs::share_to_community`, `highlights.rs::publish_and_share`). |
-| `GroupHighlight` | 9802 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-84 highlight published *directly into* a room (rather than published to the author's write relays and then reposted). Per `subscriptions.rs::Room` + `highlights.rs::query_for_group`, Highlighter's room subscription includes kind:9802 with `#h`. Per the unifying rule, h-tagged 9802 lives in `nmp-nip29`; the non-`h` (public) 9802 stays in `nmp-nip84`. |
-| `GroupReaction` | 7 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-25 reaction to an event inside a group. Highlighter today does NOT emit h-tagged reactions (verified per `reactions.rs::publish_reaction` + `ChatView.swift` context-menu which exposes Reply/Copy only); this DomainModule is **forward-looking** — it exists so the protocol crate cleanly handles h-tagged reactions if/when any client (Highlighter post-M11.5 or another consumer of `nmp-nip29`) starts emitting them. The non-`h` (public) reaction stays in `nmp-nip25`. |
-| `GroupComment` | 1111 (when `h` present) | `(host_relay_url, group_id, event_id)` | NIP-22 comment scoped into a group. Same forward-looking rationale as `GroupReaction` — Highlighter's `comments.rs::publish_comment` does not attach `h` today, so `GroupComment` is forward-looking only. The non-`h` (public) comment stays in `nmp-nip22`. |
-| `GroupModerationEvent` | 9000–9009, 9021, 9022 | `(host_relay_url, group_id, event_id)` | Audit trail of admin-side actions. **Audit-only** — see `moderation.md` §5 for the strict separation from canonical 39001/39002 mutation. |
-| `GroupContextEvent` | any other kind carrying an `h` tag (livestreams, polls, files, future NIPs) | `(host_relay_url, group_id, event_id, kind)` | Generic fallback ingest for unknown h-tagged kinds. Apps that ship custom group event kinds layer their own DomainModules over the same kind range *without modifying `nmp-nip29`*; the fallback exists so unrecognised kinds aren't silently dropped. Not user-rendered by default; apps that want to render unknown kinds either consume this record directly or register a higher-priority DomainModule for that kind. |
-
-### 3.2 `ViewModule` impls (7)
-
-These are the projections the UI consumes. Each declares `LogicalInterest`s the M2 compiler turns into wire-level REQs, with routing pinned to the host relay per `routing.md`.
-
-| `ViewModule` | Composite dependency keys | Surfaces |
+| Surface | Current implementation | Notes |
 |---|---|---|
-| `JoinedGroups` | `(current_pubkey, host_relay_url)` | The "communities I'm in" list — derived from any 39001/39002 containing `current_pubkey` across all host relays the user has joined groups on. The hardest view to design — see `routing.md` §4 on cross-relay aggregation. |
-| `GroupHome` | `(host_relay_url, group_id)` | Single-group landing page: metadata + admin/member counts + recent chat + recent discussions + member preview. |
-| `GroupChat` | `(host_relay_url, group_id)` | Ordered ascending kind:9 messages in one group. |
-| `GroupDiscussions` | `(host_relay_url, group_id)` | List of kind:11 *discussion-marked* roots in one group, ordered by *root* `created_at` (descending). Reply-count + latest-reply-timestamp ordering require a cross-crate join with `nmp-nip22` (since today's replies are non-h NIP-22 comments per §3.1's `GroupDiscussion` note), so they live in `highlighter-core::DiscussionsWithReplyCounts` per §6. The bare protocol view stays root-only and crate-isolated. |
-| `GroupArtifacts` | `(host_relay_url, group_id)` | List of `GroupArtifact` records (kind:11 without `t=discussion`) + `GroupRepost` records (kind:16 with `h`) + `GroupHighlight` records (kind:9802 with `h`, the in-room highlight path per `subscriptions.rs::Room` + `highlights.rs::query_for_group`) — all three are "things shared into the room library", projected together. The Room Library UI in `Communities/RoomLibrary*Card.swift` consumes this. |
-| `GroupMembers` | `(host_relay_url, group_id)` | Members + admins. Hydration with NIP-01 profiles is a cross-crate join performed in `highlighter-core` per §6. |
-| `GroupExplorer` | `(host_relay_url, optional filter)` | List of all publicly-discoverable groups (39000 events without the `hidden` marker) on a given host relay. |
+| Typed group identity | `GroupId { host_relay_url, local_id }` plus host-pinned filter builders such as `GroupId::chat_filter_json` and `group_metadata_filter_json` | Every read/write path carries the host relay explicitly; a bare `h` value is never enough to identify a group. |
+| Read projections | `GroupChatProjection`, `DiscoveredGroupsProjection`, `JoinedGroupsProjection`, and `GroupDefaultsProjection` | Per-open read views are hydrated through observed interests from `nmp-ffi::group_feed`; the default snapshot is registered directly by `wire_group_defaults*`. |
+| Actions | `register_actions` installs the supported NIP-29 write actions with the app action registrar | Writes remain protocol-owned and host-pinned; the app shell does not derive relay routing from UI state. |
+| Small protocol caches/helpers | `RecentGroupEvents`, `JoinedHostsCache`, input-scope recognizers, and previous-tag helpers | These are protocol-internal helpers; durable app read state is exposed through projections and snapshot sidecars. |
 
-### 3.3 `ActionModule` impls (15)
+The app-side composition in `nmp-ffi::group_feed` registers a projection muted,
+opens a host-pinned observed interest, replays matching cached events, then
+activates the projection. That is the current read-model contract for
+late-opened NIP-29 views; a plain active event observer is not a valid
+hydrating view path.
 
-These are the writes. Each is an admin- or user-initiated event that NMP's `PublishPlanner` (M2 §7) routes per the host-relay-pin contract. Every action below carries a typed `nmp-nip29::GroupId { host_relay_url, local_id }` input so the publisher never has to derive the host from a bare string `h` value.
-
-| `ActionModule` | Emits kind(s) | Auth | Routing |
-|---|---|---|---|
-| `CreateGroup` | 9007 + 9002 back-to-back | signer = founder | Host relay only. |
-| `JoinRequest` | 9021 (optional `code` tag) | signer = requester | Host relay only. |
-| `LeaveRequest` | 9022 | signer = leaver | Host relay only. |
-| `EditMetadata` | 9002 | signer must be in 39001 | Host relay only. |
-| `PutUser` | 9000 (optional `role` tag) | signer must be in 39001 | Host relay only. |
-| `RemoveUser` | 9001 | signer must be in 39001 | Host relay only. |
-| `CreateInvite` | 9009 (multi-fan-out per `MAX_CODES_PER_INVITE_EVENT`) | signer must be in 39001 | Host relay only. |
-| `DeleteEvent` | 9005 | signer must be in 39001 | Host relay only. |
-| `DeleteGroup` | 9008 | signer must be in 39001 (and ideally the original 9007 signer; see `kinds.md` §2.3) | Host relay only. |
-| `PostChatMessage` | 9 with `h` | signer = author (must be in 39002 if `restricted`) | Host relay only. |
-| `PostDiscussion` | 11 with `h` + `["t","discussion"]` | same as above | Host relay only. |
-| `PostArtifact` | 11 with `h` and *no* `t=discussion` marker, carrying catalog reference tags per `kinds.md` §2.1 | same as above | Host relay only. |
-| `ShareEventIntoGroup` | 16 with `h` referencing an existing event (by `e` tag) | signer = re-sharer (in 39002 if `restricted`) | Host relay only. **The second write of the `publish-and-share` composed flow** described in `routing.md` §6; the *first* write (the kind:9802 highlight itself) lives in `nmp-nip84`. |
-| `ReactInGroup` | 7 with `h` + `e` (target event) + content (`"+"`, emoji, etc.) | signer = reactor (in 39002 if `restricted`) | Host relay only. The h-tagged reaction. `nmp-nip25` owns the *non-`h*` reaction action; this one lives in `nmp-nip29`. |
-| `CommentInGroup` | 1111 with `h` + NIP-22 root/parent tags + content | signer = commenter (in 39002 if `restricted`) | Host relay only. The h-tagged comment. `nmp-nip22` owns the non-`h` comment action; this one lives in `nmp-nip29`. |
-
-### 3.4 What `nmp-nip29` does **not** ship
+### 3.1 What `nmp-nip29` does **not** ship
 
 - **No `CapabilityModule`.** The crate uses existing capabilities (signer, http, blossom for picture uploads) but doesn't add any.
 - **No `IdentityModule`.** Groups don't change the user's identity model; M6/M8 covers identity.
 - **No new persistence schema.** Per ADR-0010 + M3, all domain records persist via the kernel's LMDB tables keyed by their composite keys. The crate declares migrations in standard NMP shape.
-
-**Total: 3 trait families touched (Domain, View, Action), 35 module impls total** (13 + 7 + 15). This is the return-statistic for the design pass.
 
 ## 4. The load-bearing constraint: host-relay-pin
 
@@ -138,21 +95,21 @@ pub struct GroupId {
 }
 ```
 
-This is the breaking change versus Highlighter's existing core, which treats `group_id` as a `String` because there's only ever one host. Every `DomainRecord`, every `ViewModule`'s composite key, every `ActionModule`'s input that references a group uses `GroupId`. The kernel's composite-key reverse index (ADR-0001) handles `(host_relay_url, local_id)` as cleanly as it handles `(pubkey, kind)` — no kernel changes needed; the change is purely at the crate boundary.
+This is the breaking change versus Highlighter's older core, which treated `group_id` as a `String` because there was only ever one host. Every current projection, action input, and filter builder that references a group uses `GroupId` or equivalent `(host_relay_url, local_id)` data. The kernel still sees generic interests, projections, and publish actions — no kernel group noun is needed.
 
 For UI surfaces that need a flat string (URLs, deep links, share cards), `nmp-nip29::GroupId` provides `to_uri()` / `from_uri()` round-tripping into the NIP-29 spec format `<host>'<local-id>` (e.g. `groups.nostr.com'abcdef`).
 
 ## 6. Cross-crate joins (resolved at the app layer, not inside `nmp-nip29`)
 
-The user surfaces the UI consumes need joins against three other crates. Per the M11.5 exit gate (`nmp-nip29` must not import any other `nmp-nip*` crate), the joins live **in `highlighter-core`** (the app's own extension crate), where they compose `nmp-nip29`'s views with views from other protocol crates using only the kernel-level composite-key reverse index:
+The user surfaces a product consumes may need joins against other crates. Per the NMP boundary rule, `nmp-nip29` does not import sibling `nmp-nip*` crates for product presentation joins. Those joins live in the app's Rust composition layer, where they compose NIP-29 projections with profile, comment, highlight, or artifact projections.
 
-| Composed view (lives in `highlighter-core`) | Composes | Mechanism |
+| Composed view (app Rust layer) | Composes | Mechanism |
 |---|---|---|
 | `HydratedGroupChat` | `nmp-nip29::GroupChat` + `nmp-nip01::Profile` for each author | composite-key dependency tracking at the substrate level (ADR-0001) — `highlighter-core::HydratedGroupChat::dependencies()` enumerates both; the kernel reverse-index handles the join with no protocol-crate awareness |
 | `DiscussionsWithReplyCounts` | `nmp-nip29::GroupDiscussions` + `nmp-nip22::Comment { e: <discussion_id> }` per discussion root | Discussion replies in Highlighter today are *non-h-tagged* NIP-22 comments (verified per `kinds.md` §2.1 notes), so they live in `nmp-nip22` and route per the replier's NIP-65 write relays. The count + latest-reply join happens in `highlighter-core`'s `project()`. (If/when Highlighter changes its composer to attach `h`, the dependency shifts to `nmp-nip29::GroupComment` with no other code change — that's the point of the substrate's generic composite-key joins.) |
 | `GroupArtifactLanes` | `nmp-nip29::GroupArtifacts` (which already surfaces both kind:11 artifact shares + kind:16 reposts per §3.2) + `nmp-nip84::Highlight` deref'd from each share/repost's referenced event (`e` tag → `nmp-nip84::Highlight` for highlight reposts; `r`/`i`/`a` catalog tag → external artifact lookup for native artifact shares) | the deref chain happens in `highlighter-core`'s projection; `GroupArtifacts` is what subscribes (and therefore what makes the lanes update on new shares) |
 
-Why this works: the kernel's composite-key reverse index (`crates/nmp-core/src/substrate/view.rs::ViewDependencies`) is generic — it doesn't care which crate owns which DomainModule. An app-level ViewModule can declare dependencies on records owned by any protocol crate the app has registered. The protocol crates stay protocol-only; cross-protocol composition is the app's job.
+Why this works: the kernel's projection and interest machinery is generic. It does not care which protocol crate owns the projection data; the app Rust layer composes typed snapshots and opens whatever explicit interests that composed view needs.
 
 `nmp-nip29` ships its own non-hydrated views (`GroupChat`, `GroupDiscussions`, `GroupHome`, etc.) that are useful on their own (debugging UIs, tests, headless clients) without any cross-crate joins. The hydrated variants are app-level conveniences.
 
@@ -160,13 +117,12 @@ For kind:16 (generic repost): the *h-tagged* repost is owned by `nmp-nip29::Grou
 
 ## 7. What's deferred vs in-scope
 
-**In M11.5 scope:**
+**In current v1 scope:**
 
-- All 13 `DomainModule` impls per §3.1
-- All 7 `ViewModule` impls per §3.2 (with host-relay-pin routing fully wired through the M2 compiler)
-- All 15 `ActionModule` impls per §3.3 (with host-relay-pin routing fully wired through the M2 publish planner)
-- Full ingest pipeline: 39000–39003 trusted because they're relay-signed; 9000–9022 audited into the moderation trail (audit-only — canonical 39001/39002 flip on the relay's republished snapshot); outbound `previous`-tag attachment per `moderation.md` §2 (ingest preserves the tags but does *not* re-validate)
-- Highlighter UI parity for every NIP-29-bearing and NIP-29-adjacent feature in `feature-inventory.md` §§ 1–2
+- Typed `GroupId` and host-pinned filter builders for group chat and group metadata acquisition.
+- Hydrating read projections for group chat, discovered groups, joined groups, and app/operator group defaults.
+- Action registration for the supported NIP-29 write actions.
+- Metadata/moderation parsing rules described in the sub-files, with relay-signed metadata treated as relay-owned protocol state.
 
 **Deferred to a follow-up milestone or to relay-side implementation:**
 
@@ -182,6 +138,6 @@ For kind:16 (generic repost): the *h-tagged* repost is owned by `nmp-nip29::Grou
 3. **`JoinedGroups` aggregation across multiple host relays.** Resolved by ADR-0060. `nmp-nip29` owns the joined-groups projection, fans out through host-pinned 39001/39002 interests, and derives joined/admin status only from relay-signed snapshots.
 4. **Membership-as-security-boundary in projections.** Resolved: M11.5 **gates private-group projections** explicitly per `moderation.md` §6. The gate empties `GroupChat`/`GroupDiscussions`/`GroupMembers`/`GroupHome` for any group whose 39000 carries the `private` marker AND whose latest 39002 does not contain the current user's pubkey. Public groups are never gated (the room preview surface in `feature-inventory.md` §1.1 needs this). This is mandatory, not best-effort — without the gate, cached private-group chat would leak after the user is removed from the group.
 5. **Invite-code redemption UX vs JoinRequest.** The 9021 with a `code` tag is the redemption path. The current Highlighter onboarding lets the user paste a code before any signer is installed. Does the redemption action defer until a signer exists, or do we mint a fresh local key and redeem immediately? Cross-cuts M6 (signer flows). ADR-level question.
-6. **Tombstoning on kind:9008 (delete-group).** The relay can delete a group entirely. What does the kernel do with all the DomainRecords keyed under `(host_relay_url, group_id)`? Bias: hard-delete the records (the relay no longer serves them; provenance dies with the group), surface a one-shot "group deleted" notification through the diagnostics lane.
+6. **Tombstoning on kind:9008 (delete-group).** The relay can delete a group entirely. What should projections and any durable app-side state keyed under `(host_relay_url, group_id)` do? Bias: remove those records (the relay no longer serves them; provenance dies with the group), surface a one-shot "group deleted" notification through the diagnostics lane.
 
 The three sub-files (`nip29/routing.md`, `nip29/kinds.md`, `nip29/moderation.md`) work through these in detail.

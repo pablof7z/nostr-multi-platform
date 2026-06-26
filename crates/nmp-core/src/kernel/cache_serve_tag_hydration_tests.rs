@@ -21,7 +21,7 @@ use crate::planner::{
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::store::{EventStore, RawEvent, VerifiedEvent};
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
-use std::collections::{BTreeSet, BTreeMap};
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Open a cache-serve interest for `shape` (mirrors the production
 /// `open_interest_sub` path used by the universal-acceptance fixtures).
@@ -34,8 +34,7 @@ fn open_interest(kernel: &mut Kernel, seed: u64, shape: InterestShape) -> bool {
         lifecycle: InterestLifecycle::Tailing,
         is_indexer_discovery: false,
     };
-    let identity =
-        SubIdentity::new(SubOwnerKey::new(seed), SubKey::new(seed), SubScope::Global);
+    let identity = SubIdentity::new(SubOwnerKey::new(seed), SubKey::new(seed), SubScope::Global);
     kernel.open_interest_sub(identity, interest)
 }
 
@@ -72,6 +71,12 @@ fn tag_shape(kinds: &[u32], letter: &str, value: &str) -> InterestShape {
     s
 }
 
+fn tag_shape_with_id(kinds: &[u32], letter: &str, value: &str, id: &str) -> InterestShape {
+    let mut s = tag_shape(kinds, letter, value);
+    s.event_ids.insert(id.to_string());
+    s
+}
+
 /// #2088 — group events seeded BEFORE the `#h` interest opens hydrate from the
 /// store with zero relay delivery.
 #[test]
@@ -84,13 +89,31 @@ fn group_h_tag_hydrates_from_store() {
     let id9 = hex_pk("9a");
     let id11 = hex_pk("11b");
     let author = hex_pk("c0ffee");
-    store_seed(&kernel, &id9, &author, 9, base_ts,
-        vec![vec!["h".into(), "room".into()]]);
-    store_seed(&kernel, &id11, &author, 11, base_ts + 1,
-        vec![vec!["h".into(), "room".into()]]);
+    store_seed(
+        &kernel,
+        &id9,
+        &author,
+        9,
+        base_ts,
+        vec![vec!["h".into(), "room".into()]],
+    );
+    store_seed(
+        &kernel,
+        &id11,
+        &author,
+        11,
+        base_ts + 1,
+        vec![vec!["h".into(), "room".into()]],
+    );
     // noise: right kind, wrong room.
-    store_seed(&kernel, &hex_pk("dd"), &author, 9, base_ts + 2,
-        vec![vec!["h".into(), "elsewhere".into()]]);
+    store_seed(
+        &kernel,
+        &hex_pk("dd"),
+        &author,
+        9,
+        base_ts + 2,
+        vec![vec!["h".into(), "elsewhere".into()]],
+    );
 
     // Cold start: in-memory caches are empty (store is warm) — exactly the
     // restart precondition #2088 hits.
@@ -115,6 +138,42 @@ fn group_h_tag_hydrates_from_store() {
     );
 }
 
+/// A filter that combines `ids` with a tag must not degrade into a broad tag
+/// store scan. `StoreQuery::Tags` cannot encode the id predicate, and
+/// cache-serve does not post-filter served rows.
+#[test]
+fn tag_shape_with_event_ids_does_not_over_hydrate_from_store() {
+    let mut kernel = Kernel::new(DEFAULT_VISIBLE_LIMIT);
+    let base_ts: u64 = 1_700_000_000;
+
+    let stored_id = hex_pk("9a");
+    let requested_id = hex_pk("9b");
+    let author = hex_pk("c0ffee");
+    store_seed(
+        &kernel,
+        &stored_id,
+        &author,
+        9,
+        base_ts,
+        vec![vec!["h".into(), "room".into()]],
+    );
+
+    simulate_cold_restart(&mut kernel);
+    assert!(kernel.events.is_empty());
+
+    open_interest(
+        &mut kernel,
+        903,
+        tag_shape_with_id(&[9], "h", "room", &requested_id),
+    );
+    drain_cache_serves(&mut kernel, 10);
+
+    assert!(
+        !kernel.events.contains_key(stored_id.as_str()),
+        "cache-serve must not drop the ids predicate and hydrate every #h=room event"
+    );
+}
+
 /// Latent `#t` hashtag back-fill: stored `kind:1 #t=nostr` notes back-fill from
 /// the store when the hashtag feed opens.
 #[test]
@@ -125,13 +184,31 @@ fn hashtag_t_tag_backfills_from_store() {
 
     let id_a = hex_pk("7a");
     let id_b = hex_pk("7b");
-    store_seed(&kernel, &id_a, &author, 1, base_ts,
-        vec![vec!["t".into(), "nostr".into()]]);
-    store_seed(&kernel, &id_b, &author, 1, base_ts + 1,
-        vec![vec!["t".into(), "nostr".into()]]);
+    store_seed(
+        &kernel,
+        &id_a,
+        &author,
+        1,
+        base_ts,
+        vec![vec!["t".into(), "nostr".into()]],
+    );
+    store_seed(
+        &kernel,
+        &id_b,
+        &author,
+        1,
+        base_ts + 1,
+        vec![vec!["t".into(), "nostr".into()]],
+    );
     // noise: different hashtag.
-    store_seed(&kernel, &hex_pk("7c"), &author, 1, base_ts + 2,
-        vec![vec!["t".into(), "bitcoin".into()]]);
+    store_seed(
+        &kernel,
+        &hex_pk("7c"),
+        &author,
+        1,
+        base_ts + 2,
+        vec![vec!["t".into(), "bitcoin".into()]],
+    );
 
     simulate_cold_restart(&mut kernel);
     assert!(kernel.events.is_empty());
