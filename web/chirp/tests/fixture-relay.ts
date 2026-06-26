@@ -4,8 +4,8 @@
  * Starts a WebSocket server on a random loopback port. The relay speaks the
  * minimal Nostr relay protocol the acceptance specs need:
  *   - Accepts any WebSocket connection.
- *   - REQ   → emits seeded events matching the filter, then EOSE.
- *   - EVENT → records the inbound event, acknowledges with OK.
+ *   - REQ   → emits retained events matching the filter, then EOSE.
+ *   - EVENT → records the inbound event, retains it for later REQs, then ACKs.
  *   - CLOSE → no response (per NIP-01).
  *
  * The relay runs in the Node.js Playwright process and never touches the
@@ -158,7 +158,8 @@ function startServer(
               (f) => typeof f === "object" && f !== null,
             );
             const sendSoon = (frame: string) => setTimeout(() => ws.send(frame), 0);
-            for (const event of seededEvents) {
+            const retainedEvents = [...seededEvents, ...receivedEvents];
+            for (const event of retainedEvents) {
               const matched =
                 filters.length === 0 || filters.some((f) => matchesFilter(event, f));
               if (matched) {
