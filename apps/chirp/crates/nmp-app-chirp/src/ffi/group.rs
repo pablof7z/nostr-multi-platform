@@ -23,11 +23,11 @@ use super::helpers::c_string_opt;
 /// Open a NIP-29 group-chat read view for one group into `app`.
 ///
 /// This is **pure consumption** — the read-side of a group-chat screen. It
-/// constructs a `GroupChatProjection` scoped to the supplied group and routes
+/// constructs a `GroupTimelineProjection` scoped to the supplied group and routes
 /// its ingest through the hydrating observed-interest door
-/// ([`NmpApp::open_group_chat`]): a screen opened AFTER the group's kind:9/11
+/// ([`NmpApp::open_group_timeline`]): a screen opened AFTER the group's kind:9/11
 /// events were already cached now catches up on the cached tail (#2088), then
-/// tails live. Its snapshot surfaces under `"nmp.nip29.group_chat"` (`NGCS`).
+/// tails live. Its snapshot surfaces under `"nmp.nip29.group_timeline"` (`NGTL`).
 ///
 /// `group_id_json` is a JSON object naming the target group:
 ///
@@ -42,13 +42,13 @@ use super::helpers::c_string_opt;
 /// SCOPE — singleton: a subsequent call replaces the prior group-chat view
 /// (the prior hydrating session is closed first, leak-free). Because the view
 /// now holds a relay interest, the companion
-/// [`nmp_app_chirp_unregister_group_chat`] tears it down when the screen is
+/// [`nmp_app_chirp_unregister_group_timeline`] tears it down when the screen is
 /// dismissed.
 ///
 /// `app` MUST outlive the call (it is only borrowed for its duration).
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_register_group_chat(
+pub extern "C" fn nmp_app_chirp_register_group_timeline(
     app: *mut NmpApp,
     group_id_json: *const c_char,
 ) {
@@ -69,25 +69,25 @@ pub extern "C" fn nmp_app_chirp_register_group_chat(
     };
 
     // Thin-shell rule: parse C string, delegate to the hydrating composer.
-    app_ref.open_group_chat(group_id);
+    app_ref.open_group_timeline(group_id);
 }
 
 /// Tear down the NIP-29 group-chat read view opened by
-/// [`nmp_app_chirp_register_group_chat`].
+/// [`nmp_app_chirp_register_group_timeline`].
 ///
 /// Detaches the relay interest, revokes the observer, and removes the
-/// `"nmp.nip29.group_chat"` typed snapshot projection so no stale chat log is
+/// `"nmp.nip29.group_timeline"` typed snapshot projection so no stale chat log is
 /// emitted after the screen is dismissed. Idempotent — closing an unopened
 /// view is a harmless no-op. D6 — a null `app` is a silent no-op.
 #[no_mangle]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn nmp_app_chirp_unregister_group_chat(app: *mut NmpApp) {
+pub extern "C" fn nmp_app_chirp_unregister_group_timeline(app: *mut NmpApp) {
     if app.is_null() {
         return;
     }
     // SAFETY: caller guarantees `app` is a valid pointer from `nmp_app_new`.
     let app_ref = unsafe { &*app };
-    app_ref.close_group_chat();
+    app_ref.close_group_timeline();
 }
 
 /// Open a NIP-29 group-discovery session for one host relay.

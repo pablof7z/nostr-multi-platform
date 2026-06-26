@@ -47,9 +47,9 @@ struct KernelUpdateResult {
     /// `nmp.follow_list`, schema_id `nmp.nip02.follow_list`). `nil` ⇒ generic
     /// `projections["nmp.follow_list"]` JSON fallback.
     let typedFollowList: FollowListSnapshot?
-    /// Typed `nmp.nip29.group_chat` projection decode (`NGCS`). `nil` ⇒ generic
-    /// `projections["nmp.nip29.group_chat"]` JSON fallback.
-    let typedGroupChat: GroupChatSnapshot?
+    /// Typed `nmp.nip29.group_timeline` projection decode (`NGTL`). `nil` ⇒ generic
+    /// `projections["nmp.nip29.group_timeline"]` JSON fallback.
+    let typedGroupChat: GroupTimelineSnapshot?
     /// Typed `nmp.nip29.discovered_groups` projection decode (`NDGS`). `nil` ⇒
     /// generic `projections["nmp.nip29.discovered_groups"]` JSON fallback.
     let typedDiscoveredGroups: DiscoveredGroupsSnapshot?

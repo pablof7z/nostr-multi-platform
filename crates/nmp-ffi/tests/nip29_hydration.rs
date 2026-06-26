@@ -5,7 +5,7 @@
 //! fan-out of LIVE ingest. A view opened AFTER its events were accepted +
 //! cached hydrated live-only and silently dropped the cached tail.
 //!
-//! The fix: `NmpApp::open_group_chat` / `open_group_discovery` /
+//! The fix: `NmpApp::open_group_timeline` / `open_group_discovery` /
 //! `open_joined_groups` register the projection MUTED and route ingest through
 //! `open_observed_interest_pinned`, whose ADR-0062 read-cache replay delivers
 //! the matching cached events to the muted observer (matched by the `#h` /
@@ -27,13 +27,13 @@ use common::{boot, inject, raw_event, teardown, wait_for_typed, HOST, SERIAL};
 
 use nmp_store::VerifiedEvent;
 use nmp_nip29::group_id::GroupId;
-use nmp_nip29::{decode_discovered_groups_snapshot, decode_group_chat_snapshot};
+use nmp_nip29::{decode_discovered_groups_snapshot, decode_group_timeline_snapshot};
 
 /// THE #2088 FIX (group chat): kind:9/11 events for a group, cached BEFORE the
 /// chat view opens, surface in the view's first snapshot — the catch-up the bare
 /// live-only observer dropped.
 #[test]
-fn group_chat_hydrates_events_cached_before_open() {
+fn group_timeline_hydrates_events_cached_before_open() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
 
@@ -58,24 +58,24 @@ fn group_chat_hydrates_events_cached_before_open() {
 
     // Open the view AFTER the events are already cached — the #2088 sequence.
     // SAFETY: `app` is a valid pointer from `nmp_app_new`, live for this block.
-    unsafe { (*app).open_group_chat(GroupId::new(HOST, "preopen-room")) };
+    unsafe { (*app).open_group_timeline(GroupId::new(HOST, "preopen-room")) };
 
-    let entry = wait_for_typed("nmp.nip29.group_chat", |t| {
-        decode_group_chat_snapshot(&t.payload)
+    let entry = wait_for_typed("nmp.nip29.group_timeline", |t| {
+        decode_group_timeline_snapshot(&t.payload)
             .map(|s| {
-                s.messages.iter().any(|m| m.content == "cached before open")
-                    && s.messages.iter().any(|m| m.content == "also cached before open")
+                s.events.iter().any(|m| m.content == "cached before open")
+                    && s.events.iter().any(|m| m.content == "also cached before open")
             })
             .unwrap_or(false)
     })
     .expect("group chat must hydrate BOTH events cached before open (#2088) within 3 s");
 
-    let snapshot = decode_group_chat_snapshot(&entry.payload).expect("NGCS decode");
+    let snapshot = decode_group_timeline_snapshot(&entry.payload).expect("NGTL decode");
     assert_eq!(
-        snapshot.messages.len(),
+        snapshot.events.len(),
         2,
         "exactly the two pre-cached group messages hydrate, got {:?}",
-        snapshot.messages
+        snapshot.events
     );
 
     teardown(app);
@@ -85,7 +85,7 @@ fn group_chat_hydrates_events_cached_before_open() {
 /// open, must NOT hydrate into the opened group's view — the `#h` replay shape
 /// gates by the group's `local_id`.
 #[test]
-fn group_chat_hydration_excludes_other_group() {
+fn group_timeline_hydration_excludes_other_group() {
     let _g = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
     let app = boot();
 
@@ -108,24 +108,24 @@ fn group_chat_hydration_excludes_other_group() {
     ));
     inject(app, vec![mine, foreign]);
 
-    unsafe { (*app).open_group_chat(GroupId::new(HOST, "target")) };
+    unsafe { (*app).open_group_timeline(GroupId::new(HOST, "target")) };
 
-    let entry = wait_for_typed("nmp.nip29.group_chat", |t| {
-        decode_group_chat_snapshot(&t.payload)
-            .map(|s| s.messages.iter().any(|m| m.content == "belongs here"))
+    let entry = wait_for_typed("nmp.nip29.group_timeline", |t| {
+        decode_group_timeline_snapshot(&t.payload)
+            .map(|s| s.events.iter().any(|m| m.content == "belongs here"))
             .unwrap_or(false)
     })
     .expect("the matching pre-cached event must hydrate within 3 s");
 
-    let snapshot = decode_group_chat_snapshot(&entry.payload).expect("NGCS decode");
+    let snapshot = decode_group_timeline_snapshot(&entry.payload).expect("NGTL decode");
     assert!(
         !snapshot
-            .messages
+            .events
             .iter()
             .any(|m| m.content == "foreign group"),
         "an event for a different group (#h mismatch) must NOT hydrate into this view"
     );
-    assert_eq!(snapshot.messages.len(), 1, "only the matching group event");
+    assert_eq!(snapshot.events.len(), 1, "only the matching group event");
 
     teardown(app);
 }

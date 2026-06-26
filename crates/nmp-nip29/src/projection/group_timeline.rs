@@ -1,8 +1,8 @@
-//! `GroupChatProjection` — the read-side of a NIP-29 group-chat screen.
+//! `GroupTimelineProjection` — the read-side of a NIP-29 group-chat screen.
 //!
 //! This is **pure consumption**: a [`KernelEventObserver`] that accumulates the
 //! h-tagged user-content events of a single group and serialises them as a
-//! flat, newest-first message list for a native shell to render. It registers
+//! flat, newest-first event list for a native shell to render. It registers
 //! no actions, mints no FFI symbols, and never touches the actor loop.
 //!
 //! ## How it plugs into the snapshot seam
@@ -19,20 +19,20 @@
 //!   and returns a typed FlatBuffers sidecar (`TypedProjectionData`) under a
 //!   host-chosen key, or `None` when there is no changed row to emit.
 //!
-//! `GroupChatProjection` is built to sit on *both*: it implements
-//! `KernelEventObserver` for ingest, and exposes [`GroupChatProjection::snapshot`]
+//! `GroupTimelineProjection` is built to sit on *both*: it implements
+//! `KernelEventObserver` for ingest, and exposes [`GroupTimelineProjection::snapshot`]
 //! — a cheap, non-blocking, no-argument read — so the host can encode it into a
 //! typed sidecar and register it as
 //!
 //! ```ignore
-//! let projection = Arc::new(GroupChatProjection::new(group_id));
+//! let projection = Arc::new(GroupTimelineProjection::new(group_id));
 //! let observer_id = app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
 //! let snap = Arc::clone(&projection);
-//! app.register_typed_snapshot_projection("nmp.nip29.group_chat", move || {
+//! app.register_typed_snapshot_projection("nmp.nip29.group_timeline", move || {
 //!     let snapshot = snap.snapshot();
 //!     Some(nmp_core::TypedProjectionData {
-//!         key: "nmp.nip29.group_chat".to_string(),
-//!         payload: encode_group_chat_snapshot(&snapshot),
+//!         key: "nmp.nip29.group_timeline".to_string(),
+//!         payload: encode_group_timeline_snapshot(&snapshot),
 //!         ..Default::default()
 //!     })
 //! });
@@ -44,7 +44,7 @@
 //!
 //! ## D8 — non-blocking
 //!
-//! [`GroupChatProjection::snapshot_json`] runs on the actor thread inside the
+//! [`GroupTimelineProjection::snapshot_json`] runs on the actor thread inside the
 //! snapshot tick. It takes one uncontended `Mutex` lock and clones a small
 //! `Vec` — no I/O, no relay round-trips, no event-store scan. The accumulation
 //! work (`on_kernel_event`) is likewise a single lock + map insert.
@@ -70,7 +70,7 @@ use serde::{Deserialize, Serialize};
 use crate::group_id::GroupId;
 use crate::kinds::{h_tag_value, KIND_CHAT_MESSAGE, KIND_DISCUSSION_OR_ARTIFACT};
 
-/// One rendered group-chat message in a [`GroupChatSnapshot`].
+/// One rendered group-chat event in a [`GroupTimelineSnapshot`].
 ///
 /// A flat carrier — threading / reply nesting is deliberately *not* modelled
 /// here. The read screen this feeds is a linear chat log; a threaded view is a
@@ -78,7 +78,7 @@ use crate::kinds::{h_tag_value, KIND_CHAT_MESSAGE, KIND_DISCUSSION_OR_ARTIFACT};
 /// in raw form (aim.md §2 — presentation layer formats pubkeys and
 /// timestamps; backend ships hex + Unix seconds).
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct GroupChatMessage {
+pub struct GroupTimelineEvent {
     /// Event id (hex). Also the dedupe key inside the projection.
     pub id: String,
     /// Author pubkey (hex, 64 chars) — `KernelEvent::author`.
@@ -91,8 +91,8 @@ pub struct GroupChatMessage {
     pub kind: u32,
 }
 
-impl GroupChatMessage {
-    /// Build a message row from a kernel event. The caller is responsible for
+impl GroupTimelineEvent {
+    /// Build a event row from a kernel event. The caller is responsible for
     /// having already checked kind + `h`-tag membership.
     fn from_event(event: &KernelEvent) -> Self {
         Self {
@@ -107,55 +107,55 @@ impl GroupChatMessage {
 
 /// The serialised read-model a group-chat screen consumes.
 ///
-/// `messages` is ordered **newest-first** (`created_at` descending). Ties on
+/// `events` is ordered **newest-first** (`created_at` descending). Ties on
 /// `created_at` are broken by event id descending so the order is total and
 /// deterministic across snapshot ticks.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
-pub struct GroupChatSnapshot {
-    pub messages: Vec<GroupChatMessage>,
+pub struct GroupTimelineSnapshot {
+    pub events: Vec<GroupTimelineEvent>,
 }
 
-impl GroupChatSnapshot {
+impl GroupTimelineSnapshot {
     /// An empty snapshot — what a freshly-constructed projection (or a
     /// poisoned internal mutex, D6) reports.
     #[must_use]
     pub fn empty() -> Self {
         Self {
-            messages: Vec::new(),
+            events: Vec::new(),
         }
     }
 }
 
 /// Accumulates a single NIP-29 group's chat-content events into a newest-first
-/// message list.
+/// event list.
 ///
 /// Construct with the target [`GroupId`]; register the same `Arc` as a
 /// [`KernelEventObserver`] (ingest) and capture it in a snapshot-projection
 /// closure (output). Only events whose kind is 9 / 11 **and** whose
 /// `["h", …]` tag value equals the group's `local_id` are retained.
-pub struct GroupChatProjection {
+pub struct GroupTimelineProjection {
     /// The group this projection reads. Only `local_id` is matched against
     /// event `h` tags; `host_relay_url` is retained for callers that want to
     /// echo the group identity but is *not* an event-level filter (a
     /// `KernelEvent` carries no relay provenance — see the module docs).
     group_id: GroupId,
-    /// Accepted messages keyed by event id. Idempotent: re-delivering an event
+    /// Accepted events keyed by event id. Idempotent: re-delivering an event
     /// replaces the prior value rather than duplicating it. Bounded by
     /// [`MAX_PROJECTION_MESSAGES`] — once full, the oldest-by-insertion entry
     /// is evicted, keeping per-projection memory and per-tick snapshot
     /// serialisation O(cap) rather than O(session). Ordering for the snapshot
     /// is applied on read, not here.
-    messages: Mutex<BoundedMessageMap<String, GroupChatMessage>>,
+    events: Mutex<BoundedMessageMap<String, GroupTimelineEvent>>,
 }
 
-impl GroupChatProjection {
-    /// Construct a projection scoped to `group_id`. The message store starts
+impl GroupTimelineProjection {
+    /// Construct a projection scoped to `group_id`. The event store starts
     /// empty; events arrive via [`KernelEventObserver::on_kernel_event`].
     #[must_use]
     pub fn new(group_id: GroupId) -> Self {
         Self {
             group_id,
-            messages: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
+            events: Mutex::new(BoundedMessageMap::new(MAX_PROJECTION_MESSAGES)),
         }
     }
 
@@ -184,18 +184,18 @@ impl GroupChatProjection {
         h_tag_value(&event.tags) == Some(self.group_id.local_id.as_str())
     }
 
-    /// Snapshot the current message set as a typed [`GroupChatSnapshot`],
+    /// Snapshot the current event set as a typed [`GroupTimelineSnapshot`],
     /// ordered newest-first.
     ///
-    /// D6: a poisoned mutex degrades to [`GroupChatSnapshot::empty`] rather
+    /// D6: a poisoned mutex degrades to [`GroupTimelineSnapshot::empty`] rather
     /// than panicking — this can run on the actor thread inside a snapshot
     /// tick, where a panic would unwind the kernel.
     #[must_use]
-    pub fn snapshot(&self) -> GroupChatSnapshot {
-        let Ok(messages) = self.messages.lock() else {
-            return GroupChatSnapshot::empty();
+    pub fn snapshot(&self) -> GroupTimelineSnapshot {
+        let Ok(events) = self.events.lock() else {
+            return GroupTimelineSnapshot::empty();
         };
-        let mut ordered: Vec<GroupChatMessage> = messages.values().cloned().collect();
+        let mut ordered: Vec<GroupTimelineEvent> = events.values().cloned().collect();
         // Newest-first. Tie-break on id (descending) so the order is total and
         // stable across ticks even when two events share a `created_at`.
         ordered.sort_by(|a, b| {
@@ -203,22 +203,22 @@ impl GroupChatProjection {
                 .cmp(&a.created_at)
                 .then_with(|| b.id.cmp(&a.id))
         });
-        GroupChatSnapshot { messages: ordered }
+        GroupTimelineSnapshot { events: ordered }
     }
 
     /// Snapshot as a `serde_json::Value` — the exact shape a host
     /// `register_snapshot_projection` closure must return.
     ///
     /// D6: a serialisation failure (not expected for this plain struct)
-    /// collapses to `json!({"messages": []})` rather than propagating.
+    /// collapses to `json!({"events": []})` rather than propagating.
     #[must_use]
     pub fn snapshot_json(&self) -> serde_json::Value {
         serde_json::to_value(self.snapshot())
-            .unwrap_or_else(|_| serde_json::json!({ "messages": [] }))
+            .unwrap_or_else(|_| serde_json::json!({ "events": [] }))
     }
 }
 
-impl KernelEventObserver for GroupChatProjection {
+impl KernelEventObserver for GroupTimelineProjection {
     /// Ingest one accepted kernel event. Non-matching events (wrong kind,
     /// missing/foreign `h` tag) are ignored. Matching events are inserted by
     /// id, so a re-delivery replaces rather than duplicates.
@@ -229,13 +229,13 @@ impl KernelEventObserver for GroupChatProjection {
         if !self.accepts(event) {
             return;
         }
-        let Ok(mut messages) = self.messages.lock() else {
+        let Ok(mut events) = self.events.lock() else {
             return;
         };
-        messages.insert(event.id.clone(), GroupChatMessage::from_event(event));
+        events.insert(event.id.clone(), GroupTimelineEvent::from_event(event));
     }
 }
 
 #[cfg(test)]
-#[path = "group_chat/tests.rs"]
+#[path = "group_timeline/tests.rs"]
 mod tests;

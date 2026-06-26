@@ -1,7 +1,7 @@
 //! `DiscoveredGroupsProjection` — the read-side of the NIP-29 group-discovery
 //! screen.
 //!
-//! Like [`super::group_chat::GroupChatProjection`], this is **pure
+//! Like [`super::group_timeline::GroupTimelineProjection`], this is **pure
 //! consumption**: a [`KernelEventObserver`] that accumulates the relay-signed
 //! metadata events for a single host relay and serialises them as a flat list
 //! of `DiscoveredGroup` rows. It registers no actions, mints no FFI symbols,

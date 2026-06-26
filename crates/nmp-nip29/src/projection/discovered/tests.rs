@@ -2,7 +2,7 @@
 //!
 //! Lives in a sibling file (not `#[cfg(test)] mod tests` inline) so the
 //! production `discovered.rs` stays under the AGENTS.md 500-LoC ceiling.
-//! The test surface mirrors `GroupChatProjection`'s test idiom: direct
+//! The test surface mirrors `GroupTimelineProjection`'s test idiom: direct
 //! `on_kernel_event` injection — no mock relay infrastructure needed.
 
 use std::sync::Arc;

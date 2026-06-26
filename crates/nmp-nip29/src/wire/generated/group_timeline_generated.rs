@@ -8,15 +8,15 @@ pub mod nmp {
     #[allow(unused_imports, dead_code)]
     pub mod nip_29 {
 
-        pub enum GroupChatMessageOffset {}
+        pub enum GroupTimelineEventOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        pub struct GroupChatMessage<'a> {
+        pub struct GroupTimelineEvent<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
 
-        impl<'a> ::flatbuffers::Follow<'a> for GroupChatMessage<'a> {
-            type Inner = GroupChatMessage<'a>;
+        impl<'a> ::flatbuffers::Follow<'a> for GroupTimelineEvent<'a> {
+            type Inner = GroupTimelineEvent<'a>;
             #[inline]
             unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
                 Self {
@@ -25,7 +25,7 @@ pub mod nmp {
             }
         }
 
-        impl<'a> GroupChatMessage<'a> {
+        impl<'a> GroupTimelineEvent<'a> {
             pub const VT_ID: ::flatbuffers::VOffsetT = 4;
             pub const VT_PUBKEY: ::flatbuffers::VOffsetT = 6;
             pub const VT_CONTENT: ::flatbuffers::VOffsetT = 8;
@@ -34,7 +34,7 @@ pub mod nmp {
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                GroupChatMessage { _tab: table }
+                GroupTimelineEvent { _tab: table }
             }
             #[allow(unused_mut)]
             pub fn create<
@@ -44,9 +44,9 @@ pub mod nmp {
                 A: ::flatbuffers::Allocator + 'bldr,
             >(
                 _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args GroupChatMessageArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<GroupChatMessage<'bldr>> {
-                let mut builder = GroupChatMessageBuilder::new(_fbb);
+                args: &'args GroupTimelineEventArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GroupTimelineEvent<'bldr>> {
+                let mut builder = GroupTimelineEventBuilder::new(_fbb);
                 builder.add_created_at(args.created_at);
                 builder.add_kind(args.kind);
                 if let Some(x) = args.content {
@@ -67,8 +67,10 @@ pub mod nmp {
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
-                    self._tab
-                        .get::<::flatbuffers::ForwardsUOffset<&str>>(GroupChatMessage::VT_ID, None)
+                    self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
+                        GroupTimelineEvent::VT_ID,
+                        None,
+                    )
                 }
             }
             #[inline]
@@ -78,7 +80,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        GroupChatMessage::VT_PUBKEY,
+                        GroupTimelineEvent::VT_PUBKEY,
                         None,
                     )
                 }
@@ -90,7 +92,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<&str>>(
-                        GroupChatMessage::VT_CONTENT,
+                        GroupTimelineEvent::VT_CONTENT,
                         None,
                     )
                 }
@@ -102,7 +104,7 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u64>(GroupChatMessage::VT_CREATED_AT, Some(0))
+                        .get::<u64>(GroupTimelineEvent::VT_CREATED_AT, Some(0))
                         .unwrap()
                 }
             }
@@ -113,13 +115,13 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(GroupChatMessage::VT_KIND, Some(0))
+                        .get::<u32>(GroupTimelineEvent::VT_KIND, Some(0))
                         .unwrap()
                 }
             }
         }
 
-        impl ::flatbuffers::Verifiable for GroupChatMessage<'_> {
+        impl ::flatbuffers::Verifiable for GroupTimelineEvent<'_> {
             #[inline]
             fn run_verifier(
                 v: &mut ::flatbuffers::Verifier,
@@ -143,17 +145,17 @@ pub mod nmp {
                 Ok(())
             }
         }
-        pub struct GroupChatMessageArgs<'a> {
+        pub struct GroupTimelineEventArgs<'a> {
             pub id: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub pubkey: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub content: Option<::flatbuffers::WIPOffset<&'a str>>,
             pub created_at: u64,
             pub kind: u32,
         }
-        impl<'a> Default for GroupChatMessageArgs<'a> {
+        impl<'a> Default for GroupTimelineEventArgs<'a> {
             #[inline]
             fn default() -> Self {
-                GroupChatMessageArgs {
+                GroupTimelineEventArgs {
                     id: None,
                     pubkey: None,
                     content: None,
@@ -163,60 +165,60 @@ pub mod nmp {
             }
         }
 
-        pub struct GroupChatMessageBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+        pub struct GroupTimelineEventBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
             fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GroupChatMessageBuilder<'a, 'b, A> {
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GroupTimelineEventBuilder<'a, 'b, A> {
             #[inline]
             pub fn add_id(&mut self, id: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_
-                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GroupChatMessage::VT_ID, id);
+                    .push_slot_always::<::flatbuffers::WIPOffset<_>>(GroupTimelineEvent::VT_ID, id);
             }
             #[inline]
             pub fn add_pubkey(&mut self, pubkey: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    GroupChatMessage::VT_PUBKEY,
+                    GroupTimelineEvent::VT_PUBKEY,
                     pubkey,
                 );
             }
             #[inline]
             pub fn add_content(&mut self, content: ::flatbuffers::WIPOffset<&'b str>) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    GroupChatMessage::VT_CONTENT,
+                    GroupTimelineEvent::VT_CONTENT,
                     content,
                 );
             }
             #[inline]
             pub fn add_created_at(&mut self, created_at: u64) {
                 self.fbb_
-                    .push_slot::<u64>(GroupChatMessage::VT_CREATED_AT, created_at, 0);
+                    .push_slot::<u64>(GroupTimelineEvent::VT_CREATED_AT, created_at, 0);
             }
             #[inline]
             pub fn add_kind(&mut self, kind: u32) {
                 self.fbb_
-                    .push_slot::<u32>(GroupChatMessage::VT_KIND, kind, 0);
+                    .push_slot::<u32>(GroupTimelineEvent::VT_KIND, kind, 0);
             }
             #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> GroupChatMessageBuilder<'a, 'b, A> {
+            ) -> GroupTimelineEventBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
-                GroupChatMessageBuilder {
+                GroupTimelineEventBuilder {
                     fbb_: _fbb,
                     start_: start,
                 }
             }
             #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<GroupChatMessage<'a>> {
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GroupTimelineEvent<'a>> {
                 let o = self.fbb_.end_table(self.start_);
                 ::flatbuffers::WIPOffset::new(o.value())
             }
         }
 
-        impl ::core::fmt::Debug for GroupChatMessage<'_> {
+        impl ::core::fmt::Debug for GroupTimelineEvent<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("GroupChatMessage");
+                let mut ds = f.debug_struct("GroupTimelineEvent");
                 ds.field("id", &self.id());
                 ds.field("pubkey", &self.pubkey());
                 ds.field("content", &self.content());
@@ -225,15 +227,15 @@ pub mod nmp {
                 ds.finish()
             }
         }
-        pub enum GroupChatSnapshotOffset {}
+        pub enum GroupTimelineSnapshotOffset {}
         #[derive(Copy, Clone, PartialEq)]
 
-        pub struct GroupChatSnapshot<'a> {
+        pub struct GroupTimelineSnapshot<'a> {
             pub _tab: ::flatbuffers::Table<'a>,
         }
 
-        impl<'a> ::flatbuffers::Follow<'a> for GroupChatSnapshot<'a> {
-            type Inner = GroupChatSnapshot<'a>;
+        impl<'a> ::flatbuffers::Follow<'a> for GroupTimelineSnapshot<'a> {
+            type Inner = GroupTimelineSnapshot<'a>;
             #[inline]
             unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
                 Self {
@@ -242,13 +244,13 @@ pub mod nmp {
             }
         }
 
-        impl<'a> GroupChatSnapshot<'a> {
+        impl<'a> GroupTimelineSnapshot<'a> {
             pub const VT_SCHEMA_VERSION: ::flatbuffers::VOffsetT = 4;
-            pub const VT_MESSAGES: ::flatbuffers::VOffsetT = 6;
+            pub const VT_EVENTS: ::flatbuffers::VOffsetT = 6;
 
             #[inline]
             pub unsafe fn init_from_table(table: ::flatbuffers::Table<'a>) -> Self {
-                GroupChatSnapshot { _tab: table }
+                GroupTimelineSnapshot { _tab: table }
             }
             #[allow(unused_mut)]
             pub fn create<
@@ -258,11 +260,11 @@ pub mod nmp {
                 A: ::flatbuffers::Allocator + 'bldr,
             >(
                 _fbb: &'mut_bldr mut ::flatbuffers::FlatBufferBuilder<'bldr, A>,
-                args: &'args GroupChatSnapshotArgs<'args>,
-            ) -> ::flatbuffers::WIPOffset<GroupChatSnapshot<'bldr>> {
-                let mut builder = GroupChatSnapshotBuilder::new(_fbb);
-                if let Some(x) = args.messages {
-                    builder.add_messages(x);
+                args: &'args GroupTimelineSnapshotArgs<'args>,
+            ) -> ::flatbuffers::WIPOffset<GroupTimelineSnapshot<'bldr>> {
+                let mut builder = GroupTimelineSnapshotBuilder::new(_fbb);
+                if let Some(x) = args.events {
+                    builder.add_events(x);
                 }
                 builder.add_schema_version(args.schema_version);
                 builder.finish()
@@ -275,28 +277,31 @@ pub mod nmp {
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab
-                        .get::<u32>(GroupChatSnapshot::VT_SCHEMA_VERSION, Some(1))
+                        .get::<u32>(GroupTimelineSnapshot::VT_SCHEMA_VERSION, Some(1))
                         .unwrap()
                 }
             }
             #[inline]
-            pub fn messages(
+            pub fn events(
                 &self,
             ) -> Option<
-                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GroupChatMessage<'a>>>,
+                ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GroupTimelineEvent<'a>>>,
             > {
                 // Safety:
                 // Created from valid Table for this object
                 // which contains a valid value in this slot
                 unsafe {
                     self._tab.get::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GroupChatMessage>>,
-                    >>(GroupChatSnapshot::VT_MESSAGES, None)
+                        ::flatbuffers::Vector<
+                            'a,
+                            ::flatbuffers::ForwardsUOffset<GroupTimelineEvent>,
+                        >,
+                    >>(GroupTimelineSnapshot::VT_EVENTS, None)
                 }
             }
         }
 
-        impl ::flatbuffers::Verifiable for GroupChatSnapshot<'_> {
+        impl ::flatbuffers::Verifiable for GroupTimelineSnapshot<'_> {
             #[inline]
             fn run_verifier(
                 v: &mut ::flatbuffers::Verifier,
@@ -305,173 +310,187 @@ pub mod nmp {
                 v.visit_table(pos)?
                     .visit_field::<u32>("schema_version", Self::VT_SCHEMA_VERSION, false)?
                     .visit_field::<::flatbuffers::ForwardsUOffset<
-                        ::flatbuffers::Vector<'_, ::flatbuffers::ForwardsUOffset<GroupChatMessage>>,
-                    >>("messages", Self::VT_MESSAGES, false)?
+                        ::flatbuffers::Vector<
+                            '_,
+                            ::flatbuffers::ForwardsUOffset<GroupTimelineEvent>,
+                        >,
+                    >>("events", Self::VT_EVENTS, false)?
                     .finish();
                 Ok(())
             }
         }
-        pub struct GroupChatSnapshotArgs<'a> {
+        pub struct GroupTimelineSnapshotArgs<'a> {
             pub schema_version: u32,
-            pub messages: Option<
+            pub events: Option<
                 ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'a, ::flatbuffers::ForwardsUOffset<GroupChatMessage<'a>>>,
+                    ::flatbuffers::Vector<
+                        'a,
+                        ::flatbuffers::ForwardsUOffset<GroupTimelineEvent<'a>>,
+                    >,
                 >,
             >,
         }
-        impl<'a> Default for GroupChatSnapshotArgs<'a> {
+        impl<'a> Default for GroupTimelineSnapshotArgs<'a> {
             #[inline]
             fn default() -> Self {
-                GroupChatSnapshotArgs {
+                GroupTimelineSnapshotArgs {
                     schema_version: 1,
-                    messages: None,
+                    events: None,
                 }
             }
         }
 
-        pub struct GroupChatSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
+        pub struct GroupTimelineSnapshotBuilder<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> {
             fbb_: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
             start_: ::flatbuffers::WIPOffset<::flatbuffers::TableUnfinishedWIPOffset>,
         }
-        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GroupChatSnapshotBuilder<'a, 'b, A> {
+        impl<'a: 'b, 'b, A: ::flatbuffers::Allocator + 'a> GroupTimelineSnapshotBuilder<'a, 'b, A> {
             #[inline]
             pub fn add_schema_version(&mut self, schema_version: u32) {
-                self.fbb_
-                    .push_slot::<u32>(GroupChatSnapshot::VT_SCHEMA_VERSION, schema_version, 1);
+                self.fbb_.push_slot::<u32>(
+                    GroupTimelineSnapshot::VT_SCHEMA_VERSION,
+                    schema_version,
+                    1,
+                );
             }
             #[inline]
-            pub fn add_messages(
+            pub fn add_events(
                 &mut self,
-                messages: ::flatbuffers::WIPOffset<
-                    ::flatbuffers::Vector<'b, ::flatbuffers::ForwardsUOffset<GroupChatMessage<'b>>>,
+                events: ::flatbuffers::WIPOffset<
+                    ::flatbuffers::Vector<
+                        'b,
+                        ::flatbuffers::ForwardsUOffset<GroupTimelineEvent<'b>>,
+                    >,
                 >,
             ) {
                 self.fbb_.push_slot_always::<::flatbuffers::WIPOffset<_>>(
-                    GroupChatSnapshot::VT_MESSAGES,
-                    messages,
+                    GroupTimelineSnapshot::VT_EVENTS,
+                    events,
                 );
             }
             #[inline]
             pub fn new(
                 _fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            ) -> GroupChatSnapshotBuilder<'a, 'b, A> {
+            ) -> GroupTimelineSnapshotBuilder<'a, 'b, A> {
                 let start = _fbb.start_table();
-                GroupChatSnapshotBuilder {
+                GroupTimelineSnapshotBuilder {
                     fbb_: _fbb,
                     start_: start,
                 }
             }
             #[inline]
-            pub fn finish(self) -> ::flatbuffers::WIPOffset<GroupChatSnapshot<'a>> {
+            pub fn finish(self) -> ::flatbuffers::WIPOffset<GroupTimelineSnapshot<'a>> {
                 let o = self.fbb_.end_table(self.start_);
                 ::flatbuffers::WIPOffset::new(o.value())
             }
         }
 
-        impl ::core::fmt::Debug for GroupChatSnapshot<'_> {
+        impl ::core::fmt::Debug for GroupTimelineSnapshot<'_> {
             fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
-                let mut ds = f.debug_struct("GroupChatSnapshot");
+                let mut ds = f.debug_struct("GroupTimelineSnapshot");
                 ds.field("schema_version", &self.schema_version());
-                ds.field("messages", &self.messages());
+                ds.field("events", &self.events());
                 ds.finish()
             }
         }
         #[inline]
-        /// Verifies that a buffer of bytes contains a `GroupChatSnapshot`
+        /// Verifies that a buffer of bytes contains a `GroupTimelineSnapshot`
         /// and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_group_chat_snapshot_unchecked`.
-        pub fn root_as_group_chat_snapshot(
+        /// `root_as_group_timeline_snapshot_unchecked`.
+        pub fn root_as_group_timeline_snapshot(
             buf: &[u8],
-        ) -> Result<GroupChatSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root::<GroupChatSnapshot>(buf)
+        ) -> Result<GroupTimelineSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root::<GroupTimelineSnapshot>(buf)
         }
         #[inline]
         /// Verifies that a buffer of bytes contains a size prefixed
-        /// `GroupChatSnapshot` and returns it.
+        /// `GroupTimelineSnapshot` and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `size_prefixed_root_as_group_chat_snapshot_unchecked`.
-        pub fn size_prefixed_root_as_group_chat_snapshot(
+        /// `size_prefixed_root_as_group_timeline_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_group_timeline_snapshot(
             buf: &[u8],
-        ) -> Result<GroupChatSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root::<GroupChatSnapshot>(buf)
+        ) -> Result<GroupTimelineSnapshot<'_>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root::<GroupTimelineSnapshot>(buf)
         }
         #[inline]
         /// Verifies, with the given options, that a buffer of bytes
-        /// contains a `GroupChatSnapshot` and returns it.
+        /// contains a `GroupTimelineSnapshot` and returns it.
         /// Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_group_chat_snapshot_unchecked`.
-        pub fn root_as_group_chat_snapshot_with_opts<'b, 'o>(
+        /// `root_as_group_timeline_snapshot_unchecked`.
+        pub fn root_as_group_timeline_snapshot_with_opts<'b, 'o>(
             opts: &'o ::flatbuffers::VerifierOptions,
             buf: &'b [u8],
-        ) -> Result<GroupChatSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::root_with_opts::<GroupChatSnapshot<'b>>(opts, buf)
+        ) -> Result<GroupTimelineSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::root_with_opts::<GroupTimelineSnapshot<'b>>(opts, buf)
         }
         #[inline]
         /// Verifies, with the given verifier options, that a buffer of
-        /// bytes contains a size prefixed `GroupChatSnapshot` and returns
+        /// bytes contains a size prefixed `GroupTimelineSnapshot` and returns
         /// it. Note that verification is still experimental and may not
         /// catch every error, or be maximally performant. For the
         /// previous, unchecked, behavior use
-        /// `root_as_group_chat_snapshot_unchecked`.
-        pub fn size_prefixed_root_as_group_chat_snapshot_with_opts<'b, 'o>(
+        /// `root_as_group_timeline_snapshot_unchecked`.
+        pub fn size_prefixed_root_as_group_timeline_snapshot_with_opts<'b, 'o>(
             opts: &'o ::flatbuffers::VerifierOptions,
             buf: &'b [u8],
-        ) -> Result<GroupChatSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
-            ::flatbuffers::size_prefixed_root_with_opts::<GroupChatSnapshot<'b>>(opts, buf)
+        ) -> Result<GroupTimelineSnapshot<'b>, ::flatbuffers::InvalidFlatbuffer> {
+            ::flatbuffers::size_prefixed_root_with_opts::<GroupTimelineSnapshot<'b>>(opts, buf)
         }
         #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a GroupChatSnapshot and returns it.
+        /// Assumes, without verification, that a buffer of bytes contains a GroupTimelineSnapshot and returns it.
         /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid `GroupChatSnapshot`.
-        pub unsafe fn root_as_group_chat_snapshot_unchecked(buf: &[u8]) -> GroupChatSnapshot<'_> {
-            unsafe { ::flatbuffers::root_unchecked::<GroupChatSnapshot>(buf) }
-        }
-        #[inline]
-        /// Assumes, without verification, that a buffer of bytes contains a size prefixed GroupChatSnapshot and returns it.
-        /// # Safety
-        /// Callers must trust the given bytes do indeed contain a valid size prefixed `GroupChatSnapshot`.
-        pub unsafe fn size_prefixed_root_as_group_chat_snapshot_unchecked(
+        /// Callers must trust the given bytes do indeed contain a valid `GroupTimelineSnapshot`.
+        pub unsafe fn root_as_group_timeline_snapshot_unchecked(
             buf: &[u8],
-        ) -> GroupChatSnapshot<'_> {
-            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<GroupChatSnapshot>(buf) }
+        ) -> GroupTimelineSnapshot<'_> {
+            unsafe { ::flatbuffers::root_unchecked::<GroupTimelineSnapshot>(buf) }
         }
-        pub const GROUP_CHAT_SNAPSHOT_IDENTIFIER: &str = "NGCS";
+        #[inline]
+        /// Assumes, without verification, that a buffer of bytes contains a size prefixed GroupTimelineSnapshot and returns it.
+        /// # Safety
+        /// Callers must trust the given bytes do indeed contain a valid size prefixed `GroupTimelineSnapshot`.
+        pub unsafe fn size_prefixed_root_as_group_timeline_snapshot_unchecked(
+            buf: &[u8],
+        ) -> GroupTimelineSnapshot<'_> {
+            unsafe { ::flatbuffers::size_prefixed_root_unchecked::<GroupTimelineSnapshot>(buf) }
+        }
+        pub const GROUP_TIMELINE_SNAPSHOT_IDENTIFIER: &str = "NGTL";
 
         #[inline]
-        pub fn group_chat_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, GROUP_CHAT_SNAPSHOT_IDENTIFIER, false)
+        pub fn group_timeline_snapshot_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, GROUP_TIMELINE_SNAPSHOT_IDENTIFIER, false)
         }
 
         #[inline]
-        pub fn group_chat_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
-            ::flatbuffers::buffer_has_identifier(buf, GROUP_CHAT_SNAPSHOT_IDENTIFIER, true)
+        pub fn group_timeline_snapshot_size_prefixed_buffer_has_identifier(buf: &[u8]) -> bool {
+            ::flatbuffers::buffer_has_identifier(buf, GROUP_TIMELINE_SNAPSHOT_IDENTIFIER, true)
         }
 
         #[inline]
-        pub fn finish_group_chat_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
+        pub fn finish_group_timeline_snapshot_buffer<'a, 'b, A: ::flatbuffers::Allocator + 'a>(
             fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<GroupChatSnapshot<'a>>,
+            root: ::flatbuffers::WIPOffset<GroupTimelineSnapshot<'a>>,
         ) {
-            fbb.finish(root, Some(GROUP_CHAT_SNAPSHOT_IDENTIFIER));
+            fbb.finish(root, Some(GROUP_TIMELINE_SNAPSHOT_IDENTIFIER));
         }
 
         #[inline]
-        pub fn finish_size_prefixed_group_chat_snapshot_buffer<
+        pub fn finish_size_prefixed_group_timeline_snapshot_buffer<
             'a,
             'b,
             A: ::flatbuffers::Allocator + 'a,
         >(
             fbb: &'b mut ::flatbuffers::FlatBufferBuilder<'a, A>,
-            root: ::flatbuffers::WIPOffset<GroupChatSnapshot<'a>>,
+            root: ::flatbuffers::WIPOffset<GroupTimelineSnapshot<'a>>,
         ) {
-            fbb.finish_size_prefixed(root, Some(GROUP_CHAT_SNAPSHOT_IDENTIFIER));
+            fbb.finish_size_prefixed(root, Some(GROUP_TIMELINE_SNAPSHOT_IDENTIFIER));
         }
     } // pub mod nip29
 } // pub mod nmp

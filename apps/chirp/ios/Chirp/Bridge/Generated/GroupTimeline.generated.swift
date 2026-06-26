@@ -8,14 +8,14 @@ import Common
 
 import FlatBuffers
 
-public struct nmp_nip29_GroupChatMessage: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+public struct nmp_nip29_GroupTimelineEvent: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NGCS" } 
-  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip29_GroupChatMessage.id, addPrefix: prefix) }
+  public static var id: String { "NGTL" } 
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip29_GroupTimelineEvent.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
 
@@ -37,14 +37,14 @@ public struct nmp_nip29_GroupChatMessage: FlatBufferTable, FlatbuffersVectorInit
   public var contentSegmentArray: [UInt8]? { return _accessor.getVector(at: VTOFFSET.content.v) }
   public var createdAt: UInt64 { let o = _accessor.offset(VTOFFSET.createdAt.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt64.self, at: o) }
   public var kind: UInt32 { let o = _accessor.offset(VTOFFSET.kind.v); return o == 0 ? 0 : _accessor.readBuffer(of: UInt32.self, at: o) }
-  public static func startGroupChatMessage(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 5) }
+  public static func startGroupTimelineEvent(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 5) }
   public static func add(id: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: id, at: VTOFFSET.id.p) }
   public static func add(pubkey: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: pubkey, at: VTOFFSET.pubkey.p) }
   public static func add(content: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: content, at: VTOFFSET.content.p) }
   public static func add(createdAt: UInt64, _ fbb: inout FlatBufferBuilder) { fbb.add(element: createdAt, def: 0, at: VTOFFSET.createdAt.p) }
   public static func add(kind: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: kind, def: 0, at: VTOFFSET.kind.p) }
-  public static func endGroupChatMessage(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
-  public static func createGroupChatMessage(
+  public static func endGroupTimelineEvent(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createGroupTimelineEvent(
     _ fbb: inout FlatBufferBuilder,
     idOffset id: Offset = Offset(),
     pubkeyOffset pubkey: Offset = Offset(),
@@ -52,13 +52,13 @@ public struct nmp_nip29_GroupChatMessage: FlatBufferTable, FlatbuffersVectorInit
     createdAt: UInt64 = 0,
     kind: UInt32 = 0
   ) -> Offset {
-    let __start = nmp_nip29_GroupChatMessage.startGroupChatMessage(&fbb)
-    nmp_nip29_GroupChatMessage.add(id: id, &fbb)
-    nmp_nip29_GroupChatMessage.add(pubkey: pubkey, &fbb)
-    nmp_nip29_GroupChatMessage.add(content: content, &fbb)
-    nmp_nip29_GroupChatMessage.add(createdAt: createdAt, &fbb)
-    nmp_nip29_GroupChatMessage.add(kind: kind, &fbb)
-    return nmp_nip29_GroupChatMessage.endGroupChatMessage(&fbb, start: __start)
+    let __start = nmp_nip29_GroupTimelineEvent.startGroupTimelineEvent(&fbb)
+    nmp_nip29_GroupTimelineEvent.add(id: id, &fbb)
+    nmp_nip29_GroupTimelineEvent.add(pubkey: pubkey, &fbb)
+    nmp_nip29_GroupTimelineEvent.add(content: content, &fbb)
+    nmp_nip29_GroupTimelineEvent.add(createdAt: createdAt, &fbb)
+    nmp_nip29_GroupTimelineEvent.add(kind: kind, &fbb)
+    return nmp_nip29_GroupTimelineEvent.endGroupTimelineEvent(&fbb, start: __start)
   }
 
   public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
@@ -72,45 +72,45 @@ public struct nmp_nip29_GroupChatMessage: FlatBufferTable, FlatbuffersVectorInit
   }
 }
 
-public struct nmp_nip29_GroupChatSnapshot: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
+public struct nmp_nip29_GroupTimelineSnapshot: FlatBufferTable, FlatbuffersVectorInitializable, Verifiable {
 
   static func validateVersion() { FlatBuffersVersion_25_12_19() }
   public var __buffer: ByteBuffer! { return _accessor.bb }
   private var _accessor: Table
 
-  public static var id: String { "NGCS" } 
-  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip29_GroupChatSnapshot.id, addPrefix: prefix) }
+  public static var id: String { "NGTL" } 
+  public static func finish(_ fbb: inout FlatBufferBuilder, end: Offset, prefix: Bool = false) { fbb.finish(offset: end, fileId: nmp_nip29_GroupTimelineSnapshot.id, addPrefix: prefix) }
   private init(_ t: Table) { _accessor = t }
   public init(_ bb: ByteBuffer, o: Int32) { _accessor = Table(bb: bb, position: o) }
 
   private enum VTOFFSET: VOffset {
     case schemaVersion = 4
-    case messages = 6
+    case events = 6
     var v: Int32 { Int32(self.rawValue) }
     var p: VOffset { self.rawValue }
   }
 
   public var schemaVersion: UInt32 { let o = _accessor.offset(VTOFFSET.schemaVersion.v); return o == 0 ? 1 : _accessor.readBuffer(of: UInt32.self, at: o) }
-  public var messages: FlatbufferVector<nmp_nip29_GroupChatMessage> { return _accessor.vector(at: VTOFFSET.messages.v, byteSize: 4) }
-  public static func startGroupChatSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
+  public var events: FlatbufferVector<nmp_nip29_GroupTimelineEvent> { return _accessor.vector(at: VTOFFSET.events.v, byteSize: 4) }
+  public static func startGroupTimelineSnapshot(_ fbb: inout FlatBufferBuilder) -> UOffset { fbb.startTable(with: 2) }
   public static func add(schemaVersion: UInt32, _ fbb: inout FlatBufferBuilder) { fbb.add(element: schemaVersion, def: 1, at: VTOFFSET.schemaVersion.p) }
-  public static func addVectorOf(messages: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: messages, at: VTOFFSET.messages.p) }
-  public static func endGroupChatSnapshot(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
-  public static func createGroupChatSnapshot(
+  public static func addVectorOf(events: Offset, _ fbb: inout FlatBufferBuilder) { fbb.add(offset: events, at: VTOFFSET.events.p) }
+  public static func endGroupTimelineSnapshot(_ fbb: inout FlatBufferBuilder, start: UOffset) -> Offset { let end = Offset(offset: fbb.endTable(at: start)); return end }
+  public static func createGroupTimelineSnapshot(
     _ fbb: inout FlatBufferBuilder,
     schemaVersion: UInt32 = 1,
-    messagesVectorOffset messages: Offset = Offset()
+    eventsVectorOffset events: Offset = Offset()
   ) -> Offset {
-    let __start = nmp_nip29_GroupChatSnapshot.startGroupChatSnapshot(&fbb)
-    nmp_nip29_GroupChatSnapshot.add(schemaVersion: schemaVersion, &fbb)
-    nmp_nip29_GroupChatSnapshot.addVectorOf(messages: messages, &fbb)
-    return nmp_nip29_GroupChatSnapshot.endGroupChatSnapshot(&fbb, start: __start)
+    let __start = nmp_nip29_GroupTimelineSnapshot.startGroupTimelineSnapshot(&fbb)
+    nmp_nip29_GroupTimelineSnapshot.add(schemaVersion: schemaVersion, &fbb)
+    nmp_nip29_GroupTimelineSnapshot.addVectorOf(events: events, &fbb)
+    return nmp_nip29_GroupTimelineSnapshot.endGroupTimelineSnapshot(&fbb, start: __start)
   }
 
   public static func verify<T>(_ verifier: inout Verifier, at position: Int, of type: T.Type) throws where T: Verifiable {
     var _v = try verifier.visitTable(at: position)
     try _v.visit(field: VTOFFSET.schemaVersion.p, fieldName: "schemaVersion", required: false, type: UInt32.self)
-    try _v.visit(field: VTOFFSET.messages.p, fieldName: "messages", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_nip29_GroupChatMessage>, nmp_nip29_GroupChatMessage>>.self)
+    try _v.visit(field: VTOFFSET.events.p, fieldName: "events", required: false, type: ForwardOffset<Vector<ForwardOffset<nmp_nip29_GroupTimelineEvent>, nmp_nip29_GroupTimelineEvent>>.self)
     _v.finish()
   }
 }

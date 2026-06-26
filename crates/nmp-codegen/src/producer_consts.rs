@@ -209,9 +209,9 @@ pub const PRODUCER_CONST_TARGETS: &[ProducerConstTarget] = &[
         "crates/nmp-nip17/src/wire/dm_relay_list_producer_consts.generated.rs",
     ),
     pub_target(
-        "nmp.nip29.group_chat",
-        "GROUP_CHAT",
-        "crates/nmp-nip29/src/wire/group_chat_producer_consts.generated.rs",
+        "nmp.nip29.group_timeline",
+        "GROUP_TIMELINE",
+        "crates/nmp-nip29/src/wire/group_timeline_producer_consts.generated.rs",
     ),
     pub_target(
         "nmp.nip29.discovered_groups",

@@ -230,19 +230,19 @@ enum TypedProjectionGlue {
         )
     }
 
-    // MARK: nmp.nip29.group_chat → GroupChatSnapshot
+    // MARK: nmp.nip29.group_timeline → GroupTimelineSnapshot
 
-    /// Map the typed `nmp.nip29.group_chat` sidecar (`NGCS` /
-    /// `nmp_nip29_GroupChatSnapshot`) to the `GroupChatSnapshot` the JSON
-    /// `projections["nmp.nip29.group_chat"]` path yields. Flat field-for-field
-    /// copy: one ordered `[GroupChatMessage]` vector (newest-first; the Rust
+    /// Map the typed `nmp.nip29.group_timeline` sidecar (`NGTL` /
+    /// `nmp_nip29_GroupTimelineSnapshot`) to the `GroupTimelineSnapshot` the JSON
+    /// `projections["nmp.nip29.group_timeline"]` path yields. Flat field-for-field
+    /// copy: one ordered `[GroupTimelineEvent]` vector (newest-first; the Rust
     /// projection owns the order, Swift does not re-sort), each row carrying raw
     /// protocol values (`id`/`pubkey` hex, verbatim `content`, Unix-second
     /// `createdAt`, raw `kind`).
-    static func groupChat(_ reader: nmp_nip29_GroupChatSnapshot) -> GroupChatSnapshot {
-        GroupChatSnapshot(
-            messages: reader.messages.map { row in
-                GroupChatMessage(
+    static func groupTimeline(_ reader: nmp_nip29_GroupTimelineSnapshot) -> GroupTimelineSnapshot {
+        GroupTimelineSnapshot(
+            events: reader.events.map { row in
+                GroupTimelineEvent(
                     id: row.id ?? "",
                     pubkey: row.pubkey ?? "",
                     content: row.content ?? "",

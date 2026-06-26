@@ -25,7 +25,7 @@
 //! - [`cache`] — `previous_tag_prefix` helper, `JoinedHostsCache`,
 //!   `TofuSignerCache` (metadata-signer trust).
 //! - [`interest`] — helpers for constructing pinned `LogicalInterest`s.
-//! - [`projection`] — `GroupChatProjection`: the read-side of a group-chat
+//! - [`projection`] — `GroupTimelineProjection`: the read-side of a group-chat
 //!   screen, plus raw group-event projections for reusable `h`-tag mechanics.
 //!
 //! All inputs to actions carry a typed `GroupId` so the publish planner gets a
@@ -34,7 +34,7 @@
 //!
 //! The former `domain` (13 per-kind domain modules) and `view` (7 reactive
 //! views) modules were deleted: they had zero non-test consumers. The live
-//! read-side extension path is `projection::GroupChatProjection` via
+//! read-side extension path is `projection::GroupTimelineProjection` via
 //! `KernelEventObserver` — see `nmp_core::substrate` module docs.
 
 pub mod action;
@@ -51,8 +51,8 @@ pub mod wire;
 pub use group_id::GroupId;
 pub use kinds::{event_is_group_event, group_id_from_tags, GroupEventClass, KindClass};
 pub use projection::{
-    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupChatMessage,
-    GroupChatProjection, GroupChatSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
+    DiscoveredGroup, DiscoveredGroupsProjection, DiscoveredGroupsSnapshot, GroupTimelineEvent,
+    GroupTimelineProjection, GroupTimelineSnapshot, GroupDefaultsProjection, GroupDefaultsSnapshot,
     JoinedGroup, JoinedGroupsProjection, JoinedGroupsSnapshot, DEFAULT_PUBLIC_GROUP_RELAY_URL,
 };
 pub use input_scope::{
@@ -68,9 +68,9 @@ pub use wire::discovered_groups_fb::{
     DISCOVERED_GROUPS_FILE_IDENTIFIER, DISCOVERED_GROUPS_SCHEMA_ID,
     DISCOVERED_GROUPS_SCHEMA_VERSION,
 };
-pub use wire::group_chat_fb::{
-    decode_group_chat_snapshot, encode_group_chat_snapshot, GROUP_CHAT_FILE_IDENTIFIER,
-    GROUP_CHAT_SCHEMA_ID, GROUP_CHAT_SCHEMA_VERSION,
+pub use wire::group_timeline_fb::{
+    decode_group_timeline_snapshot, encode_group_timeline_snapshot, GROUP_TIMELINE_FILE_IDENTIFIER,
+    GROUP_TIMELINE_SCHEMA_ID, GROUP_TIMELINE_SCHEMA_VERSION,
 };
 pub use wire::group_defaults_fb::{
     decode_group_defaults_snapshot, encode_group_defaults_snapshot, GROUP_DEFAULTS_FILE_IDENTIFIER,

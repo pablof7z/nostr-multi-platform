@@ -143,7 +143,7 @@ fn decoder_enum_name_capitalizes_first_letter() {
 /// `publish_outbox`, `publish_queue`), the Wave B batch #3 diagnostics +
 /// action-lifecycle keys (`relay_diagnostics`, `action_lifecycle`), plus the
 /// Wave B Tier-1 #4 app-projection keys (`nmp.follow_list`,
-/// `nmp.nip29.group_chat`, `nmp.nip29.discovered_groups`). If a future PR adds a
+/// `nmp.nip29.group_timeline`, `nmp.nip29.discovered_groups`). If a future PR adds a
 /// reader binding to another entry, this test fails loudly — a reminder to
 /// regenerate the Swift and update this expectation.
 #[test]
@@ -168,7 +168,7 @@ fn real_registry_emits_exactly_the_proof_keys() {
         !out.contains("enum TypedZapsDecoder {"),
         "global zaps projection deleted — #2091"
     );
-    assert!(out.contains("enum TypedGroupChatDecoder {"));
+    assert!(out.contains("enum TypedGroupTimelineDecoder {"));
     assert!(out.contains("enum TypedDiscoveredGroupsDecoder {"));
     // #626: crate-owned NIP-29 group-create defaults (`groupDefaults` →
     // `TypedGroupDefaultsDecoder`).
@@ -231,7 +231,7 @@ fn real_registry_emits_exactly_the_proof_keys() {
          configured_relays, relay_role_options, outbox_summary, \
          publish_outbox, publish_queue; the Wave B batch #3: \
          relay_diagnostics, action_lifecycle; the Wave B Tier-1 #4: \
-         nmp.follow_list, nmp.nip29.group_chat, \
+         nmp.follow_list, nmp.nip29.group_timeline, \
          nmp.nip29.discovered_groups; the profile cluster: profile; \
          ADR-0063 Lane H: claimed_profiles + resolved_profiles DELETED; \
          the NIP-17 DM cluster: \

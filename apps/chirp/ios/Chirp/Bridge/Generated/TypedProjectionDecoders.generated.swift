@@ -537,21 +537,21 @@ enum TypedProfileDecoder {
     }
 }
 
-// MARK: - TypedGroupChatDecoder
-// Projection `nmp.nip29.group_chat` → typed sidecar `nmp.nip29.group_chat` (NGCS). Domain type: `GroupChatSnapshot?`.
-enum TypedGroupChatDecoder {
+// MARK: - TypedGroupTimelineDecoder
+// Projection `nmp.nip29.group_timeline` → typed sidecar `nmp.nip29.group_timeline` (NGTL). Domain type: `GroupTimelineSnapshot?`.
+enum TypedGroupTimelineDecoder {
     /// `TypedProjection.key` the producer publishes for this projection.
-    static let key = "nmp.nip29.group_chat"
+    static let key = "nmp.nip29.group_timeline"
     /// `TypedPayload.schema_id` carried on the sidecar buffer.
-    static let schemaId = "nmp.nip29.group_chat"
-    /// FlatBuffers `file_identifier` for `nmp_nip29_GroupChatSnapshot`.
-    static let fileIdentifier = "NGCS"
+    static let schemaId = "nmp.nip29.group_timeline"
+    /// FlatBuffers `file_identifier` for `nmp_nip29_GroupTimelineSnapshot`.
+    static let fileIdentifier = "NGTL"
 
-    /// Decode the typed `nmp.nip29.group_chat` sidecar from the snapshot's typed-projection
+    /// Decode the typed `nmp.nip29.group_timeline` sidecar from the snapshot's typed-projection
     /// envelopes into the Chirp domain value. Returns `nil` (so the host
     /// falls back to the generic JSON `payload`) when the sidecar is absent,
     /// carries the wrong schema, or is not a well-formed buffer.
-    static func decode(from projections: [TypedProjectionEnvelope]) -> GroupChatSnapshot? {
+    static func decode(from projections: [TypedProjectionEnvelope]) -> GroupTimelineSnapshot? {
         guard let projection = projections.first(where: {
             $0.key == key && $0.schemaId == schemaId
         }), !projection.payload.isEmpty else {
@@ -560,14 +560,14 @@ enum TypedGroupChatDecoder {
         return decode(bytes: projection.payload)
     }
 
-    /// Decode a raw `NGCS` FlatBuffers buffer into the Chirp domain value.
-    static func decode(bytes: Data) -> GroupChatSnapshot? {
+    /// Decode a raw `NGTL` FlatBuffers buffer into the Chirp domain value.
+    static func decode(bytes: Data) -> GroupTimelineSnapshot? {
         guard !bytes.isEmpty else { return nil }
         var buffer = ByteBuffer(data: bytes)
-        let reader: nmp_nip29_GroupChatSnapshot = getRoot(byteBuffer: &buffer)
+        let reader: nmp_nip29_GroupTimelineSnapshot = getRoot(byteBuffer: &buffer)
         // Hand-written glue (NOT generated): map the `flatc --swift` reader
-        // struct to the Chirp domain type. See `TypedProjectionGlue.groupChat`.
-        return TypedProjectionGlue.groupChat(reader)
+        // struct to the Chirp domain type. See `TypedProjectionGlue.groupTimeline`.
+        return TypedProjectionGlue.groupTimeline(reader)
     }
 }
 

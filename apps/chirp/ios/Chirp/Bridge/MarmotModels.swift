@@ -13,7 +13,7 @@ import Foundation
 /// `lastMsgAt`, `"unread_count"` → `unreadCount` automatically.
 /// An explicit enum with snake_case rawValues would CONFLICT with the
 /// FlatBuffer decoder, which has already applied `convertFromSnakeCase`
-/// before any `CodingKey` lookup (identical pattern to `GroupChatMessage`
+/// before any `CodingKey` lookup (identical pattern to `GroupTimelineEvent`
 /// and `DiscoveredGroup` — see their comments in `KernelBridge.swift`).
 struct MarmotGroup: Decodable, Identifiable, Equatable {
     let idHex: String

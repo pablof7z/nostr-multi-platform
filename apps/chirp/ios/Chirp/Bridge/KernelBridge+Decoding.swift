@@ -99,7 +99,7 @@ extension KernelHandle {
             let typedRelayDiagnostics = TypedRelayDiagnosticsDecoder.decode(from: envelopes)
             let typedActionLifecycle = TypedActionLifecycleDecoder.decode(from: envelopes)
             // V6 Stage 4 (Wave B Tier-1 #4): the app-projection keys
-            // (`nmp.follow_list` / `nmp.nip29.group_chat` /
+            // (`nmp.follow_list` / `nmp.nip29.group_timeline` /
             // `nmp.nip29.discovered_groups`). Each returns nil when its sidecar is
             // absent or malformed → the generic `projections.<field>` JSON path
             // stays active (ADR-0037 Commitment 4), mirroring `typedAccounts`
@@ -107,7 +107,7 @@ extension KernelHandle {
             // from its payload SCHEMA_ID (`nmp.nip02.follow_list`); the generated
             // decoder matches on both.
             let typedFollowList = TypedFollowListDecoder.decode(from: envelopes)
-            let typedGroupChat = TypedGroupChatDecoder.decode(from: envelopes)
+            let typedGroupChat = TypedGroupTimelineDecoder.decode(from: envelopes)
             let typedDiscoveredGroups = TypedDiscoveredGroupsDecoder.decode(from: envelopes)
             // #626/#1924: NIP-29 group-create defaults (NGDF). The
             // app/operator-owned suggested public-group relay URL. Output-only

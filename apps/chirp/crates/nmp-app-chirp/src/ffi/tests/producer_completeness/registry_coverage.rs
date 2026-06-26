@@ -64,7 +64,7 @@ use nmp_ffi::{NmpApp, nmp_app_free, nmp_app_new, nmp_app_set_update_callback, nm
 use super::super::super::{
     nmp_app_chirp_close_group_discovery, nmp_app_chirp_open_group_discovery,
     nmp_app_chirp_register, nmp_app_chirp_register_dm_inbox, nmp_app_chirp_register_follow_list,
-    nmp_app_chirp_register_group_chat, nmp_app_chirp_unregister,
+    nmp_app_chirp_register_group_timeline, nmp_app_chirp_unregister,
 };
 
 #[cfg(feature = "marmot")]
@@ -143,11 +143,11 @@ fn every_codegen_registry_key_is_registered_at_runtime() {
     // NOTE: the typed `GroupId` shape is `{host_relay_url, local_id}` — the
     // sibling gate originally passed `{host, id}`, which fails deserialization
     // and silently no-ops the registration (D6). This gate caught that: the
-    // `nmp.nip29.group_chat` key was in the codegen registry but never in the
+    // `nmp.nip29.group_timeline` key was in the codegen registry but never in the
     // runtime keyset.
     let group_id =
         CString::new(r#"{"host_relay_url":"wss://groups.example.com","local_id":"abcd"}"#).unwrap();
-    nmp_app_chirp_register_group_chat(app, group_id.as_ptr());
+    nmp_app_chirp_register_group_timeline(app, group_id.as_ptr());
 
     #[cfg(feature = "marmot")]
     let marmot = register_marmot_for_test(app, "registry-coverage");
