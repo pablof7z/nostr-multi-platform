@@ -3,7 +3,7 @@
 - **Run date:** 2026-05-18
 - **Deliverable:** re-scoped M10.5 FFI-hardening gate, D2 (full ffi-stress simulator baseline)
 - **Harness:** `cargo run -p nmp-testing --bin ffi-stress` (dev profile, unoptimized + debuginfo)
-- **Gate contract:** `docs/design/ffi-hardening/gates.md` §G-S1 .. §G-S5
+- **Gate contract:** M10.5 §G-S1 .. §G-S5
 
 ## Host
 

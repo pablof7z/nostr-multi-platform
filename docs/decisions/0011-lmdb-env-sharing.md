@@ -16,7 +16,7 @@ The core atomicity requirement is: **every `insert()` call must commit event + p
 
 Per doctrine D6: "errors never cross FFI as exceptions." The corollary is that the *store itself* must never silently produce an incorrect answer because of partial writes. Any scenario where two separate `lmdb::Environment` handles could each commit independently would violate this — we would have no way to roll back one side when the other fails.
 
-**Why this matters (D6):** if the store returns wrong data because of a partial write, that wrong data eventually reaches FFI as an `AppUpdate`. There is no way to signal "this snapshot is partially corrupt" through a `Result<T, StoreError>` once the data is already in the `AppUpdate` struct. The only safe design is to prevent partial writes at the store layer.
+**Why this matters (D6):** if the store returns wrong data because of a partial write, that wrong data eventually reaches host-facing update frames. There is no way to label one projection inside an already-emitted snapshot as partially corrupt. The only safe design is to prevent partial writes at the store layer.
 
 ## Decision
 

@@ -75,14 +75,13 @@ something breaks.
 20 add a protocol module      18 testing      22 doctrine checklist
         │                                              │
         ▼                                              ▼
-28 action-triggered subs   27 doc/code discrepancies  ◀──┘
+28 action-triggered subs
 ```
 
 Start at **03** (the doctrine is the law) → **02** (where things live) →
 **04/05/06/07/08** (the substrate). Use **20** (`nmp-nip29` as the canonical
 reference) when adding a protocol module, **28** when an action needs to open
-a subscription, **22** as the PR-review gate, and file every doc/code gap you
-find into **27**.
+a subscription, **22** as the PR-review gate; correct wrong docs in place and use GitHub Issues for active work.
 
 ## Section dependency graph (read upstream before downstream)
 
@@ -99,20 +98,15 @@ find into **27**.
                 │                    └─▶ 26
                 └─▶ 21 ─▶ 25 ─▶ 26
 23 glossary · 24 reference cards — random-access; bookmark, do not read linearly.
-27 discrepancies — the orchestrator queue; consult, do not "fix in section."
 ```
 
 `(a,b)` after a node = also depends on sections a and b.
 
-## Filing a doc bug — the section 27 route
+## Filing a doc bug — owning-doc route
 
 Do **not** patch a section to "correct" what its status flag already marks as
 aspirational. If you find a place where docs claim more than the code on
-master delivers, file it in **[27 — Doc/code discrepancies](27-discrepancies.md)**
-with five fields: *claim · evidence (`path:line`) · status · owning
-milestone · severity*. The orchestrator drains that queue. Most entries are
-"milestone not landed yet" or a deliberate post-v1 scope deferral (M9 DMs,
-M12 Wallet) — not bugs.
+master delivers, correct the owning doc in place. If the mismatch represents active work, open or update the GitHub issue with claim, evidence (`path:line`), status, owning milestone, and severity. Most cases are milestone-not-landed or deliberate post-v1 scope deferrals, not bugs.
 
 ## Anti-patterns
 
@@ -124,10 +118,11 @@ M12 Wallet) — not bugs.
   code blocks as design intent, not API.
 - **Assuming a section is "wrong" when the status flag marks it aspirational.**
   A `[PENDING M_n]` bullet or a LANDED flag is the doc telling the truth
-  about reality. File it in 27 only if reality and the flag *disagree*.
+  about reality. Correct the owning doc only if reality and the flag disagree.
 - **Trusting `README.md` over GitHub Issues for milestone detail.**
   README is a snapshot; GitHub Issues is the canonical planning/status
-  surface. They should agree — if they do not, file a 27 entry.
+  surface. They should agree; if they do not, correct the owning doc or update
+  the GitHub issue.
 - **Skipping the doctrine (03) because you "only want to ship an app."**
   Builders who ignore D1/D4 re-introduce the spinner-gating and parallel-cache
   bugs NMP exists to prevent.

@@ -532,4 +532,4 @@ For NMP's five roles:
 
 - Should NMP define its own kind for "operator indexer set" distinct from kind 10086 (user-published)? Probably yes — operator config and user preferences are different layers.
 - Should the indexer set be writable to per-event-kind (e.g. a different indexer for kind:3 vs kind:0)? Applesauce doesn't split here; the single `lookupRelays` covers all replaceables. NMP can choose finer-grained.
-- Kind 10086 has not been ratified as a NIP. NMP should track whether to (a) adopt it as a convention, (b) propose ratification, or (c) define its own. Filing this as a pending decision in `docs/perf/pending-user-decisions.md` is appropriate.
+- Kind 10086 has not been ratified as a NIP. NMP should track whether to adopt it as a convention, propose ratification, or define its own in a GitHub issue labeled `category:decision`.

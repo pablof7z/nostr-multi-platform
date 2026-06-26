@@ -116,7 +116,7 @@ argument on `nmp_app_claim_profile`. The event-ref entry point is the unified
 The earlier standalone event-claim and replaceable-refresh symbols were removed.
 `nmp_app_resolve_ref` is the unified replacement (ADR-0063 Lane D). See
 [ADR-0016 — F-TTL FFI surface](../decisions/0016-f-ttl-ffi-surface.md) for the
-decision that superseded the standalone-symbol approach.
+current ABI rule.
 
 ## Testing
 

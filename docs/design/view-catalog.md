@@ -1,20 +1,15 @@
-# Design: Reference Nostr View Modules Catalog
+# Design: Projection Catalog
 
-> **Status:** Historical catalog for the removed v2 `ViewModule` proposal. The
-> current v1 app surface uses feed sessions, registered projections/observers,
-> and ref/dependent-interest claims; do not implement new work from this catalog
-> without first translating it to those seams.
+The projection catalog is the set of projections registered by
+protocol/defaults/app crates.
 
-This document is split into focused sections to keep each hand-authored file under the repository LOC ceiling.
+## Current Sources
 
-- [View Catalog: Template And Enumeration](view-catalog/template-and-enumeration.md)
-- [View Catalog: Profile, Timeline, Thread, Reactions](view-catalog/profile-timeline-thread-reactions.md)
-- [View Catalog: Conversation And Cross-Cutting Concerns](view-catalog/conversation-and-cross-cutting.md)
-- [View Catalog: Stubs, Validation, Next Steps](view-catalog/stubs-validation-next.md)
+- `nmp-defaults` wires the standard projection set used by default NMP apps.
+- Protocol crates own protocol-specific projection payloads and reducers.
+- App crates own product-specific projection payloads and reducers.
+- Hosts consume snapshots and typed sidecars by projection key.
 
-## Section Map
-
-- Sections 1-2: [template, cache key, and view-kind enumeration](view-catalog/template-and-enumeration.md)
-- Sections 3-6: [Profile, Timeline, Thread, and Reactions](view-catalog/profile-timeline-thread-reactions.md)
-- Sections 7-8: [Conversation and cross-cutting concerns](view-catalog/conversation-and-cross-cutting.md)
-- Sections 9-12: [stubs, validation, and next steps](view-catalog/stubs-validation-next.md)
+Projection keys and payload schemas are defined beside the code that owns the
+projection. Do not add a central catalog row unless the projection is genuinely
+part of the shared framework surface.

@@ -8,8 +8,7 @@
   `docs/product-spec/doctrine.md` (D0–D8). **Nine** doctrines: D0–D5 policy,
   D6–D8 substrate invariants. The plan's "Doctrine review (D0–D5)" wording is
   stale (PD-001); this review covers all nine, per the scoped decision record
-  in `docs/perf/pending-user-decisions.md` and the measured evidence in this
-  directory.
+  and the measured evidence in this directory.
 - **Verdict legend:** PASS · PASS (noted) · **EXCEPTION** (logged, not waived).
 
 This is a substrate-review of the FFI surface, not a full-framework audit.

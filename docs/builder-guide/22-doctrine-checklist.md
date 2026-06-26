@@ -8,11 +8,7 @@
 
 ## How this is consumed
 
-Every PR self-asserts against this list. After each merge to master, a codex
-review runs and records findings in
-[`docs/perf/codex-reviews/`](../perf/codex-reviews/) (cadence tracked in
-[`docs/perf/orchestration-log.md`](../perf/orchestration-log.md)). The
-machine-enforced subset runs in CI:
+Every PR self-asserts against this list. After each merge to master, actionable review findings are promoted into GitHub Issues or corrected in the owning doc. Review dumps are not committed. The machine-enforced subset runs in CI:
 `cargo run -p nmp-testing --bin doctrine-lint` (D0/D6/D7 grep gates,
 `.github/workflows/doctrine-lint.yml`), plus the target-state CI gates tracked in issue #2124
 (`cargo test --workspace`, `reactivity-bench --fail-on-gate`). File-size
@@ -182,7 +178,7 @@ Doctrine is deliberately strict; the escape hatch is *not* a silent exception,
 it is an **ADR**. If a change seems to require violating a doctrine, stop and
 write `docs/decisions/00NN-*.md` stating the doctrine, the tension, the chosen
 resolution, and the new invariant that replaces the broken one (see
-[27 — Doc/code discrepancies](27-discrepancies.md) for logging unresolved
+GitHub Issues or the owning doc for logging unresolved
 drift). `relay_pin` (third routing lane, ADR-0012) is the worked example of a
 kernel-substrate change that survived D0 *because* it added a generic
 mechanism, not an app noun. No ADR → no waiver → the box stays unchecked.
@@ -192,4 +188,4 @@ mechanism, not an app noun. No ADR → no waiver → the box stays unchecked.
 - [03 — Doctrine D0–D10 end-to-end](03-doctrine-d0-d8.md)
 - [05 — Kernel substrate — traits + seams](05a-substrate-traits.md)
 - [18 — Testing — `nmp-testing`, benches, contract tests](18-testing.md)
-- [27 — Doc/code discrepancies (orchestrator queue)](27-discrepancies.md)
+- GitHub Issues or the owning doc

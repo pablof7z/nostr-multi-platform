@@ -75,7 +75,7 @@ test result: ok. 25 passed; 0 failed
 2. **Kernel-side `handle_text` integration.** The kernel's `kernel/ingest/mod.rs::handle_text` still has `"OK" => {}` and no `"AUTH" =>` arm. Wiring the kernel to call `nmp_nip42::parse_auth_frame` / `Nip42Driver` is the M2-phase-2 wiring task (subscription-lifecycle §5, pinned by `crates/nmp-testing/tests/m8_subscription_lifecycle.rs`) — that task replaces the kernel's hand-rolled `req`/`defer_outbound` calls with `SubscriptionLifecycle::drain_tick` + `ConnectionPool::send`. Doing it inside T40 would conflict with that task's scope.
 3. **Signer wiring.** T43 (M6) shipped `nmp_signers::Signer::sign(unsigned) -> SignerOp<SignedEvent>`. The protocol module accepts a generic signer closure (`FnMut(&UnsignedEvent) -> Result<SignedEvent, Nip42Error>`); the M6 wiring task adapts the canonical `Signer` trait to that signature at the call site. The publish engine's `publish::traits::Signer::sign_auth` shim is the M7-side path for AUTH-REQUIRED publish retries — different code path, kept separate intentionally.
 4. **iOS bridging-header changes.** No FFI surface added — the signer integration is internal Rust, bound by M6's account-manager. The C FFI surface in `NmpCore.h` is unchanged.
-5. **Toast field on the FFI snapshot.** The M10.5 toast-field bridge (`docs/design/ffi-hardening.md` §7.2) is the agreed mechanism; this crate exposes `failure_reason` in `HandshakeOutcome` so M10.5 has the data when it lands. Adding a parallel toast-field now would conflict with M10.5's design.
+5. **Toast field on the FFI snapshot.** Failure reasons surface as state through the current FFI/update surface; this crate exposes `failure_reason` in `HandshakeOutcome` for that bridge.
 
 ### Required for M5 milestone close-out (not in this commit)
 
@@ -139,8 +139,7 @@ The publish engine has its own `Signer::sign_auth` shim for the `AUTH-REQUIRED` 
 > gate**: a relay answering AUTH-REQUIRED is treated as unavailable for publish
 > until the existing `nmp-nip42` driver authenticates it; on `Authenticated`
 > the engine re-dispatches the pending publish, exactly like
-> `mark_publish_relay_available`. The engine-side `Signer::sign_auth` shim is
-> retired with that change. There is ONE auth code path: `nmp-nip42`.
+> `mark_publish_relay_available`. There is ONE auth code path: `nmp-nip42`.
 
 ---
 

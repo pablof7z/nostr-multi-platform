@@ -1,7 +1,7 @@
 //! S2 — Dispatch flood (mpsc backpressure).
 //!
-//! Spec: docs/design/ffi-hardening/scenarios.md §S2
-//! Gate: docs/design/ffi-hardening/gates.md §G-S2
+//! Spec: docs/retired/ffi-hardening-m10-5.md §S2
+//! Gate: docs/retired/ffi-hardening-m10-5.md §G-S2
 //!
 //! 10,000 dispatches/sec from N=4 caller threads × 60 s.
 //! Mix: 60% resolve_ref, 40% release_ref (profile namespace).
@@ -234,7 +234,7 @@ pub(crate) fn run(cfg: S2Config, report: &mut ScenarioMetrics) {
     let p50_ns = merged_hist.percentile_ns(50);
     let p99_ns = merged_hist.percentile_ns(99);
 
-    // G-S2 numeric gates — per docs/design/ffi-hardening/gates.md §G-S2.
+    // G-S2 numeric gates — per docs/retired/ffi-hardening-m10-5.md §G-S2.
     let p99_ms = p99_ns as f64 / 1_000_000.0;
     let p50_ms = p50_ns as f64 / 1_000_000.0;
     let nominal = cfg.dispatches_per_sec * cfg.duration.as_secs();

@@ -20,7 +20,9 @@ nostrdb stores events in a custom in-memory representation that enables zero-cop
 
 **Lesson for NMP M3 (LMDB):** when we wire LMDB, do not naively `bincode::serialize(&event)` into the value bytes. Reads will dominate, and a packed-layout-with-offsets pays for itself almost immediately. The engineering cost is non-trivial but well-bounded.
 
-The simpler alternative — and the one I'd recommend for v1 — is to **depend on `nostrdb-rs` (the Rust binding) directly** as our `EventStore` backend, rather than reimplementing strfry's layout. nostrdb is BSD-licensed, mature, and the team that built it is responsive. We get the performance without owning the storage engine. See §5 for the decision question.
+NMP does not depend on `nostrdb-rs` as its store backend. The adopted path keeps
+NMP's `EventStore` semantics and sidecar ownership while borrowing the design
+lessons that fit that boundary.
 
 ### 2.2 Separable mutable metadata table
 
@@ -34,7 +36,9 @@ Events themselves are immutable once written, but per-note metadata (reaction co
 
 Instead of `query(filter) -> Vec<Note>`, nostrdb provides `ndb_query_visit(filter, visitor)` where `visitor(result) -> Continue | Stop`. No result buffer is allocated; the visitor can stop early; the same query engine drives both APIs. Pure CPU win for large filtered scans.
 
-**Lesson for NMP:** our `ViewModule::open()` does an initial `recompute_full` reading from the store. For large initial scans (a Timeline view over 1000 authors), this should be visitor-based so we can stop at the view's `limit` without ever materializing the full result.
+**Lesson for NMP:** projection/read-model initialization should be
+visitor-based for large scans so it can stop at the view's `limit` without
+materializing the full result.
 
 **Roadmap impact:** M3 EventStore trait should expose both `query(filter) -> Vec` and `query_visit(filter, visitor)`. Visitor variant becomes the default for view-internal scans. Cheap, almost-free design win.
 
@@ -42,28 +46,17 @@ Instead of `query(filter) -> Vec<Note>`, nostrdb provides `ndb_query_visit(filte
 
 nostrdb's subscription API is intentionally low-level: `ndb_subscribe(filters) -> subid`, `ndb_wait_for_notes(subid, capacity)`, `ndb_unsubscribe(subid)`. No reactive layer; the consumer polls. Higher-level abstractions live in notedeck.
 
-**Lesson for NMP:** our `ViewModule` abstraction sits much higher than this. But the underlying store-to-actor wakeup mechanism should be similar: when an event is inserted, any subscriptions whose filter matches get a one-shot "you have new notes" signal. Today our reverse index does this synchronously; nostrdb's queue-based approach is essentially the same shape decoupled.
+**Lesson for NMP:** the underlying store-to-actor wakeup mechanism should be
+similar: when an event is inserted, interested projections get a one-shot
+"you have new notes" signal. NMP's reverse index does this synchronously;
+nostrdb's queue-based approach is the same shape decoupled.
 
-### 2.5 The build-vs-depend question for the event store
+### 2.5 Event-store backend choice
 
-nostrdb already exists, is fast, is Rust-callable via `nostrdb-rs`, and is being actively maintained by Damus. It would be reasonable for NMP to:
-
-- **Option A:** Depend on `nostrdb-rs` as the LMDB-backed `EventStore` implementation. Get strfry-class storage performance for free. Lose tight control over storage semantics; gain a high-quality dependency.
-- **Option B:** Implement our own LMDB-backed `EventStore` from scratch using `heed` or `lmdb-zero`. Full control. Reinvent strfry's wheel.
-- **Option C:** Use `nostr-lmdb` from the `rust-nostr` workspace, which is more naive than nostrdb but already in the dependency tree we depend on.
-
-> **Resolved (2026-06-18):** This question was decided in
-> [`docs/design/nostrdb-rs-evaluation.md`](nostrdb-rs-evaluation.md): **`nostrdb-rs` is rejected**; NMP keeps the
-> hand-rolled `LmdbEventStore` targeting `nostr-lmdb` per ADR-0011. The decisive blockers are D4 (nostrdb owns its
-> own ingester+writer threads and fire-and-forget `process_event`), ADR-0011 (no LMDB env-injection seam, so
-> single-commit atomicity across NMP's sidecars is impossible), D8 (NMP's composite reverse index naming interested
-> views per insert is inexpressible in nostrdb's flat filter-poll subscriptions), and an unresolved GPL-vs-BSD
-> licensing ambiguity that blocks code-level borrowing. **The preliminary "Option A is probably right" lean below is
-> superseded — read it as historical context only.**
-
-**Recommendation (preliminary; superseded — see the banner above):** revisit this at the start of M3. Option A (nostrdb-rs) is probably the right move for v1 — we'd be picking up battle-tested code from a team that has demonstrated they care about performance. The risk is API surface mismatch with our `EventStore` trait, but nostrdb's API is shape-compatible (filters, subscriptions, inserts).
-
-This is a deferred decision; it does not block earlier milestones.
+NMP keeps its own `EventStore` semantics and does not use `nostrdb-rs` as the
+backend. The decisive requirements are D4 single-writer ownership, ADR-0011
+single-environment sidecar atomicity, D8 reverse-index/projection wakeups, and
+license clarity. Use nostrdb as prior art, not as the storage engine.
 
 ## 3. Lessons from notedeck (subscription runtime)
 
@@ -227,7 +220,10 @@ NIP-51 lists (mute lists, pinned-event lists, follow sets) use a per-cache type 
 
 Both live in a single `UnifiedSubscription { local, remote }` wrapper.
 
-**Lesson for NMP:** our `ViewModule` + planner abstraction does this implicitly — a view opens, the planner sends REQs, results land in the store, the view rebuilds. Notedeck names the pair explicitly. Names matter for diagnostics.
+**Lesson for NMP:** NMP's planner/projection path does this implicitly: a view
+or projection opens, the planner sends REQs, results land in the store, and the
+projection updates. Notedeck names the pair explicitly. Names matter for
+diagnostics.
 
 **Roadmap impact:** ADR-0007 diagnostics should distinguish "local cache hit served this view" from "remote subscription is delivering events to this view" — both are live, but they're different facts.
 
@@ -279,8 +275,8 @@ Concrete commitments by milestone:
 
 ### M3 (LMDB + persistence)
 
-- **Decide nostrdb-rs vs heed-from-scratch vs nostr-lmdb** (§2.5). ✅ DONE — chose
-  `nostr-lmdb` fork (`nmp-nostr-lmdb`) for tight env-sharing (ADR-0011 / ADR-0012).
+- **Event-store backend** (§2.5). ✅ DONE — keep NMP `EventStore` semantics and
+  use the current LMDB backend path with tight sidecar ownership (ADR-0011).
 - **Persist projection cache** alongside events (§2.2). Post-v1.
 - **EventStore trait exposes `query_visit`** (§2.3) for visitor-based queries. ✅ DONE —
   streaming `run_filter_visit` lands in epic #1523 (true lazy conversion, `Break` stops
@@ -318,7 +314,7 @@ The nostrdb visitor pattern (§2.3) is now fully implemented in NMP:
 
 | Item | Status | Note |
 |---|---|---|
-| Custom packed event layout (§2.1) | Defer | Only worth it if we DON'T pick nostrdb-rs. If we do, we get this for free. |
+| Custom packed event layout (§2.1) | Defer | Consider only if profiling proves event decoding is the bottleneck. |
 | nostrdb's metadata table on-disk format (§2.2) | Defer / partial adopt | Persist projections, but don't necessarily copy the exact TV format. |
 | nostrdb visitor C-ABI shape (§2.3) | Adopt the semantic, not the ABI | Visitor pattern in our Rust trait, not C function pointer. |
 | egui-style `SubKeyBuilder` exact API (§3.1) | Adopt verbatim | Trivial; just port it. |
@@ -337,7 +333,8 @@ These aren't disagreements with notedeck — they're consequences of different f
 
 ## 7. Summary
 
-nostrdb gives us a strong set of *design lessons* for M3's LMDB layer. (The earlier "depend on it, not reimplement it" recommendation is **superseded**: [`docs/design/nostrdb-rs-evaluation.md`](nostrdb-rs-evaluation.md) rejected `nostrdb-rs` on D4 / ADR-0011 / D8 / licensing grounds — we adopt the *concepts*, not the dependency.)
+nostrdb gives us a strong set of design lessons for the LMDB layer. NMP adopts
+the concepts that fit its `EventStore` boundary, not the dependency.
 
 Notedeck gives us **a proof-of-concept Rust implementation** of most of what M2 (subscription compilation), M5 (NIP-42 retry layer), M6 (typed publish), and M8 (multi-session) need. Several specific patterns (`SubKey`, `(owner, key, scope)`, `set_sub` vs `ensure_sub`, `SubScope::Account` switch-away, compaction-and-transparent-retry split, `UnknownIds`, `TimeCached`) should be adopted as-is.
 

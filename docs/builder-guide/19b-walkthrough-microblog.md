@@ -114,8 +114,8 @@ The `PostNote` action in [19a](19a-walkthrough-microblog.md) calls
 The actual signing and routing is entirely the kernel's job:
 
 ```
-app dispatch(PostNote { text })
-  → nmp_app_dispatch_action("microblog.action", json)
+typed app intent: postNote(text)
+  → nmp_app_dispatch_action_bytes(DispatchEnvelope)
   → ActionModule::start() validates (non-empty text)
   → ActionModule::execute() calls send(ActorCommand::PublishNote { … })
   → actor thread receives PublishNote
@@ -128,7 +128,7 @@ app dispatch(PostNote { text })
 **The app contributes `text`. The kernel decides pubkey, timestamp, relays,
 retry policy.** That is the whole write contract.
 
-`is_async_completing() = true` means `dispatch_action` returns immediately with
+`is_async_completing() = true` means the byte action doorway returns immediately with
 `{ "correlation_id": "…" }`. The terminal outcome (`Publishing → Accepted /
 Failed`) arrives later through the snapshot's `projections["action_stages"]`
 map keyed by that id.
@@ -144,16 +144,15 @@ map keyed by that id.
 | Multi-account switch | ✅ M8 (DONE) | — |
 | Outbox auto-routing (NIP-65) | ✅ T105 (DONE) | — |
 | `KernelEventObserver` + `register_live_event_tap` | ✅ DONE | — |
-| `register_snapshot_projection` | ✅ DONE | — |
+| `register_typed_snapshot_projection` | ✅ DONE | — |
 | Raw C/JNI lifecycle/action FFI + FlatBuffers update frames | ✅ today | UniFFI binding/lifecycle bridge = **M14, PLANNED** |
 | `nmp init` (thin Rust shell scaffold) | ✅ ships | Creates a `<name>-core` crate + `examples/shell.rs`; full multi-platform starter is M16. |
 | iOS shell (Chirp, active) | ✅ DONE | Additional app shells deferred until Chirp is complete |
 
 The publish substrate, the local signer, multi-account, event observer, and
 snapshot projection all ship today. What is *not* shipped: the typed UniFFI
-bridge (M14), a one-command multi-platform scaffolder (M16), and the old
-`nmp gen modules` generator (deleted by ADR-0046). The example above is hand-
-assembled — that is expected and honest, not a defect.
+bridge (M14) and a one-command multi-platform scaffolder (M16). The example
+above is hand-assembled — that is expected and honest, not a defect.
 
 ## Anti-patterns (wire & run phase)
 
@@ -169,12 +168,11 @@ assembled — that is expected and honest, not a defect.
 - **Per-platform SwiftData/Room cache parallel to `AppState`.** The decoded
   snapshot is the single source of truth across FFI. A native cache shadowing
   it drifts and violates D5.
-- **Expecting a generated per-app FFI crate today.** `gen modules` is gone.
-  The staticlib shell is hand-written glue that calls the app-core composition
-  root; see [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md).
-- **Expecting UniFFI typed payload delivery today.** UniFFI is the planned
-  binding/lifecycle bridge (M14); it is not the hot update payload format.
-  Code that imports a typed UniFFI `AppUpdate` will not compile against master.
+- **Expecting generated framework wiring.** The staticlib shell is hand-written
+  glue that calls the app-core composition root; see
+  [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md).
+- **Expecting UniFFI to own hot updates.** UniFFI remains a binding/lifecycle
+  target; update payloads use the typed FlatBuffers stream.
 
 See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
 [05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·

@@ -101,7 +101,10 @@ What the adapter must do that `save_event_with_txn` does **not**:
 - **Remove foreign pre-tombstone** (deleter ≠ event.pubkey) before allowing insert.
 - **Enforce NIP-40 expiration on arrival** with `Rejected(ExpiredOnArrival)`.
 - **Convert `RawEvent` ↔ `nostr::Event`** at the adapter boundary. The conversion uses a JSON round-trip (`serde_json::to_string(&raw_event)` → `nostr::Event::from_json`). This is the only place in the codebase that performs this conversion on the hot path; a future optimization can cache the parsed `nostr::Event` inside `VerifiedEvent` (which already does the same parse during `try_from_raw`).
-- **Provide NMP-side sub-dbs** beyond the fork's 11: `nmp-provenance`, `nmp-tombstones`, `nmp-addr-tombstones`, `nmp-watermarks`, `nmp-domain-versions`, `nmp-domain-data` (single sub-db, namespace-prefixed keys for clean separation without exhausting `max_dbs`), plus `nmp-lru-access` (V-60) and `nmp-expiry-index` (V-118) added later → `additional_dbs = 9`. **The original `nmp-claims` + `nmp-claims-budget` sub-dbs were removed in #1090 Stage 1** (zero production callers, V-117): the GC eviction pin set is now derived by the kernel each pass and passed to `gc_step_with_pins` rather than persisted.
+- **Provide NMP-side sub-dbs** beyond the fork's event rows for provenance,
+  tombstones, address tombstones, coverage, LRU access, and expiration indexes.
+  The GC eviction pin set is derived by the kernel each pass and passed to
+  `gc_step_with_pins`.
 
 Read methods that the fork's primitives **do not** match cleanly are wrapped in adapter logic; the canonical scan semantics (newest-first, `(created_at desc, id asc)`) are guaranteed by the fork's `BTreeSet`-backed `query` and by ordered keys in the `*_iter` helpers.
 

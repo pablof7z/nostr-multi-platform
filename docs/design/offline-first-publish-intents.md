@@ -61,9 +61,9 @@ resolution. They do not silently re-run NIP-65 and change the target set.
 ## State Machine
 
 ```text
-AppAction accepted
+DispatchEnvelope accepted
   -> persist PublishIntent(status=queued)
-  -> emit AppState publish_queue row
+  -> emit publish_queue projection row
   -> sign or await signer capability
   -> build signed publishable event
   -> resolve target relays

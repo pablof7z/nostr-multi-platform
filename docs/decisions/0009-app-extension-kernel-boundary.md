@@ -1,128 +1,74 @@
-# ADR 0009: App extension kernel boundary
+# ADR 0009: App Extension Kernel Boundary
 
 **Date:** 2026-05-17
 **Status:** accepted
-**Adopts:** `docs/design/app-extension-kernel.md` (the design proposal)
-**Modifies:** ADR-0006 (slice positioning), ADR-0008 (Twitter clone repositioned as first extension module)
-**Companion ADR:** 0010 (resolves open question 1: generated app enum vs type-erased registry)
+**Current design:** `docs/design/app-extension-kernel.md`
+**Companion ADR:** ADR-0010
 
 ## Context
 
-The product spec as originally written placed 15 social-client-shaped view kinds (Profile, Timeline, Thread, Reactions, Conversation, ...) directly in `nmp-core`, alongside a closed `AppAction` enum and a closed `AppUpdate` enum. The first developer to build something that isn't a social client — Highlighter, TENEX, Win the Day, Cut Tracker, podcast apps — has two bad options:
+NMP must support apps whose product nouns differ: social feeds, highlighter
+artifacts, podcast episodes, TENEX workspaces, daily plans, and other
+app-specific concepts. Putting those nouns in `nmp-core` would make the core a
+product dump and would force every platform to carry unrelated app behavior.
 
-- Add their app nouns (`Highlight`, `Project`, `Episode`, `WeightLog`, `DailyPlan`) to `nmp-core`. The framework becomes a junk drawer of every consumer's domain concepts. Untenable.
-- Build them in Swift/Kotlin. Violates the doctrine ("no business logic in native code") the framework exists to enforce.
-
-The proposal in `docs/design/app-extension-kernel.md` identifies this as a fundamental abstraction error. It argues for reframing NMP as a **Nostr-native app kernel with first-class extension modules** rather than a framework with closed built-ins.
-
-This ADR formally accepts that reframing.
+The opposite failure is pushing product logic into Swift, Kotlin, or browser
+shells. That violates the NMP doctrine that Rust owns domain correctness and
+native shells render state plus execute capabilities.
 
 ## Decision
 
-`nmp-core` provides **generic infrastructure only**:
+`nmp-core` owns generic Nostr application infrastructure only:
 
-- Actor runtime and unidirectional state flow.
-- Verified Nostr event store with replaceable/delete/expiration semantics.
-- Subscription planner with composite-keyed reverse index.
-- Relay routing and publish pipeline.
-- Signer/session plumbing (identity-scope agnostic).
-- Domain-store substrate for non-Nostr records.
-- Typed view registry (driven by `ViewModule` trait).
-- Durable action ledger (driven by `ActionModule` trait).
-- Capability bridge (driven by `CapabilityModule` trait).
-- Platform-shadow + codegen machinery.
-- Diagnostics and test harnesses.
+- actor runtime and reducer-owned state,
+- verified event ingest and storage,
+- subscription compilation and relay routing,
+- publish orchestration,
+- signer/session plumbing,
+- action registration and dispatch,
+- capability request/result plumbing,
+- snapshot and typed-projection emission,
+- diagnostics and doctrine gates.
 
-`nmp-core` does **not** contain:
+Reusable Nostr concepts live in protocol/substrate crates. App-specific
+concepts live in app Rust crates. Native shells render and report native facts.
 
-- Profile, Timeline, Thread, Reactions, Conversation, or any other view-kind business logic.
-- Wallet, messaging, blossom, or any other domain feature as a *kernel primitive*.
-- A closed `AppAction` enum or `AppUpdate` enum.
-- A closed `ViewSpec` enum.
-- App-specific identity concepts (agent, feedback identity, coach, etc.).
+The shipped extension seams are:
 
-**Four layers, clear ownership.**
+- `ActionModule` plus `register_action` for write intents,
+- `register_event_observer` for event-driven Rust projections,
+- `register_typed_snapshot_projection` for host
+  state,
+- `CapabilityModule` and capability sockets for native facts,
+- `NmpAppBuilder`, `AppHost`, and `nmp-defaults::register_defaults` for
+  composition.
+
+If implementing an app requires adding that app's nouns to `nmp-core`, the
+boundary is wrong. Either add a reusable Nostr mechanism in an NMP crate or add
+the product concept to the app's Rust core.
+
+## Layer Ownership
 
 | Layer | Owns | May contain app nouns? |
 |---|---|---|
-| `nmp-core` kernel | actor, store substrate, planner, ledger, registries, codegen, diagnostics | No |
-| NMP protocol modules (`nmp-nip01`, `nmp-nip17`, `nmp-nip29`, `nmp-nip65`, `nmp-blossom`, `nmp-nwc`, …) | reusable Nostr protocol concepts: Event, Filter, Keys, gift-wrap, groups, mailboxes, blossom, NWC | Only protocol nouns |
-| App core crate (`twitter-core`, `highlighter-core`, `tenex-core`, …) | app domain records, view modules, action modules, app-specific capability types, policies | Yes |
-| Platform shell | rendering, OS handle execution, generated wrappers | No policy nouns beyond UI labels |
-
-**Five extension trait families** (concrete signatures in `docs/design/kernel-substrate.md`):
-
-- `DomainModule` — durable non-Nostr records with migrations and indexes.
-- `ViewModule` — typed reactive projections with payloads and deltas.
-- `ActionModule` — durable workflows on the action ledger.
-- `CapabilityModule` — typed native fact reports.
-- `IdentityModule` — signer scopes beyond "active Nostr account."
-
-**The rule.** If implementing Highlighter, TENEX, Win the Day, Cut Tracker, or a podcast app requires adding domain nouns to `nmp-core`, the extension boundary is wrong and the kernel must change, not the app.
-
-> **Historical note (V-38).** An earlier revision of this ADR carved out a bounded
-> "wallet feature exception" — a feature-gated `nmp-core → nmp-nwc` dependency
-> justified by the D4 single-writer constraint on wallet state. That design was
-> fully reversed: the kernel no longer has a `wallet` feature and no longer
-> depends on `nmp-nwc`. The NIP-47 NWC stack (runtime + action modules + status
-> projection) now lives in `crates/nmp-nip47`, and the dependency edge inverted to
-> `nmp-nip47 → nmp-nwc` (see `crates/nmp-core/Cargo.toml` and
-> `docs/architecture/crate-boundaries.md` §5 step 7). The `nmp_app_wallet_*` FFI
-> symbols remain on `nmp-core` as thin shims over `dispatch_action`, with no
-> `nmp-nwc` dependency at the kernel boundary. The kernel now contains no wallet
-> domain feature at all — exactly what "The rule" demands.
-
-## What changes from prior ADRs
-
-- **ADR-0006 (vertical-slice-first):** the slice's discipline survives — running code at every checkpoint, one architectural ingredient per sub-phase. The slice's *target* changes: the kind:0 Profile path is now built as the canonical `ViewModule` in a Nostr-protocol module, not as a built-in feature of `nmp-core`. The slice now proves the extension boundary first, then the protocol module on top.
-- **ADR-0008 (initial Chirp social baseline):** the first social client slice is repositioned as **the first canonical extension module** demonstrating the kernel boundary at scale, not as the framework's set of built-in features. The sub-phase plan grows by one or two phases (extension-boundary prototype with a tiny non-Nostr fixture module lands before the Chirp baseline begins).
-- **`product-spec.md` §4 (crate roster), §6.2–§6.6 (state/action/update/capabilities/views), §7 (most subsystem specs), §12 (phasing):** rewritten to reflect kernel + protocol-module + app-module layering. Built-in view kinds become "reference protocol modules with their own view modules." Built-in wallet / messages / blossom become protocol modules (`nmp-nwc`, `nmp-nip17`, `nmp-blossom`).
-- **`view-catalog.md`:** reframed as the catalog of *reference Nostr extension modules* shipped with the framework (Profile, Contacts, Timeline, Thread, Reactions, Conversation, ...). Apps can use them, ignore them, or replace them. They are not in `nmp-core`.
-
-## What survives intact
-
-The reactive machinery and platform shadow doctrine are independent of who owns the noun:
-
-- ADR-0001 (composite dependency keys): applies to any view module's `Dependencies` declaration.
-- ADR-0002 (per-view delta budget): applies to any view module's emitted deltas.
-- ADR-0003 (working-set memory): applies to the kernel's hot/cold split regardless of module count.
-- ADR-0004 (allocation measurement): applies to the kernel.
-- ADR-0005 (domain-keyed platform shadow): applies to any view module; per-module wrapper API is generated, not hand-written.
-- ADR-0007 (diagnostics bridge): applies to any extension's relay status, action ledger entries, domain records, and capability reports.
-
-The doctrines from `product-spec.md` §1.5 (D1 best-effort rendering, D2 negentropy first, D3 outbox automatic, D4 single writer per fact, D5 snapshots bounded by what's open) survive intact and apply across all modules.
+| `nmp-core` | actor, store, planner, routing, publish, action/capability/projection substrate | No |
+| Protocol crates | reusable Nostr mechanisms and protocol nouns | Protocol nouns only |
+| App Rust crates | app records, policies, projections, workflows | Yes |
+| Native shells | rendering, OS handles, ephemeral presentation state | UI labels only |
 
 ## Consequences
 
-- **Smaller kernel, larger ecosystem surface.** `nmp-core` shrinks substantially. The ecosystem grows: `nmp-nip01`, `nmp-nip02`, `nmp-nip17`, `nmp-nip25`, `nmp-nip29`, `nmp-nip65`, `nmp-nip77`, `nmp-blossom`, `nmp-nwc`, `nmp-cashu` become first-class protocol modules.
-- **Composition is a library call, not a codegen step.** `nmp-defaults::register_defaults` wires
-  the standard module set; `nmp init` scaffolds a thin `<name>-core` crate that calls it.
-  (`nmp gen modules` — the per-app FFI-crate generator originally proposed here — was deleted
-  by ADR-0046.)
-- **Phase 1a takes longer.** ADR-0008's 8-week estimate grows to roughly 12–15 weeks. The kernel substrate (1a.1) and the composition-root library land before the first Nostr-shaped extension module.
-- **External consumers prove the boundary.** `win-the-day`, `hl`, and `podcast-player` pin NMP by git rev and compose via `register_defaults` / `register_substrate`. The internal fixture app (`apps/fixture`) was deleted by ADR-0046 — it was generated but never functionally wired.
-- **The proof slices from the proposal (Highlighter-lite, Personal-coach-lite, TENEX-lite, Podcast-lite) become post-v1 demonstrations.** They are not v1 deliverables. They are evidence the boundary is right.
-- **Future protocol-spec evolution is cleaner.** A new NIP (say NIP-100) becomes a new crate, not a `nmp-core` patch.
+- The kernel stays reusable and app-agnostic.
+- Social-client behavior is implemented through protocol/defaults/app modules,
+  not as hard-coded kernel view kinds.
+- External consumers compose NMP through `NmpAppBuilder` and `nmp-defaults`,
+  then add their own Rust-owned modules.
+- Future apps prove the boundary by adding app crates or protocol crates, not by
+  growing `nmp-core`.
 
-## Acceptance criteria for the boundary
+## Rejected Alternatives
 
-Verified by:
-
-1. The kernel-substrate prototype (Phase 1a.1) ships with a tiny non-Nostr fixture module demonstrating all five trait families. It compiles, runs in a reference shell, and contains no Nostr concepts.
-2. The Twitter clone (Phase 1a.2 onward) is implemented entirely as extension modules over `nmp-core` + protocol modules. `nmp-core` does not gain any of: `Profile`, `Timeline`, `Thread`, `Reactions`, `Conversation`, `Tweet`, `Compose` types or actions.
-3. A future hypothetical Highlighter-lite module can be added without changes to `nmp-core`. (Not built in v1; the design must support it.)
-
-## Alternatives considered
-
-- **Keep current spec; punt extension boundary to v2.** Rejected — shipping v1 with the wrong abstraction creates a major-version migration within a year. Worse than ~4 extra weeks of design now.
-- **Make `AppAction` / `ViewSpec` extensible via downcast / `Box<dyn Any>`.** Rejected — kills type safety at the FFI boundary; degrades into stringly-typed dispatch.
-- **Vendor in app-specific modules as cargo features on a monolithic `nmp` crate.** Rejected — explosive feature matrix; entangles compilation; doesn't solve UniFFI typing.
-- **String-keyed registry at runtime (open question 1's "type-erased" option).** Decided against in ADR-0010 in favor of generated app enum for compile-time safety. See that ADR for full reasoning.
-
-## Open questions resolved here vs deferred
-
-| Proposal open question | Resolution |
-|---|---|
-| 1. Generated app enum vs type-erased registry | Originally generated app enum (ADR-0010); both later superseded by ADR-0046 — composition is a library (`nmp-defaults::register_defaults`), not generated FFI |
-| 2. Declarative vs Rust migrations for domain-module schemas | Rust migrations with a small declarative index API |
-| 4. Protocol modules as crates or features | Separate crates (`nmp-nip01`, `nmp-nip17`, ...). Sharper boundaries; explicit dep graph; testable in isolation |
+- Put social-client view kinds and app actions directly in `nmp-core`.
+- Let native shells own app policy to avoid Rust app crates.
+- Create app-specific cargo features in a monolithic framework crate.
+- Add type-erased host surfaces that bypass typed action/projection ownership.

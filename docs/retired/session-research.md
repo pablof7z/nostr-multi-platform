@@ -1,0 +1,1 @@
+Old session-research notes mapped NDK/Applesauce account systems onto removed `IdentityModule`/`AppUpdate` surfaces and were removed; current signer/session design lives in ADR-0015, ADR-0031, ADR-0050, ADR-0066, and `docs/design/framework-magic/sessions.md`.

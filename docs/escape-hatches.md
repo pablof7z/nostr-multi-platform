@@ -2,63 +2,12 @@
 
 The NMP framework guards the kernel behind doctrine seams (D0–D8). Most app
 code should never need to cross these seams directly. This document catalogs
-the **three escape hatches** — production-level lanes that callers can use to
-reach below the framework guarantees — and explains when each is appropriate.
+the current extension and test escape seams and explains when each is
+appropriate.
 
 A capability the sound design cannot express through a typed seam is a design
 gap to close, not an exception to whitelist. Use these only when the framework's
 normal seams genuinely cannot serve your use case.
-
----
-
-## Retired: the raw event tap
-
-The original raw event tap (`nmp_app_register_raw_event_observer` /
-`RawEventObserver`) has been **eliminated**. It had no backpressure, silently
-matched all kinds on a null filter, and ran callbacks synchronously on the actor
-thread. There is no replacement push sink — the speculative batched
-`ExternalEventSink` C-ABI (register/ack/store-resync) that briefly stood in for
-it has also been removed.
-
-Two distinct needs the tap conflated are now served separately:
-
-- **In-process relay forwarding** is an internal policy seam, not an escape
-  hatch. The kernel owns an `ExternalEventSinkPolicy` dispatcher
-  (`crates/nmp-core/src/substrate/external_event_sink/`) that fans verified
-  inbound frames — including `Duplicate` outcomes with source-relay provenance —
-  out to relay targets on a background worker thread. The only in-repo consumer
-  is `IndexerRepublishPolicy`. It is not exposed over the FFI.
-- **External per-event consumption** (e.g. the `hl` app's nostrdb mirror)
-  reads through the store via the **bounded, backpressured pull cursor**
-  (ADR-0058). The canonical contract is: register a `GlobalLog` cursor in
-  `Protected { max_lag_entries }` mode → receive `nmp.pull.wake` →
-  call `nmp_mirror_pull_page` → apply the page → persist `after_seq` →
-  `AdvancePullCursor`. See `docs/architecture/external-consumers.md` for the
-  full mirror consumption contract and the mirror-as-semantic-superset
-  invariants (NIP-09 / NIP-40 applied by the mirror itself, never on
-  retention evictions).
-
-The lint rule `no_raw_tap_reintroduction` mechanically prevents both the
-raw-tap symbols and the #1552-deleted native push C-ABI sink symbols
-(`nmp_app_register_event_sink`, `retain_until_ack`, `event_sink_watermark`,
-etc.) from reappearing.
-
----
-
-## Retired: the snapshot projector
-
-The schema-less JSON snapshot projector
-(`nmp_app_register_snapshot_projection` / the generic `KernelSnapshot::projections`
-map) has been **eliminated**. It was never wire-encoded — every host already
-reconstructed its view from the typed FlatBuffers projection sidecar — so the
-generic lane was dead producer code that bypassed D3 (typed projection routing).
-Production host-rendered state now flows through a single canonical path:
-`register_typed_snapshot_projection` (ADR-0037 typed runtime projections).
-
-The lint rule `A6` mechanically prevents the JSON lane's symbols from
-reappearing.
-
----
 
 ## 1. Action Module Seam — `NmpApp::register_action::<M>()`
 
@@ -67,18 +16,14 @@ reappearing.
 
 This is **not** an escape hatch in the negative sense — it is the **preferred
 way** to extend the kernel. An `ActionModule` provides:
-- A typed action handler dispatched via `dispatch_action` JSON payloads.
-- An optional typed `SnapshotProjector` for view delivery.
+- A typed action handler dispatched through the ADR-0064 byte doorway.
+- Optional typed projection state for view delivery.
 - An optional `LogicalInterest` set for subscription routing.
 
 It is listed here because callers who reach for an ingest parser or inject
 function often actually need an action module. If your use case involves (a)
 triggering Nostr events from user input, or (b) projecting custom state into the
 snapshot, use `ActionModule` before reaching for any escape hatch.
-
-See `docs/dispatch-actions.md` for the action namespace catalog.
-
----
 
 ## 2. Test-Only Injectors — `nmp_app_inject_*`
 
@@ -161,10 +106,9 @@ Need verbatim signed frames in an external store/relay-bridge mirror
     See docs/architecture/external-consumers.md for the full contract.
 
 Need custom state in every snapshot?
-  → typed sidecar via register_typed_snapshot_projection (ADR-0037),
-    or an ActionModule snapshotProjector (#1)
+  → typed sidecar via register_typed_snapshot_projection (ADR-0037)
 
-Need to handle a dispatch_action payload or publish Nostr events?
+Need to handle typed write input or publish Nostr events?
   → ActionModule (#1)
 
 Writing a test and need synthetic events without live relays?

@@ -38,13 +38,9 @@ Two consumers want events at their own pace, and neither is served well by a pus
 callback:
 
 1. **External event mirror** (the out-of-tree `hl` app's nostrdb mirror). It needs
-   the distinct stored events, durably and in order, to mirror them into its own
-   store. The retired raw event tap (#1552) and the briefly-built native push sink
-   forced this through a below-seam callback with hand-rolled backpressure
-   (retain-until-ack, `created_at` resync watermark, batch coalescing) that proved
-   bug-prone (silent drop, hole-punching watermark, callback-under-lock deadlock).
-   A slow consumer behind a push sink is a liability; a slow consumer pulling from
-   the durable store is free.
+   distinct stored events, durably and in order, to mirror them into its own
+   store. A slow consumer pulling from the durable store is isolated from the
+   actor and cannot apply backpressure through a callback.
 2. **UI "give me more"** pagination (`load_older`). The feed already grows its
    window on demand (`crates/nmp-feed/.../engine`, `nmp_app_load_older_feed`,
    `crates/nmp-ffi/src/feed.rs`), but each feed re-implements windowing over

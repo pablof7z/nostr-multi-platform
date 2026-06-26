@@ -205,7 +205,7 @@ The on-disk layout from `aim.md` §5 is canonical. The long-term workspace conta
 | Crate | Role | FFI? |
 |---|---|---|
 | `nmp-core` | Kernel substrate: actor, store, planner, ledger, registries, extension traits, diagnostics | Pure Rust |
-| `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders (`gen swift`, `gen typed-decoders`); `nmp gen modules` was deleted by ADR-0046 | Binary + library |
+| `nmp-codegen` | Host binding emitters and drift gates for typed projections/decoders (`gen swift`, `gen typed-decoders`) | Binary + library |
 | `nmp-defaults` | Composition-root library: `register_defaults` / `register_substrate` / `NmpDefaults` config (ADR-0046) | Pure Rust |
 | `nmp-ffi` | UniFFI building blocks used by generated app crates | UniFFI |
 | `nmp-wasm` | Post-v1 wasm-bindgen building blocks used by generated app crates | wasm-bindgen |

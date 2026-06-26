@@ -2,7 +2,11 @@
 
 > **Status:** Implemented as generic protocol infrastructure; updated 2026-06-26 to reflect the current projection/action/read-interest surface. **Date:** 2026-05-18.
 > **Companion docs:** `docs/design/subscription-compilation.md` §§ 4, 7 (the M2 planner this crate hooks into); `docs/product-spec/doctrine.md` §D0 (current extension seams); ADR-0009 (the kernel-boundary doctrine the crate must respect).
-> **Scope:** Define the public surface, internal architecture, and routing contract of `nmp-nip29` — the NMP-idiomatic protocol crate for NIP-29 relay-based groups. Current v1 code expresses this with typed action registration, snapshot projections, hydrating observed read interests, and host-pinned filter builders; it does not use the retired `DomainModule` / `ViewModule` / `ActionModule` trait-family generator model.
+> **Scope:** Define the public surface, internal architecture, and routing
+> contract of `nmp-nip29` — the NMP-idiomatic protocol crate for NIP-29
+> relay-based groups. Current code expresses this with typed action
+> registration, snapshot projections, hydrating observed read interests, and
+> host-pinned filter builders.
 
 This document is split into focused sub-files to stay well under the 300 LOC ceiling per file.
 
@@ -67,8 +71,10 @@ hydrating view path.
 ### 3.1 What `nmp-nip29` does **not** ship
 
 - **No `CapabilityModule`.** The crate uses existing capabilities (signer, http, blossom for picture uploads) but doesn't add any.
-- **No `IdentityModule`.** Groups don't change the user's identity model; M6/M8 covers identity.
-- **No new persistence schema.** Per ADR-0010 + M3, all domain records persist via the kernel's LMDB tables keyed by their composite keys. The crate declares migrations in standard NMP shape.
+- **No signer/account ownership.** Groups do not change the user's identity
+  model; signer/account state stays in the session/signers layer.
+- **No app-owned persistence schema in `nmp-core`.** NIP-29 read models are
+  protocol-owned Rust state surfaced through projections.
 
 ## 4. The load-bearing constraint: host-relay-pin
 

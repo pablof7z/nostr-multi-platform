@@ -57,14 +57,14 @@ product or harness regressions until triage proves otherwise.
 Run the same commands from the matrix when reproducing a row locally. Keep the
 `--ignored`, feature flags, and `--test-threads=1` exactly as shown.
 
-The older single-command pattern is intentionally retired:
+Do not use the catch-all command:
 
 ```bash
 cargo test -p nmp-testing -- --ignored --nocapture
 ```
 
-That command hides which capability failed or skipped. The matrix rows are the
-source of truth.
+It hides which capability failed or skipped. The matrix rows are the source of
+truth.
 
 ## Reports
 

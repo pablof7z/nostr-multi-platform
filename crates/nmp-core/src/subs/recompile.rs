@@ -201,7 +201,7 @@ impl SubscriptionLifecycle {
         // the correct REQ/CLOSE delta. Plan-id is intentionally NOT
         // recomputed (see `planner/mod.rs` §"Plan-id determinism vs.
         // post-compile mutators"; M4 precedent in
-        // `docs/perf/codex-reviews/076173d.md`).
+        // `docs/retired/removed-documents.md`).
         apply_selection_with_lookup(
             &mut plan,
             self.select_max_connections,

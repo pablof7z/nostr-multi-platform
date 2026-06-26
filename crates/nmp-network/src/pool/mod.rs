@@ -55,8 +55,7 @@
 //!   API. Today's actor (`crates/nmp-core/src/actor/relay_mgmt.rs`)
 //!   still drives `spawn_relay_worker` directly. The legacy entry
 //!   points stay re-exported alongside `Pool` so the actor compiles
-//!   unchanged; the migration is the next PR in this lane. See
-//!   `WIP.md` for the follow-up.
+//!   unchanged; the follow-up belongs in the GitHub issue queue.
 //!
 //! ## Why phase B ships as additive
 //!

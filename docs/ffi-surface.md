@@ -77,25 +77,25 @@ handler before `start()`.
 |---|---|---|---|---|---|---|
 | `nmp_app_set_capability_callback` | `(app: *mut NmpApp, context: *mut c_void, callback: Option<fn(*mut c_void, *const c_char) -> *mut c_char>)` | Register the native capability handler. `None` unregisters. A request received while unregistered yields an error envelope, never a crash. | Chirp | Synchronous registration; callback invoked on the thread that calls `dispatch_capability` | null app / poisoned lock → early return | D7-clean: socket transports envelopes, decides no policy |
 | `nmp_app_dispatch_capability` | `(app: *mut NmpApp, request_json: *const c_char) -> *mut c_char` | Route a `CapabilityRequest` JSON to the registered handler, return a heap-allocated `CapabilityEnvelope` JSON string. MUST be released via `nmp_free_string`. Returns a populated error envelope on missing handler, malformed request, or NULL handler return — never NULL for valid app+request. | Chirp via `KernelBridge.registerCapabilityHandler` | Synchronous on calling thread | Never returns NULL for non-null app+request; error is data | D7-clean: pure transport |
-| `nmp_free_string` | `(ptr: *mut c_char)` | Release any Rust-allocated `*mut c_char` returned by any NMP FFI function. null is a no-op (D6). This is the canonical and ONLY heap-string release symbol — replaces the retired `nmp_app_free_string` and `nmp_broker_free_string`. | All callers of FFI functions that return `*mut c_char` | Synchronous | null → no-op | n/a |
+| `nmp_free_string` | `(ptr: *mut c_char)` | Release any Rust-allocated `*mut c_char` returned by any NMP FFI function. null is a no-op (D6). This is the canonical and ONLY heap-string release symbol. | All callers of FFI functions that return `*mut c_char` | Synchronous | null → no-op | n/a |
 
 ---
 
 ## 5. Action dispatch — identity / account / relay / publish control
 
-Most command symbols are fire-and-forget. `nmp_app_dispatch_action` is the
-one-door user/app action entrypoint: it returns an acceptance/error JSON string
-for the enqueue step, and terminal outcomes surface later via snapshots
-(`action_stages`, `last_error_toast`, `publish_queue`). The old per-verb social
-and publish symbols (`nmp_app_publish_note`, `nmp_app_publish_unsigned_event`,
-`nmp_app_react`, `nmp_app_follow`, `nmp_app_unfollow`) are deleted.
+Most command symbols are fire-and-forget. `nmp_app_dispatch_action_bytes` is the
+production one-door user/app action entrypoint: it accepts a FlatBuffers
+`DispatchEnvelope`, returns an acceptance/error JSON string for the enqueue
+step, and terminal outcomes surface later via snapshots (`action_stages`,
+`last_error_toast`, `publish_queue`). Per-verb social and publish symbols are
+not part of the production surface.
 
 | Symbol | Signature | Behavior | Callers | D6 | D7 |
 |---|---|---|---|---|---|
-| `nmp_app_dispatch_action` | `(app, namespace: *const c_char, action_json: *const c_char) -> *mut c_char` | Validate and enqueue a namespace-keyed app/protocol action. Returns `{"correlation_id":...}` or `{"error":...}`; caller frees with `nmp_free_string`. | Chirp, TUI, Android, protocol/app modules | non-null app never returns NULL; invalid input returns error JSON | D7-clean: shell transports action data, Rust owns execution policy |
+| `nmp_app_dispatch_action_bytes` | `(app, ptr: *const u8, len: usize) -> *mut c_char` | Validate a `DispatchEnvelope`, route by action namespace, and enqueue a typed app/protocol action. Returns `{"correlation_id":...}` or `{"error":...}`; caller frees with `nmp_free_string`. | Chirp, TUI, Android, protocol/app modules | non-null app never returns NULL; invalid input returns error JSON | D7-clean: shell transports action data, Rust owns execution policy |
 | `nmp_app_ack_action_stage` | `(app, correlation_id: *const c_char)` | Acknowledge a terminal `action_stages` entry after the host has reacted to it. | Chirp/TUI action UIs | invalid → early return | n/a |
-| `nmp_app_retry_publish` | `(app, handle: *const c_char)` | Retry a failed publish by publish handle. Control-plane symbol; content publish actions still go through `dispatch_action`. | Chirp/TUI publish UI | invalid → early return | n/a |
-| `nmp_app_cancel_publish` | `(app, handle: *const c_char)` | Cancel an in-flight publish by publish handle. Control-plane symbol; content publish actions still go through `dispatch_action`. | Chirp/TUI publish UI | invalid → early return | n/a |
+| `nmp_app_retry_publish` | `(app, handle: *const c_char)` | Retry a failed publish by publish handle. Control-plane symbol; content publish actions still go through the byte action doorway. | Chirp/TUI publish UI | invalid → early return | n/a |
+| `nmp_app_cancel_publish` | `(app, handle: *const c_char)` | Cancel an in-flight publish by publish handle. Control-plane symbol; content publish actions still go through the byte action doorway. | Chirp/TUI publish UI | invalid → early return | n/a |
 | `nmp_app_signin_nsec` | `(app, secret: *const c_char, make_active: u8)` | Register a raw nsec signer. `make_active != 0` makes it the active account; `0` registers a secondary signer. | Chirp, TUI, Android, tests | invalid → early return | n/a |
 | `nmp_app_register_agent_nsec` | `(app, secret: *const c_char)` | Register a persisted app-managed local signer. It is signable by explicit pubkey but hidden from account projections and rejected by active-account switching. | App/protocol modules with app-owned keys | invalid → early return | D7-clean: shell imports key bytes once; Rust owns role, persistence, and signing policy |
 | `nmp_app_signin_bunker` | `(app, uri: *const c_char, make_active: u8)` | Initiate NIP-46 bunker connect via `uri`; the `make_active` flag is carried through the async handshake. Routed through signer-broker if `nmp_signer_broker_init` was called. | Chirp, TUI, Android | invalid → early return | n/a |
@@ -266,7 +266,7 @@ surface documented here.
 **D7** ("capabilities report; kernel decides"): caller-side code reports facts
 (scenePhase, URI to open, pubkey to follow, BOLT-11 to pay). The kernel decides
 policy (when to reconcile NIP-77, how to route relays, which identity signs).
-User-authored publish/social actions enter through `nmp_app_dispatch_action`;
+User-authored publish/social actions enter through `nmp_app_dispatch_action_bytes`;
 the Rust action modules derive signing identity and routing policy.
 
 | Symbol | D6 (no throw across FFI) | D7 (no policy from shell) | Notes |
@@ -291,7 +291,7 @@ the Rust action modules derive signing identity and routing policy.
 | `nmp_app_create_new_account` | PASS | PASS | |
 | `nmp_app_switch_active` | PASS | PASS | |
 | `nmp_app_remove_account` | PASS | PASS | |
-| `nmp_app_dispatch_action` | PASS — acceptance/error JSON, never NULL for non-null app | PASS | Single user/app action door |
+| `nmp_app_dispatch_action_bytes` | PASS — acceptance/error JSON, never NULL for non-null app | PASS | Single user/app action door |
 | `nmp_app_ack_action_stage` | PASS | PASS | |
 | `nmp_app_retry_publish` | PASS | PASS | Publish lifecycle control |
 | `nmp_app_cancel_publish` | PASS | PASS | Publish lifecycle control |

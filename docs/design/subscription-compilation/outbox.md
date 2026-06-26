@@ -95,7 +95,9 @@ pub enum PublishPlanError {
 }
 ```
 
-The trait is consumed by the action ledger (per `docs/design/kernel-substrate.md` §4 — the kernel owns "per-relay publish attempts" provenance). When an `ActionModule::reduce` reaches its publish step, it calls the planner, gets a `PublishPlan`, and the kernel fans out to relays with the standard ledger-correlated retry/cancel semantics.
+The trait is consumed by publish/action execution. When an `ActionModule::execute`
+needs to publish, it enqueues actor commands that call the planner, obtain a
+`PublishPlan`, and fan out to relays with correlated retry/cancel semantics.
 
 ## 7.2 Default implementation: `Nip65PublishPlanner`
 
@@ -238,7 +240,7 @@ Notes on the algorithm:
 
 The override exists for tests, migration tools, and operator power-user flows. Per `docs/aim.md` §6 doctrine 5 ("manual relay selection is the opt-out, not the default") and `docs/product-spec/subsystems.md` §7.3 line 90 ("explicit overrides are named, one-shot, and debug-flagged in logs"), the override must be:
 
-1. **Named** — its own typed `AppAction` variant, not a hidden parameter on `SendNote`.
+1. **Named** — its own typed action payload, not a hidden parameter on `SendNote`.
 2. **One-shot** — does not persist as a default for future publishes.
 3. **Audited** — emits a `Diagnostic::PublishOverrideUsed { reason, action_id }` on the `SideEffect` lane and writes a debug-level log line on every dispatch.
 4. **Refused for privacy-sensitive modes** — `PublishPrivacy::PrivateToRecipients` rejects an override that adds non-inbox relays. The override may *narrow* a private fan-out to a subset of declared inboxes; it may not *widen* to public relays.
@@ -250,7 +252,7 @@ The override exists for tests, migration tools, and operator power-user flows. P
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct PublishWithOverride {
-    pub inner: AppAction,                    // the underlying publish action
+    pub inner: DispatchEnvelope,             // the underlying publish action
     pub override_relays: Vec<RelayUrl>,
     pub override_audit: String,              // human-readable justification
 }
@@ -291,8 +293,8 @@ impl ActionModule for PublishWithOverride {
 
 The override action's existence is what the audit contract asserts: no public
 API path lets the developer specify relays for a publish; explicit override
-action exists and produces a debug warning. The `PublishWithOverride` variant
-is the *only* `AppAction` that carries a relay set; the audit string is
+action exists and produces a debug warning. `PublishWithOverride` is the only
+publish action payload that carries a relay set; the audit string is
 required (compile-time non-optional); the warning fires unconditionally on
 dispatch.
 
@@ -313,12 +315,17 @@ This is the SideEffect-lane payload per ADR-0007. The platform diagnostic UI ren
 
 ## 7.5 Atomicity contract
 
-Per `docs/design/kernel-substrate.md` §4 ("Atomicity"): the action ledger ensures the action's local store insert (for the signed event) happens in the same actor message as the ledger transition. The publish plan's per-relay attempts are *not* atomic with the local insert — relays may NACK over a long window — but the ledger correlates them.
+Publish intent handling must keep the local store transition and publish attempt
+state correlated under one Rust-owned action/actor path. The publish plan's
+per-relay attempts are not atomic with the local insert: relays may NACK over a
+long window, so the action/publish state records the outcome.
 
 The publish atomicity test must prove that publish OK / store fail and store OK
 / publish fail both roll back atomically. Specifically:
 
-- The publish-fanout step in `PublishWithOverride::reduce` is `AwaitCapability { request: CapabilityRequest::Publish { ... }, next_step }` per the `ActionTransition` enum in `docs/design/kernel-substrate.md` §4. The kernel owns the publish attempts and reports per-relay outcomes back into the next `reduce`.
+- The publish-fanout step is an actor-owned command path emitted by the
+  `ActionModule::execute` implementation. The kernel owns publish attempts and
+  reports per-relay outcomes through publish/action state.
 - The local store insert happens *before* the publish step (optimistic insert), with rollback on `PartiallyFailed` if `required_success_count` is not met. This matches the "atomic with reversibility" reading of doctrine D4 (single writer per fact).
 
 ## 7.5.1 Address-pointer routing on the publish path
@@ -332,7 +339,8 @@ The publish planner does **not** require a new routing variant for address point
 
 ## 7.6 What M2 does not cover (deferred)
 
-- **Action ledger schema** — `docs/design/kernel-substrate.md` §4 is the design; M6 implements.
+- **Action/publish state schema** — implemented by the publish engine and
+  action registry.
 - **Retry policy** — exponential backoff parameters land in M6.
 - **Concurrent publish coalescing** — if two actions publish the same event (a republish), the planner can dedupe to one wire EVENT per relay. Defer to M6 / M7 stress test.
 - **NIP-42 auth challenge during publish** — relays may demand AUTH before accepting an EVENT. Wires up in M5.

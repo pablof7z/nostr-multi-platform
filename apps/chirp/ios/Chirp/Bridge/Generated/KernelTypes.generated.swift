@@ -10,7 +10,7 @@
 // fails any PR whose generated Swift differs from a fresh run.
 //
 // Stage 1 pilot — 7 flat-record types (V6, docs/architecture-audit/
-// v6-codegen-plan.md §6b). Stage 2 expands to the dotted-projection-key
+// docs/retired/codegen-v6.md §6b). Stage 2 expands to the dotted-projection-key
 // registry; Stage 3 sweeps the remaining hand-written Decodables.
 // ─────────────────────────────────────────────────────────────────────────────
 

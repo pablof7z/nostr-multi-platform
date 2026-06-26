@@ -1,6 +1,6 @@
 //! Integration tests for the per-relay rationale carried through the publish
 //! engine snapshot projection (Steps 1–4 of
-//! `docs/architecture-audit/per-relay-publish-status-rationale.md`).
+//! `docs/retired/per-relay-publish-status.md`).
 //!
 //! The publish-engine surface tested here is:
 //!   - `InFlight.relay_reasons` is populated from `OutboxResolver::resolve()`

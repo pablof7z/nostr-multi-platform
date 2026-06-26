@@ -2,7 +2,7 @@
 //!
 //! Output paths: `docs/perf/m10.5/<SCENARIO>/perf-report.{json,md}`
 //!
-//! Per `docs/design/ffi-hardening/ci.md` R.2 and R.3. The on-disk schema uses
+//! Per `docs/retired/ffi-hardening-m10-5.md` R.2 and R.3. The on-disk schema uses
 //! the unified [`nmp_testing::perf_report::PerfReport`] type, which is shared
 //! across ffi-stress, firehose-bench, and sanity-gate.
 

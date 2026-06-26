@@ -16,17 +16,14 @@ app-defined record. That separation *is* the D0 demo — see the callout below.
 > exact D0 violation this walkthrough exists to prevent.
 
 > **Composition model.** This walkthrough uses ADR-0046: a downstream app
-> depends on `nmp-defaults` and calls `register_defaults`. There is no
-> generated per-app FFI crate. The old `nmp gen modules` scaffolder and
-> `apps/fixture` were deleted because the generated `FfiApp` never called
-> `register_defaults` and produced a non-functional Nostr app. See
-> [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) for the full
-> rationale.
+> depends on `nmp-defaults` and calls `register_defaults`. See
+> [15 — Codegen: bindings + FFI surface](15-codegen-and-ffi.md) for the
+> binding and composition split.
 
 ## The structural model
 
 Two seams are wired in `register()`: `register_action` for the write path and
-`register_snapshot_projection` for the read path. A `KernelEventObserver` feeds
+`register_typed_snapshot_projection` for the read path. A `KernelEventObserver` feeds
 raw kind:1 events into an app-owned feed store. The difference from the old
 fixture model is that `register()` is the app-core composition root: it **first
 inherits the canonical NMP composition** through
@@ -109,8 +106,8 @@ pub struct NoteRecord {
 }
 
 // Plain projection — cheap read, no actor knowledge.
-pub fn project_feed(items: &[NoteRecord]) -> serde_json::Value {
-    serde_json::json!({ "notes": items })
+pub fn project_feed(items: &[NoteRecord]) -> Option<TypedProjectionData> {
+    Some(encode_feed_projection(items))
 }
 ```
 
@@ -206,7 +203,6 @@ impl KernelEventObserver for FeedObserver {
 
 ```rust
 pub fn accepted() -> Update { Update::ActionAccepted }
-pub enum ViewSpec {}
 pub enum Update { ActionAccepted }
 
 pub fn register(app: &mut impl AppHost) -> FeedStore {
@@ -226,10 +222,10 @@ pub fn register(app: &mut impl AppHost) -> FeedStore {
 
     // 4. Read output — projects the feed into the snapshot.
     let projector = Arc::clone(&store);
-    app.register_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
+    app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
         match projector.lock() {
             Ok(g)  => project_feed(&g),
-            Err(_) => serde_json::Value::Null,
+            Err(_) => None,
         }
     });
 
@@ -285,11 +281,11 @@ That shell is the analog of `nmp_app_chirp_register` in `apps/chirp/crates/nmp-a
 - **Skipping `register_live_event_tap`/`open_observed_projection` and rendering raw events in Swift.**
   The feed store is the source of truth; the snapshot projection carries it.
   Raw event arrays across FFI violate D5.
-- **Using the removed `ViewModule` / `DomainModule` traits.** They are not on
-  master — see [05a](05a-substrate-traits.md) §Removed v2 traits.
-- **Expecting a generated per-app FFI crate.** `gen modules` and `apps/fixture`
-  were deleted by ADR-0046. The staticlib shell is hand-written glue, not
-  generator output.
+- **Inventing a new extension family.** Use the shipped action, observer,
+  projection, capability, and composition seams unless an ADR changes the
+  substrate.
+- **Expecting generated framework wiring.** The staticlib shell is thin glue
+  that calls the app-core composition root.
 
 See also: [02 — Mental model — kernel + extension seams](02-mental-model.md) ·
 [05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·

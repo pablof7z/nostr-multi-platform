@@ -125,7 +125,7 @@ pub fn replace_test_interest(
 /// diffs against the prior plan. The hook is free to drop sub-shapes, bump
 /// `since`, or otherwise rewrite the plan; any sub-shape whose `shape` is
 /// mutated MUST call [`crate::planner::SubShape::recompute_hash`] (see the
-/// M4 codex review's P1 finding in `docs/perf/codex-reviews/076173d.md`).
+/// M4 codex review's P1 finding in `docs/retired/removed-documents.md`).
 ///
 /// Direction: `nmp-core` defines the seam; the host shell installs the policy
 /// — keeping coverage-gate / NIP-77 vocabulary out of `nmp-core` per D0
@@ -235,7 +235,7 @@ pub struct SubscriptionLifecycle {
     ///
     /// Defaults to empty so existing tests and pre-PD-033-C call sites see
     /// the unchanged Case D behaviour. See
-    /// `docs/architecture-audit/pd033c-plan.md` §4.3 for the routing-gap
+    /// `docs/retired/pd033c-routing-gaps.md` §4.3 for the routing-gap
     /// rationale.
     bootstrap_content_relays: Vec<RelayUrl>,
     /// PD-033-C — cold-start bootstrap indexer relays.

@@ -26,17 +26,20 @@ After processing each `CoreMsg`, the actor checks if a flush is due:
 - **Size-based:** `deltas.len() >= max_buffered_deltas` (default 256 pre-coalesce).
 - **Forced:** certain messages (account switch, view open) force an immediate flush.
 
-On flush, the actor **coalesces by view id, applying per-view-kind merge rules**, then emits one `AppUpdate::ViewBatch { rev, views: coalesced_deltas }`. If `pending_full_state` is true, emit `AppUpdate::FullState` instead and discard the buffered deltas.
+On flush, the actor **coalesces by view id, applying per-view-kind merge rules**,
+then emits one typed update frame with changed projection data. If a full
+baseline is pending, emit the full baseline instead and discard the buffered
+deltas.
 
 ```rust
-fn flush(&mut self) -> AppUpdate {
+fn flush(&mut self) -> UpdateFrame {
     self.deltas.sort_by_key(|d| d.view_id());
     let mut out = Vec::new();
     for (view_id, group) in self.deltas.drain(..).chunk_by(|a, b| a.view_id() == b.view_id()) {
         out.extend(coalesce(view_id, group.collect()));
     }
     self.last_flush = Instant::now();
-    AppUpdate::ViewBatch { rev: ..., views: out }
+    encode_update_frame(rev, out)
 }
 ```
 

@@ -43,8 +43,8 @@ fn main() {
     let store: Arc<Mutex<Vec<NoteRecord>>> = Arc::new(Mutex::new(Vec::new()));
     {
         let s = Arc::clone(&store);
-        builder.register_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
-            s.lock().map(|g| project_feed(&g)).unwrap_or(serde_json::Value::Null)
+        builder.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
+            s.lock().ok().and_then(|g| project_feed(&g))
         });
     }
 
@@ -79,9 +79,9 @@ so the impls are never reached:
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 pub enum Action {}  // no variants — unreachable by construction
 
-pub struct AppActionModule;
+pub struct MyActionModule;
 
-impl nmp_core::substrate::ActionModule for AppActionModule {
+impl nmp_core::substrate::ActionModule for MyActionModule {
     const NAMESPACE: &'static str = "myapp.action";
     type Action = Action;
 
@@ -99,27 +99,28 @@ so neither body is ever invoked."
 
 ## Adding publishing (write path)
 
-To dispatch actions (e.g. `PostNote`) call `nmp_app_dispatch_action` after `start`:
+Bridge-level dispatch for actions such as `PostNote` builds a typed
+`DispatchEnvelope` with a host builder and calls `nmp_app_dispatch_action_bytes`
+after `start`. App-facing APIs should expose typed intents, not namespace/body
+transport helpers:
 
 ```rust
-use std::ffi::CString;
-use nmp_ffi::nmp_app_dispatch_action;
+let envelope: Vec<u8> = my_app_core::actions::post_note_envelope(
+    correlation_id,
+    "Hello Nostr",
+);
 
-// Serialize the action value to JSON, then dispatch.
-let action_json = serde_json::to_string(&my_app_core::Action::PostNote {
-    text: "Hello Nostr".into(),
-}).unwrap();
-let ns   = CString::new(my_app_core::PostNoteActionModule::NAMESPACE).unwrap();
-let body = CString::new(action_json).unwrap();
+let result_ptr = nmp_ffi::nmp_app_dispatch_action_bytes(
+    app,
+    envelope.as_ptr(),
+    envelope.len(),
+);
 
-// SAFETY: app is valid; ns/body are NUL-free C strings.
-let result_ptr = unsafe { nmp_app_dispatch_action(app, ns.as_ptr(), body.as_ptr()) };
-
-// result_ptr is a heap-allocated JSON string; free it after reading.
 let result = unsafe { std::ffi::CStr::from_ptr(result_ptr) }
-    .to_string_lossy().into_owned();
+    .to_string_lossy()
+    .into_owned();
 nmp_ffi::nmp_free_string(result_ptr);
-
+```
 // {"correlation_id":"..."} = accepted; {"error":"..."} = rejected.
 ```
 
@@ -160,8 +161,8 @@ creates a second composition path and risks duplicate default registration.
 
 ```
 NmpAppBuilder::new()
-  │  register_snapshot_projection(...)   ┐ wire before
-  │  register_live_event_tap(...)        │ start — both states
+  │  register_typed_snapshot_projection(...)   ┐ wire before
+  │  register_live_event_tap(...)              │ start — both states
   │  register_action(M)                  ┘ accept them
   │
   ├─ .in_memory()  or  .storage_path(p)
@@ -169,8 +170,8 @@ NmpAppBuilder::new()
   └─ .start(RunConfig::default())
         ↓ *mut NmpApp  (kernel running, relays connecting)
         │
-        ├─ nmp_app_create_new_account(...)   generate key
-        ├─ nmp_app_dispatch_action(...)      publish
+        ├─ nmp_app_create_new_account(...)       generate key
+        ├─ nmp_app_dispatch_action_bytes(...)    publish
         └─ nmp_app_stop(app) + nmp_app_free(app)  shutdown
 ```
 

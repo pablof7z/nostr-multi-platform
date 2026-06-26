@@ -1,7 +1,7 @@
 //! S5 — Reentrancy (dispatch from inside reconciler callback).
 //!
-//! Spec: docs/design/ffi-hardening/scenarios.md §S5
-//! Gate: docs/design/ffi-hardening/gates.md §G-S5
+//! Spec: docs/retired/ffi-hardening-m10-5.md §S5
+//! Gate: docs/retired/ffi-hardening-m10-5.md §G-S5
 //!
 //! Registers a callback that, on every emit, immediately dispatches a profile
 //! `resolve_ref` for a test pubkey from the listener thread.
@@ -226,7 +226,7 @@ pub(crate) fn run(cfg: S5Config, report: &mut ScenarioMetrics) {
     let dispatch_loss = emit_count.saturating_sub(reentrant_count);
     let deadlock_count: u64 = if watchdog_fired { 1 } else { 0 };
 
-    // G-S5 gates — per docs/design/ffi-hardening/gates.md §G-S5.
+    // G-S5 gates — per docs/retired/ffi-hardening-m10-5.md §G-S5.
     report.gates.push(
         Gate::eq("deadlocks", deadlock_count as f64, 0.0)
             .with_note("G-S5: zero deadlocks (5 s external watchdog; epoch-absolute timestamps)"),

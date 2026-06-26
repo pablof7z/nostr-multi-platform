@@ -142,7 +142,7 @@ pub(crate) struct RelayStatus {
     /// (`#[schemars(skip)]`): that emitter renders flat-record types only, and a
     /// nested `Option<RelayInfoDoc>` is Stage-2/3 scope (see
     /// `crates/nmp-codegen/src/swift.rs` + `docs/architecture-audit/
-    /// v6-codegen-plan.md`). iOS reads `info` through the `relay_diagnostics`
+    /// docs/retired/codegen-v6.md`). iOS reads `info` through the `relay_diagnostics`
     /// projection — both the authoritative serde-JSON subtree and the `KRDG`
     /// typed FlatBuffers sidecar (`InfoRow`) — not through this flat mirror, so
     /// skipping it from the schema costs the shell nothing. `serde` still

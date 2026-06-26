@@ -12,7 +12,7 @@ commands queue until the actor is spawned with the final configuration.
 
 ## 1. Problem (code-grounded)
 
-Historical root cause: `nmp_app_new()` spawned the actor thread immediately.
+Root cause: `nmp_app_new()` spawned the actor thread immediately.
 The actor then blocked on the first command before constructing the kernel — an
 explicit race absorber so the host could run setters after `nmp_app_new` but
 before the kernel was built. The kernel construction point read every wiring

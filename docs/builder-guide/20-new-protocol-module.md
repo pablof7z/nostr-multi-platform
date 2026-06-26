@@ -40,8 +40,8 @@ snapshot projector for the group-chat read model. Minimum surface:
 | Seam | Must provide | Reference |
 |---|---|---|
 | `ActionModule` | `NAMESPACE`, `type Action`, `start()`, `execute()` dispatching `ActorCommand` | `crates/nmp-nip29/src/action/mod.rs` |
-| `register_snapshot_projection` | `snapshot_json() -> serde_json::Value` on the read model; registered under `nmp.<crate>.*` | `crates/nmp-nip29/src/register.rs:66` |
 | `register_live_event_tap` / `open_observed_projection` | `KernelEventObserver` impl populating the read model from raw `KernelEvent`s; use observed projection for late-joining/hydrating views | `nmp-app-chirp`'s observer pattern |
+| `register_typed_snapshot_projection` | typed snapshot encoder on the read model; registered under `nmp.<crate>.*` | `crates/nmp-nip29/src/register.rs:66` |
 | `CapabilityModule` | request → native execution → typed result *envelope* (never `Result`) | [16 — Capabilities](16-capabilities.md) |
 
 The unifying ownership rule a protocol crate states explicitly
@@ -65,8 +65,8 @@ pub fn register_actions(app: &mut NmpApp) {
 
 // Called separately after the read model is constructed.
 pub fn register_projector(app: &mut NmpApp, projection: Arc<GroupChatProjection>) {
-    app.register_snapshot_projection("nmp.nip29.group_chat", move || {
-        projection.snapshot_json()    // cheap, non-blocking
+    app.register_typed_snapshot_projection("nmp.nip29.group_chat", move || {
+        projection.typed_snapshot()    // cheap, non-blocking
     });
 }
 ```
@@ -186,9 +186,9 @@ consumer among many.*
 - **Protocol crate mutates session state.** Identity/account transitions are
   `nmp-signers` + the kernel's `AccountManager`; a protocol crate reads scope,
   never writes it.
-- **Using removed v2 traits.** `DomainModule`, `ViewModule`, `IdentityModule`,
-  `ModuleRegistry` are not on master. See [05a](05a-substrate-traits.md)
-  §Removed v2 traits.
+- **Bypassing the shipped seams.** Protocol crates use `ActionModule`,
+  `KernelEventObserver`, snapshot/typed projection registration, and
+  capabilities.
 
 See also: [05a — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [07 — Subscription planner](07-subscription-planner.md) ·

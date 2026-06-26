@@ -14,7 +14,13 @@ NIP-29 segregates kinds into three populations by *signer authority* and *routin
 | **Moderation** | 9000–9009 | a current admin | host relay (pin) | regular (audit trail) |
 | **Group metadata** | 39000–39003 | the **relay** | host relay (pin) — only ever exists there | parameterized-replaceable on `d = group_id` |
 
-This is the structure the `DomainModule` impls follow (per `../nip29-crate.md` §3.1). The kernel's generic ingest pipeline dispatches events to `nmp-nip29`'s own ingest hook; that hook (not the kernel) does the NIP-29-specific work: structural validation, audit-trail materialisation, and routing of unknown h-tagged kinds to the `GroupContextEvent` fallback. Authority validation for admin actions is a *publish-time* (action-dispatch) concern, not an ingest-time concern — see `moderation.md` §3. Ingest never drops a 9000-9022 for "wrong signer"; it records the audit event regardless and lets the relay's reflected 39001/39002 (or absence thereof) tell the canonical story.
+This is the structure the `nmp-nip29` protocol records, actions, and projections
+follow. The kernel's generic ingest pipeline dispatches accepted events to
+`nmp-nip29`'s ingest/read-model hooks; those hooks do the NIP-29-specific work:
+structural validation, audit-trail materialisation, and routing of unknown
+`h`-tagged kinds to the `GroupContextEvent` fallback. Authority validation for
+admin actions is a publish-time action concern, not an ingest-time concern; see
+`moderation.md` §3.
 
 ## 2. Full catalog
 
@@ -61,7 +67,12 @@ Highlighter overloads kind:11 as **two distinct event shapes** with the same wir
 
 #### Future / extensibility
 
-NIP-29 explicitly allows **any kind** with an `h` tag to be a group event. The `nmp-nip29` ingest path therefore checks for `h` first and routes ingest *to the group context*, then dispatches by kind to the owning DomainModule (if any). Unknown kinds with `h` are stored in a generic `GroupContextEvent` DomainRecord so apps that ship custom group event kinds (livestreams, polls, files) can layer their own DomainModules without modifying `nmp-nip29`.
+NIP-29 explicitly allows **any kind** with an `h` tag to be a group event. The
+`nmp-nip29` ingest path therefore checks for `h` first and routes ingest to the
+group context, then dispatches by kind to the owning protocol/app handler if
+one exists. Unknown kinds with `h` are stored as generic `GroupContextEvent`
+records so apps that ship custom group event kinds can layer their own
+projection/action logic without modifying `nmp-nip29`.
 
 ### 2.2 User management
 
@@ -72,7 +83,7 @@ NIP-29 explicitly allows **any kind** with an `h` tag to be a group event. The `
 - **Content:** optional human-readable reason for joining
 - **Signer:** the prospective member
 - **Routing:** host relay (pin)
-- **Owner:** `nmp-nip29::GroupModerationEvent` DomainModule (audit trail); emitted by `JoinRequest` ActionModule
+- **Owner:** `nmp-nip29::GroupModerationEvent` audit/read model; emitted by `JoinRequest` ActionModule
 - **Relay reaction:** open + uncoded → publish 39002 with new member. Closed + valid code → publish 39002 + consume code (single-use per Highlighter's notes; matches relay29 convention). Closed + no code → silently held for admin review, or rejected with a typed error per the relay's policy.
 - **Notes:** the `code` tag mechanism is the same one used by `create-invite` (kind:9009) on the admin side. A relay accepting a 9021 with a `code` consumes the code from its store.
 
@@ -156,25 +167,25 @@ All four kinds share:
 #### Kind 39000 — Group metadata
 
 - **Optional tags:** `["name", <text>]`, `["picture", <url>]`, `["about", <text>]`, `["public"]`/`["private"]`, `["open"]`/`["closed"]`, `["restricted"]`, `["hidden"]`
-- **Owner:** `nmp-nip29::Group` DomainModule
+- **Owner:** `nmp-nip29::Group` protocol record/projection
 - **Defaults:** per Highlighter's reference, absence of `private`/`closed`/`hidden` tags defaults to public/open/visible (`groups.rs::build_summary` lines 469–476). `nmp-nip29` adopts the same defaults.
 
 #### Kind 39001 — Group admins
 
 - **Optional tags:** one or more `["p", <pubkey>]` (2-element form) or `["p", <pubkey>, <role_name>]` (3-element form for relays that publish 39003) or `["p", <pubkey>, <role_name>, <description>]`
-- **Owner:** `nmp-nip29::GroupAdmins` DomainModule
+- **Owner:** `nmp-nip29::GroupAdmins` protocol record/projection
 - **Notes:** Highlighter ignores the optional role/description fields today and projects only the pubkey set. `nmp-nip29` preserves the 3rd + 4th elements in the DomainRecord so role-aware UIs can opt-in.
 
 #### Kind 39002 — Group members
 
 - **Optional tags:** one or more `["p", <pubkey>]`
-- **Owner:** `nmp-nip29::GroupMembers` DomainModule
+- **Owner:** `nmp-nip29::GroupMembers` protocol record/projection
 - **Notes:** For very large groups, 39002 may be sharded by the relay (NIP-29 mentions but does not standardize sharding). `nmp-nip29` does **not** support sharded 39002 in M11.5; we observe whichever 39002 the relay sends as ground truth. If sharding emerges as a real-world need, a follow-up milestone adds union semantics.
 
 #### Kind 39003 — Group roles
 
 - **Optional tags:** one or more `["role", <role_name>, <description>]` declaring the role names the relay knows about for this group
-- **Owner:** `nmp-nip29::GroupRoles` DomainModule
+- **Owner:** `nmp-nip29::GroupRoles` protocol record/projection
 - **Notes:** Optional in the NIP; many relays don't publish it. The view modules treat absence as "role-name strings on 39001 entries are decorative, not first-class".
 
 ## 3. Tag conventions across kinds
@@ -214,9 +225,9 @@ in their context.
 
 This applies to:
 
-- **kind:7 (reaction) with an `h` tag** → `GroupReaction` DomainModule + `ReactInGroup` ActionModule in `nmp-nip29`. The non-`h` (public) reaction stays in `nmp-nip25`.
-- **kind:1111 (NIP-22 comment) with an `h` tag** → `GroupComment` DomainModule + `CommentInGroup` ActionModule in `nmp-nip29`. The non-`h` (public) comment stays in `nmp-nip22`.
-- **kind:16 (generic repost) with an `h` tag** → `GroupRepost` DomainModule + `ShareEventIntoGroup` ActionModule in `nmp-nip29` (per §2.2). The non-`h` repost would live in a future `nmp-nip18`.
+- **kind:7 (reaction) with an `h` tag** → `GroupReaction` read model + `ReactInGroup` ActionModule in `nmp-nip29`. The non-`h` public reaction stays in `nmp-nip25`.
+- **kind:1111 (NIP-22 comment) with an `h` tag** → `GroupComment` read model + `CommentInGroup` ActionModule in `nmp-nip29`. The non-`h` public comment stays in `nmp-nip22`.
+- **kind:16 (generic repost) with an `h` tag** → `GroupRepost` read model + `ShareEventIntoGroup` ActionModule in `nmp-nip29` (per §2.2). The non-`h` repost would live in a future `nmp-nip18`.
 - **kind:11 with `h`** (both `t=discussion` and artifact-share variants) → `nmp-nip29` per §2.1.
 - **kind:9 with `h`** → `nmp-nip29` per §2.1.
 
@@ -226,4 +237,8 @@ The only kind we explicitly **don't** model in `nmp-nip29` despite being able to
 
 - **kind:1 (text note) with an `h` tag.** Some relays accept kind:1 inside groups; we treat that as kind:9-equivalent for projection but do not actively emit kind:1 from `nmp-nip29` actions. UI rendering: same as chat. Kept out of `nmp-nip29`'s action surface to avoid ambiguity with public kind:1 owned by the app's social crate; ingest is best-effort.
 
-**Custom kinds with `h` tags** (livestreams, polls, files, future NIPs) follow the generic `GroupContextEvent` fallback per §2.1's "Future / extensibility" note — apps that ship custom group event kinds layer their own DomainModules without modifying `nmp-nip29`, because the `h`-tag-is-the-ownership rule is structural and works for any kind.
+**Custom kinds with `h` tags** (livestreams, polls, files, future NIPs) follow
+the generic `GroupContextEvent` fallback per §2.1's "Future / extensibility"
+note; apps can add their own handlers/projections without modifying
+`nmp-nip29`, because the `h`-tag-is-the-ownership rule is structural and works
+for any kind.

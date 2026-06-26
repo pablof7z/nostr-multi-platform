@@ -73,10 +73,8 @@ pub trait ActionModule: Send + Sync + 'static {
         send: &dyn Fn(crate::actor::ActorCommand),
     ) -> Result<(), String>;
 
-    // NOTE (superseded by #1748): the `preferred_action_id` hook shown in the
-    // original ADR was removed. The registry ALWAYS mints the correlation_id —
-    // the operation's identity — and an action must never substitute output
-    // data (such as a signed event's id) for it.
+    // The registry mints the correlation_id. An action must not substitute
+    // output data, such as a signed event id, for the operation identity.
 }
 ```
 
@@ -125,8 +123,8 @@ and with ADR-0010's generated-app-enum direction.
 The two C-ABI symbols (`nmp_app_register_action_executor`,
 `nmp_app_register_action_module`) become un-needed at the same time. Both are
 deleted; the `extern "C"` surface shrinks. Cross-reference to the D8 constraint
-("no high-frequency FFI loops"): this refactor *reduces* FFI surface — the
-dispatch path itself (`nmp_app_dispatch_action`) is untouched.
+("no high-frequency FFI loops"): this refactor *reduces* FFI surface while
+keeping the generic action doorway.
 
 A grep for external consumers of `nmp_app_register_action_executor` found
 zero Swift / Kotlin / Objective-C callers, so deletion was empirically safe.

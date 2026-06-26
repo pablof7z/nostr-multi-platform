@@ -11,7 +11,7 @@ This section translates that into the vocabulary you will actually see in
 | Concept | NMP type | Where |
 |---|---|---|
 | `AppState` | `AppState { rev, open_view_count }` | `app.rs:55-59` |
-| `AppAction` | `KernelAction` (`Start`/`OpenView`/`OpenUri`/…) | `app.rs:21-36` |
+| host/user action | `KernelAction` (`Start`/`OpenView`/`OpenUri`/…) | `app.rs:21-36` |
 | message in | `ActorCommand` (internal) | `actor/mod.rs:26-51` |
 | `handle_message` | `dispatch_command(...)` | `actor/mod.rs:162-` |
 | state emission | `UpdateFrame` via `update_tx`; canonical runtime payload is FlatBuffers | `app.rs:38-48`, `tick.rs:53-62` |
@@ -65,13 +65,9 @@ replies re-enter the **same** actor loop as `ActorMsg::Relay`
 
 There is **one** writer (the actor). Everything else is a courier.
 
-> **Reality note (cite drift, see [27]).** `aim.md:31` describes the spec's
-> reference model as a `flume` channel plus a separate **tokio** runtime for
-> async I/O. The shipped kernel realizes the same TEA contract with
-> `std::sync::mpsc` channels, `std::thread`, and blocking `tungstenite`
-> sockets — no `flume`, no tokio runtime. The *contract* (single-writer actor,
-> fire-and-forget dispatch, snapshot emit) is identical; the thread/channel
-> primitives differ. Build against the contract, not the spec's prose.
+The shipped kernel realizes the TEA contract with `std::sync::mpsc` channels,
+`std::thread`, and blocking `tungstenite` sockets. Build against the contract:
+single-writer actor, fire-and-forget dispatch, and snapshot emission.
 
 ## The four load-bearing invariants
 
@@ -166,4 +162,4 @@ into kernel internals.
 See also: [05 — Kernel substrate — traits + seams](05a-substrate-traits.md) ·
 [06 — Reactivity contract (D8)](06-reactivity-contract.md) ·
 [17 — iOS shell — SwiftUI consumes the kernel](17-ios-shell.md) ·
-[27 — Doc/code discrepancies (orchestrator queue)](27-discrepancies.md)
+GitHub Issues or the owning doc

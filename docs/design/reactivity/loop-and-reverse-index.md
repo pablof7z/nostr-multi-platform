@@ -8,7 +8,7 @@
 
 > **Status:** rev 1 — incorporating findings from reactivity-bench run 001 (2026-05-17). See `docs/perf/reactivity-bench/2026-05-17-run-001.md` for the measurement report. Decisions: ADR-0001 (composite keys), ADR-0002 (per-view delta budget), ADR-0003 (working-set memory), ADR-0004 (allocation measurement).
 
-> **Prerequisites:** `product-spec.md` §6.2 (`AppState`), §6.4 (`AppUpdate`), §6.6 (Subscriptions/views), §7.2 (planner), §7.6 (Views), Appendix A1 (FFI architecture).
+> **Prerequisites:** `product-spec.md` §6.2 (host state), §6.4 (typed update frames), §6.6 (subscriptions/views), §7.2 (planner), §7.6 (views), Appendix A1 (FFI architecture).
 
 ---
 
@@ -50,7 +50,7 @@ relay/sync ───▶ │  CoreMsg::EventInserted(event)           │
                 │                                          │
                 │  ── on tick (≤60Hz) ──                   │
                 │  DeltaBuffer::flush()                    │
-                │  ─▶ AppUpdate::ViewBatch                 │
+                │  ─▶ UpdateFrame with changed projections │
                 │  ─▶ update_tx.send()                     │
                 │                                          │
                 └──────────────────────────────────────────┘

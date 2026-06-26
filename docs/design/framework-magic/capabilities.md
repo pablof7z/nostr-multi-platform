@@ -46,7 +46,11 @@ The bug-extinction surface in `overview-and-dx.md` §3.3 does not have a single 
 4. **In-place refinement on reaction arrival:** insert a kind:7 reaction targeting the kind:1 event. Assert `items[0].reaction_summary` updates from 0 to 1 in the next `ViewBatch`; no row re-creation; `id` stable.
 5. **Freshness hint, not gate:** insert an older cached kind:0 for Alice (created two days ago), then a fresher one (created an hour ago). Assert the payload reflects the *fresher* one (per C1 supersession), and that the optional `author_display_freshness` field (if exposed by the view module) reads `Recent`, not `DaysOld`. Assert there is no API surface where the test can ask "is this stale?" and have the framework withhold the value pending re-fetch.
 
-**Milestone owner:** **[PARTIAL]** for placeholder shape — the M1 timeline slice ships `author_display` as a non-`Option` `String` with shortened-npub fallback (verified in `crates/nmp-core` timeline tests). However, `author_picture_url` is currently `Option<String>` in the M1 payload: when no kind:0 is present the field is `None` rather than a deterministic identicon URI, which violates D1's "every display field carries a value" guarantee. The D1-compliant fix is to make `author_picture_url: String` non-optional and populate it with a deterministic identicon URI derived from the pubkey hash when no picture URL is known — making the placeholder computable without any network call and without an `Option` that tempts the platform to branch on `None`. The full in-place refinement guarantee is expressed through the current registered projection/feed update-frame path, not the removed `ViewModule` trait.
+**Milestone owner:** the M1 timeline slice ships `author_display` as a
+non-`Option` `String` with shortened-npub fallback. `author_picture_url` is
+optional raw profile data; native/app renderers own missing-picture presentation.
+The in-place refinement guarantee is expressed through registered projections and
+typed update frames.
 
 Test checked in **not** ignored for sub-paths 1 and 5; sub-paths 2/3/4 use a `#[cfg(feature = "m2_projection_cache")]` gate so they activate as M2 lands without a re-edit. The framework-magic delta at M2 exit removes the gate.
 

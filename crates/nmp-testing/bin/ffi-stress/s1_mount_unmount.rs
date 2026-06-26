@@ -1,7 +1,7 @@
 //! S1 — Mount/unmount churn (view-handle wrapper refcount).
 //!
-//! Spec: docs/design/ffi-hardening/scenarios.md §S1
-//! Gate: docs/design/ffi-hardening/gates.md §G-S1
+//! Spec: docs/retired/ffi-hardening-m10-5.md §S1
+//! Gate: docs/retired/ffi-hardening-m10-5.md §G-S1
 //!
 //! Drives 1,000 claim/release pairs/sec across 100 unique pubkeys
 //! for the configured duration (full: 600 s; fast: 60 s).
@@ -143,7 +143,7 @@ pub(crate) fn run(cfg: S1Config, report: &mut ScenarioMetrics) {
     // (callback body is the CString + Arc lock; actual CPU is immeasurable from here).
     let callback_count = CALLBACK_COUNT.load(Ordering::Relaxed);
 
-    // G-S1 gates — per docs/design/ffi-hardening/gates.md §G-S1.
+    // G-S1 gates — per docs/retired/ffi-hardening-m10-5.md §G-S1.
     // RSS: spec <= 5 MiB (iPhone XCUITest).  Host harness drives at ~670 pairs/sec
     // × 2 emit_now/cycle, inflating RSS vs production.  Gate at 5 MiB; a
     // regression shows as FAIL here AND on device.

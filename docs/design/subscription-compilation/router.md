@@ -1,7 +1,6 @@
 # Subscription Compilation §6 — Router-Owned Mailbox Routing
 
-> **Status:** durable design note. The older standalone `nmp-nip65` crate plan
-> is retired; current ownership is `nmp-router`.
+> **Status:** durable design note. `nmp-router` owns mailbox routing.
 
 `nmp-router` owns the NIP-65 mailbox cache and the generic relay-routing
 algorithm used by subscription compilation. The action namespace

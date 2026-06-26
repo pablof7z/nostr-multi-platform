@@ -1,7 +1,7 @@
 //! S3 — Snapshot pressure (AppUpdate::FullState with 100k events).
 //!
-//! Spec: docs/design/ffi-hardening/scenarios.md §S3
-//! Gate: docs/design/ffi-hardening/gates.md §G-S3
+//! Spec: docs/retired/ffi-hardening-m10-5.md §S3
+//! Gate: docs/retired/ffi-hardening-m10-5.md §G-S3
 //!
 //! Injects 100,000 real Schnorr-signed kind-1 events via the real kernel ingest
 //! path (`nmp_app_inject_signed_events`, test-support only).  Full
@@ -195,7 +195,7 @@ pub(crate) fn run(cfg: S3Config, report: &mut ScenarioMetrics) {
         2.0 * 1024.0 * 1024.0
     };
 
-    // G-S3 gates — per docs/design/ffi-hardening/gates.md §G-S3.
+    // G-S3 gates — per docs/retired/ffi-hardening-m10-5.md §G-S3.
     report.gates.push(
         Gate::lte("callback_p99_ms", p99_cb_ms, 20.0)
             .with_note("G-S3: per-emit serialization wall-time p99 <= 20 ms"),

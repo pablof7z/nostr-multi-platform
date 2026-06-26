@@ -1,7 +1,9 @@
 # Framework Magic §C11 — Signer Onboarding
 
 > Parent: `docs/design/framework-magic.md`.
-> Read first: `docs/product-spec/subsystems.md` §7.4 (sessions + signer catalog); `docs/design/kernel-substrate.md` §5 (`CapabilityModule`), §6 (`IdentityModule`).
+> Read first: `docs/product-spec/subsystems.md` §7.4 (sessions + signer catalog);
+> `docs/design/kernel-substrate.md` (capabilities, actions, and composition);
+> ADR-0015.
 
 ## C11. Signer onboarding: bunker:// + nsec creation as kernel actions
 
@@ -14,15 +16,23 @@ In both cases the new account becomes available to the active-session machinery 
 
 **Framework does:**
 
-- The signer catalog at `subsystems.md` §7.4 lines 127–135 names both kinds as supported in `nmp-core` (no FFI signer extensibility — apps don't implement signers).
-- `IdentityModule` (`docs/design/kernel-substrate.md` §6) is the trait family that hosts the local-key and bunker signers. The kernel owns identity ID assignment, secure-store persistence, and session activation routing (kernel-substrate.md §6 last paragraph).
-- `KeyringCapability` (`kernel-substrate.md` §5 lines 305–308) is the kernel-provided capability that wraps macOS Keychain / Windows Credential Manager / Secret Service / Android Keystore. Capability calls report; they do not decide.
-- The NIP-46 rendezvous flow is the `nostr-connect` crate's behavior; the framework wraps it as an `ActionModule` with the standard ledger-correlated capability-await pattern (`kernel-substrate.md` §4 `AwaitCapability` transition).
+- The signer catalog at `subsystems.md` §7.4 names the supported account and signer kinds.
+- `nmp-signers` owns signer implementations, account IDs, signer payloads, and bunker URI parsing; `nmp-signer-iface` holds operation types shared with `nmp-core`.
+- `KeyringCapability` wraps macOS Keychain / Windows Credential Manager / Secret Service / Android Keystore. Capability calls report; they do not decide.
+- The NIP-46 rendezvous flow is wrapped by Rust action/session code; progress and terminal state surface through action/projection state.
 - The NIP-49 encryption is the `nostr` crate's `EncryptedSecretKey`; the framework wraps it as a step inside the `CreateLocalIdentity` action.
 
-**App writes:** for **bunker**, one dispatch with the pasted URL: `dispatch(AppAction::BunkerConnect { url: "bunker://..." })`. For **create new nsec**, one dispatch: `dispatch(AppAction::CreateLocalIdentity { passphrase, label })`. The action ledger row exposes progress (parsing, rendezvous, awaiting user approval on the bunker app, persisted, available); the app's UI renders the ledger row as a step indicator if it wants, but the orchestration is the framework's. The app does **not** call NIP-46 transport code, does **not** invoke NIP-49 encryption, does **not** touch the Keychain directly, and does **not** wire the new identity into the session state.
+**App writes:** for **bunker**, dispatch the typed `BunkerConnect { url:
+"bunker://..." }` action. For **create new nsec**, dispatch
+`CreateLocalIdentity { passphrase, label }`. The action ledger row exposes
+progress (parsing, rendezvous, awaiting user approval on the bunker app,
+persisted, available); the app's UI renders the ledger row as a step indicator
+if it wants, but the orchestration is the framework's. The app does **not** call
+NIP-46 transport code, does **not** invoke NIP-49 encryption, does **not** touch
+the Keychain directly, and does **not** wire the new identity into the session
+state.
 
-**Failure mode prevented:** the constellation of "DIY signer onboarding" bugs that every Nostr-on-mobile app re-discovers — leaked plaintext nsec in app state during the encryption window, lost bunker connection on app suspend, race between persistence and session activation, partial-failure leaving an `Account` in `SessionState` with no usable signer. The action ledger's atomicity (`kernel-substrate.md` §4 "Atomicity" paragraph) makes the "partial success" path explicit and recoverable.
+**Failure mode prevented:** the constellation of "DIY signer onboarding" bugs that every Nostr-on-mobile app re-discovers — leaked plaintext nsec in app state during the encryption window, lost bunker connection on app suspend, race between persistence and session activation, partial-failure leaving an `Account` in `SessionState` with no usable signer. Typed action/session state makes the "partial success" path explicit and recoverable.
 
 **Test:** `c11_bunker_url_and_nsec_creation_complete_via_actions`. The test has two sub-paths against an in-memory `KeyringCapability` mock and a mock NIP-46 rendezvous endpoint:
 
@@ -51,7 +61,12 @@ The full signer catalog at `subsystems.md` §7.4 lists five kinds:
 - NIP-07 (web only) — wired via the web bindings shim after the post-v1 web/wasm milestone; not a v1-ladder contract bullet.
 - External Android Amber via NIP-55 — wired via the `ExternalSignerCapability` (`kernel-substrate.md` §5); not a v1-ladder contract bullet because Android is M15.
 
-C11 covers the two paths the user explicitly named for signer onboarding: *"NIP-46 bunker:// URL parsing + connection flow"* and *"Create new nsec flow. Generate, encrypt (NIP-49), and store via Keychain capability."* The other three signer kinds inherit the same atomicity guarantees by virtue of going through the same `IdentityModule` + `KeyringCapability` plumbing, but their onboarding flows have platform-specific surfaces that the v1 contract does not assert at this level.
+C11 covers the two paths the user explicitly named for signer onboarding:
+*"NIP-46 bunker:// URL parsing + connection flow"* and *"Create new nsec
+flow. Generate, encrypt (NIP-49), and store via Keychain capability."* The
+other signer kinds inherit the same account/session and capability-reporting
+rules, but their onboarding flows have platform-specific surfaces that this
+contract does not assert at this level.
 
 A potential C11.b sibling bullet covering NIP-55 may be added in the M15 framework-magic delta. NIP-07 belongs to the post-v1 web/wasm milestone.
 
@@ -59,12 +74,15 @@ A potential C11.b sibling bullet covering NIP-55 may be added in the M15 framewo
 
 This bullet is a load-bearing demonstration of cardinal doctrine **D7** ("capabilities report; never decide policy" — `docs/product-spec/overview-and-dx.md` §1.5 D7). The KeyringCapability **reports** (here is the stored bytes; persistence succeeded/failed). It does **not decide** (whether to retry, whether to fall back to a different storage backend, whether to surface a UI prompt). The framework decides; the capability executes.
 
-The test's assertion that no plaintext nsec crosses FFI is the structural witness for **D6** ("errors never cross FFI as exceptions"; `overview-and-dx.md` §1.5 D6) and for **D5** (bounded native state: the platform layer never sees unencrypted key material because every read/write of the key goes through the in-Rust `IdentityModule::sign` function).
+The test's assertion that no plaintext nsec crosses FFI is the structural
+witness for **D6** ("errors never cross FFI as exceptions"; `overview-and-dx.md`
+§1.5 D6) and for **D5** (bounded native state: the platform layer never sees
+unencrypted key material; signing remains Rust-owned).
 
 ## Cross-references
 
-- `docs/design/kernel-substrate.md` §6 — `IdentityModule` trait definition.
-- `docs/design/kernel-substrate.md` §5 — `CapabilityModule` framing + the named `KeyringCapability` family.
+- ADR-0015 — signer crate boundary and session ownership.
+- `docs/design/kernel-substrate.md` — capability/action/projection substrate.
 - `docs/product-spec/subsystems.md` §7.4 — `SessionState` + `Account` shapes.
 - The `nostr-connect` and `nostr-keyring` crates (aim.md §3) — the protocol/OS primitives the framework composes.
 

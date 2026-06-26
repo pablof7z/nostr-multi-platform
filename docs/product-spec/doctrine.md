@@ -25,12 +25,10 @@ specific deletion gate and deadline.
 
 The shared Rust core (`nmp-core`) has no concept of a tweet, a podcast episode,
 a highlight, or a group chat. Those nouns belong to your app or to protocol
-crates. You add behavior through the live v1 seams: registered actions,
-event observers, typed projections, feed/source declarations, ref/dependent
-interest claims, and capability bridges. The removed v2
-`ViewModule`/`DomainModule`/`IdentityModule` traits are historical, not current
-extension points. Two apps can be built on the same core without either one
-leaking its domain concepts into the shared substrate.
+crates. You add behavior through the live seams: registered actions, event
+observers, typed projections, feed/source declarations, ref/dependent interest
+claims, and capability bridges. Two apps can be built on the same core without
+either one leaking its domain concepts into the shared substrate.
 
 D0 applies to every shared NMP crate, not only `nmp-core`. `nmp-defaults`,
 protocol crates, reusable engines, binding crates, and FFI/wasm delivery
@@ -122,7 +120,7 @@ This rules out:
 - The same fact showing different values in different parts of the UI.
 - Cache invalidation logic in app code.
 - State that can drift between the local store and the on-screen view.
-- Durable docs that preserve obsolete contracts, old wire tags, completed
+- Durable docs that preserve removed contracts, old wire tags, completed
   migration plans, or example names after the source of truth has moved. Git
   history and closed issues keep history; current docs state current truth.
 
@@ -165,7 +163,7 @@ exclusively in the Rust actor.*
 
 ## D6. Errors show up in state, not as thrown exceptions
 
-When something goes wrong, it surfaces as data — a state field, a toast message, a cleared loading indicator, a diagnostic record, or a JSON error envelope for immediate dispatch rejection. The dispatch function (`dispatch_action`) is fire-and-forget: it never throws, never blocks, and never exposes a native exception or typed `Result`. Swift never wraps framework calls in `do { try }`. Kotlin never writes `try { } catch`. Every accepted operation's failure has at least one observable state field carrying its consequence.
+When something goes wrong, it surfaces as data — a state field, a toast message, a cleared loading indicator, a diagnostic record, or a JSON error envelope for immediate dispatch rejection. Accepted writes are fire-and-forget at the Rust boundary: they never throw, never block, and never expose a native exception or typed `Result`. Swift never wraps framework calls in `do { try }`. Kotlin never writes `try { } catch`. Every accepted operation's failure has at least one observable state field carrying its consequence.
 
 This rules out, by construction:
 

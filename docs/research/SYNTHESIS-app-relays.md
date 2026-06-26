@@ -26,8 +26,7 @@ app-relay fallback). NMP has a clean opportunity to do this right.
 ## Update (shipped)
 
 > The following design choices from §7 below have been **decided and shipped**.
-> The open-question framing in §7 is preserved for historical context, but
-> the resolutions take precedence.
+> The resolutions below are the current reading of this synthesis.
 
 - **AppRelay is now a first-class lane.** `UserConfiguredCategory::AppRelay`
   lives in `crates/nmp-core/src/planner/plan.rs`, distinct from the

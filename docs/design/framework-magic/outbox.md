@@ -35,7 +35,9 @@ The "via the public view path" framing matters: M2's test exercises the compiler
 
 - Step 2 forbids indexer fallback for any write path (`NoAuthorRelays` returned instead).
 - Step 3(b)'s `Indexer` check on recipient inbox lookups is the structural fail-closed for private events.
-- The `PublishWithOverride` action is the *only* `AppAction` variant carrying a `Vec<RelayUrl>` field, and it is forbidden from widening a `PrivateToRecipients` plan to public relays (`outbox.md` §7.4 rule 4).
+- The `PublishWithOverride` action payload is the only publish payload carrying
+  a `Vec<RelayUrl>` field, and it is forbidden from widening a
+  `PrivateToRecipients` plan to public relays (`outbox.md` §7.4 rule 4).
 
 **App writes:** nothing — for the publish path. The app dispatches a publish action (`SendNote`, `React`, `SendDm`, etc.); the action's privacy mode is determined by the action type, not by an app-supplied parameter. There is no `relays` field on `SendNote`. The override exists for tests, migrations, and operator power-user flows; it is structurally outside the safe app path.
 

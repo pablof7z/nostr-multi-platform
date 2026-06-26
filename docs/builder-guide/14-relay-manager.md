@@ -88,7 +88,7 @@ diverted regardless of which kernel method built them. The live worker still
 uses the two hardcoded constants `wss://relay.primal.net` +
 `wss://purplepag.es` (`crates/nmp-core/src/relay.rs:1-2`) — the planner can
 route to mailboxes but is not yet wired into the actor's REQ path (see
-[27 — Doc/code discrepancies](27-discrepancies.md) for this wiring gap).
+GitHub Issues or the owning doc for this wiring gap).
 
 ## NIP-42: challenge → response → re-emit
 

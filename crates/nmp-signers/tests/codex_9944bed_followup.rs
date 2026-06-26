@@ -1,5 +1,5 @@
 //! Regression tests for the three correctness findings in
-//! `docs/perf/codex-reviews/9944bed.md` (codex M6 post-merge review):
+//! `docs/retired/removed-documents.md` (codex M6 post-merge review):
 //!
 //! 1. `Nip07Signer::pubkey()` panic → structured `SignerError::NotReady` at
 //!    construction time (D6: errors never cross FFI as panics).

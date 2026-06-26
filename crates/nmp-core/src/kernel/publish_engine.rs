@@ -1,8 +1,7 @@
 //! Kernel ↔ `PublishEngine` wiring (T117).
 //!
 //! The publish engine (`crate::publish::PublishEngine`) is the per-(event,
-//! relay) state machine that drives the publish retry FSM described in
-//! `docs/research/relay-lifecycle-and-pools.md` §G5. Before T117 the engine
+//! relay) state machine that drives publish retry. Before T117 the engine
 //! shipped but was dead code in production — `kernel::publish_cmd::publish_signed`
 //! one-shotted a single `EVENT` frame and stamped `accepted_locally`. T117
 //! routes every kernel publish through the engine instead.

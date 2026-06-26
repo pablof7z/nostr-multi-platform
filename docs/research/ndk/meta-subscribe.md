@@ -86,8 +86,7 @@ target, **NMP issues one merged REQ** per relay covering all consumers; NDK's
 
 ## 6. Recommendation: use the existing registry/ref/dependent-interest seams
 
-Do not introduce a new trait family and do not revive `ViewModule`. Build
-meta-timeline style features as protocol/read-model code that registers a
+Build meta-timeline style features as protocol/read-model code that registers a
 pointer interest and dependent target interests/refs through existing seams.
 
 If address/event target hydration needs more substrate, add it as a
@@ -124,7 +123,7 @@ through the same planner/registry/cache path as other interests. What is still
 not complete is the full `$metaSubscribe` read model: the pointer-source owner,
 target-set replacement lifecycle, `pointedBy` reverse index, and projection
 sort modes. That work should be a follow-up on the existing ref/dependent-
-interest seams, not a revival of `ViewModule` or an out-of-band fetch lane.
+interest seams, not a new trait family or an out-of-band fetch lane.
 Tracked follow-up: #2113.
 
 #2092 generalizes the adjacent ReducedSource family whose reduced output is an

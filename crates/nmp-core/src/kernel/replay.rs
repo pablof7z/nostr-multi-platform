@@ -6,8 +6,7 @@
 //! (D7: kernel reports, actor decides — inverted here because the kernel is
 //! the policy owner for subscription replay).
 //!
-//! See `docs/research/relay-lifecycle-and-pools.md` G1 for the gap that this
-//! closes, and `docs/design/subscription-compilation/recompilation.md` §4.2
+//! See `docs/design/subscription-compilation/recompilation.md` §4.2
 //! (A5 — `RelayReconnected`) for the semantics: pure replay of the current
 //! plan's sub-shapes targeting this URL, with `since` bumped through the T129
 //! watermark resolver so we don't re-download already-stored events.

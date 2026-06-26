@@ -1,7 +1,7 @@
 //! S4 — Reconciler back-pressure (main thread stalled 250 ms).
 //!
-//! Spec: docs/design/ffi-hardening/scenarios.md §S4
-//! Gate: docs/design/ffi-hardening/gates.md §G-S4
+//! Spec: docs/retired/ffi-hardening-m10-5.md §S4
+//! Gate: docs/retired/ffi-hardening-m10-5.md §G-S4
 //!
 //! Injects 500 signed harness events to build kernel state, then simulates
 //! 12 × 250 ms main-thread stalls during a 60-s event stream.  During each
@@ -282,7 +282,7 @@ pub(crate) fn run(cfg: S4Config, report: &mut ScenarioMetrics) {
         .filter(|(pre, post)| *post <= *pre)
         .count() as u64;
 
-    // G-S4 gates — per docs/design/ffi-hardening/gates.md §G-S4.
+    // G-S4 gates — per docs/retired/ffi-hardening-m10-5.md §G-S4.
     report.gates.push(
         Gate::eq(
             "stalls_injected",

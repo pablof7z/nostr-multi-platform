@@ -22,15 +22,11 @@ module — that's the platform shell layer you wire yourself. See
 [17 — iOS shell](17-ios-shell.md) for the Swift wiring and `apps/chirp/android/`
 as the Android reference.
 
-> **Note.** The old `nmp gen modules` per-app FFI generator and `apps/fixture`
-> were deleted by ADR-0046. There is no generated FFI crate to drift.
-
-**Q3. Where is UniFFI / the typed `AppUpdate` enum?**
+**Q3. Where is UniFFI?**
 **M14, PLANNED.** UniFFI is the binding/lifecycle/capability surface, not the
 hot payload format. The runtime update transport target is FlatBuffers-only;
 master pushes binary `nmp.transport.UpdateFrame` bytes through the raw C/JNI
-callback surface. Code expecting typed UniFFI payload delivery will not compile
-against master. See [15](15-codegen-and-ffi.md).
+callback surface. See [15](15-codegen-and-ffi.md).
 
 **Q4. iOS sim build can't find the Rust symbols (`nmp_app_new`, …).**
 The static lib was not built for the simulator triple. Run
@@ -87,9 +83,7 @@ plus an `eprintln!` with a doc URL. Release cost is zero
 (`subsystems.md:323-336`). Build in debug to see them.
 
 **Q13. Where do I file a doc/code discrepancy?**
-[27 — Doc/code discrepancies](27-discrepancies.md). Most "the doc says X but
-the code does Y" cases are *milestone not landed yet* (e.g. UniFFI M14), not
-bugs. Don't change the spec to match incomplete code; file it.
+Correct the owning doc in place when it is wrong. If the mismatch represents active work rather than bad guidance, open or update the GitHub issue instead.
 
 ## Debug a missing snapshot in 3 steps
 
@@ -177,5 +171,4 @@ value. `metrics` is for perf, not correctness.
   and shows torn state.
 
 See also: [17 — iOS shell — SwiftUI consumes the kernel](17-ios-shell.md) ·
-[18 — Testing — `nmp-testing`, benches, contract tests](18-testing.md) ·
-[27 — Doc/code discrepancies (orchestrator queue)](27-discrepancies.md)
+[18 — Testing — `nmp-testing`, benches, contract tests](18-testing.md).

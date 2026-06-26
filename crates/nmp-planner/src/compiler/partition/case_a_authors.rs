@@ -18,7 +18,7 @@
 //! - Author with NO NIP-65 mailbox AND no `app_relays` configured AND the
 //!   interest is `OneShot + Global` → REQ goes to `bootstrap_indexer_relays`
 //!   with lane `UserConfigured(Indexer)`. This is the PD-033-C planner-
-//!   extension arm (`docs/architecture-audit/pd033c-plan.md` §4.3): kernel-
+//!   extension arm (`docs/retired/pd033c-routing-gaps.md` §4.3): kernel-
 //!   driven discovery oneshots for referenced pubkeys
 //!   (`kernel/discovery.rs::drain_unknown_oneshots`'s profile-oneshot arm) fan
 //!   to `RelayRole::Indexer` for kind:0/3/10002 lookups, so the planner must

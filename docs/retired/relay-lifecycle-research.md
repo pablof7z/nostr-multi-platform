@@ -1,0 +1,1 @@
+The relay-lifecycle gap-analysis snapshot was removed after its T105-era sequencing claims became stale; current relay role and outbox diagnostics design lives in `docs/design/relay-roles.md` and `docs/design/outbox-explorer-diagnostics.md`.

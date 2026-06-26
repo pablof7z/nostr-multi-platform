@@ -53,7 +53,7 @@
 //! 5. Call [`SubShape::recompute_hash`] on any sub-shape whose author set
 //!    actually changed. This is the M4 precedent — post-compile mutators MUST
 //!    recompute the canonical filter hash so the wire-emitter's diff emits the
-//!    new REQ frame (`docs/perf/codex-reviews/076173d.md` P1 bug).
+//!    new REQ frame (`docs/retired/removed-documents.md` P1 bug).
 //!
 //! ### Wildcard-author sub-shapes
 //!

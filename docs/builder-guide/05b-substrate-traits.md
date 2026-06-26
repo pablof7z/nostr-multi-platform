@@ -8,12 +8,6 @@ of the `microblog-core` app crate (from [19a](19a-walkthrough-microblog.md)), a
 sidebar showing how a real Nostr protocol crate uses the same seams, and how
 modules compose through `nmp-defaults`.
 
-> **Historical note.** The old non-Nostr `fixture-todo-core` / `apps/fixture`
-> walkthrough and the `nmp gen modules` per-app FFI generator were deleted by
-> ADR-0046. A generated `FfiApp` never called `register_defaults` and produced a
-> non-functional Nostr app. The microblog walkthrough replaces it as the
-> canonical app-core example.
-
 ## Annotated walkthrough: `microblog-core`
 
 `crates/microblog-core/src/lib.rs` (worked out in
@@ -35,8 +29,8 @@ pub struct NoteRecord {
 ```
 
 The kernel never sees `NoteRecord`. It is an app noun that lives entirely in
-this crate (D0). The kernel sees only the JSON it receives from
-`nmp_app_dispatch_action` and produces as a `projections[key]` slice.
+this crate (D0). The kernel sees only typed action payload bytes and projection
+bytes crossing the registered seams.
 
 ### The action enum and ActionModule
 
@@ -121,21 +115,21 @@ projection.
 ### The snapshot projection
 
 ```rust
-pub fn project_feed(items: &[NoteRecord]) -> serde_json::Value {
-    serde_json::json!({ "notes": items })
+pub fn project_feed(items: &[NoteRecord]) -> Option<TypedProjectionData> {
+    Some(encode_feed_projection(items))
 }
 
 // In register():
 let projector = Arc::clone(&store);
-app.register_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
+app.register_typed_snapshot_projection(FEED_SNAPSHOT_KEY, move || {
     match projector.lock() {
         Ok(g)  => project_feed(&g),
-        Err(_) => serde_json::Value::Null,   // D6: no panic on poison
+        Err(_) => None,   // D6: no panic on poison
     }
 });
 ```
 
-This is D8 + D6 in one line: the closure is cheap (one lock + JSON), and
+This is D8 + D6 in one line: the closure is cheap (one lock + encode), and
 panic-safe (returns `null` on mutex poison rather than aborting the snapshot
 tick).
 
@@ -150,12 +144,10 @@ pub type Store = FeedStore;   // app-core convention alias
 pub fn register(app: &mut impl AppHost) -> FeedStore { /* seam wiring */ }
 pub fn accepted() -> Update { Update::ActionAccepted }
 
-pub enum ViewSpec {}          // empty — no host-driven view specs
 pub enum Update { ActionAccepted }
 ```
 
-There is no generated `FfiApp`. A thin staticlib shell
-(`apps/microblog/nmp-app-microblog/src/lib.rs`) calls
+The thin staticlib shell (`apps/microblog/nmp-app-microblog/src/lib.rs`) calls
 `microblog_core::register(app)`. That app-core function is the composition
 root: it calls `nmp_defaults::register_defaults(app)` once, then wires
 microblog-specific seams.
@@ -164,7 +156,7 @@ See [19b](19b-walkthrough-microblog.md) for the shell.
 ### What `microblog-core` proves
 
 1. A complete app module with writes (`ActionModule`), event-driven view
-   (`KernelEventObserver`), and read output (`register_snapshot_projection`)
+   (`KernelEventObserver`), and read output (`register_typed_snapshot_projection`)
    — **without touching `nmp-core`**.
 2. App state is app-owned (`Arc<Mutex<Vec<NoteRecord>>>`). The kernel never
    stores, migrates, or indexes `NoteRecord`. The module owns its data.
@@ -205,8 +197,8 @@ pub fn register_actions(app: &mut NmpApp) {
 And the snapshot projector:
 
 ```rust
-app.register_snapshot_projection("nmp.nip29.group_chat", move || {
-    projection.snapshot_json()  // non-blocking read-model snapshot
+app.register_typed_snapshot_projection("nmp.nip29.group_chat", move || {
+    projection.typed_snapshot()  // non-blocking read-model snapshot
 });
 ```
 
@@ -215,12 +207,8 @@ The crate-boundary statement at `lib.rs:10–19` is the doctrine in code:
 composition happens at the app layer; the only generic surface added to
 `nmp-core` is the third routing lane (`relay_pin` + lattice Rule 9).*
 
-> **What happened to "13 Domain + 7 View modules"?** Earlier docs cited
-> `domain/mod.rs` and `view/mod.rs` directories with `register_all()` fns.
-> Those reflected the removed v2 DomainModule/ViewModule architecture. The
-> current crate has `action/` for ActionModules and `projection/` for the
-> read model. The protocol noun count (~35 named types) is similar — the
-> *composition mechanism* changed, not the scope.
+`nmp-nip29` uses `action/` for `ActionModule`s and `projection/` for its read
+model.
 
 ## Module composition: app-core `register()`
 
@@ -273,7 +261,7 @@ namespace collisions remain a bug and are recorded in the composition ledger
 2. **Business policy in a `CapabilityModule` (D7 violation).** A capability
    returns a fact (e.g. keychain has a key). It must not decide retry, routing,
    or "should we publish." Policy lives in the `ActionModule::execute` body.
-3. **Blocking inside `register_snapshot_projection`.** The closure runs on the
+3. **Blocking inside `register_typed_snapshot_projection`.** The closure runs on the
    actor thread inside every snapshot tick. Any blocking I/O or long-held lock
    stalls all relay ingest behind it (D8 violation). Delegate to a precomputed
    value; the snapshot projector should read, never compute.
@@ -285,9 +273,9 @@ namespace collisions remain a bug and are recorded in the composition ledger
    The shared `Arc<InMemoryMailboxCache>` and coverage gate must reach multiple
    collaborators with the same instance; copying the block by hand desyncs
    them (V-48).
-6. **Reaching for the removed v2 traits.** `DomainModule`, `ViewModule`,
-   `IdentityModule`, and `ModuleRegistry` are not on master. See
-   [05a](05a-substrate-traits.md) §Removed v2 traits.
+6. **Bypassing the shipped seams.** Use `ActionModule`,
+   `KernelEventObserver`, snapshot/typed projection registration, and
+   capabilities as shown in [05a](05a-substrate-traits.md).
 
 ## Deliverables (this half)
 

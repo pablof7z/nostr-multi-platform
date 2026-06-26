@@ -259,7 +259,7 @@ impl<'a> SubscriptionCompiler<'a> {
     /// event-ids discovery REQ to `indexer_relays` (wrong — content belongs on
     /// the content lane), and Case A would mark a `OneShot + Global + authors`
     /// fetch `unroutable` (silent loss). See
-    /// `docs/architecture-audit/pd033c-plan.md` §4.3.
+    /// `docs/retired/pd033c-routing-gaps.md` §4.3.
     ///
     /// Both new fields are EXCLUDED from `compute_plan_id` so runtime toggles
     /// do not churn sub-ids — matching the `app_relays` treatment in

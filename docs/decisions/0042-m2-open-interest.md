@@ -269,45 +269,10 @@ blocked, superseded, or otherwise non-admitted rows, the pull controller keeps
 advancing through the event log until it either grows the visible window or
 reaches exhaustion under the current perspective.
 
-### Historical context — pre-typed declaration verbs (internal/test-only)
-
-Before `FeedParams`, the active-follows feed used a lower-level declaration
-pair that is now **deleted**:
-
-```rust
-// HISTORICAL — deleted
-app.declare_active_follows_feed([1]);
-app.clear_active_follows_feed();
-```
-
-The exported C symbols with the old contact-feed names were compatibility shims
-that delegated to this declaration path. They are deleted; the current
-primitive is `open_feed(FeedParams)` (step 2). Likewise,
-`open_interest` / `close_interest` (§2) are substrate-level primitives used
-internally by the feed session machinery and non-feed ref/read paths, not an
-app-facing feed API.
-
-### Historical `ActorCommand` variants
-
-- `DeclareActiveFollowsFeed { acquisition_kinds: BTreeSet<u32> }`
-- `ClearActiveFollowsFeed`
-
-These commands were historical scaffolding and are deleted. Active-follows now
-uses the same ReducedSource/dependent-interest mechanism as NIP-51 people-list
-members, mute-list `p` tags, and any future protocol-owned source reducer.
-
-> Chirp author/thread/home feeds now use the generic app-layer feed doorway:
-> construct typed `FeedParams`, call `nmp_app_open_feed`, retain the returned
-> opaque handle, and pass that handle to `nmp_app_close_feed`. What was deleted
-> is the *kernel* `OpenAuthor` / `OpenThread` commands and their bespoke
-> machines (§1); app feed verbs compose through the same generic session
-> machinery instead of keeping Chirp-specific feed symbols.
-
-### Net symbol delta
-
-`nmp_app_open_timeline` remains retired. Renaming the old feed-open vocabulary to
-active-follows declaration vocabulary is a same-responsibility surface
-correction; it is not permission to add a second follow-feed API.
+Chirp author/thread/home feeds use the generic app-layer feed doorway: construct
+typed `FeedParams`, call `nmp_app_open_feed`, retain the returned opaque handle,
+and pass that handle to `nmp_app_close_feed`. App feed verbs compose through the
+same generic session machinery instead of keeping Chirp-specific feed symbols.
 
 ### Consequences
 
