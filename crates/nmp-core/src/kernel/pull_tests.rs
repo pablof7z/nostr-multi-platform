@@ -217,13 +217,59 @@ fn unsupported_shapes_are_rejected() {
     s.event_ids.insert(hex64(1));
     assert!(matches!(k.pull_page(PullScope::InterestShape(s), 0, lim(10, 100)).unwrap_err(),
                      PullError::UnsupportedInterestShape));
-    // Multi-tag intersection.
+    // `addresses` + generic `tags` together cannot be one exact query.
     let mut s2 = InterestShape::default();
-    s2.kinds.insert(1);
-    s2.tags.insert("e".to_string(), [hex64(1)].into());
-    s2.tags.insert("p".to_string(), [hex64(2)].into());
+    s2.kinds.insert(30023);
+    s2.addresses.insert(NaddrCoord { pubkey: hex64(0xAA), kind: 30023,
+                                     d_tag: "slug".to_string() });
+    s2.tags.insert("t".to_string(), ["nostr".to_string()].into());
     assert!(matches!(k.pull_page(PullScope::InterestShape(s2), 0, lim(10, 100)).unwrap_err(),
                      PullError::UnsupportedInterestShape));
+}
+
+/// Generic single-letter tag shapes (`#h`, `#t`, multi-value OR, multi-tag AND)
+/// are now locally hydratable via `StoreQuery::Tags` — they no longer return
+/// `UnsupportedInterestShape` and they page the exact matching events.
+#[test]
+fn tag_shapes_pull_pages_hydrate() {
+    let k = new_kernel();
+    // group note (#h="room") + a hashtag note (#t="nostr") + a multi-tag
+    // event (#h="room" AND #p=<alice>) + noise.
+    seed(&k, raw_tags(1, 0xAA, 9, 1000, vec![vec!["h".into(), "room".into()]]));
+    seed(&k, raw_tags(2, 0xBB, 11, 1100, vec![vec!["h".into(), "other".into()]]));
+    seed(&k, raw_tags(3, 0xCC, 1, 1200, vec![vec!["t".into(), "nostr".into()]]));
+    seed(&k, raw_tags(4, 0xDD, 1, 1300, vec![vec!["t".into(), "bitcoin".into()]]));
+    seed(&k, raw_tags(5, 0xAA, 9, 1400,
+                      vec![vec!["h".into(), "room".into()], vec!["p".into(), hex64(0xEE)]]));
+
+    // #h="room" + kinds [9,11] → 2 events (ids 1 and 5).
+    let mut s_h = InterestShape::default();
+    s_h.kinds.extend([9u32, 11u32]);
+    s_h.tags.insert("h".to_string(), ["room".to_string()].into());
+    let p = page(pull_interest(&k, s_h, 0, 10, 100));
+    assert_eq!(p.entries.len(), 2, "#h=room must hydrate both room events");
+
+    // #t multi-value OR ["nostr","bitcoin"] → 2 events (ids 3 and 4).
+    let mut s_t = InterestShape::default();
+    s_t.kinds.insert(1);
+    s_t.tags.insert("t".to_string(), ["nostr".to_string(), "bitcoin".to_string()].into());
+    let p = page(pull_interest(&k, s_t, 0, 10, 100));
+    assert_eq!(p.entries.len(), 2, "#t OR must hydrate both hashtag events");
+
+    // Multi-tag AND: #h="room" AND #p=<alice> → only id 5 (id 1 lacks #p).
+    let mut s_and = InterestShape::default();
+    s_and.kinds.insert(9);
+    s_and.tags.insert("h".to_string(), ["room".to_string()].into());
+    s_and.tags.insert("p".to_string(), [hex64(0xEE)].into());
+    let p = page(pull_interest(&k, s_and, 0, 10, 100));
+    assert_eq!(p.entries.len(), 1, "multi-tag AND must exclude the one-tag event");
+    assert_eq!(p.entries[0].raw_event.as_ref().unwrap().id, hex64(5));
+
+    // Tag-only, no kinds (empty kinds = any kind) → #h="room" still 2 events.
+    let mut s_anykind = InterestShape::default();
+    s_anykind.tags.insert("h".to_string(), ["room".to_string()].into());
+    let p = page(pull_interest(&k, s_anykind, 0, 10, 100));
+    assert_eq!(p.entries.len(), 2, "tag-only no-kinds must match any kind");
 }
 
 #[test]
@@ -302,13 +348,14 @@ mod gap_store {
         ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
             unimplemented!("GapStore is gap-only")
         }
-        fn scan_by_etag<'a>(
-            &'a self, _target: &EventId, _kinds: &[u32], _limit: usize,
-        ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-            unimplemented!("GapStore is gap-only")
-        }
-        fn scan_by_ptag<'a>(
-            &'a self, _target: &PubKey, _kinds: &[u32], _limit: usize,
+        fn scan_by_tags<'a>(
+            &'a self,
+            _authors: &BTreeSet<PubKey>,
+            _kinds: &[u32],
+            _tags: &std::collections::BTreeMap<nostr::SingleLetterTag, BTreeSet<String>>,
+            _since: Option<u64>,
+            _until: Option<u64>,
+            _limit: usize,
         ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
             unimplemented!("GapStore is gap-only")
         }

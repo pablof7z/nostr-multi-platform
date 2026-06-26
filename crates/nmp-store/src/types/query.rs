@@ -5,9 +5,11 @@
 //! same index logic as the specialized `scan_by_*` methods (no duplicate
 //! index code). See `docs/design/nostrdb-notedeck-lessons.md` §2.3.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use super::ids::{EventId, PubKey};
+use nostr::SingleLetterTag;
+
+use super::ids::PubKey;
 
 /// A read query over the event store, expressed in terms of the index that
 /// will serve it. `since`/`until` are unix-seconds bounds (inclusive);
@@ -49,14 +51,45 @@ pub enum StoreQuery {
         until: Option<u64>,
     },
     /// `idx_kind_dtag_time` — parameterized-replaceable scan for `(kind, d_tag)`.
+    ///
+    /// This is the addressable/replaceable point-scan path (it backs
+    /// [`crate::EventStore::get_param_replaceable`] and `InterestShape.addresses`);
+    /// it is **not** a generic `#d` feed. Generic `{"#d":[...]}` subscriptions use
+    /// [`StoreQuery::Tags`].
     KindDtag {
         kind: u32,
         d_tag: Vec<u8>,
         since: Option<u64>,
         until: Option<u64>,
     },
-    /// `idx_etag_time` — events with kind in `kinds` that `e`-tag `target`.
-    Etag { target: EventId, kinds: Vec<u32> },
-    /// `idx_ptag_time` — events with kind in `kinds` that `p`-tag `target`.
-    Ptag { target: PubKey, kinds: Vec<u32> },
+    /// Generic single-letter tag scan — the one read path for **every**
+    /// single-letter tag dimension (`#e`, `#p`, `#h`, `#t`, `#a`, `#d`, …).
+    /// Backed by the LMDB fork's `tci`/`atci`/`ktci` generic-tag indexes; the
+    /// `MemEventStore` matches against the full raw tag matrix.
+    ///
+    /// Matching semantics (identical across `MemEventStore` and `LmdbEventStore`):
+    ///
+    /// - `authors`: **empty = any author** (no author constraint); otherwise the
+    ///   event author must be one of the set.
+    /// - `kinds`: **empty = any kind** (no kind constraint). This differs from
+    ///   [`StoreQuery::AuthorKind`]/[`StoreQuery::AuthorsKind`], where an empty
+    ///   `kinds` matches **nothing** — tag-only feeds are a required shape, so an
+    ///   empty `kinds` here is a wildcard, never "match nothing".
+    /// - `tags`: a `(SingleLetterTag → values)` map combined as a logical **AND**
+    ///   across keys and a logical **OR** within each key's value set. An event
+    ///   matches a `(tag, values)` entry iff it carries at least one tag row whose
+    ///   first element is the single letter and whose second element is one of
+    ///   `values`. Values are **exact UTF-8 strings** — for `#e`/`#p` these are
+    ///   the 64-char NIP-01 hex strings exactly as they appear in tag rows (no
+    ///   byte decode/re-encode). An empty `tags` map, or any entry with an empty
+    ///   value set, matches **nothing** (a programming error at the builder
+    ///   level; backends defensively yield an empty result).
+    /// - `since`/`until`: inclusive unix-seconds bounds.
+    Tags {
+        authors: BTreeSet<PubKey>,
+        kinds: Vec<u32>,
+        tags: BTreeMap<SingleLetterTag, BTreeSet<String>>,
+        since: Option<u64>,
+        until: Option<u64>,
+    },
 }

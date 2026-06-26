@@ -64,7 +64,7 @@ Each file is bounded ≤ 300 LOC per AGENTS.md. The trait module is read by the 
 
 See [`lmdb/trait.md`](lmdb/trait.md) for the exact `pub trait EventStore` signature with all required methods, return types, and the `StoreError` enum. Summary:
 
-- **Reads:** `get_by_id`, `scan_by_author_kind`, `get_param_replaceable`, `scan_by_kind_dtag`, `scan_by_etag`, `scan_by_ptag`, `scan_by_kind_time`, `scan_expiring_before`. All `scan_*` methods return a streaming `EventIter` so the planner pages without materialising. Cache-coverage queries via `coverage(WatermarkKey)` return a `Coverage` enum (`CompleteAsOf`, `PartialUpTo`, `Unknown`) used by the M2 planner.
+- **Reads:** `get_by_id`, `scan_by_author_kind`, `get_param_replaceable`, `scan_by_kind_dtag`, `scan_by_tags` (generic single-letter tag scan covering `#e`/`#p`/`#h`/`#t`/…), `scan_by_kind_time`, `scan_expiring_before`. All `scan_*` methods return a streaming `EventIter` so the planner pages without materialising. Cache-coverage queries via `coverage(WatermarkKey)` return a `Coverage` enum (`CompleteAsOf`, `PartialUpTo`, `Unknown`) used by the M2 planner.
 - **Writes:** `insert(event, RelayUrl)` returns `InsertOutcome` matching §7.1's table. `delete_by_filter` for foreign-relay cleanups. `tombstones_for` for replay.
 - **Watermarks / sync:** `read_watermark`, `write_watermark`, `list_watermarks_for_relay`.
 - **GC:** `claim(ClaimerId, &[EventId])`, `release(ClaimerId)`, `hot_set_hint(&[EventId])`, `gc_step(GcBudget) -> GcReport`.

@@ -50,21 +50,20 @@ pub trait EventStore: Send + Sync {
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
 
-    /// `idx_etag_time` scan, newest-first. Used by reaction / repost / thread views.
-    /// `kinds` must be non-empty; pass `&[7]` for reactions, `&[6]` for reposts, etc.
-    fn scan_by_etag<'a>(
+    /// Generic single-letter tag scan over the tag-time secondary indexes,
+    /// newest-first. One path for every `#`-tag shape — `#e` (reaction / repost
+    /// / thread views), `#p` (notifications / mentions / DM inbox), `#h`, `#t`,
+    /// `#a`, `#d`, etc. Empty `authors` = any author; empty `kinds` = any kind;
+    /// `since`/`until` bound the window inclusively. Tag values are matched as
+    /// exact UTF-8 strings (so `#e`/`#p` are the 64-char hex strings as stored).
+    /// Multiple tag keys are ANDed; values within one key are ORed.
+    fn scan_by_tags<'a>(
         &'a self,
-        target: &EventId,
+        authors: &BTreeSet<PubKey>,
         kinds: &[u32],
-        limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
-
-    /// `idx_ptag_time` scan, newest-first. Used by notifications / mention views.
-    /// `kinds` must be non-empty.
-    fn scan_by_ptag<'a>(
-        &'a self,
-        target: &PubKey,
-        kinds: &[u32],
+        tags: &BTreeMap<SingleLetterTag, BTreeSet<String>>,
+        since: Option<u64>,
+        until: Option<u64>,
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
 

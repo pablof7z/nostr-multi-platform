@@ -26,10 +26,11 @@
 //!
 //! ## D8 scan budget (#1348)
 //!
-//! `Etag`/`Ptag` store queries have no `until` index bound (the secondary index
-//! is keyed by target only, not by timestamp), so the floor is enforced only in
-//! the visitor. Without a per-visitor count cap this scan is unbounded and
-//! violates D8 (bounded work per tick). [`pin_shape_events_below_floor`]
+//! Every `StoreQuery` variant — including the generic `Tags` tag scan — pushes
+//! the `<= floor` bound into the index via its `until` cursor. But a broad tag
+//! dimension (e.g. a popular `#t` hashtag) can still match a large number of
+//! events within that bound, so without a per-visitor count cap this scan could
+//! violate D8 (bounded work per tick). [`pin_shape_events_below_floor`]
 //! therefore accepts a `max_events` count budget (see `PIN_SCAN_MAX_EVENTS`)
 //! and returns a [`PinScanOutcome`] indicating whether the scan completed or was
 //! truncated.
@@ -54,14 +55,14 @@ use crate::store::{EventStore, StoreQuery};
 /// Per-call event-visit budget for [`pin_shape_events_below_floor`].
 ///
 /// Mirrors `GC_MAX_EVENTS_PER_STEP` (2 000): the whole GC tick (pre-scan +
-/// store step) stays within a comparable wall-clock envelope. For
-/// `AuthorKind`/`KindDtag` the index `until` bound naturally limits results;
-/// for `Etag`/`Ptag` (no index bound) this cap is the sole early-exit.
+/// store step) stays within a comparable wall-clock envelope. Every variant's
+/// `until` bound limits results by timestamp, but a broad `Tags` dimension can
+/// still match many events within that bound, so this cap is the additional
+/// early-exit that keeps a popular-hashtag scan bounded.
 ///
-/// The value is deliberately conservative. Typical active Etag/Ptag shapes
-/// should have far fewer than 2,000 matching events, so in the common case the
-/// cap is never reached. When it IS reached the tick safely defers durable LRU
-/// eviction.
+/// The value is deliberately conservative. Typical active shapes should have far
+/// fewer than 2,000 matching events, so in the common case the cap is never
+/// reached. When it IS reached the tick safely defers durable LRU eviction.
 pub(super) const PIN_SCAN_MAX_EVENTS: usize = 2_000;
 
 /// Result of a single [`pin_shape_events_below_floor`] call.
@@ -81,9 +82,9 @@ pub(super) enum PinScanOutcome {
 ///
 /// Derives its queries from the SAME [`compile_store_query_plan`] mapping
 /// `shape_floor` (and the live `watermark_fn`) read, then pins every match at or
-/// below `floor`. Queries that carry an `until` cursor (`AuthorKind`,
-/// `KindDtag`) push the `<= floor` bound into the index scan; cursor-less
-/// (`Etag`/`Ptag`) queries enumerate all matches and filter in the visitor.
+/// below `floor`. Every query variant carries an `until` cursor, so the
+/// `<= floor` bound is pushed into the index scan; the visitor still applies the
+/// exact predicate and the count budget caps broad `Tags` matches.
 /// Zero-author `KindTime` global feeds are never floored (so `shape_floor`
 /// returns `None` and this is never reached for them); they are skipped
 /// defensively if ever present.
@@ -98,9 +99,9 @@ pub(super) enum PinScanOutcome {
 /// for this shape. When exhausted the function returns
 /// [`PinScanOutcome::Truncated`] **without** having pinned the remaining
 /// events. The caller must then skip LRU eviction for this tick (conservative
-/// safety: we cannot evict what we may not have pinned). For `AuthorKind` and
-/// `KindDtag` the index `until` bound naturally limits candidates; the cap
-/// therefore primarily protects against large `Etag`/`Ptag` result sets.
+/// safety: we cannot evict what we may not have pinned). The `until` bound
+/// limits candidates by timestamp for every variant; the cap therefore
+/// primarily protects against large generic-`Tags` result sets.
 pub(super) fn pin_shape_events_below_floor(
     shape: &InterestShape,
     floor: u64,
@@ -160,14 +161,14 @@ pub(super) fn pin_shape_events_below_floor(
         // `{ since: Some(T), until: Some(floor) }` → the store returns ZERO
         // events → the scan vacuously reports `Complete` → below-floor events go
         // unpinned → LRU eviction drops them → a permanent floor-coherence hole.
-        // The floor is enforced via `until` = floor (cursored) or in the visitor
-        // (cursor-less); `since` MUST be `None` so the scan reaches every
-        // below-floor event. (K3 #1380 Bug 2.)
+        // The floor is enforced via `until` = floor; `since` MUST be `None` so
+        // the scan reaches every below-floor event. (K3 #1380 Bug 2.)
         if let Some(since) = query_since_mut(&mut q) {
             *since = None;
         }
-        // Cursored queries (`AuthorKind`/`KindDtag`) push the `<= floor` bound
-        // into the index; cursor-less (`Etag`/`Ptag`) enforce it in the visitor.
+        // Every query variant carries an `until` cursor, so the `<= floor` bound
+        // is pushed into the index scan (the `None` arm is a defensive
+        // degrade-not-panic fallback that no current variant reaches).
         let enforce_in_visitor = match query_until_mut(&mut q) {
             Some(until) => {
                 *until = Some(floor);

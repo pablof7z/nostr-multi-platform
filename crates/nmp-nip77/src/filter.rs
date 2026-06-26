@@ -207,58 +207,39 @@ impl EligibleFilter {
 
     fn store_queries(&self) -> Vec<StoreQuery> {
         let kinds = self.kinds.clone();
-        if let Some(values) = self.tags.get("e") {
-            let queries: Vec<_> = values
-                .iter()
-                .filter_map(|target| {
-                    hex_to_32(target).map(|target| StoreQuery::Etag {
-                        target,
-                        kinds: kinds.clone(),
-                    })
-                })
-                .collect();
-            if !queries.is_empty() {
-                return queries;
+        let authors: BTreeSet<_> = self.authors.iter().filter_map(|a| hex_to_32(a)).collect();
+
+        // Any single-letter tag dimension (`#e`, `#p`, `#h`, `#t`, `#d`, …)
+        // compiles into ONE generic `Tags` query carrying the full map plus the
+        // filter's authors and kinds. `matches()` post-filters the returned
+        // candidates, so this only needs to be a superset, not exact.
+        if !self.tags.is_empty() {
+            let mut tags: BTreeMap<nostr::SingleLetterTag, BTreeSet<String>> = BTreeMap::new();
+            for (key, values) in &self.tags {
+                let mut chars = key.chars();
+                let (Some(c), None) = (chars.next(), chars.next()) else {
+                    continue;
+                };
+                let Ok(letter) = nostr::SingleLetterTag::from_char(c) else {
+                    continue;
+                };
+                let set: BTreeSet<String> = values.iter().cloned().collect();
+                if set.is_empty() {
+                    continue;
+                }
+                tags.entry(letter).or_default().extend(set);
             }
-        }
-        if let Some(values) = self.tags.get("p") {
-            let queries: Vec<_> = values
-                .iter()
-                .filter_map(|target| {
-                    hex_to_32(target).map(|target| StoreQuery::Ptag {
-                        target,
-                        kinds: kinds.clone(),
-                    })
-                })
-                .collect();
-            if !queries.is_empty() {
-                return queries;
-            }
-        }
-        if let Some(values) = self.tags.get("d") {
-            let addressable_kinds: Vec<u32> = self
-                .kinds
-                .iter()
-                .copied()
-                .filter(|k| (30_000..=39_999).contains(k))
-                .collect();
-            let queries: Vec<_> = addressable_kinds
-                .iter()
-                .flat_map(|kind| {
-                    values.iter().map(|d_tag| StoreQuery::KindDtag {
-                        kind: *kind,
-                        d_tag: d_tag.as_bytes().to_vec(),
-                        since: self.since,
-                        until: self.until,
-                    })
-                })
-                .collect();
-            if !queries.is_empty() {
-                return queries;
+            if !tags.is_empty() {
+                return vec![StoreQuery::Tags {
+                    authors,
+                    kinds,
+                    tags,
+                    since: self.since,
+                    until: self.until,
+                }];
             }
         }
 
-        let authors: BTreeSet<_> = self.authors.iter().filter_map(|a| hex_to_32(a)).collect();
         match (authors.len(), self.kinds.is_empty()) {
             (1, false) => {
                 let Some(author) = authors.iter().next().copied() else {

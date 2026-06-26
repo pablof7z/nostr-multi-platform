@@ -3,8 +3,10 @@
 //! Lives in `events.rs` because `trait` is a Rust keyword.
 //! See `docs/design/lmdb/trait.md` for the full specification.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ops::ControlFlow;
+
+use nostr::SingleLetterTag;
 
 use super::text_search::{
     CompiledIndexSpec, SearchScopeId, TextSearchHit, TextSearchQuery, TextSearchStatus,
@@ -90,19 +92,21 @@ pub trait EventStore: Send + Sync {
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
 
-    /// `idx_etag_time` scan, newest-first. `kinds` must be non-empty.
-    fn scan_by_etag<'a>(
+    /// Generic single-letter tag scan, newest-first — the one read path for
+    /// every single-letter tag dimension (`#e`, `#p`, `#h`, `#t`, `#a`, …).
+    ///
+    /// Wildcard semantics (see [`StoreQuery::Tags`] for the full contract):
+    /// empty `authors` = any author; empty `kinds` = any kind. `tags` is an
+    /// AND-across-keys / OR-within-values map of exact-string tag values.
+    /// `since`/`until` are inclusive bounds. An empty `tags` map (or any entry
+    /// with an empty value set) yields an empty iterator.
+    fn scan_by_tags<'a>(
         &'a self,
-        target: &EventId,
+        authors: &BTreeSet<PubKey>,
         kinds: &[u32],
-        limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
-
-    /// `idx_ptag_time` scan, newest-first. `kinds` must be non-empty.
-    fn scan_by_ptag<'a>(
-        &'a self,
-        target: &PubKey,
-        kinds: &[u32],
+        tags: &BTreeMap<SingleLetterTag, BTreeSet<String>>,
+        since: Option<u64>,
+        until: Option<u64>,
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError>;
 

@@ -33,6 +33,22 @@ fn author_pubkey(i: u8) -> [u8; 32] {
     hex_to_id(&author_hex(i))
 }
 
+/// Build a single-letter `StoreQuery::Tags` (one tag dimension, one value).
+fn tags_query(letter: char, value: &str, kinds: Vec<u32>) -> StoreQuery {
+    let mut tags = std::collections::BTreeMap::new();
+    tags.insert(
+        nostr::SingleLetterTag::from_char(letter).unwrap(),
+        BTreeSet::from([value.to_string()]),
+    );
+    StoreQuery::Tags {
+        authors: BTreeSet::new(),
+        kinds,
+        tags,
+        since: None,
+        until: None,
+    }
+}
+
 /// Visit `limit` events from `q` breaking after `break_after` have been seen.
 /// Returns `(visited, converted)` where `converted` is the global LMDB
 /// materialization count after the call.
@@ -223,7 +239,6 @@ fn etag_streaming() {
     let root_hex = "a".repeat(64);
     let root_ev = h.make_event_with_id(&root_hex, ALICE_HEX, 1, 500);
     h.insert_raw(root_ev, "relay-fixture", 500_000);
-    let root_id = hex_to_id(&root_hex);
     for i in 0..60u64 {
         let reply = h.make_event_with_tags(
             BOB_HEX,
@@ -233,10 +248,7 @@ fn etag_streaming() {
         );
         h.insert_raw(reply, "relay-fixture", (1000 + i) * 1000);
     }
-    let q = StoreQuery::Etag {
-        target: root_id,
-        kinds: vec![1],
-    };
+    let q = tags_query('e', &root_hex, vec![1]);
     let (visited, converted) = visit_break_after(&*h.store, &q, 1000, 5);
     assert_eq!(visited, 5);
     assert_eq!(converted, 5, "Etag: break at 5 must convert exactly 5");
@@ -256,10 +268,7 @@ fn ptag_streaming() {
         );
         h.insert_raw(ev, "relay-fixture", (1000 + i) * 1000);
     }
-    let q = StoreQuery::Ptag {
-        target: ALICE_PUBKEY,
-        kinds: vec![1],
-    };
+    let q = tags_query('p', ALICE_HEX, vec![1]);
     let (visited, converted) = visit_break_after(&*h.store, &q, 1000, 5);
     assert_eq!(visited, 5);
     assert_eq!(converted, 5, "Ptag: break at 5 must convert exactly 5");

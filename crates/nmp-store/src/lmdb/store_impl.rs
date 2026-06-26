@@ -3,7 +3,7 @@
 //! Pure delegation to per-subsystem modules. This file exists so `mod.rs`
 //! stays focused on the open() + Inner shape.
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ops::ControlFlow;
 
 use super::{
@@ -71,22 +71,16 @@ impl EventStore for LmdbEventStore {
         query::scan_by_kind_dtag(&self.inner, kind, d_tag, since, until, limit)
     }
 
-    fn scan_by_etag<'a>(
+    fn scan_by_tags<'a>(
         &'a self,
-        target: &EventId,
+        authors: &BTreeSet<PubKey>,
         kinds: &[u32],
+        tags: &BTreeMap<nostr::SingleLetterTag, BTreeSet<String>>,
+        since: Option<u64>,
+        until: Option<u64>,
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-        query::scan_by_etag(&self.inner, target, kinds, limit)
-    }
-
-    fn scan_by_ptag<'a>(
-        &'a self,
-        target: &PubKey,
-        kinds: &[u32],
-        limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-        query::scan_by_ptag(&self.inner, target, kinds, limit)
+        query::scan_by_tags(&self.inner, authors, kinds, tags, since, until, limit)
     }
 
     fn scan_by_kind_time<'a>(

@@ -258,18 +258,13 @@ impl EventStore for LmdbEventStore {
     ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
         Err(Self::not_enabled())
     }
-    fn scan_by_etag<'a>(
+    fn scan_by_tags<'a>(
         &'a self,
-        _target: &EventId,
+        _authors: &std::collections::BTreeSet<PubKey>,
         _kinds: &[u32],
-        _limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-        Err(Self::not_enabled())
-    }
-    fn scan_by_ptag<'a>(
-        &'a self,
-        _target: &PubKey,
-        _kinds: &[u32],
+        _tags: &std::collections::BTreeMap<nostr::SingleLetterTag, std::collections::BTreeSet<String>>,
+        _since: Option<u64>,
+        _until: Option<u64>,
         _limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
         Err(Self::not_enabled())

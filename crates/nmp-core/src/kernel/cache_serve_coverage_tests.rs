@@ -110,6 +110,36 @@ fn issue_1517_every_scope_shape_has_a_plan_or_tracked_exception() {
             },
         ),
         (
+            // #t hashtag feed — now locally hydratable via the generic tag path
+            // (previously a tracked "unrecognized tag key" exception).
+            "hashtag feed tags",
+            {
+                let mut s = InterestShape {
+                    kinds: BTreeSet::from([1u32]),
+                    ..Default::default()
+                };
+                s.tags
+                    .insert("t".to_string(), BTreeSet::from(["nostr".to_string()]));
+                s
+            },
+        ),
+        (
+            // Multi-tag AND (#e ∩ #p) — now ONE exact `Tags` query (previously a
+            // tracked "multi-tag intersection" exception).
+            "multi-tag intersection tags",
+            {
+                let mut s = InterestShape {
+                    kinds: BTreeSet::from([1u32]),
+                    ..Default::default()
+                };
+                s.tags
+                    .insert("e".to_string(), BTreeSet::from([id1.to_string()]));
+                s.tags
+                    .insert("p".to_string(), BTreeSet::from([pk_hex.to_string()]));
+                s
+            },
+        ),
+        (
             "profile metadata author",
             InterestShape {
                 authors: BTreeSet::from([a1.to_string()]),
@@ -131,20 +161,6 @@ fn issue_1517_every_scope_shape_has_a_plan_or_tracked_exception() {
     let uncovered: &[(&str, InterestShape)] = &[
         ("wildcard kinds uncovered", InterestShape::default()),
         (
-            "multi-tag intersection uncovered",
-            {
-                let mut s = InterestShape {
-                    kinds: BTreeSet::from([1u32]),
-                    ..Default::default()
-                };
-                s.tags
-                    .insert("e".to_string(), BTreeSet::from([id1.to_string()]));
-                s.tags
-                    .insert("p".to_string(), BTreeSet::from([pk_hex.to_string()]));
-                s
-            },
-        ),
-        (
             "event-ids only uncovered",
             {
                 let mut s = InterestShape {
@@ -156,12 +172,18 @@ fn issue_1517_every_scope_shape_has_a_plan_or_tracked_exception() {
             },
         ),
         (
-            "unrecognized tag key uncovered",
+            // addresses + generic tags together cannot be one exact query.
+            "addresses with tags uncovered",
             {
                 let mut s = InterestShape {
-                    kinds: BTreeSet::from([1u32]),
+                    kinds: BTreeSet::from([30023u32]),
                     ..Default::default()
                 };
+                s.addresses.insert(NaddrCoord {
+                    pubkey: pk_hex.to_string(),
+                    kind: 30023,
+                    d_tag: "slug".to_string(),
+                });
                 s.tags
                     .insert("t".to_string(), BTreeSet::from(["nostr".to_string()]));
                 s
@@ -182,9 +204,9 @@ fn issue_1517_every_scope_shape_has_a_plan_or_tracked_exception() {
 
 /// Pins the exact StoreQuery variant each covered Scope shape produces,
 /// so a StoreQuery rename or accidental fallback fails loudly.
-/// Each StoreQuery variant maps 1:1 to a named LMDB index
-/// (idx_author_kind, idx_kind_time, idx_kind_dtag_time, idx_etag_time,
-/// idx_ptag_time) per nmp_store::StoreQuery.
+/// Each StoreQuery variant maps to a named LMDB index
+/// (idx_author_kind, idx_kind_time, idx_kind_dtag_time, and the
+/// `tci`/`atci`/`ktci` generic-tag indexes for `Tags`) per nmp_store::StoreQuery.
 ///
 /// See `issue_1517_every_scope_shape_has_a_plan_or_tracked_exception`
 /// for the full Scope coverage guard (this test pins the variant only
@@ -247,8 +269,8 @@ fn issue_1517_covered_shapes_map_to_expected_index_variant() {
         ("single-author", &single_author, "AuthorKind"),
         ("multi-author", &multi_author, "AuthorsKind"),
         ("global-feed", &global_feed, "KindTime"),
-        ("thread-etag", &thread_etag, "Etag"),
-        ("dm-ptag", &dm_ptag, "Ptag"),
+        ("thread-etag", &thread_etag, "Tags"),
+        ("dm-ptag", &dm_ptag, "Tags"),
         ("addressable", &addressable, "KindDtag"),
     ];
 
@@ -260,8 +282,7 @@ fn issue_1517_covered_shapes_map_to_expected_index_variant() {
             StoreQuery::AuthorsKind { .. } => *expected == "AuthorsKind",
             StoreQuery::KindTime { .. } => *expected == "KindTime",
             StoreQuery::KindDtag { .. } => *expected == "KindDtag",
-            StoreQuery::Etag { .. } => *expected == "Etag",
-            StoreQuery::Ptag { .. } => *expected == "Ptag",
+            StoreQuery::Tags { .. } => *expected == "Tags",
         };
         assert!(
             variant_ok,

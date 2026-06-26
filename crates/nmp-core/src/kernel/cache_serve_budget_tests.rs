@@ -180,12 +180,25 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
     };
     shape_event_ids.event_ids.insert(hex_pk("1d"));
 
-    // The shape_tagged uses "abc" as the #e target (3 chars, not 64-char hex):
-    // hex decode fails → no queries.
-    assert!(
-        shape_to_store_queries(&shape_tagged).is_empty(),
-        "shape_tagged with 3-char target → no queries (hex decode fails)"
-    );
+    // Tag values are now arbitrary exact strings (no hex decode), so a `#e`
+    // shape with a non-hex target "abc" compiles to ONE generic `Tags` query
+    // carrying the author, kinds, and the tag map.
+    let tagged_queries = shape_to_store_queries(&shape_tagged);
+    assert_eq!(tagged_queries.len(), 1, "tag shape → 1 Tags query");
+    match &tagged_queries[0] {
+        StoreQuery::Tags {
+            authors,
+            kinds,
+            tags,
+            ..
+        } => {
+            assert_eq!(authors.len(), 1, "Tags must carry the shape's author");
+            assert_eq!(kinds, &vec![1u32]);
+            let e = ::nostr::SingleLetterTag::from_char('e').unwrap();
+            assert_eq!(tags.get(&e), Some(&BTreeSet::from(["abc".to_string()])));
+        }
+        other => panic!("expected Tags, got {other:?}"),
+    }
 
     // ── Structural variant mapping (E1 shape → StoreQuery) ─────────────────
     let queries = shape_to_store_queries(&shape_single_author);
@@ -232,8 +245,9 @@ fn e1_watermark_serve_invariant_shapes_are_aligned() {
 // ─── E3. Structural floored⇒served guard ────────────────────────────────────
 
 /// ADR-0045 §6 — E3 extension: the floored⇒served invariant now holds for
-/// Etag (threads), Ptag (DM inbox / mentions), and KindDtag (addressable) as
-/// well as the E1 author+kind shapes.
+/// generic `Tags` shapes (threads `#e`, DM inbox / mentions `#p`, groups `#h`,
+/// hashtags `#t`, …) and KindDtag (addressable) as well as the E1 author+kind
+/// shapes.
 ///
 /// This test uses properly 64-char-hex targets so that `hex_to_pubkey_bytes`
 /// succeeds and real `StoreQuery` variants are produced. It asserts that every
@@ -303,24 +317,27 @@ fn e3_structural_floored_implies_served() {
     }
 
     // ── Structural variant mapping (E2/E3 shapes → StoreQuery) ──────────────
+    // Every single-letter tag shape now compiles into ONE generic `Tags` query
+    // (no per-letter Etag/Ptag special case).
     let dm_queries = shape_to_store_queries(&shape_dm_inbox);
-    assert_eq!(dm_queries.len(), 1, "DM inbox shape → 1 Ptag query");
-    assert!(matches!(&dm_queries[0], StoreQuery::Ptag { .. }));
+    assert_eq!(dm_queries.len(), 1, "DM inbox shape → 1 Tags query");
+    assert!(matches!(&dm_queries[0], StoreQuery::Tags { .. }));
 
     let mention_queries = shape_to_store_queries(&shape_ptag_mention);
-    assert_eq!(mention_queries.len(), 1, "#p mention → 1 Ptag query");
-    assert!(matches!(&mention_queries[0], StoreQuery::Ptag { .. }));
+    assert_eq!(mention_queries.len(), 1, "#p mention → 1 Tags query");
+    assert!(matches!(&mention_queries[0], StoreQuery::Tags { .. }));
 
     let thread_queries = shape_to_store_queries(&shape_etag_thread);
-    assert_eq!(thread_queries.len(), 1, "#e thread → 1 Etag query");
-    assert!(matches!(&thread_queries[0], StoreQuery::Etag { .. }));
+    assert_eq!(thread_queries.len(), 1, "#e thread → 1 Tags query");
+    assert!(matches!(&thread_queries[0], StoreQuery::Tags { .. }));
 
     let addr_queries = shape_to_store_queries(&shape_address);
     assert_eq!(addr_queries.len(), 1, "addressable → 1 KindDtag query");
     assert!(matches!(&addr_queries[0], StoreQuery::KindDtag { .. }));
 
-    // Multi-tag / multi-value shapes remain uncovered (refused by
-    // shape_to_store_queries — the relay delivers in full for these).
+    // Multi-tag AND shapes are now COVERED: one `Tags` query carries the full
+    // tag map (cache-serve trusts it to be exact, so the AND must travel
+    // together — never as multiple unioned single-tag queries).
     let mut shape_multi_tag = InterestShape {
         kinds: BTreeSet::from([1u32]),
         ..Default::default()
@@ -331,10 +348,12 @@ fn e3_structural_floored_implies_served() {
     shape_multi_tag
         .tags
         .insert("p".to_string(), BTreeSet::from([ptag_hex.clone()]));
-    assert!(
-        shape_to_store_queries(&shape_multi_tag).is_empty(),
-        "multi-tag shape → no queries (not covered)"
-    );
+    let multi_tag_queries = shape_to_store_queries(&shape_multi_tag);
+    assert_eq!(multi_tag_queries.len(), 1, "multi-tag AND → 1 Tags query");
+    assert!(matches!(
+        &multi_tag_queries[0],
+        StoreQuery::Tags { tags, .. } if tags.len() == 2
+    ));
 
     // event_ids still uncovered.
     let mut shape_event_ids2 = InterestShape {

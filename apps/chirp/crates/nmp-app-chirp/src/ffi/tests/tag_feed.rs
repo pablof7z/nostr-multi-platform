@@ -172,20 +172,16 @@ fn open_tag_feed_renders_matching_notes_via_typed_session() {
     nmp_app_free(app);
 }
 
-/// KNOWN LIMITATION (documented, not a regression): the pull pager cannot
-/// back-fill a `#t` hashtag feed from the store, because the pull substrate has
-/// no `#t` `StoreQuery` (`cache_serve/queries.rs` covers `#e`/`#p`/author+kind/
-/// KindTime only — a `#t`-only shape compiles to `UnsupportedInterestShape` and
-/// fails closed). So a note cached BEFORE `open_tag_feed` is NOT surfaced by
-/// `load_older_feed`; only LIVE matching events (observer push) render. The raw
-/// path this migration replaced had NO render at all, so this is a new (live)
-/// capability with a bounded late-joiner gap, NOT a behavior regression.
+/// Late-joiner back-fill now WORKS for `#t` hashtag feeds: the general
+/// single-letter-tag store query (`StoreQuery::Tags`, #2100) replaced the old
+/// `#e`/`#p`-only special cases, so a `#t`-only shape is store-queryable instead
+/// of `UnsupportedInterestShape`. A note cached BEFORE `open_tag_feed` is now
+/// surfaced from the store on open — not only LIVE matching events.
 ///
-/// This test pins the CURRENT behavior so the gap is visible and a future `#t`
-/// store-query lands here as a green flip (replace the `assert!(!rendered)` with
-/// the late-joiner expectation) rather than silently changing untested behavior.
+/// This is the "green flip" the prior known-limitation test predicted: the
+/// assertion below now expects the pre-cached note to be back-filled.
 #[test]
-fn pre_cached_tag_notes_are_not_pull_backfilled_known_limitation() {
+fn pre_cached_tag_notes_are_pull_backfilled() {
     let (app, rx, _tx_box) = start_app();
     let keys = Keys::generate();
     let app_ref: &NmpApp = unsafe { &*app };
@@ -207,12 +203,12 @@ fn pre_cached_tag_notes_are_not_pull_backfilled_known_limitation() {
         let _ = rx.recv_timeout(Duration::from_millis(100));
     }
 
-    // The `#t` shape is uncovered by the pull substrate, so the pre-cached note
-    // is NOT back-filled (the documented limitation above).
+    // The `#t` shape is now covered by `StoreQuery::Tags` (#2100), so the
+    // pre-cached note IS back-filled from the store on open.
     let ids = read_tag_card_ids(app, &key);
     assert!(
-        !ids.contains(&cached.id.to_hex()),
-        "pre-cached #t note is not pull-backfilled (no #t StoreQuery) — see limitation note"
+        ids.contains(&cached.id.to_hex()),
+        "pre-cached #t note IS pull-backfilled now that StoreQuery::Tags covers #t (#2100)"
     );
 
     let close_c = CString::new(tag).unwrap();

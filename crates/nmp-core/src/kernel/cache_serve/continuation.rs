@@ -4,14 +4,11 @@
 //! budget, advancing the resume cursor between ticks so a long serves does not
 //! stall the actor thread.
 //!
-//! `Etag`/`Ptag` queries do not carry `until` cursors (the index does not
-//! support time-bounded pagination). When their scan returns fewer events than
-//! the visit limit the chunk advances to the next query; if it returns a full
-//! visit-limit load the chunk treats this as if the scan terminated (no cursor
-//! to lower) and also advances. This is a conservative over-serve: for large
-//! stores a Ptag/Etag scan may miss the deep tail on the first chunk but
-//! relay delivery fills the gap (the mechanism is "store first, relay
-//! refinement second" — not "store only").
+//! Every `StoreQuery` variant — including the generic `Tags` tag scan — carries
+//! a `since`/`until` window, so each query is time-bounded and pages by lowering
+//! its `until` cursor between chunks. When a scan returns fewer events than the
+//! visit limit the chunk advances to the next query; otherwise it lowers the
+//! resume cursor and continues on the same query next tick.
 
 use super::queries::{query_since_mut, query_until, query_until_mut};
 use super::PendingCacheServe;
@@ -135,17 +132,6 @@ impl Kernel {
                 continue;
             }
 
-            // Etag/Ptag: no cursor to lower; advance to next query to avoid
-            // re-scanning the same head on the next chunk. For deep stores
-            // this may miss the tail — relay delivery fills the gap (ADR §9
-            // "store first, relay refinement second"). The coverage ledger
-            // refuses the since-floor for any un-synced shape, so a serve that
-            // strands the tail this tick does not suppress the relay re-send.
-            if query_until_mut(&mut pending.queries[pending.query_idx]).is_none() {
-                pending.query_idx += 1;
-                continue;
-            }
-
             // More events may remain: lower the resume cursor. `until` is
             // inclusive, so boundary-timestamp events are re-visited next
             // chunk and deduped via the events cache.
@@ -164,9 +150,9 @@ impl Kernel {
             ) {
                 (Some(ts), Some(until)) => *until = Some(ts),
                 _ => {
-                    // Cursor-less query variant (cannot occur for E1 shapes;
-                    // D6: degrade instead of panic) — no resume possible, so
-                    // advance rather than re-scan the same head next chunk.
+                    // No descendable cursor timestamp this chunk (e.g. nothing
+                    // newly visited; D6: degrade instead of panic) — no resume
+                    // possible, so advance rather than re-scan the same head.
                     pending.query_idx += 1;
                     continue;
                 }

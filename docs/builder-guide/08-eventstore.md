@@ -142,7 +142,7 @@ depends on the sync watermark for the relevant `(filter, relay)` pair
 |---|---|---|---|
 | Pointer-id | `get_by_id` empty | batched+deduped id fetch → relay hints → fallback sources | `Coverage::CompleteAsOf` for a covering filter |
 | Address (replaceable coord) | `get_param_replaceable` empty | resolve `(pubkey,kind,d-tag)` same path | as above |
-| Tag-value | `scan_by_etag`/`scan_by_ptag` empty | bounded historical window load; record unknown range | covering watermark `CompleteAsOf` |
+| Tag-value | `scan_by_tags` empty | bounded historical window load; record unknown range | covering watermark `CompleteAsOf` |
 | Timeline-window | `scan_by_*_time` short of `limit` | bounded window backfill; record what range is still unknown | covering watermark `CompleteAsOf` |
 
 Rule: a **non-empty** result is never proof a query is complete; only a

@@ -22,7 +22,7 @@ use crate::events::EventIter;
 use crate::types::{EventId, ProvenanceEntry, PubKey, StoreQuery, StoredEvent, TombstoneRow};
 use crate::StoreError;
 
-use super::query_streaming::{build_filter, run_filter_visit};
+use super::query_streaming::{build_filter, build_tags_filter, run_filter_visit};
 
 #[cfg(any(test, feature = "test-support"))]
 pub use super::query_streaming::{conversion_count, reset_conversion_count};
@@ -246,33 +246,19 @@ pub(super) fn scan_by_kind_dtag<'a>(
     Ok(Box::new(v.into_iter().map(Ok)))
 }
 
-pub(super) fn scan_by_etag<'a>(
+pub(super) fn scan_by_tags<'a>(
     inner: &'a Arc<Inner>,
-    target: &EventId,
+    authors: &std::collections::BTreeSet<PubKey>,
     kinds: &[u32],
+    tags: &std::collections::BTreeMap<SingleLetterTag, std::collections::BTreeSet<String>>,
+    since: Option<u64>,
+    until: Option<u64>,
     limit: usize,
 ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-    let target =
-        nostr::EventId::from_slice(target).map_err(|e| StoreError::Encoding(format!("id: {e}")))?;
-    let mut f = Filter::new().event(target);
-    if !kinds.is_empty() {
-        f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
-    }
-    let v = run_filter(inner, f, limit)?;
-    Ok(Box::new(v.into_iter().map(Ok)))
-}
-
-pub(super) fn scan_by_ptag<'a>(
-    inner: &'a Arc<Inner>,
-    target: &PubKey,
-    kinds: &[u32],
-    limit: usize,
-) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-    let pk = PublicKey::from_slice(target).map_err(|e| StoreError::Encoding(format!("pk: {e}")))?;
-    let mut f = Filter::new().pubkey(pk);
-    if !kinds.is_empty() {
-        f = f.kinds(kinds.iter().map(|k| Kind::from(*k as u16)));
-    }
+    // Empty tags / empty value set / undecodable author → visit nothing.
+    let Some(f) = build_tags_filter(authors, kinds, tags, since, until) else {
+        return Ok(Box::new(std::iter::empty::<Result<StoredEvent, StoreError>>()));
+    };
     let v = run_filter(inner, f, limit)?;
     Ok(Box::new(v.into_iter().map(Ok)))
 }

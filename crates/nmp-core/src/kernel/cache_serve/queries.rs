@@ -9,17 +9,19 @@
 //!
 //! ## E2 shape (DM gift-wrap inbox)
 //!
-//! - `#p` tag + kind:1059 → `Ptag` (the DM inbox interest).
+//! - `#p` tag + kind:1059 → one `Tags` query (the DM inbox interest).
 //!   Served ciphertext is fed through `notify_raw_event_observers`, which is
 //!   the same seam live relay-delivered kind:1059 events use after
 //!   `Inserted | Replaced` (ADR R2.4(f)). The seam is provenance-agnostic:
 //!   `DmInboxProjection::ingest_gift_wrap` accepts `source_relay_url = None`,
 //!   which cache-serve passes (local-store events have no relay source).
 //!
-//! ## E3 shapes (threads, addressable, mentions)
+//! ## E3 / generic tag shapes (threads, mentions, groups, hashtags, …)
 //!
-//! - `#e` tag + ≥1 kind → `Etag` (thread replies, per target event id).
-//! - `#p` tag + ≥1 kind (non-DM) → `Ptag` (mention inbox).
+//! - Any single-letter tag map (`#e`, `#p`, `#h`, `#t`, `#a`, `#d`, …) → one
+//!   generic `Tags` query carrying the full map plus authors and kinds. `#e`
+//!   thread replies and `#p` mentions are just ordinary entries in this path —
+//!   there is no longer a per-letter special case.
 //! - `addresses` (NaddrCoord) → `KindDtag` per coord.
 
 use super::super::hex_to_pubkey_bytes;
@@ -43,21 +45,23 @@ pub(in crate::kernel) struct StoreQueryPlan {
 /// Each variant names the tracked exception documented in the
 /// `shape_to_store_queries` doc comment (ADR-0045 §3).
 pub(in crate::kernel) enum UnsupportedShapeReason {
-    /// `kinds` is empty — wildcard scan, unbounded.
+    /// `kinds` is empty AND the shape carries no generic tag dimension — a pure
+    /// kind/author wildcard scan would read unbounded data. (Tag-bearing shapes
+    /// with empty `kinds` ARE supported via [`StoreQuery::Tags`].)
     WildcardKinds,
     /// `search` is set — full-text path, not a structural `StoreQuery`.
     SearchShape,
     /// `event_ids` is non-empty — pointer-loader covers these on ingest.
     EventIdsOnly,
-    /// More than one tag key — set-intersection not supported by single index.
-    MultiKeyTags,
-    /// Exactly one tag key but multiple values — single-value index only.
-    MultiValueTag,
-    /// Tag key is not `"e"` or `"p"` — not yet mapped (post-v1 follow-up).
-    UnrecognizedTagKey,
-    /// Tag key is `"e"` or `"p"` but the hex value failed to decode — not a
-    /// valid 32-byte pubkey/event-id.
-    TagTargetHexDecodeFailure,
+    /// A tag key is not a single ASCII-alphabetic letter — not a valid
+    /// `SingleLetterTag` dimension.
+    InvalidTagKey,
+    /// A tag dimension carries an empty value set — nothing to match.
+    EmptyTagValues,
+    /// The shape carries BOTH `addresses` and generic `tags`. A coordinate
+    /// (kind+pubkey+d_tag unit) AND a flat tag map cannot be expressed as one
+    /// exact `StoreQuery` without over-serving; relay delivers in full.
+    AddressesWithTags,
     /// Author hex string(s) all failed to decode — no valid pubkey bytes.
     AuthorHexDecodeFailure,
 }
@@ -76,30 +80,28 @@ pub(in crate::kernel) enum UnsupportedShapeReason {
 /// | 1 author + ≥1 kind | `AuthorKind` | `idx_author_kind` | E1 |
 /// | >1 author + ≥1 kind | one `AuthorsKind` (multi-author) | `idx_author_kind` (multi-scan) | E1 (#1497) |
 /// | 0 authors + ≥1 kind + 0 tags + 0 addrs | `KindTime` | `idx_kind_time` | E1 |
-/// | `#p` single-value + kind:1059 only | `Ptag` (DM inbox) | `idx_ptag_time` | E2 |
-/// | `#p` single-value + ≥1 kind (non-DM) | `Ptag` (mention) | `idx_ptag_time` | E3 |
-/// | `#e` single-value + ≥1 kind | `Etag` (thread) | `idx_etag_time` | E3 |
+/// | any single-letter tag map (incl. `#e`/`#p`/`#h`/`#t`) | one `Tags` | `tci`/`atci`/`ktci` generic-tag indexes | E2/E3 |
 /// | `addresses` non-empty | `KindDtag` per coord | `idx_kind_dtag_time` | E3 |
 ///
-/// Note: `Etag` and `Ptag` carry no time cursor (`query_until_mut` /
-/// `query_since_mut` return `None` for those variants). This is intentional
-/// conservative over-serve: the relay fills the tail; the index has no
-/// time-bounded pagination on those paths.
+/// Note: `Tags` carries a `since`/`until` window like every other variant —
+/// the LMDB tag indexes are keyed by reverse-created-at, so tag scans are
+/// time-bounded and page via `query_until_mut`. Multi-key tag maps are an exact
+/// AND (and multi-value sets an exact OR) carried in ONE query — cache-serve
+/// does not post-filter, so the whole map must travel together.
 ///
 /// ## Intentionally uncovered (tracked)
 ///
 /// The following shapes return `Err` — they are **not** accidental gaps
 /// but deliberate exceptions documented here for auditors:
 ///
-/// - **Empty kinds (wildcard):** no safe bounded index — a kinds-wildcard scan
-///   would read unbounded data. Marked served immediately; relay delivers.
-/// - **Multi-key / multi-value tags:** single-key indexes cannot perform
-///   set-intersection in one scan (e.g. `#e` ∩ `#p`). Relay delivers in full.
+/// - **Empty kinds with no tag dimension (wildcard):** no safe bounded index —
+///   a pure kinds-wildcard scan would read unbounded data. Marked served
+///   immediately; relay delivers. (A tag-bearing shape with empty kinds IS
+///   covered: the tag index bounds the scan.)
+/// - **`addresses` + generic `tags` together:** a coordinate unit and a flat
+///   tag map cannot be one exact query without over-serving. Relay delivers.
 /// - **Event-ids-only shapes:** the pointer-loader hydrates on ingest; replaying
 ///   via a store scan adds no value (each id returns at most one event).
-/// - **Unrecognized single tag keys (`#t`, `#a`, etc.):** not yet mapped per
-///   ADR-0045 E1–E3; relay serves. Tracked as post-v1 follow-up; deliberately
-///   out of scope, not a bug.
 /// - **Text / full-text search candidates:** shapes with `search` set always
 ///   return `Err` from THIS function — full-text matching has no `StoreQuery`
 ///   variant (its index is the tokenized inverted index, not a structural
@@ -128,7 +130,72 @@ pub(in crate::kernel) fn compile_store_query_plan(
         return Err(UnsupportedShapeReason::SearchShape);
     }
 
-    // Wildcard kinds: not covered (too broad, no safe bounded index).
+    // ── Generic single-letter tag shapes → one `StoreQuery::Tags` ───────────
+    // Every single-letter tag dimension (`#e`, `#p`, `#h`, `#t`, `#a`, `#d`, …)
+    // compiles into ONE `Tags` query carrying the full tag map plus authors and
+    // kinds. Multi-key (AND) and multi-value (OR) are exact: cache-serve trusts
+    // `StoreQuery` to be exact and does not post-filter, so the whole map must
+    // travel in a single query, never as multiple unioned single-tag queries.
+    //
+    // `kinds` MAY be empty here (tag-only feeds are locally hydratable) — that is
+    // why this block runs BEFORE the wildcard-kinds rejection below. The empty
+    // `kinds` then means "any kind" for `StoreQuery::Tags` only (see its docs).
+    if !shape.tags.is_empty() {
+        // A coordinate (kind+pubkey+d_tag) AND a flat tag map cannot be one
+        // exact query without over-serving. Reject rather than over-serve.
+        if !shape.addresses.is_empty() {
+            return Err(UnsupportedShapeReason::AddressesWithTags);
+        }
+
+        let mut tags: std::collections::BTreeMap<
+            nostr::SingleLetterTag,
+            std::collections::BTreeSet<String>,
+        > = std::collections::BTreeMap::new();
+        for (tag_key, values) in &shape.tags {
+            if values.is_empty() {
+                return Err(UnsupportedShapeReason::EmptyTagValues);
+            }
+            // The stored `TagKey` is the single letter without the leading `#`.
+            let mut chars = tag_key.chars();
+            let (Some(c), None) = (chars.next(), chars.next()) else {
+                return Err(UnsupportedShapeReason::InvalidTagKey);
+            };
+            let Ok(letter) = nostr::SingleLetterTag::from_char(c) else {
+                return Err(UnsupportedShapeReason::InvalidTagKey);
+            };
+            tags.entry(letter)
+                .or_default()
+                .extend(values.iter().cloned());
+        }
+
+        // Decode authors (if any). An author-bearing shape whose hexes ALL fail
+        // to decode is not covered (mirrors the E1 author path); empty authors
+        // is the legitimate "any author" wildcard for tag feeds.
+        let authors: std::collections::BTreeSet<crate::store::PubKey> = shape
+            .authors
+            .iter()
+            .filter_map(|author_hex| hex_to_pubkey_bytes(author_hex))
+            .collect();
+        if !shape.authors.is_empty() && authors.is_empty() {
+            return Err(UnsupportedShapeReason::AuthorHexDecodeFailure);
+        }
+
+        let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
+        return Ok(StoreQueryPlan {
+            queries: vec![StoreQuery::Tags {
+                authors,
+                kinds,
+                tags,
+                since: shape.since,
+                until: shape.until,
+            }],
+            timeline_bound: !shape.authors.is_empty(),
+        });
+    }
+
+    // Wildcard kinds: not covered (too broad, no safe bounded index). Reached
+    // only when the shape has NO generic tag dimension (tag shapes above accept
+    // empty kinds).
     if shape.kinds.is_empty() {
         return Err(UnsupportedShapeReason::WildcardKinds);
     }
@@ -154,57 +221,6 @@ pub(in crate::kernel) fn compile_store_query_plan(
             queries,
             timeline_bound: !shape.authors.is_empty(),
         });
-    }
-
-    // ── E2/E3: tag-filtered shapes (exactly one tag key with one value) ──────
-    // The planner uses a `BTreeMap<TagKey, BTreeSet<String>>` for tags. The
-    // single-target index queries (`Etag`, `Ptag`) are only safe when there is
-    // exactly one tag key with exactly one value (multi-key or multi-value
-    // shapes would require intersection logic the index cannot provide in a
-    // single scan — those shapes stay uncovered and relay delivers in full per
-    // the original E1 watermark refusal).
-    if !shape.tags.is_empty() {
-        if shape.tags.len() > 1 {
-            return Err(UnsupportedShapeReason::MultiKeyTags);
-        }
-        // let-else (queries.rs idiom): a non-empty single-entry BTreeMap
-        // always yields one entry; treat absence as "not covered".
-        let Some((tag_key, values)) = shape.tags.iter().next() else {
-            return Err(UnsupportedShapeReason::MultiKeyTags);
-        };
-        if values.len() != 1 {
-            return Err(UnsupportedShapeReason::MultiValueTag);
-        }
-        let Some(target_hex) = values.iter().next() else {
-            return Err(UnsupportedShapeReason::MultiValueTag);
-        };
-        let kinds: Vec<u32> = shape.kinds.iter().copied().collect();
-
-        if tag_key == "e" {
-            // ── E3: #e tag → Etag (thread replies) ──────────────────
-            if let Some(target) = hex_to_pubkey_bytes(target_hex) {
-                // EventId and PubKey are both [u8; 32] — same decode.
-                return Ok(StoreQueryPlan {
-                    queries: vec![StoreQuery::Etag { target, kinds }],
-                    timeline_bound: false,
-                });
-            }
-        } else if tag_key == "p" {
-            // ── E2/E3: #p tag → Ptag ────────────────────────────────
-            // E2: kind:1059 only → DM inbox gift-wrap serve.
-            // E3: other kinds (including mixed) → mention inbox serve.
-            if let Some(target) = hex_to_pubkey_bytes(target_hex) {
-                return Ok(StoreQueryPlan {
-                    queries: vec![StoreQuery::Ptag { target, kinds }],
-                    timeline_bound: false,
-                });
-            }
-        } else {
-            return Err(UnsupportedShapeReason::UnrecognizedTagKey);
-        }
-        // hex decode failed for "e" or "p" tag — key was recognized but
-        // the value is not a valid 32-byte hex string.
-        return Err(UnsupportedShapeReason::TagTargetHexDecodeFailure);
     }
 
     // ── E1: author+kind or KindTime (no tags, no addresses) ─────────────────
@@ -307,19 +323,19 @@ pub(in crate::kernel) fn completion_key_for_interest(
     stable_hash64((sub_key, &authors, &kinds, &tags, &addresses, &shape.search))
 }
 
-/// Mutable access to a query's `until` cursor — `None` for variants without
-/// one (the aggregate-window floor is then simply not applied).
+/// Mutable access to a query's `until` cursor.
 ///
-/// `Etag` and `Ptag` do not carry `until` cursors (the index does not support
-/// time-bounded pagination). The chunk loop advances to the next query when
-/// the cursor is absent rather than re-scanning from the top.
+/// Every variant carries a `since`/`until` window — including
+/// [`StoreQuery::Tags`], whose LMDB tag indexes are keyed by reverse-created-at
+/// and so support time-bounded pagination. The chunk loop lowers `until` to
+/// page deeper.
 pub(in crate::kernel) fn query_until_mut(query: &mut StoreQuery) -> Option<&mut Option<u64>> {
     match query {
         StoreQuery::AuthorKind { until, .. }
         | StoreQuery::AuthorsKind { until, .. }
         | StoreQuery::KindTime { until, .. }
-        | StoreQuery::KindDtag { until, .. } => Some(until),
-        StoreQuery::Etag { .. } | StoreQuery::Ptag { .. } => None,
+        | StoreQuery::KindDtag { until, .. }
+        | StoreQuery::Tags { until, .. } => Some(until),
     }
 }
 
@@ -329,19 +345,19 @@ pub(in crate::kernel) fn query_until(query: &StoreQuery) -> Option<u64> {
         StoreQuery::AuthorKind { until, .. }
         | StoreQuery::AuthorsKind { until, .. }
         | StoreQuery::KindTime { until, .. }
-        | StoreQuery::KindDtag { until, .. } => *until,
-        StoreQuery::Etag { .. } | StoreQuery::Ptag { .. } => None,
+        | StoreQuery::KindDtag { until, .. }
+        | StoreQuery::Tags { until, .. } => *until,
     }
 }
 
-/// Mutable access to a query's `since` bound — `None` for variants without
-/// one (the aggregate-window floor is then simply not applied).
+/// Mutable access to a query's `since` bound — used to apply the aggregate
+/// timeline-window floor.
 pub(in crate::kernel) fn query_since_mut(query: &mut StoreQuery) -> Option<&mut Option<u64>> {
     match query {
         StoreQuery::AuthorKind { since, .. }
         | StoreQuery::AuthorsKind { since, .. }
         | StoreQuery::KindTime { since, .. }
-        | StoreQuery::KindDtag { since, .. } => Some(since),
-        StoreQuery::Etag { .. } | StoreQuery::Ptag { .. } => None,
+        | StoreQuery::KindDtag { since, .. }
+        | StoreQuery::Tags { since, .. } => Some(since),
     }
 }

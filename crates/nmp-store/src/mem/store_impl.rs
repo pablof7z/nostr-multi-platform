@@ -3,10 +3,10 @@
 //! Pure delegation — all logic lives in the sub-modules. This file exists so
 //! `mod.rs` stays under 200 LOC (Article I hard ceiling).
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::ops::ControlFlow;
 
-use super::{domain, gc, insert, query, MemEventStore};
+use super::{domain, gc, insert, query, query_tags, MemEventStore};
 use crate::domain_handle::DomainHandle;
 use crate::events::{EventIter, EventStore};
 use crate::ingest_log::{PullGap, PullPage, ScanLogResult};
@@ -68,22 +68,16 @@ impl EventStore for MemEventStore {
         query::scan_by_kind_dtag(self, kind, d_tag, since, until, limit)
     }
 
-    fn scan_by_etag<'a>(
+    fn scan_by_tags<'a>(
         &'a self,
-        target: &EventId,
+        authors: &BTreeSet<PubKey>,
         kinds: &[u32],
+        tags: &BTreeMap<nostr::SingleLetterTag, BTreeSet<String>>,
+        since: Option<u64>,
+        until: Option<u64>,
         limit: usize,
     ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-        query::scan_by_etag(self, target, kinds, limit)
-    }
-
-    fn scan_by_ptag<'a>(
-        &'a self,
-        target: &PubKey,
-        kinds: &[u32],
-        limit: usize,
-    ) -> Result<Box<dyn EventIter + 'a>, StoreError> {
-        query::scan_by_ptag(self, target, kinds, limit)
+        query_tags::scan_by_tags(self, authors, kinds, tags, since, until, limit)
     }
 
     fn scan_by_kind_time<'a>(
