@@ -6,7 +6,12 @@ const CONSUMER: &str = "discover-view";
 fn run_execute(action: TopicArticlesAction) -> Vec<ActorCommand> {
     let cmds = std::cell::RefCell::new(Vec::new());
     TopicArticlesModule
-        .execute(action, "test-cid", &|cmd| cmds.borrow_mut().push(cmd))
+        .execute(
+            &nmp_core::substrate::ActionContext::default(),
+            action,
+            "test-cid",
+            &|cmd| cmds.borrow_mut().push(cmd),
+        )
         .expect("execute must not fail for valid input");
     cmds.into_inner()
 }
@@ -80,11 +85,13 @@ fn release_drops_direct_and_repost_interest_owners() {
         consumer_id: CONSUMER.to_string(),
     });
     assert_eq!(cmds.len(), 2);
-    let ActorCommand::Interests(InterestsCommand::DropInterestOwner(direct_identity)) = &cmds[0] else {
+    let ActorCommand::Interests(InterestsCommand::DropInterestOwner(direct_identity)) = &cmds[0]
+    else {
         panic!("expected DropInterestOwner, got {:?}", cmds[0]);
     };
     assert_eq!(*direct_identity, topic_articles_identity(TOPIC, CONSUMER));
-    let ActorCommand::Interests(InterestsCommand::DropInterestOwner(repost_identity)) = &cmds[1] else {
+    let ActorCommand::Interests(InterestsCommand::DropInterestOwner(repost_identity)) = &cmds[1]
+    else {
         panic!("expected DropInterestOwner, got {:?}", cmds[1]);
     };
     assert_eq!(

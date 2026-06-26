@@ -45,15 +45,10 @@ use nmp_ffi::NmpApp;
 /// discovery, and join. The remaining admin / membership executors are
 /// deliberately out of scope for this milestone.
 pub(super) fn register_nip29_actions(app: &mut NmpApp) {
-    // The generic publish action reads recent group events for `["previous", …]`
-    // tags via the V-83 store-slot handle, so hand it in at composition (the
-    // slot is empty until `nmp_app_start` publishes the store; reads before then
-    // degrade to no `previous` tags).
-    let store_slot = app.event_store_handle();
     // `NmpApp::register_action` already logs a structured tracing::error! on
     // collision in both dev and release (#1724 criterion 1). The Result is
     // only returned so callers that do NOT log internally (e.g. test spies or
     // WasmRuntime) can surface the error. Here we let the tracing log stand;
     // a collision means double-init, which the tracing error will surface.
-    let _ = nmp_nip29::register_actions(app, store_slot);
+    let _ = nmp_nip29::register_actions(app);
 }

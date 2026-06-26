@@ -41,6 +41,7 @@ pub trait ActionModule: Send + Sync + 'static {
     // mpsc channel — fire-and-forget, never blocks.
     fn execute(
         &self,
+        ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(crate::ActorCommand),
@@ -50,17 +51,18 @@ pub trait ActionModule: Send + Sync + 'static {
 
 - **Associated types:** `Action` is the input decoded from the typed action
   payload carried by `DispatchEnvelope`.
-- **Lifecycle:** `start` validates synchronously → if `Ok`, the registry
-  mints the `correlation_id` (the operation's sole identity — never an event
-  id) and calls `execute` → `execute` calls `send(cmd)` to enqueue
+- **Lifecycle:** `start` validates synchronously with a mutable
+  `ActionContext` → if `Ok`, the registry mints the `correlation_id` (the
+  operation's sole identity — never an event id) and calls `execute` with the
+  same execution context → `execute` calls `send(cmd)` to enqueue
   `ActorCommand`(s)
   → actor processes them → outcome surfaces in the snapshot (D6: never as an
   exception across FFI).
-- **State:** none on the trait. App state lives in an `Arc<Mutex<T>>` owned
-  by the app module, reached from `execute` via a `static OnceLock` or
-  equivalent process-wide slot. See `microblog-core`'s `FEED_STORE` pattern
-  in [05b](05b-substrate-traits.md) and the full walkthrough in
-  [19a](19a-walkthrough-microblog.md).
+- **State:** modules are registered as values, so a stateful module carries
+  its dependencies in `self`. `ActionContext` carries execution-scoped runtime
+  capabilities such as bounded, cache-only local-store reads
+  (`local_event_by_id`, `query_local_events`). It never opens relays or waits
+  for acquisition.
 - **Use it when** any user or app intent dispatches an action. Every published
   event, every follow/unfollow, every settings write goes through `execute`.
 

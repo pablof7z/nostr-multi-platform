@@ -65,16 +65,16 @@
 //! The action namespace is `nmp.nip65.publish_relay_list` — byte-stable
 //! across the move from `nmp-nip65` so callers do not need to change.
 
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::PublishCommand;
+use nmp_core::canonical_relay_url;
 use nmp_core::kinds::KIND_RELAY_LIST;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::{canonical_relay_url};
-use nmp_core::actor::{ActorCommand};
-use nmp_core::actor::{PublishCommand};
-use serde::{de, Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, de};
 
 /// Per-relay role marker for a NIP-65 entry.
 ///
@@ -201,7 +201,12 @@ pub fn build_relay_list_event(entries: &[RelayListEntry]) -> UnsignedEvent {
         // The shared authority also accepts `ws://`, so without this gate the
         // build side could emit a `ws://` `r` tag that its own ingest silently
         // drops on round-trip (a publish that never takes effect) (#967).
-        if !entry.url.trim_start().to_ascii_lowercase().starts_with("wss://") {
+        if !entry
+            .url
+            .trim_start()
+            .to_ascii_lowercase()
+            .starts_with("wss://")
+        {
             continue;
         }
         let Some(canonical) = canonical_relay_url(&entry.url) else {
@@ -268,9 +273,7 @@ impl ActionModule for PublishRelayListAction {
 
     /// ADR-0064 (#1756): opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<PublishRelayListInput as ActionPayload>::decode(bytes))
     }
 
@@ -305,6 +308,7 @@ impl ActionModule for PublishRelayListAction {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

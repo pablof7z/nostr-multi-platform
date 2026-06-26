@@ -169,9 +169,15 @@ fn publish_raw_executor_threads_correlation_id_onto_actor_command() {
     let minted_correlation_id = "fe".repeat(16);
     let action_json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"hello","target":{"Explicit":{"relays":["wss://relay.example"]}}}}"#;
     registry
-        .execute("nmp.publish", action_json, &minted_correlation_id, &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
+        .execute(
+            &ctx(),
+            "nmp.publish",
+            action_json,
+            &minted_correlation_id,
+            &|cmd| {
+                captured.borrow_mut().push(cmd);
+            },
+        )
         .expect("publish-raw execution should succeed");
 
     let cmds = captured.into_inner();
@@ -229,6 +235,7 @@ fn publish_signed_executor_sends_publish_signed_event_command() {
     let minted_correlation_id = "ae".repeat(16);
     registry
         .execute(
+            &ctx(),
             "nmp.publish",
             &action_json,
             &minted_correlation_id,
@@ -320,9 +327,15 @@ fn publish_profile_executor_threads_correlation_id_onto_actor_command() {
     let action_json =
         r#"{"PublishProfile":{"fields":{"name":"Alice","picture":"https://x/y.png"}}}"#;
     registry
-        .execute("nmp.publish", action_json, &minted_correlation_id, &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })
+        .execute(
+            &ctx(),
+            "nmp.publish",
+            action_json,
+            &minted_correlation_id,
+            &|cmd| {
+                captured.borrow_mut().push(cmd);
+            },
+        )
         .expect("publish-profile execution should succeed");
 
     let cmds = captured.into_inner();
@@ -396,8 +409,8 @@ fn deliver_result_without_observer_is_silent_noop() {
 
 #[test]
 fn set_result_observer_second_registration_replaces_first() {
-    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
     let first = Arc::new(AtomicU32::new(0));
     let second = Arc::new(AtomicU32::new(0));
     let first_c = Arc::clone(&first);
@@ -459,6 +472,7 @@ fn panicking_validator_is_rejected_not_unwound() {
         }
         fn execute(
             &self,
+            _ctx: &ActionContext,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -505,6 +519,7 @@ fn panicking_executor_returns_err_not_unwound() {
         }
         fn execute(
             &self,
+            _ctx: &ActionContext,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -516,7 +531,7 @@ fn panicking_executor_returns_err_not_unwound() {
     let mut registry = ActionRegistry::new();
     let _ = registry.register(PanickingExecuteModule);
     let err = registry
-        .execute("host.boom", "null", "corr-id", &|_cmd| {})
+        .execute(&ctx(), "host.boom", "null", "corr-id", &|_cmd| {})
         .expect_err("a panicking executor must return Err, not unwind");
     assert_eq!(err.message, "action executor panicked", "got: {err:?}");
 }
@@ -529,8 +544,8 @@ fn panicking_executor_returns_err_not_unwound() {
 /// FFI boundary. The `catch_unwind` guard turns it into a per-result drop.
 #[test]
 fn panicking_result_observer_does_not_kill_delivery() {
-    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::Arc;
+    use std::sync::atomic::{AtomicU32, Ordering};
 
     let calls = Arc::new(AtomicU32::new(0));
     let calls_in_observer = Arc::clone(&calls);
@@ -584,6 +599,7 @@ mod adr_0049_yield {
         const NAMESPACE: &'static str = "nmp.test.adr0049.ns";
         fn execute(
             &self,
+            _ctx: &ActionContext,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -598,6 +614,7 @@ mod adr_0049_yield {
         const NAMESPACE: &'static str = "nmp.test.adr0049.ns";
         fn execute(
             &self,
+            _ctx: &ActionContext,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -614,6 +631,7 @@ mod adr_0049_yield {
         const NAMESPACE: &'static str = "nmp.test.adr0049.other";
         fn execute(
             &self,
+            _ctx: &ActionContext,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -715,9 +733,11 @@ mod adr_0049_yield {
         let _ = registry.register(OtherAppModule);
         let records = ledger.records();
         assert_eq!(records.len(), 2);
-        assert!(records
-            .iter()
-            .all(|r| r.disposition == Disposition::Installed));
+        assert!(
+            records
+                .iter()
+                .all(|r| r.disposition == Disposition::Installed)
+        );
         assert!(registry.contains("nmp.test.adr0049.ns"));
         assert!(registry.contains("nmp.test.adr0049.other"));
     }

@@ -43,7 +43,10 @@ Do not add ViewModule or IdentityModule traits; they were deliberately deleted b
 
 No event-producing bypass of the one doorway should be added; new projection fields and dispatch specs route through the existing nmp_app_dispatch_action seam and built-in snapshot projection map. The D11 lint enforces this: no new bespoke event-producing FFI symbol that bypasses the dispatch_action doorway. The nmp_app_register_action_executor C-ABI symbol and the register_action_executor Rust method are deleted; action registration is now a single typed app.register_action::<M>() call. The wire_action! macro is also deleted; action wiring no longer requires a paired macro to avoid the two-call footgun.
 
-The ActionModule trait has a required fn execute(action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String> method, ensuring validator-executor symmetry is a type-level fact rather than a manual two-call contract.
+The ActionModule trait has a required
+`fn execute(&self, ctx: &ActionContext, action: Self::Action, correlation_id: &str, send: &dyn Fn(ActorCommand)) -> Result<(), String>`
+method, ensuring validator-executor symmetry is a type-level fact rather than a
+manual two-call contract.
 
 ProfileAction should carry a dispatch: Option<ProfileDispatchSpec> so Swift branches on presence-of-dispatch rather than switching on action.kind, with iconName pre-computed in Rust.
 

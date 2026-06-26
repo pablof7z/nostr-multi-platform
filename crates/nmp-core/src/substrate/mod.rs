@@ -43,6 +43,7 @@
 //! - a host registering `ObservedProjection` through `ObservedProjectionRegistrar`
 
 mod action;
+mod action_context;
 mod app_host;
 mod blocked_relays;
 mod bounded;
@@ -82,8 +83,11 @@ pub(crate) use view::{observed_shape_matches_event, observed_shape_matches_field
 
 pub use action::ProtocolDescriptor;
 pub use action::{
-    ActionContext, ActionId, ActionModule, ActionPayload, ActionPayloadDecodeError,
-    ActionRegistrar, ActionRejection, ActionResult, RegistrationError,
+    ActionId, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
+    ActionRejection, ActionResult, RegistrationError,
+};
+pub use action_context::{
+    ActionContext, ActionLocalStore, ActionReadError, ACTION_LOCAL_STORE_MAX_EVENTS,
 };
 pub use app_host::{
     AppHost, BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,

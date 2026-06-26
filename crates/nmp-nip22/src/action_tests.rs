@@ -28,7 +28,12 @@ fn capture_execute(run: impl FnOnce(&dyn Fn(ActorCommand))) -> ActorCommand {
 fn published_event(action: PostCommentAction) -> UnsignedEvent {
     let cmd = capture_execute(|send| {
         PostCommentModule
-            .execute(action, "comment-cid", send)
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                action,
+                "comment-cid",
+                send,
+            )
             .expect("execute succeeds");
     });
     match run_one_protocol(cmd) {
@@ -158,14 +163,18 @@ fn omits_author_tags_when_unknown() {
         content: "no pings".to_string(),
     });
 
-    assert!(!event
-        .tags
-        .iter()
-        .any(|tag| tag.first().map(String::as_str) == Some("P")));
-    assert!(!event
-        .tags
-        .iter()
-        .any(|tag| tag.first().map(String::as_str) == Some("p")));
+    assert!(
+        !event
+            .tags
+            .iter()
+            .any(|tag| tag.first().map(String::as_str) == Some("P"))
+    );
+    assert!(
+        !event
+            .tags
+            .iter()
+            .any(|tag| tag.first().map(String::as_str) == Some("p"))
+    );
 }
 
 #[test]

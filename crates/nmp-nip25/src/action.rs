@@ -1,11 +1,11 @@
+use nmp_core::actor::ActorCommand;
+use nmp_core::actor::PublishCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, ProtocolCommand, ProtocolCommandContext, ProtocolCommandError,
     ProtocolDescriptor,
 };
 use nmp_signer_iface::UnsignedEvent;
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{PublishCommand};
 use serde::{Deserialize, Serialize};
 
 pub const KIND_REACTION: u32 = 7;
@@ -48,9 +48,7 @@ impl ActionModule for ReactModule {
 
     /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<ReactAction as ActionPayload>::decode(bytes))
     }
 
@@ -60,6 +58,7 @@ impl ActionModule for ReactModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -78,9 +77,7 @@ impl ActionModule for UnreactModule {
 
     /// ADR-0064 / S3: opt into the typed FlatBuffers payload doorway; the
     /// fail-closed `schema_version` gate runs in `decode` (BEFORE `start`).
-    fn decode_payload(
-        bytes: &[u8],
-    ) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
+    fn decode_payload(bytes: &[u8]) -> Option<Result<Self::Action, ActionPayloadDecodeError>> {
         Some(<UnreactAction as ActionPayload>::decode(bytes))
     }
 
@@ -95,6 +92,7 @@ impl ActionModule for UnreactModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

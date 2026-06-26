@@ -37,10 +37,10 @@ use dedupe::InflightBolt11Guard;
 
 use serde::{Deserialize, Serialize};
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
 
 use crate::protocol::WalletPayInvoiceCommand;
 use crate::runtime::WalletRuntimeHandle;
@@ -111,11 +111,7 @@ impl ActionModule for WalletPayInvoiceModule {
     /// progress" state rather than a user-visible error. The guard is
     /// per-module-instance (no process-global) and sweeps expired entries
     /// lazily on each call (D8).
-    fn start(
-        &self,
-        _ctx: &mut ActionContext,
-        action: Self::Action,
-    ) -> Result<(), ActionRejection> {
+    fn start(&self, _ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection> {
         match &action {
             WalletAction::PayInvoice { bolt11, .. } => {
                 if bolt11.is_empty() {
@@ -133,7 +129,8 @@ impl ActionModule for WalletPayInvoiceModule {
         }
     }
 
-    fn is_async_completing() -> bool { // doctrine-allow: D12 — recording sites are cross-file (`runtime.rs` `record_action_success`/`record_action_failure`); covered by runtime tests
+    fn is_async_completing() -> bool {
+        // doctrine-allow: D12 — recording sites are cross-file (`runtime.rs` `record_action_success`/`record_action_failure`); covered by runtime tests
         true
     }
 
@@ -145,12 +142,16 @@ impl ActionModule for WalletPayInvoiceModule {
     /// the substrate-generic replacement.
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         match action {
-            WalletAction::PayInvoice { bolt11, amount_msats } => {
+            WalletAction::PayInvoice {
+                bolt11,
+                amount_msats,
+            } => {
                 let cmd = WalletPayInvoiceCommand {
                     bolt11,
                     amount_msats,
@@ -244,8 +245,7 @@ mod tests {
             json.contains("\"PayInvoice\""),
             "externally-tagged enum shape must include the variant name: {json}"
         );
-        let decoded: WalletAction =
-            serde_json::from_str(&json).expect("deserialize must succeed");
+        let decoded: WalletAction = serde_json::from_str(&json).expect("deserialize must succeed");
         assert_eq!(action, decoded, "round-trip must preserve the value");
     }
 
@@ -270,9 +270,14 @@ mod tests {
         let minted_correlation_id = "be".repeat(16);
 
         module
-            .execute(action, &minted_correlation_id, &|cmd| {
-                captured.borrow_mut().push(cmd);
-            })
+            .execute(
+                &nmp_core::substrate::ActionContext::default(),
+                action,
+                &minted_correlation_id,
+                &|cmd| {
+                    captured.borrow_mut().push(cmd);
+                },
+            )
             .expect("execute must succeed");
 
         let cmds = captured.into_inner();
@@ -296,16 +301,22 @@ mod tests {
         let module = WalletPayInvoiceModule::new(handle());
         let bolt11 = "lnbc100n1p0doubletap".to_string();
 
-        let first = module.start(&mut ctx(), WalletAction::PayInvoice {
-            bolt11: bolt11.clone(),
-            amount_msats: None,
-        });
+        let first = module.start(
+            &mut ctx(),
+            WalletAction::PayInvoice {
+                bolt11: bolt11.clone(),
+                amount_msats: None,
+            },
+        );
         assert!(first.is_ok(), "first tap must be accepted");
 
-        let second = module.start(&mut ctx(), WalletAction::PayInvoice {
-            bolt11,
-            amount_msats: None,
-        });
+        let second = module.start(
+            &mut ctx(),
+            WalletAction::PayInvoice {
+                bolt11,
+                amount_msats: None,
+            },
+        );
         match second {
             Err(ActionRejection::Conflict(msg)) => {
                 assert!(
@@ -323,17 +334,23 @@ mod tests {
         let module = WalletPayInvoiceModule::new(handle());
 
         module
-            .start(&mut ctx(), WalletAction::PayInvoice {
-                bolt11: "lnbc100n1p0aaaa".to_string(),
-                amount_msats: None,
-            })
+            .start(
+                &mut ctx(),
+                WalletAction::PayInvoice {
+                    bolt11: "lnbc100n1p0aaaa".to_string(),
+                    amount_msats: None,
+                },
+            )
             .expect("first invoice must be accepted");
 
         module
-            .start(&mut ctx(), WalletAction::PayInvoice {
-                bolt11: "lnbc200n1p0bbbb".to_string(),
-                amount_msats: None,
-            })
+            .start(
+                &mut ctx(),
+                WalletAction::PayInvoice {
+                    bolt11: "lnbc200n1p0bbbb".to_string(),
+                    amount_msats: None,
+                },
+            )
             .expect("second distinct invoice must be accepted");
     }
 
@@ -346,10 +363,13 @@ mod tests {
         let bolt11 = "lnbc500n1p0expired";
 
         module
-            .start(&mut ctx(), WalletAction::PayInvoice {
-                bolt11: bolt11.to_string(),
-                amount_msats: None,
-            })
+            .start(
+                &mut ctx(),
+                WalletAction::PayInvoice {
+                    bolt11: bolt11.to_string(),
+                    amount_msats: None,
+                },
+            )
             .expect("first tap must be accepted");
 
         // Backdate the entry so it appears expired.
@@ -365,10 +385,13 @@ mod tests {
 
         // After expiry the retry passes.
         module
-            .start(&mut ctx(), WalletAction::PayInvoice {
-                bolt11: bolt11.to_string(),
-                amount_msats: None,
-            })
+            .start(
+                &mut ctx(),
+                WalletAction::PayInvoice {
+                    bolt11: bolt11.to_string(),
+                    amount_msats: None,
+                },
+            )
             .expect("retry after TTL must be accepted");
     }
 }

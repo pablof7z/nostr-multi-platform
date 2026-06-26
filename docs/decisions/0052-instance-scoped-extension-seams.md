@@ -11,9 +11,9 @@ Status: Implemented
 
 ## Context
 
-NMP's host-extension seams are currently **type-registered**, not
+Before this ADR, NMP's host-extension seams were **type-registered**, not
 value-registered. `ActionModule` (`crates/nmp-core/src/substrate/action.rs`)
-declares its lifecycle methods as associated functions with no receiver:
+declared its lifecycle methods as associated functions with no receiver:
 
 ```rust
 fn start(ctx: &mut ActionContext, action: Self::Action) -> Result<(), ActionRejection>;
@@ -100,7 +100,9 @@ protocol change.
 fn register_action<M: ActionModule>(&mut self, module: M);
 ```
 
-`ActionModule::start` / `execute` gain `&self`. The registry stores
+`ActionModule::start` / `execute` gain `&self`, and `execute` also receives
+`&ActionContext` so execution-scoped runtime capabilities stay in the action
+lifecycle rather than in ad-hoc module constructors. The registry stores
 `Box<dyn ErasedActionModule>` built from the concrete module value (not a ZST
 `PhantomData` adapter). The erased adapter holds the module by value, so a
 module may own an `Arc<WalletRuntimeHandle>`, an `Arc<DmRelayCache>`, etc.,

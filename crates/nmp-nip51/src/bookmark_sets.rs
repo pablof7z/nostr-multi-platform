@@ -20,8 +20,8 @@ use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 use crate::bookmarks::{
-    action_rejection_message, item_key, nonempty_option, nonempty_trimmed, normalize_item,
-    tag_to_item, BookmarkItem, BookmarkListMetadata,
+    BookmarkItem, BookmarkListMetadata, action_rejection_message, item_key, nonempty_option,
+    nonempty_trimmed, normalize_item, tag_to_item,
 };
 
 /// NIP-51 set kinds this module projects and writes.
@@ -286,6 +286,7 @@ impl ActionModule for AddBookmarkSetItemAction {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -352,6 +353,7 @@ impl ActionModule for RemoveBookmarkSetItemAction {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

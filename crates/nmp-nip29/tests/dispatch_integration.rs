@@ -16,9 +16,9 @@
 //! (S2 `DispatchEnvelope`) drives in production.
 
 use nmp_core::__ffi_internal::ActionRegistry;
-use nmp_core::slots::new_event_store_slot;
 use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection};
 
+use nmp_nip29::GroupId;
 use nmp_nip29::action::{
     CreateInviteAction, CreateInviteInput, CreatePublicGroupAction, CreatePublicGroupInput,
     GroupAccess, GroupEventTarget, GroupVisibility, JoinGroupAction, JoinGroupInput,
@@ -26,21 +26,25 @@ use nmp_nip29::action::{
     PutUserAction, PutUserInput, ReactInGroupAction, ReactInGroupInput, RepostInGroupAction,
     RepostInGroupInput, ShareEventInGroupAction, ShareEventInGroupInput,
 };
-use nmp_nip29::GroupId;
 
 /// Register every migrated nip29 event-authoring module onto a fresh registry.
 fn registry() -> ActionRegistry {
-    let slot = new_event_store_slot();
     let mut r = ActionRegistry::new();
-    r.register(JoinGroupAction);
-    r.register(LeaveGroupAction);
-    r.register(PublishGroupEventAction::new(slot.clone()));
-    r.register(ReactInGroupAction::new(slot.clone()));
-    r.register(CreatePublicGroupAction);
-    r.register(ShareEventInGroupAction::new(slot.clone()));
-    r.register(RepostInGroupAction::new(slot));
-    r.register(PutUserAction);
-    r.register(CreateInviteAction);
+    r.register(JoinGroupAction).expect("join registers");
+    r.register(LeaveGroupAction).expect("leave registers");
+    r.register(PublishGroupEventAction)
+        .expect("publish group event registers");
+    r.register(ReactInGroupAction)
+        .expect("react in group registers");
+    r.register(CreatePublicGroupAction)
+        .expect("create public group registers");
+    r.register(ShareEventInGroupAction)
+        .expect("share event in group registers");
+    r.register(RepostInGroupAction)
+        .expect("repost in group registers");
+    r.register(PutUserAction).expect("put user registers");
+    r.register(CreateInviteAction)
+        .expect("create invite registers");
     r
 }
 

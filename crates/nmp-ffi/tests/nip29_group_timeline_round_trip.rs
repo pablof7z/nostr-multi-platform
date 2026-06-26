@@ -37,16 +37,16 @@
 //! delivered from injected events. A two-instance relay-bridged test is left
 //! for when that harness is available.
 
-use std::ffi::{c_void, CStr};
+use std::ffi::{CStr, c_void};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use nmp_core::actor::{ActorCommand, TestSupportCommand};
-use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::dispatch_envelope::{DISPATCH_ENVELOPE_SCHEMA_VERSION, encode_dispatch_envelope};
 use nmp_core::substrate::ActionPayload;
 use nmp_ffi::{
-    nmp_app_consume_all_builtin_projections, nmp_app_dispatch_action_bytes, nmp_app_free,
-    nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_free_string, NmpApp,
+    NmpApp, nmp_app_consume_all_builtin_projections, nmp_app_dispatch_action_bytes, nmp_app_free,
+    nmp_app_new, nmp_app_set_update_callback, nmp_app_start, nmp_free_string,
 };
 use nmp_nip29::action::PublishGroupEventInput;
 use nmp_nip29::group_id::GroupId;
@@ -179,11 +179,8 @@ fn publish_group_event_dispatch_returns_correlation_id() {
 
     let app = nmp_app_new();
     // SAFETY: `app` is a valid pointer from `nmp_app_new`; no other reference
-    // aliases it at these call sites. The store slot is captured first (a
-    // `&self` read) and handed to `register_actions` so the generic publish
-    // action can read recent group events for `["previous", …]` tags.
-    let store_slot = unsafe { &*app }.event_store_handle();
-    register_actions(unsafe { &mut *app }, store_slot).expect("NIP-29 actions register");
+    // aliases it at these call sites.
+    register_actions(unsafe { &mut *app }).expect("NIP-29 actions register");
 
     let action = PublishGroupEventInput {
         group: GroupId::new(HOST_RELAY, "test-room"),

@@ -8,7 +8,6 @@
 //! reaction's caller tags (`e` / `p`).
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::slots::EventStoreSlot;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
@@ -46,9 +45,9 @@ fn react_caller_tags(action: &ReactInGroupInput) -> Vec<Vec<String>> {
 
 /// Build the kind:7 in-group reaction `PublishPlan`, composing the NIP-29
 /// envelope (`h` / `previous` / pin) from the store cache.
-fn react_in_group_plan(store_slot: &EventStoreSlot, action: &ReactInGroupInput) -> PublishPlan {
+fn react_in_group_plan(ctx: &ActionContext, action: &ReactInGroupInput) -> PublishPlan {
     group_publish_plan(
-        store_slot,
+        ctx,
         &action.group,
         REACTION_KIND,
         action.content.clone(),
@@ -56,16 +55,7 @@ fn react_in_group_plan(store_slot: &EventStoreSlot, action: &ReactInGroupInput) 
     )
 }
 
-pub struct ReactInGroupAction {
-    store_slot: EventStoreSlot,
-}
-
-impl ReactInGroupAction {
-    #[must_use]
-    pub fn new(store_slot: EventStoreSlot) -> Self {
-        Self { store_slot }
-    }
-}
+pub struct ReactInGroupAction;
 
 impl ActionModule for ReactInGroupAction {
     const NAMESPACE: &'static str = "nmp.nip29.react_in_group";
@@ -92,12 +82,13 @@ impl ActionModule for ReactInGroupAction {
     }
     fn execute(
         &self,
+        ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
         send(
-            react_in_group_plan(&self.store_slot, &action)
+            react_in_group_plan(ctx, &action)
                 .into_actor_command(Some(correlation_id.to_string()))?,
         );
         Ok(())
@@ -108,11 +99,10 @@ impl ActionModule for ReactInGroupAction {
 mod tests {
     use super::*;
     use nmp_core::actor::PublishCommand;
-    use nmp_core::slots::new_event_store_slot;
     use std::cell::RefCell;
 
     fn action() -> ReactInGroupAction {
-        ReactInGroupAction::new(new_event_store_slot())
+        ReactInGroupAction
     }
 
     fn react_input() -> ReactInGroupInput {
@@ -185,8 +175,9 @@ mod tests {
     #[test]
     fn react_execute_emits_host_pinned_kind7_publish_command() {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
+        let ctx = ActionContext::default();
         action()
-            .execute(react_input(), "react-cid", &|cmd| {
+            .execute(&ctx, react_input(), "react-cid", &|cmd| {
                 captured.borrow_mut().push(cmd);
             })
             .expect("well-formed input executes");

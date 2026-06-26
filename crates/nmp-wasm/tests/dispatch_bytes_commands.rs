@@ -11,11 +11,11 @@
 //! `decode_payload`) and reaches the module's `start()` validator, instead of
 //! returning the generic envelope-level write-path `CapabilityFailure`.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use nmp_core::actor::ActorCommand;
-use nmp_core::dispatch_envelope::{encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION};
+use nmp_core::dispatch_envelope::{DISPATCH_ENVELOPE_SCHEMA_VERSION, encode_dispatch_envelope};
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
@@ -106,6 +106,7 @@ impl ActionModule for ProbeModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(ActorCommand),
@@ -159,15 +160,20 @@ fn typed_payload_decodes_and_reaches_start_not_capability_failure() {
     // This is the #1008 outcome: the typed dispatch path runs to completion
     // instead of short-circuiting with a "not yet wired" token.
     match &events[..] {
-        [WorkerEvent::ActionAccepted {
-            action_type,
-            correlation_id,
-        }, WorkerEvent::UpdateBytes { .. }] => {
+        [
+            WorkerEvent::ActionAccepted {
+                action_type,
+                correlation_id,
+            },
+            WorkerEvent::UpdateBytes { .. },
+        ] => {
             assert_eq!(action_type, PROBE_NAMESPACE);
             assert_eq!(correlation_id, "corr-typed");
         }
         other => {
-            panic!("expected [ActionAccepted, UpdateBytes] for side-effect-only module; got {other:?}")
+            panic!(
+                "expected [ActionAccepted, UpdateBytes] for side-effect-only module; got {other:?}"
+            )
         }
     }
     assert_eq!(
@@ -253,9 +259,11 @@ fn publish_malformed_payload_fails_closed_at_decode_after_1008() {
     );
     let events = runtime.dispatch_bytes(&bytes);
     match &events[..] {
-        [WorkerEvent::CapabilityFailure(CapabilityFailure {
-            capability, reason, ..
-        })] => {
+        [
+            WorkerEvent::CapabilityFailure(CapabilityFailure {
+                capability, reason, ..
+            }),
+        ] => {
             assert_eq!(capability, "nmp.publish");
             // Decode rejection — not the old publish-disabled token.
             assert!(

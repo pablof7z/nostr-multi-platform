@@ -192,7 +192,11 @@ fn dispatch_publish_action_returns_minted_correlation_id_not_event_id() {
             "the returned correlation_id must NOT be the event id — identity is \
              not output data (#1748)"
         );
-        assert_eq!(id.len(), 32, "minted correlation_id is 32-hex, not the 64-hex event id");
+        assert_eq!(
+            id.len(),
+            32,
+            "minted correlation_id is 32-hex, not the 64-hex event id"
+        );
     });
 }
 
@@ -207,8 +211,9 @@ fn execute_action_publish_is_ok() {
             },
         };
         let action_json = serde_json::to_string(&action).unwrap();
+        let ctx = ActionContext::with_event_store_slot(app.event_store_handle());
         assert!(
-            execute_action(app, "nmp.publish", &action_json, "corr-id").is_ok(),
+            execute_action(app, &ctx, "nmp.publish", &action_json, "corr-id").is_ok(),
             "publish execution should not error"
         );
     });
@@ -218,7 +223,8 @@ fn execute_action_publish_is_ok() {
 fn execute_action_publish_raw_is_ok_without_actor() {
     with_app(|app| {
         let json = r#"{"PublishRaw":{"kind":1,"tags":[],"content":"h3","target":"Auto"}}"#;
-        assert!(execute_action(app, "nmp.publish", json, "corr-id").is_ok());
+        let ctx = ActionContext::with_event_store_slot(app.event_store_handle());
+        assert!(execute_action(app, &ctx, "nmp.publish", json, "corr-id").is_ok());
     });
 }
 
@@ -228,7 +234,8 @@ fn execute_action_publish_raw_is_ok_without_actor() {
 #[test]
 fn execute_action_unknown_namespace_returns_err() {
     with_app(|app| {
-        let err = execute_action(app, "nmp.future", "{}", "corr-id")
+        let ctx = ActionContext::with_event_store_slot(app.event_store_handle());
+        let err = execute_action(app, &ctx, "nmp.future", "{}", "corr-id")
             .expect_err("unwired namespace must surface an error");
         assert!(
             err.message.contains("no executor registered") && err.message.contains("nmp.future"),
@@ -238,8 +245,8 @@ fn execute_action_unknown_namespace_returns_err() {
 }
 
 use std::sync::{
-    atomic::{AtomicBool, Ordering},
     Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 // ─── Typed test ActionModule structs shared across the seam-proof tests.
@@ -271,6 +278,7 @@ impl nmp_core::substrate::ActionModule for TestGreetingModule {
     }
     fn execute(
         &self,
+        _ctx: &nmp_core::substrate::ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),
@@ -294,6 +302,7 @@ impl nmp_core::substrate::ActionModule for TestFailingModule {
     }
     fn execute(
         &self,
+        _ctx: &nmp_core::substrate::ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),
@@ -317,6 +326,7 @@ impl nmp_core::substrate::ActionModule for TestTodoModule {
     }
     fn execute(
         &self,
+        _ctx: &nmp_core::substrate::ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),
@@ -342,6 +352,7 @@ impl nmp_core::substrate::ActionModule for TestTodoRejectModule {
     }
     fn execute(
         &self,
+        _ctx: &nmp_core::substrate::ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),
@@ -365,6 +376,7 @@ impl nmp_core::substrate::ActionModule for TestPanicModule {
     }
     fn execute(
         &self,
+        _ctx: &nmp_core::substrate::ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),
@@ -503,8 +515,7 @@ use std::sync::Mutex;
 /// registry slot in isolation.
 #[test]
 fn dispatch_action_delivers_result_to_observer_with_correlation_id() {
-    let seen: Arc<Mutex<Vec<nmp_core::substrate::ActionResult>>> =
-        Arc::new(Mutex::new(Vec::new()));
+    let seen: Arc<Mutex<Vec<nmp_core::substrate::ActionResult>>> = Arc::new(Mutex::new(Vec::new()));
     let seen_in_observer = Arc::clone(&seen);
 
     with_app(|app| {
@@ -663,25 +674,21 @@ fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
         .send_cmd_count
         .load(std::sync::atomic::Ordering::Relaxed);
 
-    let parsed: serde_json::Value = serde_json::from_str(&out)
-        .expect("dispatch envelope must be parseable JSON");
+    let parsed: serde_json::Value =
+        serde_json::from_str(&out).expect("dispatch envelope must be parseable JSON");
     // (a) — envelope shape.
     let id = parsed
         .get("correlation_id")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| {
-            panic!(
-                "executor failure envelope must include correlation_id; got: {out}"
-            )
+            panic!("executor failure envelope must include correlation_id; got: {out}")
         });
     assert_eq!(id.len(), 32, "correlation_id should still be 32 hex chars");
     let err = parsed
         .get("error")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| {
-            panic!(
-                "executor failure envelope must include error message; got: {out}"
-            )
+            panic!("executor failure envelope must include error message; got: {out}")
         });
     assert!(
         err.contains("action executor panicked"),
@@ -718,4 +725,3 @@ fn executor_failure_returns_correlation_id_and_enqueues_failed_terminal() {
 //   `default_registry`, which is by definition trusted Rust code.
 // * `c_abi_nmp_prefixed_module_registration_is_silently_rejected` —
 //   same reasoning for `nmp_app_register_action_module`.
-

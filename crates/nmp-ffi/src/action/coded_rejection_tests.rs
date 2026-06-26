@@ -29,6 +29,7 @@ impl nmp_core::substrate::ActionModule for TestCodedRejectModule {
     }
     fn execute(
         &self,
+        _ctx: &nmp_core::substrate::ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),
@@ -109,6 +110,7 @@ impl nmp_core::substrate::ActionModule for TestCodedRejectBytesModule {
     }
     fn execute(
         &self,
+        _ctx: &nmp_core::substrate::ActionContext,
         _action: Self::Action,
         _correlation_id: &str,
         _send: &dyn Fn(nmp_core::actor::ActorCommand),
@@ -129,9 +131,7 @@ impl nmp_core::substrate::ActionModule for TestCodedRejectBytesModule {
 /// regression. Both `"error"` and `"code"` must be present.
 #[test]
 fn coded_rejection_byte_doorway_includes_code_field() {
-    use nmp_core::dispatch_envelope::{
-        encode_dispatch_envelope, DISPATCH_ENVELOPE_SCHEMA_VERSION,
-    };
+    use nmp_core::dispatch_envelope::{DISPATCH_ENVELOPE_SCHEMA_VERSION, encode_dispatch_envelope};
 
     let app = nmp_app_new();
     // SAFETY: `nmp_app_new` never returns null; pointer is valid until `nmp_app_free` below.

@@ -6,10 +6,10 @@
 //! 9002 sets the user-visible metadata and the caller-chosen visibility and
 //! access markers.
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -143,6 +143,7 @@ impl ActionModule for CreatePublicGroupAction {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -171,15 +172,22 @@ mod tests {
 
     fn run_execute(input: CreatePublicGroupInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        CreatePublicGroupAction.execute(input, "cid-create", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })?;
+        CreatePublicGroupAction.execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "cid-create",
+            &|cmd| {
+                captured.borrow_mut().push(cmd);
+            },
+        )?;
         Ok(captured.into_inner())
     }
 
     fn metadata_tags(cmds: &[ActorCommand]) -> &[Vec<String>] {
         match &cmds[1] {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => &event.tags,
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => {
+                &event.tags
+            }
             other => panic!("expected kind:9002 publish, got {other:?}"),
         }
     }
@@ -209,10 +217,12 @@ mod tests {
                 assert_eq!(event.kind, KIND_CREATE_GROUP);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
                 assert_eq!(event.content, "");
-                assert!(event
-                    .tags
-                    .iter()
-                    .any(|t| t == &vec!["h".to_string(), "rust-nostr".to_string()]));
+                assert!(
+                    event
+                        .tags
+                        .iter()
+                        .any(|t| t == &vec!["h".to_string(), "rust-nostr".to_string()])
+                );
                 assert_eq!(correlation_id.as_deref(), Some("cid-create"));
             }
             other => panic!("expected kind:9007 publish, got {other:?}"),
@@ -227,16 +237,20 @@ mod tests {
             }) => {
                 assert_eq!(event.kind, KIND_EDIT_METADATA);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
-                assert!(event
-                    .tags
-                    .iter()
-                    .any(|t| t == &vec!["name".to_string(), "Rust Nostr".to_string()]));
+                assert!(
+                    event
+                        .tags
+                        .iter()
+                        .any(|t| t == &vec!["name".to_string(), "Rust Nostr".to_string()])
+                );
                 assert!(event.tags.iter().any(|t| t == &vec!["public".to_string()]));
                 assert!(event.tags.iter().any(|t| t == &vec!["open".to_string()]));
-                assert!(event
-                    .tags
-                    .iter()
-                    .any(|t| t == &vec!["about".to_string(), "Protocol work".to_string()]));
+                assert!(
+                    event
+                        .tags
+                        .iter()
+                        .any(|t| t == &vec!["about".to_string(), "Protocol work".to_string()])
+                );
                 assert_eq!(correlation_id.as_deref(), Some("cid-create"));
             }
             other => panic!("expected kind:9002 publish, got {other:?}"),
@@ -423,7 +437,8 @@ mod tests {
         let cmds = run_execute(action).expect("executes");
         let tags = metadata_tags(&cmds);
         assert!(
-            tags.iter().any(|t| t == &vec!["parent".to_string(), "tech".to_string()]),
+            tags.iter()
+                .any(|t| t == &vec!["parent".to_string(), "tech".to_string()]),
             "expected [\"parent\", \"tech\"] on the 9002, got {tags:?}"
         );
     }
@@ -437,7 +452,9 @@ mod tests {
         let cmds = run_execute(action).expect("executes");
         let tags = metadata_tags(&cmds);
         assert!(
-            !tags.iter().any(|t| t.first() == Some(&"parent".to_string())),
+            !tags
+                .iter()
+                .any(|t| t.first() == Some(&"parent".to_string())),
             "must not emit a parent tag when None, got {tags:?}"
         );
     }

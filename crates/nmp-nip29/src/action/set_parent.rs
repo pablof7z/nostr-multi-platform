@@ -14,10 +14,10 @@
 //! visibility/access so the relay retains the group's prior metadata (NIP-29:
 //! absent tags keep prior values); only `parent` is set.
 
+use nmp_core::actor::ActorCommand;
 use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRejection,
 };
-use nmp_core::actor::ActorCommand;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -41,7 +41,10 @@ pub struct SetParentInput {
 }
 
 fn validate(action: &SetParentInput) -> Result<(), ActionRejection> {
-    action.group.require_routable().map_err(ActionRejection::Invalid)?;
+    action
+        .group
+        .require_routable()
+        .map_err(ActionRejection::Invalid)?;
     if !(action.group.host_relay_url.starts_with("wss://")
         || action.group.host_relay_url.starts_with("ws://"))
     {
@@ -89,12 +92,12 @@ impl ActionModule for SetParentAction {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
     ) -> Result<(), String> {
-        send(set_parent_plan(&action)
-            .into_actor_command(Some(correlation_id.to_string()))?);
+        send(set_parent_plan(&action).into_actor_command(Some(correlation_id.to_string()))?);
         Ok(())
     }
 }
@@ -111,15 +114,22 @@ mod tests {
 
     fn run_execute(input: SetParentInput) -> Result<Vec<ActorCommand>, String> {
         let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-        SetParentAction.execute(input, "cid-sp", &|cmd| {
-            captured.borrow_mut().push(cmd);
-        })?;
+        SetParentAction.execute(
+            &nmp_core::substrate::ActionContext::default(),
+            input,
+            "cid-sp",
+            &|cmd| {
+                captured.borrow_mut().push(cmd);
+            },
+        )?;
         Ok(captured.into_inner())
     }
 
     fn tags(cmds: &[ActorCommand]) -> &[Vec<String>] {
         match &cmds[0] {
-            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => &event.tags,
+            ActorCommand::Publish(PublishCommand::UnsignedEventToRelays { event, .. }) => {
+                &event.tags
+            }
             other => panic!("expected kind:9002 publish, got {other:?}"),
         }
     }
@@ -134,7 +144,10 @@ mod tests {
         assert_eq!(cmds.len(), 1);
         match &cmds[0] {
             ActorCommand::Publish(PublishCommand::UnsignedEventToRelays {
-                event, relays, correlation_id, ..
+                event,
+                relays,
+                correlation_id,
+                ..
             }) => {
                 assert_eq!(event.kind, KIND_EDIT_METADATA);
                 assert_eq!(relays, &vec!["wss://groups.example.com".to_string()]);
@@ -143,8 +156,14 @@ mod tests {
             other => panic!("expected 9002 publish, got {other:?}"),
         }
         let t = tags(&cmds);
-        assert!(t.iter().any(|x| x == &vec!["h".to_string(), "nostr".to_string()]));
-        assert!(t.iter().any(|x| x == &vec!["parent".to_string(), "tech".to_string()]));
+        assert!(
+            t.iter()
+                .any(|x| x == &vec!["h".to_string(), "nostr".to_string()])
+        );
+        assert!(
+            t.iter()
+                .any(|x| x == &vec!["parent".to_string(), "tech".to_string()])
+        );
         // No name/about/visibility/access tags — those stay relay-side.
         assert!(!t.iter().any(|x| x.first() == Some(&"name".to_string())));
         assert!(!t.iter().any(|x| x == &vec!["public".to_string()]));
@@ -158,7 +177,10 @@ mod tests {
         };
         let cmds = run_execute(action).expect("executes");
         let t = tags(&cmds);
-        assert!(t.iter().any(|x| x == &vec!["h".to_string(), "nostr".to_string()]));
+        assert!(
+            t.iter()
+                .any(|x| x == &vec!["h".to_string(), "nostr".to_string()])
+        );
         assert!(
             !t.iter().any(|x| x.first() == Some(&"parent".to_string())),
             "detach must omit the parent tag, got {t:?}"

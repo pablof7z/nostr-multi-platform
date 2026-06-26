@@ -51,6 +51,7 @@ impl ActionModule for TopicArticlesModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         _correlation_id: &str,
         send: &dyn Fn(ActorCommand),

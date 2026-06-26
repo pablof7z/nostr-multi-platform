@@ -56,6 +56,7 @@ fn react_protocol_publishes_kind7_via_one_door() {
     let cmd = capture_execute(|send| {
         ReactModule
             .execute(
+                &nmp_core::substrate::ActionContext::default(),
                 ReactAction {
                     target_event_id: TARGET.to_string(),
                     reaction: String::new(),
@@ -90,6 +91,7 @@ fn unreact_protocol_publishes_kind5_deletion() {
     let cmd = capture_execute(|send| {
         UnreactModule
             .execute(
+                &nmp_core::substrate::ActionContext::default(),
                 UnreactAction {
                     reaction_event_id: REACTION.to_string(),
                     reason: "undo".to_string(),

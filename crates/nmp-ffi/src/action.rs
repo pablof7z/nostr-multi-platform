@@ -58,13 +58,13 @@
 //! * **D8** — the FFI thread never blocks. Dispatch is a non-blocking
 //!   channel send.
 
-use std::ffi::{c_char, CString};
+use std::ffi::{CString, c_char};
 
-use super::{app_ref, c_string_argument, NmpApp};
-use nmp_core::substrate::{ActionRejection, ActionResult};
+use super::{NmpApp, app_ref, c_string_argument};
 use nmp_core::actor::ActionLedgerCommand;
 #[cfg(any(test, feature = "test-support"))]
 use nmp_core::substrate::ActionContext;
+use nmp_core::substrate::{ActionRejection, ActionResult};
 
 // ADR-0064 / S4 (#1752) — the native byte doorway lives in this sibling so
 // `action.rs` stays under its hand-authored LOC ceiling (AGENTS.md / V-12). It
@@ -113,7 +113,9 @@ pub extern "C" fn nmp_app_ack_action_stage(app: *mut NmpApp, correlation_id: *co
     if cid.is_empty() {
         return;
     }
-    app.send_cmd(nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::Ack(cid)));
+    app.send_cmd(nmp_core::actor::ActorCommand::ActionLedger(
+        ActionLedgerCommand::Ack(cid),
+    ));
 }
 
 /// Host-supplied action result observer callback.
@@ -218,7 +220,7 @@ pub(super) fn dispatch_action_json(
             .map(|d| d.as_millis() as u64)
             .unwrap_or(0)
     };
-    let mut ctx = ActionContext {};
+    let mut ctx = ActionContext::with_event_store_slot(app.event_store_handle());
     match app
         .action_registry
         .start(&mut ctx, dispatch_now_ms, namespace, action_json)
@@ -230,7 +232,11 @@ pub(super) fn dispatch_action_json(
             // post-mint outcome handling is shared with the byte doorway via
             // `finish_dispatch` so both paths report acceptance / failure
             // identically (#1676 BUG-A/B/C).
-            finish_dispatch(app, &correlation_id, execute_action(app, namespace, action_json, &correlation_id))
+            finish_dispatch(
+                app,
+                &correlation_id,
+                execute_action(app, &ctx, namespace, action_json, &correlation_id),
+            )
         }
         Err(rejection) => rejection_json(rejection),
     }
@@ -289,7 +295,8 @@ pub fn nmp_app_dispatch_action(
     let result = dispatch_action_json(app_ref, &namespace, &action_json);
     std::ffi::CString::new(result)
         .unwrap_or_else(|_| {
-            std::ffi::CString::new(r#"{"error":"dispatch result encoding failed"}"#).unwrap_or_default()
+            std::ffi::CString::new(r#"{"error":"dispatch result encoding failed"}"#)
+                .unwrap_or_default()
         })
         .into_raw()
 }
@@ -332,10 +339,12 @@ fn finish_dispatch(
             format!(r#"{{"correlation_id":{}}}"#, json_string(correlation_id))
         }
         Err(failure) => {
-            app.send_cmd(nmp_core::actor::ActorCommand::ActionLedger(ActionLedgerCommand::RecordFailure {
-                correlation_id: correlation_id.to_string(),
-                reason: failure.message.clone(),
-            }));
+            app.send_cmd(nmp_core::actor::ActorCommand::ActionLedger(
+                ActionLedgerCommand::RecordFailure {
+                    correlation_id: correlation_id.to_string(),
+                    reason: failure.message.clone(),
+                },
+            ));
             error_json_with_correlation_id(correlation_id, &failure.message)
         }
     }
@@ -353,12 +362,13 @@ fn finish_dispatch(
 #[cfg(any(test, feature = "test-support"))]
 fn execute_action(
     app: &NmpApp,
+    ctx: &ActionContext,
     namespace: &str,
     action_json: &str,
     correlation_id: &str,
 ) -> Result<(), nmp_core::__ffi_internal::ActionExecuteFailure> {
     app.action_registry
-        .execute(namespace, action_json, correlation_id, &|cmd| {
+        .execute(ctx, namespace, action_json, correlation_id, &|cmd| {
             app.send_cmd(cmd);
         })
 }

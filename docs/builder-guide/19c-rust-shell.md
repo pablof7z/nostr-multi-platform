@@ -94,8 +94,13 @@ impl nmp_core::substrate::ActionModule for MyActionModule {
     fn start(_: &mut nmp_core::substrate::ActionContext, _: Self::Action)
         -> Result<(), nmp_core::substrate::ActionRejection> { Ok(()) }
 
-    fn execute(&self, _: Self::Action, _: &str,
-        _: &dyn Fn(nmp_core::ActorCommand)) -> Result<(), String> { Ok(()) }
+    fn execute(
+        &self,
+        _: &nmp_core::substrate::ActionContext,
+        _: Self::Action,
+        _: &str,
+        _: &dyn Fn(nmp_core::ActorCommand),
+    ) -> Result<(), String> { Ok(()) }
 }
 ```
 

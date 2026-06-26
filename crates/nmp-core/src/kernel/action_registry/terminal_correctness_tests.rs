@@ -11,7 +11,12 @@
 
 use super::*;
 use crate::actor::ActionLedgerCommand;
+use crate::substrate::ActionContext;
 use std::cell::Cell;
+
+fn ctx() -> ActionContext {
+    ActionContext::default()
+}
 
 /// A no-executor namespace fails with [`ActionFailureKind::NoExecutor`] — a
 /// pre-enqueue rejection. Nothing ran, so `enqueued` is false.
@@ -19,7 +24,7 @@ use std::cell::Cell;
 fn unknown_namespace_execute_is_tagged_no_executor() {
     let registry = ActionRegistry::new();
     let err = registry
-        .execute("host.absent", "null", "corr-id", &|_cmd| {})
+        .execute(&ctx(), "host.absent", "null", "corr-id", &|_cmd| {})
         .expect_err("an unregistered namespace must return Err");
     assert_eq!(err.kind, ActionFailureKind::NoExecutor, "got: {err:?}");
     assert!(
@@ -49,6 +54,7 @@ fn sync_err_executor_is_tagged_sync_error_not_panic() {
         }
         fn execute(
             &self,
+            _ctx: &ActionContext,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -60,7 +66,7 @@ fn sync_err_executor_is_tagged_sync_error_not_panic() {
     let mut registry = ActionRegistry::new();
     let _ = registry.register(RefusingModule);
     let err = registry
-        .execute("host.refuse", "null", "corr-id", &|_cmd| {})
+        .execute(&ctx(), "host.refuse", "null", "corr-id", &|_cmd| {})
         .expect_err("a refusing executor must return Err");
     assert_eq!(
         err.kind,
@@ -92,6 +98,7 @@ fn panic_before_enqueue_is_tagged_panic_and_not_enqueued() {
         }
         fn execute(
             &self,
+            _ctx: &ActionContext,
             _action: Self::Action,
             _correlation_id: &str,
             _send: &dyn Fn(crate::actor::ActorCommand),
@@ -103,7 +110,7 @@ fn panic_before_enqueue_is_tagged_panic_and_not_enqueued() {
     let mut registry = ActionRegistry::new();
     let _ = registry.register(PanicFirstModule);
     let err = registry
-        .execute("host.panic_first", "null", "corr-id", &|_cmd| {})
+        .execute(&ctx(), "host.panic_first", "null", "corr-id", &|_cmd| {})
         .expect_err("a panicking executor returns Err, not unwind");
     assert_eq!(err.kind, ActionFailureKind::Panic, "got: {err:?}");
     assert!(
@@ -133,6 +140,7 @@ fn panic_after_enqueue_reports_enqueued_true() {
         fn is_async_completing() -> bool { true } // doctrine-allow: D12 — test module; the enqueued command (asserted via `seen`) carries the terminal, not a stage recorded in this file
         fn execute(
             &self,
+            _ctx: &ActionContext,
             _action: Self::Action,
             correlation_id: &str,
             send: &dyn Fn(crate::actor::ActorCommand),
@@ -151,9 +159,15 @@ fn panic_after_enqueue_reports_enqueued_true() {
     let _ = registry.register(EnqueueThenPanicModule);
     let seen = Cell::new(0u32);
     let err = registry
-        .execute("host.enqueue_then_panic", "null", "corr-id", &|_cmd| {
-            seen.set(seen.get() + 1);
-        })
+        .execute(
+            &ctx(),
+            "host.enqueue_then_panic",
+            "null",
+            "corr-id",
+            &|_cmd| {
+                seen.set(seen.get() + 1);
+            },
+        )
         .expect_err("a post-enqueue panic still returns Err");
     assert_eq!(err.kind, ActionFailureKind::Panic, "got: {err:?}");
     assert_eq!(

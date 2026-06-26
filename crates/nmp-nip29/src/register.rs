@@ -27,7 +27,6 @@
 //! zero NIP-29 nouns; composition happens here (defaults) and in `nmp-ffi`
 //! (the hydrating read views), never in the kernel.
 
-use nmp_core::slots::EventStoreSlot;
 use nmp_core::substrate::{ActionRegistrar, RegistrationError, SnapshotProjectionRegistrar};
 
 use crate::action::{
@@ -116,25 +115,20 @@ pub fn wire_group_defaults_with_snapshot(
 /// concrete `NmpApp` implements `ActionRegistrar`; the caller upcasts it
 /// via the trait, keeping this crate NIP-layer-only (D0 §3).
 ///
-/// `store_slot` is the V-83 [`EventStoreSlot`] publish-back handle (obtained
-/// from the host via `NmpApp::event_store_handle`). The group-publishing actions
-/// capture it (ADR-0052 rung 5.2 stateful module) so they can read recent group
-/// events for `["previous", …]` tags at publish time via a cache-only
-/// `StoreQuery::Tags { #h, limit }` — a single source of truth instead of a
-/// crate-local cache. The slot is empty until `nmp_app_start` publishes the
-/// store handle; reads before then degrade to no `previous` tags (D6).
+/// Group-publishing actions read recent group events for `["previous", …]` tags
+/// through the execution [`ActionContext`](nmp_core::substrate::ActionContext)
+/// at dispatch time. That keeps the local-store read dependency in the action
+/// lifecycle instead of per-action constructor plumbing, while preserving the
+/// cache-only `StoreQuery::Tags { #h, limit }` single source of truth.
 ///
 /// Returns `Err(`[`RegistrationError`]`)` on the FIRST namespace collision
 /// detected (#1724 criterion 1: structured error in both dev and release).
 /// A collision means two init calls for the same app — the caller's bug.
-pub fn register_actions(
-    app: &mut impl ActionRegistrar,
-    store_slot: EventStoreSlot,
-) -> Result<(), RegistrationError> {
-    app.register_action(PublishGroupEventAction::new(store_slot.clone()))?;
-    app.register_action(ReactInGroupAction::new(store_slot.clone()))?;
-    app.register_action(ShareEventInGroupAction::new(store_slot.clone()))?;
-    app.register_action(RepostInGroupAction::new(store_slot))?;
+pub fn register_actions(app: &mut impl ActionRegistrar) -> Result<(), RegistrationError> {
+    app.register_action(PublishGroupEventAction)?;
+    app.register_action(ReactInGroupAction)?;
+    app.register_action(ShareEventInGroupAction)?;
+    app.register_action(RepostInGroupAction)?;
     app.register_action(CreatePublicGroupAction)?;
     app.register_action(DiscoverGroupsAction)?;
     app.register_action(JoinGroupAction)?;

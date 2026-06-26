@@ -11,9 +11,9 @@
 //! (`wire/action_payload.rs`) — the fail-closed `schema_version` gate runs in
 //! `decode`, BEFORE `start()`.
 
-use nmp_core::substrate::{ActionModule, ActionPayload, ActionPayloadDecodeError};
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{ContactsCommand};
+use nmp_core::actor::ContactsCommand;
+use nmp_core::substrate::{ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError};
 
 use crate::{FollowManyAction, FollowManyModule, FollowModule, PubkeyAction, UnfollowModule};
 
@@ -29,6 +29,7 @@ impl ActionModule for FollowModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -53,6 +54,7 @@ impl ActionModule for UnfollowModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),
@@ -77,6 +79,7 @@ impl ActionModule for FollowManyModule {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

@@ -231,6 +231,7 @@ impl ActionModule for PublishWebBookmarkAction {
 
     fn execute(
         &self,
+        _ctx: &ActionContext,
         action: Self::Action,
         correlation_id: &str,
         send: &dyn Fn(ActorCommand),

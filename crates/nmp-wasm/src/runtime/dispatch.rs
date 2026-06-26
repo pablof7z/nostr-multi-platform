@@ -18,7 +18,7 @@ use crate::dispatch_routing::{
     ref_dispatch_from_resolve, signer_not_installed_reason,
 };
 use crate::protocol::{CapabilityFailure, ReleaseRef, ResolveRef, WorkerEvent};
-use nmp_core::dispatch_envelope::{decode_dispatch_envelope, DecodedDispatch};
+use nmp_core::dispatch_envelope::{DecodedDispatch, decode_dispatch_envelope};
 use nmp_core::substrate::ActionContext;
 
 use super::{RawWasmAbiAdapter, WasmRuntimeError};
@@ -120,8 +120,11 @@ impl RawWasmAbiAdapter {
         // the host-supplied envelope correlation id is the operation identity.
         // Use reducer time anyway so even validation metadata shares the
         // kernel-owned clock seam.
-        let now_ms = self.reducer.borrow().now_ms();
-        let mut ctx = ActionContext {};
+        let (now_ms, store) = {
+            let reducer = self.reducer.borrow();
+            (reducer.now_ms(), reducer.event_store_handle())
+        };
+        let mut ctx = ActionContext::with_event_store(store);
         match self
             .action_registry
             .start_bytes(&mut ctx, now_ms, &action_namespace, &payload)
@@ -138,6 +141,7 @@ impl RawWasmAbiAdapter {
                     std::rc::Rc::new(std::cell::RefCell::new(Vec::<ActorCommand>::new()));
                 let commands_clone = std::rc::Rc::clone(&commands);
                 let exec_result = self.action_registry.execute_bytes(
+                    &ctx,
                     &action_namespace,
                     &payload,
                     &correlation_id,

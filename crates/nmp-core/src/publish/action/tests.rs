@@ -262,7 +262,8 @@ fn publish_target_default_is_auto_for_serde_omitted_field() {
 fn run_execute(action: PublishAction) -> Result<Vec<ActorCommand>, String> {
     use std::cell::RefCell;
     let captured: RefCell<Vec<ActorCommand>> = RefCell::new(Vec::new());
-    PublishModule.execute(action, "test-cid", &|cmd| {
+    let ctx = ActionContext::default();
+    PublishModule.execute(&ctx, action, "test-cid", &|cmd| {
         captured.borrow_mut().push(cmd);
     })?;
     Ok(captured.into_inner())
