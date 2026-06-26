@@ -18,17 +18,18 @@
 //! - [`BrowserAppBuilder<S>`] — typestate composition root (5 stages).
 //! - [`BrowserRunConfig`] — runtime config passed at the `decide_providers` gate.
 //! - [`BrowserRuntimeHandle`] — pump-driven runtime handle (hides raw reducer).
+//! - [`PumpOutcome`] / [`BrowserRuntimeEvent`] — the result of one `pump()` turn.
 
 mod builder;
 mod runtime;
 
 pub use builder::{BrowserAppBuilder, BrowserRunConfig};
-pub use runtime::BrowserRuntimeHandle;
+pub use runtime::{BrowserRuntimeEvent, BrowserRuntimeHandle, PumpOutcome};
 
 // Re-export typestate markers for consumers that need to name them
 // (e.g. `BrowserAppBuilder<Unstarted>` in a type annotation).
 pub use builder::{
-    Unstarted, StorageSet, ProjectionsDeclared, RelaysDeclared, ProvidersDecided,
+    ProjectionsDeclared, ProvidersDecided, RelaysDeclared, StorageSet, Unstarted,
 };
 
 #[cfg(target_arch = "wasm32")]

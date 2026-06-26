@@ -5,31 +5,40 @@
 //!
 //! `BrowserRuntime` owns the `KernelReducer` and is the **sole** writer —
 //! no other path mutates the kernel after `start()`. The JS host drives it
-//! via `BrowserRuntimeHandle::pump()`, which drains the inbox and applies
-//! every pending `ActorCommand`.
+//! via `BrowserRuntimeHandle::pump()`, which drains the inbox (bounded) and
+//! applies every pending `ActorCommand`.
 //!
 //! `BrowserRuntimeHandle` is the **only** public type (#2058): it exposes
-//! the narrow dispatch / snapshot surface and does NOT expose the raw
-//! `KernelReducer` or `BrowserRuntime` fields.
+//! the narrow dispatch / snapshot / sign surface and does NOT expose the raw
+//! `KernelReducer` or `BrowserRuntime` fields, nor any mutable post-start
+//! kernel handle.
 //!
-//! # Note on relay text/connected hooks
+//! # Relay text / connected hooks
 //!
 //! On browser the relay pool is WebSocket-based and driven from JS land.
-//! `relay_text_interceptors` and `relay_connected_hooks` are stored for
-//! future integration with the browser relay driver (issue #2059).
+//! `relay_text_interceptors` and `relay_connected_hooks` are stored here and
+//! invoked by the browser relay driver, which lands in #2050 (bounded
+//! transport-only adapter). They are wired into the driver at that seam.
 
+use std::collections::HashMap;
 use std::sync::{mpsc, Arc};
 
 use nmp_core::actor::ActorMail;
+use nmp_core::publish::PublishTarget;
 use nmp_core::substrate::{
-    RelayConnectedHook, RelayTextInterceptor, RoutedRelaySet, RoutingTraceObserver,
-    PublishTrace, SubscriptionTrace,
+    PublishTrace, RelayConnectedHook, RelayTextInterceptor, RoutedRelaySet, RoutingTraceObserver,
+    SubscriptionTrace,
 };
 use nmp_core::{
-    ActionRegistry, AppRelaySlot, CommandSender, KernelReducer, OutboundMessage, UpdateFrameBytes,
+    ActionRegistry, AppRelayList, CommandSender, KernelReducer, OutboundMessage, UpdateFrameBytes,
 };
 
-use crate::builder::{BrowserRunConfig, BrowserBuilderInner};
+use crate::builder::{BrowserBuilderInner, BrowserRunConfig};
+
+mod event;
+mod pump;
+
+pub use event::BrowserRuntimeEvent;
 
 // ── No-op routing trace observer ─────────────────────────────────────────────
 //
@@ -50,7 +59,42 @@ impl NoopRoutingTrace {
     }
 }
 
-mod pump;
+// ── Parked sign continuation ────────────────────────────────────────────────
+
+/// A publish parked between `NeedsSign` and the signed-response delivery.
+///
+/// Mirrors `nmp-wasm`'s `PendingSignedPublish`. The runtime stores one of these
+/// keyed on the sign `correlation_id` whenever a publish command needs an async
+/// signature. The broker that delivers the signature back and re-publishes lands
+/// in #2049; this struct is the runtime-side parking contract that exists now.
+#[derive(Debug, Clone)]
+pub(crate) struct PendingSignedPublish {
+    /// The action-level correlation id the host uses to settle the result, or
+    /// `None` when the command carried none.
+    #[allow(dead_code)] // read by the #2049 broker when it settles the action.
+    pub(crate) action_correlation_id: Option<String>,
+    /// The publish target resolved when the command was interpreted.
+    #[allow(dead_code)] // consumed by the #2049 broker on signed re-publish.
+    pub(crate) target: PublishTarget,
+}
+
+// ── Pump outcome ─────────────────────────────────────────────────────────────
+
+/// The result of one `BrowserRuntimeHandle::pump()` turn.
+///
+/// Carries the outbound relay frames produced, the host-facing events (sign
+/// requests, command failures), and a `yielded` flag set when the per-turn
+/// command budget was exhausted (the host should pump again).
+#[derive(Debug, Default)]
+pub struct PumpOutcome {
+    /// Outbound relay frames the host's relay driver must send.
+    pub outbound: Vec<OutboundMessage>,
+    /// Host events emitted this turn (sign requests, command failures).
+    pub events: Vec<BrowserRuntimeEvent>,
+    /// True when the command drain budget was hit and more mail may remain —
+    /// the host should call `pump()` again.
+    pub yielded: bool,
+}
 
 // ── BrowserRuntime ────────────────────────────────────────────────────────────
 
@@ -58,18 +102,27 @@ mod pump;
 /// use `BrowserRuntimeHandle`.
 struct BrowserRuntime {
     reducer: KernelReducer,
-    /// Action registry kept for future use when browser-path action dispatch
-    /// is wired (future #2057 follow-on). Currently unused since
-    /// `KernelReducer::apply_actor_command` embeds action execution.
+    /// Action registry kept so the #2049 signer-provider broker can resolve
+    /// action modules when settling parked publishes. Not yet read on the pump
+    /// path (`apply_actor_command` embeds action execution in the kernel).
     #[allow(dead_code)]
     action_registry: ActionRegistry,
     inbox_rx: mpsc::Receiver<ActorMail>,
-    // Stored for browser relay driver integration (future #2059).
+    /// Publishes parked awaiting an async signature, keyed on sign correlation
+    /// id. Populated on `NeedsSign`; drained by the #2049 broker.
+    pending_signed_publishes: HashMap<String, PendingSignedPublish>,
+    /// Relay-text interceptors — invoked by the browser relay driver (#2050)
+    /// when it receives inbound relay messages.
     #[allow(dead_code)]
     relay_text_interceptors: Vec<Arc<dyn RelayTextInterceptor>>,
+    /// Relay-connected hooks — invoked by the browser relay driver (#2050)
+    /// when a relay socket opens.
     #[allow(dead_code)]
     relay_connected_hooks: Vec<Arc<dyn RelayConnectedHook>>,
-    /// Identity-change callbacks fired on account switch / logout.
+    /// Identity-change callbacks. Fired when the active account changes; the
+    /// account-switch commands that trigger them on the browser path arrive via
+    /// the signer-provider registry (#2049), so they are dormant until that seam
+    /// lands. Stored (not dropped) so the wiring is in place.
     #[allow(dead_code)]
     identity_change_observers: Vec<Box<dyn Fn(Option<String>) + Send + Sync + 'static>>,
     #[allow(dead_code)]
@@ -77,8 +130,17 @@ struct BrowserRuntime {
 }
 
 impl BrowserRuntime {
-    fn pump(&mut self) -> Vec<OutboundMessage> {
-        pump::drain_inbox(&mut self.reducer, &self.inbox_rx)
+    fn pump(&mut self) -> PumpOutcome {
+        let drain = pump::drain_inbox(
+            &mut self.reducer,
+            &self.inbox_rx,
+            &mut self.pending_signed_publishes,
+        );
+        PumpOutcome {
+            outbound: drain.outbound,
+            events: drain.events,
+            yielded: drain.yielded,
+        }
     }
 
     fn make_update_frame(&mut self, running: bool) -> UpdateFrameBytes {
@@ -92,16 +154,17 @@ impl BrowserRuntime {
 /// reducer/runtime handles).
 ///
 /// Returned by `BrowserAppBuilder<ProvidersDecided>::start()`. Callers send
-/// commands through a `CommandSender` (obtained from the builder BEFORE
-/// `start()` via `actor_sender()`) and drive the event loop by calling
-/// `pump()` on each timer tick.
+/// commands through a `CommandSender` (from [`Self::command_sender`]) and drive
+/// the event loop by calling [`Self::pump`] on each timer tick.
 pub struct BrowserRuntimeHandle {
     runtime: BrowserRuntime,
-    /// Sender clone kept alive so `BrowserRuntimeHandle::command_sender()`
-    /// can hand out fresh `CommandSender`s post-start.
+    /// Sender clone kept alive so [`Self::command_sender`] can hand out fresh
+    /// `CommandSender`s post-start.
     inbox_tx: mpsc::Sender<ActorMail>,
-    /// Shared relay slot (caller-facing read accessor).
-    configured_relays: AppRelaySlot,
+    /// Shared relay slot. Read-only to callers — see [`Self::configured_relays`].
+    /// The kernel is the sole writer (D4); relay-list mutations flow through the
+    /// command inbox, never through this handle.
+    configured_relays: nmp_core::AppRelaySlot,
 }
 
 impl BrowserRuntimeHandle {
@@ -189,6 +252,7 @@ impl BrowserRuntimeHandle {
             reducer: inner.reducer,
             action_registry: inner.action_registry,
             inbox_rx,
+            pending_signed_publishes: HashMap::new(),
             relay_text_interceptors: inner.relay_text_interceptors,
             relay_connected_hooks: inner.relay_connected_hooks,
             identity_change_observers: inner.identity_change_observers,
@@ -206,14 +270,14 @@ impl BrowserRuntimeHandle {
 
     /// Drive one turn of the event loop.
     ///
-    /// Drains every pending `ActorCommand` from the inbox and applies them to
-    /// the kernel. Returns the outbound relay messages produced this turn.
-    /// The JS host should call this on each timer tick or after enqueuing a
-    /// command.
+    /// Drains up to the per-turn command budget from the inbox and applies each
+    /// to the kernel. Returns a [`PumpOutcome`] with the outbound relay frames,
+    /// host events (sign requests / command failures), and a `yielded` flag set
+    /// when more mail may remain (the host should pump again).
     ///
     /// D4 (single-writer): no other code path mutates the `KernelReducer`
     /// while `pump()` runs.
-    pub fn pump(&mut self) -> Vec<OutboundMessage> {
+    pub fn pump(&mut self) -> PumpOutcome {
         self.runtime.pump()
     }
 
@@ -234,16 +298,38 @@ impl BrowserRuntimeHandle {
     ///
     /// Enqueue `ActorCommand`s through this sender; they are applied on the
     /// next `pump()` call. This is the narrow command-injection surface
-    /// exposed to callers (#2058).
+    /// exposed to callers (#2058). Relay-list edits, identity changes, and all
+    /// other state mutations go through this lane — never through a raw kernel
+    /// handle.
     pub fn command_sender(&self) -> CommandSender {
         CommandSender::new(self.inbox_tx.clone())
     }
 
-    /// Return the configured-relays slot (shared with the kernel).
+    /// Read a snapshot of the configured relay list.
     ///
-    /// Callers may read or update the relay list through this handle; the
-    /// kernel reads it on each tick.
-    pub fn configured_relays_handle(&self) -> AppRelaySlot {
-        Arc::clone(&self.configured_relays)
+    /// Returns an owned clone (read-only). The kernel is the sole writer of the
+    /// relay slot (D4); to change the relay list, send the appropriate command
+    /// through [`Self::command_sender`]. This handle never exposes a mutable
+    /// relay handle (#2058 — no post-start mutable state escape). On a poisoned
+    /// slot it returns an empty list rather than panicking (D6).
+    #[must_use]
+    pub fn configured_relays(&self) -> AppRelayList {
+        self.configured_relays
+            .lock()
+            .map(|g| g.clone())
+            .unwrap_or_default()
+    }
+
+    /// Number of publishes currently parked awaiting a signature.
+    ///
+    /// Each `pump()` that yields a [`BrowserRuntimeEvent::SignRequest`] parks one
+    /// entry here until the #2049 broker delivers the signature. Exposed for
+    /// tests and host diagnostics; never leaks the parked payloads.
+    #[must_use]
+    pub fn pending_sign_count(&self) -> usize {
+        self.runtime.pending_signed_publishes.len()
     }
 }
+
+#[cfg(test)]
+mod tests;

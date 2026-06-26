@@ -78,6 +78,18 @@ impl super::KernelReducer {
         // D6 — poisoned mutex: silent drop.
     }
 
+    /// ADR-0053 / Workstream-E4 — declare the explicit "I consume every Tier-2
+    /// built-in" intent (`DeclaredProjections::All`).
+    ///
+    /// The browser builder's `consume_all_builtin_projections()` gate forwards
+    /// here — the visible, greppable "I want everything" choice that advances the
+    /// typestate without narrowing. D6 — poisoned mutex: silent drop.
+    pub fn consume_all_builtin_projections(&self) {
+        if let Ok(mut guard) = self.snapshot_slot.lock() {
+            guard.consume_all_builtin_projections();
+        }
+    }
+
     /// ADR-0055 Rung 3 — declare incremental-apply capability.
     /// Bridges `SnapshotProjectionRegistrar::declare_incremental_apply`.
     pub fn declare_incremental_apply(&self) -> Result<(), IncrementalApplyError> {

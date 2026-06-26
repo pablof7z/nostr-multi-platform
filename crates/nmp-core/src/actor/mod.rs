@@ -158,8 +158,7 @@ pub(crate) use commands::notify_observers;
 // ADR-0062: targeted observer delivery and muted-registration helpers.
 // `notify_observer_by_id` is crate-internal (kernel replay path only).
 // `register_rust_observer_muted` is pub so nmp-ffi can call it.
-// `activate_observer` is also used by the kernel replay path, so it is
-// available on wasm/no-native reducer builds.
+// `activate_observer` is also used by the kernel replay path (wasm/no-native too).
 pub use commands::activate_observer;
 pub(crate) use commands::notify_observer_by_id;
 pub use commands::register_rust_observer_muted;
@@ -167,16 +166,14 @@ pub use commands::register_rust_observer_muted;
 // unconditionally so `nmp-ffi` and wasm32 composition roots can register
 // observers. `new_event_observer_slot_headless` is `pub(crate)` — wasm32-safe
 // (no drain thread); used by `KernelReducer::new` on all targets.
-pub(crate) use commands::new_event_observer_slot_headless;
+// `unregister_observer_internal`: all-targets alias (PR-B #2046 seam).
+pub(crate) use commands::{new_event_observer_slot_headless, unregister_observer_internal};
 #[cfg(feature = "native")]
 pub use commands::{
     new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, unregister_observer,
     LifecycleObserverSlot,
 };
 pub use commands::{register_rust_observer, KernelEventObserverSlot};
-// `unregister_observer_internal` is the pub(crate) all-targets alias used by
-// `KernelReducer::unregister_event_observer` (PR-B #2046 composition seam).
-pub(crate) use commands::unregister_observer_internal;
 // `register_c_observer` + `LifecycleObserverRegistration` reach `nmp-ffi`
 // through `nmp_core::__ffi_internal::*` so the C-ABI bridge in
 // `nmp-ffi/src/event_observer.rs` + `lifecycle.rs` can drive the slot.

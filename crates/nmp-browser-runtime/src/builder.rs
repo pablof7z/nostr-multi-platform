@@ -1,30 +1,38 @@
 //! `BrowserAppBuilder<S>` — typestate composition root for NMP on browser
 //! runtimes (issue #2046 / PR-B of the browser-runtime epic #2045).
 //!
-//! # Typestate ladder (ADR-0053 / ADR-0067)
+//! # Typestate ladder (ADR-0053 / ADR-0067, mirrors native `NmpAppBuilder`)
 //!
 //! ```text
 //! BrowserAppBuilder<Unstarted>          ← constructed by BrowserAppBuilder::new()
-//!   │  .inject_store(store)
-//!   ▼
-//! BrowserAppBuilder<StorageSet>         ← EventStore injected (ADR-0054 §5)
-//!   │  .declare_projections(...)         optional; all AppHost setters available
-//!   ▼
+//!   │  .inject_store(store)  ─┐  explicit storage choice (no silent default)
+//!   │  .in_memory()          ─┤
+//!   ▼                          ▼
+//! BrowserAppBuilder<StorageSet>         ← EventStore decided (ADR-0054 §5)
+//!   │  .declare_projections(...)         ─┐ explicit ADR-0053 projection decision
+//!   │  .consume_all_builtin_projections()─┤
+//!   ▼                                      ▼
 //! BrowserAppBuilder<ProjectionsDeclared> ← ADR-0053 consumed-projection gate
-//!   │  .set_relays(relays)
+//!   │  .set_relays(relays)         ─┐ explicit #1493 relay decision (non-empty)
+//!   │  .without_initial_relays()   ─┤
+//!   ▼                                ▼
+//! BrowserAppBuilder<RelaysDeclared>     ← relay decision made
+//!   │  .decide_providers(config)         ADR-0067 explicit no-providers-yet gate
 //!   ▼
-//! BrowserAppBuilder<RelaysDeclared>     ← relay bootstrap list provided
-//!   │  .decide_providers(config)         ADR-0067 capability-provider gate
-//!   ▼
-//! BrowserAppBuilder<ProvidersDecided>   ← signer/capability path decided
+//! BrowserAppBuilder<ProvidersDecided>   ← capability/signer decision recorded
 //!   │  .start()                         → calls register_defaults + wires runtime
 //!   ▼
 //! BrowserRuntimeHandle                  ← pump-driven runtime handle (#2058)
 //! ```
 //!
-//! Every `AppHost` / `ActionRegistrar` setter is usable in ALL states (they
-//! accumulate into `BrowserBuilderInner`); the typestate gates only prevent
-//! calling `start()` before the mandatory seams have been satisfied.
+//! Each transition has TWO twins so the decision is always explicit and
+//! greppable (never a silent default), mirroring native `NmpAppBuilder`:
+//! storage (`inject_store` / `in_memory`), ADR-0053 projections
+//! (`declare_projections` / `consume_all_builtin_projections`), and #1493
+//! relays (`set_relays` / `without_initial_relays`). Every `AppHost` /
+//! `ActionRegistrar` setter is usable in ALL states (they accumulate into
+//! `BrowserBuilderInner`); the typestate gates only prevent calling `start()`
+//! before the mandatory decisions have been made.
 //!
 //! # Design
 //!
@@ -52,24 +60,28 @@ mod app_host_impl;
 
 // ── Typestate markers ─────────────────────────────────────────────────────────
 
-/// Stage 0: builder freshly constructed; no store injected yet.
+/// Stage 0: builder freshly constructed; no storage decision made yet.
+/// Advance via `.inject_store(store)` or `.in_memory()`.
 #[non_exhaustive]
 pub struct Unstarted;
 
-/// Stage 1: `EventStore` injected (ADR-0054 §5 seam).
+/// Stage 1: storage explicitly chosen (`inject_store` or `in_memory`,
+/// ADR-0054 §5 seam). A projection-consumption decision is still required.
 #[non_exhaustive]
 pub struct StorageSet;
 
-/// Stage 2: consumed-projection set declared (ADR-0053 gate).
+/// Stage 2: an explicit ADR-0053 projection decision was made
+/// (`declare_projections` narrowing, or `consume_all_builtin_projections`).
 #[non_exhaustive]
 pub struct ProjectionsDeclared;
 
-/// Stage 3: relay bootstrap list provided.
+/// Stage 3: an explicit #1493 initial-relay decision was made
+/// (`set_relays` non-empty, or `without_initial_relays`).
 #[non_exhaustive]
 pub struct RelaysDeclared;
 
-/// Stage 4: signer / capability providers decided (ADR-0067 gate).
-/// `start()` is only available in this state.
+/// Stage 4: the ADR-0067 capability/signer-provider decision was recorded
+/// (`decide_providers`). `start()` is only available in this state.
 #[non_exhaustive]
 pub struct ProvidersDecided;
 
@@ -93,6 +105,42 @@ pub struct ProvidersDecided;
 ///     .decide_providers(BrowserRunConfig::default())
 ///     .start();
 /// handle.pump();
+/// ```
+///
+/// # Compile-fail: `start()` is unavailable before each gate
+///
+/// `start()` exists ONLY on `BrowserAppBuilder<ProvidersDecided>`. Skipping any
+/// gate is a compile error:
+///
+/// ```compile_fail
+/// use nmp_browser_runtime::BrowserAppBuilder;
+/// // ERROR: no method named `start` on BrowserAppBuilder<Unstarted>
+/// let _ = BrowserAppBuilder::new().start();
+/// ```
+///
+/// ```compile_fail
+/// use nmp_browser_runtime::BrowserAppBuilder;
+/// // ERROR: no `start` on StorageSet (projection decision missing)
+/// let _ = BrowserAppBuilder::new().in_memory().start();
+/// ```
+///
+/// ```compile_fail
+/// use nmp_browser_runtime::BrowserAppBuilder;
+/// // ERROR: no `start` on ProjectionsDeclared (relay decision missing)
+/// let _ = BrowserAppBuilder::new()
+///     .in_memory()
+///     .consume_all_builtin_projections()
+///     .start();
+/// ```
+///
+/// ```compile_fail
+/// use nmp_browser_runtime::BrowserAppBuilder;
+/// // ERROR: no `start` on RelaysDeclared (provider decision missing)
+/// let _ = BrowserAppBuilder::new()
+///     .in_memory()
+///     .consume_all_builtin_projections()
+///     .without_initial_relays()
+///     .start();
 /// ```
 pub struct BrowserAppBuilder<S> {
     pub(crate) inner: Mutex<BrowserBuilderInner>,
@@ -118,6 +166,10 @@ impl BrowserAppBuilder<Unstarted> {
     /// The store is swapped into the `KernelReducer` at this gate so
     /// subsequent `AppHost` registrar calls can resolve against the real store
     /// (e.g. `register_search_scope` → `SearchScopeRegistry::install_into`).
+    ///
+    /// This is the persistent / platform-backed storage choice (the future
+    /// OPFS-SQLite browser backend, #1007). For an explicit ephemeral store use
+    /// [`Self::in_memory`].
     pub fn inject_store(
         self,
         store: std::sync::Arc<dyn nmp_store::EventStore>,
@@ -132,6 +184,20 @@ impl BrowserAppBuilder<Unstarted> {
         }
         self.advance()
     }
+
+    /// Use an ephemeral in-memory store (explicit opt-in).
+    ///
+    /// The freshly-constructed `KernelReducer` already holds an in-memory store;
+    /// this method makes that choice **explicit and greppable** (mirroring native
+    /// `NmpAppBuilder::in_memory`) rather than letting an un-injected store be a
+    /// silent default. An in-memory store loses all events when the page/Worker
+    /// is torn down — suitable for tests and short-lived tools. For production,
+    /// inject a persistent store via [`Self::inject_store`].
+    pub fn in_memory(self) -> BrowserAppBuilder<StorageSet> {
+        // No store swap — the default reducer store IS in-memory. The explicit
+        // call is the whole point: the storage decision is now visible in code.
+        self.advance()
+    }
 }
 
 impl Default for BrowserAppBuilder<Unstarted> {
@@ -142,8 +208,17 @@ impl Default for BrowserAppBuilder<Unstarted> {
 
 impl BrowserAppBuilder<StorageSet> {
     /// Declare the set of Tier-2 built-in projection keys this host consumes
-    /// (ADR-0053 gate). Pass an empty iterator to receive every built-in
-    /// (no narrowing).
+    /// (ADR-0053 narrowing gate), and advance to `ProjectionsDeclared`.
+    ///
+    /// This is the **narrowing** path: the kernel serializes only the declared
+    /// built-ins (plus Tier-1 host/protocol projections, which self-gate by
+    /// registration). Keys accumulate with any declared earlier via the
+    /// `AppHost` trait method.
+    ///
+    /// An empty iterator records an empty **narrow** set (a no-op narrowing that
+    /// declares nothing) — it is NOT "receive every built-in". To opt into the
+    /// full Tier-2 firehose explicitly, call
+    /// [`Self::consume_all_builtin_projections`] instead.
     pub fn declare_projections<I, K>(self, keys: I) -> BrowserAppBuilder<ProjectionsDeclared>
     where
         I: IntoIterator<Item = K>,
@@ -157,15 +232,48 @@ impl BrowserAppBuilder<StorageSet> {
         }
         self.advance()
     }
+
+    /// Explicitly opt into receiving ALL Tier-2 kernel built-in projections (the
+    /// full firehose — no narrowing), and advance to `ProjectionsDeclared`.
+    ///
+    /// This is the visible, greppable "I want everything" choice (mirrors native
+    /// `NmpAppBuilder::consume_all_builtin_projections`). It sets the kernel's
+    /// declared set to the explicit `DeclaredProjections::All` state — never a
+    /// silent empty default. Use it for diagnostics shells / TUIs / tests that
+    /// genuinely read the full set; production shells should prefer
+    /// [`Self::declare_projections`] to avoid serializing unused built-ins.
+    pub fn consume_all_builtin_projections(self) -> BrowserAppBuilder<ProjectionsDeclared> {
+        {
+            let Ok(g) = self.inner.lock() else {
+                return self.advance();
+            };
+            g.reducer.consume_all_builtin_projections();
+        }
+        self.advance()
+    }
 }
 
 impl BrowserAppBuilder<ProjectionsDeclared> {
-    /// Provide the relay bootstrap list `[(url, role)]`.
+    /// Provide the initial relay bootstrap list `[(url, role)]`, and advance to
+    /// `RelaysDeclared`.
     ///
     /// Roles are normalised by the kernel's relay-role parser (same as the
-    /// native actor). The list is applied to the reducer at `start()` after
-    /// the store has been fully injected.
+    /// native actor). The list is applied to the reducer at `start()` after the
+    /// store has been fully injected. These values are leaf-app policy (#1493) —
+    /// NMP supplies no relay default, so what is declared here is exactly what
+    /// the kernel starts with.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `relays` is empty — that is the [`Self::without_initial_relays`]
+    /// case, which must be chosen explicitly so a no-relay start is never a
+    /// silent accident (mirrors native `NmpAppBuilder::with_relays`, #1493).
     pub fn set_relays(self, relays: Vec<(String, String)>) -> BrowserAppBuilder<RelaysDeclared> {
+        assert!(
+            !relays.is_empty(),
+            "set_relays called with an empty set — use .without_initial_relays() \
+             to start with no relays explicitly (#1493: NMP has no relay default)"
+        );
         {
             let Ok(mut g) = self.inner.lock() else {
                 return self.advance();
@@ -176,13 +284,37 @@ impl BrowserAppBuilder<ProjectionsDeclared> {
         }
         self.advance()
     }
+
+    /// Explicitly start with NO initial relays, and advance to `RelaysDeclared`.
+    ///
+    /// The visible, greppable opt-out (mirrors native
+    /// `NmpAppBuilder::without_initial_relays`, #1493). The kernel starts with an
+    /// empty configured-relay set; network operations fail-closed (`NoTargets`)
+    /// until relays are added at runtime via the command inbox. Use it only when
+    /// the app genuinely ships no built-in relays — otherwise declare them with
+    /// [`Self::set_relays`].
+    pub fn without_initial_relays(self) -> BrowserAppBuilder<RelaysDeclared> {
+        {
+            let Ok(mut g) = self.inner.lock() else {
+                return self.advance();
+            };
+            g.relay_bootstrap = Vec::new();
+        }
+        self.advance()
+    }
 }
 
 impl BrowserAppBuilder<RelaysDeclared> {
-    /// Declare the signer / capability-provider decision (ADR-0067 gate).
+    /// Record the explicit capability/signer-provider decision (ADR-0067 gate),
+    /// and advance to `ProvidersDecided` (unlocking `start()`).
     ///
-    /// `config` carries any runtime parameters the browser signer setup needs.
-    /// After this call `start()` becomes available.
+    /// This gate makes the provider decision a **required, explicit step** before
+    /// `start()` — a runtime cannot silently boot with an undeclared capability
+    /// posture. Today it records the honest **"no providers wired yet"** decision:
+    /// `config` carries the run parameters, and the concrete signer/capability
+    /// providers (NIP-07, NIP-46, local-key) are registered by the browser
+    /// capability + signer-provider registry in #2049. When that lands, the
+    /// provider set is supplied through `config` here; the gate itself stays.
     pub fn decide_providers(
         self,
         config: BrowserRunConfig,
@@ -242,13 +374,14 @@ impl<S> BrowserAppBuilder<S> {
 /// Runtime configuration provided at the `decide_providers` gate (ADR-0067).
 ///
 /// Carried into `BrowserRuntime` to supply platform-specific parameters the
-/// signer / capability layer needs at start time. Currently a forward-
-/// compatible empty struct; future fields (e.g. `signer_kind`, browser
-/// extension origin) will be added here without breaking the gate API.
+/// signer / capability layer needs at start time. The capability/signer-provider
+/// fields (e.g. the chosen NIP-07 / NIP-46 / local-key provider set) are added
+/// here by #2049; today the struct carries only the storage-namespacing id, and
+/// the gate records the explicit "no providers wired yet" decision.
 #[derive(Debug, Default)]
 #[non_exhaustive]
 pub struct BrowserRunConfig {
     /// Optional app identifier (used for per-app storage namespacing on
-    /// OPFS-SQLite backends). Empty string → no namespacing.
+    /// OPFS-SQLite backends, #1007). Empty string → no namespacing.
     pub app_id: String,
 }

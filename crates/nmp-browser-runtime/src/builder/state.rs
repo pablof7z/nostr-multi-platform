@@ -74,7 +74,10 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) inbox_rx: Option<std::sync::mpsc::Receiver<ActorMail>>,
     /// Shared relay-list slot (builder holds it, kernel gets a clone at start).
     pub(crate) configured_relays_slot: AppRelaySlot,
-    /// Optional preferred-relay source (NIP-50 search, etc.).
+    /// Preferred-relay source for NIP-50 search relay resolution. Stored here;
+    /// consumed when the browser capability/host surface that resolves preferred
+    /// relays lands — seam: browser capability registry (#2049).
+    #[allow(dead_code)]
     pub(crate) preferred_relay_source: Option<Arc<dyn PreferredRelaySource>>,
 
     // ── Singleton event-observer id slot (swap_singleton_event_observer) ──────
@@ -93,20 +96,30 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) contacts_lookup: Option<Arc<dyn ContactsLookup>>,
     pub(crate) dm_inbox_relay_lookup: Option<Arc<dyn DmInboxRelayLookup>>,
     pub(crate) blocked_relay_lookup: Option<Arc<dyn BlockedRelayLookup>>,
-    /// Stored for `HostCapabilities::configured_relays_handle()` — the factory
-    /// result's `MailboxCache` is also handed to `set_mailbox_cache_reader`.
+    /// Read-only `MailboxCache` for the NIP-19 `nprofile` encoder. Stored here;
+    /// consumed when the browser snapshot/projection/encoding contract wires the
+    /// identity encoder — seam: #2051.
+    #[allow(dead_code)]
     pub(crate) mailbox_cache_reader: Option<Arc<dyn MailboxCache>>,
     pub(crate) routing_substrate_factory: Option<RoutingSubstrateFactory>,
     pub(crate) publish_resolver_factory: Option<PublishResolverFactory>,
-    /// Stored for future browser-relay event-sink integration; currently no-op.
+    /// Raw-event forward (external sink) policy factory. Stored here; consumed by
+    /// the browser relay transport's outbound-forward path — seam: bounded
+    /// transport-only relay adapter (#2050).
     #[allow(dead_code)]
     pub(crate) external_event_sink_policy_factory: Option<ExternalEventSinkPolicyFactory>,
     pub(crate) outbound_public_tags: Vec<Vec<String>>,
-    /// NIP-46 bootstrap relay URL — stored for future nostrconnect integration.
+    /// NIP-46 `nostrconnect://` bootstrap relay URL. Stored here; consumed by the
+    /// browser NIP-46 signer provider — seam: signer-provider registry (#2049).
+    #[allow(dead_code)]
     pub(crate) nostrconnect_bootstrap_relay: Option<String>,
-    /// NIP-46 requested permissions — stored for future nostrconnect integration.
+    /// NIP-46 requested permissions. Stored here; consumed by the browser NIP-46
+    /// signer provider — seam: signer-provider registry (#2049).
+    #[allow(dead_code)]
     pub(crate) nostrconnect_perms: Option<String>,
-    /// Relay handshake User-Agent — passed to browser relay drivers.
+    /// Relay-handshake User-Agent. Stored here; consumed by the browser relay
+    /// driver when it opens sockets — seam: relay transport adapter (#2050).
+    #[allow(dead_code)]
     pub(crate) relay_user_agent: Option<String>,
 
     // ── Collections handed to BrowserRuntime at start() ───────────────────────
