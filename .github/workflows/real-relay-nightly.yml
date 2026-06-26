@@ -100,6 +100,14 @@ jobs:
               cargo test -p nmp-testing --test real_relay_replan
               -- --ignored --nocapture --test-threads=1
 
+          - scenario: reduced-source-feed
+            capability: ReducedSource feed acquisition
+            timeout: 20
+            relays: wss://relay.damus.io wss://relay.primal.net wss://nos.lol
+            command: >-
+              cargo test -p nmp-testing --test real_relay_reduced_source
+              -- --ignored --nocapture --test-threads=1
+
           - scenario: nip50-search
             capability: NIP-50 search relay
             timeout: 20
