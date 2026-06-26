@@ -57,8 +57,10 @@ test.describe("boot", () => {
     // No UpdateFrame is ever emitted on the degraded path.
     await expect(shell).toHaveAttribute("data-has-snapshot", "false");
 
-    // The signing slot still renders the connect affordance while disconnected.
-    await expect(page.locator('[data-slot="signing"] .connect-btn')).toBeVisible();
+    // The signing slot renders the degraded status message (no connect button in
+    // the degraded/in_process_fallback path — SigningPanel gates connect behind
+    // <Show when={!degraded() && !connected()}> which is false here).
+    await expect(page.locator('[data-slot="signing"] .signing-degraded')).toBeVisible();
   });
 
   test("@wasm real wasm runtime boots in a worker and dials the fixture relay", async ({
