@@ -1,6 +1,6 @@
 //! NIP-51 mute-list runtime — wires the kind:10000 [`MuteListProjection`] into
-//! an [`AppHost`] (observer + generic JSON projection + typed `NMUT` sidecar +
-//! per-tick interest reconciler via [`MuteRuntimeController`]).
+//! an [`AppHost`] (active observed projection + typed `NMUT` sidecar +
+//! per-tick reconciler).
 //!
 //! Extracted from `runtimes.rs` to hold that module under the 500-LOC hard
 //! ceiling (AGENTS.md file-size rule: extract, never bump the baseline). The
@@ -8,13 +8,16 @@
 //! existing `runtimes::register_mute_runtime` / `nmp_defaults::register_mute_runtime`
 //! paths are unchanged.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use nmp_core::actor::ActorCommand;
-use nmp_core::actor::InterestsCommand;
-use nmp_core::substrate::{LiveEventTapRegistrar, HostCapabilities, SnapshotProjectionRegistrar};
-use nmp_core::KernelEventObserver;
-use nmp_nip51::{active_mute_list_identity, active_mute_list_interest, MuteListProjection};
+use nmp_core::substrate::{
+    HostCapabilities, IdentityChangeRegistrar, ObservedProjectionRegistrar,
+    SnapshotProjectionRegistrar,
+};
+use nmp_core::ObservedProjectionSink;
+use nmp_nip51::{active_mute_list_interest, MuteListProjection};
+
+use super::active_observed_projection::ActiveObservedProjection;
 
 /// Wire the NIP-51 mute-list observer into `app` and return the
 /// [`MuteListProjection`] so the caller can connect it to a timeline
@@ -26,33 +29,25 @@ use nmp_nip51::{active_mute_list_identity, active_mute_list_interest, MuteListPr
 ///    `AppHost::active_pubkey()` hex slot (populated by the kernel for EVERY
 ///    backend including bunker). The projection reads it at event-ingest time
 ///    and at query time, so it is always consistent with the active account.
-/// 2. **Ingest observer** — registers `MuteListProjection` as a
-///    [`KernelEventObserver`] so the kernel fan-out delivers kind:10000 events.
-///    The projection filters for the active account's author and ignores all
-///    other kind:10000 events (account-switch safety is enforced at read time by
-///    the owner-pubkey gate inside the projection — no explicit reset needed).
+/// 2. **Active observed projection** — opens `MuteListProjection` through an
+///    `authors=[active] / kinds=[10000]` observed projection only after an
+///    active account exists. This replays matching cached rows before live
+///    activation without opening a broad kind-only observer.
 /// 3. **Snapshot projection (typed)** — registers a typed FlatBuffers sidecar
 ///    (ADR-0037, `NMUT`) under the `"nmp.nip51.mute_list"` key. Reads the same
 ///    `MuteListSnapshot` read model so it cannot structurally diverge from the
 ///    projection.
-/// 4. **Tick observer — [`MuteRuntimeController`]** — registered LAST
-///    (ordering contract: observer BEFORE tick observer). On every snapshot tick
-///    reconciles the active pubkey against the last-pushed one, emitting
-///    scoped interest commands to the kernel so the mute list
-///    interest (kind:10000, authors=[active]) is always live for the signed-in
-///    account. This replaces the prior free-ride on `SELF_KINDS_TAILING`.
+/// 4. **Tick observer** — registered LAST. On every snapshot tick reconciles
+///    the active pubkey against the currently opened observed projection,
+///    closing the old author shape and opening the new one as needed.
 /// 5. **Returns the `Arc<MuteListProjection>`** — the caller wires
 ///    `set_suppression` on whichever `ModularTimelineProjection` it owns.
 ///
 /// # Ordering contract
 ///
-/// The event observer MUST be registered before the tick observer. The tick
-/// observer pushes the mute-list interest on its first call, which triggers a
-/// synchronous cache-serve drain. If the event observer is not registered yet at
-/// that point, the drain delivers events to nobody. Register in this order:
-/// 1. `app.register_live_event_tap(...)` — FIRST
-/// 2. `app.register_typed_snapshot_projection(...)` — second
-/// 3. `app.register_snapshot_tick_observer(...)` — LAST
+/// The observed projection MUST NOT open until the active pubkey is known.
+/// Opening with `authors=[active]` uses the ADR-0062 replay path, so cold-start
+/// cache rows hydrate the projection before activation.
 ///
 /// # Account-switch safety
 ///
@@ -60,23 +55,26 @@ use nmp_nip51::{active_mute_list_identity, active_mute_list_interest, MuteListPr
 /// `active_pubkey` slot on every call and gates against the `owner_pubkey`
 /// stored inside the `MuteSet`. If the active account changed between the last
 /// kind:10000 ingest and the read, the methods return `false` — stale data from
-/// the prior account is invisible. `MuteRuntimeController` additionally withdraws
-/// the prior interest and pushes a fresh one on account switch so no stale
-/// subscription persists in the planner.
+/// the prior account is invisible. The active observed-projection reconciler
+/// additionally closes the prior author shape and opens the new one on account
+/// switch so no stale subscription persists in the planner.
 ///
 /// # D0 hygiene
 ///
 /// This function names `kind:10000` only as a numeric literal inside nmp-nip51.
 /// The term "mute" enters `nmp-core` nowhere: `SuppressionLookup` is the
 /// substrate-generic trait; `"nmp.nip51.mute_list"` is a projection key string
-/// owned by this composition crate. `nmp-core` sees `KernelEventObserver` +
+/// owned by this composition crate. `nmp-core` sees `ObservedProjectionSink` +
 /// `SuppressionLookup` only.
 ///
 /// Called by [`crate::register_defaults`]; exposed `pub` so an app crate that
 /// opts out of the wholesale defaults can still wire just the mute runtime by
 /// itself.
 pub fn register_mute_runtime(
-    app: &(impl LiveEventTapRegistrar + HostCapabilities + SnapshotProjectionRegistrar),
+    app: &(impl ObservedProjectionRegistrar
+          + HostCapabilities
+          + SnapshotProjectionRegistrar
+          + IdentityChangeRegistrar),
 ) -> Arc<MuteListProjection> {
     // ── 1. Active-pubkey slot ────────────────────────────────────────────────
     //
@@ -90,15 +88,7 @@ pub fn register_mute_runtime(
     // ingest AND `is_suppressed_*` query time, so both see the live account.
     let mute = Arc::new(MuteListProjection::new(app.active_pubkey()));
 
-    // ── 2. Register as ingest observer — FIRST (ordering contract) ──────────
-    //
-    // Must be registered BEFORE the tick observer below. The tick observer
-    // pushes the mute-list interest on its first call, which triggers a
-    // synchronous cache-serve drain. If this observer is not registered yet at
-    // that point, the drain delivers events to nobody.
-    app.register_live_event_tap(Arc::clone(&mute) as Arc<dyn KernelEventObserver>);
-
-    // ── 3. Snapshot projection (typed sidecar) ────────────────────────────────
+    // ── 2. Snapshot projection (typed sidecar) ────────────────────────────────
     //
     // Typed FlatBuffers sidecar (ADR-0037, `NMUT`) registered under the
     // `"nmp.nip51.mute_list"` key. Reads the same `MuteListSnapshot` read model
@@ -120,96 +110,23 @@ pub fn register_mute_runtime(
         })
     });
 
-    // ── 4. Per-tick reconciler — LAST (ordering contract) ────────────────────
-    //
-    // `MuteRuntimeController` owns the active-account kind:10000 interest slot.
-    // On sign-in it pushes `active_mute_list_interest(pubkey)` so the kernel
-    // has a live `authors=[active_pubkey] / kinds=[10000]` subscription. On
-    // account switch it withdraws the old interest (by pubkey-invariant id) and
-    // ensures a new one. On sign-out it drops. Mirrors the NIP-57 zap-receipts
-    // controller (`ZapReceiptsRuntimeController`).
-    let controller = Arc::new(MuteRuntimeController {
-        active_pubkey: app.active_pubkey(),
-        tx: app.actor_sender(),
-        last_pushed_pubkey: Mutex::new(None),
-    });
+    // ── 3. Account-change reader notification ───────────────────────────────
+    let mute_for_identity = Arc::clone(&mute);
+    app.register_identity_change_observer(move |_| mute_for_identity.notify_account_changed());
+
+    // ── 4. Active observed-projection reconciler — LAST ─────────────────────
+    let observer = Arc::clone(&mute) as Arc<dyn ObservedProjectionSink>;
+    let controller = Arc::new(ActiveObservedProjection::new(
+        app.active_pubkey(),
+        app.observed_projection_registrar_handle(),
+        observer,
+        "nmp.nip51.mute_list",
+        1,
+        128,
+        Arc::new(|pubkey| active_mute_list_interest(pubkey).shape),
+    ));
     let controller_tick = Arc::clone(&controller);
-    app.register_snapshot_tick_observer(move || controller_tick.tick());
+    app.register_snapshot_tick_observer(move || controller_tick.sync());
 
     mute
-}
-
-/// Per-tick reconciler for the active-account mute-list interest.
-///
-/// Owns the kind:10000 `authors=[active_pubkey]` interest slot. On every
-/// snapshot tick diffs the active pubkey against the last-pushed one and
-/// enqueues scoped interest commands on change (D8: non-blocking).
-///
-/// Exposed `pub(crate)` so the unit tests in `runtimes_mute_tests` can
-/// construct a controller without a real `AppHost`.
-pub(crate) struct MuteRuntimeController {
-    /// Pubkey-only identity slot (Finding C): the active account's hex pubkey,
-    /// populated for every backend including bunker. Identity only — never
-    /// secret key material.
-    pub(crate) active_pubkey: nmp_core::slots::ActiveAccountSlot,
-    pub(crate) tx: nmp_core::CommandSender,
-    pub(crate) last_pushed_pubkey: Mutex<Option<String>>,
-}
-
-impl MuteRuntimeController {
-    /// Reconcile the active-account mute-list interest once per snapshot tick.
-    ///
-    /// Diffs the active pubkey against the last-pushed one and enqueues
-    /// scoped interest commands on change. D8: channel send is
-    /// non-blocking; D6: a poisoned last-pushed mutex degrades to "no prior
-    /// push" so the next sign-in still pushes.
-    pub(crate) fn tick(&self) {
-        let active = self.active_pubkey();
-
-        let mut last = self
-            .last_pushed_pubkey
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-
-        match (active.as_deref(), last.as_deref()) {
-            // No change — common case, fast path, no actor traffic.
-            (Some(now), Some(prev)) if now == prev => {}
-            // Sign-in (or first-ever push).
-            (Some(now), None) => {
-                let _ = self
-                    .tx
-                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
-                        identity: active_mute_list_identity(),
-                        interest: active_mute_list_interest(now),
-                    }));
-                *last = Some(now.to_string());
-            }
-            // Account switch: drop old scoped owner, then ensure new shape.
-            (Some(now), Some(_prev)) => {
-                let _ = self.tx.send(ActorCommand::Interests(
-                    InterestsCommand::DropInterestOwner(active_mute_list_identity()),
-                ));
-                let _ = self
-                    .tx
-                    .send(ActorCommand::Interests(InterestsCommand::EnsureInterest {
-                        identity: active_mute_list_identity(),
-                        interest: active_mute_list_interest(now),
-                    }));
-                *last = Some(now.to_string());
-            }
-            // Logout: drop standing owner, clear slot.
-            (None, Some(_)) => {
-                let _ = self.tx.send(ActorCommand::Interests(
-                    InterestsCommand::DropInterestOwner(active_mute_list_identity()),
-                ));
-                *last = None;
-            }
-            // Cold start before sign-in: nothing to do.
-            (None, None) => {}
-        }
-    }
-
-    fn active_pubkey(&self) -> Option<String> {
-        self.active_pubkey.lock().ok().and_then(|slot| slot.clone())
-    }
 }

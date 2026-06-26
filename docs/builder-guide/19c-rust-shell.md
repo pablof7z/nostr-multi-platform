@@ -48,8 +48,14 @@ fn main() {
         });
     }
 
-    // Seam 3: event-driven view — observer populates the store.
-    let _ = builder.register_live_event_tap(Arc::new(FeedObserver::new(Arc::clone(&store))));
+    // Seam 3: event-driven view — declared observer populates the store.
+    let _ = builder.open_observed_projection(ObservedProjection::from_kinds(
+        Arc::new(FeedObserver::new(Arc::clone(&store))),
+        FEED_SNAPSHOT_KEY,
+        0,
+        [KIND_NOTE],
+        128,
+    ));
 
     // Commit the storage choice and start the kernel.
     // .in_memory()  →  NmpAppBuilder<StorageSet>  →  .start()  →  *mut NmpApp
@@ -161,8 +167,9 @@ creates a second composition path and risks duplicate default registration.
 
 ```
 NmpAppBuilder::new()
-  │  register_typed_snapshot_projection(...)   ┐ wire before
-  │  register_live_event_tap(...)              │ start — both states
+  │  register_snapshot_projection(...)         ┐ wire before
+  │  register_typed_snapshot_projection(...)   │ start — all states
+  │  open_observed_projection(...)             │ declare shape/replay/scope
   │  register_action(M)                  ┘ accept them
   │
   ├─ .in_memory()  or  .storage_path(p)

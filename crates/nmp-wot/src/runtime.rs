@@ -3,15 +3,16 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::slots::ActiveAccountSlot;
 use nmp_core::substrate::{
-    register_observer_projection, LiveEventTapRegistrar, HostCapabilities, KernelEvent,
+    HostCapabilities, KernelEvent, ObservedProjection, ObservedProjectionRegistrar,
     SnapshotProjectionRegistrar,
 };
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_planner::LogicalInterest;
 use serde::Serialize;
 
 use crate::interest::{
     active_follow_graph_identity, follow_graph_interest, is_hex_pubkey, KIND_CONTACT_LIST,
+    KIND_MUTE_LIST,
 };
 use crate::score::{TrustDecision, WotGraph, WotGraphStats};
 
@@ -21,7 +22,7 @@ use crate::score::{TrustDecision, WotGraph, WotGraphStats};
 /// exact graph maintained by the observer. Existing composition roots may
 /// ignore the handle when they only need the bootstrap side effects.
 pub fn register_runtime(
-    app: &(impl HostCapabilities + LiveEventTapRegistrar + SnapshotProjectionRegistrar),
+    app: &(impl HostCapabilities + ObservedProjectionRegistrar + SnapshotProjectionRegistrar),
 ) -> Option<Arc<WotBootstrapRuntime>> {
     let runtime = Arc::new(WotBootstrapRuntime::new(
         // Pubkey-only identity (Finding C): the WOT bootstrap needs the active
@@ -30,17 +31,20 @@ pub fn register_runtime(
         app.active_pubkey(),
         app.actor_sender(),
     ));
-    // register_observer_projection handles the observer-slot-poisoned guard (#1724 criterion 3).
-    let projection_runtime = Arc::clone(&runtime);
-    let observer_id = register_observer_projection(
-        app,
-        Arc::clone(&runtime) as Arc<dyn KernelEventObserver>,
+    let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
+        Arc::clone(&runtime) as Arc<dyn ObservedProjectionSink>,
         "nmp.wot.bootstrap",
-        move || projection_runtime.snapshot_typed(),
-    )?;
-    if let Some(previous) = app.swap_singleton_event_observer(Some(observer_id)) {
-        app.unregister_event_observer(previous);
+        1,
+        [KIND_CONTACT_LIST, KIND_MUTE_LIST],
+        512,
+    ));
+    if observer_id.0 == 0 {
+        return None;
     }
+    let projection_runtime = Arc::clone(&runtime);
+    app.register_typed_snapshot_projection("nmp.wot.bootstrap", move || {
+        projection_runtime.snapshot_typed()
+    });
     Some(runtime)
 }
 
@@ -285,7 +289,7 @@ impl WotBootstrapRuntime {
     }
 }
 
-impl KernelEventObserver for WotBootstrapRuntime {
+impl ObservedProjectionSink for WotBootstrapRuntime {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if let Ok(mut state) = self.state.lock() {
             state

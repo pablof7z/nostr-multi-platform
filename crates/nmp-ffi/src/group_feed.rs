@@ -11,7 +11,7 @@
 //!
 //! The four per-open NIP-29 views (group chat, discovered groups, joined
 //! groups, and the deleted raw group-events collector) used to register their
-//! projection as a bare, already-active `KernelEventObserver` via
+//! projection as a bare, already-active `ObservedProjectionSink` via
 //! `nmp_nip29::register::wire_*`. A bare observer only sees the *global
 //! fan-out* of LIVE ingest — so a view opened AFTER its events were already
 //! accepted + cached hydrated live-only and silently dropped the cached tail
@@ -53,7 +53,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
-use nmp_core::KernelEventObserverId;
+use nmp_core::ObservedProjectionId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip29::group_id::{group_metadata_filter_json, GroupId};
 use nmp_nip29::{
@@ -93,7 +93,7 @@ pub(crate) struct GroupFeedSession {
     /// The snapshot-projection key (also the session key).
     projection_key: String,
     /// The observed-projection kernel observer id.
-    observer_id: KernelEventObserverId,
+    observer_id: ObservedProjectionId,
 }
 
 /// Opaque handle for one host-driven NIP-29 read view, returned by the C-ABI
@@ -166,7 +166,7 @@ impl NmpApp {
             SCOPE_GLOBAL,
             relay_pin,
             filter_json,
-            projection as Arc<dyn nmp_core::KernelEventObserver>,
+            projection as Arc<dyn nmp_core::ObservedProjectionSink>,
             register_sidecar,
         );
     }
@@ -211,7 +211,7 @@ impl NmpApp {
             SCOPE_GLOBAL,
             relay_pin,
             group_metadata_filter_json(),
-            projection as Arc<dyn nmp_core::KernelEventObserver>,
+            projection as Arc<dyn nmp_core::ObservedProjectionSink>,
             register_sidecar,
         );
 
@@ -272,7 +272,7 @@ impl NmpApp {
             SCOPE_ACTIVE_ACCOUNT,
             relay_pin,
             group_metadata_filter_json(),
-            projection as Arc<dyn nmp_core::KernelEventObserver>,
+            projection as Arc<dyn nmp_core::ObservedProjectionSink>,
             register_sidecar,
         );
     }
@@ -298,7 +298,7 @@ impl NmpApp {
         scope: u32,
         relay_pin: Option<String>,
         filter_json: String,
-        observer: Arc<dyn nmp_core::KernelEventObserver>,
+        observer: Arc<dyn nmp_core::ObservedProjectionSink>,
         register_sidecar: impl FnOnce(&NmpApp),
     ) {
         // Singleton: drop any prior session under this key first. Teardown must

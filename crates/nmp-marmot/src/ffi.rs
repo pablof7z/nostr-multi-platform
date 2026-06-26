@@ -1,20 +1,18 @@
 //! Marmot (MLS-over-Nostr) per-app FFI surface.
 //!
-//! Native links against two `extern "C"` symbols, neither of which carries
-//! secret key material across the ABI (#1727 / ADR-0025):
-//! - [`nmp_marmot_register_active`] builds the service from the actor-owned
-//!   local-key slot, registers the observer, ingest parsers, and push
-//!   projections, then returns an opaque `*mut MarmotHandle`.
+//! Native links against two `extern "C"` symbols, neither of which carries secret
+//! key material across the ABI (#1727 / ADR-0025):
+//! - [`nmp_marmot_register_active`] builds from the actor-owned local-key slot,
+//!   registers observers/parsers/projections, and returns `*mut MarmotHandle`.
 //! - [`nmp_marmot_unregister`] drops those registrations and frees the handle.
 //!
 //! Plus the Rust-internal (NOT `extern "C"`) [`register_with_secret_hex`] —
 //! same registration with an in-hand secret for the app-shell nsec sign-in
 //! path; the secret never re-crosses the ABI (#1727).
 //!
-//! The former pull symbols `nmp_marmot_snapshot`, `nmp_marmot_group_messages`,
-//! and `nmp_marmot_string_free` were deleted in V-107 (ADR-0039). Swift now
-//! reads Marmot state reactively from the pushed `nmp.marmot.snapshot` /
-//! `nmp.marmot.messages` SnapshotFrame projections instead.
+//! The former pull symbols were deleted in V-107 (ADR-0039). Swift now reads
+//! Marmot state from the pushed `nmp.marmot.snapshot` / `nmp.marmot.messages`
+//! SnapshotFrame projections instead.
 //!
 //! ## Mutating ops — `nmp_app_dispatch_action` + Rust-native accessor
 //!
@@ -72,13 +70,15 @@
 use std::ffi::{c_char, CStr};
 use std::sync::{Arc, Mutex};
 
-use nmp_core::{actor::ActorCommand, KernelEventObserverId};
+use nmp_core::substrate::{ObservedProjection, ObservedProjectionRegistrar};
+use nmp_core::{actor::ActorCommand, ObservedProjectionId};
 use nmp_ffi::NmpApp;
 use nostr::Keys;
 use serde_json::{json, Value};
 
 use crate::service::MarmotService;
 
+use crate::interest::KIND_MARMOT_KEY_PACKAGE;
 use crate::projection::action::{MarmotAction, MarmotProtocolCommand};
 use crate::projection::state::MarmotProjection;
 use crate::projection::tap::{MarmotIngestParser, MARMOT_INGEST_SLOT, TAP_KINDS};
@@ -113,7 +113,7 @@ pub struct MarmotHandle {
     projection_slot: MarmotProjectionSlot,
     /// Lossy `KernelEvent` observer (key-package metadata tracker — see
     /// `MarmotProjection::on_kernel_event`). Torn down in `unregister`.
-    observer_id: KernelEventObserverId,
+    observer_id: ObservedProjectionId,
     /// The inbound ingest seam is now per-kind `IngestParser` registrations
     /// (raw-tap PR-2) under the `"marmot"` slot key. No id to store — teardown
     /// calls `unregister_ingest_parser(kind, MARMOT_INGEST_SLOT)` for each of
@@ -137,19 +137,13 @@ pub struct MarmotHandle {
 //      `MarmotProjection`'s interior `Mutex<Inner>`, not from this
 //      `unsafe impl`.
 //   3. The `app` raw pointer is retained only for unregister teardown. Runtime
-//      projection callbacks do not read it; actor commands use the cloned
-//      `CommandSender` stored on `MarmotProjection`. No use-after-free is
-//      possible: `nmp_app_free`'s `NmpApp::Drop` sends `Shutdown` and `join()`s
-//      the actor thread before freeing the allocation, and every kernel
-//      callback (`on_kernel_event`, `parse`) runs INLINE on that actor thread —
-//      the join fences them.
+//      callbacks do not read it; actor commands use the cloned `CommandSender`
+//      stored on `MarmotProjection`. `NmpApp::Drop` sends `Shutdown` and joins
+//      the actor thread before freeing the allocation, fencing inline callbacks.
 //
-// CALLER CONTRACT: `nmp_app_free` must not run while a kernel callback that
-// reaches this projection is still executing. The in-process Rust-trait
-// registration path used here (`register_live_event_tap` /
-// `replace_ingest_parser`) gets that fence from the actor join.
-// Calling `nmp_marmot_unregister` before `nmp_app_free` is the
-// documented hygiene step; the actor join is the actual fence.
+// CALLER CONTRACT: `nmp_app_free` must not run while a kernel callback reaches
+// this projection. The Rust-trait registration path used here gets that fence
+// from the actor join; `nmp_marmot_unregister` remains the hygiene step.
 unsafe impl Send for MarmotHandle {}
 unsafe impl Sync for MarmotHandle {}
 
@@ -397,8 +391,13 @@ pub(crate) fn register_with_keys(
         )));
     });
 
-    let observer_id = app_ref
-        .register_live_event_tap(Arc::clone(&projection) as Arc<dyn nmp_core::KernelEventObserver>);
+    let observer_id = app_ref.open_observed_projection(ObservedProjection::from_kinds(
+        Arc::clone(&projection) as Arc<dyn nmp_core::ObservedProjectionSink>,
+        "nmp.marmot.ingest",
+        1,
+        [KIND_MARMOT_KEY_PACKAGE],
+        128,
+    ));
     if observer_id.0 == 0 {
         return std::ptr::null_mut(); // poisoned slot — soft fail.
     }
@@ -556,8 +555,8 @@ pub extern "C" fn nmp_marmot_unregister(handle: *mut MarmotHandle) {
     if !boxed.app.is_null() {
         // SAFETY: same `app` validity rule as register.
         let app_ref = unsafe { &*boxed.app };
-        // Tear down the lossy KernelEvent metadata observer.
-        app_ref.unregister_event_observer(boxed.observer_id);
+        // Tear down the declared metadata observer.
+        app_ref.close_observed_projection(boxed.observer_id);
         app_ref.remove_snapshot_tick_observer(MARMOT_EXPIRY_TICK_OBSERVER_SLOT);
         // Remove all per-kind `IngestParser` slots registered under the
         // `"marmot"` slot key (raw-tap PR-2). Each `unregister_ingest_parser`

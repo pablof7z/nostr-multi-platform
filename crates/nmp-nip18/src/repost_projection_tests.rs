@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_LONG_FORM_ARTICLE;
 
 use super::*;

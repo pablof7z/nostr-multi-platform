@@ -38,12 +38,12 @@ mod auth_sign;
 mod builtin_projections;
 #[cfg(feature = "native")]
 mod capability_worker;
-#[cfg(all(feature = "native", any(test, feature = "test-support")))]
-mod test_actor_spawn;
 #[cfg(feature = "native")]
 mod config;
 #[cfg(feature = "native")]
 mod dispatch;
+#[cfg(all(feature = "native", any(test, feature = "test-support")))]
+mod test_actor_spawn;
 // ADR-0050 §D1/§D3b signer-port dispatch helpers (cipher verbs + completion
 // delivery), split out to keep `dispatch.rs` within budget. Native-only (uses
 // the native `ActorContext`).
@@ -151,34 +151,35 @@ use commands::IdentityRuntime;
 // V-38: the wallet runtime + status slot moved to `crates/nmp-nip47`.
 // `nmp-core` no longer has a `wallet` feature, a `WalletRuntime` use, or any
 // `WalletStatusSlot` / `new_wallet_status_slot` / `WalletStatus` re-export.
-// `KernelEventObserverSlot` and `notify_observers` are consumed by `kernel/event_observer.rs`
+// `ObservedProjectionSinkSlot` and `notify_observers` are consumed by `kernel/event_observer.rs`
 // unconditionally — keep them always-compiled. The slot constructors, registration helpers,
 // and lifecycle observer types are only consumed by the native FFI and actor runtime.
 pub(crate) use commands::notify_observers;
 // ADR-0062: targeted observer delivery and muted-registration helpers.
 // `notify_observer_by_id` is crate-internal (kernel replay path only).
 // `register_rust_observer_muted` is pub so nmp-ffi can call it.
-// `activate_observer` is also used by the kernel replay path (wasm/no-native too).
-pub use commands::{activate_observer, activate_observer_scoped};
+// Scoped activation is also used by the kernel replay path (wasm/no-native too).
+pub use commands::activate_observer_scoped;
 pub(crate) use commands::notify_observer_by_id;
+#[cfg(test)]
+pub(crate) use commands::register_rust_observer;
 pub use commands::{register_rust_observer_muted, rust_observer_count};
-// `KernelEventObserverSlot` and `register_rust_observer` are `pub`
-// unconditionally so `nmp-ffi` and wasm32 composition roots can register
-// observers. `new_event_observer_slot_headless` is `pub(crate)` — wasm32-safe
-// (no drain thread); used by `KernelReducer::new` on all targets.
+// `ObservedProjectionSinkSlot` is `pub` so `nmp-ffi` can register muted
+// observed-projection sinks. `new_event_observer_slot_headless` is
+// `pub(crate)` — wasm32-safe (no drain thread); used by `KernelReducer::new`
+// on all targets.
 // `unregister_observer_internal`: all-targets alias (PR-B #2046 seam).
-pub(crate) use commands::{new_event_observer_slot_headless, unregister_observer_internal};
+pub use commands::ObservedProjectionSinkSlot;
 #[cfg(feature = "native")]
 pub use commands::{
     new_event_observer_slot, new_observer_slot as new_lifecycle_observer_slot, unregister_observer,
     LifecycleObserverSlot,
 };
-pub use commands::{register_rust_observer, KernelEventObserverSlot};
-// `register_c_observer` + `LifecycleObserverRegistration` reach `nmp-ffi`
-// through `nmp_core::__ffi_internal::*` so the C-ABI bridge in
-// `nmp-ffi/src/event_observer.rs` + `lifecycle.rs` can drive the slot.
+pub(crate) use commands::{new_event_observer_slot_headless, unregister_observer_internal};
+// `LifecycleObserverRegistration` reaches `nmp-ffi` through
+// `nmp_core::__ffi_internal::*` so the lifecycle C-ABI bridge can drive the slot.
 #[cfg(feature = "native")]
-pub use commands::{register_c_observer, LifecycleObserverRegistration};
+pub use commands::LifecycleObserverRegistration;
 // D0: NIP-46 remote signing is an app noun — the bunker-handshake slot is
 // re-exported so the `ffi` module can build it, hand one clone to the actor's
 // `IdentityRuntime`, and capture the other in the built-in
@@ -207,20 +208,10 @@ pub use signer_source::SignerSource;
 // (`--no-default-features`) without test-support.
 #[cfg(any(test, feature = "test-support", feature = "native"))]
 pub use commands::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
-// T146 — re-export the kernel event observer types so external Rust callers
-// (per-app crates such as `nmp-app-chirp`) can implement and register
-// `KernelEventObserver`s through the gated `pub use actor::{...}` in
-// `lib.rs`. The FFI shape (`KernelEventObserverFn` /
-// `KernelEventObserverRegistration` / `KernelEventObserverId`) is also
-// surfaced so Swift / Kotlin bindings can use the C-ABI channel.
-// `KernelEventObserver` / `KernelEventObserverFn` / `KernelEventObserverId`
-// are re-exported unconditionally from `lib.rs` (the typed observer surface
-// for per-app Rust crates and the FFI wire-shape). `KernelEventObserverRegistration`
-// only reaches the outside world through `lib.rs::__ffi_internal`, which is
-// `#[cfg(feature = "native")]`; gate the registration type re-export to match.
-#[cfg(feature = "native")]
-pub use commands::KernelEventObserverRegistration;
-pub use commands::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
+// Re-export the scoped observed-projection types so reusable Rust crates can
+// implement sinks and hosts can register them through
+// `substrate::ObservedProjectionRegistrar`.
+pub use commands::{ObservedProjectionId, ObservedProjectionSink};
 // `KindFilter` lives in `kind_filter.rs` (extracted so `external_event_sink`
 // can use it without the raw-observer module). Re-exported unconditionally
 // from `lib.rs` (used by per-app Rust crates and external_event_sink).
@@ -339,9 +330,8 @@ pub use actor_command::{
 pub use test_actor_spawn::spawn_test_actor;
 
 /// T118 / G3 + T146 — actor entry point that accepts BOTH the lifecycle
-/// observer slot and the kernel event observer slot. The FFI
-/// (`ffi/lifecycle.rs::nmp_app_set_lifecycle_callback`,
-/// `ffi/event_observer.rs::nmp_app_register_event_observer`) shares the SAME
+/// observer slot and the observed-projection sink slot. The FFI lifecycle
+/// callback path and Rust observed-projection path share the SAME
 /// `Arc<Mutex<…>>` instances so registrations from outside the actor are
 /// visible without crossing the FFI on each event.
 ///
@@ -430,11 +420,10 @@ pub fn run_actor_with_observers(
     // sites below). Survives `Reset` the same way the drop counter does —
     // re-bound there so the counter stays visible across a kernel rebuild.
     kernel.set_queue_depth_handle(Arc::clone(&queue_depth));
-    // T146 — bind the shared kernel event observer slot. The kernel calls
+    // T146 — bind the shared observed-projection sink slot. The kernel calls
     // `notify_event_observers` after every `EventStore::insert` returning
     // `Inserted | Replaced` (see `kernel/ingest/timeline.rs`). Per-app
-    // crates (e.g. `nmp-app-chirp`) clone this slot via
-    // `NmpApp::register_event_observer` to register typed observers.
+    // crates receive scoped events only through declared observed projections.
     // Survives `Reset` the same way the drop counter does.
     kernel.set_event_observers_handle(Arc::clone(&event_observers));
     // The ExternalEventSinkDispatcher replaces the raw-event-forwarder +

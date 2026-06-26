@@ -18,7 +18,7 @@ use nmp_core::slots::{
     new_external_event_sink_policy_slot, new_mls_local_nsec_slot,
     new_nostrconnect_bootstrap_relay_slot, new_nostrconnect_perms_slot, new_publish_resolver_slot,
     new_pull_cursor_registry_handle_slot, new_routing_substrate_slot, new_routing_trace_slot,
-    new_singleton_event_observer_id_slot, new_storage_path_slot,
+    new_storage_path_slot,
 };
 use nmp_core::subs::PlanCoverageHook;
 use nmp_core::substrate::new_external_event_sink_dispatcher_slot;
@@ -41,13 +41,9 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
     // T118 / G3 — shared lifecycle observer slot.
     let lifecycle_observer = new_lifecycle_observer_slot();
     let actor_lifecycle_observer = Arc::clone(&lifecycle_observer);
-    // T146 — shared kernel event observer slot.
+    // Shared declared observed-projection sink slot.
     let event_observers = new_event_observer_slot();
     let actor_event_observers = Arc::clone(&event_observers);
-    // Per-app idempotency slot — tracks the previously-installed singleton
-    // kernel-event observer id for a per-app crate that wants exactly one
-    // auxiliary `KernelEventObserver` per app. NOT shared with the actor thread.
-    let singleton_event_observer_id = new_singleton_event_observer_id_slot();
     // Host-extensible snapshot output slot.
     let snapshot_projections = new_snapshot_projection_slot();
     let actor_snapshot_projections = Arc::clone(&snapshot_projections);
@@ -312,7 +308,6 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         capability_callback,
         lifecycle_observer,
         event_observers,
-        singleton_event_observer_id,
         configured_relays,
         pending_mls_autopublish,
         actor_starter: Mutex::new(Some(actor_starter)),
@@ -342,7 +337,7 @@ pub extern "C" fn nmp_app_new() -> *mut NmpApp {
         external_signer_driver: Arc::new(Mutex::new(None)),
         search_sessions: Mutex::new(std::collections::HashMap::new()),
         group_feed_sessions: Mutex::new(std::collections::HashMap::new()),
-        observed_projection_sessions: Mutex::new(std::collections::HashMap::new()),
+        observed_projection_sessions: Arc::new(Mutex::new(std::collections::HashMap::new())),
         #[cfg(any(test, feature = "test-support"))]
         gc_budget_ceiling,
         composition: CompositionConfig {

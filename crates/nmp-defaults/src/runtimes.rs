@@ -492,6 +492,7 @@ impl ZapReceiptsRuntimeController {
 mod mute_runtime;
 pub use mute_runtime::register_mute_runtime;
 
+pub(crate) mod active_observed_projection;
 mod bookmarks_runtime;
 pub use bookmarks_runtime::register_bookmark_runtime;
 
@@ -517,8 +518,7 @@ pub use search_relay_runtime::{register_search_relay_runtime, register_search_re
 #[path = "runtimes_zap_tests.rs"]
 mod zap_tests;
 
-// Mute-list runtime controller unit tests — mirrors runtimes_zap_tests.rs but
-// for the MuteRuntimeController (kind:10000 authors=[active_pubkey] interest).
+// Mute-list active observed-projection reconciler tests.
 #[cfg(test)]
 #[path = "runtimes_mute_tests.rs"]
 mod mute_tests;

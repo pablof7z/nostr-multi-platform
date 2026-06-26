@@ -14,9 +14,10 @@ to write.
 
 Critically, **Applesauce `model()` is not NMP's snapshot projection**. Applesauce
 is RxJS observables in a browser; a model is an in-process stream you subscribe
-to. NMP's equivalent is a registered snapshot projection (`register_typed_snapshot_projection`)
-combined with a `KernelEventObserver` that maintains an app-owned store —
-an actor-owned value that produces a bounded typed sidecar pushed to the host at
+to. NMP's equivalent is a registered snapshot projection
+(`register_snapshot_projection` or `register_typed_snapshot_projection`)
+combined with an `ObservedProjectionSink` opened through a declared shape —
+an actor-owned value that produces a bounded JSON or typed sidecar pushed to the host at
 ≤60 Hz. They solve the same *problem* (typed derived views) with incompatible
 *mechanics*. Treating them as the same API is the central migration mistake.
 
@@ -26,7 +27,7 @@ an actor-owned value that produces a bounded typed sidecar pushed to the host at
 |---|---|---|
 | `NDKRelaySet` / per-author relay calc | relay-map / `selectOptimalRelays` | `CompiledPlan` — the planner resolves relays from a `LogicalInterest`; you never assemble relay sets (`07-subscription-planner.md`) |
 | `ndk.subscribe(filters, opts)` | `eventStore.timeline(filters)` | `open_feed(FeedParams)` / action-dispatched claim → Rust registers `LogicalInterest`s; you pass *intent*, not filters/relays |
-| `NDKEvent` + manual derive | `eventStore.model(...)` (RxJS) | `KernelEventObserver` + `register_typed_snapshot_projection` — actor-owned projection pushed as a typed sidecar in every snapshot; **not** a stream you subscribe to |
+| `NDKEvent` + manual derive | `eventStore.model(...)` (RxJS) | `ObservedProjectionSink` + `register_snapshot_projection` — actor-owned projection pushed as a JSON slice in every snapshot; **not** a stream you subscribe to |
 | build event → `signer.sign` → `ndk.publish` | `ActionRunner` + `ctx.publish(event, relays?)` | `ActionModule` + the publish engine — one action signs, publishes (outbox-routed), and updates the store atomically |
 | `NDKPrivateKeySigner` / `NDKNip46Signer` / NIP-55 | `SimpleSigner` / `ExtensionSigner` / `AmberClipboardSigner` | `nmp-signers::Signer` (Local / NIP-46 / NIP-07) + Keyring capability; iOS Keychain SHIPS, iOS external-signer is a capability hook not turnkey |
 | `@nostr-dev-kit/sessions` store + `activePubkey` | `AccountManager` + `IAccount` | kernel `AppState.session` + `nmp-signers::AccountManager`; account is identity-only, derived state lives in app-owned stores |

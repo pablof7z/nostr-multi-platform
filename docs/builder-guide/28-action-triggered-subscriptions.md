@@ -1,9 +1,7 @@
 # 28 — Action-triggered subscriptions
-
 > **Status: SHIPS** · Audience: both · Read after [05a — Substrate traits](05a-substrate-traits.md) and [07 — Subscription planner](07-subscription-planner.md).
 
-This chapter closes the gap that sent podcast-player to
-`dispatch_capability("nostr_relay", …)`: the API existed, but the recipe did not.
+This chapter closes the gap that sent podcast-player to `dispatch_capability("nostr_relay", …)`: the API existed, but the recipe did not.
 
 ## The gap and why it matters
 
@@ -13,10 +11,7 @@ subscriptions in response to `LogicalInterest`s pushed into the
 dispatch `ActorCommand::EnsureInterest` directly**. That is the idiomatic path
 for "user taps something → kernel fetches matching events → a shell projection updates."
 
-Live references: `crates/nmp-relations/src/visible_relations.rs`
-(reaction/reply relations) and `crates/nmp-defaults/src/topic_articles.rs`
-(NIP-23 long-form articles by topic). Both are operational examples of this
-pattern.
+Live references: `crates/nmp-relations/src/visible_relations.rs` (reaction/reply relations) and `crates/nmp-defaults/src/topic_articles.rs` (NIP-23 long-form articles by topic).
 
 ## The three moving parts
 
@@ -24,15 +19,15 @@ Every action-triggered subscription wires three things together at **init
 time** — before any action is dispatched, before `nmp_app_start`:
 
 ```
-register_live_event_tap   ←── live-only event tap on the actor thread
-register_typed_snapshot_projection ←── reads the observer's state on every tick
-register_action           ←── dispatches EnsureInterest / DropInterestOwner
+open_observed_projection          ←── declared shape + replay + scoped delivery
+register_snapshot_projection      ←── reads observer state on every tick
+register_typed_snapshot_projection←── optional typed sidecar for the same state
+register_action                   ←── dispatches EnsureInterest / DropInterestOwner
 ```
 
-The action opens (or closes) the subscription slots. The observer catches
-arriving events and populates an `Arc<Mutex<AppState>>`. The projection reads that
-state and emits a typed sidecar the shell sees on the next pushed frame. Nothing
-is polling. Nothing is in the shell.
+The action opens (or closes) the subscription slots. The observer catches arriving events
+and populates an `Arc<Mutex<AppState>>`. The projection reads that state and emits a typed
+sidecar the shell sees on the next pushed frame. Nothing is polling. Nothing is in the shell.
 
 ## The action module: Claim/Release
 
@@ -310,22 +305,28 @@ filter in place) does not currently exist as an `ActorCommand` variant. If you
 need in-place filter mutation, that is a gap to raise — do not work around it
 by reusing a static key with `EnsureInterest`.
 
-## The event observer — populating the read model
+## The observed projection — populating the read model
 
-Register a `KernelEventObserver` live tap at init time for always-on app
-projections. It fires on every ingested event (already running before any action
-is dispatched), so once the subscription is open and matching events arrive,
-they flow through immediately:
+Open a declared observed projection for the read model. The declaration names
+the shape before any event is delivered; the kernel registers the sink muted,
+opens the declared interest, replays cached/store-backed rows, then activates
+future delivery scoped to the same shape:
 
 ```rust
 // In your app's registration function, called before nmp_app_start:
 let state = Arc::new(Mutex::new(DiscoveryState::default()));
 
 let state_obs = state.clone();
-app.register_live_event_tap(Arc::new(ArticleObserver { state: state_obs }));
+app.open_observed_projection(ObservedProjection::from_kinds(
+    Arc::new(ArticleObserver { state: state_obs }),
+    "myapp.discover_results",
+    1,
+    [KIND_LONG_FORM_ARTICLE],
+    128,
+));
 
 // Observer impl — cheap, must not panic (D6):
-impl KernelEventObserver for ArticleObserver {
+impl ObservedProjectionSink for ArticleObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind == KIND_LONG_FORM_ARTICLE {
             if let Ok(mut s) = self.state.lock() {
@@ -337,15 +338,9 @@ impl KernelEventObserver for ArticleObserver {
 ```
 
 The observer fires synchronously on the actor thread. Keep it fast:
-no I/O, no blocking, no panics. Live taps see all accepted events regardless of
-which subscription caused the delivery, so the observer must filter by
-`event.kind`, author, tags, or whatever the read model needs.
-
-Do not use a live tap for a per-open or late-joining read model that must catch
-up to events already accepted into the kernel. Use
-`ObservedProjectionRegistrar::open_observed_projection`: it registers the
-observer muted, replays the read-cache through the kernel, then activates
-interest-scoped live delivery.
+no I/O, no blocking, no panics. Production read models do not attach to a
+filterless all-event fanout; they declare kind, author, id, tag, relay pin,
+search shape, source reducer, or bounded dependencies up front.
 
 ## The snapshot projection — delivering to the shell
 
@@ -377,8 +372,14 @@ pub fn register(app: &mut impl AppHost) {
     // 1. Standard NIP stack first if this app wants the social defaults.
     nmp_defaults::register_defaults(app);
 
-    // 2. Observer before any app action can trigger ingest.
-    app.register_live_event_tap(Arc::new(ArticleObserver { state: state.clone() }));
+    // 2. Declared observed projection before any app action can trigger ingest.
+    app.open_observed_projection(ObservedProjection::from_kinds(
+        Arc::new(ArticleObserver { state: state.clone() }),
+        "myapp.discover_results",
+        1,
+        [KIND_LONG_FORM_ARTICLE],
+        128,
+    ));
 
     // 3. Projection — reads the observer's state.
     app.register_typed_snapshot_projection("myapp.discover_results", {
@@ -491,8 +492,8 @@ The subscription should close when…
 - [ ] `SubOwnerKey` includes `consumer_id`; `SubKey` does not.
 - [ ] `SubKey` matches the filter; `InterestId` is a stable hash, not a UUID.
 - [ ] `is_async_completing()` is `false` (default) for subscription-only actions.
-- [ ] The live tap is registered at init time, stays cheap, and never panics.
-- [ ] Per-open/late-joining projections use `open_observed_projection`, not app-side hydration.
+- [ ] The observed projection declares its shape, stays cheap, and never panics.
+- [ ] Per-open/late-joining projections use kernel replay, not app-side hydration.
 - [ ] The snapshot projection reads from the observer state; tailing subs have Release.
 - [ ] No relay logic, WebSocket code, or `dispatch_capability("nostr_relay", …)` is in the shell.
 See also: [05a](05a-substrate-traits.md) · [06](06-reactivity-contract.md) · [07](07-subscription-planner.md) · [16](16-capabilities.md) · [20](20-new-protocol-module.md).

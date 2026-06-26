@@ -35,7 +35,7 @@ use std::collections::BTreeSet;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_core::{pull_page_over, PullLimits, PullScope};
 use nmp_feed::{ClosureInterestShape, FeedController, PullFeedController};
 use nmp_nip01::op_feed::register_op_feed;
@@ -126,7 +126,7 @@ fn pull_feed_controller_seq_cursor_picks_up_late_old_event() {
     let engine_for_apply = engine.clone();
     let apply = Arc::new(move |ev: &nmp_core::substrate::KernelEvent| {
         let before = visible_payload(&engine_for_apply);
-        KernelEventObserver::on_kernel_event(&*engine_for_apply, ev);
+        ObservedProjectionSink::on_kernel_event(&*engine_for_apply, ev);
         visible_payload(&engine_for_apply) != before
     });
 

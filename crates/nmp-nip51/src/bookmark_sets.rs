@@ -14,7 +14,7 @@ use nmp_core::substrate::{
     ActionContext, ActionModule, ActionPayload, ActionPayloadDecodeError, ActionRegistrar,
     ActionRejection, KernelEvent,
 };
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_kinds::{KIND_ARTICLE_CURATION_SET, KIND_BOOKMARK_SET};
 use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
@@ -182,7 +182,7 @@ impl BookmarkSetsProjection {
     }
 }
 
-impl KernelEventObserver for BookmarkSetsProjection {
+impl ObservedProjectionSink for BookmarkSetsProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         let Ok(set_kind) = BookmarkSetKind::try_from(event.kind) else {
             return;

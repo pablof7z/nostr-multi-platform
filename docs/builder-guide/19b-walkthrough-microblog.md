@@ -143,14 +143,14 @@ map keyed by that id.
 | NIP-46 bunker signer | ✅ M6 (DONE) | — |
 | Multi-account switch | ✅ M8 (DONE) | — |
 | Outbox auto-routing (NIP-65) | ✅ T105 (DONE) | — |
-| `KernelEventObserver` + `register_live_event_tap` | ✅ DONE | — |
-| `register_typed_snapshot_projection` | ✅ DONE | — |
+| `ObservedProjectionSink` + `open_observed_projection` | ✅ DONE | — |
+| `register_snapshot_projection` / `register_typed_snapshot_projection` | ✅ DONE | — |
 | Raw C/JNI lifecycle/action FFI + FlatBuffers update frames | ✅ today | UniFFI binding/lifecycle bridge = **M14, PLANNED** |
 | `nmp init` (thin Rust shell scaffold) | ✅ ships | Creates a `<name>-core` crate + `examples/shell.rs`; full multi-platform starter is M16. |
 | iOS shell (Chirp, active) | ✅ DONE | Additional app shells deferred until Chirp is complete |
 
-The publish substrate, the local signer, multi-account, event observer, and
-snapshot projection all ship today. What is *not* shipped: the typed UniFFI
+The publish substrate, the local signer, multi-account, declared observed
+projection, and snapshot projection all ship today. What is *not* shipped: the typed UniFFI
 bridge (M14) and a one-command multi-platform scaffolder (M16). The example
 above is hand-assembled — that is expected and honest, not a defect.
 

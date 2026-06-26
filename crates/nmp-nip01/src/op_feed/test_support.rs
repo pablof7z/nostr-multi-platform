@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{EventLookup, FeedRequest, FollowPredicate};
 
 use super::attribution::Nip10ReplyAttribution;

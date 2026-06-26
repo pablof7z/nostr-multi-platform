@@ -7,7 +7,7 @@
 //! [`crate::planner::LogicalInterest`] suitable for `NmpApp::ensure_interest`.
 //!
 //! `KernelEvent` is the substrate-level event representation passed to
-//! `KernelEventObserver` implementations — it carries only the fields the
+//! `ObservedProjectionSink` implementations — it carries only the fields the
 //! kernel guarantees across all protocols (no NIP-specific payload parsing).
 
 use serde::{Deserialize, Serialize};

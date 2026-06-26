@@ -22,7 +22,7 @@
 //! - D0: `nmp-ffi` matches on no `FeedScope` variant; the compiler (in the
 //!   composition layer) owns scope semantics. `open_feed` is scope-agnostic.
 //! - D4: teardown reuses the existing `unregister_feed`,
-//!   `unregister_event_observer`, and dependent-interest cleanup paths via the
+//!   observed-projection close, and dependent-interest cleanup paths via the
 //!   recorded closures — no second feed engine, no re-derived filter on close.
 //! - D6: a compiler error is a typed [`FeedOpenError`]; double close is a safe
 //!   no-op; poisoned locks fail closed.
@@ -32,9 +32,10 @@
 use crate::app_struct::IdentityChangeObserverSlot;
 use crate::NmpApp;
 use nmp_core::__ffi_internal::{
-    unregister_observer, KernelEventObserverSlot, SnapshotProjectionSlot,
+    unregister_observer, ObservedProjectionSinkSlot, SnapshotProjectionSlot,
 };
-use nmp_core::{CommandSender, KernelEventObserverId};
+use nmp_core::actor::{ActorCommand, InterestsCommand};
+use nmp_core::{CommandSender, ObservedProjectionId};
 use nmp_feed::{
     FeedHandle, FeedParams, FeedRegistrySlot, FeedSessionBuild, FeedSessionId, ProjectionKey,
     TeardownAction,
@@ -126,7 +127,17 @@ where
 pub struct FeedTeardown {
     feeds: FeedRegistrySlot,
     projections: SnapshotProjectionSlot,
-    observers: KernelEventObserverSlot,
+    observers: ObservedProjectionSinkSlot,
+    observed_projection_sessions: Option<
+        std::sync::Arc<
+            std::sync::Mutex<
+                std::collections::HashMap<
+                    ObservedProjectionId,
+                    (String, String, u32, Option<String>),
+                >,
+            >,
+        >,
+    >,
     identity_observers: Option<IdentityChangeObserverSlot>,
     sender: CommandSender,
 }
@@ -140,6 +151,7 @@ impl FeedTeardown {
             feeds: app.feed_registry_handle(),
             projections: app.snapshot_projections_handle(),
             observers: app.event_observers_handle(),
+            observed_projection_sessions: Some(app.observed_projection_sessions.clone()),
             identity_observers: Some(app.identity_change_observers.clone()),
             sender: app.command_sender(),
         }
@@ -154,13 +166,14 @@ impl FeedTeardown {
     pub fn from_parts(
         feeds: FeedRegistrySlot,
         projections: SnapshotProjectionSlot,
-        observers: KernelEventObserverSlot,
+        observers: ObservedProjectionSinkSlot,
         sender: CommandSender,
     ) -> Self {
         Self {
             feeds,
             projections,
             observers,
+            observed_projection_sessions: None,
             identity_observers: None,
             sender,
         }
@@ -202,13 +215,33 @@ impl FeedTeardown {
         })
     }
 
-    /// A teardown step that revokes the ingest observer `id` (reuses the
-    /// kernel-event observer registry's `unregister_observer`). Idempotent for
-    /// an unknown id.
+    /// A teardown step that closes the observed projection `id`.
+    ///
+    /// Production feed sessions use ids returned by
+    /// `ObservedProjectionRegistrar::open_observed_projection`; closing them
+    /// must withdraw the paired interest and unregister the sink. Lower-level
+    /// tests built via [`Self::from_parts`] have no session map, so they fall
+    /// back to raw sink unregister.
     #[must_use]
-    pub fn revoke_observer(&self, id: KernelEventObserverId) -> TeardownAction {
+    pub fn revoke_observer(&self, id: ObservedProjectionId) -> TeardownAction {
         let observers = self.observers.clone();
+        let sessions = self.observed_projection_sessions.clone();
+        let sender = self.sender.clone();
         Box::new(move || {
+            if let Some(sessions) = &sessions {
+                let params = sessions
+                    .lock()
+                    .ok()
+                    .and_then(|mut sessions| sessions.remove(&id));
+                if let Some((filter_json, consumer_id, scope, relay_pin)) = params {
+                    let _ = sender.send(ActorCommand::Interests(InterestsCommand::CloseInterest {
+                        filter_json,
+                        consumer_id,
+                        scope,
+                        relay_pin,
+                    }));
+                }
+            }
             unregister_observer(&observers, id);
         })
     }
@@ -217,7 +250,7 @@ impl FeedTeardown {
     ///
     /// App-level runtimes may register identity observers for the app lifetime.
     /// Feed sessions are shorter-lived, so reduced-source reset hooks must be
-    /// removed on close just like kernel-event observers and acquisition sets.
+    /// removed on close just like observed-projection sinks and acquisition sets.
     #[must_use]
     pub fn revoke_identity_observer(&self, id: crate::IdentityChangeObserverId) -> TeardownAction {
         let observers = self.identity_observers.clone();

@@ -5,7 +5,7 @@
 //! The `LongformProjection` does an unconditional `state.insert(address, ...)`
 //! with **no `created_at` comparison** — by design (the brief: "do NOT
 //! reimplement is-newer"). That correctness rests entirely on ONE external
-//! invariant: the kernel fans an event out to `KernelEventObserver`s **only on
+//! invariant: the kernel fans an event out to `ObservedProjectionSink`s **only on
 //! store outcome `Inserted | Replaced`** (see
 //! `crates/nmp-core/src/kernel/ingest/`), and the param-replaceable store
 //! returns `Superseded` (NOT `Inserted | Replaced`) for an older
@@ -22,9 +22,9 @@
 
 use nmp_content::wire::longform_fb::decode_longform_articles;
 use nmp_content::{LongformProjection, KIND_LONG_FORM_ARTICLE, LONGFORM_PROJECTION_KEY};
-use nmp_store::InsertOutcome;
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
+use nmp_store::InsertOutcome;
 use nmp_testing::store_harness::{StoreHarness, ALICE_HEX, BOB_HEX};
 
 /// Build the kind:30023 tag set the NIP-23 resolver reads.

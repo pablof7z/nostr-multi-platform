@@ -4,7 +4,7 @@
 //! projections into the kernel without depending on `NmpApp` (which lives in
 //! `nmp-ffi`, not available on wasm32) or the native actor thread:
 //!
-//! * `register_live_event_tap` — wire a `KernelEventObserver` into the fan-out slot.
+//! * `open_observed_projection` — wire a declared scoped read-model sink.
 //! * `register_typed_snapshot_projection` — wire a typed FlatBuffers projection.
 //! * `register_feed_author_provider` — wire a feed's rendered-author provider.
 //! * `active_account_handle` — read the active-account pubkey slot.
@@ -22,7 +22,7 @@
 //! # Doctrine
 //!
 //! * **D0** — surface types are all substrate-level: `Arc<dyn EventStore>`,
-//!   `ActiveAccountSlot`, `KernelEventObserver`, `TypedProjectionData`.
+//!   `ActiveAccountSlot`, `ObservedProjection`, `TypedProjectionData`.
 //!   No NIP or app nouns.
 //! * **D6** — poisoned mutex on register/lookup is a silent no-op; the
 //!   caller never panics.
@@ -31,13 +31,16 @@
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use crate::actor::register_rust_observer;
+use crate::actor::{register_rust_observer_muted, unregister_observer_internal};
 use crate::kernel::Kernel;
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
-use crate::substrate::{ContactsLookup, IngestParser, ProfileLookup};
-use crate::{EmittedFeedAuthorsSlot, KernelEventObserver, KernelEventObserverId, TypedProjectionData};
+use crate::substrate::{
+    ContactsLookup, IngestParser, ObservedProjectionCommandHandle, ObservedProjectionSessionMap,
+    ProfileLookup,
+};
+use crate::{EmittedFeedAuthorsSlot, ObservedProjectionId, TypedProjectionData};
 
 impl super::KernelReducer {
     /// Construct a reducer around an externally-opened event store.
@@ -60,6 +63,7 @@ impl super::KernelReducer {
             kernel,
             observer_slot,
             snapshot_slot,
+            observed_projection_sessions: std::collections::HashMap::new(),
             sign_roundtrip: super::wasm_signing::SignRoundTripState::default(),
         }
     }
@@ -79,25 +83,87 @@ impl super::KernelReducer {
         self.sign_roundtrip = super::wasm_signing::SignRoundTripState::default();
     }
 
-    // ── Event-observer slot seam ──────────────────────────────────────────
+    // ── Observed-projection seam ─────────────────────────────────────────
 
-    /// Register an in-process Rust observer that will be called for every
-    /// event the kernel accepts (i.e. returns `Inserted` or `Replaced` from
-    /// `EventStore::insert`).
+    /// Open a declared observed projection on the reducer/browser path.
     ///
-    /// Returns an opaque [`KernelEventObserverId`] the caller retains to
-    /// unregister later. Registration is idempotent: the same `Arc` can be
-    /// registered multiple times and fires once per registration.
-    ///
-    /// **Live-tap semantics** — the observer receives only events ingested
-    /// AFTER registration; there is no replay of already-cached events.
-    ///
-    /// This is the wasm32 equivalent of `NmpApp::register_live_event_tap`.
-    pub fn register_live_event_tap(
+    /// Mirrors `NmpApp::open_observed_projection`: register the sink muted,
+    /// open the declared interest, replay matching cached rows, then activate
+    /// future delivery scoped to the declaration's replay shapes.
+    pub fn open_observed_projection(
+        &mut self,
+        decl: crate::substrate::ObservedProjection,
+    ) -> ObservedProjectionId {
+        if !decl.has_declared_shape() {
+            return ObservedProjectionId(0);
+        }
+        let observer_id = register_rust_observer_muted(&self.observer_slot, decl.observer);
+        if observer_id.0 == 0 {
+            return observer_id;
+        }
+        let Some((identity, interest)) = crate::subs::interest_builder::build_interest_pair(
+            &decl.filter_json,
+            &decl.consumer_id,
+            decl.scope,
+            decl.relay_pin.as_deref(),
+        ) else {
+            unregister_observer_internal(&self.observer_slot, observer_id);
+            return ObservedProjectionId(0);
+        };
+        self.observed_projection_sessions.insert(
+            observer_id,
+            (
+                decl.filter_json.clone(),
+                decl.consumer_id.clone(),
+                decl.scope,
+                decl.relay_pin.clone(),
+            ),
+        );
+        let replay = crate::kernel::ObserverReplayRequest {
+            observer_id,
+            shapes: decl.replay_shapes,
+            limit: decl.replay_limit,
+        };
+        let _ = self.kernel.open_interest_with_observer_replay(
+            identity,
+            interest,
+            replay,
+            "open-observed-projection",
+        );
+        let outbound = self.kernel.drain_lifecycle_outbound();
+        let _ = self.kernel.partition_auth_paused(outbound);
+        observer_id
+    }
+
+    /// Close a reducer/browser observed projection by id.
+    pub fn close_observed_projection(&mut self, id: ObservedProjectionId) {
+        let Some((filter_json, consumer_id, scope, relay_pin)) =
+            self.observed_projection_sessions.remove(&id)
+        else {
+            return;
+        };
+        if let Some((identity, _interest)) = crate::subs::interest_builder::build_interest_pair(
+            &filter_json,
+            &consumer_id,
+            scope,
+            relay_pin.as_deref(),
+        ) {
+            let _ = self.kernel.close_interest_sub(&identity);
+        }
+        unregister_observer_internal(&self.observer_slot, id);
+        let outbound = self.kernel.drain_lifecycle_outbound();
+        let _ = self.kernel.partition_auth_paused(outbound);
+    }
+
+    /// Build a cloneable command-backed observed-projection registrar for
+    /// post-start runtime controllers.
+    #[must_use]
+    pub fn observed_projection_command_handle(
         &self,
-        observer: Arc<dyn KernelEventObserver>,
-    ) -> KernelEventObserverId {
-        register_rust_observer(&self.observer_slot, observer)
+        sessions: ObservedProjectionSessionMap,
+        sender: crate::CommandSender,
+    ) -> ObservedProjectionCommandHandle {
+        ObservedProjectionCommandHandle::new(Arc::clone(&self.observer_slot), sessions, sender)
     }
 
     // ── Typed snapshot-projection seam ───────────────────────────────────
@@ -340,10 +406,11 @@ impl super::KernelReducer {
         // Delegates to the shared Kernel::publish_externally_signed helper
         // (#2045 PR-A): target-validate → verify-sig (closes forged-event gap)
         // → D10 routing gate → publish. Then partitions auth-paused frames.
-        let outbound = self.kernel.publish_externally_signed(raw, target, correlation_id);
+        let outbound = self
+            .kernel
+            .publish_externally_signed(raw, target, correlation_id);
         self.kernel.partition_auth_paused(outbound)
     }
-
 }
 
 #[cfg(any(test, feature = "test-support"))]

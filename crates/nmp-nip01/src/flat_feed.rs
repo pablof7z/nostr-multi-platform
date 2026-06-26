@@ -25,7 +25,7 @@
 //! admitted events. `nmp-core` never owns the primary-kind policy.
 //!
 //! Registration mirrors [`crate::register_op_feed`]: the host registers a
-//! `FlatFeed` as both a [`KernelEventObserver`] (ingest fan-out) and a
+//! `FlatFeed` as both a [`ObservedProjectionSink`] (ingest fan-out) and a
 //! [`FeedController`] under its own snapshot key (`nmp.feed.author.<pk>` /
 //! `nmp.feed.thread.<id>`).
 
@@ -33,7 +33,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
     FeedController, FeedInterestShape, FeedRequest, FlatFeed as GenericFlatFeed, FlatFeedItem,
     FlatFeedItemBuilder, FlatFeedMerge, RootCard, RootFeedSnapshot,
@@ -240,7 +240,7 @@ fn card_is_placeholder(card: &TimelineEventCard) -> bool {
     card.content.is_empty() && card.reposted_by.is_some()
 }
 
-impl KernelEventObserver for FlatFeed {
+impl ObservedProjectionSink for FlatFeed {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.inner.on_kernel_event(event);
     }

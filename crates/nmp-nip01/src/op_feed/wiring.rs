@@ -25,7 +25,13 @@
 //!
 //! ```ignore
 //! let engine = nmp_nip01::register_op_feed(viewer, predicate, lookup);
-//! app.register_live_event_tap(Arc::clone(&engine) as Arc<dyn KernelEventObserver>);
+//! app.open_observed_projection(ObservedProjection::from_shape(
+//!     Arc::clone(&engine) as Arc<dyn ObservedProjectionSink>,
+//!     "nmp.feed.home",
+//!     0,
+//!     feed_shape,
+//!     256,
+//! ));
 //! app.register_feed("nmp.feed.home", Arc::clone(&engine) as Arc<dyn FeedController>);
 //! ```
 //!
@@ -51,10 +57,10 @@
 
 use std::sync::Arc;
 
-use nmp_core::KernelEventObserver;
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{
-    CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed, admit_all_roots,
+    admit_all_roots, CardBuilder, EventGate, EventLookup, FollowPredicate, RootIndexedFeed,
 };
 
 use super::attribution::Nip10ReplyAttribution;
@@ -73,7 +79,7 @@ pub const OP_FEED_SNAPSHOT_KEY: &str = "nmp.feed.home";
 /// Construct (but do not register) the NIP-10 OP-feed engine.
 ///
 /// Returns the `Arc<OpFeedEngine>`. The composition root registers it as a
-/// `KernelEventObserver` (ingest) and a `FeedController` under
+/// `ObservedProjectionSink` (ingest) and a `FeedController` under
 /// [`OP_FEED_SNAPSHOT_KEY`] (output).
 ///
 /// * `viewer` — the active account pubkey (reserved for future
@@ -235,7 +241,7 @@ impl OpFeedObserver {
     }
 }
 
-impl KernelEventObserver for OpFeedObserver {
+impl ObservedProjectionSink for OpFeedObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if let Some(record) = nmp_nip18::DeleteRecord::try_from_kernel_event(event) {
             self.apply_delete(&record);

@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{EventId, KernelEvent, SuppressionLookup};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{AttributionPayload, EventLookup, FollowPredicate};
 
 use crate::timeline_projection::TimelineEventCard;

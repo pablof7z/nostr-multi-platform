@@ -48,8 +48,8 @@ The publish resolver is likewise injected through a factory. Production uses
 
 `nmp_app_chirp_register` calls `nmp_defaults::register_defaults`, then
 adds Chirp-specific registrations: NIP-29 actions, visible note relation
-actions, optional wallet runtime, zap aggregates, and the Chirp home timeline
-projection.
+actions including visible-target zap counts, optional wallet runtime, and the
+Chirp home timeline projection.
 
 The home feed currently registers a `ModularTimelineProjection` under
 `"nmp.feed.home"` as both a feed controller and a typed snapshot sidecar

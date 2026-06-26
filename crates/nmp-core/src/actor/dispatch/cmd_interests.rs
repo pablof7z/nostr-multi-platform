@@ -12,7 +12,7 @@
 //! sub-enum and routes each verb to its existing handler.
 
 use crate::actor::InterestsCommand;
-use crate::actor::KernelEventObserverId;
+use crate::actor::ObservedProjectionId;
 use crate::relay::OutboundMessage;
 
 use super::build_open_interest;
@@ -38,8 +38,15 @@ pub(super) fn replace_dependent_interest_set(
     ports: &mut InterestsPorts<'_>,
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
-    ports.kernel.replace_dependent_interest_set(owner, children, &reason);
-    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
+    ports
+        .kernel
+        .replace_dependent_interest_set(owner, children, &reason);
+    maybe_emit_after_dispatch(
+        ports.kernel,
+        ports.running,
+        ports.update_tx,
+        ports.last_emit,
+    );
     Some(Vec::new())
 }
 
@@ -100,7 +107,12 @@ pub(super) fn open_interest(
     {
         let _ = ports.kernel.open_interest_sub(identity, interest);
     }
-    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
+    maybe_emit_after_dispatch(
+        ports.kernel,
+        ports.running,
+        ports.update_tx,
+        ports.last_emit,
+    );
     Some(Vec::new())
 }
 
@@ -110,7 +122,7 @@ pub(super) fn open_observed_interest(
     consumer_id: String,
     scope: u32,
     relay_pin: Option<String>,
-    observer_id: KernelEventObserverId,
+    observer_id: ObservedProjectionId,
     replay_shapes: Vec<crate::planner::InterestShape>,
     replay_limit: usize,
     ports: &mut InterestsPorts<'_>,
@@ -133,7 +145,12 @@ pub(super) fn open_observed_interest(
             "open-observed-interest",
         );
     }
-    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
+    maybe_emit_after_dispatch(
+        ports.kernel,
+        ports.running,
+        ports.update_tx,
+        ports.last_emit,
+    );
     Some(Vec::new())
 }
 
@@ -155,7 +172,12 @@ pub(super) fn close_interest(
     {
         let _ = ports.kernel.close_interest_sub(&identity);
     }
-    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
+    maybe_emit_after_dispatch(
+        ports.kernel,
+        ports.running,
+        ports.update_tx,
+        ports.last_emit,
+    );
     Some(Vec::new())
 }
 
@@ -176,7 +198,12 @@ pub(super) fn ingest_pre_verified_events(
         );
     }
     ports.kernel.sort_timeline_deferred();
-    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
+    maybe_emit_after_dispatch(
+        ports.kernel,
+        ports.running,
+        ports.update_tx,
+        ports.last_emit,
+    );
     Some(Vec::new())
 }
 
@@ -196,7 +223,12 @@ pub(super) fn ingest_pre_verified_events_for_relay(
         );
     }
     ports.kernel.sort_timeline_deferred();
-    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
+    maybe_emit_after_dispatch(
+        ports.kernel,
+        ports.running,
+        ports.update_tx,
+        ports.last_emit,
+    );
     Some(Vec::new())
 }
 
@@ -210,11 +242,19 @@ pub(super) fn ingest_pre_verified_events_for_sub_id(
 ) -> Option<Vec<OutboundMessage>> {
     use crate::actor::tick::maybe_emit_after_dispatch;
     for verified in events {
-        ports.kernel
-            .ingest_pre_verified_event(nmp_network::role::RelayRole::Content, &sub_id, verified);
+        ports.kernel.ingest_pre_verified_event(
+            nmp_network::role::RelayRole::Content,
+            &sub_id,
+            verified,
+        );
     }
     ports.kernel.sort_timeline_deferred();
-    maybe_emit_after_dispatch(ports.kernel, ports.running, ports.update_tx, ports.last_emit);
+    maybe_emit_after_dispatch(
+        ports.kernel,
+        ports.running,
+        ports.update_tx,
+        ports.last_emit,
+    );
     let _ = ack.send(());
     Some(Vec::new())
 }

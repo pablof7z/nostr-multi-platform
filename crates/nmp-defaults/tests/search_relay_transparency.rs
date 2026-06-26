@@ -34,7 +34,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 use nmp_nip51::SearchRelayListProjection;
 

@@ -28,7 +28,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use nmp_core::substrate::KernelEvent;
+use nmp_core::substrate::{KernelEvent, ObservedProjectionRegistrar};
 use nmp_feed::{CustomPerspectiveId, FeedRanking, FeedScope, RootAdmission};
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_planner::InterestShape;
@@ -237,7 +237,7 @@ fn merge_live_shapes(left: &LiveShape, right: &LiveShape) -> Option<InterestShap
 /// cleanup when a later resolution step errors — no leak, D8).
 fn revoke_observers(app: &NmpApp, resolved: &ReducedSource) {
     for id in &resolved.resolver_observer_ids {
-        app.unregister_event_observer(*id);
+        app.close_observed_projection(*id);
     }
     for id in &resolved.identity_observer_ids {
         app.unregister_identity_change_observer(*id);

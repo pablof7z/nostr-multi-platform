@@ -16,7 +16,7 @@
 //! Mirrors the pattern [`BlockedRelayLookup`] uses for kind:10006:
 //!
 //! - The **writer** is `nmp-nip51`'s `MuteListProjection`
-//!   ([`crate::KernelEventObserver`]) — registered at composition time.
+//!   ([`crate::ObservedProjectionSink`]) — registered at composition time.
 //! - The **readers** are feed projections such as `nmp-nip01`'s
 //!   `ModularTimelineProjection` and OP-feed observer adapter. They consult
 //!   this trait through the substrate-generic shape and do NOT know the wire

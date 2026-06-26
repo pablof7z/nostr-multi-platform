@@ -15,10 +15,10 @@
 //! `contacts_lookup.follows(active_pubkey)` and maps the raw hex pubkeys to
 //! [`FollowEntry`] values. No secondary `HashMap` is maintained.
 //!
-//! # Why the old `KernelEventObserver` approach was broken
+//! # Why the old `ObservedProjectionSink` approach was broken
 //!
 //! The prior design kept an observer-local `HashMap` populated only by
-//! `KernelEventObserver::on_kernel_event`. This missed the startup cache-serve
+//! `ObservedProjectionSink::on_kernel_event`. This missed the startup cache-serve
 //! that runs before the lazily-registered observer exists (continuation.rs:95-100
 //! — no-double-dispatch rule is locked by test), and also missed the local
 //! publish fan-out for Follow actions in some orderings. The button therefore

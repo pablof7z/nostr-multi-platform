@@ -156,7 +156,7 @@ pub extern "C" fn nmp_app_chirp_register(
     // `"nmp.nip29.group_defaults"` as the typed `NGDF` projection instead of
     // being a hardcoded Swift `@State` literal in `NewGroupSheet`. Output-only:
     // the projection observes no kernel events, so this is a one-time
-    // registration at app init, like the zaps projection above. NIP-29
+    // registration at app init. NIP-29
     // group-create is a Chirp verb, not part of the canonical NMP composition,
     // so it lives here and its operator relay policy comes from
     // `nmp-chirp-config`, not from `nmp-nip29`.
@@ -177,9 +177,9 @@ pub extern "C" fn nmp_app_chirp_register(
     // `nmp-defaults`: it constructs the `ActiveFollowSet` over the app's
     // authoritative active-account slot, wires the follow predicate + event
     // lookup + actor claim sink + card builder into the `nmp-nip01` OP-feed
-    // engine, and registers the engine as BOTH a `KernelEventObserver`
-    // (ingest) AND a `FeedController` under `"nmp.feed.home"` (output). It
-    // also registers the `ActiveFollowSet` as its own observer for kind:3
+    // engine, and opens declared observed projections for ingest plus a
+    // `FeedController` under `"nmp.feed.home"` (output). It also registers the
+    // `ActiveFollowSet` through declared observed projection delivery for kind:3
     // ingest and on `NmpApp`'s identity-change observer so sign-in, switch,
     // logout, and reset proactively clear stale OP-feed state.
     let defaults = match default_handles.mute {
@@ -241,7 +241,7 @@ pub extern "C" fn nmp_app_chirp_register_dm_inbox(app: *mut NmpApp) {
 ///
 /// ## Root-cause fix (#1630)
 ///
-/// The prior implementation registered a `KernelEventObserver` that kept a
+/// The prior implementation registered a local observer that kept a
 /// local `HashMap` of follows. This local copy missed the startup cache-serve
 /// that runs before the lazily-registered observer exists — so already-followed
 /// accounts showed "Follow" on cold start. The new path reads directly from the

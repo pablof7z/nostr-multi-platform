@@ -6,7 +6,7 @@
 //!   the UPPERCASE root scope (`A`/`E`/`I` + `K`) and lowercase parent scope
 //!   (`a`/`e`/`i` + `k`). Top-level comments mirror the root.
 //! - [`projection`] — [`CommentThreadProjection`], an in-memory
-//!   `KernelEventObserver` (same shape as `nmp-nip25` reactions and
+//!   `ObservedProjectionSink` (same shape as `nmp-nip25` reactions and
 //!   `nmp-nip51` bookmarks) that buckets kind:1111 by root and builds the
 //!   parent/child forest for a root on demand.
 //! - [`action`] — the `nmp.nip22.post_comment` action module that builds a

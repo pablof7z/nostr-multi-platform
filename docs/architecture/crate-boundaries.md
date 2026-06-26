@@ -87,10 +87,12 @@ rules. This centralizes the five previously drifting copies (#967). The type/aut
 - Capability sockets and raw capability-result intake.
 - Session/account state and active-account switching.
 - Trait seams: `ActionModule`, `ProtocolCommand`, `IngestParser`,
-  `EventIngestDispatcher`, `KernelEventObserver` delivery slots (explicit
-  live taps via `LiveEventTapRegistrar`, hydrating interest-scoped read models
-  via `ObservedProjectionRegistrar`), `ExternalEventSinkPolicy`
-  (the internal in-process relay-forwarding seam; there is no native push sink),
+  `EventIngestDispatcher`, `ObservedProjectionSink` delivery slots (internal
+  plumbing activated only by declared `ObservedProjectionRegistrar` sessions),
+  `ExternalEventSinkPolicy`
+  (the internal in-process relay-forwarding seam; replaces the retired
+  `RawEventObserver` / `RawEventForwardPolicy` pair — there is no native push
+  sink),
   `OutboxRouter`, `MailboxCache`, `PaymentPort` (the BOLT-11 pay-invoice seam:
   NIP-57 emits a typed `PaymentIntent`, NIP-47 supplies the implementation, so
   there is no `nmp-nip57 → nmp-nip47` sibling edge), and publish resolver
@@ -367,8 +369,8 @@ for the typed builder, not vice versa. No Layer 0-5 crate depends on
 super-trait — no browser-specific composition trait is introduced. `AppHost` is
 already platform-neutral: it is the blanket-impl union of the narrow D6 registrar
 traits, every method registers a Rust-owned fact (action modules, ingest parsers,
-snapshot projections, event observers, routing/publish factories, kernel-reader
-slots, capability seams), and platform capabilities (storage, sockets, OS
+snapshot projections, declared observed projections, routing/publish factories,
+kernel-reader slots, capability seams), and platform capabilities (storage, sockets, OS
 keychains) are deliberately excluded. Native (`NmpAppBuilder`) and browser
 (`BrowserAppBuilder`) implement the same narrow registrars and obtain `AppHost`
 through the blanket impl; only a composition root names `AppHost`, while protocol
@@ -378,7 +380,7 @@ Layer ownership of registered facts (all browser-relevant; none native-only):
 
 - Action modules / protocol commands → protocol crates (Layers 1–4) via `ActionRegistrar`.
 - Ingest parsers and kernel-reader slots (profile / contacts / mailbox / DM-inbox / blocked-relay) → protocol crates; the reducer reads, never names the wire format (D0).
-- Snapshot projections, event observers, identity-change hooks → runtime crates.
+- Snapshot projections, observed-projection sinks, identity-change hooks → runtime crates.
 - Routing / publish / raw-forward factories, nostrconnect bootstrap, relay User-Agent, outbound tags → `nmp-router` + composition root.
 - `HostCapabilities` (active pubkey, actor command sender, configured-relays slot, preferred-relay source) → composition root / kernel.
 

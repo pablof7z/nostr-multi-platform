@@ -4,7 +4,7 @@
 //! zap receipt decode/ingest coverage. These tests focus on the
 //! `_ =>` wildcard arm, which prior to this fix called only
 //! `verify_and_persist` and therefore never fanned the store-accepted
-//! `KernelEvent` out to `KernelEventObserver`s. The structural consequence
+//! `KernelEvent` out to `ObservedProjectionSink`s. The structural consequence
 //! was that NIP-29-style projections (kinds 9, 11, 1111, 39000/1/2) and
 //! gift-wraps (kind:1059) — none of which have an explicit arm — were
 //! structurally deaf to events the store had already canonicalized.
@@ -16,7 +16,7 @@
 //! mirrors `kernel/raw_event_observer_tests.rs::signed_event_value` and
 //! `kernel/ingest_tests.rs::signed_note`.
 use super::*;
-use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+use crate::actor::{new_event_observer_slot, register_rust_observer, ObservedProjectionSink};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::KernelEvent;
 use nmp_network::role::RelayRole;
@@ -40,7 +40,7 @@ impl CountingObserver {
     }
 }
 
-impl KernelEventObserver for CountingObserver {
+impl ObservedProjectionSink for CountingObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.count.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.kinds.lock() {
@@ -76,7 +76,7 @@ fn signed_event_value(kind: u32, content: &str) -> serde_json::Value {
 }
 
 /// A kind that hits the `_ =>` wildcard arm (NIP-29 chat message kind:9)
-/// fans out to registered `KernelEventObserver`s after a successful
+/// fans out to registered `ObservedProjectionSink`s after a successful
 /// store insert. Before the F-04 wildcard-arm fix this assertion failed
 /// because the arm called only `verify_and_persist` and never
 /// `notify_event_observers`.
@@ -92,7 +92,7 @@ fn wildcard_kind_fan_out_to_event_observers() {
     // Kind:9 (NIP-29 group chat message) — hits the wildcard arm because
     // no explicit match arm above lists it. `GroupTimelineProjection` in
     // `apps/chirp/crates/nmp-app-chirp/src/ffi/register.rs` is registered as a
-    // `KernelEventObserver` for exactly this kind.
+    // `ObservedProjectionSink` for exactly this kind.
     let value = signed_event_value(9, "hello group");
     kernel.handle_event(
         RelayRole::Content,
@@ -104,7 +104,7 @@ fn wildcard_kind_fan_out_to_event_observers() {
     assert_eq!(
         observer.count.load(Ordering::SeqCst),
         1,
-        "wildcard-arm kinds must fan out to KernelEventObservers exactly \
+        "wildcard-arm kinds must fan out to ObservedProjectionSinks exactly \
          once after a successful store insert"
     );
     let kinds = observer.kinds.lock().unwrap().clone();
@@ -140,14 +140,14 @@ fn kind0_fans_out_to_event_observers() {
     assert_eq!(
         observer.count.load(Ordering::SeqCst),
         1,
-        "accepted kind:0 metadata must fan out to KernelEventObservers"
+        "accepted kind:0 metadata must fan out to ObservedProjectionSinks"
     );
     let kinds = observer.kinds.lock().unwrap().clone();
     assert_eq!(kinds, vec![0]);
 }
 
 /// Kind:3 is also an explicit arm. The NIP-02 follow-list projection consumes
-/// it through KernelEventObserver, so accepted contact lists must fan out just
+/// it through ObservedProjectionSink, so accepted contact lists must fan out just
 /// like timeline, wildcard, and kind:0 events.
 #[test]
 fn kind3_fans_out_to_event_observers() {
@@ -169,7 +169,7 @@ fn kind3_fans_out_to_event_observers() {
     assert_eq!(
         observer.count.load(Ordering::SeqCst),
         1,
-        "accepted kind:3 contact lists must fan out to KernelEventObservers"
+        "accepted kind:3 contact lists must fan out to ObservedProjectionSinks"
     );
     let kinds = observer.kinds.lock().unwrap().clone();
     assert_eq!(kinds, vec![3]);
@@ -211,14 +211,14 @@ fn wildcard_kind_dedup_no_double_fan_out() {
         observer.count.load(Ordering::SeqCst),
         1,
         "duplicate sibling-relay deliveries of the same event id must NOT \
-         double-fire KernelEventObservers (D4)"
+         double-fire ObservedProjectionSinks (D4)"
     );
 }
 
 /// ADR-0057 §1 latent-bug fix oracle — an ephemeral event (20000–29999) is NOT
 /// persisted (the store returns `InsertOutcome::Ephemeral` without writing) BUT
 /// still reaches BOTH the NIP `IngestParser` registry AND the app-facing
-/// `KernelEventObserver` seam. Pre-ADR-0057 the per-arm observer fire gated on
+/// `ObservedProjectionSink` seam. Pre-ADR-0057 the per-arm observer fire gated on
 /// `Inserted | Replaced` only, so an ephemeral reached the parsers but NOT the
 /// app observers — an app could not react to an ephemeral it never stores.
 /// Moving `notify_event_observers` into the chokepoint under the canonical
@@ -268,7 +268,7 @@ fn ephemeral_event_reaches_parsers_and_observers_but_is_not_persisted() {
     assert_eq!(
         observer.count.load(Ordering::SeqCst),
         1,
-        "an ephemeral event must reach app KernelEventObservers (ADR-0057 §1 latent-bug fix)"
+        "an ephemeral event must reach app ObservedProjectionSinks (ADR-0057 §1 latent-bug fix)"
     );
     // NIP parser fired.
     assert_eq!(

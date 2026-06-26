@@ -102,7 +102,7 @@ validation policy. Native code may supply raw entropy only.
 Register the projection under `nmp.nip29.joined_groups` with the same pattern
 as the existing NIP-29 projections:
 
-- a `KernelEventObserver` folds trusted 39000, 39001, and 39002 events;
+- a `ObservedProjectionSink` folds trusted 39000, 39001, and 39002 events;
 - a generic JSON snapshot remains available as the permanent fallback;
 - a typed FlatBuffers sidecar is emitted under the same key.
 

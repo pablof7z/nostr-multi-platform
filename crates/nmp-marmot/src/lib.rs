@@ -137,7 +137,7 @@ pub mod mls_types {
 
 // `nmp-marmot` exposes its 4 record types and 4 view types as public types
 // under `domain` and `view`. View types are plain types reached via static
-// dispatch; the live extension path is `KernelEventObserver` (the Marmot
+// dispatch; the live extension path is `ObservedProjectionSink` (the Marmot
 // projection registers one in `projection/`). Write capabilities are
 // dispatched through `projection::action::MarmotActionModule` registered
 // under the `"nmp.marmot"` namespace; the legacy bespoke

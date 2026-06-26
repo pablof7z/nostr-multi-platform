@@ -268,10 +268,10 @@ fn on_kernel_event_observer_entrypoint_renders_matching_event() {
         "alice".to_string(),
         social_acquisition_kinds(),
     ));
-    // Drive via the KernelEventObserver trait method, exactly as
+    // Drive via the ObservedProjectionSink trait method, exactly as
     // `notify_event_observers` does.
-    KernelEventObserver::on_kernel_event(&*feed, &ev("a1", "alice", 1, 100, vec![]));
-    KernelEventObserver::on_kernel_event(&*feed, &ev("b1", "bob", 1, 101, vec![]));
+    ObservedProjectionSink::on_kernel_event(&*feed, &ev("a1", "alice", 1, 100, vec![]));
+    ObservedProjectionSink::on_kernel_event(&*feed, &ev("b1", "bob", 1, 101, vec![]));
     // Only alice's note rendered (predicate gate honoured at the observer
     // entry point), and it surfaces in the FlatFeed snapshot.
     assert_eq!(feed.len(), 1);

@@ -1,7 +1,7 @@
 //! ADR-0062 — observer-scoped read-model catch-up.
 //!
 //! When a late-joining per-open feed (Chirp author/thread profile) registers a
-//! `KernelEventObserver` AFTER events matching its interest have already been
+//! `ObservedProjectionSink` AFTER events matching its interest have already been
 //! accepted and cached in the in-memory read-cache (`Kernel::events`), it
 //! misses those events because the global `notify_observers` fan-out is
 //! one-shot and per-observer activation replay is not part of the live ingest
@@ -60,7 +60,7 @@
 //! chronological order as the live and cache-serve ingest paths.
 
 use super::Kernel;
-use crate::actor::KernelEventObserverId;
+use crate::actor::ObservedProjectionId;
 use crate::kernel::cache_serve::{InterestRegistration, InterestWrite};
 use crate::planner::{InterestShape, LogicalInterest};
 use crate::subs::SubIdentity;
@@ -70,7 +70,7 @@ use crate::substrate::KernelEvent;
 /// read-cache catch-up (ADR-0062 §6).
 pub(crate) struct ObserverReplayRequest {
     /// The muted observer id to deliver replayed events to.
-    pub observer_id: KernelEventObserverId,
+    pub observer_id: ObservedProjectionId,
     /// Filter shapes used to match events in the read-cache.
     /// A single `OpenObservedInterest` command may carry multiple shapes
     /// (e.g. thread feed: `#e` replies shape + root-by-id shape) — all

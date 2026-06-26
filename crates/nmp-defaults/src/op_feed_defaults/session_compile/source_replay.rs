@@ -1,11 +1,11 @@
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_ffi::NmpApp;
 use nmp_planner::InterestShape;
 
 pub(super) fn replay_source_shape(
     app: &NmpApp,
-    observer: &dyn KernelEventObserver,
+    observer: &dyn ObservedProjectionSink,
     shape: InterestShape,
 ) {
     let pull = app.feed_pull_fn();
@@ -14,7 +14,7 @@ pub(super) fn replay_source_shape(
 
 pub(super) fn replay_source_shape_with_pull(
     pull: &nmp_feed::PullFn,
-    observer: &dyn KernelEventObserver,
+    observer: &dyn ObservedProjectionSink,
     shape: InterestShape,
 ) {
     let mut after_seq = 0;

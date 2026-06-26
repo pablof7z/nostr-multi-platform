@@ -146,7 +146,7 @@ pub fn new_pull_cursor_registry_handle_slot() -> PullCursorRegistryHandleSlot {
 /// This is the substrate-generic body behind `NmpApp::event_by_id`. The
 /// mapping is lossless across the fields the substrate guarantees for every
 /// protocol (`id`, `author`, `kind`, `created_at`, `tags`, `content`) — the
-/// same field set `KernelEventObserver` sees on the ingest fan-out, so a card
+/// same field set `ObservedProjectionSink` sees on the ingest fan-out, so a card
 /// rebuilt from a lookup is byte-identical to one rebuilt from the observer.
 #[must_use]
 pub fn event_by_id_from_store(
@@ -195,7 +195,9 @@ pub fn event_by_id_from_store(
 pub fn following_count_from_store(slot: &EventStoreSlot, author_hex: &str) -> Option<usize> {
     let author = crate::kernel::hex_to_pubkey_bytes(author_hex)?;
     let store = slot.lock().ok()?.clone()?;
-    let mut iter = store.scan_by_author_kind(&author, &[3], None, None, 1).ok()?;
+    let mut iter = store
+        .scan_by_author_kind(&author, &[3], None, None, 1)
+        .ok()?;
     let stored = iter.next()?.ok()?;
     let mut seen = std::collections::HashSet::new();
     let count = stored
@@ -338,18 +340,6 @@ pub fn erase_kernel_clock(
     clock
 }
 
-/// Typed slot for the singleton kernel-event observer id.
-///
-/// Used by the idempotent `NmpApp::swap_singleton_event_observer` seam so
-/// per-app crates can re-register on account-switch without stacking observers.
-pub type SingletonEventObserverIdSlot = Arc<Mutex<Option<crate::KernelEventObserverId>>>;
-
-/// Construct a fresh, empty [`SingletonEventObserverIdSlot`].
-#[must_use]
-pub fn new_singleton_event_observer_id_slot() -> SingletonEventObserverIdSlot {
-    Arc::new(Mutex::new(None))
-}
-
 // ─── Publish-resolver slots (re-exported for `nmp-router::Nip65OutboxResolver`) ──
 //
 // Crate-boundary spec §271 (2026-05-25): the `Nip65OutboxResolver` lives in
@@ -445,8 +435,7 @@ pub type ExternalEventSinkPolicyFactory = dyn Fn(
 
 /// Slot wrapper for [`ExternalEventSinkPolicyFactory`].
 /// `None` leaves the dispatcher without any policy — no frames are forwarded.
-pub type ExternalEventSinkPolicySlot =
-    Arc<Mutex<Option<Arc<ExternalEventSinkPolicyFactory>>>>;
+pub type ExternalEventSinkPolicySlot = Arc<Mutex<Option<Arc<ExternalEventSinkPolicyFactory>>>>;
 
 /// Construct a fresh, empty [`ExternalEventSinkPolicySlot`].
 #[must_use]

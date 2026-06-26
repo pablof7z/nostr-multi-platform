@@ -2,17 +2,17 @@
 //!
 //! # Overview
 //!
-//! A [`KernelEventObserver`] for kind:10000 (public mute list) events. It
+//! A [`ObservedProjectionSink`] for kind:10000 (public mute list) events. It
 //! accumulates the active account's muted pubkeys (`p` tags) and muted event
 //! ids (`e` tags) and exposes them through the substrate-generic
 //! [`SuppressionLookup`] trait, which feed/timeline projections consult when
 //! applying active-account suppression.
 //!
-//! # Why kind:10000 via `KernelEventObserver`
+//! # Why kind:10000 via `ObservedProjectionSink`
 //!
 //! Like `FollowListProjection` (kind:3), the mute list is a replaceable event
 //! whose data is sig-stripped by the kernel's ingest pipeline before the
-//! observer fires. `KernelEventObserver` is the correct seam — the `p`/`e`
+//! observer fires. `ObservedProjectionSink` is the correct seam — the `p`/`e`
 //! tags in `KernelEvent.tags` are sufficient; no raw signed bytes are needed.
 //!
 //! # Public tags only
@@ -69,7 +69,7 @@ use std::collections::{BTreeSet, HashSet};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{KernelEvent, SuppressionLookup};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_MUTE_LIST;
 use serde::Serialize;
 
@@ -110,7 +110,7 @@ struct MuteSet {
 ///
 /// Construct with a shared `active_pubkey` slot (the same pattern as
 /// [`nmp_nip02::FollowListProjection`]). Register the same `Arc` as a
-/// [`KernelEventObserver`] against the kernel so kind:10000 events are
+/// [`ObservedProjectionSink`] against the kernel so kind:10000 events are
 /// ingested, and as a [`SuppressionLookup`] that the timeline projection
 /// consults when building snapshots.
 pub struct MuteListProjection {
@@ -229,7 +229,7 @@ impl MuteListProjection {
     }
 }
 
-impl KernelEventObserver for MuteListProjection {
+impl ObservedProjectionSink for MuteListProjection {
     /// Called by the kernel once per accepted kind:10000 event.
     ///
     /// Gate by `kind == 10000` **and** by author == active pubkey, then

@@ -28,8 +28,9 @@ monotonic `rev`; platforms drop updates with `rev` ≤ last seen.
 | Seam / trait | Owns | One-liner | Source |
 |---|---|---|---|
 | `register_action(module)` | write path | `start()` validates, `execute()` enqueues `ActorCommand` | `action.rs:56` |
-| `register_live_event_tap(arc)` | live-only event-driven views | `on_kernel_event` fires per accepted ingest on actor thread; use `open_observed_projection` for hydrating scoped views | `event_observer.rs:189` |
-| `register_typed_snapshot_projection(key, fn)` | read output | typed sidecar pushed under `typed_projections[key]` on every tick | `nmp-ffi/src/snapshot.rs` |
+| `register_snapshot_projection(key, fn)` | read output | JSON slice pushed under `projections[key]` on every tick | `nmp-ffi/src/lib.rs:1109` |
+| `open_observed_projection(decl)` | declared event-driven read models | registers muted sink, opens declared interest, replays matching rows, then activates scoped future delivery | `app_host/observed.rs` |
+| `register_typed_snapshot_projection(key, fn)` | typed read output | typed sidecar pushed under `typed_projections[key]` on every tick | `nmp-ffi/src/snapshot.rs` |
 | **ActionModule** (trait) | write seam shape | `NAMESPACE`, `type Action`, `start()`, `execute()` | `action.rs:56` |
 | **CapabilityModule** (trait) | native bridge shape | request → native → result envelope (D7) | `capability.rs:11` |
 
@@ -118,11 +119,11 @@ evaluated in `lattice/mod.rs` order 6, 9, 1, 2, 3, 4, 5, 7, 8):
 | **Register** | `register_typed_snapshot_projection(key, Fn() -> Option<TypedProjectionData>)` seam (`crates/nmp-ffi/src/snapshot.rs`) |
 | **Delivery** | Appended to the reactive push frame every emit tick — no pull symbol, no polling |
 | **Read** | `snapshot.projections[key]` in the host `apply()` (e.g. `projections?.followList`, `KernelBridge.swift:884`) |
-| **Exemplar** | `nmp-nip29/src/register.rs:66`; Chirp `register.rs:371` (`nmp.follow_list`); NIP-29 group defaults (`nmp.nip29.group_defaults`) |
+| **Exemplar** | `nmp-nip29/src/register.rs:66`; Chirp `register.rs:371` (`nmp.follow_list`); scoped relation-count projections |
 | **Typed sibling** | `register_typed_snapshot_projection` → `snapshot.typedProjections` (ADR-0037), **not** `projections[key]` |
 | **Status** | Structural permanent — `ffi-deprecation-calendar.md:61` ("keep, freeze-locked") |
 
-**Distinct from `KernelEventObserver`-driven view updates** (Card 2 seam 3) —
+**Distinct from `ObservedProjectionSink`-driven view updates** (Card 2 seam 3) —
 those push typed view deltas via `ViewBatch`; this is a named JSON state slice
 in the snapshot's `projections` map. See [15](15-codegen-and-ffi.md) /
 [17](17-ios-shell.md).

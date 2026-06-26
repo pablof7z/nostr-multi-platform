@@ -56,15 +56,15 @@ entry links to the file that defines it on master.
 - **kernel** — `nmp-core`: substrate + planner + store + subs + publish. Holds
   no app nouns (D0). Apps assemble from kernel + protocol modules + an
   app-core crate. *defined in:* `crates/nmp-core/src/lib.rs`.
-- **KernelEventObserver** — the in-process event-delivery trait: a single
+- **ObservedProjectionSink** — the in-process event-delivery trait: a single
   `on_kernel_event(&self, event: &KernelEvent)` method, fired on the actor
-  thread for accepted ingest. It backs both explicit live taps
-  (`register_live_event_tap`, no replay, all matching handled by the observer)
-  and observed projections (`open_observed_projection`, kernel replay +
-  interest-scoped live delivery). *defined in:*
+  thread only for a declared observed projection's matching events. The kernel
+  opens the declared interest, replays cached/store rows, then activates scoped
+  future delivery. Production code registers it only through
+  `ObservedProjectionRegistrar`, never as a filterless observer. *defined in:*
   `crates/nmp-core/src/actor/commands/event_observer.rs:189`.
-- **KernelEvent** — the substrate-level event passed to `KernelEventObserver`
-  and `register_typed_snapshot_projection` closures; carries `id`, `author`, `kind`,
+- **KernelEvent** — the substrate-level event passed to `ObservedProjectionSink`
+  callbacks; carries `id`, `author`, `kind`,
   `created_at`, `tags`, `content`. *defined in:*
   `crates/nmp-core/src/substrate/view.rs`.
 - **LogicalInterest** — what a consumer wants alive on the wire (id, scope,
@@ -136,6 +136,20 @@ entry links to the file that defines it on master.
   `crates/nmp-core/src/substrate/view.rs`.
 - **coverage row** — per-`(filter_hash, relay)` completed sync floor used by
   the K3 coverage ledger. *defined in:* `crates/nmp-store/src/types/coverage.rs`.
+- **ViewModule** — **[removed]** proposed v2 typed reactive projection trait
+  (`Spec`/`Payload`/`Delta`/`Key`/`State`). Never shipped. Use
+  `open_observed_projection` + `register_snapshot_projection` instead. See
+  [05a](05a-substrate-traits.md) §Removed v2 traits.
+- **ViewPayload** — **[removed]** associated type on the removed `ViewModule`
+  trait. See **ViewModule** entry.
+- **ViewSpec** — in the codegen convention, `pub enum ViewSpec {}` is the
+  per-module view-spec enum exported by every app module crate (may be empty
+  if the module has no host-driven view specs). Distinct from the removed
+  `ViewModule::type Spec`. *defined by codegen convention in each app module.*
+- **watermark** — per-`(filter, relay)` sync bookmark (`synced_up_to`,
+  method, resume blob) classified by `Coverage`. *defined in:*
+  `crates/nmp-core/src/store/types/mod.rs:18` (re-export; source
+  `store/types/watermark.rs:17` — `WatermarkRow`).
 - **WireFrame** — a frame to push onto the wire: `Req{…}` or `Close{…}`,
   produced by the plan-diff. *defined in:*
   `crates/nmp-core/src/subs/wire.rs:29`.

@@ -6,7 +6,7 @@
 //! ignore interests that are not yet fully served or have been withdrawn.
 
 use super::*;
-use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+use crate::actor::{new_event_observer_slot, register_rust_observer, ObservedProjectionSink};
 use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::substrate::KernelEvent;
 use nmp_network::role::RelayRole;
@@ -35,7 +35,7 @@ impl CountingObserver {
     }
 }
 
-impl KernelEventObserver for CountingObserver {
+impl ObservedProjectionSink for CountingObserver {
     fn on_kernel_event(&self, _event: &KernelEvent) {
         self.count.fetch_add(1, Ordering::SeqCst);
     }

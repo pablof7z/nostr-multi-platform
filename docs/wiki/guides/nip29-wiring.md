@@ -50,12 +50,12 @@ nmp-nip60/src/relay.rs is identified as over-engineering (a self-contained secon
 
 Polling is forbidden at every layer: no sleep+check loops, no Timer.scheduledTimer querying state, no try_recv+sleep spin loops, no Task{while !cancelled{sleep;checkState()}} tasks. <!-- [^019ed-159] -->
 
-NIP-78 application data crate (nmp-nip78) must be a Layer-4 protocol crate with a KernelEventObserver projector and pure builder/read APIs; no core integration is needed because apps register the observer and use existing OpenInterest/PublishUnsignedEvent paths. <!-- [^019ed-160] -->
+NIP-78 application data crate (nmp-nip78) must be a Layer-4 protocol crate with a bounded observed projection and pure builder/read APIs; no core integration is needed because apps declare the projection shape and use existing OpenInterest/PublishUnsignedEvent paths. <!-- [^019ed-160] -->
 
 <!-- citations: [^019ed-76] [^64c4f-3] [^1670f-10] [^1670f-11] [^1670f-15] [^1670f-16] [^1670f-17] [^1670f-18] [^86221-6] [^019ed-17] [^019ed-23] [^019ed-46] [^11850-7] [^11850-14] [^019ed-93] [^11850-73] [^019ed-121] [^11850-120] [^019ed-127] [^019ed-129] [^019ed-133] [^019ed-137] [^019ed-139] [^11850-160] -->
 ## Registration
 
-nmp_nip29::register::wire_group_chat registers GroupChatProjection as both a KernelEventObserver and a snapshot projection under the key "nmp.nip29.group_chat". nmp_nip29::register::register_actions binds all 5 NIP-29 ActionModules (PostChatMessageAction, ReactInGroupAction, CommentInGroupAction, DiscoverGroupsAction, JoinGroupAction).
+nmp_nip29::register::wire_group_chat registers GroupChatProjection as an observed projection plus a snapshot projection under the key "nmp.nip29.group_chat". The observed projection is opened with the selected group's declared host-pinned shape so late-opened views replay cached matching events before activation. nmp_nip29::register::register_actions binds all 5 NIP-29 ActionModules (PostChatMessageAction, ReactInGroupAction, CommentInGroupAction, DiscoverGroupsAction, JoinGroupAction).
 
 The router is a single generic algorithm with an explicit-target override on ActionContext (RoutingContext::explicit_targets); NIP crates do NOT register RoutingRule implementations with the router. The per-NIP `classify_kind` table in the generic router must be removed; instead, thread EventClass through RoutingContext from the NIP-aware caller.
 
@@ -74,7 +74,7 @@ NIP-29 admin actions PutUser (kind 9000) and CreateInvite (kind 9009) must be st
 <!-- citations: [^11850-74] [^64c4f-4] [^1670f-12] [^1670f-13] [^1670f-14] [^019ed-1] [^11850-137] [^11850-161] -->
 ## Observer Strategy and Test Seam
 
-GroupChatProjection uses KernelEventObserver (not RawEventObserver), making it reachable via IngestPreVerifiedEvents for hermetic round-trip testing without a relay. This contrasts with DmInboxProjection, which uses RawEventObserver and is NOT reachable via IngestPreVerifiedEvents, creating a test-seam gap that NIP-29 does not have. nostr-relay-builder is not present in the workspace Cargo.lock, so no in-process relay harness is available for two-instance relay-connected tests. <!-- [^64c4f-5] -->
+GroupChatProjection uses the declared observed-projection path, making it reachable via IngestPreVerifiedEvents for hermetic round-trip testing without a relay. nostr-relay-builder is not present in the workspace Cargo.lock, so no in-process relay harness is available for two-instance relay-connected tests. <!-- [^64c4f-5] -->
 
 ## Read Path
 

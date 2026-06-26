@@ -1,6 +1,6 @@
 //! Cold-start cache-serve regression tests for kind:10000 (mute list).
 //!
-//! Verifies that a `KernelEventObserver` registered before the mute-list
+//! Verifies that a `ObservedProjectionSink` registered before the mute-list
 //! interest is pushed receives stored kind:10000 events via the cache-serve
 //! drain — the same path the `MuteListProjection` (in `nmp-nip51`) uses on
 //! sign-in.
@@ -31,14 +31,14 @@
 
 use super::cache_serve_tests::{drain_cache_serves, simulate_cold_restart};
 use super::*;
-use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+use crate::actor::{new_event_observer_slot, register_rust_observer, ObservedProjectionSink};
 use crate::planner::{
     InterestId, InterestLifecycle, InterestScope, InterestShape, LogicalInterest,
 };
-use crate::relay::{DEFAULT_VISIBLE_LIMIT};
-use nmp_network::role::RelayRole;
+use crate::relay::DEFAULT_VISIBLE_LIMIT;
 use crate::subs::{SubIdentity, SubKey, SubOwnerKey, SubScope};
 use crate::substrate::KernelEvent;
+use nmp_network::role::RelayRole;
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
@@ -65,7 +65,7 @@ impl CapturingMuteObserver {
     }
 }
 
-impl KernelEventObserver for CapturingMuteObserver {
+impl ObservedProjectionSink for CapturingMuteObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         if event.kind != KIND_MUTE_LIST {
             return;
@@ -145,12 +145,12 @@ fn open_mute_list_interest(kernel: &mut Kernel, seed: u64, author_hex: &str) {
 /// PRIMARY CONTRACT — observer-before-push ordering is load-bearing:
 ///
 /// A kind:10000 event seeded into the store via live ingest reaches a
-/// registered `KernelEventObserver` when the mute-list interest is pushed
+/// registered `ObservedProjectionSink` when the mute-list interest is pushed
 /// on a cold-restart kernel (empty in-memory caches, warm store) — PROVIDED
 /// the observer is registered BEFORE the interest is pushed.
 ///
 /// This is the ordering contract enforced by `register_mute_runtime`:
-/// register the event observer FIRST so the cache-serve drain has a recipient.
+/// register the observed projection FIRST so the cache-serve drain has a recipient.
 ///
 /// **Non-vacuity**: the observer slot is NOT attached to the kernel during
 /// seeding.  It is attached immediately before the interest push in Phase 3.
@@ -192,7 +192,10 @@ fn stored_kind10000_reaches_observer_via_cache_serve_drain() {
     // drain to deliver to nobody → muted_pubkeys stays empty → test goes RED.
     let observer = CapturingMuteObserver::new();
     let slot = new_event_observer_slot();
-    register_rust_observer(&slot, Arc::clone(&observer) as Arc<dyn KernelEventObserver>);
+    register_rust_observer(
+        &slot,
+        Arc::clone(&observer) as Arc<dyn ObservedProjectionSink>,
+    );
     kernel.set_event_observers_handle(slot); // MUST come before open_mute_list_interest
 
     open_mute_list_interest(&mut kernel, 10_000, &author);
@@ -202,7 +205,7 @@ fn stored_kind10000_reaches_observer_via_cache_serve_drain() {
     let pubkeys = observer.muted_pubkeys();
     assert!(
         pubkeys.contains(&MUTED_PUBKEY.to_string()),
-        "COLD-START FAIL: KernelEventObserver must receive the stored \
+        "COLD-START FAIL: ObservedProjectionSink must receive the stored \
          kind:10000 event via cache-serve drain after interest push; \
          got muted_pubkeys={pubkeys:?}"
     );
@@ -241,7 +244,10 @@ fn observer_after_interest_push_receives_nothing_from_cache_serve() {
     // Attach the observer AFTER the drain has already completed.
     let observer = CapturingMuteObserver::new();
     let slot = new_event_observer_slot();
-    register_rust_observer(&slot, Arc::clone(&observer) as Arc<dyn KernelEventObserver>);
+    register_rust_observer(
+        &slot,
+        Arc::clone(&observer) as Arc<dyn ObservedProjectionSink>,
+    );
     kernel.set_event_observers_handle(slot);
 
     // The observer was not present during the drain — it must see nothing.

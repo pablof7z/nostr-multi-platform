@@ -104,7 +104,7 @@ pub fn all_tag_values<'a>(tags: &'a [Vec<String>], key: &str) -> Vec<&'a str> {
 ///    slot exactly as it does on the wire).
 ///
 /// Returns owned `String`s so callers (kernel ingest and the two `nmp-nip02`
-/// `KernelEventObserver`s) all consume an identical set without re-implementing —
+/// `ObservedProjectionSink`s) all consume an identical set without re-implementing —
 /// and therefore re-diverging — the recipe.
 #[must_use]
 pub fn contact_follows(tags: &[Vec<String>]) -> Vec<String> {
@@ -148,9 +148,9 @@ pub fn contact_follows(tags: &[Vec<String>]) -> Vec<String> {
 #[must_use]
 pub fn kind3_tags_after_add(current: &[Vec<String>], target: &str) -> Vec<Vec<String>> {
     let mut tags: Vec<Vec<String>> = current.to_vec();
-    let already_present = tags
-        .iter()
-        .any(|t| t.first().map(String::as_str) == Some("p") && t.get(1).map(String::as_str) == Some(target));
+    let already_present = tags.iter().any(|t| {
+        t.first().map(String::as_str) == Some("p") && t.get(1).map(String::as_str) == Some(target)
+    });
     if !already_present {
         tags.push(vec!["p".to_string(), target.to_string()]);
     }
@@ -263,7 +263,11 @@ pub fn reaction_tags(
     if !crate::kernel::is_hex_id(target_event_id) {
         return None;
     }
-    let content = if reaction.trim().is_empty() { "+".to_string() } else { reaction.to_string() };
+    let content = if reaction.trim().is_empty() {
+        "+".to_string()
+    } else {
+        reaction.to_string()
+    };
     let mut tags = vec![vec!["e".to_string(), target_event_id.to_string()]];
     if let Some(pk) = author {
         tags.push(vec!["p".to_string(), pk.to_string()]);

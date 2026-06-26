@@ -10,7 +10,7 @@
 //! runs exactly those actions, in reverse registration order, **once**.
 //!
 //! Why a closure list and not a typed teardown record: the concrete things to
-//! release (an `unregister_feed(key)`, an `unregister_event_observer(id)`, a
+//! release (an `unregister_feed(key)`, an observed-projection close, a
 //! dependent-interest clear) live above this crate in `nmp-ffi` / `nmp-defaults`.
 //! Recording them as opaque `FnOnce` actions keeps the session
 //! registry from importing those layers (it sits at the bottom of the DAG) and

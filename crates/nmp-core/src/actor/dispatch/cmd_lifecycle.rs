@@ -110,10 +110,10 @@ pub(super) fn reset(ctx: &mut ActorContext<'_>) -> Option<Vec<OutboundMessage>> 
     // every subsequent send increments into a handle the kernel no
     // longer reads.
     let queue_depth_handle = ctx.kernel.take_queue_depth_handle_for_reset();
-    // T146 — preserve the event observer slot across Reset for the
+    // Preserve the observed-projection sink slot across Reset for the
     // same reason: the `Arc<Mutex<…>>` is shared with the FFI
     // surface and per-app crates; replacing it would silently
-    // disconnect every registered observer.
+    // disconnect every registered sink.
     let event_observers_handle = ctx.kernel.take_event_observers_handle_for_reset();
     // Preserve the snapshot-projection slot across Reset for the same
     // reason: the `Arc<Mutex<…>>` is shared with the FFI surface and

@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use serde::{Deserialize, Serialize};
 
 use crate::action::{KIND_REACTION, KIND_REACTION_DELETE};
@@ -164,7 +164,7 @@ impl Default for ReactionProjection {
     }
 }
 
-impl KernelEventObserver for ReactionProjection {
+impl ObservedProjectionSink for ReactionProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.ingest(event);
     }

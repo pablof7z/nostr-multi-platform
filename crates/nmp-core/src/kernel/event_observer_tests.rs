@@ -1,17 +1,17 @@
-//! T146 — kernel event observer fan-out at the ingest seam.
+//! Observed-projection sink delivery at the ingest seam.
 //!
 //! Drives synthetic kind:1 events through `ingest_pre_verified_event` (the
 //! test-support ingest path used by every internal test) and asserts that a
-//! Rust trait-object observer attached to the kernel's slot fires exactly
-//! once per accepted event.
+//! Rust trait-object sink attached to the kernel's slot fires exactly once per
+//! accepted event.
 //!
-//! The fan-out path is shared with production: `ingest/timeline.rs` makes
+//! The scoped delivery path is shared with production: `ingest/timeline.rs` makes
 //! the same `notify_event_observers(&kernel_event)` call after each
 //! `EventStore::insert` returning `Inserted | Replaced`. See ADR-0009 (D0 —
 //! kernel emits, per-app crates compose) for the architectural rationale.
 
 use super::*;
-use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+use crate::actor::{new_event_observer_slot, register_rust_observer, ObservedProjectionSink};
 use crate::relay::{DEFAULT_VISIBLE_LIMIT};
 use nmp_network::role::RelayRole;
 use crate::store::{RawEvent, VerifiedEvent};
@@ -33,7 +33,7 @@ impl CapturingObserver {
     }
 }
 
-impl KernelEventObserver for CapturingObserver {
+impl ObservedProjectionSink for CapturingObserver {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.count.fetch_add(1, Ordering::SeqCst);
         if let Ok(mut guard) = self.last.lock() {

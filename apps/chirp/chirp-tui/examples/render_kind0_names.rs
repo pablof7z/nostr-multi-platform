@@ -4,7 +4,7 @@ use chirp_tui::ui::nostr_content::nostr_content_view::NostrContentView;
 use chirp_tui::ui::nostr_user::profile_name_span;
 use nmp_core::nip19::decode_npub;
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec};
 use ratatui::backend::TestBackend;
 use ratatui::style::{Modifier, Style};

@@ -1,7 +1,7 @@
 //! Read-side projections for NIP-29 groups.
 //!
 //! Each submodule owns one screen's read model. They share the same wiring
-//! shape — a [`nmp_core::KernelEventObserver`] for ingest plus a no-argument
+//! shape — a [`nmp_core::ObservedProjectionSink`] for ingest plus a no-argument
 //! `snapshot_json` for `nmp_core::NmpApp::register_snapshot_projection`:
 //!
 //! - [`group_timeline`] — [`GroupTimelineProjection`]: one group's chat-content
@@ -12,7 +12,7 @@
 //!   of `JoinGroupView` / discovery flows.
 //! - [`group_defaults`] — [`GroupDefaultsProjection`]: app-supplied defaults
 //!   for the public-group create flow (the suggested relay URL, #626/#1924).
-//!   Output-only: not a `KernelEventObserver` — its snapshot is captured from
+//!   Output-only: not a `ObservedProjectionSink` — its snapshot is captured from
 //!   registration-time app config.
 //! - [`joined`] — [`JoinedGroupsProjection`]: active-account membership/admin
 //!   status derived from relay-signed 39001/39002 snapshots.

@@ -11,7 +11,7 @@
 //! (`created_at >`). The durable fix is a typed projection in the framework,
 //! not in the app.
 //!
-//! This is that projection. It is a [`KernelEventObserver`] with `Mutex<State>`
+//! This is that projection. It is a [`ObservedProjectionSink`] with `Mutex<State>`
 //! interior mutability whose output is a **typed FlatBuffers sidecar** payload
 //! ([`TypedProjectionData`]) registered via
 //! `AppHost::register_typed_snapshot_projection` (ADR-0037). It does **not**
@@ -30,7 +30,7 @@
 //!
 //! kind:30023 is parameterized-replaceable (30000–39999): the kernel's
 //! `EventStore` resolves newest-per-`(author, kind, d-tag)` on insert and fires
-//! [`KernelEventObserver`] **only on `Inserted | Replaced`**, so in normal kernel
+//! [`ObservedProjectionSink`] **only on `Inserted | Replaced`**, so in normal kernel
 //! delivery a late older arrival never reaches us. But the collapse rule is the
 //! *coordinate identity*, not arrival order, and this observer is a public seam.
 //! The map keyed by the addressable coordinate therefore keeps the winner by a
@@ -40,7 +40,7 @@
 //!
 //! # D5-bounded — scoped to what's open/claimed
 //!
-//! A [`KernelEventObserver`] only ever sees events the kernel actually
+//! A [`ObservedProjectionSink`] only ever sees events the kernel actually
 //! subscribed to. The two shapes apps need both arrive on this one stream:
 //!
 //! * **article feed** — events from an open `topic_articles` (`#t`) interest.
@@ -70,17 +70,17 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::{KernelEventObserver, TypedProjectionData};
+use nmp_core::{ObservedProjectionSink, TypedProjectionData};
 use serde::{Deserialize, Serialize};
 
 use crate::context::RenderContext;
-use crate::embed_projection::{ArticleProjection, EmbedKindProjection, resolve_embed_projection};
+use crate::embed_projection::{resolve_embed_projection, ArticleProjection, EmbedKindProjection};
 use crate::wire::longform_fb;
 
 mod feed;
 pub use feed::{
-    LongformFeed, LongformFeedEntry, LongformFeedPredicate, LongformRepostAttribution,
-    longform_acquisition_kinds, longform_feed_predicate,
+    longform_acquisition_kinds, longform_feed_predicate, LongformFeed, LongformFeedEntry,
+    LongformFeedPredicate, LongformRepostAttribution,
 };
 pub use nmp_kinds::KIND_LONG_FORM_ARTICLE;
 
@@ -199,7 +199,7 @@ impl LongformProjection {
     }
 }
 
-impl KernelEventObserver for LongformProjection {
+impl ObservedProjectionSink for LongformProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         // NIP-09: a kind:5 deletion retracts a stored coordinate (issue #1740
         // step 5), so the typed projection cannot keep serving a deleted

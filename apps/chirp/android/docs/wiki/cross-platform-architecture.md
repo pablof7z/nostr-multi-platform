@@ -1,7 +1,7 @@
 ---
 title: Cross-Platform Architecture
 slug: cross-platform-architecture
-summary: "Cross-platform architecture: C-ABI funnel, kernel event observer pattern, Capabilities injection, and worktree development workflow"
+summary: "Cross-platform architecture: C-ABI funnel, declared observed projections, Capabilities injection, and worktree development workflow"
 tags:
   - architecture
   - c-abi
@@ -21,7 +21,7 @@ sources:
 
 # Cross-Platform Architecture
 
-> Cross-platform architecture: C-ABI funnel, kernel event observer pattern, Capabilities injection, and worktree development workflow
+> Cross-platform architecture: C-ABI funnel, declared observed projections, Capabilities injection, and worktree development workflow
 
 ## C-ABI funnel
 
@@ -29,9 +29,9 @@ All three platforms (iOS, TUI, Android) funnel through the same nmp_app_create_n
 
 
 The Android app is built and launched on an emulator via a Haiku agent. The build uses ./gradlew :app:installDebug, which includes cross-compiling the Rust JNI shim (nmp-android-ffi) via cargo-ndk. The emulator is the nmp_test AVD running Android 14 (arm64-v8a) with a visible GUI window — not headless. The app launches MainActivity and displays the Timeline screen. [^855be-19]
-## Kernel event observer pattern
+## Declared observed projections
 
-The NOFS engine implements KernelEventObserver. Its on_kernel_event handler unconditionally calls self.ingest(event) for every event. The EventGate check is placed inside ingest() to intercept non-feed-eligible events before any state mutation. The profile_detector runs after the EventGate for kind:0 events. [^855be-14]
+The NOFS engine is fed through declared observed projections, not a public all-event observer. The composition root declares the event shapes the feed needs before it receives events; replay and future delivery stay scoped to those shapes. The EventGate check remains inside ingest() to intercept non-feed-eligible events before any state mutation. The profile_detector runs after the EventGate for kind:0 events. [^855be-14]
 
 ## Capabilities pattern
 
@@ -48,4 +48,3 @@ PR #786 bundled both the NOFS EventGate kind filter and the Android Diagnostics 
 - [[nofs-op-centric-feed|NOFS OP-Centric Feed Engine]] — related guide
 - [[diagnostics-screen|Android Diagnostics Screen]] — related guide
 - [[account-creation-autofollow|Account Creation & Autofollow]] — related guide
-

@@ -16,13 +16,13 @@
 //!    host-registered [`nmp_nip50::SearchRelaySource`] (`UserPreferred` →
 //!    kind:10007; `AppDefault` → app default; `Explicit` → the given list).
 //! 2. **Projection** — a [`nmp_nip50::SearchResultsProjection`] is registered
-//!    as a MUTED kernel event observer (the live relay-hit ingest seam) and a
+//!    as a muted observed-projection sink (the live relay-hit ingest seam) and a
 //!    typed `N50S` snapshot sidecar is registered under
 //!    `nmp.nip50.search.<session>` reading its snapshot.
 //! 3. **Fan-out** — `nmp_nip50::search_relay_plan` builds one relay-pinned
 //!    `InterestShape` per resolved relay; each is opened via
 //!    [`NmpApp::open_observed_interest_pinned`], which routes it to exactly that
-//!    relay (the planner's relay-pin lane) and activates the observer. The
+//!    relay (the planner's relay-pin lane) and activates the sink. The
 //!    router's blocked-relay subtractive post-pass still applies, so a
 //!    pinned-but-blocked relay is dropped by the same generic mechanism that
 //!    guards every interest. This lane is the LIVE relay-hit seam only — it
@@ -40,8 +40,8 @@
 //!   (`InterestShape::matches_event_with_id`) filters by kind + time only and
 //!   would surface unrelated cached events mislabelled `Relay("")`.
 //! - **Live relay** — the per-relay pinned interests fan a NIP-50 `REQ` out and
-//!   their results arrive event-by-event through the muted→active kernel
-//!   observer, tagged `Relay(url)`. First arrival wins on a duplicate id, so a
+//!   their results arrive event-by-event through the muted-to-scoped observed
+//!   projection sink, tagged `Relay(url)`. First arrival wins on a duplicate id, so a
 //!   cache hit (ingested synchronously at open) keeps its `Cache` tag when the
 //!   relay later echoes the same event.
 //!
@@ -56,7 +56,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::register_rust_observer_muted;
 use nmp_core::substrate::PreferredRelaySource;
-use nmp_core::KernelEventObserverId;
+use nmp_core::ObservedProjectionId;
 use nmp_feed::DEFAULT_FEED_WINDOW_LIMIT;
 use nmp_nip50::{
     encode_search_results_snapshot, search_relay_plan, SearchRequest, SearchResultsProjection,
@@ -70,14 +70,14 @@ use super::{app_ref, c_string_argument, NmpApp};
 /// re-routed on account switch (the host closes + re-opens on identity change).
 const SCOPE_GLOBAL: u32 = 1;
 
-/// `&self` [`KernelEventObserver`](nmp_core::KernelEventObserver) adapter over
+/// `&self` [`ObservedProjectionSink`](nmp_core::ObservedProjectionSink) adapter over
 /// the `&mut self` [`SearchResultsProjection`]. Locks the shared projection on
 /// each fanned-out event and ingests it as a relay hit (the delivering relay is
 /// the event's first `relay_provenance` entry). A poisoned lock degrades to a
 /// dropped event (D6) rather than a panic across the kernel fan-out.
 struct SearchObserver(Arc<Mutex<SearchResultsProjection>>);
 
-impl nmp_core::KernelEventObserver for SearchObserver {
+impl nmp_core::ObservedProjectionSink for SearchObserver {
     fn on_kernel_event(&self, event: &nmp_core::substrate::KernelEvent) {
         let relay = event.relay_provenance.first().cloned().unwrap_or_default();
         if let Ok(mut projection) = self.0.lock() {
@@ -96,7 +96,7 @@ pub(crate) struct SearchSession {
     /// projection). ONE observer backs every relay's pinned interest, so the
     /// global fan-out processes each accepted event exactly once regardless of
     /// how many relays the session targets.
-    observer_id: KernelEventObserverId,
+    observer_id: ObservedProjectionId,
     /// Per-relay `(filter_json, consumer_id, relay_pin)` close args, matching
     /// each pinned open so the kernel reconstructs the same registry slot.
     relay_closes: Vec<(String, String, String)>,
@@ -182,7 +182,7 @@ impl NmpApp {
         let key = search_key(session_id);
         // #1827's `SearchResultsProjection` is `&mut self` (the cache-FTS owner);
         // wrap it in an `Arc<Mutex<…>>` so it can be BOTH a `&self`
-        // KernelEventObserver (live relay-hit ingest) AND read by the typed
+        // ObservedProjectionSink (live relay-hit ingest) AND read by the typed
         // sidecar closure, while keeping the projection's single-writer model.
         let projection = Arc::new(Mutex::new(SearchResultsProjection::new(request.clone())));
 
@@ -243,7 +243,7 @@ impl NmpApp {
         let observer_id = register_rust_observer_muted(
             &self.event_observers,
             Arc::new(SearchObserver(Arc::clone(&projection)))
-                as Arc<dyn nmp_core::KernelEventObserver>,
+                as Arc<dyn nmp_core::ObservedProjectionSink>,
         );
 
         // One relay-pinned observed interest per resolved relay, all activating
@@ -302,7 +302,7 @@ impl NmpApp {
         for (filter_json, consumer, relay) in &session.relay_closes {
             self.close_interest_pinned(filter_json, consumer, SCOPE_GLOBAL, Some(relay.clone()));
         }
-        self.unregister_event_observer(session.observer_id);
+        self.revoke_observed_projection_sink(session.observer_id);
         self.remove_snapshot_projection(&session.projection_key);
     }
 

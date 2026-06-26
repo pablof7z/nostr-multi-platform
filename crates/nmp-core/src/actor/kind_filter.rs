@@ -1,4 +1,4 @@
-//! Per-registration kind filter for event observers and external event sinks.
+//! Per-registration kind filter for observed projections and external event sinks.
 
 use std::collections::BTreeSet;
 

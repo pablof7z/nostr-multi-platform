@@ -14,7 +14,7 @@
 //!    (`pull_fn`, injected by the composition root from the in-process event
 //!    store — NOT a new host pull accessor; ADR-0039 §6.1 preserved).
 //! 3. Applies every drained positive row through the feed's **own** ingest path
-//!    (`apply`, the same `KernelEventObserver::on_kernel_event` the push fan-out
+//!    (`apply`, the same `ObservedProjectionSink::on_kernel_event` the push fan-out
 //!    uses), so dedup + snapshot projection are identical to live ingest.
 //! 4. Grows the render viewport one page (`advance`) **after** the page is
 //!    ingested, so the newly-arrived (possibly older-`created_at`) roots become

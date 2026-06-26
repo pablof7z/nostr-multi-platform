@@ -7,7 +7,7 @@
 
 use super::wot_graph::SessionWotGraph;
 use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_planner::InterestScope;
 
 const CONTACT_KIND: u32 = 3;

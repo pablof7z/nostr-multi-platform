@@ -3,7 +3,7 @@
 //! These mirror the sibling `FollowListProjection` test idioms: a hand-built
 //! `ActiveAccountSlot` (`Arc<Mutex<Option<String>>>`) and hand-built kind:3
 //! `KernelEvent`s. The producer is pure (no kernel harness needed) — the
-//! `KernelEventObserver::on_kernel_event` entry point is driven directly, and
+//! `ObservedProjectionSink::on_kernel_event` entry point is driven directly, and
 //! the account-change seam (`notify_account_changed`) is driven directly,
 //! exactly as the composition root will at rung 6.
 
@@ -130,7 +130,10 @@ fn predicate_reflects_live_updates() {
 
     // And an unfollow handed out through the same predicate goes live too.
     set.on_kernel_event(&kind3(ALICE, &[CAROL]));
-    assert!(!pred(BOB), "live unfollow visible through the old predicate");
+    assert!(
+        !pred(BOB),
+        "live unfollow visible through the old predicate"
+    );
     assert!(pred(CAROL));
 }
 
@@ -193,7 +196,10 @@ fn logout_clears_set_and_fires_on_change() {
 
     assert!(set.follows().is_empty(), "logout clears the set entirely");
     let pred = set.predicate();
-    assert!(!pred(ALICE), "predicate returns false for everyone after logout");
+    assert!(
+        !pred(ALICE),
+        "predicate returns false for everyone after logout"
+    );
     assert!(!pred(BOB));
     assert_eq!(fired.load(Ordering::SeqCst), 1, "on_change fired on logout");
 }

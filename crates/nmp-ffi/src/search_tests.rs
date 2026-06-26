@@ -186,10 +186,9 @@ fn open_search_user_preferred_fans_out_to_installed_primary_relays() {
 }
 
 /// Behavior-preservation invariant (#2089) — a search targeting MANY relays
-/// registers exactly ONE kernel event observer, shared across every
-/// relay-pinned interest. This is what keeps the global fan-out processing each
-/// accepted event once per session (not once per relay). Closing the session
-/// removes that single observer.
+/// registers exactly ONE observed-projection sink, shared across every
+/// relay-pinned interest. This keeps live relay-hit processing once per session
+/// (not once per relay). Closing the session removes that single sink.
 #[test]
 fn multi_relay_search_shares_one_kernel_observer() {
     let app = nmp_app_new();

@@ -13,7 +13,7 @@
 
 use super::{app_ref, NmpApp};
 use nmp_core::actor::ActorCommand;
-use nmp_core::actor::{TestSupportCommand};
+use nmp_core::actor::TestSupportCommand;
 use std::ffi::{c_char, CStr};
 
 /// Inject `count` pre-verified kind-1 events into the kernel timeline via
@@ -89,7 +89,9 @@ pub extern "C" fn nmp_app_inject_pre_verified_events(
         })
         .collect();
 
-    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)));
+    app.send_cmd(ActorCommand::TestSupport(
+        TestSupportCommand::IngestPreVerifiedEvents(events),
+    ));
 }
 
 /// Inject `count` real Schnorr-signed kind-1 events into the kernel timeline
@@ -137,7 +139,9 @@ pub extern "C" fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at
         })
         .collect();
 
-    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(events)));
+    app.send_cmd(ActorCommand::TestSupport(
+        TestSupportCommand::IngestPreVerifiedEvents(events),
+    ));
 }
 
 /// Inject a single real signed event (supplied as NIP-01 JSON) through the
@@ -145,8 +149,8 @@ pub extern "C" fn nmp_app_inject_signed_events(app: *mut NmpApp, base_created_at
 ///
 /// The JSON string is parsed and passed through full Schnorr + id-hash
 /// verification via `try_from_raw`.  The event then routes through
-/// `ingest_pre_verified_event`, which calls both `notify_event_observers` AND
-/// `notify_raw_event_observers` on `Inserted|Replaced` outcomes (test-seam fix).
+/// `ingest_pre_verified_event`, which drives parser dispatch and scoped
+/// observed-projection delivery on `Inserted|Replaced` outcomes.
 ///
 /// This unblocks integration tests that need to inject a real signed event (e.g.
 /// a kind:1059 gift-wrap from `nmp_nip59::gift_wrap`) through the kernel so
@@ -199,7 +203,9 @@ pub extern "C" fn nmp_app_inject_signed_event_json(
         Ok(v) => v,
         Err(_) => return false,
     };
-    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEvents(vec![verified])));
+    app.send_cmd(ActorCommand::TestSupport(
+        TestSupportCommand::IngestPreVerifiedEvents(vec![verified]),
+    ));
     true
 }
 
@@ -303,11 +309,13 @@ pub extern "C" fn nmp_app_inject_unpinned_events_for_gc(
     let accepted = events.len() as u32;
 
     let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
-    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::IngestPreVerifiedEventsForSubId {
-        sub_id: "gc-oracle-unpinned".to_string(),
-        events,
-        ack: ack_tx,
-    }));
+    app.send_cmd(ActorCommand::TestSupport(
+        TestSupportCommand::IngestPreVerifiedEventsForSubId {
+            sub_id: "gc-oracle-unpinned".to_string(),
+            events,
+            ack: ack_tx,
+        },
+    ));
     // Block until the actor has ingested + re-sorted the whole batch (settled).
     let _ = ack_rx.recv_timeout(std::time::Duration::from_secs(30));
     accepted
@@ -331,7 +339,9 @@ pub extern "C" fn nmp_app_trigger_gc_step(app: *mut NmpApp) {
         return;
     };
     let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
-    app.send_cmd(ActorCommand::TestSupport(TestSupportCommand::TriggerGcStep { ack: ack_tx }));
+    app.send_cmd(ActorCommand::TestSupport(
+        TestSupportCommand::TriggerGcStep { ack: ack_tx },
+    ));
     // Block until the GC pass is settled (RAM eviction + store LRU step done).
     let _ = ack_rx.recv_timeout(std::time::Duration::from_secs(30));
 }
@@ -368,8 +378,7 @@ pub extern "C" fn nmp_app_read_ram_eviction_stats(
     if !out_lru_evicted.is_null() {
         // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
         unsafe {
-            *out_lru_evicted =
-                nmp_core::testing::PROCESS_STORE_LRU_EVICTED.load(Ordering::Relaxed);
+            *out_lru_evicted = nmp_core::testing::PROCESS_STORE_LRU_EVICTED.load(Ordering::Relaxed);
         }
     }
 }
@@ -430,13 +439,7 @@ pub extern "C" fn nmp_app_read_author_event_ids(
     };
 
     let scan_limit = if limit == 0 { 2000 } else { limit as usize };
-    let iter = match store.scan_by_author_kind(
-        &pubkey_bytes,
-        &[1u32],
-        None,
-        None,
-        scan_limit,
-    ) {
+    let iter = match store.scan_by_author_kind(&pubkey_bytes, &[1u32], None, None, scan_limit) {
         Ok(it) => it,
         Err(_) => return std::ptr::null_mut(),
     };
@@ -485,9 +488,7 @@ pub extern "C" fn nmp_app_read_projection_churn_stats(
     if !out_changed.is_null() {
         // SAFETY: non-null pointer checked above; caller guarantees the lifetime.
         unsafe {
-            *out_changed =
-                nmp_core::testing::PROCESS_PROJECTIONS_CHANGED.load(Ordering::Relaxed);
+            *out_changed = nmp_core::testing::PROCESS_PROJECTIONS_CHANGED.load(Ordering::Relaxed);
         }
     }
 }
-

@@ -25,7 +25,9 @@ The `EventStore` trait is the unified interface for event persistence, with `Mem
 
 Interest registration enqueues cache-serve work; the single-path drains a chunk synchronously (to ensure data is available before the next frame), while the batch path enqueues all N interests then drains once, continuing the rest chunked across later ticks.
 
-The `KernelEventObserver` must replay existing matching events from LMDB upon observer registration so that projections like FollowListProjection are populated at app start (currently it acts as a live feed with no replay).
+Late-opening projections must use the observed-projection registration path so
+matching LMDB events are replayed before the observer is activated. Public raw
+event taps are not a supported app hydration mechanism.
 
 Baseline tests use StoreHarness::lmdb() directly, not the for_each_backend! macro. Mem≡LMDB parity tests use for_each_backend! so both backends are held to the identical contract on every PR.
 

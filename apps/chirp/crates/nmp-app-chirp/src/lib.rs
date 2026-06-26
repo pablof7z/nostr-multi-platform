@@ -1,6 +1,6 @@
 //! `nmp-app-chirp` — Chirp per-app glue.
 //!
-//! Composes `nmp-core` (the kernel substrate + event observer slot, T146)
+//! Composes `nmp-core` (the kernel substrate + observed-projection sink slot)
 //! with `nmp-nip01` (the NIP-10 modular timeline view) and `nmp-threading`
 //! (the agnostic grouping algorithm) to surface Twitter-style stacked-reply
 //! modules over the kernel's home timeline. Lives outside `nmp-core` because
@@ -18,9 +18,9 @@
 //!
 //! 1. Builds a reusable `nmp_nip01::ModularTimelineProjection` with the
 //!    viewer's pubkey and the default `ModulePolicy`.
-//! 2. Registers it as a kernel event observer via
-//!    [`nmp_core::NmpApp::register_live_event_tap`]. From that moment on,
-//!    every kind:1 the kernel ingests fans out to the projection.
+//! 2. Opens declared observed projections for the feed's concrete interest
+//!    shapes. From that moment on, matching accepted events are replayed and then
+//!    delivered through scoped future delivery.
 //! 3. Returns an opaque handle the shell keeps for snapshots / unregister.
 //!
 //! The home feed is registered as the standard `"nmp.feed.home"` projection.

@@ -2,7 +2,7 @@
 //! screen.
 //!
 //! Like [`super::group_timeline::GroupTimelineProjection`], this is **pure
-//! consumption**: a [`KernelEventObserver`] that accumulates the relay-signed
+//! consumption**: a [`ObservedProjectionSink`] that accumulates the relay-signed
 //! metadata events for a single host relay and serialises them as a flat list
 //! of `DiscoveredGroup` rows. It registers no actions, mints no FFI symbols,
 //! and never touches the actor loop.
@@ -48,7 +48,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::RelayUrl;
@@ -157,7 +157,7 @@ impl LatestEvent {
 /// list of discovered groups.
 ///
 /// Construct with the [`RelayUrl`] the relay-pinned interest is targeting;
-/// register the same `Arc` as a [`KernelEventObserver`] (ingest) and capture
+/// register the same `Arc` as a [`ObservedProjectionSink`] (ingest) and capture
 /// it in a snapshot-projection closure (output). Only events whose kind is
 /// 39000 / 39001 / 39002 **and** which carry a `["d", _]` tag are retained.
 pub struct DiscoveredGroupsProjection {
@@ -182,7 +182,7 @@ pub struct DiscoveredGroupsProjection {
 
 impl DiscoveredGroupsProjection {
     /// Construct a projection scoped to `host_relay_url`. The internal map
-    /// starts empty; events arrive via [`KernelEventObserver::on_kernel_event`].
+    /// starts empty; events arrive via [`ObservedProjectionSink::on_kernel_event`].
     #[must_use]
     pub fn new(host_relay_url: impl Into<RelayUrl>) -> Self {
         Self {
@@ -306,12 +306,12 @@ fn count_p_tags(tags: &[Vec<String>]) -> u32 {
     u32::try_from(n).unwrap_or(u32::MAX)
 }
 
-impl KernelEventObserver for DiscoveredGroupsProjection {
+impl ObservedProjectionSink for DiscoveredGroupsProjection {
     /// Ingest one accepted kernel event. Non-matching events (wrong kind,
     /// missing `d` tag) are ignored. Matching events are folded into the
     /// per-`(kind, d)` latest-event slot per NIP-33 replaceable semantics.
     ///
-    /// Cheap and panic-free, per the `KernelEventObserver` contract: a single
+    /// Cheap and panic-free, per the `ObservedProjectionSink` contract: a single
     /// uncontended lock + map insert. A poisoned mutex is a silent no-op (D6).
     fn on_kernel_event(&self, event: &KernelEvent) {
         if !Self::accepts(event) {

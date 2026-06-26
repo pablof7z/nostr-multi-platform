@@ -3,7 +3,7 @@
 use std::sync::Mutex;
 
 use nmp_core::substrate::{EventId, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_ffi::{nmp_app_free, nmp_app_new, NmpApp};
 
 static SERIAL: Mutex<()> = Mutex::new(());

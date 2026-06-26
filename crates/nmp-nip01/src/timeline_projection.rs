@@ -14,7 +14,7 @@ use nmp_core::substrate::{
     empty_suppression_lookup, BoundedMessageMap, KernelEvent, SuppressionLookup, ViewContext,
     MAX_PROJECTION_MESSAGES,
 };
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::{FeedBlock, FeedCard};
 use nmp_nip18::try_from_kernel_event as try_from_repost_event;
 use nmp_threading::TimelineBlock;
@@ -360,7 +360,7 @@ impl ModularTimelineProjection {
     /// Wire a suppression lookup (e.g. `nmp-nip51`'s `MuteListProjection`).
     ///
     /// Called once at composition time before the projection is registered
-    /// as a `KernelEventObserver`. Replaces the default `EmptySuppressionLookup`
+    /// as a `ObservedProjectionSink`. Replaces the default `EmptySuppressionLookup`
     /// (suppress nothing) with the provided backend.
     ///
     /// # Design
@@ -482,7 +482,7 @@ impl ModularTimelineProjection {
     }
 }
 
-impl KernelEventObserver for ModularTimelineProjection {
+impl ObservedProjectionSink for ModularTimelineProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         // Ingest-time suppression gate: skip inserting render cards for events
         // authored by a muted pubkey or with a muted event id. This prevents

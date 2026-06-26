@@ -180,7 +180,7 @@ pub fn register_actions(app: &mut impl ActionRegistrar) {
 /// # Why this fixes the Follow button
 ///
 /// The prior `nmp_app_chirp_register_follow_list` registered a
-/// `KernelEventObserver` that kept a LOCAL `HashMap` of follows. This missed
+/// `ObservedProjectionSink` that kept a LOCAL `HashMap` of follows. This missed
 /// the startup cache-serve (runs before the lazy observer exists) so
 /// already-followed accounts appeared as "Follow" on cold start. This function
 /// replaces that approach: the projection is a PURE READ over the shared

@@ -397,8 +397,8 @@ pub struct Kernel {
     queue_depth: Option<Arc<AtomicU64>>,
     /// Current iOS scenePhase (T118/G3).
     lifecycle_phase: LifecyclePhase,
-    /// T146 kernel event observer slot.
-    event_observers: Option<crate::actor::KernelEventObserverSlot>,
+    /// Declared observed-projection sink slot.
+    event_observers: Option<crate::actor::ObservedProjectionSinkSlot>,
     /// External event sink dispatcher (D0 generic capability).
     external_event_sink_dispatcher: Option<crate::substrate::ExternalEventSinkDispatcher>,
     /// Host-extensible snapshot output slot.

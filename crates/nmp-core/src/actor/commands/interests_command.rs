@@ -4,7 +4,7 @@
 //! Grouped under `ActorCommand::Interests(InterestsCommand)`. Dispatch home:
 //! `actor/dispatch/cmd_interests.rs`.
 
-use super::super::KernelEventObserverId;
+use super::super::ObservedProjectionId;
 
 /// Subscription-registry verbs: logical interests + pull cursors + the M2
 /// FFI-facing feed-subscription front door.
@@ -111,7 +111,7 @@ pub enum InterestsCommand {
         /// pin.
         relay_pin: Option<String>,
         /// The muted observer id to replay events to and then activate.
-        observer_id: KernelEventObserverId,
+        observer_id: ObservedProjectionId,
         /// `InterestShape`s used to match events in the read-cache during
         /// replay. May differ from the filter (e.g. thread feed uses two
         /// shapes: `#e` replies + root-by-id).

@@ -22,9 +22,9 @@ use std::sync::Arc;
 
 use nmp_content::{longform_feed_predicate, LongformFeed, KIND_LONG_FORM_ARTICLE};
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::FeedRequest;
-use nmp_nip18::{AddressCoordinate, KIND_GENERIC_REPOST, KIND_DELETE};
+use nmp_nip18::{AddressCoordinate, KIND_DELETE, KIND_GENERIC_REPOST};
 
 const AUTHOR_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const REPOSTER: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
@@ -159,7 +159,11 @@ fn e02_versions_at_one_coordinate_collapse_to_a_single_row() {
     feed.on_kernel_event(&address_repost("repost", REPOSTER, &coord, 40));
 
     // One row even though two distinct events (article + repost) name it.
-    assert_eq!(feed.len(), 1, "repost and article collapse to one coordinate row");
+    assert_eq!(
+        feed.len(),
+        1,
+        "repost and article collapse to one coordinate row"
+    );
     let snapshot = feed.snapshot(&FeedRequest::default());
     assert_eq!(snapshot.cards[0].card.id, coord);
     assert_eq!(snapshot.cards[0].card.article.as_ref().unwrap().id, "v1");
@@ -183,7 +187,12 @@ fn e03_event_id_only_wrapper_stays_unresolved_fail_closed() {
     let feed = open_feed();
 
     // No embedded body, no local lookup, only an `e` tag → no proven coordinate.
-    feed.on_kernel_event(&event_id_only_repost("repost", REPOSTER, "unknown-target", 40));
+    feed.on_kernel_event(&event_id_only_repost(
+        "repost",
+        REPOSTER,
+        "unknown-target",
+        40,
+    ));
 
     assert!(
         feed.is_empty(),
@@ -215,7 +224,10 @@ fn h06_kind5_coordinate_delete_by_owner_removes_row() {
     let coord = coordinate(AUTHOR_A, "article");
     feed.on_kernel_event(&delete("del", AUTHOR_A, vec![vec!["a", &coord]]));
 
-    assert!(feed.is_empty(), "owner a-tag delete removes the coordinate row");
+    assert!(
+        feed.is_empty(),
+        "owner a-tag delete removes the coordinate row"
+    );
 }
 
 /// H06 negative — a foreign kind:5 `a`-tag delete is a no-op.
@@ -227,7 +239,11 @@ fn h06_kind5_coordinate_delete_by_foreign_author_is_noop() {
     let coord = coordinate(AUTHOR_A, "article");
     feed.on_kernel_event(&delete("del", FOREIGN, vec![vec!["a", &coord]]));
 
-    assert_eq!(feed.len(), 1, "a foreign delete cannot remove the coordinate row");
+    assert_eq!(
+        feed.len(),
+        1,
+        "a foreign delete cannot remove the coordinate row"
+    );
 }
 
 /// H06 — a kind:5 `e`-tag delete owned by the source author removes that row.

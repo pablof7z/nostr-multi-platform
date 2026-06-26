@@ -156,7 +156,7 @@ fn injected_clock_makes_received_at_ms_deterministic_across_ingests() {
 /// never an unconditional overwrite.
 #[test]
 fn future_dated_event_created_at_clamped_to_now_on_observer_and_in_projection() {
-    use crate::actor::{new_event_observer_slot, register_rust_observer, KernelEventObserver};
+    use crate::actor::{new_event_observer_slot, register_rust_observer, ObservedProjectionSink};
     use crate::substrate::KernelEvent;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -166,7 +166,7 @@ fn future_dated_event_created_at_clamped_to_now_on_observer_and_in_projection() 
     struct CapturingObserver {
         seen: Mutex<HashMap<String, u64>>,
     }
-    impl KernelEventObserver for CapturingObserver {
+    impl ObservedProjectionSink for CapturingObserver {
         fn on_kernel_event(&self, event: &KernelEvent) {
             self.seen
                 .lock()

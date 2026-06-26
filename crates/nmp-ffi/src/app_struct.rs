@@ -15,11 +15,10 @@ use std::thread::JoinHandle;
 
 use crate::passive_start::ActorStarter;
 use nmp_core::__ffi_internal::{
-    ActionRegistry, CapabilityCallbackSlot, KernelEventObserverSlot, LifecycleObserverSlot,
+    ActionRegistry, CapabilityCallbackSlot, LifecycleObserverSlot, ObservedProjectionSinkSlot,
     SnapshotProjectionSlot,
 };
-use nmp_core::slots::SingletonEventObserverIdSlot;
-use nmp_core::KernelEventObserverId;
+use nmp_core::ObservedProjectionId;
 use std::ffi::c_void;
 use std::sync::mpsc;
 
@@ -205,11 +204,8 @@ pub struct NmpApp {
     pub(crate) capability_callback: CapabilityCallbackSlot,
     /// T118 / G3 — lifecycle observer slot.
     pub(crate) lifecycle_observer: LifecycleObserverSlot,
-    /// T146 — kernel event observer slot.
-    pub(crate) event_observers: KernelEventObserverSlot,
-    /// Singleton kernel-event observer-id slot used by per-app crates that
-    /// register exactly one auxiliary `KernelEventObserver` per app.
-    pub(crate) singleton_event_observer_id: SingletonEventObserverIdSlot,
+    /// Declared observed-projection sink slot.
+    pub(crate) event_observers: ObservedProjectionSinkSlot,
     /// Shared relay-edit rows handle.
     pub(crate) configured_relays: nmp_core::AppRelaySlot,
     /// One-shot account-creation intent.
@@ -255,12 +251,12 @@ pub struct NmpApp {
     /// keyed by the view's (singleton) projection key. Each is a hydrating
     /// observed-interest session torn down on `close_*` (#2088).
     pub(crate) group_feed_sessions: Mutex<HashMap<String, crate::group_feed::GroupFeedSession>>,
-    /// Observed-projection sessions keyed by `KernelEventObserverId`. Each
+    /// Observed-projection sessions keyed by `ObservedProjectionId`. Each
     /// entry maps an observer id returned by `open_observed_projection` to the
     /// close params `(filter_json, consumer_id, scope, relay_pin)` needed to
     /// reverse the open in `close_observed_projection`.
     pub(crate) observed_projection_sessions:
-        Mutex<HashMap<KernelEventObserverId, (String, String, u32, Option<String>)>>,
+        Arc<Mutex<HashMap<ObservedProjectionId, (String, String, u32, Option<String>)>>>,
     /// Test-support GC budget ceiling.
     #[cfg(any(test, feature = "test-support"))]
     pub(crate) gc_budget_ceiling: Arc<Mutex<Option<usize>>>,

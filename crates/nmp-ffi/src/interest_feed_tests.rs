@@ -9,11 +9,11 @@
 //! during open/close are silently dropped when the channel has no receiver, and
 //! the observer-slot side effects (allocate / revoke) happen synchronously.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
 
 use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 
 use crate::{nmp_app_free, nmp_app_new};
 
@@ -21,22 +21,14 @@ struct StubObserver {
     call_count: AtomicU32,
 }
 
-impl KernelEventObserver for StubObserver {
+impl ObservedProjectionSink for StubObserver {
     fn on_kernel_event(&self, _event: &KernelEvent) {
         self.call_count.fetch_add(1, Ordering::Relaxed);
     }
 }
 
-fn stub_decl(observer: Arc<dyn KernelEventObserver>, consumer: &str) -> ObservedProjection {
-    ObservedProjection {
-        observer,
-        filter_json: r#"{"kinds":[1]}"#.to_string(),
-        consumer_id: consumer.to_string(),
-        scope: 0,
-        relay_pin: None,
-        replay_shapes: vec![],
-        replay_limit: 0,
-    }
+fn stub_decl(observer: Arc<dyn ObservedProjectionSink>, consumer: &str) -> ObservedProjection {
+    ObservedProjection::from_kinds(observer, consumer, 0, [1], 16)
 }
 
 #[test]
@@ -44,12 +36,17 @@ fn open_observed_projection_returns_nonzero_id() {
     let app = nmp_app_new();
     {
         let app_ref = crate::app_ref(app).expect("app");
-        let observer = Arc::new(StubObserver { call_count: AtomicU32::new(0) });
+        let observer = Arc::new(StubObserver {
+            call_count: AtomicU32::new(0),
+        });
         let id = app_ref.open_observed_projection(stub_decl(
-            observer as Arc<dyn KernelEventObserver>,
+            observer as Arc<dyn ObservedProjectionSink>,
             "test.observed.basic",
         ));
-        assert_ne!(id.0, 0, "open_observed_projection must allocate a non-zero observer id");
+        assert_ne!(
+            id.0, 0,
+            "open_observed_projection must allocate a non-zero observer id"
+        );
         app_ref.close_observed_projection(id);
     }
     nmp_app_free(app);
@@ -62,9 +59,11 @@ fn close_observed_projection_is_idempotent() {
     let app = nmp_app_new();
     {
         let app_ref = crate::app_ref(app).expect("app");
-        let observer = Arc::new(StubObserver { call_count: AtomicU32::new(0) });
+        let observer = Arc::new(StubObserver {
+            call_count: AtomicU32::new(0),
+        });
         let id = app_ref.open_observed_projection(stub_decl(
-            observer as Arc<dyn KernelEventObserver>,
+            observer as Arc<dyn ObservedProjectionSink>,
             "test.observed.idempotent",
         ));
         app_ref.close_observed_projection(id);
@@ -82,14 +81,18 @@ fn open_twice_allocates_distinct_ids() {
     let app = nmp_app_new();
     {
         let app_ref = crate::app_ref(app).expect("app");
-        let obs1 = Arc::new(StubObserver { call_count: AtomicU32::new(0) });
-        let obs2 = Arc::new(StubObserver { call_count: AtomicU32::new(0) });
+        let obs1 = Arc::new(StubObserver {
+            call_count: AtomicU32::new(0),
+        });
+        let obs2 = Arc::new(StubObserver {
+            call_count: AtomicU32::new(0),
+        });
         let id1 = app_ref.open_observed_projection(stub_decl(
-            obs1 as Arc<dyn KernelEventObserver>,
+            obs1 as Arc<dyn ObservedProjectionSink>,
             "test.observed.a",
         ));
         let id2 = app_ref.open_observed_projection(stub_decl(
-            obs2 as Arc<dyn KernelEventObserver>,
+            obs2 as Arc<dyn ObservedProjectionSink>,
             "test.observed.b",
         ));
         assert_ne!(id1.0, 0, "first id must be non-zero");

@@ -1,6 +1,6 @@
 //! `GroupTimelineProjection` — the read-side of a NIP-29 group-chat screen.
 //!
-//! This is **pure consumption**: a [`KernelEventObserver`] that accumulates the
+//! This is **pure consumption**: a [`ObservedProjectionSink`] that accumulates the
 //! h-tagged user-content events of a single group and serialises them as a
 //! flat, newest-first event list for a native shell to render. It registers
 //! no actions, mints no FFI symbols, and never touches the actor loop.
@@ -11,7 +11,7 @@
 //! `nmp_core::kernel::snapshot_registry` and
 //! `nmp_core::actor::commands::event_observer`):
 //!
-//! - **`KernelEventObserver`** — the *ingest* side. `on_kernel_event` fires
+//! - **`ObservedProjectionSink`** — the *ingest* side. `on_kernel_event` fires
 //!   once per accepted event on the actor thread; a projection accumulates the
 //!   facts it cares about into its own interior-mutable state.
 //! - **`register_typed_snapshot_projection`** — the *output* side (ADR-0037).
@@ -20,13 +20,19 @@
 //!   host-chosen key, or `None` when there is no changed row to emit.
 //!
 //! `GroupTimelineProjection` is built to sit on *both*: it implements
-//! `KernelEventObserver` for ingest, and exposes [`GroupTimelineProjection::snapshot`]
+//! `ObservedProjectionSink` for ingest, and exposes [`GroupTimelineProjection::snapshot`]
 //! — a cheap, non-blocking, no-argument read — so the host can encode it into a
 //! typed sidecar and register it as
 //!
 //! ```ignore
 //! let projection = Arc::new(GroupTimelineProjection::new(group_id));
-//! let observer_id = app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+//! let observer_id = app.open_observed_projection(ObservedProjection::from_shape(
+//!     Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
+//!     "nmp.nip29.group_timeline",
+//!     1,
+//!     group_timeline_shape,
+//!     128,
+//! ));
 //! let snap = Arc::clone(&projection);
 //! app.register_typed_snapshot_projection("nmp.nip29.group_timeline", move || {
 //!     let snapshot = snap.snapshot();
@@ -64,7 +70,7 @@
 use std::sync::Mutex;
 
 use nmp_core::substrate::{BoundedMessageMap, KernelEvent, MAX_PROJECTION_MESSAGES};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use serde::{Deserialize, Serialize};
 
 use crate::group_id::GroupId;
@@ -130,7 +136,7 @@ impl GroupTimelineSnapshot {
 /// event list.
 ///
 /// Construct with the target [`GroupId`]; register the same `Arc` as a
-/// [`KernelEventObserver`] (ingest) and capture it in a snapshot-projection
+/// [`ObservedProjectionSink`] (ingest) and capture it in a snapshot-projection
 /// closure (output). Only events whose kind is 9 / 11 **and** whose
 /// `["h", …]` tag value equals the group's `local_id` are retained.
 pub struct GroupTimelineProjection {
@@ -150,7 +156,7 @@ pub struct GroupTimelineProjection {
 
 impl GroupTimelineProjection {
     /// Construct a projection scoped to `group_id`. The event store starts
-    /// empty; events arrive via [`KernelEventObserver::on_kernel_event`].
+    /// empty; events arrive via [`ObservedProjectionSink::on_kernel_event`].
     #[must_use]
     pub fn new(group_id: GroupId) -> Self {
         Self {
@@ -171,10 +177,7 @@ impl GroupTimelineProjection {
     /// relay-signed metadata (39000–39003) are deliberately excluded — this is
     /// a chat *read* model, not a moderation log.
     fn accepts(&self, event: &KernelEvent) -> bool {
-        let kind_ok = matches!(
-            event.kind,
-            KIND_CHAT_MESSAGE | KIND_DISCUSSION_OR_ARTIFACT
-        );
+        let kind_ok = matches!(event.kind, KIND_CHAT_MESSAGE | KIND_DISCUSSION_OR_ARTIFACT);
         if !kind_ok {
             return false;
         }
@@ -218,12 +221,12 @@ impl GroupTimelineProjection {
     }
 }
 
-impl KernelEventObserver for GroupTimelineProjection {
+impl ObservedProjectionSink for GroupTimelineProjection {
     /// Ingest one accepted kernel event. Non-matching events (wrong kind,
     /// missing/foreign `h` tag) are ignored. Matching events are inserted by
     /// id, so a re-delivery replaces rather than duplicates.
     ///
-    /// Cheap and panic-free, per the `KernelEventObserver` contract: a single
+    /// Cheap and panic-free, per the `ObservedProjectionSink` contract: a single
     /// uncontended lock + map insert. A poisoned mutex is a silent no-op (D6).
     fn on_kernel_event(&self, event: &KernelEvent) {
         if !self.accepts(event) {

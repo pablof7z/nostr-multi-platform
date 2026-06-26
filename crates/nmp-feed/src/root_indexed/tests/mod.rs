@@ -9,8 +9,8 @@ mod support;
 
 use crate::root_indexed::card::RootFeedSnapshot;
 use crate::root_indexed::engine::MAX_ATTRIBUTION_PER_ROOT;
-use crate::{FeedRequest, DEFAULT_FEED_WINDOW_LIMIT};
-use support::{reply_event, repost_event, root_event, Harness, TestCard, TestPayload};
+use crate::{DEFAULT_FEED_WINDOW_LIMIT, FeedRequest};
+use support::{Harness, TestCard, TestPayload, reply_event, repost_event, root_event};
 
 #[test]
 fn root_first_arrival_surfaces_root() {
@@ -48,6 +48,19 @@ fn root_arrival_drains_pending_attribution() {
 
     let snap = h.snapshot();
     assert_eq!(snap.cards.len(), 1);
+    assert_eq!(snap.cards[0].attribution.len(), 1);
+    assert_eq!(snap.cards[0].attribution[0].author, "alice");
+}
+
+#[test]
+fn followed_reply_hydrates_cached_root_without_broad_observer_delivery() {
+    let h = Harness::new(&["alice"]);
+    h.store(&root_event("op1", "bob", 10, "hello"));
+    h.ingest(&reply_event("r1", "alice", 11, "op1"));
+
+    let snap = h.snapshot();
+    assert_eq!(snap.cards.len(), 1);
+    assert_eq!(snap.cards[0].card.root_id, "op1");
     assert_eq!(snap.cards[0].attribution.len(), 1);
     assert_eq!(snap.cards[0].attribution[0].author, "alice");
 }

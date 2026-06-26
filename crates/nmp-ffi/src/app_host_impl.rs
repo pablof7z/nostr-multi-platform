@@ -14,14 +14,11 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
-    HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
-    InputScopeRegistrar, KernelReaderRegistrar, LiveEventTapRegistrar,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar,
-    ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
-    SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar, HostCapabilities,
+    IdentityChangeRegistrar, IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
+    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
+    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
-use nmp_core::{KernelEventObserver, KernelEventObserverId};
 
 use super::*;
 
@@ -138,19 +135,13 @@ impl IngestParserRegistrar for NmpApp {
 }
 
 impl SearchScopeRegistrar for NmpApp {
-    fn register_search_scope(
-        &self,
-        provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>,
-    ) {
+    fn register_search_scope(&self, provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>) {
         NmpApp::register_search_scope(self, provider);
     }
 }
 
 impl InputScopeRegistrar for NmpApp {
-    fn register_input_scope(
-        &self,
-        recognizer: Arc<dyn nmp_core::substrate::InputScopeRecognizer>,
-    ) {
+    fn register_input_scope(&self, recognizer: Arc<dyn nmp_core::substrate::InputScopeRecognizer>) {
         NmpApp::register_input_scope(self, recognizer);
     }
 }
@@ -262,26 +253,6 @@ impl HostCapabilities for NmpApp {
         source: std::sync::Arc<dyn nmp_core::substrate::PreferredRelaySource>,
     ) {
         NmpApp::install_preferred_relay_source(self, source);
-    }
-}
-
-impl LiveEventTapRegistrar for NmpApp {
-    fn register_live_event_tap(
-        &self,
-        observer: Arc<dyn KernelEventObserver>,
-    ) -> KernelEventObserverId {
-        NmpApp::register_live_event_tap(self, observer)
-    }
-
-    fn unregister_event_observer(&self, id: KernelEventObserverId) {
-        NmpApp::unregister_event_observer(self, id);
-    }
-
-    fn swap_singleton_event_observer(
-        &self,
-        new: Option<KernelEventObserverId>,
-    ) -> Option<KernelEventObserverId> {
-        NmpApp::swap_singleton_event_observer(self, new)
     }
 }
 

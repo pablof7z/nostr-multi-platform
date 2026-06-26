@@ -12,7 +12,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use nmp_core::substrate::{empty_suppression_lookup, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::FeedRequest;
 use nostr::{Event, EventBuilder, JsonUtil as _, Keys, Kind, Tag, Timestamp};
 use serde_json::{json, Value};

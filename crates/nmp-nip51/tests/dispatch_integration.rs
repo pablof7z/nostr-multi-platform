@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use nmp_core::__ffi_internal::ActionRegistry;
 use nmp_core::substrate::{ActionContext, ActionPayload, ActionRejection, EventId, KernelEvent};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_kinds::{KIND_BOOKMARK_LIST, KIND_BOOKMARK_SET};
 use nmp_nip51::wire::bookmark_set_update_fb::generated::nmp::nip_51 as set_fb;
 use nmp_nip51::wire::web_bookmark_publish_fb::generated::nmp::nip_51 as web_fb;

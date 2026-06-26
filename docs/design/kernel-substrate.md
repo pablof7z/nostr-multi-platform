@@ -9,7 +9,8 @@ Composition is a library call:
 1. Create an `NmpAppBuilder`.
 2. Declare storage, projections, relays, and capabilities.
 3. Call `nmp_defaults::register_defaults` or the narrower substrate tier.
-4. Register app/protocol-specific actions, observers, and projections.
+4. Register app/protocol-specific actions, observed projections, and output
+   projections.
 5. Start the app.
 
 `nmp-core` provides the substrate. `nmp-defaults` wires the default Nostr
@@ -27,14 +28,16 @@ only place that translates an accepted user intent into kernel commands.
 Use this seam for publish flows, relay-list edits, wallet operations, group
 chat actions, signer actions, and app-specific commands.
 
-## 3. Event Observers
+## 3. Observed Projections
 
-`register_event_observer` installs in-process callbacks for verified kernel
-events. Observers run on the actor side and are used by protocol/app runtimes
-that maintain Rust-owned derived state.
+Observed projections declare the event shape, owner, scope, and replay bounds
+for a Rust-owned read model before receiving events. Opening an observed
+projection replays matching cached events to a muted sink, then activates future
+delivery for the declared `InterestShape`.
 
-Observers do not mutate native UI state directly. They update Rust-owned state
-or cause projection emission through the normal snapshot/update path.
+Observed projections do not mutate native UI state directly. They update
+Rust-owned state or cause projection emission through the normal snapshot/update
+path.
 
 ## 4. Snapshot And Typed Projections
 

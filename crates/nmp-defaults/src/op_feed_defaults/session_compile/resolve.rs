@@ -29,8 +29,8 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::substrate::{KernelEvent, ObservedProjection, ObservedProjectionRegistrar};
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::RootAdmission;
 use nmp_ffi::{FeedOpenError, NmpApp};
 use nmp_kinds::KIND_FOLLOW_SET;
@@ -127,8 +127,20 @@ fn resolve_active_follow_set(
     // A fresh ActiveFollowSet over the same active-account slot, registered as a
     // session observer so kind:3 ingest keeps the predicate live (reactive).
     let follow_set = nmp_nip02::ActiveFollowSet::new(app.active_account_handle());
-    let observer_id =
-        app.register_live_event_tap(Arc::clone(&follow_set) as Arc<dyn KernelEventObserver>);
+    let observer_shape = initial_viewer
+        .as_deref()
+        .map(seed_contacts_shape)
+        .unwrap_or_else(|| InterestShape {
+            kinds: [KIND_CONTACT_LIST].into_iter().collect(),
+            ..Default::default()
+        });
+    let observer_id = app.open_observed_projection(ObservedProjection::from_shape(
+        Arc::clone(&follow_set) as Arc<dyn ObservedProjectionSink>,
+        "nmp.feed.resolver.follow_set",
+        0,
+        observer_shape,
+        64,
+    ));
     let follow_set_for_identity = Arc::clone(&follow_set);
     let follow_set_for_replay = Arc::clone(&follow_set);
     let replay_slot = app.active_account_handle();
@@ -198,8 +210,13 @@ fn resolve_list_members(
     let projection = Arc::new(nmp_nip51::PeopleListProjection::new(
         app.active_account_handle(),
     ));
-    let observer_id =
-        app.register_live_event_tap(Arc::clone(&projection) as Arc<dyn KernelEventObserver>);
+    let observer_id = app.open_observed_projection(ObservedProjection::from_shape(
+        Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
+        "nmp.feed.resolver.people_list",
+        0,
+        viewer_list_shape(&viewer),
+        64,
+    ));
     let projection_for_identity = Arc::clone(&projection);
     let projection_for_replay = Arc::clone(&projection);
     let replay_slot = app.active_account_handle();
@@ -276,8 +293,13 @@ fn resolve_wot(
     // A session-scoped WoT graph observer, reusing `WotGraph` (the #1698 ranked
     // second-degree query) — we do NOT touch the singleton bootstrap runtime.
     let graph = Arc::new(SessionWotGraph::new(seed.to_string(), KIND_CONTACT_LIST));
-    let observer_id =
-        app.register_live_event_tap(Arc::clone(&graph) as Arc<dyn KernelEventObserver>);
+    let observer_id = app.open_observed_projection(ObservedProjection::from_shape(
+        Arc::clone(&graph) as Arc<dyn ObservedProjectionSink>,
+        "nmp.feed.resolver.wot",
+        0,
+        seed_contacts_shape(seed),
+        256,
+    ));
 
     let admission: RootAdmission = {
         let graph = Arc::clone(&graph);

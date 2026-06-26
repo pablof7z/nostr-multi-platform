@@ -116,7 +116,7 @@ mod tests {
     use super::*;
     use nmp_core::substrate::EventId;
     use nmp_core::substrate::KernelEvent;
-    use nmp_core::KernelEventObserver;
+    use nmp_core::ObservedProjectionSink;
     use std::sync::Mutex;
 
     // kind:10007 — NIP-51 search relays (numeric literal; nmp_kinds is not a

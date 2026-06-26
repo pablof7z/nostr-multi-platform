@@ -30,21 +30,20 @@ use crate::publish::OutboxResolver;
 use crate::slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot};
 use crate::store::EventStore;
 use crate::subs::PlanCoverageHook;
-use crate::update_envelope::TypedProjectionData;
-use crate::{
-    AppRelaySlot, KernelEventObserver, KernelEventObserverId,
-};
+use crate::AppRelaySlot;
 
 use super::{
-    ActionRegistrar, ContactsLookup, DmInboxRelayLookup, ExternalEventSinkPolicy,
-    IngestParser, MailboxCache, OutboxRouter,
-    ProfileLookup, RawEventForwardPolicyContext, RelayConnectedHook,
+    ActionRegistrar, ContactsLookup, DmInboxRelayLookup, ExternalEventSinkPolicy, IngestParser,
+    MailboxCache, OutboxRouter, ProfileLookup, RawEventForwardPolicyContext, RelayConnectedHook,
     RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 
 mod observed;
 mod projection;
-pub use observed::{LiveEventTapRegistrar, ObservedProjection, ObservedProjectionRegistrar};
+pub use observed::{
+    ObservedProjection, ObservedProjectionCommandHandle, ObservedProjectionRegistrar,
+    ObservedProjectionSessionMap,
+};
 pub use projection::{IncrementalApplyError, SnapshotProjectionRegistrar};
 
 /// Register ingest parsers (ADR-0057 / rule A5) — kind-keyed and range-keyed,
@@ -248,7 +247,8 @@ pub trait RoutingFactoryRegistrar {
             + Send
             + Sync
             + 'static,
-    {}
+    {
+    }
 
     /// Register the host-supplied fallback relay URL for client-initiated
     /// NIP-46 `nostrconnect://` handshakes.
@@ -349,59 +349,6 @@ pub trait PreferredRelaySource: Send + Sync {
     fn fallback(&self) -> Vec<String>;
 }
 
-/// Register a [`KernelEventObserver`] (live tap) AND a typed snapshot projection
-/// in one call — the common `register_live_event_tap +
-/// register_typed_snapshot_projection` pair used by runtime crates (#1724
-/// observer boilerplate helper).
-///
-/// This is a free function (not a trait method) because it requires BOTH
-/// [`LiveEventTapRegistrar`] AND [`SnapshotProjectionRegistrar`] without
-/// changing either trait.
-///
-/// **Live-tap semantics**: the observer receives only events ingested AFTER
-/// registration.  Use [`ObservedProjectionRegistrar::open_observed_projection`]
-/// when the observer must also see already-cached events (the muted→activate
-/// replay seam).
-///
-/// # Semantics
-///
-/// 1. Registers `observer` as a live-tap event observer. Returns `None` (and
-///    skips the projection) when the observer slot is poisoned (D6 — zero id
-///    guard, matching the pattern in `nmp_wot::register_runtime` and
-///    `nmp_defaults::register_longform_projection`).
-/// 2. On success, registers `projection_fn` as the typed snapshot projection
-///    under `key` and returns the assigned [`KernelEventObserverId`].
-///
-/// # Usage
-///
-/// ```ignore
-/// use nmp_core::substrate::register_observer_projection;
-/// let id = register_observer_projection(
-///     app,
-///     Arc::clone(&my_runtime) as Arc<dyn KernelEventObserver>,
-///     "nmp.my_crate.key",
-///     move || my_runtime.snapshot_typed(),
-/// );
-/// ```
-pub fn register_observer_projection<K, F>(
-    app: &(impl LiveEventTapRegistrar + SnapshotProjectionRegistrar),
-    observer: Arc<dyn KernelEventObserver>,
-    key: K,
-    projection_fn: F,
-) -> Option<KernelEventObserverId>
-where
-    K: Into<String>,
-    F: Fn() -> Option<TypedProjectionData> + Send + Sync + 'static,
-{
-    let id = app.register_live_event_tap(observer);
-    if id == KernelEventObserverId(0) {
-        // Observer slot poisoned — skip the projection too (D6).
-        return None;
-    }
-    app.register_typed_snapshot_projection(key, projection_fn);
-    Some(id)
-}
-
 /// Host surface needed by reusable NMP **composition roots**.
 ///
 /// D6: this is the union super-trait of every narrow registration / capability
@@ -415,7 +362,7 @@ where
 /// native shell trait. Native storage, OS keychains, browser WebSocket handles,
 /// and other platform capabilities stay outside this surface. The methods here
 /// register Rust-owned facts only: action modules, ingest parsers, snapshot
-/// projections, event observers, routing factories, capability seams, and
+/// projections, observed projections, routing factories, capability seams, and
 /// read-only kernel slots. A browser builder that implements the same narrow
 /// registrars receives this trait through the blanket impl and can call the
 /// same `nmp-defaults` composition path without exposing reducer internals.
@@ -423,7 +370,7 @@ pub trait AppHost:
     ActionRegistrar
     + SnapshotProjectionRegistrar
     + IngestParserRegistrar
-    + LiveEventTapRegistrar
+    + ObservedProjectionRegistrar
     + IdentityChangeRegistrar
     + ReqFrameInterceptorRegistrar
     + RelayTextInterceptorRegistrar
@@ -443,7 +390,7 @@ impl<T> AppHost for T where
     T: ActionRegistrar
         + SnapshotProjectionRegistrar
         + IngestParserRegistrar
-        + LiveEventTapRegistrar
+        + ObservedProjectionRegistrar
         + IdentityChangeRegistrar
         + ReqFrameInterceptorRegistrar
         + RelayTextInterceptorRegistrar

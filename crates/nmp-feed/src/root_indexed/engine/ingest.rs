@@ -4,9 +4,9 @@
 //! the same type plus its free helpers.
 
 use nmp_core::substrate::{BoundedMessageMap, EventId, KernelEvent};
-use nmp_threading::{pointer::ThreadPointer, ParentResolver};
+use nmp_threading::{ParentResolver, pointer::ThreadPointer};
 
-use super::{EngineState, RootIndexedFeed, RootSlot, MAX_ATTRIBUTION_PER_ROOT};
+use super::{EngineState, MAX_ATTRIBUTION_PER_ROOT, RootIndexedFeed, RootSlot};
 use crate::root_indexed::attribution::AttributionPayload;
 
 impl<R, A, C> RootIndexedFeed<R, A, C>
@@ -51,17 +51,21 @@ where
     /// `supersedes_target` is preserved so the renderer still shows the
     /// "reposted by" banner. A plain (non-reposted) root just inserts.
     fn ingest_root(&self, event: &KernelEvent) {
+        let Ok(mut st) = self.state.lock() else {
+            return;
+        };
+        self.insert_root_locked(&mut st, event);
+    }
+
+    fn insert_root_locked(&self, st: &mut EngineState<A, C>, event: &KernelEvent) -> bool {
         // #1740 step 3: the compiled perspective gates ROOTS, not just replies.
         // A root the perspective does not admit must NOT enter the feed (e.g. a
         // non-member author under a ContactList/ListMembers/Wot scope, or a
         // right-side member under a Difference scope). The home feed passes
         // `admit_all_roots`, so this is a no-op there.
         if !(self.caps.root_admission)(event) {
-            return;
+            return false;
         }
-        let Ok(mut st) = self.state.lock() else {
-            return;
-        };
         let existing = st.roots.get(&event.id).map(|slot| {
             (
                 slot.supersedes_target.clone(),
@@ -100,7 +104,8 @@ where
         if let Some((evicted_id, _)) = evicted {
             st.attributions.remove(&evicted_id);
         }
-        Self::drain_pending_into(&mut st, &event.id);
+        Self::drain_pending_into(st, &event.id);
+        true
     }
 
     /// Repost-shaped event (`supersedes == Some(target)`): the target becomes
@@ -175,12 +180,24 @@ where
         let Some(attribution) = A::from_reply(event, self.caps.follow.as_ref()) else {
             return;
         };
+        let cached_root = match &resolved {
+            ThreadPointer::Event { .. } => (self.caps.event_lookup)(&primary_id),
+            ThreadPointer::Address { .. } | ThreadPointer::External { .. } => None,
+        };
 
         let Ok(mut st) = self.state.lock() else {
             return;
         };
         if st.roots.contains_key(&primary_id) {
             Self::record_attribution(&mut st.attributions, &primary_id, attribution);
+        } else if let Some(root_event) = cached_root.as_ref().filter(|root| {
+            (self.caps.event_gate)(root) && self.caps.resolver.parent(root).is_none()
+        }) {
+            if self.insert_root_locked(&mut st, root_event) {
+                Self::record_attribution(&mut st.attributions, &primary_id, attribution);
+            } else {
+                Self::record_attribution(&mut st.pending_attributions, &primary_id, attribution);
+            }
         } else {
             Self::record_attribution(&mut st.pending_attributions, &primary_id, attribution);
         }

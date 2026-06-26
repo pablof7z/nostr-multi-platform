@@ -13,11 +13,11 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar,
-    HostCapabilities, IdentityChangeRegistrar, IngestParserRegistrar,
-    InputScopeRegistrar, KernelReaderRegistrar, LiveEventTapRegistrar,
-    RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
-    RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
+    BlockedRelayLookupRegistrar, CoverageHookRegistrar, DmInboxRelayRegistrar, HostCapabilities,
+    IdentityChangeRegistrar, IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
+    ObservedProjection, ObservedProjectionRegistrar, RelayConnectedHookRegistrar,
+    RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar, RoutingFactoryRegistrar,
+    SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
 use nmp_ffi::NmpApp;
 
@@ -159,20 +159,14 @@ impl<S> IngestParserRegistrar for NmpAppBuilder<S> {
 }
 
 impl<S> SearchScopeRegistrar for NmpAppBuilder<S> {
-    fn register_search_scope(
-        &self,
-        provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>,
-    ) {
+    fn register_search_scope(&self, provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>) {
         let app: &NmpApp = unsafe { &*self.app };
         app.register_search_scope(provider);
     }
 }
 
 impl<S> InputScopeRegistrar for NmpAppBuilder<S> {
-    fn register_input_scope(
-        &self,
-        recognizer: Arc<dyn nmp_core::substrate::InputScopeRecognizer>,
-    ) {
+    fn register_input_scope(&self, recognizer: Arc<dyn nmp_core::substrate::InputScopeRecognizer>) {
         let app: &NmpApp = unsafe { &*self.app };
         // Delegate to the inherent `NmpApp::register_input_scope` (ledger +
         // yielding-default dup policy in `app_config_intent.rs`).
@@ -302,26 +296,22 @@ impl<S> HostCapabilities for NmpAppBuilder<S> {
     }
 }
 
-impl<S> LiveEventTapRegistrar for NmpAppBuilder<S> {
-    fn register_live_event_tap(
-        &self,
-        observer: Arc<dyn nmp_core::KernelEventObserver>,
-    ) -> nmp_core::KernelEventObserverId {
+impl<S> ObservedProjectionRegistrar for NmpAppBuilder<S> {
+    fn open_observed_projection(&self, decl: ObservedProjection) -> nmp_core::ObservedProjectionId {
         let app: &NmpApp = unsafe { &*self.app };
-        app.register_live_event_tap(observer)
+        app.open_observed_projection(decl)
     }
 
-    fn unregister_event_observer(&self, id: nmp_core::KernelEventObserverId) {
+    fn close_observed_projection(&self, id: nmp_core::ObservedProjectionId) {
         let app: &NmpApp = unsafe { &*self.app };
-        app.unregister_event_observer(id);
+        app.close_observed_projection(id);
     }
 
-    fn swap_singleton_event_observer(
+    fn observed_projection_registrar_handle(
         &self,
-        new: Option<nmp_core::KernelEventObserverId>,
-    ) -> Option<nmp_core::KernelEventObserverId> {
+    ) -> Arc<dyn nmp_core::substrate::ObservedProjectionRegistrar + Send + Sync> {
         let app: &NmpApp = unsafe { &*self.app };
-        app.swap_singleton_event_observer(new)
+        Arc::new(app.observed_projection_handle())
     }
 }
 
@@ -334,4 +324,3 @@ impl<S> IdentityChangeRegistrar for NmpAppBuilder<S> {
         app.register_identity_change_observer(f);
     }
 }
-

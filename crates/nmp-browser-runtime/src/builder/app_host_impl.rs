@@ -16,18 +16,15 @@
 use std::ops::Range;
 use std::sync::Arc;
 
+use nmp_core::substrate::{ActionRegistrar, PreferredRelaySource};
 use nmp_core::substrate::{
     BlockedRelayLookupRegistrar, ContactsLookup, CoverageHookRegistrar, DmInboxRelayRegistrar,
-    LiveEventTapRegistrar, HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError,
-    IngestParserRegistrar, InputScopeRegistrar, KernelReaderRegistrar,
+    HostCapabilities, IdentityChangeRegistrar, IncrementalApplyError, IngestParserRegistrar,
+    InputScopeRegistrar, KernelReaderRegistrar, ObservedProjection, ObservedProjectionRegistrar,
     RelayConnectedHookRegistrar, RelayTextInterceptorRegistrar, ReqFrameInterceptorRegistrar,
     RoutingFactoryRegistrar, SearchScopeRegistrar, SnapshotProjectionRegistrar,
 };
-use nmp_core::{
-    AppRelaySlot, CommandSender, KernelEventObserver, KernelEventObserverId,
-    TypedProjectionData,
-};
-use nmp_core::substrate::{ActionRegistrar, PreferredRelaySource};
+use nmp_core::{AppRelaySlot, CommandSender, ObservedProjectionId, TypedProjectionData};
 
 use super::BrowserAppBuilder;
 
@@ -120,7 +117,9 @@ impl<S> IngestParserRegistrar for BrowserAppBuilder<S> {
         slot_key: &'static str,
         parser: Arc<dyn nmp_core::substrate::IngestParser>,
     ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
-        let Ok(g) = self.inner.lock() else { return None };
+        let Ok(g) = self.inner.lock() else {
+            return None;
+        };
         g.reducer.replace_ingest_parser(kind, slot_key, parser)
     }
 
@@ -135,8 +134,11 @@ impl<S> IngestParserRegistrar for BrowserAppBuilder<S> {
         slot_key: &'static str,
         parser: Arc<dyn nmp_core::substrate::IngestParser>,
     ) -> Option<Arc<dyn nmp_core::substrate::IngestParser>> {
-        let Ok(g) = self.inner.lock() else { return None };
-        g.reducer.replace_ingest_parser_range(range, slot_key, parser)
+        let Ok(g) = self.inner.lock() else {
+            return None;
+        };
+        g.reducer
+            .replace_ingest_parser_range(range, slot_key, parser)
     }
 
     fn unregister_ingest_parser_range(&self, slot_key: &'static str) {
@@ -145,32 +147,47 @@ impl<S> IngestParserRegistrar for BrowserAppBuilder<S> {
     }
 }
 
-// ── LiveEventTapRegistrar ───────────────────────────────────────────────────
+// ── ObservedProjectionRegistrar ─────────────────────────────────────────────
 
-impl<S> LiveEventTapRegistrar for BrowserAppBuilder<S> {
-    fn register_live_event_tap(
+struct NoopObservedProjectionRegistrar;
+
+impl ObservedProjectionRegistrar for NoopObservedProjectionRegistrar {
+    fn open_observed_projection(&self, _decl: ObservedProjection) -> ObservedProjectionId {
+        ObservedProjectionId(0)
+    }
+
+    fn close_observed_projection(&self, _id: ObservedProjectionId) {}
+
+    fn observed_projection_registrar_handle(
         &self,
-        observer: Arc<dyn KernelEventObserver>,
-    ) -> KernelEventObserverId {
-        let Ok(g) = self.inner.lock() else {
-            return KernelEventObserverId(0);
+    ) -> Arc<dyn ObservedProjectionRegistrar + Send + Sync> {
+        Arc::new(Self)
+    }
+}
+
+impl<S> ObservedProjectionRegistrar for BrowserAppBuilder<S> {
+    fn open_observed_projection(&self, decl: ObservedProjection) -> ObservedProjectionId {
+        let Ok(mut g) = self.inner.lock() else {
+            return ObservedProjectionId(0);
         };
-        g.reducer.register_live_event_tap(observer)
+        g.reducer.open_observed_projection(decl)
     }
 
-    fn unregister_event_observer(&self, id: KernelEventObserverId) {
-        let Ok(g) = self.inner.lock() else { return };
-        g.reducer.unregister_event_observer(id);
+    fn close_observed_projection(&self, id: ObservedProjectionId) {
+        let Ok(mut g) = self.inner.lock() else { return };
+        g.reducer.close_observed_projection(id);
     }
 
-    fn swap_singleton_event_observer(
+    fn observed_projection_registrar_handle(
         &self,
-        new: Option<KernelEventObserverId>,
-    ) -> Option<KernelEventObserverId> {
-        let Ok(mut g) = self.inner.lock() else { return None };
-        let prev = g.singleton_event_observer_id.take();
-        g.singleton_event_observer_id = new;
-        prev
+    ) -> Arc<dyn ObservedProjectionRegistrar + Send + Sync> {
+        let Ok(g) = self.inner.lock() else {
+            return Arc::new(NoopObservedProjectionRegistrar);
+        };
+        Arc::new(g.reducer.observed_projection_command_handle(
+            Arc::clone(&g.observed_projection_sessions),
+            CommandSender::new(g.inbox_tx.clone()),
+        ))
     }
 }
 
@@ -250,10 +267,7 @@ impl<S> KernelReaderRegistrar for BrowserAppBuilder<S> {
 // ── DmInboxRelayRegistrar ────────────────────────────────────────────────────
 
 impl<S> DmInboxRelayRegistrar for BrowserAppBuilder<S> {
-    fn set_dm_inbox_relay_lookup(
-        &self,
-        lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>,
-    ) {
+    fn set_dm_inbox_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::DmInboxRelayLookup>) {
         let Ok(mut g) = self.inner.lock() else { return };
         g.dm_inbox_relay_lookup = Some(lookup);
     }
@@ -262,10 +276,7 @@ impl<S> DmInboxRelayRegistrar for BrowserAppBuilder<S> {
 // ── BlockedRelayLookupRegistrar ───────────────────────────────────────────────
 
 impl<S> BlockedRelayLookupRegistrar for BrowserAppBuilder<S> {
-    fn set_blocked_relay_lookup(
-        &self,
-        lookup: Arc<dyn nmp_core::substrate::BlockedRelayLookup>,
-    ) {
+    fn set_blocked_relay_lookup(&self, lookup: Arc<dyn nmp_core::substrate::BlockedRelayLookup>) {
         let Ok(mut g) = self.inner.lock() else { return };
         g.blocked_relay_lookup = Some(lookup);
     }
@@ -342,10 +353,7 @@ impl<S> RoutingFactoryRegistrar for BrowserAppBuilder<S> {
 // ── SearchScopeRegistrar ──────────────────────────────────────────────────────
 
 impl<S> SearchScopeRegistrar for BrowserAppBuilder<S> {
-    fn register_search_scope(
-        &self,
-        provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>,
-    ) {
+    fn register_search_scope(&self, provider: Arc<dyn nmp_core::substrate::SearchScopeProvider>) {
         // Delegates to the shared `SearchScopeRegistry` directly (the registry
         // is itself a `SearchScopeRegistrar`; install_into is called at start()).
         let Ok(g) = self.inner.lock() else { return };
@@ -356,10 +364,7 @@ impl<S> SearchScopeRegistrar for BrowserAppBuilder<S> {
 // ── InputScopeRegistrar ───────────────────────────────────────────────────────
 
 impl<S> InputScopeRegistrar for BrowserAppBuilder<S> {
-    fn register_input_scope(
-        &self,
-        recognizer: Arc<dyn nmp_core::substrate::InputScopeRecognizer>,
-    ) {
+    fn register_input_scope(&self, recognizer: Arc<dyn nmp_core::substrate::InputScopeRecognizer>) {
         let Ok(g) = self.inner.lock() else { return };
         g.input_scope_registry.register_input_scope(recognizer);
     }
@@ -391,10 +396,7 @@ impl<S> HostCapabilities for BrowserAppBuilder<S> {
         Arc::clone(&g.configured_relays_slot)
     }
 
-    fn install_preferred_relay_source(
-        &self,
-        source: Arc<dyn PreferredRelaySource>,
-    ) {
+    fn install_preferred_relay_source(&self, source: Arc<dyn PreferredRelaySource>) {
         let Ok(mut g) = self.inner.lock() else { return };
         g.preferred_relay_source = Some(source);
     }

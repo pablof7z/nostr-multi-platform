@@ -122,36 +122,39 @@ app.register_typed_snapshot_projection("nmp.myapp.key", move || {
 - **Use it when** you want module state visible in the host's `apply()`
   callback alongside the built-in named fields.
 
-## register_live_event_tap — the event-driven view seam
+## open_observed_projection — the event-driven read-model seam
 
-Registers an in-process `KernelEventObserver` for event-driven view updates via
-the `LiveEventTapRegistrar` trait (`crates/nmp-ffi/src/event_observer.rs`). For
-the safe muted→activate-with-replay variant (ADR-0062) prefer the
-`ObservedProjectionRegistrar::open_observed_projection` door, which couples the
-observer to a relay-pinned interest and a read-cache catch-up replay.
+Registers an in-process `ObservedProjectionSink` only after the read model has
+declared the events it needs. The host calls
+`ObservedProjectionRegistrar::open_observed_projection` with an
+`ObservedProjection` declaration; the kernel registers the sink muted, opens the
+declared interest, replays matching cached/store-backed rows, then activates
+future delivery scoped to the declaration.
 
 ```rust
-pub trait KernelEventObserver: Send + Sync {
-    // Fires for every event accepted by EventStore::insert (Inserted | Replaced).
-    // Duplicates, supersessions, and rejections do NOT fire this method.
+pub trait ObservedProjectionSink: Send + Sync {
+    // Fires only for events matching the projection's declared shapes.
     fn on_kernel_event(&self, event: &KernelEvent);
 }
 
-app.register_live_event_tap(Arc::new(MyObserver { store: arc_store.clone() }));
-// returns KernelEventObserverId for later unregister_event_observer()
+let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
+    Arc::new(MyObserver { store: arc_store.clone() }),
+    "nmp.myapp.items",
+    0,
+    [KIND_NOTE],
+    128,
+));
 ```
 
-- **Lifecycle:** fires synchronously on the **actor thread** for every
-  `Inserted | Replaced` ingest outcome. Must be cheap; no blocking I/O.
-  Duplicates, supersessions, and rejections do NOT fire the observer.
-  This is the mechanism per-app crates use to build typed timeline views
-  (`nmp-app-chirp` registers an observer that drives the modular timeline
-  projection).
-- **Use it when** you need to maintain an in-process projection that updates
-  on every event arrival — e.g. a startup timeline projection. If the projection
-  opens after matching events may already be in the kernel, use
-  `ObservedProjectionRegistrar::open_observed_projection` instead so the kernel
-  owns replay and scoped live delivery.
+- **Lifecycle:** the sink body runs synchronously on the **actor thread**. Must
+  be cheap; no blocking I/O. Duplicates, supersessions, and rejections do NOT
+  fire the observer.
+- **Use it when** you need to maintain an in-process read model from Nostr
+  events. The declaration must name the scope by kind, author, id, tag, relay
+  pin, search shape, source reducer, or bounded dependency before events are
+  delivered.
+- **Never:** production app/product code must not register a blanket all-event
+  observer. A remaining event slot is kernel-internal plumbing only.
 
 ## Decision tree: "I want X — which seam?"
 
@@ -164,9 +167,8 @@ I want to ...
 ├─ expose a typed sidecar to the host shell  → register_typed_snapshot_projection
 │     └─ cheap + non-blocking closure
 │
-├─ maintain an in-process typed projection      → KernelEventObserver
-│     (startup/live-only tap)                       + register_live_event_tap
-│     (per-open/late-joining view)                  + open_observed_projection
+├─ maintain an in-process typed projection      → ObservedProjectionSink
+│     (declared shape + replay + scoped delivery)   + open_observed_projection
 │
 ├─ report OS-native facts to the kernel        → CapabilityModule
 │     (keychain, push, audio, network)             (native C-ABI callback)
@@ -176,11 +178,29 @@ I want to ...
 ```
 
 A real app typically combines several: `microblog-core` uses
-`register_action` + `register_live_event_tap`/`open_observed_projection` +
-`register_typed_snapshot_projection`; late-joining views use
-`open_observed_projection` for kernel-owned hydration.
+`register_action` + `open_observed_projection` +
+`register_snapshot_projection`/`register_typed_snapshot_projection`.
 Walkthroughs are in
 [05b](05b-substrate-traits.md) and [19a](19a-walkthrough-microblog.md).
+
+## Removed v2 traits (reference)
+
+An earlier proposed v2 extension architecture included `ViewModule`,
+`DomainModule`, and `IdentityModule` traits, plus a `ModuleRegistry` to
+collect them. These were **removed before shipping** — no kernel runtime ever
+drove them. `crates/nmp-core/src/substrate/mod.rs` documents this history.
+
+If you encounter references to these types in older docs, ADRs, or codegen
+output, treat them as stale. The correct replacements:
+
+| Removed concept | Replacement |
+|---|---|
+| `ViewModule` (typed reactive projection) | `open_observed_projection` + `register_snapshot_projection` |
+| `DomainModule` (kernel-owned domain store) | app-owned `Arc<Mutex<T>>` + `register_snapshot_projection` |
+| `IdentityModule` (signer scope) | `nmp-signers` crate + keyring capability |
+| `ModuleRegistry` (composition root) | an app-core `register()` fn that calls `nmp_defaults::register_defaults` once, then app/protocol `register()` fns |
+| `ActionPlan` / `ActionTransition` / `reduce()` | `execute()` dispatching `ActorCommand` |
+
 ## Deliverables (this half)
 
 - **Per-seam shape block** (above) — copy the skeleton, fill the types,

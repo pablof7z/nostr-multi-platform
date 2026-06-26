@@ -3,7 +3,7 @@
 //!
 //! # Overview
 //!
-//! A [`KernelEventObserver`] for kind:30000 (NIP-51 follow set / people list)
+//! A [`ObservedProjectionSink`] for kind:30000 (NIP-51 follow set / people list)
 //! events. An addressable, parameterized-replaceable event identified by its
 //! `d`-tag: one author may own MANY follow sets, one per `d` value. Each set's
 //! `["p", <pubkey>]` tags are the list's MEMBERS (subjects, not recipients).
@@ -32,7 +32,7 @@
 //!
 //! # D-doctrine
 //!
-//! * **D0** — `nmp-core` sees only `KernelEventObserver`; the NIP-51 noun stays
+//! * **D0** — `nmp-core` sees only `ObservedProjectionSink`; the NIP-51 noun stays
 //!   in this crate.
 //! * **D6** — poisoned mutexes, missing active pubkey, an absent list, and empty
 //!   lists all degrade to "no members" rather than panicking. Fail-closed: an
@@ -44,7 +44,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_FOLLOW_SET;
 use serde::Serialize;
 
@@ -61,7 +61,7 @@ pub struct PeopleListSnapshot {
 ///
 /// Construct with the shared `active_pubkey` slot (the same pattern as
 /// [`crate::MuteListProjection`]). Register the same `Arc` as a
-/// [`KernelEventObserver`] so kind:30000 events are ingested.
+/// [`ObservedProjectionSink`] so kind:30000 events are ingested.
 pub struct PeopleListProjection {
     /// The active account's hex pubkey, written by the FFI on account switch.
     active_pubkey: Arc<Mutex<Option<String>>>,
@@ -164,7 +164,7 @@ impl PeopleListProjection {
     }
 }
 
-impl KernelEventObserver for PeopleListProjection {
+impl ObservedProjectionSink for PeopleListProjection {
     /// Called by the kernel once per accepted kind:30000 event.
     ///
     /// Gate by `kind == 30000` AND author == active pubkey, read the `d`-tag,

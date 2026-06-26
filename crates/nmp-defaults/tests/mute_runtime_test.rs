@@ -18,12 +18,11 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::{EventId, KernelEvent, SuppressionLookup};
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_ffi::{nmp_app_free, nmp_app_new};
 use nmp_nip01::{ModularTimelineProjection, ModularTimelineSpec, TimelineEventCard};
 use nmp_nip51::MuteListProjection;
 use nmp_threading::ModulePolicy;
-
 
 // ── Test pubkey constants ─────────────────────────────────────────────────────
 

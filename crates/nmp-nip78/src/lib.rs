@@ -17,9 +17,9 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
-use nmp_signer_iface::UnsignedEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_kinds::KIND_APP_DATA;
+use nmp_signer_iface::UnsignedEvent;
 use serde::{Deserialize, Serialize};
 
 /// Default maximum number of active-account app-data records retained.
@@ -211,7 +211,7 @@ impl AppDataProjection {
     }
 }
 
-impl KernelEventObserver for AppDataProjection {
+impl ObservedProjectionSink for AppDataProjection {
     fn on_kernel_event(&self, event: &KernelEvent) {
         self.ingest(event);
     }

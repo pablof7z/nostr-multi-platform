@@ -13,7 +13,7 @@ use nmp_core::substrate::KernelEvent;
 
 use crate::{AdmitExpr, EventGate, RootAdmission};
 
-use super::support::{root_event, Harness};
+use super::support::{Harness, reply_event, root_event};
 
 /// A root-admission predicate that admits only the given author set.
 fn members(ids: &[&str]) -> RootAdmission {
@@ -49,11 +49,28 @@ fn empty_member_set_admits_no_roots_fail_closed() {
 }
 
 #[test]
+fn cached_root_hydration_still_obeys_root_admission() {
+    let h = Harness::with_root_admission(&["alice"], allow_all_gate(), members(&["carol"]));
+
+    h.store(&root_event("op1", "bob", 10, "outside perspective"));
+    h.ingest(&reply_event("r1", "alice", 11, "op1"));
+
+    assert!(
+        h.snapshot().cards.is_empty(),
+        "cache hydration must not bypass the compiled root perspective"
+    );
+}
+
+#[test]
 fn difference_excludes_right_side_members_as_roots() {
     // Difference(A, B): a root authored by a B-side member is excluded from the
     // feed even though it is a root (the perspective filters the feed itself).
     // A = {alice, bob}, B = {bob} → only alice's root survives.
-    let left = AdmitExpr::Authors(["alice".to_string(), "bob".to_string()].into_iter().collect());
+    let left = AdmitExpr::Authors(
+        ["alice".to_string(), "bob".to_string()]
+            .into_iter()
+            .collect(),
+    );
     let right = AdmitExpr::Authors(["bob".to_string()].into_iter().collect());
     let admission = AdmitExpr::AndNot(Box::new(left), Box::new(right)).to_root_admission();
 

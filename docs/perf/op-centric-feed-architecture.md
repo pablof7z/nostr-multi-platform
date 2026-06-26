@@ -93,8 +93,8 @@ No `FollowSetLookup` trait. No `LogicalInterest::SocialTimeline`. No bespoke
 core follow-feed door.
 
 **`nmp-nip02::ActiveFollowSet`** exposes `follows()`, `predicate()`, `on_change()`.
-Internal `KernelEventObserver` watches kind:3; internal observer watches
-`Kernel::active_account_handle()` for account switches.
+The defaults runtime opens an observed projection for `kinds:[3]` scoped to the
+active account author and switches that projection on account changes.
 
 **`nmp-defaults`** composition root:
 

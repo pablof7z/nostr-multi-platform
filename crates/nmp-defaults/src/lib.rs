@@ -104,7 +104,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::{
-    register_observer_projection, AppHost, LiveEventTapRegistrar, SnapshotProjectionRegistrar,
+    AppHost, ObservedProjection, ObservedProjectionRegistrar, SnapshotProjectionRegistrar,
 };
 
 pub mod action_payloads;
@@ -454,10 +454,9 @@ fn register_defaults_inner(
 /// Wire the default NIP-23 long-form (kind:30023) **typed** snapshot projection
 /// into `app`.
 ///
-/// Constructs one [`nmp_content::LongformProjection`] and registers it twice
-/// against the same `Arc`: as a [`KernelEventObserver`](nmp_core::KernelEventObserver)
-/// (ingest — accumulates the resolved `ArticleProjection` for every kind:30023
-/// the kernel surfaces) AND as the typed snapshot projection under
+/// Constructs one [`nmp_content::LongformProjection`] and registers it twice:
+/// as a [`ObservedProjectionSink`](nmp_core::ObservedProjectionSink) and as the
+/// typed snapshot projection under
 /// [`LONGFORM_PROJECTION_KEY`](nmp_content::LONGFORM_PROJECTION_KEY) (output —
 /// the `NL23` FlatBuffer carried in every frame's `typed_projections` sidecar).
 /// Mirrors `nmp_wot::register_runtime`.
@@ -477,19 +476,24 @@ fn register_defaults_inner(
 /// Called by [`register_defaults`]; `pub` so an app opting out of the wholesale
 /// defaults can still wire just this projection.
 pub fn register_longform_projection(
-    app: &(impl LiveEventTapRegistrar + SnapshotProjectionRegistrar),
+    app: &(impl ObservedProjectionRegistrar + SnapshotProjectionRegistrar),
 ) {
     use nmp_content::LongformProjection;
-    use nmp_core::KernelEventObserver;
+    use nmp_core::ObservedProjectionSink;
 
     let projection = Arc::new(LongformProjection::new());
-    // register_observer_projection handles the D6 slot-poisoned guard (#1724 criterion 3):
-    // if the observer slot is poisoned it returns None and skips the projection registration.
-    let projection_for_closure = Arc::clone(&projection);
-    register_observer_projection(
-        app,
-        Arc::clone(&projection) as Arc<dyn KernelEventObserver>,
+    let observer_id = app.open_observed_projection(ObservedProjection::from_kinds(
+        Arc::clone(&projection) as Arc<dyn ObservedProjectionSink>,
         nmp_content::LONGFORM_PROJECTION_KEY,
-        move || Some(projection_for_closure.typed_projection()),
-    );
+        1,
+        [nmp_content::KIND_LONG_FORM_ARTICLE],
+        512,
+    ));
+    if observer_id == nmp_core::ObservedProjectionId(0) {
+        return;
+    }
+    let projection_for_closure = Arc::clone(&projection);
+    app.register_typed_snapshot_projection(nmp_content::LONGFORM_PROJECTION_KEY, move || {
+        Some(projection_for_closure.typed_projection())
+    });
 }

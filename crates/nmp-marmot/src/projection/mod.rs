@@ -7,7 +7,7 @@
 //!   shape verbatim).
 //! * [`state`] — [`state::MarmotProjection`]: owns the service + FFI-local
 //!   bookkeeping (pending-welcome cache, key-package publish timestamp);
-//!   implements `KernelEventObserver` (metadata-only).
+//!   implements `ObservedProjectionSink` (metadata-only).
 //! * [`ops`] — dispatch + read-projection handlers; the ONLY place
 //!   `mdk-core` input types are named for this layer.
 //! * [`publish`] — the internal relay-publish bridge that CLOSES the

@@ -206,7 +206,7 @@ impl Harness {
     /// fires the observer.
     pub(super) fn ingest(&self, event: &KernelEvent) {
         self.store(event);
-        use nmp_core::KernelEventObserver;
+        use nmp_core::ObservedProjectionSink;
         self.engine.on_kernel_event(event);
     }
 

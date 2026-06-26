@@ -7,7 +7,7 @@
 use std::sync::{Arc, Mutex};
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_core::{decode_snapshot_typed_projections, encode_snapshot_frame, SnapshotEnvelope};
 use nmp_nip01::op_feed::OP_FEED_SNAPSHOT_KEY;
 use nmp_nip51::MuteListProjection;

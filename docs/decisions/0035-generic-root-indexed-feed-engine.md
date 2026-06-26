@@ -71,12 +71,12 @@ trait objects it must name a producer for:
 until the target arrives through normal event ingest. The outer maps are
 `MAX_PROJECTION_MESSAGES`-bounded; each per-root attribution sub-map is
 `MAX_ATTRIBUTION_PER_ROOT` (= 64) bounded. The engine implements
-`KernelEventObserver` (ingest) and feed snapshot/window mechanics.
+`ObservedProjectionSink` (ingest) and feed snapshot/window mechanics.
 
 ## Secondary Data Boundary
 
 Firm rule (D0 + D11): the feed engine acquires events only through the
-`KernelEventObserver` ingest path. It does not emit event-ref resolve commands,
+`ObservedProjectionSink` ingest path. It does not emit event-ref resolve commands,
 observe claim-release internals, call `release_claim_expansion`, translate
 pointers into `nostr:` URIs, or otherwise turn a rendered edge into a new
 acquisition request.

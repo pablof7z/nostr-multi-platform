@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use nmp_core::substrate::KernelEvent;
-use nmp_core::KernelEventObserver;
+use nmp_core::ObservedProjectionSink;
 use nmp_feed::FeedRequest;
 
 use super::*;
@@ -367,7 +367,11 @@ fn kind5_coordinate_delete_by_foreign_author_is_noop() {
     let coord = address(AUTHOR_A, "article-a");
     feed.on_kernel_event(&delete_event("del", AUTHOR_B, vec![vec!["a", &coord]]));
 
-    assert_eq!(feed.len(), 1, "foreign a-tag delete must not remove the row");
+    assert_eq!(
+        feed.len(),
+        1,
+        "foreign a-tag delete must not remove the row"
+    );
 }
 
 #[test]
@@ -383,7 +387,10 @@ fn kind5_event_id_delete_removes_repost_source() {
 
     feed.on_kernel_event(&delete_event("del", AUTHOR_C, vec![vec!["e", "wrapper"]]));
 
-    assert!(feed.is_empty(), "author's e-tag delete removes the source row");
+    assert!(
+        feed.is_empty(),
+        "author's e-tag delete removes the source row"
+    );
 }
 
 #[test]

@@ -68,7 +68,12 @@ fn thread_kind_is_retained() {
 fn event_for_a_different_group_is_excluded() {
     let proj = GroupTimelineProjection::new(group());
     // Correct kind, but the `h` tag names a different group.
-    proj.on_kernel_event(&event("other", KIND_CHAT_MESSAGE, 100, h_tag("some-other-room")));
+    proj.on_kernel_event(&event(
+        "other",
+        KIND_CHAT_MESSAGE,
+        100,
+        h_tag("some-other-room"),
+    ));
     assert!(proj.snapshot().events.is_empty());
 }
 
@@ -166,10 +171,10 @@ fn round_trips_through_serde() {
 
 #[test]
 fn drives_through_observer_trait_object() {
-    // The projection must be usable as `Arc<dyn KernelEventObserver>` —
-    // that is exactly how a host registers it with `register_event_observer`.
+    // The projection must be usable as `Arc<dyn ObservedProjectionSink>` —
+    // that is exactly how a host passes it into an observed projection.
     let proj = Arc::new(GroupTimelineProjection::new(group()));
-    let observer: Arc<dyn KernelEventObserver> = Arc::clone(&proj) as _;
+    let observer: Arc<dyn ObservedProjectionSink> = Arc::clone(&proj) as _;
     observer.on_kernel_event(&event("e1", KIND_CHAT_MESSAGE, 100, h_tag("rust-nostr")));
     assert_eq!(proj.snapshot().events.len(), 1);
 }

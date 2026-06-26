@@ -196,35 +196,28 @@ pub use lifecycle::{new_observer_slot, LifecycleObserverRegistration, LifecycleO
 // is the union: anything narrower would leave the lib.rs imports unresolved.
 #[cfg(any(test, feature = "test-support", feature = "native"))]
 pub use lifecycle::{LifecycleObserverFn, LIFECYCLE_PHASE_BACKGROUND, LIFECYCLE_PHASE_FOREGROUND};
-// T146 — kernel event observer slot. Re-exported up the actor module chain so
-// `ffi/event_observer.rs` and the per-app crate registration path (via
-// `NmpApp::kernel_event_observers`) reach the same `Arc<Mutex<…>>` instance
-// the kernel holds for fan-out.
-// `KernelEventObserverSlot` and `notify_observers` are used by kernel/event_observer.rs
-// unconditionally. The slot constructors and registration helpers are native FFI only.
+// Declared observed-projection sink slot. Re-exported up the actor module chain
+// so nmp-ffi and per-app registration paths reach the same `Arc<Mutex<…>>`
+// instance the kernel holds for scoped delivery.
+// `ObservedProjectionSinkSlot` and `notify_observers` are used by
+// kernel/event_observer.rs unconditionally. The slot constructors and
+// registration helpers are native FFI only.
 pub(crate) use event_observer::notify_observers;
 // ADR-0062: targeted observer delivery (crate-internal replay path).
 pub(crate) use event_observer::notify_observer_by_id;
-// `KernelEventObserverSlot` is reached by `nmp-ffi` through
-// `nmp_core::__ffi_internal::KernelEventObserverSlot`.
-pub use event_observer::KernelEventObserverSlot;
-// `register_c_observer` reaches `nmp-ffi` through
-// `nmp_core::__ffi_internal::register_c_observer`.
-#[cfg(feature = "native")]
-pub use event_observer::register_c_observer;
+// `ObservedProjectionSinkSlot` is reached by `nmp-ffi` through
+// `nmp_core::__ffi_internal::ObservedProjectionSinkSlot`.
+pub use event_observer::ObservedProjectionSinkSlot;
 // Headless slot constructor — safe on wasm32 (no background thread).
 // Used by `KernelReducer::new` on all targets.
 pub(crate) use event_observer::new_event_observer_slot_headless;
-// `register_rust_observer` is a pure-Rust helper with no native deps; it is
-// available on all targets so wasm32 composition roots can register
-// KernelEventObservers. `new_event_observer_slot` and `unregister_observer`
-// remain native-only (used by the FFI / actor-thread shutdown path).
-pub use event_observer::register_rust_observer;
 // ADR-0062: muted observer registration and activation are available on all
 // targets. The kernel replay path activates muted observers after targeted
 // catch-up, so wasm/no-native reducer builds need the same pure helper.
+pub use event_observer::activate_observer_scoped;
+#[cfg(test)]
+pub(crate) use event_observer::register_rust_observer;
 pub use event_observer::register_rust_observer_muted;
-pub use event_observer::{activate_observer, activate_observer_scoped};
 // Diagnostics/test helper counting registered Rust observers in a slot;
 // pure (no native deps), available on all targets.
 pub use event_observer::rust_observer_count;
@@ -233,19 +226,11 @@ pub use event_observer::rust_observer_count;
 #[cfg(feature = "native")]
 pub use event_observer::{new_event_observer_slot, unregister_observer};
 // `unregister_observer` is pure Rust (no native deps) — expose pub(crate) on
-// all targets so `KernelReducer::unregister_event_observer` can delegate to it
-// from the wasm32/no-default-features browser-runtime composition path (PR-B
-// #2046). The `native`-only `pub use` above serves the FFI external path.
+// all targets for internal scoped observed-projection teardown.
 pub(crate) use event_observer::unregister_observer as unregister_observer_internal;
-// `KernelEventObserver` / `KernelEventObserverFn` / `KernelEventObserverId`
-// are the typed observer surface re-exported unconditionally from `lib.rs`
-// (per-app Rust crates and the C-ABI wire shape). `KernelEventObserverRegistration`
-// only reaches the outside world through `lib.rs::__ffi_internal`
-// (`#[cfg(feature = "native")]`); gate it so a `--no-default-features` build
-// does not see an unused-import on the registration type.
-#[cfg(feature = "native")]
-pub use event_observer::KernelEventObserverRegistration;
-pub use event_observer::{KernelEventObserver, KernelEventObserverFn, KernelEventObserverId};
+// `ObservedProjectionSink` / `ObservedProjectionId` are the scoped observed
+// projection surface re-exported unconditionally from `lib.rs`.
+pub use event_observer::{ObservedProjectionId, ObservedProjectionSink};
 // V-39: `send_gift_wrapped_dm` re-export removed — moved to `nmp-nip17`.
 #[cfg(feature = "native")]
 pub(super) use publish::{
