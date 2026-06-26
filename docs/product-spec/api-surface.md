@@ -328,6 +328,9 @@ or address; a relation-count component opens its own bounded source. The
 planner handles lifecycle, refcounting, dedup, routing, cache-serve, and close.
 Native shells never watch kind:3, expand list membership, run
 meta-subscribe-style fetch cascades, or compute a concrete author/tag/id set.
+The built-in default reducers include active-account follows, NIP-51 people-list
+members, and the active account's public mute-list `p` tags; apps still open
+them through `FeedParams`, not through per-source feed verbs.
 
 Dynamic FlatFeed-backed views, such as author and thread screens, are declared
 through `nmp_app_open_feed`. The app passes `FeedParams` with

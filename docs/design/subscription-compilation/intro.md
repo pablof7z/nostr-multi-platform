@@ -135,9 +135,11 @@ Concrete current examples:
 - `resolve_ref` / profile and event claims express component/read-model
   dependent interests. They are refcounted and deduped by the kernel; native
   components do not construct filters.
-- Future NIP-51 list, mute-list, and follow-pack feeds are additional
-  ReducedSource reducers above the planner: protocol/defaults code reduces the
-  source event(s) to pubkeys/tags/ids, then materializes normal interests.
+- NIP-51 list sources are ReducedSource reducers above the planner. Current
+  defaults include kind:30000 people-list members and the active account's
+  public kind:10000 mute-list `p` tags; follow-pack reducers follow the same
+  shape when added. Protocol/defaults code reduces the source event(s) to
+  pubkeys/tags/ids, then materializes normal interests.
 - Pointer/meta-subscribe-style views should follow the same rule: pointer
   streams and referenced targets become dependent interests or refs that route
   through the planner. They must not use out-of-band fetches or revive the

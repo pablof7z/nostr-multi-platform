@@ -30,6 +30,7 @@ use super::{read_active, register_op_feed_defaults};
 
 mod custom;
 mod flat_replay;
+mod nip51_sources;
 mod resolve;
 mod resolve_static;
 mod session_engine;
@@ -67,8 +68,10 @@ mod tests;
 ///
 /// * `ContactList` (active owner) → live [`nmp_nip02::ActiveFollowSet`] predicate
 ///   (foreign owner fails closed — no single-source resolver yet).
-/// * `ListMembers` → live [`nmp_nip51::PeopleListProjection`] (kind:30000)
-///   member predicate.
+/// * `ListMembers` → live NIP-51 pubkey reducers:
+///   [`nmp_nip51::PeopleListProjection`] for kind:30000 list ids, and
+///   [`nmp_nip51::MuteListProjection`] when the list id is
+///   [`nmp_nip51::ACTIVE_MUTE_LIST_PUBKEY_SOURCE_ID`].
 /// * `Wot` → the #1698 [`nmp_wot::score::WotGraph`] ranked second-degree query.
 /// * `Tag` → `#t` acquisition with EVENT-AWARE `AdmitExpr::Tag` admission (the
 ///   filter gates at acquisition, but admission re-checks the tag so the scope
