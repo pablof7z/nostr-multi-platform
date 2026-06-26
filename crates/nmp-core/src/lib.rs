@@ -284,6 +284,29 @@ pub mod typed_projections {
     pub use crate::kernel::public_typed_projections::*;
 }
 
+// #2074 — signer-state typed-projection codec promoted to the crate root.
+//
+// `SignerStateModel`, `encode_signer_state`, `decode_signer_state`, and the
+// three schema constants are re-exported here unconditionally so browser-runtime
+// and external consumers can encode/decode the Tier-1 signer-state typed sidecar
+// using pure FlatBuffers without the `__ffi_internal` seam or native-only deps.
+//
+// On native builds: re-exported from the actor-owned codec (the canonical source).
+// On non-native (wasm32/browser) builds: re-exported from the always-compiled
+// `signer_state_codec` shim (pure FlatBuffers, no native runtime deps).
+#[cfg(feature = "native")]
+pub use actor::typed_projections::{
+    decode_signer_state, encode_signer_state, SignerStateModel, SIGNER_STATE_FILE_IDENTIFIER,
+    SIGNER_STATE_SCHEMA_ID, SIGNER_STATE_SCHEMA_VERSION,
+};
+#[cfg(not(feature = "native"))]
+pub(crate) mod signer_state_codec;
+#[cfg(not(feature = "native"))]
+pub use signer_state_codec::{
+    decode_signer_state, encode_signer_state, SignerStateModel, SIGNER_STATE_FILE_IDENTIFIER,
+    SIGNER_STATE_SCHEMA_ID, SIGNER_STATE_SCHEMA_VERSION,
+};
+
 // Stage 4 of NIP-46 wiring: app/FFI composition translates app-neutral
 // broker events into actor commands. The `actor` module is crate-private so
 // this re-export is the only Rust-side path for adapters that need to push

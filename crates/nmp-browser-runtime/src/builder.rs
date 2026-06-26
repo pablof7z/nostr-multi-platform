@@ -49,7 +49,9 @@
 //! dispatch / snapshot / sign surface (#2058). The raw `KernelReducer` and
 //! `BrowserRuntime` are NOT public.
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+
+use nmp_core::Clock;
 
 use crate::runtime::BrowserRuntimeHandle;
 
@@ -215,20 +217,30 @@ impl BrowserAppBuilder<StorageSet> {
     /// registration). Keys accumulate with any declared earlier via the
     /// `AppHost` trait method.
     ///
-    /// An empty iterator records an empty **narrow** set (a no-op narrowing that
-    /// declares nothing) — it is NOT "receive every built-in". To opt into the
-    /// full Tier-2 firehose explicitly, call
-    /// [`Self::consume_all_builtin_projections`] instead.
+    /// # Panics
+    ///
+    /// Panics immediately if `keys` is empty — BEFORE advancing the typestate or
+    /// touching the reducer. An empty narrowing declares nothing (it would leave
+    /// `DeclaredProjections::Undeclared`, the silent ADR-0053 footgun), so it is
+    /// rejected loudly rather than accepted. To receive every built-in, call
+    /// [`Self::consume_all_builtin_projections`] explicitly instead.
     pub fn declare_projections<I, K>(self, keys: I) -> BrowserAppBuilder<ProjectionsDeclared>
     where
         I: IntoIterator<Item = K>,
         K: Into<String>,
     {
+        let keys_vec: Vec<String> = keys.into_iter().map(Into::into).collect();
+        assert!(
+            !keys_vec.is_empty(),
+            "declare_projections called with an empty set — use \
+             .consume_all_builtin_projections() to opt into the full Tier-2 firehose \
+             explicitly (#2072: an empty narrowing is the ADR-0053 footgun)"
+        );
         {
             let Ok(g) = self.inner.lock() else {
                 return self.advance();
             };
-            g.reducer.declare_consumed_projections(keys);
+            g.reducer.declare_consumed_projections(keys_vec);
         }
         self.advance()
     }
@@ -350,6 +362,24 @@ impl BrowserAppBuilder<ProvidersDecided> {
             .into_inner()
             .expect("BrowserAppBuilder::start: inner Mutex poisoned");
 
+        // #2072 — loud ADR-0053 gate: after register_defaults, declared
+        // projections MUST be in `All` or `Narrow` state, not `Undeclared`.
+        // Fires as a panic in debug/test builds; degrades to a warn in release.
+        debug_assert!(
+            !inner.reducer.declared_projections_is_undeclared(),
+            "BrowserAppBuilder::start(): projection-consumption intent was never \
+             declared. Call .declare_projections([...]) or \
+             .consume_all_builtin_projections() before start() (ADR-0053 gate, #2072)."
+        );
+        #[cfg(not(debug_assertions))]
+        if inner.reducer.declared_projections_is_undeclared() {
+            tracing::warn!(
+                "BrowserAppBuilder::start(): projection intent undeclared — \
+                 ADR-0053 footgun; call declare_projections or \
+                 consume_all_builtin_projections before start() (#2072)"
+            );
+        }
+
         BrowserRuntimeHandle::from_builder_inner(inner)
     }
 }
@@ -366,6 +396,39 @@ impl<S> BrowserAppBuilder<S> {
             inner: self.inner,
             _state: std::marker::PhantomData,
         }
+    }
+
+    // ── #2076 — deterministic clock seam ─────────────────────────────────────
+
+    /// Inject a host-supplied or deterministic kernel clock (#2076).
+    ///
+    /// The injected `Arc<dyn Clock>` is stored in the builder and applied to
+    /// the `KernelReducer` at `start()` via `KernelReducer::set_clock`. Use
+    /// this to supply a deterministic replay clock or a host-controlled
+    /// wall-clock adapter. The `Clock` trait returns
+    /// `nmp_core::time::SystemTime` (`web_time::SystemTime` on wasm32 —
+    /// **no** `std::time`).
+    ///
+    /// NOT a typestate gate — accumulating setter, available in all builder
+    /// states. A later call overwrites an earlier one (last-writer-wins).
+    pub fn with_clock(self, clock: Arc<dyn Clock>) -> Self {
+        if let Ok(mut g) = self.inner.lock() {
+            g.clock = Some(clock);
+        }
+        self
+    }
+
+    /// Explicitly opt into the default web-time wall-clock (#2076).
+    ///
+    /// Makes the "I accept non-deterministic time" decision visible in code
+    /// rather than relying on the absence of `.with_clock(...)`. Calling this
+    /// clears any previously injected clock (the system clock IS the default —
+    /// this is the greppable opt-in). Available in all builder states.
+    pub fn with_system_clock(self) -> Self {
+        if let Ok(mut g) = self.inner.lock() {
+            g.clock = None; // None → default web-time SystemClock at start()
+        }
+        self
     }
 }
 

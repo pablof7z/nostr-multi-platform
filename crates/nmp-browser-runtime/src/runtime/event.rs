@@ -89,4 +89,15 @@ pub enum BrowserRuntimeEvent {
         /// Number of inbound frames dropped since the last pump turn.
         count: u64,
     },
+    /// A snapshot frame failed to decode or merge in `BrowserRuntimeHandle::next_frame`.
+    ///
+    /// The host still receives the previous valid frame (if any) via
+    /// [`crate::runtime::snapshot::SnapshotOutcome::Degraded`]. This event
+    /// surfaces the error reason so it is observable rather than silent (D6).
+    /// It is NOT emitted on a terminal panic frame (that returns
+    /// [`crate::runtime::snapshot::SnapshotOutcome::Panic`] directly).
+    SnapshotDecodeFailed {
+        /// Error category/reason (not the internal FlatBuffers error body).
+        reason: String,
+    },
 }

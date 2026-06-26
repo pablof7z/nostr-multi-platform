@@ -52,9 +52,18 @@ pub(crate) use bunker_handshake_fb::{
 pub(crate) use nip46_onboarding_fb::{
     encode_nip46_onboarding, NIP46_ONBOARDING_FILE_IDENTIFIER, NIP46_ONBOARDING_SCHEMA_VERSION,
 };
-pub(crate) use signer_state_fb::{
-    encode_signer_state, SIGNER_STATE_FILE_IDENTIFIER, SIGNER_STATE_SCHEMA_VERSION,
-};
+// #2074 — promoted to `pub` so browser-runtime and external consumers can
+// encode the signer-state typed sidecar without `feature = "native"` or
+// `__ffi_internal`. Pure FlatBuffers codec — no native deps, wasm-safe.
+pub use signer_state_fb::encode_signer_state;
+// The generated `signer_state_producer_consts.generated.rs` declares these
+// constants `pub(crate)` (they are internal to the crate). We provide `pub`
+// re-declarations here so `lib.rs` can re-export them at the crate root for
+// external consumers (e.g. browser-runtime, external shells). The values are
+// guaranteed-identical to the generated file — the codegen-drift CI check
+// catches any divergence in the generated file itself. (#2074)
+pub const SIGNER_STATE_FILE_IDENTIFIER: &[u8; 4] = signer_state_fb::SIGNER_STATE_FILE_IDENTIFIER;
+pub const SIGNER_STATE_SCHEMA_VERSION: u32 = signer_state_fb::SIGNER_STATE_SCHEMA_VERSION;
 // Promoted from #[cfg(test)]: decode functions + model types + schema IDs are
 // now public so external shells (e.g. chirp-desktop, Android) can decode the
 // "signer_state", "bunker_handshake", and "nip46_onboarding" typed sidecars.
