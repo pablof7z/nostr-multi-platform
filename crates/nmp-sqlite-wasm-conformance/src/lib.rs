@@ -15,33 +15,35 @@
 //! browser (`web/run-conformance.mjs`). It is the sole end-to-end proof that
 //! the novel sync-over-OPFS path actually executes.
 //!
-//! ## What it proves today (PR-6, against PR-2's engine)
+//! ## What it proves today (through PR-3's engine)
 //!
-//! PR-3 (the `OpfsSqliteEventStore` inherent insert/point-read methods) is in
-//! flight in parallel, so this harness does not depend on it. It proves the
-//! load-bearing primitive instead, through the PR-2 shim that is on master:
+//! As of #1007 PR-3 the harness drives the store's real typed surface end to
+//! end, inside the dedicated Worker:
 //!
 //! 1. `open_store` — module init + opfs-sahpool VFS install + database open.
-//! 2. `create_table` / `insert_event` / `read_back_event` — a raw SQL
-//!    round-trip (DDL + bound INSERT + SELECT with typed column reads).
-//! 3. `reopen_persisted` — close the store, reopen the same OPFS database, and
-//!    confirm the row survived: real OPFS durability, the backend's whole point.
+//! 2. `schema_ready` — `open()` auto-migrated the full events schema (fresh db
+//!    has a queryable, empty `events` table; no hand-rolled DDL).
+//! 3. `insert_event` — a structurally-valid kind:1 event through the typed
+//!    [`OpfsSqliteStore::insert`], asserting an `Inserted` outcome.
+//! 4. `read_back_event` — typed [`OpfsSqliteStore::get_by_id`] point read with
+//!    field-level value assertions.
+//! 5. `reopen_persisted` — close the store, reopen the same OPFS database, and
+//!    confirm the event is still readable: real OPFS durability, the backend's
+//!    whole point.
 //!
 //! ## How it grows as the engine lands
 //!
-//! Each assertion is an independent recorded [`Step`]. As PR-3/4/5 add inherent
-//! methods to the store (`insert`, point reads, filter scans, gc), the raw
-//! `exec`/`prepare` steps here are replaced — assertion for assertion — by calls
-//! to those typed methods, and new steps (scan, gc-bound) slot into [`run`]
-//! without touching the Worker/host/CI plumbing. The harness shape is fixed;
-//! only the body of [`run`] tracks the engine surface.
+//! Each assertion is an independent recorded [`Step`]. As PR-4/5 add scan and gc
+//! methods, new steps slot into [`run`] without touching the Worker/host/CI
+//! plumbing. The harness shape is fixed; only the body of [`run`] tracks the
+//! engine surface.
 //!
 //! On native this crate cfg-compiles to nothing (the engine it drives is
 //! wasm32-only), mirroring `nmp-sqlite-wasm`'s own target gating.
 
 #![cfg(target_arch = "wasm32")]
 
-use nmp_sqlite_wasm::OpfsSqliteStore;
+use nmp_sqlite_wasm::{EngineEvent, InsertOutcome, OpfsSqliteStore};
 use wasm_bindgen::prelude::*;
 
 /// One recorded conformance assertion: its stable name, pass/fail, and a
@@ -138,101 +140,104 @@ async fn run() -> Report {
         }
     };
 
-    // Fixture row. PR-3 swaps the raw SQL below for the typed
-    // `OpfsSqliteEventStore` insert/point-read methods over a real nostr event.
-    let fixture_id = "f00dbabe00000000000000000000000000000000000000000000000000000000";
-    let fixture_kind: i64 = 1;
-    let fixture_raw: &[u8] = br#"{"kind":1,"content":"hello opfs-sahpool"}"#;
+    // A structurally-valid kind:1 fixture. `insert` gates only on hex lengths
+    // (id 64, pubkey 64, sig 128) — there is no signature check at the store
+    // layer (verification happens upstream in the kernel) — so a deterministic
+    // fixture is accepted and stored.
+    let event = EngineEvent {
+        id: "f00dbabe00000000000000000000000000000000000000000000000000000000".to_owned(),
+        pubkey: "ab".repeat(32),
+        created_at: 1_700_000_000,
+        kind: 1,
+        tags: vec![vec!["t".to_owned(), "opfs".to_owned()]],
+        content: "hello opfs-sahpool".to_owned(),
+        sig: "00".repeat(64),
+    };
+    let id = match event.id_bytes() {
+        Some(id) => id,
+        None => {
+            report.record("fixture_id", Err("fixture id is not 64-char hex".to_owned()));
+            return report;
+        }
+    };
+    let received_at_ms: u64 = 1_700_000_000_123;
 
-    {
-        let cell = store.conn();
-        let conn = cell.borrow();
+    // ── Step 2: open() auto-migrated the real schema ──────────────────────
+    // PR-3's `open` creates the full events schema; a fresh OPFS db must report
+    // an empty, queryable `events` table (proves migration ran — the harness no
+    // longer hand-rolls DDL).
+    report.record(
+        "schema_ready",
+        (|| {
+            let cell = store.conn();
+            let conn = cell.borrow();
+            let stmt = conn
+                .prepare("SELECT count(*) FROM events")
+                .map_err(|e| e.to_string())?;
+            if !stmt.step().map_err(|e| e.to_string())? {
+                return Err("count query returned no row".to_owned());
+            }
+            let n = stmt.column_int64(0).map_err(|e| e.to_string())?;
+            if n != 0 {
+                return Err(format!("fresh db already had {n} events"));
+            }
+            Ok("open() migrated schema; events table present and empty".to_owned())
+        })(),
+    );
 
-        // ── Step 2: DDL ──────────────────────────────────────────────────
-        report.record(
-            "create_table",
-            conn.exec(
-                "CREATE TABLE events (\
-                   id   TEXT PRIMARY KEY, \
-                   kind INTEGER NOT NULL, \
-                   raw  BLOB NOT NULL)",
-            )
-            .map(|()| "events table created".to_owned())
-            .map_err(|e| e.to_string()),
-        );
+    // ── Step 3: typed insert (#1007 PR-3 OpfsSqliteStore::insert) ──────────
+    report.record(
+        "insert_event",
+        match store.insert(event.clone(), "conformance", received_at_ms) {
+            Ok(InsertOutcome::Inserted { sources_after, .. }) => {
+                Ok(format!("inserted 1 event (sources_after={sources_after})"))
+            }
+            Ok(other) => Err(format!("insert did not store the event: {other:?}")),
+            Err(e) => Err(format!("insert failed: {e}")),
+        },
+    );
 
-        // ── Step 3: bound INSERT (text + int64 + blob params) ─────────────
-        report.record(
-            "insert_event",
-            (|| {
-                let stmt = conn
-                    .prepare("INSERT INTO events (id, kind, raw) VALUES (?1, ?2, ?3)")
-                    .map_err(|e| e.to_string())?;
-                stmt.bind_text(1, fixture_id).map_err(|e| e.to_string())?;
-                stmt.bind_int64(2, fixture_kind).map_err(|e| e.to_string())?;
-                stmt.bind_blob(3, fixture_raw).map_err(|e| e.to_string())?;
-                if stmt.step().map_err(|e| e.to_string())? {
-                    return Err("INSERT unexpectedly produced a result row".to_owned());
+    // ── Step 4: typed point read (get_by_id) + value assert ───────────────
+    report.record(
+        "read_back_event",
+        match store.get_by_id(&id) {
+            Ok(Some(stored)) => {
+                if stored.event.id != event.id {
+                    Err(format!("id mismatch: got {}", stored.event.id))
+                } else if stored.event.content != event.content {
+                    Err(format!("content mismatch: got {:?}", stored.event.content))
+                } else if stored.received_at_ms != received_at_ms {
+                    Err(format!(
+                        "received_at_ms mismatch: got {}",
+                        stored.received_at_ms
+                    ))
+                } else {
+                    Ok(format!(
+                        "round-tripped id={} kind={} via typed insert/get_by_id",
+                        stored.event.id, stored.event.kind
+                    ))
                 }
-                Ok("inserted 1 event".to_owned())
-            })(),
-        );
-
-        // ── Step 4: point read + typed column decode + value assert ───────
-        report.record(
-            "read_back_event",
-            (|| {
-                let stmt = conn
-                    .prepare("SELECT id, kind, raw FROM events WHERE id = ?1")
-                    .map_err(|e| e.to_string())?;
-                stmt.bind_text(1, fixture_id).map_err(|e| e.to_string())?;
-                if !stmt.step().map_err(|e| e.to_string())? {
-                    return Err("SELECT returned no row".to_owned());
-                }
-                let id = stmt.column_text(0).map_err(|e| e.to_string())?;
-                let kind = stmt.column_int64(1).map_err(|e| e.to_string())?;
-                let raw = stmt.column_blob(2).map_err(|e| e.to_string())?;
-                if id != fixture_id {
-                    return Err(format!("id mismatch: got {id}"));
-                }
-                if kind != fixture_kind {
-                    return Err(format!("kind mismatch: got {kind}"));
-                }
-                if raw.as_slice() != fixture_raw {
-                    return Err(format!("raw blob mismatch: got {} bytes", raw.len()));
-                }
-                Ok(format!("round-tripped event id={id} kind={kind} raw={}B", raw.len()))
-            })(),
-        );
-    }
+            }
+            Ok(None) => Err("get_by_id returned None for the inserted event".to_owned()),
+            Err(e) => Err(format!("get_by_id failed: {e}")),
+        },
+    );
 
     // ── Step 5: persistence across close + reopen ─────────────────────────
     // Drop the store (its `Drop` closes the db handle), reopen the same OPFS
-    // database, and confirm the row is still there: real durability, not an
-    // in-memory illusion.
+    // database, and confirm the event is still readable via the typed point
+    // read: real durability, not an in-memory illusion.
     drop(store);
     match OpfsSqliteStore::open(&db_name).await {
         Ok(store2) => {
             report.record(
                 "reopen_persisted",
-                (|| {
-                    let cell = store2.conn();
-                    let conn = cell.borrow();
-                    let stmt = conn
-                        .prepare("SELECT count(*) FROM events")
-                        .map_err(|e| e.to_string())?;
-                    if !stmt.step().map_err(|e| e.to_string())? {
-                        return Err("count query returned no row".to_owned());
-                    }
-                    let n = stmt.column_int64(0).map_err(|e| e.to_string())?;
-                    if n != 1 {
-                        return Err(format!("expected 1 persisted event, found {n}"));
-                    }
-                    Ok("event survived store close + reopen".to_owned())
-                })(),
+                match store2.get_by_id(&id) {
+                    Ok(Some(_)) => Ok("event survived store close + reopen".to_owned()),
+                    Ok(None) => Err("event missing after reopen".to_owned()),
+                    Err(e) => Err(format!("get_by_id after reopen failed: {e}")),
+                },
             );
-            // Best-effort cleanup so the OPFS origin does not accrue tables.
-            let _ = store2.conn().borrow().exec("DROP TABLE events");
         }
         Err(e) => {
             report.record("reopen_persisted", Err(format!("reopen failed: {e}")));
