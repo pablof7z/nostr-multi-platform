@@ -206,10 +206,7 @@ pub(super) fn dispatch_command(
         ActorCommand::EnqueueOutbound { role, relay_url, text } => {
             Some(vec![OutboundMessage::new(role, relay_url, text)])
         }
-        // Structural REQ-before-EVENT fix: route the preamble to the worker.
-        // Resolve the handle from relay_controls (URL-keyed), then forward to
-        // pool.set_reconnect_preamble. Stale or missing handles are silently
-        // ignored (same pattern as the backoff-hint dispatch in relay_events.rs).
+        // REQ-before-EVENT fix (#2119): forward preamble to pool. Stale handles silently ignored.
         ActorCommand::SetReconnectPreamble { relay_url, frames, .. } => {
             let canonical = CanonicalRelayUrl::parse_or_raw(&relay_url);
             if let Some(control) = ctx.relay_runtime.relay_controls.get(&canonical) {

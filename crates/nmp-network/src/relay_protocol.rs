@@ -105,6 +105,49 @@ pub fn is_permanent_error(error: &str) -> bool {
     error.contains("403") || error.contains("401") || error.contains("Forbidden")
 }
 
+/// After a relay has been connected for this duration, the reconnect backoff
+/// is reset to [`RELAY_RECONNECT_DELAY_INITIAL`] on the next disconnect (V-92).
+pub const RELAY_BACKOFF_RESET_AFTER: Duration = Duration::from_secs(300); // 5 minutes
+
+/// V-58 / V-92 — compute and apply the reconnect backoff for one disconnect.
+///
+/// Called by `run_relay_worker` in the `Reconnect` branch. Mutates
+/// `current_backoff` in place (so the next call starts from the updated value)
+/// and returns the base delay before jitter.
+///
+/// Rules (in priority order):
+///
+/// 1. `hint = Some(BackoffClass::RateLimited)` — relay just rate-limited us.
+///    Override V-92 reset and normal exponential advance: pin the base to
+///    [`RELAY_RECONNECT_DELAY_RATE_LIMITED`] (60 s) regardless of session age.
+/// 2. `hint = None | Some(BackoffClass::Transient)` — normal transient drop.
+///    V-92 / GH #615: if the session ran for ≥ [`RELAY_BACKOFF_RESET_AFTER`]
+///    (5 min), reset the base to [`RELAY_RECONNECT_DELAY_INITIAL`]; otherwise
+///    advance the exponential curve (×2 capped at [`RELAY_RECONNECT_DELAY_MAX`]).
+///
+/// `pub(crate)` so the relay-worker unit tests call the real production logic
+/// without spinning up a socket.
+pub(crate) fn apply_reconnect_backoff(
+    hint: Option<BackoffClass>,
+    current_backoff: &mut Duration,
+    connected_elapsed: Duration,
+) -> Duration {
+    match hint {
+        Some(BackoffClass::RateLimited) => {
+            *current_backoff = RELAY_RECONNECT_DELAY_RATE_LIMITED;
+            *current_backoff
+        }
+        None | Some(BackoffClass::Transient) => {
+            if connected_elapsed >= RELAY_BACKOFF_RESET_AFTER {
+                *current_backoff = RELAY_RECONNECT_DELAY_INITIAL;
+            } else {
+                *current_backoff = (*current_backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
+            }
+            *current_backoff
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

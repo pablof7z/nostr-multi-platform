@@ -494,15 +494,3 @@ fn map_ack_build_error(e: &RpcBuildError) -> String {
     }
 }
 
-// ─── Phase constructor helpers (used by bunker.rs / nostrconnect.rs) ─────────
-
-pub(crate) fn phase_bunker_wait_connect_ack(
-    connect_id: String,
-    remote_pubkey: PublicKey,
-) -> Phase {
-    Phase::BunkerWaitConnectAck { connect_id, remote_pubkey }
-}
-
-pub(crate) fn phase_nc_wait_connect(expected_secret: String) -> Phase {
-    Phase::NostrConnectWaitConnect { expected_secret }
-}

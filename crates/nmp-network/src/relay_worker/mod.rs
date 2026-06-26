@@ -17,6 +17,8 @@ mod no_polling_tests;
 mod socket_io;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod preamble_tests;
 
 use connect::open_relay_socket;
 use socket_io::{drain_relay_reads, flush_relay_writes, flush_socket_message, FlushResult};
@@ -108,21 +110,13 @@ enum RelayWorkerResult {
 
 pub(super) type RelaySocket = WebSocket<MaybeTlsStream<TcpStream>>;
 
-// V-01 Stage 3: backoff/keepalive constants and helpers now live in the
-// always-compiled `relay_protocol` module so the wasm32 `BrowserRelayDriver`
-// can reuse them. Behaviour and values are unchanged — these `use` statements
-// preserve the legacy in-module names so the body of `run_relay_worker` is
-// untouched.
-// V-58: add RELAY_RECONNECT_DELAY_RATE_LIMITED for the rate-limited long-backoff.
+// V-01 Stage 3 / V-58: backoff/keepalive constants AND the backoff computation
+// helper now live in the always-compiled `relay_protocol` module so both the
+// native relay worker and the wasm32 `BrowserRelayDriver` can share them.
 use crate::relay_protocol::{
-    is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL,
-    RELAY_RECONNECT_DELAY_MAX, RELAY_RECONNECT_DELAY_RATE_LIMITED,
+    apply_reconnect_backoff, is_permanent_error, jittered_backoff,
+    RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
 };
-
-/// After a relay has been connected for this duration, the reconnect backoff
-/// is reset to [`RELAY_RECONNECT_DELAY_INITIAL`] on the next disconnect,
-/// preventing accumulated backoff from earlier failure cycles (V-92 / GH #615).
-const RELAY_BACKOFF_RESET_AFTER_SECS: Duration = Duration::from_secs(300); // 5 minutes
 
 /// Spawn-with-explicit-keepalive worker that dials `relay_url` on
 /// transport lane `role`.
@@ -443,52 +437,6 @@ fn run_connected_relay(
         }
         if ready.control || ready.writable {
             continue;
-        }
-    }
-}
-
-/// V-58 / V-92 — compute and apply the reconnect backoff for one disconnect.
-///
-/// Called by `run_relay_worker` in the `Reconnect` branch. Mutates
-/// `current_backoff` in place (so the next call starts from the updated value)
-/// and returns the jittered delay to wait before retrying.
-///
-/// Rules (in priority order):
-///
-/// 1. `hint = Some(BackoffClass::RateLimited)` — relay just rate-limited us.
-///    Override V-92 reset and normal exponential advance: pin the base to
-///    [`RELAY_RECONNECT_DELAY_RATE_LIMITED`] (60 s) regardless of session age.
-///    Jitter is applied on top.
-/// 2. `hint = None | Some(BackoffClass::Transient)` — normal transient drop.
-///    V-92 / GH #615: if the session ran for ≥ [`RELAY_BACKOFF_RESET_AFTER_SECS`]
-///    (5 min), reset the base to [`RELAY_RECONNECT_DELAY_INITIAL`] so
-///    accumulated earlier-cycle debt does not bleed into stable relays.
-///    Otherwise advance the exponential curve (×2 capped at
-///    [`RELAY_RECONNECT_DELAY_MAX`]). Jitter is applied on top.
-///
-/// This is `pub(crate)` so tests can call the real production logic directly
-/// without spinning up a socket.
-pub(crate) fn apply_reconnect_backoff(
-    hint: Option<BackoffClass>,
-    current_backoff: &mut Duration,
-    connected_elapsed: Duration,
-) -> Duration {
-    match hint {
-        Some(BackoffClass::RateLimited) => {
-            // V-58: pin base to the long value so *future* reconnects
-            // (hint absent) also start from the rate-limited floor.
-            *current_backoff = RELAY_RECONNECT_DELAY_RATE_LIMITED;
-            *current_backoff
-        }
-        None | Some(BackoffClass::Transient) => {
-            // V-92 / GH #615: healthy session → reset to initial.
-            if connected_elapsed >= RELAY_BACKOFF_RESET_AFTER_SECS {
-                *current_backoff = RELAY_RECONNECT_DELAY_INITIAL;
-            } else {
-                // Mid-session drop: advance the exponential curve.
-                *current_backoff = (*current_backoff * 2).min(RELAY_RECONNECT_DELAY_MAX);
-            }
-            *current_backoff
         }
     }
 }
