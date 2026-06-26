@@ -53,4 +53,5 @@ wasm-bindgen-futures = "0.4.71"
 
 [dev-dependencies]
 nmp-core = { path = "../nmp-core", features = ["test-support"], default-features = false }
+nmp-codegen = { path = "../nmp-codegen" }
 wasm-bindgen-test = "0.3"
