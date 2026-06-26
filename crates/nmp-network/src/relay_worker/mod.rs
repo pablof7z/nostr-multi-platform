@@ -157,6 +157,7 @@ pub(crate) fn spawn_relay_worker_with_keepalive(
     control_tx
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_relay_worker(
     role: RelayRole,
     relay_url: String,

@@ -204,10 +204,9 @@ fn resolve_with_deadline(
             std::io::ErrorKind::TimedOut,
             format!("dns resolution for {host}:{port} exceeded {deadline:?}"),
         )),
-        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "dns resolver thread terminated unexpectedly",
-        )),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+            Err(std::io::Error::other("dns resolver thread terminated unexpectedly"))
+        }
     }
 }
 
