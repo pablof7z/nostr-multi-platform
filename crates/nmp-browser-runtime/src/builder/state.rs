@@ -23,7 +23,7 @@ use nmp_core::substrate::{
     RelayConnectedHook, RelayTextInterceptor, ReqFrameInterceptor, RoutingTraceObserver,
 };
 use nmp_core::{
-    ActionRegistry, AppRelaySlot, KernelEventObserverId, KernelReducer,
+    ActionRegistry, AppRelaySlot, Clock, KernelEventObserverId, KernelReducer,
     publish::OutboxResolver,
     slots::{ActiveAccountSlot, IndexerRelaysSlot, LocalWriteRelaysSlot},
 };
@@ -137,6 +137,13 @@ pub(crate) struct BrowserBuilderInner {
     pub(crate) relay_bootstrap: Vec<(String, String)>,
     /// Run config set at `decide_providers()` gate.
     pub(crate) run_config: Option<crate::builder::BrowserRunConfig>,
+
+    // ── #2076 — clock injection ───────────────────────────────────────────────
+    /// Injectable kernel clock. `None` = use the default web-time wall-clock.
+    /// Set via `.with_clock(arc)` or `.with_system_clock()`. Applied at
+    /// `start()` via `KernelReducer::set_clock`. `Send + Sync` so the builder
+    /// itself stays `Send + Sync` (same constraint as the rest of the inner).
+    pub(crate) clock: Option<Arc<dyn Clock>>,
 }
 
 impl BrowserBuilderInner {
@@ -176,6 +183,7 @@ impl BrowserBuilderInner {
             capability_providers: Vec::new(),
             relay_bootstrap: Vec::new(),
             run_config: None,
+            clock: None,
         }
     }
 }

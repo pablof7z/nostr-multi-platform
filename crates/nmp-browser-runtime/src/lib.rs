@@ -29,7 +29,10 @@ mod runtime;
 pub mod signer;
 
 pub use builder::{BrowserAppBuilder, BrowserRunConfig};
-pub use runtime::{BrowserRuntimeEvent, BrowserRuntimeHandle, PumpOutcome};
+pub use runtime::{
+    BrowserRuntimeDiagnostics, BrowserRuntimeEvent, BrowserRuntimeHandle, PumpOutcome,
+    SnapshotOutcome,
+};
 pub use signer::CapabilityEnvelope;
 
 // Re-export typestate markers for consumers that need to name them

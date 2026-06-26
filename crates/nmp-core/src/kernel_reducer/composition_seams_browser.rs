@@ -15,6 +15,8 @@ use std::ops::Range;
 use std::sync::atomic::{AtomicBool, AtomicU64};
 use std::sync::Arc;
 
+use crate::Clock;
+
 use crate::actor::unregister_observer_internal as unregister_observer;
 use crate::relay::OutboundMessage;
 use crate::substrate::{
@@ -240,5 +242,35 @@ impl super::KernelReducer {
             return;
         };
         d.remove_range_parser_slot(slot_key);
+    }
+
+    // ── #2072 — explicit projection-consumption enforcement ──────────────────
+
+    /// Return `true` when the host has NOT yet called `declare_projections` or
+    /// `consume_all_builtin_projections`. Used by `BrowserAppBuilder::start()`
+    /// to fire the ADR-0053 debug-assert gate (loud forgotten-declaration).
+    ///
+    /// D6 — poisoned slot: returns `true` (treat as undeclared; loud is safer
+    /// than silent emit-all in a poisoned state).
+    #[must_use]
+    pub fn declared_projections_is_undeclared(&self) -> bool {
+        self.snapshot_slot
+            .lock()
+            .map(|guard| guard.declared_projections().is_undeclared())
+            .unwrap_or(true) // D6: poisoned → treat as undeclared
+    }
+
+    // ── #2076 — deterministic clock seam ────────────────────────────────────
+
+    /// Install an injectable wall-clock on the wrapped kernel (#2076).
+    ///
+    /// Non-test public seam: `BrowserAppBuilder` stores the clock via
+    /// `.with_clock(arc)` and applies it here at `start()`. Production callers
+    /// use the explicit `.with_system_clock()` opt-in (web-time wall-clock) or
+    /// `.with_clock(...)` for a host/deterministic clock. No `std::time` here —
+    /// the [`Clock`] trait returns `crate::time::SystemTime` (`web_time` on
+    /// wasm32). D0 (substrate-generic): `Clock` has no app or protocol nouns.
+    pub fn set_clock(&mut self, clock: Arc<dyn Clock>) {
+        self.kernel.set_clock(clock);
     }
 }
