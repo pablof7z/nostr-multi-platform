@@ -246,6 +246,10 @@ name = "nmp-signers"
 path = "crates/nmp-signers"
 
 [[public_crates]]
+name = "nmp-sqlite-wasm"
+path = "crates/nmp-sqlite-wasm"
+
+[[public_crates]]
 name = "nmp-testing"
 path = "crates/nmp-testing"
 
