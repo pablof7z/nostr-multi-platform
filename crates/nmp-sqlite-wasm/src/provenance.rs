@@ -16,7 +16,7 @@
 #![cfg(target_arch = "wasm32")]
 
 use crate::error::SqliteWasmError;
-use crate::outcome::EventId;
+use crate::outcome::{EventId, ProvenanceRow};
 use crate::shim::SqliteConn;
 use crate::store_impl::{exec_write, SqlVal};
 use crate::OpfsSqliteStore;
@@ -129,6 +129,28 @@ fn sort_entries(entries: &mut [Entry]) {
 // ─── Read side (#1007 PR-4) ────────────────────────────────────────────────────
 
 impl OpfsSqliteStore {
+    /// All provenance rows for `id`, sorted `(first_seen_ms asc, relay_url asc)`
+    /// so index 0 is the deterministic primary (mirror of the `is_primary` write
+    /// invariant). Empty when the event has no provenance (absent / removed).
+    pub fn provenance_for(&self, id: &EventId) -> Result<Vec<ProvenanceRow>, SqliteWasmError> {
+        let conn = self.conn().borrow();
+        let stmt = conn.prepare(
+            "SELECT relay_url, first_seen_ms, last_seen_ms, is_primary FROM provenance \
+             WHERE event_id = ?1 ORDER BY first_seen_ms ASC, relay_url ASC",
+        )?;
+        stmt.bind_blob(1, id)?;
+        let mut out = Vec::new();
+        while stmt.step()? {
+            out.push(ProvenanceRow {
+                relay_url: stmt.column_text(0)?,
+                first_seen_ms: stmt.column_int64(1)? as u64,
+                last_seen_ms: stmt.column_int64(2)? as u64,
+                is_primary: stmt.column_int64(3)? != 0,
+            });
+        }
+        Ok(out)
+    }
+
     /// V-52 — ids of events whose provenance includes `relay_url`.
     ///
     /// Index-served by `idx_prov_relay` (`relay_url, event_id`), joined to

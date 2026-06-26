@@ -89,3 +89,42 @@ pub enum TombstoneOrigin {
     /// Administrative purge.
     AdminPurge,
 }
+
+/// A read-side tombstone row (mirror of `nmp_store::TombstoneRow`).
+///
+/// Returned by [`crate::OpfsSqliteStore::tombstones_for`] /
+/// [`crate::OpfsSqliteStore::list_tombstones`]. The engine's `tombstones` table
+/// carries a single optional `source` column, so `sources` holds at most one
+/// entry (empty when the row has no recorded source); the `nmp-store` wrapper
+/// widens it into the trait's `Vec<RelayUrl>` 1:1.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TombstoneRow {
+    /// The deleted event id.
+    pub target_id: EventId,
+    /// The kind:5 event that produced this tombstone (`None` for NIP-40 / admin).
+    pub kind5_event_id: Option<EventId>,
+    /// The deleter pubkey (`None` for NIP-40 / admin).
+    pub deleter_pubkey: Option<PubKey>,
+    /// Unix seconds; max observed across redeliveries.
+    pub deleted_at: u64,
+    /// The source relay(s) — at most one for this engine.
+    pub sources: Vec<String>,
+    /// What produced the tombstone.
+    pub origin: TombstoneOrigin,
+}
+
+/// A read-side provenance row (mirror of `nmp_store::ProvenanceEntry`).
+///
+/// Returned by [`crate::OpfsSqliteStore::provenance_for`], sorted
+/// `(first_seen_ms asc, relay_url asc)` so index 0 is the deterministic primary.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProvenanceRow {
+    /// The relay that delivered this copy.
+    pub relay_url: String,
+    /// First wall-clock arrival from this relay, unix milliseconds.
+    pub first_seen_ms: u64,
+    /// Most recent wall-clock arrival from this relay, unix milliseconds.
+    pub last_seen_ms: u64,
+    /// True for the first relay that delivered this event (deterministic).
+    pub is_primary: bool,
+}

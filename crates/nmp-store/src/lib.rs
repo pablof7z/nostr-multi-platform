@@ -31,6 +31,11 @@ pub mod ingest_log;
 pub(crate) mod interaction;
 mod lmdb;
 mod mem;
+// OPFS-SQLite backend (#1007). wasm32-only (the engine's inherent methods are
+// `#[cfg(target_arch = "wasm32")]`) and gated behind the `opfs-sqlite-backend`
+// feature; native `--all-features` builds exclude it entirely.
+#[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
+mod opfs;
 // D20 — wasm-safe time shim. All wasm-reachable code in this crate that
 // needs `Instant` imports from here instead of directly from `std::time`.
 pub(crate) mod time;
@@ -56,6 +61,11 @@ pub mod relay_scores {
     pub use super::lmdb::relay_scores::{load_all_raw, put_batch_raw};
 }
 pub use mem::MemEventStore;
+// #1007 — OPFS-SQLite `EventStore` backend (browser-durable). PR-7's
+// `nmp-browser-runtime` constructs it via `OpfsSqliteEventStore::open(...).await`
+// and injects it as `Arc<dyn EventStore>`.
+#[cfg(all(target_arch = "wasm32", feature = "opfs-sqlite-backend"))]
+pub use opfs::OpfsSqliteEventStore;
 // #1811 — FTS public surface. Re-exported at the crate root so backends and
 // `nmp-core`'s scope compiler import from `nmp_store::*`.
 pub use text_search::{
