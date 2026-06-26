@@ -183,12 +183,14 @@ pub(super) fn dispatch_command(
             maybe_emit_after_dispatch(ctx.kernel, *ctx.running, ctx.update_tx, ctx.last_emit);
             Some(Vec::new())
         }
-        ActorCommand::EnqueueOutbound { role, relay_url, text } => {
-            relay_cmds::enqueue_outbound(role, relay_url, text)
-        }
-        ActorCommand::SetReconnectPreamble { relay_url, frames, .. } => {
-            relay_cmds::set_reconnect_preamble(relay_url, frames, ctx)
-        }
+        ActorCommand::EnqueueOutbound {
+            role,
+            relay_url,
+            text,
+        } => relay_cmds::enqueue_outbound(role, relay_url, text),
+        ActorCommand::SetReconnectPreamble {
+            relay_url, frames, ..
+        } => relay_cmds::set_reconnect_preamble(relay_url, frames, ctx),
         ActorCommand::UnregisterPersistentSub { relay_url, sub_id } => {
             relay_cmds::unregister_persistent_sub(relay_url, sub_id, ctx)
         }

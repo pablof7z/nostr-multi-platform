@@ -67,7 +67,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
-use web_sys::{BinaryType, CloseEvent, ErrorEvent, MessageEvent, WebSocket};
+use web_sys::{BinaryType, CloseEvent, Event, MessageEvent, WebSocket};
 
 use crate::relay_protocol::{
     is_permanent_error, jittered_backoff, RELAY_RECONNECT_DELAY_INITIAL, RELAY_RECONNECT_DELAY_MAX,
@@ -182,7 +182,7 @@ struct SocketClosures {
     on_open: Option<Closure<dyn FnMut()>>,
     on_message: Option<Closure<dyn FnMut(MessageEvent)>>,
     on_close: Option<Closure<dyn FnMut(CloseEvent)>>,
-    on_error: Option<Closure<dyn FnMut(ErrorEvent)>>,
+    on_error: Option<Closure<dyn FnMut(Event)>>,
 }
 
 impl BrowserRelayDriver {
@@ -396,11 +396,14 @@ impl BrowserRelayDriver {
         }) as Box<dyn FnMut(CloseEvent)>)
     }
 
-    fn build_on_error(self: &Rc<Self>) -> Closure<dyn FnMut(ErrorEvent)> {
+    fn build_on_error(self: &Rc<Self>) -> Closure<dyn FnMut(Event)> {
         let weak = Rc::downgrade(self);
-        Closure::wrap(Box::new(move |event: ErrorEvent| {
+        Closure::wrap(Box::new(move |event: Event| {
             let Some(driver) = weak.upgrade() else { return };
-            let message = event.message();
+            let message = js_sys::Reflect::get(event.as_ref(), &JsValue::from_str("message"))
+                .ok()
+                .and_then(|value| value.as_string())
+                .unwrap_or_default();
             // ErrorEvent on a WebSocket is followed by a CloseEvent — the
             // close handler owns the reconnect decision. We only report the
             // error string into the kernel so the snapshot surfaces it.
@@ -410,7 +413,7 @@ impl BrowserRelayDriver {
                 message
             };
             (driver.kernel.on_failed)(driver.role, &driver.url, error);
-        }) as Box<dyn FnMut(ErrorEvent)>)
+        }) as Box<dyn FnMut(Event)>)
     }
 
     /// Schedule a reconnect via `gloo_timers::callback::Timeout` (#2071).
