@@ -1,0 +1,164 @@
+// App.tsx — Chirp Web composition root (Item B: thin shell).
+//
+// Responsibilities:
+//   1. Boot the NmpWasmRuntime worker via @nmp/runtime-web.
+//   2. Parse `?relay_bootstrap=` from the URL and forward it in the `start` request.
+//   3. Subscribe to the snapshot/update stream and expose it via NmpClientContext.
+//   4. Wire the NIP-07 sign broker (sign_request events handled in client.ts).
+//   5. Expose data-attribute test hooks for Item E acceptance tests:
+//        data-bridge-kind       = "worker" | "in_process_fallback"
+//        data-runtime-status    = status string (e.g. "running", "degraded:…")
+//        data-has-snapshot      = "true" | "false"
+//   6. Render a minimal status indicator and WELL-DEFINED MOUNT POINTS for
+//        Item C (feed/profile UI) — <section data-slot="feed">
+//        Item D (signing/onboarding UI) — <section data-slot="signing">
+//
+// Zero protocol logic in TS. All Nostr behaviour is Rust-owned in
+// crates/nmp-browser-runtime. If you see Nostr event construction here it is a
+// bug (Chirp is a reusability proof — docs/aim.md).
+//
+// Item C: import and render your components inside [data-slot="feed"] via
+//   the NmpClientContext.Provider tree (useSnapshot / useNmpClient).
+// Item D: import and render signing/onboarding UI inside [data-slot="signing"].
+
+import { createSignal, onCleanup, onMount } from "solid-js";
+import type { IdentityRelayPermission } from "@nmp/runtime-web";
+import { createNmpClient, type RuntimeSnapshot } from "./nmp/client";
+import { NmpClientProvider } from "./nmp/context";
+import { chirpRelayOverrideFromSearch } from "./chirpConfig";
+
+// NIP-07 browser extension interface (window.nostr — EIP-1193-style extension).
+declare global {
+  interface Window {
+    nostr?: {
+      getPublicKey(): Promise<string>;
+      getRelays?(): Promise<Record<string, { read?: boolean; write?: boolean }>>;
+      signEvent(event: Record<string, unknown>): Promise<Record<string, unknown>>;
+    };
+  }
+}
+
+// The client is a module-level singleton: one worker per page load.
+const client = createNmpClient();
+
+function identityRelaysFromNip07(value: unknown): IdentityRelayPermission[] {
+  if (typeof value !== "object" || value === null) return [];
+  const relays: IdentityRelayPermission[] = [];
+  for (const [url, permissions] of Object.entries(value)) {
+    if (typeof url !== "string" || typeof permissions !== "object" || permissions === null) {
+      continue;
+    }
+    const raw = permissions as Record<string, unknown>;
+    relays.push({
+      url,
+      read: raw.read === true,
+      write: raw.write === true,
+    });
+  }
+  return relays;
+}
+
+async function readNip07Relays(): Promise<IdentityRelayPermission[] | undefined> {
+  if (!window.nostr?.getRelays) return undefined;
+  try {
+    const relays = identityRelaysFromNip07(await window.nostr.getRelays());
+    return relays.length > 0 ? relays : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Derive a stable string from the runtime status for data attributes and UI. */
+function runtimeStatusLabel(snapshot: RuntimeSnapshot): string {
+  const s = snapshot.status;
+  if (typeof s === "string") return s;
+  return `degraded:${s.degraded}`;
+}
+
+export default function App() {
+  const [snapshot, setSnapshot] = createSignal<RuntimeSnapshot>(client.snapshot());
+
+  const unsubscribe = client.subscribe(setSnapshot);
+  onCleanup(unsubscribe);
+
+  // Boot the runtime on mount: parse relay_bootstrap from URL and send `start`.
+  onMount(() => void start());
+
+  const start = async () => {
+    const override = chirpRelayOverrideFromSearch(window.location.search);
+    setSnapshot(await client.start(override));
+  };
+
+  // Connect the active NIP-07 extension as the signing identity.
+  // Item D will replace this with a full onboarding flow.
+  const connect = async () => {
+    if (!window.nostr) return;
+    try {
+      const pubkeyHex = await window.nostr.getPublicKey();
+      const snap = await client.setSigner(pubkeyHex, await readNip07Relays());
+      setSnapshot(snap);
+    } catch {
+      // Signer install failed; UI stays disconnected, no crash.
+    }
+  };
+
+  // Derived test-hook values (reactive, zero allocations on stable status).
+  const bridgeKind = () => snapshot().clientRuntime;
+  const runtimeStatus = () => runtimeStatusLabel(snapshot());
+  const hasSnapshot = () => snapshot().latestUpdateBytes !== undefined;
+  const isConnected = () => hasSnapshot();
+
+  return (
+    <NmpClientProvider client={client} snapshot={snapshot}>
+      {/*
+        Root element carries data attributes for Item E acceptance tests:
+          data-bridge-kind     — "worker" (real wasm) or "in_process_fallback"
+          data-runtime-status  — e.g. "running", "ready", "degraded:browser_bridge_unavailable"
+          data-has-snapshot    — "true" once the first UpdateFrame arrives
+      */}
+      <main
+        class="app-shell"
+        data-bridge-kind={bridgeKind()}
+        data-runtime-status={runtimeStatus()}
+        data-has-snapshot={hasSnapshot() ? "true" : "false"}
+      >
+        {/* Status indicator — visible while connecting; updates live. */}
+        <div
+          class="status-indicator"
+          aria-live="polite"
+          data-connected={isConnected() ? "true" : "false"}
+        >
+          {isConnected() ? "connected" : "connecting…"}
+          {snapshot().clientRuntime === "in_process_fallback" && (
+            <span aria-label="degraded mode"> (degraded)</span>
+          )}
+        </div>
+
+        {/*
+          MOUNT POINT — Item C: feed / profile / publish UI.
+          Item C imports its panel components and renders them here via
+          NmpClientContext. Do not add logic to this slot — zero protocol TS.
+        */}
+        <section data-slot="feed" aria-label="Feed" />
+
+        {/*
+          MOUNT POINT — Item D: signing / onboarding UI.
+          Item D renders the NIP-07 connect flow and pending-sign overlay here.
+          The connect() handler above is a stub; Item D replaces it with its
+          full onboarding component.
+        */}
+        <section data-slot="signing" aria-label="Signing">
+          {!isConnected() && (
+            <button
+              class="connect-btn"
+              onClick={() => void connect()}
+              style={{ padding: "10px 20px", margin: "20px", cursor: "pointer" }}
+            >
+              Connect NIP-07 extension
+            </button>
+          )}
+        </section>
+      </main>
+    </NmpClientProvider>
+  );
+}
