@@ -84,6 +84,8 @@ export type FixtureRelay = {
 };
 
 export type FeedFixtureRelay = FixtureRelay & {
+  /** Secret key for the test viewer; specs may encode it as nsec for local-key onboarding. */
+  viewerSecretKey: Uint8Array;
   /** Hex pubkey of the test viewer (use this for the window.nostr mock). */
   viewerPubkey: string;
   /** Hex pubkey of the follow whose kind:1 note appears in the feed. */
@@ -323,6 +325,7 @@ export async function startFeedFixtureRelay(): Promise<FeedFixtureRelay> {
       await base.close();
       await imageServer.close();
     },
+    viewerSecretKey: viewerSk,
     viewerPubkey,
     followPubkey: followAPubkey,
     noteContent,

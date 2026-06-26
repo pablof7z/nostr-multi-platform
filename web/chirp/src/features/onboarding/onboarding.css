@@ -12,7 +12,7 @@
   display: flex;
   align-items: start;
   justify-content: space-between;
-  gap: 4px;
+  gap: 14px;
 }
 
 .panel-kicker {
@@ -31,6 +31,14 @@
   line-height: 1.2;
 }
 
+.onboarding-header p:not(.panel-kicker) {
+  max-width: 290px;
+  margin: 8px 0 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .onboarding-progress {
   display: inline-flex;
   align-items: center;
@@ -47,8 +55,10 @@
 }
 
 .onboarding-next {
-  display: grid;
-  gap: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 11px 12px;
@@ -66,9 +76,32 @@
 }
 
 .onboarding-next span {
+  display: block;
+  margin-top: 3px;
   color: var(--ink-3);
   font-size: 12px;
   line-height: 1.4;
+}
+
+.onboarding-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  flex: 0 0 auto;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: 0 11px;
+  background: var(--bg-raised);
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.onboarding-action:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }
 
 .onboarding-steps {
@@ -87,29 +120,38 @@
 }
 
 .step-index {
-  width: 18px;
-  height: 18px;
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
   margin-top: 1px;
   border: 1px solid var(--line-strong);
   border-radius: 999px;
   background: var(--bg-inset);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
 }
 
 .onboarding-step[data-status="done"] .step-index {
   border-color: var(--tone-ok);
   background: var(--tone-ok);
+  color: var(--bg-raised);
   box-shadow: 0 0 0 4px var(--tone-ok-wash);
 }
 
 .onboarding-step[data-status="active"] .step-index {
   border-color: var(--tone-warn);
   background: var(--tone-warn);
+  color: var(--bg-raised);
   box-shadow: 0 0 0 4px var(--tone-warn-wash);
 }
 
 .onboarding-step[data-status="blocked"] .step-index {
   border-color: var(--tone-error);
   background: var(--tone-error);
+  color: var(--bg-raised);
 }
 
 .onboarding-step strong,
@@ -146,5 +188,15 @@
     border-left: 0;
     border-radius: 0;
     box-shadow: none;
+  }
+
+  .onboarding-header,
+  .onboarding-next {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .onboarding-action {
+    width: 100%;
   }
 }

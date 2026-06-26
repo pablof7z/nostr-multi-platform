@@ -131,54 +131,73 @@ export function SigningPanel(props: SigningPanelProps) {
           <div>
             <p class="signing-kicker">Identity</p>
             <h2 class="signing-title">Connect signer</h2>
+            <p class="signing-intro">
+              Pick a signing method for this browser session. Chirp will publish
+              only after the runtime confirms the signer is installed.
+            </p>
           </div>
 
-          <Show
-            when={hasNip07Extension()}
-            fallback={
-              <p class="signing-hint" role="status">
-                No NIP-07 browser extension detected. Paste an nsec for this
-                session, or install a browser signer such as Alby or nos2x.
-              </p>
-            }
-          >
-            <button
-              class="signing-btn signing-btn--primary connect-btn"
-              data-action="connect-nip07"
-              disabled={connecting()}
-              onClick={() => void connectNip07()}
-            >
-              {connecting() ? "Connecting..." : "Connect NIP-07"}
-            </button>
-          </Show>
+          <div class="signing-methods" aria-label="Signing methods">
+            <section class="signing-method" data-method="nip07">
+              <div>
+                <strong>NIP-07 browser signer</strong>
+                <span>Use the account already active in your extension.</span>
+              </div>
+              <Show
+                when={hasNip07Extension()}
+                fallback={
+                  <p class="signing-hint" role="status">
+                    No extension detected in this browser. Install Alby, nos2x,
+                    or use the session key option.
+                  </p>
+                }
+              >
+                <button
+                  class="signing-btn signing-btn--primary connect-btn"
+                  data-action="connect-nip07"
+                  disabled={connecting()}
+                  onClick={() => void connectNip07()}
+                >
+                  {connecting() ? "Connecting..." : "Connect NIP-07"}
+                </button>
+              </Show>
+            </section>
 
-          <form class="signing-nsec-form" onSubmit={importLocalKey}>
-            <label class="signing-label" for="local-nsec">
-              Local key
-            </label>
-            <input
-              ref={localKeyInput}
-              id="local-nsec"
-              class="signing-input"
-              data-testid="local-nsec-input"
-              type="password"
-              autocomplete="off"
-              spellcheck={false}
-              placeholder="nsec1..."
-              disabled={importingLocal()}
-            />
-            <button
-              class="signing-btn signing-btn--ghost"
-              data-testid="local-nsec-submit"
-              type="submit"
-              disabled={importingLocal()}
-            >
-              {importingLocal() ? "Importing..." : "Use for this session"}
-            </button>
-            <p class="signing-hint">
-              Memory-only: Chirp does not store pasted nsecs in browser storage.
-            </p>
-          </form>
+            <section class="signing-method" data-method="local-key">
+              <div>
+                <strong>Session nsec</strong>
+                <span>Paste an nsec for a memory-only local signer.</span>
+              </div>
+              <form class="signing-nsec-form" onSubmit={importLocalKey}>
+                <label class="signing-label" for="local-nsec">
+                  Secret key
+                </label>
+                <input
+                  ref={localKeyInput}
+                  id="local-nsec"
+                  class="signing-input"
+                  data-testid="local-nsec-input"
+                  type="password"
+                  autocomplete="off"
+                  spellcheck={false}
+                  placeholder="nsec1..."
+                  disabled={importingLocal()}
+                />
+                <button
+                  class="signing-btn signing-btn--ghost"
+                  data-testid="local-nsec-submit"
+                  type="submit"
+                  disabled={importingLocal()}
+                >
+                  {importingLocal() ? "Importing..." : "Use for this session"}
+                </button>
+                <p class="signing-hint">
+                  Not saved to localStorage, sessionStorage, IndexedDB, OPFS,
+                  snapshots, logs, or URL state.
+                </p>
+              </form>
+            </section>
+          </div>
 
           <Show when={onboardError()}>
             <p class="signing-error" role="alert" data-slot="onboard-error">

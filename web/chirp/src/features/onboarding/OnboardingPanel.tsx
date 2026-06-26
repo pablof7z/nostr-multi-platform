@@ -17,6 +17,12 @@ type Step = {
   detail: string;
 };
 
+type NextAction = {
+  label: string;
+  detail: string;
+  href: string;
+};
+
 function buildSteps(state: OnboardingState): Step[] {
   const relayCount = state.diagnostics?.relays.length ?? 0;
   const connectedRelays =
@@ -26,9 +32,10 @@ function buildSteps(state: OnboardingState): Step[] {
     {
       label: "Runtime",
       status: state.runtimeConnected ? "done" : "active",
-      detail:
-        state.runtimeMode === "worker"
-          ? "WASM worker is running."
+      detail: state.runtimeConnected
+        ? "WASM worker is running."
+        : state.runtimeMode === "worker"
+          ? "Waiting for the first WASM worker snapshot."
           : "Browser runtime is degraded; publishing is unavailable.",
     },
     {
@@ -56,38 +63,78 @@ function buildSteps(state: OnboardingState): Step[] {
   ];
 }
 
-function nextAction(steps: Step[]): string {
+function nextAction(steps: Step[]): NextAction {
   const blocked = steps.find((step) => step.status !== "done");
-  if (!blocked) return "Live: read, compose, react, inspect relay state.";
-  if (blocked.label === "Identity") return "Connect a signer to unlock posting and reactions.";
-  if (blocked.label === "Relays") return "Waiting for relay sockets to connect.";
-  if (blocked.label === "Feed") return "Waiting for followed notes to hydrate.";
-  return "Starting the WASM runtime.";
+  if (!blocked) {
+    return {
+      label: "Start chirping",
+      detail: "Read the feed, publish, react, and inspect relay acceptance.",
+      href: "#feed",
+    };
+  }
+  if (blocked.label === "Identity") {
+    return {
+      label: "Connect identity",
+      detail: "Choose NIP-07 or paste a session-only nsec to unlock write actions.",
+      href: "#signing",
+    };
+  }
+  if (blocked.label === "Relays") {
+    return {
+      label: "Check relays",
+      detail: "Wait for a relay socket or adjust the configured relay set.",
+      href: "#relays",
+    };
+  }
+  if (blocked.label === "Feed") {
+    return {
+      label: "Open feed",
+      detail: "The runtime is connected; waiting for followed notes to hydrate.",
+      href: "#feed",
+    };
+  }
+  return {
+    label: "Inspect diagnostics",
+    detail: "Waiting for the WASM worker to emit its first snapshot.",
+    href: "#diagnostics",
+  };
 }
 
 export function OnboardingPanel(props: { state: OnboardingState }) {
   const steps = () => buildSteps(props.state);
   const complete = () => steps().every((step) => step.status === "done");
   const completeCount = () => steps().filter((step) => step.status === "done").length;
+  const action = () => nextAction(steps());
 
   return (
-    <section class="onboarding-panel" aria-label="Onboarding">
+    <section class="onboarding-panel" aria-label="First-run onboarding">
       <div class="onboarding-header">
         <div>
           <p class="panel-kicker">First run</p>
           <h2>{complete() ? "Ready for signed Chirps" : "Set up Chirp"}</h2>
+          <p>
+            Bring a relay-backed timeline online, connect an identity, then send
+            a signed action with visible relay proof.
+          </p>
         </div>
         <span class="onboarding-progress">{completeCount()}/4</span>
       </div>
       <div class="onboarding-next" data-complete={complete() ? "true" : "false"}>
-        <strong>{complete() ? "Session ready" : "Next"}</strong>
-        <span>{nextAction(steps())}</span>
+        <div>
+          <strong>{complete() ? "Session ready" : "Next step"}</strong>
+          <span>{action().detail}</span>
+        </div>
+        <a class="onboarding-action" href={action().href}>
+          {action().label}
+        </a>
       </div>
       <ol class="onboarding-steps">
         <For each={steps()}>
-          {(step) => (
+          {(step, index) => (
             <li class="onboarding-step" data-status={step.status}>
-              <span class="step-index" aria-hidden="true" />
+              <span class="step-index" aria-hidden="true">
+                {index() + 1}
+              </span>
               <div>
                 <strong>{step.label}</strong>
                 <span>{step.detail}</span>

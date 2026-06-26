@@ -31,6 +31,44 @@
   line-height: 1.2;
 }
 
+.signing-intro {
+  margin: 8px 0 0;
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.signing-methods {
+  display: grid;
+  gap: 10px;
+}
+
+.signing-method {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 13px;
+  background: var(--bg-panel);
+}
+
+.signing-method strong,
+.signing-method span {
+  display: block;
+}
+
+.signing-method strong {
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.signing-method span {
+  margin-top: 3px;
+  color: var(--ink-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .signing-btn {
   appearance: none;
   display: inline-flex;

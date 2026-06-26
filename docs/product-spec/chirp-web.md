@@ -10,6 +10,11 @@ A new browser profile must open into a usable product surface, not a dead demo.
 The first screen must show relay-backed feed state, relay health, signer state,
 compose affordances, and diagnostics for publish/action outcomes.
 
+First run is a guided onboarding flow, not a passive status list. The UI must
+show the next action needed to reach a signed product session, expose the
+available identity paths directly on that screen, and advance to a complete
+session only after runtime, relays, signer, and feed projection are all live.
+
 Users without a browser extension must still have a complete write path:
 Chirp Web supports a memory-only local-key session by accepting an `nsec` and
 handing it directly to `nmp-browser-runtime` as `set_identity kind=local_key`.
